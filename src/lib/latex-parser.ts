@@ -387,6 +387,18 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * break the user's document. So the block-level paragraph callers opt IN, the
  * six recursive argument calls below inherit the OFF default, and a new caller
  * has to state that its content is line-final before it can get one.
+ *
+ * `inCode` says the run sits inside a `\texttt{}` CODE SPAN, where `--` is two
+ * literal hyphens and an accent command stays raw (memo §A exclusion). It is
+ * INHERITED by every mark recursion below, and pre-377 it was not: only the
+ * `\texttt` branch passed anything, so a command nested INSIDE a code span had
+ * its body typographied. The emit side reads the same fact correctly and at the
+ * same depth (`inlineTextBytes` suppresses typography under a `code` wrapper),
+ * so the two rungs disagreeing wrote a raw U+2013 / U+00E9 straight into the
+ * `.tex`: `\texttt{\textbf{x--y}}` came back `\texttt{\textbf{x\u2013y}}`, where
+ * the source's two hyphens must print as two hyphens. `\texttt{x--y}` (one
+ * level) was always correct, which is why it read as latent. The card/footnote
+ * fork had the identical gap (task 341's twin rule).
  */
 export function parseInlineContent(
   text: string,
@@ -583,7 +595,7 @@ export function parseInlineContent(
         flush();
         const inner = extractBraced(text, i + "\\textbf".length);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          const innerNodes = parseInlineContent(inner.content, inCode);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
@@ -601,7 +613,7 @@ export function parseInlineContent(
         flush();
         const inner = extractBraced(text, i + "\\emph".length);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          const innerNodes = parseInlineContent(inner.content, inCode);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
@@ -619,7 +631,7 @@ export function parseInlineContent(
         flush();
         const inner = extractBraced(text, i + "\\underline".length);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          const innerNodes = parseInlineContent(inner.content, inCode);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
@@ -637,7 +649,7 @@ export function parseInlineContent(
         flush();
         const inner = extractBraced(text, i + "\\textit".length);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          const innerNodes = parseInlineContent(inner.content, inCode);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
@@ -656,7 +668,8 @@ export function parseInlineContent(
         const inner = extractBraced(text, i + "\\texttt".length);
         if (inner !== null) {
           // Code span: suppress typographic transforms (`--` is literal,
-          // accent commands stay raw) — memo §A exclusion.
+          // accent commands stay raw) — memo §A exclusion. `true` rather than
+          // `inCode` because THIS is the command that opens a code span.
           const innerNodes = parseInlineContent(inner.content, true);
           for (const n of innerNodes) {
             nodes.push({
@@ -681,7 +694,7 @@ export function parseInlineContent(
         const argStart = i + tcMatch[0].length - 1;
         const inner = extractBraced(text, argStart);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          const innerNodes = parseInlineContent(inner.content, inCode);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
