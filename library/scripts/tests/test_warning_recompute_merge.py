@@ -34,7 +34,12 @@ What these tests pin, in the order the design argues them:
      wipe a whole kind;
   E. the readers match rows NFC-insensitively, since the write side
      normalizes — without which the whole fix silently no-ops on exactly the
-     papers whose citekeys carry diacritics (Tichý / López); and
+     papers whose citekeys carry diacritics (Tichý / López). Task 371 widened
+     this half from three hand-fixed readers to the whole silo, and put a
+     CENSUS under it (section C2): every citekey comparison in
+     `library/scripts/*.py` routes through `_tools.citekey_matches`, with the
+     SSOT's own definition the one allowlisted line. The doctrine lives at
+     library/AGENTS.md, "A citekey lookup is NFC-insensitive"; and
   F. end-to-end: a first-pass clean-bibliography flow (through the real CLI
      shim, in a subprocess) leaves `missing-bib-entry:` lines on the row, the
      real `synthesize()` then finds targets and synthesizes, and a foreign
@@ -412,6 +417,304 @@ def test_synthesis_reads_warnings_off_an_nfd_row(tmp_path):
     check(got == ["missing-bib-entry: Prior 1957"], f"NFD row not read: {got!r}")
     check(synth._missing_bib_targets(got) == [("Prior", "1957")],
           "target extraction changed")
+
+
+def test_fuse_alternate_writer_updates_an_nfd_row(tmp_path):
+    """The LOUD member of the class (task 371).
+
+    `update_catalog_for_fusion` is called AFTER `main.tex` has already been
+    rewritten by the fusion. A raw compare leaves `found` false on an
+    NFD-spelled row and the function raises `KeyError` — so the paper is
+    fused and its catalog row keeps a stale `pgmarkCount`/`pgmarkSource`,
+    mid-gesture, with nothing to retry against.
+    """
+    import fuse_alternate  # noqa: PLC0415
+
+    nfd = unicodedata.normalize("NFD", "tichý1988")
+    nfc = unicodedata.normalize("NFC", "tichý1988")
+    check(nfd != nfc, "fixture is not actually NFD-vs-NFC distinct")
+    lib = _make_library(tmp_path, [{
+        "citekey": nfd,
+        "indexed": {"pgmarkCount": 0, "warnings": ["pgmark-gap: 12-14"]},
+    }])
+    result = fuse_alternate.FuseResult(
+        success=True,
+        pgmarks_inserted=3,
+        page_count=3,
+        aligned_count=3,
+        pgmark_source_filename="alternate.pdf",
+        pgmark_position="header",
+        validation_report=None,
+    )
+    # Must not raise: the raw compare here is a KeyError after the fusion.
+    fuse_alternate.update_catalog_for_fusion(lib, nfc, result)
+
+    row = _row(lib, nfc)
+    indexed = row.get("indexed") or {}
+    check(indexed.get("pgmarkSource") == "alternate.pdf",
+          f"NFD row not updated by the fusion writer: {indexed!r}")
+    check(indexed.get("pgmarkPosition") == "header",
+          f"pgmarkPosition not written: {indexed!r}")
+    check("pgmark-gap: 12-14" in (indexed.get("warnings") or []),
+          f"a foreign warning kind was eaten: {indexed!r}")
+
+
+def test_fuse_alternate_reader_returns_an_nfd_row(tmp_path):
+    """The silent member — `_read_catalog_entry` returning None degrades
+    every consumer exactly like the three readers task 323 fixed."""
+    import fuse_alternate  # noqa: PLC0415
+
+    nfd = unicodedata.normalize("NFD", "čerić2001")
+    nfc = unicodedata.normalize("NFC", "čerić2001")
+    check(nfd != nfc, "fixture is not actually NFD-vs-NFC distinct")
+    lib = _make_library(tmp_path, [{"citekey": nfd, "title": "A Paper"}])
+    got = fuse_alternate._read_catalog_entry(lib, nfc)
+    check(got is not None and got.get("title") == "A Paper",
+          f"NFD row not read: {got!r}")
+    # …and the reverse spelling, so neither direction is privileged.
+    lib2 = _make_library(tmp_path / "b", [{"citekey": nfc, "title": "B Paper"}])
+    got2 = fuse_alternate._read_catalog_entry(lib2, nfd)
+    check(got2 is not None and got2.get("title") == "B Paper",
+          f"NFC row not read from an NFD query: {got2!r}")
+
+
+def test_triage_apply_master_membership_is_nfc_insensitive(tmp_path):
+    """`read_master_bib` keys its dict by the SPELLING on disk, so a raw
+    `citekey in read_master_bib(...)` reports a real NFD-spelled entry as
+    missing — and triage then appends a SECOND entry for the same work."""
+    import triage_apply  # noqa: PLC0415
+
+    nfd = unicodedata.normalize("NFD", "lópez2010")
+    nfc = unicodedata.normalize("NFC", "lópez2010")
+    lib = tmp_path / "lib"
+    (lib / ".virgil").mkdir(parents=True)
+    (lib / "master.bib").write_text(
+        "@article{" + nfd + ",\n  title = {A Paper},\n  year = {2010}\n}\n",
+        encoding="utf-8",
+    )
+    check(triage_apply._master_has_citekey(lib, nfc),
+          "NFD master.bib entry read as missing")
+
+
+def test_triage_apply_bib_state_reads_an_nfd_row(tmp_path):
+    import triage_apply  # noqa: PLC0415
+    nfd = unicodedata.normalize("NFD", "tichý1988")
+    nfc = unicodedata.normalize("NFC", "tichý1988")
+    catalog = {"entries": [{"citekey": nfd, "bib": {"state": "authenticated"}}]}
+    check(triage_apply._bib_state_for_citekey(catalog, nfc) == "authenticated",
+          "NFD row not matched by the bib-state reader")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# C2. The CENSUS — the leg with teeth (task 371)
+#
+# `citekey_matches` was never the part that could misbehave; a call site
+# that never asks it is, and `e.get("citekey") == citekey` type-checks
+# perfectly while being exactly the defect. Task 323 fixed three readers by
+# hand; two months later FIFTEEN raw comparisons (plus one raw membership
+# test) were still live across ten files — fuse_alternate ×2,
+# triage_apply ×3 + the membership test, repair_etal_citekeys ×2,
+# fuzzy_citekey_disambiguate ×2, apply_metadata_mismatch_policy,
+# audit_deepindex, drain_queue, index_paper, update_master_bib_entry,
+# dedup_index — which is what a hand-drained class looks like with no
+# guard under it.
+#
+# The allowlist is EMPTY but for the SSOT's own definition. A hit is
+# CONVERT-it, never an entry.
+# ─────────────────────────────────────────────────────────────────────────
+
+# `<file>:<line-fragment>` — the ONE line entitled to compare citekeys raw.
+PERMITTED_RAW_CITEKEY_COMPARISONS = {
+    "_tools.py": "return normalize_citekey(stored) == normalize_citekey(query)",
+}
+
+_SCRIPTS_DIR = Path(_SCRIPTS)
+
+
+def _code_only(src: str) -> str:
+    """Blank `#` comments and TRIPLE-quoted strings, preserving line numbers.
+
+    Ordinary single-line literals are KEPT deliberately: the drift lives in
+    them (`e.get("citekey") == citekey`), so blanking them would make the
+    census blind to the commonest shape of the defect. Docstrings go, because
+    this file's own prose quotes the defect verbatim.
+    """
+    out: list[str] = []
+    i, n = 0, len(src)
+    quote: str | None = None
+    triple = False
+    while i < n:
+        c = src[i]
+        if quote is None:
+            if c == "#":
+                while i < n and src[i] != "\n":
+                    out.append(" ")
+                    i += 1
+                continue
+            if c in "\"'":
+                if src[i:i + 3] == c * 3:
+                    quote, triple = c, True
+                    out.append("   ")
+                    i += 3
+                    continue
+                quote, triple = c, False
+                out.append(c)
+                i += 1
+                continue
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\":
+            out.append("  " if triple else src[i:i + 2])
+            i += 2
+            continue
+        if triple and src[i:i + 3] == quote * 3:
+            quote = None
+            out.append("   ")
+            i += 3
+            continue
+        if not triple and c == quote:
+            quote = None
+            out.append(c)
+            i += 1
+            continue
+        out.append(("\n" if c == "\n" else " ") if triple else c)
+        i += 1
+    return "".join(out)
+
+
+# The operand immediately LEFT of / RIGHT of an `==`/`!=`. Deliberately
+# adjacent rather than a window: `if not citekey or state == "none"` names a
+# citekey on the line and compares something else entirely.
+_OPERAND_L = __import__("re").compile(
+    r"""([A-Za-z_][\w.]*(?:\(\s*["'][\w-]+["']\s*(?:,[^()]*)?\))?)\s*$""")
+_OPERAND_R = __import__("re").compile(
+    r"""^\s*([A-Za-z_][\w.]*(?:\(\s*["'][\w-]+["']\s*(?:,[^()]*)?\))?)""")
+# Names that denote a citekey in this silo. `old` / `new_key` / `candidate_key`
+# are the rename planners' spellings; `paper.name` is a paper FOLDER, which on
+# macOS comes back decomposed.
+_CITEKEY_NAME = __import__("re").compile(
+    r"citekey|\bold\b|\bnew_key\b|\bcandidate_key\b|paper\.name", __import__("re").I)
+
+
+def _raw_citekey_comparisons(directory: Path) -> list[tuple[str, int, str]]:
+    import re  # noqa: PLC0415
+    hits: list[tuple[str, int, str]] = []
+    for path in sorted(directory.glob("*.py")):
+        if path.name.startswith("test_"):
+            continue          # fixture assertions on ASCII keys
+        raw_lines = path.read_text(encoding="utf-8").splitlines()
+        code_lines = _code_only(path.read_text(encoding="utf-8")).splitlines()
+        for lineno, line in enumerate(code_lines, 1):
+            if "citekey_matches" in line:
+                continue
+            for m in re.finditer(r"[=!]=", line):
+                left = _OPERAND_L.search(line[:m.start()])
+                right = _OPERAND_R.search(line[m.end():])
+                operands = [x.group(1) for x in (left, right) if x]
+                if not any(_CITEKEY_NAME.search(o) for o in operands):
+                    continue
+                text = raw_lines[lineno - 1].strip()
+                allowed = PERMITTED_RAW_CITEKEY_COMPARISONS.get(path.name)
+                if allowed and allowed in text:
+                    continue
+                hits.append((path.name, lineno, text))
+                break
+    return hits
+
+
+def _raw_master_membership(directory: Path) -> list[str]:
+    """`read_master_bib` keys its dict by the on-disk SPELLING, so
+    `citekey in read_master_bib(...)` is this same defect wearing a
+    membership test's clothes. The operand before `in` must be a citekey —
+    `for k in read_master_bib(...)` is an iteration, not a lookup.
+    """
+    import re  # noqa: PLC0415
+    needle = re.compile(r"\bin\s+read_master_bib\s*\(")
+    hits: list[str] = []
+    for path in sorted(directory.glob("*.py")):
+        if path.name.startswith("test_"):
+            continue
+        for lineno, line in enumerate(
+                _code_only(path.read_text(encoding="utf-8")).splitlines(), 1):
+            m = needle.search(line)
+            if not m:
+                continue
+            left = _OPERAND_L.search(line[:m.start()])
+            if left and _CITEKEY_NAME.search(left.group(1)):
+                hits.append(f"{path.name}:{lineno}")
+    return hits
+
+
+def test_no_production_script_compares_citekeys_raw():
+    hits = _raw_citekey_comparisons(_SCRIPTS_DIR)
+    check(hits == [], "raw citekey comparisons (route through "
+                      f"`citekey_matches`):\n  " +
+          "\n  ".join(f"{f}:{n}: {t}" for f, n, t in hits))
+
+
+def test_the_census_can_actually_see_the_defect(tmp_path):
+    """A canary on a SYNTHETIC fixture, never on a live line — a guard whose
+    only evidence is the defect it exists to drain passes vacuously the day
+    the defect is fixed."""
+    d = tmp_path / "scripts"
+    d.mkdir()
+    (d / "zz_synthetic.py").write_text(
+        'def f(e, entry, match, citekey):\n'
+        '    if e.get("citekey") == citekey:\n'
+        '        return e\n'
+        '    if entry.get("citekey") != citekey:\n'
+        '        return None\n'
+        '    if match.citekey != citekey:\n'
+        '        return None\n',
+        encoding="utf-8",
+    )
+    hits = _raw_citekey_comparisons(d)
+    # One hit per line (the scanner breaks after the first operator per line).
+    check(len(hits) == 3, f"census blind to a planted defect: {hits!r}")
+    check({n for _, n, _ in hits} == {2, 4, 6}, f"wrong lines: {hits!r}")
+
+    # …and it must NOT indict a converted site or a citekey-adjacent
+    # comparison about something else.
+    (d / "zz_synthetic.py").write_text(
+        'def f(e, citekey, state):\n'
+        '    if citekey_matches(e.get("citekey", ""), citekey):\n'
+        '        return e\n'
+        '    if not citekey or state == "none":\n'
+        '        return None\n',
+        encoding="utf-8",
+    )
+    check(_raw_citekey_comparisons(d) == [],
+          "census indicts a correct site")
+
+
+def test_no_production_script_membership_tests_master_bib_raw():
+    """The second shape: `read_master_bib` keys its dict by the on-disk
+    spelling, so `citekey in read_master_bib(...)` is the same defect wearing
+    a membership test's clothes."""
+    hits = _raw_master_membership(_SCRIPTS_DIR)
+    check(hits == [], f"raw master.bib membership test(s): {hits}")
+
+
+def test_the_membership_census_can_see_its_defect(tmp_path):
+    d = tmp_path / "scripts"
+    d.mkdir()
+    (d / "zz_synthetic.py").write_text(
+        'def f(library, citekey):\n'
+        '    return citekey in read_master_bib(library / "master.bib")\n',
+        encoding="utf-8",
+    )
+    check(_raw_master_membership(d) == ["zz_synthetic.py:2"],
+          f"membership census blind: {_raw_master_membership(d)!r}")
+    # …and the converted shape (an iteration, not a membership test) is clean.
+    (d / "zz_synthetic.py").write_text(
+        'def f(library, citekey):\n'
+        '    return any(citekey_matches(k, citekey)\n'
+        '               for k in read_master_bib(library / "master.bib"))\n',
+        encoding="utf-8",
+    )
+    check(_raw_master_membership(d) == [],
+          "membership census indicts the converted shape")
 
 
 # ─────────────────────────────────────────────────────────────────────────

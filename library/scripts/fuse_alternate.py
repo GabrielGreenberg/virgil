@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
     append_inbox_item,
+    citekey_matches,
     lock_catalog,
     read_catalog,
     write_catalog,
@@ -417,7 +418,10 @@ def _read_catalog_entry(library: Path, citekey: str) -> Optional[dict]:
     except Exception:
         return None
     for e in c.get("entries", []):
-        if e.get("citekey") == citekey:
+        # NFC-insensitive, like every other catalog-row lookup in the silo:
+        # a raw compare returns None on an NFD-spelled row (Tichý / Čerić /
+        # López) and every consumer degrades as if the paper had no row.
+        if citekey_matches(e.get("citekey", ""), citekey):
             return e
     return None
 
@@ -700,7 +704,11 @@ def update_catalog_for_fusion(
             raise FileNotFoundError(library / ".virgil" / "catalog.json")
         found = False
         for entry in catalog.get("entries", []):
-            if entry.get("citekey") != citekey:
+            # NFC-insensitive: this is the LOUD member of the class. A raw
+            # compare leaves `found` false on an NFD-spelled row and raises
+            # the KeyError below — AFTER `main.tex` has already been rewritten
+            # by the fusion, so the paper is fused and the row is stale.
+            if not citekey_matches(entry.get("citekey", ""), citekey):
                 continue
             found = True
             indexed = entry.setdefault("indexed", {})

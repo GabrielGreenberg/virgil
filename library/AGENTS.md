@@ -452,6 +452,79 @@ shells out to it — that's what puts it under the same `npx vitest run` that
 gates everything else. (The suite carries its own no-pytest runner for this
 reason; the other `library/scripts/tests/*` suites remain manual.)
 
+## A citekey lookup is NFC-insensitive — and it is CENSUSED
+
+> **Every comparison of one citekey against another goes through the ONE
+> predicate `_tools.citekey_matches` (backed by `normalize_citekey` — compare
+> under NFC). Nothing in `library/scripts/` compares citekeys raw.**
+
+Catalog rows, `master.bib` keys, alias records and paper FOLDER names all
+carry Latin-1 Supplement codepoints in whichever normalization form the source
+data happened to use — pre-composed (NFC) from a JSON writer, decomposed (NFD)
+from macOS's filesystem or a PDF extractor. `Tichý` is `Tich` + `ý` or `Tich` +
+`y` + `U+0301`, and the two are byte-unequal and semantically identical. So a
+raw `e.get("citekey") == citekey` is a lookup that misses on exactly the papers
+whose citekeys carry diacritics, and it is silent in **three** directions:
+
+- a **reader** returns `None` and its consumer degrades as if the paper had no
+  row at all (task 323's three readers; `fuse_alternate._read_catalog_entry`);
+- a **guard** inverts — `citekey in read_master_bib(...)` reports a real entry
+  as missing, so triage appends a SECOND entry for the same work, and a dedup
+  match whose key differs from ours only by form is read as a *different work*
+  and flagged as a duplicate;
+- a **writer** raises. `fuse_alternate.update_catalog_for_fusion` is the loud
+  member and the worst-placed one: it runs AFTER `main.tex` has already been
+  rewritten by the fusion, so its `KeyError` leaves the paper fused and its row
+  stale, mid-gesture, with nothing to retry against.
+
+Task 323 fixed three readers by hand. Two months later **fifteen** raw
+comparisons (plus one raw membership test) were still live across ten files,
+alongside a local `_ck_eq` wrapper in
+`triage_apply.py` that forked the predicate (its `except` fell back to a
+whitespace-strip compare) and which three of that same file's own lookups
+didn't call. That is what a hand-drained class looks like with no guard under
+it — the predicate was never the part that could misbehave; a call site that
+never asks it is, and `e.get("citekey") == citekey` type-checks perfectly.
+
+Three rules it earned (task 371):
+
+- **A rename planner asks it too.** `fuzzy_citekey_disambiguate` compares a
+  freshly built candidate against the STORED key. Raw, a candidate that
+  differs only by form reads as new, and the planner schedules a rename that
+  renormalizes the `.bib` while leaving the catalog on the old spelling —
+  *manufacturing* the drift the predicate defangs.
+- **A paper FOLDER name is a citekey.** macOS hands back decomposed directory
+  names from `iterdir()`, so `repair_etal_citekeys` failed to recognise the
+  buggy paper's own folder and rewrote its cites along with everyone else's.
+- **Keep the raw hit as a fast path where the collection is large.**
+  `_master_has_citekey` tries the O(1) dict hit first (right whenever the
+  spellings agree, which is every ASCII citekey) and only pays the scan over a
+  34k-entry `master.bib` on a miss.
+
+CI: the census lives in
+[library/scripts/tests/test_warning_recompute_merge.py](scripts/tests/test_warning_recompute_merge.py)
+section C2 — 323's suite is the natural home, since its section C is this same
+class — and rides the `warning-recompute-merge-python.test.ts` shell that puts
+it under `npx vitest run`. It scans every non-`test_` `library/scripts/*.py`
+for an `==`/`!=` whose **immediately adjacent** operand names a citekey
+(adjacent, not a window: `if not citekey or state == "none"` names one on the
+line and compares something else), over source with `#` comments and
+docstrings blanked and ordinary literals KEPT — the drift lives in
+`get("citekey")`. A second leg pins the membership shape. The allowlist holds
+exactly one line, `citekey_matches`'s own definition, and can only shrink: a
+hit is CONVERT-it. Both legs carry a canary on a SYNTHETIC fixture, never on a
+live line.
+
+**Two residuals, stated.** The alias map (`dedup_index.resolve_alias`) still
+does raw dict-KEY lookups (`cur in aliases`) against keys `_record_alias`
+stored in whatever form its caller held — self-consistent within one session,
+driftable across them, and closing it properly is a normalize-on-write plus a
+migration rather than a predicate swap. And the census's name list treats
+`old` / `new_key` / `candidate_key` as citekey spellings, which is right in
+this silo today and would false-positive on an unrelated `old`; that fails
+LOUD in the safe direction, and the fix is a rename or an allowlist entry with
+a stated reason.
+
 ## Memo discipline
 
 Skills that write markdown memos as part of their work follow a fixed convention.

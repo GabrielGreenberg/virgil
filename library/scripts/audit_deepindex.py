@@ -41,7 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import suppression_categories_from_catalog  # noqa: E402
+from _tools import citekey_matches, suppression_categories_from_catalog  # noqa: E402
 
 
 # Invisible character codepoints to detect.
@@ -644,7 +644,8 @@ def check_title_metadata(paper_dir: Path, citekey: str, library: Path) -> list[s
         try:
             catalog = json.loads(catalog_path.read_text())
             for entry in catalog.get("entries", []):
-                if entry.get("citekey") == citekey:
+                # NFC-insensitive row lookup (the `citekey_matches` SSOT).
+                if citekey_matches(entry.get("citekey", ""), citekey):
                     cat_title = (entry.get("title") or "").strip()
                     if cat_title and _normalize(cat_title) != _normalize(in_file_title):
                         findings.append(

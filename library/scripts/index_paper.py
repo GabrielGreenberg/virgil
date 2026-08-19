@@ -48,6 +48,7 @@ from _tools import (
     SOURCE_FORMAT_PRIORITY,
     append_inbox_item,
     bump_catalog_version,
+    citekey_matches,
     detect,
     lock_catalog,
     read_catalog,
@@ -509,7 +510,10 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             include_uncertain=False,   # only a hard `same`/alias flags a dup row
             exclude_ck=citekey,
         )
-        if match is not None and match.citekey != citekey:
+        # NFC-insensitive (the `citekey_matches` SSOT): a match whose key
+        # differs from ours only by normalization form IS us, and flagging it
+        # as a duplicate work would block the paper's own intake.
+        if match is not None and not citekey_matches(match.citekey, citekey):
             duplicate_of = match.citekey
             log(f"  DUPLICATE-WORK: same work already held as {match.citekey!r} "
                 f"(relation={match.relation}, conf={match.confidence:.2f})")

@@ -244,7 +244,10 @@ def find_work_in_library(
 
     if incoming_citekey:
         surv = resolve_alias(library, incoming_citekey)
-        if surv and surv != incoming_citekey:
+        # NFC-insensitive: a survivor equal to us modulo normalization form is
+        # us, not an alias hit.
+        from _tools import citekey_matches  # noqa: PLC0415
+        if surv and not citekey_matches(surv, incoming_citekey):
             return Match(surv, "alias", 1.0, [f"alias: {incoming_citekey} → {surv}"])
 
     if index is None:

@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 LOCK_TTL_SECONDS = 60 * 60  # ignore stale locks older than 1h
@@ -167,8 +169,15 @@ def _classify_entry(library: Path, citekey: str) -> tuple[str, str]:
       ' ' indexed OK; 'M' manuscript; 'C' canonical (pre-digital classic);
       '?' unverified-with-DOI; '!' unverified-no-DOI; 'X' failed.
     """
+    # NFC-insensitive row lookup (the `citekey_matches` SSOT); lazy import
+    # keeps this standalone script's module-level dependency shape unchanged.
+    from _tools import citekey_matches  # noqa: PLC0415
     catalog = _read_catalog(library)
-    entry = next((e for e in catalog.get("entries", []) if e.get("citekey") == citekey), None)
+    entry = next(
+        (e for e in catalog.get("entries", [])
+         if citekey_matches(e.get("citekey", ""), citekey)),
+        None,
+    )
     if not entry:
         return "X", "no catalog entry after run"
     bib = entry.get("bib", {}) or {}

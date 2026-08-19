@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import (
     append_inbox_item,
     bump_catalog_version,
+    citekey_matches,
     lock_catalog,
     paper_has_holdings,
     read_catalog,
@@ -69,16 +70,16 @@ def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> bool
 
 
 def _master_has_citekey(library: Path, citekey: str) -> bool:
-    return citekey in read_master_bib(library / "master.bib")
-
-
-def _ck_eq(a: str, b: str) -> bool:
-    """Citekey equality under the shared NFC/whitespace rules."""
-    try:
-        from _tools import citekey_matches
-        return citekey_matches(a, b)
-    except Exception:
-        return (a or "").strip() == (b or "").strip()
+    # NFC-insensitive: `read_master_bib` keys the dict by the SPELLING on
+    # disk, so a raw `in` reports a real NFD-spelled entry as missing and
+    # triage appends a SECOND entry for the same work. The raw hit stays as
+    # the O(1) fast path (it is right whenever the spellings agree, which is
+    # every ASCII citekey); only a miss pays the scan over a 34k-entry
+    # master.bib.
+    keys = read_master_bib(library / "master.bib")
+    if citekey in keys:
+        return True
+    return any(citekey_matches(k, citekey) for k in keys)
 
 
 def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None:
@@ -106,7 +107,7 @@ def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None
 
 def _bib_state_for_citekey(catalog: dict, citekey: str) -> str:
     for e in catalog.get("entries", []):
-        if e.get("citekey") == citekey:
+        if citekey_matches(e.get("citekey", ""), citekey):
             return ((e.get("bib") or {}).get("state")) or "none"
     return "none"
 
@@ -198,7 +199,7 @@ def _upsert_catalog_row_bib_only(
             catalog.setdefault("version", 1)
             catalog.setdefault("entries", [])
             for i, e in enumerate(catalog["entries"]):
-                if e.get("citekey") == citekey:
+                if citekey_matches(e.get("citekey", ""), citekey):
                     merged_bib = dict(e.get("bib") or {})
                     merged_bib.update(bib_status_min)
                     existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
@@ -250,7 +251,7 @@ def _upsert_catalog_row_bib_only(
         catalog.setdefault("version", 1)
         catalog.setdefault("entries", [])
         for i, e in enumerate(catalog["entries"]):
-            if e.get("citekey") == citekey:
+            if citekey_matches(e.get("citekey", ""), citekey):
                 # Preserve addedAt; only update mutable fields. F#4: never
                 # clobber a holding's pdf/indexed status with the bib-only
                 # placeholders — this path now runs only for real holdings.
@@ -351,7 +352,7 @@ def apply_bib_row(
     # row into the survivor; an `uncertain` verdict mints but flags for review.
     if guard_index is not None and not _master_has_citekey(library, citekey):
         match = _guard_find(library, incoming_fields, entry_type, citekey, guard_index)
-        if match is not None and not _ck_eq(match.citekey, citekey):
+        if match is not None and not citekey_matches(match.citekey, citekey):
             if match.relation in ("same", "alias"):
                 _record_alias(library, citekey, match.citekey, match)
                 append_inbox_item(library, {
@@ -583,7 +584,7 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
         # the same way but never blocks.
         if guard_index is not None:
             match = _guard_find(library, proposed_fields, entry_type, citekey, guard_index)
-            if match is not None and not _ck_eq(match.citekey, citekey):
+            if match is not None and not citekey_matches(match.citekey, citekey):
                 duplicate_of = match.citekey
                 append_inbox_item(library, {
                     "kind": "triage-duplicate-work",

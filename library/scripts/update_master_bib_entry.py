@@ -243,7 +243,9 @@ def main() -> int:
             incoming_citekey=args.citekey,
             include_uncertain=False,   # only a hard `same`/alias refuses
         )
-        if match is not None and match.citekey != args.citekey:
+        # NFC-insensitive: a match differing only by normalization form is
+        # this very entry, and refusing the append would be a false guard.
+        if match is not None and not citekey_matches(match.citekey, args.citekey):
             reasons = "; ".join(match.reasons) if match.reasons else match.relation
             print(
                 f"refusing to append {args.citekey}: the library already holds "
