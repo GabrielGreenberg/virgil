@@ -185,7 +185,11 @@ with no fresh line CLEARS — so inventing the list by hand, or omitting a
 continuity finding you had no way to see, silently deletes a finding this
 very run reproduced. (Continuity findings never abort a fusion — only
 scope violations do — and under `--no-catalog` no log file is written, so
-that printed block is your only source.)
+that printed block is the only place THIS run reports them. You could
+re-derive the same pairs with `python3 .virgil/scripts/library/pgmark_validate.py
+papers/$ARGUMENTS/main.tex --json` and format them yourself; copying the
+printed block is better, because it comes from the same function the
+catalog-writing path uses and therefore cannot disagree with it.)
 
 A clean fusion printed none — write `"warnings": []`, and
 keep the key: with recompute flags the shim REFUSES a patch whose
