@@ -392,7 +392,7 @@ Six rules it earned:
 
 CI: [gutter-stability-census.test.ts](src/components/editor-layout/__tests__/gutter-stability-census.test.ts) is the leg with teeth — the predicate was never the part that could misbehave, a call site that never asks it is. `omniPinStore.requestPin` may be called only from the placement door, and `alignEntryToY` only from `layout-scroll.ts`, where it is asked PER LINE (exactly two calls: the gated door, and `scrollHeadingToActiveLine`'s Outline click-to-jump — a deliberate "take me there" NAVIGATION and the one exemption in this doctrine). A hit is MIGRATE-it, never an allowlist entry. Beside it, [gutter-stability-doors.test.ts](src/components/editor-layout/__tests__/gutter-stability-doors.test.ts) drives both doors against real DOM into the REAL `resolveCascade`, [omni-pin-anchor-lifecycle.test.ts](src/components/editor-layout/__tests__/omni-pin-anchor-lifecycle.test.ts) drives BOTH renderers of one anchor across an edit (below), and [useInTextPositions-hysteresis.test.tsx](src/hooks/__tests__/useInTextPositions-hysteresis.test.tsx) drives the REAL hook. Every defect leg fails on the pre-fix behaviour (measured).
 
-**Residuals, stated.** The slide's arming window is a wall-clock 700ms rather than a settle signal (the corrections come from three independent sources — the settle loop, `document.fonts.ready`, NodeView mounts — and only a timer covers all three), so a font swap later than that animates once. And the rule governs GESTURE-driven repositions: a structural edit that moves a card's anchor still moves the card, which is the card tracking its text rather than jumping away from it.
+**Residuals, stated.** The slide's arming window is a wall-clock 700ms rather than a settle signal (the corrections come from independent sources — the settle passes, `document.fonts.ready`, NodeView mounts — and only a timer covers all of them), so a correction later than that animates once. Since task 370 that is deliberate rather than residual: the settle is no longer ~500ms-bounded, and a LATE correction is exactly the case that should glide instead of teleport — see "The settle half" below, and the recalibrated `SLIDE_ARM_MS` docstring, which used to justify its value by a loop that no longer exists. And the rule governs GESTURE-driven repositions: a structural edit that moves a card's anchor still moves the card, which is the card tracking its text rather than jumping away from it.
 
 #### The pin half: an override is stored relative to the anchor, never on the pod
 
@@ -417,6 +417,159 @@ CI: [omni-pin-anchor-lifecycle.test.ts](src/components/editor-layout/__tests__/o
 Two legs carry the teeth, and neither is the invariant leg. The **producer** leg lives in [omni-view-panel-split-contract.test.tsx](src/panels/Omni/__tests__/omni-view-panel-split-contract.test.tsx), because `positions.get(id)` and `naturals.get(id)?.naturalTop` are both `number | undefined` — so publishing the CASCADED top instead compiles, renders, and makes every pin's own reference move with the pin, with every other leg green. And the **census** in `gutter-stability-census` polices the cross-layer attribute name, the `link-dom-contract` (204/255) shape: the reader imports `DATA_OMNI_NATURAL_TOP` and the writer cannot (JSX has no computed attribute name), so a drift would silently disable EVERY omni pin — the door fails closed — with nothing failing and nothing logged.
 
 **Residuals, stated.** The two renderers track together in practice but not *by construction*: they use different primitives (the marker's optical cap-band rect vs the card's `coordsAtPos` line-box), different origins, and different epsilons (the geometry service's 0.5 px bail vs the card's 6 px hysteresis hold), so a 2–5 px reflow can move one and hold the other. That is a sub-epsilon disagreement, not a decoupling, and it is what the contract's ε allows for. And a SECOND, independent path to the same symptom survives, filed separately: the archive omni builder resolves its anchor with a bare live-uuid test while the margin-marker builder routes through the four-rung `resolveCardAnchor` SSOT, so a card recovered by the snapshot rung paints a normal marker beside the recovered paragraph while its row is binned `pos:null` into the orphan strip.
+
+#### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
+
+Same lane, and the case where the mechanism was right, the classification was
+right (327), the movement policy was right (328) — and the loop that had to run
+them all **stopped too early**, on a measurement of something else (task 370).
+
+> **A geometry pass is an OBSERVATION, not a fix.** A trigger says "the world
+> may have moved"; the honest answer is *keep measuring until two consecutive
+> passes AGREE*, never *measure once and hope*. The agreement is the consumer's
+> OWN fixed point — for this lane, a pass that commits nothing past the task-328
+> hysteresis — so there is no second rule to keep in sync. And the budget is
+> WALL-CLOCK, because a frame cap is a lie on a busy main thread: the frames a
+> slow settle needs are exactly the frames it does not get.
+
+Gabriel (2026-08-18, two screenshots, a card-dense page): the lane renders every
+card packed contiguously from the top at minimum spacing — including cards whose
+anchors are off-screen — and only "suddenly separates and goes to approximately
+the right places" after scrolling a couple of lines. The cold-start healer was a
+rAF loop that terminated the first frame the editor's `scrollHeight` was
+unchanged (`SETTLE_STABLE_FRAMES = 1`), or after a 30-frame cap. Both halves
+measure the wrong quantity, and the first is the interesting one: `scrollHeight`
+is a **TOTAL**, and inner layout moves inside an unchanged total constantly — a
+KaTeX span sizing, an expex example reflowing, a figure NodeView that reserves
+its final box on mount and lays its contents out over the next several frames —
+while an absolutely-positioned lane never touches it at all. After the loop
+stopped, NOTHING re-measured until the user scrolled.
+
+The rule now lives once, in
+[src/lib/editor-geometry/settle-convergence.ts](src/lib/editor-geometry/settle-convergence.ts)
+(`createConvergenceController`), which owns SCHEDULING and TERMINATION and is
+blind to geometry: `measure()` reports a `MeasureOutcome` and the controller
+folds verdicts. Five rules it earned:
+
+- **Every trigger enters ONE door.** Cold mount, `document.fonts.ready`, the
+  editor RO, the per-card RO, the structural bus, `focusout`, the scroll-idle
+  refinement and a dirty keep-alive re-show all mean the same thing and all used
+  to get DIFFERENT answers — the mount got the 30-frame proxy loop, everything
+  else got a single rAF-coalesced pass. A single pass is right only when one pass
+  is enough, which is precisely what a cold load, a font swap and a late NodeView
+  mount each falsify.
+- **The per-FIRE cost is unchanged; the per-EVENT cost is up to three bounded
+  passes, and the difference is worth stating precisely** — the first draft of
+  this section said "idle-paced" and was wrong on exactly the path it was
+  defending. A re-arm while a pass is pending ADDS NO PASS (one pending pass is
+  the whole rate limit), so a trigger STORM still costs one pass, and a sustained
+  typing burst is still capped at one pass per frame — the pre-370 ceiling. What
+  is genuinely added is the trailing CONFIRMATION: after the last trigger, a
+  wrap-changing keystroke costs its pass plus up to two more where pre-370 it
+  cost one. Those two are paced by the ramp below (rAF only while the previous
+  pass CHANGED something, so the confirmations fall to idle), each is
+  O(in-band items) and read-only — one forced-layout batch, not one per card —
+  and the alternative is the defect. Stated as a cost, not waved away: three
+  bounded passes per wrap change, at most one per frame.
+- **The budget is per CHAIN and is never refreshed**, which the same review
+  found the first cut getting wrong in a way that mattered. A committing pass
+  bumps `measureVersion`, which re-runs the per-card RO effect, which
+  re-`observe()`s every card, whose initial delivery arrives back as a
+  `request()` — so a refresh-on-request deadline was being extended by a trigger
+  the chain itself had caused (measured against a browser-faithful observer over
+  never-settling geometry: 3 378 reads at 18 s, climbing linearly). A budget a
+  live chain can extend is not a budget.
+- **The trigger door DROPS while the pass DEFERS, and the asymmetry is the
+  keep-alive contract.** A trigger arriving inside the re-show suppression
+  window is storm noise by construction — the window is only ever open when the
+  cached geometry is already correct — so arming on it would make a CLEAN warm
+  switch pay a settle it does not need (measured on the first cut: 6 `coordsAtPos`
+  reads and 15 spin passes where the instant-switch invariant says ZERO). A pass
+  of an ALREADY-ARMED chain reports `deferred` and retries, because that chain's
+  reason to exist predates the window.
+- **TWO agreeing passes, not one — because one agreement is a PLATEAU**, and a
+  plateau is exactly what the retired proxy mistook for a settle. An async layout
+  settle routinely holds still for a frame between a font swap and the mounts it
+  triggers.
+- **`deferred` is not agreement, and it is not a reason to stop.** The pre-370
+  step did `if (!canMeasureNow()) return;` with **no reschedule**, so ONE frame
+  that landed while hidden or inside the 250 ms re-show suppression window killed
+  the settle permanently. Confirmed reachable at source by a read-only sweep
+  during this task, and the everyday path needs no race: a paper opens with the
+  editor ready but its sidecar cards not yet loaded, the user tabs to the Library,
+  the cards arrive WHILE HIDDEN (the companion one-shot is `canMeasureNow`-gated,
+  so it is skipped), and on return the re-show effect early-returned on an empty
+  cache — *"cold mount, the wiring effect handles it"* — handing off to an effect
+  that does not re-run on a visibility flip. So the COLD branch of the re-show
+  now arms convergence, and a HIDDEN pass reports `inert` (park) rather than
+  spinning the budget against a `display:none` pane. The same rule reaches the
+  companion one-shot: an items rebuild that cannot measure because the pane is
+  hidden marks the hook DIRTY, so the re-show cannot take its CLEAN branch over
+  cards it has never measured.
+- **A dirty re-show CLOSES the suppression window rather than waiting it out.**
+  The window exists to protect a CLEAN re-show's cached geometry from the
+  display-flip reflow storm; a DIRTY verdict is the evidence that its premise is
+  false. It is closed inside the deferred callback, so the storm is still
+  swallowed for the deferral and only the deliberate convergence runs — and the
+  storm's own triggers coalesce to one pending pass anyway.
+
+The task-328 policy is untouched and does the visual work: corrections land
+through the hysteresis (sub-ε commits nothing, so `measureVersion` never bumps)
+and the `.omni-entry-slide` transition, so convergence is a calm glide rather
+than the first-scroll SNAP. The typing gate is hoisted to hook scope and read by
+EVERY pass now, not just the per-card observer's — so a font-ready ping during
+card typing can no longer walk around it — and `focusout` re-arms, which is what
+keeps a long typing session from outliving the budget and stranding a
+half-settled deck.
+
+**The law has a census, and it earned one the hard way.** Every door law in this
+file ships one on the stated ground that *the door was never the part that could
+misbehave — a call site that never asks it is* — and that prediction came true
+inside this fix's own first cut, caught by the adversarial pass rather than by
+any leg: the companion one-shot (an items/resolvePos rebuild) called `measure()`
+DIRECTLY and entered no door, while two comments asserted that "a later item
+arrival re-arms through the companion one-shot like any other trigger". That is
+the COMMONEST cold open there is — the editor mounts before the sidecar cards
+load, so the mount chain reports `inert` and terminates, and the cards then get
+exactly one pass against still-settling layout. The pre-370 defect, on the path
+the prose claimed was covered.
+[settle-convergence-census.test.ts](src/lib/editor-geometry/__tests__/settle-convergence-census.test.ts)
+enumerates the measure call sites per LINE (two, each with its reason), requires
+the synchronous companion pass to be PAIRED with a `request()` on the next line
+(the allowlist key matches a bare `measure();` either way, so permitting the call
+without pinning the pairing would re-open it), pins the controller's single
+owner, and pins that `request()` writes neither the deadline nor the fast window
+outside its new-chain guard.
+
+Probe: `window.__settleConvergenceStats()` (sibling of `__layoutGestureStats` /
+`__scrollRepositionStats`) reports `{ arms, passes, outcomes, lastChainMs,
+lastStop }`. A healthy cold open reads `lastStop: "converged"` with a small
+`lastChainMs`; `"capped"` is the honest failure mode and the one worth reporting.
+CI: [useInTextPositions-settle-convergence.test.tsx](src/hooks/__tests__/useInTextPositions-settle-convergence.test.tsx)
+drives the REAL hook over a fixture whose `scrollHeight` is CONSTANT while its
+line positions ramp — the "inner layout inside an unchanged total" shape — and
+**dispatches no scroll and no resize**, which is why no pre-370 suite could see
+this: every one of them hands the hook by hand exactly the external trigger whose
+absence IS the defect. Measured by neutering each half in turn: restoring the
+scrollHeight proxy fails the convergence leg, restoring the re-show hand-off
+fails the empty-deck leg, removing the controller's pending-pass guard fails the
+storm-cost leg (24 reads where 3 are allowed), stubbing the controller inert
+fails ALL SIX, and `STABLE_PASSES = 1` — the plateau the retired proxy mistook
+for a settle — fails two. The two termination legs (sub-ε jitter, and geometry
+that never settles) are bounds pins rather than defect legs and say so at the
+site; both were VACUOUS in the first cut and both are worth knowing about. The
+jitter leg asserted only `calls === calls`, satisfied by zero, so it now carries
+a lower bound; and the cap leg's fixture alternated on a 16 ms wall-clock period
+that the 32 ms idle tail sampled at unchanging parity, so the geometry looked
+static, the chain reported `converged`, and raising `MAX_MS` to ten million left
+the leg green. Its fixture is driven per PASS now, and it reads `lastStop` off
+the shipped probe — because a leg that names the wall-clock budget must not pass
+on an implementation that has none.
+
+**Owed, not claimed:** a preview eyeball on a crowded fixture and a real-FSA
+pass on Gabriel's own paper. Cold opens and restored mid-doc scroll positions
+are where this bites, and that is the FSA-masked class — the durable proof here
+is the unit contract.
 
 ## Card presence tiers
 
