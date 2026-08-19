@@ -9,7 +9,8 @@ import {
 import { createPortal } from "react-dom";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
-import { applyUpdate } from "@/hooks/useUpdateAvailable";
+import { SoftwareUpdateBanner } from "@/components/SoftwareUpdateBanner";
+import { MirrorRecoveryBadge } from "@/components/MirrorRecoveryBadge";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
@@ -44,7 +45,6 @@ export type StatusClusterProps = {
   setTopbarRightCollapsed: Dispatch<SetStateAction<boolean>>;
 
   // Service-worker update banner.
-  updateAvailable: boolean;
 
   // Skill-sync surface.
   hasDoc: boolean;
@@ -104,7 +104,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
     zenModeOn,
     topbarRightCollapsed,
     setTopbarRightCollapsed,
-    updateAvailable,
     hasDoc,
     skillSyncError,
     skillSyncNotice,
@@ -175,28 +174,23 @@ function StatusClusterImpl(props: StatusClusterProps) {
       {/* Service-worker update banner. Visible whenever a new SW has
           installed and is waiting. Sits before the topbarRightCollapsed gate
           so an update prompt isn't hidden by the user's collapsed-right
-          setting. */}
-      {updateAvailable && (
-        <button
-          onClick={applyUpdate}
-          className="topbarbtn"
-          data-hint="Virgil update"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5" />
-            <path d="M13.5 2.5v3h-3" />
-            <path d="M13.5 8a5.5 5.5 0 0 1-9.4 3.9L2.5 10.5" />
-            <path d="M2.5 13.5v-3h3" />
-          </svg>
-          Virgil update — click to refresh
-        </button>
-      )}
+          setting. Self-gates on the waiting-SW signal, and since task 391 also
+          on the unsaved-work channel: this button was the literal trigger of
+          the 2026-08-19 data loss, so it no longer reloads while any open
+          paper's work is still in memory. */}
+      <SoftwareUpdateBanner />
       {/* Preservation notice (task 357 hole 4). A gate refused a write because
           it would have dropped content this document was loaded with, so Virgil
           is not saving this paper. Self-gates (renders null with no standing
           refusal) and sits BEFORE the topbarRightCollapsed gate — a
           data-integrity notice must not be hideable by a layout preference. */}
       <PreservationNoticeBadge docId={currentDocId} />
+      {/* Emergency-mirror recovery (task 391). This paper opened holding a
+          mirrored model that never reached disk — a reload through a paused
+          conflict, a standing refusal, a crash. Self-gates (renders null with
+          no standing offer) and sits BEFORE the topbarRightCollapsed gate for
+          the same reason its two neighbours do. */}
+      <MirrorRecoveryBadge docId={currentDocId} />
       {/* Sync-conflict notice (task 363). A cloud-sync daemon left conflicted
           copies in this paper's virgil/ folder, and some of them may hold
           writing Virgil has never shown. Self-gates (renders null with no

@@ -57,8 +57,18 @@ export interface ConflictPorts {
    * clobber-guard is still holding back.
    */
   acknowledge: () => Promise<void>;
-  /** Apply the user's side: write the live editor model over disk, now. */
-  keepMine: () => Promise<void>;
+  /**
+   * Apply the user's side: write the live editor model over disk, now.
+   *
+   * Returns whether the write ACTUALLY LANDED (task 391). `writeDocBundle`
+   * returns `Promise<void>` and a refused write returns normally — the serialize
+   * gate can still refuse a `userResolvedConflict` write, and the preservation
+   * posture can too — so the absence of a throw is not evidence of anything.
+   * Before this, `applied: true` was reported for a write that never happened
+   * and the badge cleared over unsaved work: the exact silence this cluster
+   * exists to end, in the door built to end it.
+   */
+  keepMine: () => Promise<boolean>;
   /** Apply the disk's side: reload the document from disk. */
   takeDisk: () => Promise<void>;
 }
@@ -92,7 +102,8 @@ export async function resolveExternalConflict(
       // back. Re-baselining also makes the write that follows "expected" rather
       // than a second external change to the watcher's own eyes.
       await ports.acknowledge();
-      await ports.keepMine();
+      const landed = await ports.keepMine();
+      if (!landed) return { choice, archive, applied: false };
     } else {
       // Reload re-reads the bundle, which re-baselines the ledger on the load
       // path — the same resolution today's Reload already relies on, so there

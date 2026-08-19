@@ -41,7 +41,10 @@ function ports(over: Partial<ConflictPorts> = {}): ConflictPorts {
       return ARCHIVE;
     }),
     acknowledge: vi.fn(step("acknowledge")),
-    keepMine: vi.fn(step("keepMine")),
+    keepMine: vi.fn(async () => {
+      await step("keepMine")();
+      return true;
+    }),
     takeDisk: vi.fn(step("takeDisk")),
     ...over,
   };

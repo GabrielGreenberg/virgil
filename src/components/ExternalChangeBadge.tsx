@@ -75,6 +75,8 @@ import type {
 import type { ConflictChoice } from "@/lib/conflict-resolution";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "./StatusDot";
+import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
+import { describeAge } from "./SoftwareUpdateBanner";
 
 // Drop below the trigger, flip above near the viewport bottom — the ONE
 // button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
@@ -144,19 +146,32 @@ interface BadgeCopy {
   detail: string;
 }
 
-function deriveCopy(state: ExternalChangeState): BadgeCopy {
+function deriveCopy(state: ExternalChangeState, unsavedAge: string | null): BadgeCopy {
   const files = state.changes.map((c) => c.relPath).join(", ");
   const detailFiles = files ? ` (${files})` : "";
   if (state.severity === "conflict") {
+    // TASK 391 — THE PAUSE GETS A CLOCK. A conflict pauses autosave, and on
+    // 2026-08-19 that pause outlived the 1500 ms debounce by seventy minutes
+    // behind a pill that said the same thing at minute 1 and at minute 70. A
+    // static badge is how a warning becomes furniture; the AGE is the fact
+    // that makes the user act, and it is the one thing only this surface can
+    // say.
+    const aged = unsavedAge ? ` · ${unsavedAge} unsaved` : "";
     return {
-      label: anyRemoved(state.changes)
-        ? "Removed on disk · unsaved edits"
-        : "Changed on disk · unsaved edits",
+      label:
+        (anyRemoved(state.changes)
+          ? "Removed on disk · unsaved edits"
+          : "Changed on disk · unsaved edits") + aged,
       // Names the writer as far as it is knowable. Virgil holds an FSA
       // directory handle, not a path, so it cannot tell WHICH app wrote — but
       // the honest general answer ("another app or a sync service") is what a
       // user alone at the keyboard needs to stop reading this as corruption.
-      detail: `Another app or a sync service — Dropbox, Overleaf, a text editor — changed this paper on disk${detailFiles} while you have unsaved edits here. Both versions are copied into virgil/.history/ before either one is applied, so neither is lost whichever you keep.`,
+      detail:
+        `Another app or a sync service — Dropbox, Overleaf, a text editor — changed this paper on disk${detailFiles} while you have unsaved edits here.` +
+        (unsavedAge
+          ? ` Virgil has NOT saved this paper for ${unsavedAge}, and will not until you answer this. An emergency copy is being kept in this browser meanwhile.`
+          : "") +
+        ` Both versions are copied into virgil/.history/ before either one is applied, so neither is lost whichever you keep.`,
     };
   }
   // severity === 'change'
@@ -210,6 +225,9 @@ function ExternalChangeBadge() {
   // render gate below returns null, so the badge simply shows nothing.
   const { state, watcher } = useExternalChangesOrNull();
   const diskCtx = useDiskWatcherOrNull();
+  // TASK 391 — the age of the unsaved work this pause is holding. Null when
+  // nothing is unsaved, which is the ordinary 'change'-tier case.
+  const unsavedAge = useUnsavedAgeLabel(diskCtx?.activeDocId, describeAge);
   const reloadFromDisk = diskCtx?.reloadFromDisk;
   const resolveConflict = diskCtx?.resolveConflict;
   const { confirm, dialog } = useConfirmDialog();
@@ -332,7 +350,7 @@ function ExternalChangeBadge() {
     );
   }
 
-  const copy = deriveCopy(state);
+  const copy = deriveCopy(state, unsavedAge);
 
   // Tone tokens. 'change' → amber family; 'conflict' → danger family. Text uses
   // a legible ink on the soft tinted background (the amber/danger -500 values
