@@ -35,6 +35,14 @@ import { iconHint } from "@/components/Hint";
  * key off the same rows). Goals: minimize the fixed left inset (#4), deepen
  * the per-level step so nesting reads clearly (#5), and give a fixed number
  * column so wrapped heading text hangs like a numbered list (#2). */
+/* ── parTitle ink ───────────────────────────────────────────────────────
+ * The four parTitle sites below read `--par-title-color-dense`, NOT the bare
+ * `--par-title-color` every other consumer takes. Same user preference, mixed
+ * 85% toward `--ink-body`, because this panel is the one surface that renders
+ * it at 11px / weight 400 (everywhere else it is 12.5px / 500) and the shipped
+ * default measures 4.17:1 on `--pod-panel` there — under AA. The derivation,
+ * the measurements and the reason 85% rather than 90% live at the token in
+ * globals.css; the contract is outline-partitle-contrast.test.ts. */
 const OUTLINE_BASE_INSET = 2;    // px — fixed left gutter (was 8)
 const OUTLINE_INDENT_STEP = 20;  // px per heading level (was 16)
 const OUTLINE_TWIST_COL = 15;    // px — chevron / spacer column width
@@ -760,7 +768,7 @@ function OutlineNode({
               <div
                 key={`pt-${i}`}
                 data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color,#c45a5a)] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
+                className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: `${parTitleIndent(depth)}px`,
                   paddingRight: 8,
@@ -1066,7 +1074,7 @@ const EditablePod = memo(function EditablePod({
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-[11px] text-[var(--par-title-color,#c45a5a)]" : "text-sm text-ink-strong"
+              isParTitle ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]" : "text-sm text-ink-strong"
             }`}
           />
         ) : (
@@ -1074,7 +1082,7 @@ const EditablePod = memo(function EditablePod({
             onClick={() => { setEditText(pod.text); setEditing(true); }}
             className={`flex-1 min-w-0 truncate cursor-text ${
               isParTitle
-                ? "text-[11px] text-[var(--par-title-color,#c45a5a)]"
+                ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]"
                 : pod.level <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
@@ -1911,7 +1919,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                     <div
                       key={`preamble-pt-${i}`}
                       data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color,#c45a5a)] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                      className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: parTitleIndent(0), paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptDim ? 0.3 : 1,
