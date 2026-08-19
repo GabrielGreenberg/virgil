@@ -9,26 +9,31 @@
  */
 
 import type { FsaDocMeta } from "@/lib/doc-index";
+import {
+  RECENT_PAPERS_START_SCREEN_LIMIT,
+  selectRecentDocs,
+} from "@/lib/recent-docs";
 
 interface Props {
   docs: FsaDocMeta[];
   onOpen: (id: string) => void;
   /** Doc ids to exclude (e.g. tabs already open). */
   excludeIds?: string[];
-  /** How many rows to show. Default 8. */
+  /**
+   * How many rows to show. Defaults to this surface's own
+   * `RECENT_PAPERS_START_SCREEN_LIMIT` (10) — the number is named there,
+   * beside the rule that orders the rows, rather than spelled here.
+   */
   limit?: number;
 }
 
-export function RecentPapersList({ docs, onOpen, excludeIds, limit = 8 }: Props) {
-  const exclude = new Set(excludeIds ?? []);
-  const rows = [...docs]
-    .filter((d) => !exclude.has(d.id))
-    .sort(
-      (a, b) =>
-        new Date(b.lastAccessedAt).getTime() -
-        new Date(a.lastAccessedAt).getTime(),
-    )
-    .slice(0, limit);
+export function RecentPapersList({
+  docs,
+  onOpen,
+  excludeIds,
+  limit = RECENT_PAPERS_START_SCREEN_LIMIT,
+}: Props) {
+  const rows = selectRecentDocs(docs, { excludeIds, limit });
 
   if (rows.length === 0) return null;
 
