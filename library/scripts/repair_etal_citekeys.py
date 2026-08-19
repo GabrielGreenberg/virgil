@@ -307,13 +307,17 @@ def apply_merge_duplicate(library: Path, old: str, canonical: str) -> dict:
     queue markers to `.merged` so the queue doesn't re-process them.
     """
     status: dict = {"steps": [], "kind": "merge"}
+    from _tools import citekey_matches  # noqa: PLC0415
 
     # 1. Rewrite cross-paper \cite{old} to \cite{canonical}.
     cross_count = 0
     papers_dir = library / "papers"
     if papers_dir.exists():
         for paper in papers_dir.iterdir():
-            if not paper.is_dir() or paper.name == old:
+            # NFC-insensitive (the `citekey_matches` SSOT): macOS hands back
+            # decomposed directory names, so a raw compare fails to recognise
+            # the buggy paper's OWN folder and rewrites its cites too.
+            if not paper.is_dir() or citekey_matches(paper.name, old):
                 continue
             for fname in ("main.tex", "references.bib"):
                 f = paper / fname
@@ -372,7 +376,13 @@ def apply_merge_duplicate(library: Path, old: str, canonical: str) -> dict:
     with lock_catalog(library):
         catalog = read_catalog(library)
         before = len(catalog.get("entries", []))
-        catalog["entries"] = [e for e in catalog.get("entries", []) if e.get("citekey") != old]
+        # NFC-insensitive (the `citekey_matches` SSOT): a raw compare leaves
+        # the buggy row in place on an NFD-spelled citekey and reports
+        # `catalog:not_found`, which is the one outcome this repair cannot have.
+        catalog["entries"] = [
+            e for e in catalog.get("entries", [])
+            if not citekey_matches(e.get("citekey", ""), old)
+        ]
         if len(catalog["entries"]) != before:
             write_catalog(library, catalog)
             status["steps"].append("catalog:removed")

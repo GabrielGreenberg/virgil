@@ -32,6 +32,10 @@ import sys
 import unicodedata
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _tools import citekey_matches  # noqa: E402
+
 
 YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})([a-c]?)\b")
 ENTRY_RE = re.compile(
@@ -143,6 +147,11 @@ def disambiguate(paper_dir: Path, dry_run: bool = False) -> dict:
         return {"renamed": 0, "collisions": 0}
 
     # Assign new citekeys per collision group.
+    # NFC-insensitive comparison against the STORED key (the `citekey_matches`
+    # SSOT): a freshly built candidate that differs from the stored spelling
+    # only by normalization form is the SAME key, and treating it as new plans
+    # a rename that renormalizes the .bib while leaving the catalog on the old
+    # spelling — manufacturing the very NFC/NFD drift this predicate defangs.
     renames: dict[str, str] = {}  # old -> new
     for (surname, year), idxs in collisions.items():
         # Sort by source position for deterministic year-letter
@@ -156,11 +165,11 @@ def disambiguate(paper_dir: Path, dry_run: bool = False) -> dict:
                 if not cand:
                     continue
                 candidate_key = f"{surname}{year}{cand}"
-                if candidate_key not in used and candidate_key != citekey:
+                if candidate_key not in used and not citekey_matches(candidate_key, citekey):
                     new_key = candidate_key
                     used.add(candidate_key)
                     break
-            if new_key == citekey:
+            if citekey_matches(new_key, citekey):
                 # Fallback: keep original (will collide; report).
                 used.add(citekey)
                 continue

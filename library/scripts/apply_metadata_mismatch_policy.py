@@ -52,7 +52,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import CANONICAL_BIB_STATES  # noqa: E402
+from _tools import CANONICAL_BIB_STATES, citekey_matches  # noqa: E402
 
 # The auth state this policy moves an entry into once it rewrites the bib
 # fields from the on-disk file. Validated against the canonical set
@@ -189,7 +189,10 @@ def _read_catalog_row(library: Path, citekey: str) -> dict | None:
         return None
     data = json.loads(cat.read_text(encoding="utf-8"))
     for entry in data.get("entries", []):
-        if entry.get("citekey") == citekey:
+        # NFC-insensitive row lookup (the `citekey_matches` SSOT): catalog
+        # rows carry NFC or NFD diacritics (Tichý / Čerić / López) depending
+        # on how the source data was prepared.
+        if citekey_matches(entry.get("citekey", ""), citekey):
             return entry
     return None
 
