@@ -139,6 +139,14 @@ catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
+set -e   # a failing shim must stop the fence, not be masked by the `rm`
+# An ARRAY, not a plain string: zsh does not word-split an unquoted
+# parameter expansion (bash does), so `$FLAGS` would arrive as ONE argv
+# element and the shim would reject the whole invocation.
+RECOMPUTE_FLAGS=($(python3 .virgil/scripts/library/fuse_alternate.py --print-recompute-flags))
+# Fail CLOSED: with no flags the patch's `warnings` array REPLACES the row's
+# — the whole-array clobber this fence was migrated off. Stop instead.
+[ ${#RECOMPUTE_FLAGS[@]} -gt 0 ] || { echo "recompute-flag emitter produced nothing — NOT patching warnings"; exit 1; }
 cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 {
   "indexed": {
@@ -146,12 +154,12 @@ cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
     "pgmarkCount": <count from main.tex>,
     "pgmarkPosition": "<header|footer|mixed|unknown>",
     "lastIndexedAt": "<ISO now>",
-    "warnings": [<merged warnings — see below>]
+    "warnings": [<ONLY this run's fresh fusion lines — see below>]
   }
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-fuse-patch.json
+  --patch-file /tmp/$ARGUMENTS-fuse-patch.json "${RECOMPUTE_FLAGS[@]}"
 rm /tmp/$ARGUMENTS-fuse-patch.json
 ```
 
@@ -161,15 +169,52 @@ The patch deep-merges, so `indexed.state` (`deepIndexed` /
 include get replaced. The script also bumps
 `.virgil/catalog-version.txt` for you.
 
-The `warnings` array is append-only with **one recomputed prefix
-`pgmark-fusion-`**. To produce it: read the existing
-`indexed.warnings` (`jq '.entries[] | select(.citekey == "<ck>") |
-.indexed.warnings' .virgil/catalog.json`), drop any entries starting
-with `pgmark-fusion-`, and append fresh ones (continuity findings, or
-`pgmark-fusion-low-alignment-skipped: <N>` if some pages didn't
-align). Other warning kinds are preserved by you when you read and
-include them in the patch — the patch's `warnings` array replaces the
-existing one.
+**Do NOT read and re-supply the existing `warnings` array.** Put in
+`warnings` only the lines THIS run computed — and do not compose them
+yourself: the script printed them verbatim under
+
+```
+  Catalog warnings for this run (copy verbatim into indexed.warnings; empty means []):
+```
+
+Copy those lines, trimmed of leading spaces. That block is the same list
+the primary (catalog-writing) path stores, produced by the same function,
+so the two routes cannot disagree. **This matters more than it looks:**
+`$RECOMPUTE_FLAGS` declares every head in the family, and a declared head
+with no fresh line CLEARS — so inventing the list by hand, or omitting a
+continuity finding you had no way to see, silently deletes a finding this
+very run reproduced. (Continuity findings never abort a fusion — only
+scope violations do — and under `--no-catalog` no log file is written, so
+that printed block is the only place THIS run reports them. You could
+re-derive the same pairs with `python3 .virgil/scripts/library/pgmark_validate.py
+papers/$ARGUMENTS/main.tex --json` and format them yourself; copying the
+printed block is better, because it comes from the same function the
+catalog-writing path uses and therefore cannot disagree with it.)
+
+A clean fusion printed none — write `"warnings": []`, and
+keep the key: with recompute flags the shim REFUSES a patch whose
+`indexed.warnings` is missing (an implied empty array would let a patch
+meant for one field wipe a whole kind), and `[]` correctly clears any
+stale fusion lines from a previous pass. `$RECOMPUTE_FLAGS` then makes
+the shim drop exactly the
+`pgmark-fusion-` family's heads against the row's LIVE array before
+appending yours — so every other producer's warnings, and any
+operator-authored `pgmark-fusion-<kind>-false-positive:` suppression,
+survive byte-identically (task 323's per-kind recompute-replace; task
+373 migrated this fence onto it).
+
+The flag list is emitted by `fuse_alternate.py` rather than typed here
+because the family's heads are DERIVED from
+`pgmark_validate.CONTINUITY_FINDING_KINDS` — a hand list would silently
+under-drop the day a continuity kind is added. Never free-type a
+`pgmark-fusion-…` head into this file.
+
+If `RECOMPUTE_FLAGS` comes back empty (wrong working directory, missing
+`python3`), **stop and report it** — do not run the patch without the
+flags. Without them the array replaces rather than merges, which is the
+clobber this fence exists to avoid; the emitter itself is stdlib-only, so
+an empty result means the invocation was wrong, never that the family is
+empty.
 
 ### 6. Notify
 

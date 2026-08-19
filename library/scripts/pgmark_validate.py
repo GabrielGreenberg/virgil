@@ -89,11 +89,69 @@ class ScopeViolation:
     snippet: str
 
 
+# ── Warning vocabulary (the ONE declaration) ────────────────────────────
+
+#: The prefix every warning this validator emits carries, and the one
+#: `_baseline_kinds_from_catalog` strips back off. Spelled once so the write
+#: side and the read side cannot drift.
+PGMARK_WARNING_PREFIX = "pgmark-"
+
+#: Head of the scope-violation warning (not a continuity kind — it has no
+#: baseline semantics and is always a blocker).
+SCOPE_WARNING_HEAD = f"{PGMARK_WARNING_PREFIX}scope"
+
+#: Every `ContinuityFinding.kind` this module can emit, in declaration order.
+#:
+#: This is a VOCABULARY, not a description of one: `ContinuityFinding`
+#: refuses an undeclared kind at construction (see `__post_init__`), and
+#: `test_warning_recompute_merge.py` censuses the emit sites' `kind="…"`
+#: literals against it in both directions — so a new finding kind is a test
+#: failure until it is declared here.
+#:
+#: Why it has to exist at all: the kinds are the tail of TWO warning
+#: families that later writers must drop EXACTLY (`pgmark-<k>` here, and
+#: `pgmark-fusion-<k>` from `fuse_alternate.py`). `merge_indexed_warnings`
+#: is deliberately exact-head — a `startswith` drop would eat an operator's
+#: `<head>-false-positive:` suppression (task 323) — so every dropper needs
+#: the head SET, and a hand list of heads silently under-drops the day a
+#: kind is added. Derive from here; never re-list (task 373).
+CONTINUITY_FINDING_KINDS: tuple[str, ...] = (
+    "duplicate",
+    "multi-section",
+    "out-of-order",
+    "gap",
+    "low-confidence-flood",
+    "range-impossible",
+    "range-suspiciously-wide",
+)
+
+CONTINUITY_FINDING_KIND_SET = frozenset(CONTINUITY_FINDING_KINDS)
+
+
 @dataclass
 class ContinuityFinding:
     kind: str
     detail: str
     new_vs_baseline: bool
+
+    def __post_init__(self) -> None:
+        # The emitters are HELD to the vocabulary rather than merely
+        # described by it. An undeclared kind is a programming error whose
+        # only symptom would otherwise be silent: every downstream dropper
+        # derives its head set from `CONTINUITY_FINDING_KINDS`, so an
+        # undeclared kind's warning line would survive every recompute
+        # forever, and the deep-index convergence loop would re-block on it
+        # each pass. Fail loudly at construction instead.
+        #
+        # This guard only fires on branches a run actually reaches, which is
+        # why the census in `test_warning_recompute_merge.py` (a source sweep
+        # over the `kind="…"` literals) is the leg with teeth.
+        if self.kind not in CONTINUITY_FINDING_KIND_SET:
+            raise ValueError(
+                f"undeclared continuity finding kind {self.kind!r} — add it to "
+                f"CONTINUITY_FINDING_KINDS in pgmark_validate.py so every "
+                f"warning dropper over both pgmark families derives its head"
+            )
 
 
 @dataclass
@@ -119,10 +177,11 @@ class ValidationReport:
         out: list[str] = []
         for v in self.scope_violations:
             out.append(
-                f"pgmark-scope: {v.context} at line {v.line} (page {v.page_value})"
+                f"{SCOPE_WARNING_HEAD}: {v.context} at line {v.line} "
+                f"(page {v.page_value})"
             )
         for f in self.continuity_findings:
-            out.append(f"pgmark-{f.kind}: {f.detail}")
+            out.append(f"{PGMARK_WARNING_PREFIX}{f.kind}: {f.detail}")
         return out
 
     def to_markdown(self) -> str:
@@ -715,7 +774,7 @@ def _baseline_kinds_from_catalog(
     # actually stripped; the old inline reader kept it, so every suppression
     # was silently ignored and the finding re-blocked convergence each pass.
     kinds: set[str] = suppression_categories_from_catalog(
-        catalog, citekey, prefix="pgmark-",
+        catalog, citekey, prefix=PGMARK_WARNING_PREFIX,
     )
     # Plain prior-pass warnings `pgmark-<kind>: <detail>` (the validator's own
     # emitted findings from a previous pass). Suffix `-false-positive` entries
@@ -730,12 +789,16 @@ def _baseline_kinds_from_catalog(
         if citekey_matches(e.get("citekey", ""), citekey):
             warnings = (e.get("indexed") or {}).get("warnings") or []
             for w in warnings:
-                if not (isinstance(w, str) and w.startswith("pgmark-") and ":" in w):
+                if not (
+                    isinstance(w, str)
+                    and w.startswith(PGMARK_WARNING_PREFIX)
+                    and ":" in w
+                ):
                     continue
                 head = w.split(":", 1)[0]
                 if head.endswith("-false-positive"):
                     continue
-                kinds.add(head[len("pgmark-"):])
+                kinds.add(head[len(PGMARK_WARNING_PREFIX):])
             break
     return kinds
 

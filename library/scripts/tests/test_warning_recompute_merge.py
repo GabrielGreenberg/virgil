@@ -52,6 +52,7 @@ Run: python3 library/scripts/tests/test_warning_recompute_merge.py
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unicodedata
@@ -788,6 +789,484 @@ def test_first_pass_persist_then_synthesize(tmp_path):
         os.environ.pop("VIRGIL_LIBRARY_ROOT", None)
     check(result.get("synthesized", 0) > 0,
           f"synthesis still a no-op on the first pass: {result!r}")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# G. The `pgmark-fusion-` family — a DERIVED head set (task 373)
+#
+# 323 left two carriers of this class deliberately, because the family is a
+# PREFIX rather than a kind: `pgmark-fusion-low-alignment-skipped` and
+# `pgmark-fusion-failed` plus one head per continuity kind
+# `pgmark_validate.py` emits. Both are closed here by DERIVING the head set
+# from the validator's own vocabulary:
+#
+#   1. `fuse_alternate.update_catalog_for_fusion` dropped
+#      `startswith("pgmark-fusion-")` on the PRIMARY path — i.e. every fusion
+#      that touches the catalog — which eats a
+#      `pgmark-fusion-<kind>-false-positive:` suppression, the exact hazard
+#      section A exists to prevent; and
+#   2. `fuse-alternate.md` §5's `--no-catalog` fence instructed a HAND merge
+#      (jq-read the array, drop the prefix, re-supply the whole thing), so an
+#      agent that skipped the read silently deleted every other producer's
+#      warnings.
+#
+# The legs below are ordered by what they establish: the vocabulary is
+# declared and CHECKED (not restated), the heads are derived from it, the
+# primary path merges exact-head, and neither the fence nor any other writer
+# free-types a head.
+# ─────────────────────────────────────────────────────────────────────────
+
+import re  # noqa: E402
+import pgmark_validate as _pv  # noqa: E402
+import fuse_alternate as _fa  # noqa: E402
+
+_SKILLS_DIR = Path(_SCRIPTS).parent / "skills"
+
+#: `pgmark-fusion-<head>` with at least one lowercase letter after the
+#: prefix, so the placeholders skill prose legitimately writes
+#: (`pgmark-fusion-<kind>`, `pgmark-fusion-…`) and the bare prefix do not
+#: match. A real head is `[a-z][a-z-]*`.
+_FUSION_HEAD_TOKEN = re.compile(r"pgmark-fusion-([a-z][a-z-]*)")
+
+#: The family PREFIX in any spelling — what a Python writer must not name
+#: outside the SSOT, whether it completes a head (`"pgmark-fusion-gap"`) or
+#: builds one (`f"pgmark-fusion-{kind}"`, `"pgmark-fusion-" + k`).
+_FUSION_PREFIX_TOKEN = re.compile(r"pgmark-fusion-")
+
+
+def test_every_emitted_continuity_kind_is_declared():
+    """The premise is CHECKED, not restated.
+
+    `ContinuityFinding.__post_init__` refuses an undeclared kind, but it only
+    fires on a branch a run actually reaches — `range-impossible` needs a PDF
+    page count, `multi-section` needs a reset — so a new emit site could ship
+    with no test touching it. This is the leg with teeth: it reads the emit
+    sites' own `kind="…"` literals out of the source.
+
+    Both directions. Undeclared ⇒ every dropper's head set is short, so that
+    kind's warning line survives every recompute forever and re-blocks the
+    deep-index convergence loop each pass. Declared-but-never-emitted ⇒ a
+    stale vocabulary entry, which costs a harmless extra drop head today and
+    is exactly the drift a hand list decays into.
+
+    Stated limit: the sweep reads the WHOLE file, not just
+    `ContinuityFinding(` argument lists — a `kind="…"` literal in a comment
+    or an unrelated call would be counted. That direction fails CLOSED (the
+    test goes red and someone looks), and narrowing it to the constructor
+    would mean parsing Python from Python for no gain: today every
+    `kind="…"` in that file IS a finding emit, which this leg's exact-set
+    equality is what proves.
+    """
+    src = (Path(_SCRIPTS) / "pgmark_validate.py").read_text()
+    emitted = set(re.findall(r'\bkind="([a-z][a-z0-9-]*)"', src))
+    check(emitted, "census matched no `kind=\"…\"` literals at all")
+    declared = set(_pv.CONTINUITY_FINDING_KINDS)
+    check(
+        emitted == declared,
+        f"emitted kinds != CONTINUITY_FINDING_KINDS; "
+        f"undeclared={sorted(emitted - declared)} "
+        f"declared-but-unemitted={sorted(declared - emitted)}",
+    )
+    check(
+        len(_pv.CONTINUITY_FINDING_KINDS) == len(declared),
+        "CONTINUITY_FINDING_KINDS has duplicate members",
+    )
+
+
+def test_undeclared_kind_is_refused_at_construction():
+    try:
+        _pv.ContinuityFinding(kind="brand-new", detail="x", new_vs_baseline=True)
+    except ValueError as e:
+        check("brand-new" in str(e), f"unhelpful message: {e}")
+        return
+    raise AssertionError("an undeclared continuity kind was constructed")
+
+
+def test_fusion_heads_are_derived_from_the_vocabulary():
+    """Derived, not hand-listed — the whole point of the fix.
+
+    Asserted as an EXACT set built from the SSOT here, so adding a continuity
+    kind without extending any list still passes, while dropping the
+    derivation for a literal tuple fails the moment the vocabulary moves.
+    """
+    heads = _fa.fusion_warning_heads()
+    expected = {
+        _fa.FUSION_LOW_ALIGNMENT_HEAD,
+        _fa.FUSION_FAILED_HEAD,
+        *(f"{_fa.FUSION_WARNING_PREFIX}{k}" for k in _pv.CONTINUITY_FINDING_KINDS),
+    }
+    check(set(heads) == expected, f"heads != derived set: {sorted(set(heads) ^ expected)}")
+    check(len(heads) == len(expected), f"duplicate heads: {heads!r}")
+    check(
+        all(h.startswith(_fa.FUSION_WARNING_PREFIX) for h in heads),
+        f"a head escaped the family prefix: {heads!r}",
+    )
+
+
+def _fusion_result(*, skipped: int = 0, findings=()):
+    """A `FuseResult` shaped like a successful fusion, for the catalog writer.
+
+    Findings are REAL `ContinuityFinding`s, so the vocabulary guard applies to
+    the fixture too — a test cannot invent a kind the family would not drop.
+    """
+    return _fa.FuseResult(
+        success=True,
+        pgmarks_inserted=10,
+        page_count=10,
+        aligned_count=10 - skipped,
+        pgmark_source_filename="alt.pdf",
+        pgmark_position="footer",
+        validation_report=_pv.ValidationReport(
+            scope_violations=[], continuity_findings=list(findings),
+        ),
+        aborted_reason=None,
+        diagnostics=[],
+    )
+
+
+def test_fusion_suppression_survives_a_refusion(tmp_path):
+    """DEFECT LEG — fails on the pre-373 `startswith("pgmark-fusion-")` drop.
+
+    An operator ran `add_validator_suppression.py` to mark a fusion gap
+    finding as a verified journal offset. The next fusion must not eat that
+    verdict: the suppression family has its own append-if-absent writer and
+    readers that require the two families stay distinguishable (section A).
+    """
+    lib = _make_library(tmp_path, [{
+        "citekey": "smith2001",
+        "indexed": {
+            "state": "indexed",
+            "warnings": [
+                "pgmark-fusion-gap-false-positive: verified journal offset",
+                "pgmark-fusion-gap: page 3 -> page 9 (skipped 5)",
+            ],
+        },
+    }])
+    _fa.update_catalog_for_fusion(lib, "smith2001", _fusion_result())
+
+    warnings = _row(lib, "smith2001")["indexed"]["warnings"]
+    check(
+        "pgmark-fusion-gap-false-positive: verified journal offset" in warnings,
+        f"operator suppression eaten by the re-fusion: {warnings!r}",
+    )
+    check(
+        "pgmark-fusion-gap: page 3 -> page 9 (skipped 5)" not in warnings,
+        f"stale family line not recomputed away: {warnings!r}",
+    )
+
+
+def test_fusion_recompute_keeps_foreign_kinds_and_clears_its_own(tmp_path):
+    """The 323 contract, re-asserted through THIS writer.
+
+    A fusion recomputes its own family and nothing else: another producer's
+    lines survive byte-identically and in order, a stale head of the family
+    clears, and this run's fresh lines land.
+    """
+    lib = _make_library(tmp_path, [{
+        "citekey": "smith2001",
+        "indexed": {
+            "state": "indexed",
+            "warnings": [
+                "missing-bib-entry: Smith 1998",
+                "pgmark-fusion-low-alignment-skipped: 4 of 10 PDF pages did not align",
+                "pgmark-gap: 12-14",
+                "pgmark-fusion-failed: alternate PDF unreadable",
+                "footnote-recovery-needed: 9 footnotes not present",
+            ],
+        },
+    }])
+    _fa.update_catalog_for_fusion(lib, "smith2001", _fusion_result(
+        findings=[_pv.ContinuityFinding(
+            kind="out-of-order", detail="page 8 -> page 5", new_vs_baseline=True,
+        )],
+    ))
+
+    warnings = _row(lib, "smith2001")["indexed"]["warnings"]
+    check(
+        warnings == [
+            "missing-bib-entry: Smith 1998",
+            "pgmark-gap: 12-14",
+            "footnote-recovery-needed: 9 footnotes not present",
+            "pgmark-fusion-out-of-order: page 8 -> page 5",
+        ],
+        f"fusion recompute disturbed foreign kinds or kept stale ones: {warnings!r}",
+    )
+
+
+def test_print_recompute_flags_emits_exactly_the_derived_heads():
+    """The fence substitutes this, so its output IS the fence's declaration.
+
+    Run as a subprocess through the real CLI — the skill runs a command, not
+    a function, and `--print-recompute-flags` has to work with no citekey.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(Path(_SCRIPTS) / "fuse_alternate.py"),
+         "--print-recompute-flags"],
+        capture_output=True, text=True,
+    )
+    check(proc.returncode == 0, f"flag emitter failed: {proc.stdout}\n{proc.stderr}")
+    tokens = proc.stdout.split()
+    check(
+        len(tokens) == 2 * len(_fa.fusion_warning_heads()),
+        f"malformed flag list: {proc.stdout!r}",
+    )
+    flags = tokens[0::2]
+    heads = tokens[1::2]
+    check(set(flags) == {"--recompute-warning-kind"}, f"wrong flag: {flags!r}")
+    check(
+        heads == list(_fa.fusion_warning_heads()),
+        f"emitted heads != derived heads: {heads!r}",
+    )
+    check("\n" not in proc.stdout.strip(), "flag list must be ONE line for $(…)")
+
+
+def test_no_skill_markdown_free_types_a_fusion_head():
+    """A head typed into markdown is a hand list wearing the derived form's
+    clothes: it drifts silently the day a continuity kind is added, and
+    nothing in the JS census can tell a stale head from a live one.
+
+    Membership, not absence — the prose legitimately names
+    `pgmark-fusion-low-alignment-skipped` when telling the agent which fresh
+    line to WRITE. What it may not do is name a head that isn't in the
+    family, or declare the drop set by hand.
+    """
+    heads = set(_fa.fusion_warning_heads())
+    offenders = []
+    for md in sorted(_SKILLS_DIR.glob("*.md")):
+        text = md.read_text()
+        for m in _FUSION_HEAD_TOKEN.finditer(text):
+            token = m.group(0).rstrip("-")
+            if token not in heads:
+                offenders.append(f"{md.name}: {token}")
+        # BOTH argparse spellings. `--flag=value` is accepted verbatim by
+        # argparse (measured), so a space-only needle leaves the realistic
+        # hand-list route — `--recompute-warning-kind=pgmark-fusion-gap` —
+        # passing every leg.
+        if re.search(r"--recompute-warning-kind[\s=]+pgmark-fusion-[a-z]", text):
+            offenders.append(f"{md.name}: hand-declared a fusion head")
+    check(not offenders, f"free-typed fusion heads: {offenders}")
+
+
+def test_the_no_catalog_fence_routes_through_the_shim():
+    """The migrated site, pinned at source.
+
+    Two halves, and the second is what the JS shape census structurally
+    cannot see: the fence must SUBSTITUTE the derived flag list, and it must
+    no longer instruct the agent to read the existing array back and
+    re-supply it (the hand merge — a silent whole-array clobber whenever the
+    agent skips or staleness beats the read).
+    """
+    text = (_SKILLS_DIR / "fuse-alternate.md").read_text()
+    check(
+        "--print-recompute-flags" in text,
+        "fuse-alternate.md no longer substitutes the derived flag list",
+    )
+    check(
+        "$RECOMPUTE_FLAGS" in text,
+        "the emitted flag list is not passed to update_catalog_entry.py",
+    )
+    # The substitution's OWN fail-open, closed. With no flags the shim
+    # whole-array REPLACES — the exact clobber this fence was migrated off,
+    # re-entering through the fix. The emitter is stdlib-only (no extraction
+    # deps), so empty can only mean a wrong invocation, and a guard turns a
+    # silent data loss into a loud stop.
+    check(
+        "[ ${#RECOMPUTE_FLAGS[@]} -gt 0 ]" in text,
+        "no fail-closed guard on the substituted flag list — an empty "
+        "expansion silently reinstates the whole-array clobber",
+    )
+    # ARRAY, not a bare string: see `test_the_fence_actually_runs` for why
+    # this is not a style preference.
+    check(
+        '"${RECOMPUTE_FLAGS[@]}"' in text and " $RECOMPUTE_FLAGS" not in text,
+        "the flag list is passed as an unquoted string — zsh does not "
+        "word-split a parameter expansion, so the shim gets ONE argv element",
+    )
+    for banned in (
+        ".indexed.warnings' .virgil/catalog.json",
+        "Other warning kinds are preserved by you",
+    ):
+        check(banned not in text, f"the hand-merge instruction is back: {banned!r}")
+
+
+def test_no_other_python_writer_free_types_a_fusion_head():
+    """`index_paper.py` writes `pgmark-fusion-failed:` on a failed auto-fuse —
+    a member of the family whose head set lives in `fuse_alternate.py`. It
+    spelled the literal, so the family had two spellings and only one of them
+    was in the drop set by construction. The census is the leg with teeth: a
+    third writer would type-check perfectly and be invisible to every
+    behavioural leg above.
+
+    Scope: the production scripts directory only (`*.py`, not `tests/`) — a
+    suite legitimately spells heads to assert about them, and a fixture is
+    not a writer.
+    """
+    ssot = "fuse_alternate.py"
+    offenders = []
+    for py in sorted(Path(_SCRIPTS).glob("*.py")):
+        if py.name == ssot:
+            continue
+        for i, line in enumerate(py.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            # The PREFIX, not a complete head. `f"pgmark-fusion-{f.kind}"`
+            # is the exact spelling `fuse_alternate.py` itself used pre-fix,
+            # and a head-shaped needle cannot see it — nor can it see
+            # `"pgmark-fusion-" + kind`. Outside the SSOT nothing may name
+            # the family at all, so the needle is the prefix and the rule
+            # has no seam. (`log("pgmark-fusion FAILED …")` is prose about
+            # the step, not a head: no trailing hyphen, so it is untouched.)
+            if _FUSION_PREFIX_TOKEN.search(line):
+                offenders.append(f"{py.name}:{i}: {line.strip()}")
+    check(
+        not offenders,
+        f"import the head constant from {ssot} instead: {offenders}",
+    )
+
+
+def _extract_fence(text: str, contains: str) -> str:
+    """The one ```bash fence in `text` whose body contains `contains`."""
+    lines = text.split("\n")
+    fences, start = [], None
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("```"):
+            continue
+        if start is None:
+            start = i
+        else:
+            fences.append("\n".join(lines[start + 1:i]))
+            start = None
+    hits = [f for f in fences if contains in f]
+    check(len(hits) == 1, f"expected exactly one fence containing {contains!r}, got {len(hits)}")
+    return hits[0]
+
+
+def test_the_fence_actually_runs(tmp_path):
+    """RUN the §5 fence, in every shell an agent might use.
+
+    Every other leg here reads the fence as TEXT — which is what the JS
+    ownership census says of itself too ("a fence is read as text: this
+    proves what an agent is told to run, never that the agent ran it"). That
+    limit is not academic. This fence's first cut stored the emitted flags in
+    a plain variable and passed it unquoted, which works in bash and
+    **silently does not in zsh**: zsh word-splits an unquoted COMMAND
+    substitution but not an unquoted PARAMETER expansion, so the whole
+    nine-flag list arrived as ONE argv element, the shim exited 2, and the
+    catalog was left completely unwritten — no pgmarkSource, no
+    pgmarkCount — so the §2 idempotency gate would never see the fusion and
+    the next run would re-fuse. Every text pin was green.
+
+    So this leg lays out a real library, substitutes the fence's
+    placeholders, executes it, and asserts the ROW. Both shells, because the
+    defect is exactly a difference between them.
+    """
+    text = (_SKILLS_DIR / "fuse-alternate.md").read_text()
+    fence = _extract_fence(text, "update_catalog_entry.py")
+
+    for shell in ("zsh", "bash"):
+        exe = shutil.which(shell)
+        if exe is None:
+            continue
+        lib = _make_library(tmp_path / shell, [{
+            "citekey": "smith2001",
+            "indexed": {
+                "state": "indexed",
+                "warnings": [
+                    "missing-bib-entry: Smith 1998",
+                    "pgmark-fusion-gap-false-positive: verified journal offset",
+                    "pgmark-fusion-gap: page 3 -> page 9 (skipped 5)",
+                ],
+            },
+        }])
+        # The library's own script mirror, where the fence's paths point.
+        dest = lib / ".virgil" / "scripts" / "library"
+        dest.mkdir(parents=True)
+        for py in Path(_SCRIPTS).glob("*.py"):
+            shutil.copyfile(py, dest / py.name)
+
+        script = (
+            fence
+            .replace("<pdf-filename>", "alt.pdf")
+            .replace("<count from main.tex>", "10")
+            .replace("<header|footer|mixed|unknown>", "footer")
+            .replace("<ISO now>", "2026-01-01T00:00:00Z")
+            .replace(
+                "[<ONLY this run's fresh fusion lines — see below>]",
+                '["pgmark-fusion-out-of-order: page 8 -> page 5"]',
+            )
+        )
+        proc = subprocess.run(
+            [exe, "-c", script], cwd=str(lib), capture_output=True, text=True,
+            env={**os.environ, "ARGUMENTS": "smith2001"},
+        )
+        check(
+            proc.returncode == 0,
+            f"the fence failed under {shell}: rc={proc.returncode}\n"
+            f"{proc.stdout}\n{proc.stderr}",
+        )
+        # The exit code is NOT sufficient on its own, which is why the row is
+        # asserted below: the fence's trailing `rm` used to mask a failing
+        # shim, so the zsh defect reported rc=0 with the catalog untouched.
+        # (`set -e` now makes it loud too — belt and braces, since a skill
+        # fence may be pasted line by line.)
+        row = _row(lib, "smith2001")
+        check(
+            row["indexed"].get("pgmarkSource") == "alt.pdf",
+            f"{shell}: the fence ran but wrote no row: {row!r}",
+        )
+        check(
+            row["indexed"]["warnings"] == [
+                "missing-bib-entry: Smith 1998",
+                "pgmark-fusion-gap-false-positive: verified journal offset",
+                "pgmark-fusion-out-of-order: page 8 -> page 5",
+            ],
+            f"{shell}: the fence merged wrongly: {row['indexed']['warnings']!r}",
+        )
+
+
+def test_the_success_path_prints_the_lines_the_fence_must_transcribe(tmp_path):
+    """The fence declares every head in the family, and a declared head with
+    no fresh line CLEARS. So an agent on the `--no-catalog` route must emit
+    the same fresh set the primary path would have stored, and before this
+    the success path printed none of it: continuity findings never abort a
+    fusion (only scope violations do), `to_markdown()` is printed on the
+    failure branch only, and `--no-catalog` skips the log file. Declaring
+    `pgmark-fusion-gap` with no line to replace it deletes a finding the run
+    itself reproduced. (Recoverable, to be exact — `pgmark_validate.py
+    --json` re-derives the pairs — but only by an agent that re-runs the
+    validator and hand-formats the lines. Printing them makes the two routes
+    emit the same bytes from the same function instead.)
+
+    Pinned as ONE producer read by both routes, since two copies of this list
+    is how the two routes come to disagree about the family.
+    """
+    result = _fusion_result(skipped=4, findings=[
+        _pv.ContinuityFinding(kind="gap", detail="page 3 -> page 9", new_vs_baseline=True),
+    ])
+    lines = _fa.fusion_warning_lines(result)
+    check(
+        lines == [
+            "pgmark-fusion-low-alignment-skipped: 4 of 10 PDF pages did not "
+            "align above threshold",
+            "pgmark-fusion-gap: page 3 -> page 9",
+        ],
+        f"unexpected fresh lines: {lines!r}",
+    )
+    heads = set(_fa.fusion_warning_heads())
+    check(
+        all(l.split(":", 1)[0] in heads for l in lines),
+        f"a fresh line's head is outside the declared family: {lines!r}",
+    )
+
+    # And the catalog writer must READ that producer rather than rebuild the
+    # list — a second copy is how the printed block and the stored row drift.
+    src = (Path(_SCRIPTS) / "fuse_alternate.py").read_text()
+    check(
+        src.count("def fusion_warning_lines(") == 1
+        and src.count("fusion_warning_lines(result)") == 2,
+        "fusion_warning_lines is not the single producer read by BOTH the "
+        "catalog writer and the CLI printer",
+    )
 
 
 def _run_standalone() -> int:
