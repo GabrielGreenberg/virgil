@@ -509,8 +509,9 @@ export function useInTextPositions(
   // measure() may fire when measuring would be wrong or wasteful: while hidden
   // (coords read 0), or during the brief re-show suppression window. measure()
   // itself also bails when hidden; this gate additionally swallows the re-show
-  // reflow storm. The dirty re-show path calls measure() directly (not via this
-  // gate) so its single bounded re-measure is never suppressed.
+  // reflow storm. The DIRTY and COLD re-show paths do not have to dodge this
+  // gate — they ZERO the window first (their verdict voids the window's own
+  // premise) and then enter the shared convergence door like everything else.
   const canMeasureNow = useCallback(
     () =>
       isVisibleRef.current &&
@@ -518,6 +519,30 @@ export function useInTextPositions(
         performance.now() >= suppressMeasureUntilRef.current),
     [],
   );
+
+  // The gated trigger door. A trigger arriving while the pane is hidden, or
+  // inside the re-show suppression window, is DROPPED — not deferred — and that
+  // asymmetry with the pass-level gate is the whole of the keep-alive contract:
+  //
+  //  • A TRIGGER during the window is storm noise BY CONSTRUCTION. The window is
+  //    only ever open on a re-show whose cached geometry is already correct (a
+  //    DIRTY or COLD re-show zeroes it first), and the display flip resizes the
+  //    editor and every card 0->real, so the editor RO and every per-card RO
+  //    fire. Arming on those would make a CLEAN warm switch pay a settle it does
+  //    not need — the instant-switch invariant, and a regression this task
+  //    introduced and then took back out (adversarial review, measured against a
+  //    browser-faithful observer: 6 coordsAtPos reads and 15 deferred spin passes
+  //    where the contract says ZERO).
+  //  • A PASS of an ALREADY-ARMED chain, by contrast, reports `deferred` and
+  //    RETRIES. That chain has a reason to exist which predates the window, and
+  //    killing it is exactly the pre-370 bug (`if (!canMeasureNow()) return;`
+  //    with no reschedule, which one hidden or suppressed frame made permanent).
+  //
+  // Drop at the door, retry inside the pass.
+  const requestSettle = useCallback(() => {
+    if (!canMeasureNow()) return;
+    convergeRef.current?.request();
+  }, [canMeasureNow]);
 
   // Is the user typing into a card body inside THIS pod? Per-keystroke
   // sub-pixel height jitter (different glyph widths) would otherwise tick
@@ -922,7 +947,7 @@ export function useInTextPositions(
     // above, so a trigger that arrives while suppressed is deferred-and-retried
     // instead of dropped on the floor.
     const schedule = () => {
-      convergeRef.current?.request();
+      requestSettle();
     };
 
     // Part A — settle by CONVERGENCE (task 370). The initial `measure()` races
@@ -981,10 +1006,12 @@ export function useInTextPositions(
     // by this effect re-running. `enabled` is decoupled from visibility, so this
     // wiring effect does not re-run on a flip, the cache is RETAINED across the
     // hide, and the dedicated `[isVisible]` re-show effect below decides: a CLEAN
-    // re-show republishes cached geometry (zero coordsAtPos, zero settle); a DIRTY
-    // re-show (structural-while-hidden or a width change) runs ONE bounded
-    // re-measure, deferred off the flip. The settle loop here is the COLD-mount
-    // healer only. Locked by `useInTextPositions-visibility-remeasure.test.tsx`.
+    // re-show republishes cached geometry (zero coordsAtPos, zero settle — which
+    // is why the trigger door DROPS the flip's reflow storm rather than deferring
+    // it); a DIRTY or COLD re-show enters the convergence door, deferred off the
+    // flip. The chain armed here is the COLD-MOUNT arm; since task 370 it is not
+    // the only one, because every trigger enters the same door.
+    // Locked by `useInTextPositions-visibility-remeasure.test.tsx`.
     // (LIVE-FSA OWED: jsdom can't lay out, so the real hidden→show layout settle —
     // fonts/KaTeX/expex reflow — must still be feel-checked in a real browser
     // against the L2 paper↔Library bounce.)
@@ -1083,7 +1110,7 @@ export function useInTextPositions(
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       scrollEl?.removeEventListener("scroll", onScrollForRefine);
     };
-  }, [editor, enabledProp, canMeasureNow, isTypingInPanel]);
+  }, [editor, enabledProp, canMeasureNow, isTypingInPanel, requestSettle]);
 
   // Companion one-shot: an items/resolvePos rebuild (fresh `measure`
   // identity) re-measures ONCE — the behavior the wiring effect's re-run
@@ -1091,7 +1118,18 @@ export function useInTextPositions(
   // park) that came with it.
   useLayoutEffect(() => {
     if (!enabledProp) return;
-    if (canMeasureNow()) measure();
+    if (canMeasureNow()) {
+      measure();
+      convergeRef.current?.request();
+      return;
+    }
+    // Couldn't measure. If that is because the pane is HIDDEN, the deck just
+    // gained (or lost) cards that were never measured and never observed by the
+    // per-card ResizeObserver — so the cached geometry is NOT a faithful
+    // republish and the re-show must not take its CLEAN branch. Pre-370 this
+    // case had no marker at all and the new cards simply never got positions
+    // until some unrelated trigger happened by.
+    if (!isVisibleRef.current) dirtyWhileHiddenRef.current = true;
   }, [measure, enabledProp, canMeasureNow]);
 
   // Keep-alive re-show effect — the heart of the instant-switch fix. Fires ONLY
@@ -1102,11 +1140,13 @@ export function useInTextPositions(
   //     display-flip reflow storm (editor + per-card ResizeObservers firing
   //     0→real) doesn't detonate a wasted full measure. Cards render at cached
   //     positions instantly — zero coordsAtPos, zero settle.
-  //   • DIRTY  ⇒ a structural change happened while hidden, OR the container width
-  //     changed (re-wrap). Run ONE bounded re-measure, deferred off the visible
-  //     flip via requestLowPriority so no long task blocks the transition. The
-  //     degeneracy guard is armed (cache retained ⇒ size>0), so a transient bad
-  //     read can't corrupt the deck.
+  //   • DIRTY  ⇒ a structural change happened while hidden, the item set was
+  //     rebuilt while hidden, OR the container width changed (re-wrap). CONVERGE,
+  //     deferred off the visible flip via requestLowPriority so no long task
+  //     blocks the transition. Not "one bounded re-measure" any more: one pass is
+  //     right only when one pass is enough, and a re-wrap is the same async
+  //     settle a cold mount has. The degeneracy guard is armed (cache retained ⇒
+  //     size>0), so a transient bad read can't corrupt the deck.
   //   • COLD   ⇒ never measured yet (size 0): the wiring effect's convergence
   //     chain owns the first open — but that chain PARKS (`inert`) while the
   //     pane is hidden, and the wiring effect does NOT re-run on a flip. So a
@@ -1122,9 +1162,10 @@ export function useInTextPositions(
     reshowPendingRef.current = false;
     if (!enabledProp || !editor) return;
     if (naturalRef.current.size === 0) {
-      // COLD: nothing cached to republish, so there is no "clean" case to
-      // protect — arm convergence. The suppression window does not swallow it:
-      // a suppressed pass reports `deferred` and is retried, not dropped.
+      // COLD: nothing cached to republish, so the suppression window is
+      // protecting nothing — a measure here cannot be "wasted". Void it and
+      // converge, for the same reason the DIRTY branch does.
+      suppressMeasureUntilRef.current = 0;
       convergeRef.current?.request();
       return;
     }
@@ -1198,13 +1239,13 @@ export function useInTextPositions(
     // in the controller's measure closure now, so these are bare requests; the
     // controller coalesces a resize storm to one pending pass.
     const onResize = () => {
-      convergeRef.current?.request();
+      requestSettle();
     };
     const onFocusOut = () => {
       // No manual frame defer needed: the controller's first pass is already
       // rAF/idle-scheduled, so `activeElement` has settled by the time the
       // typing gate reads it.
-      convergeRef.current?.request();
+      requestSettle();
     };
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : DATA_LINK_CARD;
@@ -1214,7 +1255,7 @@ export function useInTextPositions(
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabledProp, entry]);
+  }, [measureVersion, enabledProp, entry, requestSettle]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that
   // re-runs — no DOM reads, no layout flush, no second commit.

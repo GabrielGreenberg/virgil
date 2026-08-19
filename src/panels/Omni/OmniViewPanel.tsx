@@ -62,15 +62,25 @@ export type { OmniItem };
 /**
  * How long after this pod mounts the slide stays disarmed (ms).
  *
- * Comfortably past `useInTextPositions`' bounded settle loop (~500ms of rAF
- * re-measures) and past a typical web-font swap, both of which legitimately
- * correct every card's top after first paint. Animating those reads as a
- * fly-in — the deck assembling itself in front of the user — which is the
- * opposite of what the transition is for. Deliberately a wall-clock window
- * rather than a settle signal: the corrections come from three independent
- * sources (settle loop, `document.fonts.ready`, NodeView mounts) and only a
- * timer covers all three without a fourth piece of state to thread.
- * Residual, stated: a font swap later than this animates once.
+ * Long enough to cover the ASSEMBLY — the burst of corrections every card takes
+ * in the first moments after first paint (the initial convergence passes, a web
+ * font swap, NodeView mounts). Animating those reads as a fly-in, the deck
+ * assembling itself in front of the user, which is the opposite of what the
+ * transition is for. Deliberately a wall-clock window rather than a settle
+ * signal: the corrections come from independent sources and only a timer covers
+ * all of them without a fourth piece of state to thread.
+ *
+ * RECALIBRATED BY TASK 370, in what it MEANS rather than in its value. It used
+ * to be justified as "comfortably past `useInTextPositions`' bounded settle loop
+ * (~500ms of rAF re-measures)" — a loop that no longer exists. Its replacement
+ * converges on the consumer's own fixed point under a 6s budget, so a correction
+ * can now legitimately land seconds in, and this window can no longer claim to
+ * outlast the settle. It does not need to: a LATE correction is exactly the case
+ * that SHOULD glide (task 328's `.omni-entry-slide`) rather than teleport — the
+ * user is looking at a settled deck and one card moving is a change they should
+ * be able to follow. What must not animate is the assembly, which is what this
+ * window still covers. So the two constants are no longer coupled, and the
+ * residual is inverted: a correction later than this animates once, deliberately.
  */
 const SLIDE_ARM_MS = 700;
 

@@ -178,25 +178,50 @@ afterAll(() => {
   delete (globalThis as Record<string, unknown>).ResizeObserver;
 });
 
+/** The module's dev probe (`settle-convergence.ts`), the same read-out the owed
+ *  preview pass uses. */
+function readProbe(): { lastStop: string | null; lastChainMs: number | null } {
+  const w = globalThis as unknown as Record<string, () => unknown>;
+  return w.__settleConvergenceStats() as {
+    lastStop: string | null;
+    lastChainMs: number | null;
+  };
+}
+
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
   vi.useRealTimers();
 });
 
+interface ScaleAt {
+  /** ms since mount. */
+  ms: number;
+  /** 0-based index of the measure pass currently reading geometry. Derived from
+   *  the `coordsAtPos` call count (exactly one per item per pass, and all items
+   *  here are in-band), because a WALL-CLOCK period cannot express "changes on
+   *  every pass" once the controller's pacing ramp moves off rAF — which is how
+   *  the cap leg's first draft passed vacuously: its 16ms-period fixture was
+   *  sampled by the 32ms idle tail at unchanging parity, so the geometry looked
+   *  static and the chain reported `converged`. */
+  pass: number;
+}
+
 /**
- * @param scaleAt maps elapsed-ms → the geometry scale in force at that moment.
+ * @param scaleAt maps (elapsed-ms, pass index) → the geometry scale in force.
  *   This is the ONLY thing that moves; `scrollHeight` is pinned to the settled
  *   content height from the first frame, which is what makes the retired
  *   scrollHeight criterion fire immediately.
  */
-function setupScenario(scaleAt: (elapsedMs: number) => number) {
+function setupScenario(scaleAt: (at: ScaleAt) => number) {
   vi.useFakeTimers();
   mountRowScroll();
   const editor = mountDoc(400);
   const docSize = editor.state.doc.content.size;
   const t0 = performance.now();
-  const scale = () => scaleAt(performance.now() - t0);
+  let coordCalls = 0;
+  const scale = () =>
+    scaleAt({ ms: performance.now() - t0, pass: Math.floor(coordCalls / 3) });
 
   // CONSTANT: the box is the settled size from frame 1; only the line
   // positions inside it move.
@@ -211,7 +236,10 @@ function setupScenario(scaleAt: (elapsedMs: number) => number) {
   const coordsSpy = vi
     .spyOn(editor.view, "coordsAtPos")
     .mockImplementation((pos: number) => {
+      // Read the scale for THIS pass before advancing the counter, so all three
+      // items in one pass see one geometry.
       const top = pos * scale();
+      coordCalls += 1;
       return { top, bottom: top + 20, left: 0, right: 0 };
     });
   vi.spyOn(editor.view, "posAtCoords").mockImplementation(
@@ -269,7 +297,7 @@ describe("useInTextPositions — settle by convergence (task 370)", () => {
     // Ramp COLD → REAL over SETTLE_MS. `scrollHeight` never moves, so the
     // retired criterion ("one frame of unchanged scrollHeight") is satisfied on
     // the very first settle frame and the pre-370 loop stops there.
-    const s = setupScenario((ms) => {
+    const s = setupScenario(({ ms }) => {
       const p = Math.min(1, ms / SETTLE_MS);
       return COLD_SCALE + (REAL_SCALE - COLD_SCALE) * p;
     });
@@ -291,6 +319,90 @@ describe("useInTextPositions — settle by convergence (task 370)", () => {
       );
     });
     s.unmount();
+  });
+
+  it("cards that arrive AFTER the deck went inert still converge", async () => {
+    // The commonest cold open there is, and the one the mount-time chain cannot
+    // cover on its own: the editor mounts before the sidecar cards load, so the
+    // first pass sees `items.length === 0`, reports `inert` and terminates
+    // within a frame — correctly, there was nothing to converge on. When the
+    // cards then arrive, the companion one-shot's lone synchronous `measure()`
+    // used to be the ONLY pass they ever got, taken against precisely the
+    // un-settled layout (FOUT / KaTeX / figure NodeViews) this machinery exists
+    // for. Nothing re-measured until the user scrolled.
+    //
+    // The geometry here is still ramping when the cards land, so a deck that
+    // takes one pass lands compressed and stays there.
+    vi.useFakeTimers();
+    mountRowScroll();
+    const editor = mountDoc(400);
+    const docSize = editor.state.doc.content.size;
+    const CONTENT_H = docSize * REAL_SCALE;
+    const t0 = performance.now();
+    const scale = () => {
+      const p = Math.min(1, (performance.now() - t0) / (SETTLE_MS + 400));
+      return COLD_SCALE + (REAL_SCALE - COLD_SCALE) * p;
+    };
+    const editorDom = editor.view.dom as HTMLElement;
+    editorDom.getBoundingClientRect = () => makeRect(0, CONTENT_H);
+    Object.defineProperty(editorDom, "scrollHeight", {
+      get: () => CONTENT_H,
+      configurable: true,
+    });
+    vi.spyOn(editor.view, "coordsAtPos").mockImplementation((pos: number) => {
+      const top = pos * scale();
+      return { top, bottom: top + 20, left: 0, right: 0 };
+    });
+    vi.spyOn(editor.view, "posAtCoords").mockImplementation(
+      ({ top }: { left: number; top: number }) => ({
+        pos: Math.round(Math.max(0, Math.min(docSize, top / scale()))),
+        inside: -1,
+      }),
+    );
+
+    const late: PositionItem[] = [
+      { id: "c0", pos: 30 },
+      { id: "c1", pos: 150 },
+      { id: "c2", pos: 260 },
+    ];
+    const sinkRef: { current: HookOut | null } = { current: null };
+    let items: PositionItem[] = [];
+    const Tree = () => (
+      <KeepAliveVisibilityProvider isVisible={true}>
+        <Harness
+          editor={editor}
+          items={items}
+          sinkRef={sinkRef}
+          installPod={(el) => {
+            el.getBoundingClientRect = () => makeRect(0, 200);
+          }}
+        />
+      </KeepAliveVisibilityProvider>
+    );
+    const r = render(<Tree />);
+    // Let the empty-deck chain terminate `inert`.
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    await act(async () => {
+      items = late; // the sidecar lands, geometry still ramping
+      r.rerender(<Tree />);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // time only — no scroll, no resize
+    });
+
+    late.forEach((it, i) => {
+      const top = sinkRef.current?.positions.get(it.id) ?? null;
+      expect(top).not.toBeNull();
+      expect(Math.abs(top! - EXPECTED_SETTLED[i])).toBeLessThanOrEqual(
+        REPOSITION_EPSILON_PX,
+      );
+    });
+
+    r.unmount();
+    editor.destroy();
   });
 
   it("a pane that mounted with an EMPTY deck still settles when re-shown", async () => {
@@ -400,13 +512,17 @@ describe("useInTextPositions — settle by convergence (task 370)", () => {
     // agreement — the fixed point is real even though the raw numbers wobble,
     // which is exactly why the criterion is the hysteresis and not raw equality.
     const JITTER_PX = REPOSITION_EPSILON_PX - 2;
-    const s = setupScenario((ms) => {
-      const wobble = (Math.floor(ms / 16) % 2 === 0 ? 0 : JITTER_PX) / 260;
-      return REAL_SCALE + wobble;
-    });
+    const s = setupScenario(
+      ({ pass }) => REAL_SCALE + ((pass % 2 === 0 ? 0 : JITTER_PX) / 260),
+    );
 
     await s.idle(1000);
     const afterConvergence = s.coordsSpy.mock.calls.length;
+    // LOWER bound first, or this leg passes on an implementation that never
+    // settles at all: `calls === calls` and `calls/3 <= 6` are both satisfied by
+    // zero. A converged chain is at least the two agreeing passes it is defined
+    // by, on top of the companion one-shot's synchronous measure.
+    expect(afterConvergence).toBeGreaterThanOrEqual(s.items.length * 2);
     await s.idle(4000);
     // Zero further reads: the chain terminated, and nothing re-arms it.
     expect(s.coordsSpy.mock.calls.length).toBe(afterConvergence);
@@ -431,6 +547,10 @@ describe("useInTextPositions — settle by convergence (task 370)", () => {
     // controller in isolation.
     const s = setupScenario(() => REAL_SCALE);
     await s.idle(1000); // converge and go quiet
+    expect(readProbe().lastStop).toBe("converged");
+    // Time-to-converged is a real number, not the `null` a 0-sentinel bug
+    // produced under fake timers (whose clock starts at 0).
+    expect(readProbe().lastChainMs).toBeGreaterThanOrEqual(0);
     const before = s.coordsSpy.mock.calls.length;
 
     const pod = s.sinkRef.current!.panelScrollRef.current!;
@@ -455,12 +575,20 @@ describe("useInTextPositions — settle by convergence (task 370)", () => {
     // The hostile direction — a document that keeps moving past every epsilon.
     // The loop must give up on a WALL-CLOCK budget (a frame cap is a lie on a
     // busy main thread) rather than poll forever.
-    const s = setupScenario((ms) =>
-      Math.floor(ms / 16) % 2 === 0 ? REAL_SCALE : REAL_SCALE * 1.4,
+    const s = setupScenario(({ pass }) =>
+      pass % 2 === 0 ? REAL_SCALE : REAL_SCALE * 1.4,
     );
 
     await s.idle(9000); // well past the budget
     const afterCap = s.coordsSpy.mock.calls.length;
+    // It ran, and it ran a lot — otherwise "it stopped" says nothing.
+    expect(afterCap).toBeGreaterThanOrEqual(s.items.length * 10);
+    // …and it stopped for the RIGHT reason. Reading the stop reason off the
+    // shipped probe is what makes this leg unable to pass with no cap at all:
+    // with the deadline check deleted (or MAX_MS raised), the chain reports
+    // `converged` or keeps running, never `capped`.
+    expect(readProbe().lastStop).toBe("capped");
+
     await s.idle(9000);
     expect(s.coordsSpy.mock.calls.length).toBe(afterCap);
 

@@ -35,7 +35,7 @@
 //
 // WHY THE CAP IS WALL-CLOCK. A frame budget is a lie on a busy main thread:
 // the frames a slow font/math settle needs are precisely the frames it does not
-// get. `CONVERGE_MAX_MS` bounds the real thing being waited on.
+// get. `MAX_MS` bounds the real thing being waited on.
 //
 // WHY EVERY TRIGGER ENTERS THE SAME DOOR. Cold mount, `document.fonts.ready`,
 // the editor ResizeObserver, the structural bus and the scroll-idle refinement
@@ -95,24 +95,42 @@ const STABLE_PASSES = 2;
  *  the compressed one; after it, passes drop to idle pacing, because anything
  *  still moving this late is a slow asset (a web font, a decoding image) and
  *  polling it at 60Hz buys nothing a user can see. Time-based rather than
- *  frame-counted for the same reason the cap is. */
+ *  frame-counted for the same reason the cap is.
+ *
+ *  A pass is rAF-paced only while the fast window is open AND the previous pass
+ *  actually CHANGED something. The second clause is what keeps the trailing
+ *  CONFIRMATION off the frame budget: a chain that has started agreeing is
+ *  probably done, and its remaining passes commit nothing by definition. It
+ *  matters most on the keystroke-adjacent path, where the editor RO fires on
+ *  every wrap-changing keystroke — without it, a wrap change costs three
+ *  consecutive rAF passes where pre-370 it cost one. */
 const FAST_MS = 250;
 
-/** Wall-clock budget per arm-chain. Generous on purpose: a cold open of a
- *  math-heavy paper over FSA can genuinely still be settling seconds in, and
- *  the alternative to waiting is the pre-370 behaviour (stop early, look wrong
- *  until the user scrolls). Refreshed by every `request()`, so a document that
- *  keeps genuinely changing keeps being tracked — at the same per-tick cost.
+/** Wall-clock budget per CHAIN — set when a chain starts and never refreshed.
  *
- *  A FRAME cap (what this replaces) is a lie on a busy main thread: the frames
- *  a slow settle needs are precisely the frames it does not get. */
+ *  Generous on purpose: a cold open of a math-heavy paper over FSA can genuinely
+ *  still be settling seconds in, and the alternative to waiting is the pre-370
+ *  behaviour (stop early, look wrong until the user scrolls). A FRAME cap (what
+ *  this replaces) is a lie on a busy main thread: the frames a slow settle needs
+ *  are precisely the frames it does not get.
+ *
+ *  NOT refreshed by `request()`, and that was a real defect in this task's own
+ *  first cut. A measure pass that COMMITS bumps the consumer's `measureVersion`,
+ *  which re-runs its per-card ResizeObserver effect, which re-`observe()`s every
+ *  card — and browsers deliver an initial observation for each newly observed
+ *  element, arriving back here as another `request()`. So the loop refreshed its
+ *  own deadline with a trigger it had itself caused: measured against a
+ *  browser-faithful observer over never-settling geometry, 3 378 reads at 18 s
+ *  and climbing linearly. **A budget a live chain can extend is not a budget.**
+ *  A re-arm now resets only the stability count; the chain dies on schedule, and
+ *  a genuinely new trigger afterwards starts a genuinely new chain. */
 const MAX_MS = 6000;
 
 /** Why a chain stopped. `inert` and `converged` are healthy terminations;
  *  `capped` means the budget ran out with geometry still moving (or still
  *  unmeasurable) — the honest failure mode, and the one worth reading in the
  *  probe during the owed preview pass. */
-export type ConvergeStop = "converged" | "capped" | "inert" | "stopped";
+type ConvergeStop = "converged" | "capped" | "inert" | "stopped";
 
 export interface ConvergenceController {
   /**
@@ -129,6 +147,7 @@ export interface ConvergenceController {
 // Sibling of `__scrollRepositionStats` / `__layoutGestureStats` / `__geometryStats`.
 // Read it from the dev console right after opening a card-dense paper:
 //
+//   window.__settleConvergenceStatsReset()   // zero the counters first
 //   window.__settleConvergenceStats()
 //   → { arms, passes, outcomes: { changed, stable, deferred, inert },
 //       lastChainMs, lastStop }
@@ -206,7 +225,12 @@ export function createConvergenceController(
   let stableCount = 0;
   let deadline = 0;
   let fastUntil = 0;
-  let chainStart = 0;
+  /** -1 = no chain live. NOT 0: `performance.now()` legitimately reads 0 (every
+   *  fake-timer harness starts there), and conflating the two made the probe's
+   *  headline number — time-to-converged — report `null` for the first chain. */
+  let chainStart = -1;
+  /** Did the PREVIOUS pass commit? Drives the rAF -> idle pacing ramp. */
+  let lastChanged = true;
   let rafHandle = 0;
   let cancelIdle: (() => void) | null = null;
   let pending = false;
@@ -226,9 +250,10 @@ export function createConvergenceController(
     clearPending();
     if (probeEnabled) {
       probe.lastStop = stop;
-      probe.lastChainMs = chainStart === 0 ? null : nowMs() - chainStart;
+      probe.lastChainMs = chainStart < 0 ? null : nowMs() - chainStart;
     }
-    chainStart = 0;
+    chainStart = -1;
+    lastChanged = true;
   };
 
   const step = (): void => {
@@ -250,6 +275,10 @@ export function createConvergenceController(
     // not agreement (the pass measured nothing), and it deliberately does not
     // terminate either — that conflation is the pre-370 bug.
     stableCount = outcome === "stable" ? stableCount + 1 : 0;
+    // A `deferred` pass changed nothing either, so it must not hold the chain in
+    // the frame-paced phase — otherwise a suppressed or typing-gated chain polls
+    // at 60Hz for its whole fast window.
+    lastChanged = outcome === "changed";
 
     if (stableCount >= STABLE_PASSES) {
       finish("converged");
@@ -268,7 +297,11 @@ export function createConvergenceController(
     // FAST phase → rAF (a correction the user could see should land in the next
     // frame). TAIL → the shared low-priority scheduler, so the confirmation
     // passes after a settle never compete with paint.
-    if (nowMs() < fastUntil && typeof requestAnimationFrame === "function") {
+    if (
+      lastChanged &&
+      nowMs() < fastUntil &&
+      typeof requestAnimationFrame === "function"
+    ) {
       rafHandle = requestAnimationFrame(() => {
         rafHandle = 0;
         pending = false;
@@ -287,22 +320,27 @@ export function createConvergenceController(
     request(): void {
       if (disposed) return;
       const t = nowMs();
-      if (chainStart === 0) chainStart = t;
       if (probeEnabled) probe.arms += 1;
-      // A fresh trigger invalidates any agreement observed so far, and buys a
-      // fresh budget + a fresh fast window. It does NOT enqueue a second pass:
-      // ONE pending pass is the whole rate limit, which is what keeps a trigger
-      // storm (a re-show reflow, a run of wrap-changing keystrokes) costing
-      // exactly what one rAF-coalesced measure used to.
+      // A fresh trigger invalidates any agreement observed so far. It does NOT
+      // enqueue a second pass — ONE pending pass is the whole rate limit, which
+      // keeps a trigger storm (a re-show reflow, a run of wrap-changing
+      // keystrokes) costing what one rAF-coalesced measure used to — and it does
+      // NOT extend a live chain's budget or its fast window (see MAX_MS: the
+      // chain's own commits generate triggers, so a refreshable deadline is no
+      // deadline at all).
       stableCount = 0;
-      deadline = t + MAX_MS;
-      fastUntil = t + FAST_MS;
+      if (chainStart < 0) {
+        chainStart = t;
+        deadline = t + MAX_MS;
+        fastUntil = t + FAST_MS;
+        lastChanged = true;
+      }
       schedule();
     },
     stop(): void {
       if (disposed) return;
       disposed = true;
-      if (chainStart !== 0) finish("stopped");
+      if (chainStart >= 0) finish("stopped");
       else clearPending();
     },
   };
