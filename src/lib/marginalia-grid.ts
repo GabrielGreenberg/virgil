@@ -15,6 +15,16 @@
  * overflow group instead of being stacked/clamped, and the margin renders
  * a pill in the reserved cell whose popover lists them.
  *
+ * A node's line pitch answers "where do MY markers go" and says nothing about
+ * the node next door, so the side is packed as ONE column-stack rather than N
+ * independent grids (task 366): after each side's groups are ordered by
+ * document position, every row is walked against a running frontier and pushed
+ * just clear of the row above it where it would otherwise overprint — the same
+ * minimal-displacement forward pass the omni card deck runs one lane over. Past
+ * `MARGINALIA_MAX_MARKER_DRIFT` the walk stops pushing and folds the node into
+ * a shared "+K" pill instead; a marker far from its anchor is worse than a
+ * pill at the crowd. See the long comment on pass 2.
+ *
  * This module is a pure function with no DOM access — all measurements come
  * from the useMarginalia hook via AnchorNodeMetrics.
  */
@@ -23,6 +33,8 @@ import { marginSideForMarkerType, type PanelSideMap } from "./margin-side";
 import {
   MARGINALIA_COL_GAP,
   MARGINALIA_ICON_SIZE,
+  MARGINALIA_MAX_MARKER_DRIFT,
+  MARGINALIA_ROW_MIN_GAP,
   marginaliaGridX,
   type AnchorNodeMetrics,
   type GridCell,
@@ -46,29 +58,32 @@ export interface MarkerPositionsResult {
   orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
 }
 
-/** Pixel coordinates for grid cell (row, col) of `node` on `side`. */
-function cellAt(
-  side: "left" | "right",
-  node: AnchorNodeMetrics,
-  row: number,
-  col: number,
-): GridCell {
-  // Pixel Y: center the icon vertically within the text line.
-  const y =
-    node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
+/**
+ * Natural pixel Y (host-relative) of grid row `row` of `node` — the icon
+ * centered vertically within that text line. This is the row's ANCHORED
+ * position; the collision walk in `computeMarkerPositions` may place a row
+ * lower than this, never higher.
+ */
+function rowY(node: AnchorNodeMetrics, row: number): number {
+  return (
+    node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2
+  );
+}
 
-  // Pixel X (container-relative), from the lane SSOT's per-side col0 offset
-  // (`marginaliaGridX`). Left margin packs from the outer edge inward toward
-  // the text; right margin packs from `MARGINALIA_GRID_X_RIGHT` — the col0
-  // offset in the right-lane band list, OUTBOARD of the inboard selection-bolt
-  // band (so the bolt no longer paints over the markers) — outward toward the
-  // scrollbar. `cell.x` is relative to the marker container's own edge
-  // (`podRight − MARGIN_WIDTH_RIGHT` / `podLeft`), the SAME reference the
-  // pod-anchored bolt and the lane-fit predicate use.
-  const x =
-    marginaliaGridX(side) + col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
-
-  return { col, row, x, y };
+/**
+ * Pixel X (container-relative) of grid column `col` on `side`, from the lane
+ * SSOT's per-side col0 offset (`marginaliaGridX`). Left margin packs from the
+ * outer edge inward toward the text; right margin packs from
+ * `MARGINALIA_GRID_X_RIGHT` — the col0 offset in the right-lane band list,
+ * OUTBOARD of the inboard selection-bolt band (so the bolt no longer paints
+ * over the markers) — outward toward the scrollbar. The origin is the marker
+ * container's own edge (`podRight − MARGIN_WIDTH_RIGHT` / `podLeft`), the SAME
+ * reference the pod-anchored bolt and the lane-fit predicate use.
+ */
+function colX(side: "left" | "right", col: number): number {
+  return (
+    marginaliaGridX(side) + col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
+  );
 }
 
 /**
@@ -100,8 +115,11 @@ function cellAt(
  *                    inherit a count it never decided; the fail-open case
  *                    belongs to `resolveMarkerCols`, which owns what unmeasured
  *                    means.
- * @returns Positioned markers, per-(node, side) overflow groups (R16), and
- *          the orphan markers for the fixed re-pin dock (CHIP-B)
+ * @returns Positioned markers, overflow groups (R16 — one per over-full
+ *          (node, side) grid, plus one per folded crowd, task 366), and the
+ *          orphan markers for the fixed re-pin dock (CHIP-B). Every measured,
+ *          non-orphan marker on a hosted side comes back exactly once: in
+ *          `positioned`, or in some group's `hidden`.
  */
 export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
@@ -170,40 +188,142 @@ export function computeMarkerPositions(
   // the left side is always a single effective column; the right side gets both
   // where the lane is whole and one where the tucked bolt has taken the outboard
   // band. The count is the caller's resolved answer, never re-derived here.
+  //
+  // Task 366 — the CROSS-NODE half. Pre-366 this loop ran once per group with
+  // no shared state, so every collision the grid could resolve was one INSIDE
+  // a node (rows × cols, then the "+K" pill). Two nodes' grids were placed
+  // independently at their own `node.top`s, which is safe only while block tops
+  // sit further apart than an icon is tall — false for a title/author/date
+  // stack, a run of short headings, or any small-print block, where the two
+  // grids simply overprinted. Nothing owned the question.
+  //
+  // So the side is packed as ONE column-stack, not N independent grids: sort the
+  // side's groups into document order, then walk every ROW they are about to
+  // occupy against a running `frontier` (the bottom edge of the last row placed
+  // on that side). A row takes its anchored `rowY` unless that would land it
+  // within `MARGINALIA_ROW_MIN_GAP` of the frontier, in which case it is pushed
+  // just clear — the same minimal-displacement forward pass the omni deck's card
+  // cascade runs one lane over (`resolveCascade` in `useInTextPositions`).
+  //
+  // Two properties this shape buys, both load-bearing:
+  //
+  //  - It is UNIFORM over intra- and inter-node rows. A user looking at two
+  //    overlapping icons does not know (or care) whether they belong to one
+  //    block or two, and the walk does not have to: it asks only "does this row
+  //    clear the one above it?". A node whose own line pitch is tighter than an
+  //    icon (18px small print) therefore stops self-overlapping too, at the cost
+  //    of its lower rows drifting off their lines — which is the right trade,
+  //    since line alignment that overlaps is not alignment.
+  //  - It changes NOTHING where nothing collides. `MARGINALIA_ROW_MIN_GAP` is
+  //    the gap the canonical 24px line already leaves around a 22px icon, so an
+  //    uncrowded document's cells come out byte-identical to the pre-366 grid.
+  //
+  // Cost: one sort of the side's node groups plus a single linear walk over the
+  // cells being placed — no DOM, no per-marker search.
   const positioned: PositionedMarker[] = [];
   const overflowGroups: MarkerOverflowGroup[] = [];
 
-  for (const g of groups.values()) {
-    const effectiveCols = laneCols[g.side];
-    const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
-    const overflowing = g.items.length > capacity;
-    // R16: when overflowing, reserve the LAST cell for the "+K" pill; only
-    // capacity-1 markers render and the rest ride the pill's popover.
-    const visibleCount = overflowing ? capacity - 1 : g.items.length;
+  const bySide: Record<"left" | "right", NodeGroup[]> = { left: [], right: [] };
+  for (const g of groups.values()) bySide[g.side].push(g);
 
-    for (let idx = 0; idx < visibleCount; idx++) {
-      const row = Math.floor(idx / effectiveCols);
-      const col = idx % effectiveCols;
-      positioned.push({
-        ...g.items[idx],
-        side: g.side,
-        cell: cellAt(g.side, g.node, row, col),
-      });
-    }
+  for (const side of ["left", "right"] as const) {
+    const list = bySide[side];
+    if (list.length === 0) continue;
+    const effectiveCols = laneCols[side];
 
-    if (overflowing) {
-      const pillIdx = capacity - 1;
-      overflowGroups.push({
-        side: g.side,
-        textObjectId: g.textObjectId,
-        cell: cellAt(
-          g.side,
-          g.node,
-          Math.floor(pillIdx / effectiveCols),
-          pillIdx % effectiveCols,
-        ),
-        hidden: g.items.slice(visibleCount),
-      });
+    // Document order. `top` is the grid's own vertical anchor, so ordering by
+    // it orders the stack exactly as the reader sees it; `domTop` breaks a tie
+    // between an atom and a prose block that resolve to the same anchor, and
+    // Array#sort is stable, so a remaining tie keeps marker-builder order.
+    // Deterministic regardless of which panel emitted its markers first.
+    list.sort((a, b) => a.node.top - b.node.top || a.node.domTop - b.node.domTop);
+
+    // Bottom edge of the last row placed on this side.
+    let frontier = -Infinity;
+    // The open "+K" crowd pill, if the walk has already given up on pushing
+    // (see below), plus the anchor it was minted for — so a crowd that runs
+    // long enough to leave its own pill behind starts a fresh one instead of
+    // collecting markers from arbitrarily far down the page.
+    let crowd: MarkerOverflowGroup | null = null;
+    let crowdAnchorY = 0;
+
+    for (const g of list) {
+      const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
+      const overflowing = g.items.length > capacity;
+      // R16: when overflowing, reserve the LAST cell for the "+K" pill; only
+      // capacity-1 markers render and the rest ride the pill's popover.
+      const visibleCount = overflowing ? capacity - 1 : g.items.length;
+      // Cells this grid will occupy, pill included — hence the rows it needs.
+      const cellCount = overflowing ? visibleCount + 1 : visibleCount;
+      const rowsUsed = Math.max(1, Math.ceil(cellCount / effectiveCols));
+
+      const anchoredTop = rowY(g.node, 0);
+      const push = frontier + MARGINALIA_ROW_MIN_GAP - anchoredTop;
+
+      if (push > MARGINALIA_MAX_MARKER_DRIFT) {
+        // No cell of this grid fits within the drift bound, so pushing would
+        // put a marker beside text it has nothing to do with. Fold the whole
+        // node into a "+K" pill instead (the affordance that already exists for
+        // an over-full grid): the pill's popover lists these markers as ordinary
+        // marker buttons, which resolve their card by id and never by Y, so
+        // click / delete / re-anchor behave exactly as in-grid.
+        //
+        // Consecutive folded nodes share ONE pill — that is what bounds the
+        // cascade: the first fold costs a cell, every fold after it costs
+        // nothing, so a crowd of any depth collapses to a single pill rather
+        // than a ladder of ever-more-drifted markers.
+        if (crowd === null || anchoredTop > crowdAnchorY + MARGINALIA_MAX_MARKER_DRIFT) {
+          const y = frontier + MARGINALIA_ROW_MIN_GAP;
+          crowd = {
+            side,
+            textObjectId: g.textObjectId,
+            cell: { col: 0, row: 0, x: colX(side, 0), y },
+            hidden: [],
+          };
+          crowdAnchorY = anchoredTop;
+          overflowGroups.push(crowd);
+          frontier = y + MARGINALIA_ICON_SIZE;
+        }
+        crowd.hidden.push(...g.items);
+        continue;
+      }
+
+      // This grid places, so the crowd (if any) is closed: a later crowd gets
+      // its own pill near its own anchors.
+      crowd = null;
+
+      // Resolve every row this grid uses against the running frontier. Rows
+      // below row 0 are re-checked rather than rigidly offset by row 0's push,
+      // so a node whose own line pitch is roomy re-settles onto its lines
+      // instead of carrying the displacement all the way down.
+      const ys: number[] = [];
+      for (let r = 0; r < rowsUsed; r++) {
+        const y = Math.max(rowY(g.node, r), frontier + MARGINALIA_ROW_MIN_GAP);
+        ys.push(y);
+        frontier = y + MARGINALIA_ICON_SIZE;
+      }
+
+      for (let idx = 0; idx < visibleCount; idx++) {
+        const row = Math.floor(idx / effectiveCols);
+        const col = idx % effectiveCols;
+        positioned.push({
+          ...g.items[idx],
+          side,
+          cell: { col, row, x: colX(side, col), y: ys[row] },
+        });
+      }
+
+      if (overflowing) {
+        const pillIdx = capacity - 1;
+        const row = Math.floor(pillIdx / effectiveCols);
+        const col = pillIdx % effectiveCols;
+        overflowGroups.push({
+          side,
+          textObjectId: g.textObjectId,
+          cell: { col, row, x: colX(side, col), y: ys[row] },
+          hidden: g.items.slice(visibleCount),
+        });
+      }
     }
   }
 
