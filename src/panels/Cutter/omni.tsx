@@ -8,8 +8,8 @@ import type {
 } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
-import { getLinkedTextObjectIds } from "@/links/links";
-import { resolveAnchorState } from "@/links/anchor-state";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
 
@@ -18,7 +18,7 @@ interface BuildArgs {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   jumpToCard: (card: CutterCard, sourceEl?: HTMLElement | null) => void;
-  findParagraphPos: (uuid: string | null) => number | null;
+  resolveCardRows: CardAnchorResolver;
   editor: Editor | null;
   updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
@@ -46,11 +46,17 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
 
   for (const card of a.cards) {
     const isSelected = a.selectedId === card.id;
-    const pids = getLinkedTextObjectIds(card);
     const baseId =
       card.kind === "suggestion"
         ? cardPopKey("cutter-suggestion", card.id)
         : cardPopKey("cutter-comment", card.id);
+    // ONE authority for "where is this card anchored?" — the same rows the
+    // margin marker builder draws from (task 369). An unlinked cutter card is
+    // deliberately FREE by this panel's own rule.
+    const rows = buildOmniAnchorRows(card, baseId, a.resolveCardRows, {
+      unanchored: true,
+    });
+    const linked = rows.some((r) => r.anchorUuid != null);
 
     const renderCard = (omniId: string) =>
       card.kind === "suggestion" ? (
@@ -65,9 +71,7 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
-            pids.length > 0
-              ? (sourceEl) => a.jumpToCard(card, sourceEl)
-              : undefined
+            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
@@ -83,38 +87,20 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
-            pids.length > 0
-              ? (sourceEl) => a.jumpToCard(card, sourceEl)
-              : undefined
+            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       );
 
-    if (pids.length === 0) {
+    for (const row of rows) {
       items.push({
-        id: baseId,
-        pos: null,
-        // Unlinked (no paragraph anchor) — a deliberately-free card.
-        anchorState: resolveAnchorState(null, { unanchored: true }),
-        content: renderCard(baseId),
+        id: row.omniId,
+        pos: row.pos,
+        anchorUuid: row.anchorUuid,
+        anchorState: row.anchorState,
+        content: renderCard(row.omniId),
       });
-    } else {
-      for (let pi = 0; pi < pids.length; pi++) {
-        const pid = pids[pi];
-        const pos = a.findParagraphPos(pid);
-        const suffix = pids.length > 1 ? `@${pi}` : "";
-        const omniId = `${baseId}${suffix}`;
-        items.push({
-          id: omniId,
-          pos,
-          anchorUuid: pid,
-          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
-          // lost pos ⇒ orphaned.
-          anchorState: resolveAnchorState(pos, null),
-          content: renderCard(omniId),
-        });
-      }
     }
   }
 

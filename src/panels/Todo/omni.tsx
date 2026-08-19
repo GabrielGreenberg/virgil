@@ -4,15 +4,15 @@ import type { TodoItem } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { TodoRow } from "./TodoRow";
-import { getLinkedTextObjectIds } from "@/links/links";
-import { resolveAnchorState } from "@/links/anchor-state";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 
 interface BuildArgs {
   todoItems: TodoItem[];
   selectedTodoId: string | null;
   setSelectedTodoId: (id: string | null) => void;
   jumpToCard: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
-  findParagraphPos: (uuid: string | null) => number | null;
+  resolveCardRows: CardAnchorResolver;
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
   updateTodoNotes: (id: string, notes: string) => void;
@@ -24,20 +24,24 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const item of a.todoItems) {
-    const pids = getLinkedTextObjectIds(item);
-    const isAnchored = pids.length > 0;
     const isSelected = a.selectedTodoId === item.id;
     const baseId = popKey("todo", item.id);
 
-    if (!isAnchored) {
+    // ONE authority for "where is this card anchored?" — the same rows the
+    // margin marker builder draws from (task 369). An unlinked todo is
+    // deliberately FREE by this panel's own rule.
+    for (const row of buildOmniAnchorRows(item, baseId, a.resolveCardRows, {
+      unanchored: true,
+    })) {
+      const linked = row.anchorUuid != null;
       items.push({
-        id: baseId,
-        pos: null,
-        // Unlinked (no paragraph anchor) — a deliberately-free card.
-        anchorState: resolveAnchorState(null, { unanchored: true }),
+        id: row.omniId,
+        pos: row.pos,
+        anchorUuid: row.anchorUuid,
+        anchorState: row.anchorState,
         content: (
           <TodoRow
-            key={baseId}
+            key={row.omniId}
             item={item}
             selected={isSelected}
             onToggle={a.toggleTodo}
@@ -46,42 +50,12 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
             onSetAiRequest={a.setTodoAiRequest}
             onDelete={a.deleteTodo}
             onSelect={a.setSelectedTodoId}
-            isAnchored={false}
-            extraDataAttrs={{ "data-omni-entry": baseId }}
+            isAnchored={linked}
+            onJump={linked ? (sourceEl) => a.jumpToCard(item, sourceEl) : undefined}
+            extraDataAttrs={{ "data-omni-entry": row.omniId }}
           />
         ),
       });
-    } else {
-      for (let pi = 0; pi < pids.length; pi++) {
-        const pid = pids[pi];
-        const pos = a.findParagraphPos(pid);
-        const suffix = pids.length > 1 ? `@${pi}` : "";
-        const omniId = `${baseId}${suffix}`;
-        items.push({
-          id: omniId,
-          pos,
-          anchorUuid: pid,
-          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
-          // lost pos ⇒ orphaned.
-          anchorState: resolveAnchorState(pos, null),
-          content: (
-            <TodoRow
-              key={omniId}
-              item={item}
-              selected={isSelected}
-              onToggle={a.toggleTodo}
-              onUpdate={a.updateTodo}
-              onUpdateNotes={a.updateTodoNotes}
-              onSetAiRequest={a.setTodoAiRequest}
-              onDelete={a.deleteTodo}
-              onSelect={a.setSelectedTodoId}
-              isAnchored={true}
-              onJump={(sourceEl) => a.jumpToCard(item, sourceEl)}
-              extraDataAttrs={{ "data-omni-entry": omniId }}
-            />
-          ),
-        });
-      }
     }
   }
 

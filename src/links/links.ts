@@ -1144,17 +1144,12 @@ export function isUnanchored(
 //     production orphan-surfacing UI yet — see its `@internal` note.
 // ---------------------------------------------------------------------------
 
-/** All `uuid` attrs present on live anchorable nodes, built once per
- *  reconcile so the per-link resolution is O(1). */
-export function collectLiveUuids(editor: Editor): Set<string> {
-  const out = new Set<string>();
-  editor.state.doc.descendants((node) => {
-    const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
-    if (uuid) out.add(uuid);
-    return true;
-  });
-  return out;
-}
+// `collectLiveUuids` lived here until task 369. Its last production caller was
+// `buildResolveIndex`, which now derives the live-uuid SET from the position
+// map its own single walk builds — so the helper became a second, redundant
+// O(doc) pass with no caller but its tests, and the link-surface census
+// (task 202: "a suite is not a consumer") named it. Callers that need the set
+// read `buildResolveIndex(editor).uuidToParagraph`.
 
 /**
  * Re-find a paragraph by its Mode-A text snapshot. Returns the live `uuid`

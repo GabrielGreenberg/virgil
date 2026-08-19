@@ -148,6 +148,9 @@ function fakeIndex(args: {
   const snap = new Map(Object.entries(args.snapshots ?? {}));
   return {
     uuidToParagraph,
+    // Synthetic positions — the ladder never reads them; they exist so the
+    // omni surface can seed a row's baked position off the same index.
+    uuidToPos: new Map([...uuidToParagraph].map((u, i) => [u, i + 1])),
     anchorIdToParagraph,
     snapshotToParagraph: (k) => (k ? snap.get(k) ?? null : null),
   };

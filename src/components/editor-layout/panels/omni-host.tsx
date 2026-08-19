@@ -49,6 +49,7 @@ import type { LatexError } from "@/lib/latex-errors";
 import type { ErrorJump } from "@/panels/Errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
+import { buildCardAnchorPass } from "@/links/card-anchor-rows";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -116,7 +117,6 @@ export interface OmniHostProps {
   deleteNote: (id: string) => void;
   // Archive
   sortedArchiveSnippets: ArchivedSnippet[];
-  anchoredIds: Set<string>;
   updateArchiveSnippet: (id: string, content: unknown) => void;
   updateArchiveSnippetTitle: (id: string, title: string) => void;
   handleDeleteArchive: (id: string) => void;
@@ -334,24 +334,37 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedArchiveId,
   ]);
 
-  // Resolve a paragraph UUID to its doc position (used by panels that
-  // anchor by paragraphId not pos).
-  const findParagraphPos = useCallback(
-    (uuid: string | null): number | null => {
-      if (!uuid || !editorInstance) return null;
-      let result: number | null = null;
-      editorInstance.state.doc.descendants((node, pos) => {
-        if (result != null) return false;
-        if (node.attrs?.uuid === uuid) {
-          result = pos;
-          return false;
-        }
-        return true;
-      });
-      return result;
-    },
-    [editorInstance],
+  /**
+   * ONE anchor-resolution pass for the whole omni surface (task 369).
+   *
+   * Every paragraph-anchored builder used to answer "which paragraph is this
+   * card on?" for itself, with a bare live-uuid lookup — while the margin
+   * marker builder routed the same question through the four-rung
+   * anchor-recovery SSOT. So a card the margin RECOVERED (surviving
+   * `linkedAnchor` mark, or a text snapshot that still matches a live
+   * paragraph) painted an ordinary marker in the margin and was binned
+   * `pos: null` into the omni orphan strip: marker in the margin, card nowhere
+   * near it. Both surfaces now read the SAME rows.
+   *
+   * Keystroke sanctity — and a net REDUCTION: this builds ONE
+   * `buildResolveIndex` (O(doc), card-count-independent) per STRUCTURAL change
+   * and resolves each card in O(1) against it, where the retired
+   * `findParagraphPos` ran a full `descendants` walk PER PID (O(doc · anchors))
+   * on every items rebuild. `rev.anchors` / `rev.blocks` are the
+   * DocStructureBus counters, so plain typing rebuilds nothing here.
+   */
+  const anchorPass = useMemo(
+    () => buildCardAnchorPass(editorInstance),
+    // The counters are the structural GATE, not a value the factory reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editorInstance, rev.anchors, rev.blocks],
   );
+  const resolveCardRows = anchorPass.resolve;
+  // The bare uuid→pos lookup off the SAME index — Errors only (its paragraph
+  // ids come from the diagnostics pass, not from a card's links, so it has no
+  // recovery ladder to run). Never use this to answer "where is a CARD
+  // anchored?"; that is `resolveCardRows`.
+  const findParagraphPos = anchorPass.posOf;
   const jumpToCard = useCallback(
     (card: CardWithLinks, sourceEl?: HTMLElement | null) => {
       editorRef.current?.jumpToCard(card, sourceEl);
@@ -491,7 +504,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedNoteId,
       setSelectedNoteId: setNoteInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       updateNote: p.updateNote,
       updateNoteTitle: p.updateNoteTitle,
       setNoteAiRequest: p.setNoteAiRequest,
@@ -504,11 +517,10 @@ export function OmniHost(p: OmniHostProps) {
     }),
     ...buildArchiveOmniItems({
       archiveSnippets: activeArchive,
-      anchoredIds: p.anchoredIds,
       selectedArchiveId,
       setSelectedArchiveId: setArchiveInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       updateArchiveSnippet: p.updateArchiveSnippet,
       updateArchiveSnippetTitle: p.updateArchiveSnippetTitle,
       handleDeleteArchive: p.handleDeleteArchive,
@@ -521,7 +533,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedTodoId,
       setSelectedTodoId: setTodoInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       toggleTodo: p.toggleTodo,
       updateTodo: p.updateTodo,
       updateTodoNotes: p.updateTodoNotes,
@@ -539,7 +551,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedId: selectedCommentId,
       setSelectedId: setRevisionInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       editor: editorInstance,
       updateCommentContent: p.updateRevisionCommentContent,
       setCommentAiRequest: p.setRevisionCommentAiRequest,
@@ -569,7 +581,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedId: selectedCutterCardId,
       setSelectedId: setCutterInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       editor: editorInstance,
       updateCommentContent: p.updateCutterCommentContent,
       setCommentAiRequest: p.setCutterCommentAiRequest,
@@ -584,7 +596,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedId: selectedReportCardId,
       setSelectedId: setReportInOmni,
       jumpToCard,
-      findParagraphPos,
+      resolveCardRows,
       updateReportContent: p.updateReportContent,
       updateReportTitle: p.updateReportTitle,
       updateRequestContent: p.updateRequestContent,
@@ -601,7 +613,7 @@ export function OmniHost(p: OmniHostProps) {
     p.footnotes, p.orphanedFootnotes, p.unanchoredFootnotes,
     p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,
     p.notesCards,
-    p.sortedArchiveSnippets, p.anchoredIds,
+    p.sortedArchiveSnippets,
     p.todoItems,
     p.examples,
     p.revisionCards,
@@ -617,7 +629,8 @@ export function OmniHost(p: OmniHostProps) {
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
     setRevisionInOmni, setCutterInOmni, setReportInOmni, p.setSelectedErrorId,
     acceptRevisionInOmni, rejectRevisionInOmni, acceptCutterInOmni, rejectCutterInOmni,
-    scrollToFootnote, scrollToCitation, scrollToExample, jumpToCard, findParagraphPos,
+    scrollToFootnote, scrollToCitation, scrollToExample, jumpToCard,
+    findParagraphPos, resolveCardRows,
     editorInstance,
     // Contexts
     setOverrideEditor, getCitationDisplayText, onCitationCreated,
