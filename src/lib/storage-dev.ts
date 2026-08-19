@@ -1159,6 +1159,21 @@ export interface PaperFile {
   bytes: Uint8Array;
 }
 
+/** List the file names directly inside `virgil/` — the dev twin of the FSA
+ *  `listSidecarNames` (task 363). Answers `[]` when the endpoint is missing or
+ *  the folder has no `virgil/` yet: the scan is a diagnostic, so an unavailable
+ *  listing means "nothing to report", never an error the user sees. */
+export async function listSidecarNames(docId: string): Promise<string[]> {
+  try {
+    const resp = await fetch(`${API}/doc/${docId}/_sidecar-names`);
+    if (!resp.ok) return [];
+    const { names } = (await resp.json()) as { names?: string[] };
+    return Array.isArray(names) ? names : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function readPaperFolder(docId: string): Promise<PaperFile[]> {
   const resp = await fetch(`${API}/doc/${docId}/_all-files`);
   if (!resp.ok) {

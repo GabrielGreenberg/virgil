@@ -345,11 +345,17 @@ const PROD_FILES = [
 ].filter((f) => !isTest(f));
 
 /** The two files entitled to name the sidecar: the authority itself, and the
- *  bundle vocabulary (a list of every sidecar filename, which is what it is
- *  for). Both may only SHRINK. */
+ *  sidecar VOCABULARY (a table of every sidecar filename, which is what it is
+ *  for). Both may only SHRINK.
+ *
+ *  The vocabulary entry MOVED in task 363 — `sidecar-files.ts` used to hold the
+ *  hand-written list and is now a bare re-export of `sidecar-value.ts`, which
+ *  declares what each sidecar is worth. Transferred, not widened: the census
+ *  still names exactly one vocabulary file, and the old one no longer spells a
+ *  filename at all. */
 const FILENAME_OWNERS = new Set([
   "src/lib/ai-requests-store.ts",
-  "src/lib/sidecar-files.ts",
+  "src/lib/sidecar-value.ts",
 ]);
 
 /**

@@ -16,6 +16,8 @@ import {
   getSectionFoldingState,
   transactionTouchesFold,
 } from "@/lib/section-folding";
+import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
+import { onTabHidden } from "@/lib/tab-hidden";
 import type { EditorStateData } from "@/lib/types";
 
 const DEFAULT: EditorStateData = {
@@ -24,8 +26,19 @@ const DEFAULT: EditorStateData = {
   lastModified: "",
 };
 
-const CURSOR_DEBOUNCE_MS = 400;
-const SCROLL_DEBOUNCE_MS = 400;
+/** The one place this filename is spelled in this module. */
+const EDITOR_STATE_FILE = "editor-state.json";
+
+/**
+ * How long the caret / scroll must SETTLE before the tracker takes a reading.
+ * This is a UX number (what counts as "the user stopped"), deliberately
+ * distinct from the WRITE cadence, which is the file's own tier
+ * (`sidecarWriteDebounceMs`). Both used to be hand-picked here, and only one of
+ * them ever existed — that is exactly how a 400 ms settle came to mean a 400 ms
+ * disk write. Exported so `EditorPane`'s scroll listener stops carrying its own
+ * copy of the same 400.
+ */
+export const SETTLE_MS = 400;
 
 /**
  * Normalize whatever's on disk into the current schema. Older sidecars
@@ -81,11 +94,28 @@ export interface UseEditorUIStateApi {
 }
 
 /**
- * Per-document editor UI state — the paragraph the cursor was last in
- * and which sections are folded — persisted to `editor-state.json`.
+ * Per-document editor UI state — the paragraph the cursor was last in, where
+ * the pane was scrolled to, and which sections are folded — persisted to
+ * `editor-state.json`.
  *
- * Cursor moves write debounced (400 ms — high frequency, low value if
- * lost). Fold changes write immediately (low frequency, high value).
+ * ## The write cadence (task 363)
+ *
+ * The 400 ms numbers below debounce the TRIGGERS (a scroll settle, a caret
+ * settle); they never coalesced the WRITE. So each scroll pause, each caret
+ * move into a new paragraph and every fold toggle produced its own full-file
+ * rewrite — measured in Gabriel's Dropbox-synced paper as **102 conflicted
+ * copies of this one file**, more than the whole rest of the folder put
+ * together, for a file whose entire contents are a scroll offset, a paragraph
+ * uuid and a list of folded uuids.
+ *
+ * This file is VIEW state ([sidecar-value.ts](@/lib/sidecar-value)), so the
+ * write now coalesces at the tier's own cadence and nothing else about the
+ * triggers changed. Coalescing is paid for by settling at every boundary that
+ * matters — a doc switch, unmount, and the tab going hidden — so the restore is
+ * still exact; the only thing a coalesced write can lose is the last couple of
+ * seconds of scroll position to an abrupt kill, which is precisely what "view
+ * state" means.
+ *
  * The capture listener is gated on `loaded` so it can't clobber the
  * sidecar before the initial read lands.
  */
@@ -138,7 +168,7 @@ export function useEditorUIState(
       setLoaded(true);
       return;
     }
-    readSidecarIfExists<unknown>(docId, "editor-state.json")
+    readSidecarIfExists<unknown>(docId, EDITOR_STATE_FILE)
       .then((raw) => {
         if (cancelled) return;
         const migrated = raw === null ? { ...DEFAULT } : migrate(raw);
@@ -154,11 +184,11 @@ export function useEditorUIState(
     };
   }, [docId]);
 
-  const persist = useCallback(
+  const persistNow = useCallback(
     async (s: EditorStateData) => {
       if (!handle) return;
       try {
-        await writeSidecar(handle, "editor-state.json", s);
+        await writeSidecar(handle, EDITOR_STATE_FILE, s);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save editor-state:", err);
@@ -166,6 +196,47 @@ export function useEditorUIState(
     },
     [handle],
   );
+
+  // ── The coalescer (task 363) ────────────────────────────────────────────
+  // One pending payload + one timer, at the file's own tier cadence. The three
+  // writers below (cursor / scroll / folds) all schedule through this, so a
+  // scroll-pause burst, a click into a new paragraph and a fold toggle inside
+  // one window collapse to ONE disk write. `flushPending` is the settle door:
+  // it is the doc-switch/unmount cleanup AND the tab-hidden edge, so the value
+  // is never delayed past the moment it stops being live.
+  const pendingRef = useRef<EditorStateData | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const flushPending = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const payload = pendingRef.current;
+    pendingRef.current = null;
+    if (payload !== null) void persistNow(payload);
+  }, [persistNow]);
+
+  const persist = useCallback(
+    (s: EditorStateData) => {
+      pendingRef.current = s;
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        const payload = pendingRef.current;
+        pendingRef.current = null;
+        if (payload !== null) void persistNow(payload);
+      }, sidecarWriteDebounceMs(EDITOR_STATE_FILE));
+    },
+    [persistNow],
+  );
+
+  // Settle on doc switch / unmount — the new doc's handle is different, so a
+  // write that fired afterwards would be dropped by the stale-pipeline guard.
+  useEffect(() => () => flushPending(), [docId, flushPending]);
+  // …and on the tab going hidden, the last edge at which an async FSA write
+  // still reliably completes.
+  useEffect(() => onTabHidden(flushPending), [flushPending]);
 
   const writeCursor = useCallback(
     (uuid: string | null) => {
@@ -177,7 +248,7 @@ export function useEditorUIState(
         lastModified: new Date().toISOString(),
       };
       setState(next);
-      void persist(next);
+      persist(next);
     },
     [persist],
   );
@@ -194,7 +265,7 @@ export function useEditorUIState(
         lastModified: new Date().toISOString(),
       };
       setState(next);
-      void persist(next);
+      persist(next);
     },
     [persist],
   );
@@ -215,7 +286,7 @@ export function useEditorUIState(
         lastModified: new Date().toISOString(),
       };
       setState(next);
-      void persist(next);
+      persist(next);
     },
     [persist],
   );
@@ -245,7 +316,7 @@ export function useEditorUIState(
       cursorTimer = setTimeout(() => {
         if (editor.isDestroyed) return;
         writeCursor(paragraphUuidAtSelection(editor));
-      }, CURSOR_DEBOUNCE_MS);
+      }, SETTLE_MS);
     };
 
     const onTransaction = (props: { transaction: Transaction }) => {

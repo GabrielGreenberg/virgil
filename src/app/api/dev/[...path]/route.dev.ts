@@ -105,6 +105,31 @@ export async function GET(
     return NextResponse.json({ files });
   }
 
+  // /api/dev/doc/:id/_sidecar-names → the FILE names directly inside virgil/.
+  // The dev twin of the FSA `listSidecarNames`; input to the sync-conflict scan
+  // (task 363), so the detection half is previewable rather than FSA-masked.
+  if (
+    segments[0] === "doc" &&
+    segments.length === 3 &&
+    segments[2] === "_sidecar-names"
+  ) {
+    const folder = resolveDocFolder(segments[1]!);
+    if (!folder) return NextResponse.json({ names: [] });
+    const dirAbs = path.join(DATA_DIR, folder, "virgil");
+    if (!dirAbs.startsWith(DATA_DIR)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    try {
+      const names = fs
+        .readdirSync(dirAbs, { withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => d.name);
+      return NextResponse.json({ names });
+    } catch {
+      return NextResponse.json({ names: [] });
+    }
+  }
+
   // /api/dev/doc/:id/... → resolve to virgil-data/<folder>/...
   if (segments[0] === "doc" && segments.length >= 3) {
     const docId = segments[1];

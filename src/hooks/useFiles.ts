@@ -25,6 +25,7 @@ import {
   type ActivePaneKind,
   type FsaDocMeta,
 } from "@/lib/doc-index";
+import { scanSyncConflicts } from "@/lib/sync-conflict-scan";
 import { syncSkillBundle } from "@library/lib/skill-sync";
 import { resolveLibraryRootPath } from "@library/lib/library-folder";
 import {
@@ -644,6 +645,12 @@ export function useFiles() {
         syncedDocIdsRef.current.add(meta.id);
         void runSkillSync(meta.id);
       }
+      // Fire-and-forget: notice what a cloud-sync daemon did to this paper's
+      // `virgil/` folder (task 363). Deliberately NOT behind the skill-sync
+      // dedup — a fork can be minted at any time, so every activation re-scans,
+      // and a report with nothing to say clears any standing notice. One
+      // directory enumeration; never throws (see scanSyncConflicts).
+      void scanSyncConflicts(meta.id);
     },
     [appendToOuterOrder, bumpAccessed, claimWithHandoff, runSkillSync],
   );
