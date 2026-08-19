@@ -426,6 +426,15 @@ Four rules it earned:
   resolves its card by `(entityKind, entityId)` — never by Y — so click, delete
   and re-anchor behave exactly as in-grid. The suite asserts the identity
   round-trip rather than assuming it.
+- **Document order is a TOTAL order, or the pack reshuffles for reasons the
+  reader cannot see.** `top` then `domTop` then the anchor UUID. The last rung
+  looks decorative and is not: a full geometric tie is a real shape (a
+  `bulletList` and its first `listItem` are both uuid-bearing and can measure to
+  the same top AND domTop), and without it the walk falls through to
+  `Array#sort`'s stability — i.e. to whichever PANEL emitted its markers first,
+  so an unrelated panel's list changing would visibly reorder the pack. The uuid
+  is arbitrary between two tied nodes and INTRINSIC, which is the property that
+  matters.
 
 CI: [marginalia-cross-node-collision.test.ts](src/lib/__tests__/marginalia-cross-node-collision.test.ts).
 Its shape is the point: **every marginalia fixture in the repo drives ONE node**
@@ -435,7 +444,21 @@ and the invariants are swept over the placed cells (zero pairwise overlap,
 bounded drift, conservation — every input marker comes back exactly once,
 placed or hidden) rather than pinned to hand-computed pixels. Measured by
 neutering each half in turn: per-node independence takes 4 legs, the intra-node
-half 1, the fold 3, and a widened gap 2 (one of them in the old suite).
+half 1, the fold 3, a rigid row offset 4, the crowd-RESTART disjunct 1, each
+tie-break rung 1, and a widened gap 2 (one of them in the old suite).
+
+Two of those legs exist because the adversarial pass on this fix found their
+branches **unreachable from every fixture** — the shape this file keeps
+re-learning, one level down from a call site that never asks: a live branch with
+no leg is deletable in silence. Both needed a fixture no natural crowd produces.
+The crowd-restart rung only fires when a TALL grid at a tight pitch shoves the
+frontier far below its own block and short blocks underneath then fold while
+sliding past the open pill's anchor — a uniform run of short blocks keeps the
+frontier only ~50px ahead and never reaches it. And the tie-break rungs need two
+nodes at one `top`, which no fixture in the repo had, because `AnchorNodeMetrics`
+fixtures are written one node at a time. The leg that pins the restart is a
+PROPERTY (`no pill collects markers whose anchors span more than the bound`), not
+the branch's shape, so it survives a rewrite of how the crowd is tracked.
 
 ### The stability half: a card moves only when it must, and then it SLIDES
 

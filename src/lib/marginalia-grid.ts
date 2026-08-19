@@ -231,12 +231,24 @@ export function computeMarkerPositions(
     if (list.length === 0) continue;
     const effectiveCols = laneCols[side];
 
-    // Document order. `top` is the grid's own vertical anchor, so ordering by
-    // it orders the stack exactly as the reader sees it; `domTop` breaks a tie
-    // between an atom and a prose block that resolve to the same anchor, and
-    // Array#sort is stable, so a remaining tie keeps marker-builder order.
-    // Deterministic regardless of which panel emitted its markers first.
-    list.sort((a, b) => a.node.top - b.node.top || a.node.domTop - b.node.domTop);
+    // Document order, as a TOTAL order. `top` is the grid's own vertical
+    // anchor, so ordering by it orders the stack exactly as the reader sees it;
+    // `domTop` breaks a tie between an atom and a prose block that resolve to
+    // the same anchor. A FULL tie is a real shape — a `bulletList` and its first
+    // `listItem` are both uuid-bearing and can measure to the same top AND
+    // domTop — and there the metrics simply carry no document order to read, so
+    // the last rung is the anchor uuid: arbitrary between those two, but
+    // INTRINSIC, hence stable. Falling through to Array#sort's stability
+    // instead would order them by whichever panel emitted its markers first,
+    // and the pack would visibly reshuffle when an unrelated panel's list
+    // changed. `textObjectId` is unique within a side (pass 1 keys the group
+    // map on it), so this rung always decides.
+    list.sort(
+      (a, b) =>
+        a.node.top - b.node.top ||
+        a.node.domTop - b.node.domTop ||
+        (a.textObjectId < b.textObjectId ? -1 : a.textObjectId > b.textObjectId ? 1 : 0),
+    );
 
     // Bottom edge of the last row placed on this side.
     let frontier = -Infinity;
@@ -261,9 +273,9 @@ export function computeMarkerPositions(
       const push = frontier + MARGINALIA_ROW_MIN_GAP - anchoredTop;
 
       if (push > MARGINALIA_MAX_MARKER_DRIFT) {
-        // No cell of this grid fits within the drift bound, so pushing would
-        // put a marker beside text it has nothing to do with. Fold the whole
-        // node into a "+K" pill instead (the affordance that already exists for
+        // Row 0 of this grid cannot be placed within the drift bound, so
+        // pushing would start this node's markers beside text they have
+        // nothing to do with. Fold the whole node into a "+K" pill instead (the affordance that already exists for
         // an over-full grid): the pill's popover lists these markers as ordinary
         // marker buttons, which resolve their card by id and never by Y, so
         // click / delete / re-anchor behave exactly as in-grid.

@@ -39,11 +39,12 @@ function block(
   top: number,
   lh: number,
   lines = 1,
+  domTop = top,
 ): AnchorNodeMetrics {
   return {
     id,
     top,
-    domTop: top,
+    domTop,
     height: lines * lh,
     lineHeight: lh,
     lineCount: lines,
@@ -148,6 +149,9 @@ describe("cross-node collision — the crowded document top", () => {
     expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
   });
 
+  // A BOUNDS PIN, not a defect leg, and it says so: the pre-366 grid places
+  // these three at their anchors, so drift 0 satisfies it too. Its teeth are in
+  // the fold section below, where the same bound is asserted with reachability.
   it("…and each pushed marker stays within the stated drift bound of its own line", () => {
     const markers = [
       marker("m-title", "title"),
@@ -264,6 +268,11 @@ describe("the walk is uniform over intra- and inter-node rows", () => {
       {},
       { left: 1, right: 1 },
     );
+    // The premise: p1's FIRST row really was pushed (its anchored y is 9, the
+    // frontier puts it at 22). Without this the leg would pass on an
+    // implementation that never pushes at all.
+    const b = positioned.find((p) => p.entityId === "b")!;
+    expect(b.cell.y).toBeGreaterThan(10 + (40 - MARGINALIA_ICON_SIZE) / 2);
     const c = positioned.find((p) => p.entityId === "c")!;
     expect(c.cell.y).toBe(10 + 40 + (40 - MARGINALIA_ICON_SIZE) / 2);
   });
@@ -356,10 +365,12 @@ describe("past the drift bound the crowd folds into ONE '+K' pill", () => {
     }
   });
 
-  it("every pill has a distinct (side, textObjectId) — the renderer's React key", () => {
+  it("an R16 pill and a folded-crowd pill coexist on one side, with distinct React keys", () => {
     const { nodes, markers } = crowdOf(30);
-    // Give the first block an over-full grid of its own so an R16 pill and a
-    // folded-crowd pill coexist on one side.
+    // Give the FIRST block an over-full grid of its own (3 markers into a
+    // 1-cell grid) so the side carries both pill producers at once. b0 is
+    // first, where the frontier is -Infinity, so it can never fold — its pill
+    // is an R16 pill by construction.
     markers.unshift(marker("extra1", "b0"), marker("extra2", "b0"));
     const { overflowGroups } = computeMarkerPositions(
       lookup(nodes),
@@ -367,8 +378,60 @@ describe("past the drift bound the crowd folds into ONE '+K' pill", () => {
       {},
       { left: 1, right: 1 },
     );
+
+    // Both producers really are present — the point of the fixture, and the
+    // half the key assertion alone cannot see (key uniqueness is structural:
+    // pass 1 keys groups by (textObjectId, side) and a folded group emits no
+    // R16 pill, so it holds on every implementation, pre-366 included).
+    // capacity 1 → visibleCount 0: the single cell IS the pill, all three hide.
+    const r16 = overflowGroups.find((g) => g.textObjectId === "b0");
+    expect(r16?.hidden.map((m) => m.entityId)).toEqual([
+      "extra1",
+      "extra2",
+      "mb0",
+    ]);
+    expect(overflowGroups.length).toBeGreaterThan(1);
+
     const keys = overflowGroups.map((g) => `${g.side}:${g.textObjectId}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("a pill never collects markers whose anchors span more than the drift bound", () => {
+    // The crowd-RESTART rule: an open pill stops accepting nodes once the crowd
+    // has run further than the bound from the anchor the pill was minted for,
+    // so a pill can never stand in for markers scattered down the page.
+    //
+    // Reaching it needs a TALL grid at a tight pitch to shove the frontier far
+    // below its own block, then short blocks underneath that fold while sliding
+    // past the open pill's anchor — which `crowdOf` (one line per node) cannot
+    // produce, since there the frontier only ever runs ~50px ahead.
+    const nodes = [
+      block("a-tall", 0, 10, 6),
+      ...Array.from({ length: 7 }, (_, i) => block(`b${i}`, 60 + i * 10, 10)),
+    ];
+    const markers = [
+      ...Array.from({ length: 6 }, (_, i) => marker(`t${i}`, "a-tall")),
+      ...Array.from({ length: 7 }, (_, i) => marker(`m${i}`, `b${i}`)),
+    ];
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      lookup(nodes),
+      markers,
+      {},
+      { left: 1, right: 1 },
+    );
+
+    expect(overflowGroups.length).toBeGreaterThan(1); // the restart fired
+    expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
+
+    const anchorOf = new Map(
+      nodes.map((n) => [n.id, n.top + (n.lineHeight - MARGINALIA_ICON_SIZE) / 2]),
+    );
+    for (const g of overflowGroups) {
+      const tops = g.hidden.map((m) => anchorOf.get(m.textObjectId)!);
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(
+        MARGINALIA_MAX_MARKER_DRIFT,
+      );
+    }
   });
 });
 
@@ -446,5 +509,37 @@ describe("determinism", () => {
 
     expect(occupied(reversed)).toEqual(occupied(forward));
     expect(bands(reversed)).toEqual(bands(forward));
+  });
+
+  it("two nodes at the SAME top pack by domTop, whichever panel emitted first", () => {
+    // A real shape: an atom and the prose block that resolve to one anchor.
+    // The ids are chosen so uuid order (the last rung) DISAGREES with domTop
+    // order, or the leg would pass with the domTop rung deleted.
+    const nodes = [block("z-upper", 0, 18, 1, 0), block("a-lower", 0, 18, 1, 4)];
+    const ms = [marker("mz", "z-upper"), marker("ma", "a-lower")];
+    const y = (markers: MarginaliaMarker[], id: string) =>
+      computeMarkerPositions(lookup(nodes), markers, {}, { left: 1, right: 1 })
+        .positioned.find((p) => p.entityId === id)!.cell.y;
+
+    expect(y(ms, "mz")).toBeLessThan(y(ms, "ma"));
+    expect(y([...ms].reverse(), "mz")).toBeLessThan(y([...ms].reverse(), "ma"));
+  });
+
+  it("a FULL geometric tie is still emission-independent (the order is arbitrary, the pack is not)", () => {
+    // A `bulletList` and its first `listItem` are both uuid-bearing and can
+    // measure to the same top AND domTop. There is no document order left in
+    // the metrics, so the walk falls to the anchor uuid — arbitrary between the
+    // two, but INTRINSIC. Falling through to Array#sort's stability instead
+    // would order them by whichever panel emitted first, and the pack would
+    // reshuffle when an unrelated panel's marker list changed.
+    const nodes = [block("list", 0, 18), block("item", 0, 18)];
+    const ms = [marker("mlist", "list"), marker("mitem", "item")];
+    const bandsOf = (markers: MarginaliaMarker[]) =>
+      Object.fromEntries(
+        computeMarkerPositions(lookup(nodes), markers, {}, { left: 1, right: 1 })
+          .positioned.map((p) => [p.textObjectId, p.cell.y]),
+      );
+
+    expect(bandsOf([...ms].reverse())).toEqual(bandsOf(ms));
   });
 });
