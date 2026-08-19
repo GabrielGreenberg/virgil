@@ -861,14 +861,283 @@ export function typographyToLatex(text: string): string {
 export function smartenStraightQuotes(text: string): string {
   return (
     text
-      .replace(/“/g, "``")
-      .replace(/”/g, "''")
+      // The two curly glyphs, from `QUOTE_PAIR_TABLE` — the same table the
+      // parse rung reads, so the serialize half can no longer drift from it.
+      .replace(QUOTE_GLYPH_RE, (g) => TEX_BY_QUOTE_GLYPH.get(g)!)
       // Straight `"` → smart LaTeX pair. Opening if at start or after
       // whitespace / opening punctuation (incl. `/`) / a dash glyph;
       // otherwise closing.
       .replace(/(^|[\s([{/—–])"/g, "$1``")
       .replace(/"/g, "''")
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LaTeX quote pairs ↔ curly quotes
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The THIRD vocabulary the two inline parsers each hand-wrote (task 341's twin
+// rule): the same two-character test in both, byte for byte, with the serialize
+// half spelled a fourth time inside `smartenStraightQuotes`. All four read this
+// table now.
+
+interface QuotePairEntry {
+  /** The LaTeX spelling — a doubled ASCII quote character. */
+  tex: string;
+  /** The curly glyph it means. */
+  glyph: string;
+}
+
+const QUOTE_PAIR_TABLE: readonly QuotePairEntry[] = [
+  { tex: "``", glyph: "“" },
+  { tex: "''", glyph: "”" },
+];
+
+/** The first character of every quote-pair spelling — the positions a scanner
+ *  must OFFER to {@link matchQuotePairAt}. Derived, for the same reason
+ *  {@link CHAR_ESCAPE_LEADS} is. */
+export const QUOTE_PAIR_LEADS: ReadonlySet<string> = new Set(
+  QUOTE_PAIR_TABLE.map((e) => e.tex[0]),
+);
+
+/** glyph → LaTeX spelling (the serialize direction of the same table). */
+const TEX_BY_QUOTE_GLYPH = new Map<string, string>(
+  QUOTE_PAIR_TABLE.map((e) => [e.glyph, e.tex]),
+);
+
+const QUOTE_GLYPH_RE = new RegExp(
+  QUOTE_PAIR_TABLE.map((e) => e.glyph).join("|"),
+  "g",
+);
+
+/**
+ * Match a LaTeX double-quote pair at `src[start]`, returning the curly glyph.
+ *
+ * A LONE backtick or apostrophe deliberately answers null and passes through:
+ * single-quote LaTeX semantics and apostrophes in contractions are out of
+ * scope, exactly as they were when each parser spelled this itself.
+ */
+export function matchQuotePairAt(
+  src: string,
+  start: number,
+): { glyph: string; end: number } | null {
+  for (const e of QUOTE_PAIR_TABLE) {
+    if (src.startsWith(e.tex, start)) {
+      return { glyph: e.glyph, end: start + e.tex.length };
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Text macros: backslash-led commands whose whole output is literal TEXT
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Both inline parsers hand-wrote `/^\\(ldots|dots|LaTeX|TeX)\b/` — the twin
+// fork task 341 names, one construct over — and the ellipsis half of it was a
+// SECOND spelling of `LITERAL_TABLE`'s own `latexForms`. So the table is the
+// SSOT and the two spellings that are already declared there are DERIVED from
+// it; only the two macros that carry no glyph (`\LaTeX`, `\TeX`) are stated
+// here, once.
+//
+// A macro belongs in this table only if its output is literal text with no
+// argument to read. Anything that takes an argument (`\emph{…}`) is a MARK on
+// the surfaces that model marks and is passed through verbatim on the ones
+// that do not — see {@link latexToDisplayText}.
+
+interface TextMacroEntry {
+  /** Command names WITHOUT the leading backslash. */
+  names: readonly string[];
+  /** The literal text the macro stands for. */
+  text: string;
+}
+
+const TEXT_MACRO_TABLE: readonly TextMacroEntry[] = [
+  // Derived: every LITERAL_TABLE spelling that is a COMMAND rather than a
+  // character run (today the ellipsis pair `\ldots` / `\dots`). A new
+  // command-shaped literal joins by declaration alone.
+  ...LITERAL_TABLE.filter((e) => e.latexForms.some((f) => f.startsWith("\\"))).map(
+    (e): TextMacroEntry => ({
+      names: e.latexForms.filter((f) => f.startsWith("\\")).map((f) => f.slice(1)),
+      text: e.glyph,
+    }),
+  ),
+  { names: ["LaTeX"], text: "LaTeX" },
+  { names: ["TeX"], text: "TeX" },
+];
+
+/**
+ * Match a text macro at `src[start]` (which must be `\`).
+ *
+ * The command name is read as LaTeX reads one — a greedy letter run — and then
+ * compared for EQUALITY, so `\dotsc` and `\TeXt` are not this door's business
+ * (byte-identical to the `\b`-terminated alternation this replaced). No
+ * argument and no `{}` token-break is consumed, exactly as before.
+ */
+export function matchTextMacroAt(
+  src: string,
+  start: number,
+): { text: string; end: number } | null {
+  if (src[start] !== "\\") return null;
+  const m = /^[a-zA-Z]+/.exec(src.slice(start + 1));
+  if (!m) return null;
+  const name = m[0];
+  for (const e of TEXT_MACRO_TABLE) {
+    if (e.names.includes(name)) return { text: e.text, end: start + 1 + name.length };
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The DISPLAY projection (task 368)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Every character that can BEGIN something {@link latexToDisplayText} rewrites:
+ * the backslash family, the non-backslash escape spellings, the quote pairs,
+ * and the character-run literals. Derived from all four tables, so a new member
+ * joins by declaration.
+ *
+ * The LITERAL rung is the one that proves the set has to be derived rather than
+ * written out: `15--20` holds no backslash, no brace, no quote — a hand-written
+ * class assembled from the "interesting" leads bailed on it and the en dash was
+ * never folded, with every other leg of the suite green (measured).
+ */
+const DISPLAY_PROJECTION_LEADS: ReadonlySet<string> = new Set([
+  "\\",
+  ...CHAR_ESCAPE_LEADS,
+  ...QUOTE_PAIR_LEADS,
+  ...LITERAL_TABLE.flatMap((e) =>
+    e.latexForms.filter((f) => !f.startsWith("\\")).map((f) => f[0]),
+  ),
+]);
+
+/**
+ * Project a raw LaTeX FRAGMENT to the text a reader should see.
+ *
+ * ── why this exists ──
+ * A `.tex` document reaches the screen through one of the two inline PARSERS,
+ * which turn every construct they model into a node or a mark. A great deal of
+ * LaTeX never takes that road: a citation's `[prenote][postnote]` lives on the
+ * atom as raw command BYTES, and a `.bib` entry's `author` / `title` / `year`
+ * are raw field bytes read straight out of the file. Both are then rendered as
+ * DISPLAY TEXT — in the inline citation chip, in the Citations panel rows, in
+ * the bibliography rows — with no projection at all, so
+ * `\citep[ex.\textasciitilde{}38]{k}` showed the four literal words
+ * "textasciitilde" to the reader (Gabriel's screenshot, 2026-08-18) and
+ * `L{\'o}pez` showed a backslash and an apostrophe where an ó belongs.
+ *
+ * ── the rule ──
+ * > A raw-LaTeX fragment shown as DISPLAY TEXT is projected through THIS door,
+ * > derived from the same tables the parse rungs read, and it is TOTAL by
+ * > PASSING BYTES THROUGH rather than by guessing: a construct the tables do
+ * > not know arrives at the reader exactly as it sits in the file.
+ *
+ * The branch order mirrors `parseInlineContent`'s exactly — quote pairs, the
+ * non-backslash escape leads, then at a `\`: text macro, char escape, accent,
+ * special letter — so a fragment that COULD have been body text is projected to
+ * the same characters body text would have shown. That agreement is the whole
+ * point: two surfaces rendering one vocabulary two ways is the class this fixes.
+ *
+ * ── what it deliberately does NOT do ──
+ * It models no MARKS, because it has no marks to model: `\emph{x}` renders in
+ * the body as an italic run and here as the six characters `\emph{` … `}`.
+ * Dropping the wrapper and keeping the argument would need a
+ * formatting-command vocabulary that does not exist in this codebase as an
+ * SSOT, and hand-listing one here is the drift every census in this file
+ * exists to prevent. Recorded as a residual rather than guessed at.
+ *
+ * ── DISPLAY ONLY ──
+ * Nothing this returns may be written back. The stored command bytes and the
+ * `.bib` field bytes are the round trip's own record; a projection persisted
+ * over them is a one-directional rewrite of the user's source.
+ */
+export function latexToDisplayText(fragment: string): string {
+  if (!fragment) return fragment;
+  // Cheap bail: a fragment holding none of the lead characters has nothing this
+  // door can change, and it runs on every chip render. The set is DERIVED from
+  // the three tables rather than written as a character class — a hand-written
+  // one is a fourth copy of the vocabulary, and (measured) a regex literal
+  // holding a backtick is invisible to the shared census stripper, which models
+  // every construct but that one.
+  let reachable = false;
+  for (const ch of fragment) {
+    if (DISPLAY_PROJECTION_LEADS.has(ch)) {
+      reachable = true;
+      break;
+    }
+  }
+  if (!reachable) return fragment;
+
+  let buffer = "";
+  let i = 0;
+  while (i < fragment.length) {
+    // LaTeX double-quote pairs → curly quotes, from the shared table.
+    if (QUOTE_PAIR_LEADS.has(fragment[i])) {
+      const quote = matchQuotePairAt(fragment, i);
+      if (quote) {
+        buffer += quote.glyph;
+        i = quote.end;
+        continue;
+      }
+    }
+
+    // Non-backslash members of `CHAR_ESCAPE_TABLE` — the `{[}` / `{]}` prose
+    // protections and the `~` TIE. The POSITIONS are derived
+    // (`CHAR_ESCAPE_LEADS`), so a new member is reachable by declaration.
+    if (CHAR_ESCAPE_LEADS.has(fragment[i])) {
+      const glyph = matchCharEscapeAt(fragment, i);
+      if (glyph) {
+        buffer += glyph.char;
+        i = glyph.end;
+        continue;
+      }
+    }
+
+    if (fragment[i] === "\\") {
+      const macro = matchTextMacroAt(fragment, i);
+      if (macro) {
+        buffer += macro.text;
+        i = macro.end;
+        continue;
+      }
+      const esc = matchCharEscapeAt(fragment, i);
+      if (esc) {
+        buffer += esc.char;
+        i = esc.end;
+        continue;
+      }
+      const accent = matchAccent(fragment, i);
+      if (accent) {
+        buffer += accent.glyph;
+        i = accent.end;
+        continue;
+      }
+      const special = matchSpecialLetter(fragment, i);
+      if (special) {
+        buffer += special.glyph;
+        i = special.end;
+        continue;
+      }
+      // An unknown construct. Pass the backslash through as the byte it is and
+      // resume scanning at the next character — the command's NAME and its
+      // arguments are ordinary characters to this door, so they arrive at the
+      // reader verbatim. Advancing by one (rather than consuming the token) is
+      // what keeps a construct nested INSIDE an unknown command's argument
+      // reachable: `\emph{caf\'e}` still shows an é.
+      buffer += "\\";
+      i += 1;
+      continue;
+    }
+
+    buffer += fragment[i];
+    i += 1;
+  }
+
+  // The literal-sequence rung, at the same point the parsers run it: once, over
+  // the assembled prose. No escape spelling produces a hyphen, so there is
+  // nothing for it to re-enter.
+  return dashesToGlyphs(buffer);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

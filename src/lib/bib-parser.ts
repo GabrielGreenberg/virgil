@@ -8,6 +8,7 @@
 import type { BibEntry } from "./types";
 import { MULTI_CITE_NAMES } from "./cite-commands";
 import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
+import { latexToDisplayText } from "./latex-typography";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;
@@ -638,17 +639,21 @@ export function formatAuthorsTruncated(authorStr: string, maxNames = 3): string 
   if (!authorStr) return "";
   const authors = authorStr.split(" and ").map((a) => a.trim()).filter(Boolean);
   if (authors.length === 0) return "";
-  if (authors.length === 1) return lastNameOf(authors[0]);
+  if (authors.length === 1) return latexToDisplayText(lastNameOf(authors[0]));
   if (authors.length === 2)
-    return lastNameOf(authors[0]) + " and " + lastNameOf(authors[1]);
+    return latexToDisplayText(
+      lastNameOf(authors[0]) + " and " + lastNameOf(authors[1]),
+    );
   if (authors.length <= maxNames) {
-    return (
+    return latexToDisplayText(
       authors.slice(0, -1).map(lastNameOf).join(", ") +
-      ", and " +
-      lastNameOf(authors[authors.length - 1])
+        ", and " +
+        lastNameOf(authors[authors.length - 1]),
     );
   }
-  return authors.slice(0, maxNames).map(lastNameOf).join(", ") + ", …";
+  return latexToDisplayText(
+    authors.slice(0, maxNames).map(lastNameOf).join(", ") + ", …",
+  );
 }
 
 /** Always returns "Author (Year)" format for a single bib key, regardless of citation command. */
@@ -657,7 +662,7 @@ export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): stri
   if (!entry) return key;
   const author = formatAuthorLastNames(entry, false, false);
   const year = getEntryYear(entry);
-  return `${author} (${year})`;
+  return latexToDisplayText(`${author} (${year})`);
 }
 
 /** Returns author / year / title parts for a single bib key. Missing fields come back as empty strings. */
@@ -668,9 +673,9 @@ export function formatMediumCitationParts(
   const entry = bibEntries.find((e) => e.key === key);
   if (!entry) return { author: key, year: "", title: "" };
   return {
-    author: formatAuthorLastNames(entry, false, false),
-    year: getEntryYear(entry),
-    title: entry.fields.title || "",
+    author: latexToDisplayText(formatAuthorLastNames(entry, false, false)),
+    year: latexToDisplayText(getEntryYear(entry)),
+    title: latexToDisplayText(entry.fields.title || ""),
   };
 }
 
@@ -751,7 +756,40 @@ function renderFullEntry(
   }
 }
 
+/**
+ * The rendered text of an inline citation — what the chip, the panel rows, the
+ * card meta and every float body show.
+ *
+ * The task-368 display projection is applied HERE, over the finished string,
+ * rather than at the ten places raw bytes are interpolated into it. Two of
+ * those ten are the `[prenote][postnote]` annotations Gabriel reported
+ * (`\citep[ex.\textasciitilde{}38, p.\textasciitilde{}22]{k}` displayed the
+ * four literal words "textasciitilde"); the other eight are `.bib` FIELD text
+ * — `author`, `year`, `title`, and citation-js's whole `\fullcite` rendering —
+ * which reach every one of those surfaces just as raw. Projecting the output
+ * once covers every command branch, including the ones a future dispatch case
+ * adds, and there is no per-branch decision for anyone to forget.
+ *
+ * DISPLAY ONLY. The stored `command` attr and the `.bib` bytes are untouched;
+ * see {@link latexToDisplayText}.
+ */
 export function formatInlineCitation(
+  command: string,
+  bibEntries: BibEntry[],
+  bibPackage: string = "natbib",
+  entryMap?: Map<string, BibEntry>,
+): string {
+  return latexToDisplayText(
+    formatInlineCitationRaw(command, bibEntries, bibPackage, entryMap),
+  );
+}
+
+/**
+ * The dispatch itself. Module-PRIVATE, and that is load-bearing rather than
+ * tidy: an exported raw formatter is a second display door, and the one a
+ * caller reaches for is the one that skips the projection.
+ */
+function formatInlineCitationRaw(
   command: string,
   bibEntries: BibEntry[],
   bibPackage: string = "natbib",

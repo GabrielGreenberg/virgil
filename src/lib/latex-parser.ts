@@ -31,6 +31,9 @@ import {
   dashesToGlyphs,
   matchCharEscapeAt,
   CHAR_ESCAPE_LEADS,
+  matchTextMacroAt,
+  matchQuotePairAt,
+  QUOTE_PAIR_LEADS,
 } from "@/lib/latex-typography";
 import {
   extractBraced,
@@ -351,18 +354,19 @@ export function parseInlineContent(
   };
 
   while (i < text.length) {
-    // LaTeX double-quote pairs → smart quotes in the display.
-    // Lone ` and ' pass through (single-quote LaTeX semantics +
-    // apostrophes in contractions are out of scope).
-    if (text[i] === "`" && text[i + 1] === "`") {
-      buffer += "“";
-      i += 2;
-      continue;
-    }
-    if (text[i] === "'" && text[i + 1] === "'") {
-      buffer += "”";
-      i += 2;
-      continue;
+    // LaTeX double-quote pairs → curly quotes in the display. The spellings
+    // AND the positions come from `QUOTE_PAIR_TABLE` (task 368) — this test was
+    // hand-written here and in the other inline parser, byte for byte, and a
+    // third copy was about to be written for the display projection. A lone
+    // backtick or apostrophe still passes through: single-quote LaTeX semantics
+    // and apostrophes in contractions are out of scope.
+    if (QUOTE_PAIR_LEADS.has(text[i])) {
+      const quotePair = matchQuotePairAt(text, i);
+      if (quotePair) {
+        buffer += quotePair.glyph;
+        i = quotePair.end;
+        continue;
+      }
     }
 
     // Non-backslash members of `CHAR_ESCAPE_TABLE`: the `{[}` / `{]}` prose
@@ -780,13 +784,15 @@ export function parseInlineContent(
       }
 
       // Common text commands
-      const textCmdMatch = rest.match(/^\\(ldots|dots|LaTeX|TeX)\b/);
-      if (textCmdMatch) {
-        const cmd = textCmdMatch[1];
-        if (cmd === "ldots" || cmd === "dots") buffer += "\u2026";
-        else if (cmd === "LaTeX") buffer += "LaTeX";
-        else if (cmd === "TeX") buffer += "TeX";
-        i += textCmdMatch[0].length;
+      // The vocabulary is `TEXT_MACRO_TABLE`'s, not a local alternation: this
+      // was hand-written here AND in the card/footnote fork (task 341's twin
+      // rule), and its ellipsis half was a second spelling of `LITERAL_TABLE`'s
+      // own `latexForms` — the same shape task 255 retired for the marker
+      // commands. Byte-identical to the `\b`-terminated alternation it replaces.
+      const textMacro = matchTextMacroAt(text, i);
+      if (textMacro) {
+        buffer += textMacro.text;
+        i = textMacro.end;
         continue;
       }
 
