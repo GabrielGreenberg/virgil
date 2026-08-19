@@ -46,6 +46,21 @@ export interface FigureEnvBodyParts {
   hasCaption: boolean;
   /** Opaque `\caption[<short>]` LoF argument; null when there was no bracket. */
   shortCaption: string | null;
+  /** Is this float NUMBERED? In LaTeX that is exactly `\caption` vs
+   *  `\caption*` (task 376 M4), so this ONE fact decides the star. Required
+   *  rather than defaulted: the two callers that build a FRESH figure and the
+   *  one that serializes an existing node hold genuinely different intents,
+   *  and a default here would silently un-number — or silently number — a
+   *  float whose caller never thought about it.
+   *
+   *  Before 376 the star was DELETED: `\caption*{Overview}` came back
+   *  `\caption{Overview}`, so the figure started consuming a figure number and
+   *  a List-of-Figures row and **every later figure renumbered**, with every
+   *  `\ref` to them printing a different number. One byte, zero word tokens —
+   *  invisible to the write gate. It was also the shape that made the
+   *  `numbered` attr a lie: the toggle existed, moved Virgil's own chrome, and
+   *  reached the `.tex` nowhere, so it did not survive a save. */
+  numbered: boolean;
   /** The figure's `\label` body; "" when it has none. */
   label: string;
 }
@@ -165,8 +180,9 @@ export function buildFigureEnvBody(parts: FigureEnvBodyParts): string {
     // bracket-free caption stays byte-identical.
     const shortArg =
       typeof parts.shortCaption === "string" ? `[${parts.shortCaption}]` : "";
+    const star = parts.numbered ? "" : "*";
     out.push("\n  ");
-    out.push(`\\caption${shortArg}{${parts.captionTex}}`);
+    out.push(`\\caption${star}${shortArg}{${parts.captionTex}}`);
   }
   if (figureEmitsLabel(parts)) {
     out.push("\n  ");

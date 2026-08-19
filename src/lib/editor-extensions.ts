@@ -721,6 +721,11 @@ export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
         parTitle: { default: null },
         uuid: UUID_ATTR_SPEC.uuid,
         listPreamble: { default: null, rendered: false },
+        // Raw `\begin{itemize}[options]` bracket (task 376) — opaque LaTeX,
+        // the list-level twin of `listItem.itemLabel`. Source provenance, so
+        // `rendered: false`; `keepOnSplit: false` for the same reason a label
+        // is not carried onto a freshly split sibling.
+        listOptions: { default: null, rendered: false, keepOnSplit: false },
       };
     },
     addNodeView() {
@@ -738,6 +743,11 @@ export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
         parTitle: { default: null },
         uuid: UUID_ATTR_SPEC.uuid,
         listPreamble: { default: null, rendered: false },
+        // Raw `\begin{itemize}[options]` bracket (task 376) — opaque LaTeX,
+        // the list-level twin of `listItem.itemLabel`. Source provenance, so
+        // `rendered: false`; `keepOnSplit: false` for the same reason a label
+        // is not carried onto a freshly split sibling.
+        listOptions: { default: null, rendered: false, keepOnSplit: false },
       };
     },
     addNodeView() {
@@ -853,6 +863,15 @@ export function createHeadingWithLabel(
         uuid: UUID_ATTR_SPEC.uuid,
         numbered: { default: true, rendered: false },
         sectionNumber: { default: null, rendered: false },
+        // Raw `\section[short]{…}` running-head / ToC title (task 376) — opaque
+        // LaTeX, the heading twin of `figureBlock.shortCaption` and
+        // `listItem.itemLabel`. `rendered: false` because it is source
+        // provenance, not something the live DOM shows. `keepOnSplit: false`
+        // for `itemLabel`'s reason: pressing Enter at the end of a heading
+        // mints a NEW heading, and carrying the short title across would give
+        // it a running head the user never typed, on a section it does not
+        // name. `null` = the source had no bracket.
+        shortTitle: { default: null, rendered: false, keepOnSplit: false },
       };
     },
     parseHTML() {

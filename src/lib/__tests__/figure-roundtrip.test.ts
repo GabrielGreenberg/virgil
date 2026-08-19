@@ -688,6 +688,7 @@ After.`;
             .join(""),
           hasCaption: fig.attrs?.hasCaption !== false,
           shortCaption: (fig.attrs?.shortCaption as string | null) ?? null,
+          numbered: fig.attrs?.numbered !== false,
           label: (fig.attrs?.label as string) ?? "",
         });
         expect(raw).toContain("\\caption[Short]{Long}");

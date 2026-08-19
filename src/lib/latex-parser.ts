@@ -55,6 +55,8 @@ import {
   matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
+  matchSectioningCommandAt,
+  matchStarOptBraceAt,
   matchControlSymbolAt,
   matchInlineMathAt,
   matchInlineVerbAt,
@@ -192,8 +194,18 @@ interface PreambleTitleFieldOccurrence {
   end: number;
   /** Raw brace content. */
   inner: string;
+  /** Raw `[short]` argument; null when the source had no bracket. */
+  shortTitle: string | null;
   uuid: string | null;
 }
+
+/** The three fields Virgil hoists into `titleField` nodes. The ONE spelling —
+ *  the preamble scan and the body-position branch both read it. */
+const TITLE_FIELD_NAMES: ReadonlySet<string> = new Set([
+  "title",
+  "author",
+  "date",
+]);
 
 /**
  * Find every LIVE `\title` / `\author` / `\date` command in a preamble — ONE
@@ -241,14 +253,17 @@ function findPreambleTitleFields(
       i++;
       continue;
     }
-    const m = text.slice(i).match(/^\\(title|author|date)\{/);
-    if (!m) {
+    const word = matchCommandToken(text, i);
+    if (!word || !TITLE_FIELD_NAMES.has(word.name)) {
       i++;
       continue;
     }
-    const bracedStart = i + m[0].length - 1;
-    const braced = extractBraced(text, bracedStart);
-    if (!braced) {
+    // `[short]` is legal on all three in beamer / revtex / acmart, and the
+    // brace need not abut (task 376 M6). A STARRED spelling is refused to the
+    // raw preamble rather than claimed: none of the three has one, and a fact
+    // the model cannot carry must not be swallowed.
+    const braced = matchStarOptBraceAt(text, word.end);
+    if (!braced || braced.starred) {
       // Unbalanced argument — fail closed: the bytes stay put as raw preamble.
       i++;
       continue;
@@ -262,7 +277,14 @@ function findPreambleTitleFields(
     }
     // Swallow one trailing newline so the hoist doesn't leave a blank row.
     if (text[end] === "\n") end++;
-    out.push({ field: m[1], start: i, end, inner: braced.content, uuid });
+    out.push({
+      field: word.name,
+      start: i,
+      end,
+      inner: braced.required,
+      shortTitle: braced.optional,
+      uuid,
+    });
     i = braced.end;
   }
   return out;
@@ -324,9 +346,16 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
       const now = new Date();
       rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     }
+    const attrs: Record<string, unknown> = {
+      field: occ.field,
+      rawPrefix: rawPrefix || null,
+      isToday,
+      uuid: occ.uuid,
+    };
+    if (occ.shortTitle !== null) attrs.shortTitle = occ.shortTitle;
     nodes.push({
       type: "titleField",
-      attrs: { field: occ.field, rawPrefix: rawPrefix || null, isToday, uuid: occ.uuid },
+      attrs,
       content: parseInlineContent(rawContent),
     });
   }
@@ -724,21 +753,37 @@ export function parseInlineContent(
         }
       }
 
-      // \footnote{...}
-      const fnMatch = rest.match(/^\\footnote\{/);
-      if (fnMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\footnote".length);
-        if (inner !== null) {
-          nodes.push({
-            type: "footnote",
-            attrs: {
-              content: richLatexToJson(inner.content),
-              number: 0,
-              footnoteId: pendingFootnoteId.take(i) || generateShortId(),
-            },
-          });
-          i = inner.end;
+      // \footnote[n]{...} — the optional argument is LaTeX's own "print this
+      // mark instead of the counter". Read through the shared
+      // `[opt]{req}` door (task 376 M5): the hand-written `/^\\footnote\{/`
+      // required the brace to ABUT, so `\footnote[3]{…}` was not a footnote at
+      // all — no node, no `\vfid` marker, no card, no panel row, where the
+      // plain spelling gets the whole apparatus.
+      //
+      // A `\footnote*` is REFUSED to the carrier rather than claimed: there is
+      // no such command in LaTeX, and claiming a spelling whose facts the model
+      // cannot carry is how a star gets silently deleted (task 356's rule,
+      // and M4 one construct over).
+      if (matchCommandToken(text, i)?.name === "footnote") {
+        const args = matchStarOptBraceAt(
+          text,
+          i + "\\footnote".length,
+        );
+        if (args && !args.starred) {
+          flush();
+          const attrs: Record<string, unknown> = {
+            content: richLatexToJson(args.required),
+            number: 0,
+            footnoteId: pendingFootnoteId.take(i) || generateShortId(),
+          };
+          // Raw and opaque, the `exnoOverride` shape. Deliberately NOT fed to
+          // `numberFootnotes`: in LaTeX `\footnote[3]` also does not STEP the
+          // counter, so honouring it in Virgil's own chrome means renegotiating
+          // how every following footnote is numbered — a bigger change than
+          // carrying the byte, and one the bytes do not depend on.
+          if (args.optional !== null) attrs.numberOverride = args.optional;
+          nodes.push({ type: "footnote", attrs });
+          i = args.end;
           continue;
         }
       }
@@ -1563,23 +1608,21 @@ function parseBody(
     const rest = ctx.src.slice(ctx.pos);
 
     // \part{...}, \chapter{...}, \section{...}, \subsection{...}, \subsubsection{...},
-    // \paragraph{...}, \subparagraph{...} — and starred variants.
-    const sectionMatch = rest.match(/^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)\{/);
-    if (sectionMatch) {
-      const HEADING_LEVELS: Record<string, number> = {
-        part: 0,
-        chapter: 1,
-        section: 2,
-        subsection: 3,
-        subsubsection: 4,
-        paragraph: 5,
-        subparagraph: 6,
-      };
-      const level = HEADING_LEVELS[sectionMatch[1]];
-      const numbered = sectionMatch[2] !== "*";
-      ctx.pos += sectionMatch[0].length - 1; // position at {
-      const inner = extractBraced(ctx.src, ctx.pos);
-      if (inner) {
+    // \paragraph{...}, \subparagraph{...} — starred variants, an optional
+    // `[short]` running-head title, and the whitespace-separated spelling.
+    //
+    // The vocabulary AND the argument grammar come from the lexer's sectioning
+    // door (task 376). The regex this replaces required the brace to ABUT the
+    // name, so `\section[Intro]{Introduction}` — legal in every class — was not
+    // a heading at all: it fell through to the raw carrier, where the bytes
+    // survived and the entire heading apparatus (Outline, folding, numbering,
+    // `\label`/`\ref`, `\partitle`, focus band, word counts) was silently dead.
+    {
+      const sec = matchSectioningCommandAt(ctx.src, ctx.pos);
+      if (sec) {
+        const level = sec.level;
+        const numbered = !sec.starred;
+        const inner = { content: sec.title, end: sec.end };
         ctx.pos = inner.end;
         // Check for optional \label{...} immediately after (whitespace allowed)
         const afterHeading = ctx.src.slice(ctx.pos);
@@ -1598,6 +1641,10 @@ function parseBody(
           ctx.pos += uuidMatch[0].length;
         }
         const attrs: Record<string, unknown> = { level, label, numbered };
+        // The `[short]` running-head / ToC title rides OPAQUELY, the same shape
+        // `figureBlock.shortCaption` has (task 263): Virgil has no editor
+        // surface for it, and a fact with no surface is still the user's bytes.
+        if (sec.shortTitle !== null) attrs.shortTitle = sec.shortTitle;
         if (uuid) attrs.uuid = uuid;
         parent.content.push({
           type: "heading",
@@ -1608,14 +1655,25 @@ function parseBody(
       }
     }
 
-    // \title{...}, \author{...}, \date{...} — only first occurrence of each
-    const titleFieldMatch = rest.match(/^\\(title|author|date)\{/);
-    if (titleFieldMatch && !seenTitleFields.has(titleFieldMatch[1])) {
-      const field = titleFieldMatch[1];
+    // \title[Short]{...}, \author{...}, \date{...} — only first occurrence of
+    // each. Same door as the preamble scan (task 376 M6), so a body-position
+    // title cannot be read by a different grammar from a preamble one.
+    {
+      const titleWord = matchCommandToken(ctx.src, ctx.pos);
+      const titleArgs =
+        titleWord && TITLE_FIELD_NAMES.has(titleWord.name)
+          ? matchStarOptBraceAt(ctx.src, titleWord.end)
+          : null;
+      if (
+        titleWord &&
+        titleArgs &&
+        !titleArgs.starred &&
+        !seenTitleFields.has(titleWord.name)
+      ) {
+      const field = titleWord.name;
       seenTitleFields.add(field);
-      ctx.pos += titleFieldMatch[0].length - 1; // position at {
-      const inner = extractBraced(ctx.src, ctx.pos);
-      if (inner) {
+      const inner = { content: titleArgs.required, end: titleArgs.end };
+      {
         ctx.pos = inner.end;
         // Check for trailing %!v:xxxx UUID anchor
         const afterTitle = ctx.src.slice(ctx.pos);
@@ -1640,12 +1698,20 @@ function parseBody(
           const now = new Date();
           rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
         }
+        const tfAttrs: Record<string, unknown> = {
+          field,
+          rawPrefix: rawPrefix || null,
+          isToday,
+          uuid: titleUuid,
+        };
+        if (titleArgs.optional !== null) tfAttrs.shortTitle = titleArgs.optional;
         parent.content.push({
           type: "titleField",
-          attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid: titleUuid },
+          attrs: tfAttrs,
           content: parseInlineContent(rawContent),
         });
         continue;
+      }
       }
     }
 
@@ -1953,8 +2019,16 @@ function parseBody(
       const env = beginAt.name;
       // Where the opener BEGINS — see the fail-closed branch below.
       const envOpenStart = ctx.pos;
-      const optMatch = ctx.src.slice(beginAt.end).match(/^\[[^\]]*\]/);
-      const optArg = optMatch ? optMatch[0] : "";
+      // The `[options]` an environment carries. Read through the lexer's
+      // bracket scanner rather than a `[^\]]*` regex (task 376 M3): that
+      // regex stops at the first `]` whatever encloses it, so a shipped
+      // enumitem idiom like `[label={\roman*)}]` was truncated mid-option —
+      // survivable while a list's options were being DELETED anyway, and not
+      // once the bytes are carried and re-emitted.
+      const optBracket = extractBracketed(ctx.src, beginAt.end);
+      const optArg = optBracket
+        ? ctx.src.slice(beginAt.end, optBracket.end)
+        : "";
       ctx.pos = beginAt.end + optArg.length;
       // Find the matching \end{env} through the lexer SSOT. It owns the
       // `verbatim` FAMILY fork the parser used to hand-write here: those envs
@@ -2069,6 +2143,7 @@ function parseBody(
           const listNode = parseList(
             envContent,
             env === "itemize" ? "bulletList" : "orderedList",
+            optArg,
           );
           if (!listNode) {
             // The body holds no `\item` — not a list Virgil can model. Carry
@@ -2102,7 +2177,12 @@ function parseBody(
               // the emitter must not be left inferring it (task 319).
               hasCaption: figAttrs.hasCaption,
               shortCaption: figAttrs.shortCaption,
-              numbered: true,
+              // `\caption*` IS "unnumbered float" in LaTeX, so it is read into
+              // the attr that already means that rather than a second, parallel
+              // fact (task 376 M4). Before this the star was deleted on the
+              // first save and `numbered` reached the `.tex` nowhere at all, so
+              // the toggle did not survive a reload.
+              numbered: !figAttrs.captionStarred,
               figureNumber: null,
               ...(envUuid ? { uuid: envUuid } : {}),
             },
@@ -2506,7 +2586,11 @@ function splitListItems(content: string): {
  * A body that is EMPTY (or whitespace only) is not a refusal — there is nothing
  * to lose, and the one-empty-item list is the editable node the user wants.
  */
-function parseList(content: string, type: string): JSONContent | null {
+function parseList(
+  content: string,
+  type: string,
+  options = "",
+): JSONContent | null {
   const items: JSONContent[] = [];
   const { items: itemTexts, preamble, hasItems } = splitListItems(content);
   if (!hasItems && content.trim() !== "") return null;
@@ -2556,6 +2640,17 @@ function parseList(content: string, type: string): JSONContent | null {
   const node: JSONContent = { type, content: items };
   if (preamble) {
     node.attrs = { ...node.attrs, listPreamble: preamble };
+  }
+  // The `\begin{enumerate}[label=(\roman*)]` bracket, carried RAW (task 376
+  // M3). Until then this branch was the outlier: `figure` kept its `[htbp]` in
+  // `placement` and the unmodeled-env carrier re-emitted its bracket, while a
+  // list's options were captured into `optArg`, used only on the refusal path,
+  // and DELETED — so an enumitem list reverted from (i)/(ii) to 1./2. in the
+  // PDF at a cost of three word tokens, under the write gate's four-word slack.
+  // Opaque by choice: interpreting enumitem keys is a different project, and
+  // the byte the user wrote is the fact that has to survive.
+  if (options) {
+    node.attrs = { ...node.attrs, listOptions: options };
   }
   return node;
 }

@@ -93,6 +93,11 @@ export const TitleField = Node.create({
       rawPrefix: { default: null },
       isToday: { default: false },
       uuid: UUID_ATTR_SPEC.uuid,
+      // Raw `\title[Short]{Long}` running-head argument (task 376) — opaque
+      // LaTeX, the title twin of `heading.shortTitle` and
+      // `figureBlock.shortCaption`. Source provenance with no editor surface,
+      // so `rendered: false`; null when the source carried no bracket.
+      shortTitle: { default: null, rendered: false },
     };
   },
 

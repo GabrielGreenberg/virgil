@@ -18,6 +18,7 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { headingTypeCommand } from "@/lib/heading-types";
 import { exampleDialectOf } from "@/lib/example-dialect";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
@@ -439,15 +440,20 @@ function serializeTitleField(node: JSONContent): string {
   const rawPrefix = (node.attrs?.rawPrefix as string) || "";
   const uuid = node.attrs?.uuid as string | null;
   const anchor = uuidAnchorSuffix(uuid);
+  // The opaque `\title[Short]{Long}` running-head argument (task 376 M6) —
+  // legal on all three fields in beamer / revtex / acmart, and re-emitted on
+  // whichever side the parser read it from.
+  const shortTitle = node.attrs?.shortTitle;
+  const shortArg = typeof shortTitle === "string" ? `[${shortTitle}]` : "";
   if (node.attrs?.isToday) {
     // Interpolate rawPrefix exactly as the non-today branch below does — the
     // parser strips a sizing/weight prefix (`\small`, `\Large`, …) into
     // rawPrefix even on the \today path (latex-parser.ts), so dropping it here
     // silently rewrites `\date{\small\today}` → `\date{\today}` on round-trip.
-    return `\\${field}{${rawPrefix}\\today}${anchor}\n`;
+    return `\\${field}${shortArg}{${rawPrefix}\\today}${anchor}\n`;
   }
   const inner = serializeInlineSequence(node.content || []);
-  return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
+  return `\\${field}${shortArg}{${rawPrefix}${inner}}${anchor}\n`;
 }
 
 export function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
@@ -524,14 +530,19 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const numbered = node.attrs?.numbered;
       const inner = serializeInlineSequence(node.content || []);
-      // Indexed by level 0..6 directly.
-      const commands = ["\\part", "\\chapter", "\\section", "\\subsection", "\\subsubsection", "\\paragraph", "\\subparagraph"];
-      const clampedLevel = Math.max(0, Math.min(level, 6));
-      const cmd = commands[clampedLevel];
+      // The level → command lookup is `HEADING_TYPES`' own (task 376). It used
+      // to be a level-indexed array HERE while `headingTypeCommand` sat with
+      // zero callers anywhere — the dead-SSOT shape (task 202), and one of the
+      // four spellings of this vocabulary that had to agree and did not.
+      const cmd = `\\${headingTypeCommand(level)}`;
       const star = numbered === false ? "*" : "";
+      // The opaque `[short]` running-head title, re-emitted verbatim on the
+      // side the parser read it from — `figureBlock.shortCaption`'s shape.
+      const shortTitle = node.attrs?.shortTitle;
+      const shortArg = typeof shortTitle === "string" ? `[${shortTitle}]` : "";
       const labelStr = label ? `\n\\label{${label}}` : "";
       const anchor = uuidAnchorSuffix(uuid);
-      return `${cmd}${star}{${inner}}${labelStr}${anchor}\n\n`;
+      return `${cmd}${star}${shortArg}{${inner}}${labelStr}${anchor}\n\n`;
     }
 
     case "titleField": {
@@ -624,6 +635,8 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         captionTex,
         hasCaption: node.attrs?.hasCaption !== false,
         shortCaption: (node.attrs?.shortCaption as string | null) ?? null,
+        // `\caption` vs `\caption*` — see `FigureEnvBodyParts.numbered`.
+        numbered: node.attrs?.numbered !== false,
         label,
       });
       return `\\begin{${envName}}${placement}${body}\\end{${envName}}${anchor}\n\n`;
@@ -668,7 +681,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         : "";
       // Top-level list gets surrounding blank lines; nested lists do not.
       const trailing = listDepth === 0 ? "\n\n" : "\n";
-      return `${indent}\\begin{itemize}\n${preambleStr}${items}${indent}\\end{itemize}${anchor}${trailing}`;
+      // Raw `[options]` re-emitted verbatim (task 376 M3) — the same opaque
+      // carry `figureBlock.placement` and expex's `rawOptions` already have.
+      const options = (node.attrs?.listOptions as string | null) ?? "";
+      return `${indent}\\begin{itemize}${options}\n${preambleStr}${items}${indent}\\end{itemize}${anchor}${trailing}`;
     }
 
     case "orderedList": {
@@ -684,7 +700,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         ? preamble.split("\n").map((l) => `${innerIndent}${l}`).join("\n") + "\n"
         : "";
       const trailing = listDepth === 0 ? "\n\n" : "\n";
-      return `${indent}\\begin{enumerate}\n${preambleStr}${items}${indent}\\end{enumerate}${anchor}${trailing}`;
+      // Raw `[options]` re-emitted verbatim (task 376 M3) — the same opaque
+      // carry `figureBlock.placement` and expex's `rawOptions` already have.
+      const options = (node.attrs?.listOptions as string | null) ?? "";
+      return `${indent}\\begin{enumerate}${options}\n${preambleStr}${items}${indent}\\end{enumerate}${anchor}${trailing}`;
     }
 
     case "listItem": {
@@ -772,7 +791,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const fid = node.attrs?.footnoteId as string | undefined;
       const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
       const cmd = node.attrs?.thanks ? "thanks" : "footnote";
-      return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+      // LaTeX's own `\footnote[3]{…}` mark override, carried raw (task 376 M5).
+      // `\thanks` has no optional argument, so it never takes one.
+      const override = node.attrs?.numberOverride;
+      const optArg =
+        !node.attrs?.thanks && typeof override === "string"
+          ? `[${override}]`
+          : "";
+      return `${idMarker}\\${cmd}${optArg}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
     }
 
     case "latexComment": {
