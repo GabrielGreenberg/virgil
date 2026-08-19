@@ -15,6 +15,7 @@ import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
+import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
 import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
 import { iconHint } from "@/components/Hint";
@@ -196,6 +197,14 @@ function StatusClusterImpl(props: StatusClusterProps) {
           refusal) and sits BEFORE the topbarRightCollapsed gate — a
           data-integrity notice must not be hideable by a layout preference. */}
       <PreservationNoticeBadge docId={currentDocId} />
+      {/* Sync-conflict notice (task 363). A cloud-sync daemon left conflicted
+          copies in this paper's virgil/ folder, and some of them may hold
+          writing Virgil has never shown. Self-gates (renders null with no
+          report / after a session dismiss) and sits BEFORE the
+          topbarRightCollapsed gate for the same reason the preservation notice
+          does — a data-integrity notice must not be hideable by a layout
+          preference. */}
+      <SyncConflictBadge docId={currentDocId} />
       {/* Skill-bundle sync surface. Sits before the topbarRightCollapsed gate
           (like the Virgil-update banner) so a sync failure can't be hidden by
           a collapsed right toolbar. Pure UI: no per-keystroke work. */}

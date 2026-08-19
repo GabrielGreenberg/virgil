@@ -34,6 +34,9 @@ export const writeSidecar = backend.writeSidecar;
 export const mutateSidecar = backend.mutateSidecar;
 export const readSidecarBundle = backend.readSidecarBundle;
 export const invalidateSidecarBundle = backend.invalidateSidecarBundle;
+// The `virgil/` directory listing (task 363) — input to the sync-conflict scan
+// (`sync-conflict.ts`). Read-only; never creates the directory.
+export const listSidecarNames = backend.listSidecarNames;
 export const readTex = backend.readTex;
 export const writeTex = backend.writeTex;
 export const readDocBundle = backend.readDocBundle;

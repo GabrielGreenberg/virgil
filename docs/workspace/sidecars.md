@@ -277,6 +277,13 @@ walks it directly) because reviews are per-bibkey, not per-paragraph.
 The app's per-paper state. A skill **reads** these to orient and **never
 hand-edits** the writeback-owned ones ([gardening.md](gardening.md#the-deny-list)).
 
+The **value** of each file — `"view"` (recomputable UI state) vs `"content"` (the
+user's writing) — is declared in
+[src/lib/sidecar-value.ts](../../src/lib/sidecar-value.ts) (task 363), which is
+also the complete list of what Virgil writes into `virgil/`. It decides the write
+cadence and how a cloud-sync conflicted-copy fork of the file is reported;
+`editor-state.json`, `focus.json` and `collab.json` are the three `"view"` files.
+
 ```ts
 // virgil.json — paragraph titles + content fingerprints
 VirgilSidecar  { paragraphs: Record<string, ParagraphMeta> }

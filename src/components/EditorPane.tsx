@@ -139,7 +139,7 @@ import {
   printGateEnabled,
 } from "@/lib/print-intent";
 import { readPdf } from "@/lib/storage";
-import { useEditorUIState } from "@/hooks/useEditorUIState";
+import { useEditorUIState, SETTLE_MS } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useLatexSource } from "@/hooks/useLatexSource";
 import {
@@ -4256,7 +4256,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (rowScrollRef.current && isVisibleRef.current) {
           uiStateHook.writeScroll(rowScrollRef.current.scrollTop);
         }
-      }, 400);
+        // SETTLE, not the write cadence: `writeScroll` coalesces on the file's
+        // own tier (task 363), so a reading session's pauses cost ONE write.
+      }, SETTLE_MS);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {

@@ -10,6 +10,8 @@ import {
   type MutableRefObject,
 } from "react";
 import { readSidecarIfExists, writeSidecar } from "@/lib/storage";
+import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
+import { onTabHidden } from "@/lib/tab-hidden";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -37,14 +39,21 @@ export interface PersistentStateOptions<S> {
   errorLabel?: string;
   /**
    * Coalesce consecutive `update()` calls into a single write that
-   * fires after this many milliseconds of idle. Defaults to 300ms.
-   * The functional update still applies to React state immediately —
-   * only the disk write debounces, so the UI stays responsive while
-   * a typing burst no longer triggers a write storm.
+   * fires after this many milliseconds of idle. The functional update
+   * still applies to React state immediately — only the disk write
+   * debounces, so the UI stays responsive while a typing burst no
+   * longer triggers a write storm.
    *
-   * Pending writes are flushed synchronously on unmount and on
-   * `docId` change so no data is lost. Pass `0` to disable debouncing
-   * (matches the pre-debounce write-on-every-update behavior).
+   * **Defaults to the file's own cadence** — `sidecarWriteDebounceMs(filename)`
+   * (task 363), which is derived from what the sidecar is worth rather than
+   * picked per hook: 300 ms for CONTENT (the pre-363 default, unchanged for
+   * every card sidecar), 2500 ms for VIEW state, whose only cost of waiting is
+   * what an abrupt kill would lose. Pass a number only where a caller genuinely
+   * knows better than the tier — CI forbids a bare literal at a write site.
+   *
+   * Pending writes are flushed synchronously on unmount, on `docId` change,
+   * and when the tab goes hidden, so no data is lost. Pass `0` to disable
+   * debouncing (matches the pre-debounce write-on-every-update behavior).
    */
   debounceMs?: number;
 }
@@ -113,7 +122,12 @@ export function usePersistentState<S>(
   defaultValue: S,
   opts: PersistentStateOptions<S> = {},
 ): PersistentStateApi<S> {
-  const { migrate, persistMigrationOnLoad, errorLabel, debounceMs = 300 } = opts;
+  const {
+    migrate,
+    persistMigrationOnLoad,
+    errorLabel,
+    debounceMs = sidecarWriteDebounceMs(filename),
+  } = opts;
   const [state, setState] = useState<S>(defaultValue);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -350,6 +364,16 @@ export function usePersistentState<S>(
       flushPending();
     };
   }, [docId, flushPending]);
+
+  // Settle at the boundary that matters (task 363). Coalescing is only honest
+  // if it never delays a value past the moment it stops being live: the tab
+  // going hidden is the app-switch / tab-switch / window-close edge, and it is
+  // the LAST edge at which an async FSA write still reliably completes
+  // (`pagehide` is too late for a promise chain). Cheap by construction — the
+  // subscriber is one shared document listener, and a hook with nothing pending
+  // does nothing. This matters most for the VIEW tier's 2.5 s window, and costs
+  // the 300 ms content tier nothing.
+  useEffect(() => onTabHidden(flushPending), [flushPending]);
 
   // ── LIVE external-sidecar reactivity ──────────────────────────────────────
   // Subscribe to the `SidecarWatcher`'s per-file change signal so a card an AI

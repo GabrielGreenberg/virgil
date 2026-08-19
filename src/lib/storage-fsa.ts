@@ -1878,6 +1878,30 @@ export interface PaperFile {
 }
 
 /**
+ * List the FILE names directly inside `virgil/` (task 363) — the input to the
+ * sync-conflict scan. Read-only: it does NOT create the directory (a paper that
+ * has never had a sidecar written has nothing to scan and answers `[]`), and it
+ * does not descend into `.history/`.
+ *
+ * One directory enumeration, once per doc activation. Not on any hot path.
+ */
+export async function listSidecarNames(docId: string): Promise<string[]> {
+  const docHandle = await requireDocHandle(docId);
+  let virgil: FileSystemDirectoryHandle;
+  try {
+    virgil = await docHandle.getDirectoryHandle(VIRGIL_SUBDIR);
+  } catch (e) {
+    if (isNotFound(e)) return [];
+    throw e;
+  }
+  const out: string[] = [];
+  for await (const entry of virgil.values()) {
+    if (entry.kind === "file") out.push(entry.name);
+  }
+  return out;
+}
+
+/**
  * Read every file in the doc's paper folder (recursively), skipping the
  * `virgil/` sidecar subdir. Used by the compile pipeline to feed the
  * SwiftLaTeX engine's memfs.
