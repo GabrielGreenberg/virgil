@@ -47,7 +47,13 @@ tab state, folder handles, the doc index — **never paper content**.
 ## The virgil/ sidecar folder
 
 `virgil/` (`VIRGIL_SUBDIR`) holds the Cards and the app's per-paper infrastructure.
-Two classes of file (schemas → [sidecars.md](sidecars.md)):
+Two classes of file (schemas → [sidecars.md](sidecars.md)). Since task 363 the
+complete write vocabulary — and what each file is WORTH — is declared once in
+[src/lib/sidecar-value.ts](../../src/lib/sidecar-value.ts): a `tier` of `"view"`
+(recomputable UI state; coalesced hard) or `"content"` (the user's writing; prompt
+cadence), plus whether the doc-mount bundle pre-reads it. That table drives the
+write cadence AND how a cloud-sync "conflicted copy" fork of the file is
+reported — AGENTS.md, "The daemon half".
 
 - **Infrastructure** (shared app state): `virgil.json` (paragraph titles +
   fingerprints), `editor-state.json` (last paragraph + folds),

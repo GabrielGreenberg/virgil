@@ -665,6 +665,131 @@ Two kinds of leg in the first suite, and both were needed. The CONCURRENCY legs 
 
 One harness detail worth carrying forward, because the suite's first draft got it wrong: these setters schedule their persist from inside a `setState` **updater**, which React invokes lazily at the next render — so `await act(async () => { setter(); await sleep(20) })` waits *before* the updater has run, and the write is still unscheduled when the assertion reads the disk. Every leg then "fails on the pre-fix code" for a timing reason rather than a content one, which is an unfalsifiable defect leg wearing a passing one's clothes. Call the setter in a SYNC `act` to force the flush, then drain the I/O in an async one.
 
+#### The daemon half: against a writer you cannot serialize with, write LESS and NOTICE the fork
+
+Same file, one writer further out (task 363) — and the case where the authority
+above was correct, the lock was correct, and the third writer it names as out of
+reach turned out not to be the only one.
+
+`withDocLock` serializes this browser's windows; the merge covers the
+out-of-process `/editor/*` skills. A paper folder inside Dropbox / iCloud /
+OneDrive / Google Drive / Syncthing has a FOURTH writer, and it is the one
+nothing in the model contemplates: a sync daemon that cannot be locked against,
+cannot be detected, and does not merge. When it lands a remote version of a file
+whose local copy has moved on it renames one side aside as a "conflicted copy"
+and says nothing to the application.
+
+Measured in Gabriel's `Dropbox/Apps/Overleaf/Coherence Intro/virgil/`
+(2026-08-18): **197 conflicted copies plus 19 leftover `.crswap` files**, and the
+distribution is the finding. 134 of the 197 are on the three files that **no list
+in the codebase named** — `editor-state.json` 102, `virgil.json` 27,
+`collab.json` 5 — against `notes` 36, `revisions` 20, `citations` 4, `archive` 2,
+`todos` 1. `ALL_SIDECAR_FILENAMES` meant "the files a doc MOUNT reads", not "the
+files Virgil WRITES", and the three loudest writers were in neither list. The
+loudest of all is a file whose entire contents are a scroll offset, a caret
+paragraph uuid and a list of folded uuids: `useEditorUIState`'s two 400 ms
+numbers debounced the TRIGGERS (a scroll settle, a caret settle) and coalesced
+the WRITE not at all, so each scroll pause, each caret move into a new paragraph
+and every fold toggle was a full-file rewrite — a hundred-odd per reading
+session, each one a `createWritable()` swap file plus a rename, watched by a
+daemon.
+
+> **Against a writer you cannot serialize with there are exactly two moves:
+> shrink the race window, and notice the fork.** Both are derived from what the
+> file is WORTH, declared once. A **VIEW**-state sidecar coalesces hard, because
+> losing the last few seconds of it costs nothing. A **CONTENT** sidecar keeps
+> its prompt cadence, because losing it costs the user's writing — and a
+> conflicted sibling of a content file is unmerged user data, which is the half
+> that must never be silent.
+
+[src/lib/sidecar-value.ts](src/lib/sidecar-value.ts) is the declaration —
+`tier` plus `mount`, total over what Virgil writes into `virgil/`, an import-free
+leaf (the placement rule `latex-markers.ts` and `node-attr-sets.ts` earned: a
+facet the layer that needs it cannot import will be re-copied). Seven rules it
+earned:
+
+- **Every column has a reader, and one of them retired a second list.** `tier` is
+  read by `sidecarWriteDebounceMs` (the cadence) and by the conflict report (a
+  fork of a content file is unmerged writing; a fork of a view file is debris);
+  `mount` DERIVES `ALL_SIDECAR_FILENAMES`, so "which files does a mount read"
+  can no longer drift from "which files does Virgil write". They were two
+  hand-kept arrays, and the drift was not hypothetical — it is the whole reason
+  the three storm files were invisible.
+- **The default FAILS CLOSED to content.** An undeclared file gets the prompt
+  cadence and the loud report, never the lossy ones. A wrongly-content file costs
+  some extra writes; a wrongly-view file costs the user's writing, and that
+  asymmetry is the entire justification for the direction.
+- **Coalescing is only honest if it settles at the boundary that matters.** Every
+  coalescing writer flushes on doc switch, unmount, AND the tab going hidden
+  ([tab-hidden.ts](src/lib/tab-hidden.ts) — ONE shared `visibilitychange`
+  listener, because ~20 `usePersistentState` instances per doc × up to four kept
+  alive would otherwise install ~80 identical listeners). Hidden, not `pagehide`:
+  that is the last edge at which an async FSA write still reliably completes, so
+  a writer that waited for `pagehide` would be trading a coalesced write for a
+  lost one.
+- **The 300 ms content cadence is byte-unchanged**, and a suite asserts it per
+  file. A fix for a write STORM that quietly slowed the user's writing to disk
+  would be a worse bug than the one it closed.
+- **Virgil does not merge or delete a fork.** The two sides are whole-file
+  snapshots taken at unknown times; picking a winner is precisely the destructive
+  act the sync service itself declined to make. So the app REPORTS — which files
+  forked, and which of them hold writing — and the surface is a WARNING about the
+  folder, never an alarm about the document (the file Virgil owns is intact and
+  its own writes are correct, so nothing here may gate a write).
+- **…and the notice is dismissible, which is a consequence rather than a
+  softening.** The reporting folder holds four months of accumulated forks that
+  can only be cleaned in Finder, so a non-dismissible banner would be permanent,
+  and a permanent banner is how a real signal becomes furniture.
+- **The detection grammar can be generous because the base vocabulary is
+  CLOSED.** `notes 2.json` can only be a fork of `notes.json`, because nothing in
+  Virgil is called `notes 2`; an exact match against a declared filename
+  short-circuits first, so no decoration grammar can reinterpret a real sidecar
+  (`bib-settings.json` as `bib` + a suffix). OneDrive is the one service
+  deliberately left OUT: its `-<hostname>` decoration is unconstrained and
+  indistinguishable from a file the user parked there, and naming a user's own
+  file as their lost writing is a worse error than missing a fork. Stated rather
+  than implied — this scanner is not complete over every sync service.
+
+**The DiskWatcher/ledger interaction was already right and had never been named.**
+A daemon produces two shapes and the ledger has to tell them apart: a RE-WRITE of
+bytes Virgil itself just wrote (same content, new mtime/inode — the ping-pong
+seed) and a genuine LAND of a differing remote version. The existing mtime/size
+drift → confirm-by-content-hash algorithm answers both correctly; what was
+missing was a leg saying so, which is
+[sync-race-back.test.ts](src/lib/__tests__/sync-race-back.test.ts). The other
+half of "no ping-pong" is that the app's reaction to an emit is a READ —
+`usePersistentState`'s handler calls `setState`, never `persist`, and defers
+entirely while a local write is pending.
+
+**What the forks actually cost, measured rather than assumed.**
+[tools/triage-sync-conflicts.mjs](tools/triage-sync-conflicts.mjs) reports
+per-file whether any fork holds a record the live sidecar lacks. On the reporting
+folder: **189 of 204 forks carry nothing** (every `editor-state`, `virgil`,
+`collab` and `todos` fork), and **12 forks hold 12 records that exist only in a
+fork** — one note, three archived excerpts, four revision cards, four citations.
+So the divergence is real and narrow, which is the shape the badge's copy takes.
+`--prune` deletes only what a run proved inert; nothing merges.
+
+CI: [sidecar-value-ssot.test.ts](src/lib/__tests__/sidecar-value-ssot.test.ts)
+(totality over what production spells, the derivation, the byte-unchanged content
+cadence, and the CENSUS — no write site may spell its own debounce literal, which
+is exactly how a 400 ms *settle* came to mean a 400 ms *disk write*),
+[sync-conflict.test.ts](src/lib/__tests__/sync-conflict.test.ts) (the grammars,
+over REAL fork names copied out of the reporting folder — a hand-invented fixture
+would only prove the regex matches its author's idea of Dropbox), the race-back
+suite above, and
+[editor-state-write-cadence.test.ts](src/hooks/__tests__/editor-state-write-cadence.test.ts),
+whose shape is the point: **no pre-363 suite could see this**, because every one
+of them asserts a SINGLE write's payload, which the pre-fix code satisfied
+perfectly. The defect is a RATE, so the leg is a COUNT over a simulated reading
+session — twelve scroll settles cost ONE write. Measured by neutering the
+coalescer: all five cadence legs fail on the pre-fix immediate write.
+
+**Owed, not claimed:** a real-Dropbox eyeball. This class masks everywhere but a
+genuinely synced folder — the dev preview's `virgil-data/` is local and nothing
+watches it — so the durable proof here is the unit contracts plus the triage
+tool's measured run against the reporting folder.
+
 ## Capture/schema symmetry — never delete what you cannot restore
 
 > **A destructive action must never delete content its capture destination cannot represent.** A card body that holds a verbatim slice of the document declares `bodySchema: "excerpt"` in `CARD_REGISTRY` and mounts the FULL main-document vocabulary; anything that deletes-and-captures validates the capture against that schema (`canMountInCardBody`) **before** dispatching the delete, and aborts + notifies if it doesn't fit.
