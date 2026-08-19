@@ -14,14 +14,15 @@
  */
 
 import { provisionEngine } from "@/lib/tex-assets";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 
 const TEXLIVE_ENDPOINT = "https://texlive.texlyre.org/";
 
-// Hand-rolled <script> tags bypass Next's automatic basePath prefixing, so we
-// have to apply it ourselves. Without this, subdirectory deploys (e.g. the
-// GitHub Pages deploy at /virgil/) 404 on the engine asset.
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const ENGINE_SCRIPT_URL = `${BASE_PATH}/swiftlatex/PdfTeXEngine.js`;
+// Hand-rolled <script> tags bypass Next's automatic basePath prefixing, so the
+// URL goes through the ONE public-asset door (task 365). Without it,
+// subdirectory deploys (e.g. the GitHub Pages deploy at /virgil/) 404 on the
+// engine asset.
+const ENGINE_SCRIPT_URL = publicAssetUrl("/swiftlatex/PdfTeXEngine.js");
 
 let enginePromise: Promise<PdfTeXEngine> | null = null;
 

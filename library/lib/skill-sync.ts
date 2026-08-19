@@ -44,6 +44,7 @@
 // `.claude/virgil/` rather than under a `<subsystem>/` segment.
 
 import { readJsonFile, writeBinaryFile, writeJsonFile, writeTextFile, VIRGIL_DIR, CLAUDE_DIR } from "./library-storage";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 
 interface SubManifest {
   version: string;
@@ -101,14 +102,10 @@ export function diskPathFor(subsystem: string, bundlePath: string): string | und
 }
 
 function bundleUrl(path: string): string {
-  // Resolve relative to the deployed app origin so this works under both
-  // root deploys and basePath deploys (Next.js's basePath is honored by
-  // browser-relative URLs starting with /).
-  const base =
-    typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BASE_PATH
-      ? process.env.NEXT_PUBLIC_BASE_PATH
-      : "";
-  return `${base}/skill-bundle/${path}`;
+  // Resolve relative to the deployed app origin so this works under both root
+  // deploys and basePath deploys — through the ONE public-asset door (task 365,
+  // which folded this hand-rolled prefix and its five twins onto one spelling).
+  return publicAssetUrl(`/skill-bundle/${path}`);
 }
 
 export interface SyncResult {

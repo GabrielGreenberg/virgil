@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display, Cinzel, Source_Serif_4, Geist_Mono } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { Analytics } from "@/components/Analytics";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 import "./globals.css";
 
 const inter = Inter({
@@ -92,7 +93,13 @@ export default function RootLayout({
           }}
         />
         <meta name="theme-color" content="#e5e4e1" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" />
+        {/* Hand-written <link>, so Next prefixes nothing — through the
+            basePath door (task 365) or a subdirectory deploy 404s the
+            iOS home-screen icon, silently. */}
+        <link
+          rel="apple-touch-icon"
+          href={publicAssetUrl("/apple-touch-icon.png?v=7")}
+        />
         {/* Picker-pool fonts for the Fonts… dialog. Loaded by their real
             family names (unlike next/font, which generates obfuscated
             names) so the FontPicker's by-name lookup resolves without

@@ -1,9 +1,11 @@
 import type { MetadataRoute } from "next";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 
-// Match next.config.ts. Manifest URLs (start_url, scope, icons) all
-// have to be prefixed with the basePath, otherwise installing the PWA
-// scopes the wrong directory.
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+// Manifest URLs (id, start_url, scope, icons) all have to be prefixed with the
+// deploy prefix, otherwise installing the PWA scopes the wrong directory.
+// Through the ONE door (task 365) rather than a local copy of the prefix —
+// `publicAssetUrl("/")` is the scope form and answers "/" or "/virgil/".
+const appRoot = publicAssetUrl("/");
 
 // Required under `output: 'export'` — without this Next refuses to
 // pre-render the manifest route at build time.
@@ -14,12 +16,12 @@ export default function manifest(): MetadataRoute.Manifest {
     // Stable identity, decoupled from start_url. Required for Chrome's
     // persisted FSA permissions to associate grants with the installed
     // app across deploy URL / basePath changes.
-    id: `${basePath}/`,
+    id: appRoot,
     name: "Virgil",
     short_name: "Virgil",
     description: "WYSIWYG LaTeX editor",
-    start_url: `${basePath}/`,
-    scope: `${basePath}/`,
+    start_url: appRoot,
+    scope: appRoot,
     display: "standalone",
     display_override: ["window-controls-overlay"],
     // Each OS-level launch (clicking the dock icon, opening from a
@@ -30,12 +32,12 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#e5e4e1",
     icons: [
       {
-        src: `${basePath}/icon-192x192.png?v=7`,
+        src: publicAssetUrl("/icon-192x192.png?v=7"),
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: `${basePath}/icon-512x512.png?v=7`,
+        src: publicAssetUrl("/icon-512x512.png?v=7"),
         sizes: "512x512",
         type: "image/png",
       },

@@ -1084,6 +1084,79 @@ Deliberately NOT folded in: the `%!v:xxxx` block anchor and texBlock's `%!vtex:b
 
 CI: [latex-marker-ssot.test.ts](src/lib/__tests__/latex-marker-ssot.test.ts) — the leg with teeth is the **census** (both silos, comments stripped and literals KEPT, since the drift lives in literals), because the module was never the part that could misbehave; a call site spelling its own copy is. It has a THIRD root too (`library/` + `editor/` skill markdown and Python, which the two-silo habit does not reach): markdown cannot import the SSOT, so that leg asserts MEMBERSHIP — every marker-shaped command the skills teach an agent to write is still one the vocabulary knows, which is exactly the rename hazard. `docs/` is deliberately out of that leg, since a design memo may name a marker nobody built. Plus a canary + stripper swallow self-check, the shim/inline-set wiring pins, and a per-marker emit→parse round trip through the REAL parser and serializer, keyed on the `VirgilMarkerId` union so a new marker is a **compile error** until someone states how it survives a save/reload. Three of its legs fail on the pre-fix tree.
 
+#### The deploy half: a convention SIX consumers follow is not a convention
+
+Same law, other medium (task 365) — and the case where the SSOT was never
+written down at all, so it existed only as an idiom six files had each
+re-derived, and the seventh simply didn't know about it.
+
+Virgil ships as a static export that may be served from the origin root OR from
+a subdirectory (`NEXT_PUBLIC_BASE_PATH=/virgil`, what `deploy.yml` sets). Next
+prefixes the URLs it generates itself — page routes, `next/font`, chunk
+`<script>`s — and touches nothing you build by hand. Every asset under `public/`
+is reached by a hand-built string, so every one of them owes the prefix. Six
+consumers hand-rolled the same three lines; three did not, and all three failed
+SILENTLY and only in production:
+
+- **The Library PDF tab** (`PdfView`'s `VIEWER_SRC`) requested
+  `<origin>/pdfjs/web/viewer.html` — outside the app — and rendered the host's
+  404 page inside the pane. This is the one Gabriel reported.
+- **The `apple-touch-icon` `<link>`** 404'd the iOS home-screen icon, with no
+  symptom anyone would ever file.
+- **The service worker's TeX precache** — the DATA half, and the one no source
+  census would have found. `scripts/build-tex-bundle.mjs` emitted ONE spelling
+  into TWO tables whose consumers apply DIFFERENT bases: `tex-core-manifest.ts`
+  is prefixed by its consumer, while `sw.js` resolves each entry with
+  `new URL(p, self.location.href)` — against its own SCOPE, where a leading
+  slash DISCARDS the base and escapes to the origin root. Under `/virgil` all 82
+  assets 404'd at install, swallowed by the SW's per-asset `try/catch`: the P1
+  offline-compile pillar was simply not there, with no error and no symptom
+  until the user went offline.
+
+> **Every URL that reaches a `public/` asset is built by ONE door —
+> [`publicAssetUrl`](src/lib/public-asset-url.ts). A path stored in a DATA table
+> is public-RELATIVE and each consumer applies its OWN base; where two tables
+> have consumers with different bases, they get two spellings, stated at the
+> generator.**
+
+Four rules it earned:
+
+- **Dev CANNOT see this class.** With an empty basePath every root-absolute
+  string is accidentally correct, which is why all three shipped and why the
+  door's own suite carries an opt-in leg over a real
+  `NEXT_PUBLIC_BASE_PATH=/virgil` export (`npm run preview:pages`).
+- **The env read's SPELLING is load-bearing, and it was measured, not assumed.**
+  Against a real basePath build, `process.env.NEXT_PUBLIC_BASE_PATH ?? ""`
+  compiles to the literal `"/virgil"`, while the `typeof`-guarded form three of
+  the folded-in copies used compiles to
+  `void 0 !== shim.default && "/virgil" || ""` — a runtime conditional whose
+  false branch is `""`, i.e. **the bug itself**, reachable silently wherever
+  Next's `process` shim is absent. A guard whose failure mode is the defect is
+  worse than no guard. The build-smoke leg pins the inlined literal, because it
+  is the one thing no unit test can see: get it wrong and every other leg still
+  passes while production serves an unprefixed URL.
+- **Membership is DISCOVERED, because a hand list could only be missing a name**
+  — and here it would have been missing the two that matter. The census's
+  vocabulary is the real `public/` tree ∪ the dirs the build scripts emit into
+  it, since `examples/` and `skill-bundle/` are build output and do not exist in
+  a fresh checkout at all.
+- **The exemption is scoped to the DATA shape it justifies.** `tex-core-manifest`
+  is allowlisted as a table whose consumer prefixes — and a second leg requires
+  that file to name no URL-consuming API, so the exemption cannot silently cover
+  a `fetch` added beside the table later.
+
+CI: [public-asset-url-ssot.test.ts](src/lib/__tests__/public-asset-url-ssot.test.ts).
+The leg with teeth is the **census** — the door was never the part that could
+misbehave, a call site that never asks it is, and that call site type-checks
+perfectly. It blanks `publicAssetUrl(...)` ARGUMENTS before matching, so the
+question it asks is exactly "is this literal reaching the door?"; a positive twin
+pins that only the door reads `NEXT_PUBLIC_BASE_PATH` at all. Beside it: the SW
+half driven through `sw.js`'s OWN resolution expression (read out of the file, so
+the two cannot disagree), and the reported defect driven through the REAL
+`PdfView`. Measured by neutering each half in turn — the PdfView fork takes 3
+legs, and the SW strip, the shipped manifest, the generator's second spelling,
+the icon link and a re-forked prefix copy take 1 each.
+
 #### The twin half: a parser that shares SOME vocabularies is how the rest drift
 
 Same law, and the case where the SSOT existed, was read by one layer, and hand-copied by its twin (task 341). `footnote-content.ts` is a COMPLETE second inline parser and serializer — it is what reads and writes every `\footnote{}` body and every note/todo/report/archive card body — built deliberately as a twin of the main one in `latex-parser.ts`. Four vocabularies had already been unified across that seam, each by its own task and each with a comment at the site saying so (`smartenStraightQuotes` 209, `matchInlineVerbAt` 264, `matchCommandToken` 338, `CHAR_ESCAPE_TABLE` 339). Three had not, and every one of them was silent in the direction that matters:
