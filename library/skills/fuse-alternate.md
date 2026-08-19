@@ -139,11 +139,14 @@ catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
-RECOMPUTE_FLAGS=$(python3 .virgil/scripts/library/fuse_alternate.py --print-recompute-flags)
-# Fail CLOSED: an empty expansion would drop every recompute flag, and the
-# patch's `warnings` array would then REPLACE the row's — the whole-array
-# clobber this fence was migrated off. Stop instead.
-[ -n "$RECOMPUTE_FLAGS" ] || { echo "recompute-flag emitter produced nothing — NOT patching warnings"; exit 1; }
+set -e   # a failing shim must stop the fence, not be masked by the `rm`
+# An ARRAY, not a plain string: zsh does not word-split an unquoted
+# parameter expansion (bash does), so `$FLAGS` would arrive as ONE argv
+# element and the shim would reject the whole invocation.
+RECOMPUTE_FLAGS=($(python3 .virgil/scripts/library/fuse_alternate.py --print-recompute-flags))
+# Fail CLOSED: with no flags the patch's `warnings` array REPLACES the row's
+# — the whole-array clobber this fence was migrated off. Stop instead.
+[ ${#RECOMPUTE_FLAGS[@]} -gt 0 ] || { echo "recompute-flag emitter produced nothing — NOT patching warnings"; exit 1; }
 cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 {
   "indexed": {
@@ -156,7 +159,7 @@ cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-fuse-patch.json $RECOMPUTE_FLAGS
+  --patch-file /tmp/$ARGUMENTS-fuse-patch.json "${RECOMPUTE_FLAGS[@]}"
 rm /tmp/$ARGUMENTS-fuse-patch.json
 ```
 
@@ -167,11 +170,24 @@ include get replaced. The script also bumps
 `.virgil/catalog-version.txt` for you.
 
 **Do NOT read and re-supply the existing `warnings` array.** Put in
-`warnings` only the lines THIS run computed: one
-`pgmark-fusion-low-alignment-skipped: <N> of <M> PDF pages did not
-align above threshold` if some pages didn't align, plus one
-`pgmark-fusion-<kind>: <detail>` per continuity finding the validator
-reported. A clean fusion computed none — write `"warnings": []`, and
+`warnings` only the lines THIS run computed — and do not compose them
+yourself: the script printed them verbatim under
+
+```
+  Catalog warnings for this run (copy verbatim into indexed.warnings; empty means []):
+```
+
+Copy those lines, trimmed of leading spaces. That block is the same list
+the primary (catalog-writing) path stores, produced by the same function,
+so the two routes cannot disagree. **This matters more than it looks:**
+`$RECOMPUTE_FLAGS` declares every head in the family, and a declared head
+with no fresh line CLEARS — so inventing the list by hand, or omitting a
+continuity finding you had no way to see, silently deletes a finding this
+very run reproduced. (Continuity findings never abort a fusion — only
+scope violations do — and under `--no-catalog` no log file is written, so
+that printed block is your only source.)
+
+A clean fusion printed none — write `"warnings": []`, and
 keep the key: with recompute flags the shim REFUSES a patch whose
 `indexed.warnings` is missing (an implied empty array would let a patch
 meant for one field wipe a whole kind), and `[]` correctly clears any
@@ -189,7 +205,7 @@ because the family's heads are DERIVED from
 under-drop the day a continuity kind is added. Never free-type a
 `pgmark-fusion-…` head into this file.
 
-If `$RECOMPUTE_FLAGS` comes back empty (wrong working directory, missing
+If `RECOMPUTE_FLAGS` comes back empty (wrong working directory, missing
 `python3`), **stop and report it** — do not run the patch without the
 flags. Without them the array replaces rather than merges, which is the
 clobber this fence exists to avoid; the emitter itself is stdlib-only, so

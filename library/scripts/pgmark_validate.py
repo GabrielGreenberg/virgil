@@ -150,7 +150,7 @@ class ContinuityFinding:
             raise ValueError(
                 f"undeclared continuity finding kind {self.kind!r} — add it to "
                 f"CONTINUITY_FINDING_KINDS in pgmark_validate.py so every "
-                f"`pgmark-`/`pgmark-fusion-` warning dropper derives its head"
+                f"warning dropper over both pgmark families derives its head"
             )
 
 

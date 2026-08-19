@@ -94,6 +94,43 @@ def fusion_warning_heads() -> tuple[str, ...]:
     )
 
 
+def fusion_warning_lines(result: "FuseResult") -> list[str]:
+    """The `indexed.warnings` lines THIS fusion computed, in write order.
+
+    ONE producer, two readers: `update_catalog_for_fusion` (the primary
+    path) writes them, and `main()` PRINTS them on the success path so the
+    `--no-catalog` fence can transcribe exactly what the primary path would
+    have written.
+
+    That second reader is not a convenience. `--print-recompute-flags`
+    declares all nine heads unconditionally, and `merge_indexed_warnings`'
+    authority rule is that a declared kind with zero fresh lines CLEARS —
+    so the `--no-catalog` agent's fresh set has to MATCH what the primary
+    path would have stored, or it deletes a finding this very run
+    reproduced. Continuity findings never abort a fusion (only scope
+    violations do), and `--no-catalog` skips the log file, so before this
+    the success path printed none of them.
+
+    Stated precisely, because the weaker claim is the true one: they were
+    RECOVERABLE — `pgmark_validate.py <main.tex> --json` re-derives the
+    same `{kind, detail}` pairs — just not from this run's own output, and
+    only by an agent that thinks to re-run the validator and then formats
+    the lines by hand. What this printer buys is that the two routes emit
+    the same BYTES from the same function, rather than agreeing by care.
+    """
+    lines: list[str] = []
+    skipped = result.page_count - result.aligned_count
+    if skipped > 0:
+        lines.append(
+            f"{FUSION_LOW_ALIGNMENT_HEAD}: {skipped} of "
+            f"{result.page_count} PDF pages did not align above threshold"
+        )
+    if result.validation_report:
+        for f in result.validation_report.continuity_findings:
+            lines.append(f"{FUSION_WARNING_PREFIX}{f.kind}: {f.detail}")
+    return lines
+
+
 # ── Tunables ────────────────────────────────────────────────────────────
 
 PRIMARY_THRESHOLD = 0.78        # SequenceMatcher.ratio() threshold
@@ -759,18 +796,7 @@ def update_catalog_for_fusion(
             indexed["pgmarkPosition"] = result.pgmark_position or "unknown"
             indexed["pgmarkSource"] = result.pgmark_source_filename
             indexed["lastIndexedAt"] = _now_iso()
-            new_warnings: list[str] = []
-            skipped = result.page_count - result.aligned_count
-            if skipped > 0:
-                new_warnings.append(
-                    f"{FUSION_LOW_ALIGNMENT_HEAD}: {skipped} of "
-                    f"{result.page_count} PDF pages did not align above threshold"
-                )
-            if result.validation_report and result.validation_report.continuity_findings:
-                for f in result.validation_report.continuity_findings:
-                    new_warnings.append(
-                        f"{FUSION_WARNING_PREFIX}{f.kind}: {f.detail}"
-                    )
+            new_warnings = fusion_warning_lines(result)
             # EXACT-HEAD over the derived family, not `startswith(prefix)`.
             # The prefix drop this replaces ate any
             # `pgmark-fusion-<kind>-false-positive:` an operator had written —
@@ -961,6 +987,15 @@ def main() -> int:
         f"  Fused {result.pgmarks_inserted}/{result.page_count} pgmarks "
         f"from {alt_path.name} (aligned {result.aligned_count})"
     )
+
+    # Print the exact warning lines this run computed. Under --no-catalog
+    # the agent transcribes these into its patch; otherwise they are just a
+    # readable echo of what the catalog write below is about to store.
+    warning_lines = fusion_warning_lines(result)
+    print("  Catalog warnings for this run "
+          "(copy verbatim into indexed.warnings; empty means []):")
+    for line in warning_lines:
+        print(f"    {line}")
 
     if not args.no_catalog and not args.dry_run:
         update_catalog_for_fusion(library, citekey, result)
