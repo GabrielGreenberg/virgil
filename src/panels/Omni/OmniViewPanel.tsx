@@ -8,11 +8,13 @@ import {
   useLivePosResolver,
   buildParagraphAnchorMap,
 } from "@/hooks/useLivePosResolver";
+import { cardPopKey, getPanelByCardKind } from "@/panels/panel-registry";
 import {
-  cardPopKey,
-  OMNI_PANELS,
-  getPanelByCardKind,
-} from "@/panels/panel-registry";
+  CATEGORY_LABELS,
+  OMNI_CATEGORIES,
+  omniCategoriesOnSide,
+  type OmniCategory,
+} from "./omni-categories";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
@@ -94,66 +96,19 @@ function useSlideArmed(): boolean {
   return armed;
 }
 
-/** Category keys are PanelKinds. The omni filter menu shows one row per
- *  omni-eligible panel. */
-export type OmniCategory = PanelKind;
-
-const OMNI_CATEGORIES = OMNI_PANELS.map((p) => p.kind);
-
-const CATEGORY_LABELS: Partial<Record<PanelKind, string>> = Object.fromEntries(
-  OMNI_PANELS.map((p) => [p.kind, p.label]),
-);
-
-/** Identity map kept for back-compat with callers that still import it.
- *  PanelKind is now the category key, so the "panel→category" mapping is
- *  trivially the panel's own kind. */
-export const PANEL_TO_CATEGORY: Record<string, OmniCategory> = Object.fromEntries(
-  OMNI_PANELS.map((p) => [p.kind, p.kind]),
-);
-
-/** Default enabled categories per side, derived from registry. */
-export const DEFAULT_OMNI_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
-  left: OMNI_PANELS.filter((p) => p.omniSide === "left").map((p) => p.kind),
-  right: OMNI_PANELS.filter((p) => p.omniSide === "right").map((p) => p.kind),
-};
-
-/** Maps legacy omni filter values (2-char prefixes from the very first
- *  build, then full CardKind strings from a later build) to the current
- *  PanelKind taxonomy. Run on first load to migrate persisted localStorage
- *  state. */
-const LEGACY_PREFIX_TO_PANEL: Record<string, PanelKind> = {
-  // Earliest build — 2-char prefixes
-  fn: "footnotes",
-  ci: "citations",
-  nt: "notes",
-  ar: "archive",
-  td: "todo",
-};
-
-/** Translate a possibly-legacy omni filter list to current PanelKinds.
- *  Drops any entries that don't resolve to a known omni-eligible panel.
- *  Idempotent: passing already-current PanelKind values returns them
- *  unchanged. */
-export function migrateOmniCategories(list: unknown): OmniCategory[] {
-  if (!Array.isArray(list)) return [];
-  const out: OmniCategory[] = [];
-  for (const raw of list) {
-    if (typeof raw !== "string") continue;
-    let panel: PanelKind | null = null;
-    // Already a PanelKind?
-    if (OMNI_CATEGORIES.includes(raw as PanelKind)) {
-      panel = raw as PanelKind;
-    } else if (raw in LEGACY_PREFIX_TO_PANEL) {
-      panel = LEGACY_PREFIX_TO_PANEL[raw];
-    } else {
-      // Try as a CardKind from the previous taxonomy
-      const owner = getPanelByCardKind(raw as CardKind);
-      if (owner && owner.omniEligible) panel = owner.kind;
-    }
-    if (panel && !out.includes(panel)) out.push(panel);
-  }
-  return out;
-}
+/** The category vocabulary lives in the `omni-categories` leaf so `useViewPrefs`
+ *  and the Reader can read it without this component's graph (task 381).
+ *  Re-exported here for the many consumers that already import from this file. */
+export {
+  PANEL_TO_CATEGORY,
+  OMNI_CATEGORIES,
+  migrateOmniCategories,
+  deriveCategorySides,
+  omniCategoriesForSide,
+  omniCategoriesOnSide,
+  hiddenFromLegacySides,
+  type OmniCategory,
+} from "./omni-categories";
 
 /**
  * The applied-pending bulk affordance threaded EditorPane → OmniHost →
@@ -267,25 +222,32 @@ export function OmniFilterMenu({
   onToggle,
   onSelectDefault,
   categorySides,
-  defaultCategories,
 }: {
   side: "left" | "right";
   enabled: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
   onSelectDefault: () => void;
   categorySides: Record<OmniCategory, "left" | "right">;
-  defaultCategories: OmniCategory[];
 }) {
   // Each strip's filter menu lists only the panels currently placed on
   // that strip's side. When the user drags a panel between strips, the
   // `categorySides` map updates (via prefs.placements) and the panel's
-  // row jumps to the destination menu automatically.
-  const localCats = OMNI_CATEGORIES.filter((c) => categorySides[c] === side);
+  // row jumps to the destination menu automatically — and since task 381 the
+  // CARDS move with it, because the column is derived from the same map.
+  const localCats = useMemo(
+    () => omniCategoriesOnSide(categorySides, side),
+    [categorySides, side],
+  );
 
-  const isDefault = useMemo(() => {
-    if (enabled.size !== defaultCategories.length) return false;
-    return defaultCategories.every((c) => enabled.has(c));
-  }, [enabled, defaultCategories]);
+  // "Default view" = every category this side owns is visible. There is no
+  // separate default LIST any more: side membership is derived, so the only
+  // thing "reset" restores is visibility (task 381). A `defaultCategories`
+  // prop would be a second, driftable answer to a question `categorySides`
+  // already settles.
+  const isDefault = useMemo(
+    () => localCats.every((c) => enabled.has(c)),
+    [enabled, localCats],
+  );
 
   return (
     <AnchoredMenu
@@ -859,25 +821,3 @@ function OmniViewPanel({
 }
 
 export default memo(OmniViewPanel);
-
-/** Derive each omni-eligible panel's current strip side from
- *  `useViewPrefs.placements`. Categories not present in placements
- *  (shouldn't happen for omni-eligible panels, but defensive) fall back
- *  to their registry `omniSide`. */
-export function deriveCategorySides(
-  placements: Array<{ id: string; side: "left" | "right" }>,
-): Record<OmniCategory, "left" | "right"> {
-  const result = {} as Record<OmniCategory, "left" | "right">;
-  const omniIds = new Set<string>(OMNI_CATEGORIES);
-  for (const p of placements) {
-    if (omniIds.has(p.id)) {
-      result[p.id as OmniCategory] = p.side;
-    }
-  }
-  for (const p of OMNI_PANELS) {
-    if (!(p.kind in result)) {
-      result[p.kind] = p.omniSide ?? "left";
-    }
-  }
-  return result;
-}

@@ -13,7 +13,7 @@
  *
  *  1. `placements`           → keys of PANEL_REGISTRY      (PanelKind)
  *     [src/panels/panel-registry.ts]
- *  2. `omniCategories`       → OMNI_PANELS kinds            (omni-eligible
+ *  2. `omniHiddenCategories` → OMNI_PANELS kinds            (omni-eligible
  *     PanelKinds) [OMNI_PANELS in src/panels/panel-registry.ts]
  *  3. `printOptions.panels`  → keys of PRINT_PANELS         (PrintPanelKey)
  *     [src/lib/print.ts]
@@ -57,32 +57,20 @@ export function filterPlacements<T extends { id?: unknown }>(placements: unknown
 }
 
 /**
- * Drop omni-category ids (per side) that are not omni-eligible PanelKinds.
- * Preserves order. Non-array side value → []. Non-string / unknown entries
- * dropped.
+ * Drop omni-category ids that are not omni-eligible PanelKinds. Preserves
+ * order. Non-array input → []. Non-string / unknown entries dropped.
+ *
+ * Named for the per-SIDE lists it was written against; since task 381 the live
+ * carrier is the side-free `omniHiddenCategories`, so the sided wrapper this
+ * sat inside is gone — it had no production caller once the loader folded the
+ * legacy blob through `hiddenFromLegacySides` (which drops unknown ids itself),
+ * and a suite is not a consumer (task 202).
  */
 export function filterOmniSide(list: unknown): string[] {
   if (!Array.isArray(list)) return [];
   return list.filter(
     (c): c is string => typeof c === "string" && OMNI_CATEGORY_ALLOWLIST.has(c),
   );
-}
-
-/**
- * Drop omni-category ids on BOTH sides. Tolerates a missing/malformed
- * container by treating each side independently (missing side → []).
- */
-export function filterOmniCategories(
-  omni: unknown,
-): { left: string[]; right: string[] } {
-  const src = (omni && typeof omni === "object" ? omni : {}) as {
-    left?: unknown;
-    right?: unknown;
-  };
-  return {
-    left: filterOmniSide(src.left),
-    right: filterOmniSide(src.right),
-  };
 }
 
 /**

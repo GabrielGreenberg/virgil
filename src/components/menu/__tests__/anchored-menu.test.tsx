@@ -41,6 +41,10 @@ import {
   OmniFilterMenu,
   type OmniCategory,
 } from "@/panels/Omni/OmniViewPanel";
+import {
+  deriveCategorySides,
+  omniCategoriesOnSide,
+} from "@/panels/Omni/omni-categories";
 
 afterEach(() => cleanup());
 
@@ -195,11 +199,13 @@ describe("AnchoredMenu — the guards the shell owns", () => {
 });
 
 describe("OmniFilterMenu — folded onto the shell (task 143)", () => {
-  const CATEGORY_SIDES = {
-    footnotes: "left",
-    citations: "left",
-    notes: "right",
-  } as unknown as Record<OmniCategory, "left" | "right">;
+  // Task 381: the side map is DERIVED and total over the omni-eligible panels
+  // (`deriveCategorySides` over placements — here, none, so registry defaults).
+  // The pre-381 fixture was a three-key partial cast, which the derived
+  // `omniCategoriesOnSide` reading correctly widens — so "Default view" now
+  // means "every LEFT category is visible", not "these two are".
+  const CATEGORY_SIDES = deriveCategorySides([]);
+  const LEFT_CATS = omniCategoriesOnSide(CATEGORY_SIDES, "left");
 
   function renderFilter(
     enabled: OmniCategory[],
@@ -215,7 +221,6 @@ describe("OmniFilterMenu — folded onto the shell (task 143)", () => {
         onToggle={handlers.onToggle ?? (() => {})}
         onSelectDefault={handlers.onSelectDefault ?? (() => {})}
         categorySides={CATEGORY_SIDES}
-        defaultCategories={["footnotes", "citations"] as OmniCategory[]}
       />,
     );
   }
@@ -252,12 +257,11 @@ describe("OmniFilterMenu — folded onto the shell (task 143)", () => {
 
   it("'Default view' is a one-shot: it resets and closes", () => {
     const onSelectDefault = vi.fn();
-    const { container } = renderFilter(["footnotes", "citations"], {
-      onSelectDefault,
-    });
+    const { container } = renderFilter(LEFT_CATS, { onSelectDefault });
     fireEvent.click(triggerIn(container));
     const dflt = rowByLabel("Default view")!;
-    // It reflects "am I at the registry default?" as a real checkbox state.
+    // It reflects "is every category this side owns visible?" as a real
+    // checkbox state.
     expect(dflt.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(dflt);
     expect(onSelectDefault).toHaveBeenCalledTimes(1);

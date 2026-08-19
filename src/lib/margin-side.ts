@@ -28,34 +28,45 @@
  * against a `globals.css` comment that states the rail paints "on the same side
  * as the margin marker."
  *
- * So: the resolution lives here once, the DEFAULT is derived from the registry
- * rather than restated, and both consumers call the same function with the same
- * live dock map. The frozen `link.anchor.margin` field is gone — a stored,
- * dock-blind copy of a live answer is the drift-bomb this module exists to
- * defuse, and a field nothing reads is worse than no field at all (AGENTS.md,
- * "A registry earns its name by being read").
+ * So: the resolution lives in ONE place, the DEFAULT is derived from the
+ * registry rather than restated, and both consumers call the same function with
+ * the same live dock map. Since task 381 that one place is `@/lib/panel-side`
+ * — the margin was not the only surface asking "which side is this panel on?"
+ * (the strip filter and the omni COLUMN ask it too), so the ladder moved to a
+ * leaf all three can read and this module became the CARD-CHROME door onto it:
+ * it keeps the marker-type and card-kind keying, which is what margin chrome
+ * needs and what the layout surfaces do not.
  *
- * **Cycle-safe by construction**: the three runtime imports are `PANEL_REGISTRY`
- * (`panel-registry` → `card-registry` + `float-key`, both type-only leaves),
- * `CARD_REGISTRY` (type-only imports throughout), and `panelForMarkerType`
- * (`cards/marker-meta` → `card-registry`). It imports nothing from
- * `@/lib/marginalia` (whose grid imports THIS module) and nothing from
- * `@/links/**` (which imports it for the rail). `panel-registry` is imported
- * for `PANEL_REGISTRY` alone and must stay runtime-light: its `CARD_THEMES`
- * import is deliberately type-only, and turning that into a value import would
- * drag the whole card-UI module in here and into both consumers.
+ * The frozen `link.anchor.margin` field is gone — a stored, dock-blind copy of
+ * a live answer is the drift-bomb this module exists to defuse, and a field
+ * nothing reads is worse than no field at all (AGENTS.md, "A registry earns its
+ * name by being read").
+ *
+ * **Cycle-safe by construction**: the three runtime imports are `panel-side`
+ * (whose own only runtime edge is `PANEL_REGISTRY` → `card-registry` +
+ * `float-key`, both type-only leaves), `CARD_REGISTRY` (type-only imports
+ * throughout), and `panelForMarkerType` (`cards/marker-meta` →
+ * `card-registry`). It imports nothing from `@/lib/marginalia` (whose grid
+ * imports THIS module) and nothing from `@/links/**` (which imports it for the
+ * rail). `panel-registry` must stay runtime-light: its `CARD_THEMES` import is
+ * deliberately type-only, and turning that into a value import would drag the
+ * whole card-UI module in here and into both consumers.
  */
 
-import type { PanelId } from "@/hooks/useViewPrefs";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { CardKind, MarkerType } from "@/cards/types";
 import { panelForMarkerType } from "@/cards/marker-meta";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import {
+  defaultPanelSide,
+  resolvePanelSide,
+  type PanelSideMap,
+} from "@/lib/panel-side";
 
-/** Which side each panel is docked on right now. A missing entry (or `null`)
- *  means "not docked anywhere" → the registry default decides. */
-export type PanelSideMap = Partial<Record<PanelId, "left" | "right" | null>>;
+/** Which side each panel is placed on right now. Re-exported from the
+ *  `panel-side` leaf so the many `@/lib/margin-side` importers keep one import
+ *  site; the TYPE is owned there, beside the resolution that reads it. */
+export type { PanelSideMap };
 
 /** The side a card's chrome takes when its panel isn't docked anywhere.
  *
@@ -63,7 +74,8 @@ export type PanelSideMap = Partial<Record<PanelId, "left" | "right" | null>>;
  *  strips themselves default to — so a panel that changes its home side moves
  *  its markers and rails with it.
  *
- *  The `?? "right"` is UNREACHABLE today and pinned as such: `omni` is the only
+ *  The leaf's `?? "right"` last rung is UNREACHABLE from card chrome and pinned
+ *  as such: `omni` is the only
  *  registry entry with a `null` strip side (it is a backdrop, not a strip) and
  *  no `CardKind` names it — asserted per kind and per marker type in
  *  `margin-side-ssot.test.tsx`, so a future kind whose panel has no strip side
@@ -71,7 +83,7 @@ export type PanelSideMap = Partial<Record<PanelId, "left" | "right" | null>>;
  *  left. Without that leg this line would be a silent guess, which is the shape
  *  of defect this module exists to remove. */
 export function defaultMarginSideForPanel(panel: PanelKind): "left" | "right" {
-  return PANEL_REGISTRY[panel].defaultStripSide ?? "right";
+  return defaultPanelSide(panel);
 }
 
 /**
@@ -87,7 +99,7 @@ export function resolveMarginSide(
   panelSides: PanelSideMap,
   override?: "left" | "right" | null,
 ): "left" | "right" {
-  return override ?? panelSides[panel] ?? defaultMarginSideForPanel(panel);
+  return resolvePanelSide(panel, panelSides, override);
 }
 
 /** The margin side for a marginalia marker namespace (`MarkerType`). The panel

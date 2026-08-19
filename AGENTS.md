@@ -1402,6 +1402,115 @@ Same law, other tense (task 205). "Which side does this card's margin chrome liv
 
 The same task retired the marginalia builder's second orphan formula: the re-pin dock flag was `resolveCardAnchor(…).source === "orphan"`, a parallel path to `resolveAnchorState` that structurally could not see a card's declared intent. It now asks the SSOT (`state !== "anchored"` — the margin's question is binary, expressed *on top of* the SSOT rather than beside it), and `resolveAnchorState`'s witness parameter admits a uuid as well as a position, since being `number`-only is exactly why this surface couldn't call it. CI: [src/lib/\_\_tests\_\_/margin-side-ssot.test.tsx](src/lib/__tests__/margin-side-ssot.test.tsx) — the defect-catching leg drives the REAL reconciler against a REAL editor under a left-docked Notes panel and asserts the rail's `data-margin-side` equals the grid's marker side (it fails on the pre-fix read); the census legs pin `src/` + `library/` free of `anchor.margin`, `inferMarginSide`, `MarkerMeta.defaultSide`/`panelId`, any `source === "orphan"` comparison, and any `defaultStripSide` read outside the SSOT and the named strip sites — plus a THIRD root, `editor/`'s Python writers and skill markdown, which the two-silo habit does not reach and where a fifth `margin` writer survived this task's own first cut. Two of those legs earned their own repairs under review: the `orphan` needle must run against comments-stripped source (the code-only stripper blanks the very literal it greps for, so the leg was unfalsifiable), and the stripper is a one-pass SCANNER rather than a regex chain — chained template-then-string stripping let a backtick inside a double-quoted string swallow 7 kB of a real production file, the task-202b runaway, which a declaration-count self-check now pins.
 
+#### The derived-column half: 205's ladder reached two surfaces out of three
+
+Same law, same question, one surface further (task 381) — and the case where the
+derivation existed, was correct, and had exactly one consumer: the chrome that
+decorates the answer, never the thing being placed.
+
+A panel has ONE side. Task 205 established the ladder for MARGIN chrome
+(`placements[].side ?? defaultStripSide`) and two other surfaces kept their own
+answers. The strip-item filter inlined the ladder verbatim (harmless, a third
+copy). The OMNI COLUMN did not derive at all: which column a category's cards
+rendered in came from `prefs.omniCategories[side]` — stored per-side
+enabled-category lists, seeded once from a `registry.omniSide` column and
+re-derived by nothing. So dragging a panel's strip icon across moved its markers
+and its rail (205's ladder) and left its omni cards in the old column, which in
+Gabriel's own stored state additionally hides all cards, so they vanished
+outright.
+
+**The derivation that answers the right question already existed.**
+`deriveCategorySides(placements)` shipped with the filter menu and its ONLY
+consumer was the menu's chip list: it decided which rows a strip's filter
+offered while the CARDS beside it read the stored table. A half-consumed SSOT —
+the task-273 "a helper only SOME siblings call is not an SSOT" shape, in the
+form where the sibling that skipped it is the one the user looks at.
+
+> **One side fact per panel: `defaultStripSide` is the default,
+> `placements[].side` is the user's live choice, and everything downstream —
+> strip icon, margin marker, anchor rail, omni COLUMN, filter chips — DERIVES
+> from [`@/lib/panel-side`](src/lib/panel-side.ts) (`resolvePanelSide` /
+> `panelSidesFromPlacements`). `margin-side` is the card-chrome DOOR onto that
+> leaf, not a second ladder.**
+
+Six rules it earned:
+
+- **The stored copy is DELETED, not merely aligned** (205's own rule, applied to
+  its remaining surface). `registry.omniSide` and `DEFAULT_OMNI_CATEGORIES` are
+  gone; `prefs.omniCategories` — a pair of per-side lists carrying BOTH side and
+  visibility — became `omniHiddenCategories`, side-free. Leaving the side half
+  written-but-unread is how the next reader concludes the column is stored.
+- **Stored as HIDDEN, not enabled**, so a newly omni-eligible panel is visible by
+  DECLARATION: no default list to keep in step with the registry, and nothing to
+  migrate when one ships. The two facts are combined in exactly one place
+  (`omniCategoriesForSide`), read by both hosts — the main app and the Reader,
+  whose own `READER_CATEGORY_SIDES` was a third hand-built map of registry
+  defaults sitting beside cards that read the stored lists.
+- **A side-free fact takes no `side` argument.** `toggleOmniCategory(cat)` lost
+  its side parameter rather than keeping it and ignoring it — a defaulted or
+  vestigial argument is a decision nobody made, and the filter menu only ever
+  lists categories the side already owns. `resetOmniSide(side)` keeps its side
+  because the AFFORDANCE is per-menu; what it resets is visibility, since side
+  membership is derived and has no default to restore.
+- **`omniHideAllCards` stays per-SIDE, and the suite says why.** It describes a
+  COLUMN ("show nothing in this gutter"), not a category, so it has no panel
+  whose placement it could derive from — pinned so a later sweep does not fold it
+  into the side-free set by symmetry.
+- **A shipped default change is INERT without a migration, and worse than inert
+  with the cron.** `loadPrefs` merges `DEFAULT_PREFS.placements` only for ids the
+  blob is MISSING, so flipping `reports` to RIGHT (Gabriel's ask) reaches nobody
+  who has ever opened the app — and the Tue/Fri promote-defaults cron folds the
+  personal snapshot's `placements` back over the shipped JSON, so a
+  defaults-only flip is UNDONE on the next tick (task 326's aiMarker shape).
+  [`PANEL_SIDE_MIGRATIONS`](src/hooks/panel-side-migrations.ts) is the one-shot
+  that makes it durable: once the stored value says right, the snapshot folds
+  right and the cron converges.
+- **A side flip is not idempotent by construction, so it carries an ID.** A
+  RENAME is self-cancelling (the retired id is gone); a side flip is not — the
+  user may deliberately drag the panel back, and a migration that re-applied
+  every load would silently undo that forever. The id is recorded in
+  `appliedPrefMigrations`, a GLOBAL pref (because `placements` is global — a
+  per-window marker lets every other window re-apply the flip), and the
+  no-stored-state branch records every migration as applied, or the newest user
+  is the one "a deliberate drag sticks" fails for. The `from` side is part of the
+  match, so a user who had already moved the panel is untouched.
+
+The legacy per-side blob folds once at load (`hiddenFromLegacySides`: absent from
+BOTH stored sides ⇒ hidden) and the key is then `delete`d, so it cannot
+round-trip and re-fold over a hide/show made in between. `rename-panel-id` gained
+a `LEGACY_ID_CARRIERS` list for it — a carrier the live `ViewPrefs` type no
+longer has, which the type-derived census structurally cannot name, the same
+reason `LEGACY_ACTIVE_PANEL_KEYS` exists — so a pre-381 blob's `comments`
+becomes `revisions` BEFORE the fold reads it, rather than folding to "revisions
+was never enabled". `filterOmniCategories` went with the carrier: it had no
+production caller once the fold landed, and a suite is not a consumer (task 202).
+
+CI: [card-side-derivation.test.ts](src/lib/__tests__/card-side-derivation.test.ts)
+sweeps every omni panel × {all-left, all-right, unplaced} and asserts the strip,
+the rail, the marker and the omni column give ONE answer — with a counter proving
+the sweep crossed configurations where the RETIRED stored rule genuinely
+disagrees, so it cannot pass by the two answers being trivially equal. Its defect
+legs reimplement the retired rule locally rather than re-parameterising the live
+one. The leg with teeth is the CENSUS: the derivation was never the part that
+could misbehave — a surface reading a stored per-side list is, and
+`prefs.omniCategories[side]` type-checked perfectly — so `omniSide` and
+`DEFAULT_OMNI_CATEGORIES` are pinned dead, the surviving `omniCategories`
+mentions are allowlisted per NAME with their reason (both halves asserted, so a
+stale entry cannot pre-authorize a real read), and every omni HOST is DISCOVERED
+from its own `getOmniEnabled` derivation and required to enter the shared door.
+[view-prefs-side-migration.test.ts](src/hooks/__tests__/view-prefs-side-migration.test.ts)
+drives the REAL `loadPrefs` for the halves neither can see: that the loader
+applies the migration BEFORE the default merge, and folds the legacy key exactly
+once. Measured by neutering each half in turn — restoring the stored-list column
+takes 2 legs, restoring the pre-381 FORK (chips derive, cards do not) 2 more,
+dropping the loader's migration 3, dropping the legacy fold 1, reverting the
+registry flip 4 and the defaults-JSON flip 2, and hand-intersecting in one host 1.
+
+**Owed, not claimed:** the preview eyeball. This class is NOT FSA-masked (view
+prefs work in the dev preview), so the check is cheap and real — Reports on the
+right rail by default, its markers and rail on the right, its omni cards in the
+right column, and dragging ANY panel's strip icon across moving its cards with it.
+
 #### The seed half: a DETECTED answer never overwrites a DECLARED one
 
 Same law read in reverse (task 344). Above, a live answer was frozen into a record; here a

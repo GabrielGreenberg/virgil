@@ -8,7 +8,7 @@
 //
 //  1. the LOADER actually calls it, and calls it BEFORE the subtractive
 //     cleaners (`filterPlacements` / `clampStack` / `validPanelId` /
-//     `filterOmniCategories` / `filterPrintPanels`) and before the legacy
+//     `filterOmniSide` / `filterPrintPanels`) and before the legacy
 //     `active*` deletes — those are precisely what turn an un-renamed old id
 //     into a silent DROP; and
 //  2. no one hand-inlines a fourth rename beside it. The pre-275 loader had
@@ -34,7 +34,7 @@ const GLOBAL_KEY = "virgil-view-prefs/global";
 const WINDOW_KEY = `virgil-view-prefs/window/${WINDOW_ID}`;
 
 /** Write a legacy blob split across the two slices the way the app stores it:
- *  `placements` / `omniCategories` / `printOptions` are GLOBAL; the dock,
+ *  `placements` / `omniCategories` (pre-381) / `printOptions` are GLOBAL; the dock,
  *  float, height, mode and archive-view carriers are per-window. */
 function writeLegacyBlob(opts: {
   global?: Record<string, unknown>;
@@ -98,8 +98,18 @@ describe("loadPrefs — a retired panel id is RENAMED across every carrier", () 
     expect(p.poppedOutOrigins).toEqual({ revisions: "bottom" });
   });
 
-  it("transfers the OMNI chip — was DROPPED by filterOmniCategories", () => {
-    expect(loadCommentsEverywhere().omniCategories.left).toContain("revisions");
+  // Task 381 renegotiated the CARRIER, not the contract: omni membership is
+  // now the side-free HIDDEN set, folded once from this very legacy per-side
+  // blob. So "the chip transferred" reads as "the heir is not hidden" — and the
+  // leg keeps its teeth, because without the legacy-carrier rename the fold
+  // sees `comments` (not an omni-eligible kind), concludes `revisions` was
+  // never enabled, and hides it.
+  it("transfers the OMNI chip — was DROPPED by the omni category cleaner", () => {
+    const hidden = loadCommentsEverywhere().omniHiddenCategories;
+    expect(hidden).not.toContain("revisions");
+    // A control: a category the legacy blob genuinely did NOT enable stays
+    // hidden, so the assertion above can't pass on an empty hidden set.
+    expect(hidden).toContain("footnotes");
   });
 
   it("transfers the PRINT include — was DROPPED by filterPrintPanels", () => {
@@ -247,7 +257,7 @@ describe("census — the loader delegates renames, and delegates them FIRST", ()
     const rename = at("applyPanelRenames(", "first");
     for (const cleaner of [
       "filterPlacements",
-      "filterOmniCategories",
+      "filterOmniSide",
       "filterPrintPanels",
       "clampStack",
       "const validPanelId",

@@ -18,7 +18,7 @@
  *  - **Subtractive carriers DROPPED the old id** instead of renaming it, because
  *    the cleaners run against the live registry: `dockStack` (via `clampStack`),
  *    `poppedOutPanels` (via `validPanelId`), `poppedOutOrigins`,
- *    `omniCategories` (via `filterOmniCategories`), `printOptions.panels` (via
+ *    `omniHiddenCategories` (via `filterOmniSide`), `printOptions.panels` (via
  *    `filterPrintPanels`). A panel docked or floating under the old id simply
  *    VANISHED on the upgrade reload instead of becoming its renamed successor.
  *  - **Passthrough carriers KEPT an orphan key** forever: `panelHeights`,
@@ -189,7 +189,7 @@ const PANEL_ID_CARRIERS: Readonly<Record<CollectionPrefField, CarrierShape | nul
   panelModes: "id-record",
   floatPositions: "id-record",
   cardArchiveView: "id-record",
-  omniCategories: "sided-id-list",
+  omniHiddenCategories: "id-list",
   printOptions: "print-panels",
 
   // Not panel-keyed:
@@ -197,6 +197,24 @@ const PANEL_ID_CARRIERS: Readonly<Record<CollectionPrefField, CarrierShape | nul
   omniHideAllCards: null, // keyed by Side
   poppedOutCards: null, // keyed by float card key (`float:<domain>:<kind>:<id>`)
   cardFloatPositions: null, // keyed by float card key
+  appliedPrefMigrations: null, // keyed by nothing — migration ids, not panels
+};
+
+/**
+ * Carriers a PAST build persisted that the live `ViewPrefs` type no longer has.
+ * The type-derived census above is total over the LIVE collections and
+ * therefore structurally cannot name one, so they are declared here — the same
+ * reason `LEGACY_ACTIVE_PANEL_KEYS` exists.
+ *
+ * Renaming them still matters whenever a LATER migration reads them: task 381's
+ * omni fold reads the pre-381 per-side `omniCategories` blob to derive the
+ * side-free hidden set, and it must see `revisions`, not the retired
+ * `comments`, or the heir lands in the hidden set instead of the enabled one.
+ */
+const LEGACY_ID_CARRIERS: Readonly<
+  Record<string, Exclude<CarrierShape, "placements">>
+> = {
+  omniCategories: "sided-id-list",
 };
 
 /* ── Per-shape rewrites ───────────────────────────────────────────────── */
@@ -343,6 +361,14 @@ function applyOne(
       shape === "placements"
         ? rewritePlacements(blob[field], rename)
         : REWRITES[shape](blob[field], rename.from, rename.to);
+    if (next !== undefined) write(field, next);
+  }
+
+  for (const [field, shape] of Object.entries(LEGACY_ID_CARRIERS) as [
+    string,
+    Exclude<CarrierShape, "placements">,
+  ][]) {
+    const next = REWRITES[shape](blob[field], rename.from, rename.to);
     if (next !== undefined) write(field, next);
   }
 
