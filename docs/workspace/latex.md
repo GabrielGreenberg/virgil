@@ -1,4 +1,4 @@
-<!-- last-verified: 6c5a2181 2026-08-18 -->
+<!-- last-verified: a389c0d2 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -35,6 +35,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\maketitle` | `maketitleMarker` |
 | `\[ … \]` | `displayMath` (the **source** form — see below) |
 | `\ex` / `\pex` … `\xe`, `\a`, `\xlist`, `\begingl…\endgl` | the expex family (`exampleBlock`, `exampleItem`, `exampleGloss`, …) |
+| `\ex.` / `\pex.` … (blank-line terminated) | the SAME family, `dialect: "linguex"` (task 355 — see "own dialect" below) |
 | `\includegraphics[...]{...}` (standalone) | `graphicsBlock` |
 | `\begin{verbatim}…\end{verbatim}` | `codeBlock` |
 | `\begin{quote}…\end{quote}` | `blockquote` |
@@ -123,6 +124,28 @@ was *typing*, since the code pane re-parses a document whose tail is inside the
 environment for the seconds before the close exists), and for a `%!vtex:begin`
 with no matching `end`. A truncated opener degrades locally instead of eating
 the rest of the file.
+
+**An example is written back in its OWN dialect** (task 355). Linguistics papers
+number examples with one of two mutually incompatible packages, and a real paper
+loads both: expex closes explicitly (`\ex \label{s1} … \xe`), linguex terminates
+at the blank line (`\ex.\label{s1} …`). So `exampleBlock` carries a per-example
+`dialect` attr ([src/lib/example-dialect.ts](../../src/lib/example-dialect.ts))
+and each example serializes back in the syntax it arrived in — converting on open
+would rewrite every example in a co-authored file Virgil was only asked to READ,
+and, since both packages define `\ex`, would need a `\usepackage{expex}` that
+breaks the paper. The **FORM** decides which dialect (the period —
+`matchExpexOpenerAt` / `matchLinguexOpenerAt`, neither consulting a preamble, so a
+fragment or a paste still answers); the **PACKAGE** decides whether Virgil may
+model a linguex site at all (asked once of the live preamble). `\exg.` / `\exi.` /
+`\exr.`, a glossed part and a third nesting tier are REFUSED whole and fall to the
+byte-literal carrier rather than half-parsed. One shared `assembleExampleBody`
+behind two splitters keeps every consumer downstream dialect-blind; a NEW example
+takes the document's dominant dialect (`dominantExampleDialect` — purely linguex
+mints linguex, empty/expex/MIXED mints expex, since expex is injected from the
+emit where linguex never is). The requirements fallback detector needed the same
+period lookahead: without it a linguex `\ex.` declared expex and
+`ensurePreambleRequirements` injected `\usepackage{expex}` after the user's own
+`\usepackage{linguex}`, and every example in the paper stopped compiling.
 
 ## Serialization and escaping
 

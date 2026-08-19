@@ -1,4 +1,4 @@
-<!-- last-verified: 6c5a2181 2026-08-18 -->
+<!-- last-verified: a389c0d2 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -65,6 +65,12 @@ Two classes of file (schemas → [sidecars.md](sidecars.md)):
 Also under `virgil/`: `figures-cache/` (rasterized `<sha>.webp` + `index.json`,
 keyed by source-content sha) and `.history/` (timestamped shadow snapshots of
 the `.tex` + `virgil.json` + `editor-state.json`, taken before each overwrite).
+Three writers put slots there, all in the same shape: the routine pre-overwrite
+snapshot, the unconditional forensic one a preservation refusal forces (task 357,
+below), and — since task 364 — a disk/model **conflict** resolution, which archives
+BOTH sides into one slot (the disk bundle under its own names plus the editor's
+unsaved `.tex` as `unsaved-<tex>`) before either door applies, so recovering from a
+conflict slot is recovering from any other.
 
 The panel surface itself is `PANEL_REGISTRY` (`src/panels/panel-registry.ts`) —
 15 panels, 11 hosting cards (7 single-kind, 4 polymorphic), 4 tool surfaces. A

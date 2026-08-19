@@ -1,4 +1,4 @@
-<!-- last-verified: 6c5a2181 2026-08-18 -->
+<!-- last-verified: a389c0d2 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -127,7 +127,7 @@ Each flavor breaks differently, and different machinery catches each
 
 | What breaks | Flavor | Guard (`src/lib/tiptap/linked-anchor.ts`) | Recovery |
 |---|---|---|---|
-| The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site — **except** a transaction tagged `LIFECYCLE_DELETE_META` (the Archive / Delete drag-handle actions), where the removal is deliberate and the guard bypasses, letting the block actually go | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
+| The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site. Two stand-downs: a transaction tagged `LIFECYCLE_DELETE_META` (the Archive / Delete drag-handle actions), where the removal is deliberate; and — since task 367 — a removal its own remedy would reproduce byte-for-byte (`removed.eq(paraType.create({ uuid }))`, i.e. the block was ALREADY an empty uuid-only paragraph). Restoring there preserves nothing and silently VETOES the gesture, which is why Backspace on such a husk did nothing, forever, for every press; the guard fails OPEN (an unreadable position, or a uuid that no longer matches, still resurrects) | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
 | The anchored **block's `%!v:` uuid is re-minted** (the `.tex` reload race — the `%!v:` write lost to a reload, so the paragraph parsed back with a fresh uuid and the card's stored uuid matches nothing) | anchor (A) | — (no guard; caught on the next load) | The reload reconcile re-finds the block by `paragraphSnapshot` (snapshot rung of the resolver ladder) and rewrites `textObjectIds[0]` to the live uuid — see the unified resolver below |
 | The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot`; on **load** the once-per-doc re-apply pass restamps every Mode-B mark (below) |
 | The mark **reloads mislabeled** — the serializer drops the mark `kind`, and the parser's `applyLinkedAnchorBoundaries` resurrects every `\vlid` pair as a hardcoded `kind:"note"`/`linkCard:""` (the schema default in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)), so a revision/cutter/todo/report/highlight span reloads painted as a note | anchor (B) | — (caught on the next load) | The load reconcile (`applyLinkedAnchorsImpl`, below) is **authoritative**: it re-stamps each present-but-disagreeing mark's `kind`/`linkCard`/`tintColor` from the owning sidecar card over the parser default |
@@ -189,7 +189,9 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
 
 **The honest caveat for skills.** The guards keep cards from *silently* orphaning,
 and `MarginaliaAnchorGuard`'s placeholder means an anchored paragraph you delete
-survives as an empty same-uuid block. But **recovery is best-effort**:
+survives as an empty same-uuid block — once. Delete that husk again and the guard
+stands down (task 367), so the card orphans into the re-pinnable strip rather than
+the block becoming undeletable. But **recovery is best-effort**:
 `recoverOrphanedUuids` and `reanchorByText` skip **ambiguous** matches (duplicated
 text can't be re-anchored unambiguously). So when a skill deletes or moves text a
 Card depends on, **re-anchor deliberately** — don't lean on the guards. Cleanup
