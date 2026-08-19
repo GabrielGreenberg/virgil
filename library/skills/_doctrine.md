@@ -316,6 +316,22 @@ the same split `deep-index.md` §5 states; the two must agree:
   stands until the next authentication of that entry. Listed so the census
   is complete: a kind nobody names is a kind the next writer clobbers.
 
+- **A DERIVED family, owned by `/library/fuse-alternate`**: the
+  `pgmark-fusion-` heads — `pgmark-fusion-low-alignment-skipped:`,
+  `pgmark-fusion-failed:`, and one head per continuity kind
+  `pgmark_validate.py` declares in `CONTINUITY_FINDING_KINDS`. Listed
+  separately because it is not a kind but a FAMILY, and its membership is
+  derived rather than written down: a fusion recomputes all of it, and the
+  heads must be spelled by running
+  `fuse_alternate.py --print-recompute-flags`, never typed by hand — a hand
+  list silently under-drops the day a continuity kind is added, leaving that
+  kind's line to accumulate one stale copy per pass (task 373). It is
+  outside the deep-index pass, like `bib-coherence:` above, so no step here
+  may declare any of its heads. Note the family's own suppression heads
+  (`pgmark-fusion-<kind>-false-positive:`) are NOT members and survive every
+  recompute — that is exactly why the drop is exact-head rather than by
+  prefix.
+
 Neither owner re-supplies the whole array. Both pass
 `--recompute-warning-kind <kind>` (repeatable) to
 `update_catalog_entry.py`, which drops exactly the declared kinds'
