@@ -35,7 +35,7 @@ import { migrateDocumentSettings } from "@/lib/document-settings";
 import { asBibFamily, type BibFamily } from "@/lib/bib-family";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
-import type { WritePdfResult } from "@/lib/storage-types";
+import type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 import {
@@ -518,7 +518,13 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  opts?: { delimiters?: { preamble: string; postamble: string } },
+  opts?: {
+    delimiters?: { preamble: string; postamble: string };
+    /** This write IS the user's decision — the conflict's "keep my version"
+     *  door, which has already archived both sides. Parity with storage-fsa;
+     *  the full reasoning lives at that declaration (task 364). */
+    userResolvedConflict?: boolean;
+  },
 ): Promise<void> {
   // Read-only library-paper docs never persist (parity with storage-fsa).
   if (isLibraryPaper(h.docId)) return;
@@ -600,7 +606,9 @@ export async function writeDocBundle(
     // Refuses BEFORE either PUT and before the ledger stamp, so both the .tex
     // and `virgil.json` are left untouched and the watcher does not read an
     // untaken write as an external change.
-    const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
+    const writeVerdict = opts?.userResolvedConflict
+      ? null
+      : checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
       // Publish the refusal (task 357 hole 4) — see the load gate above for
@@ -622,6 +630,78 @@ export async function writeDocBundle(
     // preserved), not the JSONContent — so the next poll matches exactly.
     await stampLedger(h.docId, texFilename, latex);
   });
+}
+
+/**
+ * **The conflict net** (task 364) — the dev twin of storage-fsa's
+ * `snapshotConflictSides`; the contract and the reasoning live at that
+ * declaration.
+ *
+ * The dev backend keeps no `virgil/.history/` for ORDINARY writes, and this
+ * does not change that: the two word gates and the serializer refusal still
+ * state their missing forensic edge at their own sites. What is different here
+ * is that the affordance PROMISES a net — a "keep my version" button that says
+ * the disk copy is kept in history must not be a lie in the backend the app is
+ * previewed on — so the one net a user is explicitly told about is taken in
+ * both backends. Scoped to the resolution, which is a rare discrete gesture.
+ *
+ * tex-write-exempt: every PUT here targets `virgil/.history/<slot>/` — the
+ * forensic net itself, never a paper file. Gating the net against the document
+ * it exists to preserve would be a category error, which is the same reason the
+ * FSA twin's slot writes sit beside `copyFileIfPresent` rather than on the
+ * shared text-write primitive.
+ *
+ * Stated limit: no pruning. The FSA twin caps a doc at HISTORY_LIMIT slots by
+ * listing the folder; the dev API has no directory listing, so a dev history
+ * grows one slot per conflict resolved. That is a fixture cost, not a user one.
+ */
+export async function snapshotConflictSides(
+  h: DocWriteHandle,
+  mine: JSONContent | null,
+): Promise<ConflictArchive | null> {
+  try {
+    const docs = await getDevIndex();
+    const entry = findEntry(docs, h.docId);
+    const texFilename = entry
+      ? texFilenameFromPath(entry.sourcePath)
+      : "document.tex";
+    const slot = `.history/${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const base = `${API}/doc/${h.docId}`;
+
+    const disk: string[] = [];
+    for (const [from, name] of [
+      [`${base}/${texFilename}`, texFilename],
+      [`${base}/virgil/virgil.json`, "virgil.json"],
+      [`${base}/virgil/editor-state.json`, "editor-state.json"],
+    ] as const) {
+      const body = await fetchText(from);
+      if (body === null) continue;
+      await putText(`${base}/virgil/${slot}/${name}`, body);
+      disk.push(name);
+    }
+
+    let mineName: string | null = null;
+    if (mine) {
+      const delimiters = extractPreambleAndPostamble(
+        (await fetchText(`${base}/${texFilename}`)) ?? "",
+      );
+      const bibFamily = await readDevDocBibFamily(h.docId);
+      let body: string;
+      try {
+        body = serializeToLatex(mine, { ...(delimiters ?? {}), bibFamily });
+        mineName = `unsaved-${texFilename}`;
+      } catch {
+        body = JSON.stringify(mine, null, 2);
+        mineName = "unsaved-model.json";
+      }
+      await putText(`${base}/virgil/${slot}/${mineName}`, body);
+    }
+
+    return { slot, disk, mine: mineName };
+  } catch (e) {
+    console.warn("[storage] conflict snapshot failed:", e);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

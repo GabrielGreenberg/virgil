@@ -70,7 +70,7 @@ import {
   isStalePipelineError,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
-import type { WritePdfResult } from "@/lib/storage-types";
+import type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -601,6 +601,41 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
  * `existingLatex` is the raw `.tex` we already read in `readDocBundle`,
  * reused as the preamble source — no second disk read on the load path.
  */
+interface SerializeOpts {
+  preamble?: string;
+  postamble?: string;
+  bibFamily?: BibFamily | null;
+}
+
+/**
+ * The serialize options every `.tex`-producing path shares: the user's verbatim
+ * delimiters when we have them, the authoritative per-doc bib family off the
+ * citations sidecar, and — only for a brand-new / empty doc with no
+ * `\begin{document}` — the selected style's preamble as a seed.
+ *
+ * Factored because three callers now need it (the load writeback, the bundle
+ * write, and task 364's conflict net), and two hand copies of "how does this
+ * document serialize?" are exactly how the archived copy of a side would come
+ * to differ from the bytes that side would actually write.
+ */
+async function buildSerializeOpts(
+  virgil: FileSystemDirectoryHandle,
+  delimiters: { preamble: string; postamble: string } | null | undefined,
+): Promise<SerializeOpts> {
+  const bibFamily = await readDocBibFamily(virgil);
+  const opts: SerializeOpts = { ...(delimiters ?? {}), bibFamily };
+  if (!delimiters) {
+    const rawSettings = await safeReadJson<unknown>(
+      virgil,
+      "document-settings.json",
+      { styleId: DEFAULT_STYLE_ID },
+    );
+    const settings = migrateDocumentSettings(rawSettings);
+    opts.preamble = resolveStyle(settings.styleId).preamble;
+  }
+  return opts;
+}
+
 async function writeReStampedTexOnLoad(
   h: DocWriteHandle,
   content: JSONContent,
@@ -626,21 +661,7 @@ async function writeReStampedTexOnLoad(
     // existing user-settable SSOT, seeded from detection on load). A missing
     // sidecar → null → the serializer falls back to the body-derived family
     // (today's behavior). Never overrides the user's stored choice.
-    const bibFamily = await readDocBibFamily(virgil);
-    const serializeOpts: {
-      preamble?: string;
-      postamble?: string;
-      bibFamily?: BibFamily | null;
-    } = { ...(delimiters ?? {}), bibFamily };
-    if (!delimiters) {
-      const rawSettings = await safeReadJson<unknown>(
-        virgil,
-        "document-settings.json",
-        { styleId: DEFAULT_STYLE_ID },
-      );
-      const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
-    }
+    const serializeOpts = await buildSerializeOpts(virgil, delimiters);
     // THE SERIALIZER GATE (task 357). A model holding a node this build cannot
     // express in LaTeX no longer serializes to a SHORTER document — the
     // serializer refuses (`UnserializableNodeError`), and the refusal is
@@ -732,7 +753,24 @@ const SNAPSHOT_MIN_INTERVAL_MS = 60_000;
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  opts?: { delimiters?: { preamble: string; postamble: string } },
+  opts?: {
+    delimiters?: { preamble: string; postamble: string };
+    /**
+     * **This write IS the user's decision** (task 364). Set only by the
+     * external-change conflict's "keep my version" door, which has already
+     * archived BOTH sides through `snapshotConflictSides` — so the automatic-
+     * write gate below steps aside rather than silently declining to do the
+     * one thing the user just asked for.
+     *
+     * Stated as a claim rather than a convenience: the 357 gate exists because
+     * an AUTOMATIC write must not lose content, and a conflict resolution is
+     * the opposite of automatic. Refusing it would leave the badge's promise
+     * ("your version is kept") unkept with nothing on screen to say so — this
+     * cluster's own silence failure mode. The net is what makes the exemption
+     * safe, and it is unconditional at the call site, never rate-limited.
+     */
+    userResolvedConflict?: boolean;
+  },
 ): Promise<void> {
   return enqueueDocWrite(h, "bundle", async () => {
     const docHandle = await requireDocHandle(h.docId);
@@ -781,21 +819,7 @@ export async function writeDocBundle(
     // Authoritative per-doc bib family from the citations sidecar (the
     // user-settable SSOT). Missing → null → body-derived fallback. Never
     // overrides the user's stored choice.
-    const bibFamily = await readDocBibFamily(virgil);
-    const serializeOpts: {
-      preamble?: string;
-      postamble?: string;
-      bibFamily?: BibFamily | null;
-    } = { ...(delimiters ?? {}), bibFamily };
-    if (!delimiters) {
-      const rawSettings = await safeReadJson<unknown>(
-        virgil,
-        "document-settings.json",
-        { styleId: DEFAULT_STYLE_ID },
-      );
-      const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
-    }
+    const serializeOpts = await buildSerializeOpts(virgil, delimiters);
     // THE SERIALIZER GATE (task 357) — see `writeReStampedTexOnLoad` above.
     // Refusing here leaves the `.tex` AND `virgil.json` untouched, which is the
     // half a `.tex`-only gate could never cover: this path replaces the sidecar
@@ -826,7 +850,9 @@ export async function writeDocBundle(
     // the `.tex` AND `virgil.json` are both left alone — the sidecar matters
     // here because this path replaces it wholesale, carrying damage no .tex
     // gate could see.
-    const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
+    const writeVerdict = opts?.userResolvedConflict
+      ? null
+      : checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
       // Publish the refusal (task 357 hole 4) — see the load gate above for
@@ -908,6 +934,95 @@ export async function writeDocBundle(
     }
   });
 }
+
+/**
+ * **The conflict net** (task 364).
+ *
+ * An external-change CONFLICT has two sides — the bytes on disk and the
+ * unsaved model in the editor — and every resolution applies one of them over
+ * the other. The forensic layer 357 established already nets the DISK side of
+ * an ordinary write; what it never covered is the side that lives only in
+ * memory. So a resolution archives BOTH sides into ONE
+ * `virgil/.history/<timestamp>/` slot before either is applied, and the two
+ * doors then differ only in which side they APPLY.
+ *
+ * > A resolution that discards one side puts that side in the net FIRST, and
+ * > which door was chosen may not change what the net holds.
+ *
+ * The disk side is copied under its own names (`main.tex`, `virgil.json`,
+ * `editor-state.json`) — the same slot shape `snapshotPriorBundle` writes, so
+ * recovery from a conflict slot is recovery from any other slot. The editor's
+ * side lands beside it as `unsaved-<tex>`, serialized through the SAME
+ * `buildSerializeOpts` door the save path uses, so the archived copy is the
+ * bytes a "keep mine" write would actually have produced. A model the
+ * serializer refuses (`UnserializableNodeError`) is still the user's work, so
+ * the raw model is archived as `unsaved-model.json` rather than nothing.
+ *
+ * Returns `null` when NO net could be taken. The caller must be able to read
+ * that: a door promising "the other version is kept in history" while silently
+ * copying nothing is the false-affordance shape (AGENTS.md, "The feedback
+ * half").
+ *
+ * NOT queued through `enqueueDocWrite`: it writes only inside `.history/`,
+ * never a document file, and it must land BEFORE the resolution's own queued
+ * write rather than behind it in the same serial queue.
+ */
+export async function snapshotConflictSides(
+  h: DocWriteHandle,
+  mine: JSONContent | null,
+): Promise<ConflictArchive | null> {
+  try {
+    const docHandle = await requireDocHandle(h.docId);
+    const meta = await getDocMetaOrThrow(h.docId);
+    const virgil = await getVirgilSubdir(docHandle);
+    const history = await virgil.getDirectoryHandle(HISTORY_DIR, {
+      create: true,
+    });
+    const slotName = historyTimestamp();
+    const slot = await history.getDirectoryHandle(slotName, { create: true });
+
+    const texName = meta.texFilename;
+    const disk: string[] = [];
+    for (const [dir, name] of [
+      [docHandle, texName],
+      [virgil, "virgil.json"],
+      [virgil, "editor-state.json"],
+    ] as const) {
+      if (await copyFileIfPresent(dir, name, slot)) disk.push(name);
+    }
+
+    let mineName: string | null = null;
+    if (mine) {
+      const delimiters =
+        extractPreambleAndPostamble(
+          await safeReadText(docHandle, texName, ""),
+        ) ?? undefined;
+      let body: string;
+      let name: string;
+      try {
+        body = serializeToLatex(
+          mine,
+          await buildSerializeOpts(virgil, delimiters),
+        );
+        name = `unsaved-${texName}`;
+      } catch {
+        // The serializer refuses a model it cannot express (task 357). The
+        // model is still the user's writing, so archive it raw rather than
+        // let the one side that exists nowhere else go unnetted.
+        body = JSON.stringify(mine, null, 2);
+        name = "unsaved-model.json";
+      }
+      if (await writeTextIntoSlot(slot, name, body)) mineName = name;
+    }
+
+    await pruneHistory(history, HISTORY_LIMIT);
+    return { slot: slotName, disk, mine: mineName };
+  } catch (e) {
+    console.warn("[storage] conflict snapshot failed:", e);
+    return null;
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Bibliography (sibling .bib file in the doc folder)
@@ -1861,11 +1976,14 @@ function historyTimestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
+/** Copy one file into a history slot. Returns whether a copy actually landed,
+ *  which is what lets a caller REPORT what its net holds rather than claim it
+ *  (task 364) — the two snapshot callers below ignore it, as they always have. */
 async function copyFileIfPresent(
   source: FileSystemDirectoryHandle,
   filename: string,
   dest: FileSystemDirectoryHandle,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const sourceFh = await source.getFileHandle(filename);
     const file = await sourceFh.getFile();
@@ -1874,11 +1992,40 @@ async function copyFileIfPresent(
     const w = await destFh.createWritable();
     await w.write(bytes.buffer as ArrayBuffer);
     await w.close();
+    return true;
   } catch (e) {
-    if (isNotFound(e)) return; // nothing to snapshot yet
+    if (isNotFound(e)) return false; // nothing to snapshot yet
     // Don't let snapshot failures block the actual write — log and
     // continue. The write itself is the thing the user cares about.
     console.warn(`[storage] history snapshot failed for ${filename}:`, e);
+    return false;
+  }
+}
+
+/**
+ * Write in-memory text INTO a history slot (task 364's editor side).
+ *
+ * Deliberately the same raw-writable idiom `copyFileIfPresent` uses rather than
+ * the shared `writeTextToHandle`: this is the forensic NET writing its own
+ * contents, which `tex-write-accountability`'s census states as out of scope
+ * for exactly this reason — gating the net against the document it exists to
+ * preserve would be a category error. Keeping it here, beside the copier, is
+ * what keeps that classification true by construction instead of by a marker.
+ */
+async function writeTextIntoSlot(
+  slot: FileSystemDirectoryHandle,
+  filename: string,
+  text: string,
+): Promise<boolean> {
+  try {
+    const fh = await slot.getFileHandle(filename, { create: true });
+    const w = await fh.createWritable();
+    await w.write(text);
+    await w.close();
+    return true;
+  } catch (e) {
+    console.warn(`[storage] history slot write failed for ${filename}:`, e);
+    return false;
   }
 }
 

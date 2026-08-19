@@ -231,6 +231,34 @@ describe("disk-watcher: touch false-positive", () => {
     expect(h.readTextFile).toHaveBeenCalledTimes(1);
     expect(h.watcher.store.getSnapshot().changes).toEqual([]);
   });
+
+  it("stays clean on identical bytes even with UNSAVED EDITS — no conflict banner (364)", async () => {
+    // The conflict tier is the alarming one and it is the one a sync service
+    // touching a file would otherwise raise constantly. The hash compare is
+    // what keeps it honest, and this pins that the CONFLICT branch is behind
+    // the same compare rather than short-circuiting on the dirty flag.
+    const h = makeHarness({ hasUnsavedEdits: true });
+    baseline("main.tex", h.disk.get("main.tex")!);
+    baseline("references.bib", h.disk.get("references.bib")!);
+    await h.prime();
+
+    const f = h.disk.get("main.tex")!;
+    h.disk.set("main.tex", { ...f, mtimeMs: 12345 });
+    await h.watcher.pollNow();
+
+    expect(h.watcher.store.getSnapshot().severity).toBeNull();
+    expect(h.watcher.store.getSnapshot().changes).toEqual([]);
+
+    // Control: a REAL byte change with the same dirty flag DOES raise the
+    // conflict — so the leg above cannot pass by the watcher being inert.
+    h.disk.set("main.tex", {
+      ...f,
+      mtimeMs: 22222,
+      content: f.content + "\n% an external writer was here\n",
+    });
+    await h.watcher.pollNow();
+    expect(h.watcher.store.getSnapshot().severity).toBe("conflict");
+  });
 });
 
 describe("disk-watcher: unledgered but present", () => {

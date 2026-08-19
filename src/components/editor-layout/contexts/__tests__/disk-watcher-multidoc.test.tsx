@@ -105,14 +105,65 @@ describe("DiskWatcherProvider per-doc registration (A2)", () => {
     const reloadA = vi.fn();
     const reloadB = vi.fn();
     act(() => {
-      ctx!.registerReload("A", reloadA);
-      ctx!.registerReload("B", reloadB);
+      ctx!.registerDocActions("A", {
+        reload: reloadA,
+        keepMine: async () => {},
+        archiveSides: async () => null,
+      });
+      ctx!.registerDocActions("B", {
+        reload: reloadB,
+        keepMine: async () => {},
+        archiveSides: async () => null,
+      });
     });
     await act(async () => {
       await ctx!.reloadFromDisk();
     });
     expect(reloadA).toHaveBeenCalledTimes(1);
     expect(reloadB).not.toHaveBeenCalled();
+  });
+
+  it("resolveConflict drives ONLY the active doc's ports, and nets first (364)", async () => {
+    render(React.createElement(Harness, { docId: "A", liveDocIds: ["A"] }));
+    const order: string[] = [];
+    const portsFor = (id: string) => ({
+      reload: () => {
+        order.push(`${id}:reload`);
+      },
+      keepMine: async () => {
+        order.push(`${id}:keepMine`);
+      },
+      archiveSides: async () => {
+        order.push(`${id}:archive`);
+        return { slot: "s", disk: ["main.tex"], mine: "unsaved-main.tex" };
+      },
+    });
+    act(() => {
+      ctx!.registerDocActions("A", portsFor("A"));
+      ctx!.registerDocActions("B", portsFor("B"));
+    });
+
+    await act(async () => {
+      const out = await ctx!.resolveConflict("keep-mine");
+      expect(out?.applied).toBe(true);
+      expect(out?.archive?.mine).toBe("unsaved-main.tex");
+    });
+    // Only the ACTIVE doc's ports ran, and the net came first — the warm doc
+    // was not archived, written, or reloaded.
+    expect(order).toEqual(["A:archive", "A:keepMine"]);
+
+    order.length = 0;
+    await act(async () => {
+      await ctx!.resolveConflict("take-disk");
+    });
+    expect(order).toEqual(["A:archive", "A:reload"]);
+  });
+
+  it("resolveConflict DECLINES when no doc has registered — never a false report", async () => {
+    render(React.createElement(Harness, { docId: "A", liveDocIds: ["A"] }));
+    await act(async () => {
+      expect(await ctx!.resolveConflict("keep-mine")).toBeNull();
+    });
   });
 
   it("unregistering a doc's getter does not clobber another doc's registration", () => {

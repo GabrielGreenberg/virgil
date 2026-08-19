@@ -17,9 +17,16 @@ import React from "react";
 const mockRead = vi.fn();
 const mockWrite = vi.fn();
 
+const mockSnapshot = vi.fn(async (..._args: unknown[]) => ({
+  slot: "2026-08-18T00-00-00-000Z",
+  disk: ["main.tex"],
+  mine: "unsaved-main.tex",
+}));
+
 vi.mock("@/lib/storage", () => ({
   readDocBundle: (...args: unknown[]) => mockRead(...args),
   writeDocBundle: (...args: unknown[]) => mockWrite(...args),
+  snapshotConflictSides: (...args: unknown[]) => mockSnapshot(...args),
 }));
 
 // Controllable fake watcher: the test flips `unresolved` to model an external
@@ -39,7 +46,19 @@ const fakeCtx = {
     return activeDocId;
   },
   registerUnsavedGetter: () => () => {},
+  // Task 364: capture the doc's registered conflict actions so a leg can drive
+  // the REAL "keep my version" write the badge drives.
+  registerDocActions: (_id: string, actions: unknown) => {
+    docActions = actions as DocActions;
+    return () => {};
+  },
 };
+interface DocActions {
+  reload: () => void | Promise<void>;
+  keepMine: () => Promise<void>;
+  archiveSides: () => Promise<unknown>;
+}
+let docActions: DocActions | null = null;
 vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
   useDiskWatcherOrNull: () => fakeCtx,
 }));
@@ -65,6 +84,8 @@ beforeEach(() => {
   resetFlushers();
   unresolved = false;
   activeDocId = "doc-1";
+  docActions = null;
+  mockSnapshot.mockClear();
 });
 
 function makeMockEditor(content: JSONContent): Editor {
@@ -316,5 +337,85 @@ describe("useDocument autosave-pause guard (DESIGN §4)", () => {
     });
     await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
     expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+  });
+});
+
+// ── task 364: the conflict's OTHER door ──────────────────────────────────────
+//
+// The pause guard above is what makes "keep my version" necessary: while the
+// conflict stands, every automatic path re-arms rather than writes, so without
+// an explicit door the user's side simply never reaches disk. These legs drive
+// the REAL registered action, with the watcher still reporting the conflict.
+
+describe("keep-my-version writes past the pause guard, as the user's decision", () => {
+  it("writes IMMEDIATELY, and declares itself the user's conflict resolution", async () => {
+    unresolved = true;
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await act(async () => {});
+    act(() => {
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+    });
+    // The autosave is held back — that is the guard doing its job.
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await docActions!.keepMine();
+    });
+
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+    // The 357 write gate steps aside ONLY because the caller says this write IS
+    // the decision. A keep-mine that omitted the flag would be silently
+    // refusable — the badge's promise unkept with nothing on screen to say so.
+    expect(mockWrite.mock.calls[0][2]).toMatchObject({
+      userResolvedConflict: true,
+    });
+  });
+
+  it("cancels the pending debounce — the resolution does not land 1500 ms later", async () => {
+    vi.useFakeTimers();
+    try {
+      unresolved = true;
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+      });
+      await act(async () => {
+        await docActions!.keepMine();
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      unresolved = false;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+      });
+      // No second, later write from a debounce the resolution left armed.
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the archive port hands the storage net the LIVE editor model", async () => {
+    // The backend can copy the disk side on its own; the editor's unsaved side
+    // exists nowhere but here, so a port that passed null would produce a net
+    // that silently holds only the half nobody was about to lose.
+    unresolved = true;
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await act(async () => {});
+    act(() => {
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+    });
+    await act(async () => {
+      await docActions!.archiveSides();
+    });
+    expect(mockSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockSnapshot.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
   });
 });
