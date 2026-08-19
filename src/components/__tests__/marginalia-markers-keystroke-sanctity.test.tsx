@@ -50,9 +50,9 @@ import {
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import {
-  buildResolveIndex,
-  resolveCardAnchor,
-} from "@/links/resolve-card-anchor";
+  buildCardAnchorPass,
+  buildMarginMarkerRows,
+} from "@/links/card-anchor-rows";
 import type { CardWithLinks } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 
@@ -173,9 +173,10 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // A stable card array (the real memo deps are the card arrays + counters).
     const cards = [modeACard("c1", "P1"), modeACard("c2", "P2")];
 
-    // Mirror the real memo: build the resolve index + resolve each card,
-    // gated on the SAME deps EditorPane uses (`editor`, `rev.anchors`,
-    // `rev.blocks`, the card array).
+    // Mirror the real memo: build the shared anchor PASS + read each card's
+    // rows through it (task 369 — the margin and the omni surface read the
+    // same authority now), gated on the SAME deps EditorPane uses (`editor`,
+    // `rev.anchors`, `rev.blocks`, the card array).
     // The harness intentionally mirrors the EXACT dep shape of the EditorPane
     // memo (reactive editor + structural counters + card array) so the
     // identity-stability assertion is faithful — the lint rule flags those as
@@ -185,10 +186,10 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     const { result } = renderHook(() => {
       const rev = useStructuralRevisions(editor);
       const markers = useMemo(() => {
-        const index = buildResolveIndex(editor);
+        const pass = buildCardAnchorPass(editor);
         return cards.map((c) => ({
           id: c.id,
-          textObjectId: resolveCardAnchor(c, editor, index).paragraphId,
+          textObjectId: buildMarginMarkerRows(c, pass.resolve)[0]?.pid ?? null,
         }));
       }, [editor, rev.anchors, rev.blocks, cards]);
       return markers;
@@ -244,42 +245,17 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
   it("resolver-driven marker mapping: live-uuid card → unanchored:false on its live pid; an all-dead card → unanchored:true on its first stored pid (surfaced, not vanished)", () => {
     const editor = mountDoc(); // live paragraphs P1, P2
 
-    // Replicates `EditorPane.marginaliaMarkers`'s `resolveMarkerPids` glue
-    // (EditorPane.tsx ~:1824-1862): resolve each card through the SSOT, flag
-    // orphans, and on a resolved card emit ONE marker per LIVE stored pid
-    // (seeded with `res.paragraphId`, then every live raw pid, deduped
-    // order-stable) so a multi-anchor Mode-A card keeps a marker per paragraph.
-    // This mirror MUST be kept in sync with the production helper; the keystroke-
-    // sanctity dep-array mirror above tracks EditorPane's marginaliaMarkers memo
-    // dep array (~:2021-2046) in the same way.
-    const resolveMarkerPids = (
-      c: CardWithLinks,
-      pids: string[],
-    ): Array<{ pid: string; unanchored: boolean }> => {
-      const index = buildResolveIndex(editor);
-      const ready = index.uuidToParagraph.size > 0;
-      if (!ready) return pids.map((pid) => ({ pid, unanchored: false }));
-      const res = resolveCardAnchor(c, editor, index);
-      if (res.source === "orphan") {
-        return pids.length > 0 ? [{ pid: pids[0], unanchored: true }] : [];
-      }
-      if (res.paragraphId) {
-        const livePids = pids.filter((p) => index.uuidToParagraph.has(p));
-        const seen = new Set<string>();
-        const out: Array<{ pid: string; unanchored: boolean }> = [];
-        for (const pid of [res.paragraphId, ...livePids]) {
-          if (seen.has(pid)) continue;
-          seen.add(pid);
-          out.push({ pid, unanchored: false });
-        }
-        return out;
-      }
-      return pids.map((pid) => ({ pid, unanchored: false }));
-    };
+    // Since task 369 the margin's glue is PRODUCTION code — the same rows the
+    // omni surface reads — so these legs drive it directly instead of keeping
+    // a hand-mirror in sync with it. (A mirror is exactly the fork 369 closed:
+    // it can agree with the code it copies and still disagree with the OTHER
+    // renderer of the same fact.)
+    const resolveMarkerPids = (c: CardWithLinks) =>
+      buildMarginMarkerRows(c, buildCardAnchorPass(editor).resolve);
 
     // (a) Live-uuid card → bound to its live paragraph, NOT orphan.
     const live = modeACard("c1", "P1");
-    expect(resolveMarkerPids(live, ["P1"])).toEqual([
+    expect(resolveMarkerPids(live)).toEqual([
       { pid: "P1", unanchored: false },
     ]);
 
@@ -287,7 +263,7 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // resolver returns `orphan` → marker SURFACES (unanchored:true) on its
     // first stored (now-dead) pid rather than being culled (the RC2 vanish).
     const dead = modeACard("c2", "P-dead-uuid");
-    expect(resolveMarkerPids(dead, ["P-dead-uuid"])).toEqual([
+    expect(resolveMarkerPids(dead)).toEqual([
       { pid: "P-dead-uuid", unanchored: true },
     ]);
 
@@ -297,39 +273,16 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
   it("multi-anchor Mode-A card with TWO live anchors [P1,P3] yields TWO markers (note:P1 + note:P3), not one (the BLOCKER regression)", () => {
     const editor = mountThreeDoc(); // live paragraphs P1, P2, P3
 
-    // Same `resolveMarkerPids` mirror as the production helper (resolved branch
-    // emits one entry per live stored pid, seeded with res.paragraphId).
-    const resolveMarkerPids = (
-      c: CardWithLinks,
-      pids: string[],
-    ): Array<{ pid: string; unanchored: boolean }> => {
-      const index = buildResolveIndex(editor);
-      const ready = index.uuidToParagraph.size > 0;
-      if (!ready) return pids.map((pid) => ({ pid, unanchored: false }));
-      const res = resolveCardAnchor(c, editor, index);
-      if (res.source === "orphan") {
-        return pids.length > 0 ? [{ pid: pids[0], unanchored: true }] : [];
-      }
-      if (res.paragraphId) {
-        const livePids = pids.filter((p) => index.uuidToParagraph.has(p));
-        const seen = new Set<string>();
-        const out: Array<{ pid: string; unanchored: boolean }> = [];
-        for (const pid of [res.paragraphId, ...livePids]) {
-          if (seen.has(pid)) continue;
-          seen.add(pid);
-          out.push({ pid, unanchored: false });
-        }
-        return out;
-      }
-      return pids.map((pid) => ({ pid, unanchored: false }));
-    };
+    // The PRODUCTION margin reader (see the note in the previous leg).
+    const resolveMarkerPids = (c: CardWithLinks) =>
+      buildMarginMarkerRows(c, buildCardAnchorPass(editor).resolve);
 
     // The resolver binds this card to its FIRST live uuid (P1) only — the
     // resolved branch must still emit a marker for P3 from the stored pids,
     // else P3's marker silently vanishes (re-introduces RC2) and the per-pid
     // detach affordance breaks.
     const card = multiModeACard("note1", ["P1", "P3"]);
-    const entries = resolveMarkerPids(card, ["P1", "P3"]);
+    const entries = resolveMarkerPids(card);
 
     // TWO markers, both anchored (not orphan), order-stable P1→P3.
     expect(entries).toEqual([

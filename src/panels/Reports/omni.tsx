@@ -7,8 +7,8 @@ import type {
 } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
-import { getLinkedTextObjectIds } from "@/links/links";
-import { resolveAnchorState } from "@/links/anchor-state";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 import { ReportCard } from "./ReportCard";
 import { ReportRequestCard } from "./ReportRequestCard";
 import type { JSONContent, Editor } from "@tiptap/react";
@@ -18,7 +18,7 @@ interface BuildArgs {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   jumpToCard: (card: ReportItem, sourceEl?: HTMLElement | null) => void;
-  findParagraphPos: (uuid: string | null) => number | null;
+  resolveCardRows: CardAnchorResolver;
   updateReportContent: (id: string, content: JSONContent) => void;
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
@@ -41,11 +41,17 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
 
   for (const card of a.cards) {
     const isSelected = a.selectedId === card.id;
-    const pids = getLinkedTextObjectIds(card);
     const baseId =
       card.kind === "report"
         ? cardPopKey("report", card.id)
         : cardPopKey("report-request", card.id);
+    // ONE authority for "where is this card anchored?" — the same rows the
+    // margin marker builder draws from (task 369). An unlinked report card is
+    // deliberately FREE by this panel's own rule.
+    const rows = buildOmniAnchorRows(card, baseId, a.resolveCardRows, {
+      unanchored: true,
+    });
+    const linked = rows.some((r) => r.anchorUuid != null);
 
     const renderCard = (omniId: string) =>
       card.kind === "report" ? (
@@ -59,7 +65,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
-            pids.length > 0 ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
+            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
           onEditorFocus={a.setOverrideEditor}
           getCitationDisplayText={a.getCitationDisplayText}
@@ -77,7 +83,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
-            pids.length > 0 ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
+            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
           onEditorFocus={a.setOverrideEditor}
           getCitationDisplayText={a.getCitationDisplayText}
@@ -86,30 +92,14 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
         />
       );
 
-    if (pids.length === 0) {
+    for (const row of rows) {
       items.push({
-        id: baseId,
-        pos: null,
-        // Unlinked (no paragraph anchor) — a deliberately-free card.
-        anchorState: resolveAnchorState(null, { unanchored: true }),
-        content: renderCard(baseId),
+        id: row.omniId,
+        pos: row.pos,
+        anchorUuid: row.anchorUuid,
+        anchorState: row.anchorState,
+        content: renderCard(row.omniId),
       });
-    } else {
-      for (let pi = 0; pi < pids.length; pi++) {
-        const pid = pids[pi];
-        const pos = a.findParagraphPos(pid);
-        const suffix = pids.length > 1 ? `@${pi}` : "";
-        const omniId = `${baseId}${suffix}`;
-        items.push({
-          id: omniId,
-          pos,
-          anchorUuid: pid,
-          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
-          // lost pos ⇒ orphaned.
-          anchorState: resolveAnchorState(pos, null),
-          content: renderCard(omniId),
-        });
-      }
     }
   }
 

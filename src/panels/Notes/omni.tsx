@@ -6,15 +6,15 @@ import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
-import { getLinkedTextObjectIds } from "@/links/links";
-import { resolveAnchorState } from "@/links/anchor-state";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 
 interface BuildArgs {
   cards: NoteCardItem[];
   selectedNoteId: string | null;
   setSelectedNoteId: (id: string | null) => void;
   jumpToCard: (card: NoteCardItem, sourceEl?: HTMLElement | null) => void;
-  findParagraphPos: (uuid: string | null) => number | null;
+  resolveCardRows: CardAnchorResolver;
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
@@ -30,7 +30,6 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const card of a.cards) {
-    const pids = getLinkedTextObjectIds(card);
     const isSelected = a.selectedNoteId === card.id;
     const baseId = cardPopKey(card.kind, card.id);
 
@@ -70,30 +69,20 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
       );
     };
 
-    if (pids.length === 0) {
+    // ONE authority for "where is this card anchored?" — the same rows the
+    // margin marker builder draws from (task 369), so a card recovered by the
+    // mark or snapshot rung is anchored in BOTH surfaces or neither. An
+    // unlinked note is deliberately FREE by this panel's own rule.
+    for (const row of buildOmniAnchorRows(card, baseId, a.resolveCardRows, {
+      unanchored: true,
+    })) {
       items.push({
-        id: baseId,
-        pos: null,
-        // Unlinked (no paragraph anchor) — a deliberately-free card.
-        anchorState: resolveAnchorState(null, { unanchored: true }),
-        content: renderCard(baseId, false),
+        id: row.omniId,
+        pos: row.pos,
+        anchorUuid: row.anchorUuid,
+        anchorState: row.anchorState,
+        content: renderCard(row.omniId, row.anchorUuid != null),
       });
-    } else {
-      for (let pi = 0; pi < pids.length; pi++) {
-        const pid = pids[pi];
-        const pos = a.findParagraphPos(pid);
-        const suffix = pids.length > 1 ? `@${pi}` : "";
-        const omniId = `${baseId}${suffix}`;
-        items.push({
-          id: omniId,
-          pos,
-          anchorUuid: pid,
-          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
-          // lost pos ⇒ orphaned.
-          anchorState: resolveAnchorState(pos, null),
-          content: renderCard(omniId, true),
-        });
-      }
     }
   }
 

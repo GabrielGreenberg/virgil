@@ -293,9 +293,10 @@ import {
   type CardWithLinks,
 } from "@/links/links";
 import {
-  buildResolveIndex,
-  resolveCardAnchor,
-} from "@/links/resolve-card-anchor";
+  buildCardAnchorPass,
+  buildMarginMarkerRows,
+  marginAnchorIndex,
+} from "@/links/card-anchor-rows";
 import type { PanelSideMap } from "@/lib/margin-side";
 import {
   resolveAnchorState,
@@ -2886,20 +2887,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // don't move a paragraph-anchored kind onto the omni path without
   // moving its marker too.
   //
-  // CHIP-B — RESOLVER-DRIVEN textObjectId. Each card's marker paragraph is
-  // resolved through the anchor-recovery SSOT (`resolveCardAnchor`) against
-  // ONE `buildResolveIndex(editor)` built at the TOP of this memo (O(doc),
-  // card-count-independent — never per card). The resolver's
-  // `anchorIdToParagraph` rung subsumes the old inline revision
-  // anchorId→paragraph doc walk (deleted). `source==='orphan'` (uuid + mark
-  // + snapshot all dead) emits an `unanchored` marker the margin surfaces as
-  // a visible "click to re-pin" affordance instead of silently vanishing.
-  // `buildResolveIndex` reads the live doc, so this memo ALSO depends on the
-  // reactive `editor` instance (the `useStructuralRevisions` counters start
-  // at 0 and stay flat on load — see AGENTS "Initial population"); a plain
-  // keystroke mints no uuid / adds no block, so `rev.anchors`/`rev.blocks`
-  // stay flat → the memo doesn't recompute and `buildResolveIndex` doesn't
-  // run (keystroke sanctity is structural, not vigilance-based).
+  // CHIP-B — RESOLVER-DRIVEN textObjectId, and since task 369 the resolution
+  // is SHARED with the omni surface: each card's marker paragraph comes from
+  // the ONE card-anchor authority (`anchorPass`, built above from
+  // `buildCardAnchorPass`), read here through `buildMarginMarkerRows`. A card
+  // whose uuid + mark + snapshot are all dead emits an `unanchored` marker the
+  // margin surfaces as a visible "click to re-pin" affordance instead of
+  // silently vanishing. The pass reads the live doc, so it (and therefore this
+  // memo) depends on the reactive `editor` instance as well as the structural
+  // counters (which start at 0 and stay flat on load — AGENTS "Initial
+  // population"); a plain keystroke mints no uuid / adds no block, so nothing
+  // here recomputes (keystroke sanctity is structural, not vigilance-based).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // Set of archived card ids across every panel. Drives the in-document
   // exclusion (margin markers, highlights) + OmniView, and is read by the
@@ -3266,6 +3264,30 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     dismissAllCutterPending,
   ]);
 
+  /**
+   * ONE anchor-resolution pass for the whole margin (task 369).
+   *
+   * Hoisted out of `marginaliaMarkers` so the O(doc) `buildResolveIndex` runs
+   * only when the doc STRUCTURALLY changes — not every time a note's title is
+   * edited — and, more importantly, so the margin and the omni surface read
+   * the SAME authority (`buildCardAnchorPass`). Before this they answered
+   * "which paragraph is this card on?" from two different tables and agreed
+   * only on the live-uuid rung, so a card recovered by the mark or snapshot
+   * rung painted an ordinary marker beside the recovered paragraph while its
+   * omni row was binned `pos: null` into the orphan strip.
+   *
+   * Keystroke sanctity: gated on the DocStructureBus counters — plain typing
+   * bumps neither, so nothing here recomputes. `editor` is a dep because the
+   * counters are silent on load (`buildInitial` emits nothing), so the pass
+   * must re-derive once the editor mounts (AGENTS "Initial population").
+   */
+  const anchorPass = useMemo(
+    () => buildCardAnchorPass(editor),
+    // The counters are the structural GATE, not a value the factory reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, rev.anchors, rev.blocks],
+  );
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
     // or the paragraph-UUID set changes (`rev.blocks`). Card-store arrays
@@ -3280,105 +3302,33 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const pendingChangesOn = isPendingChangesOn();
     const result: MarginaliaMarker[] = [];
 
-    // ONE O(doc) resolve index for the whole pass, built at the TOP before
-    // any per-card loop (never per card). `null` until the editor mounts —
-    // the card branches fall back to the bare-link pids in that gap, then
-    // re-derive once `editor` (a memo dep) becomes non-null. A `linkedRange`
-    // card whose mark + uuid + snapshot are all dead resolves `orphan` →
-    // `unanchored` marker (surfaced, not culled).
-    const resolveIndex = editor ? buildResolveIndex(editor) : null;
-    // Not-on-load guard (orphan-affordance risk, MEMO §"Risks"): during the
-    // editor-mount gap the doc can be momentarily empty — `buildResolveIndex`
-    // then returns an EMPTY `uuidToParagraph`, against which EVERY card would
-    // resolve `orphan` and flash the re-pin dock spuriously. Treat a
-    // zero-uuid index as "not ready" and fall back to raw pids (no orphan
-    // flag) until the doc's blocks are present.
-    const indexReady = !!resolveIndex && resolveIndex.uuidToParagraph.size > 0;
     /**
      * Resolve a card to its live marker paragraph(s) + orphan flag through the
-     * SSOT. On a resolved (non-orphan) card, emits ONE marker per LIVE stored
-     * pid — seeded with the resolver's `res.paragraphId` (so a mark-/snapshot-
-     * resolved paragraph that isn't itself a raw stored pid is still rendered)
-     * then every still-live raw stored pid, DEDUPED + order-stable. This keeps
-     * a healthy MULTI-anchor Mode-A card (several live `textObjectIds`, e.g. a
-     * multi-paragraph selection-note whose mark was later deleted → N separate
-     * Mode-A paragraph links) rendering ONE marker PER live paragraph — the
-     * resolver itself binds to the FIRST live uuid only, so the resolved
-     * `res.paragraphId` alone would drop P2..Pn (silent vanish + breaks the
-     * per-pid detach affordance). On `orphan`, returns the card's first stored
-     * pid (so the marker still carries a textObjectId for keying / re-pin)
-     * flagged `unanchored`.
+     * ONE card-anchor authority (`buildCardAnchorPass`, task 369) — the SAME
+     * rows the omni builders draw from, so the two renderers of a card's
+     * anchor can never disagree about whether it resolves. The whole rule
+     * (mount-gap fail-open, the `resolveAnchorState` classification, the
+     * multi-anchor seeding) lives in `src/links/card-anchor-rows.ts`; this is
+     * the margin's thin adapter onto it.
      */
     const resolveMarkerPids = (
       c: CardWithLinks,
       pids: string[],
     ): Array<{ pid: string; unanchored: boolean }> => {
-      if (!resolveIndex || !editor || !indexReady) {
-        // Editor not mounted / doc not painted yet — fall back to the raw
-        // stored pids so the margin isn't blank AND no card false-flags as
-        // orphan during the mount gap. Re-derives once `editor` is set (memo
-        // dep) and the index has live uuids.
-        return pids.map((pid) => ({ pid, unanchored: false }));
-      }
-      const res = resolveCardAnchor(c, editor, resolveIndex);
-      // Classify through the `resolveAnchorState` SSOT rather than re-reading
-      // the resolver's rung-4 `source === "orphan"` residue (task 205 M1). The
-      // margin's question is BINARY — "does this card have a live marker?" —
-      // so it asks for `!== "anchored"` ON TOP of the SSOT rather than running
-      // a second formula beside it, and the margin can no longer disagree with
-      // the omni/panel badges about what "anchored" means.
-      //
-      // The three-way split is deliberately COLLAPSED here, and that is a
-      // margin-specific judgment rather than an oversight: `free` and
-      // `orphaned` differ in blame, not in affordance, and both land in the
-      // re-pin dock. A `free`-flagged card that reaches the dock branch is one
-      // carrying stored anchors that no longer resolve — surfacing it is the
-      // only way back for it, and hiding it would be the RC2 "card vanishes"
-      // bug wearing a badge. (Five of the six callers below skip
-      // `pids.length === 0` outright; the revisions loop guards on the
-      // DISJUNCTION `!revAnchor && pids.length === 0`, so a revision with a
-      // live text anchor and no stored pids does arrive here with an empty
-      // array — and returns `[]` from the branch below, exactly as it did
-      // before.)
-      // Equivalent to the pre-205 formula for every card today (`paragraphId`
-      // is null exactly when `source === "orphan"`); the SSOT is what keeps it
-      // equivalent tomorrow.
-      const state = resolveAnchorState(res.paragraphId, c as AnchorIntent);
-      if (state !== "anchored") {
-        // uuid + mark + snapshot all dead → surface, don't vanish. Key on the
-        // first stored pid (stable id for the marker + the re-pin gesture).
-        return pids.length > 0
-          ? [{ pid: pids[0], unanchored: true }]
-          : [];
-      }
-      if (res.paragraphId) {
-        // Emit a marker for EVERY live stored pid (multi-anchor Mode-A), not
-        // just the resolver's first-live binding. Seed with `res.paragraphId`
-        // (covers a mark-/snapshot-resolved pid that isn't a raw stored pid),
-        // then append every still-live raw stored pid; dedupe order-stable.
-        const live = pids.filter((p) => resolveIndex.uuidToParagraph.has(p));
-        const seen = new Set<string>();
-        const out: Array<{ pid: string; unanchored: boolean }> = [];
-        for (const pid of [res.paragraphId, ...live]) {
-          if (seen.has(pid)) continue;
-          seen.add(pid);
-          out.push({ pid, unanchored: false });
-        }
-        return out;
-      }
-      return pids.map((pid) => ({ pid, unanchored: false }));
+      void pids; // the authority reads the card's links itself
+      return buildMarginMarkerRows(c, anchorPass.resolve);
     };
 
-    // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph within the
-    // card's stored anchor order — the SAME index each panel's omni builder
-    // uses to key its per-anchor row (`…@<pi>`, suffixed ONLY when the card
-    // has >1 anchor). Returns `undefined` for a single-anchor card (its omni
-    // row carries no `@N` suffix) so the bridge keys the bare card popKey.
-    const anchorIndexFor = (pids: string[], pid: string): number | undefined => {
-      if (pids.length <= 1) return undefined;
-      const i = pids.indexOf(pid);
-      return i >= 0 ? i : undefined;
-    };
+    // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph — indexed
+    // over the RESOLVED rows, which is exactly the list each omni builder
+    // suffixes its per-anchor row with (`…@<i>`, suffixed ONLY when the card
+    // has >1 row). Indexing the raw STORED pids instead (pre-369) returned
+    // `undefined` for a paragraph the resolver had RECOVERED — so a marker
+    // click on such a card pinned no omni row at all. Returns `undefined` for
+    // a single-row card (its omni row carries no `@N` suffix) so the bridge
+    // keys the bare card popKey.
+    const anchorIndexFor = (c: CardWithLinks, pid: string): number | undefined =>
+      marginAnchorIndex(c, pid, anchorPass.resolve);
 
     // Notes
     for (const n of notesHook.notes) {
@@ -3395,7 +3345,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title: n.title || "Note",
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(n, pid)),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
@@ -3418,7 +3368,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title: "Archived snippet",
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(snippet, pid)),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
@@ -3465,7 +3415,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(r, pid)),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
@@ -3497,7 +3447,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(c, pid)),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
@@ -3524,7 +3474,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(c, pid)),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
           },
@@ -3548,7 +3498,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
-            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(item, pid)),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }
@@ -3591,11 +3541,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     paragraphByErrorId,
     rev.anchors,
     rev.blocks,
-    // The reactive editor instance — `buildResolveIndex(editor)` reads the
-    // live doc, and the `useStructuralRevisions` counters are silent on load
-    // (`buildInitial` emits nothing), so the memo must re-derive once the
-    // editor mounts (AGENTS "Initial population"). A plain keystroke doesn't
-    // change `editor`'s identity, so this adds no per-keystroke recompute.
+    // The shared anchor authority. Its own memo is gated on `editor` +
+    // the structural counters, so this dep re-derives the markers exactly when
+    // the resolution can have changed — and never on a plain keystroke.
+    anchorPass,
+    // The reactive editor instance — still a dep because several marker
+    // branches below read the live doc directly (the revision text-anchor
+    // walk, the error paragraph map).
     editor,
   ]);
 
@@ -4458,37 +4410,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
 
   // Archive helpers — anchored-id set + paragraph-order sort matching
-  // EditorLayout. The ArchivePanel uses these to surface anchored
-  // snippets at the top of the list.
-  // Anchored ≡ has a link that resolves to a LIVE doc position — not mere
-  // link *presence* (task 104). A snippet whose only link points at a
-  // vanished / re-minted uuid is NOT anchored: it must read orphaned in the
-  // docked panel + float (killing the dead-but-present-link "live-looking Jump
-  // that no-ops" bug, Defect B), in agreement with the omni classifier, which
-  // already badges on live position. Walks the doc once, gated on the
-  // structural-revision counter (`rev.blocks`) + the reactive editor — the
-  // same keystroke-sane pattern as `sortedArchiveSnippets` below, so it never
-  // recomputes on a plain (structurally-null) keystroke.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // EditorLayout. The docked ArchivePanel + the float use this to surface
+  // anchored snippets at the top of the list and to badge the rest orphaned.
+  //
+  // Anchored ≡ the ONE card-anchor authority resolved this snippet to a live
+  // paragraph — not mere link *presence* (task 104), and no longer a bare
+  // `pids.some(live)` gate either (task 369). That gate was a THIRD answer to
+  // the question the margin and the omni surface each also answered: it saw
+  // only the live-uuid rung, so a clip the resolver had RECOVERED by its
+  // surviving mark or its `paragraphSnapshot` — and every archive link is
+  // created WITH a snapshot — read "orphaned" in the docked panel while its
+  // margin marker sat happily beside the recovered paragraph. O(1) per
+  // snippet against the shared index, gated on the structural counters.
   const anchoredArchiveIds = useMemo<Set<string>>(() => {
-    const liveUuids = new Set<string>();
-    const ed = innerRef.current?.getEditor();
-    if (ed) {
-      ed.state.doc.descendants((node) => {
-        if (isAnchorableNode(node.type) && node.attrs?.uuid) {
-          liveUuids.add(node.attrs.uuid as string);
-        }
-        return true;
-      });
-    }
     const ids = new Set<string>();
     for (const s of archiveHook.snippets) {
-      if (getLinkedTextObjectIds(s).some((uuid) => liveUuids.has(uuid))) {
-        ids.add(s.id);
-      }
+      if (anchorPass.resolve(s).anchored) ids.add(s.id);
     }
     return ids;
-  }, [archiveHook.snippets, rev.blocks, editor]);
+  }, [archiveHook.snippets, anchorPass]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sortedArchiveSnippets = useMemo(() => {
     const paragraphOrder = new Map<string, number>();
@@ -7614,7 +7554,6 @@ function PaneRail({
           convertNotesCard={notesHook.convertCard}
           deleteNote={cardCreation.deleteHighlightOrNote}
           sortedArchiveSnippets={sortedArchiveSnippets}
-          anchoredIds={anchoredArchiveIds}
           updateArchiveSnippet={archiveHook.updateSnippet}
           updateArchiveSnippetTitle={archiveHook.updateSnippetTitle}
           handleDeleteArchive={onArchiveDelete}

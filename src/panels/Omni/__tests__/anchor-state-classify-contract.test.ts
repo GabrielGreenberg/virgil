@@ -30,7 +30,8 @@ vi.mock("@/lib/storage", () => {
 });
 
 import type { Link } from "@/links/_shared/types";
-import { getLinkedTextObjectIds } from "@/links/links";
+import { resolveCardAnchorRows, type CardAnchorResolver } from "@/links/card-anchor-rows";
+import type { ResolveIndex } from "@/links/resolve-card-anchor";
 import type { OmniItem } from "@/panels/_shared/types";
 import type {
   ArchivedSnippet,
@@ -67,12 +68,26 @@ function paraLink(uuid: string): Link {
   };
 }
 
+/** Adapt a synthetic live-uuid→pos map onto the REAL card-anchor authority
+ *  (task 369). The RULE under test stays the shipped one — only the document
+ *  is synthetic — so these legs keep pinning the production classification
+ *  rather than a re-derived stub of it. */
+function rowsFrom(live: Record<string, number>): CardAnchorResolver {
+  const index: ResolveIndex = {
+    uuidToParagraph: new Set(Object.keys(live)),
+    uuidToPos: new Map(Object.entries(live)),
+    anchorIdToParagraph: new Map(),
+    snapshotToParagraph: () => null,
+  };
+  return (card) => resolveCardAnchorRows(card, null, index);
+}
+
 const noop = () => {};
 const noopId = (_id: string | null) => {};
 
 function noteArgs(
   cards: Array<{ id: string; links: Link[] }>,
-  resolve: (uuid: string | null) => number | null,
+  resolveCardRows: CardAnchorResolver,
 ) {
   return {
     cards: cards.map((c) => ({
@@ -87,7 +102,7 @@ function noteArgs(
     selectedNoteId: null,
     setSelectedNoteId: noopId,
     jumpToCard: noop,
-    findParagraphPos: resolve,
+    resolveCardRows,
     updateNote: noop,
     updateNoteTitle: noop,
     setNoteAiRequest: noop,
@@ -106,7 +121,6 @@ describe("omni builder anchorState classification", () => {
   it("Notes: no links → free; linked+resolved → anchored; linked+unresolved → orphaned", () => {
     // "free-note" has no links; "anchored-note" links a live uuid;
     // "orphaned-note" links a uuid that no longer resolves.
-    const resolve = (uuid: string | null) => (uuid === "live-uuid" ? 42 : null);
     const items = buildNoteOmniItems(
       noteArgs(
         [
@@ -114,7 +128,7 @@ describe("omni builder anchorState classification", () => {
           { id: "anchored-note", links: [paraLink("live-uuid")] },
           { id: "orphaned-note", links: [paraLink("dead-uuid")] },
         ],
-        resolve,
+        rowsFrom({ "live-uuid": 42 }),
       ),
     );
     const m = byId(items);
@@ -241,7 +255,7 @@ describe("omni builder anchorState classification", () => {
   // ── The remaining 7 builders (test-hardening: full 10-builder coverage) ──
 
   // Shared resolver: only "live-uuid" resolves.
-  const resolve = (uuid: string | null) => (uuid === "live-uuid" ? 42 : null);
+  const resolveCardRows = rowsFrom({ "live-uuid": 42 });
 
   it("Archive: born-free (unanchored) → free; link-swept-to-empty → orphaned; live link → anchored; dead-but-present link → orphaned (docked/float agree)", () => {
     // Task 104: anchor-state derives from (live position, born-free intent),
@@ -272,20 +286,20 @@ describe("omni builder anchorState classification", () => {
       // link present but its uuid no longer resolves → orphaned (Defect B)
       snippet("s-dead", [paraLink("dead-uuid")]),
     ];
-    // Faithful anchored set: only snippets whose link resolves live.
+    // The docked panel's anchored set is now DERIVED from the same authority
+    // the omni builder reads (task 369) — `EditorPane.anchoredArchiveIds` is
+    // exactly this fold — so presence-vs-position divergence is structural,
+    // not a fixture the test has to keep faithful by hand.
     const anchoredIds = new Set(
-      snippets
-        .filter((s) => getLinkedTextObjectIds(s).some((u) => resolve(u) != null))
-        .map((s) => s.id),
+      snippets.filter((s) => resolveCardRows(s).anchored).map((s) => s.id),
     );
     expect(anchoredIds).toEqual(new Set(["s-anchored"]));
     const items = buildArchiveOmniItems({
       archiveSnippets: snippets,
-      anchoredIds,
       selectedArchiveId: null,
       setSelectedArchiveId: noopId,
       jumpToCard: noop,
-      findParagraphPos: resolve,
+      resolveCardRows,
       updateArchiveSnippet: noop,
       updateArchiveSnippetTitle: noop,
       handleDeleteArchive: noop,
@@ -299,9 +313,8 @@ describe("omni builder anchorState classification", () => {
     expect(states.get("float:card:archive:s-anchored")).toEqual(["anchored", 42]);
     expect(states.get("float:card:archive:s-dead")).toEqual(["orphaned", null]);
     // Docked/float parity (Defect B): both derive `orphaned` as
-    // `!anchoredIds.has(id)`, which — with the live-resolution set — agrees
-    // with the omni classifier for the dead-but-present link (no more
-    // presence-vs-position divergence).
+    // `!anchoredIds.has(id)` off the ONE authority, so they agree with the
+    // omni classifier for the dead-but-present link by construction.
     expect(anchoredIds.has("s-dead")).toBe(false);
     expect(anchoredIds.has("s-anchored")).toBe(true);
     expect(anchoredIds.has("s-born-free")).toBe(false);
@@ -327,7 +340,7 @@ describe("omni builder anchorState classification", () => {
       selectedTodoId: null,
       setSelectedTodoId: noopId,
       jumpToCard: noop,
-      findParagraphPos: resolve,
+      resolveCardRows,
       toggleTodo: noop,
       updateTodo: noop,
       updateTodoNotes: noop,
@@ -374,7 +387,7 @@ describe("omni builder anchorState classification", () => {
       selectedId: null,
       setSelectedId: noopId,
       jumpToCard: noop,
-      findParagraphPos: resolve,
+      resolveCardRows,
       editor: null,
       updateCommentContent: noop,
       setCommentAiRequest: noop,
@@ -423,7 +436,7 @@ describe("omni builder anchorState classification", () => {
       selectedId: null,
       setSelectedId: noopId,
       jumpToCard: noop,
-      findParagraphPos: resolve,
+      resolveCardRows,
       editor: null,
       updateCommentContent: noop,
       setCommentAiRequest: noop,
@@ -468,7 +481,7 @@ describe("omni builder anchorState classification", () => {
       selectedId: null,
       setSelectedId: noopId,
       jumpToCard: noop,
-      findParagraphPos: resolve,
+      resolveCardRows,
       updateReportContent: noop,
       updateReportTitle: noop,
       updateRequestContent: noop,

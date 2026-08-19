@@ -49,6 +49,10 @@ import { useRevisions } from "@/hooks/useRevisions";
 import { buildRevisionOmniItems } from "@/panels/Revisions/omni";
 import { getLinkedTextObjectIds, getTextAnchor } from "@/links/links";
 import {
+  resolveCardAnchorRows,
+  type CardAnchorResolver,
+} from "@/links/card-anchor-rows";
+import {
   beginDocPipeline,
   __resetForTests,
 } from "@/lib/multi-window/doc-pipeline";
@@ -60,16 +64,25 @@ beforeEach(() => {
 const PID = "para-uuid-1";
 const ANCHOR = { anchorId: "anchor-1", anchorText: "the selected span" };
 
-// The stub arg-bag for `buildRevisionOmniItems`. Only `findParagraphPos` matters
-// to the anchor-state contract (it resolves the pid → a live doc position);
-// everything else is a no-op the builder threads into the (unrendered) cards.
+// The stub arg-bag for `buildRevisionOmniItems`. Only `resolveCardRows` matters
+// to the anchor-state contract (it is the ONE card-anchor authority, task 369 —
+// here bound to a synthetic index in which only PID is live); everything else is
+// a no-op the builder threads into the (unrendered) cards.
+const resolveCardRows: CardAnchorResolver = (card) =>
+  resolveCardAnchorRows(card, null, {
+    uuidToParagraph: new Set([PID]),
+    uuidToPos: new Map([[PID, 42]]),
+    anchorIdToParagraph: new Map(),
+    snapshotToParagraph: () => null,
+  });
+
 function omniArgs(cards: import("@/lib/types").RevisionCard[]) {
   return {
     cards,
     selectedId: null,
     setSelectedId: () => {},
     jumpToCard: () => {},
-    findParagraphPos: (uuid: string | null) => (uuid === PID ? 42 : null),
+    resolveCardRows,
     editor: null,
     updateCommentContent: () => {},
     setCommentAiRequest: () => {},

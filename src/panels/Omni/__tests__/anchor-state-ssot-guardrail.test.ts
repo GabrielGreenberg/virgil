@@ -17,6 +17,15 @@
 // `unanchored` citation/footnote rendering as a red "orphaned" error). This test
 // walks every `src/panels/*/omni.tsx` and asserts every `anchorState:` property
 // value is a `resolveAnchorState(` call, nothing else.
+//
+// TASK 369 — the derivation MOVED, and the law did not. The six
+// paragraph-anchored builders no longer derive their own rows at all: they read
+// them from `buildOmniAnchorRows` (`src/panels/_shared/omni-anchor-rows.ts`),
+// the one reader of the one card-anchor authority, and forward
+// `row.anchorState`. So a forward of exactly that field is admitted — but ONLY
+// from a file that actually imports the shared reader, and the shared reader is
+// censused by the SAME rule, so the chain still terminates at
+// `resolveAnchorState`. Anything else in either place is still a violation.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -49,15 +58,26 @@ function omniBuilderFiles(): string[] {
  * isn't the SSOT call — a `"literal"`, a `pos == null ? …` ternary, or any
  * other hand-rolled derivation.
  */
-function inlineAnchorStateOffenders(source: string): string[] {
+function inlineAnchorStateOffenders(source: string, forwardOk: boolean): string[] {
   const offenders: string[] = [];
   const re = /anchorState:\s*([^\n,]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(source)) !== null) {
     const value = m[1].trim();
-    if (!value.startsWith("resolveAnchorState(")) offenders.push(value);
+    if (value.startsWith("resolveAnchorState(")) continue;
+    // The ONLY admitted forward: the shared reader's already-SSOT-derived
+    // field, in a file that demonstrably goes through that reader.
+    if (forwardOk && value === "row.anchorState") continue;
+    offenders.push(value);
   }
   return offenders;
+}
+
+/** True iff this file reads its rows from the shared omni-anchor reader. */
+function usesSharedReader(source: string): boolean {
+  return /import\s*\{[^}]*\bbuildOmniAnchorRows\b[^}]*\}\s*from\s*["'][^"']*omni-anchor-rows["']/.test(
+    source,
+  );
 }
 
 describe("anchor-state SSOT guardrail", () => {
@@ -67,13 +87,31 @@ describe("anchor-state SSOT guardrail", () => {
     // regression silently passing this test on an empty set).
     expect(files.length).toBeGreaterThanOrEqual(10);
 
+    // The shared reader is censused by the SAME rule and admits NO forward —
+    // it is where the chain has to terminate at `resolveAnchorState`.
+    const SHARED_READER = path.join(PANELS, "_shared", "omni-anchor-rows.ts");
+    const readerSource = readFileSync(SHARED_READER, "utf8");
+    expect(
+      inlineAnchorStateOffenders(readerSource, false),
+      "src/panels/_shared/omni-anchor-rows.ts is the ONE reader every " +
+        "paragraph-anchored builder forwards from — every anchorState it " +
+        "produces must come from resolveAnchorState.",
+    ).toEqual([]);
+
     const violations: string[] = [];
+    let forwarders = 0;
     for (const file of files) {
       const source = readFileSync(file, "utf8");
-      for (const offender of inlineAnchorStateOffenders(source)) {
+      const forwardOk = usesSharedReader(source);
+      if (forwardOk) forwarders++;
+      for (const offender of inlineAnchorStateOffenders(source, forwardOk)) {
         violations.push(`${path.relative(PANELS, file)} → anchorState: ${offender}`);
       }
     }
+    // Sanity: the forward exemption is only meaningful if builders really take
+    // it — otherwise a rename of the shared reader would silently turn this
+    // leg back into the pre-369 one with nothing failing.
+    expect(forwarders).toBeGreaterThanOrEqual(6);
 
     expect(
       violations,

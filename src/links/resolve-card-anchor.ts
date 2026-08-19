@@ -71,6 +71,12 @@ export interface CardAnchorResolution {
 export interface ResolveIndex {
   /** Every `uuid` attr on a live anchorable node. */
   uuidToParagraph: Set<string>;
+  /** Live `uuid` → its document position (first match wins, document order).
+   *  Populated by the SAME walk that builds the mark/snapshot lookups, so it
+   *  costs no extra pass. It exists so the omni surface can seed a card's row
+   *  positions from THIS index instead of running an O(doc) `descendants` walk
+   *  per pid (`findParagraphPos`, retired by task 369). */
+  uuidToPos: Map<string, number>;
   /** Live `linkedAnchor` mark anchorId → its enclosing paragraph uuid. */
   anchorIdToParagraph: Map<string, string>;
   /** Normalized whole-paragraph `textContent` → live paragraph uuid
@@ -114,6 +120,7 @@ export interface ResolveIndex {
 export function buildResolveIndex(editor: Editor): ResolveIndex {
   const uuidToParagraph = collectLiveUuids(editor);
   const anchorIdToParagraph = new Map<string, string>();
+  const uuidToPos = new Map<string, number>();
 
   // Normalized whole-paragraph text → uuid, first-match-wins. A second
   // uuid for the same normalized text is recorded in `dupKeys` so a
@@ -136,9 +143,12 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
       return true;
     }
 
-    // (b) uuid-bearing nodes → normalized-textContent map.
+    // (b) uuid-bearing nodes → normalized-textContent map (+ the position
+    // map, first-match-wins in document order — the same node
+    // `findParagraphPos` used to return).
     const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
     if (uuid) {
+      if (!uuidToPos.has(uuid)) uuidToPos.set(uuid, pos);
       const key = normalizeParagraphText(node.textContent);
       if (key) {
         if (normTextToParagraph.has(key)) {
@@ -156,7 +166,7 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
     return normTextToParagraph.get(normalizedSnapshot) ?? null;
   };
 
-  return { uuidToParagraph, anchorIdToParagraph, snapshotToParagraph };
+  return { uuidToParagraph, uuidToPos, anchorIdToParagraph, snapshotToParagraph };
 }
 
 // ---------------------------------------------------------------------------

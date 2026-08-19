@@ -2,9 +2,6 @@
 
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { isAnchorableNode } from "@/lib/marginalia";
-import { getLinkedTextObjectIds } from "@/links/links";
-import type { Link } from "@/links/_shared/types";
 import { DATA_LINK_CARD, linkCardIdSelector } from "@/links/link-dom-contract";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
@@ -37,46 +34,6 @@ export interface PositionItem {
   id: string;
   pos: number; // ProseMirror document position
 }
-
-/**
- * Helper: extract positions for link-anchored items. Uses the first
- * paragraph in each card's `links` array to resolve a doc position.
- *
- * CHIP-B contract: a card whose first pid isn't in the live doc's
- * `uuidToPos` map is skipped — but that skip means "this paragraph isn't a
- * live anchorable node right now" (genuinely off-screen blocks are still in
- * the doc, so they DO resolve a pos and are kept; the cascade resolver then
- * positions them). Deciding that a card's *stored* uuid is dead and needs
- * snapshot/mark recovery is NO LONGER this helper's call — that lives in the
- * anchor-recovery SSOT (`resolveCardAnchor`), which the margin-marker builder
- * (`EditorPane.marginaliaMarkers`) runs upstream so the pids that reach the
- * render layer are already resolved-or-orphan-flagged. Callers that want
- * recovery should feed resolver-resolved pids; this helper does only the
- * live-doc position lookup.
- */
-export function getParagraphAnchorPositions(
-  editor: Editor | null,
-  items?: ReadonlyArray<{ id: string; links?: Link[] }>,
-): PositionItem[] {
-  if (!editor || !items) return [];
-  const uuidToPos = new Map<string, number>();
-  editor.state.doc.descendants((node, pos) => {
-    if (isAnchorableNode(node.type) && node.attrs?.uuid) {
-      uuidToPos.set(node.attrs.uuid as string, pos);
-    }
-    return true;
-  });
-  const out: PositionItem[] = [];
-  for (const it of items) {
-    const pids = getLinkedTextObjectIds(it);
-    if (pids.length > 0) {
-      const pos = uuidToPos.get(pids[0]);
-      if (pos !== undefined) out.push({ id: it.id, pos });
-    }
-  }
-  return out;
-}
-
 
 /**
  * Helper: find approximate document position for a text snippet.
