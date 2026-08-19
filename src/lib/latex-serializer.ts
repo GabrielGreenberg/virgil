@@ -19,6 +19,12 @@ import {
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
 import { headingTypeCommand } from "@/lib/heading-types";
+import {
+  applyWrapperMarks,
+  composeInlineRun,
+  isCodeWrapped,
+  type MarkLike,
+} from "@/lib/mark-composition";
 import { exampleDialectOf } from "@/lib/example-dialect";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
@@ -306,75 +312,73 @@ const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
 // lives in an import-free leaf and what a second hand list cost (task 343).
 const DEFAULT_POSTAMBLE = `\n${END_DOCUMENT_TOKEN}\n`;
 
-function serializeMarks(
-  text: string,
-  marks?: { type: string; attrs?: Record<string, unknown> }[]
-): string {
+/**
+ * STAGE 1 of the mark composition (task 377) — the run's OWN bytes, before
+ * anything wraps them.
+ *
+ * The three CARRIER marks answer exactly this question and nothing else, which
+ * is why each one used to sit here as an early `return` ABOVE the wrapper loop
+ * and silently deleted whatever wrapped it. They are checked strictest-first:
+ *
+ *  - `latexCommentTail` — a `%` COMMENT TAIL, bytes LaTeX discards entirely
+ *    (task 347). Emitted EXACTLY as parsed, and checked FIRST because it is the
+ *    strictest carrier of the three: not merely literal, but not typeset at
+ *    all. Sending it down the prose path is what made `% TODO cite` start
+ *    typesetting (the char-escape rung rewrites `%` → `\%`), turned `5%` into a
+ *    printed percent followed by the text LaTeX had been discarding, and broke
+ *    `…%` at end of line, which is TeX's line-JOIN idiom. All three were fixed
+ *    points, so nothing downstream could tell a promoted comment from a `\%`
+ *    the user actually wrote. The LINE obligation this carrier owns is
+ *    discharged by its caller — see `serializeInlineSequence`.
+ *
+ *  - `latexVerbatim` — BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
+ *    run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
+ *    as parsed: no escaping, and above all no `smartenStraightQuotes`, since
+ *    inside verbatim a `"` IS a straight ASCII quote and rewriting it to ``/''
+ *    both corrupts the source bytes and renders as literal backticks in the
+ *    PDF. Checked BEFORE `latexCommand` so the stricter carrier wins if a node
+ *    ever ends up carrying both (task 264).
+ *
+ *  - `latexCommand` — text that is already raw LaTeX, returned as-is except
+ *    that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
+ *    round-trip to a valid `.tex` even when the mark has been inherited onto
+ *    stray text by Tiptap's default mark-extension behavior.
+ *
+ * Everything else is PROSE and is escaped — with the typographic reverse-map
+ * suppressed inside a `code` wrapper, where `--` is two literal hyphens and
+ * accent commands stay raw (memo §A exclusion). Note that `code` is a WRAPPER
+ * mark and is nonetheless read here: it is the one wrapper that changes how the
+ * inner bytes are produced.
+ */
+function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
-
-  // latexCommentTail mark: a `%` COMMENT TAIL — bytes LaTeX discards entirely
-  // (task 347). Emitted EXACTLY as parsed, and checked FIRST because it is the
-  // strictest carrier of the three: not merely literal, but not typeset at all.
-  // Sending it down the prose path is what made `% TODO cite` start typesetting
-  // (the char-escape rung rewrites `%` → `\%`), turned `5%` into a printed
-  // percent followed by the text LaTeX had been discarding, and broke `…%` at
-  // end of line, which is TeX's line-JOIN idiom. All three were fixed points,
-  // so nothing downstream could tell a promoted comment from a `\%` the user
-  // actually wrote.
-  //
-  // The line obligation this carrier owns is discharged by its caller — see
-  // `serializeInlineSequence`.
   if (hasCommentTailMark(marks)) return text;
-
-  // latexVerbatim mark: BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
-  // run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
-  // as parsed — no escaping, and above all no `smartenStraightQuotes`: inside
-  // verbatim a `"` IS a straight ASCII quote, and rewriting it to ``/'' both
-  // corrupts the user's source bytes and renders as literal backticks in the
-  // compiled PDF. Checked BEFORE the `latexCommand` branch so the stricter
-  // carrier wins if a node ever ends up carrying both (task 264).
   if (hasVerbatimMark(marks)) return text;
-
-  // latexCommand mark: text is already raw LaTeX — return as-is, except
-  // that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
-  // round-trip to a valid `.tex` even when the mark has been inherited
-  // onto stray text by Tiptap's default mark-extension behavior.
   if (marks.some((m) => m.type === "latexCommand")) {
     return smartenStraightQuotes(text);
   }
+  return escapeLatex(text, { typography: !isCodeWrapped(marks) });
+}
 
-  // Code spans are verbatim — `--` is literal and accent commands stay raw,
-  // so the typographic reverse-map is suppressed for `code`-marked text
-  // (memo §A exclusion). Smart-quote + char escaping still applies.
-  const inCode = marks.some((m) => m.type === "code");
-  let result = escapeLatex(text, { typography: !inCode });
-  for (const mark of marks) {
-    switch (mark.type) {
-      case "bold":
-        result = `\\textbf{${result}}`;
-        break;
-      case "italic":
-        result = `\\emph{${result}}`;
-        break;
-      case "underline":
-        result = `\\underline{${result}}`;
-        break;
-      case "code":
-        result = `\\texttt{${result}}`;
-        break;
-      case "textColor": {
-        const c = (mark.attrs?.color as string | undefined) ?? "";
-        // \textcolor[HTML] expects 6 uppercase hex digits, no leading "#".
-        const hex = c.replace(/^#/, "").toUpperCase();
-        if (/^[0-9A-F]{6}$/.test(hex)) {
-          result = `\\textcolor[HTML]{${hex}}{${result}}`;
-          need("xcolor"); // declared adjacent to the \textcolor byte emit
-        }
-        break;
-      }
-    }
-  }
-  return result;
+/**
+ * ONE text node's full bytes: stage 1 (above) then stage 2 (the wrapper
+ * commands, from the shared applier in `mark-composition.ts`).
+ *
+ * Used where a node genuinely stands alone. The INLINE SEQUENCE walker does not
+ * call this — it composes wrappers over a whole RUN, because wrapping per node
+ * splits one `\texttt{…}` into three and a split between an argument-taking
+ * control symbol and its argument re-binds the command (`\texttt{caf\'e}` →
+ * `\texttt{caf}\'\texttt{e}`). See the module header for the full statement.
+ */
+function serializeMarks(
+  text: string,
+  marks?: MarkLike[] | null,
+): string {
+  const inner = inlineTextBytes(text, marks);
+  // A comment tail is not typeset AT ALL, so nothing may wrap it: a closing
+  // brace emitted after it would itself be commented out.
+  if (hasCommentTailMark(marks ?? undefined)) return inner;
+  return applyWrapperMarks(inner, marks, { declareXcolor: () => need("xcolor") });
 }
 
 /**
@@ -1324,9 +1328,12 @@ export function containsInternalMarker(text: string): boolean {
  * emits a close+reopen pair at each block boundary — verbose but the
  * parser's `applyLinkedAnchorBoundaries` reassembles them correctly.
  *
- * `serializeMarks` already ignores `linkedAnchor` marks (no case in its
- * switch), so the inline wrapping (`\textbf{…}` etc.) sits inside
- * `\vlid…\vlidend`, e.g.: `\vlid{x}\textbf{bold range}\vlidend{x}`.
+ * `linkedAnchor` is not a WRAPPER mark (`mark-composition.ts` names the five
+ * that are), so the inline wrapping (`\textbf{…}` etc.) sits inside
+ * `\vlid…\vlidend`, e.g.: `\vlid{x}\textbf{bold range}\vlidend{x}`. Since task
+ * 377 that placement is structural rather than incidental: an anchor transition
+ * is an `outerPrefix`, and a non-empty prefix BREAKS the wrapped run, so a
+ * marker can never land between one set of braces.
  */
 /**
  * THE comment carrier's line obligation (task 347).
@@ -1358,13 +1365,23 @@ function serializeInlineSequence(
   opts?: { lineFinal?: boolean },
 ): string {
   const open = new Set<string>();
-  let out = "";
-  for (const [idx, node] of nodes.entries()) {
-    if (node.type === "text" && hasCommentTailMark(node.marks)) {
-      // Closing an open `linkedAnchor` range across a comment is not
-      // representable — the close marker would land inside the comment — so a
-      // tail is emitted with the ranges left open; the loop's own tail-flush
-      // below still closes them at the end of the sequence.
+  // WRAPPERS COMPOSE OVER A RUN, NOT A NODE (task 377). `composeInlineRun`
+  // owns that rule for both inline serializers; this call supplies the three
+  // things that are this walker's own business — what a node's inner bytes
+  // are, which node may never join a run, and what must sit OUTSIDE a wrapper.
+  let out = composeInlineRun<JSONContent>(nodes, {
+    declareXcolor: () => need("xcolor"),
+
+    // The comment carrier owns the rest of its LINE, so it can never be merged
+    // into a wrapped run: bytes emitted after it inside `\textbf{…}` — the
+    // closing brace included — would be commented out. It also carries no
+    // anchor bookkeeping: closing an open `linkedAnchor` range across a comment
+    // is not representable (the close marker would land inside the comment), so
+    // a tail is emitted with the ranges left open and the trailing flush below
+    // still closes them at the end of the sequence.
+    standalone: (node, idx) => {
+      if (node.type !== "text" || !hasCommentTailMark(node.marks)) return null;
+      const raw = inlineTextBytes(node.text || "", node.marks);
       const next = nodes[idx + 1];
       const nextText = next?.type === "text" ? (next.text ?? "") : "";
       // `lineFinal` is the caller's promise that what it appends after this
@@ -1379,47 +1396,56 @@ function serializeInlineSequence(
       // same rule read from the other end: the sites that may PRODUCE a tail
       // are the sites that may END a line with one.
       const lineFinal = opts?.lineFinal && idx === nodes.length - 1;
-      out += lineFinal
-        ? serializeMarks(node.text || "", node.marks).split("\n").join("\n%")
-        : closeCommentTail(
-            serializeMarks(node.text || "", node.marks),
-            nextText.startsWith("\n"),
-          );
-      continue;
-    }
-    if (node.type === "text") {
-      const marks = node.marks || [];
+      return lineFinal
+        ? raw.split("\n").join("\n%")
+        : closeCommentTail(raw, nextText.startsWith("\n"));
+    },
+
+    // `\vlid{id}` / `\vlidend{id}` transitions around `linkedAnchor` marks.
+    // They must sit OUTSIDE the wrapper — `\vlid{x}\textbf{bold range}\vlidend{x}`
+    // — which is what a non-empty prefix buys: it breaks the current run, so a
+    // transition can never land inside one set of braces. Only TEXT nodes carry
+    // the marks, and only text nodes move the open set, exactly as before.
+    outerPrefix: (node) => {
+      if (node.type !== "text") return "";
       const currentIds = new Set<string>();
-      for (const m of marks) {
+      for (const m of node.marks || []) {
         if (m.type === "linkedAnchor") {
           const id = m.attrs?.anchorId as string | undefined;
           if (id) currentIds.add(id);
         }
       }
+      let prefix = "";
       for (const id of [...open]) {
         if (!currentIds.has(id)) {
-          out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
+          prefix += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
           open.delete(id);
         }
       }
       for (const id of currentIds) {
         if (!open.has(id)) {
-          out += emitMarker(VIRGIL_MARKERS.linkedRangeOpen, id);
+          prefix += emitMarker(VIRGIL_MARKERS.linkedRangeOpen, id);
           open.add(id);
         }
       }
-      out += serializeMarks(node.text || "", marks);
-    } else {
-      // ONE dispatcher (task 357). `serializeInline` was a second if-chain
-      // whose five non-text arms were byte-identical duplicates of
-      // `serializeNode`'s — and whose trailing `return ""` was the second of
-      // this task's two silent drops: an inline node type that chain had not
-      // heard of serialized to nothing, even where `serializeNode` knew it.
-      // Delegating retires the fork by construction rather than by repairing
-      // it, and leaves exactly ONE place where a node can be refused.
-      out += serializeNode(node);
-    }
-  }
+      return prefix;
+    },
+
+    inner: (node) =>
+      node.type === "text"
+        ? inlineTextBytes(node.text || "", node.marks)
+        : // ONE dispatcher (task 357). `serializeInline` was a second if-chain
+          // whose five non-text arms were byte-identical duplicates of
+          // `serializeNode`'s — and whose trailing `return ""` was the second
+          // of that task's two silent drops: an inline node type that chain had
+          // not heard of serialized to nothing, even where `serializeNode` knew
+          // it. Delegating retires the fork by construction rather than by
+          // repairing it, and leaves exactly ONE place where a node can be
+          // refused. An ATOM's own marks are the run's business, not this
+          // arm's: pre-377 they were discarded here, so `\emph{\citep{x}}` came
+          // back as a bare `\citep{x}`.
+          serializeNode(node),
+  });
   for (const id of open) {
     out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
   }

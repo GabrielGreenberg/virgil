@@ -18,6 +18,11 @@ import {
 } from "@/lib/latex-markers";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
 import {
+  composeInlineRun,
+  isCodeWrapped,
+  type MarkLike,
+} from "@/lib/mark-composition";
+import {
   matchAccent,
   matchSpecialLetter,
   dashesToGlyphs,
@@ -323,40 +328,36 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
   return opts?.typography === false ? escaped : typographyToLatex(escaped);
 }
 
-function serializeMarks(text: string, marks?: { type: string }[]): string {
+/**
+ * STAGE 1 of the mark composition — the run's OWN bytes, before anything wraps
+ * them (task 377). The twin of the main serializer's `inlineTextBytes`, and the
+ * carriers are checked in the same strictest-first order:
+ *
+ *  - `latexVerbatim` — BYTE-LITERAL (a `\verb<delim>…<delim>` run), emitted
+ *    exactly as parsed. Before task 264 this fork had no `\verb` handling at
+ *    all, so a footnote's `\verb"code"` came back ``\verb``code''``.
+ *  - `latexCommand` — already raw LaTeX; only the quote smartening runs.
+ *
+ * Everything else is prose and is escaped, with typography suppressed inside a
+ * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
+ * ABOVE the wrapper loop, which DELETED whatever wrapped the run: a footnote
+ * reading `\textbf{\textsc{x}}` came back `\textsc{x}`, a fixed point.
+ * This fork carries no comment tails at all — a card body is itself a braced
+ * ARGUMENT, so its parser never produces one.
+ */
+function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
-  // BYTE-LITERAL verbatim (a `\verb<delim>…<delim>` run) — emit exactly as
-  // parsed. The twin of the main serializer's branch; before task 264 this
-  // fork had no `\verb` handling at all, so a footnote's `\verb"code"` came
-  // back ``\verb``code''`` (task 264).
   if (hasVerbatimMark(marks)) return text;
   if (marks.some((m) => m.type === "latexCommand")) {
     return smartenStraightQuotes(text);
   }
-  // Code spans are verbatim — suppress typography (memo §A exclusion).
-  const inCode = marks.some((m) => m.type === "code");
-  let result = escapeLatex(text, { typography: !inCode });
-  for (const mark of marks) {
-    switch (mark.type) {
-      case "bold":
-        result = `\\textbf{${result}}`;
-        break;
-      case "italic":
-        result = `\\emph{${result}}`;
-        break;
-      case "underline":
-        result = `\\underline{${result}}`;
-        break;
-      case "code":
-        result = `\\texttt{${result}}`;
-        break;
-    }
-  }
-  return result;
+  return escapeLatex(text, { typography: !isCodeWrapped(marks) });
 }
 
 function serializeInlineNode(node: JSONContent): string {
-  if (node.type === "text") return serializeMarks(node.text || "", node.marks as { type: string }[] | undefined);
+  // Wrappers are NOT applied here: they compose over a RUN, in
+  // `serializeInlineRun` below. See `mark-composition.ts` for why.
+  if (node.type === "text") return inlineTextBytes(node.text || "", node.marks as MarkLike[] | undefined);
   if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
@@ -381,6 +382,25 @@ function serializeInlineNode(node: JSONContent): string {
 }
 
 /**
+ * A sequence of inline nodes, with each maximal adjacent run sharing one
+ * wrapper signature emitted as ONE wrapped group — the shared rule from
+ * `mark-composition.ts`, which the main serializer's `serializeInlineSequence`
+ * reads too (task 341's twin rule, task 377's law).
+ *
+ * The run, not the node, is the unit: per-node wrapping split one `\texttt{…}`
+ * into three, and a split landing between an argument-taking control symbol and
+ * its argument re-binds the command — `\texttt{caf\'e}` came back as
+ * `\texttt{caf}\'\texttt{e}`, where `\'` now takes `\texttt` as its argument.
+ * It is also what carries an ATOM's own marks: `\emph{\citep{x}}` used to come
+ * back as a bare `\vcid{…}\citep{x}` because this walker discarded them.
+ */
+function serializeInlineRun(nodes: JSONContent[]): string {
+  return composeInlineRun<JSONContent>(nodes, {
+    inner: (node) => serializeInlineNode(node),
+  });
+}
+
+/**
  * Serialize a footnote/note JSONContent body to a LaTeX-friendly inline string
  * suitable for `\footnote{...}`. Lists become bullet-prefixed runs and
  * paragraphs are joined with single spaces — same conventions the legacy
@@ -392,10 +412,10 @@ export function richJsonToLatex(json: JSONContent): string {
   function walk(node: JSONContent): string {
     if (!node) return "";
     if (node.type === "text" || node.type === "inlineMath" || node.type === "citation" || node.type === "hardBreak") {
-      return serializeInlineNode(node);
+      return serializeInlineRun([node]);
     }
     if (node.type === "paragraph") {
-      return (node.content || []).map(serializeInlineNode).join("");
+      return serializeInlineRun(node.content || []);
     }
     if (node.type === "bulletList" || node.type === "orderedList") {
       const items = (node.content || []).map((li) => {
@@ -599,7 +619,12 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
           flush();
           const inner = text.slice(open, closed);
           // `\texttt{}` is a code span — suppress typography in its body.
-          const innerNodes = parseInlineLatex(inner, cmdName === "texttt");
+          // `\texttt{}` OPENS a code span; every other mark command INHERITS
+          // the enclosing one. Pre-377 the else-branch was `false`, so a
+          // command nested inside a code span had its body typographied and a
+          // raw U+2013 / U+00E9 was written into the `.tex` — the identical gap
+          // the main parser had (task 341's twin rule).
+          const innerNodes = parseInlineLatex(inner, cmdName === "texttt" || inCode);
           const markType =
             cmdName === "textbf" ? "bold" :
             cmdName === "textit" ? "italic" :

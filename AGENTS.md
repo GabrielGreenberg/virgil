@@ -2896,6 +2896,106 @@ deliberately stores them top-level, so the round trip through those two function
 drops a natbib annotation (no shipped path is known to reach it — the atom keeps
 its raw bytes — but the shape is how a silent drop ships).
 
+#### The composition half: a CARRIER says how a run's bytes are made, not what wraps them
+
+Same round trip, one question up (task 377) — and the case where the carrier
+doctrine was right about the bytes it was defending and silently discarded their
+CONTEXT.
+
+A text run's marks answer two different questions. The three CARRIERS answer
+*how are this run's own bytes produced?* — byte-literal (`latexVerbatim`),
+raw-LaTeX-with-smart-quotes (`latexCommand`), not-typeset-at-all
+(`latexCommentTail`). The WRAPPERS answer *what encloses it?* — `bold`,
+`italic`, `underline`, `code`, `textColor`. `serializeMarks` decided the first
+with three early `return`s sitting **above** its wrapper loop, so a run wearing
+both kinds emitted only its carrier and **the wrapper was DELETED**. The parser
+APPENDS a formatting mark onto whatever its recursion returned, so that
+combination is not exotic; `\textsc` is unmodeled and is the standard small-caps
+/ gloss-abbreviation command, which makes this ordinary linguistics and
+philosophy prose. The card/footnote fork had the identical two returns above the
+identical loop (341's twin rule). Five members, every one a FIXED POINT from
+cycle 1, all landing on OPEN:
+
+- **M1** `\textbf{\textsc{Smith}}` → `\textsc{Smith}`; `\textcolor[HTML]{…}{\textsc{x}}`
+  → the colour gone; `\textbf{\verb|a|}` → the bold gone; and the RUN form
+  `\emph{a \textsc{b} c}` → `\emph{a }\textsc{b}\emph{ c}`, one wrapper split
+  into two with the middle piece bare.
+- **M2** the same in the card/footnote fork.
+- **M3** a mark around an inline ATOM: `\emph{\citep{x}}` → `\vcid{…}\citep{x}`,
+  because the sequence walker emitted the atom and discarded its marks.
+- **M4** `inCode` was not propagated: only the `\texttt` branch passed anything,
+  so a command nested INSIDE a code span had its body typographied and a raw
+  U+2013 / U+00E9 was written into the `.tex` — `\texttt{\textbf{x--y}}` came
+  back `\texttt{\textbf{x–y}}`, where the source's two hyphens must PRINT as two
+  hyphens. `\texttt{x--y}` (one level) was always right, which is why it read as
+  latent. Both parsers had the gap.
+- **M5** `\texttt{caf\'e}` → `\texttt{caf}\'\texttt{e}` — the split re-binds the
+  accent, which now takes `\texttt` as its argument.
+
+> **Two stages, stated once: PRODUCE the run's inner bytes (the carriers decide
+> this), then WRAP them. And the unit of wrapping is the RUN — the maximal
+> adjacent span sharing one wrapper signature — never the node.**
+
+[src/lib/mark-composition.ts](src/lib/mark-composition.ts) is the SSOT
+(`WRAPPER_MARK_TYPES`, `markWrapSignature`, `applyWrapperMarks`,
+`composeInlineRun`), an import-free leaf for the reason `latex-markers.ts` and
+`node-attr-sets.ts` each earned. Five rules it earned:
+
+- **The RUN, not the node, and M5 is the proof.** Per-node wrapping is correct
+  about each node's own bytes and wrong about their neighbours: it splits one
+  `\texttt{…}` into three, and a split landing between an argument-taking control
+  symbol and its argument CHANGES WHAT THE COMMAND TAKES. A rule stated as "wrap
+  each node" cannot express that; a rule stated as "wrap the run" fixes M1's
+  split form and M5 with the same line.
+- **`code` is a WRAPPER that is nonetheless read at stage 1**, and that is not an
+  exception to the split — it is the one wrapper that changes how the inner bytes
+  are PRODUCED (typography suppressed). Stated at the site so the next reader
+  does not "tidy" it into stage 2.
+- **What must sit OUTSIDE a wrapper breaks the run.** The `\vlid` / `\vlidend`
+  anchor transitions are an `outerPrefix`, and a non-empty prefix flushes the
+  group — so a marker can never land inside one set of braces, structurally
+  rather than incidentally. The comment carrier is `standalone` for the stronger
+  reason: it owns the rest of its LINE, so anything merged after it inside
+  `\textbf{…}` — the closing brace included — would be commented out.
+- **An ATOM's marks are the run's business.** The walker's non-text arm emits the
+  node and the RUN wraps it, so `\emph{\vcid{…}\citep{x}}` round-trips. The atom
+  keeps its marks in the parsed JSON already; nothing had to be re-derived.
+- **`inCode` is INHERITED by every mark recursion**, in both parsers. The emit
+  side always read the fact correctly; the two rungs simply read it at different
+  depths, which is the whole of M4.
+
+**Declared normalization:** two adjacent nodes the model happens to keep apart
+with identical wrapper marks now merge (`\textbf{a}\textbf{b}` → `\textbf{ab}`).
+One-time, idempotent, and it typesets identically — the same class of one-time
+canonicalization the serializer already performs for author layout.
+
+**Stated residual:** a NESTED formatting mark still splits its parent's run —
+`\textbf{a \emph{x} b}` normalizes once to
+`\textbf{a }\textbf{\emph{x}}\textbf{ b}`, because the two signatures differ.
+Sharing a common wrapper SUFFIX would restore byte-identity there, and it is
+deliberately not done here: the phenomenon this task closes is DELETION, the
+split form loses nothing and is idempotent, and suffix-sharing turns a linear
+fold into a hierarchical build over interleaved mark orders — more risk than the
+verbosity is worth.
+
+CI: [carrier-mark-composition.test.ts](src/lib/__tests__/carrier-mark-composition.test.ts).
+Every leg drives the REAL save pipeline over TWO cycles and over BOTH surfaces
+(main body, the fork's own doors, and a real `\footnote{}` body in a real
+document), with `\textbf{plain bold}` / `\textbf{\emph{both}}` / `\texttt{x--y}`
+as CONTROLS through the identical harness — the defect needs a CARRIER or an
+ATOM as the child, so a suite whose fixtures are plain prose cannot represent it,
+which is exactly why every pre-377 round-trip suite was green. **No gate could
+see any of it**: `\textbf` is not a content word, `x--y` and `x–y` both tokenize
+to `{x, y}` under `WORD_RE`, and the accent case is a 1-token shortfall under the
+4-word floor. The leg with teeth is the CENSUS — the composition was never the
+part that could misbehave, a THIRD file spelling the five commands is, and that
+is literally what shipped: no production file outside the SSOT may emit a wrapper
+command, both inline serializers must enter `composeInlineRun`, and the needles
+are DERIVED from `WRAPPER_MARK_TYPES` so a sixth wrapper joins by declaring
+itself. Measured by neutering each half in turn: the pre-377 carrier return takes
+14 legs, the discarded atom marks 5, the main parser's `inCode` 3, the fork's 1,
+and a third speller 1.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's
