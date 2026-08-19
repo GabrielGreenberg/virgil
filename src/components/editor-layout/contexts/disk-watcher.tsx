@@ -20,6 +20,12 @@ import { clearDiskLedger } from "@/lib/disk-ledger";
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { createDiskWatcher, type DiskWatcher } from "@/lib/disk-watcher";
 import {
+  resolveExternalConflict,
+  type ConflictChoice,
+  type ConflictOutcome,
+} from "@/lib/conflict-resolution";
+import type { ConflictArchive } from "@/lib/storage-types";
+import {
   createSidecarWatcher,
   type SidecarWatcher,
 } from "@/lib/sidecar-watcher";
@@ -69,13 +75,19 @@ export interface DiskWatcherContextValue {
    */
   registerUnsavedGetter: (docId: string, fn: () => boolean) => () => void;
   /**
-   * Inject a doc's `refetch()` (readDocBundle → setContent → re-baseline the
-   * ledger), keyed by docId. Called ONCE per `useDocument` mount, never per
-   * keystroke. MIRRORS `registerUnsavedGetter` — `reloadFromDisk` drives ONLY
-   * the active doc's refetch (`get(activeDocId)`), so the badge's "Reload" can
-   * never target the wrong warm doc.
+   * Inject THIS doc's conflict-side actions, keyed by docId. Called ONCE per
+   * `useDocument` mount, never per keystroke. MIRRORS `registerUnsavedGetter` —
+   * every consumer below reads `get(activeDocId)`, so a badge gesture can never
+   * target a warm doc.
+   *
+   * ONE registration rather than three (task 364). The three operations belong
+   * to one obligation — a conflict has two sides and a net — and three
+   * registrations is three chances to wire two of them: a `keepMine` that never
+   * registered is a button that silently does nothing, which is precisely the
+   * silence this task exists to end. The type makes all three required, so a
+   * doc either offers the whole resolution or none of it.
    */
-  registerReload: (docId: string, fn: () => void | Promise<void>) => () => void;
+  registerDocActions: (docId: string, actions: DocConflictActions) => () => void;
   /**
    * "Reload from disk": optimistically clear the watcher's change ledger, THEN
    * run the registered `refetch()`. The load path re-baselines the disk ledger
@@ -83,6 +95,29 @@ export interface DiskWatcherContextValue {
    * the optimistic clear) if no doc has registered a reload yet.
    */
   reloadFromDisk: () => Promise<void>;
+  /**
+   * Resolve an external-change CONFLICT by keeping one side (task 364). Both
+   * choices archive BOTH sides into one `virgil/.history/` slot first — the
+   * order lives in [conflict-resolution.ts](@/lib/conflict-resolution), not
+   * here — and the outcome reports what the net actually holds so the surface
+   * can say so instead of promising it.
+   *
+   * No registered actions (no doc mounted yet) → a `null` outcome, and the
+   * badge declines rather than reporting a resolution that never happened.
+   */
+  resolveConflict: (choice: ConflictChoice) => Promise<ConflictOutcome | null>;
+}
+
+/** The per-doc half of a conflict resolution — see `registerDocActions`. */
+export interface DocConflictActions {
+  /** readDocBundle → setContent → re-baseline the ledger (the disk side). */
+  reload: () => void | Promise<void>;
+  /** Write the LIVE editor model over disk now, as the user's explicit
+   *  decision (the write gate steps aside; the net is already taken). */
+  keepMine: () => Promise<void>;
+  /** Archive both sides — the doc side supplies the editor's model, which is
+   *  the half the storage backend cannot see. */
+  archiveSides: () => Promise<ConflictArchive | null>;
 }
 
 const DiskWatcherCtx = createContext<DiskWatcherContextValue | null>(null);
@@ -114,7 +149,7 @@ export function DiskWatcherProvider({
   // maps live in refs — read only at poll time / on the Reload gesture, never
   // during render or per keystroke.
   const unsavedGetters = useRef(new Map<string, () => boolean>());
-  const reloadFns = useRef(new Map<string, () => void | Promise<void>>());
+  const docActions = useRef(new Map<string, DocConflictActions>());
 
   // Stable register fns (identity never changes), so a descendant useDocument's
   // register effect does NOT re-run when the ACTIVE doc switches. Each takes the
@@ -132,12 +167,12 @@ export function DiskWatcherProvider({
     },
     [],
   );
-  const registerReload = useCallback(
-    (regDocId: string, fn: () => void | Promise<void>) => {
-      reloadFns.current.set(regDocId, fn);
+  const registerDocActions = useCallback(
+    (regDocId: string, actions: DocConflictActions) => {
+      docActions.current.set(regDocId, actions);
       return () => {
-        if (reloadFns.current.get(regDocId) === fn) {
-          reloadFns.current.delete(regDocId);
+        if (docActions.current.get(regDocId) === actions) {
+          docActions.current.delete(regDocId);
         }
       };
     },
@@ -283,7 +318,7 @@ export function DiskWatcherProvider({
       watcher,
       activeDocId: docId,
       registerUnsavedGetter,
-      registerReload,
+      registerDocActions,
       // Optimistic clear THEN the ACTIVE doc's registered refetch: clearing
       // first hides the badge immediately; the refetch re-baselines the disk
       // ledger on load so the next poll reads clean. `watcher.clearChanges()` is
@@ -292,14 +327,37 @@ export function DiskWatcherProvider({
       // badge's Reload drives the active doc, never a warm one.
       reloadFromDisk: async () => {
         watcher.clearChanges();
-        await (reloadFns.current.get(docId) ?? (() => {}))();
+        await (docActions.current.get(docId)?.reload ?? (() => {}))();
         // The reload replaced in-memory content from disk; an open code
         // pane's delimiter closure is now stale — tell it to re-read the
         // disk preamble/postamble and resync (no code pane → free no-op).
         dispatchTexDelimitersChanged(docId);
       },
+      // The CONFLICT doors (task 364). Both sides are archived first and the
+      // ORDER lives in the resolution SSOT, never here — this closure only
+      // supplies the ports, resolved for the ACTIVE doc exactly as
+      // `reloadFromDisk` does. A doc with no registered actions declines
+      // (`null`) rather than reporting a resolution that never happened.
+      resolveConflict: async (choice) => {
+        const actions = docActions.current.get(docId);
+        if (!actions) return null;
+        return resolveExternalConflict(choice, {
+          archive: actions.archiveSides,
+          acknowledge: () => watcher.acknowledge(),
+          keepMine: actions.keepMine,
+          // The disk side reuses the SAME reload path the 'change' severity
+          // takes — optimistic clear, refetch, delimiters event — so the two
+          // severities can never come to disagree about what "load the disk
+          // version" does.
+          takeDisk: async () => {
+            watcher.clearChanges();
+            await actions.reload();
+            dispatchTexDelimitersChanged(docId);
+          },
+        });
+      },
     }),
-    [watcher, docId, registerUnsavedGetter, registerReload],
+    [watcher, docId, registerUnsavedGetter, registerDocActions],
   );
 
   return (

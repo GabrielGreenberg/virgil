@@ -7,9 +7,10 @@
 //   2. 'change' (amber)             → "Changed on disk"; Reload (NO confirm)
 //                                     → reloadFromDisk; Dismiss → acknowledge;
 //   3. 'change' + removed           → "Removed on disk" label;
-//   4. 'conflict' (danger)          → "Disk changed · unsaved edits"; Reload is
-//                                     gated behind a confirm; "Keep my version"
-//                                     → acknowledge;
+//   4. 'conflict' (warning)         → "Changed on disk · unsaved edits"; BOTH
+//                                     doors inline (Keep mine / Use disk), each
+//                                     routed through `resolveConflict` (which
+//                                     nets both sides first — task 364);
 //   5. paused                       → muted "Watching paused", NO Reload;
 //   6. the kebab menu portals to document.body (escapes the topbar z-30 trap).
 //
@@ -39,14 +40,21 @@ vi.mock("@/hooks/useExternalChanges", () => ({
   useExternalChangesOrNull: () => ({ state: currentState, watcher: fakeWatcher }),
 }));
 
+let outcome: unknown = {
+  choice: "keep-mine",
+  archive: { slot: "2026-01-01", disk: ["main.tex"], mine: "unsaved-main.tex" },
+  applied: true,
+};
+const resolveConflict = vi.fn(async (_choice: string) => outcome);
+
 vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
-  useDiskWatcherOrNull: () => ({ reloadFromDisk }),
+  useDiskWatcherOrNull: () => ({ reloadFromDisk, resolveConflict }),
 }));
 
 // Control the confirm resolution deterministically. `confirmResult` flips per
 // test; `dialog` is a marker so we can assert it mounts but it's inert here.
 let confirmResult = true;
-const confirmSpy = vi.fn(async () => confirmResult);
+const confirmSpy = vi.fn(async (_opts: { title?: string }) => confirmResult);
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirmDialog: () => ({ confirm: confirmSpy, dialog: null }),
 }));
@@ -80,6 +88,12 @@ beforeEach(() => {
   clearChanges.mockClear();
   confirmSpy.mockClear();
   confirmResult = true;
+  resolveConflict.mockClear();
+  outcome = {
+    choice: "keep-mine",
+    archive: { slot: "2026-01-01", disk: ["main.tex"], mine: "unsaved-main.tex" },
+    applied: true,
+  };
 });
 
 afterEach(() => cleanup());
@@ -143,43 +157,96 @@ describe("ExternalChangeBadge — 'change' (amber, no unsaved edits)", () => {
   });
 });
 
-describe("ExternalChangeBadge — 'conflict' (danger, unsaved edits)", () => {
+// RENEGOTIATED (task 364), not merely re-scoped. The four legs this replaces
+// pinned the ONE-SIDED conflict affordance as intended behaviour: a danger
+// tone, Reload behind a destructive confirm, and "Keep my version" reachable
+// only from the kebab where it re-baselined the ledger and left the outcome to
+// whenever the next autosave happened to fire. The detection they sat on was
+// right; the affordance was the defect, so the assertions that described it are
+// rewritten here rather than relaxed.
+describe("ExternalChangeBadge — 'conflict' (warning, unsaved edits)", () => {
   beforeEach(() => {
     currentState = state({ severity: "conflict", changes: [texModified] });
   });
 
-  it("labels the conflict and tones danger", () => {
+  it("labels the conflict calmly and does NOT paint the danger ramp", () => {
     const { container } = render(<ExternalChangeBadge />);
-    expect(screen.getByText("Disk changed · unsaved edits")).toBeTruthy();
-    expect(
-      container.querySelector('[data-external-change-badge="conflict"]'),
-    ).toBeTruthy();
+    expect(screen.getByText("Changed on disk · unsaved edits")).toBeTruthy();
+    const pill = container.querySelector(
+      '[data-external-change-badge="conflict"]',
+    );
+    expect(pill).toBeTruthy();
+    // The tone is asserted on the SPECIFIED value: jsdom resolves no CSS vars,
+    // so a computed read cannot tell `--amber-100` from `--danger-soft`.
+    const swatch = pill!.querySelector("span")!.getAttribute("style") ?? "";
+    expect(swatch).toContain("--amber-100");
+    expect(swatch).not.toContain("--danger");
   });
 
-  it("Reload is gated behind a confirm; confirmed → reloadFromDisk", async () => {
-    confirmResult = true;
+  it("offers BOTH doors inline — the user's own side is not behind a menu", () => {
     render(<ExternalChangeBadge />);
-    fireEvent.click(screen.getByText("Reload"));
-    await flush();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(reloadFromDisk).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Keep mine")).toBeTruthy();
+    expect(screen.getByText("Use disk")).toBeTruthy();
+    // The one-sided "Reload" primary is gone from this tier.
+    expect(screen.queryByText("Reload")).toBeNull();
   });
 
-  it("Reload confirm declined → reloadFromDisk NOT called", async () => {
-    confirmResult = false;
+  it("'Keep mine' resolves through the conflict door, never a bare acknowledge", async () => {
     render(<ExternalChangeBadge />);
-    fireEvent.click(screen.getByText("Reload"));
+    fireEvent.click(screen.getByText("Keep mine"));
     await flush();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(resolveConflict).toHaveBeenCalledWith("keep-mine");
+    // The pre-364 behaviour — re-baseline and hope the next autosave lands —
+    // must NOT be what this button does.
+    expect(acknowledge).not.toHaveBeenCalled();
     expect(reloadFromDisk).not.toHaveBeenCalled();
   });
 
-  it("'Keep my version' (kebab) calls watcher.acknowledge", async () => {
+  it("'Use disk' resolves through the conflict door, never a bare reload", async () => {
+    render(<ExternalChangeBadge />);
+    fireEvent.click(screen.getByText("Use disk"));
+    await flush();
+    expect(resolveConflict).toHaveBeenCalledWith("take-disk");
+    expect(reloadFromDisk).not.toHaveBeenCalled();
+  });
+
+  it("neither door takes a destructive confirm — the net is what replaces it", async () => {
+    render(<ExternalChangeBadge />);
+    fireEvent.click(screen.getByText("Use disk"));
+    await flush();
+    fireEvent.click(screen.getByText("Keep mine"));
+    await flush();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("a resolution that got NO net is REPORTED, not passed off as done", async () => {
+    outcome = { choice: "keep-mine", archive: null, applied: true };
+    render(<ExternalChangeBadge />);
+    fireEvent.click(screen.getByText("Keep mine"));
+    await flush();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]?.title ?? "").toContain("no history copy");
+  });
+
+  it("a resolution that failed to APPLY is reported too", async () => {
+    outcome = { choice: "take-disk", archive: null, applied: false };
+    render(<ExternalChangeBadge />);
+    fireEvent.click(screen.getByText("Use disk"));
+    await flush();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]?.title ?? "").toContain("Couldn't resolve");
+  });
+
+  it("the kebab carries both full labels with their loss-side stated", () => {
     render(<ExternalChangeBadge />);
     fireEvent.click(screen.getByLabelText("External change options"));
-    fireEvent.click(screen.getByText("Keep my version"));
-    await flush();
-    expect(acknowledge).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Keep my version")).toBeTruthy();
+    expect(screen.getByText("Load the disk version")).toBeTruthy();
+    expect(
+      document.body.textContent?.includes("virgil/.history/"),
+    ).toBe(true);
+    // The copy names the likely writer rather than nobody.
+    expect(document.body.textContent).toMatch(/sync service/i);
   });
 });
 

@@ -92,6 +92,21 @@ Two rules the family carries:
   real accessibility residual, recorded rather than fixed: repainting them is a
   visual pass across dialogs, toasts and cards, and it is the obvious next step
   for this family.
+- **RED means an action would destroy content WITHOUT a net** (task 364). A
+  state that is merely *unexpected* — an external writer changed the file, a
+  sync service touched it while you were typing — is a firm-but-calm WARNING and
+  takes the warm family one step up from the informational tier
+  (`--amber-100` ground / `--amber-500` edge and icon, against the informational
+  tier's `--amber-50` / `--amber-200`), never the alarm ramp. The rule is a
+  claim about the AFFORDANCE rather than about severity: the external-change
+  badge's conflict tier dropped its red the moment both of its doors archived
+  both versions into `virgil/.history/` first, because at that point neither
+  door can lose anything and a red pill would be telling the user something
+  untrue. A user alone at the keyboard reads red on an ordinary event as
+  corruption, which is worse than not warning at all — and if that leaves you
+  with nothing red on a genuinely destructive path, the answer is usually a net,
+  not a redder pill.
+
 - **Two rungs ALIAS the rust scale rather than restating its hex.** That is the
   point, not an optimization. The historical migration record
   (`docs/virgil-design-system/10-audit.md` §8, no longer the spec) complains

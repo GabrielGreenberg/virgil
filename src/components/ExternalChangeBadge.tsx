@@ -18,13 +18,36 @@
  *                                    DocPermissionGate to re-grant).
  *   - 'change' (no unsaved edits)  → AMBER. "Changed on disk" /
  *                                    "Removed on disk". Reload (no confirm) +
- *                                    Dismiss.
- *   - 'conflict' (unsaved edits)   → DANGER. "Disk changed · unsaved edits".
- *                                    Reload (CONFIRM — discards your edits) +
- *                                    "Keep my version".
+ *                                    Dismiss. Nothing of the user's is at
+ *                                    stake, so this tier is unchanged.
+ *   - 'conflict' (unsaved edits)   → WARNING (a stronger amber, NOT danger).
+ *                                    "Changed on disk · unsaved edits", with
+ *                                    BOTH doors offered: "Keep mine" and
+ *                                    "Use disk".
  *
  * Both reconcile actions resolve `watcher.hasUnresolvedChange()`, so the
  * autosave-clobber pause (DESIGN §4) auto-resumes once the user acts.
+ *
+ * ## The conflict tier (task 364)
+ *
+ * Before this the conflict state offered exactly one action — Reload, i.e.
+ * discard your unsaved edits — behind a red pill and a danger confirm. The
+ * detection was honest and the affordance was one-sided: the DISK side had a
+ * door and the user's own side had none.
+ *
+ * > **A conflict has two sides, so it gets two doors, and each archives BOTH
+ * > sides first.** The order lives in
+ * > [conflict-resolution.ts](@/lib/conflict-resolution) — this surface only
+ * > offers the choice and reports what the net actually holds.
+ *
+ * That is also why the red is gone. RED is for an action that would destroy
+ * content WITHOUT a net; with the net unconditional, neither door qualifies,
+ * and a red alarm on a recoverable, ordinary event (a sync service touching the
+ * file) reads to a user alone at the keyboard as corruption. The tier is a
+ * firm-but-calm warning: the same warm family the 'change' tier uses, one step
+ * up. And the copy NAMES the likely writer, because "Disk changed" names
+ * nobody — Virgil cannot know which app it was (FSA hands out no paths), so it
+ * says the true general thing rather than nothing.
  *
  * KEYSTROKE SANCTITY: this reads state ONLY via `useExternalChanges()` →
  * `useSyncExternalStore` over the watcher's stable snapshot. It adds NO editor
@@ -49,6 +72,7 @@ import type {
   ExternalChangeState,
   FileChange,
 } from "@/lib/disk-watcher";
+import type { ConflictChoice } from "@/lib/conflict-resolution";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "./StatusDot";
 
@@ -127,8 +151,12 @@ function deriveCopy(state: ExternalChangeState): BadgeCopy {
     return {
       label: anyRemoved(state.changes)
         ? "Removed on disk · unsaved edits"
-        : "Disk changed · unsaved edits",
-      detail: `An external writer changed this paper while you have unsaved edits${detailFiles}. Reload discards your edits; Keep my version overwrites theirs on the next save.`,
+        : "Changed on disk · unsaved edits",
+      // Names the writer as far as it is knowable. Virgil holds an FSA
+      // directory handle, not a path, so it cannot tell WHICH app wrote — but
+      // the honest general answer ("another app or a sync service") is what a
+      // user alone at the keyboard needs to stop reading this as corruption.
+      detail: `Another app or a sync service — Dropbox, Overleaf, a text editor — changed this paper on disk${detailFiles} while you have unsaved edits here. Both versions are copied into virgil/.history/ before either one is applied, so neither is lost whichever you keep.`,
     };
   }
   // severity === 'change'
@@ -183,6 +211,7 @@ function ExternalChangeBadge() {
   const { state, watcher } = useExternalChangesOrNull();
   const diskCtx = useDiskWatcherOrNull();
   const reloadFromDisk = diskCtx?.reloadFromDisk;
+  const resolveConflict = diskCtx?.resolveConflict;
   const { confirm, dialog } = useConfirmDialog();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -214,28 +243,64 @@ function ExternalChangeBadge() {
 
   const isConflict = state.severity === "conflict";
 
+  // 'change' tier only: nothing of the user's is at stake, so this stays the
+  // one-click reload it has always been. The conflict tier routes through
+  // `resolveConflict` instead, which nets both sides first.
   const handleReload = useCallback(async () => {
     closeMenu();
-    if (isConflict) {
-      // Conflict: a reload discards the user's unsaved in-editor edits, so gate
-      // it behind an explicit destructive confirm (DESIGN §5).
-      const ok = await confirm({
-        title: "Reload from disk?",
-        message:
-          "This loads the on-disk version and discards your unsaved edits. This can't be undone.",
-        confirmLabel: "Reload — discard my edits",
-        tone: "danger",
-      });
-      if (!ok) return;
-    }
     await reloadFromDisk?.();
-  }, [closeMenu, isConflict, confirm, reloadFromDisk]);
+  }, [closeMenu, reloadFromDisk]);
 
+  /**
+   * The two conflict doors (task 364). Neither takes a destructive confirm:
+   * the net is unconditional, so neither can destroy content — which is
+   * exactly the condition the danger tone is reserved for.
+   *
+   * The only thing worth interrupting for is a resolution that did NOT get its
+   * net, or that failed to apply. Both are rare (an FSA permission loss pauses
+   * the watcher and hides these doors entirely), and both are reported rather
+   * than inferred: a door promising "kept in history" while the copy silently
+   * failed is the false-affordance shape this task exists to close.
+   */
+  const runConflictChoice = useCallback(
+    async (choice: ConflictChoice) => {
+      closeMenu();
+      const outcome = await resolveConflict?.(choice);
+      if (!outcome) return;
+      if (!outcome.applied) {
+        await confirm({
+          title: "Couldn't resolve the conflict",
+          message:
+            "Your edits are still in the editor and the file on disk is unchanged. Try again, or reopen the paper.",
+          confirmLabel: "OK",
+          hideCancel: true,
+        });
+        return;
+      }
+      if (!outcome.archive) {
+        await confirm({
+          title:
+            choice === "keep-mine"
+              ? "Saved your version — no history copy"
+              : "Loaded the disk version — no history copy",
+          message:
+            "Virgil could not write a copy of the other version into virgil/.history/, so that version is gone. Everything else went through as asked.",
+          confirmLabel: "OK",
+          hideCancel: true,
+          tone: "danger",
+        });
+      }
+    },
+    [closeMenu, resolveConflict, confirm],
+  );
+
+  // 'change' tier only. Re-baseline the ledger to the current disk bytes so the
+  // badge clears; Virgil's version then wins on the next save. Resolves
+  // `hasUnresolvedChange()` → autosave resumes. The conflict tier's "keep mine"
+  // is NOT this: it nets both sides and writes immediately, rather than leaving
+  // the outcome to whenever the next autosave happens to fire.
   const handleDismiss = useCallback(async () => {
     closeMenu();
-    // "Dismiss" (change) / "Keep my version" (conflict): re-baseline the ledger
-    // to the current disk bytes so the badge clears; Virgil's version then wins
-    // on the next save. Resolves `hasUnresolvedChange()` → autosave resumes.
     await watcher?.acknowledge();
   }, [closeMenu, watcher]);
 
@@ -272,12 +337,15 @@ function ExternalChangeBadge() {
   // Tone tokens. 'change' → amber family; 'conflict' → danger family. Text uses
   // a legible ink on the soft tinted background (the amber/danger -500 values
   // are too light to read at 11px), with the icon/border carrying the hue.
+  // WARNING tier for a conflict — the same warm family as 'change', one step
+  // up, never the alarm ramp. Red is reserved for an action that destroys
+  // content with no net, and after task 364 neither door does.
   const tone = isConflict
     ? {
-        bg: "var(--danger-soft)",
-        border: "var(--danger)",
-        icon: "var(--danger)",
-        actionText: "var(--danger)",
+        bg: "var(--amber-100)",
+        border: "var(--amber-500)",
+        icon: "var(--amber-500)",
+        actionText: "var(--ink-strong)",
       }
     : {
         bg: "var(--amber-50)",
@@ -287,7 +355,7 @@ function ExternalChangeBadge() {
       };
 
   const reloadLabel = "Reload";
-  const dismissLabel = isConflict ? "Keep my version" : "Dismiss";
+  const dismissLabel = "Dismiss";
 
   const menu: ReactNode =
     menuOpen && anchorRect && typeof document !== "undefined" ? (
@@ -310,24 +378,36 @@ function ExternalChangeBadge() {
         // surface chrome is the primitive's `.menu-surface` (task 295).
         containerClassName="min-w-[240px] max-w-[320px] py-1"
       >
-        <MenuRow
-          id="reload"
-          label={
-            isConflict ? "Reload — discards your unsaved edits" : "Reload from disk"
-          }
-          danger={isConflict}
-          run={() => void handleReload()}
-        />
-        <MenuRow
-          id="dismiss"
-          label={dismissLabel}
-          detail={
-            isConflict
-              ? "Keep your version — overwrites the disk change on the next save."
-              : "Dismiss — keep your version; the next save overwrites the disk change."
-          }
-          run={() => void handleDismiss()}
-        />
+        {isConflict ? (
+          <>
+            <MenuRow
+              id="keep-mine"
+              label="Keep my version"
+              detail="Saves what's in the editor over the file on disk. The disk version is kept in virgil/.history/."
+              run={() => void runConflictChoice("keep-mine")}
+            />
+            <MenuRow
+              id="take-disk"
+              label="Load the disk version"
+              detail="Loads the file as it is on disk. Your unsaved edits are kept in virgil/.history/."
+              run={() => void runConflictChoice("take-disk")}
+            />
+          </>
+        ) : (
+          <>
+            <MenuRow
+              id="reload"
+              label="Reload from disk"
+              run={() => void handleReload()}
+            />
+            <MenuRow
+              id="dismiss"
+              label={dismissLabel}
+              detail="Dismiss — keep your version; the next save overwrites the disk change."
+              run={() => void handleDismiss()}
+            />
+          </>
+        )}
         {copy.detail && (
           <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
             {copy.detail}
@@ -358,20 +438,41 @@ function ExternalChangeBadge() {
         <span className="truncate">{copy.label}</span>
       </span>
 
-      {/* Primary action — Reload. For a conflict it routes through the confirm. */}
-      <button
-        type="button"
-        onClick={() => void handleReload()}
-        className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
-        style={{ color: tone.actionText }}
-        data-hint={
-          isConflict
-            ? "Reload from disk (discards your unsaved edits)"
-            : "Reload the on-disk version"
-        }
-      >
-        {reloadLabel}
-      </button>
+      {/* The action(s). A conflict offers BOTH doors inline — the whole point of
+          task 364 is that the user's own side is reachable without opening a
+          menu; the kebab carries the full labels and the loss-side sentences. */}
+      {isConflict ? (
+        <>
+          <button
+            type="button"
+            onClick={() => void runConflictChoice("keep-mine")}
+            className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
+            style={{ color: tone.actionText }}
+            data-hint="Save your version over the disk one — the disk version is kept in virgil/.history/"
+          >
+            Keep mine
+          </button>
+          <button
+            type="button"
+            onClick={() => void runConflictChoice("take-disk")}
+            className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
+            style={{ color: tone.actionText }}
+            data-hint="Load the version on disk — your unsaved edits are kept in virgil/.history/"
+          >
+            Use disk
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void handleReload()}
+          className="px-2 py-0.5 rounded text-[11px] font-medium transition-colors hover:bg-[var(--accent-light)]"
+          style={{ color: tone.actionText }}
+          data-hint="Reload the on-disk version"
+        >
+          {reloadLabel}
+        </button>
+      )}
 
       {/* Kebab — the secondary action (Dismiss / Keep my version) + detail. */}
       <button

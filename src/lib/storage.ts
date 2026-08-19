@@ -37,6 +37,11 @@ export const invalidateSidecarBundle = backend.invalidateSidecarBundle;
 export const readTex = backend.readTex;
 export const writeTex = backend.writeTex;
 export const readDocBundle = backend.readDocBundle;
+// The CONFLICT NET (task 364): archive BOTH sides of an external-change
+// conflict into one `virgil/.history/` slot before either is applied. Returns
+// the receipt, or `null` when no net could be taken — which the resolution
+// REPORTS rather than papering over. See storage-fsa for the contract.
+export const snapshotConflictSides = backend.snapshotConflictSides;
 export const writeDocBundle = backend.writeDocBundle;
 export const readBib = backend.readBib;
 export const writeBib = backend.writeBib;
@@ -104,7 +109,7 @@ export const importFigureFile = backend.importFigureFile;
 export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile, FileStat } from "@/lib/storage-fsa";
 // Best-effort compiled-PDF persistence result (P6). Shared leaf type so both
 // backends and the compile hook import one definition.
-export type { WritePdfResult } from "@/lib/storage-types";
+export type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

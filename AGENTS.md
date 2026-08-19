@@ -1794,6 +1794,94 @@ a build failure rather than a silent drop), and a model reaching the serializer
 from outside the schema. The same two cases the mount probe exists for, from the
 other end.
 
+### The conflict half: a guard that pauses owes BOTH sides a door
+
+Same path, other direction (task 364). Every gate above answers *may this write
+land?* This one answers what happens when the file changed **underneath** the
+model: the `DiskWatcher` confirms a genuine byte divergence, the autosave PAUSES
+rather than clobbering the external write, and the badge surfaces it. The
+detection was honest and the posture was right, and the resolution was
+one-sided — the only action offered was **Reload**, which discards the user's
+unsaved edits. Their own side had no door at all, and the pill was red for an
+event whose commonest cause is a sync service (Gabriel's paper lives in the
+Overleaf/Dropbox integration folder, so the "external writer" is a daemon).
+
+> **A conflict has TWO sides — the bytes on disk and the unsaved model — so it
+> gets two doors, and a door that discards one side puts that side in the net
+> FIRST. Which door was chosen may not change what the net holds: the two doors
+> differ only in which side they APPLY.**
+
+That last clause is the whole shape. Archiving per door is how the two come to
+disagree about what gets kept, silently, with every behavioural leg green — so
+the order is stated ONCE in
+[conflict-resolution.ts](src/lib/conflict-resolution.ts) and both doors are
+derived from it. The net is [`snapshotConflictSides`](src/lib/storage-fsa.ts):
+one `virgil/.history/<ts>/` slot holding the disk bundle under its own names
+(the same slot shape `snapshotPriorBundle` writes, so recovering from a conflict
+slot is recovering from any other) plus the editor's side as `unsaved-<tex>`,
+serialized through the SAME `buildSerializeOpts` door the save path uses — so
+the archived copy is the bytes a keep-mine write would actually have produced.
+
+Six rules it earned:
+
+- **The net comes first for BOTH doors, and its receipt is READ.** `null` means
+  no copy was taken, and the badge SAYS so rather than repeating a promise it
+  could not keep — the false-affordance rule, applied to a claim made after the
+  gesture instead of before it. A net that could not be taken does **not** cancel
+  the resolution: the user is mid-conflict with a paused autosave, and stranding
+  them with no way forward is worse than the risk being guarded.
+- **Keep-mine ACKNOWLEDGES before it writes.** `hasUnresolvedChange()` gates
+  every save path in `useDocument`, so a write issued while the conflict still
+  stands is precisely the write the clobber guard is holding back. Re-baselining
+  first also makes the write that follows *expected* to the watcher rather than a
+  second external change.
+- **The keep-mine write is EXEMPT from the 357 write gate, and the exemption is
+  stated as a claim** (`writeDocBundle`'s `userResolvedConflict`). That gate
+  exists because an AUTOMATIC write must not lose content, and a conflict
+  resolution is the opposite of automatic; refusing it would leave the badge's
+  promise unkept with nothing on screen to say so — this cluster's own silence
+  failure mode. The unconditional net is what makes the exemption safe.
+- **ONE registration, not three.** `registerDocActions(docId, {reload, keepMine,
+  archiveSides})` — three registrations is three chances to wire two of them, and
+  a `keepMine` that never registered is a button that silently does nothing.
+- **The `change` tier is untouched.** With no unsaved edits nothing of the
+  user's is at stake, so it keeps its one-click Reload and its `Dismiss`; the
+  conflict tier alone grew doors, and `take-disk` reuses that same reload path so
+  the two severities cannot come to disagree about what "load the disk version"
+  means.
+- **The red went away because the net arrived**, not to soften the message —
+  STYLE_GUIDE, "RED means an action would destroy content WITHOUT a net". The
+  copy also NAMES the likely writer as far as it is knowable: FSA hands out a
+  directory handle and no path, so Virgil cannot say *which* app, and the honest
+  general answer ("another app or a sync service — Dropbox, Overleaf, a text
+  editor") is what stops a user alone at the keyboard reading it as corruption.
+
+CI: [conflict-resolution.test.ts](src/lib/__tests__/conflict-resolution.test.ts)
+drives the REAL resolution against recording ports and asserts the SEQUENCE (a
+leg that only asserted "the archive was called" passes on an implementation that
+archives the outcome); [conflict-net.test.ts](src/lib/__tests__/conflict-net.test.ts)
+drives the REAL `snapshotConflictSides` against a fake disk and reads the slot
+back, because the ordering legs pass just as happily on a net that copies
+NOTHING — the failure a user would discover only after losing a version;
+[external-change-badge.test.tsx](src/components/__tests__/external-change-badge.test.tsx)
+pins both doors inline and the two REPORTED failure shapes; the multi-doc suite
+pins that `resolveConflict` drives only the ACTIVE doc's ports; and
+[useDocument.autosave-pause.test.ts](src/hooks/__tests__/useDocument.autosave-pause.test.ts)
+drives the REAL registered `keepMine` with the watcher still reporting the
+conflict. Measured by neutering each half: archiving after the apply takes 6
+legs, dropping `userResolvedConflict` 1, and a net that skips the editor side 3.
+Four badge legs were RENEGOTIATED rather than re-scoped — they pinned the
+one-sided affordance (danger tone, a destructive confirm, keep-mine buried in the
+kebab) as intended behaviour.
+
+**Residuals, stated.** The dev backend takes this ONE net (the affordance
+promises it, and the app is previewed there) while keeping no history for
+ordinary writes, and its slots are unpruned — the dev API has no directory
+listing. The badge shows no diff summary: computing one needs both sides' bytes
+at render time, and the pill is not a place to do disk I/O. And the real-Dropbox
+eyeball is **owed, not claimed** — this class masks in the dev preview, so the
+durable proof here is the unit contracts.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),

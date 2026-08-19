@@ -7,7 +7,11 @@ import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
 import { isRealUserEdit, noteUserEdit } from "@/lib/write-preservation";
 import { isWriteProtected } from "@/lib/preservation-notice";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
-import { readDocBundle, writeDocBundle } from "@/lib/storage";
+import {
+  readDocBundle,
+  snapshotConflictSides,
+  writeDocBundle,
+} from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
 import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
 import {
@@ -127,7 +131,12 @@ export function useDocument() {
   const save = useCallback(
     async (
       doc: JSONContent,
-      opts?: { delimiters?: { preamble: string; postamble: string } },
+      opts?: {
+        delimiters?: { preamble: string; postamble: string };
+        /** Task 364 — this write IS the user's conflict decision; the
+         *  automatic-write gate steps aside. See `writeDocBundle`. */
+        userResolvedConflict?: boolean;
+      },
     ) => {
       setSaveStatus("saving");
       try {
@@ -588,18 +597,74 @@ export function useDocument() {
       });
   }, [docId]);
 
-  // Register `refetch` with the external-change watcher so the topbar badge can
-  // drive "Reload from disk" via the context's `reloadFromDisk()` without
-  // coupling to EditorPane. MIRRORS the `registerUnsavedGetter` effect above:
-  // set ONCE per mount (keyed on the stable `registerReload` + `refetch`
-  // identities), never per keystroke, and adds NO editor.on subscriber.
-  // `useDiskWatcherOrNull` keeps useDocument working with no provider (tests).
-  const registerReload = diskWatcherCtx?.registerReload;
+  /**
+   * The LIVE editor model, or the last flushed snapshot when the editor is
+   * gone. Both conflict ports need it and neither may invent its own source:
+   * archiving one model and writing another would make the net a copy of
+   * something that never existed.
+   */
+  const currentModel = useCallback((): JSONContent | null => {
+    const editor = editorRef.current;
+    if (editor && !editor.isDestroyed) return editor.getJSON();
+    return latestContentRef.current ?? lastSavedRef.current;
+  }, []);
+
+  /**
+   * "Keep my version" (task 364) — write the live model over the externally
+   * changed disk bytes, NOW, as the user's explicit decision.
+   *
+   * Three things make this different from every other save path here, and all
+   * three are the decision rather than a shortcut. It does not consult
+   * `shouldPauseAutosave`: the clobber guard exists to stop an AUTOMATIC write
+   * from overwriting an external change, and this write is the user answering
+   * that exact question (the resolution has also already re-baselined the
+   * watcher, so the guard is down by the time this runs). It passes
+   * `userResolvedConflict`, so the 357 write gate steps aside — the conflict
+   * net is unconditional and has already been taken, so an informed decision
+   * cannot silently cost the missing bytes. And it cancels the pending debounce
+   * rather than riding it, because a resolution the user watched happen must
+   * not land 1500 ms later.
+   */
+  const keepMineOverDisk = useCallback(async (): Promise<void> => {
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const doc = currentModel();
+    if (!doc) return;
+    latestContentRef.current = doc;
+    await save(doc, { ...takeDelimitersOpts(), userResolvedConflict: true });
+  }, [currentModel, save, takeDelimitersOpts]);
+
+  /** The doc half of the conflict net: the storage backend can copy the DISK
+   *  side on its own, but the editor's unsaved side lives only here. */
+  const archiveConflictSides = useCallback(
+    () => snapshotConflictSides(handle, currentModel()),
+    [handle, currentModel],
+  );
+
+  // Register this doc's conflict-side actions with the external-change watcher
+  // so the topbar badge can drive Reload / Keep-mine / the net via the context
+  // without coupling to EditorPane. MIRRORS the `registerUnsavedGetter` effect
+  // above: set ONCE per mount (keyed on stable identities), never per
+  // keystroke, and adds NO editor.on subscriber. `useDiskWatcherOrNull` keeps
+  // useDocument working with no provider (tests).
+  const registerDocActions = diskWatcherCtx?.registerDocActions;
   useEffect(() => {
-    if (!registerReload) return;
-    const unregister = registerReload(docId, refetch);
+    if (!registerDocActions) return;
+    const unregister = registerDocActions(docId, {
+      reload: refetch,
+      keepMine: keepMineOverDisk,
+      archiveSides: archiveConflictSides,
+    });
     return unregister;
-  }, [registerReload, docId, refetch]);
+  }, [
+    registerDocActions,
+    docId,
+    refetch,
+    keepMineOverDisk,
+    archiveConflictSides,
+  ]);
 
   // Whenever the .tex delimiters change AUTHORITATIVELY out of band (style
   // switch, external-change Reload, compile documentclass-switch — the
