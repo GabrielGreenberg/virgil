@@ -175,6 +175,38 @@ predev/prebuild alongside the library bundle). It emits **two** outputs:
    `scripts/X.py → .virgil/scripts/editor/X.py`).
 2. **`.claude/commands/editor/*.md`** — the repo dev mirror, surfacing the
    slash commands in a session opened in this repo.
+3. **Every in-repo MANAGED folder's mirror** — refreshed by
+   [scripts/sync-local-mirrors.mjs](../scripts/sync-local-mirrors.mjs), chained
+   last into `build:skill-bundles`/`predev`/`prebuild`.
+
+**The mirror a run READS is the one that must be fresh (task 374).** Until that
+third output existed, only the running app could write a managed folder's copies
+(doc-open / library-open → `syncSkillBundle`) — so `npm run build:skill-bundles`,
+the command the freshness guard names as its remedy, could not clear the guard's
+own failure. That is the incident the guard was built for: a recursion guard
+landed in `dream.md` on main and six consecutive nightly dreams still ran the
+pre-guard prompt, because the copy they read lived in
+`library-data/.claude/commands/editor/`. Measured 2026-08-19, the same folder
+also carried **17 stale helper SCRIPTS** under `.virgil/scripts/{editor,library}/`
+— executables, not prompts, and no guard watched them. Three rules it earned:
+
+- **One speller of the on-disk layout.** `diskPathFor` and its
+  `commandsDirFor`/`scriptsDirFor` halves live in the import-free leaf
+  [library/lib/skill-bundle-layout.mjs](../library/lib/skill-bundle-layout.mjs),
+  because the writers cannot import each other's world (the app sync is FSA +
+  `@/…`; the builders are plain node `fs`). A facet the layer that needs it
+  cannot import will be re-copied — it had been, three times, plus the paper
+  path-rewrite's destination half.
+- **The build REFRESHES a mirror, it never CREATES one.** Every candidate folder
+  is gated on the app's own `.virgil/.skill-bundle-version.json`, so a fresh
+  clone and CI skip silently. The stamp is READ (for the prune step) and never
+  written: it is the app's record of what *it* synced, and in this repo it is a
+  tracked file, so writing it would dirty a shared checkout on every `npm run dev`.
+- **A staleness signal is only worth failing on if the named remedy can clear
+  it.** `out/skill-bundle/…` is the static export, regenerated wholesale by a
+  full `npm run build` — so between releases it says nothing about whether the
+  SSOT edit is live anywhere a run can read it. That row reports and SKIPS; every
+  mirror a run actually reads stays LOUD.
 
 **Paper-path rewrite (the one build-time transform).** Skill sources invoke
 helpers repo-relative — `python3 editor/scripts/X.py` — which is correct for

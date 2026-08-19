@@ -29,11 +29,15 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { commandsDirFor } from "../lib/skill-bundle-layout.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
 const bundleDir = join(repoRoot, "public", "skill-bundle", "library");
-const claudeCommandsDir = join(repoRoot, ".claude", "commands", "library");
+// Routed through the layout SSOT (library/lib/skill-bundle-layout.mjs) — the
+// same table the app's per-folder sync writes by, so the repo's dev mirror
+// and a synced folder can never disagree about where a command lands.
+const claudeCommandsDir = join(repoRoot, commandsDirFor("library"));
 
 async function listFilesIn(dir, predicate) {
   const entries = await readdir(join(repoRoot, dir), { withFileTypes: true });

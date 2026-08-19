@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
-    "predev": "node scripts/predev-clear-stale-lock.mjs && node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/build-example-bundle.mjs",
+    "predev": "node scripts/predev-clear-stale-lock.mjs && node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/sync-local-mirrors.mjs && node scripts/build-example-bundle.mjs",
     "dev": "next dev",
     "dev:preview": "NEXT_PUBLIC_DEV_STORAGE=true next dev",
-    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/build-example-bundle.mjs",
+    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/sync-local-mirrors.mjs && node scripts/build-example-bundle.mjs",
     "build": "next build",
     "start": "next start",
     "preview:pages": "NEXT_PUBLIC_BASE_PATH=/virgil next build && npx serve out -p 4173",
@@ -25,7 +25,8 @@
     "build:virgil-bundle": "node virgil/build/build-virgil-bundle.mjs",
     "build:meta-bundle": "node scripts/build-meta-bundle.mjs",
     "build:example-bundle": "node scripts/build-example-bundle.mjs",
-    "build:skill-bundles": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs"
+    "build:skill-bundles": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/sync-local-mirrors.mjs",
+    "sync:local-mirrors": "node scripts/sync-local-mirrors.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
