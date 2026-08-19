@@ -78,24 +78,42 @@ const RECOMPUTED: string[] = [...SUBSKILL_OWNED, ...STEP5_OWNED, ...AUTH_OWNED];
 const DECLARATION = /--recompute-warning-kind\s+([A-Za-z][A-Za-z0-9-]*)/g;
 
 /**
+ * A fence may declare its kinds by SUBSTITUTION instead of by name, when the
+ * family is derived rather than fixed.
+ *
+ * `fuse-alternate.md` §5 is the one such site: the `pgmark-fusion-` family's
+ * heads are one per `pgmark_validate.CONTINUITY_FINDING_KINDS` plus two fixed
+ * members, so a literal list in markdown silently under-drops the day a
+ * continuity kind is added (task 373). The fence therefore runs
+ * `fuse_alternate.py --print-recompute-flags` and passes the result through.
+ *
+ * Stated limit, because accepting this form costs the census something real:
+ * a substituted declaration contributes NO kind names, so the
+ * double-declaration leg below cannot see the heads it declares. What covers
+ * that half is on the Python side, where the vocabulary lives —
+ * `library/scripts/tests/test_warning_recompute_merge.py` asserts (a) the
+ * emitted flag list equals the derived head set exactly, and (b) no skill
+ * markdown free-types a `pgmark-fusion-` head. And the risk is bounded by
+ * construction anyway: no other skill writes that family, and every head it
+ * declares carries the `pgmark-fusion-` prefix, which nothing else claims.
+ */
+const DERIVED_DECLARATION = "--print-recompute-flags";
+
+/**
  * Catalog-patch fences that may carry `warnings` without declaring kinds.
  *
- * `<skill>.md:<1-based line of the opening fence>`. One entry, and it is a
- * residual recorded rather than swept: `fuse-alternate.md` §5's `--no-catalog`
- * fallback instructs a HAND merge (read the array with `jq`, drop
- * `pgmark-fusion-*`, re-supply the whole thing). Same clobber class, but its
- * family is a PREFIX — `pgmark-fusion-low-alignment-skipped` plus one head per
- * continuity kind `pgmark_validate.py` emits — and this task's merge is
- * deliberately exact-head, so migrating it means enumerating eight heads by
- * hand or deriving them: a design call about how much machinery a fallback
- * path deserves. Filed to the catcher at
- * `virgil-tasks/inbox/2026-08-11-from-worker-323-fuse-alternate-hand-merge-residual.md`.
- * Its PRIMARY path (`fuse_alternate.py`'s own `_update_catalog`) drops by
- * prefix in code and is correct. The list can only SHRINK.
+ * **EMPTY since task 373**, and it stays that way. Its one entry was
+ * `fuse-alternate.md` §5's `--no-catalog` fallback, which instructed a HAND
+ * merge (read the array with `jq`, drop `pgmark-fusion-*`, re-supply the
+ * whole thing) — the same clobber class, parked because its family is a
+ * PREFIX and this mechanism's merge is deliberately exact-head, so migrating
+ * it meant enumerating eight heads by hand or deriving them. Task 373 derived
+ * them: `pgmark_validate.CONTINUITY_FINDING_KINDS` is the vocabulary,
+ * `fuse_alternate.fusion_warning_heads()` the derived family, and the fence
+ * substitutes `fuse_alternate.py --print-recompute-flags` (see
+ * `DERIVED_DECLARATION` below). A hit here is MIGRATE-it, never an entry.
  */
-const PERMITTED_UNMERGED_WARNING_PATCHES: string[] = [
-  "fuse-alternate.md:141",
-];
+const PERMITTED_UNMERGED_WARNING_PATCHES: string[] = [];
 
 function read(name: string): string {
   return readFileSync(path.join(SKILLS, name), "utf8");
@@ -267,7 +285,10 @@ describe("recomputed warning-kind ownership", () => {
         if (!fence.text.includes('"indexed"')) {
           offenders.push(`${site} — "warnings" not nested under "indexed"`);
         }
-        if (!fence.text.includes("--recompute-warning-kind")) {
+        if (
+          !fence.text.includes("--recompute-warning-kind") &&
+          !fence.text.includes(DERIVED_DECLARATION)
+        ) {
           offenders.push(`${site} — whole-array replace, no kind declared`);
         }
       }
@@ -281,10 +302,46 @@ describe("recomputed warning-kind ownership", () => {
       catalogPatchFences(f).map((x) => `${f}:${x.start + 1}`),
     );
     expect(patchSites.length, "no catalog-patch fences found at all").toBeGreaterThan(3);
+    // The allowlist is drained (task 373), so there is no entry left to
+    // prove still-live. What replaces that proof is the same question asked
+    // of the site the exemption used to cover: fuse-alternate.md must still
+    // hold a catalog-patch fence, and that fence must declare its kinds by
+    // the derived form. Dropping this leg with the allowlist would have left
+    // the migration itself unpinned — a fence that quietly reverted to a
+    // hand merge is exactly what the exemption used to mark.
     expect(
-      patchSites,
-      "the one allowlisted site must still exist — a stale entry is a silent exemption",
-    ).toContain(PERMITTED_UNMERGED_WARNING_PATCHES[0]);
+      patchSites.some((s) => s.startsWith("fuse-alternate.md:")),
+      "fuse-alternate.md's catalog-patch fence vanished — the migrated site",
+    ).toBe(true);
+    const derived = catalogPatchFences("fuse-alternate.md").filter((f) =>
+      f.text.includes(DERIVED_DECLARATION),
+    );
+    expect(
+      derived.length,
+      "fuse-alternate.md's catalog patch no longer substitutes the derived " +
+        "flag list — a hand-typed head list under-drops when a continuity " +
+        "kind is added, and a hand merge clobbers every other producer",
+    ).toBe(1);
+  });
+
+  it("no skill free-types a pgmark-fusion head", () => {
+    // The other half of accepting a substituted declaration. A head typed
+    // into markdown is a hand list wearing the derived form's clothes: it
+    // would be dropped by whatever the author remembered, and the census
+    // above reads only the SHAPE. The vocabulary is Python's, so the
+    // authoritative membership check lives in
+    // `library/scripts/tests/test_warning_recompute_merge.py`; this leg is
+    // the cheap one that fires in the JS suite where the markdown is read.
+    //
+    // Placeholders (`pgmark-fusion-<kind>`, `pgmark-fusion-…`) and the bare
+    // prefix do not match: a head needs a lowercase letter after the prefix.
+    const HEAD = /--recompute-warning-kind\s+pgmark-fusion-[a-z]/;
+    const offenders = skillFiles().filter((f) => HEAD.test(read(f)));
+    expect(
+      offenders,
+      "declare the pgmark-fusion family via `fuse_alternate.py " +
+        "--print-recompute-flags`, never by naming its heads",
+    ).toEqual([]);
   });
 
   it("the retired task-167 caveat is gone, not merely appended to", () => {

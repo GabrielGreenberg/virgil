@@ -139,6 +139,7 @@ catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
+RECOMPUTE_FLAGS=$(python3 .virgil/scripts/library/fuse_alternate.py --print-recompute-flags)
 cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 {
   "indexed": {
@@ -146,12 +147,12 @@ cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
     "pgmarkCount": <count from main.tex>,
     "pgmarkPosition": "<header|footer|mixed|unknown>",
     "lastIndexedAt": "<ISO now>",
-    "warnings": [<merged warnings — see below>]
+    "warnings": [<ONLY this run's fresh fusion lines — see below>]
   }
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-fuse-patch.json
+  --patch-file /tmp/$ARGUMENTS-fuse-patch.json $RECOMPUTE_FLAGS
 rm /tmp/$ARGUMENTS-fuse-patch.json
 ```
 
@@ -161,15 +162,28 @@ The patch deep-merges, so `indexed.state` (`deepIndexed` /
 include get replaced. The script also bumps
 `.virgil/catalog-version.txt` for you.
 
-The `warnings` array is append-only with **one recomputed prefix
-`pgmark-fusion-`**. To produce it: read the existing
-`indexed.warnings` (`jq '.entries[] | select(.citekey == "<ck>") |
-.indexed.warnings' .virgil/catalog.json`), drop any entries starting
-with `pgmark-fusion-`, and append fresh ones (continuity findings, or
-`pgmark-fusion-low-alignment-skipped: <N>` if some pages didn't
-align). Other warning kinds are preserved by you when you read and
-include them in the patch — the patch's `warnings` array replaces the
-existing one.
+**Do NOT read and re-supply the existing `warnings` array.** Put in
+`warnings` only the lines THIS run computed: one
+`pgmark-fusion-low-alignment-skipped: <N> of <M> PDF pages did not
+align above threshold` if some pages didn't align, plus one
+`pgmark-fusion-<kind>: <detail>` per continuity finding the validator
+reported. A clean fusion computed none — write `"warnings": []`, and
+keep the key: with recompute flags the shim REFUSES a patch whose
+`indexed.warnings` is missing (an implied empty array would let a patch
+meant for one field wipe a whole kind), and `[]` correctly clears any
+stale fusion lines from a previous pass. `$RECOMPUTE_FLAGS` then makes
+the shim drop exactly the
+`pgmark-fusion-` family's heads against the row's LIVE array before
+appending yours — so every other producer's warnings, and any
+operator-authored `pgmark-fusion-<kind>-false-positive:` suppression,
+survive byte-identically (task 323's per-kind recompute-replace; task
+373 migrated this fence onto it).
+
+The flag list is emitted by `fuse_alternate.py` rather than typed here
+because the family's heads are DERIVED from
+`pgmark_validate.CONTINUITY_FINDING_KINDS` — a hand list would silently
+under-drop the day a continuity kind is added. Never free-type a
+`pgmark-fusion-…` head into this file.
 
 ### 6. Notify
 

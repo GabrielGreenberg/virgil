@@ -40,16 +40,58 @@ from _tools import (
     append_inbox_item,
     citekey_matches,
     lock_catalog,
+    merge_indexed_warnings,
     read_catalog,
     write_catalog,
 )
 from pgmark import detect_print_pages, HEADER_FRAC, FOOTER_FRAC
 from pgmark_validate import (
     validate as pgmark_validate,
+    CONTINUITY_FINDING_KINDS,
     PGMARK_RE,
     ScopeWalker,
     ValidationReport,
 )
+
+
+# ── The `pgmark-fusion-` warning family (derived, never hand-listed) ─────
+
+#: Prefix of every warning line this fusion writes into `indexed.warnings`.
+FUSION_WARNING_PREFIX = "pgmark-fusion-"
+
+#: A fusion attempt that never produced a usable main.tex. Written by
+#: `index_paper.py`'s auto-fuse step, not here — but it is a member of THIS
+#: family, so it belongs in the head set below or a re-fusion would leave a
+#: stale failure line standing forever.
+FUSION_FAILED_HEAD = f"{FUSION_WARNING_PREFIX}failed"
+
+#: Pages the aligner could not place above threshold.
+FUSION_LOW_ALIGNMENT_HEAD = f"{FUSION_WARNING_PREFIX}low-alignment-skipped"
+
+
+def fusion_warning_heads() -> tuple[str, ...]:
+    """Every head the `pgmark-fusion-` family can emit, in a stable order.
+
+    DERIVED from `pgmark_validate.CONTINUITY_FINDING_KINDS` — the two fixed
+    members plus one head per continuity kind. A hand list would silently
+    under-drop the day a continuity kind is added (task 373): the new kind's
+    line would be written by the next fusion and never dropped by any
+    subsequent one, so the row would accumulate one stale finding per pass.
+
+    Why heads at all, rather than a `startswith(FUSION_WARNING_PREFIX)`
+    sweep: `<head>-false-positive:` is a real operator-authored suppression
+    family with its own append-if-absent writer
+    (`add_validator_suppression.py`), so a prefix drop eats a verified
+    suppression — the exact hazard `merge_indexed_warnings`' exact-head rule
+    exists to prevent (task 323). A prefix mode on that merge was proposed
+    and rejected for the same reason: it re-arms the hazard for the next
+    reacher.
+    """
+    return (
+        FUSION_LOW_ALIGNMENT_HEAD,
+        FUSION_FAILED_HEAD,
+        *(f"{FUSION_WARNING_PREFIX}{k}" for k in CONTINUITY_FINDING_KINDS),
+    )
 
 
 # ── Tunables ────────────────────────────────────────────────────────────
@@ -717,21 +759,29 @@ def update_catalog_for_fusion(
             indexed["pgmarkPosition"] = result.pgmark_position or "unknown"
             indexed["pgmarkSource"] = result.pgmark_source_filename
             indexed["lastIndexedAt"] = _now_iso()
-            existing = [
-                w for w in (indexed.get("warnings") or [])
-                if not (isinstance(w, str) and w.startswith("pgmark-fusion-"))
-            ]
             new_warnings: list[str] = []
             skipped = result.page_count - result.aligned_count
             if skipped > 0:
                 new_warnings.append(
-                    f"pgmark-fusion-low-alignment-skipped: {skipped} of "
+                    f"{FUSION_LOW_ALIGNMENT_HEAD}: {skipped} of "
                     f"{result.page_count} PDF pages did not align above threshold"
                 )
             if result.validation_report and result.validation_report.continuity_findings:
                 for f in result.validation_report.continuity_findings:
-                    new_warnings.append(f"pgmark-fusion-{f.kind}: {f.detail}")
-            indexed["warnings"] = existing + new_warnings
+                    new_warnings.append(
+                        f"{FUSION_WARNING_PREFIX}{f.kind}: {f.detail}"
+                    )
+            # EXACT-HEAD over the derived family, not `startswith(prefix)`.
+            # The prefix drop this replaces ate any
+            # `pgmark-fusion-<kind>-false-positive:` an operator had written —
+            # on the PRIMARY path, i.e. every fusion that touches the catalog
+            # (task 373). Same merge the `--no-catalog` fence now routes
+            # through, so the two writers cannot disagree about the family.
+            indexed["warnings"] = merge_indexed_warnings(
+                indexed.get("warnings") or [],
+                fusion_warning_heads(),
+                new_warnings,
+            )
             entry["updatedAt"] = _now_iso()
             break
         if not found:
@@ -838,7 +888,14 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description="Fuse pgmarks from a PDF alternate into an indexed paper's main.tex."
     )
-    p.add_argument("citekey")
+    p.add_argument("citekey", nargs="?")
+    p.add_argument(
+        "--print-recompute-flags", action="store_true",
+        help="Print the `--recompute-warning-kind <head>` flag list for the "
+             "`pgmark-fusion-` family and exit (no citekey needed). The "
+             "`--no-catalog` fence in fuse-alternate.md substitutes this "
+             "so the skill markdown never spells the family.",
+    )
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
     p.add_argument("--alternate",
@@ -851,6 +908,17 @@ def main() -> int:
     p.add_argument("--no-catalog", action="store_true",
                    help="Write main.tex but skip catalog/notification/log updates")
     args = p.parse_args()
+
+    if args.print_recompute_flags:
+        # One line, space-separated, so `$(…)` word-splits into argv. Heads
+        # are `[a-z-]+` by construction, so there is nothing to quote.
+        print(" ".join(
+            f"--recompute-warning-kind {h}" for h in fusion_warning_heads()
+        ))
+        return 0
+
+    if not args.citekey:
+        p.error("citekey is required (except with --print-recompute-flags)")
 
     library = Path(args.library).expanduser()
     citekey = args.citekey

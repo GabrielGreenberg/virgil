@@ -65,7 +65,7 @@ from extract import extract_to_json, _ocr_if_needed, _classify_pdf
 import extract_docx
 from tex_emit import emit
 from bib_auth import authenticate, assert_title_clean
-from fuse_alternate import fuse_pgmarks_into, FuseResult
+from fuse_alternate import fuse_pgmarks_into, FuseResult, FUSION_FAILED_HEAD
 
 
 # Source-format priority. Spelled ONCE, on the stdlib-only leaf
@@ -386,7 +386,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             )
         except Exception as e:
             log(f"  pgmark-fusion FAILED with exception: {e}")
-            pgmark_warnings.append(f"pgmark-fusion-failed: {e}")
+            pgmark_warnings.append(f"{FUSION_FAILED_HEAD}: {e}")
         if fuse_result and fuse_result.success and fuse_result.pgmarks_inserted > 0:
             # Re-read main.tex (fusion wrote it) and re-validate.
             tex = (paper_dir / "main.tex").read_text()
@@ -395,7 +395,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             pgmark_report = post_fuse_report
         elif fuse_result and not fuse_result.success:
             pgmark_warnings.append(
-                f"pgmark-fusion-failed: {fuse_result.aborted_reason}"
+                f"{FUSION_FAILED_HEAD}: {fuse_result.aborted_reason}"
             )
 
     # 6. Initialize empty Virgil sidecars.
