@@ -373,6 +373,93 @@ Same lane, one axis in (task 325) — and the case where both predicates were ri
 
 CI: the same [marginalia-lane-regime.test.ts](src/lib/__tests__/marginalia-lane-regime.test.ts), widened with the sweep in the prose-clearance sweep's own shape — every margin 0–200, markers enough to force a second row and a pill, and at each one the bolt's band must miss every rendered cell, with counters asserting the sweep crossed BOTH regimes *with markers up* so it cannot pass by hiding everything. Three legs fail when the cramped branch is reverted to the full column count.
 
+#### The vertical half: a per-owner layout with no cross-owner resolution
+
+Same lane, the other axis (task 366) — and the case where the resolver was
+complete, correct, and answering a question one scope too small. The grid
+resolves a collision WITHIN one anchor node (rows × cols, then the "+K" pill);
+two nodes' grids were placed independently at their own `node.top`s, and
+nothing owned the space between them.
+
+That is safe exactly while consecutive block tops sit further apart than an
+icon is tall — false for the shape at the top of every paper. A
+title/author/date stack, a run of short headings, any small-print block: two
+grids overprint, and the user sees two markers stacked half-on-half with no
+error, no log line and a well-formed layout (Gabriel's screenshot).
+
+> **Where several owners lay out into one shared lane, "did I place my own
+> items correctly?" is not enough — the LANE is packed, once, in one walk.**
+> `computeMarkerPositions` orders each side's node groups by document position
+> and walks every row it is about to place against a running frontier, pushing
+> a row just clear of the one above it. Same minimal-displacement forward pass
+> the omni deck's card cascade runs one lane over (`resolveCascade`), which is
+> the sibling that already had this and the reason the hole was invisible: the
+> cards were packed and the markers beside them were not.
+
+Four rules it earned:
+
+- **The walk is UNIFORM over intra- and inter-node rows.** A user looking at
+  two overlapping icons does not know which block each belongs to, and the walk
+  does not have to ask — it asks only "does this row clear the one above it?".
+  So a node whose own line pitch is tighter than an icon (18px small print)
+  stops self-overlapping too, at the cost of its lower rows drifting off their
+  lines. That is the right trade: line alignment that overlaps is not
+  alignment.
+- **The gap is the rhythm the uncrowded case already has**, which is what makes
+  the byte-identity claim true rather than hopeful. `MARGINALIA_ROW_MIN_GAP` is
+  2 = a canonical 24px line minus the 22px icon, so the walk cannot fire on the
+  canonical pitch and an uncrowded document is placed exactly as it was
+  pre-366. Raising it to 4 fails two legs, one of them in the pre-existing grid
+  suite — measured, not assumed.
+- **Past a stated bound the walk stops pushing and FOLDS.**
+  `MARGINALIA_MAX_MARKER_DRIFT` (two icon heights) — beyond that a marker reads
+  as belonging to a different paragraph, so the node's markers go into a "+K"
+  pill instead, the affordance an over-full grid already uses. Consecutive
+  folded nodes share ONE pill, and that is what bounds the cascade: the first
+  fold costs a cell, every fold after it costs nothing, so a crowd of any depth
+  collapses to a pill rather than a ladder of ever-more-drifted markers. Stated
+  honestly at the site: the pill itself sits further than the bound from the
+  anchor that minted it, because in a crowd that dense there is no room — one
+  pill beats N drifting markers.
+- **What a fold must preserve is IDENTITY, not position.** A hidden marker
+  renders as an ordinary `MarkerButton` with no cell, and the click path
+  resolves its card by `(entityKind, entityId)` — never by Y — so click, delete
+  and re-anchor behave exactly as in-grid. The suite asserts the identity
+  round-trip rather than assuming it.
+- **Document order is a TOTAL order, or the pack reshuffles for reasons the
+  reader cannot see.** `top` then `domTop` then the anchor UUID. The last rung
+  looks decorative and is not: a full geometric tie is a real shape (a
+  `bulletList` and its first `listItem` are both uuid-bearing and can measure to
+  the same top AND domTop), and without it the walk falls through to
+  `Array#sort`'s stability — i.e. to whichever PANEL emitted its markers first,
+  so an unrelated panel's list changing would visibly reorder the pack. The uuid
+  is arbitrary between two tied nodes and INTRINSIC, which is the property that
+  matters.
+
+CI: [marginalia-cross-node-collision.test.ts](src/lib/__tests__/marginalia-cross-node-collision.test.ts).
+Its shape is the point: **every marginalia fixture in the repo drives ONE node**
+(`"p1"`), so two grids disagreeing is unrepresentable in all of them — which is
+how this shipped with the grid suites green. Every fixture here is multi-node,
+and the invariants are swept over the placed cells (zero pairwise overlap,
+bounded drift, conservation — every input marker comes back exactly once,
+placed or hidden) rather than pinned to hand-computed pixels. Measured by
+neutering each half in turn: per-node independence takes 4 legs, the intra-node
+half 1, the fold 3, a rigid row offset 4, the crowd-RESTART disjunct 1, each
+tie-break rung 1, and a widened gap 2 (one of them in the old suite).
+
+Two of those legs exist because the adversarial pass on this fix found their
+branches **unreachable from every fixture** — the shape this file keeps
+re-learning, one level down from a call site that never asks: a live branch with
+no leg is deletable in silence. Both needed a fixture no natural crowd produces.
+The crowd-restart rung only fires when a TALL grid at a tight pitch shoves the
+frontier far below its own block and short blocks underneath then fold while
+sliding past the open pill's anchor — a uniform run of short blocks keeps the
+frontier only ~50px ahead and never reaches it. And the tie-break rungs need two
+nodes at one `top`, which no fixture in the repo had, because `AnchorNodeMetrics`
+fixtures are written one node at a time. The leg that pins the restart is a
+PROPERTY (`no pill collects markers whose anchors span more than the bound`), not
+the branch's shape, so it survives a rewrite of how the crowd is tracked.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.

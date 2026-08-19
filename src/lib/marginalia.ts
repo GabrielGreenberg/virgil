@@ -325,17 +325,29 @@ export interface PositionedMarker extends MarginaliaMarker {
   cell: GridCell;
 }
 
-/** One overflowing (node, side) grid (R16): the markers that didn't fit in
- *  the node's line grid. The margin renders a "+K" pill in the reserved
- *  `cell` (the grid's last cell); clicking it opens a popover listing
- *  `hidden` as ordinary marker buttons (click/delete/drag behave normally). */
+/** Markers the grid could not place as cells. The margin renders a "+K" pill
+ *  at `cell`; clicking it opens a popover listing `hidden` as ordinary marker
+ *  buttons (click/delete/drag behave normally — they resolve their card by id,
+ *  never by position, so a hidden marker is fully live).
+ *
+ *  Two producers, one shape:
+ *   - R16, an over-full grid: more markers than the node's `lineCount × cols`,
+ *     so the grid's LAST cell is reserved for the pill and the surplus hides.
+ *   - Task 366, a folded crowd: block tops packed so tightly that no cell of
+ *     this node's grid fits within `MARGINALIA_MAX_MARKER_DRIFT` of its own
+ *     line, so the node's markers fold into a pill placed clear of the rows
+ *     above. Consecutive folded nodes share ONE pill, which is what stops a
+ *     crowd from becoming a ladder of ever-more-drifted markers. */
 export interface MarkerOverflowGroup {
   side: "left" | "right";
-  /** Reserved last grid cell where the "+K" pill renders. */
+  /** Grid cell where the "+K" pill renders — the over-full grid's reserved
+   *  last cell, or (for a folded crowd) the next free row on the side. */
   cell: GridCell;
-  /** TextObject UUID whose grid overflowed. */
+  /** TextObject UUID that minted this pill: the node whose grid overflowed,
+   *  or the FIRST node folded into this crowd. Either way it is a node that
+   *  produces no other overflow group, so it is a unique key per (side, pill). */
   textObjectId: string;
-  /** The markers that did not fit, in builder order. */
+  /** The markers that did not fit, in builder order (crowd: node order). */
   hidden: MarginaliaMarker[];
 }
 
@@ -402,6 +414,53 @@ export const MARGINALIA_ICON_SIZE = 22;
 export const MARGINALIA_COL_GAP = 6;
 /** Inner padding between the icon column and the text-pod edge */
 export const MARGINALIA_INNER_PAD = 8;
+
+// ── Vertical collision resolution (task 366) ────────────────────────────────
+//
+// A marker row's footprint is one icon tall. The grid places each anchor
+// NODE's rows at that node's own line pitch, which is correct WITHIN a node
+// and says nothing about the node next door — so wherever consecutive block
+// tops sit closer together than an icon (a title/author/date stack, a run of
+// short headings, small-print lines), two nodes' grids print on top of each
+// other. `computeMarkerPositions` therefore runs ONE frontier walk per side
+// over every row it is about to place. These two numbers are what that walk
+// is allowed to do; they live here, in the margin-geometry SSOT, beside the
+// icon size they are derived from.
+
+/**
+ * Hairline the collision walk leaves between two marker rows it had to
+ * separate. Equal to the gap the canonical prose rhythm already produces (a
+ * 24px line minus the 22px icon), so a pushed marker reads exactly like an
+ * ordinary second row — and, because the walk fires only where a row would
+ * land closer than this, an uncrowded document is placed byte-identically to
+ * the pre-366 grid.
+ */
+export const MARGINALIA_ROW_MIN_GAP = 2;
+
+/**
+ * How far (px) the walk may push a marker BELOW the line it anchors to before
+ * it stops pushing and folds the node's markers into a "+K" overflow pill
+ * instead. Two icon heights: past that a marker reads as belonging to a
+ * different paragraph, and a pill at the crowd is more honest than a marker
+ * sitting beside the wrong text.
+ *
+ * Two limits worth stating rather than implying:
+ *
+ *  - The bound is on the PUSH, not on the pill. Once a crowd is dense enough
+ *    that no cell fits within the bound, the pill it collapses into is itself
+ *    placed clear of the frontier (i.e. further than the bound from the anchor
+ *    it was minted for). That is inherent — there is no room — and one pill for
+ *    the whole crowd is strictly better than a ladder of drifting markers.
+ *  - It is measured at a grid's FIRST row, so it bounds how far a NODE's grid
+ *    is displaced from its own block. A tall node whose line pitch is tighter
+ *    than an icon can still walk its own lower rows further than this, because
+ *    those rows are re-settled against the frontier row by row — deliberate:
+ *    they are still beside their own block, which is the thing the bound
+ *    protects ("a marker beside the wrong paragraph"), and folding a whole
+ *    multi-line node because its last row drifted would hide markers the
+ *    reader can see perfectly well.
+ */
+export const MARGINALIA_MAX_MARKER_DRIFT = 2 * MARGINALIA_ICON_SIZE;
 
 /**
  * Edge length (px) of the square selection-bolt (⚡) button. Hoisted ABOVE the
