@@ -31,6 +31,13 @@
 // no leg can pass vacuously — and every leg asserts the node TYPE as well as
 // the bytes, because a heading that round-trips as a carrier IS the defect and
 // a byte assertion alone cannot see it.
+//
+// MEASURED by neutering each half in turn: the sectioning door takes 18 legs,
+// the list options 4 (from either side), the caption star 3, the title door 3,
+// the footnote door 2, and the brace-aware bracket scanner 1. The serializer's
+// level-indexed `commands` array takes exactly ONE — the CENSUS — because it
+// emits byte-identical output, which is the whole reason the census is the leg
+// with teeth here and a behavioural assertion is not.
 import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/react";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -43,7 +50,6 @@ import {
   matchSectioningCommandAt,
   matchSectioningUseAt,
   matchStarOptBraceAt,
-  isSectioningCommand,
 } from "@/lib/latex-lexer";
 import { commentsStripped } from "@/lib/__tests__/_source-scan";
 
@@ -186,9 +192,14 @@ describe("M1 — a sectioning command with an optional argument is a HEADING", (
 describe("M2 — one vocabulary, read by every layer", () => {
   it("`headingTypeCommand` is what the serializer emits, for every level", () => {
     // It had ZERO callers anywhere while the serializer kept its own
-    // level-indexed array — the dead-SSOT shape (task 202). Asserted through
-    // the real emit, not by calling it directly: what matters is that the
-    // serializer READS it.
+    // level-indexed array — the dead-SSOT shape (task 202).
+    //
+    // Stated honestly rather than generously: this leg pins the OUTPUT, and the
+    // array it replaced produced the same bytes, so reinstating that array
+    // leaves this leg green. What catches the re-fork is the CENSUS below —
+    // measured, it is the only leg that fails on that neuter. This one exists
+    // so a WRONG derivation (a stale table, an off-by-one clamp) is caught by
+    // something other than a grep.
     for (const { command, level } of HEADING_TYPES) {
       const doc: JSONContent = {
         type: "doc",
@@ -273,12 +284,15 @@ describe("M3 — a list keeps its options", () => {
 
   it("an option holding a braced `]` is captured whole", () => {
     // The pre-376 capture was `/^\[[^\]]*\]/`, which stops at the first `]`
-    // whatever encloses it — so a shipped enumitem idiom was truncated
-    // mid-option. Survivable while the options were being DELETED anyway, and
-    // not once the bytes are carried and re-emitted.
-    const src = "\\begin{enumerate}[label={\\roman*)}]\n  \\item one\n\\end{enumerate}\n";
+    // whatever encloses it — so `[label={[\arabic*]}]`, an ordinary enumitem
+    // spelling for bracketed markers, was truncated mid-option and the
+    // remainder fell into the list body. Survivable while the options were
+    // being DELETED anyway; not once the bytes are carried and re-emitted.
+    // `extractBracketed` is brace-depth aware, which is the whole difference.
+    const src =
+      "\\begin{enumerate}[label={[\\arabic*]}]\n  \\item one\n\\end{enumerate}\n";
     const list = findByType(parseLatex(src), "orderedList")[0];
-    expect(list.attrs?.listOptions).toBe("[label={\\roman*)}]");
+    expect(list.attrs?.listOptions).toBe("[label={[\\arabic*]}]");
     expectStable(src);
   });
 
@@ -407,6 +421,23 @@ describe("M5 — `\\footnote[n]{…}` is a footnote", () => {
     expect(serializeToLatex(doc)).not.toContain("\\thanks[");
   });
 
+  it("`\\thanks` takes the same door and REFUSES a spelling it cannot carry", () => {
+    // The last hand-written twin of this shape, converted with its sibling so
+    // the two cannot drift on what an argument looks like. `\thanks` has
+    // neither a star nor an optional argument, so a spelling carrying one goes
+    // to the carrier rather than being claimed and re-emitted without it.
+    const plain = "\\author{Jane\\thanks{Supported by X.}}\n";
+    expect(findByType(parseLatex(plain), "footnote")).toHaveLength(1);
+    expect(save(plain)).toContain("\\thanks{Supported by X.}");
+
+    const spaced = "\\author{Jane\\thanks {Supported by X.}}\n";
+    expect(findByType(parseLatex(spaced), "footnote")).toHaveLength(1);
+
+    const withOpt = "Text.\\thanks[2]{Nope.}\n";
+    expect(findByType(parseLatex(withOpt), "footnote")).toHaveLength(0);
+    expect(twoCycles(withOpt)).toContain("\\thanks[2]{Nope.}");
+  });
+
   it("a modeled construct consumes its OWN arity, not the maximal run", () => {
     // `matchCommandArgumentRun` is deliberately MAXIMAL (up to nine groups) —
     // right for the carrier, wrong here. `\footnote{a}{b}` is a footnote whose
@@ -533,11 +564,14 @@ describe("matchStarOptBraceAt — the `[opt]{req}` shape", () => {
 
 describe("the sectioning door", () => {
   it("membership is the seven names and nothing else", () => {
+    // Asked through the DOOR rather than a published `isSectioningCommand`
+    // predicate: that export had no production caller, and a suite is not a
+    // consumer (task 202's WIRE-it-or-DELETE-it).
     for (const { command } of HEADING_TYPES) {
-      expect(isSectioningCommand(command)).toBe(true);
+      expect(matchSectioningUseAt(`\\${command}{X}`, 0)?.command).toBe(command);
     }
     for (const other of ["sectioning", "sec", "subsubsubsection", "caption"]) {
-      expect(isSectioningCommand(other)).toBe(false);
+      expect(matchSectioningUseAt(`\\${other}{X}`, 0)).toBeNull();
     }
   });
 

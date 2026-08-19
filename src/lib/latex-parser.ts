@@ -790,11 +790,19 @@ export function parseInlineContent(
 
       // \thanks{...} — title-page acknowledgement; reuses the footnote node
       // with thanks=true so it threads through the footnote panel/omni-view.
-      const thanksMatch = rest.match(/^\\thanks\{/);
-      if (thanksMatch) {
-        flush();
-        const inner = extractBraced(text, i + "\\thanks".length);
+      //
+      // The same door as its `\footnote` sibling (task 376), so the pair cannot
+      // drift on what an argument looks like — but `\thanks` has NEITHER a star
+      // NOR an optional argument in LaTeX, so a spelling carrying one is
+      // REFUSED to the carrier rather than claimed and re-emitted without it.
+      if (matchCommandToken(text, i)?.name === "thanks") {
+        const thanksArgs = matchStarOptBraceAt(text, i + "\\thanks".length);
+        const inner =
+          thanksArgs && !thanksArgs.starred && thanksArgs.optional === null
+            ? { content: thanksArgs.required, end: thanksArgs.end }
+            : null;
         if (inner !== null) {
+          flush();
           nodes.push({
             type: "footnote",
             attrs: {

@@ -2334,6 +2334,131 @@ single dropped marker the census alone.
 contract; the code-pane mid-typing trigger in particular is worth watching once in
 the running app.
 
+#### The arity half: the door that answers "what are this command's arguments?" was read by the CARRIER only
+
+Same round trip, and the case where the SSOT existed, was correct, was bounded
+three ways, and was adopted by exactly one of its two kinds of caller (task
+376). Task 349 built `matchCommandArgumentRun` for one question — *what are this
+command's arguments?* — and it answers it for any arity, any order, star
+included. **Only the CARRIER path adopted it.** Every matcher for a construct
+Virgil actually MODELS still hand-wrote `name` + a literal `{`.
+
+So a legal spelling the hand regex did not accept had one of two outcomes, and
+the first is the quiet one: the construct was **DEMOTED** to the raw carrier
+(bytes safe, model gone, every feature derived from the node silently dead), or
+it was **CLAIMED and re-emitted without the part the matcher could not see**
+(bytes changed). Six members, all fixed points, all landing on OPEN via
+`readDocBundle`'s unconditional load-writeback:
+
+- **M1 — `\section[Intro]{Introduction}` was a PARAGRAPH.** For all seven
+  commands, starred and unstarred, plus the `\section {X}` / `\section\n{X}`
+  spellings TeX accepts. The bytes round-tripped (349/360's carrier did its job)
+  and the whole heading apparatus was dead for an ordinary construct: no Outline
+  row, no folding, no section number, no `\label`/`\ref` resolution, no
+  `\partitle`, no focus band, no heading word counts, and grey monospace where a
+  styled heading belongs.
+- **M2 — the level↔command vocabulary was spelled FOUR times** (the parser's
+  regex, the serializer's level-indexed array, `HEADING_TYPES`, and
+  `document-class.findSectioningCommands`) **and only the copy that decides
+  nothing got the grammar right** — the compat checker accepted the bracket AND
+  the whitespace, so it correctly saw a `\chapter[Short]{X}` the parser had
+  already thrown away. `headingTypeCommand` had zero callers anywhere: a dead
+  SSOT (task 202's class).
+- **M3 — a list's `[options]` were DELETED.** `\begin{enumerate}[label=(\roman*)]`
+  came back bare, so the list reverted from (i)/(ii) to 1./2. in the PDF. Three
+  word tokens, under `PRESERVATION_SLACK_WORDS = 4`, so the write gate was
+  silent. `figure` kept its `[htbp]` and the unmodeled-env carrier re-emitted its
+  bracket; this branch was the outlier, and task 340 had fixed the identical
+  defect one level down for the per-ITEM `\item[label]`.
+- **M4 — `\caption*` lost its star**, so the figure began consuming a figure
+  number and a List-of-Figures row and **every later figure renumbered**, with
+  every `\ref` to them printing a different number. One byte, zero word tokens —
+  invisible to every gate.
+- **M5 / M6 — `\footnote[3]{…}` was not a footnote** (no node, no `\vfid`
+  marker, no card, no panel row) and **`\title[Short]{Long}` was not a title
+  field** (not hoisted, not editable in the title strip).
+
+> **A MODELED construct reads the same argument door the carrier does — and
+> consumes its OWN declared arity, not the maximal run.** The door is
+> [`matchStarOptBraceAt`](src/lib/latex-lexer.ts) (`*`, `[opt]`, the one `{req}`
+> the model holds) over `matchCommandArgumentRun`'s PARTS, and
+> `matchSectioningCommandAt` over that, derived from `HEADING_TYPES`. A
+> construct whose spelling carries a fact the model cannot hold is REFUSED to
+> the carrier, never claimed and re-emitted incomplete.
+
+Six rules it earned:
+
+- **One scanner, two arities, and the difference is load-bearing.**
+  `matchCommandArgumentRun` is deliberately MAXIMAL — every abutting group up to
+  nine — which is right for the CARRIER (whose job is to keep bytes together)
+  and wrong for a modeled construct: `\footnote{a}{b}` is a footnote whose body
+  is `a` followed by a bare prose group, and a maximal read would swallow `{b}`
+  into the note. So the modeled door reads the run's GROUPS and stops at the
+  first brace. Extending the run to publish its parts is what makes that
+  possible without a second scanner.
+- **The gap before the FIRST argument is skipped and gaps between groups are
+  not.** TeX skips spaces while scanning for an argument, so `\section {X}` is
+  the same document as `\section{X}`; a gap spanning a BLANK LINE is refused,
+  because a `\par` cannot appear inside an argument scan and refusing there
+  keeps a bare `\section` at the end of a paragraph from reaching into the next
+  block. The between-groups rule is `matchCommandArgumentRun`'s existing one and
+  this door does not renegotiate it.
+- **A star the model cannot carry is a REFUSAL, not a swallow.** There is no
+  `\footnote*` or `\title*` in LaTeX, so those doors decline a starred spelling
+  and the carrier keeps the bytes — task 356's rule, and precisely the failure
+  M4 was: a star claimed and then dropped.
+- **M4 reads the star into the fact it already IS.** In LaTeX `\caption*` means
+  *unnumbered float*, which is what `figureBlock.numbered` means — so the parser
+  sets `numbered: !captionStarred` and the emitter writes the star back from it,
+  rather than a second parallel `captionStarred` attr the two could disagree
+  about. That also gives the `numbered` toggle the persistence it never had:
+  nothing serialized it before, so it did not survive a save.
+- **Put the vocabulary where the layer that needs it can reach it.**
+  `heading-types.ts` is now an import-free LEAF owning `SectioningCommand`
+  (`document-class.ts` re-exports it), because the lexer is itself a leaf every
+  low-level consumer takes — the placement rule `latex-markers.ts` and
+  `node-attr-sets.ts` earned. `headingTypeCommand` is wired rather than deleted:
+  it is the serializer's level→command lookup now.
+- **A carried-raw fact rides the NODE, not a re-read of the source.**
+  `heading.shortTitle`, `listOptions` and `footnote.numberOverride` are opaque
+  attrs with `keepOnSplit: false` — the `listItem.itemLabel` shape (340): a
+  heading split at Enter must not mint a sibling carrying a running head the
+  user never typed, on a section it does not name.
+
+The same pass took the `[^\]]*` env-option capture to `extractBracketed` (which
+is brace-depth aware, so `[label={[\arabic*]}]` is captured whole rather than
+truncated mid-option) — a shape that was survivable only while the options were
+being deleted anyway.
+
+**Stated residuals, two.** `\footnote[3]`'s override is carried and deliberately
+NOT fed to `numberFootnotes`: in LaTeX the optional form also does not STEP the
+counter, so honouring it in Virgil's own chrome means renegotiating every
+following footnote's number — a bigger change than carrying the byte, and one
+the bytes do not depend on. And the EXCERPT body schema mounts StarterKit's
+plain `Heading`, which declares none of `label` / `numbered` / `uuid`, so an
+archived section already loses those on capture and now loses `shortTitle` with
+them — a PRE-EXISTING attr-level gap in the capture/schema-symmetry law (whose
+guard asserts node and mark TYPES, not attrs), widened by one field here rather
+than introduced.
+
+CI: [optional-argument-matchers.test.ts](src/lib/__tests__/optional-argument-matchers.test.ts).
+Every pre-376 fixture in the repo spells these constructs the one way the code
+happens to handle, so an optional argument or a star reaching a modeled matcher
+was **unrepresentable** in all of them. Each leg drives the REAL save pipeline
+over TWO cycles with its plain-form CONTROL through the identical harness, and
+asserts the node TYPE as well as the bytes — a heading that round-trips as a
+carrier IS the defect, and a byte assertion alone cannot see it. The sectioning
+legs are swept FROM `HEADING_TYPES`, so an eighth level is covered by
+declaration alone. The leg with teeth is the CENSUS — the door was never the
+part that could misbehave, a call site that spells the vocabulary itself is —
+with its one exemption keyed to the per-class capability TABLE (a different
+question: which commands does this class DEFINE?) rather than to the file, and a
+second leg asserting that exemption still covers something. Measured by
+neutering each half in turn: the sectioning door takes 18 legs, the list options
+4, the caption star 3, the title door 3, the footnote door 2, the brace-aware
+bracket scanner 1 — and the serializer's level-indexed array takes exactly ONE,
+the census, because it emits byte-identical output.
+
 ### The membership half: a per-kind capability is spelled once, and its guard is the sibling every other facet already has
 
 Same law, fifth tense (task 259) — and the case where the dead facet and the missing guard were the *same* fact.

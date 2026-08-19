@@ -45,6 +45,7 @@ import {
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
 import { HEADING_TYPES } from "@/lib/heading-types";
+import type { SectioningCommand } from "@/lib/heading-types";
 
 export { matchAccent, matchSpecialLetter };
 
@@ -1540,15 +1541,45 @@ function isLetter(ch: string | undefined): boolean {
  * `{ name, end }` where `name` is the `[a-zA-Z@]+` run after the backslash
  * and `end` is the index just past it, or null if there is no letter run
  * (e.g. a control symbol like `\%` or `\\`).
+ *
+ * STICKY, not `slice(pos).match(/^…/)` — and the honest reason is narrower than
+ * the one this comment first gave (task 376). Every caller passes an OFFSET
+ * into a string it does not own, so the obvious spelling asks for the whole
+ * tail on each call, at every backslash of every parse; since 376 two callers
+ * probe a WHOLE DOCUMENT (`findSectioningCommands`, and `parseBody`'s per-block
+ * sectioning/title probes). MEASURED, that is NOT slower: V8 gives `slice` a
+ * SlicedString view rather than a copy, so a 500 kB document scans in the same
+ * ~2.4 ms either way. The sticky form is kept because it allocates nothing and
+ * does not rest silently on that representation — not because a win was
+ * demonstrated, and no claim of one is made here.
+ *
+ * The regex is module-level and its `lastIndex` is set on every call, so the
+ * shared state cannot leak between them (JS is single-threaded and this
+ * function neither yields nor recurses).
  */
+const CONTROL_WORD_STICKY = /[a-zA-Z@]+/y;
+
 export function matchCommandToken(
   src: string,
   pos: number,
 ): { name: string; end: number } | null {
   if (src[pos] !== "\\") return null;
-  const m = src.slice(pos + 1).match(/^[a-zA-Z@]+/);
+  CONTROL_WORD_STICKY.lastIndex = pos + 1;
+  const m = CONTROL_WORD_STICKY.exec(src);
   if (!m) return null;
   return { name: m[0], end: pos + 1 + m[0].length };
+}
+
+/** The gap TeX skips while scanning for a command's first argument: horizontal
+ *  whitespace and at most ONE newline (two would be a `\par`, which cannot
+ *  appear inside an argument scan). Sticky for the allocation reason above,
+ *  with the same measured caveat. */
+const ARGUMENT_GAP_STICKY = /[ \t]*\n?[ \t]*/y;
+
+function argumentGapAt(src: string, pos: number): number {
+  ARGUMENT_GAP_STICKY.lastIndex = pos;
+  const m = ARGUMENT_GAP_STICKY.exec(src);
+  return m ? m[0].length : 0;
 }
 
 /**
@@ -1685,9 +1716,7 @@ export function matchStarOptBraceAt(
   text: string,
   pos: number,
 ): { starred: boolean; optional: string | null; required: string; end: number } | null {
-  const gap = text.slice(pos).match(/^[ \t]*\n?[ \t]*/);
-  const gapLen = gap ? gap[0].length : 0;
-  const run = matchCommandArgumentRun(text, pos + gapLen);
+  const run = matchCommandArgumentRun(text, pos + argumentGapAt(text, pos));
   let optional: string | null = null;
   for (const g of run.groups) {
     if (g.kind === "bracket") {
@@ -1729,7 +1758,7 @@ export function matchStarOptBraceAt(
  */
 export interface SectioningCommandMatch {
   /** The control word, e.g. `"section"`. */
-  command: string;
+  command: SectioningCommand;
   /** `HEADING_TYPES` level: part 0 … subparagraph 6. */
   level: number;
   /** `\section*` — an unnumbered heading. */
@@ -1746,13 +1775,6 @@ const SECTIONING_BY_COMMAND: ReadonlyMap<string, number> = new Map(
   HEADING_TYPES.map((t) => [t.command as string, t.level] as const),
 );
 
-/** Is `name` one of the seven sectioning control words? The ONE membership
- *  test — a caller that spells the alternation itself is the fork this door
- *  exists to retire. */
-export function isSectioningCommand(name: string): boolean {
-  return SECTIONING_BY_COMMAND.has(name);
-}
-
 /**
  * A sectioning command USE at `pos` — the name plus evidence that an argument
  * follows, with no requirement that the argument be well formed.
@@ -1766,16 +1788,15 @@ export function isSectioningCommand(name: string): boolean {
 export function matchSectioningUseAt(
   src: string,
   pos: number,
-): { command: string; level: number; end: number } | null {
+): { command: SectioningCommand; level: number; end: number } | null {
   const word = matchCommandToken(src, pos);
   if (!word) return null;
   const level = SECTIONING_BY_COMMAND.get(word.name);
   if (level === undefined) return null;
-  const gap = src.slice(word.end).match(/^[ \t]*\n?[ \t]*/);
-  const after = word.end + (gap ? gap[0].length : 0);
+  const after = word.end + argumentGapAt(src, word.end);
   const ch = src[after];
   if (ch !== "*" && ch !== "{" && ch !== "[") return null;
-  return { command: word.name, level, end: word.end };
+  return { command: word.name as SectioningCommand, level, end: word.end };
 }
 
 /** The full parse of a sectioning command at `pos`, or null. */

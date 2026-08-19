@@ -150,7 +150,7 @@ export function findSectioningCommands(latex: string): Set<SectioningCommand> {
   const found = new Set<SectioningCommand>();
   for (let i = stripped.indexOf("\\"); i !== -1; i = stripped.indexOf("\\", i + 1)) {
     const use = matchSectioningUseAt(stripped, i);
-    if (use) found.add(use.command as SectioningCommand);
+    if (use) found.add(use.command);
   }
   return found;
 }
