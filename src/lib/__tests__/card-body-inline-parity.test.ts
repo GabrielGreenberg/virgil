@@ -305,13 +305,13 @@ describe("341 · the escape table has ONE reader per direction", () => {
         normalizeIds(parseInlineContent(src)),
       );
       // The bytes must AGREE, whatever they are — which is the contract this
-      // task is about. Byte IDENTITY is asserted only for the `always`
-      // members: task 339 deliberately made `\`, `{`, `}`, `[` and `]`
-      // `prose-only`, so a run whose parse re-introduces a backslash emits
-      // them bare on the way back out (`\textbackslash{}` → `\`). That is
-      // 339's stated residual, and it is identical on both surfaces.
+      // task is about. Since task 360 they are also IDENTICAL for every member:
+      // 339's `prose-only` narrowing (which left `\`, `{`, `}`, `[` and `]`
+      // bare in any run holding a backslash) is retired, because bare text can
+      // no longer be raw LaTeX. Both surfaces gained the closing member at the
+      // same door — a control-symbol carrier in each inline parser.
       expect(cardRt(src)).toBe(docRt(src));
-      if (entry.emit === "always") expect(cardRt(src)).toBe(src);
+      expect(cardRt(src)).toBe(src);
     });
   }
 

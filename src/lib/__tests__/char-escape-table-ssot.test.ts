@@ -84,13 +84,17 @@ const SURFACES = [
 ] as const;
 
 /**
- * A member whose LITERAL contains a backslash cannot survive the tex→doc→tex
- * direction: once parsed, its run is indistinguishable from a run of raw LaTeX
- * the user typed, and the emit rung deliberately does not touch those. Derived
- * from the entry rather than hand-listed, so a future backslash-bearing member
- * inherits the same (declared) exemption and nothing else does.
+ * Task 360 RETIRED this file's one exemption, and the deletion is the finding.
+ *
+ * A member whose LITERAL is a backslash could not survive the tex→doc→tex
+ * direction while bare text was an undeclared carrier for raw LaTeX: once
+ * parsed, `\textbackslash{}` was a run indistinguishable from a `\command` the
+ * user had typed, and the emit rung deliberately did not touch those. With the
+ * type-time carrier marking what an edit WRITES, and both inline parsers
+ * carrying a control symbol, a bare backslash reaching the emit rung is a
+ * literal one — so every member now round-trips from source, and the sweeps
+ * below run over the WHOLE table with nothing excused.
  */
-const emitsBackFromSource = (e: CharEscapeEntry) => !e.text.includes("\\");
 
 // ── the vocabulary, both directions, both surfaces ───────────────────────────
 
@@ -128,7 +132,7 @@ describe("CHAR_ESCAPE_TABLE — one vocabulary, read by both rungs", () => {
       }
 
       // tex → doc → tex: byte identity, the direction that was destroying data.
-      for (const e of CHAR_ESCAPE_TABLE.filter(emitsBackFromSource)) {
+      for (const e of CHAR_ESCAPE_TABLE) {
         const src = `Prose ${e.tex} tail.`;
         it(`preserves ${JSON.stringify(e.tex)} byte-identically on save`, () => {
           expect(surface.roundTrip(src)).toBe(src);
@@ -147,58 +151,64 @@ describe("CHAR_ESCAPE_TABLE — one vocabulary, read by both rungs", () => {
     });
   }
 
-  it("the ONE emit-unreachable member is declared, and its output is pinned", () => {
-    const oneWay = CHAR_ESCAPE_TABLE.filter((e) => !emitsBackFromSource(e));
-    expect(oneWay.map((e) => e.tex)).toEqual(["\\textbackslash{}"]);
-    // It PARSES (the editor shows a backslash, not four literal words) …
+  it("339's one-way member round-trips (the residual task 360 closed)", () => {
+    // It PARSES — the editor shows a backslash, not four literal words …
     expect(SURFACES[0].readText("Use \\textbackslash{}emph here.")).toBe(
       "Use \\emph here.",
     );
-    // … and re-emits raw, which is the residual the table names: a literal
-    // backslash and a typed command are the same document state. Pinned so the
-    // gap cannot quietly change shape without a decision.
+    // … and it now EMITS. Before task 360 this returned `Use \emph here.`:
+    // a literal backslash and a typed command were the same document state, so
+    // the escape rung left the backslash alone and the source's escaped
+    // backslash became a LIVE command on the first save, with no edit by the
+    // user. The type-time carrier is what makes the distinction real.
     expect(SURFACES[0].roundTrip("Use \\textbackslash{}emph here.")).toBe(
-      "Use \\emph here.",
+      "Use \\textbackslash{}emph here.",
     );
-    expect(oneWay.every((e) => e.emit === "prose-only")).toBe(true);
   });
 });
 
 // ── the emit rule itself ─────────────────────────────────────────────────────
 
-describe("escapeLatexChars — the prose-only rule", () => {
-  const always = CHAR_ESCAPE_TABLE.filter((e) => e.emit === "always");
-  const proseOnly = CHAR_ESCAPE_TABLE.filter((e) => e.emit === "prose-only");
-
-  it("escapes the whole vocabulary in a run PROVEN to be prose", () => {
+describe("escapeLatexChars — the whole vocabulary, unconditionally", () => {
+  it("escapes every member of the table", () => {
     for (const e of CHAR_ESCAPE_TABLE) {
-      // A run with no backslash cannot be raw LaTeX. `\` itself can never
-      // appear in such a run, so it is exempt from this sweep by construction.
-      if (e.text.includes("\\")) continue;
       expect(escapeLatexChars(`a ${e.text} b`)).toBe(`a ${e.tex} b`);
     }
-    expect(proseOnly.length).toBeGreaterThanOrEqual(5);
+    expect(CHAR_ESCAPE_TABLE.length).toBeGreaterThanOrEqual(12);
   });
 
-  it("escapes only the `always` members in an AMBIGUOUS run (one holding a backslash)", () => {
-    for (const e of always) {
-      expect(escapeLatexChars(`\\cmd ${e.text}`)).toBe(`\\cmd ${e.tex}`);
-    }
-    for (const e of proseOnly) {
-      // left exactly as the user typed it
-      expect(escapeLatexChars(`\\cmd ${e.text}`)).toBe(`\\cmd ${e.text}`);
+  it("does not soften for a run that HOLDS a backslash", () => {
+    // Task 339 read a backslash as evidence of ambiguity and withheld the
+    // `{`/`}`/`\`/`[`/`]` members from such a run — the only honest rule while
+    // a bare text node could still be raw LaTeX. Task 360 removed that
+    // possibility at the source (the type-time carrier, plus a control-symbol
+    // carrier in both parsers), so a backslash reaching this rung is a LITERAL
+    // backslash and the softening would now be a one-directional rewrite:
+    // `see {this} and \emph{that}` lost its printed braces to it.
+    for (const e of CHAR_ESCAPE_TABLE) {
+      expect(escapeLatexChars(`\\cmd ${e.text}`)).toBe(
+        `\\textbackslash{}cmd ${e.tex}`,
+      );
     }
   });
 });
 
-// ── the measured regression the naive "escape everything" cut would cause ────
+// ── the premise task 360 made TRUE ──────────────────────────────────────────
 
-describe("a BARE text node is a real carrier for raw LaTeX (the premise check)", () => {
-  // `tiptap/latex-command.ts`'s decoration plugin paints bare-text `\command`
-  // spans grey-monospace WHILE THEY ARE TYPED, and the autosave fires 1500 ms
-  // later — so the un-marked state reaches the serializer in ordinary use. Each
-  // of these fails on a table that escapes `\`/`{`/`}` unconditionally
-  // (measured: `\emph{hi} there` → `\textbackslash{}emph\{hi\} there`).
+describe("a bare text node is PROSE (the premise, now by construction)", () => {
+  // This block used to assert the OPPOSITE and was right to: bare text was a
+  // fourth, undeclared carrier, because `tiptap/latex-command.ts` painted a
+  // typed `\command` span grey WITHOUT marking it and the autosave fired 1500 ms
+  // later. Each of these strings, as bare document text, then had to survive the
+  // escape rung untouched.
+  //
+  // Task 360 closed the gap in the DOCUMENT MODEL instead of describing it: a
+  // raw-LaTeX span takes the `latexCommand` mark as soon as an edit writes one,
+  // so a bare run really is prose and its braces really are literal. The typing
+  // half is driven through a REAL editor in
+  // `tiptap/__tests__/typed-raw-latex-carrier.test.ts`; what this file can still
+  // pin is the SOURCE direction — the same strings, arriving as `.tex`, keep
+  // their bytes, which is what proves the two halves agree.
   const TYPED = [
     "\\emph{hi} there",
     "{\\bf hi} there",
@@ -207,8 +217,17 @@ describe("a BARE text node is a real carrier for raw LaTeX (the premise check)",
   ];
   for (const surface of SURFACES) {
     for (const typed of TYPED) {
-      it(`${surface.name}: preserves typed ${JSON.stringify(typed)}`, () => {
-        expect(surface.writeText(typed)).toBe(typed);
+      it(`${surface.name}: keeps ${JSON.stringify(typed)} arriving as source`, () => {
+        expect(surface.roundTrip(typed)).toBe(typed);
+      });
+      it(`${surface.name}: escapes ${JSON.stringify(typed)} as BARE prose`, () => {
+        // The other half of the same statement, and the one that would be a
+        // corruption if bare text could still be raw LaTeX. Nothing reaches
+        // this state by typing any more; a document that somehow holds it is
+        // holding literal characters and gets literal characters back.
+        const out = surface.writeText(typed);
+        expect(out).not.toBe(typed);
+        expect(surface.readText(out)).toBe(typed);
       });
     }
   }

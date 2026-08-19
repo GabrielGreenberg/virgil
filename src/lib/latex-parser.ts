@@ -50,6 +50,7 @@ import {
   matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
+  matchControlSymbolAt,
   matchInlineMathAt,
   matchInlineVerbAt,
   matchLineBreakAt,
@@ -729,24 +730,28 @@ export function parseInlineContent(
       // fork reads too — task 341, where the fork's hand-written twin of this
       // loop was ten names short AND consumed the repetition wrong.
       const cite = matchCiteCommandAt(text, i);
-      if (cite) {
+      if (cite && cite.keyed) {
         flush();
-        if (cite.keyed) {
-          nodes.push({
-            type: "citation",
-            attrs: {
-              citationId: pendingCitationId.take(i) || generateShortId(),
-              command: cite.command,
-              displayText: "",
-            },
-          });
-        } else {
-          // No braced arg — treat as unknown text (will be raw).
-          buffer += cite.command;
-        }
+        nodes.push({
+          type: "citation",
+          attrs: {
+            citationId: pendingCitationId.take(i) || generateShortId(),
+            command: cite.command,
+            displayText: "",
+          },
+        });
         i = cite.end;
         continue;
       }
+      // An UNKEYED cite name is not a citation, so it falls through to the
+      // unknown-`\command` branch below and takes the CARRIER with its whole
+      // argument run — which is where the card fork has always sent it (task
+      // 341's twin rule; the two now agree byte-for-byte on `\citep[see]`).
+      // Until task 360 this branch pushed `cite.command` into the PROSE buffer
+      // and stopped there, so the name's own `[see]` was left to the escape
+      // rung, which protects a prose bracket as `{[}see{]}`. That was invisible
+      // only because the buffered backslash also suppressed the protection —
+      // one accident hiding another.
 
       // \ref{key} / \getref{key} / \getfullref{key.sub} — cross-reference
       const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
@@ -883,7 +888,32 @@ export function parseInlineContent(
         continue;
       }
 
-      // Lone backslash (shouldn't normally happen) — preserve it
+      // A CONTROL SYMBOL — `\` plus one non-letter — on the raw-LaTeX
+      // carrier (task 360). Everything above has declined, so what is left
+      // here is `\,` `\;` `\!` `\:` `\ ` `\-` `\/` and their kin: real
+      // LaTeX that Virgil does not model. Until this door existed they fell
+      // into the prose buffer as a literal backslash plus a literal
+      // punctuation mark, and survived only because the escape rung refused to
+      // touch a backslash in a run that held one. With bare text now prose BY
+      // CONSTRUCTION and `\` escaped unconditionally, that accident is gone:
+      // an un-carried `U.S.\ Route` would reach the `.tex` as
+      // `U.S.\textbackslash{} Route` — a printed backslash. The vocabulary at
+      // a backslash has to be TOTAL, and this is the member that closes it.
+      const controlSymbol = matchControlSymbolAt(text, i);
+      if (controlSymbol) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: controlSymbol.raw,
+          marks: [{ type: "latexCommand" }],
+        });
+        i = controlSymbol.end;
+        continue;
+      }
+
+      // A trailing `\` with nothing after it — genuinely literal, and now
+      // re-emitted as `\textbackslash{}` rather than as a dangling backslash
+      // the compiler chokes on.
       buffer += "\\";
       i++;
       continue;

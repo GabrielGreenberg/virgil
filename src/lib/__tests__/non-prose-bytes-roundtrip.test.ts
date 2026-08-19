@@ -591,14 +591,12 @@ describe("CENSUS — the scanners ask the derived doors", () => {
     // The pair that makes the provenance representable at all. Dropping either
     // is the "just delete the table entry" fix the Done-when forbids.
     const tie = CHAR_ESCAPE_TABLE.find((e) => e.text === NBSP_CH);
-    expect(tie).toEqual({
-      text: NBSP_CH,
-      tex: "~",
-      kind: "glyph",
-      emit: "always",
-    });
+    // The `emit` field this entry carried is gone with task 360's narrowing:
+    // every member is written now, so nothing is left for a one-way marker to
+    // mark.
+    expect(tie).toEqual({ text: NBSP_CH, tex: "~", kind: "glyph" });
     const tilde = CHAR_ESCAPE_TABLE.find((e) => e.text === "~");
     expect(tilde?.tex).toBe("\\textasciitilde{}");
-    expect(tilde?.emit).toBe("always");
+    expect(tilde?.kind).toBe("escape");
   });
 });
