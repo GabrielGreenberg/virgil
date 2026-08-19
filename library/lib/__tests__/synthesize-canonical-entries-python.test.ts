@@ -16,9 +16,9 @@
  * warning: it looks correct, survives every structural validator, and is only
  * caught by a human who tries to follow it.
  *
- * Eleven of the suite's sixteen legs fail against the pre-372 implementation
- * (measured); the other five are controls that must pass on both trees, so a
- * script that simply refuses everything cannot read as a fix.
+ * Fourteen of the suite's nineteen legs fail against the pre-372
+ * implementation (measured); the other five are controls that must pass on
+ * both trees, so a script that simply refuses everything cannot read as a fix.
  *
  * If `python3` is genuinely unavailable the test FAILS rather than skips — a
  * guard that quietly opts out of the environment it protects is worthless.

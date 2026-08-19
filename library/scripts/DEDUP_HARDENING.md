@@ -79,10 +79,18 @@ surfaced to the inbox.
   guard the column-0 `@type{key,`-inside-brace-value false split (Hazard 5).
   Add a regression test with a nasty synthetic entry. This raises the true match
   rate (fewer dropped DOIs/titles).
-- **`synthesize_canonical_entries.py`**: replace the fabricated `score = 1.0`
-  with a real title-similarity gate (reuse `work_identity.title_jaccard`;
-  reject < 0.6) so it stops injecting wrong/duplicate works. (Flag only if risky
-  — coordinate before changing acceptance behavior.)
+- **`synthesize_canonical_entries.py`** — DONE (task 372), with one departure
+  from the prescription above worth recording. The fabricated
+  `score = 1.0 … best[0] + 0.01` is gone and `work_identity`'s normalizers and
+  `title_jaccard` are what the file uses. But "reject < 0.6" cannot be applied
+  as written: a `missing-bib-entry:` warning carries `<Author> <Year>` and NO
+  title, so there is nothing to compute similarity *against* — which is also
+  why the pre-372 body compared no titles while its docstring promised it
+  would. So the title metric is spent on the question it CAN answer: whether
+  the surviving candidates are one work or several. More than one distinct
+  work refuses. Acceptance additionally requires the Library first
+  (`master.bib`), a locally re-checked year, and full cited-surname coverage.
+  See the script's docstring for the contract and its stated residual.
 
 ## Tests
 

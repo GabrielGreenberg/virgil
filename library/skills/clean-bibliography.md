@@ -808,11 +808,13 @@ acceptance contract (task 372; stated in full in the script's own docstring):
 - survivors that describe **more than one distinct work** (`--min-similarity`
   on title agreement, or a shared DOI) are REFUSED rather than guessed at.
 
-Crossref-sourced entries are marked `% synthesized via Crossref on <date>;
-review before final publication` so future passes / users can verify or
-replace them. The residual that tag exists for: with no target title, a
-single author-and-year-plausible record is accepted on author+year evidence
-alone and may still be the wrong work by that author in that year.
+Every written entry carries a comment naming what was and was not verified —
+`% synthesized via Crossref on <date>; review before final publication`, or
+for a Library hit, that its fields are authenticated but the WORK was matched
+on author+year alone. That is the residual those tags exist for: with no
+target title, a lone author-and-year-plausible candidate is accepted on
+author+year evidence alone, from either source, and may still be the wrong
+work by that author in that year.
 
 ## Refresh the import badge (final step)
 

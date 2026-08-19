@@ -202,6 +202,15 @@ def test_multi_author_mention_matches_when_all_surnames_are_present(tmp_path: Pa
     check(result.get("synthesized") == 1, f"legitimate multi-author refused: {result!r}")
 
 
+def test_a_given_name_initial_is_not_treated_as_a_cited_surname(tmp_path: Path):
+    """`Smith, J.` comma-splits to two parts, and coverage requires EVERY
+    cited key — so keeping the initial would refuse a correct match on
+    evidence that is not evidence."""
+    lib = _make_library(tmp_path, ["missing-bib-entry: Smith, J. 1998"])
+    result, _ = _run(lib, [_rec("Smith", 1998, "A Real Smith Paper")])
+    check(result.get("synthesized") == 1, f"initial refused a good match: {result!r}")
+
+
 def test_et_al_mention_is_a_prefix_claim_over_the_first_three_authors(tmp_path: Path):
     lib = _make_library(tmp_path, ["missing-bib-entry: Grosz et al. 1995"])
     ok, _ = _run(lib, [
@@ -353,6 +362,12 @@ def test_a_master_bib_hit_is_used_verbatim_and_never_queries_crossref(tmp_path: 
           f"master citekey not preserved: {text!r}")
     check("10.1/authenticated" in text, f"master fields not copied: {text!r}")
     check("from library master.bib" in text, f"provenance tag missing: {text!r}")
+    # The tag must separate the two claims: the FIELDS are authenticated, the
+    # WORK was matched on author+year alone. A tag that says only
+    # "authenticated" reads as "verified to be the cited work", which is the
+    # stated residual promised away again.
+    check("verify it is the work this paper cites" in text,
+          f"provenance tag overstates what was verified: {text!r}")
     check("Some Crossref Guess" not in text, f"Crossref record leaked in: {text!r}")
 
 

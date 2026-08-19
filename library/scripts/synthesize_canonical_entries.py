@@ -62,13 +62,16 @@ declined target is surfaced rather than silently dropped.
 
 ## Stated residual (do not promise this away again)
 
-With no target title, a target whose Crossref result is a SINGLE
-author-and-year-plausible record is accepted on author+year evidence
-alone — it may still be the wrong work by that author in that year. That
-is the synthesis assumption, and it is why every written entry carries a
-`review before final publication` tag. Closing it needs the warning to
-carry more than `<Author> <Year>` (a mention context or a title), which is
-a change to the warning grammar and its merge semantics, not to this file.
+With no target title, a target with exactly ONE author-and-year-plausible
+candidate is accepted on author+year evidence alone — from EITHER source.
+It may still be the wrong work by that author in that year, and the Library
+path inherits this rather than escaping it: a lone `master.bib` row for
+`Smith 1998` is authenticated metadata about *a* Smith 1998, not proof that
+it is the Smith 1998 this paper cites. That is the synthesis assumption, and
+it is why every written entry carries a comment naming what was and was not
+verified. Closing it needs the warning to carry more than `<Author> <Year>`
+(a mention context or a title), which is a change to the warning grammar and
+its merge semantics, not to this file.
 
 Identity primitives (surname normalization, title normalization, Jaccard,
 year parsing) are taken from `work_identity.py`, the library's stated SSOT
@@ -271,7 +274,11 @@ def _parse_cited_mention(phrase: str) -> tuple[tuple[str, ...], bool]:
     out: list[str] = []
     for part in _MENTION_SPLIT_RE.split(body):
         key = _surname_key(part)
-        if key and key not in out:
+        # A one-letter key is a given-name INITIAL that the comma split left
+        # standing (`Smith, J.`), never a surname — and since coverage
+        # requires EVERY cited key to be present, keeping it would refuse the
+        # match on evidence that is not evidence.
+        if len(key) >= 2 and key not in out:
             out.append(key)
     return tuple(out), et_al
 
@@ -481,6 +488,11 @@ def _resolve_target(
         )
         if len(clusters) > 1:
             return "ambiguous-in-library", {"candidates": len(hits)}
+        # One work, possibly several rows of it (an edition, a reprint). `hits`
+        # is citekey-sorted, so the representative is the alphabetically first
+        # — arbitrary between rows of the SAME work, and deterministic, which
+        # is the property that matters: the choice must not depend on dict
+        # iteration order.
         key, entry = hits[clusters[0][0]]
         return "master", {"citekey": key, "entry": entry}
 
@@ -554,9 +566,14 @@ def synthesize(
                                  "reason": "library-entry-unreadable",
                                  "citekey": proposed_key})
                 continue
+            # The FIELDS are the Library's authenticated ones; what is
+            # matched on author+year alone is WHICH WORK this is. Two
+            # different claims, so the tag makes both explicit rather than
+            # letting "authenticated" read as "verified to be the cited work".
             provenance = (
-                f"% from library master.bib on {timestamp} "
-                f"(authenticated by the Library, not synthesized)\n"
+                f"% from library master.bib on {timestamp}; fields are the "
+                f"Library's authenticated ones, but the work was matched on "
+                f"author+year alone — verify it is the work this paper cites\n"
             )
         else:
             record = payload["record"]
