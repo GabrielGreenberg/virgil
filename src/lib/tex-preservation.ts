@@ -103,6 +103,7 @@
  * word to a different word of the same count passes. Nothing here substitutes
  * for the round-trip suites.
  */
+import { findDocumentBoundary } from "@/lib/latex-lexer";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 import type { PreservationRefusalDetail } from "@/lib/preservation-notice";
 
@@ -174,12 +175,19 @@ export function measureContentWords(tex: string): number {
 }
 
 /**
- * Split on `\begin{document}`. A source with no marker is treated as ALL BODY
+ * Split at the LIVE `\begin{document}` — the one door (task 375), so the gate
+ * measures the same document the parser parsed. A gate that split on a raw
+ * `indexOf` while the parser split on the live boundary is structurally blind
+ * to a boundary that MOVED: the input measures with everything under body, the
+ * output's body still holds every carried word, and the shortfall is 0 in both
+ * regions while the user's paper has been cut in half.
+ *
+ * A source with no marker is treated as ALL BODY
  * — the fail-safe direction: every word then falls under a comparison rather
  * than into an unweighed region.
  */
 function splitRegions(tex: string): { preamble: string; body: string } {
-  const i = tex.indexOf("\\begin{document}");
+  const i = findDocumentBoundary(tex).beginDoc;
   if (i === -1) return { preamble: "", body: tex };
   return { preamble: tex.slice(0, i), body: tex.slice(i) };
 }

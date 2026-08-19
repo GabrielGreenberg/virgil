@@ -395,6 +395,40 @@ export interface ProjectLiveLatexOptions {
    *  `\verbatim`/`\verbdef` are NOT mis-lexed as `\verb` + delimiter. Default
    *  false. */
   inlineVerb?: boolean;
+  /**
+   * When true, every inert byte is BLANKED to a space instead of dropped, so
+   * the projection is the same LENGTH as its input and an index into it is an
+   * index into the original.
+   *
+   * That is the difference between the two questions this projection answers.
+   * "What does the preamble SAY?" ({@link livePreamble}, the detectors) wants
+   * the dropped form. "WHERE is byte N?" — the preamble/body boundary, and the
+   * requirement/title injectors that splice at it — needs an offset it can hand
+   * back to a caller holding the RAW string, and a projection that deletes
+   * bytes cannot give one. Before task 375 there was no offset-preserving form
+   * at all, so every boundary reader searched the raw bytes and a
+   * commented-out or verbatim-quoted `\begin`/`\end{document}` moved the
+   * boundary (or, for the injectors, was spliced INTO and un-commented).
+   *
+   * Newlines are preserved as newlines, so line/column geometry survives too;
+   * blanking can only ever REMOVE a match, never create one. Default false.
+   */
+  preserveOffsets?: boolean;
+  /**
+   * When true, a verbatim-family `\begin` with NO matching `\end` anywhere below
+   * it is NOT treated as an open: its bytes stay live.
+   *
+   * The default (false) swallows to the end of the source, matching how TeX
+   * lexes it — the right direction for a DETECTOR, which should fail toward
+   * not-detecting. It is the wrong direction for a STRUCTURAL scan, because a
+   * half-typed `\begin{comment}` in a preamble is an ordinary mid-edit state and
+   * swallowing to EOF would erase the `\begin{document}` below it: the boundary
+   * vanishes and the save writes the whole file back as body. That is this
+   * repo's "unterminated ⇒ TRANSPARENT" rule (tasks 350/356) applied one layer
+   * down, and it is scoped to an OPT-IN so no detector's answer moves. Default
+   * false.
+   */
+  unterminatedIsLive?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -633,7 +667,7 @@ export function startsLineComment(src: string, pos: number): boolean {
  *  unterminated `\verb` on the line drops to end-of-line here (verb runs do
  *  not cross a newline); over there it simply doesn't match, and the text
  *  falls through as ordinary prose. */
-function stripInlineVerb(line: string): string {
+function stripInlineVerb(line: string, blank: (s: string) => string): string {
   const re = inlineVerbOpenRe();
   let out = "";
   let last = 0;
@@ -645,9 +679,11 @@ function stripInlineVerb(line: string): string {
     const close = line.indexOf(delim, payloadStart);
     if (close === -1) {
       // Unterminated: drop to end of line.
+      out += blank(line.slice(m.index));
       last = line.length;
       break;
     }
+    out += blank(line.slice(m.index, close + 1));
     last = close + 1;
     re.lastIndex = last;
   }
@@ -673,7 +709,15 @@ export function projectLiveLatex(
 ): string {
   const envs = opts?.envs ?? VERBATIM_ENVS_NARROW;
   const inlineVerb = opts?.inlineVerb ?? false;
+  // The ONE difference between the dropping and the offset-preserving form:
+  // what an inert span becomes. Every drop site below routes through `blank`,
+  // so the two modes cannot drift on WHICH bytes are inert — only on whether
+  // the inert ones leave a hole or a space.
+  const blank: (sp: string) => string = opts?.preserveOffsets
+    ? (sp) => " ".repeat(sp.length)
+    : () => "";
   const { begin: beginRe, end: endRe } = familyBeginEndRes(envs);
+  const unterminatedIsLive = opts?.unterminatedIsLive ?? false;
 
   // Fast path: nothing inert to strip. (When inlineVerb is off, an inline
   // `\verb` has no `%` and no `\begin{verbatim}`, so the fast path is safe;
@@ -686,8 +730,19 @@ export function projectLiveLatex(
   }
 
   const out: string[] = [];
+  const lines = src.split("\n");
+  // Backward pass: does ANY line at or after `i` carry a family close? One O(n)
+  // sweep, so the terminated-ness test at each open is O(1) rather than a
+  // rescan (which would be O(n²) on exactly the pathological input).
+  const closeAtOrAfter: boolean[] = new Array(lines.length + 1).fill(false);
+  if (unterminatedIsLive) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      closeAtOrAfter[i] = endRe.test(lines[i]) || closeAtOrAfter[i + 1];
+    }
+  }
   let inVerbatim = false;
-  for (const rawLine of src.split("\n")) {
+  for (let li = 0; li < lines.length; li++) {
+    const rawLine = lines[li];
     let line = rawLine;
     let kept = "";
     // Walk the line through verbatim open/close transitions so same-line
@@ -701,10 +756,12 @@ export function projectLiveLatex(
       if (inVerbatim) {
         const end = endRe.exec(line);
         if (!end) {
+          kept += blank(line);
           line = "";
           break;
         }
         inVerbatim = false;
+        kept += blank(line.slice(0, end.index + end[0].length));
         line = line.slice(end.index + end[0].length);
         continue;
       }
@@ -715,13 +772,28 @@ export function projectLiveLatex(
       const comment = commentTailStart(line);
       if (!begin || (comment !== -1 && begin.index >= comment)) {
         const visible = comment === -1 ? line : line.slice(0, comment);
-        kept += inlineVerb ? stripInlineVerb(visible) : visible;
+        kept += inlineVerb ? stripInlineVerb(visible, blank) : visible;
+        if (comment !== -1) kept += blank(line.slice(comment));
+        break;
+      }
+      const rest = line.slice(begin.index + begin[0].length);
+      if (
+        unterminatedIsLive &&
+        !endRe.test(rest) &&
+        !closeAtOrAfter[li + 1]
+      ) {
+        // Unterminated ⇒ transparent: this is not an open, so the whole
+        // remaining visible span (comment tail excluded, as ever) stays live.
+        const visible = comment === -1 ? line : line.slice(0, comment);
+        kept += inlineVerb ? stripInlineVerb(visible, blank) : visible;
+        if (comment !== -1) kept += blank(line.slice(comment));
         break;
       }
       const head = line.slice(0, begin.index);
-      kept += inlineVerb ? stripInlineVerb(head) : head;
+      kept += inlineVerb ? stripInlineVerb(head, blank) : head;
       inVerbatim = true;
-      line = line.slice(begin.index + begin[0].length);
+      kept += blank(begin[0]);
+      line = rest;
     }
     out.push(kept);
   }
@@ -768,8 +840,12 @@ export function projectDetectableLatex(src: string): string {
 }
 
 /** The `\begin{document}` token — the preamble/body boundary, spelled once for
- *  the two readers below rather than a sixth raw `indexOf`. */
-const BEGIN_DOCUMENT_TOKEN = "\\begin{document}";
+ *  every reader rather than an eighth raw `indexOf`. Exported so a caller that
+ *  must EMIT the canonical spelling reads it here too. */
+export const BEGIN_DOCUMENT_TOKEN = "\\begin{document}";
+
+/** The `\end{document}` token — the body/postamble boundary. */
+export const END_DOCUMENT_TOKEN = "\\end{document}";
 
 /**
  * The LIVE preamble of a `.tex` source — `projectDetectableLatex` applied to
@@ -792,9 +868,22 @@ const BEGIN_DOCUMENT_TOKEN = "\\begin{document}";
  * residual of the same class).
  */
 export function livePreamble(tex: string): string {
-  const live = projectDetectableLatex(tex);
-  const beginDoc = live.indexOf(BEGIN_DOCUMENT_TOKEN);
-  return beginDoc === -1 ? live : live.slice(0, beginDoc);
+  return preambleSliceOfProjected(projectDetectableLatex(tex));
+}
+
+/**
+ * The prefix of an ALREADY-projected source up to its `\begin{document}`, or
+ * the whole thing when there is none (fail OPEN — a fragment scan wants the
+ * whole projection).
+ *
+ * Exported for the one other detector that projects for itself and then needs
+ * the preamble half ({@link detectBibFamily}), so "where does the preamble end"
+ * has one answer even on the DROPPING projection — including the spaced
+ * `\begin {document}` spelling, which a raw `indexOf` misses.
+ */
+export function preambleSliceOfProjected(projected: string): string {
+  const m = BEGIN_DOCUMENT_RE.exec(projected);
+  return m ? projected.slice(0, m.index) : projected;
 }
 
 /**
@@ -821,6 +910,131 @@ export function preambleListLoadsPackage(
     if (m[1].split(",").some((p) => p.trim() === name)) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// The preamble/body boundary — ONE door (task 375)
+// ---------------------------------------------------------------------------
+
+/**
+ * The bytes a STRUCTURAL scan may believe, with offsets preserved: the live
+ * projection at the FULL verbatim family, inline `\verb` included, every inert
+ * byte blanked to a space.
+ *
+ * The family choice is deliberate and differs from {@link projectDetectableLatex}'s.
+ * A DETECTOR stays NARROW for byte-compatibility of package injection (the P3
+ * fork F1); a boundary is a structural question, the same one
+ * `findSectioningCommands` asks, and an `\end{document}` inside a `lstlisting`
+ * or a `\verb|\end{document}|` is not a boundary by any reading — that is
+ * member M4 of task 375, where the body was cut mid-verbatim and a `%!v:`
+ * anchor was written into what remained, printing literally in the PDF.
+ */
+export function projectStructuralLatex(src: string): string {
+  return projectLiveLatex(src, {
+    envs: VERBATIM_ENVS_FULL,
+    inlineVerb: true,
+    preserveOffsets: true,
+    unterminatedIsLive: true,
+  });
+}
+
+/**
+ * `\begin{document}` / `\end{document}` as TeX scans them: the control word,
+ * then optional horizontal whitespace around the braced argument. TeX skips
+ * spaces while scanning an argument, so `\begin {document}` and `\begin{ document }`
+ * are the same token — and an exact-literal `indexOf` reads a document spelled
+ * that way as having NO boundary at all (task 375 member M5), which sent the
+ * whole file through `stripPreamble`'s body fallback and replaced the user's
+ * `\documentclass` with a style seed.
+ *
+ * Horizontal whitespace only, deliberately: `\s*` would let the token span a
+ * blank line, which is a `\par` and not a continuation. A `\begin%\n{document}`
+ * comment continuation is therefore still not matched — a stated residual, and
+ * exactly today's behaviour, so no regression rides on it.
+ */
+const BEGIN_DOCUMENT_RE = /\\begin[ \t]*\{[ \t]*document[ \t]*\}/;
+const END_DOCUMENT_RE = /\\end[ \t]*\{[ \t]*document[ \t]*\}/;
+
+/** The byte span of one live `\begin{document}` / `\end{document}` occurrence,
+ *  as offsets into the ORIGINAL source. */
+export interface LiveDocumentToken {
+  /** Index of the leading `\`. */
+  start: number;
+  /** One past the closing `}`. */
+  end: number;
+}
+
+/**
+ * Every LIVE `\begin{document}` and `\end{document}` in `latex`, in source
+ * order — ONE projection, and the single implementation
+ * {@link findDocumentBoundary} is derived from.
+ *
+ * Exported for the two callers that need more than the first pair: the style
+ * blob validator (which counts begins and rejects any end) and the census's own
+ * pins. Everything else wants the boundary door.
+ */
+export function findLiveDocumentTokens(latex: string): {
+  begins: LiveDocumentToken[];
+  ends: LiveDocumentToken[];
+} {
+  const live = projectStructuralLatex(latex);
+  const spans = (re: RegExp): LiveDocumentToken[] => {
+    const g = new RegExp(re.source, "g");
+    const out: LiveDocumentToken[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = g.exec(live)) !== null) {
+      out.push({ start: m.index, end: m.index + m[0].length });
+    }
+    return out;
+  };
+  return { begins: spans(BEGIN_DOCUMENT_RE), ends: spans(END_DOCUMENT_RE) };
+}
+
+/** Where a `.tex` source's preamble ends and its postamble begins. Offsets are
+ *  into the ORIGINAL string; -1 means "no live token". */
+export interface DocumentBoundary {
+  /** Index of the leading `\` of the live `\begin{document}`, or -1. */
+  beginDoc: number;
+  /** One past that token — where the BODY starts. -1 when `beginDoc` is -1. */
+  bodyStart: number;
+  /** Index of the leading `\` of the first live `\end{document}` AT OR AFTER
+   *  `bodyStart`, or -1. Never precedes `beginDoc` by construction. */
+  endDoc: number;
+}
+
+/**
+ * Locate the preamble/body boundary of a `.tex` source. **The one door** — every
+ * reader in `src/` goes through it, and a census leg forbids a call site from
+ * spelling the literal itself.
+ *
+ * Two rules, and each is a member of task 375 rather than a nicety:
+ *
+ *  - **Only LIVE bytes count** ({@link projectStructuralLatex}). A preamble that
+ *    merely MENTIONS the token in a comment, a `\verb`, or a verbatim listing
+ *    does not move the boundary. Commenting out an early `\end{document}` to
+ *    truncate a compile is one of the most ordinary things an author does, and
+ *    before this the body cut landed INSIDE that comment: the `%` was severed
+ *    from its token, the `\end{document}` went LIVE, and the rest of the paper
+ *    stopped printing.
+ *  - **The end is searched FROM the end of the begin token**, never from 0. A
+ *    preamble comment naming `\end{document}` used to make `endDoc < beginDoc`,
+ *    which emptied the entire body into the postamble and wrote a `.tex` with
+ *    two `\begin{document}` and a `\usepackage` after the first.
+ *
+ * Fails OPEN in the same direction {@link livePreamble} does: an unlocatable
+ * boundary answers -1 rather than guessing, and each caller states what it does
+ * with that (never "seed a preamble over a file that has bytes in it").
+ */
+export function findDocumentBoundary(latex: string): DocumentBoundary {
+  const { begins, ends } = findLiveDocumentTokens(latex);
+  const begin = begins[0];
+  if (!begin) return { beginDoc: -1, bodyStart: -1, endDoc: -1 };
+  const end = ends.find((t) => t.start >= begin.end);
+  return {
+    beginDoc: begin.start,
+    bodyStart: begin.end,
+    endDoc: end ? end.start : -1,
+  };
 }
 
 // ---------------------------------------------------------------------------

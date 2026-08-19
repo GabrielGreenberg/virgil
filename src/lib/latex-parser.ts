@@ -47,6 +47,8 @@ import {
   matchLinguexOpenerAt,
   LINGUEX_UNMODELLED_RE,
   preambleLoadsPackage,
+  findDocumentBoundary,
+  END_DOCUMENT_TOKEN,
   isEscaped,
   findUnescaped,
   matchBeginEnvAt,
@@ -99,14 +101,12 @@ interface ParseContext {
 let linguexModelled = false;
 
 function stripPreamble(latex: string): string {
-  const beginDoc = latex.indexOf("\\begin{document}");
-  const endDoc = latex.indexOf("\\end{document}");
-  if (beginDoc !== -1) {
-    const start = beginDoc + "\\begin{document}".length;
-    // unterminated-ok: no `\end{document}` means the body genuinely does run to
-    // EOF — there is no content past it that this claim could swallow.
+  const { bodyStart, endDoc } = findDocumentBoundary(latex);
+  if (bodyStart !== -1) {
+    // unterminated-ok: no LIVE `\end{document}` means the body genuinely does
+    // run to EOF — there is no content past it that this claim could swallow.
     const end = endDoc !== -1 ? endDoc : latex.length;
-    return latex.slice(start, end).trim();
+    return latex.slice(bodyStart, end).trim();
   }
   return latex.trim();
 }
@@ -130,17 +130,54 @@ function stripPreamble(latex: string): string {
 export function extractPreambleAndPostamble(
   latex: string,
 ): { preamble: string; postamble: string } | null {
-  const beginDoc = latex.indexOf("\\begin{document}");
+  const { beginDoc, bodyStart, endDoc } = findDocumentBoundary(latex);
   if (beginDoc === -1) return null;
-  const endDoc = latex.indexOf("\\end{document}");
   const rawPreamble = latex.slice(0, beginDoc);
   const strippedPreamble = stripTitleFieldsFromText(rawPreamble);
-  const preamble = strippedPreamble + "\\begin{document}\n\n";
+  // The user's own spelling of the token is carried, not re-canonicalized: for
+  // the ordinary `\begin{document}` this slice IS the literal, byte for byte,
+  // and for the spaced `\begin {document}` TeX accepts (task 375 M5) it is what
+  // the user wrote. Re-normalizing would be a silent rewrite of a line nobody
+  // asked us to touch.
+  const preamble = strippedPreamble + latex.slice(beginDoc, bodyStart) + "\n\n";
   const postamble =
     endDoc !== -1
       ? "\n" + latex.slice(endDoc).replace(/\n*$/, "\n")
-      : "\n\\end{document}\n";
+      : "\n" + END_DOCUMENT_TOKEN + "\n";
   return { preamble, postamble };
+}
+
+/**
+ * The `{preamble, postamble}` a WRITE of `rawTex` must use — **the one door**
+ * every save path enters, because the alternative each of them used to spell
+ * ("`extractPreambleAndPostamble` said null, so seed from the style") is an
+ * inference the null does not support.
+ *
+ * Three cases, and only the FIRST is allowed to invent bytes:
+ *
+ *  - **The file is EMPTY** (no bytes, or only whitespace) — `null`, meaning
+ *    "there is no document here yet; seed the preamble from the doc's selected
+ *    style". This is the brand-new-document case the seed was written for.
+ *  - **The boundary is located** — the user's own delimiters, verbatim.
+ *  - **The file has BYTES but no locatable boundary** — a fragment (a chapter
+ *    some master file `\input`s), a preamble-only file, a mid-edit `.tex` —
+ *    `{ preamble: "", postamble: "" }`: the whole file is body, so it is
+ *    written back as body and nothing is prepended to it.
+ *
+ * That third case is task 375 member M5, and before this it was read as the
+ * first: `\begin {document}` (a spelling TeX accepts, and which the boundary
+ * door now locates) returned null, so a paper's `\documentclass[11pt]{amsart}`
+ * and its packages were carried into the BODY while a *different*
+ * `\documentclass` was written above them from a style seed — on OPEN, with no
+ * edit by the user. **A `.tex` with bytes in it must never have its preamble
+ * replaced by a write nobody asked for**; where we cannot say where the
+ * preamble ends, the honest answer is to add none.
+ */
+export function resolveWriteDelimiters(
+  rawTex: string | null | undefined,
+): { preamble: string; postamble: string } | null {
+  if (!rawTex || rawTex.trim() === "") return null;
+  return extractPreambleAndPostamble(rawTex) ?? { preamble: "", postamble: "" };
 }
 
 /**
@@ -947,7 +984,7 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // they're visible and editable in the editor. Mark seen fields so the
   // body parser doesn't emit duplicates if the same command appears
   // again below \begin{document}.
-  const beginDoc = latex.indexOf("\\begin{document}");
+  const { beginDoc } = findDocumentBoundary(latex);
   const preambleText = beginDoc !== -1 ? latex.slice(0, beginDoc) : "";
   const preambleTitleNodes = parsePreambleTitleFields(preambleText);
   for (const n of preambleTitleNodes) {

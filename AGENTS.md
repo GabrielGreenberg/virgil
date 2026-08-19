@@ -1559,13 +1559,11 @@ which is the better trade and not a free one. The projection is also stateful ov
 is GIVEN, so a `code` beginning mid-verbatim reads LIVE here and INERT in the whole-body
 detector — per-block isolation, the conservative direction. And the class has known-open members
 this task deliberately did not close, so the section does not read as drained: the **preamble
-boundary** is still resolved by a raw `indexOf("\begin{document}")` at five sites (including
-`injectPreambleRequirements` itself, whose splice would *un-comment* an inert
-`% \begin{document}` and write a non-compiling `.tex`), which needs an offset-preserving
-`firstLiveIndexOf` rather than this projection — `document-class.ts`'s private
-`isLiveDocumentClass` is the shape; `StyleApplyDialog.diffPreambles` counts commented-out
-packages as things a style swap will destroy; and `compile-service`'s `hasBiblatex` probe scans
-unprojected while its own neighbour `reference-resolution.ts` projects.
+boundary** was still resolved by a raw `indexOf("\begin{document}")` at five sites — **closed by
+task 375**, which found it was five sites in `src/` plus two more in the Python skills and worse
+than this note recorded (see "The boundary half" below); `StyleApplyDialog.diffPreambles` counts
+commented-out packages as things a style swap will destroy; and `compile-service`'s `hasBiblatex`
+probe scans unprojected while its own neighbour `reference-resolution.ts` projects.
 
 CI: [raw-passthrough-declaration.test.ts](src/lib/__tests__/raw-passthrough-declaration.test.ts)
 — fixtures A/B/D through the REAL `serializeToLatex` with two live controls, plus a per-member
@@ -1689,6 +1687,162 @@ the two cannot disagree), and the reported defect driven through the REAL
 `PdfView`. Measured by neutering each half in turn — the PdfView fork takes 3
 legs, and the SW strip, the shipped manifest, the generator's second spelling,
 the icon link and a re-forked prefix copy take 1 each.
+
+##### The boundary half: the scan whose answer moves a SPLICE
+
+Same rule, and the one the two sections above each recorded as an open residual
+and neither could close from where it stood (task 375). A detector that believes
+inert bytes reads the wrong ANSWER; the preamble/body boundary is a scan whose
+answer decides where the document is CUT and where a splice LANDS, so the same
+mistake writes a broken `.tex` instead of merely misreporting one.
+
+Every reader located it with an exact-literal
+`indexOf("\begin{document}")` / `indexOf("\end{document}")` over RAW bytes,
+searched from index 0. Five members follow from that one decision. All five are
+silent, all five are FIXED POINTS, and all five land on **OPEN** —
+`readDocBundle` runs the save pipeline and then fires `writeReStampedTexOnLoad`
+unconditionally, before the user has typed anything. Measured through the real
+save cycle:
+
+- **M1 — a preamble that merely MENTIONS `\end{document}` empties the whole
+  body.** `endDoc` searched from 0 lands BEFORE `beginDoc`, so the body is
+  ejected into the postamble: the editor shows one blank paragraph and the saved
+  `.tex` carries two `\begin{document}` with a `\usepackage` after the first. A
+  comment, a `\verb`, or a `\newcommand{\stopnow}{\end{document}}` all reach it.
+- **M2 — a commented-out `% \end{document}` in the body is severed from its `%`
+  and goes LIVE.** The cut lands inside the comment; the rest of the paper is now
+  after `\end{document}` and never prints. Commenting out an early
+  `\end{document}` to truncate a compile is one of the most ordinary things an
+  author does.
+- **M3 — a commented-out `% \begin{document}` is UN-COMMENTED by the requirement
+  injector.** The splice lands between the `%` and the token, leaving the `%`
+  alone on its own line and the token live — so the user's real `\usepackage`
+  lines end up *after* `\begin{document}`, a hard LaTeX error, with the real
+  begin following as a second one.
+- **M4 — a verbatim-quoted `\end{document}` cuts the body mid-verbatim.** A paper
+  that DOCUMENTS LaTeX loses everything from that line into the postamble, and a
+  `%!v:` anchor is written into what remains of the block, where it prints
+  literally in the PDF.
+- **M5 — `\begin {document}` is read as "brand-new document".** TeX skips spaces
+  while scanning the argument, so that is the same token; an exact literal misses
+  it, `extractPreambleAndPostamble` answers null, and the null was read as *the
+  file is new*. The whole file went through the body fallback while a style seed
+  wrote a **different** `\documentclass` above the user's own.
+
+**And no gate could catch any of it**, because `tex-preservation`'s `splitRegions`
+used the SAME exact literal: a cut document measures with everything under body
+on both sides and reports a shortfall of **0** in both regions. The word-measure
+gates (350-D / 357) are structurally blind to a boundary that MOVED.
+
+> **The preamble/body boundary is a question about LIVE bytes, asked at ONE door
+> — [`findDocumentBoundary`](src/lib/latex-lexer.ts) — and the end is searched
+> FROM the end of the begin token, never from 0.** A splice needs an offset into
+> the RAW string, so the projection behind it BLANKS rather than deletes.
+
+Seven rules it earned:
+
+- **The design's own premise was FALSE, and checking it is what made the fix
+  real.** The filed task said `projectDetectableLatex` "blanks bytes, so offsets
+  are already preserved — confirm that and state it, since the whole design rests
+  on it". It does not: it DELETES them and re-joins the lines, so an index into
+  it is not an index into the source, and every injector that spliced at one
+  would have spliced at the wrong place. `projectLiveLatex` gained a
+  `preserveOffsets` mode — the ONE difference between the two forms is what an
+  inert span BECOMES (a space, not a hole), so the two can never drift on WHICH
+  bytes are inert, which is what every detector in the app depends on.
+- **The family is FULL here and NARROW for detectors, and that asymmetry is
+  deliberate.** A detector stays narrow for byte-compatibility of package
+  injection (the P3 fork F1); a boundary is a structural question — the one
+  `findSectioningCommands` asks — and an `\end{document}` inside a `lstlisting`
+  or a `\verb|…|` is not a boundary by any reading. That is M4.
+- **The token is a GRAMMAR, not a literal.** `\begin[ \t]*\{[ \t]*document[ \t]*\}`
+  — horizontal whitespace only, deliberately, because `\s*` would let the token
+  span a blank line, which is a `\par` and not a continuation. A `\begin%\n{document}`
+  comment continuation is still not matched: a stated residual, and exactly
+  today's behaviour, so no regression rides on it.
+- **The user's own SPELLING is carried, never re-canonicalized.** For the
+  ordinary token the preserved slice IS the literal byte for byte, which is what
+  makes carrying the spaced form free; rewriting it would be a silent edit of a
+  line nobody asked us to touch.
+- **`null` from the boundary means "I cannot say", never "this file is new".**
+  [`resolveWriteDelimiters`](src/lib/latex-parser.ts) is the door every save path
+  enters, and it has three answers: an EMPTY file seeds from the style (the
+  brand-new case the seed was written for), a located boundary gives the user's
+  verbatim delimiters, and **bytes with no locatable boundary** — a fragment a
+  master file `\input`s, a preamble-only file, a mid-edit `.tex` — gives
+  `{ preamble: "", postamble: "" }`: the whole file is body, so it is written
+  back as body with nothing prepended. **A `.tex` with bytes in it must never have
+  its preamble replaced by a write nobody asked for**; where we cannot say where
+  the preamble ends, the honest answer is to add none. `assembleLatex` reads
+  `??` rather than `||` for exactly that: an explicit empty preamble is an
+  ANSWER, where `undefined` (a caller that stated nothing) still falls back.
+- **The generic primitive earns its keep in ONE silo and is not exported in the
+  other.** Python gets `first_live_index_of`, because `region-replace`'s
+  `endMarker` is caller-supplied; TypeScript does not, because over there every
+  boundary question IS the document boundary and an export with no caller is the
+  dead-SSOT shape (task 202). Stated at the Python site rather than mirrored for
+  symmetry.
+- **The gate must split the document the way the parser does**, or it stays blind
+  to the very thing it guards — so `tex-preservation`, `write-preservation` and
+  `_common.py`'s `split_regions` all take the same rule. The Python port is held
+  to the TS one by a second GOLDEN section in the shared corpus
+  (`preservation-corpus.json`'s `boundaryCases`, generated from the shipped TS
+  implementation) plus a membership leg pinning `VERBATIM_ENVS_FULL` — which
+  caught this task's own port carrying an extra `alltt` the TS family
+  deliberately excludes.
+- **Unterminated ⇒ TRANSPARENT, and the adversarial pass on this fix is what
+  found it.** The projection's default swallows an unclosed verbatim open to the
+  end of the source, matching how TeX lexes it — right for a detector, which
+  should fail toward not-detecting, and wrong for a boundary: a half-typed
+  `\begin{comment}` in a preamble is an ordinary mid-edit state in the code pane,
+  and swallowing to EOF erases the `\begin{document}` under it, so the boundary
+  vanishes and the save writes the whole file back as body with a `%!v:` anchor
+  on every preamble line. That is this repo's own 350/356 rule one layer down.
+  `unterminatedIsLive` is OPT-IN, so no detector's answer moved, and a CLOSED
+  open is still opaque — which is M4, and the control that keeps the rule from
+  reopening it.
+
+Converted: both parser sites, `stripPreamble`, `ensurePreambleRequirements`,
+`injectTitleFieldsIntoPreamble`, `mergeTitlesIntoStylePreamble`,
+`applyRequirementsToFile`, both preservation gates, `useDocumentStyle.setStyle`
+(the whole-preamble style swap — the most destructive splice Virgil makes),
+`StyleEditorModal`'s validator (whose two private regex copies rejected a style
+blob for a token the compiler never sees), `bib-family`'s and `livePreamble`'s
+own splits, and on the Python side `split_regions`, `apply_response.py`'s
+`region-replace` splice and its one-`\begin{document}` structural invariant. The
+dev backend's three hand copies of the seed rule folded into one
+`buildDevSerializeOpts`, the twin of `storage-fsa`'s.
+
+CI: [preamble-boundary-liveness.test.ts](src/lib/__tests__/preamble-boundary-liveness.test.ts).
+**No pre-375 suite could see any of this**: every `.tex` fixture in the repo
+spells its boundary the one way the code happened to handle, exactly once, live —
+so a boundary that MOVES is unrepresentable in all of them, which is how five
+members shipped with 7 860 tests green. Each leg drives the REAL save pipeline
+over TWO cycles with controls through the identical harness, and asserts content
+is inside the printed BODY rather than merely present in the FILE — presence is
+what a moved boundary preserves, and asserting it is how such a leg passes
+vacuously. The leg with teeth is the CENSUS: no production file may pair a
+boundary token with a search verb or a regex (allowlist EMPTY — a hit is
+MIGRATE-it), and every file that merely SPELLS one must be a declared EMITTER,
+so a new file has to say whether it writes a token or looks for one. Measured by
+neutering each half in turn: the live projection takes 7 legs, the token grammar
+3, the from-bodyStart ordering 1 (the `\newcommand` shape — M1's comment form is
+closed by EITHER half, which is why that leg exists), and the seed rule 1.
+
+**Residuals, stated.** The projection's own over-strip is inherited whole (the 345
+residual): a raw `%` inside a `\verb|100%|` or a `\url{…a%20b}` truncates the rest
+of that LINE, so a `\begin{document}` SHARING such a line is not found and the
+file is written back as body-only. Measured, the write gate REFUSES that write —
+the regions disagree across the two sides — so the failure direction is a banner
+the user must acknowledge rather than a silent loss, and `\begin{document}` shares
+its line with nothing in any real paper. The comment-continuation spelling
+`\begin%\n{document}` is likewise not matched, which is exactly today's behaviour.
+Neither is closed here, because both belong to the projection's own residual list
+rather than to the boundary.
+
+**Owed, not claimed:** a real-FSA open of a paper with a commented-out
+`\end{document}`. Nothing here is FSA-masked — it is all `.tex` bytes through the
+real save cycle — but the class lands on OPEN, so one eyeball is worth having.
 
 #### The twin half: a parser that shares SOME vocabularies is how the rest drift
 

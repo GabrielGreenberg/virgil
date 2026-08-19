@@ -151,6 +151,8 @@ from typing import NamedTuple
 
 from _common import (
     DOCUMENT_MARKER,
+    count_live_document_begins,
+    first_live_index_of,
     NODE_UUID_REGEX,
     check_tex_preservation,
     commit_under_pen,
@@ -675,7 +677,10 @@ def _guard_region_replace(before: str, after: str) -> None:
     A refusal here is `die()`: the caller's atomic commit never runs, so the
     `.tex`, the sidecars and the request row are all left exactly as they were.
     """
-    markers = after.count(DOCUMENT_MARKER)
+    # LIVE occurrences only (task 375): a marker the replacement left inside a
+    # `%` comment or a verbatim example neither satisfies the invariant nor
+    # trips the duplicate refusal — it is not a marker the compiler will see.
+    markers = count_live_document_begins(after)
     if markers != 1:
         die(
             f"region-replace refused: the result would contain {markers} "
@@ -725,7 +730,12 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         if replacement is None:
             die("texEdit.replacement is required for mode=region-replace")
         marker = te.get("endMarker") or DOCUMENT_MARKER
-        i = text.find(marker)
+        # The LIVE offset (task 375 M3). This splice replaces EVERYTHING before
+        # the marker, so a raw `find` that landed inside a `% \begin{document}`
+        # comment would sever the `%` from its token AND take the user's real
+        # preamble with it — the most destructive form this defect has, on the
+        # one writer that composes preambles from model output.
+        i = first_live_index_of(text, marker)
         if i == -1:
             die(f"region-replace end marker not found in .tex: {marker}")
         end = i + len(marker)

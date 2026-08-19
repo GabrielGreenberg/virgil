@@ -29,7 +29,7 @@ import { generateEntityId } from "@/lib/uuid";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
-import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { parseLatex, resolveWriteDelimiters } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
@@ -610,8 +610,13 @@ interface SerializeOpts {
 /**
  * The serialize options every `.tex`-producing path shares: the user's verbatim
  * delimiters when we have them, the authoritative per-doc bib family off the
- * citations sidecar, and — only for a brand-new / empty doc with no
- * `\begin{document}` — the selected style's preamble as a seed.
+ * citations sidecar, and — only for a genuinely EMPTY file — the selected
+ * style's preamble as a seed.
+ *
+ * `delimiters` MUST come from `resolveWriteDelimiters` (task 375): `null` there
+ * means "the file is empty", which is the only condition under which inventing
+ * a preamble is honest. Reading it as "no `\begin{document}` was found" is what
+ * put a style seed above a real paper's own `\documentclass`.
  *
  * Factored because three callers now need it (the load writeback, the bundle
  * write, and task 364's conflict net), and two hand copies of "how does this
@@ -647,9 +652,10 @@ async function writeReStampedTexOnLoad(
   //
   // Preserve the user's preamble/postamble verbatim. Mirror writeDocBundle:
   // for an existing doc the delimiters come straight off the .tex; only a
-  // brand-new / empty doc (no \begin{document}) seeds a preamble, here from
-  // the doc's selected style.
-  const delimiters = extractPreambleAndPostamble(existingLatex);
+  // genuinely EMPTY file seeds a preamble, here from the doc's selected style
+  // (`resolveWriteDelimiters` — task 375 M5: a file with BYTES but no locatable
+  // boundary is written back as body with nothing prepended, never re-seeded).
+  const delimiters = resolveWriteDelimiters(existingLatex);
   const newSidecar = extractSidecarData(content);
 
   await enqueueDocWrite(h, "bundle", async () => {
@@ -805,7 +811,7 @@ export async function writeDocBundle(
         delimiters = cached.delimiters;
       } else {
         delimiters =
-          extractPreambleAndPostamble(
+          resolveWriteDelimiters(
             await safeReadText(docHandle, meta.texFilename, ""),
           ) ?? undefined;
       }
@@ -923,7 +929,7 @@ export async function writeDocBundle(
     // Cache the delimiters as they exist in the FILE WE JUST WROTE (the
     // serializer may have injected requirements into the preamble), keyed on
     // its hash — the next steady-state autosave skips the full-file read.
-    const writtenDelimiters = extractPreambleAndPostamble(latex);
+    const writtenDelimiters = resolveWriteDelimiters(latex);
     if (writtenDelimiters) {
       delimiterCacheByDoc.set(h.docId, {
         texHash: latexHash,
@@ -994,7 +1000,7 @@ export async function snapshotConflictSides(
     let mineName: string | null = null;
     if (mine) {
       const delimiters =
-        extractPreambleAndPostamble(
+        resolveWriteDelimiters(
           await safeReadText(docHandle, texName, ""),
         ) ?? undefined;
       let body: string;

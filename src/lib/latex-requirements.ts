@@ -28,7 +28,11 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
-import { projectDetectableLatex } from "@/lib/latex-lexer";
+import {
+  BEGIN_DOCUMENT_TOKEN,
+  findDocumentBoundary,
+  projectDetectableLatex,
+} from "@/lib/latex-lexer";
 import {
   reconcileBibFamily,
   type BibFamily,
@@ -310,8 +314,15 @@ export function ensurePreambleRequirements(
   );
   if (missing.length === 0) return preamble;
 
-  const beginMarker = "\\begin{document}";
-  const beginIdx = preamble.indexOf(beginMarker);
+  // Splice at the LIVE offset (task 375 M3). Testing satisfaction against the
+  // projected bytes while splicing into the RAW ones was the asymmetry that let
+  // a commented-out `% \begin{document}` take the injection: the package block
+  // landed BETWEEN the `%` and the token, leaving the `%` alone on its own line
+  // and the `\begin{document}` LIVE — so the user's real `\usepackage` lines
+  // ended up after it, which is a hard LaTeX error. `findDocumentBoundary`
+  // projects comments, the verbatim family and inline `\verb` away and returns
+  // an offset into `preamble` itself, so the two halves now ask one question.
+  const beginIdx = findDocumentBoundary(preamble).beginDoc;
   if (beginIdx === -1) return preamble;
 
   const additions = missing.map((r) => r.injectLine);
@@ -367,7 +378,7 @@ export function buildPreamble(
   ];
   if (extraLines && extraLines.length > 0) blocks.push(extraLines.join("\n"));
   blocks.push(SHIM_BLOCK);
-  return blocks.join("\n\n") + "\n\n\\begin{document}\n\n";
+  return blocks.join("\n\n") + "\n\n" + BEGIN_DOCUMENT_TOKEN + "\n\n";
 }
 
 // ---------------------------------------------------------------------------

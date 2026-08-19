@@ -23,6 +23,10 @@ import SystemDialog, {
 } from "./system-dialog";
 import { Input } from "./field-primitives";
 import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
+import {
+  findDocumentBoundary,
+  findLiveDocumentTokens,
+} from "@/lib/latex-lexer";
 
 const editorTheme = EditorView.theme({
   "&": {
@@ -49,8 +53,6 @@ const editorTheme = EditorView.theme({
   ".cm-cursor": { borderLeftColor: "var(--accent)" },
 });
 
-const BEGIN_DOC_RE = /\\begin\{document\}/g;
-const END_DOC_RE = /\\end\{document\}/;
 
 export interface StyleEditorResult {
   name: string;
@@ -79,14 +81,20 @@ interface ValidationResult {
 }
 
 function validatePreamble(text: string): ValidationResult {
-  const beginMatches = text.match(BEGIN_DOC_RE) ?? [];
-  if (beginMatches.length === 0) {
+  // LIVE occurrences only, through the one door (task 375). A hand-authored
+  // style preamble routinely COMMENTS a marker out — a `% \end{document}` note,
+  // or an alternative `% \begin{document}` line the author is toggling between
+  // — and the private regex copies this replaced counted both, so a perfectly
+  // valid blob was refused with a message naming a token the compiler never
+  // sees.
+  const { begins, ends } = findLiveDocumentTokens(text);
+  if (begins.length === 0) {
     return { ok: false, message: "Missing \\begin{document}." };
   }
-  if (beginMatches.length > 1) {
+  if (begins.length > 1) {
     return { ok: false, message: "Found more than one \\begin{document}." };
   }
-  if (END_DOC_RE.test(text)) {
+  if (ends.length > 0) {
     return {
       ok: false,
       message: "Preamble must not contain \\end{document}.",
@@ -99,11 +107,12 @@ function validatePreamble(text: string): ValidationResult {
  *  `\begin{document}\n\n` — matches the contract used by
  *  `useDocumentStyle.setStyle` when re-assembling the .tex. */
 function normalizePreambleTrailing(text: string): string {
-  // Find the \begin{document} marker and ensure exactly two trailing \n.
-  const idx = text.indexOf("\\begin{document}");
-  if (idx === -1) return text;
-  const head = text.slice(0, idx + "\\begin{document}".length);
-  return head + "\n\n";
+  // Find the LIVE \begin{document} marker (task 375's one door — a
+  // commented-out one in a hand-authored style preamble must not decide where
+  // the blob ends) and ensure exactly two trailing \n.
+  const { bodyStart } = findDocumentBoundary(text);
+  if (bodyStart === -1) return text;
+  return text.slice(0, bodyStart) + "\n\n";
 }
 
 export default function StyleEditorModal({

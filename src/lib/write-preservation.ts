@@ -72,6 +72,7 @@ import {
   measureContentBag,
   type WordBag,
 } from "@/lib/tex-preservation";
+import { findDocumentBoundary } from "@/lib/latex-lexer";
 import {
   clearPreservationNotice,
   isPreservationAcknowledged,
@@ -104,10 +105,11 @@ interface Entry {
  *  shape AGENTS.md asks for rather than a single module slot. */
 const byDoc = new Map<string, Entry>();
 
-/** Split on `\begin{document}`, mirroring `tex-preservation`'s own regions so
- *  the two gates cannot disagree about what a region is. */
+/** Split at the LIVE `\begin{document}` (task 375's one door), mirroring
+ *  `tex-preservation`'s own regions so the two gates cannot disagree about what
+ *  a region is — including about which occurrence of the token is real. */
 function regionBags(tex: string): RetainedBags {
-  const i = tex.indexOf("\\begin{document}");
+  const i = findDocumentBoundary(tex).beginDoc;
   const preamble = i === -1 ? "" : tex.slice(0, i);
   const body = i === -1 ? tex : tex.slice(i);
   return {
