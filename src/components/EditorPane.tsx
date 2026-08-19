@@ -3311,13 +3311,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
      * multi-anchor seeding) lives in `src/links/card-anchor-rows.ts`; this is
      * the margin's thin adapter onto it.
      */
-    const resolveMarkerPids = (
-      c: CardWithLinks,
-      pids: string[],
-    ): Array<{ pid: string; unanchored: boolean }> => {
-      void pids; // the authority reads the card's links itself
-      return buildMarginMarkerRows(c, anchorPass.resolve);
-    };
+    // NOTE the loops below no longer pre-check `getLinkedTextObjectIds(card)`
+    // before asking. That gate was the LAST place the two renderers could
+    // still disagree: a card whose stored pids are empty but whose snapshot
+    // (or surviving mark) still resolves — a Mode-B card that lost its
+    // textObjectIds is the shipped shape, see task 107 — got an anchored omni
+    // row and NO marker at all. A card with nothing to resolve returns zero
+    // rows here, so the loop emits nothing and the skip is the authority's.
+    const resolveMarkerPids = (c: CardWithLinks) =>
+      buildMarginMarkerRows(c, anchorPass.resolve);
 
     // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph — indexed
     // over the RESOLVED rows, which is exactly the list each omni builder
@@ -3332,10 +3334,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Notes
     for (const n of notesHook.notes) {
-      const pids = getLinkedTextObjectIds(n);
-      if (pids.length === 0) continue;
       const anchor = getTextAnchor(n);
-      for (const { pid, unanchored } of resolveMarkerPids(n, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(n)) {
         result.push({
           id: `${n.id}:${pid}`,
           entityId: n.id,
@@ -3356,9 +3356,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Archive snippets
     for (const snippet of archiveHook.snippets) {
-      const pids = getLinkedTextObjectIds(snippet);
-      if (pids.length === 0) continue;
-      for (const { pid, unanchored } of resolveMarkerPids(snippet, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(snippet)) {
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
@@ -3392,10 +3390,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       )
         continue;
       const revAnchor = getTextAnchor(r);
-      const pids = getLinkedTextObjectIds(r);
-      // A revision with neither a text anchor nor a stored pid has nothing
-      // to resolve from — skip (matches the old "no mark → no marker").
-      if (!revAnchor && pids.length === 0) continue;
       const anchorId = revAnchor?.anchorId;
       const revKind: EntityKind =
         r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
@@ -3404,7 +3398,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // pass) no hover Keep/Revert chips either: the gutter marker is just a
       // plain revision marker. Keep/Revert reach the change through the card and
       // the in-context left-margin pill instead.
-      for (const { pid, unanchored } of resolveMarkerPids(r, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(r)) {
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
@@ -3425,8 +3419,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Cutter cards
     for (const c of cutterHook.cards) {
-      const pids = getLinkedTextObjectIds(c);
-      if (pids.length === 0) continue;
       const cardAnchor = getTextAnchor(c);
       const title = c.kind === "suggestion"
         ? c.explanation || "Suggestion"
@@ -3437,7 +3429,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // no re-skin and no hover Keep/Revert chips (margin-declutter pass); the
       // gutter marker is plain. Keep/Revert reach the change through the card and
       // the in-context left-margin pill instead.
-      for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(c)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -3458,13 +3450,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Reports (report + report-request) — both kinds share the "report" marker
     for (const c of reportsHook.cards) {
-      const pids = getLinkedTextObjectIds(c);
-      if (pids.length === 0) continue;
       const cardAnchor = getTextAnchor(c);
       const title = c.kind === "report"
         ? (c.title || c.text || "Report")
         : (c.text || "Report request");
-      for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(c)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -3485,9 +3475,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Todo
     for (const item of todosHook.items) {
-      const pids = getLinkedTextObjectIds(item);
-      if (pids.length === 0) continue;
-      for (const { pid, unanchored } of resolveMarkerPids(item, pids)) {
+      for (const { pid, unanchored } of resolveMarkerPids(item)) {
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,

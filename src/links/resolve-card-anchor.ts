@@ -33,11 +33,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
-import {
-  collectLiveUuids,
-  paragraphUuidAt,
-  type CardWithLinks,
-} from "./links";
+import { paragraphUuidAt, type CardWithLinks } from "./links";
 
 // Re-export so consumers (and CHIP-D's capture side) keep importing the
 // canonical normalization from the resolver's public surface, even though
@@ -101,8 +97,16 @@ export interface ResolveIndex {
  * of card count — build ONCE per reconcile/render pass, then resolve each
  * card in O(1) against it.
  *
- * Three lookups, populated together:
- *   - `uuidToParagraph` — reuses `collectLiveUuids` (the live `uuid` set).
+ * Three lookups, populated together by ONE walk:
+ *   - `uuidToPos` — every live `uuid` → its document position, and
+ *     `uuidToParagraph` is its key set. This used to be a SECOND, redundant
+ *     `collectLiveUuids` pass; since task 369 the same walk that reads the
+ *     marks and the snapshots carries the position, so the set is derived
+ *     rather than re-walked. (The only shape the two passes could ever have
+ *     disagreed on is a TEXT node carrying a `uuid` attr — the walk below
+ *     returns early for text — and the schema has none: no member of
+ *     `UUID_BEARING_NODE_TYPES` is inline and there is no
+ *     `addGlobalAttributes` anywhere in `src/`.)
  *   - `anchorIdToParagraph` — every `linkedAnchor` mark's anchorId mapped
  *     to its enclosing paragraph uuid (modeled on
  *     `collectLinksFromEditor`'s mark walk).
@@ -112,13 +116,11 @@ export interface ResolveIndex {
  *     still resolves to its FIRST uuid — documented, position
  *     disambiguation is backlog).
  *
- * Cost: `collectLiveUuids` is one full descendants walk and the
- * mark+snapshot pass below is one more — both O(doc) and constant in the
- * number of cards. The contract's "never O(doc·cards)" is the load-bearing
- * invariant: no per-card walking.
+ * Cost: ONE full `descendants` walk, O(doc) and constant in the number of
+ * cards. The contract's "never O(doc·cards)" is the load-bearing invariant:
+ * no per-card walking.
  */
 export function buildResolveIndex(editor: Editor): ResolveIndex {
-  const uuidToParagraph = collectLiveUuids(editor);
   const anchorIdToParagraph = new Map<string, string>();
   const uuidToPos = new Map<string, number>();
 
@@ -160,6 +162,9 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
     }
     return true;
   });
+
+  // The live-uuid SET is the position map's key set — same walk, no second pass.
+  const uuidToParagraph = new Set(uuidToPos.keys());
 
   const snapshotToParagraph = (normalizedSnapshot: string): string | null => {
     if (!normalizedSnapshot) return null;

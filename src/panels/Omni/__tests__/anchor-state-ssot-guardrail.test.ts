@@ -31,6 +31,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { codeOnly } from "@/lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PANELS = path.resolve(HERE, "../.."); // src/panels/
@@ -73,11 +74,23 @@ function inlineAnchorStateOffenders(source: string, forwardOk: boolean): string[
   return offenders;
 }
 
-/** True iff this file reads its rows from the shared omni-anchor reader. */
+/**
+ * True iff this file actually CALLS the shared omni-anchor reader.
+ *
+ * An IMPORT is not enough and the difference is not academic: the needle runs
+ * over source, so a commented-out import — or a "mirrors buildOmniAnchorRows,
+ * keep in sync" doc line — would grant the forward exemption for the whole
+ * file, which is the hole the node-attr-sets census earned its rule about.
+ * Comments are stripped and a CALL is required.
+ *
+ * Stated limit: the exemption is per FILE, not per SITE, so a file that
+ * legitimately calls the reader could also hand-roll a local `row` object and
+ * forward its `anchorState`. Closing that needs binding analysis; the census
+ * in `card-anchor-authority-census.test.ts` covers the realistic route (an
+ * omni builder may not read a card's links or walk the doc at all).
+ */
 function usesSharedReader(source: string): boolean {
-  return /import\s*\{[^}]*\bbuildOmniAnchorRows\b[^}]*\}\s*from\s*["'][^"']*omni-anchor-rows["']/.test(
-    source,
-  );
+  return /\bbuildOmniAnchorRows\s*\(/.test(codeOnly(source));
 }
 
 describe("anchor-state SSOT guardrail", () => {

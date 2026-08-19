@@ -35,13 +35,21 @@ export interface OmniAnchorRow
   /** The omni item id — `baseId`, plus `@<i>` when the card has >1 row. */
   omniId: string;
   /**
-   * True iff this row is KNOWN to sit on a live paragraph — the predicate a
-   * builder uses for its Jump affordance and its anchored/orphaned chrome.
-   * It is the authority's verdict AND a resolved position, so the mount gap
-   * (no index yet ⇒ no position) answers `false`: the margin fails OPEN there
-   * (it can key a marker on a raw stored pid), but an omni row with nothing to
-   * point at must not offer a Jump. Never re-derive it from `pos` alone —
-   * `pos` is a seed the live resolver supersedes.
+   * True iff this row is KNOWN to sit on a live paragraph: the authority's
+   * verdict AND a resolved position. The mount gap (no index yet ⇒ no
+   * position) answers `false` — the margin fails OPEN there, since it can key
+   * a marker on a raw stored pid, but an omni row with nothing to point at
+   * must not offer a Jump. Never re-derive it from `pos` alone: `pos` is a
+   * seed the live resolver supersedes.
+   *
+   * **Stated honestly: this is not (yet) the Jump predicate everywhere.** Only
+   * `Archive` gates its Jump and orphan chrome on it; the other five builders
+   * gate on `anchorUuid != null` (= "the card stores an anchor"), which is
+   * each panel's own pre-369 rule, preserved byte-for-byte. The two differ for
+   * a card whose anchor is UNRECOVERABLE: those five still render a Jump that
+   * `jumpToCard` cannot resolve. That is a pre-existing false affordance in a
+   * surface this task did not set out to renegotiate, so it is recorded here
+   * and in AGENTS.md rather than silently changed under a refactor.
    */
   anchored: boolean;
 }
@@ -53,9 +61,14 @@ export interface OmniAnchorRow
  *   stores no paragraph anchor at all. Panels differ here and the difference
  *   is editorial, not derivable: an unlinked note/todo/revision/cutter/report
  *   is deliberately FREE by that panel's own rule, while an archive clip reads
- *   its own `unanchored` flag. A card whose stored anchor is DEAD never takes
- *   this path — it is classified from the card record itself, so a lost marker
- *   still reads `orphaned` (red) rather than being laundered into `free`.
+ *   its own `unanchored` flag. A card whose stored anchor is DEAD does not take
+ *   this path — it is classified from the CARD RECORD instead, so a note/todo/
+ *   revision/cutter/report that lost its marker reads `orphaned` (red) rather
+ *   than being laundered into `free`. The one record that carries an
+ *   `unanchored` field of its own is `ArchivedSnippet`, so a born-free clip
+ *   with a dead stored pid does read `free` — byte-identical to pre-369, where
+ *   the same branch consulted the same flag, and the right answer: the clip
+ *   was deliberately never placed.
  */
 export function buildOmniAnchorRows(
   card: CardWithLinks,

@@ -120,8 +120,21 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
   const index = editor ? buildResolveIndex(editor) : null;
   const ready = !!index && index.uuidToParagraph.size > 0;
   const bound = ready ? index : null;
+  // Per-card memo. A pass has SEVERAL readers per card — the margin's rows and
+  // its click index, the omni row builder, the archive anchored-id fold — and
+  // resolving twice would run the whole ladder twice, snapshot normalization
+  // included. Keyed on the card OBJECT (stable per render from the sidecar
+  // hooks' arrays) and scoped to this pass, which is itself rebuilt whenever
+  // the index can have changed, so a memo can never outlive its index.
+  const memo = new WeakMap<CardWithLinks, CardAnchorRows>();
   return {
-    resolve: (card) => resolveCardAnchorRows(card, editor, bound),
+    resolve: (card) => {
+      const hit = memo.get(card);
+      if (hit) return hit;
+      const out = resolveCardAnchorRows(card, editor, bound);
+      memo.set(card, out);
+      return out;
+    },
     posOf: (uuid) => (uuid ? index?.uuidToPos.get(uuid) ?? null : null),
   };
 }

@@ -288,8 +288,13 @@ describe("omni builder anchorState classification", () => {
     ];
     // The docked panel's anchored set is now DERIVED from the same authority
     // the omni builder reads (task 369) — `EditorPane.anchoredArchiveIds` is
-    // exactly this fold — so presence-vs-position divergence is structural,
-    // not a fixture the test has to keep faithful by hand.
+    // exactly this fold. NOTE this line is a MIRROR of that production fold,
+    // not the fold itself: the builder no longer takes an `anchoredIds` prop,
+    // so nothing here can bear on production input. What pins the real fold is
+    // the `C2` leg of `card-anchor-authority-census.test.ts`, which reads the
+    // `anchoredArchiveIds` memo's own source and requires it to go through
+    // `anchorPass.resolve`. Kept here because the docked/float PARITY claim
+    // below is still worth stating in one place.
     const anchoredIds = new Set(
       snippets.filter((s) => resolveCardRows(s).anchored).map((s) => s.id),
     );

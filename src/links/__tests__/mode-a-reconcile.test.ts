@@ -48,12 +48,17 @@ import {
 import {
   addTextObjectLink,
   captureParagraphSnapshot,
-  collectLiveUuids,
   findParagraphIdBySnapshot,
   isModeAOrphaned,
   reconcileModeAAnchors,
   type CardWithLinks,
 } from "@/links/links";
+import { buildResolveIndex } from "@/links/resolve-card-anchor";
+
+/** The live-uuid set, read from the ONE index (task 369 retired the separate
+ *  `collectLiveUuids` walk — the set is that index's key set). */
+const liveUuids = (editor: Editor): Set<string> =>
+  buildResolveIndex(editor).uuidToParagraph;
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -123,7 +128,7 @@ describe("Mode-A self-healing reconcile", () => {
       "The body of the note.",
     );
     // Sanity: the stored UUID is dead.
-    const live = collectLiveUuids(editor);
+    const live = liveUuids(editor);
     expect(live.has("stale")).toBe(false);
     expect(isModeAOrphaned(card, live)).toBe(true);
 
@@ -134,7 +139,7 @@ describe("Mode-A self-healing reconcile", () => {
     if (link?.anchor.type !== "textObject") throw new Error("expected textObject");
     expect(link.anchor.textObjectIds).toEqual(["fresh"]);
     // No longer orphaned after the rebind.
-    expect(isModeAOrphaned(card, collectLiveUuids(editor))).toBe(false);
+    expect(isModeAOrphaned(card, liveUuids(editor))).toBe(false);
     editor.destroy();
   });
 
@@ -156,7 +161,7 @@ describe("Mode-A self-healing reconcile", () => {
       // the binding doesn't move to the earlier same-text paragraph.
       "",
     );
-    const live = collectLiveUuids(editor);
+    const live = liveUuids(editor);
     const res = reconcileModeAAnchors(card, editor, live);
     const link = res.card.links?.[0];
     if (link?.anchor.type !== "textObject") throw new Error("expected textObject");
@@ -185,7 +190,7 @@ describe("Mode-A self-healing reconcile", () => {
       "paragraph",
       "Ambiguous shared text.",
     );
-    const res = reconcileModeAAnchors(card, editor, collectLiveUuids(editor));
+    const res = reconcileModeAAnchors(card, editor, liveUuids(editor));
     const link = res.card.links?.[0];
     if (link?.anchor.type !== "textObject") throw new Error("expected textObject");
     expect(link.anchor.textObjectIds).toEqual(["first0"]);
@@ -201,7 +206,7 @@ describe("Mode-A self-healing reconcile", () => {
     expect(link0.anchor.paragraphSnapshot).toBeUndefined();
 
     // (a) UUID still resolves → backfills snapshot, does not move.
-    const r1 = reconcileModeAAnchors(liveCard, editorLive, collectLiveUuids(editorLive));
+    const r1 = reconcileModeAAnchors(liveCard, editorLive, liveUuids(editorLive));
     const l1 = r1.card.links?.[0];
     if (l1?.anchor.type !== "textObject") throw new Error("expected textObject");
     expect(l1.anchor.textObjectIds).toEqual(["live0"]);
@@ -212,7 +217,7 @@ describe("Mode-A self-healing reconcile", () => {
     //     surfaces as orphaned. No crash.
     const editorGone = mountDoc([{ uuid: "other0", text: "Unrelated." }]);
     const deadCard = addTextObjectLink(noteCard("n2"), "note", "gone00"); // no snapshot
-    const live = collectLiveUuids(editorGone);
+    const live = liveUuids(editorGone);
     const r2 = reconcileModeAAnchors(deadCard, editorGone, live);
     expect(r2.changed).toBe(false);
     expect(isModeAOrphaned(r2.card, live)).toBe(true);

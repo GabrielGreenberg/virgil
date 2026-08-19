@@ -207,9 +207,13 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
     const card = snippet("s1", [paraLink("DEAD-UUID", P2_TEXT)]);
     const pass = buildCardAnchorPass(editor);
 
-    // Defect leg: the retired bare-uuid gate calls this card orphaned, which
-    // is exactly what the omni surface used to publish while the margin
-    // painted an ordinary marker beside P2.
+    // PREMISE pin (not a defect leg — it exercises the restated rule alone,
+    // so it passes on the pre-369 tree too): it keeps the fixture from
+    // degenerating into a rung-1 case, which would make every assertion below
+    // it vacuous. The retired gate calls this card orphaned, which is exactly
+    // what the omni surface used to publish while the margin painted an
+    // ordinary marker beside P2. The legs that FAIL on the retired rule are
+    // the ones after it.
     expect(preFixAnchored(card, new Set(["P1", "P2"]))).toBe(false);
 
     const marginRows = buildMarginMarkerRows(card, pass.resolve);
@@ -285,8 +289,10 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
       expect(omniRows[i].anchorState).toBe("anchored");
       expect(marginAnchorIndex(card, marginRows[i].pid, pass.resolve)).toBe(i);
     }
-    // The defect leg: the retired index-over-STORED-pids has no entry for the
-    // recovered paragraph, so a marker click on it pinned no omni row at all.
+    // PREMISE pin (see the first leg): the retired index-over-STORED-pids has
+    // no entry for the recovered paragraph — which is WHY a marker click on it
+    // pinned no omni row at all. The assertions above are what fail on the
+    // retired rule.
     expect(getLinkedTextObjectIds(card).indexOf("P2")).toBe(-1);
     editor.destroy();
   });
