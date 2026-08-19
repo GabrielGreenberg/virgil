@@ -124,6 +124,65 @@ describe("useCardDeleteKey (task 110)", () => {
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
+  // ── task 386: the guard is scoped to a STRICT DESCENDANT of the shell ──
+  //
+  // A card root is often itself `draggable="true"` (cross-editor anchor drags —
+  // `CitationCard` ships it, and `EditableCard` has the wiring), and
+  // `[draggable='true']` is a member of INTERACTIVE_CONTROL_SELECTOR. An
+  // unscoped `closest()` from any nested target therefore walks PAST that
+  // target and matches the card ROOT — so the guard would bail on every keydown
+  // and the delete key would be dead app-wide, silently. `PanelCard`'s lift
+  // blocklist scopes the identical query for the identical reason.
+  it("still deletes from the shell when the shell ITSELF is draggable", () => {
+    const onDelete = vi.fn();
+    const { result } = renderHook(() => useCardDeleteKey(true, onDelete));
+    const { shell } = makeTree();
+    shell.setAttribute("draggable", "true");
+    const { evt } = keydown("Backspace", shell, shell);
+    result.current(evt);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("still deletes from a NON-interactive descendant of a draggable shell", () => {
+    const onDelete = vi.fn();
+    const { result } = renderHook(() => useCardDeleteKey(true, onDelete));
+    const { shell } = makeTree();
+    shell.setAttribute("draggable", "true");
+    // e.g. the card's own focusable header row — not a field, so the key is a
+    // card-delete, not a character edit.
+    const header = document.createElement("div");
+    header.tabIndex = 0;
+    shell.appendChild(header);
+    const { evt } = keydown("Backspace", header, shell);
+    result.current(evt);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("an interactive ancestor OUTSIDE the shell is not this card's business", () => {
+    const onDelete = vi.fn();
+    const { result } = renderHook(() => useCardDeleteKey(true, onDelete));
+    const { shell } = makeTree();
+    const outer = document.createElement("div");
+    outer.setAttribute("draggable", "true");
+    outer.appendChild(shell);
+    const header = document.createElement("div");
+    shell.appendChild(header);
+    const { evt } = keydown("Backspace", header, shell);
+    result.current(evt);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("STILL bails for a field nested inside a draggable shell", () => {
+    const onDelete = vi.fn();
+    const { result } = renderHook(() => useCardDeleteKey(true, onDelete));
+    const { shell, input } = makeTree();
+    shell.setAttribute("draggable", "true");
+    const { evt, preventDefault } = keydown("Backspace", input, shell);
+    result.current(evt);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
   it("is a no-op (no throw) when onDelete is undefined", () => {
     const { result } = renderHook(() => useCardDeleteKey(true, undefined));
     const { shell } = makeTree();

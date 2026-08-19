@@ -47,6 +47,39 @@ export interface ConfirmDialogProps {
   anchorRef?: RefObject<HTMLElement | null>;
 }
 
+/** Which footer button a confirm dialog CUES — the one that takes initial focus
+ *  and that `Enter` therefore activates.
+ *
+ *  A `default`-tone confirm cues its primary action, which is what a confirm
+ *  dialog is for. A **danger** confirm cues its SAFEST button instead: Cancel
+ *  where there is one, else the secondary answer, else nothing.
+ *
+ *  This is a data-safety rule, not a styling preference (task 386). Every
+ *  danger confirm in the app opens under fingers that are already moving —
+ *  the reporting case was a card TITLE being typed when a stray `Backspace`
+ *  reached the card shell: the dialog mounted with `Delete` focused, and the
+ *  very next keystroke of ordinary typing pressed it. From the keyboard's point
+ *  of view "Backspace, keep typing" WAS "delete the card". A destructive
+ *  default armed under a still-typing user is the trap wherever the dialog
+ *  opens from, so the rule is global rather than per-caller.
+ *
+ *  The danger action stays fully keyboard-reachable — Tab, then Enter — which
+ *  is the right cost for a deliberate destructive choice. `hideCancel` +
+ *  `danger` (a single-button danger notice) cues nothing: there is no safe
+ *  button to move focus to, and cueing the only button would re-arm the trap.
+ *  `SystemDialog` focuses its frame in that case, so `Escape` still works and a
+ *  stray `Enter` does nothing. */
+export function confirmDialogCuedDefault(opts: {
+  tone?: ConfirmTone;
+  hideCancel?: boolean;
+  hasSecondary?: boolean;
+}): "confirm" | "cancel" | "secondary" | "none" {
+  if (opts.tone !== "danger") return "confirm";
+  if (!opts.hideCancel) return "cancel";
+  if (opts.hasSecondary) return "secondary";
+  return "none";
+}
+
 export default function ConfirmDialog({
   open,
   title,
@@ -61,6 +94,11 @@ export default function ConfirmDialog({
   onCancel,
   anchorRef,
 }: ConfirmDialogProps) {
+  const cuedDefault = confirmDialogCuedDefault({
+    tone,
+    hideCancel,
+    hasSecondary: !!(secondaryLabel && onSecondary),
+  });
   return (
     <SystemDialog
       open={open}
@@ -74,18 +112,21 @@ export default function ConfirmDialog({
       </SystemDialogBody>
       <SystemDialogFooter>
         {!hideCancel && (
-          <SystemDialogButton onClick={onCancel}>
+          <SystemDialogButton autoFocus={cuedDefault === "cancel"} onClick={onCancel}>
             {cancelLabel}
           </SystemDialogButton>
         )}
         {secondaryLabel && onSecondary && (
-          <SystemDialogButton onClick={onSecondary}>
+          <SystemDialogButton
+            autoFocus={cuedDefault === "secondary"}
+            onClick={onSecondary}
+          >
             {secondaryLabel}
           </SystemDialogButton>
         )}
         <SystemDialogButton
           variant={tone === "danger" ? "danger" : "primary"}
-          autoFocus
+          autoFocus={cuedDefault === "confirm"}
           onClick={onConfirm}
         >
           {confirmLabel}

@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { buildLetterMap } from "./nav-core";
+import { isEditableEventTarget } from "@/lib/drag-blocklist";
 import type { MenuRegistry } from "./registry";
 import type { MenuLayout, MenuOrientation, NavDir } from "./types";
 
@@ -221,6 +222,20 @@ export function useMenuKeyboard(
     const onKey = (e: KeyboardEvent) => {
       // Leave Escape to useMenuDismiss; ignore modifier combos for nav keys.
       if (e.key === "Escape") return;
+      // A window-CAPTURE listener sees keys the menu was never given. When the
+      // caret sits in an editable control, every key this controller consumes
+      // is a key that control needs: arrows move the caret, letters type, and
+      // `Backspace`/`Delete` — which `buildLetterMap` accepts as aliases, and
+      // which `DragHandleMenu` aliases onto its DESTRUCTIVE delete row — erase
+      // a character. Un-guarded, one Backspace deleted the block instead
+      // (task 386's sweep: the same missing-interactive-guard class as that
+      // task's card-title loss, one layer up and worse, because capture phase
+      // means the field never even sees the key). The COMBOBOX source needs no
+      // such bail: its handler is wired by the caller onto the menu's OWN
+      // input, which is a deliberate opt-in rather than a global reach — the
+      // same `target === currentTarget` line `keyEventFromInteractiveControl`
+      // draws.
+      if (isEditableEventTarget(e.target)) return;
       if (consume(e)) {
         e.preventDefault();
         e.stopPropagation();
