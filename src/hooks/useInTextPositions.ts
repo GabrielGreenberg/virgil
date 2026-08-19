@@ -12,6 +12,11 @@ import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { resolveVisiblePosBand } from "@/lib/editor-geometry/viewport-probe";
 import { holdWithinEpsilon, HEIGHT_EPSILON_PX } from "@/lib/reposition-policy";
+import {
+  createConvergenceController,
+  type ConvergenceController,
+  type MeasureOutcome,
+} from "@/lib/editor-geometry/settle-convergence";
 import { onFontReady } from "@/lib/text-metrics";
 import {
   isLayoutGestureActive,
@@ -133,17 +138,24 @@ export function retainedEntryHeight(
 }
 
 /**
- * Settle-loop tuning. The post-mount rAF stabilization loop re-measures
- * after layout settles (web-font swap, KaTeX/expex/figure NodeView mount).
- * It is self-terminating: it stops the FIRST frame the editor's
- * `scrollHeight` is unchanged from the prior frame (`SETTLE_STABLE_FRAMES`
- * = 1 stable observation), or hard-stops after `SETTLE_MAX_FRAMES` frames
- * (~500ms @ 60fps) so a perpetually-animating doc can never spin it
- * forever. It is armed ONCE per mount/enable and never re-armed by a
- * transaction — so it is off the keystroke path entirely.
+ * Settle tuning lives in `settle-convergence.ts` (task 370) — this hook owns
+ * only the VERDICT each pass reports (`MeasureOutcome`), never the termination
+ * rule.
+ *
+ * What retired here: a rAF loop that stopped the first frame the editor's
+ * `scrollHeight` was unchanged (`SETTLE_STABLE_FRAMES = 1`), or after a
+ * 30-frame cap. `scrollHeight` is a TOTAL, and inner layout moves inside an
+ * unchanged total constantly (a KaTeX span sizing, an expex example reflowing,
+ * a figure NodeView swapping a same-height placeholder) while an absolutely
+ * positioned lane never touches it at all — so on a card-dense page the loop
+ * declared victory one frame into a settle that had barely begun, and NOTHING
+ * re-measured until the user scrolled. Visible as a lane packed contiguously
+ * from the top at minimum spacing that SNAPS on the first scroll.
+ *
+ * The criterion is now the consumer's own fixed point: two consecutive passes
+ * that commit nothing past the task-328 hysteresis. Nothing to keep in sync —
+ * `changed` below IS the epsilon comparison.
  */
-const SETTLE_MAX_FRAMES = 30;
-const SETTLE_STABLE_FRAMES = 1;
 
 /**
  * Clean-re-show suppression window (ms). On a clean keep-alive re-show the
@@ -480,9 +492,13 @@ export function useInTextPositions(
   // scroll exactly one Set-size check).
   const approxIdsRef = useRef<Set<string>>(new Set());
   const [measureVersion, setMeasureVersion] = useState(0);
-  const computeRafRef = useRef(0);
-  // Settle loop bookkeeping — armed once per mount/enable, self-terminating.
-  const settleRafRef = useRef(0);
+  // The ONE settle door (task 370). Every "the world may have moved" trigger —
+  // cold mount, font-ready, the editor RO, the structural bus, the scroll-idle
+  // refinement, a dirty keep-alive re-show — enters `request()`, and each gets
+  // the SAME answer: keep measuring until two consecutive passes agree within
+  // the task-328 hysteresis, or the wall-clock budget runs out. Created lazily
+  // by the wiring effect (it needs `measureRef`), torn down with it.
+  const convergeRef = useRef<ConvergenceController | null>(null);
   // `onFontReady` now returns a disposer (called in the effect cleanup), so a
   // fresh closure per effect run doesn't accumulate. This ref is the belt to
   // that suspenders: it lets an already-queued ping bail after unmount/disable
@@ -502,6 +518,29 @@ export function useInTextPositions(
         performance.now() >= suppressMeasureUntilRef.current),
     [],
   );
+
+  // Is the user typing into a card body inside THIS pod? Per-keystroke
+  // sub-pixel height jitter (different glyph widths) would otherwise tick
+  // `setMeasureVersion` and re-position every card, which reads as the typed
+  // card "jumping" — worst in focus mode, where the cascade has too few items
+  // to absorb one card's wobble.
+  //
+  // Hoisted to hook scope by task 370 so it gates EVERY pass, not just the
+  // per-card ResizeObserver's. It is a `deferred`, never an `inert`: a cold
+  // load that happens to coincide with card typing must still converge, so the
+  // chain retries — and the `focusout` handler re-arms, which is what keeps a
+  // long typing session from outliving the deadline and stranding a
+  // half-settled deck.
+  const isTypingInPanel = useCallback(() => {
+    const panelEl = panelScrollRef.current;
+    if (!panelEl || typeof document === "undefined") return false;
+    const active = document.activeElement as HTMLElement | null;
+    return !!(
+      active &&
+      panelEl.contains(active) &&
+      active.getAttribute("contenteditable") === "true"
+    );
+  }, []);
 
   // Visibility flip detector — the FIRST effect to run on a flip (declared before
   // the wiring + re-show effects), so the suppression window is already open by
@@ -525,15 +564,23 @@ export function useInTextPositions(
     }
   }, [isVisible]);
 
-  const measure = useCallback(() => {
+  // Reports what the pass DID, so the convergence controller can fold verdicts
+  // without knowing anything about geometry (task 370). Every early return
+  // below is one of the four outcomes, and the distinction that matters is
+  // `deferred` (could not honestly measure — RETRY) vs `inert` (nothing to
+  // converge on — STOP): the pre-370 settle loop conflated "cannot measure this
+  // frame" with "done", so a single hidden/suppressed frame killed the settle
+  // permanently.
+  const measure = useCallback((): MeasureOutcome => {
     // HIDDEN (but enabled): RETAIN the cached geometry — bail before any DOM read
     // (coordsAtPos/getBoundingClientRect return 0 under display:none, which would
     // corrupt naturalTop to 0 for every card). The doc received zero transactions
     // while hidden and pod-relative tops are scroll-invariant, so the retained
     // cache is still correct on re-show. This RETAINS (does not clear) so the
     // degeneracy guard below stays armed and the warm re-show never enters the
-    // size-0 cold heal.
-    if (!isVisibleRef.current) return;
+    // size-0 cold heal. DEFERRED, never inert: the cache is still live and the
+    // deck still needs converging — the re-show effect is what re-arms.
+    if (!isVisibleRef.current) return "deferred";
     // GENUINELY disabled or empty: clear (keyed on enabledProp, NOT visibility).
     if (!editor || !enabledProp || items.length === 0) {
       if (naturalRef.current.size > 0) {
@@ -545,11 +592,15 @@ export function useInTextPositions(
       // from truth rather than reusing stale geometry.
       realHeightRef.current.clear();
       setEditorContentHeight(0);
-      return;
+      // INERT: there is no deck to converge on. The controller terminates
+      // rather than burning its deadline; a later item arrival re-arms through
+      // the companion one-shot like any other trigger.
+      return "inert";
     }
 
     const panelEl = panelScrollRef.current;
-    if (!panelEl) return;
+    // No pod yet (first commit ordering) — retry, don't declare victory.
+    if (!panelEl) return "deferred";
 
     const podRect = panelEl.getBoundingClientRect();
     const editorDom = editor.view.dom as HTMLElement;
@@ -781,7 +832,11 @@ export function useInTextPositions(
     // the very first paint there's nothing to retain, so we still commit
     // (the settle loop then corrects it) rather than render a blank column.
     if (naturalRef.current.size > 0 && isDegenerateMeasure(raws)) {
-      return;
+      // The pass REJECTED ITSELF, so it is evidence of nothing — emphatically
+      // not agreement. Keep converging: this is the cold-start frame the loop
+      // exists for, and the pre-370 code's "one stable scrollHeight" could and
+      // did fire while these were still arriving.
+      return "deferred";
     }
 
     // Bound the retained-height cache to the live item set: a card removed from
@@ -811,6 +866,12 @@ export function useInTextPositions(
     }
     naturalRef.current = next;
     if (changed) setMeasureVersion((v) => v + 1);
+    // THE CONVERGENCE OBSERVATION. `changed` is already the task-328 epsilon
+    // comparison (every value above went through `committed()`, which holds a
+    // sub-epsilon move at its previously committed value), so "this pass agrees
+    // with the last one within the hysteresis" needs no second rule — it is
+    // exactly `!changed`.
+    return changed ? "changed" : "stable";
   }, [editor, items, enabledProp, entry, resolvePos]);
 
   // Trigger measurement on editor updates, viewport resize, editor
@@ -849,51 +910,59 @@ export function useInTextPositions(
 
     if (!editor) return;
 
+    // Every geometry trigger enters the ONE door (task 370). Pre-370 this fired
+    // a single rAF-coalesced pass — right only when one pass is enough, which
+    // is exactly what a cold load, a font swap and a late NodeView mount all
+    // falsify. `request()` costs the same per fire (a re-arm never enqueues a
+    // second pass; one pending pass is the whole rate limit), and adds only the
+    // trailing CONFIRMATION passes — idle-paced, bounded at two by the fixed
+    // point.
+    //
+    // The hidden/suppressed gate moves INSIDE the controller's measure closure
+    // above, so a trigger that arrives while suppressed is deferred-and-retried
+    // instead of dropped on the floor.
     const schedule = () => {
-      // Gate every trigger-driven measure: skip while hidden (coords read 0) and
-      // during the clean-re-show suppression window (swallow the reflow storm).
-      if (!canMeasureNow()) return;
-      cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(() => measureRef.current());
+      convergeRef.current?.request();
     };
 
-    // Part A — settle-aware re-measure. The initial `measure()` above races
+    // Part A — settle by CONVERGENCE (task 370). The initial `measure()` races
     // async layout: web fonts swap (FOUT) and React NodeViews (KaTeX math,
-    // expex examples, figures/images) mount and size AFTER first paint,
-    // moving every line. `coordsAtPos` read before that returns tops that are
-    // too small → cards collapse to the top. None of the existing triggers
-    // (structural bus, window resize, editor RO) reliably fire on a cold-load
-    // settle, so we add two transient, self-terminating correctors. Neither
-    // is an editor update/transaction subscriber, so both stay OFF the
-    // keystroke path: they fire once on mount-settle and on font-ready only.
-
-    // A.1 — bounded post-mount stabilization loop. Re-measure each rAF until
-    // the editor's laid-out height is stable across consecutive frames, or a
-    // hard frame cap elapses (~500ms). Self-terminating: it only reschedules
-    // while height is still changing AND under the cap, so a settled doc
-    // costs zero further frames and a perpetually-animating one can't spin it
-    // forever.
-    const editorDomForSettle = editor.view?.dom as HTMLElement | undefined;
-    let settleFrames = 0;
-    let settleStable = 0;
-    let lastSettleHeight = editorDomForSettle?.scrollHeight ?? -1;
-    const settleStep = () => {
-      if (!canMeasureNow()) return;
-      measureRef.current();
-      const h = editorDomForSettle?.scrollHeight ?? -1;
-      if (h === lastSettleHeight) {
-        settleStable += 1;
-      } else {
-        settleStable = 0;
-        lastSettleHeight = h;
-      }
-      settleFrames += 1;
-      if (settleStable >= SETTLE_STABLE_FRAMES || settleFrames >= SETTLE_MAX_FRAMES) {
-        return; // settled or capped — stop (no reschedule = self-terminating)
-      }
-      settleRafRef.current = requestAnimationFrame(settleStep);
-    };
-    settleRafRef.current = requestAnimationFrame(settleStep);
+    // expex examples, figures/images) mount and size AFTER first paint, moving
+    // every line. `coordsAtPos` read before that returns tops that are too
+    // small → the cascade packs every card sequentially from the top at MIN_GAP.
+    //
+    // Pre-370 this was healed by a rAF loop that terminated on ONE stable
+    // editor `scrollHeight` — a proxy for the wrong quantity (inner layout
+    // moves within an unchanged total; an absolutely-positioned lane never
+    // touches it) — after which NOTHING re-measured until the user scrolled.
+    // The loop is now the shared controller, whose termination rule is the
+    // consumer's own fixed point: two consecutive passes that commit nothing
+    // past the hysteresis. See `settle-convergence.ts` for the criterion, the
+    // rAF→idle ramp, the wall-clock cap and the per-trigger cost argument.
+    //
+    // Neither this nor A.2 is an editor update/transaction subscriber, so both
+    // stay OFF the keystroke path.
+    const converge = createConvergenceController(() => {
+      // The hook's POLICY layer sits here, not in the controller.
+      //  • HIDDEN ⇒ park the chain (`inert`). A hidden pane measures zeros, and
+      //    the re-show effect below is what re-arms — spinning the deadline out
+      //    against a `display:none` pane buys nothing.
+      //  • SUPPRESSED (the RESHOW_SUPPRESS_MS window) ⇒ `deferred`, so the pass
+      //    is DELAYED and retried rather than swallowed. That lets the window
+      //    keep doing its job (absorbing the display-flip reflow storm) without
+      //    ever eating a genuinely-needed convergence pass — it simply re-tries
+      //    until the window closes (and the DIRTY re-show closes it early,
+      //    because a dirty verdict voids the window's own premise).
+      //  • TYPING into a card body in this pod ⇒ `deferred`, the hoisted gate.
+      if (!isVisibleRef.current) return "inert";
+      if (!canMeasureNow()) return "deferred";
+      if (isTypingInPanel()) return "deferred";
+      return measureRef.current();
+    });
+    convergeRef.current = converge;
+    // Cold mount: arm it. `schedule()` below and every other trigger re-enter
+    // the same door rather than firing a lone pass.
+    converge.request();
 
     // A.2 — FOUT corrector. When web fonts swap in, every line shifts; the
     // metrics module clears its own caches on `document.fonts.ready` and we
@@ -1003,8 +1072,8 @@ export function useInTextPositions(
     scrollEl?.addEventListener("scroll", onScrollForRefine, { passive: true });
 
     return () => {
-      cancelAnimationFrame(computeRafRef.current);
-      cancelAnimationFrame(settleRafRef.current);
+      converge.stop();
+      convergeRef.current = null;
       fontReadyActiveRef.current = false;
       disposeFontReady();
       unsubBlocks?.();
@@ -1014,7 +1083,7 @@ export function useInTextPositions(
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       scrollEl?.removeEventListener("scroll", onScrollForRefine);
     };
-  }, [editor, enabledProp, canMeasureNow]);
+  }, [editor, enabledProp, canMeasureNow, isTypingInPanel]);
 
   // Companion one-shot: an items/resolvePos rebuild (fresh `measure`
   // identity) re-measures ONCE — the behavior the wiring effect's re-run
@@ -1038,15 +1107,27 @@ export function useInTextPositions(
   //     flip via requestLowPriority so no long task blocks the transition. The
   //     degeneracy guard is armed (cache retained ⇒ size>0), so a transient bad
   //     read can't corrupt the deck.
-  //   • COLD   ⇒ never measured yet (size 0): leave it to the wiring effect's
-  //     measure()+settle (first open).
+  //   • COLD   ⇒ never measured yet (size 0): the wiring effect's convergence
+  //     chain owns the first open — but that chain PARKS (`inert`) while the
+  //     pane is hidden, and the wiring effect does NOT re-run on a flip. So a
+  //     pane that mounted hidden would otherwise have no settler at all once
+  //     shown. Re-arm here (task 370). Pre-370 the same shape was worse than a
+  //     park: the settle step did `if (!canMeasureNow()) return;` with no
+  //     reschedule, so ONE hidden or suppressed frame killed the settle
+  //     permanently and nothing re-measured until the user scrolled.
   // KEYSTROKE SANCTITY: fires on visibility transitions only — never per
   // transaction, no new editor.on/bus subscriber. `emitCount` stays flat.
   useLayoutEffect(() => {
     if (!reshowPendingRef.current) return; // only a genuine hidden→visible flip
     reshowPendingRef.current = false;
     if (!enabledProp || !editor) return;
-    if (naturalRef.current.size === 0) return; // cold mount — wiring effect handles it
+    if (naturalRef.current.size === 0) {
+      // COLD: nothing cached to republish, so there is no "clean" case to
+      // protect — arm convergence. The suppression window does not swallow it:
+      // a suppressed pass reports `deferred` and is retried, not dropped.
+      convergeRef.current?.request();
+      return;
+    }
 
     const editorDom = editor.view?.dom as HTMLElement | undefined;
     const widthChanged =
@@ -1056,15 +1137,38 @@ export function useInTextPositions(
     const dirty = dirtyWhileHiddenRef.current || widthChanged;
     dirtyWhileHiddenRef.current = false;
 
-    // CLEAN: the suppression window opened by the sync effect already swallows
-    // every measure path — render from cache, nothing more to do.
+    // CLEAN: the cached deck is still correct (the doc took zero transactions
+    // and pod-relative tops are scroll-invariant), so we do NOT re-enter
+    // convergence — the dirty-gate is the whole permission. The suppression
+    // window opened by the sync effect swallows the display-flip reflow storm
+    // meanwhile, and since no chain is armed there is nothing for it to defer.
     if (!dirty) return;
 
-    // DIRTY: add back exactly ONE bounded re-measure, off the critical flip.
-    // measure() is called directly (not via a suppressed trigger) so it runs even
-    // within the suppression window; the window still swallows the reflow storm.
-    return requestLowPriority(() => measure());
-  }, [editor, enabledProp, isVisible, measure]);
+    // DIRTY: converge, deferred off the critical flip. Two interactions worth
+    // stating, because they used to be in tension:
+    //
+    //  • It is NOT "exactly one bounded re-measure" any more. One pass was only
+    //    ever right when one pass was enough, and a re-show whose width changed
+    //    re-wraps every paragraph — the same async settle a cold mount has.
+    //
+    //  • THE SUPPRESSION WINDOW IS CLOSED HERE, and that is a rule rather than
+    //    a workaround. The window exists to protect a CLEAN re-show's cached
+    //    geometry from the display-flip reflow storm; a DIRTY verdict is
+    //    precisely the evidence that its premise ("the cache is already
+    //    correct") is false. Waiting it out instead would have deferred the
+    //    correction by RESHOW_SUPPRESS_MS — worse than pre-370, which dodged
+    //    the window by calling `measure()` directly.
+    //
+    //    Closing it does NOT re-admit the storm's cost: the storm's triggers
+    //    all enter `request()`, which coalesces to ONE pending pass however
+    //    many observers fire. And it is closed inside the deferred callback,
+    //    not at flip time, so the storm is still swallowed for the duration of
+    //    the deferral and only the deliberate convergence runs.
+    return requestLowPriority(() => {
+      suppressMeasureUntilRef.current = 0;
+      convergeRef.current?.request();
+    });
+  }, [editor, enabledProp, isVisible]);
 
   // Observe card-size changes (e.g. bibliography pod expanding) so the
   // cascade reflows correctly. Dep on `measureVersion` so we re-observe
@@ -1077,36 +1181,30 @@ export function useInTextPositions(
   // as the cascade reflows, which the user perceives as carriage-return
   // behavior in the edit view. The effect is especially visible in focus
   // mode where the cascade has few items and a single card's wobble isn't
-  // absorbed by neighbors. When the user blurs the editor, the focusout
-  // handler runs a final measure() so positions snap to truth.
+  // absorbed by neighbors. That gate is now `isTypingInPanel` at hook scope,
+  // read by EVERY pass inside the controller's measure closure (task 370) — so
+  // a font-ready ping or a structural event during card typing can no longer
+  // walk around it either. On blur the focusout handler re-arms convergence, so
+  // positions snap to truth (and a typing session that outran the deadline gets
+  // a fresh budget rather than a stranded deck).
   useEffect(() => {
     if (!enabledProp) return;
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof ResizeObserver === "undefined") return;
-    const isTypingInPanel = () => {
-      const active = document.activeElement as HTMLElement | null;
-      return !!(
-        active &&
-        panelEl.contains(active) &&
-        active.getAttribute("contenteditable") === "true"
-      );
-    };
+    // Both enter the ONE convergence door (task 370) rather than firing a lone
+    // rAF pass. A card whose body mounts late (a KaTeX-bearing note, an image)
+    // resizes ONCE and then settles over several frames — precisely the shape a
+    // single pass gets wrong. The hidden / suppression / typing gates all live
+    // in the controller's measure closure now, so these are bare requests; the
+    // controller coalesces a resize storm to one pending pass.
     const onResize = () => {
-      // Gate: skip while hidden and during the clean-re-show suppression window
-      // (the display-flip 0→real card resizes would otherwise force a wasted
-      // measure even though cached geometry is correct).
-      if (!canMeasureNow()) return;
-      if (isTypingInPanel()) return;
-      cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(measure);
+      convergeRef.current?.request();
     };
     const onFocusOut = () => {
-      // Defer one frame so the activeElement transition settles before
-      // we re-measure (otherwise activeElement might still be the just-
-      // -blurred contenteditable).
-      if (!canMeasureNow()) return;
-      cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(measure);
+      // No manual frame defer needed: the controller's first pass is already
+      // rAF/idle-scheduled, so `activeElement` has settled by the time the
+      // typing gate reads it.
+      convergeRef.current?.request();
     };
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : DATA_LINK_CARD;
@@ -1116,7 +1214,7 @@ export function useInTextPositions(
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabledProp, entry, measure, canMeasureNow]);
+  }, [measureVersion, enabledProp, entry]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that
   // re-runs — no DOM reads, no layout flush, no second commit.

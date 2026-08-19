@@ -418,6 +418,107 @@ Two legs carry the teeth, and neither is the invariant leg. The **producer** leg
 
 **Residuals, stated.** The two renderers track together in practice but not *by construction*: they use different primitives (the marker's optical cap-band rect vs the card's `coordsAtPos` line-box), different origins, and different epsilons (the geometry service's 0.5 px bail vs the card's 6 px hysteresis hold), so a 2–5 px reflow can move one and hold the other. That is a sub-epsilon disagreement, not a decoupling, and it is what the contract's ε allows for. And a SECOND, independent path to the same symptom survives, filed separately: the archive omni builder resolves its anchor with a bare live-uuid test while the margin-marker builder routes through the four-rung `resolveCardAnchor` SSOT, so a card recovered by the snapshot rung paints a normal marker beside the recovered paragraph while its row is binned `pos:null` into the orphan strip.
 
+#### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
+
+Same lane, and the case where the mechanism was right, the classification was
+right (327), the movement policy was right (328) — and the loop that had to run
+them all **stopped too early**, on a measurement of something else (task 370).
+
+> **A geometry pass is an OBSERVATION, not a fix.** A trigger says "the world
+> may have moved"; the honest answer is *keep measuring until two consecutive
+> passes AGREE*, never *measure once and hope*. The agreement is the consumer's
+> OWN fixed point — for this lane, a pass that commits nothing past the task-328
+> hysteresis — so there is no second rule to keep in sync. And the budget is
+> WALL-CLOCK, because a frame cap is a lie on a busy main thread: the frames a
+> slow settle needs are exactly the frames it does not get.
+
+Gabriel (2026-08-18, two screenshots, a card-dense page): the lane renders every
+card packed contiguously from the top at minimum spacing — including cards whose
+anchors are off-screen — and only "suddenly separates and goes to approximately
+the right places" after scrolling a couple of lines. The cold-start healer was a
+rAF loop that terminated the first frame the editor's `scrollHeight` was
+unchanged (`SETTLE_STABLE_FRAMES = 1`), or after a 30-frame cap. Both halves
+measure the wrong quantity, and the first is the interesting one: `scrollHeight`
+is a **TOTAL**, and inner layout moves inside an unchanged total constantly — a
+KaTeX span sizing, an expex example reflowing, a figure NodeView that reserves
+its final box on mount and lays its contents out over the next several frames —
+while an absolutely-positioned lane never touches it at all. After the loop
+stopped, NOTHING re-measured until the user scrolled.
+
+The rule now lives once, in
+[src/lib/editor-geometry/settle-convergence.ts](src/lib/editor-geometry/settle-convergence.ts)
+(`createConvergenceController`), which owns SCHEDULING and TERMINATION and is
+blind to geometry: `measure()` reports a `MeasureOutcome` and the controller
+folds verdicts. Five rules it earned:
+
+- **Every trigger enters ONE door.** Cold mount, `document.fonts.ready`, the
+  editor RO, the per-card RO, the structural bus, `focusout`, the scroll-idle
+  refinement and a dirty keep-alive re-show all mean the same thing and all used
+  to get DIFFERENT answers — the mount got the 30-frame proxy loop, everything
+  else got a single rAF-coalesced pass. A single pass is right only when one pass
+  is enough, which is precisely what a cold load, a font swap and a late NodeView
+  mount each falsify.
+- **The per-fire cost is unchanged, and that is what makes the door safe on the
+  keystroke-adjacent path.** A re-arm while a pass is pending ADDS NO PASS — one
+  pending pass is the whole rate limit — so the editor RO (which fires on every
+  wrap-changing keystroke) costs exactly what its pre-370 `schedule()` did. What
+  is added is the trailing CONFIRMATION passes after the last trigger: idle-paced,
+  and bounded at two by the fixed point. The pass itself is O(in-band items), not
+  O(doc) (C5 + 327), so this is a small constant on a bounded pass.
+- **TWO agreeing passes, not one — because one agreement is a PLATEAU**, and a
+  plateau is exactly what the retired proxy mistook for a settle. An async layout
+  settle routinely holds still for a frame between a font swap and the mounts it
+  triggers.
+- **`deferred` is not agreement, and it is not a reason to stop.** The pre-370
+  step did `if (!canMeasureNow()) return;` with **no reschedule**, so ONE frame
+  that landed while hidden or inside the 250 ms re-show suppression window killed
+  the settle permanently. Confirmed reachable at source by a read-only sweep
+  during this task, and the everyday path needs no race: a paper opens with the
+  editor ready but its sidecar cards not yet loaded, the user tabs to the Library,
+  the cards arrive WHILE HIDDEN (the companion one-shot is `canMeasureNow`-gated,
+  so it is skipped), and on return the re-show effect early-returned on an empty
+  cache — *"cold mount, the wiring effect handles it"* — handing off to an effect
+  that does not re-run on a visibility flip. So the COLD branch of the re-show
+  now arms convergence, and a HIDDEN pass reports `inert` (park) rather than
+  spinning the budget against a `display:none` pane.
+- **A dirty re-show CLOSES the suppression window rather than waiting it out.**
+  The window exists to protect a CLEAN re-show's cached geometry from the
+  display-flip reflow storm; a DIRTY verdict is the evidence that its premise is
+  false. It is closed inside the deferred callback, so the storm is still
+  swallowed for the deferral and only the deliberate convergence runs — and the
+  storm's own triggers coalesce to one pending pass anyway.
+
+The task-328 policy is untouched and does the visual work: corrections land
+through the hysteresis (sub-ε commits nothing, so `measureVersion` never bumps)
+and the `.omni-entry-slide` transition, so convergence is a calm glide rather
+than the first-scroll SNAP. The typing gate is hoisted to hook scope and read by
+EVERY pass now, not just the per-card observer's — so a font-ready ping during
+card typing can no longer walk around it — and `focusout` re-arms, which is what
+keeps a long typing session from outliving the budget and stranding a
+half-settled deck.
+
+Probe: `window.__settleConvergenceStats()` (sibling of `__layoutGestureStats` /
+`__scrollRepositionStats`) reports `{ arms, passes, outcomes, lastChainMs,
+lastStop }`. A healthy cold open reads `lastStop: "converged"` with a small
+`lastChainMs`; `"capped"` is the honest failure mode and the one worth reporting.
+CI: [useInTextPositions-settle-convergence.test.tsx](src/hooks/__tests__/useInTextPositions-settle-convergence.test.tsx)
+drives the REAL hook over a fixture whose `scrollHeight` is CONSTANT while its
+line positions ramp — the "inner layout inside an unchanged total" shape — and
+**dispatches no scroll and no resize**, which is why no pre-370 suite could see
+this: every one of them hands the hook by hand exactly the external trigger whose
+absence IS the defect. Measured by neutering each half in turn: restoring the
+scrollHeight proxy fails the convergence leg, restoring the re-show hand-off
+fails the empty-deck leg, and removing the controller's pending-pass guard fails
+the storm-cost leg (24 reads where 3 are allowed). The two termination legs
+(sub-ε jitter, and geometry that never settles) are bounds pins rather than
+defect legs and say so at the site — the retired loop terminated too, far too
+eagerly.
+
+**Owed, not claimed:** a preview eyeball on a crowded fixture and a real-FSA
+pass on Gabriel's own paper. Cold opens and restored mid-doc scroll positions
+are where this bites, and that is the FSA-masked class — the durable proof here
+is the unit contract.
+
 ## Card presence tiers
 
 > **A COLLAPSED card body mounts machinery proportional to its usefulness, not one live TipTap editor per card.** Tier model (per body; header/chrome always render): **T0** summary string → **T1** static HTML → **T2** read-only live editor → **T3** editable (the expand boundary, unchanged — an expanded card is never tier-gated). Behind `localStorage["virgil:card-tiers"]="on"` (perf Wave 3; **default OFF until soak**; off = every switch site takes its legacy branch, byte-identical).
