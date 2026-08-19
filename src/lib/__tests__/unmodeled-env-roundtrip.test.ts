@@ -32,6 +32,9 @@ import type { JSONContent } from "@tiptap/core";
 
 const REPO = path.resolve(__dirname, "../../..");
 
+/** The ONE place the family vocabulary may be spelled (task 358). */
+const LEXER = "src/lib/latex-lexer.ts";
+
 /** One save/load cycle: parse the body, mint uuids, serialize it back. */
 function cycle(body: string): { body: string; doc: JSONContent } {
   const doc = parseLatex(`\\begin{document}\n\n${body}\n\n\\end{document}\n`);
@@ -253,33 +256,166 @@ describe("342 · the verbatim family is ONE list", () => {
     }
   });
 
-  it("census: only the lexer spells a verbatim-family member in code", () => {
-    // The leg with teeth. The family list was never the part that could
-    // misbehave — a second copy of it beside the SSOT is, and that is exactly
-    // what shipped. Literals are KEPT and only comments stripped: the drift
-    // lives in quoted arrays and Set literals.
-    const hits = censusFiles()
-      .filter((rel) => rel !== "src/lib/latex-lexer.ts")
-      .filter((rel) =>
-        /(?<![A-Za-z])lstlisting(?![A-Za-z])/.test(
-          commentsStripped(fs.readFileSync(path.join(REPO, rel), "utf8")),
-        ),
-      );
+  // -------------------------------------------------------------------------
+  // Task 358 — the census is DERIVED from the vocabulary, not hand-picked.
+  //
+  // 342's census watched ONE member (`lstlisting`), which is a hand list
+  // wearing a regex's clothes: adding a member to the SSOT did not extend the
+  // guard, so the five names 358 was filed about (fancyvrb's `Verbatim`
+  // family, `comment`) joined the list with the census still blind to a fork
+  // that spelled any of them. Every needle below is built FROM
+  // `VERBATIM_ENVS_FULL`, so a future member is censused by declaration alone.
+  //
+  // Three shapes, because a fork can be any of them and each drains to EMPTY
+  // on the current tree (measured — no allowlist for the first two):
+  //   A. a second COPY of the list — ≥2 distinct members near each other;
+  //   B. a hand-spelled family ENV — `\begin{<member>}` / `\end{<member>}`;
+  //   C. a per-member special CASE — the member as a bare quoted literal.
+  // -------------------------------------------------------------------------
+
+  /** Source of a censused file, comments stripped and literals KEPT: the drift
+   *  lives in quoted arrays, Set literals and regexes, while a member NAMED in
+   *  prose (this file's neighbours are full of it) is not a decision. */
+  const codeOf = (rel: string) =>
+    commentsStripped(fs.readFileSync(path.join(REPO, rel), "utf8"));
+
+  const CENSUSED = () => censusFiles().filter((rel) => rel !== LEXER);
+
+  /** The member as a WORD. `verbatim*` must not be matched by the `verbatim`
+   *  needle (or every starred member would double-count as two), so the
+   *  trailing guard excludes `*` as well as letters. */
+  const wordNeedle = (member: string) =>
+    new RegExp(`(?<![A-Za-z])${member.replace("*", "\\*")}(?![A-Za-z*])`);
+
+  /** Members named within a window of consecutive lines. */
+  function membersInWindow(lines: string[], from: number, size: number) {
+    const seen = new Set<string>();
+    for (let i = from; i < Math.min(lines.length, from + size); i++) {
+      for (const m of VERBATIM_ENVS_FULL) if (wordNeedle(m).test(lines[i])) seen.add(m);
+    }
+    return seen;
+  }
+
+  const WINDOW = 4;
+
+  it("census A: no layer re-enumerates the family (≥2 members in a window)", () => {
+    // The shape the original defect had: `syntax-check.ts` carried its own
+    // six-name list beside the SSOT's four. A single member's name can be an
+    // ordinary word (`comment` is a revision/cutter record kind, `minted` is a
+    // local in the drop controller), so ONE occurrence proves nothing — two
+    // distinct members within four lines is what a copy of the list looks
+    // like, whatever its brackets. Measured on this tree: zero hits outside
+    // the lexer, so there is no allowlist to drift.
+    const hits: string[] = [];
+    for (const rel of CENSUSED()) {
+      const lines = codeOf(rel).split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const found = membersInWindow(lines, i, WINDOW);
+        if (found.size >= 2) {
+          hits.push(`${rel}:${i + 1} {${[...found].join(", ")}}`);
+          i += WINDOW - 1;
+        }
+      }
+    }
     expect(hits).toEqual([]);
   });
 
-  it("census self-check: the needle CAN see a real spelling", () => {
-    // A canary must not stand on the defect, so it runs on a fixture rather
-    // than on a production line the census exists to drain.
-    const fixture = 'const ENVS = new Set(["verbatim", "lstlisting"]); // x';
-    expect(/(?<![A-Za-z])lstlisting(?![A-Za-z])/.test(commentsStripped(fixture))).toBe(
-      true,
-    );
-    // …and cannot see one that is only prose.
-    const prose = "// lstlisting bodies are literal\nconst x = 1;";
-    expect(/(?<![A-Za-z])lstlisting(?![A-Za-z])/.test(commentsStripped(prose))).toBe(
-      false,
-    );
+  it("census B: no layer hand-spells a family environment", () => {
+    // The single-member fork: a private `\begin{lstlisting}` skip, a
+    // `/\\end\{Verbatim\}/` terminator. Membership decides first-close-wins
+    // end-finding and inertness to every projecting scanner, so a layer that
+    // writes the delimiter itself has decided both privately. The lexer's own
+    // `verbatim` body↔tex pair (`escapeVerbatimBody`) is the SSOT half and is
+    // excluded with every other lexer line.
+    const hits: string[] = [];
+    for (const rel of CENSUSED()) {
+      const lines = codeOf(rel).split("\n");
+      lines.forEach((line, i) => {
+        for (const m of VERBATIM_ENVS_FULL) {
+          // Source spells the backslash escaped (`"\\begin{…}"`) or
+          // double-escaped inside a regex literal; the name may carry a
+          // regex-escaped `*`.
+          const re = new RegExp(
+            `\\\\+(?:begin|end)\\\\*\\{${m.replace("*", "\\\\*")}[\\\\]*\\}`,
+          );
+          if (re.test(line)) hits.push(`${rel}:${i + 1} [${m}]`);
+        }
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  /** Census C's two exemptions, each scoped to the shape it justifies rather
+   *  than to a file (a file-scoped entry would excuse the next decision added
+   *  beside it). Keyed by a source FRAGMENT, since line numbers rot. */
+  const PERMITTED_MEMBER_LITERALS: ReadonlyArray<{
+    file: string;
+    fragment: string;
+    why: string;
+  }> = [
+    {
+      file: "src/lib/latex-parser.ts",
+      fragment: 'case "verbatim": {',
+      why: "bare `verbatim` is the ONE member with a modeled node (codeBlock); the branch reads the SSOT for family membership and spells the name only to pick that node",
+    },
+  ];
+
+  /** `comment` is exempt as a NAME, and the premise is checked below rather
+   *  than asserted: it collides with an unrelated declared vocabulary — the
+   *  revision/cutter record kind `{ kind: "comment" }` — which spells the bare
+   *  literal ~77 times and decides a CARD kind, never an environment. Census A
+   *  still covers it (a copy of the family list naming `comment` also names a
+   *  second member) and census B covers `\begin{comment}`. */
+  const LITERAL_CENSUS_EXEMPT_NAME = "comment";
+
+  it("census C: no layer special-cases one member by name", () => {
+    // Stated limit, since C is the leg that replaced 342's bare-word needle:
+    // it sees QUOTED spellings, so a bare `lstlisting` identifier — a variable
+    // name, not a family decision — is no longer flagged. A and B cover the two
+    // shapes that decide anything.
+    const hits: string[] = [];
+    for (const rel of CENSUSED()) {
+      const lines = codeOf(rel).split("\n");
+      lines.forEach((line, i) => {
+        for (const m of VERBATIM_ENVS_FULL) {
+          if (m === LITERAL_CENSUS_EXEMPT_NAME) continue;
+          if (!new RegExp(`["'\`]${m.replace("*", "\\*")}["'\`]`).test(line)) continue;
+          const permitted = PERMITTED_MEMBER_LITERALS.some(
+            (e) => e.file === rel && line.includes(e.fragment),
+          );
+          if (!permitted) hits.push(`${rel}:${i + 1} ["${m}"] ${line.trim()}`);
+        }
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("census C's name exemption stands on a CHECKED premise", () => {
+    // The card vocabulary really does own the bare word — so the exemption is
+    // a fact about a collision, not a way around the guard. If the record kind
+    // is ever renamed, the exemption must go with it.
+    const cardTypes = codeOf("src/lib/types.ts");
+    expect(cardTypes).toMatch(/kind:\s*"comment";/);
+    expect(VERBATIM_ENVS_FULL).toContain(LITERAL_CENSUS_EXEMPT_NAME);
+  });
+
+  it("census self-check: each needle CAN see a real spelling, and prose CANNOT", () => {
+    // A canary must not stand on the defect, so all three run on fixtures
+    // rather than on the production lines the censuses exist to drain — and
+    // each is driven FROM the vocabulary, so a needle that stops matching its
+    // own member fails here before it can silently exonerate the tree.
+    for (const m of VERBATIM_ENVS_FULL) {
+      const other = VERBATIM_ENVS_FULL.find((x) => x !== m)!;
+      const copy = commentsStripped(
+        `const ENVS = new Set(["${m}", "${other}"]); // x`,
+      );
+      expect(membersInWindow(copy.split("\n"), 0, WINDOW).size, m).toBeGreaterThanOrEqual(2);
+      expect(wordNeedle(m).test(commentsStripped(`const x = "${m}";`)), m).toBe(true);
+      expect(
+        wordNeedle(m).test(commentsStripped(`// ${m} bodies are literal\nconst x = 1;`)),
+        `${m} in prose`,
+      ).toBe(false);
+    }
   });
 });
 
