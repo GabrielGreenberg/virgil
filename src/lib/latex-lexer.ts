@@ -1443,3 +1443,185 @@ export function matchBraceGroupAt(
   if (/\n[ \t]*\n/.test(group.content)) return null;
   return group;
 }
+
+// ---------------------------------------------------------------------------
+// The RAW-LATEX vocabulary at a backslash — one answer, read by three layers
+// ---------------------------------------------------------------------------
+
+/**
+ * A CONTROL SYMBOL at `pos` — `\` followed by exactly ONE non-letter character
+ * (task 360).
+ *
+ * This is the member both inline parsers were missing. Their unknown-command
+ * fallback reads a control WORD (`matchCommandToken`), and everything else at a
+ * `\` fell through to a *lone backslash* branch that pushed the bare character
+ * into the prose buffer — so `\,` `\;` `\!` `\:` `\ ` `\-` `\/` arrived in the
+ * document as a literal backslash plus a literal punctuation mark, with nothing
+ * left to say they had ever been LaTeX. Measured against this repo's own
+ * corpora, `\;` (16), `\ ` (14) and `\,` (9) all occur in ordinary body prose —
+ * `U.S.\ Route`, the standard abbreviation idiom.
+ *
+ * That was survivable only while `CHAR_ESCAPE_TABLE` left a backslash alone in
+ * any run that held one (the pre-360 `prose-only` rule): the bytes round-tripped
+ * *by accident*, because the escape rung could not tell the user's literal
+ * backslash from LaTeX's. Once the carrier makes bare text prose by
+ * construction and `\` is escaped unconditionally, an un-carried control symbol
+ * is DESTROYED on the first save — `U.S.\ Route` → `U.S.\textbackslash{} Route`,
+ * a printed backslash. So the carrier's vocabulary has to be TOTAL over the
+ * backslash-led constructs, and this is the member that makes it so: after task
+ * 360, a bare `\` in a text node is LITERAL, always.
+ *
+ * Deliberately does NOT consume an argument run. `\'{e}` reaches this door only
+ * when {@link matchAccent} has already declined it (inside a code span, where
+ * accents are suppressed), and there the following `{e}` is read by the group
+ * rule on its own terms. Consuming a run here would let a `\ ` swallow a
+ * genuinely prose `{…}` one character later — the same over-reach
+ * {@link matchLineBreakAt} declines for its optional argument.
+ *
+ * A trailing `\` (nothing after it) and a `\` before a newline both answer null:
+ * neither is a construct, both are literal, and both now round-trip as
+ * `\textbackslash{}` instead of reaching the `.tex` as a dangling backslash.
+ */
+export function matchControlSymbolAt(
+  text: string,
+  pos: number,
+): { raw: string; end: number } | null {
+  if (text[pos] !== "\\") return null;
+  const c = text[pos + 1];
+  if (c === undefined) return null;
+  if (/[a-zA-Z@]/.test(c)) return null; // a control WORD — not this door
+  if (c === "\n" || c === "\r") return null;
+  return { raw: text.slice(pos, pos + 2), end: pos + 2 };
+}
+
+/**
+ * One span of text that must ride the raw-LaTeX carrier, and the CONSTRUCT it
+ * belongs to.
+ *
+ * The two ranges differ only for a brace GROUP, where the bytes to mark are the
+ * two braces and the construct is the whole group — which is what lets a caller
+ * ask "did this edit write this construct?" once, for a `{` and a `}` the edit
+ * may touch neither of (typing inside `{\bf hi}` touches only its content).
+ */
+export interface RawLatexSpan {
+  /** Offsets, in the scanned string, of the bytes that take the carrier. */
+  from: number;
+  to: number;
+  /** The whole construct those bytes belong to — the gating unit. */
+  extentFrom: number;
+  extentTo: number;
+}
+
+/**
+ * Every RAW-LATEX span in one inline string (task 360).
+ *
+ * THE type-time half of the carrier law, and deliberately the same vocabulary,
+ * in the same order, that both inline parsers read at a `\`: the line-break
+ * token, a control WORD with its whole argument run, an accent, and a control
+ * SYMBOL. Sharing the door is the point — what the user types and what a reload
+ * produces cannot drift, because neither side spells its own answer.
+ *
+ * Two rules are this scanner's own, and both are PROVENANCE rules rather than
+ * lexical ones:
+ *
+ *  - **A bare `{…}` group is raw LaTeX only if it CONTAINS raw LaTeX.** The
+ *    parse rung carries the braces of *every* bare group (task 349 M6), because
+ *    a group in the SOURCE is syntax the source already carried. A group the
+ *    user TYPES is not: `see {this}` is prose, and its braces must print. So the
+ *    evidence rule that task 339 applied to a whole run — *no backslash, no
+ *    LaTeX* — is applied here at group granularity. The two answers are each a
+ *    fixed point (a typed `{this}` saves as `\{this\}` and parses back to
+ *    literal braces; a source `{this}` saves as `{this}` and parses back to a
+ *    group), so nothing oscillates.
+ *
+ *  - **The char-escape spellings are NOT members.** A `\%` typed by a
+ *    LaTeX-fluent user reaches this scanner as a control symbol and takes the
+ *    carrier, so it emits `\%` and comes back from the next parse as the literal
+ *    `%` it means. Asking `matchCharEscapeAt` here first would leave it bare, and
+ *    the escape rung would then write `\textbackslash{}\%` — a printed
+ *    backslash. The one word-shaped member, `\textbackslash{}`, is likewise read
+ *    as a control word here and un-escaped to a literal `\` on the way back in.
+ *
+ * Returns spans in source order; nested constructs (a command inside a group)
+ * appear after the group's own braces.
+ */
+export function scanRawLatexSpans(text: string): RawLatexSpan[] {
+  const out: RawLatexSpan[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (ch === "{") {
+      const group = matchBraceGroupAt(text, i);
+      if (group) {
+        const contentFrom = i + 1;
+        const inner = scanRawLatexSpans(group.content);
+        if (inner.length > 0) {
+          // The braces themselves, plus every construct the content holds —
+          // all sharing the GROUP's extent, so an edit anywhere inside it
+          // writes the whole group. The content between them stays prose,
+          // exactly as the parse rung leaves it.
+          out.push({
+            from: i,
+            to: i + 1,
+            extentFrom: i,
+            extentTo: group.end,
+          });
+          out.push({
+            from: group.end - 1,
+            to: group.end,
+            extentFrom: i,
+            extentTo: group.end,
+          });
+          for (const s of inner) {
+            out.push({
+              from: contentFrom + s.from,
+              to: contentFrom + s.to,
+              extentFrom: contentFrom + s.extentFrom,
+              extentTo: contentFrom + s.extentTo,
+            });
+          }
+          i = group.end;
+          continue;
+        }
+        // A group with no LaTeX in it is prose — skip PAST its opening brace
+        // only, so a nested `{a {\bf b}}` is still reached by the outer scan.
+      }
+      i++;
+      continue;
+    }
+
+    if (ch !== "\\") {
+      i++;
+      continue;
+    }
+
+    const push = (end: number) => {
+      out.push({ from: i, to: end, extentFrom: i, extentTo: end });
+      i = end;
+    };
+
+    const lineBreak = matchLineBreakAt(text, i);
+    if (lineBreak) {
+      push(lineBreak.end);
+      continue;
+    }
+    const word = matchCommandToken(text, i);
+    if (word) {
+      push(matchCommandArgumentRun(text, word.end).end);
+      continue;
+    }
+    const accent = matchAccent(text, i);
+    if (accent) {
+      push(accent.end);
+      continue;
+    }
+    const symbol = matchControlSymbolAt(text, i);
+    if (symbol) {
+      push(symbol.end);
+      continue;
+    }
+    i++; // a trailing `\` — literal
+  }
+  return out;
+}

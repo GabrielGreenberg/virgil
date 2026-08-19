@@ -223,64 +223,49 @@ const LITERAL_BY_GLYPH = new Map<string, string>(
 // serializer and the card fork can all reach it. A facet the layer that needs
 // it cannot import will be re-copied, every time.
 //
-// ── WHAT MAY BE ESCAPED ON THE WAY OUT, and why that is not "everything" ──
+// ── WHAT MAY BE ESCAPED ON THE WAY OUT: everything, and why that is now true ──
 //
 // Task 339's design asked for the whole vocabulary to be emitted, on the stated
 // premise that "`escapeLatex` only ever sees PROSE": `serializeMarks` returns
 // `latexVerbatim`- and `latexCommand`-marked runs BEFORE the escape branch, and
 // the markless pair (`codeBlock`, `latexComment`) bypasses it through
-// `serializeMarklessTextBody`. All of that is true, and the premise is still
-// FALSE, because it enumerates the MARKED carriers and a fourth carrier is
-// unmarked: a BARE text node holding raw LaTeX the user is typing.
-// `latex-command.ts`'s decoration plugin exists precisely to paint those
-// bare-text `\command` spans grey-monospace while they are typed
-// (`decorateTextNode` skips runs that already carry the mark), the `.tex` is
-// autosaved 1500 ms later, and only the next parse promotes the span to a
-// marked run. Measured through the real serializer with the whole table live:
+// `serializeMarklessTextBody`. Every clause of that was true, and the premise
+// was still FALSE, because it enumerated the MARKED carriers and a fourth
+// carrier was unmarked: a BARE text node holding raw LaTeX the user was typing.
+// `latex-command.ts`'s decoration plugin paints those bare-text `\command`
+// spans grey-monospace while they are typed, the `.tex` is autosaved 1500 ms
+// later, and only the NEXT parse promoted the span to a marked run. Measured
+// through the real serializer with the whole table live:
 //
 //     bare  "\emph{hi} there"  →  "\textbackslash{}emph\{hi\} there"
 //     bare  "{\bf hi} there"   →  "\{\textbackslash{}bf hi\} there"
 //
-// i.e. escaping `\`, `{` and `}` unconditionally DESTROYS every command a
-// LaTeX-fluent user types, which is a far commoner gesture than the escaped
-// brace it would repair.
+// So 339 shipped a narrower rule keyed on evidence — a run containing NO
+// backslash cannot be raw LaTeX, so escape it whole; a run containing one is
+// ambiguous, so leave its ambiguous members alone. That could only preserve or
+// improve behaviour, and it left two declared residuals: `\textbackslash{}`
+// re-emitted as a live `\`, and a run mixing a literal brace with a typed
+// command kept its braces raw.
 //
-// So the emit side is declared per member, and the line is drawn where the
-// evidence is: a text run containing NO backslash cannot be raw LaTeX (every
-// LaTeX control sequence starts with one), so its braces and brackets are
-// literal and are escaped. A run that DOES contain a backslash is ambiguous
-// between prose and typed raw LaTeX, and the document has no way to tell —
-// so its ambiguous members are left exactly as they are today. The rule can
-// therefore only preserve current behaviour or improve on it; it can never
-// introduce a new corruption.
+// TASK 360 MADE THE PREMISE TRUE, so the narrowing is retired and every member
+// emits unconditionally. Bare text is prose BY CONSTRUCTION now: a type-time
+// carrier (`tiptap/latex-command.ts`, the `latexCommandCarrier` plugin) applies
+// the `latexCommand` mark to a raw-LaTeX span as soon as an edit WRITES one, so
+// what the user types is marked in the same dispatch, and the two inline
+// parsers carry a CONTROL SYMBOL (`\,` `\;` `\ ` — `matchControlSymbolAt`)
+// instead of leaving it in the prose buffer as a literal backslash. Together
+// those make the vocabulary at a backslash TOTAL: after a parse, and after any
+// edit, a bare `\` in a text node is a LITERAL backslash — the character
+// `\textbackslash{}` means — and escaping it is what round-trips it.
 //
-// RESIDUAL, stated rather than implied: `\textbackslash{}` in the source still
-// parses to a bare `\` and re-emits as a bare `\` (unchanged from before this
-// task), so `\textbackslash{}emph` still becomes a live `\emph` on the first
-// save; and a run that mixes a literal brace with a typed command keeps its
-// braces raw. Both are the SAME missing piece — bare unmarked text has no
-// carrier that distinguishes "literal characters" from "raw LaTeX" — and
-// closing it is an editor-behaviour decision (mark a command span at type time,
-// so bare text is prose by construction), filed as its own task rather than
-// guessed at here.
-//
-// TWO NAMED CASES OF THAT RESIDUAL ARE NOW CLOSED (task 349 M5/M6), and by the
-// other route — not a carrier on the text, but a REPRESENTATION. The `~` tie is
-// the `"glyph"` member below (U+00A0 in the document, `~` on disk), and a bare
-// `{…}` GROUP is recognized by the lexer's `matchBraceGroupAt` and carried on
-// `latexCommand`. What survives is the backslash itself, which has no Unicode
-// counterpart to be represented BY — so it stays exactly as stated above.
+// The residual that survives is small and stated: a literal backslash that
+// arrived from a source `\textbackslash{}` sits in bare text looking exactly
+// like a typed command, so an edit that WRITES over it promotes it to the
+// carrier. That is provenance working as designed (the carrier records an act
+// of writing, not the mere existence of bytes) and it is the pre-360 behaviour
+// for that one span, not a new loss.
 
 export type CharEscapeKind = "escape" | "protect" | "glyph";
-
-/**
- * When the emit rung may write `tex` for `text`:
- *  - `"always"`     — `text` cannot appear inside a LaTeX control sequence, so
- *                     escaping it is unconditionally safe.
- *  - `"prose-only"` — escaped only in a run PROVEN to be prose (no backslash
- *                     anywhere in it). See the note above.
- */
-export type CharEscapeEmit = "always" | "prose-only";
 
 export interface CharEscapeEntry {
   /** The literal character as it lives in a prose text node. */
@@ -312,31 +297,31 @@ export interface CharEscapeEntry {
    *                  glyph coexist in one pass with nothing to order.
    */
   kind: CharEscapeKind;
-  /** Emit-side reachability. Every member PARSES; not every member emits. */
-  emit: CharEscapeEmit;
 }
 
 /**
- * Every member is read by the parse rung. `emit` says which are also written,
- * so "we chose not to re-escape this" and "someone forgot" stop looking
- * identical — the reason the design asked for a declared one-way marker.
+ * Every member is read by BOTH rungs — parsed on the way in, written on the way
+ * out. The `emit` field this table carried between tasks 339 and 360 is gone
+ * with the narrowing it declared: there is no longer a member the escape rung
+ * chooses not to write, so a marker distinguishing "we chose not to" from
+ * "someone forgot" has nothing left to mark.
  */
 export const CHAR_ESCAPE_TABLE: readonly CharEscapeEntry[] = [
   // ── The five specials that can never be part of a control sequence NAME,
   // so escaping them is safe even inside a run that holds one.
-  { text: "&", tex: "\\&", kind: "escape", emit: "always" },
-  { text: "%", tex: "\\%", kind: "escape", emit: "always" },
-  { text: "#", tex: "\\#", kind: "escape", emit: "always" },
-  { text: "_", tex: "\\_", kind: "escape", emit: "always" },
+  { text: "&", tex: "\\&", kind: "escape" },
+  { text: "%", tex: "\\%", kind: "escape" },
+  { text: "#", tex: "\\#", kind: "escape" },
+  { text: "_", tex: "\\_", kind: "escape" },
   // `$` (task 037): a bare `$` in a plain-text node is re-read as an inline
   // math delimiter, silently turning `costs $5, $10` into a math atom on the
   // next save→reload. Genuine inline math is a separate `inlineMath` node.
-  { text: "$", tex: "\\$", kind: "escape", emit: "always" },
+  { text: "$", tex: "\\$", kind: "escape" },
   // `~` and `^` are active / superscript characters. Escaped unconditionally
   // since long before this table, and safe for the same reason as the five
   // above: neither can occur inside a command name or a brace group's syntax.
-  { text: "~", tex: "\\textasciitilde{}", kind: "escape", emit: "always" },
-  { text: "^", tex: "\\textasciicircum{}", kind: "escape", emit: "always" },
+  { text: "~", tex: "\\textasciitilde{}", kind: "escape" },
+  { text: "^", tex: "\\textasciicircum{}", kind: "escape" },
   // The `~` TIE, as a GLYPH (task 349 M5). LaTeX's `~` is a non-breaking
   // space, and Unicode already HAS that character — so the provenance lives in
   // the DOCUMENT MODEL as two different code points rather than as a mark on
@@ -364,25 +349,25 @@ export const CHAR_ESCAPE_TABLE: readonly CharEscapeEntry[] = [
   // U+00A0 arriving by PASTE (from a PDF, from Word) used to be written through
   // into the `.tex` verbatim, where pdflatex+inputenc may refuse it outright.
   // It is now written as the tie it means.
-  { text: NBSP, tex: "~", kind: "glyph", emit: "always" },
+  { text: NBSP, tex: "~", kind: "glyph" },
   // ── The members a typed `\command` is MADE of.
-  { text: "{", tex: "\\{", kind: "escape", emit: "prose-only" },
-  { text: "}", tex: "\\}", kind: "escape", emit: "prose-only" },
-  // `\` is `prose-only` like its braces, and that makes it emit-UNREACHABLE by
-  // construction: the trigger of the ambiguity cannot occur in a run proven
-  // free of it. Stated as a consequence of the one rule rather than as a
-  // special case — and it is exactly the residual named above, not an
-  // oversight. It still PARSES, which is what keeps `\textbackslash{}` from
-  // reaching the editor as the four literal words.
-  { text: "\\", tex: "\\textbackslash{}", kind: "escape", emit: "prose-only" },
-  // Brace-group protections (task 037). `prose-only` for the same reason the
-  // braces are — and it costs the protection nothing in the case 037 was
-  // written for, because there the `\\` hard break is its own NODE and the
-  // `\command` is its own MARKED node, so the run holding the prose `[` has no
-  // backslash in it. What it buys is that a bare typed `\cmd[opt]` keeps its
-  // optional argument instead of emitting `\cmd{[}opt{]}`.
-  { text: "[", tex: "{[}", kind: "protect", emit: "prose-only" },
-  { text: "]", tex: "{]}", kind: "protect", emit: "prose-only" },
+  { text: "{", tex: "\\{", kind: "escape" },
+  { text: "}", tex: "\\}", kind: "escape" },
+  // The BACKSLASH itself — the member the 339→360 arc is about. It was
+  // emit-unreachable by construction under the `prose-only` rule (the trigger
+  // of the ambiguity cannot occur in a run proven free of it), which is exactly
+  // why a source `\textbackslash{}emph` came back as a LIVE `\emph` on the
+  // first save. It emits now, because a bare backslash reaching this rung is a
+  // literal one: task 360's type-time carrier marks what an edit writes, and
+  // the two parsers carry a control symbol rather than buffering its backslash.
+  { text: "\\", tex: "\\textbackslash{}", kind: "escape" },
+  // Brace-group protections (task 037). The case 037 was written for is
+  // untouched by the emit rule either way, because there the `\\` hard break is
+  // its own NODE and the `\command` its own MARKED node, so the run holding the
+  // prose `[` has no backslash in it at all. What the unconditional rule adds
+  // is the mixed run: `see [a] and \emph{b}` protects its brackets too.
+  { text: "[", tex: "{[}", kind: "protect" },
+  { text: "]", tex: "{]}", kind: "protect" },
 ];
 
 /** Escape regex metacharacters so a table member can go inside a pattern. */
@@ -406,31 +391,25 @@ const TEX_BY_CHAR = new Map<string, string>(
  * followed by `&` is two literal characters and `&` is escaped on its own
  * merits.
  */
-function emitRe(kinds: readonly CharEscapeEmit[]): RegExp {
-  return new RegExp(
-    CHAR_ESCAPE_TABLE.filter((e) => kinds.includes(e.emit))
-      .map((e) => rxLiteral(e.text))
-      .join("|"),
-    "g",
-  );
-}
-
-const ALWAYS_RE = emitRe(["always"]);
-const PROSE_RE = emitRe(["always", "prose-only"]);
+const ESCAPE_RE = new RegExp(
+  CHAR_ESCAPE_TABLE.map((e) => rxLiteral(e.text)).join("|"),
+  "g",
+);
 
 /**
- * Prose text → canonical LaTeX, for the members the table says may be written.
+ * Prose text → canonical LaTeX, for the WHOLE vocabulary.
  *
- * A run with no backslash cannot be raw LaTeX, so the whole vocabulary applies;
- * a run with one is ambiguous and only the `"always"` members apply. Both halves
- * read the ONE table — see the long note above it for the measurement that
- * drew the line, and for the residual it deliberately leaves.
+ * Unconditional since task 360, and that is a claim about the INPUT rather than
+ * about the table: a text run reaching this rung is prose by construction —
+ * every carrier is checked before it in `serializeMarks`, the markless pair
+ * bypasses it, and bare text can no longer hold raw LaTeX because the type-time
+ * carrier marks what an edit writes and both parsers carry a control symbol.
+ * See the long note above the table for the arc and for the one residual.
  *
  * Callers MUST NOT run this on verbatim / code-block / `latexCommand` text.
  */
 export function escapeLatexChars(text: string): string {
-  const re = text.includes("\\") ? ALWAYS_RE : PROSE_RE;
-  return text.replace(re, (ch) => TEX_BY_CHAR.get(ch)!);
+  return text.replace(ESCAPE_RE, (ch) => TEX_BY_CHAR.get(ch)!);
 }
 
 /**

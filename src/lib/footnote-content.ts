@@ -33,8 +33,10 @@ import {
   matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
+  matchControlSymbolAt,
   matchInlineMathAt,
   matchInlineVerbAt,
+  matchLineBreakAt,
   verbatimMark,
 } from "@/lib/latex-lexer";
 
@@ -696,9 +698,23 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       // an escape: `end\\$x^2$` became `end\$x^2$` (one backslash eaten, the
       // math never opening). Consuming the pair is what makes the `$` toggle
       // above see an EVEN backslash run and open math correctly (task 206).
-      if (rest[1] === "\\") {
-        buffer += "\\\\";
-        i += 2;
+      //
+      // It rides the raw-LaTeX CARRIER since task 360, where it used to go
+      // into the prose buffer as two literal backslashes. Same reason the
+      // control-symbol door below exists: with `\` escaped unconditionally, a
+      // buffered `\\` reaches the `.tex` as `\textbackslash{}\textbackslash{}`.
+      // The break's own argument run comes from the lexer's `matchLineBreakAt`,
+      // the same door the main parser reads (the task-341 twin rule), so a
+      // `\\[2pt]` in a card body keeps its spacing instead of printing it.
+      const cardLineBreak = matchLineBreakAt(text, i);
+      if (cardLineBreak) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: cardLineBreak.raw,
+          marks: [{ type: "latexCommand" }],
+        });
+        i = cardLineBreak.end;
         continue;
       }
 
@@ -753,6 +769,24 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         continue;
       }
 
+      // A CONTROL SYMBOL — `\` plus one non-letter — on the raw-LaTeX
+      // carrier, the twin of the main parser's door (task 360). `\,` `\;`
+      // `\ ` and their kin are real LaTeX this fork does not model, and a
+      // literal backslash left in the prose buffer is destroyed the moment the
+      // escape rung stops treating a backslash as a reason to give up.
+      const cardControlSymbol = matchControlSymbolAt(text, i);
+      if (cardControlSymbol) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: cardControlSymbol.raw,
+          marks: [{ type: "latexCommand" }],
+        });
+        i = cardControlSymbol.end;
+        continue;
+      }
+
+      // A trailing `\` with nothing after it — genuinely literal.
       buffer += "\\";
       i++;
       continue;

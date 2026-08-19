@@ -1529,6 +1529,120 @@ CI: [non-prose-bytes-roundtrip.test.ts](src/lib/__tests__/non-prose-bytes-roundt
 
 **Residuals, stated.** M5 changes two derived numbers that are not bytes: a tie is now WHITESPACE to `word-count-core`'s `/\s+/` split, so `Fig.~1` counts as two words rather than one (arguably the truer answer — the PDF prints two — but a visible change), and the same is true of any plain-text projection. Search is unaffected in either direction: neither `~` nor U+00A0 ever matched a typed space. M6 is scoped to a BARE group the source already carried as syntax; the tie is scoped to the MAIN document body and the card-body fork, and `footnote-content.ts` still escapes `%` to `\%` for the reason 347's residual gives. One byte does move exactly once on a group holding a trailing comment (`{a % c}` gains the newline `closeCommentTail` owes it) — which CLOSES a group the source had left open, and is a repair rather than a rewrite.
 
+#### The type-time half: a carrier applied when the bytes are WRITTEN, not when they are read
+
+Same round trip, and the case where every rule above was correct and the
+DOCUMENT MODEL had a fourth carrier nobody had declared (task 360).
+
+`latexVerbatim`, `latexCommentTail` and `latexCommand` each say what their bytes
+are. A BARE text node says nothing — and it was carrying raw LaTeX all the same:
+`tiptap/latex-command.ts`'s decoration plugin exists precisely to paint a
+bare-text `\command` span grey-monospace WHILE THE USER TYPES IT, without
+marking it, and the autosave fires 1500 ms later. So `escapeLatexChars` was
+handed a run that was raw LaTeX by intent and prose by document model, with no
+way to tell them apart. Task 339 shipped the only honest guess available — *a run
+with no backslash cannot be LaTeX, so escape it whole; a run with one is
+ambiguous, so leave its ambiguous members alone* — and filed two residuals:
+a source `\textbackslash{}emph` came back as a LIVE `\emph` on the first save,
+and a run mixing a literal brace with a typed command kept its braces raw, so
+`see {this} and \emph{that}` lost its printed braces to the PDF.
+
+> **Bare text is PROSE, by construction.** A raw-LaTeX span takes the
+> `latexCommand` mark as soon as an edit WRITES one — in the same dispatch, from
+> the same lexer door the parse rung reads — and the two inline parsers carry a
+> CONTROL SYMBOL rather than buffering its backslash. The vocabulary at a
+> backslash is then TOTAL, so `CHAR_ESCAPE_TABLE` emits its whole vocabulary
+> unconditionally and the `emit` field that declared the narrowing is deleted
+> with it.
+
+Six rules it earned:
+
+- **Promotion needs a WRITER, and that is a PROVENANCE rule before it is a cost
+  rule.** The carrier marks only a construct the transaction's own changed ranges
+  TOUCH. Merely existing is not evidence: a literal backslash that arrived from a
+  source `\textbackslash{}` is byte-identical to a typed command, so promoting it
+  on an unrelated keystroke elsewhere in the paragraph would re-create the very
+  corruption this closes. That the correctness rule and the keystroke-sanctity
+  rule turn out to be the SAME rule — *look only at what the edit did* — is what
+  makes the cheap implementation the correct one rather than a compromise.
+- **A document REPLACEMENT is not a writer.** `setContent` (the load, the
+  code-pane bridge's re-parse) replaces `0…docSize` in one step and its content
+  already carries whatever marks the parse rung decided; scanning it would
+  promote every literal backslash in the file, on OPEN, with no gesture. Detected
+  by TipTap's own `preventUpdate` meta plus a structural whole-doc test as the
+  backstop for a raw dispatch. Undo/redo is skipped through prosemirror-history's
+  exported `isHistoryTransaction` — restored content must keep exactly the marks
+  it had, and a re-derivation there ping-pongs.
+- **The vocabulary is the LEXER's** — `scanRawLatexSpans` reads the same doors,
+  in the same order, that both inline parsers read at a backslash (line break →
+  control word + `matchCommandArgumentRun` → accent → `matchControlSymbolAt`). A
+  local copy is how the decoration's own `matchCommandLength` came to cap
+  arguments at two and know nothing of task 349's argument-run rules.
+- **A typed `{…}` group is LaTeX only if it CONTAINS LaTeX, and that asymmetry
+  with the parse rung is deliberate.** 349 M6 carries the braces of EVERY bare
+  group, because a group in the SOURCE is syntax the source already carried; a
+  group the user TYPES is not — `see {this}` is prose whose braces must print.
+  So 339's evidence rule is applied at GROUP granularity here. Both answers are
+  fixed points (a typed `{this}` saves as `\{this\}` and parses back to literal
+  braces; a source `{this}` saves as `{this}` and parses back to a group), so
+  nothing oscillates.
+- **The control symbol is the member that makes the vocabulary total, and it was
+  found by MEASUREMENT.** Both parsers' unknown-command fallback reads a control
+  WORD; everything else at a `\` fell into the prose buffer. Against this repo's
+  own corpora `\;` (16), `\ ` (14) and `\,` (9) occur in ordinary body prose —
+  `U.S.\ Route`, the standard abbreviation idiom — and they round-tripped ONLY by
+  the accident that the escape rung refused to touch a backslash. Once `\` is
+  escaped unconditionally an un-carried `U.S.\ Route` reaches the `.tex` as
+  `U.S.\textbackslash{} Route`, a printed backslash. Two twin divergences closed
+  at the same door: the card fork buffered `\\` as two literal backslashes, and
+  the main parser buffered an UNKEYED cite name (`\citep and more`) where the card
+  fork already reached the marked answer through its unknown-command fallback.
+- **`inclusive: false`, the boundary its two siblings already took.** ProseMirror
+  defaults marks to inclusive, so prose typed at the trailing edge of a command
+  INHERITED the carrier — which is why `serializeMarks`' latexCommand branch
+  smart-quotes at all. With the mark derived from the text, inheritance is not
+  merely unnecessary but wrong, and the scanner re-extends the mark itself while a
+  command is still being typed. Deliberately NOT `code: true` unlike the other
+  two: smartening a typed quote inside a `\command` run is what keeps a stray
+  inherited mark emitting valid `.tex`, and that net stays.
+
+**And the decoration and the mark are now the SAME state, which they have to
+be.** A `AddMarkStep` carries an EMPTY step map, so neither of the decoration
+plugin's probes could see the promotion, and a decoration left standing over a
+now-marked run painted a second `.latex-cmd` over the one the mark renders
+itself. The set is rebuilt whenever this mark's presence changes (O(steps)).
+Recorded residual: a literal backslash from a source `\textbackslash{}` is still
+painted grey by the bare-text decoration although it emits escaped — the one
+place the grey and the bytes disagree, and the one that promotion-on-write turns
+into a command the moment anyone edits it.
+
+CI: [typed-raw-latex-carrier.test.ts](src/lib/tiptap/__tests__/typed-raw-latex-carrier.test.ts).
+Every leg drives a REAL editor and types CHARACTER BY CHARACTER, because the
+defect lives in the gap between what a keystroke leaves in the document and what
+a save then makes of it — a shape no parse→serialize suite can reach, which is
+why 339 could only describe it. Both surfaces are driven (the card body is a
+second inline parser AND a second editor), the cost legs count entries into the
+lexer door (one keystroke in a 60-paragraph document scans ONE block; a block
+with no `\` and no `{` scans none), and `char-escape-table-ssot.test.ts` loses its
+one derived exemption — every member round-trips from source now, and the block
+that asserted *a bare text node is a real carrier* is renegotiated in place to
+assert the opposite with the reason at the site. Measured by neutering each half
+in turn: the carrier plugin takes 15 legs, the unconditional escape 21, the
+promotion gate 2, the replacement gate 1, the history gate 1, `inclusive: false`
+3, and the control-symbol carrier 6.
+
+**Residuals, stated.** A select-all-then-type replaces the whole document too, so
+raw LaTeX arriving that way is not promoted — escaped as the literal characters
+it is, which round-trips; a missed promotion, never a corruption. A char-escape
+spelling typed by hand (`\%`, `\&`) takes the carrier here and is un-escaped to
+its literal character by the next parse, so the grey heals to a plain glyph on
+reload — the type-time and parse-time answers differ by design, and both are
+fixed points. Inside a `\texttt{}` span a control symbol splits the wrapper
+(`\texttt{a\,b}` normalizes once to `\texttt{a}\,\texttt{b}`, idempotent
+thereafter), which is the price of carrying bytes the fork used to destroy.
+**Owed, not claimed:** a preview eyeball of the type-time feel — typing
+`\emph{hi}` in prose, saving, reloading.
+
 #### The dispatcher half: the LAST layer that still read "unterminated" as "yours"
 
 Same round trip, and the case where the law had been written down twice, applied
