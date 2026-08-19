@@ -1055,6 +1055,16 @@ def test_the_no_catalog_fence_routes_through_the_shim():
         "$RECOMPUTE_FLAGS" in text,
         "the emitted flag list is not passed to update_catalog_entry.py",
     )
+    # The substitution's OWN fail-open, closed. An empty expansion drops
+    # every flag, and the shim then whole-array REPLACES — the exact clobber
+    # this fence was migrated off, re-entering through the fix. The emitter
+    # is stdlib-only (no extraction deps), so empty can only mean a wrong
+    # invocation, and a guard turns a silent data loss into a loud stop.
+    check(
+        '[ -n "$RECOMPUTE_FLAGS" ]' in text,
+        "no fail-closed guard on the substituted flag list — an empty "
+        "expansion silently reinstates the whole-array clobber",
+    )
     for banned in (
         ".indexed.warnings' .virgil/catalog.json",
         "Other warning kinds are preserved by you",
@@ -1069,6 +1079,10 @@ def test_no_other_python_writer_free_types_a_fusion_head():
     was in the drop set by construction. The census is the leg with teeth: a
     third writer would type-check perfectly and be invisible to every
     behavioural leg above.
+
+    Scope: the production scripts directory only (`*.py`, not `tests/`) — a
+    suite legitimately spells heads to assert about them, and a fixture is
+    not a writer.
     """
     ssot = "fuse_alternate.py"
     offenders = []

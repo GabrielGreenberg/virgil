@@ -140,6 +140,10 @@ catalog update via the locked CLI shim — do **not** Read/Write
 
 ```bash
 RECOMPUTE_FLAGS=$(python3 .virgil/scripts/library/fuse_alternate.py --print-recompute-flags)
+# Fail CLOSED: an empty expansion would drop every recompute flag, and the
+# patch's `warnings` array would then REPLACE the row's — the whole-array
+# clobber this fence was migrated off. Stop instead.
+[ -n "$RECOMPUTE_FLAGS" ] || { echo "recompute-flag emitter produced nothing — NOT patching warnings"; exit 1; }
 cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
 {
   "indexed": {
@@ -184,6 +188,13 @@ because the family's heads are DERIVED from
 `pgmark_validate.CONTINUITY_FINDING_KINDS` — a hand list would silently
 under-drop the day a continuity kind is added. Never free-type a
 `pgmark-fusion-…` head into this file.
+
+If `$RECOMPUTE_FLAGS` comes back empty (wrong working directory, missing
+`python3`), **stop and report it** — do not run the patch without the
+flags. Without them the array replaces rather than merges, which is the
+clobber this fence exists to avoid; the emitter itself is stdlib-only, so
+an empty result means the invocation was wrong, never that the family is
+empty.
 
 ### 6. Notify
 
