@@ -39,7 +39,6 @@ import {
 } from "@/lib/doc-products/use-doc-products";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
-import { useUpdateAvailable } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import {
   DocKeepAliveSlot,
@@ -1082,7 +1081,6 @@ export default function EditorLayout() {
   // hook is a window-level, not editor-level, reactor — exempt from keystroke
   // sanctity like DiskWatcher).
   useWindowChrome();
-  const updateAvailable = useUpdateAvailable();
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
   // marginalia, popouts) so the document area appears alone. Top bar
   // stays so the button is always reachable. See useZenMode.ts.
@@ -3171,7 +3169,6 @@ export default function EditorLayout() {
       zenModeOn,
       topbarRightCollapsed: prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,
-      updateAvailable,
       hasDoc: !!currentDoc,
       skillSyncError,
       skillSyncNotice,
@@ -3217,7 +3214,6 @@ export default function EditorLayout() {
       zenModeOn,
       prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,
-      updateAvailable,
       currentDoc,
       skillSyncError,
       skillSyncNotice,

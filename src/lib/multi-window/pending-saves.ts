@@ -45,6 +45,19 @@ export async function flushPendingForDoc(docId: string): Promise<void> {
 }
 
 
+/**
+ * Fire EVERY registered debounce and wait for all of them. The app-wide doors
+ * (the reload door, task 391) are not per-document: a reload drops every
+ * mounted pipeline at once, and under multi-doc keep-alive the paper holding
+ * unsaved work is often a BACKGROUND one nobody is looking at. Individual
+ * failures are swallowed — one doc's failed flush must not strand the rest.
+ */
+export async function flushAllPendingDocs(): Promise<void> {
+  await Promise.all(
+    [...flushers.values()].map((fn) => fn().catch(() => {})),
+  );
+}
+
 /** Test helper — wipe all registrations. */
 export function __resetForTests(): void {
   flushers.clear();

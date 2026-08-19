@@ -107,12 +107,12 @@ describe("DiskWatcherProvider per-doc registration (A2)", () => {
     act(() => {
       ctx!.registerDocActions("A", {
         reload: reloadA,
-        keepMine: async () => {},
+        keepMine: async () => true,
         archiveSides: async () => null,
       });
       ctx!.registerDocActions("B", {
         reload: reloadB,
-        keepMine: async () => {},
+        keepMine: async () => true,
         archiveSides: async () => null,
       });
     });
@@ -132,6 +132,7 @@ describe("DiskWatcherProvider per-doc registration (A2)", () => {
       },
       keepMine: async () => {
         order.push(`${id}:keepMine`);
+        return true;
       },
       archiveSides: async () => {
         order.push(`${id}:archive`);

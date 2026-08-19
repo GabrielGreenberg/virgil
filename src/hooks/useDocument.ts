@@ -21,6 +21,29 @@ import {
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { shouldPauseAutosave } from "@/lib/autosave-pause";
 import {
+  clearUnsavedWork,
+  hasUnlandedWork,
+  noteSaveBlocked,
+  noteSaveLanded,
+  noteUnsavedEdit,
+} from "@/lib/unsaved-work";
+import {
+  dropMirrorAfterLandedSave,
+  useEmergencyMirror,
+} from "@/hooks/useEmergencyMirror";
+import {
+  clearMirror,
+  pruneExpiredMirrors,
+  readMirror,
+} from "@/lib/emergency-mirror";
+import {
+  clearRecoveryOffer,
+  getRecoveryOffer,
+  offerMirrorRecovery,
+  registerRecoveryActions,
+} from "@/lib/mirror-recovery";
+import { hashContent } from "@/lib/disk-ledger";
+import {
   TEX_DELIMITERS_CHANGED_EVENT,
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
@@ -128,6 +151,37 @@ export function useDocument() {
     return { delimiters: d };
   }, []);
 
+  /**
+   * The LIVE editor model, or the last flushed snapshot when the editor is
+   * gone. Both conflict ports need it, the emergency mirror ticks from it, and
+   * none of them may invent its own source: archiving one model and writing
+   * another would make the net a copy of something that never existed.
+   *
+   * Declared here (rather than beside its conflict-port consumers below)
+   * because the mirror is mounted before `save`, so the ONE model source has
+   * to precede both.
+   */
+  const currentModel = useCallback((): JSONContent | null => {
+    const editor = editorRef.current;
+    if (editor && !editor.isDestroyed) return editor.getJSON();
+    return latestContentRef.current ?? lastSavedRef.current;
+  }, []);
+
+  // THE EMERGENCY MIRROR (task 391). While a write is refused, paused, or
+  // erroring, this hook's memory is the only copy of the user's work — and
+  // every door that drops it (a service-worker reload, a tab close, a crash)
+  // stays armed. The mirror is the durable second copy; it is timer-driven,
+  // adds no editor subscription, and writes nothing while saves are landing.
+  const { ticker: mirrorTicker } = useEmergencyMirror({
+    docId,
+    getModel: currentModel,
+  });
+  // Read through a ref so the save closures (which run on the keystroke-adjacent
+  // debounce) do not take the ticker as a dependency. Its identity is stable
+  // per mount anyway; the ref keeps that from being load-bearing.
+  const mirrorTickerRef = useRef(mirrorTicker);
+  mirrorTickerRef.current = mirrorTicker;
+
   const save = useCallback(
     async (
       doc: JSONContent,
@@ -149,10 +203,20 @@ export function useDocument() {
         // that never reached disk would make the mint-flush suppression skip a
         // later legitimate write of it. The banner is what tells the user.
         if (isWriteProtected(handle.docId)) {
+          // Task 391: the refusal is also a fact about the USER'S WORK, not
+          // only about the document. Publishing it here is what arms the
+          // emergency mirror and what every reload door reads — the incident's
+          // unload flushes all resolved exactly like this one and every guard
+          // downstream read them as success.
+          noteSaveBlocked(handle.docId, "preservation");
           setSaveStatus("idle");
           return;
         }
         lastSavedRef.current = doc;
+        // THIS is a landed write — the only thing that clears the dirty state
+        // and drops the mirror. Never inferred from the absence of a throw.
+        noteSaveLanded(handle.docId);
+        dropMirrorAfterLandedSave(handle.docId, mirrorTickerRef.current);
         setSaveStatus("saved");
         setTimeout(() => {
           setSaveStatus((prev) => (prev === "saved" ? "idle" : prev));
@@ -176,9 +240,15 @@ export function useDocument() {
               `[useDocument] Save dropped — pipeline ${handle.pipelineId.slice(0, 8)} for "${handle.docId}" had already ended with no replacement. This is unexpected and indicates a regression in the pipeline lifecycle.`,
             );
           }
+          // A dropped write is unlanded work like any other (task 391). The
+          // superseded arm is the benign one — a newer pipeline holds fresher
+          // content — but neither leaves this model on disk, so neither may
+          // report clean.
+          noteSaveBlocked(handle.docId, "error");
           return;
         }
         console.error("Failed to save document:", err);
+        noteSaveBlocked(handle.docId, "error");
         setSaveStatus("idle");
       }
     },
@@ -232,6 +302,30 @@ export function useDocument() {
         setContent(bundle.content);
         lastSavedRef.current = bundle.content;
         setLoading(false);
+        // TASK 391 — a mirror is cleared by nothing but a landed write, so one
+        // that survived to this open is work that never reached disk. Compare
+        // it against what we just loaded and raise the offer if they differ.
+        // Fire-and-forget: this must never delay the editor opening, and a
+        // failed IndexedDB read is not a reason to hold a document hostage.
+        void (async () => {
+          const entry = await readMirror(docId);
+          if (cancelled) return;
+          if (!entry) {
+            clearRecoveryOffer(docId);
+            return;
+          }
+          if (entry.hash === hashContent(JSON.stringify(bundle.content))) {
+            // The work reached disk by some other route (another window, a
+            // later landed write). Nothing to recover; drop the debris.
+            void clearMirror(docId);
+            clearRecoveryOffer(docId);
+            return;
+          }
+          offerMirrorRecovery(entry);
+        })();
+        // One sweep per session, on the same idle promise: a paper that is
+        // never reopened must not leak its slot forever.
+        void pruneExpiredMirrors();
       })
       .catch((err) => {
         console.error("Failed to load document:", err);
@@ -299,6 +393,20 @@ export function useDocument() {
     };
   }, [save, takeDelimitersOpts]);
 
+  // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
+  // flush above is fire-and-forget and may be refused), then stop reporting
+  // this document as memory-at-risk: from here the durable record is the
+  // MIRROR, and the recovery offer on the next open is what surfaces it. A
+  // channel entry that outlived its editor would make every app-wide reload
+  // door answer for work nothing can flush.
+  useEffect(() => {
+    return () => {
+      const ticker = mirrorTickerRef.current;
+      if (ticker && hasUnlandedWork(docId)) void ticker.tick({ force: true });
+      clearUnsavedWork(docId);
+    };
+  }, [docId]);
+
   // Refresh / tab-close flush. `pagehide` is the modern, mobile-safe
   // counterpart to `beforeunload` for actually doing work; we use
   // `beforeunload` only to prompt the user when there are unsaved
@@ -328,22 +436,30 @@ export function useDocument() {
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      // `saveTimerRef.current` is the canonical "there's pending unsaved
-      // work" signal post-perf-fix: it's set on every keystroke and
-      // cleared when the debounce fires (or a flush happens). The
-      // earlier ref-comparison-based dirty check is unreliable here
-      // because `latestContentRef` is only populated at debounce-fire,
-      // not per keystroke.
-      if (saveTimerRef.current === null) return;
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+      // TASK 391 — the predicate is the CHANNEL, not the debounce handle.
+      // `saveTimerRef.current !== null` is unsound in both directions for this
+      // question: the debounce callback nulls it BEFORE calling `save`, so a
+      // REFUSED write leaves the document dirty with the flag already cleared
+      // — the exact state (a standing preservation refusal, a paused conflict
+      // whose re-arm has just fired) in which a reload is most expensive and
+      // this prompt went silent. `hasUnlandedWork` is cleared by nothing but a
+      // write that actually landed.
+      const pendingDebounce = saveTimerRef.current !== null;
+      if (!pendingDebounce && !hasUnlandedWork(docId)) return;
+      // Do NOT disarm the debounce. This handler runs on a leave the user can
+      // still CANCEL, and the pre-391 code cleared the timer unconditionally —
+      // so choosing "Stay" left the document dirty with no retry armed until
+      // the next keystroke. The duplicate write this risks is a no-op:
+      // `writeDocBundle`'s byte-equality gate skips an unchanged bundle
+      // outright.
       const editor = editorRef.current;
       const pending = editor && !editor.isDestroyed
         ? editor.getJSON()
         : latestContentRef.current;
-      if (!pending) return;
-      latestContentRef.current = null;
-      void save(pending, takeDelimitersOpts());
+      if (pending) void save(pending, takeDelimitersOpts());
+      // The mirror makes the loss small; this prompt makes it CHOSEN. Both
+      // matter: a native leave-confirmation is the only thing that can stop a
+      // reload the user did not understand they were asking for.
       e.preventDefault();
       e.returnValue = "";
     };
@@ -353,7 +469,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save, takeDelimitersOpts]);
+  }, [save, takeDelimitersOpts, docId]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -380,6 +496,10 @@ export function useDocument() {
       // normally). KEYSTROKE SANCTITY: this check runs at debounce-fire (off the
       // hot path), never per keystroke; it is a single O(1) store read.
       if (shouldPauseAutosave(watcherRef.current)) {
+        // Task 391: the pause is correct AND it means the user's work is
+        // memory-only from here. Say so on the channel — that is what arms the
+        // mirror and what stops a reload door opening quietly on top of it.
+        noteSaveBlocked(docId, "conflict");
         debouncedSaveRef.current();
         return;
       }
@@ -402,7 +522,7 @@ export function useDocument() {
       // Dismiss / "Keep my version".
       save(doc, takeDelimitersOpts());
     }, 1500);
-  }, [save, takeDelimitersOpts]);
+  }, [save, takeDelimitersOpts, docId]);
   // Sync the self-reference ref in an effect (never during render). The re-arm
   // path inside the timer reads it only after this effect has run.
   useEffect(() => {
@@ -425,6 +545,7 @@ export function useDocument() {
     // and the dirty flag stays true (severity stays 'conflict'). This is a
     // discrete commit path, not the keystroke path — O(1) store read.
     if (shouldPauseAutosave(watcherRef.current)) {
+      noteSaveBlocked(docId, "conflict");
       debouncedSave();
       return;
     }
@@ -442,7 +563,7 @@ export function useDocument() {
       getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
     latestContentRef.current = doc;
     void save(doc, takeDelimitersOpts());
-  }, [save, debouncedSave, takeDelimitersOpts]);
+  }, [save, debouncedSave, takeDelimitersOpts, docId]);
 
   // Code-pane preamble commit: persist the live TipTap JSON with the
   // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
@@ -468,6 +589,7 @@ export function useDocument() {
   const saveWithDelimiters = useCallback(
     (delimiters: { preamble: string; postamble: string }) => {
       if (shouldPauseAutosave(watcherRef.current)) {
+        noteSaveBlocked(docId, "conflict");
         pendingDelimitersRef.current = delimiters;
         debouncedSave();
         return;
@@ -492,7 +614,7 @@ export function useDocument() {
       latestContentRef.current = doc;
       void save(doc, { delimiters });
     },
-    [save, debouncedSave],
+    [save, debouncedSave, docId],
   );
 
   // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
@@ -571,7 +693,14 @@ export function useDocument() {
       // docChanged test, never a bare `docChanged`: an anchor mint is
       // doc-changing too, and keying on that would re-open the very hole the
       // gate closes. O(1) per transaction — two field reads, no doc walk.
-      if (isRealUserEdit(tx)) noteUserEdit(docId);
+      if (isRealUserEdit(tx)) {
+        noteUserEdit(docId);
+        // Task 391: the SAME undoable-edit test arms the unsaved-work channel.
+        // O(1) and edge-only — `noteUnsavedEdit` returns on its first field
+        // read once the document is already dirty, so a typing burst notifies
+        // its subscribers exactly once.
+        noteUnsavedEdit(docId);
+      }
       debouncedSave();
       if (isAnchorMintTransaction(tx)) flushNow();
     },
@@ -586,6 +715,13 @@ export function useDocument() {
     // Reload = disk wins: a stashed pause-swallowed delimiters payload must
     // not survive to clobber the freshly reloaded preamble.
     pendingDelimitersRef.current = null;
+    // …and neither may the unlanded-work state or its mirror (task 391). The
+    // user has just chosen the disk copy over their own, and the conflict
+    // door archived their side to `virgil/.history/` before this ran, so the
+    // work is preserved WHERE THEY CHOSE — keeping a mirror alive would offer
+    // to restore, on the next open, exactly the version they discarded.
+    clearUnsavedWork(docId);
+    dropMirrorAfterLandedSave(docId, mirrorTickerRef.current);
     return readDocBundle(docId)
       .then((bundle) => {
         setContent(bundle.content);
@@ -596,18 +732,6 @@ export function useDocument() {
         setLoading(false);
       });
   }, [docId]);
-
-  /**
-   * The LIVE editor model, or the last flushed snapshot when the editor is
-   * gone. Both conflict ports need it and neither may invent its own source:
-   * archiving one model and writing another would make the net a copy of
-   * something that never existed.
-   */
-  const currentModel = useCallback((): JSONContent | null => {
-    const editor = editorRef.current;
-    if (editor && !editor.isDestroyed) return editor.getJSON();
-    return latestContentRef.current ?? lastSavedRef.current;
-  }, []);
 
   /**
    * "Keep my version" (task 364) — write the live model over the externally
@@ -625,16 +749,81 @@ export function useDocument() {
    * rather than riding it, because a resolution the user watched happen must
    * not land 1500 ms later.
    */
-  const keepMineOverDisk = useCallback(async (): Promise<void> => {
+  const keepMineOverDisk = useCallback(async (): Promise<boolean> => {
     if (saveTimerRef.current !== null) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
     const doc = currentModel();
-    if (!doc) return;
+    if (!doc) return false;
     latestContentRef.current = doc;
     await save(doc, { ...takeDelimitersOpts(), userResolvedConflict: true });
-  }, [currentModel, save, takeDelimitersOpts]);
+    // Task 391 — REPORT whether it landed, read off the one channel rather
+    // than inferred from the absence of a throw. `userResolvedConflict` steps
+    // the 357 write gate aside but not the SERIALIZE gate, and the write can
+    // fail outright; either way the door must not report the user's version
+    // "kept" while it sits in memory alone.
+    return !hasUnlandedWork(docId);
+  }, [currentModel, save, takeDelimitersOpts, docId]);
+
+  /**
+   * TASK 391 — restore the emergency mirror over the file on disk.
+   *
+   * The recovered value is a MODEL, so it goes back in the way any model does:
+   * through `writeDocBundle`, which runs the serializer gate and (once the
+   * user has said yes) writes, and then through `refetch`, so the editor shows
+   * what actually landed rather than what we hoped would. Three properties
+   * make this safe to offer as a one-click action:
+   *
+   * - **The net is unconditional and comes FIRST.** `snapshotConflictSides`
+   *   archives the disk side under its real names AND the model being restored
+   *   as `unsaved-<tex>`, into one `virgil/.history/` slot. So the answer is
+   *   reversible whichever way the user goes, and "view it first" is a folder
+   *   away — which is why the badge can offer restore/discard without a
+   *   preview surface it does not have.
+   * - **`userResolvedConflict` is the same claim task 364 makes**: the 357
+   *   write gate measures AUTOMATIC writes, and this is the user answering the
+   *   question that gate exists to ask. The SERIALIZE gate is not bypassed and
+   *   must not be — a model that cannot be written produces no bytes at all.
+   * - **The report is the permission.** A restore that did not land leaves the
+   *   mirror in place and the offer standing, so the badge cannot claim a
+   *   recovery that never happened.
+   */
+  const restoreFromMirror = useCallback(async (): Promise<boolean> => {
+    const offer = getRecoveryOffer(docId);
+    if (!offer) return false;
+    const recovered = offer.entry.content;
+    // THE NET, FIRST — both sides, before anything is overwritten.
+    await snapshotConflictSides(handle, recovered);
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    await save(recovered, { userResolvedConflict: true });
+    if (isWriteProtected(docId)) return false; // refused — keep the mirror
+    await refetch();
+    void clearMirror(docId);
+    clearRecoveryOffer(docId);
+    return true;
+  }, [docId, handle, save, refetch]);
+
+  /** Keep what is on disk. The mirror's content is NOT archived here: the disk
+   *  copy is the one the user chose and the mirrored one is being declined —
+   *  and unlike the restore path there is nothing about to be overwritten, so
+   *  there is no net to take. */
+  const discardMirror = useCallback(async (): Promise<void> => {
+    await clearMirror(docId);
+    clearRecoveryOffer(docId);
+  }, [docId]);
+
+  useEffect(
+    () =>
+      registerRecoveryActions(docId, {
+        restore: restoreFromMirror,
+        discard: discardMirror,
+      }),
+    [docId, restoreFromMirror, discardMirror],
+  );
 
   /** The doc half of the conflict net: the storage backend can copy the DISK
    *  side on its own, but the editor's unsaved side lives only here. */

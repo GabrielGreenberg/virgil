@@ -3174,6 +3174,112 @@ at render time, and the pill is not a place to do disk I/O. And the real-Dropbox
 eyeball is **owed, not claimed** — this class masks in the dev preview, so the
 durable proof here is the unit contracts.
 
+### The memory half: when a write cannot land, memory is the ONLY copy
+
+Same path, and the half every gate above PRESUPPOSES (task 391). The disk-side
+laws are complete and they were RIGHT on 2026-08-19: a sync daemon reverted the
+paper's `.tex`, the DiskWatcher detected it, the 364 clobber guard PAUSED
+autosave rather than overwrite the external edit, and the file on disk stayed
+protected. Gabriel then wrote for ~70 minutes with every edit in memory alone
+behind a quiet pill, the overnight deploy's service-worker "Update available"
+banner appeared, he clicked it, and the page reloaded. Everything since 12:16
+was gone.
+
+> **A refusal or a pause makes the editor's memory the only copy of the user's
+> work — and every door that DROPS memory (a service-worker reload, a badge
+> reload, a tab close, a crash) stays fully armed.** So the state "this document
+> holds work that has not reached disk" is published to ONE channel, a durable
+> MIRROR is armed from it, and no door that drops memory opens before the work
+> is either landed or mirrored.
+
+Four pieces, in the order a byte travels:
+
+- **The channel.** [src/lib/unsaved-work.ts](src/lib/unsaved-work.ts) —
+  `dirtySince` / `lastLandedAt` / `reason` per doc. Not
+  `saveTimerRef.current !== null`, which is unsound in BOTH directions for this
+  question and is exactly what went quiet in the incident: the debounce callback
+  nulls its handle BEFORE calling `save`, so a REFUSED write leaves the document
+  dirty with the flag already cleared, and a re-armed pause keeps it non-null
+  forever, saying "a write is coming" when the truth is "no write can land".
+  Cleared by nothing but a write that ACTUALLY LANDED, read off the 357 refusal
+  channel rather than from the absence of a throw.
+- **The mirror.** [src/lib/emergency-mirror.ts](src/lib/emergency-mirror.ts) — a
+  rolling per-doc snapshot of the live model in IndexedDB (the SAME `virgil`/`kv`
+  store `doc-index` and `tex-assets` use), on a 5-second wall clock, armed
+  whenever the doc is unlanded and either BLOCKED (arm at once — the incident's
+  state) or merely AGING past `MIRROR_ARM_AFTER_MS` (a sustained typing burst
+  keeps resetting the 1500 ms debounce, so memory is the only copy there too;
+  the hazard there is a crash rather than a gate). It stores a MODEL, not
+  `.tex` bytes, so a restore goes back through the same mount and preservation
+  gates any load does rather than around them.
+- **The doors.** [src/lib/reload-door.ts](src/lib/reload-door.ts) — flush every
+  doc, RE-READ the channel (a refused write resolves normally, so the flush
+  resolving proves nothing), force-mirror what still has not landed, and only
+  then report. `prepareForReload` is what the update banner asks before it
+  posts `SKIP_WAITING`; `reloadNow` is what the `controllerchange` handler —
+  which is armed unconditionally and reachable without the banner at all —
+  enters instead of calling `location.reload()` bare.
+- **The recovery.** [src/lib/mirror-recovery.ts](src/lib/mirror-recovery.ts) +
+  `MirrorRecoveryBadge`. A mirror is cleared by exactly one thing, so a mirror
+  that SURVIVES to the next open is by construction work that never reached
+  disk. Restore archives BOTH sides into one `virgil/.history/` slot first
+  (reversible either way, which is what lets the badge offer a decision with no
+  preview surface), writes as `userResolvedConflict`, and reloads — and reports
+  whether it landed, so a refused restore leaves the offer standing.
+
+Six rules it earned:
+
+- **A door reads the CHANNEL, never the absence of a throw.** The incident's
+  unload flushes all ran and all "succeeded" as refusals. This is the same rule
+  the 357 cluster states for `save()`, applied to every consumer downstream of
+  it — including `ConflictPorts.keepMine`, which was reporting `applied: true`
+  for a write that never happened and clearing the badge over unsaved work.
+- **`beforeunload` PROMPTS off the channel.** The mirror makes the loss small;
+  the prompt makes it CHOSEN. And the handler no longer disarms the debounce: it
+  runs on a leave the user can still CANCEL, and clearing the timer unconditionally
+  left a "Stay" with no retry armed until the next keystroke. The duplicate write
+  that risks is a no-op — `writeDocBundle`'s byte-equality gate skips it.
+- **The arming predicate is pure and shared** (`shouldMirror`), and `force`
+  bypasses AGING but never the DIRTY test: a door may not mirror clean work.
+- **A failed mirror is a NET failing, never a gate.** A quota error, a
+  private-mode block, a closed database — all warn and retry on the next tick.
+  Nothing here may disturb editing, and the banner SAYS when no copy was taken
+  rather than repeating a promise it could not keep.
+- **KEYSTROKE SANCTITY.** `noteUnsavedEdit` runs on the typing path and emits
+  only on the clean→dirty EDGE, so a 50-character burst notifies subscribers
+  ONCE; the mirror adds no editor subscription at all (one 5-second interval per
+  open doc, reference-first equality bail, so a quiet armed tick costs one
+  compare); and the AGE surfaces render from a per-minute ticker in the
+  component, never from a store write.
+- **The pause gets a CLOCK.** A conflict badge that says the same words at
+  minute 1 and minute 70 is how a warning becomes furniture, and that was the
+  incident's second act. It names the age and, while a mirror is being kept,
+  says so.
+
+CI: [emergency-mirror.test.ts](src/lib/__tests__/emergency-mirror.test.ts) (the
+channel's edges + the ticker's arm/bail/failure contract),
+[reload-door.test.ts](src/lib/__tests__/reload-door.test.ts),
+[mirror-recovery.test.ts](src/lib/__tests__/mirror-recovery.test.ts), and
+[useDocument.unsaved-mirror.test.ts](src/hooks/__tests__/useDocument.unsaved-mirror.test.ts)
+— the WIRING, which is the half no test of the mirror or the door can see,
+driving the REAL hook for each blocking reason, the unload prompt, the restore
+ORDER, and the conflict net carrying the LIVE unsaved side. **The legs with
+teeth are the censuses**: the door was never the part that could misbehave, a
+call site that never asks it is, and that is literally what shipped — so no
+production file may call `location.reload()` outside the door (`reloadNow`'s
+`reload` argument is REQUIRED rather than defaulted precisely so the module
+itself is not a speller and the census has exactly one legitimate entry), and
+`applyUpdate` has exactly two mentions in `src/`: its declaration and the gated
+banner. Measured by neutering each half in turn: the pre-391 `beforeunload`
+predicate takes 1 leg, a `save()` that publishes nothing 4, a door that reports
+before it flushes 5, a bare reload + ungated banner 2, a restore that writes
+before it nets 1, and a restore that ignores its report 1.
+
+**Owed, not claimed:** the live drill. Block saves (a forced conflict), type for
+two minutes, hard-reload → the offer restores within seconds of the last tick;
+and a real-Dropbox eyeball of the aged pause badge. This class masks in the dev
+preview, so the durable proof here is the unit contracts.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),

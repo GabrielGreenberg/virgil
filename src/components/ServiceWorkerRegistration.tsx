@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { setUpdateAvailable } from "@/hooks/useUpdateAvailable";
 import { publicAssetUrl } from "@/lib/public-asset-url";
+import { reloadNow } from "@/lib/reload-door";
 
 // The SW URL and its scope both honor the deploy-time prefix, through the ONE
 // door (task 365). The SW file itself must live inside its scope (GitHub Pages
@@ -65,7 +66,15 @@ export default function ServiceWorkerRegistration() {
     const onControllerChange = () => {
       if (!reloadOnControllerChange) return;
       reloadOnControllerChange = false;
-      window.location.reload();
+      // TASK 391 — this is the app's ONLY programmatic reload, and it drops
+      // every mounted editor's memory. It is also reachable WITHOUT the user
+      // ever touching the update banner: `reloadOnControllerChange` is armed
+      // unconditionally at registration, so a controller change from any
+      // cause lands here. There is no user in the loop at this point and
+      // nothing to defer to, so the door does the one thing it can — flush,
+      // then mirror whatever still has not landed — before letting the page
+      // go. See `reload-door.ts`.
+      void reloadNow(() => window.location.reload());
     };
     navigator.serviceWorker.addEventListener(
       "controllerchange",

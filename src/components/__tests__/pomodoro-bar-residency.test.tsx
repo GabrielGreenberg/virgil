@@ -85,7 +85,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     zenModeOn: false,
     topbarRightCollapsed: false,
     setTopbarRightCollapsed: noop,
-    updateAvailable: false,
     hasDoc: true,
     skillSyncError: null,
     skillSyncNotice: null,

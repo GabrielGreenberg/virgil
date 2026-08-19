@@ -114,7 +114,10 @@ export interface DocConflictActions {
   reload: () => void | Promise<void>;
   /** Write the LIVE editor model over disk now, as the user's explicit
    *  decision (the write gate steps aside; the net is already taken). */
-  keepMine: () => Promise<void>;
+  /** Apply the user's side. Resolves whether the write ACTUALLY LANDED
+   *  (task 391) — a refused write returns normally, so the resolution SSOT
+   *  reads this report rather than the absence of a throw. */
+  keepMine: () => Promise<boolean>;
   /** Archive both sides — the doc side supplies the editor's model, which is
    *  the half the storage backend cannot see. */
   archiveSides: () => Promise<ConflictArchive | null>;
