@@ -89,10 +89,13 @@ export async function prepareForReload(): Promise<ReloadReadiness> {
  * Prepare, then reload regardless. The last-resort path: a `controllerchange`
  * Virgil did not ask for has no user to consult and no way to defer, so the
  * only thing it can do is make sure the mirror is taken first.
+ *
+ * `reload` is REQUIRED rather than defaulted, and that is the census's doing
+ * as much as the caller's: a default would make this module itself a speller
+ * of `location.reload()`, and the leg that proves every reload in the app
+ * enters this door works precisely by there being exactly ONE such speller.
  */
-export async function reloadNow(
-  reload: () => void = () => window.location.reload(),
-): Promise<void> {
+export async function reloadNow(reload: () => void): Promise<void> {
   await prepareForReload();
   reload();
 }

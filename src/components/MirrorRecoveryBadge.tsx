@@ -140,8 +140,11 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[360px]"
         style={{
-          background: "var(--accent-soft, var(--warn-soft))",
-          borderColor: "var(--accent, var(--warn))",
+          // The WARNING family the external-change badge uses, one step below
+          // the alarm ramp — nothing here destroys anything, and RED means "no
+          // net" (STYLE_GUIDE). Both answers this badge offers have one.
+          background: "var(--amber-100)",
+          borderColor: "var(--amber-500)",
           color: "var(--ink-strong)",
         }}
         data-mirror-recovery={offer.entry.reason ?? "aging"}
