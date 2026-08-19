@@ -77,3 +77,11 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run
+
+      # Same set the deploy gate runs — kept in both so a python red is
+      # visible on this reporting workflow too, not only as a blocked deploy.
+      - name: Editor script suites (python)
+        run: |
+          for f in editor/scripts/tests/test_*.py; do
+            python3 "$f" || exit 1
+          done

@@ -52,6 +52,17 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
+      # The editor-script suites are stdlib-only python and run nowhere else
+      # in CI — which is how a silently disarmed drift detector sat red for
+      # three days (2026-08-16..19) while every deploy stayed green. The
+      # dev-dream and the task worker run these locally before merging; this
+      # step is the same rule held at the last door.
+      - name: Editor script suites (python)
+        run: |
+          for f in editor/scripts/tests/test_*.py; do
+            python3 "$f" || exit 1
+          done
+
   build:
     runs-on: ubuntu-latest
     steps:
