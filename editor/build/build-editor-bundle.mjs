@@ -27,11 +27,15 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { commandsDirFor, scriptsDirFor } from "../../library/lib/skill-bundle-layout.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
 const bundleDir = join(repoRoot, "public", "skill-bundle", "editor");
-const claudeCommandsDir = join(repoRoot, ".claude", "commands", "editor");
+// Routed through the layout SSOT (library/lib/skill-bundle-layout.mjs) — the
+// same table the app's per-folder sync writes by, so the repo's dev mirror
+// and a synced folder can never disagree about where a command lands.
+const claudeCommandsDir = join(repoRoot, commandsDirFor("editor"));
 
 // ── Paper-bundle helper-script path rewrite ─────────────────────────────────
 // Editor skill SOURCES invoke Python helpers repo-relative — `python3
@@ -61,9 +65,12 @@ const claudeCommandsDir = join(repoRoot, ".claude", "commands", "editor");
 // (`.virgil/scripts/library/…`). Rewriting only the editor prefix left that
 // one invocation unresolvable in a paper folder — the same drift as a
 // fabricated flag, in the path rather than the arguments (task 158).
+// The destination half of each pair is ASKED of the layout SSOT, not restated:
+// this rewrite and the app's per-folder sync must land a helper at the same
+// path or a paper-shipped skill invokes a script that isn't there.
 const PAPER_SCRIPT_PREFIXES = [
-  ["editor/scripts/", ".virgil/scripts/editor/"],
-  ["library/scripts/", ".virgil/scripts/library/"],
+  ["editor/scripts/", `${scriptsDirFor("editor")}/`],
+  ["library/scripts/", `${scriptsDirFor("library")}/`],
 ];
 
 /** True for the paper bundle's slash-command markdowns (claude-commands/*.md). */

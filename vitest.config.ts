@@ -16,6 +16,9 @@ export default defineConfig({
       "src/**/__tests__/**/*.test.{ts,tsx}",
       "library/**/__tests__/**/*.test.{ts,tsx}",
       "editor/**/__tests__/**/*.test.{ts,tsx}",
+      // Repo-global build scripts (`scripts/`) had no test root; the
+      // local-mirror sync earns one (task 374).
+      "scripts/**/__tests__/**/*.test.{ts,tsx}",
     ],
   },
 });

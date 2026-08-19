@@ -14,8 +14,11 @@
 // The user only sees `master.bib`, `papers/`, `unsorted/` when browsing the
 // library folder in Finder. Everything else is tucked away in dot-folders.
 
-export const VIRGIL_DIR = ".virgil";
-export const CLAUDE_DIR = ".claude";
+// The two dot-folder names live in the import-free layout leaf, because the
+// BUILD scripts write into the same folders and cannot import this module.
+// Re-exported here so this module's public surface is unchanged.
+export { VIRGIL_DIR, CLAUDE_DIR } from "./skill-bundle-layout.mjs";
+import { VIRGIL_DIR, CLAUDE_DIR } from "./skill-bundle-layout.mjs";
 
 export const ROOT_FILES = {
   catalog: `${VIRGIL_DIR}/catalog.json`,
