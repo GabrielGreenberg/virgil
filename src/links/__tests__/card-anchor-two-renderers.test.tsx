@@ -298,14 +298,16 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
       { pid: "P1", unanchored: false },
     ]);
     // The omni half keeps its pre-369 gap answer: no index ⇒ no position ⇒
-    // `orphaned`, which never reaches the user because `OmniViewPanel` drops
-    // every `pos == null` row while `editor` is null. What matters is that the
-    // MARGIN still fails OPEN (no spurious re-pin dock) — the two surfaces are
-    // allowed to differ only where neither can be read.
+    // `orphaned`, no Jump — which never reaches the user, because
+    // `OmniViewPanel` drops every `pos == null` row while `editor` is null.
+    // What matters is that the MARGIN still fails OPEN (no spurious re-pin
+    // dock): the two surfaces may differ only where neither can be read.
     const omniRows = buildOmniAnchorRows(card, "base", pass.resolve, {
       unanchored: false,
     });
     expect(omniRows[0].pos).toBeNull();
+    expect(omniRows[0].anchored).toBe(false);
+    expect(omniRows[0].anchorState).toBe("orphaned");
   });
 
   it("a card with no stored anchor takes the panel's own free intent", () => {

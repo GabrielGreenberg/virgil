@@ -35,10 +35,13 @@ export interface OmniAnchorRow
   /** The omni item id — `baseId`, plus `@<i>` when the card has >1 row. */
   omniId: string;
   /**
-   * True iff this row sits on a LIVE paragraph — the predicate a builder uses
-   * for its Jump affordance and its anchored/orphaned card chrome. Never
-   * `pos != null`: a baked position is a seed, and the authority's verdict is
-   * the thing that must not be re-derived.
+   * True iff this row is KNOWN to sit on a live paragraph — the predicate a
+   * builder uses for its Jump affordance and its anchored/orphaned chrome.
+   * It is the authority's verdict AND a resolved position, so the mount gap
+   * (no index yet ⇒ no position) answers `false`: the margin fails OPEN there
+   * (it can key a marker on a raw stored pid), but an omni row with nothing to
+   * point at must not offer a Jump. Never re-derive it from `pos` alone —
+   * `pos` is a seed the live resolver supersedes.
    */
   anchored: boolean;
 }
@@ -85,7 +88,7 @@ export function buildOmniAnchorRows(
       pos: witness,
       anchorUuid: row.pid,
       anchorState: resolveAnchorState(witness, intent),
-      anchored,
+      anchored: witness != null,
     };
   });
 }
