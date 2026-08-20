@@ -1927,11 +1927,24 @@ Two vertical policies, branched on `meta.chromeAnchor`:
   canonical [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts)
   `resolveBlockFrame()` so every affordance on a row reads the same numbers.
   A **container** (`bulletList` / `orderedList` / `exampleBlock`) resolves
-  THROUGH to its first grabbable child's first line — the row the user sees
-  — so a container handle and its first item's handle land on the same Y by
-  construction. (Never anchor a container to its own `(n)` chip / wrapper
-  metrics.) Works for any font / line-height — a heading at 1.75rem reads
-  the same as a paragraph at 1.05rem.
+  THROUGH to its first grabbable child's first line — its OWN first visual
+  row, since a `<ul>` has no text line of its own. (Never anchor a container
+  to its own `(n)` chip / wrapper metrics.) Works for any font / line-height
+  — a heading at 1.75rem reads the same as a paragraph at 1.05rem.
+
+  **Handles arrange HIERARCHICALLY (task 394).** Every level anchors at its
+  OWN block's first visual line, at its own marker-derived X — never at the
+  row the pointer happens to be on. Hovering the last item of a nested list
+  therefore paints the outer list beside the outer list's top row, the outer
+  item beside its own line, the inner list beside ITS top row, and exactly
+  one handle on the hovered node: the gutter reads as a structural
+  breadcrumb rather than a pile of three handles on one row (the shape that
+  also shoved the innermost onto the bullet glyph). The same-row separation
+  and the ink cap below still govern GENUINE coincidences — hovering a
+  list's first row, or a container whose first child is a container — where
+  two levels legitimately share one line. A container whose first line has
+  scrolled off-screen paints its handle off-screen with it: the chrome
+  belongs to its structure, and there is deliberately no viewport pinning.
 - **`block-top`** (texBlock, latexComment, displayMath, graphicsBlock,
   figureBlock) — handle sits a half-glyph below the wrapper's visual top
   edge. For framed visual kinds where there's no "first line of prose" to
