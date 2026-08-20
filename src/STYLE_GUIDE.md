@@ -2069,6 +2069,26 @@ Two wearers today — `texBlock` (raw LaTeX between `%!vtex:` sentinels) and
   separate control rather than a press on the chip: the chip's job is to be
   read, and a pod with no derived view has no second answer to give.
 
+### Reaching a pod — the insertion surfaces
+
+A pod-wearing block is INSERTED the way every other block atom is: a slash
+command and one cell in the lightning grid's block-insert region, both routed
+through the SAME `VIRGIL_ACTION_REGISTRY` row so the starter bytes, the uuid
+mint, the container guard and the collab gate cannot diverge between them
+(`\tex` → `tex`, `\forest` → `forest`). Three rules:
+
+- **The grid cell dispatches through `runGridAction(id)`**, never a private
+  ActionContext of its own — the `\tex` cell's own builder omits `canEdit` and
+  is the known task-228 trap, not a pattern to copy.
+- **The starter bytes live beside whatever VALIDATES them**, not beside the
+  node: `freshForestSource` sits on the forest grammar leaf so its parse is a
+  contract (a starter outside the render whitelist would open badge-first — a
+  user's first tree telling them Virgil can't draw it).
+- **The grid's last row may be PARTIAL.** Four columns and a growing block-insert
+  family guarantee it; `MenuGrid`'s nav clamps a vertical move to the target
+  row's real extent (nav-core R3), so a partial row stays reachable — at the cost
+  of a remembered column that row cannot offer.
+
 ### A pod that can RENDER its bytes
 
 A wearer may contribute a `derive(source)` — a rendered PREVIEW shown in place of

@@ -207,20 +207,30 @@ describe("ActionsMenuPanel — composite GRID nav", () => {
 describe("ActionsMenuPanel — composite grid↔list seam", () => {
   it("ArrowDown off the LAST grid row enters the card list (first card)", () => {
     renderPanel();
-    // Walk to the bottom grid row, column 0 (\tex), then Down → into the list.
+    // Walk to the bottom grid row, column 0, then Down → into the list.
+    // Row 4 is the PARTIAL last row (task 385's `forest` cell, col 0 only) —
+    // nav-core's documented R3 rule clamps a vertical move to the target row's
+    // real extent, so descending col 0 reaches it before the list.
     key("ArrowDown"); // Bold (0,0)
     key("ArrowDown"); // Block type (1,0)
     key("ArrowDown"); // Example (2,0)
     key("ArrowDown"); // \tex (3,0)
     expect(activeHint()).toBe("Insert raw LaTeX block");
+    key("ArrowDown"); // forest (4,0) — the partial last row
+    expect(activeHint()).toBe("Insert syntax tree (forest)");
     key("ArrowDown"); // off the last row → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label); // Highlight
   });
 
-  it("ArrowUp off the list TOP re-enters the grid at the remembered column", () => {
+  it("ArrowUp off the list TOP re-enters the grid at the remembered column, CLAMPED to the last row's extent", () => {
     renderPanel();
-    // Enter the grid at column 2 (Strike), drop to the last row (graphics, col 2),
-    // then Down into the list, then Up back — should land on the col-2 cell.
+    // Enter the grid at column 2 (Strike) and descend. Since task 385 the last
+    // row is PARTIAL (only `forest`, col 0), so every vertical move through it
+    // clamps to col 0 — nav-core's R3 rule, which is what keeps a partial row
+    // reachable at all. RENEGOTIATED rather than re-scoped: the pre-385 leg
+    // asserted a full last row could hand the remembered column straight back,
+    // and the memory itself is still live (the col-2 walk below proves it) —
+    // what changed is that the row it re-enters has no col 2 to offer.
     key("ArrowDown"); // Bold (0,0)
     key("ArrowRight");
     key("ArrowRight"); // Strike (0,2)
@@ -228,10 +238,12 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
     key("ArrowDown"); // Display math (2,2)
     key("ArrowDown"); // graphics (3,2)
     expect(activeHint()).toBe("Insert image");
-    key("ArrowDown"); // → first card (remembers lastGridCol = 2)
+    key("ArrowDown"); // forest (4,0) — clamped, the only cell in the last row
+    expect(activeHint()).toBe("Insert syntax tree (forest)");
+    key("ArrowDown"); // → first card
     expect(activeCardLabel()).toBe(cardActionRows("lightning")[0].label);
-    key("ArrowUp"); // back into the grid at {maxRow, col 2}
-    expect(activeHint()).toBe("Insert image"); // graphics (3,2)
+    key("ArrowUp"); // back into the grid at {maxRow, clamped}
+    expect(activeHint()).toBe("Insert syntax tree (forest)");
   });
 
   it("ArrowDown/Up navigate WITHIN the card list once inside it", () => {
@@ -240,7 +252,7 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
     // Jump to the list bottom via End (composite End = grid end → but Home/End in
     // the list region jump within the list; reach the list first).
     key("ArrowDown"); // Bold
-    for (let i = 0; i < 3; i++) key("ArrowDown"); // descend col 0 to \tex
+    for (let i = 0; i < 4; i++) key("ArrowDown"); // descend col 0 to forest (4,0)
     key("ArrowDown"); // first card (Highlight)
     expect(activeCardLabel()).toBe(rows[0].label);
     key("ArrowDown");
@@ -252,7 +264,7 @@ describe("ActionsMenuPanel — composite grid↔list seam", () => {
   it("Enter on an active card row dispatches that card action", () => {
     const { dispatch } = renderPanel({ mode: "selection" });
     key("ArrowDown");
-    for (let i = 0; i < 3; i++) key("ArrowDown"); // descend col 0 to \tex
+    for (let i = 0; i < 4; i++) key("ArrowDown"); // descend col 0 to forest (4,0)
     key("ArrowDown"); // Highlight (first card)
     key("Enter");
     expect(dispatch).toHaveBeenCalledWith("highlight", {

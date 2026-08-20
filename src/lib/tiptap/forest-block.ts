@@ -1,7 +1,6 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import ForestBlockNodeView from "@/components/ForestBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { FOREST_ENV_NAME } from "@/lib/latex-lexer";
 
 /**
  * `forestBlock` — a `\begin{forest}…\end{forest}` environment, carried WHOLE.
@@ -89,14 +88,3 @@ export const ForestBlock = Node.create<ForestBlockOptions>({
     });
   },
 });
-
-/** A fresh, subset-clean starter tree — the bytes an insertion surface seeds a
- *  new block with. Kept beside the node so the insertion surfaces of task 385
- *  cannot mint a different one. */
-export function freshForestSource(): string {
-  return (
-    `\\begin{${FOREST_ENV_NAME}}\n` +
-    `[S\n  [NP]\n  [VP]\n]\n` +
-    `\\end{${FOREST_ENV_NAME}}`
-  );
-}

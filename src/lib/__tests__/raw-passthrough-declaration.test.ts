@@ -203,6 +203,7 @@ const SAMPLE_FOR: Record<string, string> = {
   graphicx: "\\includegraphics{fig.png}",
   tikz: "\\begin{tikzpicture}\\draw (0,0);\\end{tikzpicture}",
   xcolor: "\\textcolor[HTML]{FF0000}{red}",
+  forest: "\\begin{forest}[S [NP] [VP]]\\end{forest}",
 };
 
 describe("the vocabulary sweep covers every member", () => {

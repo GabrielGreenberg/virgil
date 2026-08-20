@@ -76,9 +76,12 @@ export interface SmartInsertResult {
  * Scan the doc for every existing `uuid` on nodes of `typeName`, so a freshly
  * minted id is collision-free within that node family. Mirrors the per-block
  * `collect*Uuids` helpers (figure-block / graphics-block / tex-block), unified
- * here so the smart-insert path has one scan.
+ * here so the smart-insert path has one scan. Exported so the view-only block
+ * creators in the action registry (`texRun` / `forestRun`, which operate on
+ * `ctx.view` and so cannot go through `smartInsertBlock`, which needs a live
+ * TipTap `Editor`) mint against the SAME scan rather than a third copy of it.
  */
-function collectUuids(doc: PMNode, typeName: string): Set<string> {
+export function collectUuids(doc: PMNode, typeName: string): Set<string> {
   const set = new Set<string>();
   doc.descendants((node) => {
     if (node.type.name === typeName && node.attrs.uuid) {
