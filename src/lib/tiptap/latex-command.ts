@@ -9,6 +9,7 @@ import { COMMAND_MAP } from "./commands";
 import {
   LATEX_COMMENT_TAIL_MARK,
   LATEX_VERBATIM_MARK,
+  matchBraceGroupAt,
   scanRawLatexSpans,
 } from "@/lib/latex-lexer";
 
@@ -360,6 +361,46 @@ function readBlock(
 }
 
 /**
+ * The BALANCED brace pairs of a block, as block-relative offsets, where BOTH
+ * braces carry the carrier (task 390b).
+ *
+ * A brace is not a construct on its own. The carrier marks a `{`/`}` only as
+ * the DELIMITERS of a group — promotion gives the pair one shared extent and
+ * marks them together — so they have to come OFF together too. A demotion that
+ * takes one and leaves the other emits unbalanced LaTeX: the demoted brace goes
+ * through the escape rung to `\}`, which the next parse reads as the literal
+ * character it now is, so the surviving `{` has no partner and the paper stops
+ * compiling. And the write gate cannot see it — `\}` against `}` moves zero
+ * word tokens.
+ *
+ * The pair set is what the demotion's own verdicts are then reconciled against
+ * (below): exactly one side scheduled means NEITHER goes. Refusing is the safe
+ * direction — it leaves the source group untouched, which for a group this
+ * scanner never claimed is the honest answer to an edit that merely happened
+ * next to it.
+ *
+ * Escape-aware through the lexer's own door (`matchBraceGroupAt`), so a typed
+ * `\{` is not mistaken for a delimiter, and blind to OPAQUE runs by
+ * construction — a brace inside a `\verb` run is not in this text.
+ */
+function markedBracePairs(
+  text: string,
+  marked: Range[],
+): { open: number; close: number }[] {
+  const inMarked = (off: number) =>
+    marked.some((m) => off >= m.from && off < m.to);
+  const out: { open: number; close: number }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{" || !inMarked(i)) continue;
+    const group = matchBraceGroupAt(text, i);
+    if (!group) continue;
+    const close = group.end - 1;
+    if (inMarked(close)) out.push({ open: i, close });
+  }
+  return out;
+}
+
+/**
  * The constructs this edit BROKE, as ranges in the final document, clipped to
  * the block that asked (task 390).
  *
@@ -372,9 +413,16 @@ function readBlock(
  * question — which is what makes the demotion half a derivation rather than a
  * special case for backspace.
  *
- * Runs ONLY for a block holding a stale run that the changed ranges do not
- * themselves reach, so an ordinary keystroke — and every deletion that strands
- * a mark under its own cursor — pays nothing for it.
+ * COST, stated precisely because the loose version of it was wrong. This runs
+ * only for a block holding a stale run that the changed ranges do not
+ * themselves reach — so an ordinary keystroke in ordinary prose, and every
+ * deletion that strands a mark under its own cursor, pay nothing for it. What
+ * DOES pay is a block holding a run this scanner permanently declines while
+ * the parse rung carries it (a source bare `{a, b}` group): such a run is
+ * "stale" forever, so every keystroke anywhere in that block buys a second
+ * `readBlock` + a second scan + one `Mapping` build. Block-bounded, never
+ * document-bounded — the law holds — but it is roughly 2x the carrier's
+ * per-keystroke work in that one paragraph, not nothing.
  */
 function brokenConstructs(
   oldDoc: PMNode,
@@ -608,7 +656,12 @@ export const LatexCommandMark = Mark.create({
             // standing over a now-MARKED run paints a second `.latex-cmd`
             // over the one the mark renders itself. The two carriers of the
             // same grey are the same state since task 360, so the set is
-            // rebuilt whenever this mark's presence changes. O(steps).
+            // rebuilt whenever this mark's presence changes. The DETECTION is
+            // O(steps); the REBUILD it gates is O(document) — the pre-existing
+            // cost of the promote arm's own AddMarkStep, which a demotion
+            // reaches too since task 390. Bounded by being one-shot per
+            // construct: once the mark is off, the block carries no marked run
+            // and no further step is produced.
             if (!touched) {
               touched = tr.steps.some(
                 (step) =>
@@ -764,11 +817,39 @@ export const LatexCommandMark = Mark.create({
                 ),
               );
             }
+            // A BRACE IS NOT A CONSTRUCT ON ITS OWN (task 390b). The pair
+            // comes off together or not at all — see `markedBracePairs` for
+            // what a one-sided demotion emits. ONE pass suffices and that is a
+            // property, not a shortcut: an offset is either a `{` or a `}`, so
+            // it belongs to at most one balanced pair, and a refusal therefore
+            // cannot cascade into another.
+            const scheduled = new Set<number>();
             for (const { run, parts } of pending) {
               if (!reaches(run)) continue;
               for (const part of parts) {
-                tr ??= newState.tr;
-                tr.removeMark(start + part.from, start + part.to, markType);
+                for (let o = part.from; o < part.to; o++) scheduled.add(o);
+              }
+            }
+            if (scheduled.size > 0) {
+              for (const { open, close } of markedBracePairs(text, marked)) {
+                const a = scheduled.has(open);
+                if (a === scheduled.has(close)) continue;
+                scheduled.delete(a ? open : close);
+              }
+            }
+            for (const { run, parts } of pending) {
+              if (!reaches(run)) continue;
+              for (const part of parts) {
+                // Re-cut the part around anything the brace pairing withdrew.
+                let at = part.from;
+                for (let o = part.from; o <= part.to; o++) {
+                  if (o < part.to && scheduled.has(o)) continue;
+                  if (o > at) {
+                    tr ??= newState.tr;
+                    tr.removeMark(start + at, start + o, markType);
+                  }
+                  at = o + 1;
+                }
               }
             }
           }

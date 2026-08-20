@@ -439,6 +439,110 @@ describe("only the run the edit TOUCHED demotes", () => {
   });
 });
 
+// ── a BRACE is not a construct on its own ────────────────────────────────────
+
+describe("marked braces demote in PAIRS, or not at all", () => {
+  /** Every `{`/`}` outside an escape is matched. The demotion may not leave a
+   *  `.tex` this refuses — a surviving `{` whose partner went through the
+   *  escape rung has no partner at all, and the paper stops compiling. */
+  function balanced(tex: string): boolean {
+    let depth = 0;
+    for (let i = 0; i < tex.length; i++) {
+      if (tex[i] === "\\") { i++; continue; }
+      if (tex[i] === "{") depth++;
+      else if (tex[i] === "}" && --depth < 0) return false;
+    }
+    return depth === 0;
+  }
+
+  /** A SOURCE bare group — braces the parse rung carries (349 M6) and this
+   *  scanner deliberately declines, so both are permanently "stale". The
+   *  `\'e` inside is what makes it an everyday shape rather than a contrivance. */
+  function loadedSourceGroup() {
+    return new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "Fr{\\'e}chet was first.\n\\end{document}\n",
+      ) as JSONContent,
+    });
+  }
+
+  function braceAt(ed: Editor, ch: "{" | "}"): number {
+    let at = -1;
+    ed.state.doc.descendants((node, p) => {
+      if (node.isText && node.text === ch) at = p;
+      return true;
+    });
+    return at;
+  }
+
+  // Each of these reaches exactly ONE brace of the pair under the adjacency
+  // rule the two halves share. Pre-390b each demoted that one and left its
+  // partner marked, so the save wrote `Fr{\'{e}\}Xchet` — unbalanced, silent,
+  // and invisible to the 357 write gate (`\}` against `}` is zero word tokens).
+  const EDGES: [string, (ed: Editor) => number][] = [
+    ["immediately AFTER the closing brace", (ed) => braceAt(ed, "}") + 1],
+    ["immediately BEFORE the closing brace", (ed) => braceAt(ed, "}")],
+    ["immediately BEFORE the opening brace", (ed) => braceAt(ed, "{")],
+  ];
+
+  for (const [where, posOf] of EDGES) {
+    it(`typing ${where} leaves the group untouched`, () => {
+      editor = loadedSourceGroup();
+      const ed = editor;
+      typeAt(ed, posOf(ed), "X");
+      const out = saved(ed);
+      expect(balanced(out)).toBe(true);
+      // NEITHER brace went through the escape rung — the source group is still
+      // a group. (Asserting a literal substring would fail for the inside-the-
+      // group edge, where the typed character lands between them.)
+      expect(out).not.toMatch(/\\[{}]/);
+      expect(markedRuns(ed)).toEqual(["{", "}"]);
+    });
+  }
+
+  it("holds for NESTED source groups", () => {
+    // An offset is either a `{` or a `}`, so it belongs to at most one balanced
+    // pair and one reconciliation pass is provably enough — pinned here so a
+    // future nesting change has to face the question rather than inherit it.
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "A {b {c} d} e.\n\\end{document}\n",
+      ) as JSONContent,
+    });
+    const ed = editor;
+    typeAt(ed, ed.state.doc.content.size - 1, "X");
+    const out = saved(ed);
+    expect(balanced(out)).toBe(true);
+    expect(out).toBe("A {b {c} d} e.X");
+  });
+
+  it("does NOT block a genuinely orphaned brace", () => {
+    // The group twin from above: the `{` is GONE, so the surviving `}` has no
+    // marked partner and the pairing rule has nothing to say. Refusing here
+    // would reinstate the defect under the fix's own name.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "{\\bf hi}");
+    ed.commands.deleteRange({ from: 1, to: 2 });
+    expect(markedRuns(ed)).toEqual(["\\bf"]);
+    expect(saved(ed)).toBe("\\bf hi\\}");
+  });
+
+  it("does NOT block a pair the edit reached on BOTH sides", () => {
+    // Deleting the lead of `\emph{hi}` strands `emph` and the group's braces
+    // together; both are inside the one marked run the edit reached, so both
+    // go and the result is escaped-but-balanced.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\emph{hi}");
+    ed.commands.deleteRange({ from: 1, to: 2 });
+    expect(markedRuns(ed)).toEqual([]);
+    expect(saved(ed)).toBe("emph\\{hi\\}");
+  });
+});
+
 // ── the card-body surface inherits the demotion too ──────────────────────────
 
 describe("the card/footnote surface demotes as well", () => {
@@ -555,6 +659,29 @@ describe("keystroke sanctity", () => {
     ed.commands.deleteRange({ from: 1, to: 2 });
     expect(scanCalls.n).toBe(0);
     expect(markedRuns(ed)).toEqual([]);
+  });
+
+  it("a block holding a PERMANENTLY declined marked run pays the recovery every keystroke", () => {
+    // The honest cost of the recovery, pinned rather than described. A source
+    // bare group's braces are carried by the parse rung and declined by this
+    // scanner forever, so they are "stale" on every pass and never reached by
+    // an edit elsewhere in the block — which is exactly the condition the
+    // recovery fires on. Two scans per keystroke in that paragraph, for as long
+    // as the group is there. Block-bounded (the law holds), and NOT nothing:
+    // the first draft of this fix's own docstring claimed nothing.
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "See {this} and more.\n\\end{document}\n",
+      ) as JSONContent,
+    });
+    const ed = editor;
+    scanCalls.n = 0;
+    typeAt(ed, ed.state.doc.content.size - 1, "x");
+    expect(scanCalls.n).toBe(2);
+    // …and it demotes nothing, which is the point of paying it.
+    expect(markedRuns(ed)).toEqual(["{", "}"]);
   });
 
   it("recovering a BROKEN construct costs one extra scan, and only then", () => {
