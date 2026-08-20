@@ -373,11 +373,15 @@ function readBlock(
  * compiling. And the write gate cannot see it — `\}` against `}` moves zero
  * word tokens.
  *
- * The pair set is what the demotion's own verdicts are then reconciled against
- * (below): exactly one side scheduled means NEITHER goes. Refusing is the safe
- * direction — it leaves the source group untouched, which for a group this
- * scanner never claimed is the honest answer to an edit that merely happened
- * next to it.
+ * So an INTACT pair never demotes (below). Both-or-neither was the first cut
+ * and is weaker: it keeps the output balanced and still escapes a pair the edit
+ * reaches on both sides, which for `caf{\'e}s` turns a grouping the user never
+ * touched into printed braces the moment they delete the accented letter.
+ * Refusing outright is better on every case, because a marked pair is a group
+ * either way — emitting it raw is exactly what a re-parse of those bytes
+ * produces, so `\emph{hi}` minus its lead saves as `emph{hi}` rather than
+ * diverging from the parse rung. A brace whose partner is GONE has no pair
+ * here and demotes normally, which is the group twin this law must not block.
  *
  * Escape-aware through the lexer's own door (`matchBraceGroupAt`), so a typed
  * `\{` is not mistaken for a delimiter, and blind to OPAQUE runs by
@@ -817,12 +821,10 @@ export const LatexCommandMark = Mark.create({
                 ),
               );
             }
-            // A BRACE IS NOT A CONSTRUCT ON ITS OWN (task 390b). The pair
-            // comes off together or not at all — see `markedBracePairs` for
-            // what a one-sided demotion emits. ONE pass suffices and that is a
-            // property, not a shortcut: an offset is either a `{` or a `}`, so
-            // it belongs to at most one balanced pair, and a refusal therefore
-            // cannot cascade into another.
+            // A BRACE IS NOT A CONSTRUCT ON ITS OWN (task 390b): an INTACT
+            // marked pair never demotes — see `markedBracePairs` for what a
+            // one-sided demotion emits and why both-or-neither was not enough.
+            // A brace whose partner is gone is in no pair and demotes.
             const scheduled = new Set<number>();
             for (const { run, parts } of pending) {
               if (!reaches(run)) continue;
@@ -832,9 +834,8 @@ export const LatexCommandMark = Mark.create({
             }
             if (scheduled.size > 0) {
               for (const { open, close } of markedBracePairs(text, marked)) {
-                const a = scheduled.has(open);
-                if (a === scheduled.has(close)) continue;
-                scheduled.delete(a ? open : close);
+                scheduled.delete(open);
+                scheduled.delete(close);
               }
             }
             for (const { run, parts } of pending) {

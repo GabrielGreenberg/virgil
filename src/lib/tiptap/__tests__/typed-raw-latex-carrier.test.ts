@@ -362,12 +362,14 @@ describe("deleting what made a run LaTeX demotes it", () => {
 
   it("a selection that removes the lead AND more demotes the remainder", () => {
     // The surgical answer ("backspace removed a `\`") misses this, forward
-    // delete, and cut. The rule is about what the edit left behind.
+    // delete, and cut. The rule is about what the edit left behind — and the
+    // group's braces stay, because an INTACT marked pair is a group either way
+    // and `a ph{hi} b` is what a re-parse of these bytes produces.
     const ed = mount("<p></p>");
     typeAt(ed, 1, "a \\emph{hi} b");
     ed.commands.deleteRange({ from: 3, to: 6 }); // "\\em"
-    expect(markedRuns(ed)).toEqual([]);
-    expect(saved(ed)).toBe("a ph\\{hi\\} b");
+    expect(markedRuns(ed)).toEqual(["{", "}"]);
+    expect(saved(ed)).toBe("a ph{hi} b");
   });
 
   it("does NOT flicker while a command is still being typed", () => {
@@ -413,8 +415,11 @@ describe("only the run the edit TOUCHED demotes", () => {
     });
     expect(at).toBeGreaterThan(0);
     ed.commands.deleteRange({ from: at, to: at + 1 });
-    expect(markedRuns(ed)).toEqual(["{", "}"]);
-    expect(saved(ed)).toBe("See {this} and foobar\\{that\\} ok.");
+    // `foobar` loses the carrier. BOTH groups keep their braces — the source
+    // group because nothing reached it, the command's own because an intact
+    // marked pair is never demoted — and the bytes are what a re-parse gives.
+    expect(markedRuns(ed)).toEqual(["{", "}", "{", "}"]);
+    expect(saved(ed)).toBe("See {this} and foobar{that} ok.");
   });
 
   it("an unrelated edit in the same block demotes nothing", () => {
@@ -425,17 +430,56 @@ describe("only the run the edit TOUCHED demotes", () => {
     expect(saved(ed)).toBe("See {this} and \\foobar{that} ok.!");
   });
 
-  it("an edit in a DIFFERENT block demotes nothing", () => {
+  it("an edit in a DIFFERENT block never even OPENS it", () => {
+    // Stated as a cost claim as well as a content one, because the content half
+    // alone is vacuous: every marked run in the other block is covered by its
+    // own scan or protected as a brace pair, so it would survive a block-wide
+    // demotion too. What is falsifiable is that the other block is not read.
     editor = new Editor({
       extensions: [StarterKit, LatexCommandMark],
       content: parseLatex(
         "\\documentclass{article}\n\\begin{document}\n" +
-          "Alpha.\n\n\\foobar{that}\n\\end{document}\n",
+          "Alpha {here} too.\n\n\\foobar{that}\n\\end{document}\n",
       ) as JSONContent,
     });
     const ed = editor;
+    scanCalls.n = 0;
     typeAt(ed, 2, "x");
+    // TWO scans, both of the TOUCHED block: its own text, and its prior text
+    // for the recovery, because its source group's braces are permanently
+    // stale here (the cost rule above). The block holding `\foobar{that}` is
+    // never opened at all — scanning it would make this three.
+    expect(scanCalls.n).toBe(2);
     expect(saved(ed)).toContain("\\foobar{that}");
+  });
+});
+
+// ── the cover protects a span promotion itself DECLINED ─────────────────────
+
+describe("every scanned span protects, including one crossing an atom", () => {
+  it("a marked command wrapping an inline atom survives an edit beside it", () => {
+    // The rule "protect broadly, demote narrowly" has one disjunct no other leg
+    // reaches: a span the PROMOTE arm declines because it crosses an OPAQUE
+    // inline atom still belongs in the cover. Mirroring promotion's own OPAQUE
+    // guard four lines above looks like a tidy-up and is the defect — measured,
+    // that one-line change passes every other leg in this file.
+    //
+    // The shape is ordinary: type a command with an argument (whole run marked),
+    // then swap the argument for a citation chip from the panel.
+    const ed = mount("<p></p>", [StarterKit, ...buildBorrowedAtomSchema()]);
+    typeAt(ed, 1, "\\foobar{x} tail");
+    ed.commands.deleteRange({ from: 9, to: 10 });
+    ed.commands.insertContentAt(9, {
+      type: "citation",
+      attrs: { citationId: "c1", command: "\\citep{x}", keys: ["x"] },
+    } as JSONContent);
+    expect(markedRuns(ed)).toEqual(["\\foobar{", "}"]);
+
+    // An edit that TOUCHES the command's own run. Without the cover the span is
+    // stale, `\foobar` is not a brace so the pair rule cannot save it, and the
+    // next save writes `\textbackslash{}foobar` — the command destroyed.
+    typeAt(ed, 1, "Z");
+    expect(markedRuns(ed)).toEqual(["\\foobar{", "}"]);
   });
 });
 
@@ -531,15 +575,16 @@ describe("marked braces demote in PAIRS, or not at all", () => {
     expect(saved(ed)).toBe("\\bf hi\\}");
   });
 
-  it("does NOT block a pair the edit reached on BOTH sides", () => {
+  it("keeps an INTACT pair even where the edit reached both sides", () => {
     // Deleting the lead of `\emph{hi}` strands `emph` and the group's braces
-    // together; both are inside the one marked run the edit reached, so both
-    // go and the result is escaped-but-balanced.
+    // together. `emph` demotes; the braces do not, and the output is what a
+    // re-parse of `emph{hi}` produces — the type-time and parse-time answers
+    // agreeing, which escaping the pair would have broken.
     const ed = mount("<p></p>");
     typeAt(ed, 1, "\\emph{hi}");
     ed.commands.deleteRange({ from: 1, to: 2 });
-    expect(markedRuns(ed)).toEqual([]);
-    expect(saved(ed)).toBe("emph\\{hi\\}");
+    expect(markedRuns(ed)).toEqual(["{", "}"]);
+    expect(saved(ed)).toBe("emph{hi}");
   });
 });
 
