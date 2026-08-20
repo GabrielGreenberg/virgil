@@ -23,6 +23,7 @@ import {
   type ForestRefusalKind,
   type ForestRenderNode,
 } from "@/lib/forest/grammar";
+import { latexToDisplayText } from "@/lib/latex-typography";
 
 function env(body: string): string {
   return `\\begin{forest}\n${body}\n\\end{forest}`;
@@ -142,6 +143,74 @@ describe("the accepted subset", () => {
 
   it("accepts an empty label", () => {
     expect(accept("[ [a] [b] ]").labelText).toBe("");
+  });
+});
+
+/**
+ * Task 388 (adversarial run 2) — a node label is a raw-LaTeX fragment shown to
+ * a READER, so it enters `latexToDisplayText`, the ONE display-projection door
+ * (task 368).
+ *
+ * The defect this pins. `scanLabel` pushed every non-escape byte into the label
+ * verbatim and the view put it straight into a span, so `` ``the dog'' `` — the
+ * universal gloss-quoting convention for tree labels — painted eight ASCII
+ * characters where the compiled PDF shows curly quotes, `S--O` painted two
+ * hyphens where the PDF shows an en dash, and `Fig.~1` painted a literal tilde.
+ * Every one of those sources is ACCEPTED and no badge fires, which is exactly
+ * the silently-wrong-picture class this grammar exists to refuse: a drawing the
+ * user has no way to detect is wrong.
+ *
+ * The legs are asserted AGAINST THE DOOR rather than against hand-written
+ * glyphs — the contract is that the two agree, so a future vocabulary change
+ * moves both or neither. A control keeps the sweep honest: plain prose must
+ * come back byte-identical, or a leg that merely compared two calls of the same
+ * function would pass on a projection that mangles everything.
+ */
+describe("a label is DISPLAY text, projected through the one door", () => {
+  const CASES = [
+    "``the dog''",
+    // NOTE: single quotes (`x') are deliberately NOT in the vocabulary — the
+    // door carries DOUBLE pairs only, matching what body prose does, and this
+    // sweep asserts agreement with the door rather than with LaTeX.
+    "S--O",
+    "a---b",
+    "Fig.~1",
+  ];
+
+  it.each(CASES)("%s renders what the display door says it does", (label) => {
+    const tree = accept(`[{${label}}]`);
+    expect(tree.labelText).toBe(latexToDisplayText(label));
+    // …and the door really changed something, or the leg proves nothing.
+    expect(tree.labelText).not.toBe(label);
+  });
+
+  it("the segments the VIEW paints carry the projected text, not the raw bytes", () => {
+    const tree = accept("[{``NP''}]");
+    const painted = tree.label
+      .filter((seg): seg is { kind: "text"; value: string } => seg.kind === "text")
+      .map((seg) => seg.value)
+      .join("");
+    expect(painted).toBe(latexToDisplayText("``NP''"));
+    expect(painted).not.toContain("`");
+  });
+
+  it("plain prose is untouched — the control", () => {
+    expect(accept("[{a plain label}]").labelText).toBe("a plain label");
+    expect(accept("[NP]").labelText).toBe("NP");
+  });
+
+  it("projects inside a GROUP and beside math, in one label", () => {
+    const tree = accept("[{$\\alpha$ ``x''}]");
+    expect(tree.labelText).toContain(latexToDisplayText("``x''"));
+    // The math segment is untouched — it is LaTeX for KaTeX, not display text.
+    expect(tree.label.some((s) => s.kind === "math" && s.value === "\\alpha")).toBe(true);
+  });
+
+  it("does NOT widen the accepted subset — a command in a label still refuses", () => {
+    // The door would happily pass `\emph{x}` through; the grammar refuses at
+    // the backslash branch, BEFORE anything reaches it. Projection is about
+    // what accepted bytes LOOK like, never about what is accepted.
+    expect(refusal("[\\emph{x}]").kind).toBe("command");
   });
 });
 

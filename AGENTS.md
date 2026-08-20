@@ -4012,6 +4012,100 @@ shipped `texBlock` behaviour and it is what forest's own whitespace-insensitive
 grammar tolerates; the contract this closes is that no byte is lost, not that the
 layout survives an inline flattening.
 
+##### The display half: a label a READER looks at enters the display DOOR
+
+Same node, the UX/PERF/GUARD-INTEGRITY pass (task 388, adversarial run 2) — and
+the case where the design's own headline rule was applied to every construct the
+grammar REFUSES and to none of the bytes it ACCEPTS.
+
+A forest node label is a raw-LaTeX fragment shown to a human. Task 368 built one
+door for exactly that question (`latexToDisplayText`) and gave it a census that
+discovers members from the bib-parsers' `format*` exports — so it is
+structurally blind to a scanner in `src/lib/forest/`. `scanLabel` pushed every
+non-escape byte into the label verbatim (its whole vocabulary was a private
+seven-entry `LABEL_CHAR_ESCAPES`) and the view put it straight into a span. So
+`` [{``the dog''}] `` — the universal gloss-quoting convention for tree labels —
+is ACCEPTED, no badge fires, and the pod paints eight ASCII characters where the
+compiled PDF shows curly quotes. Same for `S--O` (two hyphens, not an en dash)
+and `Fig.~1` (a literal tilde, not a tie). **An accepted source drawn as a
+picture it does not say, which is the one outcome task 384's design exists to
+refuse** — and the user has no way to detect it.
+
+> **A raw-LaTeX fragment shown as DISPLAY TEXT enters the door wherever it
+> lives**, including inside a renderer's own scanner. The projection is about
+> what accepted bytes LOOK like; it never widens what is accepted.
+
+Three rules it earned:
+
+- **Project the ASSEMBLED run, after the structural branches have taken their
+  bytes.** Math, groups, comments and the delimiters are consumed first, so the
+  door only ever sees prose plus the char escapes the scanner already resolved,
+  and it passes anything it does not know straight through. A `\command` in a
+  label still refuses at the backslash branch, BEFORE any of this — pinned by
+  its own leg, because the tempting reading of "enter the door" is "accept what
+  the door accepts".
+- **The flat `labelText` is rebuilt from the PROJECTED segments**, not from a
+  raw accumulator kept beside them. It is the canvas measurement rung and the
+  a11y string: `` ``x'' `` is six bytes and `“x”` is three, so a raw flat string
+  hands the two measurement rungs different widths — the exact contract
+  `borderBoxFromTextWidth` exists for.
+- **The whitespace collapse runs BEFORE the projection and never after.** `\s`
+  matches U+00A0, so a second pass flattens the `~` TIE the door has just
+  produced back into an ordinary space — measured, that was the fix's own first
+  cut.
+
+The same pass closed two more, both of which were BLANK rather than wrong:
+
+- **The T1 static card tier painted NOTHING for a source pod.** A block atom
+  keeps its payload in ATTRS, so a `renderHTML` that emits only a wrapper `<div>`
+  projects to an empty element wherever the NodeView is not what renders —
+  `renderBorrowedHtml`'s static tier (whose own doctrine is that it paints
+  "visually identical" to the live tier, and the live tier here is the pod's
+  card-context `<pre>`) and the CLIPBOARD, since ProseMirror serializes a copied
+  slice through the node spec's `toDOM`. `sourcePodStaticBody`
+  ([src/lib/tiptap/source-pod-static.ts](src/lib/tiptap/source-pod-static.ts))
+  is the shared child spec both source-pod nodes now emit — a bare string child
+  becomes a TEXT node, so the bytes are escaped by the serializer, and the node
+  stays `atom: true`, so `parseHTML` still reads the source off the ATTRIBUTE
+  and ignores the child. This is task 387's projection law with a THIRD member:
+  `richJsonToLatex`, `richJsonToPlainText`, and the static HTML tier.
+- **The RO's `degraded()` gate had no leg**, which the run measured: deleting
+  `if (!waiter.degraded()) continue;` from `measure-watch.ts` left all 212 legs
+  of the cluster green. The gate is what the module's whole docstring rests on
+  ("a tree measured from real boxes ignores every fire"), and jsdom reports 0×0
+  for everything — so a NON-degraded first measure is unrepresentable without
+  stubbing the rect read, which is exactly why the hidden-case leg could ship
+  while its complement could not be seen. **And the harness that drives it was
+  itself fragile in a way worth carrying forward:** the suite mounts a real
+  CodeMirror (every refused pod pins to its source surface) and CodeMirror
+  constructs a `ResizeObserver` of its own, so a single shared `deliver` binding
+  is whichever observer was built LAST. The stub records observers
+  PER INSTANCE and delivers to the one that actually observed the host.
+
+CI: the projection legs live in
+[forest-grammar.test.ts](src/lib/forest/__tests__/forest-grammar.test.ts) and are
+asserted AGAINST THE DOOR rather than against hand-written glyphs — the contract
+is that the two agree, so a vocabulary change moves both or neither — with a
+plain-prose control, since a leg comparing two calls of one function passes on a
+projection that mangles everything. The static tier is the third sweep in
+[card-body-block-atom-projection.test.ts](src/lib/__tests__/card-body-block-atom-projection.test.ts),
+matched against the markup with every ATTRIBUTE stripped: the payload is already
+in the markup as `source="…"`, so a raw `toContain` passes on the very output
+the leg exists to indict. Measured by neutering each half: the label projection
+takes 6 legs, the static body 2, the `degraded()` gate 1.
+
+**Residuals, filed rather than fixed** (`inbox/2026-08-20-from-worker-388-…`):
+the slash popup DELETES the typed text before it discovers the action is
+disabled — lossy, and shared by every view-only slash command, in a file this
+cluster never touched; a COLLAPSED source pod prints a two-line truncated
+preview, which is neither of Virgil's two existing postures (a folded section
+prints nothing, an expanded pod prints its body) and needs a render change plus
+a product call; `figureBlock` and `graphicsBlock` still project to nothing in the
+static tier, each named with its reason in the sweep's own
+`NO_STATIC_PROJECTION`; and an edge to an outer child can cross a roofed middle
+sibling's triangle. **Owed, not claimed:** the preview eyeball — this run was
+unattended and could not start a dev server.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

@@ -1,6 +1,7 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import ForestBlockNodeView from "@/components/ForestBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+import { sourcePodStaticBody } from "./source-pod-static";
 
 /**
  * `forestBlock` — a `\begin{forest}…\end{forest}` environment, carried WHOLE.
@@ -68,10 +69,14 @@ export const ForestBlock = Node.create<ForestBlockOptions>({
     return [{ tag: 'div[data-type="forest-block"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
+    // The source rides the markup as a TEXT child, not only as an attribute —
+    // see `sourcePodStaticBody`. Without it the T1 static card tier and the
+    // clipboard both project this node to an empty div (task 388).
     return [
       "div",
       mergeAttributes(HTMLAttributes, { "data-type": "forest-block" }),
+      sourcePodStaticBody((node.attrs.source as string) || ""),
     ];
   },
 
