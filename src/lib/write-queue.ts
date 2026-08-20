@@ -23,7 +23,16 @@ export function enqueueWrite<T>(
   // Chain regardless of whether `prev` resolves or rejects, so a single
   // failed write doesn't poison the queue for the rest of the session.
   const next = prev.then(task, task);
-  const tracked = next.finally(() => {
+  // The stored promise is BOOKKEEPING only — chaining ignores its
+  // settlement value (`prev.then(task, task)`) and flushWrites swallows —
+  // so it must not re-propagate the task's rejection: when a failed write
+  // is the LAST one on its key, nothing else ever consumes the stored
+  // copy and it surfaces as an unhandled rejection beside the one the
+  // caller already handled on `next`.
+  const tracked = next.then(
+    () => undefined,
+    () => undefined,
+  ).finally(() => {
     if (queues.get(key) === tracked) queues.delete(key);
   });
   queues.set(key, tracked);
