@@ -41,12 +41,12 @@ the plain character.** Concretely, the single most common slip:
   "approximately"); it is **not** a non-breaking space, and using it for one
   is the exact drift this doctrine exists to prevent.
 
-> **Render caveat (`~`).** Virgil today renders a bare `~` as a *literal
-> tilde glyph*, not yet as a keep-together space (no nbsp mapping in the
-> parser). Authoring `~` is still correct — the source is right and it
-> round-trips — and the render-side `~`→non-breaking-space mapping is a
-> tracked sibling fix. Do not "work around" it by emitting
-> `\textasciitilde{}`; that pollutes the source with the wrong command.
+> **Render note (`~`).** Since task 349 Virgil renders a bare `~` as the
+> non-breaking space it MEANS (U+00A0), and re-emits that glyph as `~` — so
+> the tie round-trips and reads correctly in the editor. (A bare U+00A0
+> arriving by paste is likewise written back out as `~`.) Emitting
+> `\textasciitilde{}` for a tie remains wrong: that is the escape for a
+> literal printed tilde glyph.
 
 The same principle governs the rest: use `--`/`---` for en/em dashes (not
 `\textendash`/`\textemdash`), `` `` ``/`''` for curly quotes, and the accent
@@ -107,7 +107,6 @@ Prefer `\cite{…}` for a plain parenthetical and `\citet{…}` for a textual
 ### Text macros & symbols
 
 - `\ldots` / `\dots` — an ellipsis (…).
-- `\LaTeX` / `\TeX` — the logos.
 - Escaped literals: `\&`, `\%`, `\$`, `\#`, `\_`, `\{`, `\}`, and
   `\textbackslash{}` (a literal `\`), `\textasciicircum{}` (a literal `^`),
   `\textasciitilde{}` (a literal `~` glyph — **not** a tie; see above).
@@ -135,7 +134,7 @@ parser matches them by table, not by a fixed command name.)
 \textbf \textit \emph \underline \texttt \verb \textcolor
 \footnote \thanks
 \ref \getref \getfullref
-\ldots \dots \LaTeX \TeX
+\ldots \dots
 \textbackslash \textasciitilde \textasciicircum
 # citations (natbib)
 \cite \citet \citep \citealt \citealp \citeauthor \citeyear \citeyearpar \citetext \citenum
@@ -148,6 +147,14 @@ parser matches them by table, not by a fixed command name.)
 ## What NOT to emit
 
 - No `\textasciitilde{}` for a tie — use `~`.
+- No `\LaTeX` / `\TeX`. A typeset LOGO is not literal text, so there is no
+  character the document model can hold it as, and a reverse map would rewrite
+  every prose occurrence of the word into a command. They are ordinary
+  unmodelled zero-argument commands: the bytes survive (the raw-LaTeX carrier
+  re-emits them byte-identically) but they render as grey monospace, so write
+  the plain word. A card/citation *preview* may still display "LaTeX" — a
+  projection is a view and never writes back — which is not licence to emit
+  the command into a document.
 - No commands outside the inventory above (they render as raw grey
   monospace). If you genuinely need one, that is a signal to extend the
   Virgil renderer + this list, not to smuggle the command into a document.

@@ -848,6 +848,29 @@ function escapeSpecialCommands() {
   for (const sm of m[1].matchAll(/tex:\s*"\\\\([A-Za-z]+)/g)) out.add(sm[1]);
   return out;
 }
+// Command-shaped TEXT MACROS the parsers handle are likewise invisible to the
+// alternation extractor: since task 380 they are matched from
+// `TEXT_MACRO_TABLE` via `matchTextMacroAt`, and that table is itself DERIVED
+// from `LITERAL_TABLE`'s command-shaped spellings. So derive them from the same
+// place the parser does — the identical lesson `escapeSpecialCommands` records
+// one refactor earlier: the 380 refactor left `\ldots` / `\dots` reading as
+// phantoms while the doc was right and the checker was blind.
+//
+// Read `LITERAL_TABLE`, NOT `DISPLAY_MACRO_TABLE`: the display table adds the
+// logos (`\LaTeX`, `\TeX`), which task 380 deliberately retired from the PARSE
+// vocabulary to the raw-LaTeX carrier. A projection is a VIEW and never writes
+// back, so a chip may say "LaTeX" where the DOCUMENT may not — and an allowlist
+// that told a skill to write one would be recommending grey monospace.
+function textMacroCommands() {
+  if (!exists(TYPOGRAPHY_TS)) return new Set();
+  const m = /LITERAL_TABLE[^=]*=\s*\[([\s\S]*?)\n\];/.exec(read(TYPOGRAPHY_TS));
+  if (!m) return new Set();
+  const out = new Set();
+  // In the .ts source a `latexForms: ["\\ldots", "\\dots"]` value is the chars
+  // `" \ \ l d o t s …`; non-command forms (`--`, `---`) match nothing here.
+  for (const sm of m[1].matchAll(/"\\\\([A-Za-z]+)"/g)) out.add(sm[1]);
+  return out;
+}
 // `\verb<delim>…<delim>` / `\verb*` — inline verbatim, genuinely rendered
 // (latex-parser.ts handles it via the delimiter-based verbatim branch →
 // `verbatimMark()`, task 264), but NOT as a `/^\\cmd\{/` literal inside
@@ -866,14 +889,24 @@ function knownCiteCommands() {
 
 /** Extract the inline command names `parseInlineContent()` matches, from the
  *  parser source. Scoped to the function body so block-level commands don't
- *  leak in. Handles both `/^\\cmd\{/` literals and `/^\\(a|b|c)…/`
- *  alternations; the `\v*id` markers are filtered out. */
+ *  leak in. Handles `/^\\cmd\{/` literals, `/^\\(a|b|c)…/` alternations, and
+ *  the shared-door `matchCommandToken(…)?.name === "cmd"` form; the `\v*id`
+ *  markers are filtered out.
+ *
+ *  The scope ENDS at the function's own closing brace — the first `}` in column
+ *  0 after the start — never at whatever declaration happens to follow it. The
+ *  previous anchor was `\nfunction extractBraced`, which MOVED to
+ *  `src/lib/latex-lexer.ts`: `indexOf` then returned -1, the slice silently ran
+ *  to EOF, and every BLOCK command in `parseLatex` below read as inline (`\ex`,
+ *  `\pex`, `\begingl`, `\maketitle` surfaced as spurious omission warnings).
+ *  A scope terminator that names a NEIGHBOUR fails open the moment the
+ *  neighbour is refactored; the function's own brace cannot move away from it. */
 function parserInlineCommands() {
   if (!exists(PARSER_TS)) return null;
   const src = read(PARSER_TS);
   const start = src.indexOf("export function parseInlineContent");
   if (start === -1) return null;
-  const end = src.indexOf("\nfunction extractBraced", start);
+  const end = src.indexOf("\n}", start);
   const body = src.slice(start, end === -1 ? undefined : end);
   const out = new Set();
   // In the .ts source a regex `/^\\textbf\{/` is the chars `^ \ \ t e x t …`,
@@ -884,7 +917,16 @@ function parserInlineCommands() {
       if (name && !ALLOWLIST_INTERNAL_MARKERS.has(name)) out.add(name);
     }
   }
+  // Since task 376 a MODELED construct reads its arguments through the shared
+  // `matchStarOptBraceAt` door, so its name is tested rather than spelled in a
+  // regex: `matchCommandToken(text, i)?.name === "thanks"`. Same blindness
+  // class as the two derivations above — a match form the extractor cannot see
+  // reads as a phantom while the doc is right.
+  for (const m of body.matchAll(/matchCommandToken\([^)]*\)\?\.name\s*===\s*"([A-Za-z]+)"/g)) {
+    if (!ALLOWLIST_INTERNAL_MARKERS.has(m[1])) out.add(m[1]);
+  }
   for (const e of escapeSpecialCommands()) out.add(e);
+  for (const e of textMacroCommands()) out.add(e);
   for (const e of ALLOWLIST_VERBATIM_HANDLED) out.add(e);
   return out;
 }
