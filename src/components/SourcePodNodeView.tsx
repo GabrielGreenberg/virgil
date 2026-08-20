@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
 import ConfirmDialog from "./ConfirmDialog";
 import { iconHint } from "@/components/Hint";
+import type { SourcePodDerive } from "./source-pod-derive";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -39,6 +40,17 @@ export interface SourcePodConfig {
   confirmMessage: string;
   /** Whether the block's popout float is open — dims the docked pod. */
   isPopped?: boolean;
+  /**
+   * Optional derived VIEW over the source (task 384). A kind that can render
+   * its bytes contributes this; the pod then shows the derived preview by
+   * default and the code surface on demand, with the derivation's `banner`
+   * (a refusal badge) above the body in BOTH modes.
+   *
+   * MUST be module-scope stable — the pod memoizes on `(derive, source)`, so a
+   * closure minted per render re-derives (and, for a tree, re-measures and
+   * re-lays-out) on every unrelated re-render of the block.
+   */
+  derive?: SourcePodDerive;
 }
 
 // Slimmed-down version of CodeEditor.tsx's virgilTheme, sized for inline
@@ -79,6 +91,70 @@ export const sourcePodTheme = EditorView.theme({
   },
 });
 
+
+/**
+ * The pod's top-right corner: the kind chip (which names the BYTES — the
+ * STYLE_GUIDE rule that tells a reader which language the pod is holding) and,
+ * for a kind that can render its bytes, the mode toggle beside it.
+ *
+ * The toggle is a SEPARATE control rather than a click on the chip because the
+ * chip's job is to be read, not pressed: overloading it would make the one
+ * piece of chrome that answers "what is this?" also answer "what happens if I
+ * click?", and a pod with no preview has no second answer to give.
+ */
+function PodCorner({
+  chipLabel,
+  kindLabel,
+  hasPreview,
+  showingSource,
+  onToggle,
+}: {
+  chipLabel: string;
+  kindLabel: string;
+  hasPreview: boolean;
+  showingSource: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="source-pod-corner" contentEditable={false}>
+      {hasPreview && (
+        <button
+          type="button"
+          className="source-pod-mode-toggle focus-ring"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggle();
+          }}
+          {...iconHint({
+            label: showingSource ? `Show ${kindLabel}` : `Edit ${kindLabel} source`,
+          })}
+        >
+          {showingSource ? (
+            /* Back to the rendered view — a two-level tree glyph. */
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <path d="M6 2v2M6 4L3 6.5M6 4l3 2.5" />
+              <circle cx="6" cy="1.8" r="1" />
+              <circle cx="3" cy="8" r="1" />
+              <circle cx="9" cy="8" r="1" />
+            </svg>
+          ) : (
+            /* To the source — the `</>` glyph. */
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 3L2 6l2.5 3M7.5 3L10 6l-2.5 3" />
+            </svg>
+          )}
+        </button>
+      )}
+      <span className="source-pod-chip">{chipLabel}</span>
+    </div>
+  );
+}
+
 export default function SourcePodNodeView({
   node,
   updateAttributes,
@@ -93,9 +169,34 @@ export default function SourcePodNodeView({
   const title = (node.attrs.parTitle as string | null) || null;
   const collapsed = node.attrs.collapsed === true;
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // The pod's mode. A kind with a derived preview opens SHOWING it; a kind
+  // without one (texBlock) has nothing to show but source, and `sourceMode`
+  // below folds that in so there is no second branch to keep in step.
+  const [showSource, setShowSource] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // ONE derivation per (kind, source) — the tree and its badge are two halves
+  // of a single verdict and must never come from two parses (pod-config.tsx).
+  // Bound to a local first: React Compiler infers the dep as `config` when the
+  // memo reads a PROPERTY of it, refuses to preserve the memoization, and skips
+  // optimizing the whole component — so the local is what keeps the key on the
+  // stable function rather than on the config object.
+  const derive = config.derive;
+  const derived = useMemo(
+    // Skipped in card context: that branch returns a static `<pre>` of the
+    // source and never reads the derivation, so parsing for it would be work
+    // on every collapsed card of every panel (the card-tier population).
+    () => (!cardContext && derive ? derive(source) : null),
+    [cardContext, derive, source],
+  );
+  const preview = derived?.preview ?? null;
+  const banner = derived?.banner ?? null;
+  // A refused source has no preview, so the pod pins itself to the code
+  // surface: the badge names a construct, and the bytes it names are right
+  // there under it.
+  const sourceMode = preview === null || showSource;
 
   const setSource = useCallback(
     (val: string) => {
@@ -255,7 +356,10 @@ export default function SourcePodNodeView({
         </div>
       )}
 
-      <div className="source-pod" data-glyph-anchor="">
+      <div
+        className={`source-pod${preview !== null ? " has-derived" : ""}`}
+        data-glyph-anchor=""
+      >
         {/* Row-wide hover sensor — invisible, extends horizontally
             beyond the pod so the host's :hover (and thus the grab
             handle reveal) fires anywhere in the pod's Y-band. */}
@@ -292,6 +396,15 @@ export default function SourcePodNodeView({
             This NodeView only emits `.is-popped` chrome when the
             corresponding popout is open. */}
 
+      {/* Derived chrome — a refusal badge. Shown in EVERY mode, collapsed
+          included: a badge nobody can see is not a loud refusal. The wrapper is
+          the pod's, not the kind's: `.source-pod-row-sensor` is an absolutely
+          positioned FIRST child that hit-tests above any in-flow sibling, which
+          is why the preview and the editor beside this both carry an explicit
+          `position: relative`. Owning the slot's stacking here means the next
+          contributor inherits it instead of re-discovering the trap. */}
+      {banner && <div className="source-pod-banner">{banner}</div>}
+
       {collapsed ? (
         /* Compact preview: title (rendered above) + first 2 lines + … */
         <div
@@ -313,7 +426,7 @@ export default function SourcePodNodeView({
           )}
           <div className="source-pod-preview-more">…</div>
         </div>
-      ) : (
+      ) : sourceMode ? (
         <div contentEditable={false} className="source-pod-editor relative">
           <CodeMirror
             value={source}
@@ -342,12 +455,42 @@ export default function SourcePodNodeView({
               autocompletion: false,
             }}
           />
-          {/* Kind chip — inside the pod's top-right corner. */}
-          <div
-            className="absolute top-1 right-1.5 z-10 px-1 py-px text-[10px] rounded-sm bg-[var(--background)]/85 border border-[var(--heading-annotation-border,#a8c4de)] text-[var(--heading-annotation-color,#6b9ac4)] select-none pointer-events-none font-mono leading-tight"
-          >
-            {config.chipLabel}
-          </div>
+          <PodCorner
+            chipLabel={config.chipLabel}
+            kindLabel={config.kindLabel}
+            hasPreview={preview !== null}
+            showingSource
+            onToggle={() => setShowSource(false)}
+          />
+        </div>
+      ) : (
+        /* The DERIVED body — a rendered view of the same bytes. Clicking it is
+           the natural path back to the source, which is where an edit happens;
+           the corner toggle is the discoverable one. */
+        <div
+          contentEditable={false}
+          className="source-pod-derived relative"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowSource(true);
+          }}
+          data-hint={`Click to edit ${config.kindLabel} source`}
+          aria-label={`Click to edit ${config.kindLabel} source`}
+        >
+          {/* The tree scrolls INSIDE this; the corner does not. An absolutely
+              positioned child of a scroll container is positioned against its
+              CONTENT, so a corner inside the scroller slides out of reach the
+              moment a tree is wider than the pod — the one control that gets to
+              the source, unreachable exactly on the trees that need it most. */}
+          <div className="source-pod-derived-scroll">{preview}</div>
+          <PodCorner
+            chipLabel={config.chipLabel}
+            kindLabel={config.kindLabel}
+            hasPreview
+            showingSource={false}
+            onToggle={() => setShowSource(true)}
+          />
         </div>
       )}
       {!collapsed && (

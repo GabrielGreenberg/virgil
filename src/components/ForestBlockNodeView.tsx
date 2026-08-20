@@ -3,14 +3,19 @@
 import type { NodeViewProps } from "@tiptap/react";
 import SourcePodNodeView from "./SourcePodNodeView";
 import type { ForestBlockOptions } from "@/lib/tiptap/forest-block";
+import { FOREST_POD_CONFIG } from "@/lib/forest/pod-config";
 
 /**
- * `forestBlock`'s NodeView — stage 1 (task 383): the WHOLE
- * `\begin{forest}…\end{forest}` environment in the shared source pod, edited as
- * bytes. Task 384 replaces this body with the native tree renderer + its loud
- * refusal badge; until then the pod is the honest rendering, and it is already
- * strictly better than the unmodelled-env carrier it replaces (a grab handle, a
- * title, a fold, a float, an anchor identity of its own).
+ * `forestBlock`'s NodeView — the WHOLE `\begin{forest}…\end{forest}`
+ * environment in the shared source pod, with the native TREE renderer as its
+ * default body (task 384).
+ *
+ * The pod's derivation (`deriveForestPod`) answers both halves of the render
+ * question from ONE parse: an accepted source renders as a tree, and a source
+ * outside the v1 subset renders as a LOUD amber badge naming the construct that
+ * was refused, above the untouched bytes. Neither state is persisted anywhere —
+ * a refusal is a fact about a parse, re-derived on the next keystroke into the
+ * pod, and the `.tex` cannot tell the difference.
  *
  * The pod edits the whole env INCLUDING its delimiters, because the model is
  * the bytes: there is no half of `source` that means something different from
@@ -39,15 +44,7 @@ export default function ForestBlockNodeView({
       updateAttributes={updateAttributes}
       deleteNode={deleteNode}
       cardContext={opts.cardContext === true}
-      config={{
-        hostClass: "forest-block",
-        sourceAttr: "source",
-        chipLabel: "forest",
-        kindLabel: "forest tree",
-        emptyLabel: "(empty tree)",
-        confirmMessage:
-          "This will remove the forest tree and its source. You can undo with Cmd+Z.",
-      }}
+      config={FOREST_POD_CONFIG}
     />
   );
 }

@@ -1419,6 +1419,190 @@ textarea,
   line-height: 1;
 }
 
+/* Pod corner — the kind chip, plus (for a kind that renders its bytes) the
+   source ⇄ preview toggle beside it. The chip's look is unchanged from the
+   single-wearer form; it just moved out of an inline utility string so the
+   toggle could sit next to it. */
+.source-pod-corner {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  /* CLICK-THROUGH by default, and the toggle opts back IN. The chip sits over
+     the 44px right inset the code surface reserves, and a click there has
+     always fallen through to `.cm-content` and placed a caret — the pre-384
+     chip carried `pointer-events: none` on the element itself, with no wrapper
+     to catch anything. Putting the rule only on the CHIP now would leave this
+     flex box (and its gap) swallowing those clicks with no handler of its own:
+     a shared-class refactor that quietly makes a corner of every texBlock pod
+     inert. */
+  pointer-events: none;
+}
+.source-pod-chip {
+  /* px-1 py-px, byte-for-byte with the inline utility string this replaces —
+     a "shared class" that repaints the chip is a look change wearing a
+     refactor's clothes. */
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.25;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--background) 85%, transparent);
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
+  user-select: none;
+  pointer-events: none;
+}
+.source-pod-mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--background) 85%, transparent);
+  color: var(--heading-annotation-color, #6b9ac4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+  /* …and the one child that IS a control opts back in (see the corner rule). */
+  pointer-events: auto;
+}
+:is(.tex-block, .forest-block):hover .source-pod-mode-toggle,
+.source-pod-mode-toggle:focus-visible {
+  opacity: 1;
+}
+.source-pod-mode-toggle:hover {
+  border-color: var(--heading-annotation-border, #a8c4de);
+  color: var(--accent);
+}
+
+/* The pod's BANNER slot — chrome a kind derives from its own bytes (today a
+   forest refusal badge), above the body in every mode. Positioned for the same
+   reason `.source-pod-preview` is: the row sensor is an absolutely positioned
+   first child and hit-tests above any in-flow sibling, so without this the
+   banner's text cannot be hovered or selected. The slot owns the stacking; the
+   badge inside it owns only its look. */
+.source-pod-banner {
+  position: relative;
+}
+
+/* The DERIVED body — a rendered view of the pod's own bytes, shown in place of
+   the code surface. Framed like the code surface (same border tone, radius and
+   ground) so switching modes moves nothing but the content. */
+.source-pod-derived {
+  position: relative;
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border-radius: var(--radius-md);
+  background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
+  padding: 14px 70px 14px 16px;
+  cursor: pointer;
+}
+/* The scroll box is INSIDE the frame, so the pod's absolutely positioned corner
+   (which is a child of the frame, not of this) stays put while a wide tree
+   scrolls under it. An `overflow` container positions its absolute descendants
+   against its CONTENT — a corner inside the scroller would slide out of reach
+   on exactly the trees whose source you most want to open. */
+.source-pod-derived-scroll {
+  overflow-x: auto;
+}
+
+/* A pod that HAS a derived view carries a wider corner (the mode toggle sits
+   beside the chip), so its code surface needs more right inset than the 44px
+   the chip alone wanted. Keyed on a pod-level modifier rather than on a host
+   class — the pod classes name nothing, and the next wearer with a preview
+   inherits this without editing a selector list. */
+.source-pod.has-derived .cm-editor .cm-content {
+  padding-right: 70px;
+}
+
+/* ── forest tree ──────────────────────────────────────────────────
+   The rendered body of a `forestBlock`. Every position is written by the pure
+   layout engine (src/lib/forest/layout.ts) as an inline style; the rules here
+   own only the LOOK, so a change of geometry is a change in one module and a
+   change of ink is a change in one rule.
+
+   Ink is `currentColor` on the container, so the edges, the roofs and the
+   labels are one colour in both themes and in print — a tree drawn in a colour
+   the surrounding prose does not use reads as a foreign object. */
+.forest-tree {
+  position: relative;
+  margin: 0 auto;
+  /* The document's own prose ink and face, pref-override included — a tree is
+     the paper's writing, not chrome, and reading `--font-serif` directly would
+     leave a retuned main-text font behind (the exact `.tiptap` spelling, so the
+     two cannot drift). Slightly smaller than body copy, which is what a tree
+     wants: node labels are dense and the picture has to fit the column. */
+  color: var(--editor-text-color, #2a2a2a);
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4",
+    Georgia, serif;
+  font-size: 0.92em;
+  line-height: 1.25;
+}
+.forest-tree-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.forest-tree-edge {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+.forest-tree-roof {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+.forest-node {
+  position: absolute;
+  white-space: nowrap;
+  padding: 0 3px;
+}
+/* Math inside a node label takes the document's math ink, exactly as inline
+   math in prose does — the label is prose, not chrome. */
+.forest-node-math {
+  color: var(--math-color, inherit);
+}
+
+/* The refusal badge — a WARNING (amber), never the danger ramp: the bytes are
+   intact and sitting right below it, so nothing here is destructive. See
+   STYLE_GUIDE "Colour → RED means an action would destroy content". */
+.forest-refusal-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: var(--amber-100);
+  color: var(--ink-strong, #2a2724);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.forest-refusal-badge-icon {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--amber-500);
+}
+.forest-refusal-badge-text {
+  flex: 1 1 auto;
+}
+.forest-refusal-badge-where {
+  flex: 0 0 auto;
+  font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 /* Popped state: the live editor is open in a floating card, so the
    docked pod dims to signal "go look at the float". Click-to-undock
    could be added later. */
@@ -5295,6 +5479,33 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 
   /* Reveal the appendix container itself when printing. */
   .print-only { display: block; }
+
+  /* A source pod's DERIVED body — today a rendered forest tree — prints as the
+     PICTURE, not as a framed input: the pod frame, the kind chip and the
+     source⇄tree toggle are editor chrome, and the tree is document content. A
+     pod showing SOURCE prints its source, which is the honest answer both for a
+     texBlock (whose only body is bytes) and for a tree the subset refused.
+
+     The refusal BADGE does not print. It is a statement about Virgil's
+     renderer, not about the paper — the same reason `.heading-annotation` and
+     the title-field chips are dropped above. What prints in its place is the
+     source it was pointing at, which is the thing the reader wants on paper. */
+  .source-pod-derived {
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  /* On screen the derived body scrolls a wide tree. In PAGED media an overflow
+     box does not paginate or grow — it CLIPS at its border box — so a tree
+     wider than the print column would lose its right-hand subtrees to the page
+     edge, silently and with no scrollbar to hint at it. Releasing the
+     constraint is the same move the print block makes for every other scroll
+     container above. */
+  .source-pod-derived-scroll {
+    overflow: visible !important;
+  }
+  .source-pod-corner,
+  .forest-refusal-badge { display: none !important; }
 
   /* Strip non-content card chrome (grip, collab pills, popout/close, jump)
      inside appendices via ONE marker. The former selectors
