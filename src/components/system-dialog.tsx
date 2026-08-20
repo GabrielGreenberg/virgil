@@ -37,8 +37,9 @@
  *     lands inside the dialog, and standing DOWN when the dialog's own body has
  *     already claimed focus (a prompt input, a file list)
  *
- * `autoFocus` marks the CUED DEFAULT: the button that takes initial focus and
- * that `Enter` therefore activates. It must never be a DESTRUCTIVE action — a
+ * `autoFocus` marks the CUED DEFAULT: the button `Enter` activates, and the
+ * initial-focus target when the dialog's own body has not claimed focus first.
+ * It must never be a DESTRUCTIVE action — a
  * danger button armed under a hand that is already typing turns the user's next
  * keystroke into the destructive choice (task 386). Cue the safe answer;
  * `ConfirmDialog` derives this for every caller via
