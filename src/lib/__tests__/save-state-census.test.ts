@@ -237,7 +237,10 @@ describe("census · a data-integrity state is never hideable", () => {
     // and is now structural rather than positional: a data-integrity badge
     // must not be a DESCENDANT of the group a layout preference can hide.
     const src = read(CLUSTER);
-    const gate = src.indexOf('data-bar-occupant="status-tools"');
+    // Anchored on the element that HIDES (the group wrapper carrying the
+    // width/aria-hidden), not on the inner measurement marker a few lines
+    // below it — a census should name the thing whose absence it is asserting.
+    const gate = src.indexOf('data-bar-tier="collapsible"');
     expect(gate, "the collapsible tool group must exist to be measured against").toBeGreaterThan(0);
     for (const el of ["<SaveStateBadge", "<ExternalChangeBadge"]) {
       const at = src.indexOf(el);

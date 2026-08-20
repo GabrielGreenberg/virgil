@@ -366,16 +366,45 @@ Four rules it earned:
   Affordable because the per-fire cost is three `contentRect.width` reads
   (post-layout, forces no layout) behind a per-role equality bail plus one
   boolean; a whole resize drag commits ONE React render, at the crossing.
-- **The rule governs the DEFAULT; the user outranks it.** The auto rule never
-  writes the persisted `topbarRightCollapsed` pref, and expanding out of an AUTO
-  collapse sets a session override that is dropped the moment the crowding
-  clears — so the chip is never a control that does nothing (the false-affordance
-  class, "what the hover OFFERS is what the commit ACCEPTS").
+- **The rule governs the DEFAULT; the user outranks it — and an override is
+  minted only where there is something to out-rank.** The auto rule never writes
+  the persisted `topbarRightCollapsed` pref, and expanding out of an AUTO
+  collapse sets a session override dropped on the auto TRUE→FALSE edge, so the
+  chip is never a control that does nothing (the false-affordance class). The
+  half worth carrying forward is the *mint* condition, which the first cut got
+  wrong: `setExpandOverride(autoRef.current)`, never a bare `true`. An override
+  created while nothing was crowding has no expiry — its drop fires on an edge
+  that never comes — so an ordinary wide-window collapse-then-expand left a
+  sticky override that disabled the rule for the session and clipped the tab row
+  instead of yielding the tools, the exact inverse of the priority. **An
+  override's lifetime is the condition it overrides; if that condition is
+  absent, so is the override.**
+- **Nothing in a HIGHER tier may change width as a function of the verdict**, or
+  the state-independence above is false and the flip-flop is back. `R` is only
+  constant across the verdict because tier 1 does not react to it — which is why
+  `SaveStateBadge` reads the user's `collapsePreference` and not the effective
+  value. It is the same fact as the ladder's own rule (a data-integrity surface
+  is not hideable by a layout preference), arriving as a soundness requirement:
+  a tier-1 element that hid itself on an auto collapse would shrink `R`, grow
+  the strip by more than `K`, and make the two states disagree.
 - **The collapsible group collapses by WIDTH, not by unmounting**, which is what
   makes rule 1 cheap: its `max-content` wrapper keeps reporting the group's
-  natural width in both states. `visibility: hidden` + `aria-hidden` gives the
-  collapsed group exactly the semantics unmounting gave it, and the one child
-  that escapes a hidden subtree — a body-PORTALED dropdown — is gated explicitly.
+  natural width in both states. That is a measurement decision, and it leaves
+  three debts the unmount used to pay, all of them owed on the collapse EDGE:
+  (a) the children are REMOUNTED (a `key` on the inner content, never on the
+  measured wrapper — keying that would drop the measurement and fail the rule
+  open into a flip-flop), because `visibility: hidden` cannot reach a child that
+  body-PORTALS its dropdown and a remount closes every such menu for every
+  portal owner present and future, where a per-child gate closes it for the one
+  somebody remembered; (b) focus moves to the chip, since `aria-hidden` over a
+  focused element is forbidden and the chip is the affordance that brings the
+  group back — tracked as focus-WITHIN on the group, because `activeElement` has
+  already fallen to `<body>` by the time any effect can ask, and asking
+  "is it body?" would steal focus whenever the bar collapsed with nothing
+  focused; (c) the clip is CONDITIONAL — an unconditional `overflow: hidden`
+  trims every button's focus ring in the expanded state too. A surface whose
+  open state lives OUTSIDE the group (the help menu, owned by `EditorLayout`) is
+  unaffected by a remount and is gated explicitly, exactly as unmounting left it.
 
 A composed ref on a measured element is a **stable** `useCallback`, never an
 inline arrow: React detaches and re-attaches an unstable ref callback on every
@@ -396,6 +425,16 @@ NOT in the active folder tab, whose `calc-size(max-content, …)` width therefor
 grew without bound with the document's name. Measured by neutering each half in
 turn: the naive rule takes 3 legs, no auto-collapse 4, the clip 1, the label cap
 2, and restoring the retired sentinel prose 1.
+
+**Residuals, stated rather than implied.** The floor CLIPS; it does not offer an
+overflow affordance. A tab row wider than the strip after the tools have yielded
+loses its rightmost tabs with nothing on screen to say they exist, and the
+paper-drop indicator — absolutely positioned inside the clipped strip — is
+invisible for a drop past the boundary (the drop INDEX is computed from cursor
+midpoints and still commits correctly; what is missing is the feedback). Both
+are strictly better than the pre-395 behaviour, which was to paint over the
+protected badges, and both want a product decision (a scroll, an overflow
+chevron) rather than a wider guard.
 
 **Owed, not claimed:** the preview eyeball at the screenshot's width plus one
 narrower. NOT FSA-masked; this run was unattended and could not start a dev

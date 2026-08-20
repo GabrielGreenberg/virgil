@@ -249,7 +249,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <span
                 className="text-[13px] leading-4 truncate min-w-0"
-                style={{ fontFamily: FONT_MONO }}
+                style={{ fontFamily: FONT_MONO, maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {citekey}
               </span>
@@ -367,7 +367,10 @@ function TabStripImpl(props: TabStripProps) {
               onClick={() => {}}
             >
               <IconLibrary />
-              <span className="text-[13px] leading-4 truncate min-w-0">
+              <span
+                className="text-[13px] leading-4 truncate min-w-0"
+                style={{ maxWidth: TAB_LABEL_MAX_PX }}
+              >
                 {label}
               </span>
               <button
@@ -467,6 +470,10 @@ function TabStripImpl(props: TabStripProps) {
                   }
                 }}
                 onBlur={commit}
+                // The same cap the label it replaces carries: `size` grows the
+                // input with the typed name, and past the strip's clip the
+                // user would be typing blind with no scroll to follow them.
+                style={{ maxWidth: TAB_LABEL_MAX_PX }}
                 className="text-[13px] leading-4 bg-transparent outline-none border-b border-ink-muted min-w-0 px-0"
               />
             ) : (

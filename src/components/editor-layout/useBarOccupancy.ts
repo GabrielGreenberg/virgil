@@ -188,10 +188,17 @@ export function useBarOccupancy(opts: {
 
   const toggleTools = useCallback(() => {
     if (effectiveRef.current) {
-      // Expanding. Clear the persisted pref AND out-rank a live auto collapse,
-      // so the chip is never a control that does nothing.
+      // Expanding. Clear the persisted pref, and out-rank the auto rule ONLY
+      // where the auto rule is what is currently collapsing — `autoRef`, not a
+      // bare `true`. An override minted while nothing was crowding has nothing
+      // to expire: the drop below fires on the auto TRUE→FALSE edge, which
+      // never comes if the verdict was already false, so a wide-window
+      // collapse-then-expand (an ordinary use of the chip) would leave a
+      // sticky override that silently disables auto-collapse for the rest of
+      // the session — the tab row clipping instead of the tools yielding, the
+      // exact inverse of the priority this hook exists to enforce.
       setUserCollapsed(false);
-      setExpandOverride(true);
+      setExpandOverride(autoRef.current);
     } else {
       setUserCollapsed(true);
       setExpandOverride(false);

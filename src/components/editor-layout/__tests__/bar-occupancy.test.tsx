@@ -40,9 +40,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { createRef, useRef } from "react";
+import { createRef, useRef, useState } from "react";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
-import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped, tagsContaining } from "@/lib/__tests__/_source-scan";
 import {
   resolveBarOccupancy,
   BAR_FIT_EPSILON_PX,
@@ -62,7 +62,10 @@ vi.mock("@/lib/pomodoro-chime", () => ({
 
 import { TopBar, type TopBarProps } from "@/components/editor-layout/TopBar";
 import type { TabStripProps } from "@/components/editor-layout/TabStrip";
-import type { StatusClusterProps } from "@/components/editor-layout/StatusCluster";
+import {
+  StatusCluster,
+  type StatusClusterProps,
+} from "@/components/editor-layout/StatusCluster";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
 
@@ -270,7 +273,16 @@ function Harness({
     onOpenNewWindow: noop,
     exampleAvailable: false,
   };
-  const statusCluster: StatusClusterProps = {
+  const statusCluster: StatusClusterProps = statusProps(userCollapsed, setUserCollapsed);
+  const props: TopBarProps = { zenModeOn: false, tabStrip, statusCluster };
+  return <TopBar {...props} />;
+}
+
+function statusProps(
+  userCollapsed: boolean,
+  setUserCollapsed: (v: boolean) => void,
+): StatusClusterProps {
+  return {
     vbar: { aiDot: null, compilePdf: noop, isCompiling: false, pdfStale: false },
     collabEnabled: false,
     zenModeOn: false,
@@ -316,8 +328,6 @@ function Harness({
     onToggleCodeView: noop,
     onTogglePdfView: noop,
   };
-  const props: TopBarProps = { zenModeOn: false, tabStrip, statusCluster };
-  return <TopBar {...props} />;
 }
 
 /** A tool that lives INSIDE the collapsible group; reachable ⟺ expanded. */
@@ -336,6 +346,20 @@ function mount(over: Partial<{ userCollapsed: boolean }> = {}) {
     />,
   );
   return { setUserCollapsed, view };
+}
+
+/**
+ * The same bar, but with the persisted pref REALLY round-tripping. `mount`'s
+ * `setUserCollapsed` is a spy, so the pref never comes back — which makes a
+ * user collapse-then-expand unrepresentable, and that is precisely the shape
+ * that stranded a sticky expand override. A harness that cannot express the
+ * defect is a harness that certifies it.
+ */
+function StatefulHarness() {
+  const [userCollapsed, setUserCollapsed] = useState(false);
+  return (
+    <Harness userCollapsed={userCollapsed} setUserCollapsed={setUserCollapsed} />
+  );
 }
 
 describe("the REAL bar under compression", () => {
@@ -428,6 +452,27 @@ describe("the REAL bar under compression", () => {
     ).toBe(false);
   });
 
+  it("a chip round trip at a ROOMY width leaves no override behind", () => {
+    // The override out-ranks the auto rule, so it may only be minted when the
+    // auto rule is the thing being out-ranked. Minted on every expand, it has
+    // no expiry (the drop fires on the auto TRUE→FALSE edge, which never comes
+    // if the verdict was already false) — so one ordinary collapse-then-expand
+    // at a comfortable width silently disables auto-collapse for the session,
+    // and the tab row is clipped instead of the tools yielding.
+    render(<StatefulHarness />);
+    deliver({ "tab-strip": 800, tabs: 300, "status-tools": 200 });
+    const chip = () => screen.getByRole("button", { name: /toolbar/i });
+    act(() => { fireEvent.click(chip()); });   // user collapses
+    expect(toolsReachable()).toBe(false);
+    act(() => { fireEvent.click(chip()); });   // …and changes their mind
+    expect(toolsReachable()).toBe(true);
+    deliver({ "tab-strip": 250 });             // now the window narrows
+    expect(
+      toolsReachable(),
+      "a sticky override from a wide-window toggle disabled the whole rule",
+    ).toBe(false);
+  });
+
   it("the chip is never a dead control: expanding out of an AUTO collapse works", () => {
     mount();
     deliver({ "tab-strip": 250, tabs: 300, "status-tools": 200 });
@@ -443,7 +488,52 @@ describe("the REAL bar under compression", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// 3. The census — the halves no render can see
+// 3. What a COLLAPSE owes the surfaces it hides
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("collapsing the tool group", () => {
+  afterEach(cleanup);
+
+  const zen = () => screen.queryByRole("button", { name: "Zen" });
+
+  it("REMOUNTS its children, which is what unmounting used to give them", () => {
+    // The reason this matters is not tidiness: `visibility: hidden` cannot
+    // reach a child that body-PORTALS its dropdown, so without a remount a
+    // collapse leaves that menu floating over the canvas with no trigger under
+    // it. Remounting resets every child's own open state, for every portal
+    // owner present and future. The element identity IS the observable.
+    const { rerender } = render(
+      <StatusCluster {...statusProps(false, noop)} />,
+    );
+    const before = zen();
+    expect(before).not.toBeNull();
+    rerender(<StatusCluster {...statusProps(true, noop)} />);
+    rerender(<StatusCluster {...statusProps(false, noop)} />);
+    expect(zen()).not.toBeNull();
+    expect(
+      zen(),
+      "the group's children survived the collapse, so their open menus do too",
+    ).not.toBe(before);
+  });
+
+  it("hands focus to the chip rather than dropping it into a hidden subtree", () => {
+    const { rerender } = render(
+      <StatusCluster {...statusProps(false, noop)} />,
+    );
+    const inside = zen()!;
+    inside.focus();
+    expect(document.activeElement).toBe(inside);
+    rerender(<StatusCluster {...statusProps(true, noop)} />);
+    expect(
+      document.activeElement,
+      "focus was left in an aria-hidden subtree (or dropped to <body>) — the " +
+        "chip is TIER 1 and is what brings the group back",
+    ).toBe(screen.getByRole("button", { name: /toolbar/i }));
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// 4. The census — the halves no render can see
 // ───────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../../../..");
@@ -502,6 +592,25 @@ describe("census · the structural floor and the shared cap", () => {
         /maxWidth:\s*TAB_LABEL_MAX_PX/,
       );
     }
+    // …and EVERY active-tab label span reads it, asked PER SPAN rather than
+    // counted: `TabStrip` renders three (document, paper, library) and the
+    // first cut capped one. A total is the wrong instrument — the rename
+    // input carries the cap too, so three caps and three spans can be a set
+    // that does not overlap. `tagsContaining` scans to each tag's REAL end
+    // (arrow-function props and all), and `commentsStripped` rather than
+    // `codeOnly` because the needle is a className STRING, which codeOnly
+    // blanks — the trap `_source-scan`'s own header documents.
+    const spans = tagsContaining(
+      commentsStripped(read(STRIP)),
+      /text-\[13px\] leading-4 truncate min-w-0/,
+    );
+    expect(spans.length, "no active-tab label spans found — the needle is stale").toBe(3);
+    for (const tag of spans) {
+      expect(
+        tag,
+        `an active-tab label span with no cap grows its tab with the name: ${tag.slice(0, 120)}`,
+      ).toMatch(/TAB_LABEL_MAX_PX/);
+    }
     // …and neither may spell the number, in either syntax.
     for (const rel of [
       STRIP,
@@ -539,6 +648,44 @@ describe("census · the structural floor and the shared cap", () => {
     expect(code).toMatch(
       /useLayoutEffect\(\(\) => \{[\s\S]{0,200}effectiveRef\.current = effective/,
     );
+  });
+
+  it("a TIER-1 surface reads the user's PREFERENCE, never the auto verdict", () => {
+    // Two things at once, and the second is the load-bearing one. (a) The save
+    // pill is TIER 1 by this bar's own ladder, so a narrow window must not
+    // carry it away. (b) The occupancy predicate is state-independent ONLY
+    // because the protected width R does not depend on the verdict — feed the
+    // verdict into a tier-1 element's width and R becomes a function of the
+    // rule's own output, which re-opens the flip-flop the predicate closes.
+    const cluster = commentsStripped(
+      read("src/components/editor-layout/StatusCluster.tsx"),
+    );
+    expect(cluster).toMatch(
+      /collapsed=\{\(collapsePreference \?\? topbarRightCollapsed\) \|\| zenModeOn\}/,
+    );
+    const topbar = commentsStripped(
+      read("src/components/editor-layout/TopBar.tsx"),
+    );
+    expect(
+      topbar,
+      "TopBar must hand down the RAW pref beside the effective verdict",
+    ).toMatch(/collapsePreference=\{statusCluster\.topbarRightCollapsed\}/);
+  });
+
+  it("the group clips only while collapsed", () => {
+    // An unconditional `overflow: hidden` trims every button's focus ring
+    // against the group's own edge in the EXPANDED state too — a keyboard
+    // affordance lost to a rule that exists for the zero-width state.
+    const cluster = commentsStripped(
+      read("src/components/editor-layout/StatusCluster.tsx"),
+    );
+    expect(cluster).toMatch(
+      /overflow: topbarRightCollapsed \? "hidden" : undefined/,
+    );
+    expect(
+      cluster,
+      "the tool group carries an unconditional overflow clip",
+    ).not.toMatch(/data-bar-tier="collapsible"[\s\S]{0,200}overflow-hidden/);
   });
 
   it("the bar's occupancy verdict has ONE producer", () => {

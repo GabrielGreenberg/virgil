@@ -2308,7 +2308,18 @@ Under the ladder is a structural FLOOR: the tab strip clips its own horizontal
 overflow (`overflow-x: clip` with `overflow-y: visible`, so the active tab keeps
 its 1px seam overhang), so even a tab row too wide to fit after the tools have
 yielded can never paint over tier 1. **A new bar occupant declares which tier it
-is in; it does not position itself against the others.**
+is in; it does not position itself against the others** — and nothing in a
+higher tier changes width in response to the verdict, which is what keeps the
+rule from oscillating against its own output (the save pill therefore honours
+the user's collapse *preference*, never the auto verdict).
+
+The collapsible group collapses by WIDTH rather than unmounting, so that its
+natural width stays measurable. Three things the unmount used to give it are
+paid on the collapse edge instead: its children REMOUNT (so a child's own open
+menu closes — `visibility: hidden` cannot reach a body-portaled dropdown),
+focus moves to the chip (never left in an `aria-hidden` subtree), and the clip
+applies only while collapsed (an unconditional one trims focus rings in the
+expanded state).
 
 Both tab renderers cap their label at `TAB_LABEL_MAX_PX`
 ([folder-tab-geometry.ts](components/chrome/folder-tab-geometry.ts)) — the
