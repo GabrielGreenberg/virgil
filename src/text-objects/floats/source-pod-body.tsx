@@ -297,7 +297,7 @@ export function SourcePodFloatBody({
                 `height:100%` clamped the `.cm-scroller` ~10px and clipped the
                 last line (L3e.2). */}
             <div className="source-pod">
-              {banner}
+              {banner && <div className="source-pod-banner">{banner}</div>}
               <div className="source-pod-editor relative">
                 <CodeMirror
                   value={code}

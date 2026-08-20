@@ -397,8 +397,13 @@ export default function SourcePodNodeView({
             corresponding popout is open. */}
 
       {/* Derived chrome — a refusal badge. Shown in EVERY mode, collapsed
-          included: a badge nobody can see is not a loud refusal. */}
-      {banner}
+          included: a badge nobody can see is not a loud refusal. The wrapper is
+          the pod's, not the kind's: `.source-pod-row-sensor` is an absolutely
+          positioned FIRST child that hit-tests above any in-flow sibling, which
+          is why the preview and the editor beside this both carry an explicit
+          `position: relative`. Owning the slot's stacking here means the next
+          contributor inherits it instead of re-discovering the trap. */}
+      {banner && <div className="source-pod-banner">{banner}</div>}
 
       {collapsed ? (
         /* Compact preview: title (rendered above) + first 2 lines + … */

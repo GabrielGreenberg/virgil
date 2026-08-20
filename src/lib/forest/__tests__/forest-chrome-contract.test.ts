@@ -95,6 +95,36 @@ describe("the refusal badge is a warning, not an alarm", () => {
   });
 });
 
+describe("the corner does not swallow clicks the pod used to receive", () => {
+  // The pre-384 chip was a bare element carrying `pointer-events-none`, sitting
+  // over the 44px right inset the code surface reserves; a click there fell
+  // through to `.cm-content` and placed a caret. Wrapping it in a flex box —
+  // the whole point of the shared corner — reintroduces a hit target unless the
+  // WRAPPER is click-through and the one real control opts back in. A
+  // shared-class refactor that makes a corner of every texBlock pod inert is
+  // exactly the silent regression this family's rules exist to prevent.
+  it("the corner itself is click-through", () => {
+    expect(ruleBody(".source-pod-corner")).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("the chip is too — it is read, not pressed", () => {
+    expect(ruleBody(".source-pod-chip")).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("…and the mode toggle opts back IN, or it cannot be clicked at all", () => {
+    expect(ruleBody(".source-pod-mode-toggle")).toMatch(/pointer-events:\s*auto/);
+  });
+
+  it("the banner slot is positioned, or the row sensor covers its text", () => {
+    // `.source-pod-row-sensor` is an absolutely positioned FIRST child of the
+    // pod and hit-tests above any in-flow sibling — which is why the preview
+    // and the editor beside it both carry `position: relative`. The banner is a
+    // generic slot, so the POD owns its stacking rather than each contributor
+    // re-discovering the trap.
+    expect(ruleBody(".source-pod-banner")).toMatch(/position:\s*relative/);
+  });
+});
+
 describe("print", () => {
   const PRINT = (() => {
     const i = CSS.indexOf("@media print");
@@ -109,6 +139,17 @@ describe("print", () => {
   it("drops the pod frame around a derived body", () => {
     const body = PRINT.slice(PRINT.indexOf(".source-pod-derived"));
     expect(body).toMatch(/border:\s*0\s*!important/);
+  });
+
+  it("releases the derived body's scroll constraint, or a wide tree is CLIPPED", () => {
+    // An `overflow: auto` box does not paginate or grow in paged media — it
+    // clips at its border box. On screen the scrollbar says so; on paper
+    // nothing does, and the right-hand subtrees are simply gone.
+    const body = PRINT.slice(
+      PRINT.indexOf(".source-pod-derived"),
+      PRINT.indexOf("}", PRINT.indexOf(".source-pod-derived")),
+    );
+    expect(body).toMatch(/overflow:\s*visible\s*!important/);
   });
 
   it("drops the corner chrome and the badge", () => {

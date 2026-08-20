@@ -1431,6 +1431,15 @@ textarea,
   display: flex;
   align-items: center;
   gap: 3px;
+  /* CLICK-THROUGH by default, and the toggle opts back IN. The chip sits over
+     the 44px right inset the code surface reserves, and a click there has
+     always fallen through to `.cm-content` and placed a caret — the pre-384
+     chip carried `pointer-events: none` on the element itself, with no wrapper
+     to catch anything. Putting the rule only on the CHIP now would leave this
+     flex box (and its gap) swallowing those clicks with no handler of its own:
+     a shared-class refactor that quietly makes a corner of every texBlock pod
+     inert. */
+  pointer-events: none;
 }
 .source-pod-chip {
   /* px-1 py-px, byte-for-byte with the inline utility string this replaces —
@@ -1461,6 +1470,8 @@ textarea,
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+  /* …and the one child that IS a control opts back in (see the corner rule). */
+  pointer-events: auto;
 }
 :is(.tex-block, .forest-block):hover .source-pod-mode-toggle,
 .source-pod-mode-toggle:focus-visible {
@@ -1469,6 +1480,16 @@ textarea,
 .source-pod-mode-toggle:hover {
   border-color: var(--heading-annotation-border, #a8c4de);
   color: var(--accent);
+}
+
+/* The pod's BANNER slot — chrome a kind derives from its own bytes (today a
+   forest refusal badge), above the body in every mode. Positioned for the same
+   reason `.source-pod-preview` is: the row sensor is an absolutely positioned
+   first child and hit-tests above any in-flow sibling, so without this the
+   banner's text cannot be hovered or selected. The slot owns the stacking; the
+   badge inside it owns only its look. */
+.source-pod-banner {
+  position: relative;
 }
 
 /* The DERIVED body — a rendered view of the pod's own bytes, shown in place of
@@ -5465,6 +5486,13 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
     border: 0 !important;
     background: transparent !important;
     padding: 0 !important;
+    /* On screen the derived body scrolls a wide tree (`overflow-x: auto`). In
+       PAGED media an overflow box does not paginate or grow — it CLIPS at its
+       border box — so a tree wider than the print column would lose its
+       right-hand subtrees to the page edge, silently and with no scrollbar to
+       hint at it. Releasing the constraint is the same move the print block
+       makes for every other scroll container above. */
+    overflow: visible !important;
   }
   .source-pod-corner,
   .forest-refusal-badge { display: none !important; }
