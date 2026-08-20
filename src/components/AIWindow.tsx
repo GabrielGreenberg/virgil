@@ -600,6 +600,11 @@ export default function AIWindow({
       open
       onClose={onClose}
       size="full"
+      /* No cued default: this window's actions live in its BODY, and its
+         composer takes Cmd/Ctrl+Enter. Being MODAL it still swallows a plain
+         Enter pressed outside its frame (nothing behind a scrim should act on
+         one) — declared here so that swallow is a decision, not an omission. */
+      noCuedDefault
       labelledBy="ai-window-title"
       frameClassName="max-h-[82vh] flex flex-col"
     >

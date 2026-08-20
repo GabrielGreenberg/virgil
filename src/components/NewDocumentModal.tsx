@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
@@ -37,11 +37,6 @@ export default function NewDocumentModal({
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    nameRef.current?.focus();
-    nameRef.current?.select();
-  }, []);
-
   const canSubmit = name.trim().length > 0 && !busy;
 
   const submit = useCallback(async () => {
@@ -61,6 +56,10 @@ export default function NewDocumentModal({
       open
       onClose={busy ? undefined : onCancel}
       size="lg"
+      initialFocus={() => {
+        nameRef.current?.focus();
+        nameRef.current?.select();
+      }}
     >
       <SystemDialogHeader title="New document" subtitle={subtitle} />
 
@@ -128,8 +127,8 @@ export default function NewDocumentModal({
           Cancel
         </SystemDialogButton>
         {/* The CUED DEFAULT: Enter creates, from anywhere in the dialog. It does
-            NOT take initial focus — the name field claims that in its own effect
-            and the shell stands down when the body has already claimed focus. */}
+            NOT take initial focus — the name field claims that through the
+            shell's `initialFocus`, which runs first. */}
         <SystemDialogButton
           variant="accent"
           autoFocus

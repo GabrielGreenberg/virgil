@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import SystemDialog, {
   SystemDialogButton,
   SystemDialogFooter,
@@ -37,20 +37,22 @@ export default function TexFilePickerModal({
 }: TexFilePickerModalProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Focus the first file button on open (SystemDialog owns Esc handling).
-  useEffect(() => {
-    const first = listRef.current?.querySelector("button");
-    (first as HTMLButtonElement | null)?.focus();
-  }, []);
-
   const sorted = sortTexFiles(texFiles, folderName);
   const isEmpty = sorted.length === 0;
 
   return (
     // No cued default, deliberately: the real answers are the file rows in the
-    // BODY (the first one takes focus below), and Enter on a focused row opens
-    // that file. Cueing "Cancel" would make Return dismiss the picker instead.
-    <SystemDialog open onClose={onCancel} size="md" noCuedDefault>
+    // BODY, and `initialFocus` puts the caret on the first of them, so Enter
+    // opens that file. Cueing "Cancel" would make Return dismiss the picker.
+    <SystemDialog
+      open
+      onClose={onCancel}
+      size="md"
+      noCuedDefault
+      initialFocus={() =>
+        listRef.current?.querySelector<HTMLButtonElement>("button")?.focus()
+      }
+    >
       <SystemDialogHeader
         title={folderName}
         subtitle={

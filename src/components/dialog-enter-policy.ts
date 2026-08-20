@@ -51,16 +51,20 @@ export type DialogEnterVerdict =
   /** Not ours — the target owns this key, or the dialog has no claim on it. */
   | { kind: "hands-off" };
 
-const HANDS_OFF_TAGS = new Set(["TEXTAREA", "SELECT", "A", "SUMMARY", "OPTION"]);
+const HANDS_OFF_TAGS = new Set(["TEXTAREA", "SELECT", "A", "SUMMARY"]);
 
 /**
- * Input types whose native `Enter` behaviour is an activation of their own.
+ * Input types the shell keeps its hands off.
  *
- * `checkbox` and `radio` are deliberately NOT here: SPACE toggles those, and
- * `Enter` on one does nothing outside a `<form>` — so treating them as owners
- * would make Return dead for a user who has tabbed onto a dialog's checkbox
- * (`PrintDialog`'s options), which is the inert-key symptom this whole rule
- * exists to remove.
+ * `button` / `submit` / `reset` / `image` / `file` activate themselves. `checkbox`
+ * and `radio` are here for the opposite reason — they activate on SPACE and do
+ * nothing on Enter — and that is a deliberate reversal of this file's first cut,
+ * which excluded them so a "dialog checkbox" would answer Return. Measured, that
+ * bought nothing and cost a real regression: `PrintDialog`'s options are
+ * `<button>`s (already covered by the BUTTON rule), while the one genuine
+ * `<input type="radio">` in a dialog is `ManageStylesModal`'s default-style
+ * picker — whose cued default is "Done", so Enter on a focused radio would have
+ * closed the entire modal. Pre-389 it did nothing; it does nothing now.
  */
 const SELF_ACTIVATING_INPUT_TYPES = new Set([
   "button",
@@ -68,6 +72,8 @@ const SELF_ACTIVATING_INPUT_TYPES = new Set([
   "reset",
   "image",
   "file",
+  "checkbox",
+  "radio",
 ]);
 
 function ownsEnter(el: Element): boolean {
@@ -114,6 +120,10 @@ export function resolveDialogEnter(q: DialogEnterQuery): DialogEnterVerdict {
   const inFrame = !!(q.frame && node && q.frame.contains(node));
 
   if (q.phase === "capture") {
+    // Honoured in BOTH phases: at capture almost nothing has run yet, but an
+    // upstream capture listener (an open menu) may already have consumed the key,
+    // and a dialog must not answer a press that was not left for it.
+    if (q.alreadyHandled) return { kind: "hands-off" };
     // No frame means no dialog DOM to be inside OR outside of. Claiming the key
     // there would swallow it on behalf of a dialog that is not on screen yet.
     if (!q.frame) return { kind: "hands-off" };
@@ -135,10 +145,17 @@ export function resolveDialogEnter(q: DialogEnterQuery): DialogEnterVerdict {
   return { kind: "cued-default" };
 }
 
-/** Modifier / IME shapes that are never a dialog's `Enter`. */
+/** Modifier / repeat / IME shapes that are never a dialog's `Enter`. */
 export function isPlainEnter(e: KeyboardEvent): boolean {
   if (e.key !== "Enter") return false;
-  if (e.altKey || e.ctrlKey || e.metaKey) return false;
+  // Shift+Enter is a DISTINCT key with its own muscle memory (a hard break in
+  // ProseMirror, "send without a newline" in a composer). A cue promises what a
+  // plain Return does, so it must not answer a chord.
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+  // A HELD Enter must not repeat-fire a confirm. Pre-389 that could only happen
+  // with the button already focused, where the browser owns the repeat; now the
+  // shell answers from anywhere, so it owns the rule.
+  if (e.repeat) return false;
   // Enter during IME composition commits the candidate; it is not an activation.
   if (e.isComposing || e.keyCode === 229) return false;
   return true;

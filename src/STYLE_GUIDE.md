@@ -1522,16 +1522,34 @@ snippet?" at the end of a drag). One rule now, in
 | the cued default button | presses it (once) | closes |
 | another button inside the dialog | presses THAT button | closes |
 | a textarea / contenteditable / select / link inside the dialog | the control keeps it | closes |
+| a focused radio or checkbox inside the dialog | nothing — those answer to SPACE | closes |
 | a plain single-line `<input>` inside the dialog | presses the cued default… | closes |
 | …unless that input called `preventDefault()` | the control keeps it | closes |
-| anywhere OUTSIDE a `modal` dialog | presses the cued default, stopped at window CAPTURE so the document behind never sees it | closes |
+| anywhere OUTSIDE a `modal` dialog | presses the cued default, stopped at document CAPTURE so the document behind never sees it | closes |
 | anywhere outside a `draggable` / `anchored` window | nothing — those are not modal | closes |
 
-Two consequences worth stating. **`preventDefault()` is how an in-dialog control
-says "this Enter is mine"** — a field that consumes the key and omits it will
-also fire the cued default. And **only the TOP dialog answers a key**
-(`components/dialog-stack.ts`): dialogs stack (`ManageStylesModal` stays mounted
-under `StyleEditorModal`), and before the stack a single Escape closed both.
+Shift+Enter and a HELD (auto-repeating) Enter are never a dialog's key: the cue
+promises what a plain Return does, and a held Return must not repeat-fire a
+confirm.
+
+Three consequences worth stating. **`preventDefault()` is how an in-dialog
+control says "this Enter is mine"** — a field that consumes the key and omits it
+will also fire the cued default. **One dialog answers a key**
+(`components/dialog-stack.ts`), and which one is not simply "the last opened":
+the topmost MODAL wins outright, because modality *is* the claim to the keyboard;
+between two scrimless windows — `PreferencesModal` and `BugReportWindow` are both
+`variant="draggable"` and both can be open at once — the owner is the one whose
+frame contains focus; mount order is the last resort. And before any of this a
+single Escape closed *every* open dialog.
+
+**A dialog whose BODY should take initial focus says so with `initialFocus`**, a
+callback the shell runs once the portal exists. Do NOT hand-roll it as a
+`useEffect(…, [])` in the dialog component: the shell renders `null` until it has
+mounted, so a caller's mount effect fires in a commit where the body is not in the
+DOM, its ref is `null`, and (deps `[]`) it never runs again. Three shipped dialogs
+had exactly that shape and their fields were never focused — `TexFilePickerModal`
+ended up with no focused row *and* no cued default, i.e. a `Return` that did
+nothing at all.
 
 **Every footered dialog DECLARES its cued default.** Either an `autoFocus`
 `SystemDialogButton`, or `noCuedDefault` on the `SystemDialog` for the two shapes

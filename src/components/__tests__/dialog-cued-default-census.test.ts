@@ -28,7 +28,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { codeOnly, elementsNamed } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..");
 
@@ -48,69 +48,98 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-interface FooteredDialog {
+interface DialogSite {
   rel: string;
-  src: string;
+  /** The `<SystemDialog …>` open tag. */
+  tag: string;
+  /** Everything between that tag and its close. */
+  subtree: string;
 }
 
-/** Every production file that RENDERS a dialog footer. */
-function footeredDialogs(): FooteredDialog[] {
-  const out: FooteredDialog[] = [];
+/**
+ * Every production `<SystemDialog>` that must declare an answer for `Enter`:
+ * one with a FOOTER (its buttons are the answers), or a MODAL one (which owns
+ * the keyboard and swallows an out-of-frame Enter whether or not it has a cue,
+ * so the swallow must be deliberate).
+ *
+ * Enumerated per ELEMENT, not per file: `ManageStylesModal` renders one dialog
+ * and hosts three more, so a file-scoped question lets one dialog be excused by
+ * a sibling's declaration.
+ */
+function dialogSites(): DialogSite[] {
+  const out: DialogSite[] = [];
   for (const abs of walk(ROOT)) {
     const rel = abs.slice(ROOT.length + 1).replace(/\\/g, "/");
     if (SHELL.includes(rel)) continue;
-    const src = codeOnly(readFileSync(abs, "utf8"));
-    if (elementsNamed(src, "SystemDialogFooter").length === 0) continue;
-    out.push({ rel, src });
+    // `commentsStripped`, NOT `codeOnly`: the variant needle must match INSIDE a
+    // quoted attribute (`variant="draggable"`), and `codeOnly` blanks string
+    // literals — the exact trap `_source-scan` documents. Comments still go, which
+    // is all the prose canary below needs.
+    const src = commentsStripped(readFileSync(abs, "utf8"));
+    for (const hit of elementsNamed(src, "SystemDialog")) {
+      const subtree = hit.subtree ?? "";
+      const scrimless = /variant=\{?"(draggable|anchored)"/.test(hit.tag);
+      const footered = elementsNamed(subtree, "SystemDialogFooter").length > 0;
+      if (!footered && scrimless) continue;
+      out.push({ rel, tag: hit.tag, subtree });
+    }
   }
   return out;
 }
 
-/** Does this file register a cued default — an `autoFocus` SystemDialogButton? */
-function declaresCue(src: string): boolean {
-  return elementsNamed(src, "SystemDialogButton").some((h) =>
+/** Does this dialog register a cued default — an `autoFocus` SystemDialogButton? */
+function declaresCue(subtree: string): boolean {
+  return elementsNamed(subtree, "SystemDialogButton").some((h) =>
     /\bautoFocus\b/.test(h.tag),
   );
 }
 
-/** Does this file declare that it deliberately cues nothing? */
-function declaresNone(src: string): boolean {
-  return elementsNamed(src, "SystemDialog").some((h) =>
-    /\bnoCuedDefault\b/.test(h.tag),
-  );
+/**
+ * Does this dialog declare that it deliberately cues nothing?
+ *
+ * `noCuedDefault={false}` is NOT a declaration — it is the default spelled out,
+ * so accepting it would let the prop's mere presence satisfy the rule.
+ */
+function declaresNone(tag: string): boolean {
+  if (!/\bnoCuedDefault\b/.test(tag)) return false;
+  return !/\bnoCuedDefault=\{false\}/.test(tag);
 }
 
-describe("every footered SystemDialog declares its cued default", () => {
-  const dialogs = footeredDialogs();
+describe("every SystemDialog that owns Enter declares its cued default", () => {
+  const dialogs = dialogSites();
 
-  it("the census finds the real dialog components (it is not scanning nothing)", () => {
+  it("the census finds the real dialog sites (it is not scanning nothing)", () => {
     const rels = dialogs.map((d) => d.rel);
     expect(rels).toContain("components/ConfirmDialog.tsx");
     expect(rels).toContain("components/system-dialog-host.tsx");
     expect(rels).toContain("components/ManageStylesModal.tsx");
     expect(rels).toContain("components/TexFilePickerModal.tsx");
-    expect(rels.length).toBeGreaterThanOrEqual(10);
+    // A MODAL with no footer is in scope too — it swallows an out-of-frame
+    // Enter, so the swallow has to be deliberate.
+    expect(rels).toContain("components/AIWindow.tsx");
+    // ManageStylesModal renders ONE dialog and hosts three more; enumerating per
+    // element rather than per file is what keeps a sibling from excusing it.
+    expect(dialogs.length).toBeGreaterThan(new Set(rels).size);
   });
 
   it("each one either registers a cue or declares none", () => {
     const undeclared = dialogs
-      .filter((d) => !declaresCue(d.src) && !declaresNone(d.src))
+      .filter((d) => !declaresCue(d.subtree) && !declaresNone(d.tag))
       .map((d) => d.rel);
     expect(undeclared).toEqual([]);
   });
 
-  it("the two DELIBERATE no-cue shapes say so out loud", () => {
-    const byRel = new Map(dialogs.map((d) => [d.rel, d.src]));
+  it("the DELIBERATE no-cue shapes say so out loud", () => {
+    const none = dialogs.filter((d) => declaresNone(d.tag)).map((d) => d.rel);
     // A picker whose answers are its body rows — Return must not mean "Cancel".
-    expect(declaresNone(byRel.get("components/TexFilePickerModal.tsx")!)).toBe(true);
+    expect(none).toContain("components/TexFilePickerModal.tsx");
     // A single-button danger notice (task 386) — conditional, off the one SSOT.
-    expect(declaresNone(byRel.get("components/ConfirmDialog.tsx")!)).toBe(true);
+    expect(none).toContain("components/ConfirmDialog.tsx");
+    // A modal whose actions live in its body, not a footer.
+    expect(none).toContain("components/AIWindow.tsx");
   });
 
   it("the library silo hosts no dialogs of its own (the walk is complete)", () => {
-    // The census walks `src/` only. That is exhaustive TODAY because `library/`
-    // imports the shell nowhere — pinned here rather than assumed, so a Library
-    // dialog added later fails this instead of silently escaping the rule.
     const lib = join(ROOT, "..", "library");
     const offenders = walk(lib)
       .filter((abs) => /SystemDialog/.test(readFileSync(abs, "utf8")))
@@ -123,7 +152,7 @@ describe("every footered SystemDialog declares its cued default", () => {
     expect(shell).toMatch(/noCuedDefault\?: boolean;/);
   });
 
-  it("CANARY: a footer with neither a cue nor a declaration is flagged", () => {
+  it("CANARY: a dialog with neither a cue nor a declaration is flagged", () => {
     const bad = `
       export function Bad() {
         return (
@@ -135,9 +164,17 @@ describe("every footered SystemDialog declares its cued default", () => {
           </SystemDialog>
         );
       }`;
-    expect(elementsNamed(bad, "SystemDialogFooter").length).toBe(1);
-    expect(declaresCue(bad)).toBe(false);
-    expect(declaresNone(bad)).toBe(false);
+    const [hit] = elementsNamed(bad, "SystemDialog");
+    expect(declaresCue(hit.subtree ?? "")).toBe(false);
+    expect(declaresNone(hit.tag)).toBe(false);
+  });
+
+  it("CANARY: `noCuedDefault={false}` is the default spelled out, not a declaration", () => {
+    const [hit] = elementsNamed(
+      `<SystemDialog open noCuedDefault={false}></SystemDialog>`,
+      "SystemDialog",
+    );
+    expect(declaresNone(hit.tag)).toBe(false);
   });
 
   it("CANARY: a cue mentioned only in PROSE does not count", () => {
@@ -153,8 +190,9 @@ describe("every footered SystemDialog declares its cued default", () => {
           </SystemDialog>
         );
       }`;
-    const stripped = codeOnly(commentOnly);
-    expect(declaresCue(stripped)).toBe(false);
-    expect(declaresNone(stripped)).toBe(false);
+    const stripped = commentsStripped(commentOnly);
+    const [hit] = elementsNamed(stripped, "SystemDialog");
+    expect(declaresCue(hit.subtree ?? "")).toBe(false);
+    expect(declaresNone(hit.tag)).toBe(false);
   });
 });
