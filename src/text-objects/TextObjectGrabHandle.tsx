@@ -457,9 +457,6 @@ function computePlacement(
   cache: EditorViewportFrame,
   ref: TextObjectRef | SelectionRef,
   preEl: HTMLElement | null,
-  /** Task 353 — the innermost element this hover resolved, so a CONTAINER in
-   *  the same set anchors to the hovered row. */
-  hoveredEl: HTMLElement | null = null,
 ): Placement | null {
   // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and all
   // block rects collapse to 0×0, so any placement would be garbage. Bail before
@@ -513,7 +510,7 @@ function computePlacement(
   // gapPx for X, opticalCenterY for Y), so the handle, a container + its first
   // item, and the future drop indicator align to the SAME numbers by
   // construction.
-  const frame = resolveBlockFrame(anchorDom, editor, cache, hoveredEl);
+  const frame = resolveBlockFrame(anchorDom, editor, cache);
 
   // ---- Horizontal: hug the block's MEASURED marker one uniform gap left ----
   // BOTH a TextObject handle and a SELECTION handle hug the block's `markerLeft`
@@ -546,11 +543,15 @@ function computePlacement(
   // ---- Vertical: the Y the handle glyph's CENTER lands on ----
   // The CSS centers the dots on `placement.top` (see `.text-object-grab-handle`
   // in globals.css). Each kind declares its anchor via `meta.chromeAnchor`:
-  //   • text-top → the optical (cap-band) center of the first VISUAL line,
-  //     from the canonical block frame. A container (`bulletList` /
-  //     `orderedList` / `exampleBlock`) resolves THROUGH to its first item's
-  //     first line, so the container handle and the item handle land on the
-  //     SAME Y by construction.
+  //   • text-top → the optical (cap-band) center of THIS block's OWN first
+  //     VISUAL line, from the canonical block frame. A container (`bulletList`
+  //     / `orderedList` / `exampleBlock`) resolves THROUGH to its first
+  //     grabbable child, because that child's first line IS the container's
+  //     own — a `<ul>` has no text line. So a container's handle sits beside
+  //     its structure's TOP row whichever row the pointer is on (task 394's
+  //     hierarchical arrangement), and it coincides with an item's handle only
+  //     where the two genuinely share a line — row 1 — which is exactly where
+  //     `applySameRowSeparation` and the 382 ink cap take over.
   //   • block-top → framed visual kinds (tex pod, % comment, math, graphic,
   //     figure) have no first text line; pin the glyph a half-glyph below the
   //     block's top edge (pre-unification visual; chip 4 owns figure chrome).
@@ -930,13 +931,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         return;
       }
       const resolved = resolveActiveRefs(editor);
-      // The hover branch answers INNERMOST-first, so `resolved[0]` is the block
-      // the pointer is actually on. Every containing level anchors its chrome to
-      // that row (task 353) instead of to its own first item.
-      const hoveredEl = resolved[0]?.el ?? null;
+      // Task 394 — HIERARCHICAL placement: every level anchors at its OWN
+      // block's first visual line, so the hovered row carries exactly one
+      // handle and each containing level sits beside the top of the structure
+      // it grabs. The hover SET is unchanged (innermost-first, every containing
+      // level: task 353 spec points 1-2), so travelling UP the gutter toward a
+      // container's handle keeps the pointer inside that container and the
+      // handle alive. `computePlacement` therefore takes no per-hover hint —
+      // see `resolveFirstLineTarget` in block-frame.ts for the retired one.
       const next: Placement[] = [];
       for (const { ref, el } of resolved) {
-        const p = computePlacement(editor, cacheRef.current, ref, el, hoveredEl);
+        const p = computePlacement(editor, cacheRef.current, ref, el);
         if (p) next.push(p);
       }
       // Chip 3: resolve each handle's hit-halo cap from the full set's sibling

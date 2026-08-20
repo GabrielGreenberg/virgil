@@ -538,6 +538,78 @@ available today (treat an outboard marker's LEFT edge as a barrier) would force
 both handles into the 1.5em `(n)` column and reproduce the unreadable blob task
 353 exists to prevent.
 
+##### The hierarchy half: a per-level answer is anchored to its OWN level
+
+Same gutter, the VERTICAL axis (task 394) — and the case where the rule was
+right about the shape it was measured on and generalized to a shape that
+falsifies it. Task 353 (Gabriel's own spec) measured a FLAT list and concluded
+that a container's handle must anchor to the HOVERED row, so that "a container
+and its item produce the SAME opticalCenterY" holds at every row rather than
+only at row 1; the implementation delivered it by threading a per-hover
+`descendTo` HINT into `resolveFirstLineTarget`.
+
+A nested list falsifies it. The hover set is every CONTAINING level, so
+anchoring each of them to the pointer's row stacks one handle per level onto
+that one row — Gabriel's screenshot: three handles bunched on "locations", the
+innermost pushed onto the bullet glyph (the very 382 collision the ink cap
+exists to bound, arriving from the axis the cap cannot see). Nothing failed:
+every placement was well-formed, every handle was on the row 353 asked for.
+
+> **Every grab handle anchors at its OWN block's first visual line, at its own
+> marker-derived X.** Visibility stays hover-scoped to the containing chain
+> (353 points 1-2 unchanged); the hovered — lowest — node contributes exactly
+> one handle, on its own row. So the gutter reads outward-in as a structural
+> breadcrumb: the outer list beside the outer list's top row, the outer item
+> beside its own line, the inner list beside ITS top row, one handle on the
+> hovered node.
+
+Five rules it earned:
+
+- **The fix is a DELETION.** `descendTo` is retired from `resolveFirstLineTarget`
+  and from both public entry points (`resolveContentEdges` /
+  `resolveBlockFrame`), so there is one rule with no special case — rather than
+  a distribution pass layered on top of the stacking, which would have left both
+  descriptions live and let them drift. It is uniform over the whole container
+  family by construction (the descent is `CONTAINER_KINDS`-keyed), not a list
+  special case.
+- **A container's first grabbable child IS its own first visual line.** A `<ul>`
+  has no text line and an `.expex-block`'s only direct text is its `(n)` chip at
+  `0.95em` — the wrong metrics to anchor chrome to — so the descent that 353
+  inherited was always answering the right question; what 353 added was the
+  hint that overrode it.
+- **The same-row machinery survives for GENUINE coincidences.** A list's first
+  row, or a container whose first child is a container, really is one line
+  shared by two levels: 353's separation and 382's ink cap still govern exactly
+  those. With the levels distributed vertically they shrink to ≤2 handles in
+  practice, which is what makes both mechanisms sufficient — and why the item
+  handle's X on row 1 legitimately differs from its resting X on rows 2-N.
+- **Interaction gets STRONGER, not weaker, and the reason is structural.** The
+  hover band already returns every containing level, and a container's own first
+  row is inside that container — so travelling UP the gutter toward a
+  container's handle keeps the pointer inside it and the handle alive at an
+  unmoving position. Pre-394 that handle MOVED as the pointer travelled, which
+  is what the travel leg measures.
+- **Decided default, stated at the site:** a container whose first line has
+  scrolled off-screen paints its handle off-screen with it — the chrome belongs
+  to its structure, and there is no viewport pinning in v1.
+
+CI: the renegotiated [grab-handle-hover-spec.test.tsx](src/text-objects/__tests__/grab-handle-hover-spec.test.tsx).
+353's set-membership legs are untouched; its SAME-Y legs are renegotiated in
+place with the reason at the site (the defect asserted as the contract, which is
+this file's own rule about a guard that pins the wrong thing). The legs with
+teeth drive the NESTED fixture, and its absence is why no pre-394 suite could
+see this: **every grab-handle fixture in the repo is a FLAT list**, where a
+container has exactly one containing level and "one handle per level on the
+hovered row" is indistinguishable from "one handle" — the defect needs four
+levels to be representable at all. Measured by neutering the fix back to the
+hovered-row hint: 6 legs fail, and the X-order leg passes either way, which is
+correct — X was never the defect and that leg is a non-regression pin.
+
+**Owed, not claimed:** the preview eyeball on the screenshot's exact shape
+(nested list, hover the last inner item → four handles at four distinct rows,
+none touching a bullet). This class is NOT FSA-masked, so the check is cheap and
+real.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.
