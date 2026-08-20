@@ -1534,6 +1534,102 @@ check is cheap and real — archive text, `+T`, type, Backspace repeatedly (the
 title edits, the card stays), then trash-click the same card and see the confirm
 open with Cancel focused.
 
+#### The cue half: a VISIBLE default is a promise the key must keep
+
+Same dialog, one key over (task 389) — and the case where the affordance was
+correct, the chrome painted it, and the KEY that presses it was gated on an
+implementation accident. Gabriel: in the "Re-anchor this snippet?" dialog,
+`Return` does nothing. `Escape` felt fine, which is the whole tell — Escape
+closed unconditionally, while Enter ran only while
+`document.activeElement === theCuedButton`, and the cue was claimed by a
+deferred one-shot `requestAnimationFrame` at open. The button renders as the
+accented default whether or not that frame landed, so the VISUAL promise and
+the KEYBOARD behaviour diverged with nothing on screen to say so.
+
+> **The cue is what the chrome OFFERS, so it is what the key must ACCEPT.**
+> `Enter` in a dialog activates a BUTTON — the focused in-frame button if there
+> is one, otherwise the REGISTERED cued default — never gated on where DOM focus
+> happens to sit. The exceptions are asked of the TARGET, not of focus.
+
+Six rules it earned:
+
+- **There was no THIEF, which is why the fix could not be "re-assert focus".**
+  The filed diagnosis blamed the drag-end teardown for stealing focus, and a
+  read-only sweep of every `.focus()` site reachable from the drop-mode commit
+  found ZERO: the card producers `preventDefault()` their own mousedown
+  specifically to suppress native focus, so focus never left `.ProseMirror` in
+  the first place, and the dialog's only claim on it was that one frame. **The
+  claim MISSED; nothing took it.** Verify a phenomenon before generalizing its
+  cause — the surgical fix aimed at the wrong mechanism entirely.
+- **…and the claim missed because it was scheduled from a commit that renders
+  NOTHING.** `mounted` starts false (SSR cannot touch `document.body`), so a
+  dialog's first commit returns `null` — no portal, no button, every ref null —
+  and the focus effect's deps omitted `mounted`, so that was the only commit it
+  ever ran in. React schedules the `setMounted(true)` re-render as a Scheduler
+  task while the rAF is tied to the FRAME, so on a busy main thread — the end of
+  a drag: gesture-end edge, mint transaction, RO settle — the frame arrives first
+  and the callback focuses nothing at all. A click-opened dialog wins the same
+  race on a quiet thread, which is exactly why this read as "only the drag one is
+  broken".
+- **The exceptions are a question about the TARGET.** Inside the frame a control
+  that owns `Enter` keeps it (textarea, contenteditable, `select`, link,
+  `<summary>`, a self-activating input) and so does anything that consumed the
+  key by calling `preventDefault()` — the platform's own way of saying "mine",
+  and an in-dialog control that consumes Enter must say so (one site,
+  `ManageStylesModal`'s rename field, did not, and would have closed the whole
+  modal on a rename). A plain single-line `<input>` SUBMITS to the cued default.
+  Outside the frame, a MODAL owns the keyboard and answers at window CAPTURE, so
+  ProseMirror's own `Enter` — a new paragraph in the user's document, behind an
+  open modal — never sees it; a SCRIMLESS window (Preferences, the bug reporter)
+  is deliberately not modal and answers nothing from outside itself.
+- **Activating a focused in-frame BUTTON ourselves is what makes it ONE rule.**
+  `preventDefault()` suppresses the native synthesized click, so the activation
+  is exactly-once in every environment, and the pre-389 special case ("the cued
+  button is focused, so preventDefault + click") folds INTO the general statement
+  instead of sitting beside it.
+- **Unconditional Enter needed a STACK, and the stack retired a live Escape bug
+  with it.** Dialogs genuinely stack — `ManageStylesModal` stays mounted under
+  `StyleEditorModal` / `StyleApplyDialog` / `DocTypeChangeDialog` — and each open
+  dialog installs its own window listener, so pre-389 a single `Escape` closed
+  BOTH. Making Enter unconditional without an owner would have added the worse
+  twin: two cued defaults firing from one press.
+  [dialog-stack.ts](src/components/dialog-stack.ts) is a LIFO in mount order and
+  only the TOP entry answers a key — the same shape `useMenuKeyboard`'s `isTop`
+  already had one subsystem over.
+- **`autoFocus` is the CUE first and the initial-focus target second.** The shell
+  stands DOWN when the dialog's own body has already claimed focus (a prompt
+  input, `TexFilePickerModal`'s file list), so a dialog can finally name its
+  Enter default without stealing the caret from its own field — which is what
+  let `NewDocumentModal` cue "Create" at all.
+
+Escape is deliberately left UNCONDITIONAL within the top dialog rather than
+gated on `defaultPrevented` like Enter: CodeMirror binds `Escape`
+(`simplifySelection`) and `StyleEditorModal` hosts one, so a "the target consumed
+it" rule would make Escape stop closing that dialog whenever its preamble editor
+has focus. A modal always has a way out.
+
+CI: [dialog-enter-contract.test.tsx](src/components/__tests__/dialog-enter-contract.test.tsx)
+drives the REAL components and dispatches a REAL keydown at a REAL target;
+[reanchor-confirm-enter.test.tsx](src/components/drop-mode/__tests__/reanchor-confirm-enter.test.tsx)
+drives Gabriel's own gesture end to end through the REAL controller, the REAL
+`confirm` door and the REAL dialog, and presses exactly one key. The leg with
+teeth is the CENSUS
+([dialog-cued-default-census.test.ts](src/components/__tests__/dialog-cued-default-census.test.ts))
+— the shell was never the part that could misbehave, a dialog that ships a footer
+and cues nothing is, and that type-checks perfectly; membership is DISCOVERED
+from the tree, and the two deliberate no-cue shapes carry a `noCuedDefault`
+DECLARATION so "no cue" can never be read as "someone forgot one". The focus half
+is pinned STRUCTURALLY (the frame is scheduled from a commit where the dialog
+EXISTS), because the failure it closes is a real-browser timing race a hand-pumped
+jsdom rAF queue cannot reproduce — a leg that flushed frames after React settled
+passed under its own neuter. Measured by neutering each half in turn: the pre-389
+focus-gated Enter takes 10 legs plus the drop-mode leg, the stack 2, the
+`mounted` gate 1, the body-claimed-focus stand-down 2, and the two census
+declarations 2.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked — drag an archive card
+onto a different paragraph's side, and press only Return.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

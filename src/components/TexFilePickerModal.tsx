@@ -47,7 +47,10 @@ export default function TexFilePickerModal({
   const isEmpty = sorted.length === 0;
 
   return (
-    <SystemDialog open onClose={onCancel} size="md">
+    // No cued default, deliberately: the real answers are the file rows in the
+    // BODY (the first one takes focus below), and Enter on a focused row opens
+    // that file. Cueing "Cancel" would make Return dismiss the picker instead.
+    <SystemDialog open onClose={onCancel} size="md" noCuedDefault>
       <SystemDialogHeader
         title={folderName}
         subtitle={
