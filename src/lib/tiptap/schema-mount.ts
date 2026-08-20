@@ -137,3 +137,58 @@ export function checkKeptEverything(
       : probe.reason,
   };
 }
+
+/**
+ * Name the constructs in `json` that `schema` does not have — the node types
+ * and mark types, deduped, in first-seen order.
+ *
+ * **Naming, not detecting.** {@link canMountInSchema} remains the authority on
+ * whether a model mounts (it asks the schema itself, so it cannot drift from
+ * what the surface will do). This walk exists only to make a REFUSAL say what
+ * it refused, and it is run only on the failure path — the same division the
+ * header states for {@link checkKeptEverything}: the mechanism decides, the
+ * probe explains.
+ *
+ * DERIVED, never parsed. ProseMirror's own messages ("Unknown node type: x",
+ * "There is no mark type x in this schema") carry the name, but their FORMAT is
+ * an implementation detail of a dependency; reading the schema's own vocabulary
+ * cannot go stale when that wording changes.
+ *
+ * Returns `[]` when every name is known — `nodeFromJSON` also throws on a
+ * MALFORMED model whose types are all in the vocabulary (a text node with no
+ * `text`, a non-array `content`) — so a caller with no names to show must fall
+ * back to the probe's own reason rather than claim there was nothing wrong.
+ */
+export function unsupportedConstructs(schema: Schema, json: unknown): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const note = (name: string) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  };
+  const walk = (n: unknown): void => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      for (const item of n) walk(item);
+      return;
+    }
+    const node = n as {
+      type?: unknown;
+      marks?: unknown;
+      content?: unknown;
+    };
+    if (typeof node.type === "string" && !schema.nodes[node.type]) {
+      note(node.type);
+    }
+    if (Array.isArray(node.marks)) {
+      for (const mark of node.marks) {
+        const t = (mark as { type?: unknown } | null)?.type;
+        if (typeof t === "string" && !schema.marks[t]) note(t);
+      }
+    }
+    walk(node.content);
+  };
+  walk(json);
+  return out;
+}
