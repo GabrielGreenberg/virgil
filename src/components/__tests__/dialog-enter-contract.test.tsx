@@ -58,6 +58,8 @@ import SystemDialog, {
 } from "../system-dialog";
 import { __resetDialogStack } from "../dialog-stack";
 import { SystemDialogProvider, useSystemDialog } from "../system-dialog-host";
+import TexFilePickerModal from "../TexFilePickerModal";
+import NewDocumentModal from "../NewDocumentModal";
 
 /* ── harness ─────────────────────────────────────────────────────── */
 
@@ -347,23 +349,40 @@ describe("a control INSIDE the dialog that owns Enter keeps it", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it("a focused CHECKBOX-shaped control is not an Enter owner — the cued default fires", () => {
-    // Space toggles a checkbox; Enter does nothing native outside a form. Being
-    // "hands-off" there would make Return dead for a user who tabbed onto one
-    // (PrintDialog's options), which is the inert-key symptom 389 removes.
+  it("a focused radio/checkbox keeps Enter — it must not press the cued default", () => {
+    // RENEGOTIATED from this suite's first cut, which asserted the opposite on
+    // the theory that Enter would otherwise be dead on a dialog checkbox. Two
+    // measurements retired that: `PrintDialog`'s "checkboxes" are `<button>`s
+    // (covered by the BUTTON rule), and the one genuine `<input type="radio">`
+    // in a dialog is `ManageStylesModal`'s default-style picker — whose cued
+    // default is "Done", so pressing it would have closed the whole modal from a
+    // key that did nothing before 389. The defect asserted as the contract; the
+    // reason is stated here rather than the leg quietly re-scoped.
     const onOk = vi.fn();
     render(
       <DialogWithBody onOk={onOk}>
+        <input data-testid="radio" type="radio" name="pick" />
         <input data-testid="cb" type="checkbox" />
       </DialogWithBody>,
     );
     flushFrames();
-    const cb = screen.getByTestId("cb");
-    act(() => cb.focus());
+    for (const id of ["radio", "cb"]) {
+      const el = screen.getByTestId(id);
+      act(() => el.focus());
+      pressEnter(el);
+    }
 
-    pressEnter(cb);
+    expect(onOk).not.toHaveBeenCalled();
+  });
 
-    expect(onOk).toHaveBeenCalledTimes(1);
+  it("Shift+Enter and a HELD Enter are never the dialog's key", () => {
+    const { onConfirm } = renderConfirm();
+    focusBody();
+
+    pressEnter(document.body, { shiftKey: true });
+    pressEnter(document.body, { repeat: true });
+
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("a plain single-line <input> SUBMITS to the cued default", () => {
@@ -709,6 +728,158 @@ describe("initial focus lands inside the dialog", () => {
     const active = document.activeElement as HTMLElement;
     expect(active).not.toBe(document.body);
     expect(active.getAttribute("tabindex")).toBe("-1");
+  });
+});
+
+/* ── the body's own claim on initial focus ───────────────────────── */
+
+describe("a dialog whose BODY owns initial focus gets it", () => {
+  // The shell renders `null` until `mounted`, so a CALLER's `useEffect(…, [])`
+  // fires in a commit where the body is not in the DOM: the ref is null, the
+  // effect never re-runs, and the field is never focused. Three shipped dialogs
+  // had exactly that shape and nobody noticed, because the shell's frame
+  // fallback focuses SOMETHING and the dialog looks fine. `TexFilePickerModal`
+  // was the worst of them — no focused row AND (by design) no cued default, so
+  // `Return` in it did nothing at all, which is the symptom 389 exists to remove
+  // and which this suite's own census then pinned as deliberate.
+  //
+  // Both legs drive the REAL dialogs, because the defect was a caller's mount
+  // effect, not anything a test of the shell can see.
+
+  it("TexFilePickerModal focuses its first file row (so Enter opens that file)", () => {
+    const onSelect = vi.fn();
+    render(
+      <TexFilePickerModal
+        folderName="Paper"
+        texFiles={["main.tex", "other.tex"]}
+        onSelect={onSelect}
+        onCreateNew={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    flushFrames();
+
+    const active = document.activeElement as HTMLElement;
+    expect(active.tagName).toBe("BUTTON");
+    expect(active.textContent).toContain("main.tex");
+
+    pressEnter(active);
+    expect(onSelect).toHaveBeenCalledWith("main.tex");
+  });
+
+  it("NewDocumentModal focuses and selects its name field", () => {
+    render(<NewDocumentModal onCreate={async () => {}} onCancel={() => {}} />);
+    flushFrames();
+
+    const active = document.activeElement as HTMLInputElement;
+    expect(active.tagName).toBe("INPUT");
+    expect(active.placeholder).toBe("My paper");
+  });
+
+  it("the cued default still answers Enter from OUTSIDE, with the body focused", () => {
+    const onCreate = vi.fn(async () => {});
+    render(<NewDocumentModal onCreate={onCreate} onCancel={() => {}} />);
+    flushFrames();
+    const input = document.activeElement as HTMLInputElement;
+    act(() => {
+      input.focus();
+      // The Create cue is `disabled` until the name is non-empty.
+      Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, "Paper");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    pressEnter(input);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── two NON-MODAL windows: the owner is the one you are IN ──────── */
+
+describe("between two scrimless windows, focus decides the owner", () => {
+  function TwoWindows({
+    firstClose,
+    secondClose,
+  }: {
+    firstClose: () => void;
+    secondClose: () => void;
+  }) {
+    return (
+      <>
+        <SystemDialog open variant="draggable" onClose={firstClose}>
+          <SystemDialogHeader title="Bug report" />
+          <SystemDialogBody>
+            <input data-testid="in-first" defaultValue="" />
+          </SystemDialogBody>
+        </SystemDialog>
+        <SystemDialog open variant="draggable" onClose={secondClose}>
+          <SystemDialogHeader title="Preferences" />
+          <SystemDialogBody>
+            <input data-testid="in-second" defaultValue="" />
+          </SystemDialogBody>
+        </SystemDialog>
+      </>
+    );
+  }
+
+  it("Escape closes the window CONTAINING focus, not the one that opened last", () => {
+    // `BugReportWindow` and `PreferencesModal` are both `variant="draggable"`,
+    // both rendered side by side in EditorLayout, and both can be open at once —
+    // so mount order is not "the one the user is in". Pre-fix, Escape typed in
+    // the first window closed the SECOND.
+    const firstClose = vi.fn();
+    const secondClose = vi.fn();
+    render(<TwoWindows firstClose={firstClose} secondClose={secondClose} />);
+    flushFrames();
+    const input = screen.getByTestId("in-first");
+    act(() => input.focus());
+
+    pressEscape(input);
+
+    expect(firstClose).toHaveBeenCalledTimes(1);
+    expect(secondClose).not.toHaveBeenCalled();
+  });
+
+  it("…and mount order still decides when focus is in neither", () => {
+    const firstClose = vi.fn();
+    const secondClose = vi.fn();
+    render(<TwoWindows firstClose={firstClose} secondClose={secondClose} />);
+    flushFrames();
+    focusBody();
+
+    pressEscape(document.body);
+
+    expect(secondClose).toHaveBeenCalledTimes(1);
+    expect(firstClose).not.toHaveBeenCalled();
+  });
+
+  it("a MODAL outranks a focused non-modal window — modality IS the claim", () => {
+    const windowClose = vi.fn();
+    const modalClose = vi.fn();
+    render(
+      <>
+        <SystemDialog open variant="draggable" onClose={windowClose}>
+          <SystemDialogHeader title="Preferences" />
+          <SystemDialogBody>
+            <input data-testid="in-window" defaultValue="" />
+          </SystemDialogBody>
+        </SystemDialog>
+        <SystemDialog open onClose={modalClose}>
+          <SystemDialogHeader title="Confirm" />
+        </SystemDialog>
+      </>,
+    );
+    flushFrames();
+    const input = screen.getByTestId("in-window");
+    act(() => input.focus());
+
+    pressEscape(input);
+
+    expect(modalClose).toHaveBeenCalledTimes(1);
+    expect(windowClose).not.toHaveBeenCalled();
   });
 });
 

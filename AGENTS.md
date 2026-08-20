@@ -1597,12 +1597,47 @@ Six rules it earned:
   only the TOP entry answers a key — the same shape `useMenuKeyboard`'s `isTop`
   already had one subsystem over.
 - **`autoFocus` is the CUE first and the initial-focus target second.** The shell
-  stands DOWN when the dialog's own body has already claimed focus (a prompt
-  input, `TexFilePickerModal`'s file list), so a dialog can finally name its
-  Enter default without stealing the caret from its own field — which is what
-  let `NewDocumentModal` cue "Create" at all.
+  stands DOWN when the dialog's own body has already claimed focus, so a dialog
+  can finally name its Enter default without stealing the caret from its own
+  field — which is what let `NewDocumentModal` cue "Create" at all.
+- **…and the body's claim is the SHELL's job, because a caller structurally
+  cannot make it.** The adversarial pass on this fix found the stand-down branch
+  DEAD in all three dialogs it was written for. The shell renders `null` until
+  `mounted`, so a caller's `useEffect(…, [])` fires in the commit where the body
+  is not in the DOM: React flushes a commit's whole passive-effect list — the
+  child's `setMounted(true)` included — before processing the re-render that
+  update schedules, so the ref is `null` and the effect (deps `[]`) never runs
+  again. `TexFilePickerModal`, `NewDocumentModal` and `StyleEditorModal` all had
+  it; measured, focus fell through to the FRAME in every one. Worst of them was
+  the picker: no focused row AND (deliberately) no cued default, i.e. **a Return
+  that did nothing** — this task's own symptom, which the first cut then PINNED
+  as intended by declaring `noCuedDefault` on the strength of a claim about
+  focus that was false. `initialFocus` is the door: the shell calls it once the
+  portal exists, and falls through to the cue if the claim leaves focus outside
+  the frame. *A stand-down rule is worth nothing if nothing can stand up.*
 
-Escape is deliberately left UNCONDITIONAL within the top dialog rather than
+Three more the same adversarial pass earned, each a live regression in the first
+cut. The owner is **not** simply the top of the stack: mount order is the right
+rule for modals, and `PreferencesModal` and `BugReportWindow` are both
+`variant="draggable"`, both rendered side by side, and both openable at once — so
+between non-modals the owner is the window CONTAINING focus, with the topmost
+MODAL outranking everything (modality IS the claim) and mount order the last
+resort. Otherwise Escape closed the window the user was not typing in. **Shift+Enter
+and a held (`repeat`) Enter** are not the cue's key — a cue promises what a plain
+Return does, and a held Return must not repeat-fire a confirm. And the capture
+listener moved from `window` to `document`: it still beats every in-document
+keymap, and it no longer silences two window-capture listeners that must not be
+silenced — the open-menu controller, and `input-modality`, whose own contract says
+a key trap must not be able to hide that the user is typing.
+
+The **radio/checkbox** exclusion was reversed for the same reason: it was written
+so a dialog checkbox would answer Return, and measurement showed it bought nothing
+(`PrintDialog`'s "checkboxes" are `<button>`s, already covered) while costing a
+real one — the single genuine `<input type="radio">` in a dialog is
+`ManageStylesModal`'s default-style picker, whose cue is "Done", so Enter on it
+would have closed the entire modal from a key that previously did nothing.
+
+Escape is deliberately left UNCONDITIONAL within the owning dialog rather than
 gated on `defaultPrevented` like Enter: CodeMirror binds `Escape`
 (`simplifySelection`) and `StyleEditorModal` hosts one, so a "the target consumed
 it" rule would make Escape stop closing that dialog whenever its preamble editor
@@ -1625,7 +1660,14 @@ jsdom rAF queue cannot reproduce — a leg that flushed frames after React settl
 passed under its own neuter. Measured by neutering each half in turn: the pre-389
 focus-gated Enter takes 10 legs plus the drop-mode leg, the stack 2, the
 `mounted` gate 1, the body-claimed-focus stand-down 2, and the two census
-declarations 2.
+declarations 2; of the follow-up, the `initialFocus` door takes 3, the
+focus-aware owner 1, the Shift/repeat filter 1, and the radio/checkbox reversal 1.
+The census is per ELEMENT rather than per FILE — `ManageStylesModal` renders one
+dialog and hosts three, so a file-scoped question lets a sibling's declaration
+excuse a drifting dialog — and it reads `commentsStripped`, NOT `codeOnly`,
+because its variant needle must match inside a quoted attribute and `codeOnly`
+blanks string literals: the exact trap `_source-scan`'s own header documents,
+which the first cut walked straight into.
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked — drag an archive card
 onto a different paragraph's side, and press only Return.

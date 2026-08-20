@@ -11,7 +11,7 @@
  * runs on every change; Save is gated behind it.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
@@ -128,11 +128,6 @@ export default function StyleEditorModal({
   const [preamble, setPreamble] = useState(initialPreamble);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    nameRef.current?.focus();
-    nameRef.current?.select();
-  }, []);
-
   const validation = useMemo(() => validatePreamble(preamble), [preamble]);
 
   const trimmedName = name.trim();
@@ -159,7 +154,15 @@ export default function StyleEditorModal({
   }, [canSave, trimmedName, preamble, onSave]);
 
   return (
-    <SystemDialog open onClose={onCancel} size="xl">
+    <SystemDialog
+      open
+      onClose={onCancel}
+      size="xl"
+      initialFocus={() => {
+        nameRef.current?.focus();
+        nameRef.current?.select();
+      }}
+    >
       <SystemDialogHeader title={title} subtitle={subtitle} />
 
       <SystemDialogBody className="pb-2">

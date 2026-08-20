@@ -23,7 +23,8 @@
  *
  * Shell behaviors (baked in, identical across every dialog):
  *   - Backdrop scrim + click-to-close (unless dismissable=false)
- *   - Esc to close — answered by the TOP dialog only (see `dialog-stack.ts`)
+ *   - Esc to close — answered by ONE open dialog: the topmost modal, else the
+ *     scrimless window containing focus, else the topmost (see `dialog-stack.ts`)
  *   - Enter activates a BUTTON: the focused in-frame button if there is one,
  *     otherwise the registered CUED DEFAULT — **never gated on where DOM focus
  *     happens to sit**. A modal answers an Enter from OUTSIDE its frame too, at
@@ -32,10 +33,10 @@
  *     that called `preventDefault`) keeps it. Full rule + why:
  *     {@link file://./dialog-enter-policy.ts} (task 389).
  *   - role=dialog, aria-modal=true, aria-labelledby/aria-describedby
- *   - requestAnimationFrame-deferred focus on the autoFocus button — falling
- *     back to the dialog FRAME when no button cues itself, so focus always
- *     lands inside the dialog, and standing DOWN when the dialog's own body has
- *     already claimed focus (a prompt input, a file list)
+ *   - initial focus, once the portal exists: whatever already claimed focus
+ *     INSIDE the frame, else the dialog's own `initialFocus` claim (a name
+ *     field, a file row), else the cued button, else the frame — so focus always
+ *     lands inside the dialog and the cue never steals a body's caret
  *
  * `autoFocus` marks the CUED DEFAULT: the button `Enter` activates, and the
  * initial-focus target when the dialog's own body has not claimed focus first.
@@ -77,7 +78,7 @@ import { Button, type ButtonVariant } from "./panel-primitives";
 import { MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
 import { useDragPosition } from "@/hooks/useDragPosition";
 import {
-  isTopDialog,
+  isKeyOwner,
   popDialog,
   pushDialog,
   type DialogToken,
@@ -183,6 +184,23 @@ export interface SystemDialogProps {
   /** Custom class appended to the inner frame. */
   frameClassName?: string;
   /**
+   * Claim initial focus for something in the dialog's BODY — a name field, a
+   * file row — instead of the cued button.
+   *
+   * Run by the shell once the portal exists. A dialog must NOT hand-roll this as
+   * its own `useEffect(…, [])`: the shell renders `null` until `mounted`, so a
+   * parent's mount effect fires in a commit where the body is not in the DOM,
+   * the ref is null, and the effect (deps `[]`) never runs again. Three shipped
+   * dialogs did exactly that and their fields were never focused —
+   * `TexFilePickerModal` was left with no focused row AND no cued default, i.e.
+   * a `Return` that did nothing, which is the very symptom task 389 removes.
+   *
+   * Called only when focus has not already landed inside the frame, and the
+   * shell falls through to the cued button if this leaves focus outside it — so
+   * a claim that cannot be satisfied costs nothing.
+   */
+  initialFocus?: () => void;
+  /**
    * Declare that this dialog deliberately cues NO default button.
    *
    * A footered dialog either registers exactly one cued default (an `autoFocus`
@@ -214,6 +232,7 @@ export default function SystemDialog({
   describedBy,
   frameClassName = "",
   noCuedDefault = false,
+  initialFocus,
   children,
 }: SystemDialogProps) {
   const autoFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -248,6 +267,15 @@ export default function SystemDialog({
     autoFocusRef.current = el;
   }, []);
 
+  // Read through a ref so an inline arrow at the call site cannot churn the
+  // focus effect (which must run exactly once per open). Written in an effect,
+  // not during render — and safe, because the only reader is the focus rAF,
+  // which fires after this commit.
+  const initialFocusRef = useRef(initialFocus);
+  useEffect(() => {
+    initialFocusRef.current = initialFocus;
+  });
+
   // anchorRef positioning — the MODAL variant's near-element placement (scrim
   // stays); the scrimless "anchored" variant computes its own point-clamped
   // position in the layout effect below.
@@ -273,14 +301,22 @@ export default function SystemDialog({
   // every one of them — which pre-389 made a single Escape close BOTH.
   const tokenRef = useRef<DialogToken | null>(null);
   useEffect(() => {
-    if (!open) return;
-    const token = pushDialog();
+    // Gated on `mounted` as well as `open`, matching the render gate below:
+    // otherwise a dialog owns the keyboard for one commit before it has any DOM,
+    // during which the dialog beneath it stops answering Escape.
+    if (!open || !mounted) return;
+    // The frame getter closes over two STABLE refs, so it needs no ref of its
+    // own; the stack calls it lazily at key time.
+    const token = pushDialog(
+      variant === "modal",
+      () => modalFrameRef.current ?? panelRef.current,
+    );
     tokenRef.current = token;
     return () => {
       popDialog(token);
       tokenRef.current = null;
     };
-  }, [open]);
+  }, [open, mounted, variant, panelRef]);
 
   // ── Initial focus ──────────────────────────────────────────────────
   // Gated on `mounted`, and that is the whole of the 389 focus half. `mounted`
@@ -303,8 +339,13 @@ export default function SystemDialog({
     if (!open || !mounted) return;
     const handle = requestAnimationFrame(() => {
       const frame = modalFrameRef.current ?? panelRef.current;
-      const active = document.activeElement;
-      if (frame && active && active !== frame && frame.contains(active)) return;
+      const inFrame = (el: Element | null) =>
+        !!(frame && el && el !== frame && frame.contains(el));
+      if (inFrame(document.activeElement)) return;
+      // The body's own claim, run HERE rather than in the caller's mount effect —
+      // see `initialFocus` on SystemDialogProps for why a caller cannot do this.
+      initialFocusRef.current?.();
+      if (inFrame(document.activeElement)) return;
       const cued = autoFocusRef.current;
       if (process.env.NODE_ENV !== "production" && noCuedDefault && cued) {
         // The declaration and the registration disagree — one of them is a lie,
@@ -345,7 +386,7 @@ export default function SystemDialog({
     };
 
     const onCapture = (e: KeyboardEvent) => {
-      if (!tokenRef.current || !isTopDialog(tokenRef.current)) return;
+      if (!tokenRef.current || !isKeyOwner(tokenRef.current)) return;
       if (!isPlainEnter(e)) return;
       const verdict = resolveDialogEnter({
         target: e.target,
@@ -357,13 +398,14 @@ export default function SystemDialog({
       if (verdict.kind !== "cued-default") return;
       // The modal OWNS this key: stop it here so nothing beneath the scrim acts
       // on it, whether or not a cued default exists to press.
-      e.preventDefault();
       e.stopPropagation();
-      pressCued(e);
+      // `pressCued` calls preventDefault when there IS a cue; do it here too so
+      // the key is dead for the document beneath even when there is none.
+      if (!pressCued(e)) e.preventDefault();
     };
 
     const onBubble = (e: KeyboardEvent) => {
-      if (!tokenRef.current || !isTopDialog(tokenRef.current)) return;
+      if (!tokenRef.current || !isKeyOwner(tokenRef.current)) return;
       if (e.key === "Escape") {
         // Unchanged from pre-389 except for the stack gate: Escape closes the
         // TOP dialog, unconditionally. Deliberately NOT gated on
@@ -392,10 +434,17 @@ export default function SystemDialog({
       }
     };
 
-    window.addEventListener("keydown", onCapture, true);
+    // DOCUMENT capture, not window capture. It still beats every in-document
+    // handler (ProseMirror, CodeMirror, the editor keymaps all bind at or below
+    // the editor element), and it deliberately runs AFTER two window-capture
+    // listeners that must not be silenced: the open-menu controller, which
+    // should win while a menu is up, and `input-modality`'s tracker, whose own
+    // contract says a key trap must not be able to hide the fact that the user
+    // is typing.
+    document.addEventListener("keydown", onCapture, true);
     window.addEventListener("keydown", onBubble);
     return () => {
-      window.removeEventListener("keydown", onCapture, true);
+      document.removeEventListener("keydown", onCapture, true);
       window.removeEventListener("keydown", onBubble);
     };
   }, [open, onClose, variant, panelRef]);
