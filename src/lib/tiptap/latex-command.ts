@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
-import { AddMarkStep, RemoveMarkStep } from "@tiptap/pm/transform";
+import { AddMarkStep, Mapping, RemoveMarkStep } from "@tiptap/pm/transform";
 import { isHistoryTransaction } from "@tiptap/pm/history";
 import { COMMAND_MAP } from "./commands";
 import {
@@ -159,13 +159,24 @@ export const LatexCommentTailMark = Mark.create({
 //    is the same door, in the same order, that both inline parsers read at a
 //    backslash. What the user types and what a reload produces cannot drift.
 //
-//  - **ADDITIVE only.** The plugin never removes a mark. The parse rung carries
-//    things this scanner deliberately declines (the braces of a bare `{a, b}`
-//    group, task 349 M6), so a re-derivation that also removed would strip them
-//    on the next keystroke in that paragraph.
+//  - **…and deletion of what made it LaTeX is a WRITER too** (task 390). The
+//    plugin was ADDITIVE-only, on the ground that the parse rung carries things
+//    this scanner deliberately declines (the braces of a bare `{a, b}` group,
+//    task 349 M6), so a re-derivation that also removed would strip them on the
+//    next keystroke in that paragraph. That ground argues for SCOPING the
+//    removal, not for refusing it: the mark could never come off at all, so
+//    backspacing the `\` off a typed command left the word grey forever — and,
+//    because the carrier's serializer contract is EMIT RAW, left whatever the
+//    user wrote under it (`%`, `&`, `_`) reaching the `.tex` UNESCAPED. So the
+//    mark comes off a run the edit TOUCHED that the scanner no longer claims,
+//    and off nothing else. Which construct an edit touched is asked of the OLD
+//    text as well as the new — see `brokenConstructs`, and the note there on
+//    why the new text alone cannot answer it.
 //
 // Cost: O(edit) to collect the ranges, then one scan of each TOUCHED TEXTBLOCK
-// — never a doc walk, and nothing at all when the block holds no `\` or `{`.
+// — never a doc walk, and nothing at all when the block holds no `\`, no `{`
+// and no mark. A block that holds a STALE mark the edit did not itself reach
+// pays one further scan, of that block's prior text; nothing else does.
 
 /** Stands in for a non-text child, and for the bytes of a run carrying a
  *  stricter carrier, so offsets stay 1:1 with document positions while no
@@ -262,6 +273,142 @@ function fullyMarked(
     return true;
   });
   return complete;
+}
+
+/**
+ * A half-open interval. Block-RELATIVE (the scan's coordinates) or ABSOLUTE
+ * (the document's) — they are `start` apart and are never mixed in one list.
+ */
+interface Range {
+  from: number;
+  to: number;
+}
+
+/**
+ * Does `a` TOUCH `b`? Adjacency counts, and it has to in BOTH directions:
+ * promotion because completing `\emph` by typing `h` at its very edge is
+ * writing it, demotion because a deletion's changed range is ZERO-WIDTH in the
+ * new document — a strict-overlap test would make the commonest demotion there
+ * is (backspacing the `\` off a command) invisible. One predicate, so the two
+ * halves of the carrier cannot come to disagree about what "the edit reached
+ * this" means.
+ */
+function touches(a: Range, b: Range): boolean {
+  return a.from <= b.to && a.to >= b.from;
+}
+
+/** Sorted, disjoint union of `spans`. Adjacent intervals merge — the braces and
+ *  the command of `{\bf hi}` are three spans and one stretch of carrier. */
+function mergeRanges(spans: Range[]): Range[] {
+  if (spans.length === 0) return [];
+  const sorted = [...spans].sort((a, b) => a.from - b.from);
+  const out: Range[] = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i++) {
+    const last = out[out.length - 1];
+    if (sorted[i].from <= last.to) last.to = Math.max(last.to, sorted[i].to);
+    else out.push({ ...sorted[i] });
+  }
+  return out;
+}
+
+/** The parts of `run` that `cover` (sorted + disjoint) does not account for. */
+function subtractCover(run: Range, cover: Range[]): Range[] {
+  const out: Range[] = [];
+  let at = run.from;
+  for (const c of cover) {
+    if (c.to <= at) continue;
+    if (c.from >= run.to) break;
+    if (c.from > at) out.push({ from: at, to: Math.min(c.from, run.to) });
+    at = Math.max(at, c.to);
+    if (at >= run.to) break;
+  }
+  if (at < run.to) out.push({ from: at, to: run.to });
+  return out;
+}
+
+/**
+ * One walk of a textblock, answering both halves of the carrier at once: the
+ * TEXT the scanner reads, and the maximal contiguous runs that already carry
+ * the mark.
+ *
+ * Every non-text child — and every run wearing a STRICTER carrier — stands in
+ * as `OPAQUE`, so offsets stay 1:1 with document positions while no construct
+ * can start in, or reach across, either.
+ *
+ * The marked runs cost nothing extra: this walk already had to happen to build
+ * the text, which is why the block gate below can afford its third disjunct.
+ */
+function readBlock(
+  block: PMNode,
+  type: { name: string },
+): { text: string; marked: Range[] } {
+  let text = "";
+  const marked: Range[] = [];
+  let at = 0;
+  block.forEach((child) => {
+    const size = child.nodeSize;
+    const opaque = !child.isText || isOpaqueRun(child);
+    text += opaque ? OPAQUE.repeat(size) : (child.text as string);
+    if (!opaque && child.marks.some((m) => m.type.name === type.name)) {
+      const last = marked[marked.length - 1];
+      if (last && last.to === at) last.to = at + size;
+      else marked.push({ from: at, to: at + size });
+    }
+    at += size;
+  });
+  return { text, marked };
+}
+
+/**
+ * The constructs this edit BROKE, as ranges in the final document, clipped to
+ * the block that asked (task 390).
+ *
+ * Demotion asks exactly the question promotion asks — *did this edit WRITE this
+ * construct?* — of the text as it stood BEFORE the edit, because a construct
+ * the user has just dismantled leaves nothing in the NEW text to gate on.
+ * Deleting the `{` of `{\bf hi}` orphans its `}` six characters away: the new
+ * text says nothing at all about the pair, while the old scan says everything
+ * (both braces carry the group's own extent). One scanner, two texts, the same
+ * question — which is what makes the demotion half a derivation rather than a
+ * special case for backspace.
+ *
+ * Runs ONLY for a block holding a stale run that the changed ranges do not
+ * themselves reach, so an ordinary keystroke — and every deletion that strands
+ * a mark under its own cursor — pays nothing for it.
+ */
+function brokenConstructs(
+  oldDoc: PMNode,
+  backward: Mapping,
+  forward: Mapping,
+  block: Range,
+  ranges: Range[],
+  type: { name: string },
+): Range[] {
+  let $old;
+  try {
+    const at = backward.map(block.from);
+    $old = oldDoc.resolve(Math.min(Math.max(at, 0), oldDoc.content.size));
+  } catch {
+    return [];
+  }
+  // A block the edit CREATED maps back to no textblock of its own (or to a
+  // different one). There is then no prior construct to have broken, and the
+  // clip below bounds a mis-resolution to the block the user is editing.
+  if (!$old.parent.isTextblock) return [];
+  const { text } = readBlock($old.parent, type);
+  const oldStart = $old.start();
+  const out: Range[] = [];
+  for (const span of scanRawLatexSpans(text)) {
+    const from = forward.map(oldStart + span.extentFrom, -1);
+    const to = forward.map(oldStart + span.extentTo, 1);
+    if (!ranges.some((r) => touches({ from, to }, r))) continue;
+    const clipped = {
+      from: Math.max(from, block.from),
+      to: Math.min(to, block.to),
+    };
+    if (clipped.from <= clipped.to) out.push(clipped);
+  }
+  return out;
 }
 
 export const latexCarrierPluginKey = new PluginKey("latexCommandCarrier");
@@ -479,13 +626,14 @@ export const LatexCommandMark = Mark.create({
           },
         },
       }),
-      // The TYPE-TIME CARRIER (task 360) — see the note above the mark for the
-      // four rules. Registered on the mark itself, so both surfaces that mount
-      // `LatexCommandMark` get it: the main editor and every card body
-      // (`buildCardBodySchema`), whose serializer runs the same escape rung.
+      // The TYPE-TIME CARRIER (task 360; BOTH directions since task 390) — see
+      // the note above the mark for the rules. Registered on the mark itself,
+      // so both surfaces that mount `LatexCommandMark` get it: the main editor
+      // and every card body (`buildCardBodySchema`), whose serializer runs the
+      // same escape rung.
       new Plugin({
         key: latexCarrierPluginKey,
-        appendTransaction(trs, _oldState, newState) {
+        appendTransaction(trs, oldState, newState) {
           if (!trs.some((t) => t.docChanged)) return null;
           if (trs.some((t) => replacesWholeDoc(t) || isHistoryTransaction(t)))
             return null;
@@ -505,23 +653,46 @@ export const LatexCommandMark = Mark.create({
             });
           }
 
+          // old ⇄ new positions, composed ONCE and only if the demotion half
+          // asks (see `brokenConstructs`). An ordinary keystroke never gets
+          // here, and neither does a deletion whose own range already reaches
+          // the run it stranded.
+          let forward: Mapping | null = null;
+          let backward: Mapping | null = null;
+          const composed = () => {
+            if (!forward || !backward) {
+              const f = new Mapping();
+              for (const t of trs) f.appendMapping(t.mapping);
+              forward = f;
+              backward = f.invert();
+            }
+            return { forward, backward };
+          };
+
           let tr: Transaction | null = null;
           for (const [pos, block] of blocks) {
             // `codeBlock` / `latexComment` declare `marks: ""` — the markless
-            // pair the serializer emits byte-raw. Nothing to promote, and
-            // `addMark` would silently decline anyway.
+            // pair the serializer emits byte-raw. Nothing to promote, nothing
+            // that could be carrying a stale mark, and `addMark` would silently
+            // decline anyway.
             if (!block.type.allowsMarkType(markType)) continue;
             const start = pos + 1;
-            let text = "";
-            block.forEach((child) => {
-              text +=
-                child.isText && !isOpaqueRun(child)
-                  ? (child.text as string)
-                  : OPAQUE.repeat(child.nodeSize);
-            });
-            if (!text.includes("\\") && !text.includes("{")) continue;
+            const { text, marked } = readBlock(block, markType);
 
-            for (const span of scanRawLatexSpans(text)) {
+            // THE BLOCK GATE, in both directions. Promotion needs a `\` or a
+            // `{` to have anything to find; DEMOTION needs the block to still
+            // CARRY the mark — which is exactly the block a deletion has just
+            // emptied of both leads, and exactly the block the promotion-only
+            // gate skipped, so even a demotion-aware scan would never have
+            // looked at it (task 390).
+            const hasLead = text.includes("\\") || text.includes("{");
+            if (!hasLead && marked.length === 0) continue;
+            // With no lead the scan is PROVABLY empty (it advances on any other
+            // character), so a stale mark over plain prose costs no scan at all.
+            const spans = hasLead ? scanRawLatexSpans(text) : [];
+
+            // ── promote: the mark goes ON what the edit WROTE ──────────────
+            for (const span of spans) {
               const extentFrom = start + span.extentFrom;
               const extentTo = start + span.extentTo;
               // Rule 1: this edit must have WRITTEN the construct. Touching
@@ -538,6 +709,67 @@ export const LatexCommandMark = Mark.create({
               if (fullyMarked(newState.doc, from, to, markType)) continue;
               tr ??= newState.tr;
               tr.addMark(from, to, markType.create());
+            }
+
+            // ── demote: the mark comes OFF what the edit UN-wrote ──────────
+            //
+            // Deleting what made a run LaTeX is a writer exactly as typing it
+            // was. Without this the mark could never come off: the run stayed
+            // grey with no `\` in sight, and — the half that is not cosmetic —
+            // kept the carrier's EMIT-RAW contract, so a `%`/`&`/`_` left under
+            // it reached the `.tex` unescaped and commented out (or broke) the
+            // line.
+            if (marked.length === 0) continue;
+            const cover = mergeRanges(
+              spans.map((s) => ({ from: s.from, to: s.to })),
+            );
+            // Every scanned span PROTECTS, whether or not this edit touched it
+            // and whether or not promotion declined it for an OPAQUE crossing:
+            // a missed demotion is the status quo, while a wrong one changes
+            // the bytes. Protect broadly, demote narrowly.
+            const pending: { run: Range; parts: Range[] }[] = [];
+            for (const run of marked) {
+              const parts = subtractCover(run, cover);
+              if (parts.length > 0) pending.push({ run, parts });
+            }
+            if (pending.length === 0) continue;
+
+            // Rule 1 again, and it is load-bearing rather than tidy: the parse
+            // rung carries things this scanner deliberately declines (the
+            // braces of a SOURCE `{a, b}` group, task 349 M6 — and of a group
+            // whose LaTeX the parse itself normalized to glyphs, `{\'e}` →
+            // `{é}`, which reads here as a prose group), so a block-wide
+            // demotion would strip them on an unrelated keystroke two words
+            // away — and those bytes would then go through the escape rung on
+            // the next save. That is this defect's own inverse, arriving as the
+            // fix. Touch-scoped, the worst wrong demotion is of a run the user
+            // was editing, which is the honest reading of their edit — the same
+            // standing residual promotion already carries for the mirror case
+            // (an edit INSIDE a literal backslash promotes it).
+            let window = ranges;
+            const reaches = (run: Range) =>
+              window.some((w) =>
+                touches({ from: start + run.from, to: start + run.to }, w),
+              );
+            if (pending.some((p) => !reaches(p.run))) {
+              const { forward: f, backward: b } = composed();
+              window = ranges.concat(
+                brokenConstructs(
+                  oldState.doc,
+                  b,
+                  f,
+                  { from: start, to: start + text.length },
+                  ranges,
+                  markType,
+                ),
+              );
+            }
+            for (const { run, parts } of pending) {
+              if (!reaches(run)) continue;
+              for (const part of parts) {
+                tr ??= newState.tr;
+                tr.removeMark(start + part.from, start + part.to, markType);
+              }
             }
           }
           // A mark-only transaction carries an EMPTY step map, so re-entering
