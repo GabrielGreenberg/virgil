@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
+import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
 import { setFocusBandMeta } from "@/lib/focus-view";
@@ -395,16 +396,6 @@ export default function EditorLayout() {
   // The bundled example doc is offered only where OPFS works AND we're not on
   // the dev backend (the example is a production-only FSA/OPFS feature).
   const [opfsOk, setOpfsOk] = useState(false);
-
-  // "Is the external-change badge currently showing something?" — lifted from a
-  // provider-descendant reporter (ExternalChangeActiveReporter, rendered in the
-  // status cluster) so the topbar DIVIDER gate can OR it in. EditorLayout's own
-  // body sits ABOVE the DiskWatcherProvider in the tree, so it can't read
-  // useExternalChanges() directly; the reporter pushes the boolean up instead.
-  // KEYSTROKE SANCTITY: the reporter reads useSyncExternalStore over the
-  // watcher's stable snapshot — NOT any editor subscription — so this adds zero
-  // per-keystroke work.
-  const [externalChangeActive, setExternalChangeActive] = useState(false);
 
   // Save-time bib-family conflict warning (P4). When the family the body needs
   // (an `\autocite` under a natbib baseline, or the symmetric case) conflicts
@@ -1473,6 +1464,40 @@ export default function EditorLayout() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [currentDocId, codeView, pdfView]);
+
+  // Cmd/Ctrl+S → save this paper NOW (task 392). Browsers give the key to
+  // "Save Page As…", which for a PWA whose document lives on the user's own
+  // disk is exactly the wrong thing — and Gabriel's ask after the 2026-08-19
+  // data loss was for a way to make the work land on demand.
+  //
+  // It routes through the SAME door as the topbar's "Save now" button
+  // (`requestSaveNow` → `useDocument`'s registered door), so the two cannot
+  // come to disagree about what a manual save does or whether it landed; a
+  // blocked write ROUTES to the surface that owns the flow instead of
+  // re-attempting into the same wall. Unlike the button, the key is live in
+  // EVERY tier — including `pending`, where the button is deliberately absent
+  // because an affordance whose only effect is to do what is already happening
+  // is dead chrome. A keyboard shortcut costs no pixels, so it has no reason
+  // to hide.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isSave =
+        (e.metaKey || e.ctrlKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "s";
+      if (!isSave) return;
+      if (!currentDocId) return; // no paper open — let the browser have it
+      e.preventDefault();
+      void (async () => {
+        const outcome = await requestSaveNow(currentDocId);
+        if (outcome.landed || outcome.reason === "no-door") return;
+        requestBlockingFlow(currentDocId, outcome.reason);
+      })();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentDocId]);
 
   const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(false);
 
@@ -3191,8 +3216,6 @@ export default function EditorLayout() {
       onResyncSkills,
       onDismissSkillSyncError: dismissSkillSyncError,
       onDismissSkillSyncNotice: dismissSkillSyncNotice,
-      externalChangeActive,
-      setExternalChangeActive,
       focusActive: focusMode.state.active,
       onFocusDeactivate: focusMode.deactivate,
       helperOn: helperMode.on,
@@ -3239,8 +3262,6 @@ export default function EditorLayout() {
       onResyncSkills,
       dismissSkillSyncError,
       dismissSkillSyncNotice,
-      externalChangeActive,
-      setExternalChangeActive,
       focusMode.state.active,
       focusMode.deactivate,
       helperMode.on,

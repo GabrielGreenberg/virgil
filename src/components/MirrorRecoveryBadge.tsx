@@ -29,7 +29,7 @@ import { memo, useCallback, useState } from "react";
 
 import { useMirrorRecoveryOffer } from "@/hooks/useMirrorRecovery";
 import { getRecoveryActions } from "@/lib/mirror-recovery";
-import { describeAge } from "./SoftwareUpdateBanner";
+import { describeAge } from "@/lib/save-state";
 import { useConfirmDialog } from "./ConfirmDialog";
 
 function LifebuoyIcon() {

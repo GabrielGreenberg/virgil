@@ -34,6 +34,7 @@ import { memo, useCallback, useState } from "react";
 
 import { applyUpdate, useUpdateAvailable } from "@/hooks/useUpdateAvailable";
 import { prepareForReload, type UnlandedDoc } from "@/lib/reload-door";
+import { describeAge, describeBlockReason } from "@/lib/save-state";
 import { useAnyUnlandedWork } from "@/hooks/useUnsavedWork";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -58,32 +59,21 @@ function UpdateIcon() {
   );
 }
 
-/** "47 minutes", "2 minutes", "a few seconds" — the age the user recognises. */
-export function describeAge(ms: number): string {
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) return "a few seconds";
-  if (mins === 1) return "1 minute";
-  if (mins < 60) return `${mins} minutes`;
-  const hours = Math.floor(mins / 60);
-  const rest = mins % 60;
-  if (hours === 1 && rest === 0) return "1 hour";
-  if (rest === 0) return `${hours} hours`;
-  return `${hours}h ${rest}m`;
-}
-
-/** Why the write did not land, in the user's terms — and, crucially, WHICH
- *  flow they have to resolve. A block with no route out is a dead end. */
+/**
+ * Why the write did not land, in the user's terms — and, crucially, WHICH flow
+ * they have to resolve. A block with no route out is a dead end.
+ *
+ * TASK 392: the per-reason half is the SHARED vocabulary (`save-state.ts`), not
+ * a second copy. This banner used to spell its own three sentences while the
+ * conflict pill spelled others and a console.error spelled a third set — which
+ * is exactly the "each gate speaks its own dialect" finding, arriving as three
+ * plausible paragraphs rather than as a bug. What stays local is the FRAMING
+ * (which paper, how long), because only this surface is app-wide.
+ */
 export function describeBlock(d: UnlandedDoc): string {
-  switch (d.reason) {
-    case "conflict":
-      return `“${d.docId}” — ${describeAge(d.ageMs)} of unsaved changes; another app changed the file on disk, so Virgil paused saving. Resolve that notice first.`;
-    case "preservation":
-      return `“${d.docId}” — ${describeAge(d.ageMs)} of unsaved changes; Virgil is refusing to save because it could not fully read the file. Answer that notice first.`;
-    case "error":
-      return `“${d.docId}” — ${describeAge(d.ageMs)} of unsaved changes; the last save failed. Check the paper's folder permissions.`;
-    default:
-      return `“${d.docId}” — ${describeAge(d.ageMs)} of unsaved changes that have not reached disk yet.`;
-  }
+  const head = `“${d.docId}” — ${describeAge(d.ageMs)} of unsaved changes`;
+  if (!d.reason) return `${head} that have not reached disk yet.`;
+  return `${head}; ${describeBlockReason(d.reason).sentence}`;
 }
 
 function SoftwareUpdateBannerImpl() {

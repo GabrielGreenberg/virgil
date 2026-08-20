@@ -76,7 +76,8 @@ import type { ConflictChoice } from "@/lib/conflict-resolution";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "./StatusDot";
 import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
-import { describeAge } from "./SoftwareUpdateBanner";
+import { describeAge } from "@/lib/save-state";
+import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 
 // Drop below the trigger, flip above near the viewport bottom — the ONE
 // button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
@@ -258,6 +259,17 @@ function ExternalChangeBadge() {
     () => kebabRef.current?.getBoundingClientRect() ?? null,
     [],
   );
+
+  // TASK 392 — "Save now" on a CONFLICT-blocked document routes here rather
+  // than re-attempting the write the 364 guard is deliberately holding. This
+  // badge owns the two doors that answer it, so the button asks it to open
+  // itself; only `describeBlockReason` decides which surface a reason leads to,
+  // so the two halves cannot disagree.
+  const openMenu = useCallback(() => {
+    setMenuOpen(true);
+    setAnchorRect(kebabRef.current?.getBoundingClientRect() ?? null);
+  }, []);
+  useBlockingFlowRequest(diskCtx?.activeDocId, "external-change", openMenu);
 
   const isConflict = state.severity === "conflict";
 

@@ -22,11 +22,16 @@ import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-w
 import { shouldPauseAutosave } from "@/lib/autosave-pause";
 import {
   clearUnsavedWork,
+  getUnsavedWork,
   hasUnlandedWork,
   noteSaveBlocked,
   noteSaveLanded,
   noteUnsavedEdit,
 } from "@/lib/unsaved-work";
+import {
+  registerSaveDoor,
+  type SaveAttemptOutcome,
+} from "@/lib/save-request";
 import {
   dropMirrorAfterLandedSave,
   useEmergencyMirror,
@@ -48,7 +53,6 @@ import {
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
 
-type SaveStatus = "idle" | "saving" | "saved";
 
 /**
  * Document load + autosave for the active doc.
@@ -100,7 +104,6 @@ export function useDocument() {
   }, [watcher]);
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // `latestContentRef` holds the last-debounce-fired JSON snapshot (or
   // the last-flushed snapshot). It's the *fallback* source for the
@@ -182,6 +185,29 @@ export function useDocument() {
   const mirrorTickerRef = useRef(mirrorTicker);
   mirrorTickerRef.current = mirrorTicker;
 
+  /**
+   * **"Does this document hold work that is not on disk?"** — one predicate,
+   * task 392.
+   *
+   * `saveTimerRef.current !== null` was the de-facto answer on every flush
+   * path, and task 391 already recorded why it is unsound in BOTH directions:
+   * the debounce callback nulls the handle BEFORE calling `save`, so a
+   * REFUSED write leaves the document dirty with the flag already cleared.
+   * `beforeunload` was migrated off it there; the other three paths
+   * (`flushPending`, the unmount cleanup, `pagehide`) were not, so after a
+   * standing refusal each of them early-returned as "nothing pending" — which
+   * is exactly the state in which a flush matters most, and which made
+   * `flushAllPendingDocs` (the reload door's first move) a no-op.
+   *
+   * The channel is the SSOT: an armed debounce OR unlanded work on the
+   * channel. O(1) — two field reads, and it is never called from the typing
+   * path.
+   */
+  const hasWorkToWrite = useCallback(
+    () => saveTimerRef.current !== null || hasUnlandedWork(docId),
+    [docId],
+  );
+
   const save = useCallback(
     async (
       doc: JSONContent,
@@ -192,7 +218,6 @@ export function useDocument() {
         userResolvedConflict?: boolean;
       },
     ) => {
-      setSaveStatus("saving");
       try {
         await writeDocBundle(handle, doc, opts);
         // A REFUSED write returns normally — the gate leaves the `.tex` and the
@@ -209,7 +234,6 @@ export function useDocument() {
           // unload flushes all resolved exactly like this one and every guard
           // downstream read them as success.
           noteSaveBlocked(handle.docId, "preservation");
-          setSaveStatus("idle");
           return;
         }
         lastSavedRef.current = doc;
@@ -217,10 +241,6 @@ export function useDocument() {
         // and drops the mirror. Never inferred from the absence of a throw.
         noteSaveLanded(handle.docId);
         dropMirrorAfterLandedSave(handle.docId, mirrorTickerRef.current);
-        setSaveStatus("saved");
-        setTimeout(() => {
-          setSaveStatus((prev) => (prev === "saved" ? "idle" : prev));
-        }, 2000);
       } catch (err) {
         if (isStalePipelineError(err)) {
           if (err.reason === "superseded") {
@@ -249,7 +269,6 @@ export function useDocument() {
         }
         console.error("Failed to save document:", err);
         noteSaveBlocked(handle.docId, "error");
-        setSaveStatus("idle");
       }
     },
     [handle],
@@ -272,20 +291,32 @@ export function useDocument() {
     // in flight, last save completed) has saveTimer === null and
     // latestContentRef === the saved doc — so we'd otherwise re-save
     // the same content on every flushPending call.
-    if (saveTimerRef.current === null) return;
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = null;
+    // save-silent-ok: nothing to write — no armed debounce and the channel
+    // reports every edit landed. Writing here would re-send the last saved
+    // model on every flush call.
+    if (!hasWorkToWrite()) return;
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     const editor = editorRef.current;
     let pending: JSONContent | null;
     if (editor && !editor.isDestroyed) {
       pending = editor.getJSON();
     } else {
+      // Deliberately NOT `?? lastSavedRef.current`: that ref holds the last
+      // LANDED model, so writing it would resolve normally, publish
+      // `noteSaveLanded`, and report a document clean whose pending edit was
+      // never written — a false-clean, which is the one outcome every gate in
+      // this file exists to prevent.
       pending = latestContentRef.current;
     }
+    // save-silent-ok: no model exists to write — the editor is gone and no
+    // snapshot was ever taken, so there is nothing this call could land.
     if (!pending) return;
     latestContentRef.current = null;
     await save(pending, takeDelimitersOpts());
-  }, [save, takeDelimitersOpts]);
+  }, [save, takeDelimitersOpts, hasWorkToWrite]);
 
   // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
   // forces a full remount when the docId changes, so this effect runs
@@ -295,7 +326,6 @@ export function useDocument() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setSaveStatus("idle");
     readDocBundle(docId)
       .then((bundle) => {
         if (cancelled) return;
@@ -345,7 +375,11 @@ export function useDocument() {
 
   // Inject the canonical dirty-getter into the external-change watcher so it
   // can pull "are there unsaved edits?" at poll time and flip severity
-  // change→conflict. `saveTimerRef.current !== null` is the SSOT dirty flag.
+  // change→conflict. Since task 392 that is `hasWorkToWrite` — the ONE
+  // predicate — rather than the debounce handle: after a preservation refusal
+  // the handle is null while the work is very much unlanded, and reporting
+  // clean there would drop the watcher's severity from conflict back to
+  // change, i.e. offer a one-click Reload over work the user has not saved.
   // This is set ONCE per mount (not per keystroke) and adds NO editor.on
   // subscriber — the watcher PULLS this getter on its wall-clock poll. The
   // getter reads a ref, so its identity never changes; the watcher's
@@ -353,12 +387,9 @@ export function useDocument() {
   const registerUnsavedGetter = diskWatcherCtx?.registerUnsavedGetter;
   useEffect(() => {
     if (!registerUnsavedGetter) return;
-    const unregister = registerUnsavedGetter(
-      docId,
-      () => saveTimerRef.current !== null,
-    );
+    const unregister = registerUnsavedGetter(docId, hasWorkToWrite);
     return unregister;
-  }, [registerUnsavedGetter, docId]);
+  }, [registerUnsavedGetter, docId, hasWorkToWrite]);
 
   // Flush pending edits on unmount. With the DocPipeline `key={docId}`
   // boundary, unmount IS the doc-switch event — the cleanup closes over
@@ -369,10 +400,13 @@ export function useDocument() {
   // over.
   useEffect(() => {
     return () => {
-      // Nothing pending — last save already captured everything.
-      if (saveTimerRef.current === null) return;
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+      // save-silent-ok: nothing pending — the channel reports every edit
+      // landed and no debounce is armed, so the last save captured everything.
+      if (!hasWorkToWrite()) return;
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       // Defensive: prefer the live editor if it's still alive (e.g.,
       // test environments where the editor isn't a real TipTap instance
       // that destroys itself). In production, React destroys the editor
@@ -389,9 +423,11 @@ export function useDocument() {
         pending = latestContentRef.current;
       }
       latestContentRef.current = null;
+      // save-silent-ok: no model to write (see `flushPending`). The forced
+      // mirror tick in the sibling cleanup below is what covers this document.
       if (pending) void save(pending, takeDelimitersOpts());
     };
-  }, [save, takeDelimitersOpts]);
+  }, [save, takeDelimitersOpts, hasWorkToWrite]);
 
   // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
   // flush above is fire-and-forget and may be refused), then stop reporting
@@ -418,9 +454,12 @@ export function useDocument() {
       // would re-save on every pagehide, which manifests as extra
       // writes across test suites where multiple instances co-exist
       // (and as wasted work in prod for multi-doc sessions).
-      if (saveTimerRef.current === null) return;
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+      // save-silent-ok: nothing pending — see `flushPending`.
+      if (!hasWorkToWrite()) return;
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       // Pagehide fires before component unmount, so the editor is
       // still alive here. Prefer the live snapshot.
       const editor = editorRef.current;
@@ -430,6 +469,7 @@ export function useDocument() {
       } else {
         pending = latestContentRef.current;
       }
+      // save-silent-ok: no model to write (see `flushPending`).
       if (pending) {
         latestContentRef.current = null;
         void save(pending, takeDelimitersOpts());
@@ -444,8 +484,9 @@ export function useDocument() {
       // whose re-arm has just fired) in which a reload is most expensive and
       // this prompt went silent. `hasUnlandedWork` is cleared by nothing but a
       // write that actually landed.
-      const pendingDebounce = saveTimerRef.current !== null;
-      if (!pendingDebounce && !hasUnlandedWork(docId)) return;
+      // save-silent-ok: nothing pending — the ONE predicate, shared with
+      // every other flush path since task 392.
+      if (!hasWorkToWrite()) return;
       // Do NOT disarm the debounce. This handler runs on a leave the user can
       // still CANCEL, and the pre-391 code cleared the timer unconditionally —
       // so choosing "Stay" left the document dirty with no retry armed until
@@ -469,7 +510,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save, takeDelimitersOpts, docId]);
+  }, [save, takeDelimitersOpts, docId, hasWorkToWrite]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -505,7 +546,14 @@ export function useDocument() {
       }
       saveTimerRef.current = null;
       const editor = editorRef.current;
-      if (!editor || editor.isDestroyed) return;
+      if (!editor || editor.isDestroyed) {
+        // Task 392 — the debounce has just been disarmed and there is no
+        // model to write, so this edit has no retry left on this path. Say so
+        // on the channel: the unmount flush below (or a manual Save) is what
+        // clears it, and until one of them lands the work is memory-only.
+        noteSaveBlocked(docId, "error");
+        return;
+      }
       // Perf Wave 1 (S3): prefer the DocProducts pipeline's synchronously-
       // refreshed shared docJson — O(changed blocks), identity-stable for
       // unchanged blocks — over a fresh O(doc) deep copy. writeDocBundle is
@@ -554,7 +602,12 @@ export function useDocument() {
       saveTimerRef.current = null;
     }
     const editor = editorRef.current;
-    if (!editor || editor.isDestroyed) return;
+    if (!editor || editor.isDestroyed) {
+      // Task 392 — same as the debounce timer's arm: the flush was requested,
+      // the debounce is disarmed, and nothing was written.
+      noteSaveBlocked(docId, "error");
+      return;
+    }
     // Perf Wave 1 (S3): shared pipeline snapshot when mounted (see
     // debouncedSave) — a mint flush during a drag no longer pays a full
     // deep copy, and writeDocBundle's byte-equality gate makes a
@@ -600,6 +653,10 @@ export function useDocument() {
         // flush (unmount cleanup / pagehide), which saves from the content
         // ref, still carries it instead of silently dropping the edit.
         pendingDelimitersRef.current = delimiters;
+        // Task 392 — the stash keeps the bytes; it does not put them on disk.
+        // A preamble edit sitting in a ref is exactly the memory-only state
+        // this channel exists to name.
+        noteSaveBlocked(docId, "error");
         return;
       }
       if (saveTimerRef.current !== null) {
@@ -648,7 +705,11 @@ export function useDocument() {
   // WHOLE bundle, which already carries that paragraph's `%!v:<uuid>`.
   const flushAnchorCommit = useCallback((_paragraphId?: string) => {
     const editor = editorRef.current;
-    if (!editor || editor.isDestroyed) return;
+    if (!editor || editor.isDestroyed) {
+      // Task 392 — a commit was asked for and nothing was written.
+      noteSaveBlocked(docId, "error");
+      return;
+    }
     // Coalesce with any mint-flush this gesture already armed: nothing new to
     // persist since the last save → no-op (dedupes the double-flush).
     // Perf Wave 1 (S3): with the pipeline mounted, both the last save and
@@ -657,9 +718,12 @@ export function useDocument() {
     const products = getDocProducts(editor);
     if (products) {
       const doc = products.ensureFresh().docJson;
+      // save-silent-ok: byte-identical to the last LANDED write (lastSavedRef
+      // advances only past the refusal check), so there is nothing to persist.
       if (doc !== null && doc === lastSavedRef.current) return;
     } else {
       const doc = editor.getJSON();
+      // save-silent-ok: byte-identical to the last LANDED write — see above.
       if (
         lastSavedRef.current !== null &&
         JSON.stringify(doc) === JSON.stringify(lastSavedRef.current)
@@ -671,7 +735,7 @@ export function useDocument() {
     // debounce (instead of writing) while an external change is unresolved — so
     // the re-anchor commit is retried after the user resolves the change.
     flushNow();
-  }, [flushNow]);
+  }, [flushNow, docId]);
 
   // Called by TipTap's `onUpdate` (via the EditorPane wrapper) on every
   // docChanged transaction. Per-keystroke cost is O(1): capture the editor
@@ -715,21 +779,33 @@ export function useDocument() {
     // Reload = disk wins: a stashed pause-swallowed delimiters payload must
     // not survive to clobber the freshly reloaded preamble.
     pendingDelimitersRef.current = null;
-    // …and neither may the unlanded-work state or its mirror (task 391). The
-    // user has just chosen the disk copy over their own, and the conflict
-    // door archived their side to `virgil/.history/` before this ran, so the
-    // work is preserved WHERE THEY CHOSE — keeping a mirror alive would offer
-    // to restore, on the next open, exactly the version they discarded.
-    clearUnsavedWork(docId);
-    dropMirrorAfterLandedSave(docId, mirrorTickerRef.current);
     return readDocBundle(docId)
       .then((bundle) => {
         setContent(bundle.content);
         lastSavedRef.current = bundle.content;
         setLoading(false);
+        // …and NOW the unlanded-work state and its mirror may go (task 391).
+        // The user has just chosen the disk copy over their own, and the
+        // conflict door archived their side to `virgil/.history/` before this
+        // ran, so the work is preserved WHERE THEY CHOSE — keeping a mirror
+        // alive would offer to restore, on the next open, exactly the version
+        // they discarded.
+        //
+        // TASK 392: this runs AFTER the read resolves, not before it. Dropping
+        // the channel entry and the mirror up front meant a FAILED reload — a
+        // permission lapse, a vanished file — left the document with no dirty
+        // state and no emergency copy, having replaced the user's work with
+        // nothing. The disk only wins once it has actually answered.
+        clearUnsavedWork(docId);
+        dropMirrorAfterLandedSave(docId, mirrorTickerRef.current);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to reload document:", err);
         setLoading(false);
+        // The reload did not happen, so whatever was unlanded still is — and
+        // the surfaces must keep saying so rather than going quiet on a read
+        // nobody heard fail.
+        noteSaveBlocked(docId, "error");
       });
   }, [docId]);
 
@@ -755,6 +831,8 @@ export function useDocument() {
       saveTimerRef.current = null;
     }
     const doc = currentModel();
+    // save-silent-ok: reported by RETURN — `false` reaches the conflict door,
+    // which tells the user their version was not kept.
     if (!doc) return false;
     latestContentRef.current = doc;
     await save(doc, { ...takeDelimitersOpts(), userResolvedConflict: true });
@@ -791,6 +869,7 @@ export function useDocument() {
    */
   const restoreFromMirror = useCallback(async (): Promise<boolean> => {
     const offer = getRecoveryOffer(docId);
+    // save-silent-ok: reported by RETURN — the badge keeps its offer standing.
     if (!offer) return false;
     const recovered = offer.entry.content;
     // THE NET, FIRST — both sides, before anything is overwritten.
@@ -800,6 +879,8 @@ export function useDocument() {
       saveTimerRef.current = null;
     }
     await save(recovered, { userResolvedConflict: true });
+    // save-silent-ok: reported by RETURN, off the channel the gate published
+    // to — the badge keeps its offer standing and the mirror survives.
     if (isWriteProtected(docId)) return false; // refused — keep the mirror
     await refetch();
     void clearMirror(docId);
@@ -823,6 +904,58 @@ export function useDocument() {
         discard: discardMirror,
       }),
     [docId, restoreFromMirror, discardMirror],
+  );
+
+  /**
+   * **"Save now"** — the manual door (task 392), published to
+   * `save-request.ts` so the topbar button and the app-level Cmd+S can reach
+   * it from outside this subtree.
+   *
+   * Three rules, and each is the incident rather than a preference:
+   *
+   * - **It respects the clobber guard.** The 364 pause lives in
+   *   `debouncedSave` / `flushNow`, not in `save`, so a manual write that went
+   *   straight to `writeDocBundle` would overwrite the external change the
+   *   guard exists to protect. A Save button that quietly does the one thing
+   *   every automatic path refuses to do is worse than no button. It reports
+   *   `conflict` instead, and the caller ROUTES to the flow that owns that
+   *   decision.
+   * - **The report is the CHANNEL.** A refused write resolves normally, so
+   *   landing is read off `unsaved-work` after the attempt — never inferred
+   *   from the absence of a throw. This is the whole reason the surgical
+   *   version of this feature (a button wired to `flushPending`) would have
+   *   reported "saved" throughout the seventy minutes it was meant to catch.
+   * - **It writes even when the debounce is not armed.** After a refusal the
+   *   handle is null and the work is unlanded; "nothing pending" is exactly
+   *   the wrong answer to a user asking for their work to be saved.
+   */
+  const saveNowRequested = useCallback(async (): Promise<SaveAttemptOutcome> => {
+    if (shouldPauseAutosave(watcherRef.current)) {
+      noteSaveBlocked(docId, "conflict");
+      return { landed: false, reason: "conflict" };
+    }
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const doc = currentModel();
+    if (doc) {
+      latestContentRef.current = null;
+      await save(doc, takeDelimitersOpts());
+    }
+    // No model at all (no editor, nothing ever snapshotted) falls through to
+    // the same question every other path asks: does the channel still hold
+    // work? A document with nothing to write and nothing outstanding IS saved.
+    if (!hasUnlandedWork(docId)) return { landed: true };
+    return {
+      landed: false,
+      reason: getUnsavedWork(docId)?.reason ?? "error",
+    };
+  }, [docId, currentModel, save, takeDelimitersOpts]);
+
+  useEffect(
+    () => registerSaveDoor(docId, saveNowRequested),
+    [docId, saveNowRequested],
   );
 
   /** The doc half of the conflict net: the storage backend can copy the DISK
@@ -881,8 +1014,6 @@ export function useDocument() {
     content,
     loading,
     onUpdate,
-    saveNow: save,
-    saveStatus,
     refetch,
     // CHIP-C: commit-flush entry for the drop-mode re-anchor mouseup. Routes
     // through the same `flushNow` → `save` → `writeDocBundle` path the
