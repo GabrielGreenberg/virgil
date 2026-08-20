@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+import { sourcePodStaticBody } from "./source-pod-static";
 // CHIP 5b: the SINGLE canonical raw-LaTeX-block creator lives in the action
 // registry (`texRun` → seed `code` from the selection, mint a collision-free
 // uuid, insert the `texBlock`). The lightning grid `\tex` cell (via
@@ -82,10 +83,14 @@ export const TexBlock = Node.create<TexBlockOptions>({
     return [{ tag: 'div[data-type="tex-block"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
+    // The code rides the markup as a TEXT child, not only as an attribute —
+    // see `sourcePodStaticBody`. Without it the T1 static card tier and the
+    // clipboard both project this node to an empty div (task 388).
     return [
       "div",
       mergeAttributes(HTMLAttributes, { "data-type": "tex-block" }),
+      sourcePodStaticBody((node.attrs.code as string) || ""),
     ];
   },
 

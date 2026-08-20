@@ -35,6 +35,7 @@
  */
 
 import { matchCommentTailAt, matchCommandToken, isEscaped } from "@/lib/latex-lexer";
+import { latexToDisplayText } from "@/lib/latex-typography";
 import { FOREST_ENV_NAME } from "@/lib/latex-lexer";
 import { noteForestWork } from "./stats";
 
@@ -325,14 +326,27 @@ function scanLabel(
   if (depth > MAX_FOREST_DEPTH) refuse("too-deep", "{", i);
   const segments: ForestLabelSegment[] = [];
   let buf = "";
-  let flat = "";
 
   const pushText = (s: string) => {
     buf += s;
-    flat += s;
   };
   const flush = () => {
-    const collapsed = buf.replace(/\s+/g, " ");
+    // The DISPLAY door (task 368), entered here by task 388. A node label is a
+    // raw-LaTeX fragment shown to a READER, so it is projected through the one
+    // function that answers "what do these bytes look like on screen?" — never
+    // through a private vocabulary. Without it the pod painted the eight ASCII
+    // characters ``the dog'' where the compiled PDF shows curly quotes, `S--O`
+    // where it shows an en dash, and a literal tilde where `Fig.~1` shows a
+    // tie: an ACCEPTED source drawn as a picture it does not say, with no
+    // badge — the one outcome this grammar exists to refuse.
+    //
+    // It runs on the ASSEMBLED run, after the whitespace collapse and after the
+    // structural branches (math, groups, comments, delimiters) have taken their
+    // bytes, so the door only ever sees prose plus the char escapes this
+    // scanner already resolved — and it passes anything it does not know
+    // straight through. It does NOT widen the accepted subset: a `\command` in
+    // a label still refuses at the backslash branch below, before any of this.
+    const collapsed = latexToDisplayText(buf.replace(/\s+/g, " "));
     if (collapsed.length > 0) segments.push({ kind: "text", value: collapsed });
     buf = "";
   };
@@ -391,7 +405,6 @@ function scanLabel(
       flush();
       const latex = src.slice(i + 1, close);
       segments.push({ kind: "math", value: latex });
-      flat += `$${latex}$`;
       i = close + 1;
       continue;
     }
@@ -409,7 +422,6 @@ function scanLabel(
       // exactly as they do outside one.
       const inner = scanLabel(src, i + 1, close, false, depth + 1);
       for (const seg of inner.segments) segments.push(seg);
-      flat += inner.text;
       i = close + 1;
       continue;
     }
@@ -438,9 +450,21 @@ function scanLabel(
     const last = segments[segments.length - 1];
     if (last.kind === "text") last.value = last.value.replace(/ +$/, "");
   }
+  const kept = segments.filter((s) => s.kind !== "text" || s.value.length > 0);
   return {
-    segments: segments.filter((s) => s.kind !== "text" || s.value.length > 0),
-    text: flat.replace(/\s+/g, " ").trim(),
+    segments: kept,
+    // Rebuilt from the (projected) SEGMENTS rather than from a raw accumulator,
+    // so the flat string a label is MEASURED and ANNOUNCED by is the same text
+    // the spans paint — ``x'' is six bytes and “x” is three, and the two
+    // measurement rungs have to agree (see `borderBoxFromTextWidth`).
+    //
+    // No second whitespace pass: each run was collapsed BEFORE the projection
+    // and the edges are trimmed above. Re-collapsing here would undo the
+    // door's own work — `\s` matches U+00A0, so a `~` TIE the projection just
+    // produced would be flattened back into an ordinary space.
+    text: kept
+      .map((seg) => (seg.kind === "math" ? `$${seg.value}$` : seg.value))
+      .join(""),
     end: i,
   };
 }

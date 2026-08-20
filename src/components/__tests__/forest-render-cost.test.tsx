@@ -307,49 +307,110 @@ describe("the canvas rung reports the same box the DOM rung would", () => {
 // for the hidden case and useless for the visible one — so the leg drives the
 // SIGNAL (a stub ResizeObserver delivering the 0 → non-zero transition) rather
 // than real geometry, and asserts what the component does with it.
+// The stub is MODULE-scope and installed once, because `measure-watch` holds
+// ONE observer for the whole app (`ensureObserver`'s singleton) — a leg that
+// installs its own stub mid-file gets a `ResizeObserver` constructor nobody
+// calls, an empty observed list, and a failure that says nothing about the code.
+//
+// It is also PER-INSTANCE, which is not tidiness: this file mounts a real
+// CodeMirror (every refused pod pins to its source surface) and CodeMirror
+// constructs a `ResizeObserver` of its own. A single shared `deliver` binding
+// is therefore whichever observer was built LAST — CodeMirror's — so the
+// forest host's own callback is never reached and the leg fails for a reason
+// that has nothing to do with `measure-watch`. Delivering to the instance that
+// actually observed the host is order-independent.
+type ROEntry = { target: Element; contentRect: { width: number } };
+const roInstances: { cb: (entries: ROEntry[]) => void; seen: Element[] }[] = [];
+class StubRO {
+  private readonly rec: { cb: (entries: ROEntry[]) => void; seen: Element[] };
+  constructor(cb: (entries: ROEntry[]) => void) {
+    this.rec = { cb, seen: [] };
+    roInstances.push(this.rec);
+  }
+  observe(el: Element) {
+    this.rec.seen.push(el);
+  }
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver = StubRO as unknown;
+
+/** Deliver a resize to whichever observer is watching `host`. */
+function deliverResize(host: Element, width: number) {
+  const rec = roInstances.find((r) => r.seen.includes(host));
+  if (!rec) throw new Error("no ResizeObserver is watching the forest host");
+  rec.cb([{ target: host, contentRect: { width } }]);
+}
+
 describe("a tree measured without a box re-measures when it gets one", () => {
   it("re-runs the measure on the host's 0 → non-zero transition, and only then", async () => {
-    const observed: Element[] = [];
-    let deliver: ((entries: { target: Element; contentRect: { width: number } }[]) => void) | null =
-      null;
-    class StubRO {
-      constructor(cb: (entries: { target: Element; contentRect: { width: number } }[]) => void) {
-        deliver = cb;
-      }
-      observe(el: Element) {
-        observed.push(el);
-      }
-      unobserve() {}
-      disconnect() {}
-    }
-    const prev = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
-    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = StubRO as unknown;
+    const { container } = await mount(TREE);
+    const host = container.querySelector(".forest-tree")!;
+    resetForestRenderStats();
+
+    // A fire while still hidden (a zero box) must cost nothing — otherwise a
+    // display-flip storm would re-measure once per entry.
+    await act(async () => {
+      deliverResize(host, 0);
+      await Promise.resolve();
+    });
+    expect(forestRenderStats().measure).toBe(0);
+
+    // …and the transition re-measures exactly once.
+    await act(async () => {
+      deliverResize(host, 240);
+      await Promise.resolve();
+    });
+    expect(forestRenderStats().measure).toBe(1);
+    expect(forestRenderStats().layout).toBe(1);
+    // The derivation is untouched — this is a re-MEASURE, not a re-parse.
+    expect(forestRenderStats().parse).toBe(0);
+  });
+
+  // …and the OTHER half of that gate, which had no leg at all until task 388's
+  // adversarial pass measured it: deleting `if (!waiter.degraded()) continue;`
+  // from `measure-watch.ts` left all 212 legs of this cluster green.
+  //
+  // The gate is what the module's whole docstring rests on — "a tree measured
+  // from real boxes ignores every fire, including the initial one every
+  // `observe` delivers". Without it EVERY host size change re-measures a tree
+  // whose numbers were already exact, starting with the initial delivery the
+  // observer makes on `observe` itself. Bounded (the layout is a pure function
+  // of unchanged sizes, so it converges at once) and wasted — which is the
+  // class this cluster's own probe exists to name. An invariant with no leg is
+  // a habit (task 334).
+  //
+  // jsdom reports 0×0 for everything, so a NON-degraded first measure is
+  // unrepresentable without stubbing the read — which is exactly why the leg
+  // above (the hidden case) could ship while its complement could not be seen.
+  it("a host measured from REAL boxes ignores the fire entirely", async () => {
+    const prevRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function realBox() {
+      return {
+        width: 40,
+        height: 18,
+        top: 0,
+        left: 0,
+        right: 40,
+        bottom: 18,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    };
     try {
       const { container } = await mount(TREE);
       const host = container.querySelector(".forest-tree")!;
-      expect(observed).toContain(host);
 
       resetForestRenderStats();
-
-      // A fire while still hidden (a zero box) must cost nothing — otherwise a
-      // display-flip storm would re-measure once per entry.
       await act(async () => {
-        deliver!([{ target: host, contentRect: { width: 0 } }]);
+        deliverResize(host, 240);
         await Promise.resolve();
       });
-      expect(forestRenderStats().measure).toBe(0);
-
-      // …and the transition re-measures exactly once.
-      await act(async () => {
-        deliver!([{ target: host, contentRect: { width: 240 } }]);
-        await Promise.resolve();
-      });
-      expect(forestRenderStats().measure).toBe(1);
-      expect(forestRenderStats().layout).toBe(1);
-      // The derivation is untouched — this is a re-MEASURE, not a re-parse.
-      expect(forestRenderStats().parse).toBe(0);
+      // Nothing to redo — the numbers were already read from real boxes.
+      expect(forestRenderStats()).toEqual({ parse: 0, measure: 0, layout: 0, render: 0 });
     } finally {
-      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = prev;
+      Element.prototype.getBoundingClientRect = prevRect;
     }
   });
 });

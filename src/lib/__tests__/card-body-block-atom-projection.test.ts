@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Task 387 (adversarial run 1 over the forest cluster, DATA-SAFETY lens) —
  * every PROJECTION of a card body is TOTAL over the block-atom vocabulary its
@@ -28,7 +29,20 @@
  * part that could misbehave, a THIRD hand-written per-node-type chain is, and
  * that type-checks perfectly.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// `renderBorrowedHtml` builds the card extension list, which transitively
+// reaches `@/lib/storage` (an FSA module with no test double).
+vi.mock("@/lib/storage", () => {
+  const noop = () => undefined;
+  return new Proxy(
+    {},
+    {
+      get: (_t, prop) =>
+        prop === "__esModule" ? true : prop === "then" ? undefined : noop,
+    },
+  );
+});
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +56,7 @@ import {
   CARD_BODY_BLOCK_ATOMS,
   type CardBodyBlockAtom,
 } from "@/lib/node-attr-sets";
+import { renderBorrowedHtml } from "@/lib/borrowed-render";
 import { commentsStripped } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -145,6 +160,60 @@ describe("card-body projections are total over the block-atom vocabulary", () =>
       expect(out).toContain("before");
       expect(out).toContain("after");
       expect(out, `${kind} projected to nothing`).toContain(needle);
+    },
+  );
+
+  /**
+   * The THIRD projection (task 388, adversarial run 2). `renderBorrowedHtml` is
+   * the T1 static card tier — the surface the card-presence ladder paints a
+   * COLLAPSED card body with, and the one whose own doctrine says the static
+   * render is "visually identical" to the live tier. A block atom keeps its
+   * payload in ATTRS, so a node whose `renderHTML` emits only a wrapper
+   * projects to a BLANK there exactly as it did to `""` in the two walkers
+   * above — measured on the pre-388 tree, `texBlock` and `forestBlock` both
+   * rendered `<div …></div>` where the live tier shows a `<pre>` of the source.
+   *
+   * The needle is matched against the markup with every ATTRIBUTE stripped,
+   * which is the whole difference between a leg with teeth and one without:
+   * the payload is already IN the markup as `source="…"` / `code="…"`, so a
+   * raw `toContain` passes on the very output this leg exists to indict.
+   */
+  const NO_STATIC_PROJECTION: Partial<Record<CardBodyBlockAtom, string>> = {
+    // A raster reached through an object URL / OPFS handle: there is no bytes
+    // to project into static HTML, and its `source` attr is not even rendered.
+    // Its CAPTION is a child node and projects on its own. PRE-EXISTING and
+    // outside this task's cluster — filed rather than fixed here.
+    figureBlock: "payload is a raster, not bytes",
+    // `\includegraphics{…}` COULD project like the source pods do; the live
+    // card tier renders the image instead, so the honest static answer is a
+    // product call about the figure surface rather than about this cluster.
+    // PRE-EXISTING; filed rather than fixed here.
+    graphicsBlock: "live card tier renders the image — a figure-surface call",
+  };
+
+  /** The markup with every attribute blanked — what a READER of the static
+   *  tier can actually see. */
+  function visibleText(html: string): string {
+    return html.replace(/\s[\w:-]+="[^"]*"/g, "");
+  }
+
+  it.each([...CARD_BODY_BLOCK_ATOMS])(
+    "%s survives renderBorrowedHtml — the T1 STATIC card tier",
+    (kind) => {
+      const { node, needle } = FIXTURES[kind];
+      const html = renderBorrowedHtml(bodyWith(node) as never, "excerpt");
+      expect(html, "the excerpt scope refused the whole body").not.toBeNull();
+      const seen = visibleText(html ?? "");
+      expect(seen).toContain("before");
+      expect(seen).toContain("after");
+      const excuse = NO_STATIC_PROJECTION[kind];
+      if (excuse) {
+        // Recorded, not asserted away: the leg still runs, so a kind that
+        // GAINS a static projection makes this branch stale rather than silent.
+        expect(excuse.length).toBeGreaterThan(0);
+        return;
+      }
+      expect(seen, `${kind} paints NOTHING in the static tier`).toContain(needle);
     },
   );
 
