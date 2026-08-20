@@ -54,7 +54,7 @@
     },
     {
       "id": "reports",
-      "side": "left"
+      "side": "right"
     }
   ],
   "dockStack": {
