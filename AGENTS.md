@@ -3184,6 +3184,106 @@ still tokenized into that tier's cells; only the pre-marker region has a carrier
 Pre-existing and independent of comments (which the divergence test now refuses),
 so it is recorded rather than fixed under an unmeasured guess.
 
+#### The direction half: a table that CONVERTS must be able to convert back
+
+Same round trip, and the case where the SSOT was one table, correct in one
+direction, and read by nobody who could tell (task 380). `TEXT_MACRO_TABLE` maps
+a backslash-led macro whose whole output is literal text onto that text. Two of
+its four members had **no reverse direction at all**, and the two halves of the
+defect were mirror images of each other — one lossy on PARSE, one lossy on EMIT:
+
+- **M1 `\LaTeX` / `\LaTeX{}` / `\TeX` were DELETED from the user's only copy on
+  OPEN**, with no edit — `Written in \LaTeX{} by hand.` came back
+  `Written in LaTeX{} by hand.`, a fixed point from cycle 1, on both inline
+  surfaces and inside headings. In the PDF `\LaTeX` typesets the stylized logo
+  and the plain word does not, so the paper's rendering changed and the command
+  was unrecoverable — the user could not even type it back, because task 360's
+  type-time carrier marks a typed `\LaTeX` and the next parse converted it to
+  text again. The `{}` left behind became a stray empty group.
+- **M2 is the mirror image: the emit was the lossy direction.** The glyph → LaTeX
+  map wrote `\ldots` with **no `{}` token break**, and TeX gobbles every space
+  after a control word — so `So on… and so forth.` printed "So on…and so forth.",
+  a space the user typed deleted IN THE PDF ONLY, for every ellipsis followed by
+  a word. The `.tex` round trip was perfectly stable, so nothing downstream
+  noticed.
+
+- **M3 was found by probing the fix and is the same fork one member over.** A
+  text macro inside a `\texttt{}` CODE SPAN was converted on the parse rung
+  while the EMIT rung suppresses typography under a `code` wrapper — so
+  `\texttt{a\ldots b}` came back `\texttt{a… b}`, a raw U+2026 written into the
+  `.tex` on the first save. Task 377 M4 closed exactly this asymmetry for `--`
+  and the accents and left the text macro out; the branch is `inCode`-gated now,
+  in BOTH parsers, and the macro takes the raw-LaTeX carrier there like every
+  other command.
+
+**No gate could see any of it**: the `\LaTeX`→`LaTeX` conversion changes zero
+word tokens under `WORD_RE = [A-Za-z0-9]+`, and M2 and M3 change no words at all.
+
+> **A macro may join the PARSERS' vocabulary only if it stands for a GLYPH the
+> document model holds — because that glyph is the only thing the serialize rung
+> can restore it from.** A macro whose output is a typeset LOGO has no such
+> character, so it is not a text macro: it is an ordinary unmodelled
+> zero-argument command and belongs to the raw-LaTeX carrier, like every other
+> one. And the mirror: **a glyph that leaves as LaTeX must leave as LaTeX that
+> MEANS THE SAME THING**, which for a control word includes not eating what
+> follows it.
+
+Five rules it earned:
+
+- **The parse table is DERIVED WHOLE from `LITERAL_TABLE`**, so "what the parser
+  converts, the serializer restores" is structural rather than a property of who
+  remembered to write a reverse map. Nothing may be stated in it; a new
+  command-shaped literal joins by declaring itself where its glyph lives.
+- **A reverse map was the wrong fix, and rejecting it is the interesting half.**
+  `LaTeX` → `\LaTeX` would rewrite every literal occurrence of the word the user
+  typed as PROSE into a command — worse than the bug. When a one-directional
+  table cannot be made bidirectional, the answer is to stop converting, not to
+  guess an inverse.
+- **A DISPLAY projection may read the wider vocabulary, because a view never
+  writes back** (task 368's rule, from the other side). So the logos live in a
+  display-only table and `matchDisplayMacroAt` is module-PRIVATE: a name that can
+  travel is a name a document writer can reach, and the destruction comes back.
+- **The token break is DERIVED from the token CLASS, not declared per member.**
+  `{}` iff the canonical form is a CONTROL WORD — a backslash plus a letter run,
+  exactly the class TeX gobbles after — so a character run (`--`, `---`), where
+  `{}` would print as a stray group, cannot pick one up, and a control symbol
+  (which terminates itself) cannot either.
+- **An emit-side token break is only safe if the PARSE side consumes it.**
+  Without that, `\ldots{}` reads back as the glyph plus a raw-carried empty group
+  (task 349 M6's bare-group carrier) and re-emits as `\ldots{}{}` — two more
+  bytes on every save, forever. A SECOND group is content and is left alone.
+
+**Declared normalizations, both one-time and idempotent:** a bare `\ldots` gains
+its `{}` on the first save, and the accepted alias `\dots` settles on the
+canonical `\ldots{}`. The second is PRE-EXISTING and worth stating precisely,
+because the task text asserted the opposite — measured on the pre-380 tree,
+`\dots` already normalized to `\ldots`. The glyph is what the model holds, so the
+alias has nowhere to live and `latexForms[0]` is what "canonical" means.
+
+CI: [text-macro-round-trip.test.ts](src/lib/__tests__/text-macro-round-trip.test.ts).
+Every leg runs TWO cycles over BOTH inline surfaces and inside a heading, swept
+FROM the tables so a new member is covered by declaration alone, with live
+CONTROLS through the identical harness (the word "LaTeX" typed as prose, and a
+character-run literal). **No pre-380 suite could see this**: every round-trip
+fixture in the repo spells its typography the one way the code happens to handle,
+and the two legs that named the macros at all pinned the CONVERSION as intended
+behaviour — the defect asserted as the contract, renegotiated in place here. The
+leg with teeth is the CENSUS: the door was never the part that could misbehave, a
+writer that spells a logo macro itself or reaches the wider vocabulary is, and
+neither is visible to any behavioural test of the shared door. Measured by
+neutering each half in turn: restoring the logos to the parse vocabulary takes 6
+legs, dropping the emit token break 5, dropping the parse-side consumption 7,
+hand-writing one member into the derived table 6, and dropping the `inCode` gate
+2 (1 per parser — the twin rule, measured per fork).
+
+**Residual, stated.** A `latexCommand`-carried run is projected for a READER by
+`latexToDisplayText` (the citation and bibliography surfaces) but not by
+`richJsonToPlainText`, so a card preview / drag ghost / search projection of a
+body holding `\LaTeX` now shows the command rather than the word — exactly as it
+already does for `\emph{x}` and every other carried command. Routing that
+projection through the display door is task 368's law applied to a second
+surface, with its own census, and is out of scope here.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

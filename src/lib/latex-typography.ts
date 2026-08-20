@@ -193,9 +193,37 @@ const LITERAL_TABLE: LiteralEntry[] = [
   { latexForms: ["\\ldots", "\\dots"], glyph: ELLIPSIS },
 ];
 
+/**
+ * The EMIT spelling of a literal — its canonical parse form plus, where that
+ * form is a CONTROL WORD, the `{}` token break TeX needs after one (task 380).
+ *
+ * TeX skips every space after a control word while scanning for the next
+ * token, so `on\ldots and` typesets "on…and": the user's own space is deleted
+ * IN THE PDF ONLY, for every ellipsis followed by a word, with the `.tex`
+ * round trip perfectly stable so nothing downstream notices. A glyph that
+ * leaves as LaTeX must leave as LaTeX that MEANS THE SAME THING — which for a
+ * control word includes not eating what follows it.
+ *
+ * DERIVED rather than declared per member (`{}` iff the canonical form is a
+ * CONTROL WORD — a backslash plus a letter run, which is exactly the token
+ * class TeX gobbles after; a control SYMBOL like `\\%` terminates itself and
+ * must not pick one up), so a new command-shaped literal
+ * gets its token break by declaration alone and a character run (`--`, `---`)
+ * — which has no gobble and where `{}` would print as a stray group — cannot
+ * pick one up. The parse side consumes an optional `{}` after a control word
+ * ({@link matchTextMacroAt}), so the emitted form reads back as exactly the
+ * glyph and the round trip is a FIXED POINT: without that, `\ldots{}` would
+ * parse as the glyph plus a raw-carried empty group and re-emit as
+ * `\ldots{}{}`, growing by two bytes on every save.
+ */
+function literalEmitForm(e: LiteralEntry): string {
+  const canonical = e.latexForms[0];
+  return /^\\[a-zA-Z]*[a-zA-Z]$/.test(canonical) ? `${canonical}{}` : canonical;
+}
+
 /** glyph → canonical LaTeX (serialize direction). */
 const LITERAL_BY_GLYPH = new Map<string, string>(
-  LITERAL_TABLE.map((e) => [e.glyph, e.latexForms[0]]),
+  LITERAL_TABLE.map((e) => [e.glyph, literalEmitForm(e)]),
 );
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -936,12 +964,45 @@ export function matchQuotePairAt(
 // Both inline parsers hand-wrote `/^\\(ldots|dots|LaTeX|TeX)\b/` — the twin
 // fork task 341 names, one construct over — and the ellipsis half of it was a
 // SECOND spelling of `LITERAL_TABLE`'s own `latexForms`. So the table is the
-// SSOT and the two spellings that are already declared there are DERIVED from
-// it; only the two macros that carry no glyph (`\LaTeX`, `\TeX`) are stated
-// here, once.
+// SSOT and the spellings that are already declared there are DERIVED from it.
 //
-// A macro belongs in this table only if its output is literal text with no
-// argument to read. Anything that takes an argument (`\emph{…}`) is a MARK on
+// ── the DIRECTION rule (task 380) ───────────────────────────────────────────
+//
+// A macro may join the PARSERS' vocabulary only if it has a REVERSE direction,
+// and the only way to have one here is to stand for a GLYPH the document model
+// can hold — because the model holds characters, and the serialize rung
+// restores a member of this vocabulary through `LITERAL_BY_GLYPH` and through
+// nothing else. So the parse table is now DERIVED WHOLE from `LITERAL_TABLE`:
+// every member's `text` is a glyph that table declares, which makes "what the
+// parser converts, the serializer restores" structural rather than a property
+// of who remembered to write a reverse map.
+//
+// `\LaTeX` and `\TeX` used to sit here with `text: "LaTeX"` / `"TeX"` and no
+// reverse map at all, so the command was DELETED from the user's only copy on
+// OPEN, with no edit: `Written in \LaTeX{} by hand.` came back
+// `Written in LaTeX{} by hand.`, a fixed point from cycle 1, on both inline
+// surfaces and inside headings. In the PDF `\LaTeX` typesets the stylized logo
+// and the plain word does not, so the paper's rendering changed and the command
+// was unrecoverable — the user could not even type it back, since task 360's
+// type-time carrier marks a typed `\LaTeX` and the next parse converted it to
+// text again. No gate could see it: the conversion changes zero word tokens
+// under `WORD_RE`.
+//
+// The right answer is not a reverse map — `LaTeX` → `\LaTeX` would rewrite
+// every literal occurrence of the word the user typed as PROSE into a command,
+// which is worse than the bug. It is that a typeset LOGO is not literal text at
+// all, so these two are not text macros: they are ordinary unmodelled
+// zero-argument commands and belong to task 342/360's raw-LaTeX carrier, like
+// every other one. They render grey-monospace in the editor and re-emit
+// byte-identically. That also makes this table's own docstring TRUE, where
+// before it was asserted of two members for which it was false.
+//
+// The DISPLAY projection keeps reading them ({@link DISPLAY_MACRO_TABLE}): a
+// projection is a VIEW and never writes back, so a chip may say "LaTeX" where
+// the DOCUMENT may not.
+//
+// A macro belongs in the parse table only if its output is a literal glyph with
+// no argument to read. Anything that takes an argument (`\emph{…}`) is a MARK on
 // the surfaces that model marks and is passed through verbatim on the ones
 // that do not — see {@link latexToDisplayText}.
 
@@ -952,29 +1013,39 @@ interface TextMacroEntry {
   text: string;
 }
 
-const TEXT_MACRO_TABLE: readonly TextMacroEntry[] = [
-  // Derived: every LITERAL_TABLE spelling that is a COMMAND rather than a
-  // character run (today the ellipsis pair `\ldots` / `\dots`). A new
-  // command-shaped literal joins by declaration alone.
-  ...LITERAL_TABLE.filter((e) => e.latexForms.some((f) => f.startsWith("\\"))).map(
-    (e): TextMacroEntry => ({
-      names: e.latexForms.filter((f) => f.startsWith("\\")).map((f) => f.slice(1)),
-      text: e.glyph,
-    }),
-  ),
+/**
+ * The PARSERS' vocabulary — derived WHOLE from `LITERAL_TABLE`'s command-shaped
+ * spellings (today the ellipsis pair `\ldots` / `\dots`), so every member is
+ * restorable by construction. A new command-shaped literal joins by declaring
+ * itself there; nothing may be stated here.
+ */
+const TEXT_MACRO_TABLE: readonly TextMacroEntry[] = LITERAL_TABLE.filter((e) =>
+  e.latexForms.some((f) => f.startsWith("\\")),
+).map(
+  (e): TextMacroEntry => ({
+    names: e.latexForms.filter((f) => f.startsWith("\\")).map((f) => f.slice(1)),
+    text: e.glyph,
+  }),
+);
+
+/**
+ * The DISPLAY-ONLY macros: their output is readable text but not a character
+ * the document model can hold, so they are projected for a reader and never
+ * converted in a document. See the direction rule above.
+ */
+const DISPLAY_ONLY_MACRO_TABLE: readonly TextMacroEntry[] = [
   { names: ["LaTeX"], text: "LaTeX" },
   { names: ["TeX"], text: "TeX" },
 ];
 
-/**
- * Match a text macro at `src[start]` (which must be `\`).
- *
- * The command name is read as LaTeX reads one — a greedy letter run — and then
- * compared for EQUALITY, so `\dotsc` and `\TeXt` are not this door's business
- * (byte-identical to the `\b`-terminated alternation this replaced). No
- * argument and no `{}` token-break is consumed, exactly as before.
- */
-export function matchTextMacroAt(
+/** What {@link latexToDisplayText} reads: the parse vocabulary plus the logos. */
+const DISPLAY_MACRO_TABLE: readonly TextMacroEntry[] = [
+  ...TEXT_MACRO_TABLE,
+  ...DISPLAY_ONLY_MACRO_TABLE,
+];
+
+function matchMacroIn(
+  table: readonly TextMacroEntry[],
   src: string,
   start: number,
 ): { text: string; end: number } | null {
@@ -982,10 +1053,49 @@ export function matchTextMacroAt(
   const m = /^[a-zA-Z]+/.exec(src.slice(start + 1));
   if (!m) return null;
   const name = m[0];
-  for (const e of TEXT_MACRO_TABLE) {
-    if (e.names.includes(name)) return { text: e.text, end: start + 1 + name.length };
+  for (const e of table) {
+    if (e.names.includes(name)) {
+      // Consume an optional `{}` TOKEN BREAK. After a control word `{}` is not
+      // content — it exists only to stop TeX gobbling the following space, and
+      // it is what this module's own emit form writes (`literalEmitForm`). If
+      // the parse side left it behind it would be picked up by task 349 M6's
+      // bare-group carrier, so the glyph would re-emit as `\ldots{}` with a
+      // carried `{}` beside it — two more bytes on every save, forever. A
+      // SECOND group is content and is left alone (`\ldots{}{}` keeps one).
+      const afterName = start + 1 + name.length;
+      const end = src.startsWith("{}", afterName) ? afterName + 2 : afterName;
+      return { text: e.text, end };
+    }
   }
   return null;
+}
+
+/**
+ * Match a text macro at `src[start]` (which must be `\`) — the vocabulary BOTH
+ * inline parsers read.
+ *
+ * The command name is read as LaTeX reads one — a greedy letter run — and then
+ * compared for EQUALITY, so `\dotsc` and `\TeXt` are not this door's business.
+ * A trailing `{}` token break is consumed (see {@link matchMacroIn}).
+ */
+export function matchTextMacroAt(
+  src: string,
+  start: number,
+): { text: string; end: number } | null {
+  return matchMacroIn(TEXT_MACRO_TABLE, src, start);
+}
+
+/**
+ * The {@link latexToDisplayText} twin — the same door over the WIDER vocabulary
+ * that includes the logo macros a reader should see as words. Deliberately not
+ * exported past this module: a document-writing caller must take the narrower
+ * {@link matchTextMacroAt}, or the destruction this split closes comes back.
+ */
+function matchDisplayMacroAt(
+  src: string,
+  start: number,
+): { text: string; end: number } | null {
+  return matchMacroIn(DISPLAY_MACRO_TABLE, src, start);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1095,7 +1205,7 @@ export function latexToDisplayText(fragment: string): string {
     }
 
     if (fragment[i] === "\\") {
-      const macro = matchTextMacroAt(fragment, i);
+      const macro = matchDisplayMacroAt(fragment, i);
       if (macro) {
         buffer += macro.text;
         i = macro.end;
@@ -1149,4 +1259,10 @@ export const __typographyTables = {
   ACCENT_TABLE,
   SPECIAL_LETTER_TABLE,
   LITERAL_TABLE,
+  /** The PARSERS' text-macro vocabulary (task 380) — derived, never stated. */
+  TEXT_MACRO_TABLE,
+  /** The macros only a DISPLAY projection may read. */
+  DISPLAY_ONLY_MACRO_TABLE,
+  /** glyph → the LaTeX the serializer writes, token break included. */
+  literalEmitForm,
 };

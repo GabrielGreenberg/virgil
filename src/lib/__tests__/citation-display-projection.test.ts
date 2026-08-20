@@ -186,7 +186,11 @@ describe("latexToDisplayText reads the shared tables", () => {
     expect(latexToDisplayText("15--20")).toBe("15–20");
     expect(latexToDisplayText("a---b")).toBe("a—b");
     expect(latexToDisplayText("and so on\\ldots")).toBe("and so on…");
-    expect(latexToDisplayText("\\LaTeX{} and \\TeX{}")).toBe("LaTeX{} and TeX{}");
+    // RENEGOTIATED (task 380). This used to expect "LaTeX{} and TeX{}" — the
+    // `{}` after a control word is a TOKEN BREAK, not content, so showing it to
+    // a reader was never right; the shared macro door consumes it now.
+    expect(latexToDisplayText("\\LaTeX{} and \\TeX{}")).toBe("LaTeX and TeX");
+    expect(latexToDisplayText("and so on\\ldots{} etc")).toBe("and so on… etc");
   });
 
   it("quote pairs come from the shared table, lone quotes pass through", () => {
@@ -217,11 +221,17 @@ describe("latexToDisplayText reads the shared tables", () => {
 // ── the text-macro table is the parsers' vocabulary, byte-identically ────────
 
 describe("matchTextMacroAt replaces the hand-written alternation", () => {
-  it("matches exactly the four names, whole", () => {
+  it("matches the GLYPH-backed names, whole", () => {
     expect(matchTextMacroAt("\\ldots", 0)).toEqual({ text: "…", end: 6 });
     expect(matchTextMacroAt("\\dots", 0)).toEqual({ text: "…", end: 5 });
-    expect(matchTextMacroAt("\\LaTeX", 0)).toEqual({ text: "LaTeX", end: 6 });
-    expect(matchTextMacroAt("\\TeX", 0)).toEqual({ text: "TeX", end: 4 });
+    // RENEGOTIATED (task 380). This used to expect `\LaTeX` / `\TeX` to convert
+    // here too — which IS the defect that task closed: neither stands for a
+    // character the document model can hold, so the parsers' door has no way
+    // back and the command was destroyed on open. They live in the DISPLAY
+    // vocabulary now (asserted above, through `latexToDisplayText`) and reach
+    // the document only on the raw-LaTeX carrier.
+    expect(matchTextMacroAt("\\LaTeX", 0)).toBeNull();
+    expect(matchTextMacroAt("\\TeX", 0)).toBeNull();
   });
 
   it("declines a LONGER command that merely starts with one (the `\\b` rule)", () => {
