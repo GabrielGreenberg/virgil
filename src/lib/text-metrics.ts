@@ -44,6 +44,11 @@ export interface CapTopMetrics {
 }
 
 const FONT_METRICS_CACHE = new Map<string, CapTopMetrics>();
+/** Rendered-width cache for {@link measureTextWidth}, keyed by
+ *  `<font signature>|<text>`. Same lifetime as {@link FONT_METRICS_CACHE} —
+ *  both are dropped on every font-load wave, so a width measured against a
+ *  FOUT fallback face is re-measured against the real one. */
+const TEXT_WIDTH_CACHE = new Map<string, number>();
 
 function getCtx(): CanvasRenderingContext2D | null {
   if (typeof document === "undefined") return null;
@@ -54,6 +59,48 @@ function getCtx(): CanvasRenderingContext2D | null {
   // always take effect on the next call).
   const canvas = document.createElement("canvas");
   return canvas.getContext("2d");
+}
+
+/**
+ * The canvas `ctx.font` shorthand for an element's computed style — the ONE
+ * spelling both measurements ({@link measureFontMetrics} and
+ * {@link measureTextWidth}) set, so a width and a cap-height read for the same
+ * element can never be taken against different faces. Doubles as the cache key
+ * prefix, so a cache entry is keyed on exactly the inputs the measurement used.
+ */
+function canvasFontSpec(cs: CSSStyleDeclaration, fontSizePx: number): string {
+  return `${cs.fontStyle === "italic" ? "italic " : ""}${cs.fontWeight} ${fontSizePx}px ${cs.fontFamily}`;
+}
+
+/**
+ * Rendered width (CSS px) of `text` in an element's font — the MEASURED
+ * alternative to a hardcoded glyph width. `null` when no canvas is available
+ * (SSR / a jsdom stub), which every caller must read as "no opinion" and fall
+ * back to a geometric bound rather than to a px guess.
+ *
+ * Its consumer is the marker-ink boundary in `block-frame.ts`: a list's
+ * `::marker` is not rect-able, so the only way to know how far LEFT of the item
+ * an `10.` reaches is to measure the string the counter renders. Cached per
+ * `(font signature, text)`, so a hover placement pass pays one measurement per
+ * distinct marker per font — never per frame.
+ */
+export function measureTextWidth(
+  text: string,
+  cs: CSSStyleDeclaration,
+): number | null {
+  const fontSizePx = parseFloat(cs.fontSize);
+  if (!Number.isFinite(fontSizePx) || fontSizePx <= 0) return null;
+  const font = canvasFontSpec(cs, fontSizePx);
+  const key = `${font}|${text}`;
+  const cached = TEXT_WIDTH_CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const ctx = getCtx();
+  if (!ctx) return null;
+  ctx.font = font;
+  const w = ctx.measureText(text).width;
+  if (!Number.isFinite(w) || w < 0) return null;
+  TEXT_WIDTH_CACHE.set(key, w);
+  return w;
 }
 
 /**
@@ -120,7 +167,7 @@ function measureFontMetrics(
   // prepends "italic " for an italic element, so `fontStyle` flips the measured
   // metrics — an italic first-line target must not share a cache entry with a
   // non-italic sibling of otherwise-identical (family | size | weight | lineHeight).
-  const key = `${cs.fontFamily}|${fontSizePx}|${cs.fontWeight}|${cs.fontStyle}|${lineHeightPx}`;
+  const key = `${canvasFontSpec(cs, fontSizePx)}|${lineHeightPx}`;
   const cached = FONT_METRICS_CACHE.get(key);
   if (cached !== undefined) return cached;
 
@@ -129,7 +176,7 @@ function measureFontMetrics(
   // `H` dominates the ascent reading (capital height); the probe forces
   // full glyph-envelope reporting on browsers that lazy-compute
   // `actualBoundingBox*`.
-  ctx.font = `${cs.fontStyle === "italic" ? "italic " : ""}${cs.fontWeight} ${fontSizePx}px ${cs.fontFamily}`;
+  ctx.font = canvasFontSpec(cs, fontSizePx);
   const m = ctx.measureText("H");
   const capHeightPx = m.actualBoundingBoxAscent;
   const ascent = m.fontBoundingBoxAscent;
@@ -315,9 +362,10 @@ interface FontFaceSetLike {
   addEventListener?: (type: "loadingdone", listener: () => void) => void;
 }
 
-/** Clear the cap-top cache and re-run every registered callback. */
+/** Clear the measurement caches and re-run every registered callback. */
 function fireFontReady(): void {
   FONT_METRICS_CACHE.clear();
+  TEXT_WIDTH_CACHE.clear();
   for (const fn of fontReadyCallbacks) {
     try {
       fn();
@@ -383,9 +431,10 @@ export function __fontReadyPendingCount(): number {
   return fontReadyCallbacks.size;
 }
 
-/** Test-only: drop the cap-top cache. */
+/** Test-only: drop the measurement caches. */
 export function clearCapTopCache(): void {
   FONT_METRICS_CACHE.clear();
+  TEXT_WIDTH_CACHE.clear();
 }
 
 /** Test-only: current cap-top cache size (jsdom can't drive real measurement). */

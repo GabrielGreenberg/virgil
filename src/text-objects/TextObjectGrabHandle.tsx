@@ -87,7 +87,7 @@ import {
   textObjectPopoutKey,
 } from "./text-object-registry";
 import { resolveBlockFrame } from "./block-frame";
-import { computeHandleLeftEdge, resolveHandleMarkerLeft } from "./handle-layout";
+import { resolveHandleLane, resolveHandleMarkerLeft } from "./handle-layout";
 import { useLiftHost } from "./LiftHost";
 import type {
   SelectionRef,
@@ -137,6 +137,15 @@ interface Placement {
    *  midpoint and stay independently grabbable. Derived from the resolved
    *  placements ({@link applyHitCaps}), never from a doc walk. */
   hitCapPx: number | null;
+  /**
+   * Task 382: the furthest-right `left` this handle may take — its lane's
+   * inboard bound, derived from the row's `BlockFrame.inkLeft` in
+   * `resolveHandleLane`. {@link applySameRowSeparation} pushes within it; it is
+   * NOT rendered, so it is deliberately absent from {@link placementsEqual}
+   * (a change to the bound that leaves every rendered position where it was
+   * must not cost a re-render).
+   */
+  maxLeft: number;
 }
 
 /**
@@ -195,18 +204,25 @@ const SAME_ROW_EPS = 16;
  * 12px void between the boxes — the gap reads as "two controls" rather than as
  * one wide glyph.
  *
- * **This CONSTANT is calibrated on synthetic geometry and is the one part of
- * task 353 that wants a real eyeball.** The mechanism below is geometry-
- * independent and is the durable half; the number is a first cut. Gabriel
- * reported the pre-353 row-1 spacing (20px center-to-center = an 8px void) as
- * "one unreadable blob", so this is deliberately wider than that and no wider
- * than it has to be.
+ * It is a TARGET, not a guarantee: since task 382 the push that realizes it is
+ * bounded by each handle's lane (`maxLeft`), so on a row whose marker band is
+ * too narrow to hold both this gap and a clear bullet, the row gets whatever
+ * separation fits. Gabriel reported the pre-353 row-1 spacing (20px
+ * center-to-center = an 8px void) as "one unreadable blob", so this is
+ * deliberately wider than that and no wider than it has to be — and the
+ * `.tiptap ul/ol` marker band was widened to 2em in the same task so the
+ * everyday top-level list reaches it without hitting the cap.
  */
 const MIN_SAME_ROW_GAP_PX = 24;
 
 /**
  * Task 353: keep same-row handles far enough apart to read as separate
  * controls, by pushing each INNER handle inboard.
+ *
+ * Bounded inboard by each placement's own lane (`maxLeft`, task 382) — the
+ * pre-382 push had no upper bound at all and walked a top-level list's ITEM
+ * handle onto the bullet glyph, which is the one thing margin chrome may never
+ * do. The cap outranks the gap.
  *
  * Why inboard rather than outboard, which is what "stack the container further
  * out" would suggest: the outermost handle is already sitting ON the floor.
@@ -235,11 +251,21 @@ function applySameRowSeparation(placements: Placement[]): void {
   for (const row of rows) {
     if (row.length < 2) continue;
     // Outermost (smallest left) keeps its floored slot; each next one is
-    // pushed to at least MIN_SAME_ROW_GAP_PX inboard of the one before it.
+    // pushed to at least MIN_SAME_ROW_GAP_PX inboard of the one before it —
+    // but never past its own lane's `maxLeft` (task 382), so a push can't walk
+    // a handle onto the bullet the row's anchor exists to clear. When the two
+    // conflict the CAP wins: sub-24 spacing reads as a blob, and a blob over
+    // the user's own text reads as a bug.
     row.sort((a, b) => a.left - b.left);
     for (let i = 1; i < row.length; i++) {
-      const floor = row[i - 1].left + MIN_SAME_ROW_GAP_PX;
-      if (row[i].left < floor) row[i].left = floor;
+      const wanted = row[i - 1].left + MIN_SAME_ROW_GAP_PX;
+      if (row[i].left < wanted) {
+        // `max` with the current position keeps this a PUSH: a lane whose cap
+        // already sits left of the resting slot (a wide `10.` marker on a
+        // narrow viewport, where the floor outranked the cap) must not be
+        // dragged further out by the separation pass.
+        row[i].left = Math.max(row[i].left, Math.min(wanted, row[i].maxLeft));
+      }
     }
   }
 }
@@ -501,8 +527,11 @@ function computePlacement(
   // block on a narrow viewport never pushes the handle off-screen-left.
   // (editorColumnLeft is the .ProseMirror outside-left edge; the floor inset is
   // --margin-col-handle-inset via cache.marginInset.)
+  // The resolve returns the whole LANE (task 382): its `maxLeft` is how far
+  // inboard the same-row separation below may push this handle before its box
+  // would reach the row's `inkLeft` — the bullet / `(n)` / prose it labels.
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
-  const left = computeHandleLeftEdge({
+  const lane = resolveHandleLane({
     markerLeft: resolveHandleMarkerLeft(
       frame,
       ref.kind === "selection" ? "selection" : "text-object",
@@ -510,7 +539,9 @@ function computePlacement(
     gapPx: frame.gapPx,
     editorColumnLeft,
     baselineInset: cache.marginInset,
+    inkLeft: frame.inkLeft,
   });
+  const left = lane.left;
 
   // ---- Vertical: the Y the handle glyph's CENTER lands on ----
   // The CSS centers the dots on `placement.top` (see `.text-object-grab-handle`
@@ -551,7 +582,15 @@ function computePlacement(
   const portal = cache.toPortalCoords(left, dotsCenterY);
   // hitCapPx is filled by applyHitCaps once the full placement set is built —
   // it needs every sibling's position, which a single-ref compute can't see.
-  return { left: portal.x, top: portal.y, ref, hitCapPx: null };
+  // `maxLeft` rides in the SAME portal space as `left` (the transform is a pure
+  // translation), so the separation can compare them directly.
+  return {
+    left: portal.x,
+    top: portal.y,
+    ref,
+    hitCapPx: null,
+    maxLeft: portal.x + (lane.maxLeft - left),
+  };
 }
 
 /** For SelectionRef (kind === null), resolve the containing

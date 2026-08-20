@@ -47,6 +47,7 @@ import type { Editor } from "@tiptap/react";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import {
   capBandCenterOffset,
+  measureTextWidth,
   resolveInlineContextElement,
 } from "@/lib/text-metrics";
 
@@ -132,6 +133,8 @@ export interface BlockFrame {
    *     (`li.left − padding-left / 2`). The `::marker` pseudo isn't
    *     rect-able, so we never read a hardcoded glyph width — the band is
    *     em-scaling and reliably between its left edge and the `<li>` content.
+   *     Where that assumption doesn't hold (a wide `10.`), {@link inkLeft}
+   *     carries the tighter MEASURED boundary; this anchor is unchanged.
    *   • bulletList / orderedList (markerless container) → one TRACK-WIDTH
    *     left of the first grabbable child's markerLeft, so a container handle
    *     stacks a uniform step left of its first item's handle (`⠿⠿ • text`).
@@ -140,6 +143,25 @@ export interface BlockFrame {
    * RIGHT edge sits one uniform {@link gapPx} left of the marker.
    */
   markerLeft: number;
+  /**
+   * The left edge of the row's leftmost DOCUMENT INK — the boundary no margin
+   * affordance may cross (task 382). {@link markerLeft} is the anchor an
+   * affordance HUGS; this is the line it must never be pushed past, and the two
+   * are resolved together (`resolveMarkerGeometry`) so the anchor and the
+   * boundary can never disagree. They differ only where the anchor is a
+   * heuristic rather than a measurement:
+   *   • a MEASURED marker (`.expex-number` / `.expex-item-marker`) → `inkLeft
+   *     === markerLeft`: the marker's own rect IS the ink.
+   *   • a list `<li>` → the anchor is the band MIDDLE (the `::marker` pseudo
+   *     has no rect), which assumes the glyph stays in the band's right half.
+   *     That holds for a `•` and is FALSE for a wide `10.`, so the ink boundary
+   *     also takes the MEASURED marker-string width when it reads further left
+   *     (never further right — a measurement may only tighten the heuristic).
+   *   • a markerless container (`<ul>`/`<ol>`) → its first row's ink is its
+   *     ITEM's bullet: same row, same boundary, one step outboard anchor.
+   *   • everything else → `contentLeft` (the prose itself is the ink).
+   */
+  inkLeft: number;
   /**
    * `--margin-handle-gap` resolved (em → px) against THIS block's font, so the
    * gap scales with the labeled text — every prose block shares one value (a
@@ -283,7 +305,7 @@ function rootFontSizePx(): number {
  *
  * Exported for the geometry-SSOT interpreter-hardening regression test (it asserts
  * a `rem` token resolves against root font-size, not the block font-size — the same
- * "for-test" export convention as {@link resolveMarkerLeft}). Otherwise an internal
+ * "for-test" export convention as {@link resolveMarkerGeometry}). Otherwise an internal
  * of `resolveBlockFrame`.
  */
 export function resolveMarginEm(
@@ -306,10 +328,25 @@ export function resolveMarginEm(
 }
 
 /**
- * MEASURED left edge of a block's own marker element matched by `selector`
+ * The two horizontal facts a margin affordance needs about a block's marker,
+ * resolved TOGETHER so they can never disagree (task 382 — the reported bug was
+ * three passes that each held a different idea of where the bullet is).
+ */
+export interface MarkerGeometry {
+  /** See {@link BlockFrame.markerLeft} — the anchor an affordance hugs. */
+  markerLeft: number;
+  /** See {@link BlockFrame.inkLeft} — the boundary it may never cross. */
+  inkLeft: number;
+}
+
+/**
+ * MEASURED geometry of a block's own marker element matched by `selector`
  * within `el`. `querySelector` returns the first match in document order —
  * the block's OWN row marker, which always precedes any nested descendant's
  * marker — so a `\pex` with sub-items reads its `(n)`, not a sub-item's `a.`.
+ *
+ * A measured marker's rect IS the ink, so the anchor and the ink boundary are
+ * the same number here: nothing is being estimated.
  *
  * Falls back to `fallbackLeft` when the marker isn't an `HTMLElement` (a
  * transient render before the NodeView marker mounts, or an unfaithful clone
@@ -320,99 +357,179 @@ export function resolveMarginEm(
  * caller passes `contentLeft − trackWidthPx` — the position the marker would
  * occupy — keeping the fallback handle in the margin where it belongs.
  */
-function markerElementLeft(
+function markerElementGeometry(
   el: HTMLElement,
   selector: string,
   fallbackLeft: number,
-): number {
+): MarkerGeometry {
   const m = el.querySelector(selector);
-  return m instanceof HTMLElement
-    ? m.getBoundingClientRect().left
-    : fallbackLeft;
+  const left =
+    m instanceof HTMLElement ? m.getBoundingClientRect().left : fallbackLeft;
+  return { markerLeft: left, inkLeft: left };
 }
 
+/** The glyph a `disc`/`circle`/`square` marker renders. Measured (never a
+ *  hardcoded px) so it scales with the font like everything else on this row. */
+const BULLET_PROBE = "•";
+
 /**
- * The marker-band anchor for a list `<li>`. The bullet / number renders in the
- * parent `<ul>`/`<ol>`'s `padding-left` band (`list-style-position: outside`),
- * which the `::marker` pseudo doesn't expose to `getBoundingClientRect`.
- * Anchor to the MIDDLE of that measured band (`li.left − paddingLeft / 2`):
- * em-scaling (the padding is `1.5em`), never a hardcoded glyph width, and
- * reliably between the band's left edge and the `<li>` content — so the handle
- * clears the glyph without diving toward the chevron column, and a wide `10.`
- * marker can't break it. Falls back to `contentLeft` if no list ancestor.
+ * Allowance (em) for the gap a `::marker` box leaves between its glyph's right
+ * edge and the item's content edge — the counter suffix's trailing space. Only
+ * makes the MEASURED bound more conservative; it is never the sole basis for a
+ * placement, because {@link listBandGeometry} takes the further-left of this
+ * bound and the band-middle heuristic.
  */
-function bulletBandAnchor(li: HTMLElement, contentLeft: number): number {
-  const list = li.closest("ul, ol");
-  if (!(list instanceof HTMLElement)) return contentLeft;
-  return bulletBandAnchorIn(list, li.getBoundingClientRect().left);
-}
+const MARKER_TRAIL_EM = 0.25;
 
 /**
- * {@link bulletBandAnchor} for a caller that ALREADY holds the list element and
- * the item's measured left edge — the markerless-container arm, where `el` IS
- * the `<ul>`/`<ol>`. Splitting it out drops that arm's duplicate work: before
- * task 336 it read the child's rect, then handed the child to
- * `bulletBandAnchor`, which walked `closest("ul, ol")` back to the very element
- * it was called from and read the child's rect a SECOND time.
+ * The marker string a list renders at its WIDEST, or `null` when this build
+ * can't say. `null` is answered conservatively by the caller (assume the marker
+ * fills its whole band) rather than by a guessed width.
  *
- * The `padding-left` read stays: the band is authored in `em` on the parent list
- * (`.tiptap ul { padding-left: 1.5em }`), and the tempting rect-only derivation
- * — the midpoint of the list box's left and the item's left — is equal to this
- * only while the list carries no left border and the item no left margin, which
- * is a stylesheet fact no code here can check. One computed-style read per
- * container placement, off the keystroke path since the modality gate.
+ * Widest-in-the-list rather than this item's own marker: the index of one `<li>`
+ * costs an O(siblings) walk on every hover placement, while `children.length` is
+ * O(1) — and a bound that covers every row of the list is the safe direction
+ * (the cap can only end up further left than strictly needed). `globals.css`
+ * authors exactly `disc` and `decimal`; any other counter style (including
+ * `decimal-leading-zero`, whose padded form this deliberately does not model)
+ * falls through to the conservative answer.
  */
-function bulletBandAnchorIn(list: HTMLElement, liLeft: number): number {
-  const padLeft = parseFloat(getComputedStyle(list).paddingLeft) || 0;
-  return liLeft - padLeft / 2;
+function markerProbeText(type: string, list: HTMLElement): string | null {
+  if (type === "disc" || type === "circle" || type === "square") {
+    return BULLET_PROBE;
+  }
+  if (type === "decimal") {
+    const ol = list as HTMLOListElement;
+    const rawStart = Number(ol.start);
+    const first = Number.isFinite(rawStart) && rawStart !== 0 ? rawStart : 1;
+    const count = Math.max(list.children.length, 1);
+    // A `reversed` list counts DOWN from `start`, so its widest marker is the
+    // first one; otherwise the last.
+    const widest = ol.reversed ? first : first + count - 1;
+    return `${widest}.`;
+  }
+  return null;
 }
 
 /**
- * MEASURED leftmost-marker left edge for a block, per kind (see
- * {@link BlockFrame.markerLeft}). `trackWidthPx` is this block's resolved
- * track-width, consumed by the markerless-container branch AND as the
- * left-of-content fallback for the example marker kinds (#49).
+ * MEASURED left edge of a list marker's ink, or `null` for "no opinion" (no
+ * canvas — SSR / a jsdom stub), which leaves the band-middle heuristic to
+ * answer alone.
+ */
+function measuredMarkerInkLeft(
+  list: HTMLElement,
+  cs: CSSStyleDeclaration,
+  liLeft: number,
+  padLeftPx: number,
+): number | null {
+  const type = cs.listStyleType;
+  // Nothing renders in the band, so the item's own content edge is the ink.
+  if (type === "none") return liLeft;
+  const text = markerProbeText(type, list);
+  // An un-modeled counter style could render anything up to its whole band.
+  if (text === null) return liLeft - padLeftPx;
+  const width = measureTextWidth(text, cs);
+  if (width === null) return null;
+  const fontSizePx = parseFloat(cs.fontSize);
+  const trail = Number.isFinite(fontSizePx) ? fontSizePx * MARKER_TRAIL_EM : 0;
+  return liLeft - width - trail;
+}
+
+/**
+ * The marker-band geometry for a list row, given the list element and the
+ * item's measured left edge.
+ *
+ * ANCHOR — the MIDDLE of the measured `padding-left` band (`li.left −
+ * padding-left / 2`): em-scaling (the padding is authored in em), never a
+ * hardcoded glyph width, and reliably between the band's left edge and the
+ * `<li>` content, because the `::marker` pseudo isn't rect-able.
+ *
+ * INK — the same band middle, TIGHTENED by the measured marker string when that
+ * reads further left. The band-middle anchor encodes an assumption ("the glyph
+ * stays in the band's right half") that is true for a `•` and false for a wide
+ * `10.`; the measurement is what closes that gap, and `min` is what keeps it a
+ * one-way tightening — a measurement may never license a handle further inboard
+ * than the heuristic already allowed.
+ *
+ * ONE `getComputedStyle` for the list (padding, counter style and font all read
+ * from it) — the same single read this had before task 382, so the hover
+ * placement path's cost class is unchanged.
+ */
+function listBandGeometry(list: HTMLElement, liLeft: number): MarkerGeometry {
+  const cs = getComputedStyle(list);
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  const anchor = liLeft - padLeft / 2;
+  const measured = measuredMarkerInkLeft(list, cs, liLeft, padLeft);
+  return {
+    markerLeft: anchor,
+    inkLeft: measured === null ? anchor : Math.min(anchor, measured),
+  };
+}
+
+/**
+ * MEASURED marker geometry for a block, per kind (see
+ * {@link BlockFrame.markerLeft} / {@link BlockFrame.inkLeft}). `trackWidthPx` is
+ * this block's resolved track-width, consumed by the markerless-container branch
+ * AND as the left-of-content fallback for the example marker kinds (#49).
  *
  * Exported for the #49 fallback-direction regression test (it asserts that an
  * example block/item whose marker chrome is missing anchors LEFT of content,
- * not on it). Otherwise an internal of `resolveBlockFrame`.
+ * not on it) and the task-382 ink-boundary legs. Otherwise an internal of
+ * `resolveBlockFrame`.
  */
-export function resolveMarkerLeft(
+export function resolveMarkerGeometry(
   el: HTMLElement,
   kind: string | null,
   contentLeft: number,
   trackWidthPx: number,
-): number {
+): MarkerGeometry {
   switch (kind) {
     case "exampleBlock":
       // Fallback (marker unresolved) = one track-width LEFT of content, the
       // position the `(n)` column occupies — never `contentLeft` (#49: a
       // contentLeft fallback puts the handle on the text, right of the marker).
-      return markerElementLeft(el, ".expex-number", contentLeft - trackWidthPx);
+      return markerElementGeometry(
+        el,
+        ".expex-number",
+        contentLeft - trackWidthPx,
+      );
     case "exampleItem":
-      return markerElementLeft(
+      return markerElementGeometry(
         el,
         ".expex-item-marker",
         contentLeft - trackWidthPx,
       );
-    case "listItem":
-      return bulletBandAnchor(el, contentLeft);
+    case "listItem": {
+      const list = el.closest("ul, ol");
+      if (!(list instanceof HTMLElement)) {
+        return { markerLeft: contentLeft, inkLeft: contentLeft };
+      }
+      return listBandGeometry(list, el.getBoundingClientRect().left);
+    }
     case "bulletList":
     case "orderedList": {
       // Markerless container — no own marker glyph. Step one track-width left
       // of the first grabbable child's marker so the container handle stacks a
-      // uniform gap left of its first item's handle (`⠿⠿ • text`).
+      // uniform gap left of its first item's handle (`⠿⠿ • text`). Its INK
+      // boundary is that item's bullet: they share the row, so they share the
+      // line neither may cross.
       const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
-      if (!child) return contentLeft - trackWidthPx;
+      if (!child) {
+        return {
+          markerLeft: contentLeft - trackWidthPx,
+          inkLeft: contentLeft,
+        };
+      }
       // `el` IS the list, so the band resolves with no `closest()` walk and ONE
       // rect read for the child (task 336 — the pre-fix line read it twice).
-      return (
-        bulletBandAnchorIn(el, child.getBoundingClientRect().left) -
-        trackWidthPx
-      );
+      const band = listBandGeometry(el, child.getBoundingClientRect().left);
+      return {
+        markerLeft: band.markerLeft - trackWidthPx,
+        inkLeft: band.inkLeft,
+      };
     }
     default:
-      return contentLeft;
+      return { markerLeft: contentLeft, inkLeft: contentLeft };
   }
 }
 
@@ -524,7 +641,7 @@ export function resolveBlockFrame(
     "--margin-track-width",
     DEFAULT_TRACK_WIDTH_PX,
   );
-  const markerLeft = resolveMarkerLeft(
+  const { markerLeft, inkLeft } = resolveMarkerGeometry(
     el,
     el.getAttribute("data-text-object-kind"),
     contentLeft,
@@ -541,6 +658,7 @@ export function resolveBlockFrame(
     contentWidth,
     contentRight,
     markerLeft,
+    inkLeft,
     gapPx,
   };
 }

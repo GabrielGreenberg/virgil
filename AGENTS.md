@@ -460,6 +460,84 @@ fixtures are written one node at a time. The leg that pins the restart is a
 PROPERTY (`no pill collects markers whose anchors span more than the bound`), not
 the branch's shape, so it survives a rewrite of how the crowd is tracked.
 
+#### The ink half: chrome NEVER paints on the ink it labels
+
+Same question, other gutter (task 382) — and the case where the anchor knew
+about the glyph, the two passes that could MOVE the anchor's answer did not, and
+one of them was written a year later.
+
+A grab handle's X is `markerLeft − gapPx − HANDLE_WIDTH`, and for a list `<li>`
+`markerLeft` is the MIDDLE of the measured `padding-left` band — an anchor whose
+whole stated point is "the handle clears the bullet", because the `::marker`
+pseudo has no rect to read. Two later passes then took that answer as a starting
+position rather than as a bound: the narrow-viewport FLOOR
+(`editorColumnLeft − marginInset`), which pins a top-level list's CONTAINER
+handle, and task 353's same-row SEPARATION, which pushes each inner handle
+`MIN_SAME_ROW_GAP_PX` inboard of the one before it — **with no upper bound at
+all**. On a top-level list the container is on the floor, so the whole 24px has
+to come out of the item's side, and the item's box landed on the `•` (Gabriel's
+screenshot). Nothing failed: the placement was well-formed and every pass was
+self-consistent with the numbers it held.
+
+> **Where several passes decide one affordance's position, they resolve a LANE,
+> not a point: `[floor … cap]`, with the cap derived from the row's `inkLeft` —
+> the leftmost DOCUMENT INK on that row, resolved BESIDE the anchor
+> (`resolveMarkerGeometry`) so the two can never disagree. Every pass that moves
+> the affordance moves it within the lane, and the cap outranks the spacing
+> target.**
+
+Five rules it earned:
+
+- **The cap binds the RESTING position, not just a push** — which is what
+  turned a list fix into a class fix. An ordered list's `10.` reaches further
+  left than the band-middle anchor assumes, so that row collided with no push
+  involved. A cap applied only to the separation would have closed the reported
+  case and left its sibling live.
+- **A measurement may only TIGHTEN a heuristic, never loosen it** (`min`). The
+  band middle is what we are entitled to assume without a rect; the measured
+  marker-string width (`text-metrics.ts` `measureTextWidth` — never a hardcoded
+  px, per this same section's own rule) is what closes the gap where the
+  assumption is false. Where there is no canvas the measurement answers "no
+  opinion" and the heuristic stands alone.
+- **The FLOOR outranks the CAP.** An unreachable handle is worse than an
+  overlapping one, and a cap left of the floor means the row has no clear margin
+  at all.
+- **The bound is per-ROW and the widest marker is the safe one.** A list's
+  ink boundary is computed from the widest marker the LIST can render
+  (`children.length`, O(1)) rather than this item's own index (O(siblings) on
+  every hover placement) — a bound that covers every row is the safe direction,
+  and the cheap one.
+- **Widening the lane is a real lever, and it is a layout decision.** The
+  `.tiptap ul/ol` marker band went 1.5em → 2em in the same task, because at
+  1.5em the cap fired on the everyday top-level list instead of being the
+  rare-case net it is meant to be. Recorded in `STYLE_GUIDE.md` with the
+  inequality that says what "fits" means, since it moves every list in every
+  document.
+
+CI: [handle-marker-ink-clearance.test.tsx](src/text-objects/__tests__/handle-marker-ink-clearance.test.tsx)
+drives the REAL component over a REAL marker band at TWO font sizes — the em/px
+unit mix (band in em; floor, gap-min and handle width in px) is why the report
+reads as intermittent — and states the contract as a CLEARANCE rather than as
+non-intersection: at the reported geometry the pre-fix box ended **0.25px** short
+of the band middle, so a bare "doesn't intersect" leg would have passed on the
+very screenshot that produced the task. Each geometry leg asserts twice: against
+the RESOLVED boundary (the contract) and against where the FIXTURE actually
+paints the glyph (the reality), because a leg that checks only the code's own
+estimate cannot tell a good estimate from a bad one — the same shape as "an
+approximation never decides its own eligibility", one gutter over. Measured by
+neutering each half in turn: the separation cap takes 4 legs, the lane cap 7,
+the measured-ink half 4, and the shipped 2em band 1.
+
+**Residual, stated rather than implied.** `inkLeft` is a LEFT edge, not a span,
+so a handle is bounded by the ink it approaches and not by ink it has already
+passed. The one shape where that shows is an expex row 1, whose `(n)` sits
+between the block's handle and the item's: the item handle's box straddles the
+`(n)` — pre-existing, unchanged by this task, and unfixable with left edges
+alone. Closing it needs ink SPANS plus a row-lane packer, and the alternative
+available today (treat an outboard marker's LEFT edge as a barrier) would force
+both handles into the 1.5em `(n)` column and reproduce the unreadable blob task
+353 exists to prevent.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.
