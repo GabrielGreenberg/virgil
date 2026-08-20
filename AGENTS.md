@@ -2516,9 +2516,12 @@ Five rules it earned:
 - **Protect broadly, demote narrowly.** Every span the new scan produces
   protects, whether or not this edit touched it and whether or not promotion
   declined it for an OPAQUE crossing. A missed demotion is the status quo; a
-  wrong one changes the bytes.
-- **A BRACE IS NOT A CONSTRUCT ON ITS OWN, so marked braces come off in PAIRS
-  or not at all.** The carrier marks a `{`/`}` only as a group's DELIMITERS —
+  wrong one changes the bytes. The OPAQUE disjunct is the one with no other
+  witness: mirroring promotion's own guard four lines above reads as a tidy-up
+  and destroys `\foobar{<citation chip>}` — measured, that one-line change
+  passed every other leg in the file, so it has a leg of its own.
+- **A BRACE IS NOT A CONSTRUCT ON ITS OWN, so an INTACT marked pair never
+  demotes.** The carrier marks a `{`/`}` only as a group's DELIMITERS —
   promotion gives the pair one shared extent and marks them together — so a
   demotion that takes one and leaves the other emits *unbalanced* LaTeX: the
   demoted brace goes through the escape rung to `\}`, the next parse reads it
@@ -2528,12 +2531,15 @@ Five rules it earned:
   of a SOURCE bare group are permanently stale here (349 M6 carries them, this
   scanner declines them), they are two SEPARATE marked runs, and the adjacency
   rule reaches exactly one of them for a keystroke immediately before the `{`,
-  immediately before the `}`, or immediately after it. Reconciling the demotion
-  against the block's marked brace pairs refuses all three — the safe direction,
-  since for a group this scanner never claimed, leaving it untouched is the
-  honest answer to an edit that merely happened next to it. ONE pass is provably
-  enough: an offset is either a `{` or a `}`, so it belongs to at most one
-  balanced pair and a refusal cannot cascade.
+  immediately before the `}`, or immediately after it — all three of which
+  emitted unbalanced braces, MEASURED. **Both-or-neither was the first fix and
+  is not the right one**: it keeps the output balanced and still escapes a pair
+  when the edit reaches both sides, which for `caf{\'e}s` means deleting the
+  accented letter silently turns a grouping into printed braces. A brace demotes
+  only when its matching marked partner is GONE, which is strictly better on
+  every case — the group twin (`{\bf hi}` minus its `{`) still demotes its
+  orphan, and `\emph{hi}` minus its lead now saves as `emph{hi}`, exactly what a
+  re-parse of those bytes produces, where escaping the pair diverged from it.
 - **The block gate gains its third disjunct, and most of the demotion it opens
   is FREE.** Scan the block when it still CARRIES the mark even with no lead
   left — and then skip the scan, because with no `\` and no `{` it is provably
@@ -2554,10 +2560,10 @@ Five rules it earned:
   group is not a source group), and both sides are fixed points.
 
 **Residuals, stated.** A PASTE is a writer in both directions, symmetrically with
-360's own rule — so pasting a run whose marks came from a source-minted bare
-group demotes its braces (the pair goes together, so the output stays balanced).
-That is the standing typed-vs-source group asymmetry, touch-scoped, and the
-mirror of the residual promotion already carries (an edit INSIDE a literal
+360's own rule, so a pasted run's non-brace bytes demote; its brace pairs do not,
+by the rule above. And the recovery is not free on every block — see the cost
+rule. Both are the standing typed-vs-source group asymmetry, touch-scoped, and
+the mirror of the residual promotion already carries (an edit INSIDE a literal
 backslash promotes it).
 
 CI: the same [typed-raw-latex-carrier.test.ts](src/lib/tiptap/__tests__/typed-raw-latex-carrier.test.ts),
@@ -2567,7 +2573,9 @@ a source-minted bare group and an unmodeled command, because the divergence is
 unrepresentable with either alone. Measured by neutering each half in turn: the
 pre-390 promotion-only plugin takes 10 legs, the block gate 5, the touch scoping
 2, the old-text recovery 2, narrowing the protective cover to touched spans 3,
-and dropping the brace-pair reconciliation 3.
+dropping the brace rule entirely 6, weakening it to both-or-neither 3, dropping
+the OPAQUE disjunct from the cover 1, and scanning every block instead of the
+touched ones 2.
 **Owed, not claimed:** the preview eyeball — type `\Overall`, backspace the `\`
 (the word returns to prose immediately); type `\%`, backspace the `\`, save and
 reload (the `%` is still prose and the line is intact).
