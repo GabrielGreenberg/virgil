@@ -72,6 +72,7 @@ import {
   LatexVerbatimMark,
   LatexCommentTailMark,
   TexBlock,
+  ForestBlock,
   FigureBlock,
   FigureCaption,
   GraphicsBlock,
@@ -300,6 +301,7 @@ export const BORROWED_INLINE_ATOM_NAMES = [
  */
 export const BORROWED_BLOCK_ATOM_NAMES = [
   "texBlock",
+  "forestBlock",
   "figureBlock",
   "figureCaption",
   "graphicsBlock",
@@ -371,6 +373,7 @@ export function buildBorrowedAtomSchema(
     // new block-atom kind = add it HERE and to the main editor; the contract
     // test (borrowed-schema.test.ts) fails until both surfaces carry it.
     TexBlock.configure({ cardContext: true }),
+    ForestBlock.configure({ cardContext: true }),
     FigureBlock.configure({ cardContext: true }),
     FigureCaption,
     GraphicsBlock.configure({ cardContext: true }),

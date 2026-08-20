@@ -78,6 +78,7 @@ import {
   PgMarkChip,
   TextColor,
   TexBlock,
+  ForestBlock,
   FigureBlock,
   FigureCaption,
   GraphicsBlock,
@@ -1891,6 +1892,17 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // that test fails until both surfaces carry it.
     TexBlock.configure({
       isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
+      cardContext: ctx.cardContext,
+      surface: isFloat ? "float" : "main",
+    }),
+    // `forestBlock` wears the SAME source pod as `texBlock` (task 383) and sits
+    // beside it here for that reason. It takes no `isPoppedRef` yet: that
+    // predicate is per-KIND all the way up (EditorPane → Editor →
+    // buildEditorExtensions), so a second copy would be a second fork rather
+    // than a shared fact — generalizing it to `(kind, uuid)` belongs with the
+    // renderer work (task 384), and until then the docked pod simply does not
+    // dim while its float is open.
+    ForestBlock.configure({
       cardContext: ctx.cardContext,
       surface: isFloat ? "float" : "main",
     }),

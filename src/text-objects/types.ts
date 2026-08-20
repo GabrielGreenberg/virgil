@@ -46,7 +46,7 @@ import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
  * text-object below.
  */
 export type TextObjectKind =
-  // Top-level persistent nodes (13)
+  // Top-level persistent nodes (14)
   | "paragraph"
   | "heading"
   | "bulletList"
@@ -57,6 +57,7 @@ export type TextObjectKind =
   | "titleField"
   | "latexComment"
   | "texBlock"
+  | "forestBlock"
   | "figureBlock"
   | "graphicsBlock"
   | "exampleBlock"

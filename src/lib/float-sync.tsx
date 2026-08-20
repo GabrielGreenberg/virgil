@@ -66,6 +66,7 @@ export type FloatSourceKind =
   | "example"
   | "linkedRange"
   | "texBlock"
+  | "forestBlock"
   | "blockquote"
   | "codeBlock"
   | "displayMath"
@@ -83,6 +84,7 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   example: "Source example deleted",
   linkedRange: "Linked range deleted",
   texBlock: "Source TeX block deleted",
+  forestBlock: "Source tree deleted",
   blockquote: "Source quote deleted",
   codeBlock: "Source code block deleted",
   displayMath: "Source equation deleted",

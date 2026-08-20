@@ -1305,31 +1305,43 @@ textarea,
   display: none !important;
 }
 
-/* ── tex-block chrome ─────────────────────────────────────────────
+/* ── source-pod chrome ────────────────────────────────────────────
+   THE shared "raw source in a pod" chrome: a framed code surface with a
+   fold chevron, a collapsed preview and a row-wide hover sensor. Worn by
+   every block whose model IS its bytes — `texBlock` (.tex-block) and
+   `forestBlock` (.forest-block) today. The family was named `.tex-block-*`
+   while texBlock was its only wearer; the neutral prefix is what stops the
+   second wearer from either re-declaring the same rules or borrowing a
+   class that names a different node (task 383).
+
    Mirrors the heading-* visuals (fold chevron + 6-dot drag grip) but
-   scoped to the tex-block wrapper so the heading selectors stay
-   semantically clean. The chrome is positioned relative to
-   .tex-block-pod (the container around the editor/preview) so its top
-   edge aligns with the pod's blue outline, not with any title slot
-   above. */
-.tex-block-pod {
+   scoped to the pod so the heading selectors stay semantically clean. The
+   chrome is positioned relative to .source-pod (the container around the
+   editor/preview) so its top edge aligns with the pod's blue outline, not
+   with any title slot above.
+
+   The wrapper-level rules below take `:is(.tex-block, .forest-block)` — the
+   HOST is per-kind (each NodeView names its own node), the POD is shared.
+   `:is()` carries its most-specific arm's weight, so every one of these
+   keeps the exact specificity its single-class form had. */
+.source-pod {
   position: relative;
 }
 
 /* Row-wide hover sensor — invisible div that covers the full editor
-   content row at the pod's Y band so `.tex-block:hover` (and the
+   content row at the pod's Y band so the host's `:hover` (and the
    grab-handle reveal it triggers) fires anywhere in the row, not
    just over the visible blue outline. The extension matches the
    editor's left/right padding so the sensor stays within the editor
    pane and doesn't bleed into adjacent panels.
-   The sensor is the FIRST child of .tex-block-pod; in normal stacking
+   The sensor is the FIRST child of .source-pod; in normal stacking
    order the editor/preview (later siblings) sit on top in the overlap
    area, so the pod still receives clicks. The sensor catches events
    in the margin (where the chevron + grab visually sit) — that's the
    key path: the handle itself has `pointer-events: none` until the
    parent is :hover, so cursor over the handle's visible position
    hits the sensor instead and reveals the handle. */
-.tex-block-row-sensor {
+.source-pod-row-sensor {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1338,7 +1350,7 @@ textarea,
   pointer-events: auto;
 }
 
-.tex-block-fold-chevron {
+.source-pod-fold-chevron {
   position: absolute;
   left: var(--margin-col-chevron, -44px);
   top: 0;
@@ -1358,25 +1370,25 @@ textarea,
   transform: rotate(90deg);
   z-index: 1;
 }
-.tex-block-fold-chevron:hover {
+.source-pod-fold-chevron:hover {
   color: var(--muted, #8a8580);
 }
-.tex-block-fold-chevron.is-folded {
+.source-pod-fold-chevron.is-folded {
   transform: rotate(0deg);
   color: var(--footnote-color, #b45757);
 }
-.tex-block-fold-chevron.is-folded svg path {
+.source-pod-fold-chevron.is-folded svg path {
   stroke-width: 2;
 }
-.tex-block-fold-chevron.is-folded:hover {
+.source-pod-fold-chevron.is-folded:hover {
   color: var(--footnote-color, #b45757);
   filter: brightness(0.85);
 }
 
 /* Collapsed preview — sits in place of the CodeMirror pod when the
    block is folded. Reads as a quiet shadow of the real editor. */
-.tex-block-preview {
-  position: relative; /* stacks above .tex-block-row-sensor in overlap */
+.source-pod-preview {
+  position: relative; /* stacks above .source-pod-row-sensor in overlap */
   border: 1px dashed var(--heading-annotation-border, #a8c4de);
   border-radius: var(--radius-md);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
@@ -1387,20 +1399,20 @@ textarea,
   color: var(--ink-muted, #6b6660);
   transition: background 0.15s;
 }
-.tex-block-preview:hover {
+.source-pod-preview:hover {
   background: rgba(124, 94, 60, 0.07);
 }
-.tex-block-preview-line {
+.source-pod-preview-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.4;
 }
-.tex-block-preview-empty {
+.source-pod-preview-empty {
   font-style: italic;
   opacity: 0.6;
 }
-.tex-block-preview-more {
+.source-pod-preview-more {
   color: var(--muted-light, #b5b0aa);
   letter-spacing: 2px;
   margin-top: 2px;
@@ -1410,7 +1422,7 @@ textarea,
 /* Popped state: the live editor is open in a floating card, so the
    docked pod dims to signal "go look at the float". Click-to-undock
    could be added later. */
-.tex-block.is-popped .tex-block-pod {
+:is(.tex-block, .forest-block).is-popped .source-pod {
   opacity: 0.45;
   pointer-events: none;
 }
@@ -1427,7 +1439,7 @@ textarea,
    too tight.) The .par-title-annotation overlays that gap (untitled:
    absolute bottom:100%) or takes an in-flow row below it (titled), exactly
    like a paragraph. */
-.tex-block {
+:is(.tex-block, .forest-block) {
   margin-top: var(--editor-block-gap);
   margin-bottom: 0;
 }
@@ -1437,16 +1449,16 @@ textarea,
    (the narrow strip above the pod) — NOT the whole tex pod row. The
    .par-title-annotation div is block-level so it spans the full
    editor width, giving the user a wide hover target without the +T
-   tracking pod hover. Scoped under .tex-block so the float
+   tracking pod hover. Scoped under the pod HOST so the float
    (.tex-block-float-title-host) keeps its always-visible +T. */
-.tex-block .par-title-add {
+:is(.tex-block, .forest-block) .par-title-add {
   opacity: 0;
   transition: opacity 0.15s;
 }
-.tex-block .par-title-annotation:hover .par-title-add {
+:is(.tex-block, .forest-block) .par-title-annotation:hover .par-title-add {
   opacity: 0.6;
 }
-.tex-block .par-title-add:hover {
+:is(.tex-block, .forest-block) .par-title-add:hover {
   opacity: 1;
 }
 
@@ -1629,7 +1641,7 @@ textarea,
    the first code line instead of floating above an empty annotation row. */
 .par-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
 .list-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
-.tex-block:not(.has-par-title) > .par-title-annotation {
+:is(.tex-block, .forest-block):not(.has-par-title) > .par-title-annotation {
   position: absolute;
   bottom: 100%;
   left: 0;

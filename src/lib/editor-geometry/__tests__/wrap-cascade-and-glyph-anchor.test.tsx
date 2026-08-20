@@ -309,14 +309,17 @@ describe("the glyph-anchor probe is KIND-gated (task 336)", () => {
 // top), with no type error and nothing to grep for. So the set is pinned
 // against the files that actually emit the attribute.
 //
-// Stated limit: this maps EMITTER FILE → kind, so a second emitter added inside
-// an already-listed file for a DIFFERENT kind passes. Naming the kind from the
-// file is what a grep can do honestly; the NodeView's node type is not
-// syntactically present at the emission.
+// Stated limit: this maps EMITTER FILE → the kinds it serves, so a second
+// emitter added inside an already-listed file for a kind NOT declared beside it
+// passes. Naming the kinds from the file is what a grep can do honestly; the
+// NodeView's node type is not syntactically present at the emission. One file
+// serving SEVERAL kinds is the ordinary case since the source pod was shared
+// (task 383) — `SourcePodNodeView` is worn by `texBlock` and `forestBlock`
+// alike, so the value is a list rather than a single name.
 
-const GLYPH_ANCHOR_EMITTERS: Record<string, string> = {
-  "components/TexBlockNodeView.tsx": "texBlock",
-  "lib/tiptap/expex.ts": "exampleBlock",
+const GLYPH_ANCHOR_EMITTERS: Record<string, string[]> = {
+  "components/SourcePodNodeView.tsx": ["texBlock", "forestBlock"],
+  "lib/tiptap/expex.ts": ["exampleBlock"],
 };
 
 const SRC = path.resolve(__dirname, "../../..");
@@ -360,14 +363,13 @@ function emitters(root: string): string[] {
 describe("glyph-anchor membership is discovered from the emitters (task 336)", () => {
   it("every file that emits the attribute is declared, and its kind is in the set", () => {
     expect(emitters(SRC)).toEqual(Object.keys(GLYPH_ANCHOR_EMITTERS).sort());
-    for (const kind of Object.values(GLYPH_ANCHOR_EMITTERS)) {
+    const declared = Object.values(GLYPH_ANCHOR_EMITTERS).flat();
+    for (const kind of declared) {
       expect(GLYPH_ANCHOR_KINDS.has(kind), `${kind} must declare an anchor`).toBe(true);
     }
     // Nothing in the set is unreachable — a kind with no emitter is a query the
     // gate would still permit for no reason.
-    expect([...GLYPH_ANCHOR_KINDS].sort()).toEqual(
-      [...new Set(Object.values(GLYPH_ANCHOR_EMITTERS))].sort(),
-    );
+    expect([...GLYPH_ANCHOR_KINDS].sort()).toEqual([...new Set(declared)].sort());
   });
 
   it("the library silo emits none (the Reader mounts the same NodeViews)", () => {

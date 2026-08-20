@@ -243,6 +243,18 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
       case "codeBlock": // code blocks count as surrounding context
         collectInline(n, cats[ctx]);
         return;
+      case "texBlock":
+      case "forestBlock":
+      case "graphicsBlock":
+        // Source-carrying ATOMS: the bytes live in an attr, not in child
+        // content, and they are raw LaTeX rather than prose — the same answer
+        // the `latexCommand`/`latexVerbatim` branch gives a carrier run, and
+        // the same answer these three already got by falling through the
+        // default arm onto an empty child list. Stated explicitly so the rule
+        // is visible rather than emergent, and so a future arm that starts
+        // walking attrs has to decide deliberately. Byte-neutral: every
+        // category tally is unchanged.
+        return;
       default:
         // doc, titleField, maketitleMarker, horizontalRule, etc.
         for (const child of n.content ?? []) walkBlock(child, ctx);

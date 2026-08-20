@@ -57,6 +57,7 @@ export const UUID_BEARING_NODE_TYPES: ReadonlySet<string> = new Set([
   "latexComment",
   "titleField",
   "texBlock",
+  "forestBlock",
   "figureBlock",
   "graphicsBlock",
   "exampleBlock",
@@ -78,17 +79,21 @@ export const TITLED_NODE_TYPES: ReadonlySet<string> = new Set([
   "bulletList",
   "orderedList",
   "texBlock",
+  "forestBlock",
   "exampleBlock",
 ]);
 
 /**
  * Node types that carry a sticky `collapsed` attr, persisted in the sidecar
- * beside `parTitle`. One member today — declared as a set anyway, because the
- * one-member hand list is precisely the shape that becomes the next task-343
- * (a second collapsible kind added on the write side alone).
+ * beside `parTitle`. Both members wear the SHARED source pod
+ * (src/components/SourcePodNodeView.tsx), whose fold chevron writes this attr —
+ * which is why the one-member spelling was declared as a set from the start:
+ * that shape is precisely what becomes the next task-343 when a second
+ * collapsible kind is added on the write side alone.
  */
 export const COLLAPSIBLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "texBlock",
+  "forestBlock",
 ]);
 
 /**
