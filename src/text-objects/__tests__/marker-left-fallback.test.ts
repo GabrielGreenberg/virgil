@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveMarkerLeft } from "@/text-objects/block-frame";
+import { resolveMarkerGeometry } from "@/text-objects/block-frame";
 
 const CONTENT_LEFT = 300;
 const TRACK_WIDTH = 20;
@@ -42,9 +42,9 @@ function blockWithMarker(selector: string, markerLeft: number): HTMLElement {
   return el;
 }
 
-describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#49)", () => {
+describe("resolveMarkerGeometry — example marker fallback stays LEFT of content (#49)", () => {
   it("exampleBlock with NO .expex-number falls back LEFT of content, not on it", () => {
-    const left = resolveMarkerLeft(
+    const { markerLeft: left } = resolveMarkerGeometry(
       blockWithoutMarker(),
       "exampleBlock",
       CONTENT_LEFT,
@@ -56,7 +56,7 @@ describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#
   });
 
   it("exampleItem with NO .expex-item-marker falls back LEFT of content, not on it", () => {
-    const left = resolveMarkerLeft(
+    const { markerLeft: left } = resolveMarkerGeometry(
       blockWithoutMarker(),
       "exampleItem",
       CONTENT_LEFT,
@@ -68,7 +68,7 @@ describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#
 
   it("exampleBlock WITH a measured .expex-number uses the marker rect's left", () => {
     const markerLeft = CONTENT_LEFT - 24; // a real `(16)` sits left of the text
-    const left = resolveMarkerLeft(
+    const { markerLeft: left } = resolveMarkerGeometry(
       blockWithMarker(".expex-number", markerLeft),
       "exampleBlock",
       CONTENT_LEFT,
@@ -79,7 +79,7 @@ describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#
 
   it("exampleItem WITH a measured .expex-item-marker uses the marker rect's left", () => {
     const markerLeft = CONTENT_LEFT - 18;
-    const left = resolveMarkerLeft(
+    const { markerLeft: left } = resolveMarkerGeometry(
       blockWithMarker(".expex-item-marker", markerLeft),
       "exampleItem",
       CONTENT_LEFT,
@@ -89,7 +89,7 @@ describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#
   });
 
   it("a top-level paragraph (no kind branch) anchors at contentLeft (unchanged)", () => {
-    const left = resolveMarkerLeft(
+    const { markerLeft: left } = resolveMarkerGeometry(
       blockWithoutMarker(),
       "paragraph",
       CONTENT_LEFT,

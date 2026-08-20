@@ -2384,14 +2384,22 @@ textarea,
   padding-left: 1.3em;
 }
 
+/* The list MARKER BAND. 2em, not the 1.5em this shipped with: the band is the
+   lane the bullet AND the row's grab handles share, and at 1.5em there is not
+   enough of it left of the glyph for the item handle to sit clear of it once
+   the same-row separation pushes it inboard (task 382 — the handle painted ON
+   the bullet). At 2em the everyday top-level list reaches the separation's
+   24px target with the handle still clear of the glyph, so the ink cap in
+   `handle-layout.ts` stays the rare-case net it is meant to be rather than the
+   everyday mitigator. Nested lists inherit it from the same rule. */
 .tiptap ul {
   list-style-type: disc;
-  padding-left: 1.5em;
+  padding-left: 2em;
 }
 
 .tiptap ol {
   list-style-type: decimal;
-  padding-left: 1.5em;
+  padding-left: 2em;
 }
 
 /* Nested lists (lists within list items): tight spacing — they should

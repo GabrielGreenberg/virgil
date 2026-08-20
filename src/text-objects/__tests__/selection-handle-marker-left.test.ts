@@ -39,6 +39,10 @@ function handleLeft(
     gapPx: GAP_PX,
     editorColumnLeft: EDITOR_COLUMN_LEFT,
     baselineInset: BASELINE_INSET,
+    // Task 382: the ink boundary. These legs are about the X ANCHOR, so every
+    // frame here declares its own marker as the ink — the pre-382 geometry,
+    // where the anchor was the only bound.
+    inkLeft: frame.markerLeft,
   });
 }
 
@@ -56,6 +60,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
       baselineInset: BASELINE_INSET,
+      inkLeft: frame.markerLeft,
     }));
     // The old contentLeft anchor would have sat a full marker-band right of this.
     const oldSelectionLeft = computeHandleLeftEdge({
@@ -63,6 +68,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
       baselineInset: BASELINE_INSET,
+      inkLeft: frame.contentLeft,
     });
     expect(selection).toBeLessThan(oldSelectionLeft);
   });
@@ -83,6 +89,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
       baselineInset: BASELINE_INSET,
+      inkLeft: frame.contentLeft,
     }));
   });
 

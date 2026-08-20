@@ -1843,9 +1843,41 @@ spacing) — same gap everywhere, and because markers are MEASURED + the gap is
 em-based, a wide `(100)` marker or a font-size change can't break it. Floored
 at `editorColumnLeft − var(--margin-col-handle-inset)` for narrow viewports.
 
+**The LANE, and the one thing chrome may never do (task 382).** The anchor
+above says where a handle *wants* to be; it is not the only bound. Each handle
+resolves a lane, `[floor … cap]`:
+
+- the **floor** is the narrow-viewport clamp above — nothing goes off-screen;
+- the **cap** keeps the handle's box clear of the row's `inkLeft`, the left
+  edge of the leftmost DOCUMENT INK on that row (`block-frame.ts` resolves it
+  alongside `markerLeft`, so the anchor and the boundary cannot disagree).
+  Clearance is `gapPx × INK_CLEARANCE_FACTOR` — deliberately less than the full
+  anchor gap, or the same-row separation below could never move anything;
+- the **floor outranks the cap** when they conflict: an unreachable handle is
+  worse than a tight one.
+
+**Chrome never paints on the ink it labels.** Any pass that *moves* a handle
+(today: the same-row separation, which pushes inner handles inboard so two
+nested handles read as two controls) moves it **within the lane** — the cap
+outranks the spacing target, and sub-target spacing is the documented degraded
+state. Where the anchor is a heuristic rather than a measurement, the cap is
+allowed to be tighter than the anchor: a list `<li>` anchors at the band MIDDLE
+(the `::marker` pseudo has no rect), which assumes the glyph stays in the
+band's right half — true for a `•`, false for a wide `10.`, so `inkLeft` also
+takes the MEASURED marker-string width (`text-metrics.ts` `measureTextWidth`,
+never a hardcoded px) when that reads further left. A measurement may only
+TIGHTEN the heuristic, never loosen it.
+
+**The list marker band is `2em`** (`.tiptap ul/ol { padding-left }`) — not a
+typographic preference but the lane's width: at the 1.5em this shipped with,
+the everyday top-level list cannot hold both the separation target and a clear
+bullet, so the cap fired on the common case instead of being the rare-case net.
+Changing it is a layout decision for every list; the geometry it has to satisfy
+is `(band/2 − gapPx − handleWidth) + handleInset ≥ separation target`.
+
 **Marker-left fallback invariant (generalizable).** When a kind's marker
 chrome can't be measured (a transient render before the NodeView mounts, an
-unfaithful clone that stripped the span), `resolveMarkerLeft` must fall back to
+unfaithful clone that stripped the span), `resolveMarkerGeometry` must fall back to
 a position in the MARGIN — **left of content** (e.g. `contentLeft −
 trackWidthPx`, the column the marker occupies) — NEVER to `contentLeft` itself.
 A `contentLeft` fallback puts the handle at the text start, *right* of the
@@ -1882,8 +1914,9 @@ Two vertical policies, branched on `meta.chromeAnchor`:
 
 Adding a new TextObject kind requires no margin-chrome CSS and no placement
 constant — drop a registry entry, set `chromeAnchor` (and `isSubObject` /
-`parentKind` if it nests), teach `block-frame.ts` `resolveMarkerLeft` how to
-measure the new kind's marker if it has one, and the handle places itself on
+`parentKind` if it nests), teach `block-frame.ts` `resolveMarkerGeometry` how to
+measure the new kind's marker (and its ink boundary) if it has one, and the
+handle places itself on
 both axes. Tune the visual globally by editing the `--margin-handle-gap` /
 `--margin-track-width` / `--margin-col-handle-inset` CSS variables.
 
