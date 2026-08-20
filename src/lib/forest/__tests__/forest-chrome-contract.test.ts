@@ -60,8 +60,13 @@ describe("the tree takes the document's ink", () => {
     });
   }
 
-  it(".forest-tree resolves a token for its ink", () => {
-    expect(ruleBody(".forest-tree")).toMatch(/color:\s*var\(--ink-strong/);
+  it(".forest-tree takes the DOCUMENT's ink and face, pref-override included", () => {
+    const body = ruleBody(".forest-tree");
+    // The same pair `.tiptap` itself resolves — a tree is the paper's writing,
+    // so a retuned main-text font or colour must reach it. Spelled the same way
+    // in both rules or the two silently drift apart.
+    expect(body).toMatch(/color:\s*var\(--editor-text-color/);
+    expect(body).toMatch(/var\(--font-serif-override,\s*var\(--font-serif\)\)/);
   });
 
   it("math in a label takes the document's math ink", () => {
