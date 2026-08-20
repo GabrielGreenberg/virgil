@@ -61,6 +61,7 @@ import {
   type SchemaMountCheck,
 } from "@/lib/tiptap/schema-mount";
 import StarterKit from "@tiptap/starter-kit";
+import { CARD_BODY_BLOCK_ATOMS } from "@/lib/node-attr-sets";
 import Highlight from "@tiptap/extension-highlight";
 import {
   InlineMath,
@@ -313,15 +314,17 @@ export const BORROWED_INLINE_ATOM_NAMES = [
  * The block-atom *preview* node names this module registers (each in
  * `cardContext: true` mode — a compact static preview, not the main editor's
  * full chrome). The contract test asserts the MAIN editor registers every one.
+ *
+ * DECLARED in the import-free leaf [node-attr-sets.ts](../node-attr-sets.ts)
+ * and re-exported here (task 387). The vocabulary has a second obligation the
+ * schema cannot state: every PROJECTION of a card body — `richJsonToLatex`,
+ * which is what a `\footnote{}` body is serialized with, and
+ * `richJsonToPlainText` — must be TOTAL over it, and those walkers live on the
+ * TipTap-free `.tex` side and cannot import this module. A vocabulary the layer
+ * that needs it cannot reach is one it re-types, and the re-typed copy silently
+ * lost `forestBlock`.
  */
-export const BORROWED_BLOCK_ATOM_NAMES = [
-  "texBlock",
-  "forestBlock",
-  "figureBlock",
-  "figureCaption",
-  "graphicsBlock",
-  "latexComment",
-] as const;
+export const BORROWED_BLOCK_ATOM_NAMES = CARD_BODY_BLOCK_ATOMS;
 
 export interface BorrowedSchemaOptions {
   /**

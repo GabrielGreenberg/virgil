@@ -671,7 +671,47 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // across a save is therefore a property of the REPRESENTATION rather than
       // of a structured model staying faithful, which is the same reason
       // `graphicsBlock.command` below is emitted verbatim.
-      const source = (node.attrs?.source as string) ?? "";
+      // Trailing whitespace is TRIMMED before the anchor is appended, and that
+      // is the whole of the block's identity guarantee (task 387).
+      //
+      // Task 348's position law says the anchor is APPENDED to the end of the
+      // serialized body and DETACHED from the end of that body — which holds
+      // only while the two ends are the same place. For every other construct
+      // the emitter builds the body, so it is; here the body IS a
+      // user-editable attr, and the source pod's CodeMirror writes its buffer
+      // verbatim (both surfaces do). One press of Enter after `\end{forest}` —
+      // or a paste, since every editor line-copies with a trailing newline —
+      // put the anchor on its OWN line, where `NODE_UUID_ANCHOR` (`[ \t]*`
+      // only) cannot see it: the tree came back uuid-less and `assignUuids`
+      // minted a fresh one, while the stranded ` %!v:` line took the parser's
+      // standalone-anchor branch and became an EMPTY PARAGRAPH holding the old
+      // identity. Every card, marginalia marker and sidecar `parTitle` keyed on
+      // that uuid followed it onto a blank line, permanently (a fixed point
+      // after one cycle) — the task-342 class verbatim, with no edit to the
+      // document itself.
+      //
+      // The two doors DISAGREED about what may follow the closer, which is the
+      // sharp statement: the renderer's `END_RE` accepts `\s*$` (so the 384
+      // badge is silent for exactly this shape) and the anchor reader accepts
+      // `[ \t]*`. A source in that gap renders perfectly and de-anchors
+      // silently, and the multiset word measure the write gate uses cannot see
+      // it either.
+      //
+      // Trimming HERE rather than at the two pod write doors is deliberate:
+      // this is the ONE place the anchor is appended, so the append point and
+      // the detach point coincide by construction rather than by two doors
+      // remembering to agree. (The shipped siblings show both shapes: `texBlock`
+      // is immune because its anchor rides a `%!vtex:begin` SENTINEL line, and
+      // `graphicsBlock` — the only other `${bytes}${anchor}` emitter — is immune
+      // only because its edit door happens to `.trim()`.)
+      //
+      // Whitespace before the closer's own line-end is not content, and the arm
+      // appends `\n\n` regardless, so this is a whitespace normalization and a
+      // fixed point from cycle 1. Residual, stated: NON-whitespace after the
+      // closer (a trailing `% note`, a second pasted environment) still puts the
+      // anchor somewhere the reader will not find it — but that shape is already
+      // LOUD, because `END_RE` refuses it and the 384 badge names it.
+      const source = ((node.attrs?.source as string) ?? "").replace(/\s+$/, "");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuidAnchorSuffix(uuid);
       // The package this node's env NEEDS is declared from the NODE MODEL: the
@@ -813,7 +853,24 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       //     (`\end{itemize} %!v:child %!v:me`); that is unambiguous by
       //     construction, because the detach is greedy-prefixed and takes
       //     exactly ONE, innermost-first.
-      const tailSep = startsBlockBoundary(tailText.replace(/^[ \t]*/, ""))
+      //
+      // (c) The predicate is asked of the bytes the READER will see, so the
+      //     emitter's own bookkeeping sentinels are stripped first (task 387).
+      //     `carriedSource` (below) wraps a declared-carried span in a NUL-led
+      //     marker that `collapseBlankRuns` removes in a final whole-string
+      //     pass — so between the child's emit and that pass, a carried child's
+      //     first bytes are the SENTINEL. `BLOCK_BOUNDARY_COMMAND_RE` is
+      //     anchored `^\\(…|begin|…)`, so it answered false for a `forestBlock`
+      //     tail child whose true first bytes are `\begin{forest}`, and the
+      //     item gained a spurious blank line — a LaTeX `\par` inside the
+      //     `\item`, typesetting the tree as a fresh indented paragraph. A
+      //     nested `\begin{itemize}` in the identical slot was correct, which
+      //     is what makes this the 383 cluster's own regression rather than a
+      //     shared property: `forestBlock` is the one node whose real first
+      //     bytes ARE a boundary and are hidden behind the sentinel.
+      const tailSep = startsBlockBoundary(
+        withoutCarrySentinels(tailText).replace(/^[ \t]*/, ""),
+      )
         ? "\n"
         : "\n\n";
       const body = tailText ? `${headText}${tailSep}${tailText}` : headText;
@@ -1586,6 +1643,22 @@ const CARRIED_CLOSE = "</vcarry>\u241f\u0000";
 
 function carriedSource(bytes: string): string {
   return `${CARRIED_OPEN}${bytes}${CARRIED_CLOSE}`;
+}
+
+/**
+ * The emitted bytes WITHOUT this module's own bookkeeping markers (task 387).
+ *
+ * A sentinel the serializer adds for its own use must be invisible to every
+ * question the serializer then asks ABOUT its own output — otherwise a
+ * predicate reads the marker instead of the construct, which is exactly how a
+ * `forestBlock` tail child of a `\item` came to answer "not a block boundary"
+ * and gain a spurious `\par`. Any future predicate over emitted child text
+ * asks it through here; the census in
+ * [card-body-block-atom-projection.test.ts] pins that there is only one such
+ * site today.
+ */
+function withoutCarrySentinels(text: string): string {
+  return text.split(CARRIED_OPEN).join("").split(CARRIED_CLOSE).join("");
 }
 
 const CARRIED_SPAN_RE = new RegExp(
