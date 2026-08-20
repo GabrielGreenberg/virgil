@@ -179,12 +179,17 @@ export default function SourcePodNodeView({
 
   // ONE derivation per (kind, source) — the tree and its badge are two halves
   // of a single verdict and must never come from two parses (pod-config.tsx).
+  // Bound to a local first: React Compiler infers the dep as `config` when the
+  // memo reads a PROPERTY of it, refuses to preserve the memoization, and skips
+  // optimizing the whole component — so the local is what keeps the key on the
+  // stable function rather than on the config object.
+  const derive = config.derive;
   const derived = useMemo(
     // Skipped in card context: that branch returns a static `<pre>` of the
     // source and never reads the derivation, so parsing for it would be work
     // on every collapsed card of every panel (the card-tier population).
-    () => (!cardContext && config.derive ? config.derive(source) : null),
-    [cardContext, config.derive, source],
+    () => (!cardContext && derive ? derive(source) : null),
+    [cardContext, derive, source],
   );
   const preview = derived?.preview ?? null;
   const banner = derived?.banner ?? null;

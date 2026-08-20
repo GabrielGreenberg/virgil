@@ -35,6 +35,7 @@ vi.mock("@/lib/storage", () => {
   );
 });
 
+import { useEffect } from "react";
 import { render, cleanup, act } from "@testing-library/react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import Document from "@tiptap/extension-document";
@@ -53,7 +54,10 @@ import { parseForestSource, type ForestRenderNode } from "@/lib/forest/grammar";
 const TREE = "\\begin{forest}\n[S [NP [Det [the]] [N [dog]]] [VP [V [barks]]]]\n\\end{forest}";
 const REFUSED = "\\begin{forest}\nfor tree={s sep=2cm}\n[S [NP]]\n\\end{forest}";
 
-let editor: Editor | null = null;
+/** The mounted editor, handed out through an EFFECT rather than assigned during
+ *  render — reassigning a module binding in a render body is a side effect in
+ *  render, which the React Compiler lint correctly refuses. */
+const held: { editor: Editor | null } = { editor: null };
 
 function Harness({ source }: { source: string }) {
   const ed = useEditor({
@@ -74,7 +78,9 @@ function Harness({ source }: { source: string }) {
       ],
     },
   });
-  editor = ed;
+  useEffect(() => {
+    held.editor = ed ?? null;
+  }, [ed]);
   return ed ? <EditorContent editor={ed} /> : null;
 }
 
@@ -90,7 +96,7 @@ async function mount(source: string) {
 /** Type ONE character into the trailing paragraph — a plain keystroke with no
  *  structural consequence, which is the condition the law is about. */
 function typeElsewhere(chars: number) {
-  const ed = editor!;
+  const ed = held.editor!;
   const at = ed.state.doc.content.size - 2;
   for (let i = 0; i < chars; i++) {
     ed.commands.insertContentAt(at + i, "x");
@@ -103,7 +109,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  editor = null;
+  held.editor = null;
 });
 
 describe("a plain keystroke elsewhere costs the tree nothing", () => {
@@ -249,7 +255,7 @@ describe("editing the tree's own source re-derives it — once", () => {
     resetForestRenderStats();
 
     await act(async () => {
-      editor!.commands.command(({ tr, state, dispatch }) => {
+      held.editor!.commands.command(({ tr, state, dispatch }) => {
         let pos = -1;
         state.doc.forEach((node, p) => {
           if (node.type.name === "forestBlock") pos = p;
@@ -277,7 +283,7 @@ describe("editing the tree's own source re-derives it — once", () => {
     expect(container.querySelector(".forest-tree")).not.toBeNull();
 
     await act(async () => {
-      editor!.commands.command(({ tr, state, dispatch }) => {
+      held.editor!.commands.command(({ tr, state, dispatch }) => {
         let pos = -1;
         state.doc.forEach((node, p) => {
           if (node.type.name === "forestBlock") pos = p;

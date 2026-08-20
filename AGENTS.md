@@ -3443,7 +3443,12 @@ Seven rules it earned:
   `deriveForestPod` answers both, and both pod surfaces read it — the same
   "one implementation, per surface" rule the pod chrome itself follows, for the
   same reason: a float that badged differently from the docked block would make
-  a lift change the diagnosis.
+  a lift change the diagnosis. The SEAM is generic and the BADGE is not, which
+  is the line "deep ≠ broadest blast radius" draws: `SourcePodConfig.derive`
+  returns `{ preview, banner }` and the pod styles neither, so the next kind
+  whose bytes can be drawn inherits the chrome, the toggle, the print rules and
+  the memo — while `.forest-refusal-badge` stays named after its one wearer
+  until there is a second.
 - **The refusal is SPECIFIC or it is nothing.** A closed `ForestRefusalKind`
   union, one sentence per kind composed in ONE function (`describeForestRefusal`)
   that the badge and the suite both read, and a byte offset. The suite has a leg
