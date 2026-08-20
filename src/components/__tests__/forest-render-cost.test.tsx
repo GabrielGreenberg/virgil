@@ -48,7 +48,7 @@ import {
 } from "@/lib/forest/stats";
 import SourcePodNodeView from "@/components/SourcePodNodeView";
 import { FOREST_POD_CONFIG } from "@/lib/forest/pod-config";
-import { ForestTreeView } from "@/components/ForestTreeView";
+import { ForestTreeView, borderBoxFromTextWidth } from "@/components/ForestTreeView";
 import { parseForestSource, type ForestRenderNode } from "@/lib/forest/grammar";
 
 const TREE = "\\begin{forest}\n[S [NP [Det [the]] [N [dog]]] [VP [V [barks]]]]\n\\end{forest}";
@@ -246,6 +246,111 @@ describe("the equality bail", () => {
     expect(stats.parse).toBe(1);
     expect(stats.measure).toBe(1);
     expect(stats.layout).toBe(1);
+  });
+});
+
+// ── The two measurement rungs must be interchangeable ───────────────────────
+//
+// The DOM rung reports the BORDER BOX; the canvas rung reports TEXT. The engine
+// treats whichever it is handed AS the painted box, so a canvas-measured label
+// that omitted `.forest-node`'s own horizontal padding would be drawn off-centre
+// from where it was placed — and the canvas rung is exactly the one a hidden
+// first render takes, so the two failures compound. This leg is a parity claim,
+// which no test of either rung alone can see.
+describe("the canvas rung reports the same box the DOM rung would", () => {
+  const style = {
+    paddingLeft: "3px",
+    paddingRight: "3px",
+    borderLeftWidth: "0px",
+    borderRightWidth: "0px",
+  };
+
+  it("adds the label's own padding, matching `.forest-node { padding: 0 3px }`", () => {
+    expect(borderBoxFromTextWidth(40, style)).toBe(46);
+  });
+
+  it("adds borders too, so a future framed label stays interchangeable", () => {
+    expect(
+      borderBoxFromTextWidth(40, {
+        ...style,
+        borderLeftWidth: "1px",
+        borderRightWidth: "1px",
+      }),
+    ).toBe(48);
+  });
+
+  it("reads an unparseable style as zero rather than NaN", () => {
+    expect(
+      borderBoxFromTextWidth(40, {
+        paddingLeft: "",
+        paddingRight: "auto",
+        borderLeftWidth: "medium",
+        borderRightWidth: "",
+      }),
+    ).toBe(40);
+  });
+});
+
+// ── The hidden first render ─────────────────────────────────────────────────
+//
+// A `forestBlock` inside a FOLDED section stays MOUNTED — `.section-folded` is
+// applied as a ProseMirror node decoration, not by unmounting — so its layout
+// effect runs while it has no box at all. Every rect reads 0×0, every label
+// falls to the estimate rung, and NOTHING in the effect's dependency list
+// changes when the section is unfolded: a decoration is added and removed
+// without touching `source`. So the estimates would stand for the life of the
+// document, with edges converging beside their labels and a roof spanning the
+// wrong width — silently, on a starting condition that is persisted per doc and
+// restored on open.
+//
+// jsdom reports 0×0 for everything, which makes it exactly the right harness
+// for the hidden case and useless for the visible one — so the leg drives the
+// SIGNAL (a stub ResizeObserver delivering the 0 → non-zero transition) rather
+// than real geometry, and asserts what the component does with it.
+describe("a tree measured without a box re-measures when it gets one", () => {
+  it("re-runs the measure on the host's 0 → non-zero transition, and only then", async () => {
+    const observed: Element[] = [];
+    let deliver: ((entries: { target: Element; contentRect: { width: number } }[]) => void) | null =
+      null;
+    class StubRO {
+      constructor(cb: (entries: { target: Element; contentRect: { width: number } }[]) => void) {
+        deliver = cb;
+      }
+      observe(el: Element) {
+        observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    const prev = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = StubRO as unknown;
+    try {
+      const { container } = await mount(TREE);
+      const host = container.querySelector(".forest-tree")!;
+      expect(observed).toContain(host);
+
+      resetForestRenderStats();
+
+      // A fire while still hidden (a zero box) must cost nothing — otherwise a
+      // display-flip storm would re-measure once per entry.
+      await act(async () => {
+        deliver!([{ target: host, contentRect: { width: 0 } }]);
+        await Promise.resolve();
+      });
+      expect(forestRenderStats().measure).toBe(0);
+
+      // …and the transition re-measures exactly once.
+      await act(async () => {
+        deliver!([{ target: host, contentRect: { width: 240 } }]);
+        await Promise.resolve();
+      });
+      expect(forestRenderStats().measure).toBe(1);
+      expect(forestRenderStats().layout).toBe(1);
+      // The derivation is untouched — this is a re-MEASURE, not a re-parse.
+      expect(forestRenderStats().parse).toBe(0);
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = prev;
+    }
   });
 });
 

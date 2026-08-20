@@ -3501,6 +3501,23 @@ Seven rules it earned:
   `MAX_FOREST_NODES` (512) are refusals instead, far past any real syntax tree
   and far short of anything that hurts. A bound whose failure mode is a badge is
   a bound worth having; one whose failure mode is a crash is a latent trap.
+- **A view measured with NO BOX must be told when it gets one.** A `forestBlock`
+  inside a folded section stays MOUNTED — `.section-folded` is a node
+  DECORATION, not an unmount — so its first layout runs with every rect at 0×0
+  and is placed from canvas estimates, and NOTHING in the effect's dependency
+  list changes when the section is unfolded. Fold state is persisted per doc and
+  restored on open, so that is an ordinary starting condition rather than a
+  race, and the failure is permanent and silent: edges converging beside their
+  labels, a roof spanning the wrong width. Un-hiding is not an event a component
+  can see, so the 0 → non-zero BOX is the signal — ONE app-wide
+  `ResizeObserver` ([measure-watch.ts](src/lib/forest/measure-watch.ts), the
+  `card-near-zone` shape), whose callback is a width compare plus a
+  `degraded()` read and which bumps nothing for a tree that measured cleanly.
+  The companion half is that the two measurement rungs must be
+  INTERCHANGEABLE: the DOM reports a border box and the canvas reports text, so
+  the fallback adds the label's own padding back or a canvas-measured tree draws
+  every label off-centre from where it was placed — and the canvas rung is
+  exactly the one a hidden first render takes, so the two compound.
 - **Keystroke sanctity for a derived view is a question about the CALLBACK, not
   the subscription.** This NodeView never sees the editor, which proves nothing
   on its own: a React NodeView is re-rendered by its host for reasons it does not

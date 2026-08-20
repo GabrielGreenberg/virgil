@@ -32,6 +32,7 @@ import {
   type ForestNodeSize,
 } from "@/lib/forest/layout";
 import { noteForestWork } from "@/lib/forest/stats";
+import { watchForestHost } from "@/lib/forest/measure-watch";
 
 /**
  * The degraded size for a label nothing could measure — no attached DOM box and
@@ -44,11 +45,53 @@ import { noteForestWork } from "@/lib/forest/stats";
 const FALLBACK_CHAR_PX = 7.2;
 const FALLBACK_LINE_PX = 18;
 
-function measureLabel(el: HTMLElement | null, node: ForestRenderNode): ForestNodeSize {
+/**
+ * A measured label box, plus whether the DOM could actually answer.
+ *
+ * The flag is not diagnostic decoration: a `degraded` pass is one whose numbers
+ * came from estimates, and it is the thing `measure-watch` waits to redo. Every
+ * consumer downstream treats the reported width as the PAINTED box (`x = cx −
+ * w/2`, the edge endpoints, the roof span), so an estimate that never gets
+ * corrected is a permanently mis-drawn tree.
+ */
+interface MeasuredLabel extends ForestNodeSize {
+  degraded: boolean;
+}
+
+/**
+ * Widen a TEXT width into the BORDER-BOX width the DOM rung would have reported
+ * for the same element.
+ *
+ * The two measurement rungs have to be interchangeable, and the reason is not
+ * tidiness: the engine treats the width it is handed AS the painted box (`x =
+ * cx − w/2`, and every edge endpoint and roof span reads back from that). A
+ * canvas-measured label that omitted its own padding would be drawn off-centre
+ * from where it was placed, siblings' real gaps would shrink below the
+ * configured one, and the reported layout width would fall short of the painted
+ * extent. Exported so the parity can be asserted directly — it is a claim about
+ * two rungs agreeing, which no test of either rung alone can see.
+ */
+export function borderBoxFromTextWidth(
+  textWidth: number,
+  cs: Pick<
+    CSSStyleDeclaration,
+    "paddingLeft" | "paddingRight" | "borderLeftWidth" | "borderRightWidth"
+  >,
+): number {
+  return (
+    textWidth +
+    (parseFloat(cs.paddingLeft) || 0) +
+    (parseFloat(cs.paddingRight) || 0) +
+    (parseFloat(cs.borderLeftWidth) || 0) +
+    (parseFloat(cs.borderRightWidth) || 0)
+  );
+}
+
+function measureLabel(el: HTMLElement | null, node: ForestRenderNode): MeasuredLabel {
   if (el) {
     const rect = el.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
-      return { width: rect.width, height: rect.height };
+      return { width: rect.width, height: rect.height, degraded: false };
     }
     // No box (detached / display:none) — ask the canvas for the width of the
     // flat label, which is exact for a text-only label and an approximation
@@ -61,13 +104,14 @@ function measureLabel(el: HTMLElement | null, node: ForestRenderNode): ForestNod
         const line = Number.isFinite(fontSizePx)
           ? resolveLineHeightPx(cs, fontSizePx)
           : FALLBACK_LINE_PX;
-        return { width: w, height: line };
+        return { width: borderBoxFromTextWidth(w, cs), height: line, degraded: true };
       }
     }
   }
   return {
     width: Math.max(FALLBACK_CHAR_PX, node.labelText.length * FALLBACK_CHAR_PX),
     height: FALLBACK_LINE_PX,
+    degraded: true,
   };
 }
 
@@ -86,12 +130,29 @@ function ForestTreeViewImpl({ tree }: { tree: ForestRenderNode }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const labelRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [layout, setLayout] = useState<ForestLayout | null>(null);
-  // A font-load wave changes every measured width; `onFontReady` clears the
-  // shared metric caches and pings here, exactly as the grab handle and the
-  // marginalia registry are pinged. One counter bump, off any hot path.
-  const [fontWave, setFontWave] = useState(0);
+  // The re-measure ticket. TWO sources bump it and both are about the world
+  // changing under an already-correct derivation: a font-load wave (which
+  // changes every width — `onFontReady` clears the shared metric caches and
+  // pings here, exactly as the grab handle and the marginalia registry are
+  // pinged), and a host that gets a box after being measured without one.
+  const [measureWave, setMeasureWave] = useState(0);
+  // Did the last pass read real boxes? See `MeasuredLabel.degraded`.
+  const degradedRef = useRef(false);
 
-  useEffect(() => onFontReady(() => setFontWave((n) => n + 1)), []);
+  useEffect(() => onFontReady(() => setMeasureWave((n) => n + 1)), []);
+
+  // A folded section / focus-hidden band / hidden keep-alive pane leaves this
+  // NodeView MOUNTED with no box, so the first layout is placed from estimates
+  // and NOTHING in the effect deps below ever changes when it is un-hidden.
+  // The box going 0 → non-zero is the signal; see `measure-watch.ts`.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    return watchForestHost(host, {
+      degraded: () => degradedRef.current,
+      remeasure: () => setMeasureWave((n) => n + 1),
+    });
+  }, []);
 
   // Math FIRST — the boxes are measured below and a label whose KaTeX has not
   // painted yet measures as empty. Effects run in declaration order, which is
@@ -107,8 +168,9 @@ function ForestTreeViewImpl({ tree }: { tree: ForestRenderNode }) {
   useLayoutEffect(() => {
     noteForestWork("measure");
     const sizes = nodes.map((node, i) => measureLabel(labelRefs.current[i], node));
+    degradedRef.current = sizes.some((s) => s.degraded);
     setLayout(computeForestLayout(tree, sizes));
-  }, [tree, nodes, fontWave]);
+  }, [tree, nodes, measureWave]);
 
   const placed = layout?.nodes;
 
