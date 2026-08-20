@@ -713,12 +713,19 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       }
 
       // Common text macros
+      // Suppressed inside a CODE SPAN (task 380 M3), for the reason the accent
+      // and special-letter rungs just below already were: the EMIT side reads
+      // the same fact (`inlineTextBytes` suppresses typography under a `code`
+      // wrapper), so converting here with no way back wrote a raw U+2026 into
+      // the `.tex` — `\texttt{a\ldots b}` came back `\texttt{a… b}` on the
+      // first save. Task 377 M4 closed exactly this for `--` and the accents
+      // and left the text macro out; it is the same fork, one member over.
       // The vocabulary is `TEXT_MACRO_TABLE`'s, not a local alternation: this
       // was hand-written here AND in the card/footnote fork (task 341's twin
       // rule), and its ellipsis half was a second spelling of `LITERAL_TABLE`'s
       // own `latexForms` — the same shape task 255 retired for the marker
       // commands. Byte-identical to the `\b`-terminated alternation it replaces.
-      const textMacro = matchTextMacroAt(text, i);
+      const textMacro = inCode ? null : matchTextMacroAt(text, i);
       if (textMacro) {
         buffer += textMacro.text;
         i = textMacro.end;
