@@ -290,6 +290,171 @@ describe("a span is promoted only where the edit WROTE it", () => {
   });
 });
 
+// ── …and it comes OFF what the edit UN-wrote (task 390) ─────────────────────
+
+describe("deleting what made a run LaTeX demotes it", () => {
+  /** Backspace over one character at `pos` — the gesture in the report. */
+  function backspaceAt(ed: Editor, pos: number) {
+    ed.commands.deleteRange({ from: pos, to: pos + 1 });
+  }
+
+  it("THE DEFECT: deleting the `\\` returns the word to prose", () => {
+    // Gabriel's repro. Pre-390 the carrier only ever ADDED, and its block gate
+    // skipped any block with no `\` and no `{` left in it — so the very block a
+    // deletion had just emptied of both leads was the one block never looked
+    // at. The word stayed grey for the rest of the session.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\Overall");
+    expect(markedRuns(ed)).toEqual(["\\Overall"]);
+    backspaceAt(ed, 1);
+    expect(markedRuns(ed)).toEqual([]);
+    expect(saved(ed)).toBe("Overall");
+  });
+
+  it("THE BYTE HAZARD: a stranded `%` emits ESCAPED, not live", () => {
+    // The severity, and the reason this is not a styling bug: the carrier's
+    // serializer contract is EMIT RAW. A `%` left under a stale mark reaches
+    // the `.tex` LIVE, where it comments out the rest of that source line — and
+    // post-347 the next parse reads everything after it as a comment tail.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "x \\% y");
+    expect(saved(ed)).toBe("x \\% y");
+    backspaceAt(ed, 3);
+    expect(markedRuns(ed)).toEqual([]);
+    expect(saved(ed)).toBe("x \\% y");
+    // …and it is a FIXED POINT: what the demotion writes parses back to the
+    // same document and saves to the same bytes.
+    const once = saved(ed);
+    const twice = bodyOf(
+      serializeToLatex(
+        parseLatex(
+          `\\documentclass{article}\n\\begin{document}\n${once}\n\\end{document}\n`,
+        ),
+      ),
+    );
+    expect(twice).toBe(once);
+  });
+
+  it("the GROUP twin: deleting the `{` demotes the orphaned `}` too", () => {
+    // The case the new text alone cannot answer. The brace six characters away
+    // is not touched by the deletion and nothing in `\bf hi}` associates the
+    // two — only the OLD scan does, where both braces carry the group's own
+    // extent. See `brokenConstructs`.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "{\\bf hi}");
+    expect(markedRuns(ed)).toEqual(["{\\bf", "}"]);
+    backspaceAt(ed, 1);
+    expect(markedRuns(ed)).toEqual(["\\bf"]);
+    expect(saved(ed)).toBe("\\bf hi\\}");
+  });
+
+  it("demotes only the PART the scanner no longer claims", () => {
+    // `\emph{\bf hi}` minus its lead is `emph` + a group that still holds
+    // LaTeX. The braces and the `\bf` keep the carrier; `emph` and the group's
+    // prose lose it — which is exactly what parsing `emph{\bf hi}` produces, so
+    // the type-time and parse-time answers still agree.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\emph{\\bf hi}");
+    backspaceAt(ed, 1);
+    expect(markedRuns(ed)).toEqual(["{\\bf", "}"]);
+    expect(saved(ed)).toBe("emph{\\bf hi}");
+  });
+
+  it("a selection that removes the lead AND more demotes the remainder", () => {
+    // The surgical answer ("backspace removed a `\`") misses this, forward
+    // delete, and cut. The rule is about what the edit left behind.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "a \\emph{hi} b");
+    ed.commands.deleteRange({ from: 3, to: 6 }); // "\\em"
+    expect(markedRuns(ed)).toEqual([]);
+    expect(saved(ed)).toBe("a ph\\{hi\\} b");
+  });
+
+  it("does NOT flicker while a command is still being typed", () => {
+    // Every keystroke inside an in-progress command re-derives both directions;
+    // the run must stay marked throughout, not blink off and back on.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\emh");
+    expect(markedRuns(ed)).toEqual(["\\emh"]);
+    typeAt(ed, 4, "p");
+    expect(markedRuns(ed)).toEqual(["\\emph"]);
+    typeAt(ed, 6, "{hi}");
+    expect(markedRuns(ed)).toEqual(["\\emph{hi}"]);
+  });
+});
+
+// ── demotion is scoped by Rule 1 exactly as promotion is ─────────────────────
+
+describe("only the run the edit TOUCHED demotes", () => {
+  /** A block holding BOTH a source-minted bare group — whose braces the parse
+   *  rung carries (task 349 M6) and this scanner deliberately declines — and an
+   *  unmodeled command the parse rung also carries. */
+  function loadedMixedBlock() {
+    return new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "See {this} and \\foobar{that} ok.\n\\end{document}\n",
+      ) as JSONContent,
+    });
+  }
+
+  it("breaking one run leaves the source group's braces alone", () => {
+    // The leg with teeth. A block-wide demotion would strip the braces of
+    // `{this}` — a construct the user never touched — and the next save would
+    // write `\{this\}`, printing literal braces in the PDF. That is this
+    // defect's own INVERSE, arriving as the fix.
+    editor = loadedMixedBlock();
+    const ed = editor;
+    let at = -1;
+    ed.state.doc.descendants((node, p) => {
+      if (node.isText && node.text?.startsWith("\\foobar")) at = p;
+      return true;
+    });
+    expect(at).toBeGreaterThan(0);
+    ed.commands.deleteRange({ from: at, to: at + 1 });
+    expect(markedRuns(ed)).toEqual(["{", "}"]);
+    expect(saved(ed)).toBe("See {this} and foobar\\{that\\} ok.");
+  });
+
+  it("an unrelated edit in the same block demotes nothing", () => {
+    editor = loadedMixedBlock();
+    const ed = editor;
+    typeAt(ed, ed.state.doc.content.size - 1, "!");
+    expect(markedRuns(ed)).toEqual(["{", "}", "\\foobar{that}"]);
+    expect(saved(ed)).toBe("See {this} and \\foobar{that} ok.!");
+  });
+
+  it("an edit in a DIFFERENT block demotes nothing", () => {
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "Alpha.\n\n\\foobar{that}\n\\end{document}\n",
+      ) as JSONContent,
+    });
+    const ed = editor;
+    typeAt(ed, 2, "x");
+    expect(saved(ed)).toContain("\\foobar{that}");
+  });
+});
+
+// ── the card-body surface inherits the demotion too ──────────────────────────
+
+describe("the card/footnote surface demotes as well", () => {
+  it("a stranded `%` in a card body emits escaped", () => {
+    // The plugin is registered on the MARK, so the fork inherits the fix — but
+    // the fork has its own escape rung and the two have drifted before (task
+    // 341), so it is pinned rather than assumed.
+    const ed = mount("<p></p>", [StarterKit, ...buildBorrowedAtomSchema()]);
+    typeAt(ed, 1, "x \\% y");
+    expect(richJsonToLatex(ed.getJSON() as JSONContent)).toBe("x \\% y");
+    ed.commands.deleteRange({ from: 3, to: 4 });
+    expect(markedRuns(ed)).toEqual([]);
+    expect(richJsonToLatex(ed.getJSON() as JSONContent)).toBe("x \\% y");
+  });
+});
+
 // ── the decoration and the mark are the same state, not two ──────────────────
 
 describe("the grey is painted once", () => {
@@ -379,11 +544,55 @@ describe("keystroke sanctity", () => {
     typeAt(ed, 1, "abc");
     expect(scanCalls.n).toBe(0);
   });
+
+  it("a demotion with no lead left costs NO scan at all", () => {
+    // The gate's third disjunct (`the block still CARRIES the mark`) opens the
+    // block, and the scan is then skipped because it is PROVABLY empty with no
+    // `\\` and no `{` to find. Demotion is free in the commonest case there is.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\Overall");
+    scanCalls.n = 0;
+    ed.commands.deleteRange({ from: 1, to: 2 });
+    expect(scanCalls.n).toBe(0);
+    expect(markedRuns(ed)).toEqual([]);
+  });
+
+  it("recovering a BROKEN construct costs one extra scan, and only then", () => {
+    // The orphaned `}` is the one shape that needs the prior text, so it is the
+    // one shape that pays for it: one scan of the new block, one of the old.
+    const group = mount("<p></p>");
+    typeAt(group, 1, "{\\bf hi}");
+    scanCalls.n = 0;
+    group.commands.deleteRange({ from: 1, to: 2 });
+    expect(scanCalls.n).toBe(2);
+    group.destroy();
+
+    // A keystroke beside a settled command has no stale run, so it never asks.
+    const settled = mount("<p></p>");
+    typeAt(settled, 1, "\\emph{hi} tail");
+    scanCalls.n = 0;
+    typeAt(settled, 15, "x");
+    expect(scanCalls.n).toBe(1);
+  });
 });
 
 // ── undo / redo restore marks; they do not re-derive them ────────────────────
 
 describe("history is not a writer", () => {
+  it("undoing a `\\`-deletion restores the MARK, it does not re-derive it", () => {
+    // The demotion rides in the same history event as the deletion that caused
+    // it, so one undo puts both back. Nothing here may re-scan restored
+    // content — `isHistoryTransaction` is the gate, and it covers both
+    // directions now.
+    const ed = mount("<p></p>");
+    typeAt(ed, 1, "\\Overall");
+    ed.commands.deleteRange({ from: 1, to: 2 });
+    expect(markedRuns(ed)).toEqual([]);
+    ed.commands.undo();
+    expect(markedRuns(ed)).toEqual(["\\Overall"]);
+    expect(saved(ed)).toBe("\\Overall");
+  });
+
   it("undoing a deletion does not promote what it restores", () => {
     editor = new Editor({
       extensions: [StarterKit, LatexCommandMark],

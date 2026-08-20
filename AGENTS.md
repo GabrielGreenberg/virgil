@@ -2376,14 +2376,18 @@ and a run mixing a literal brace with a typed command kept its braces raw, so
 
 Six rules it earned:
 
-- **Promotion needs a WRITER, and that is a PROVENANCE rule before it is a cost
-  rule.** The carrier marks only a construct the transaction's own changed ranges
-  TOUCH. Merely existing is not evidence: a literal backslash that arrived from a
-  source `\textbackslash{}` is byte-identical to a typed command, so promoting it
-  on an unrelated keystroke elsewhere in the paragraph would re-create the very
-  corruption this closes. That the correctness rule and the keystroke-sanctity
-  rule turn out to be the SAME rule — *look only at what the edit did* — is what
-  makes the cheap implementation the correct one rather than a compromise.
+- **Promotion needs a WRITER — and so does DEMOTION** (the symmetric half, task
+  390, below). The carrier marks only a construct the transaction's own changed
+  ranges TOUCH, and un-marks only a run they touched that the scanner no longer
+  claims. Merely existing is not evidence in either direction: a literal
+  backslash that arrived from a source `\textbackslash{}` is byte-identical to a
+  typed command, so promoting it on an unrelated keystroke elsewhere in the
+  paragraph would re-create the very corruption this closes — and the parse rung
+  carries constructs this scanner deliberately declines, so demoting one on an
+  unrelated keystroke is that corruption's mirror image. That the correctness
+  rule and the keystroke-sanctity rule turn out to be the SAME rule — *look only
+  at what the edit did* — is what makes the cheap implementation the correct one
+  rather than a compromise.
 - **A document REPLACEMENT is not a writer.** `setContent` (the load, the
   code-pane bridge's re-parse) replaces `0…docSize` in one step and its content
   already carries whatever marks the parse rung decided; scanning it would
@@ -2461,6 +2465,90 @@ fixed points. Inside a `\texttt{}` span a control symbol splits the wrapper
 thereafter), which is the price of carrying bytes the fork used to destroy.
 **Owed, not claimed:** a preview eyeball of the type-time feel — typing
 `\emph{hi}` in prose, saving, reloading.
+
+##### The other direction: deleting what made a run LaTeX is a WRITER too
+
+Same carrier, and the case where the derivation was true on the way UP and a
+one-way ratchet on the way down (task 390). 360 states that the mark IS derived
+from the text; its fourth rule then declared the plugin **ADDITIVE only**, on the
+sound ground that the parse rung carries constructs this scanner deliberately
+declines (the braces of a source `{a, b}` group, 349 M6), so a re-derivation that
+also removed would strip them on the next keystroke in that paragraph. That
+ground argues for SCOPING the removal, not for refusing it — and refusing it left
+two things wrong at once:
+
+- **The mark could never come off.** Type `\` in front of a word, delete the `\`,
+  and the word stays grey **forever** (Gabriel's screenshot: `Overall`,
+  `Scenario`, rendered as raw-LaTeX runs with no backslash in sight). No
+  affordance short of deleting and retyping the word; for a bare word, only a
+  full reload's re-parse healed it. And the block gate compounded it — the scan
+  ran only where the text still held a `\` or a `{`, so the one block a deletion
+  had just emptied of both leads was the one block a demotion-aware scan would
+  never have looked at.
+- **…and a stale carrier is a BYTE hazard, not cosmetics.** The mark's serializer
+  contract is EMIT RAW. Type `x \% y`, delete the `\`, and the `%` sits under the
+  mark and reaches the `.tex` **live**, commenting out the rest of that source
+  line — which post-347 the next parse reads back as a comment tail. Same story
+  for `&`, `_`, `#`. The gap silently flipped the emission semantics of whatever
+  the user left behind.
+
+> **One scanner, two texts, the same question.** Promotion asks *did this edit
+> WRITE this construct?* of the NEW text. Demotion asks it of the OLD text —
+> because a construct the user has just dismantled leaves nothing in the new text
+> to gate on. The mark then comes off exactly the touched runs the scanner no
+> longer claims, and off nothing else.
+
+Five rules it earned:
+
+- **The old text is not a convenience, it is the only thing that can answer.**
+  Deleting the `{` of `{\bf hi}` orphans its `}` six characters away: the
+  deletion's own changed range is ZERO-WIDTH at the start of the block, `\bf hi}`
+  says nothing about the pair, and the old scan says everything — both braces
+  carry the group's own extent, which is the field `RawLatexSpan` already had for
+  promotion's sake. Gating on the changed ranges alone closes the reported bug
+  and leaves its group twin live, which is how a surgical "backspace removed a
+  `\`" fix would have shipped.
+- **Adjacency has to count, and it is the SAME predicate promotion uses.** A
+  deletion's changed range is zero-width in the new document, so a
+  strict-overlap test makes the commonest demotion there is invisible. One
+  `touches`, both directions, so the two halves cannot come to disagree about
+  what "the edit reached this" means.
+- **Protect broadly, demote narrowly.** Every span the new scan produces
+  protects, whether or not this edit touched it and whether or not promotion
+  declined it for an OPAQUE crossing. A missed demotion is the status quo; a
+  wrong one changes the bytes.
+- **The block gate gains its third disjunct, and the demotion it opens is
+  FREE.** Scan the block when it still CARRIES the mark even with no lead left —
+  and then skip the scan, because with no `\` and no `{` it is provably empty.
+  The marked-run walk costs nothing extra either: it rides the walk that already
+  had to happen to build the text. Measured: a stranded bare word costs ZERO
+  scans, a keystroke beside a settled command still costs ONE, and only the
+  broken-construct recovery costs a second — of that one block's prior text.
+- **The result is parse-consistent, so nothing oscillates.** `\emph{\bf hi}`
+  minus its lead demotes `emph` and the group's prose and keeps the braces and
+  the `\bf` — which is exactly what parsing `emph{\bf hi}` produces. Where the
+  two answers differ they differ for the reason 349 M6 already records (a typed
+  group is not a source group), and both sides are fixed points.
+
+**Residuals, stated.** A PASTE is a writer in both directions, symmetrically with
+360's own rule — so pasting a run whose marks came from a source-minted bare
+group demotes its braces. And a source group whose LaTeX the parse itself
+normalized to a glyph (`{\'e}` → `{é}`) reads to this scanner as a prose group,
+so an edit that TOUCHES its braces demotes them. Both are the standing
+typed-vs-source group asymmetry, touch-scoped, and both are the mirror of the
+residual promotion already carries (an edit INSIDE a literal backslash promotes
+it).
+
+CI: the same [typed-raw-latex-carrier.test.ts](src/lib/tiptap/__tests__/typed-raw-latex-carrier.test.ts),
+in its own shape — a REAL editor, typed character by character, then the real
+deletion. The leg with teeth is the SCOPE leg, and it needs a block holding BOTH
+a source-minted bare group and an unmodeled command, because the divergence is
+unrepresentable with either alone. Measured by neutering each half in turn: the
+pre-390 promotion-only plugin takes 10 legs, the block gate 5, the touch scoping
+2, the old-text recovery 2, and narrowing the protective cover to touched spans 3.
+**Owed, not claimed:** the preview eyeball — type `\Overall`, backspace the `\`
+(the word returns to prose immediately); type `\%`, backspace the `\`, save and
+reload (the `%` is still prose and the line is intact).
 
 #### The dispatcher half: the LAST layer that still read "unterminated" as "yours"
 
