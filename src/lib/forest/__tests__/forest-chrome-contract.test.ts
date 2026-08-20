@@ -115,6 +115,15 @@ describe("the corner does not swallow clicks the pod used to receive", () => {
     expect(ruleBody(".source-pod-mode-toggle")).toMatch(/pointer-events:\s*auto/);
   });
 
+  it("the SCROLL box is inside the frame, so the corner does not scroll away", () => {
+    // An overflow container positions its absolute descendants against its
+    // CONTENT. With the scroll on the frame itself, the mode toggle slid out of
+    // reach on exactly the trees whose source you most want to open.
+    expect(ruleBody(".source-pod-derived")).not.toMatch(/overflow/);
+    expect(ruleBody(".source-pod-derived-scroll")).toMatch(/overflow-x:\s*auto/);
+    expect(ruleBody(".source-pod-derived")).toMatch(/position:\s*relative/);
+  });
+
   it("the banner slot is positioned, or the row sensor covers its text", () => {
     // `.source-pod-row-sensor` is an absolutely positioned FIRST child of the
     // pod and hit-tests above any in-flow sibling — which is why the preview
@@ -145,10 +154,8 @@ describe("print", () => {
     // An `overflow: auto` box does not paginate or grow in paged media — it
     // clips at its border box. On screen the scrollbar says so; on paper
     // nothing does, and the right-hand subtrees are simply gone.
-    const body = PRINT.slice(
-      PRINT.indexOf(".source-pod-derived"),
-      PRINT.indexOf("}", PRINT.indexOf(".source-pod-derived")),
-    );
+    const at = PRINT.indexOf(".source-pod-derived-scroll");
+    const body = PRINT.slice(at, PRINT.indexOf("}", at));
     expect(body).toMatch(/overflow:\s*visible\s*!important/);
   });
 

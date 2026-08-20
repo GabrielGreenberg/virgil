@@ -117,6 +117,29 @@ describe("the accepted subset", () => {
     expect(refusal("[S % [NP] ]").kind).toBe("unbalanced");
   });
 
+  it("a comment inside an OPTION list is inert, and stays out of the token", () => {
+    // The option scan steps over comments to find its terminator; slicing the
+    // token raw from that span carried their bytes into it, so this refused
+    // with "node option `roof % triangle over the phrase`" — an option the user
+    // never wrote, with `roof` visible inside the thing it called unsupported.
+    const tree = accept("[NP,roof % triangle over the phrase\n  [x]]");
+    expect(tree.children[0].roofed).toBe(true);
+    expect(accept("[NP,roof\n% a note on its own line\n  [x]]").children[0].roofed).toBe(true);
+    // …and a genuinely unsupported option still names ONLY itself.
+    expect(refusal("[NP,l sep=2cm % why\n [x]]").token).toBe("l sep=2cm");
+  });
+
+  it("a brace inside a comment neither closes a group nor breaks one", () => {
+    // `findMatchingBrace` counts every unescaped brace, comments included, so a
+    // `}` in a comment closed the group early and the REAL `}` fell through as
+    // ink — a well-formed tree carrying a glyph forest never prints. The mirror
+    // case refused an "unbalanced" group that TeX reads as balanced.
+    expect(accept("[{NP\n% }\ndog}]").labelText).toBe("NP dog");
+    expect(accept("[{NP\n% {\ndog}]").labelText).toBe("NP dog");
+    // An ESCAPED brace is still ink, in both scanners.
+    expect(accept("[{a \\{b\\}}]").labelText).toBe("a {b}");
+  });
+
   it("accepts an empty label", () => {
     expect(accept("[ [a] [b] ]").labelText).toBe("");
   });
@@ -300,6 +323,28 @@ describe("bounds — the pod parses whatever is pasted into it", () => {
   it("accepts a tree AT the depth bound — the bound is far past a real syntax tree", () => {
     const atBound = "[".repeat(MAX_FOREST_DEPTH + 1) + "x" + "]".repeat(MAX_FOREST_DEPTH + 1);
     expect(parseForestSource(env(atBound)).ok).toBe(true);
+  });
+
+  it("refuses a label whose BRACE nesting passes the bound", () => {
+    // A label's `{}` recursion is invisible to the node caps — one node, depth
+    // zero — and a balanced 10 000-level group overflows the stack. The
+    // `RangeError` is not a refusal, so it escapes into a React render, which
+    // is exactly what the bounds exist to prevent.
+    const n = MAX_FOREST_DEPTH + 5;
+    const r = refusal(`[${"{".repeat(n)}x${"}".repeat(n)}]`);
+    expect(r.kind).toBe("too-deep");
+  });
+
+  it("accepts a label AT the brace bound", () => {
+    const n = MAX_FOREST_DEPTH;
+    expect(parseForestSource(env(`[${"{".repeat(n)}x${"}".repeat(n)}]`)).ok).toBe(true);
+  });
+
+  it("does not overflow the stack on a pasted brace storm", () => {
+    const n = 10000;
+    expect(() =>
+      parseForestSource(env(`[${"{".repeat(n)}x${"}".repeat(n)}]`)),
+    ).not.toThrow();
   });
 
   it("refuses a tree past the node bound, counting the WHOLE tree not one branch", () => {

@@ -3494,13 +3494,34 @@ Seven rules it earned:
   silently-wrong picture the whole design refuses. Where a mid-line comment does
   eat a delimiter, the refusal that follows is the one forest's own compiler
   gives.
-- **A view that parses whatever is PASTED into it states its bounds.** The
-  scanner, the roof flattening and the layout's three walks are all recursive,
-  so a pasted `[`×10 000 would not refuse — it would throw a `RangeError` out of
-  a React render and take the editor down. `MAX_FOREST_DEPTH` (64) and
-  `MAX_FOREST_NODES` (512) are refusals instead, far past any real syntax tree
-  and far short of anything that hurts. A bound whose failure mode is a badge is
-  a bound worth having; one whose failure mode is a crash is a latent trap.
+- **A view that parses whatever is PASTED into it states its bounds — on EVERY
+  recursive axis, not the obvious one.** The scanner, the roof flattening and
+  the layout's three walks all recurse, so a pasted `[`×10 000 would not refuse:
+  it would throw a `RangeError` out of a React render, and this app has no error
+  boundary anywhere. `MAX_FOREST_DEPTH` (64) and `MAX_FOREST_NODES` (512) are
+  refusals instead, far past any real syntax tree and far short of anything that
+  hurts. The half worth remembering is that the first cut bounded only the axis
+  it was thinking about: a LABEL's `{}` nesting is its own recursion, and a
+  single node with a deeply braced label costs depth 0 and one node, so neither
+  cap could see it — measured, a balanced 10 000-level group overflows the stack
+  and a 4 000-level one costs 50 ms of superlinear re-scanning synchronously in
+  render. A bound whose failure mode is a badge is a bound worth having; one
+  whose failure mode is a crash is a latent trap, and "I bounded the recursion"
+  is a claim per axis.
+- **A comment rule adopted for a scan is adopted for every scan that scan
+  DEPENDS on.** Reading TeX's rule in `skipInert` / `scanLabel` / `scanOptions`
+  and then resolving a label's `{…}` group with the shared, comment-BLIND
+  `findMatchingBrace` fails in both directions at once: a `}` inside a `% …`
+  line closes the group early and the real `}` falls through as ink (a
+  well-formed tree carrying a brace forest never prints — the silently-wrong
+  picture again), while a `{` inside a comment produces a spurious `unbalanced`
+  refusal on source TeX reads as balanced. The same shape one field over: the
+  option scan STEPPED OVER comments to find its terminator and then sliced its
+  token RAW from that span, so `[NP,roof % triangle]` refused with "node option
+  `roof % triangle`" — an option the user never wrote, with `roof` visible
+  inside the thing it called unsupported. Both were found by the adversarial
+  pass, both are the module contradicting its own stated subset, and both are
+  now assembled from the LIVE spans.
 - **A view measured with NO BOX must be told when it gets one.** A `forestBlock`
   inside a folded section stays MOUNTED — `.section-folded` is a node
   DECORATION, not an unmount — so its first layout runs with every rect at 0×0
@@ -3541,6 +3562,16 @@ the layout, so an unbailed re-render reconciles every label element and re-runs
 no effect — cheap enough to be invisible to the other three counters, and
 O(nodes) all the same). Both fail when neutered; without those two legs, both
 bails were deletable in silence.
+
+**Six of the seven findings the adversarial pass confirmed were in this
+cluster's own seams rather than in its algorithms**, which is worth recording as
+a pattern: the grammar's three were each the module disagreeing with a rule it
+had just written down, and the chrome's three were a per-kind inline style
+becoming a shared class (a wrapper that started catching clicks the pod used to
+pass through; a scroll box that positioned the pod's own corner against its
+CONTENT, so the one control that reaches the source slid out of reach on exactly
+the trees that need it; a print rule that reset the frame and left the clipping).
+None was visible to any behavioural test of the piece it lived in.
 
 CI: [forest-grammar.test.ts](src/lib/forest/__tests__/forest-grammar.test.ts),
 [forest-layout.test.ts](src/lib/forest/__tests__/forest-layout.test.ts),

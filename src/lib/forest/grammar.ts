@@ -34,11 +34,7 @@
  * embedded TikZ, a second root, trailing content, unbalanced brackets.
  */
 
-import {
-  matchCommentTailAt,
-  matchCommandToken,
-  findMatchingBrace,
-} from "@/lib/latex-lexer";
+import { matchCommentTailAt, matchCommandToken, isEscaped } from "@/lib/latex-lexer";
 import { FOREST_ENV_NAME } from "@/lib/latex-lexer";
 import { noteForestWork } from "./stats";
 
@@ -250,6 +246,43 @@ function skipInert(src: string, i: number): number {
   }
 }
 
+/**
+ * `findMatchingBrace`, with TeX's comment rule.
+ *
+ * The shared lexer matcher counts every unescaped `{`/`}`, comments included,
+ * and every OTHER scan in this file reads `matchCommentTailAt`. That
+ * disagreement is not cosmetic in either direction: a `}` inside a `% …` line
+ * closes a group early, and the real `}` then falls through as ordinary ink, so
+ * the pod paints a well-formed tree carrying a brace forest never prints — the
+ * silently-wrong picture this grammar exists to refuse. The mirror case, a `{`
+ * inside a comment, makes the shared matcher answer -1 and produces a spurious
+ * `unbalanced` refusal on source TeX reads as balanced. Commenting a brace out
+ * mid-restructure is exactly the state a user is in while looking at the pod.
+ *
+ * It reads the SAME `isEscaped` parity rule the shared matcher does, so `\{`
+ * and `\\{` behave identically; only the comment branch differs.
+ */
+function findMatchingBraceLive(src: string, open: number, limit: number): number {
+  if (src[open] !== "{") return -1;
+  let depth = 1;
+  let i = open + 1;
+  while (i < limit) {
+    const tail = matchCommentTailAt(src, i);
+    if (tail) {
+      i = tail.end;
+      continue;
+    }
+    const ch = src[i];
+    if (ch === "{" && !isEscaped(src, i)) depth++;
+    else if (ch === "}" && !isEscaped(src, i)) {
+      depth--;
+      if (depth === 0) return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
 /** A parsed node, before roofs are resolved. */
 interface RawNode {
   label: ForestLabelSegment[];
@@ -282,7 +315,14 @@ function scanLabel(
   i: number,
   limit: number,
   stopAtDelims = true,
+  depth = 0,
 ): LabelScan {
+  // A label's `{}` nesting is its OWN recursion, invisible to the node caps —
+  // a single node with a deeply braced label costs depth 0 and one node, so
+  // neither would fire. Measured: a balanced 10 000-level group overflows the
+  // stack, and the `RangeError` is not a refusal, so it escapes into a React
+  // render. Same bound, same reason (see MAX_FOREST_DEPTH).
+  if (depth > MAX_FOREST_DEPTH) refuse("too-deep", "{", i);
   const segments: ForestLabelSegment[] = [];
   let buf = "";
   let flat = "";
@@ -338,13 +378,13 @@ function scanLabel(
       // label. One level of braces is stripped (they are grouping, not ink) and
       // the contents are scanned as label content, so `{NP, plural}` and
       // `{$\alpha$}` both work.
-      const close = findMatchingBrace(src, i);
-      if (close < 0 || close > limit) refuse("unbalanced", "{", i);
+      const close = findMatchingBraceLive(src, i, limit);
+      if (close < 0) refuse("unbalanced", "{", i);
       flush();
       // A group's contents ARE label content — same scanner, delimiter stop
       // switched off, so math / escapes / comments inside a group behave
       // exactly as they do outside one.
-      const inner = scanLabel(src, i + 1, close, false);
+      const inner = scanLabel(src, i + 1, close, false, depth + 1);
       for (const seg of inner.segments) segments.push(seg);
       flat += inner.text;
       i = close + 1;
@@ -395,23 +435,34 @@ function scanOptions(
     i++;
     const start = skipInert(src, i);
     let j = start;
+    // The token is assembled from the LIVE spans, not sliced raw from
+    // `start..j` — the loop steps OVER comments, so a raw slice would carry
+    // their bytes into the token and `[NP,roof % triangle]` would refuse with
+    // "node option `roof % triangle`", naming an option the user never wrote
+    // with the word `roof` visible inside it. A refusal that fires for the
+    // wrong reason is a wrong message.
+    let spanStart = start;
+    let live = "";
     while (j < limit) {
       const tail = matchCommentTailAt(src, j);
       if (tail) {
+        live += src.slice(spanStart, j);
         j = tail.end;
+        spanStart = j;
         continue;
       }
       const ch = src[j];
       if (ch === "{") {
-        const close = findMatchingBrace(src, j);
-        if (close < 0 || close > limit) refuse("unbalanced", "{", j);
+        const close = findMatchingBraceLive(src, j, limit);
+        if (close < 0) refuse("unbalanced", "{", j);
         j = close + 1;
         continue;
       }
       if (ch === "," || ch === "[" || ch === "]") break;
       j++;
     }
-    const token = src.slice(start, j).trim();
+    live += src.slice(spanStart, j);
+    const token = live.trim();
     if (token.length > 0) {
       if (token !== "roof") refuse("option", token, start);
       roof = true;

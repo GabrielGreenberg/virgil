@@ -478,7 +478,12 @@ export default function SourcePodNodeView({
           data-hint={`Click to edit ${config.kindLabel} source`}
           aria-label={`Click to edit ${config.kindLabel} source`}
         >
-          {preview}
+          {/* The tree scrolls INSIDE this; the corner does not. An absolutely
+              positioned child of a scroll container is positioned against its
+              CONTENT, so a corner inside the scroller slides out of reach the
+              moment a tree is wider than the pod — the one control that gets to
+              the source, unreachable exactly on the trees that need it most. */}
+          <div className="source-pod-derived-scroll">{preview}</div>
           <PodCorner
             chipLabel={config.chipLabel}
             kindLabel={config.kindLabel}

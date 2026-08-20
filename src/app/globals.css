@@ -1496,12 +1496,20 @@ textarea,
    the code surface. Framed like the code surface (same border tone, radius and
    ground) so switching modes moves nothing but the content. */
 .source-pod-derived {
+  position: relative;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: var(--radius-md);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
   padding: 14px 70px 14px 16px;
-  overflow-x: auto;
   cursor: pointer;
+}
+/* The scroll box is INSIDE the frame, so the pod's absolutely positioned corner
+   (which is a child of the frame, not of this) stays put while a wide tree
+   scrolls under it. An `overflow` container positions its absolute descendants
+   against its CONTENT — a corner inside the scroller would slide out of reach
+   on exactly the trees whose source you most want to open. */
+.source-pod-derived-scroll {
+  overflow-x: auto;
 }
 
 /* A pod that HAS a derived view carries a wider corner (the mode toggle sits
@@ -5486,12 +5494,14 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
     border: 0 !important;
     background: transparent !important;
     padding: 0 !important;
-    /* On screen the derived body scrolls a wide tree (`overflow-x: auto`). In
-       PAGED media an overflow box does not paginate or grow — it CLIPS at its
-       border box — so a tree wider than the print column would lose its
-       right-hand subtrees to the page edge, silently and with no scrollbar to
-       hint at it. Releasing the constraint is the same move the print block
-       makes for every other scroll container above. */
+  }
+  /* On screen the derived body scrolls a wide tree. In PAGED media an overflow
+     box does not paginate or grow — it CLIPS at its border box — so a tree
+     wider than the print column would lose its right-hand subtrees to the page
+     edge, silently and with no scrollbar to hint at it. Releasing the
+     constraint is the same move the print block makes for every other scroll
+     container above. */
+  .source-pod-derived-scroll {
     overflow: visible !important;
   }
   .source-pod-corner,
