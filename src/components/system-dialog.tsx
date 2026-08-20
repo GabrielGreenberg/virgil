@@ -23,12 +23,19 @@
  *
  * Shell behaviors (baked in, identical across every dialog):
  *   - Backdrop scrim + click-to-close (unless dismissable=false)
- *   - Esc to close
- *   - Enter-to-confirm when a button with autoFocus is focused
+ *   - Esc to close — answered by the TOP dialog only (see `dialog-stack.ts`)
+ *   - Enter activates a BUTTON: the focused in-frame button if there is one,
+ *     otherwise the registered CUED DEFAULT — **never gated on where DOM focus
+ *     happens to sit**. A modal answers an Enter from OUTSIDE its frame too, at
+ *     window capture, so the document beneath never sees it; an in-frame control
+ *     that owns Enter (textarea / contenteditable / select / link, or anything
+ *     that called `preventDefault`) keeps it. Full rule + why:
+ *     {@link file://./dialog-enter-policy.ts} (task 389).
  *   - role=dialog, aria-modal=true, aria-labelledby/aria-describedby
  *   - requestAnimationFrame-deferred focus on the autoFocus button — falling
  *     back to the dialog FRAME when no button cues itself, so focus always
- *     lands inside the dialog
+ *     lands inside the dialog, and standing DOWN when the dialog's own body has
+ *     already claimed focus (a prompt input, a file list)
  *
  * `autoFocus` marks the CUED DEFAULT: the button that takes initial focus and
  * that `Enter` therefore activates. It must never be a DESTRUCTIVE action — a
@@ -68,6 +75,13 @@ import { createPortal } from "react-dom";
 import { Button, type ButtonVariant } from "./panel-primitives";
 import { MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
 import { useDragPosition } from "@/hooks/useDragPosition";
+import {
+  isTopDialog,
+  popDialog,
+  pushDialog,
+  type DialogToken,
+} from "./dialog-stack";
+import { isPlainEnter, resolveDialogEnter } from "./dialog-enter-policy";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
@@ -167,6 +181,22 @@ export interface SystemDialogProps {
   describedBy?: string;
   /** Custom class appended to the inner frame. */
   frameClassName?: string;
+  /**
+   * Declare that this dialog deliberately cues NO default button.
+   *
+   * A footered dialog either registers exactly one cued default (an `autoFocus`
+   * `SystemDialogButton`) or says here that it means not to — so "no cue" can
+   * never be read as "someone forgot one". Two real shapes need it: a picker
+   * whose real answers are in its BODY (`TexFilePickerModal` — Enter belongs to
+   * the focused file row, not to Cancel), and a single-button DANGER notice,
+   * where cueing the only button would arm the destructive action under an
+   * already-moving hand (task 386).
+   *
+   * Declaring this AND registering an `autoFocus` button is a contradiction and
+   * `console.error`s in dev. The "a footer with NEITHER" half is a source shape,
+   * pinned by `src/components/__tests__/dialog-cued-default-census.test.ts`.
+   */
+  noCuedDefault?: boolean;
   children: ReactNode;
 }
 
@@ -182,6 +212,7 @@ export default function SystemDialog({
   labelledBy,
   describedBy,
   frameClassName = "",
+  noCuedDefault = false,
   children,
 }: SystemDialogProps) {
   const autoFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -216,13 +247,11 @@ export default function SystemDialog({
     autoFocusRef.current = el;
   }, []);
 
-  // Focus + keyboard wiring (shared by every variant). anchorRef positioning is
-  // the MODAL variant's near-element placement (scrim stays); the scrimless
-  // "anchored" variant computes its own point-clamped position in the layout
-  // effect below.
+  // anchorRef positioning — the MODAL variant's near-element placement (scrim
+  // stays); the scrimless "anchored" variant computes its own point-clamped
+  // position in the layout effect below.
   useEffect(() => {
     if (!open) return;
-
     if (variant === "modal" && anchorRef?.current) {
       const rect = anchorRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
@@ -234,34 +263,141 @@ export default function SystemDialog({
     } else {
       setAnchorPos(null);
     }
+  }, [open, anchorRef, variant]);
 
+  // ── The dialog STACK ───────────────────────────────────────────────
+  // One keyboard owner at a time. Dialogs genuinely stack (ManageStylesModal
+  // stays mounted under StyleEditorModal / StyleApplyDialog / DocTypeChangeDialog),
+  // and a window listener per open dialog means an un-owned key is answered by
+  // every one of them — which pre-389 made a single Escape close BOTH.
+  const tokenRef = useRef<DialogToken | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const token = pushDialog();
+    tokenRef.current = token;
+    return () => {
+      popDialog(token);
+      tokenRef.current = null;
+    };
+  }, [open]);
+
+  // ── Initial focus ──────────────────────────────────────────────────
+  // Gated on `mounted`, and that is the whole of the 389 focus half. `mounted`
+  // starts false (SSR can't touch document.body), so the FIRST commit of every
+  // dialog renders `null` — no portal, no buttons, every ref still null. Scheduling
+  // the focus rAF from that commit made landing focus a RACE the shell cannot win
+  // reliably: React schedules the `setMounted(true)` re-render as a Scheduler task
+  // while the rAF is tied to the frame, so on a BUSY main thread (exactly what the
+  // end of a drag is — gesture-end edge, mint transaction, RO settle) the frame can
+  // arrive first and the callback focuses nothing at all. That is why the reported
+  // "Re-anchor this snippet?" dialog opened with focus still on `.ProseMirror`:
+  // there was never a thief, only a claim that missed. Keyed on `mounted` the rAF
+  // is scheduled from the commit where the portal EXISTS and the refs are live.
+  //
+  // It also STANDS DOWN when the dialog's own body has already claimed focus — a
+  // prompt input, the file list in TexFilePickerModal, a rich field. `autoFocus`
+  // marks the CUED DEFAULT (what Enter presses); it is only the initial-focus
+  // target when nothing better inside the dialog wanted it.
+  useEffect(() => {
+    if (!open || !mounted) return;
     const handle = requestAnimationFrame(() => {
-      if (autoFocusRef.current) {
-        autoFocusRef.current.focus();
+      const frame = modalFrameRef.current ?? panelRef.current;
+      const active = document.activeElement;
+      if (frame && active && active !== frame && frame.contains(active)) return;
+      const cued = autoFocusRef.current;
+      if (process.env.NODE_ENV !== "production" && noCuedDefault && cued) {
+        // The declaration and the registration disagree — one of them is a lie,
+        // and which one is a decision only the author can make. Loud in dev, and
+        // the reason `noCuedDefault` is a LIVE prop rather than a marker the
+        // census alone reads: a suite is not a consumer (task 202).
+        console.error(
+          "[SystemDialog] declares `noCuedDefault` but a SystemDialogButton " +
+            "registered `autoFocus`. Drop one of them.",
+          cued,
+        );
+      }
+      if (cued && !cued.disabled) {
+        cued.focus();
         return;
       }
-      (modalFrameRef.current ?? panelRef.current)?.focus();
+      frame?.focus();
     });
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && onClose) {
+    return () => cancelAnimationFrame(handle);
+  }, [open, mounted, panelRef, noCuedDefault]);
+
+  // ── Keyboard ───────────────────────────────────────────────────────
+  // Two listeners, one rule, split by PHASE — see `dialog-enter-policy.ts`.
+  // CAPTURE answers an Enter from OUTSIDE a modal's frame, before ProseMirror can
+  // turn it into a paragraph in the user's document. BUBBLE answers everything
+  // else, AFTER the focused control had its chance to consume the key.
+  useEffect(() => {
+    if (!open) return;
+    const modal = variant === "modal";
+    const frameEl = () => modalFrameRef.current ?? panelRef.current;
+
+    const pressCued = (e: KeyboardEvent) => {
+      const cued = autoFocusRef.current;
+      if (!cued || cued.disabled) return false;
+      e.preventDefault();
+      cued.click();
+      return true;
+    };
+
+    const onCapture = (e: KeyboardEvent) => {
+      if (!tokenRef.current || !isTopDialog(tokenRef.current)) return;
+      if (!isPlainEnter(e)) return;
+      const verdict = resolveDialogEnter({
+        target: e.target,
+        frame: frameEl(),
+        modal,
+        alreadyHandled: e.defaultPrevented,
+        phase: "capture",
+      });
+      if (verdict.kind !== "cued-default") return;
+      // The modal OWNS this key: stop it here so nothing beneath the scrim acts
+      // on it, whether or not a cued default exists to press.
+      e.preventDefault();
+      e.stopPropagation();
+      pressCued(e);
+    };
+
+    const onBubble = (e: KeyboardEvent) => {
+      if (!tokenRef.current || !isTopDialog(tokenRef.current)) return;
+      if (e.key === "Escape") {
+        // Unchanged from pre-389 except for the stack gate: Escape closes the
+        // TOP dialog, unconditionally. Deliberately NOT gated on
+        // `defaultPrevented` — CodeMirror binds Escape (simplifySelection) and
+        // StyleEditorModal hosts one, so a "the target consumed it" rule would
+        // make Escape stop closing that dialog whenever its preamble editor has
+        // focus. A modal always has a way out.
+        if (!onClose) return;
         e.preventDefault();
         onClose();
-      } else if (e.key === "Enter") {
-        if (
-          autoFocusRef.current &&
-          document.activeElement === autoFocusRef.current
-        ) {
-          e.preventDefault();
-          autoFocusRef.current.click();
-        }
+        return;
+      }
+      if (!isPlainEnter(e)) return;
+      const verdict = resolveDialogEnter({
+        target: e.target,
+        frame: frameEl(),
+        modal,
+        alreadyHandled: e.defaultPrevented,
+        phase: "bubble",
+      });
+      if (verdict.kind === "activate") {
+        e.preventDefault();
+        verdict.button.click();
+      } else if (verdict.kind === "cued-default") {
+        pressCued(e);
       }
     };
-    window.addEventListener("keydown", onKey);
+
+    window.addEventListener("keydown", onCapture, true);
+    window.addEventListener("keydown", onBubble);
     return () => {
-      cancelAnimationFrame(handle);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onCapture, true);
+      window.removeEventListener("keydown", onBubble);
     };
-  }, [open, onClose, anchorRef, variant, panelRef]);
+  }, [open, onClose, variant, panelRef]);
 
   // Point-anchored placement for the scrimless "anchored" variant. The frame
   // renders `visibility:hidden` until this effect measures it and clamps to the

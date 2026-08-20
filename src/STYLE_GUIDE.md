@@ -1508,6 +1508,48 @@ is the right cost for a deliberate destructive choice. `ConfirmDialog` derives
 this for every caller via `confirmDialogCuedDefault()`; a hand-built
 `SystemDialogFooter` must place `autoFocus` accordingly.
 
+**Enter presses the cued default; Escape closes. Neither depends on where focus
+sits** (task 389). The cue is a VISIBLE promise — the button renders as the
+accented default whether or not the shell's one-shot focus frame landed on it —
+so the key must keep that promise unconditionally. Pre-389 `Enter` was gated on
+`document.activeElement === theCuedButton`, which made Return silently inert in
+every dialog opened from a POINTER gesture (the reported "Re-anchor this
+snippet?" at the end of a drag). One rule now, in
+`components/dialog-enter-policy.ts`:
+
+| where the key lands | Enter | Escape |
+| --- | --- | --- |
+| the cued default button | presses it (once) | closes |
+| another button inside the dialog | presses THAT button | closes |
+| a textarea / contenteditable / select / link inside the dialog | the control keeps it | closes |
+| a plain single-line `<input>` inside the dialog | presses the cued default… | closes |
+| …unless that input called `preventDefault()` | the control keeps it | closes |
+| anywhere OUTSIDE a `modal` dialog | presses the cued default, stopped at window CAPTURE so the document behind never sees it | closes |
+| anywhere outside a `draggable` / `anchored` window | nothing — those are not modal | closes |
+
+Two consequences worth stating. **`preventDefault()` is how an in-dialog control
+says "this Enter is mine"** — a field that consumes the key and omits it will
+also fire the cued default. And **only the TOP dialog answers a key**
+(`components/dialog-stack.ts`): dialogs stack (`ManageStylesModal` stays mounted
+under `StyleEditorModal`), and before the stack a single Escape closed both.
+
+**Every footered dialog DECLARES its cued default.** Either an `autoFocus`
+`SystemDialogButton`, or `noCuedDefault` on the `SystemDialog` for the two shapes
+that deliberately cue nothing — a single-button danger notice (above) and a
+picker whose real answers are body rows (`TexFilePickerModal`, where cueing
+"Cancel" would make Return dismiss the picker). Pinned by
+`dialog-cued-default-census.test.ts`, so "no cue" can never be read as "someone
+forgot one". `autoFocus` is the CUE first and the initial-focus target second:
+the shell stands down when the dialog's own body has already claimed focus (a
+prompt input, a file list), so a dialog can name its Enter default without
+stealing the caret from its own field.
+
+**Accessibility posture, unchanged.** Focus is placed inside the dialog on open
+and `aria-modal` is set on the scrimmed variant; there is still no focus TRAP,
+so Tab can leave a modal. Same recorded posture as the resize gutters — Virgil
+does not yet commit to full keyboard/screen-reader operation of its chrome, and
+a half-built trap is worse than none.
+
 **Placement follows the SCOPE of what the dialog acts on, not the component.**
 A confirm whose consequence is app- or document-wide centers and takes the
 scrim; a confirm acting on ONE object the user can see — a card, a block, a

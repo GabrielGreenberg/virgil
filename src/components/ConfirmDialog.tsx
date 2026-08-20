@@ -105,6 +105,9 @@ export default function ConfirmDialog({
       onClose={onCancel}
       anchorRef={anchorRef}
       size="sm"
+      /* A single-button DANGER notice cues NOTHING — DECLARED, not omitted, so
+         the census can tell "deliberately none" from "someone forgot one". */
+      noCuedDefault={cuedDefault === "none"}
     >
       <SystemDialogHeader title={title} />
       <SystemDialogBody className={title ? "" : "pt-3"}>

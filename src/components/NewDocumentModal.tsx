@@ -127,8 +127,12 @@ export default function NewDocumentModal({
         <SystemDialogButton onClick={onCancel} disabled={busy}>
           Cancel
         </SystemDialogButton>
+        {/* The CUED DEFAULT: Enter creates, from anywhere in the dialog. It does
+            NOT take initial focus — the name field claims that in its own effect
+            and the shell stands down when the body has already claimed focus. */}
         <SystemDialogButton
           variant="accent"
+          autoFocus
           onClick={submit}
           disabled={!canSubmit}
         >

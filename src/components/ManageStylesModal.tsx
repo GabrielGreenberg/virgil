@@ -451,8 +451,17 @@ export default function ManageStylesModal({
                           onChange={(e) => setRenameValue(e.target.value)}
                           onBlur={() => commitRename(s.id)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") commitRename(s.id);
-                            else if (e.key === "Escape") setRenamingId(null);
+                            // preventDefault is load-bearing, not decoration: it
+                            // is how an in-dialog control tells the shell "this
+                            // Enter is MINE". Without it the shell would fall
+                            // through to the cued default ("Done") and a rename
+                            // would close the whole modal.
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commitRename(s.id);
+                            } else if (e.key === "Escape") {
+                              setRenamingId(null);
+                            }
                           }}
                           className="flex-1 px-2 py-1 text-sm"
                         />
