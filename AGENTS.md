@@ -1058,6 +1058,81 @@ Two scopes, one SSOT in [src/lib/tiptap/borrowed-schema.ts](src/lib/tiptap/borro
 
 CI: [src/lib/\_\_tests\_\_/…/excerpt-schema.test.ts](src/lib/tiptap/__tests__/excerpt-schema.test.ts) pins the **reverse** contract — every node **and** mark type the MAIN editor registers must be mountable in the excerpt schema. The pre-existing `borrowed-schema.test.ts` invariant runs one-directionally (borrowed ⊆ main) and therefore structurally *cannot* catch a main-only type reaching a card; this is the direction that does. A new main-editor node kind fails CI until the excerpt surface admits it — or until you confirm the guard refuses it, which turns a would-be data loss into a refusal. `archive-section-capture.test.tsx` pins the dispatcher end: the section is captured whole, and a capture that can't mount leaves the document **completely untouched**.
 
+### The payload half: a guard judges the payload the write will STORE
+
+Same law, and the case where the invariant was right, the schema was right, the
+normalizer was right, and the guard was asking about a document that never
+reaches disk (task 393). The 308 check validates the capture against the
+destination's real schema — the one check that cannot drift from what the body
+will do — and it was handed the RAW slice, while the write path stores the
+NORMALIZED one. `normalizeRichContent` strips `DOC_ONLY_MARKS` (`linkedAnchor`,
+the doc-level anchor mark), and the excerpt schema deliberately does not register
+that mark **for exactly that reason** — the excerpt-schema contract test names it
+as the one sanctioned omission, `STRIPPED_BY_NORMALIZER`.
+
+So the two tables disagreed by construction. Any passage carrying a Mode-B
+`\vlid{…}` span — i.e. worked-over prose, which is the prose a user most wants
+to archive, since anchors accumulate there — was refused with "the Archive panel
+can't hold part of it, so nothing was removed": **a false refusal, protecting
+against a loss that cannot happen, and blocking the action entirely.** Nothing
+threw; the guard was doing its job perfectly on a payload nobody stores.
+
+> **A destructive capture derives its payload ONCE, through one door, and the
+> object it VALIDATED is the object it STORES.** Normalize first, validate that,
+> hand it back — so the guard and the write cannot again disagree about what is
+> being judged. And when the check does fire, the refusal NAMES the construct it
+> could not hold.
+
+[src/lib/tiptap/card-body-capture.ts](src/lib/tiptap/card-body-capture.ts) is the
+door (`prepareCardBodyCapture`, slice-or-JSON → the normalizer's own strip →
+`canMountInCardBody` → `{ ok, content }`). Five rules it earned:
+
+- **The door owns the whole derivation, including the slice walk.**
+  `sliceToDocJson` moved off the dispatcher into it, so "capture → storable
+  payload" is one function rather than a sequence a call site assembles. That is
+  the property, not the tidiness: a caller that can reach the pieces re-derives
+  the payload and spells none of the census's needles (the task-273 rule, one
+  medium over).
+- **`canMountInCardBody` stays the SCHEMA question and remains the only probe.**
+  The door calls it; it was never wrong. What was wrong was a capture site asking
+  it. Its docstring now says so, and the census draws the line.
+- **A refusal names the construct, DERIVED rather than parsed.**
+  `unsupportedConstructs(schema, json)` ([schema-mount.ts](src/lib/tiptap/schema-mount.ts))
+  walks the model and reports the node/mark names the destination schema has not
+  got — the schema's own vocabulary, never ProseMirror's message FORMAT, which is
+  a dependency's implementation detail. Run only on the failure path: the
+  mechanism decides, the probe explains (`checkKeptEverything`'s own rule).
+- **The naming FAILS OPEN to the raw reason.** `nodeFromJSON` also throws on a
+  malformed model whose every type name is known (a text node with no `text`, a
+  non-array `content`), so an empty construct list is not evidence that nothing
+  was wrong — the phrase degrades to ProseMirror's message rather than claiming
+  completeness.
+- **The anchored card's own lifecycle is unchanged, and that is pinned as a
+  DECISION.** Archiving text carrying another card's Mode-B anchor puts that card
+  on the normal orphan path — asserted as an EQUALITY against a plain Delete over
+  the same range, so neither action can drift alone.
+
+CI: [card-body-capture.test.ts](src/lib/tiptap/__tests__/card-body-capture.test.ts)
+(the door contract + the census) and
+[archive-anchored-capture.test.tsx](src/components/editor-layout/card-actions/__tests__/archive-anchored-capture.test.tsx)
+(Gabriel's passage end to end through the REAL hook and the REAL extension
+stack). **No pre-393 suite could see this**: every archive fixture in the repo is
+UNANCHORED, so the raw and the normalized payload are the same object and the
+divergence is unrepresentable in all of them. The leg with teeth is the CENSUS —
+the door was never the part that could misbehave, a capture site that validates
+one payload and stores another is, and that type-checks perfectly: no production
+file may CALL `canMountInCardBody` outside the door (allowlist EMPTY, a hit is
+MIGRATE-it), the door must spell `normalizeRichContent`, and every capture site
+— DISCOVERED from the tree, so the next one inherits the rule — must enter the
+door. Measured by neutering each half in turn: the pre-393 raw validation takes
+4 legs, the naming half 1, a re-added direct probe call 1, and a capture site
+leaving the door 1.
+
+**Owed, not claimed:** the preview eyeball. This class is FSA-masked for the
+real-paper flow (anchor behaviour reproduces under prod File System Access), so
+the durable proof here is the unit contract; Gabriel's exact passage is the
+fixture.
+
 ### The rebuild half: a per-kind capability is DERIVED, never hand-enumerated
 
 Same law, other direction (task 233). Re-anchoring an **unanchored** card rebuilds its inline atom from scratch, so everything the atom can't regenerate must be read back from the card — and the read has to be a *derived obligation*, not a field someone remembers to add. `footnoteDropSpec.createAtom` built its atom with a hard-coded EMPTY body because the `DropCtx` sub-bag its citation twin got (`commandFor`) was never mirrored for footnotes. Re-placing an archived footnote therefore planted an empty atom, and since `getFootnotes()` re-derives BOTH the panel and the serialized `\footnote{}` from that node, the user's text was destroyed in the document. Nothing failed: the spec was registered, the dispatch worked, the node was well-formed. **A "registered and reachable" spec proves nothing about whether it can reach what it needs.**

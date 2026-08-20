@@ -334,6 +334,13 @@ describe("task 308 — main-document vocabulary ⊆ excerpt vocabulary", () => {
     // meaningless in a card body and unconditionally stripped by
     // `normalizeRichContent` (`DOC_ONLY_MARKS`), which every card body funnels
     // content through. It is the ONE sanctioned omission.
+    //
+    // Task 393: this exemption is only sound because the CAPTURE asks about the
+    // stripped payload too. It did not — the archive dispatcher validated the
+    // RAW slice — so every anchored passage was refused for a loss that could
+    // not happen. `prepareCardBodyCapture` (card-body-capture.ts) is now the one
+    // door: normalize, then validate THAT, then store THAT. If this omission
+    // ever grows a second member, that door is what keeps it honest.
     const STRIPPED_BY_NORMALIZER = new Set(["linkedAnchor"]);
     const missing = Object.keys(mainSchema.marks).filter(
       (m) => !excerptSchema.marks[m] && !STRIPPED_BY_NORMALIZER.has(m),

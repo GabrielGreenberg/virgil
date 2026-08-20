@@ -220,7 +220,12 @@ export function buildCardBodySchema(
  */
 const SCHEMA_CACHE = new Map<CardBodySchemaScope, Schema>();
 
-function schemaForScope(scope: CardBodySchemaScope): Schema {
+/**
+ * The resolved schema a card body at `scope` mounts. Exported so a refusal can
+ * NAME the constructs the destination has not got ({@link unsupportedConstructs},
+ * on the failure path only) without re-deriving the extension list.
+ */
+export function cardBodySchemaFor(scope: CardBodySchemaScope): Schema {
   let cached = SCHEMA_CACHE.get(scope);
   if (!cached) {
     cached = getSchema([
@@ -262,6 +267,16 @@ export type CardBodyMountCheck = SchemaMountCheck;
  * Cheap: one `Schema.nodeFromJSON` over the captured slice (edit-sized, not
  * doc-sized) on a cached schema, on a discrete user action — never on a
  * keystroke path.
+ *
+ * **This is the SCHEMA question ("can this scope hold this model?"), not the
+ * CAPTURE door.** A destructive capture must validate the payload it will
+ * actually STORE, which is the NORMALIZED one — the card normalizer strips
+ * `DOC_ONLY_MARKS` (`linkedAnchor`), which is exactly why the excerpt schema
+ * does not register them, so a raw slice fails a check its stored form passes
+ * (task 393). Capture sites therefore enter `prepareCardBodyCapture`
+ * (`@/lib/tiptap/card-body-capture`), which normalizes first and hands back the
+ * validated object; a production call to this function from a capture site is a
+ * census failure there.
  */
 export function canMountInCardBody(
   json: unknown,
@@ -272,7 +287,7 @@ export function canMountInCardBody(
   // question — "can this schema hold this model?" — has one answer, and the
   // silent failure it guards (TipTap swallows a schema mismatch into an EMPTY
   // document) is identical on both sides.
-  return canMountInSchema(schemaForScope(scope), json);
+  return canMountInSchema(cardBodySchemaFor(scope), json);
 }
 
 /**

@@ -24,7 +24,7 @@
 
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode, Slice } from "@tiptap/pm/model";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   createDuplicateDiagnostics,
@@ -61,7 +61,10 @@ import {
   INLINE_INSERT_ACTIONS,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
-import { canMountInCardBody } from "@/lib/tiptap/borrowed-schema";
+import {
+  describeCardBodyRefusal,
+  prepareCardBodyCapture,
+} from "@/lib/tiptap/card-body-capture";
 import { bodySchemaForCardKind } from "@/cards/predicates";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import type {
@@ -612,61 +615,52 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // Same cascade as Delete — if the wrapper would be empty
           // after the deletion, swallow it too. See C6.
           const extended = expandCascadeRange(ed.state.doc, outer);
-          // Snapshot the full slice (rich JSON) BEFORE deletion so the
-          // archive snippet preserves paragraph structure, atom blocks,
-          // and any inline atoms it carries.
-          //
-          // For a SELECTION ref that's a sub-range of a paragraph
-          // (openStart > 0 && openEnd > 0), the fragment's direct
-          // children are TEXT / inline nodes, not a paragraph. The
-          // archive snippet mounts a mini-TipTap whose `doc.content`
-          // schema is `block+`, so bare inline children at doc level
-          // throw `contentMatchAt on a node with invalid content` when
-          // the mini-editor boots. For multi-paragraph selections with
-          // partial first/last paragraphs, the fragment is mixed:
-          // inline at the boundaries, block(s) in the middle. Walk the
-          // fragment and wrap any inline runs in a paragraph so the
-          // resulting doc is schema-valid in all cases.
-          const slice = ed.state.doc.slice(extended.from, extended.to);
-          const richContent = sliceToDocJson(slice);
           // ── THE NEVER-DESTROY INVARIANT (task 308) ─────────────────────
           // A destructive lifecycle action must never delete content its
           // capture destination cannot hold. Archive is the one action that
           // deletes AND captures, so it is the one that has to ask.
           //
-          // This existed as a silent data-loss hole: the capture above is
-          // faithful (it carries whatever the slice had — `heading`,
-          // `blockquote`, `codeBlock`, `horizontalRule`, the expex family,
-          // `highlight`/`textColor` marks), and the archive card body's schema
-          // did not admit those. TipTap does NOT throw on the mismatch —
+          // This existed as a silent data-loss hole: the capture is faithful
+          // (it carries whatever the slice had — `heading`, `blockquote`,
+          // `codeBlock`, `horizontalRule`, the expex family, `highlight` /
+          // `textColor` marks), and the archive card body's schema did not
+          // admit those. TipTap does NOT throw on the mismatch —
           // `createNodeFromContent` swallows the `RangeError` and returns an
           // EMPTY document — so the section was deleted from the doc and the
           // card rendered blank, with no error anywhere. Archiving a section was
           // total loss from the user's view.
           //
-          // The schema widening (`bodySchema: "excerpt"`) is what makes the
-          // known kinds WORK; this check is what makes the CLASS impossible —
-          // any future node/mark the document gains and the excerpt surface
-          // hasn't caught up on refuses here instead of destroying. Runs BEFORE
-          // `cleanupAndComputeDeleteRange`, so an abort leaves the document and
-          // every sidecar completely untouched.
-          const mountCheck = canMountInCardBody(
-            richContent,
+          // ONE DOOR (task 393): `prepareCardBodyCapture` derives the payload
+          // the snippet will STORE — slice → doc JSON → the card normalizer's
+          // own `DOC_ONLY_MARKS` strip — and validates THAT. Before it, the
+          // guard judged the RAW slice while the write stored the normalized
+          // one, so any passage carrying a Mode-B `linkedAnchor` span (the
+          // worked-over prose a user most wants to archive) was refused for a
+          // loss that could not happen. `capture.content` below is the same
+          // object that was judged; never re-derive a second payload here.
+          //
+          // Runs BEFORE `cleanupAndComputeDeleteRange`, so an abort leaves the
+          // document and every sidecar completely untouched.
+          const capture = prepareCardBodyCapture(
+            ed.state.doc.slice(extended.from, extended.to),
             bodySchemaForCardKind("archive"),
           );
-          if (!mountCheck.ok) {
+          if (!capture.ok) {
             console.warn(
               "[Archive] refused — the capture cannot mount in the archive card body; " +
                 "the document was NOT modified.",
-              { reason: mountCheck.reason, ref },
+              { reason: capture.reason, constructs: capture.constructs, ref },
             );
+            // A refusal NAMES what it refused (the loud-refusal rule): "part of
+            // it" leaves the user with nothing to act on.
             notify({
               message:
-                "Can't archive this — the Archive panel can't hold part of it, " +
-                "so nothing was removed.",
+                `Can't archive this — the Archive panel can't hold ` +
+                `${describeCardBodyRefusal(capture)}, so nothing was removed.`,
             });
             break;
           }
+          const richContent = capture.content;
           // B2 (post-refactor followup): resolve the snippet's anchor
           // BEFORE deletion. The pre-delete `paragraphId` is the source
           // block's own uuid — for a whole-paragraph archive that uuid
@@ -1235,48 +1229,6 @@ function rewireClonedAnchors(
   });
 }
 
-/**
- * Convert a ProseMirror Slice to a schema-valid `{type: "doc", content: ...}`
- * JSON object suitable for booting a fresh TipTap editor (e.g. the
- * archive snippet's mini-editor).
- *
- * Why this is non-trivial: a slice produced by `doc.slice(from, to)`
- * carries `openStart` / `openEnd` indicating that the boundaries cut
- * THROUGH ancestor nodes. For a selection inside a paragraph the
- * slice's content Fragment holds inline children (text + inline marks),
- * not a paragraph wrapper. Wrapping that fragment directly under
- * `{type: "doc", content: [...inline...]}` violates the doc schema's
- * `block+` content rule and throws `contentMatchAt on a node with
- * invalid content` when the mini-editor mounts.
- *
- * Algorithm: walk the slice's top-level children. Inline runs (children
- * with `child.isBlock === false`) accumulate into an `openInline`
- * buffer; each block child flushes the buffer into a paragraph and
- * emits itself. Final flush at end. Handles every shape:
- *   - all-inline (single-paragraph sub-range): one paragraph wrapping all.
- *   - all-block (full-paragraph selection): no wrapping, blocks pass through.
- *   - mixed (multi-paragraph w/ partial first/last): inline runs at the
- *     boundaries become paragraphs flanking the middle blocks.
- */
-function sliceToDocJson(slice: Slice): { type: "doc"; content: unknown[] } {
-  const docContent: unknown[] = [];
-  let openInline: unknown[] = [];
-  const flushInline = () => {
-    if (openInline.length === 0) return;
-    docContent.push({ type: "paragraph", content: openInline });
-    openInline = [];
-  };
-  slice.content.forEach((child) => {
-    if (child.isBlock) {
-      flushInline();
-      docContent.push(child.toJSON());
-    } else {
-      openInline.push(child.toJSON());
-    }
-  });
-  flushInline();
-  return { type: "doc", content: docContent };
-}
 
 // ---------------------------------------------------------------------------
 // Re-exports for callers that constructed the old `DragHandlePassage`
