@@ -39,11 +39,32 @@ export interface FigureAttrs {
   captionStarred: boolean;
   /** `\label{...}` body. Empty string if none. */
   label: string;
-  /** Env body with `\caption{...}` and `\label{...}` stripped. Preserves
-   *  `\centering`, `\includegraphics`, TikZ blocks, and raw comments — so the
-   *  serializer can rebuild the env from `extras + \caption + \label` without
-   *  losing unmodeled content. Empty when the env was just caption+label. */
+  /** Env body BEFORE the figure's own `\caption` (minus the figure's own
+   *  `\caption`/binding `\label`), raw passthrough. Preserves `\centering`,
+   *  `\includegraphics`, TikZ blocks, sub-floats and raw comments — so the
+   *  serializer can rebuild the env from
+   *  `extras + \caption + \label + trailingExtras` without losing unmodeled
+   *  content. Empty when the env was just caption+label. */
   extras: string;
+  /** Env body AFTER the figure's own `\caption` (same strip), raw passthrough
+   *  — re-emitted after the caption/label block so bytes the model cannot hold
+   *  keep the POSITION the author gave them (task 379).
+   *
+   *  The split is what makes multiplicity safe. A figure may carry a second
+   *  figure-depth `\label`, or (illegally but really) a second `\caption`, and
+   *  the model holds exactly one of each. Before the split those extra bytes
+   *  were either DELETED (labels) or re-emitted ahead of the caption (a second
+   *  caption), where they swapped places on every save — an oscillation on a
+   *  document nobody edited. Carrying them on the side they were written on is
+   *  the same "carry what you cannot model, in the position it was in" rule
+   *  tasks 342/356 established, made position-aware.
+   *
+   *  A label that MOVES across the caption does not merely move: `\caption`
+   *  calls `\refstepcounter{figure}`, so a `\label` written after it names the
+   *  figure and the same bytes written before it name whatever counter was
+   *  stepped last (usually the section). Re-emitting on the wrong side would
+   *  silently change what a key names. */
+  trailingExtras: string;
 }
 
 export interface GraphicsAttrs {
@@ -456,40 +477,100 @@ export function captionDeclaresLabel(captionTex: string, label: string): boolean
   return scanFigure(captionTex).labels.some((l) => l.body === label);
 }
 
-/** Extract the figure's own `\label{...}` body — the first one at figure depth
- *  (a `\label` inside the caption counts: it names the figure). Returns "" if
- *  none. A `\label` inside a nested `subfigure` belongs to that subfigure and
- *  is deliberately NOT read here. */
-export function extractLabel(envContent: string): string {
-  return scanFigure(envContent).labels[0]?.body ?? "";
+/** Which figure-depth `\label` is the figure's OWN — the one `\ref` resolves
+ *  to the figure's number?
+ *
+ *  LaTeX's rule, not source order: `\caption` calls `\refstepcounter{figure}`,
+ *  so a `\label` written AT OR AFTER the caption names the figure, and the same
+ *  bytes written BEFORE it name whatever counter was stepped last — normally
+ *  the enclosing section. A `\label` inside the caption argument
+ *  (`\caption{Foo \label{fig:x}}`, idiomatic) is on the naming side too, which
+ *  is why the test is positional and not "outside the caption".
+ *
+ *  So: the FIRST label at or after the caption. Two of them after one caption
+ *  both bind (no counter step in between), and the first is the canonical one.
+ *
+ *  Fallbacks, in order: no label after the caption → the first label, which is
+ *  the pre-379 answer and the only one available; no caption at all → the first
+ *  label. With no `\caption` nothing in the figure has stepped the figure
+ *  counter, so no label genuinely binds — but the model needs a key for the
+ *  lozenge and for `\ref` display, and picking the first is both stable and
+ *  what every earlier build did.
+ *
+ *  Before task 379 this was `labels[0]` unconditionally, and the extras strip
+ *  cut EVERY figure-depth label — so `\includegraphics{a}\label{one}` +
+ *  `\caption{c}\label{two}` came back with `two` DELETED and `one` silently
+ *  promoted from naming nothing to naming the figure. Every `\ref{two}` in the
+ *  paper became `??`, on the zero-user-edit load-writeback path.
+ *
+ *  A `\label` inside a nested `subfigure` belongs to that subfigure and never
+ *  reaches this list — the scan drops it by depth. */
+function bindingLabel(scan: FigureBodyScan): LabelHit | null {
+  const { caption, labels } = scan;
+  if (labels.length === 0) return null;
+  if (caption) {
+    const bound = labels.find((l) => l.start >= caption.start);
+    if (bound) return bound;
+  }
+  return labels[0];
 }
 
-/** Strip the figure's own `\caption{balanced}` and its figure-depth `\label`s
- *  from an env body so the serializer can rebuild them from structured attrs
- *  without losing the surrounding `\centering` / `\includegraphics` / comments
- *  — and without touching anything inside a nested environment, which is
- *  re-emitted byte-raw.
- *
- *  Note: a second figure-DEPTH `\label` is still dropped, because the model
- *  carries exactly one `label` attr; leaving the extra in `extras` would move
- *  it ahead of the caption on re-emit and oscillate. Nested-env labels are
- *  unaffected — those are the ones this scan exists to protect. */
-function stripFigureOwnCommands(envContent: string, scan: FigureBodyScan): string {
-  // Ranges to cut, descending, so earlier offsets stay valid. In-caption
-  // labels are inside the caption range and would double-cut.
-  const cuts: Array<[number, number]> = [];
-  if (scan.caption) cuts.push([scan.caption.start, scan.caption.end]);
-  for (const l of scan.labels) {
-    if (!l.inCaption) cuts.push([l.start, l.end]);
-  }
-  cuts.sort((a, b) => b[0] - a[0]);
-  let out = envContent;
-  for (const [start, end] of cuts) {
+/** Apply byte ranges to cut, descending so earlier offsets stay valid, then
+ *  collapse the blank lines the stripping leaves behind. */
+function cutRanges(src: string, cuts: Array<[number, number]>): string {
+  let out = src;
+  for (const [start, end] of [...cuts].sort((a, b) => b[0] - a[0])) {
     out = out.slice(0, start) + out.slice(end);
   }
-  // Collapse adjacent blank lines left by the stripping.
-  out = out.replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n");
-  return out;
+  return out.replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n");
+}
+
+/** Strip the figure's own `\caption{balanced}` and its BINDING `\label` from an
+ *  env body, splitting what is left at the caption so the serializer can rebuild
+ *  the env without losing — or relocating — the surrounding
+ *  `\centering` / `\includegraphics` / comments / sub-floats, which are
+ *  re-emitted byte-raw.
+ *
+ *  **Only the two commands the model actually holds are cut.** Everything else
+ *  a figure may carry more than one of — a second figure-depth `\label`, a
+ *  second `\caption` — survives in the halves, on the side of the caption it
+ *  was written on. That is the whole of task 379: cutting EVERY figure-depth
+ *  `\label` deleted labels 2..n outright, and re-emitting a leftover `\caption`
+ *  from a single un-split `extras` put it AHEAD of the caption the model kept,
+ *  so the two swapped places on every save, forever, with no user edit.
+ *
+ *  The pivot is the caption's start (or the binding label's, or the end of the
+ *  body) and no cut can straddle it: the caption cut begins exactly at the
+ *  pivot, and a binding label that is not inside the caption lies wholly on one
+ *  side of it. Nested-env labels are untouched on either side — those are the
+ *  ones this scan exists to protect. */
+function splitFigureOwnCommands(
+  envContent: string,
+  scan: FigureBodyScan,
+  binding: LabelHit | null,
+): { extras: string; trailingExtras: string } {
+  const cuts: Array<[number, number]> = [];
+  if (scan.caption) cuts.push([scan.caption.start, scan.caption.end]);
+  // An in-caption binding label lives inside the caption range, which is cut
+  // whole — cutting it separately would double-cut.
+  if (binding && !binding.inCaption) cuts.push([binding.start, binding.end]);
+  const pivot = scan.caption
+    ? scan.caption.start
+    : binding && !binding.inCaption
+      ? binding.start
+      : envContent.length;
+  return {
+    extras: cutRanges(
+      envContent.slice(0, pivot),
+      cuts.filter(([start]) => start < pivot),
+    ),
+    trailingExtras: cutRanges(
+      envContent.slice(pivot),
+      cuts
+        .filter(([start]) => start >= pivot)
+        .map(([start, end]) => [start - pivot, end - pivot] as [number, number]),
+    ),
+  };
 }
 
 /** Run the full structural extraction for a `\begin{figure}...\end{figure}` body. */
@@ -500,6 +581,11 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
   // are exactly the bytes the serializer re-emits, which is what makes the
   // round-trip a fixed point.
   const scan = scanFigure(envContent);
+  // The figure's own label is the one LaTeX would resolve `\ref` to, not the
+  // first one in the file — see `bindingLabel`. The SAME hit decides what the
+  // strip cuts, so the bytes removed are exactly the bytes re-emitted, which is
+  // what makes the round-trip a fixed point.
+  const binding = bindingLabel(scan);
   return {
     source: first?.path ?? null,
     widthPercent: first?.widthPercent ?? null,
@@ -508,8 +594,8 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     hasCaption: scan.caption !== null,
     shortCaption: scan.caption?.short ?? null,
     captionStarred: scan.caption?.starred ?? false,
-    label: scan.labels[0]?.body ?? "",
-    extras: stripFigureOwnCommands(envContent, scan),
+    label: binding?.body ?? "",
+    ...splitFigureOwnCommands(envContent, scan, binding),
   };
 }
 

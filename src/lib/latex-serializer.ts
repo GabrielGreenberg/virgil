@@ -612,12 +612,25 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const label = (node.attrs?.label as string) ?? "";
       const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
-      // `extras` is raw passthrough (\includegraphics, TikZ, pgfplots) — run the
-      // shared vocabulary over it so its packages declare at the emit-site. Its
+      // Bytes the author wrote AFTER the caption — a second figure-depth
+      // `\label`, a stray second `\caption`, a trailing comment. Carried on
+      // the side they were written on so a `\label` cannot cross the caption,
+      // which in LaTeX changes which counter it names (task 379).
+      const trailingExtras = (node.attrs?.trailingExtras as string) ?? "";
+      // Raw passthrough (\includegraphics, TikZ, pgfplots) — run the shared
+      // vocabulary over it so its packages declare at the emit-site. Its
       // COMMENTED-OUT lines declare nothing: commenting an old figure path out
       // while trying a new one is ordinary editing, and the projection inside
       // `declareFromRawLatex` is what makes that true.
-      declareFromRawLatex(extras);
+      //
+      // The two halves are declared TOGETHER, in ONE call, because they are one
+      // env body split only for POSITION (task 379). The projection is stateful
+      // over the string it is given, so a `\begin{verbatim}` opened in `extras`
+      // and closed in `trailingExtras` must be seen as the pair it is — two
+      // calls would read the first half as unterminated (inert to EOF) and the
+      // second as live. The newline is what keeps a trailing `%` in the first
+      // half from swallowing the second half's first line.
+      declareFromRawLatex(`${extras}\n${trailingExtras}`);
       const captionChild = (node.content || []).find(
         (c) => c.type === "figureCaption",
       );
@@ -636,6 +649,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // reverted substring test of task 245 could not make).
       const body = buildFigureEnvBody({
         extras,
+        trailingExtras,
         captionTex,
         hasCaption: node.attrs?.hasCaption !== false,
         shortCaption: (node.attrs?.shortCaption as string | null) ?? null,

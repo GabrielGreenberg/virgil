@@ -68,11 +68,15 @@ export interface FigureBlockOptions {
 // a `figureCaption` child (`content: "inline*"`, so citations and marks
 // work inside). Structured attrs drive the rest of the env body.
 //
-// `extras` carries the parts of the env body we don't model structurally
-// (`\centering`, `\includegraphics`, TikZ blocks, raw comments). It is
-// derived at parse time by stripping `\caption{…}` and `\label{…}` from
-// the env body; the serializer always rebuilds the env as
-// `extras + \caption{<from sub-node>} + \label{<from attr>}`.
+// `extras` / `trailingExtras` carry the parts of the env body we don't model
+// structurally (`\centering`, `\includegraphics`, TikZ blocks, raw comments,
+// and any figure-depth `\label`/`\caption` beyond the one the model holds).
+// They are derived at parse time by stripping the figure's own `\caption{…}`
+// and BINDING `\label{…}` from the env body and splitting what remains at the
+// caption; the serializer always rebuilds the env as
+// `extras + \caption{<from sub-node>} + \label{<from attr>} + trailingExtras`
+// (task 379 — the split is what keeps a second `\label` from crossing the
+// caption, which in LaTeX changes which counter it names).
 //
 // Subfigures are represented by `sources: FigureSource[]`. The first one
 // is exposed as `source` for the common single-image case.
@@ -97,6 +101,10 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
   addAttributes() {
     return {
       extras: { default: "" },
+      // Env-body bytes AFTER the figure's own `\caption` (task 379) — the
+      // side-preserving half of `extras`. Empty for every figure whose body
+      // ends at the caption/label block, which is nearly all of them.
+      trailingExtras: { default: "" },
       placement: { default: "" },
       starred: { default: false, renderHTML: () => ({}) },
       uuid: UUID_ATTR_SPEC.uuid,

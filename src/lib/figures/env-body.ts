@@ -38,8 +38,18 @@
 import { captionDeclaresLabel } from "./parse-attrs";
 
 export interface FigureEnvBodyParts {
-  /** Env body minus the figure's own `\caption` / `\label` — raw passthrough. */
+  /** Env body BEFORE the figure's own `\caption`, minus that caption and the
+   *  figure's own `\label` — raw passthrough. */
   extras: string;
+  /** Env body AFTER the figure's own `\caption`, same strip — raw passthrough,
+   *  re-emitted after the caption/label block (task 379).
+   *
+   *  Optional because two of this builder's three callers construct a FRESH
+   *  figure from nothing, where there is no "after the caption" half to carry;
+   *  the serializer and the popover round trip thread the parsed value. Unlike
+   *  `numbered` there is no intent to state here — an absent trailing half is
+   *  the absence of bytes, not a decision — so a default is the honest shape. */
+  trailingExtras?: string;
   /** Serialized caption body (the `figureCaption` child's LaTeX). */
   captionTex: string;
   /** Did the SOURCE carry a `\caption` command (`FigureAttrs.hasCaption`). */
@@ -187,6 +197,18 @@ export function buildFigureEnvBody(parts: FigureEnvBodyParts): string {
   if (figureEmitsLabel(parts)) {
     out.push("\n  ");
     out.push(`\\label{${parts.label}}`);
+  }
+  // Bytes the author wrote AFTER the caption go back after it — a second
+  // figure-depth `\label`, a stray second `\caption`, a trailing comment
+  // (task 379). Trimmed at both ends so the emitted position is a function of
+  // the SPLIT and not of the whitespace the previous save happened to leave,
+  // which is what makes the second cycle byte-identical to the first. The
+  // trailing "\n" below is unconditional, so a half ending in a `%` comment
+  // cannot comment out `\end{figure}`.
+  const trailing = (parts.trailingExtras || "").trim();
+  if (trailing) {
+    out.push("\n");
+    out.push(trailing);
   }
   out.push("\n");
   return out.join("");

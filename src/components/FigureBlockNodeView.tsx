@@ -60,6 +60,7 @@ function figurePopoverRaw(node: NodeViewProps["node"]): string {
   // remove here as a first-class edit.
   return buildFigureEnvBody({
     extras: (node.attrs.extras as string | undefined) || "",
+    trailingExtras: (node.attrs.trailingExtras as string | undefined) || "",
     captionTex:
       captionChild?.type.name === "figureCaption" ? captionChild.textContent : "",
     hasCaption: node.attrs.hasCaption !== false,
