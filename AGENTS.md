@@ -3415,6 +3415,124 @@ carrier and an UNTERMINATED opener as controls; measured by neutering each half
 in turn, the parser claim takes 13 legs, the declared carry 2 (one of them the
 shipped texBlock defect) and the bracket-scanner guard 1.
 
+#### The view half: a derived VIEW may refuse freely, and must do so LOUDLY
+
+Same node, the other direction (task 384) — and the case where the vocabulary
+laws above (342/355/356: *model a subset, refuse WHOLE outside it, never guess*)
+apply to something that is not a parse at all.
+
+`forestBlock`'s model is its bytes, so a RENDERER over those bytes cannot lose
+anything: a refusal costs the user a picture, never a byte. That asymmetry is
+the whole design, and it inverts the usual cost of refusing. Where a parser's
+refusal means carried source in place of a modelled node — a real loss of
+affordance — a view's refusal means a badge instead of a drawing, over an
+untouched document. So the subset can be small and honest rather than wide and
+hopeful.
+
+> **A VIEW derived from bytes renders exactly what it understands and BADGES
+> everything else — LOUDLY, VISIBLY, ATTACHED to the object, and NAMING the
+> construct it refused.** A drawing produced by ignoring a layout option the
+> author wrote is a MISRENDER wearing a feature's clothes: it is well-formed,
+> plausible, and the user has no way to detect it. A badge naming `for tree` is
+> a limitation they can see, work around and file.
+
+Seven rules it earned:
+
+- **Render and refusal come from ONE parse.** They are two halves of a single
+  verdict, and a surface that asked twice could paint a badge over a tree.
+  `deriveForestPod` answers both, and both pod surfaces read it — the same
+  "one implementation, per surface" rule the pod chrome itself follows, for the
+  same reason: a float that badged differently from the docked block would make
+  a lift change the diagnosis.
+- **The refusal is SPECIFIC or it is nothing.** A closed `ForestRefusalKind`
+  union, one sentence per kind composed in ONE function (`describeForestRefusal`)
+  that the badge and the suite both read, and a byte offset. The suite has a leg
+  PER unsupported construct class asserting the kind AND the echoed token,
+  because a refusal that fires for the wrong reason is a wrong message — it
+  sends the user to change a byte that was never the problem — and every such
+  leg would pass on a parser that refused everything.
+- **It is a WARNING, not an alarm** (STYLE_GUIDE → "RED means an action would
+  destroy content WITHOUT a net"). Amber, over intact bytes, with the source
+  right under it.
+- **Nothing derived is persisted.** No `renderable` attr, no sidecar note, no
+  cached parse — which is what makes growing the whitelist additive with no
+  migration: each new key moves inputs from the badge to the render.
+  [forest-render-derived.test.ts](src/lib/__tests__/forest-render-derived.test.ts)
+  drives two save cycles over accepted and refused sources and asserts the two
+  are indistinguishable downstream, with the node's attr key set asserted as a
+  CLOSED set rather than as "does not contain X" — a future "just cache it on
+  the node" must be a failing test, not a name someone forgot to add to a
+  denylist.
+- **The geometry is PURE and its invariants are swept, not pinned.**
+  [layout.ts](src/lib/forest/layout.ts) is a contour-based tidy tree (variable
+  widths; a sibling is pushed right by exactly what clears every shared depth),
+  DOM-free for the reason the marginalia grid packer is: a pinned pixel is a fact
+  about the last commit, where "no two labels overlap", "a parent is centered
+  over its children's span" and "a roof spans the box it claims" are true of
+  every tree or of none. Measured by neutering the contour to depth 0 — three
+  overlap legs fail.
+- **`roof` resolves to ONE box, and which box is not obvious.** A roofed
+  INTERNAL node keeps its label and gains a synthesized child holding its
+  descendants' leaf text under the triangle (forest's own semantics — the
+  internals genuinely disappear); a roofed LEAF wears the triangle itself, the
+  `[{the dog},roof]` idiom. A roof INSIDE a roofed subtree is refused rather than
+  silently swallowed: two interacting triangles are exactly the guess this
+  grammar exists not to make.
+- **It reads TeX's OWN comment rule, and that is the one place this grammar
+  deliberately parts from the parser.** Every byte-walking scan in the parser
+  reads the NARROW line-leading `startsLineComment`, because a construct-
+  TERMINATOR scan that believes a mid-line `%` calls a live `\end{env}` inert
+  and swallows the rest of the document (task 338). Nothing here terminates a
+  construct — the source is already claimed and its ends are fixed — and the
+  narrow rule would MISRENDER: `[S %draft` is a node labelled "S" in forest and
+  would have rendered as one labelled "S %draft", which is precisely the
+  silently-wrong picture the whole design refuses. Where a mid-line comment does
+  eat a delimiter, the refusal that follows is the one forest's own compiler
+  gives.
+- **A view that parses whatever is PASTED into it states its bounds.** The
+  scanner, the roof flattening and the layout's three walks are all recursive,
+  so a pasted `[`×10 000 would not refuse — it would throw a `RangeError` out of
+  a React render and take the editor down. `MAX_FOREST_DEPTH` (64) and
+  `MAX_FOREST_NODES` (512) are refusals instead, far past any real syntax tree
+  and far short of anything that hurts. A bound whose failure mode is a badge is
+  a bound worth having; one whose failure mode is a crash is a latent trap.
+- **Keystroke sanctity for a derived view is a question about the CALLBACK, not
+  the subscription.** This NodeView never sees the editor, which proves nothing
+  on its own: a React NodeView is re-rendered by its host for reasons it does not
+  control, and a re-render that re-parses, re-measures and re-lays-out is O(tree)
+  per keystroke however innocent its subscription list looks — the `float-sync`
+  shape. So the pod memoizes the derivation on `(derive, source)` (which is why
+  the config is a module-scope CONSTANT: a per-render literal is a new memo key
+  every render), the view memoizes on tree identity, and
+  `window.__forestRenderStats()` counts parse / measure / layout / render
+  SEPARATELY so a regression names itself.
+
+**The cost suite's own shape is the lesson.** Its burst legs — type twenty
+characters three paragraphs away, assert every counter flat — prove the
+user-visible contract and are worth having, and they were MEASURED to stay green
+with the pod's memo deleted, because ProseMirror does not re-render a NodeView
+whose node did not change. An invariant with no leg is a habit (task 334), so
+each bail got a leg that can actually see it: the pod's memo is driven by a
+parent that re-renders for its own reasons, and the view's `memo` comparator is
+visible only to a RENDER counter (the effect deps already stop the measure and
+the layout, so an unbailed re-render reconciles every label element and re-runs
+no effect — cheap enough to be invisible to the other three counters, and
+O(nodes) all the same). Both fail when neutered; without those two legs, both
+bails were deletable in silence.
+
+CI: [forest-grammar.test.ts](src/lib/forest/__tests__/forest-grammar.test.ts),
+[forest-layout.test.ts](src/lib/forest/__tests__/forest-layout.test.ts),
+[forest-render-cost.test.tsx](src/components/__tests__/forest-render-cost.test.tsx),
+[forest-render-derived.test.ts](src/lib/__tests__/forest-render-derived.test.ts),
+[forest-chrome-contract.test.ts](src/lib/forest/__tests__/forest-chrome-contract.test.ts)
+(the ink, the amber tier and the print rules in BOTH directions — the tree
+prints, the frame / corner / badge do not).
+
+**Owed, not claimed:** the preview eyeball. Nothing here is FSA-masked — it is a
+render over bytes — so pasting two or three real trees from a paper (subset
+members and a `for tree=` refusal) and looking at both states is a cheap, real
+check that a worktree cannot run.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

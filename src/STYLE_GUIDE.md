@@ -2024,7 +2024,36 @@ Two wearers today — `texBlock` (raw LaTeX between `%!vtex:` sentinels) and
   `:is(.tex-block, .forest-block)`. A second wearer that borrowed the first
   one's class would read as the wrong node forever after.
 - **The corner chip names the bytes** (`.tex`, `forest`) — it is what tells the
-  reader which language the pod is holding, so give every wearer one.
+  reader which language the pod is holding, so give every wearer one. It is
+  `.source-pod-chip` inside `.source-pod-corner`, shared by both surfaces; a
+  wearer that can RENDER its bytes gets the `.source-pod-mode-toggle` beside it
+  (hover-revealed, `</>` to the source and a tree glyph back). The toggle is a
+  separate control rather than a press on the chip: the chip's job is to be
+  read, and a pod with no derived view has no second answer to give.
+
+### A pod that can RENDER its bytes
+
+A wearer may contribute a `derive(source)` — a rendered PREVIEW shown in place of
+the code surface, and a BANNER of chrome shown above the body in both modes.
+`forestBlock` supplies both from ONE parse (`deriveForestPod`); `texBlock`
+supplies neither and its pod is byte-for-byte the pod it was. Three rules:
+
+- **The preview is the default body; the source is one click away.** Clicking the
+  preview is the natural path (it is where an edit happens); the corner toggle is
+  the discoverable one. A `null` preview is an ANSWER — "these bytes have no
+  derived view" — and it pins the pod to source mode, which is exactly the state
+  a refusal wants.
+- **A refusal is a WARNING, never an alarm.** `.forest-refusal-badge` is the
+  amber tier (`--amber-100` ground, `--amber-500` edge and icon), one line, above
+  the body, visible without hover, naming the construct that was refused and its
+  line. RED is reserved for an action that would destroy content without a net,
+  and nothing here can destroy anything: the bytes are the model, the render is a
+  pure derivation, and the source sits right under the badge.
+- **The picture prints; the chrome does not.** In `@media print` the derived body
+  loses its frame and the corner, and the badge is dropped entirely — it is a
+  statement about Virgil's renderer, not about the paper. What prints in its
+  place is the source it was pointing at. Pinned in both directions by
+  `src/lib/forest/__tests__/forest-chrome-contract.test.ts`.
 
 ## Block images (figures & pictures)
 

@@ -50,6 +50,7 @@ import {
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
+import type { SourcePodDerive } from "@/components/source-pod-derive";
 
 /** What one source-pod kind contributes over the shared body. */
 export interface SourcePodFloatConfig {
@@ -60,6 +61,14 @@ export interface SourcePodFloatConfig {
   sourceAttr: string;
   /** Corner chip inside the pod's top-right. */
   chipLabel: string;
+  /**
+   * Optional derived VIEW over the source (task 384). The float is deliberately
+   * SOURCE-ONLY — a popout is where you go to edit the bytes — so only the
+   * derivation's `banner` is read here: a refusal badge must follow the block
+   * into its float, or lifting the block would silently lose the diagnosis the
+   * badge exists to give. MUST be module-scope stable (memo key).
+   */
+  derive?: SourcePodDerive;
 }
 
 // Theme matches the in-place `sourcePodTheme` so the
@@ -101,7 +110,7 @@ export function SourcePodFloatBody({
   editorRef,
   config,
 }: TextObjectFloatBodyProps & { config: SourcePodFloatConfig }) {
-  const { kind, sourceAttr, chipLabel } = config;
+  const { kind, sourceAttr, chipLabel, derive } = config;
   const ref = editorRef as RefObject<EditorHandle | null>;
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
@@ -133,6 +142,10 @@ export function SourcePodFloatBody({
   const [title, setTitle] = useState<string | null>(initial.title);
   const [sourceMissing, setSourceMissing] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
+
+  // ONE derivation per (kind, source) — the float reads only its `banner` half
+  // (see `SourcePodFloatConfig.derive`), so a refusal travels with the block.
+  const banner = useMemo(() => (derive ? derive(code).banner : null), [derive, code]);
 
   const writeBackToMain = useCallback(
     (next: string) => {
@@ -284,6 +297,7 @@ export function SourcePodFloatBody({
                 `height:100%` clamped the `.cm-scroller` ~10px and clipped the
                 last line (L3e.2). */}
             <div className="source-pod">
+              {banner}
               <div className="source-pod-editor relative">
                 <CodeMirror
                   value={code}
@@ -306,10 +320,11 @@ export function SourcePodFloatBody({
                     autocompletion: false,
                   }}
                 />
-                {/* Kind chip — inside the pod's top-right corner, identical
-                    markup to SourcePodNodeView so the float reads as the same pod. */}
-                <div className="absolute top-1 right-1.5 z-10 px-1 py-px text-[10px] rounded-sm bg-[var(--background)]/85 border border-[var(--heading-annotation-border,#a8c4de)] text-[var(--heading-annotation-color,#6b9ac4)] select-none pointer-events-none font-mono leading-tight">
-                  {chipLabel}
+                {/* Kind chip — the SHARED `.source-pod-corner` / `.source-pod-chip`
+                    the in-place pod wears, so the released float frames identically
+                    rather than by two copies of one utility string. */}
+                <div className="source-pod-corner">
+                  <span className="source-pod-chip">{chipLabel}</span>
                 </div>
               </div>
             </div>
