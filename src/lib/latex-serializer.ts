@@ -598,7 +598,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // diverge — the projection is inside `declareFromRawLatex`, never here).
       declareFromRawLatex(rawCode);
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
-      return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
+      // The BODY is declared carried (task 383): `collapseBlankRuns`' recognizer
+      // only knows `\\begin{env}` shapes, so a texBlock whose code held a 3+
+      // newline run lost one of those blank lines on the FIRST save — silently,
+      // idempotently, and in the one node whose whole contract is passthrough.
+      return `%!vtex:begin ${uuid}\n${carriedSource(escaped)}\n%!vtex:end ${uuid}\n\n`;
     }
 
     case "figureBlock": {
@@ -658,6 +662,26 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         label,
       });
       return `\\begin{${envName}}${placement}${body}\\end{${envName}}${anchor}\n\n`;
+    }
+
+    case "forestBlock": {
+      // A `\\begin{forest}…\\end{forest}` environment, carried WHOLE — the
+      // node's authoritative attr IS the environment's bytes, so this arm is
+      // "emit them, plus the anchor" and nothing else (task 383). Byte identity
+      // across a save is therefore a property of the REPRESENTATION rather than
+      // of a structured model staying faithful, which is the same reason
+      // `graphicsBlock.command` below is emitted verbatim.
+      const source = (node.attrs?.source as string) ?? "";
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuidAnchorSuffix(uuid);
+      // A forest body is real LaTeX the editor does not model, so declare from
+      // its OWN bytes exactly as the `texBlock` arm does — a `\\tikz` or an
+      // `\\includegraphics` inside a tree label must reach its `\\usepackage`.
+      // (`\\usepackage{forest}` itself is task 385's; nothing declares it today
+      // and nothing did before this node existed, so this arm changes no
+      // preamble.) `declareFromRawLatex` projects inert bytes itself (task 345).
+      declareFromRawLatex(source);
+      return `${carriedSource(source)}${anchor}\n\n`;
     }
 
     case "graphicsBlock": {
@@ -1529,6 +1553,44 @@ const SERIALIZER_GENERATED_ENVS = [
 ] as const;
 
 /**
+ * DECLARED carried source — the emit-site half of "never tidy bytes we carried".
+ *
+ * `CARRIED_BLOCK_RE` below RECOGNIZES a carried environment out of the final
+ * string, which is a heuristic recovery of information the serializer had and
+ * threw away: it can only see `\begin{env}…\end{env}` shapes, and only those
+ * whose opener arguments close on the opener's own line. Two shipped nodes
+ * carry bytes it cannot see either way — `texBlock`, whose body sits between
+ * `%!vtex:` sentinels rather than inside an environment, and `forestBlock`,
+ * whose `source` may open `\begin{forest}[Root` across a line break. Both lost
+ * an interior 3+ newline run on the FIRST save, silently and idempotently.
+ *
+ * A node whose model IS its bytes KNOWS they are carried, so it says so:
+ * `carriedSource(bytes)` wraps them in a sentinel pair that `collapseBlankRuns`
+ * stashes before it collapses anything and strips on the way out. The property
+ * becomes structural for attr-carried source instead of resting on a regex
+ * re-recognizing a shape after the fact.
+ *
+ * The sentinels are NUL-led so they cannot collide with anything a `.tex` can
+ * legitimately contain, and they never escape this module: every path that
+ * emits them ends at `collapseBlankRuns` (`assembleLatex` for the per-block
+ * pipeline and `serializeToLatex`, `serializeBodyOnly` for the whole-doc walk).
+ * `serializeParagraphInline` is the one export that skips the collapse, and it
+ * serializes a PARAGRAPH — no block atom can appear in one — so it cannot see a
+ * sentinel. The restore below also strips any unpaired sentinel defensively.
+ */
+const CARRIED_OPEN = "\u0000\u241f<vcarry>";
+const CARRIED_CLOSE = "</vcarry>\u241f\u0000";
+
+function carriedSource(bytes: string): string {
+  return `${CARRIED_OPEN}${bytes}${CARRIED_CLOSE}`;
+}
+
+const CARRIED_SPAN_RE = new RegExp(
+  `${CARRIED_OPEN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\s\\S]*?)${CARRIED_CLOSE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+  "g",
+);
+
+/**
  * Collapse runs of 3+ newlines down to a single blank-line separator — EXCEPT
  * inside any environment whose bytes we CARRIED rather than generated, whose
  * body is byte-preserving. Those blocks are pulled out behind placeholders, the
@@ -1582,15 +1644,30 @@ function collapseBlankRuns(s: string): string {
   // (so the collapse pass can't touch it) and cannot collide with real prose
   // (`@@` + a reserved tag). Restore is index-guarded — an unmatched token is
   // left verbatim rather than turning into "undefined".
-  const stashed = s.replace(CARRIED_BLOCK_RE, (m) => {
-    blocks.push(m);
+  const stash = (text: string): string => {
+    blocks.push(text);
     return `@@VBTSTASH:${blocks.length - 1}@@`;
-  });
+  };
+  // DECLARED spans first (see `carriedSource`): the emitter told us these bytes
+  // are carried, so nothing has to be recognized. Running first also means a
+  // `\begin{…}` INSIDE carried source can no longer confuse the recognizer
+  // below.
+  let stashed = s.replace(CARRIED_SPAN_RE, (_m, bytes: string) => stash(bytes));
+  // RECOGNIZED carried environments — the generic env carrier's half.
+  stashed = stashed.replace(CARRIED_BLOCK_RE, (m) => stash(m));
   const collapsed = stashed.replace(/\n{3,}/g, "\n\n");
-  return collapsed.replace(/@@VBTSTASH:(\d+)@@/g, (whole, i) => {
-    const block = blocks[Number(i)];
-    return block === undefined ? whole : block;
-  });
+  return (
+    collapsed
+      .replace(/@@VBTSTASH:(\d+)@@/g, (whole, i) => {
+        const block = blocks[Number(i)];
+        return block === undefined ? whole : block;
+      })
+      // Defensive: an unpaired sentinel must never reach the user's file.
+      .split(CARRIED_OPEN)
+      .join("")
+      .split(CARRIED_CLOSE)
+      .join("")
+  );
 }
 
 /** One top-level block's serialized LaTeX + the requirements its emit-sites

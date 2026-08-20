@@ -21,6 +21,7 @@ import { ParagraphBody } from "./paragraph-body";
 import { HeadingBody } from "./heading-body";
 import { ListBody } from "./list-body";
 import { TexBlockBody } from "./tex-block-body";
+import { ForestBlockBody } from "./forest-block-body";
 import { ExampleBlockBody } from "./example-block-body";
 import { LinkedRangeBody } from "./linked-range-body";
 import { SingleBlockBody } from "./single-block-body";
@@ -33,6 +34,9 @@ registerFloatBody("heading", HeadingBody);
 registerFloatBody("bulletList", ListBody);
 registerFloatBody("orderedList", ListBody);
 registerFloatBody("texBlock", TexBlockBody);
+// forestBlock (task 383) — the source-pod twin: same shape as TexBlockBody, one
+// attr over (`source`, the whole `\begin{forest}…\end{forest}` env).
+registerFloatBody("forestBlock", ForestBlockBody);
 registerFloatBody("exampleBlock", ExampleBlockBody);
 registerFloatBody("linkedRange", LinkedRangeBody);
 // One generic body serves every single-top-level-block bodyless kind (the

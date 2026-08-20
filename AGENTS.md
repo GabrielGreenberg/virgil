@@ -3362,6 +3362,59 @@ already does for `\emph{x}` and every other carried command. Routing that
 projection through the display door is task 368's law applied to a second
 surface, with its own census, and is out of scope here.
 
+#### The carrier half, declared: a node whose model IS its bytes says so
+
+Same round trip, and the case where the rule was right and the mechanism that
+enforced it had to RECOGNIZE its own output after the fact (task 383).
+
+`collapseBlankRuns` is the one pass entitled to tidy generated `.tex`, and it
+must never touch bytes the serializer CARRIED. It decided which was which by
+matching `\begin{env}…\end{env}` out of the finished string — a heuristic
+recovery of information the emitter had and threw away, and it can only see two
+things: an environment, and one whose opener arguments close on the opener's own
+line. Two shipped nodes carry bytes it can see neither way. `texBlock`'s body
+sits between `%!vtex:` sentinels, so a 3+ newline run inside it lost a blank line
+on the FIRST save — silently, idempotently, in the node whose whole contract is
+passthrough. `forestBlock`'s `source` may open `\begin{forest}[Root` across a
+line break, which defeats the argument matcher and the tail alike.
+
+> **A node whose model IS its bytes KNOWS they are carried, so it SAYS so.**
+> `carriedSource(bytes)` wraps an emitted verbatim span in a sentinel pair that
+> `collapseBlankRuns` stashes before it collapses anything and strips on the way
+> out. For attr-carried source the property is then structural; the recognizer
+> survives only for the generic env CARRIER, whose bytes no emitter declares.
+
+Three rules it earned:
+
+- **Declared spans are stashed BEFORE recognized ones.** A `\begin{…}` inside
+  carried source is then already a placeholder, so it cannot confuse the
+  recognizer — which is a second, free correctness win over the pre-383 order.
+- **The sentinels never escape, and that is stated rather than hoped.** Every
+  path that emits them ends at `collapseBlankRuns` (`assembleLatex` for the
+  per-block pipeline, `serializeToLatex`/`serializeBodyOnly` for the whole-doc
+  walk); `serializeParagraphInline` is the one export that skips the collapse
+  and it serializes a PARAGRAPH, where no block atom can appear. The restore
+  also strips an unpaired sentinel defensively.
+- **`forestBlock` is the model this makes cheap.** Task 383 claims
+  `\begin{forest}…\end{forest}` whole — `source` holds the entire environment
+  verbatim, the serializer emits it plus `uuidAnchorSuffix(uuid)`, and the
+  renderer (task 384) is a pure derivation that cannot subtract from it. So the
+  342/356 refuse-whole law is satisfied trivially: there is no structured tree at
+  the document layer to lose anything from. Its one parser subtlety is that a
+  forest's leading `[` is the TREE, not an option — the dispatcher's bracket
+  scanner is skipped for that env, or on a body whose brackets do not balance
+  the terminator search starts past the real `\end{forest}` and two trees fold
+  into one.
+
+The pod both wearers render through is shared too — `SourcePodNodeView`
+in place, `source-pod-body` popped out, `.source-pod*` in CSS with only the HOST
+class naming a node (`STYLE_GUIDE.md` → "Source pods"). CI:
+[forest-block-roundtrip.test.ts](src/lib/__tests__/forest-block-roundtrip.test.ts)
+drives the REAL save pipeline over TWO cycles per shape, with the generic
+carrier and an UNTERMINATED opener as controls; measured by neutering each half
+in turn, the parser claim takes 13 legs, the declared carry 2 (one of them the
+shipped texBlock defect) and the bracket-scanner guard 1.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

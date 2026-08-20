@@ -187,6 +187,10 @@ const FIXTURES: Record<string, () => JSONContent> = {
     type: "texBlock",
     attrs: { code: "\\draw (0,0) -- (1,1);" },
   }),
+  forestBlock: () => ({
+    type: "forestBlock",
+    attrs: { source: "\\begin{forest}\n[S\n  [NP]\n  [VP]\n]\n\\end{forest}" },
+  }),
   exampleBlock: () => ({
     type: "exampleBlock",
     attrs: { kind: "single" },

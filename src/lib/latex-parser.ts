@@ -41,6 +41,7 @@ import {
   findMatchingEnv,
   findMatchingGloss,
   findMatchingXe,
+  FOREST_ENV_NAME,
   blockMarkerPrefixLength,
   matchExpexOpenerAt,
   matchLinguexItemAt,
@@ -2100,7 +2101,19 @@ function parseBody(
       // enumitem idiom like `[label={\roman*)}]` was truncated mid-option —
       // survivable while a list's options were being DELETED anyway, and not
       // once the bytes are carried and re-emitted.
-      const optBracket = extractBracketed(ctx.src, beginAt.end);
+      //
+      // `forest` is the one env whose leading `[` is NOT an option: the
+      // package's grammar is `\begin{forest}⟨preamble⟩[tree]`, so the bracket
+      // is the TREE. Reading it as an optional argument moves the cursor into
+      // the body before the terminator scan, and on a body whose brackets do
+      // not balance before `\end{forest}` that scan starts PAST the real
+      // close — which finds either nothing (the env is carried instead of
+      // claimed) or a LATER `\end{forest}`, folding everything between two
+      // trees into one. Damage from malformed input must stay local, so the
+      // consumption is skipped for the env that would provoke it. Byte-neutral
+      // either way, because the node's `source` is a raw slice.
+      const optBracket =
+        env === FOREST_ENV_NAME ? null : extractBracketed(ctx.src, beginAt.end);
       const optArg = optBracket
         ? ctx.src.slice(beginAt.end, optBracket.end)
         : "";
@@ -2185,6 +2198,44 @@ function parseBody(
       }
 
       switch (env) {
+        case FOREST_ENV_NAME: {
+          // `\begin{forest}…\end{forest}` — a tree, CLAIMED WHOLE (task 383).
+          //
+          // The node's model IS its bytes: `source` holds the entire
+          // environment exactly as read — opener arguments, body and closer —
+          // so the serializer's arm is `source` + the anchor and round-trip
+          // identity is a property of the REPRESENTATION rather than of a
+          // structured model staying faithful. That is the `graphicsBlock.command`
+          // / `texBlock.code` shape one environment over, and it is what makes
+          // the 342/356 refuse-whole law trivially satisfied here: there is no
+          // structured tree at the document layer for a renderer (task 384) to
+          // lose anything from.
+          //
+          // Sliced from the SOURCE rather than rebuilt from
+          // `\begin{env}${optArg}${envContent}\end{env}` — the reconstruction is
+          // byte-equal for every spelling the dispatcher can reach today, but a
+          // slice cannot be wrong about a spelling nobody anticipated, and this
+          // is the branch whose whole contract is byte identity.
+          //
+          // WHERE it may be claimed: this dispatcher runs for the document
+          // body, a `quote` body and a list item's body — `blockquote` is
+          // `block+` and `parseList` normalizes a non-paragraph first child, so
+          // `forestBlock` (group `block`) is schema-legal in all three. An
+          // expex interior is the one place it is NOT: `parseExampleBodyAsBlocks`
+          // filters its children against `EXAMPLE_BODY_ACCEPTS`, so a
+          // `forestBlock` there falls to that function's byte-literal CARRIER —
+          // today's behaviour, preserved by construction rather than by a check
+          // here. Never create a node TipTap will silently drop (task 308).
+          const raw = ctx.src.slice(envOpenStart, envEnd + `\\end{${env}}`.length);
+          parent.content.push({
+            type: "forestBlock",
+            attrs: {
+              source: raw,
+              ...(envUuid ? { uuid: envUuid } : {}),
+            },
+          });
+          break;
+        }
         case "verbatim": {
           // Verbatim is byte-preserving: `unwrapVerbatimEnvBody` is the exact
           // inverse of the serializer's emit (undo the single wrapping `\n` on

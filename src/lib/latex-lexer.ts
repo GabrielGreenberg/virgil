@@ -112,6 +112,18 @@ export const VERBATIM_ENVS_FULL = [
 ] as const;
 
 /**
+ * The environment name the `forestBlock` node CLAIMS (task 383).
+ *
+ * Spelled once, in the leaf both halves of the round trip can reach: the
+ * parser's env dispatcher matches on it, the node's starter template opens
+ * with it, and the requirements vocabulary keys its `\usepackage{forest}` on
+ * it. Not a member of the verbatim family above — a forest body is real LaTeX,
+ * it simply has a MODEL at the document layer (its own bytes, carried whole)
+ * rather than a carrier paragraph.
+ */
+export const FOREST_ENV_NAME = "forest";
+
+/**
  * THE membership test for the family above. Exported so no consumer
  * re-enumerates the list or re-casts it to `readonly string[]` — the parser,
  * the syntax checker and `findMatchingEnv` all ask here (task 342).

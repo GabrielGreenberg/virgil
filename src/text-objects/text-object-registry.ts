@@ -703,6 +703,33 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
         message: `${actionVerb(action).verb} this raw LaTeX block.`,
       }),
   },
+  forestBlock: {
+    label: "Tree",
+    isSubObject: false,
+    // Atom in the schema, but `selectable: false` — selection mechanics route
+    // around it, exactly as they do for its source-pod twin `texBlock`. Still
+    // classified as an atom block for grab-handle positioning math.
+    selectsAsNode: true,
+    isMeaningfulBlockAtom: true,
+    isRange: false,
+    chromeAnchor: "block-top",
+    floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    initialFloatSize: { width: 480, height: 280 },
+    // A framed visual kind (tex pod / math / figure), so the non-prose block-
+    // atom action bucket: there is no inline position inside a tree for a
+    // footnote / citation / suggest-edit to land at, and the block-range gate
+    // (`blockRangeAllowsAction`) reads that bucket off this row.
+    actions: ATOM_BLOCK_ACTIONS,
+    // `forestBlock` round-trips as the whole `\begin{forest}…\end{forest}`
+    // environment in its `source` attr plus the shared `%!v:` anchor — no
+    // `\v*id` command of its own, so it appears in no marker table
+    // (src/lib/latex-markers.ts) just as `texBlock` does not.
+    dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("tree", action, {
+        message: `${actionVerb(action).verb} this forest tree.`,
+      }),
+  },
   figureBlock: {
     label: "Figure",
     isSubObject: false,

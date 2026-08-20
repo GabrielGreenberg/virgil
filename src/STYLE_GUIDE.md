@@ -1791,8 +1791,8 @@ shared chrome columns, expressed as CSS variables in `:root` so every
 consumer reads the same source:
 
 - `--margin-col-chevron` (default `-44px`) — fold chevron column for
-  headings and the texBlock pod. Consumed by `.heading-fold-chevron`
-  and `.tex-block-fold-chevron`.
+  headings and the SOURCE POD. Consumed by `.heading-fold-chevron`
+  and `.source-pod-fold-chevron`.
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
@@ -2002,6 +2002,29 @@ Grab-handle drag is the **only** popout mechanism for text objects —
 the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
 etc.) were retired in the Text-Object refactor. Don't reintroduce a
 parallel popout affordance.
+
+## Source pods (raw bytes in a frame)
+
+A block whose MODEL IS ITS BYTES wears the **source pod**: a framed
+CodeMirror surface with a `+T` title strip above it, a fold chevron in the
+margin's chevron column, a collapsed two-line preview, and a row-wide hover
+sensor that reveals the grab handle anywhere in the pod's Y band.
+
+Two wearers today — `texBlock` (raw LaTeX between `%!vtex:` sentinels) and
+`forestBlock` (a whole `\begin{forest}…\end{forest}` env). Three rules:
+
+- **One implementation, per surface.** In-place it is
+  [SourcePodNodeView](src/components/SourcePodNodeView.tsx); popped out it is
+  [source-pod-body](src/text-objects/floats/source-pod-body.tsx). A kind
+  contributes a CONFIG (host class, source attr, chip label, kind label), never
+  a copy of the chrome — the two surfaces must frame identically or the release
+  from a lift visibly jumps.
+- **The pod classes are `.source-pod*` and name nothing.** Only the HOST class
+  names a node (`.tex-block`, `.forest-block`), and the wrapper-level rules take
+  `:is(.tex-block, .forest-block)`. A second wearer that borrowed the first
+  one's class would read as the wrong node forever after.
+- **The corner chip names the bytes** (`.tex`, `forest`) — it is what tells the
+  reader which language the pod is holding, so give every wearer one.
 
 ## Block images (figures & pictures)
 

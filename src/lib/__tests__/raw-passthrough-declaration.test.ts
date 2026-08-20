@@ -320,16 +320,21 @@ describe("census — one vocabulary, one projection", () => {
 
   it("the projection lives INSIDE the declaration, not at its call sites", () => {
     // A projection at the call site is a rule a third caller can forget. There
-    // must be exactly one `projectDetectableLatex(` in the serializer, and the
-    // two `declareFromRawLatex(` calls must hand it the raw attr directly.
-    // Deliberately brittle: a second legitimate use of the door in this file
-    // would fail here, and that is the right outcome — it means the serializer
-    // has grown a SECOND byte-scanning detector, which is exactly the decision
-    // this census exists to surface rather than wave through.
+    // must be exactly one `projectDetectableLatex(` in the serializer, and every
+    // `declareFromRawLatex(` call must hand it the raw attr directly.
+    // Deliberately brittle: a second legitimate use of the PROJECTION door in
+    // this file would fail here, and that is the right outcome — it means the
+    // serializer has grown a SECOND byte-scanning detector, which is exactly the
+    // decision this census exists to surface rather than wave through.
+    //
+    // The DECLARER's caller count moves with the raw-passthrough node family
+    // rather than with a detector decision, so it is pinned by NAME: `texBlock`,
+    // `forestBlock` (task 383) and the figure's `extras` halves. Each is a node
+    // whose model IS its bytes, declaring from its own attr.
     const code = codeOnly(readFileSync(SERIALIZER, "utf8"));
     expect(code.match(/projectDetectableLatex\s*\(/g) ?? []).toHaveLength(1);
     const calls = code.match(/declareFromRawLatex\((.*?)\);/g) ?? [];
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     for (const c of calls) expect(c).not.toContain("project");
   });
 

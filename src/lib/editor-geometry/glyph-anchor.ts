@@ -4,8 +4,9 @@
  *
  * A NodeView marks the element that is the block's real visual top when its
  * wrapper carries label chrome ABOVE the thing the reader sees: the titled
- * tex-block pod, and the expex `(n)` number. `measureBlock` honours that
- * override when anchoring marginalia markers.
+ * SOURCE POD (worn by `texBlock` and `forestBlock`), and the expex `(n)`
+ * number. `measureBlock` honours that override when anchoring marginalia
+ * markers.
  *
  * The probe used to be an unconditional `dom.querySelector("[data-glyph-anchor]")`
  * on every measured block, and a `querySelector` that finds NOTHING has walked
@@ -32,15 +33,18 @@
  * to the wrapper's chrome top) with nothing to grep for.
  */
 export const GLYPH_ANCHOR_KINDS: ReadonlySet<string> = new Set([
-  // `TexBlockNodeView` → `<div className="tex-block-pod" data-glyph-anchor>`
+  // `SourcePodNodeView` → `<div className="source-pod" data-glyph-anchor>`.
+  // ONE emitter file, TWO kinds: both source-pod wearers declare the pod as
+  // their visual top, because both put the `+T` title strip above it.
   "texBlock",
+  "forestBlock",
   // `expex.ts` exampleBlock NodeView → `span.expex-number[data-glyph-anchor]`
   "exampleBlock",
 ]);
 
 /**
  * The block's declared visual-top element, or null when its kind cannot carry
- * one. O(1) for every kind that cannot; O(subtree-to-first-match) for the two
+ * one. O(1) for every kind that cannot; O(subtree-to-first-match) for the ones
  * that can.
  */
 export function resolveGlyphAnchor(dom: HTMLElement): HTMLElement | null {
