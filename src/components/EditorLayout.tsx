@@ -55,6 +55,7 @@ import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import type { ErrorJump } from "@/panels/Errors";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
+import BugReportWindow from "./BugReportWindow";
 import FontsDialog from "./FontsDialog";
 import type { AiRequest } from "@/lib/types";
 import { CITATIONS_INERT } from "@/hooks/useCitations";
@@ -979,6 +980,21 @@ export default function EditorLayout() {
   );
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  // Bug-report drop window (dev tool). Gate read post-mount (SSR-safe):
+  // per-machine localStorage opt-in + real FSA + not the dev-storage
+  // preview. Deliberately NO NODE_ENV gate — the deployed PWA is exactly
+  // where this is used (filing reports from other machines).
+  const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [bugReportEnabled, setBugReportEnabled] = useState(false);
+  useEffect(() => {
+    try {
+      setBugReportEnabled(
+        localStorage.getItem("virgil:bug-report") === "1" &&
+          hasFsaSupport() &&
+          !isDevStorage,
+      );
+    } catch {}
+  }, []);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
@@ -3187,6 +3203,9 @@ export default function EditorLayout() {
       onToggleZen: handleToggleZen,
       preferencesOpen,
       setPreferencesOpen,
+      bugReportEnabled,
+      bugReportOpen,
+      setBugReportOpen,
       appVersion: APP_VERSION,
       helperBtnRef,
       helperMenuOpen,
@@ -3231,6 +3250,8 @@ export default function EditorLayout() {
       handleDisableCollab,
       handleToggleZen,
       preferencesOpen,
+      bugReportEnabled,
+      bugReportOpen,
       helperBtnRef,
       helperMenuOpen,
       helperPositionRef,
@@ -3665,6 +3686,17 @@ export default function EditorLayout() {
         onOptionsChange={setPrintOptions}
         marginaliaLive={prefs.showMarginalia}
       />
+      {/* Always-mounted with an `open` prop (the PrintDialog pattern):
+          SystemDialog closes on Esc/outside-mousedown, and a conditional
+          mount would destroy a half-written report on a stray click. */}
+      {bugReportEnabled && (
+        <BugReportWindow
+          open={bugReportOpen}
+          onClose={() => setBugReportOpen(false)}
+          appVersion={APP_VERSION}
+          currentDocName={currentDoc?.name ?? null}
+        />
+      )}
       <FontsDialog
         open={fontsOpen}
         onClose={() => setFontsOpen(false)}
