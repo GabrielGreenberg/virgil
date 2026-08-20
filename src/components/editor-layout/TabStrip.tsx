@@ -2,6 +2,7 @@
 
 import {
   memo,
+  useCallback,
   type Dispatch,
   type MutableRefObject,
   type ReactNode,
@@ -24,6 +25,7 @@ import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
 import { iconHint } from "@/components/Hint";
 
 // Negative margins applied to the active folder-tab wrapper so promoting a
@@ -86,6 +88,15 @@ export type TabStripProps = {
   onOpenNewWindow: () => void;
   /** Whether the bundled example doc can be offered (OPFS + not dev backend). */
   exampleAvailable: boolean;
+
+  // ── Bar occupancy (task 395) ──────────────────────────────────────────
+  // The two boxes `useBarOccupancy` measures for the bar's ONE width
+  // negotiation (see bar-occupancy.ts). Optional so a bare mount (tests,
+  // a future host) renders identically with the rule inert.
+  /** Ref callback for the strip's own flex box — its ASSIGNED width. */
+  stripMeasureRef?: (el: HTMLElement | null) => void;
+  /** Ref callback for the tab row's `max-content` wrapper — its NATURAL width. */
+  tabsMeasureRef?: (el: HTMLElement | null) => void;
 };
 
 function TabStripImpl(props: TabStripProps) {
@@ -110,6 +121,8 @@ function TabStripImpl(props: TabStripProps) {
     setPaperDropIndex,
     entryDropOuterLibId,
     setEntryDropOuterLibId,
+    stripMeasureRef,
+    tabsMeasureRef,
     onActivateDoc,
     onCloseDoc,
     onActivatePaper,
@@ -127,6 +140,20 @@ function TabStripImpl(props: TabStripProps) {
     onOpenNewWindow,
     exampleAvailable,
   } = props;
+
+  // ONE stable composed ref for the strip's root: the drop-indicator's own
+  // RefObject plus the bar-occupancy measure callback. Deliberately NOT an
+  // inline arrow — React detaches and re-attaches an unstable ref callback on
+  // every render, and this one's detach DROPS the strip's measurement, so an
+  // inline arrow makes an ordinary re-render look like "the tab strip left the
+  // bar" and can bounce the occupancy verdict against its own re-renders.
+  const stripRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      tabStripRef.current = el;
+      stripMeasureRef?.(el);
+    },
+    [tabStripRef, stripMeasureRef],
+  );
 
   // Outer-tab strip render. Library root + the currently active entry render
   // as full DocumentFolderTab silhouettes; every other entry collapses to a
@@ -222,7 +249,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <span
                 className="text-[13px] leading-4 truncate min-w-0"
-                style={{ fontFamily: FONT_MONO }}
+                style={{ fontFamily: FONT_MONO, maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {citekey}
               </span>
@@ -340,7 +367,10 @@ function TabStripImpl(props: TabStripProps) {
               onClick={() => {}}
             >
               <IconLibrary />
-              <span className="text-[13px] leading-4 truncate min-w-0">
+              <span
+                className="text-[13px] leading-4 truncate min-w-0"
+                style={{ maxWidth: TAB_LABEL_MAX_PX }}
+              >
                 {label}
               </span>
               <button
@@ -440,11 +470,22 @@ function TabStripImpl(props: TabStripProps) {
                   }
                 }}
                 onBlur={commit}
+                // The same cap the label it replaces carries: `size` grows the
+                // input with the typed name, and past the strip's clip the
+                // user would be typing blind with no scroll to follow them.
+                style={{ maxWidth: TAB_LABEL_MAX_PX }}
                 className="text-[13px] leading-4 bg-transparent outline-none border-b border-ink-muted min-w-0 px-0"
               />
             ) : (
               <span
                 className="text-[13px] leading-4 truncate min-w-0"
+                // The bar-wide label cap (task 395). `max-width` clamps the
+                // span's max-content CONTRIBUTION, so the tab's
+                // `calc-size(max-content, …)` width follows it — an active tab
+                // with a long composed name can no longer grow without bound
+                // and push the tab row across the status cluster. Same value
+                // the inline (inactive) twin has always used.
+                style={{ maxWidth: TAB_LABEL_MAX_PX }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setNameInput(displayName);
@@ -491,8 +532,28 @@ function TabStripImpl(props: TabStripProps) {
 
   return (
     <div
-      ref={tabStripRef}
+      ref={stripRef}
+      data-bar-occupant="tab-strip"
       className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-stretch relative"
+      // ── The bar's structural FLOOR (task 395) ───────────────────────────
+      // The tabs are `shrink-0` by design (a tab's silhouette is layout-owned
+      // and pixel-stable across activation), so a crowded strip's content is
+      // WIDER than its flex box. Before this it simply spilled RIGHT into the
+      // `shrink-0` status cluster and the two interleaved by paint order —
+      // Gabriel's screenshot, tool icons crossing a tab label. `overflow-x:
+      // clip` makes that unrepresentable: the tab row can never paint outside
+      // the strip's own box, so it can never reach the protected
+      // data-integrity badges, whatever the occupancy rule decides.
+      //
+      // `clip`, not `hidden`, and `overflow-y` stated EXPLICITLY: per CSS
+      // Overflow 3 a `visible` axis is coerced to `auto` only when the other
+      // axis is neither `visible` nor `clip`, so `clip` + `visible` is the one
+      // pair that clips horizontally while leaving the vertical axis alone —
+      // which is load-bearing here, because the active folder tab hangs
+      // FOLDER_TAB_SEAM_OVERLAP px below this box on purpose (it overlaps the
+      // bar's bottom border so the tab merges into the canvas). `hidden` would
+      // force overflow-y to auto and eat that seam.
+      style={{ overflowX: "clip", overflowY: "visible" }}
       onDragOver={(e) => {
         const types = e.dataTransfer.types;
         let acceptable = false;
@@ -545,6 +606,20 @@ function TabStripImpl(props: TabStripProps) {
         openLibraryOuterTab(libId, dropIdx);
       }}
     >
+      {/* The tab row's NATURAL extent (task 395). `max-content` + `shrink-0`
+          so this wrapper reports the width the tabs WANT regardless of the box
+          the strip was assigned — which is what makes the occupancy predicate
+          state-independent (bar-occupancy.ts). It adds no layout of its own:
+          it carries the strip's own `items-end` + `gap-0.5`, sits at the
+          strip's content origin, and a bottom-aligned flex item's negative
+          margin (the active tab's seam overlap) resolves identically one level
+          in. */}
+      <div
+        ref={tabsMeasureRef}
+        data-bar-occupant="tabs"
+        className="flex items-end gap-0.5 shrink-0"
+        style={{ width: "max-content" }}
+      >
       <TabPlusMenu
         docs={docs}
         openTabIds={openTabIds}
@@ -559,6 +634,7 @@ function TabStripImpl(props: TabStripProps) {
         exampleAvailable={exampleAvailable}
       />
       {tabNodes}
+      </div>
       {paperDropIndex !== null && (
         /* Live geometry read by design: the drop indicator measures the strip +
            tab rects at paint time, and this branch only renders while a drag is
@@ -574,11 +650,15 @@ function TabStripImpl(props: TabStripProps) {
         />
         /* eslint-enable react-hooks/refs */
       )}
-      {/* Zero-width sentinel marking the end of the top-bar's left content
-          (tabs + logo + "+" button). The floating MenuBar's home position
-          uses this x-coordinate as its left clamp — measuring the flex-1
-          parent's right edge would be wrong because flex-1 expands to fill
-          the whole middle gap. */}
+      {/* (Retired, task 395.) A comment here described a "zero-width sentinel"
+          marking the end of the bar's left content, read as the left clamp of
+          the floating MenuBar's home position. There was never an element:
+          the pod that read a clamp was retired when the MenuBar moved into the
+          pod chrome header (93b286c0) and its `menuLocation` pref was deleted
+          as dead (bab3a399), and the prose outlived the mechanism. What holds
+          the "tabs and tools never overlap" invariant now is the pair above —
+          the measured occupancy rule in bar-occupancy.ts and this strip's own
+          `overflow-x: clip` — both of which are code. */}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { memo, type ReactNode } from "react";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
 import { iconHint } from "@/components/Hint";
 
 /**
@@ -80,8 +81,14 @@ function InlineTabLabelImpl({
       />
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span
-        className="relative text-[13px] leading-4 truncate max-w-[220px]"
-        style={monospace ? { fontFamily: FONT_MONO } : undefined}
+        className="relative text-[13px] leading-4 truncate"
+        style={{
+          // The bar-wide label cap (task 395) — shared with the ACTIVE folder
+          // tab's label so the two renderers of one tab can't disagree about
+          // how wide a name may get.
+          maxWidth: TAB_LABEL_MAX_PX,
+          ...(monospace ? { fontFamily: FONT_MONO } : null),
+        }}
       >
         {label}
       </span>

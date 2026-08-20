@@ -2,6 +2,8 @@
 
 import {
   memo,
+  useLayoutEffect,
+  useRef,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -41,8 +43,47 @@ export type StatusClusterProps = {
   // Whether the bar's owning layout is in zen mode (suppresses status markers
   // + the divider + the prefs/help/print/etc. button group).
   zenModeOn: boolean;
+  /**
+   * The EFFECTIVE collapsed state of the collapsible tool group. `TopBar`
+   * overrides the raw pref with the bar's occupancy verdict (user pref ∨ the
+   * auto rule in bar-occupancy.ts); a bare mount gets the pref alone.
+   */
   topbarRightCollapsed: boolean;
+  /**
+   * The user's OWN persisted choice, BEFORE the bar's occupancy rule — the
+   * value `topbarRightCollapsed` used to carry. Tier-1 chrome that honours a
+   * collapse preference reads THIS, never the effective verdict: an auto
+   * collapse is a geometry decision the user did not make, and it must not
+   * carry a data-integrity surface away with it (the tier rule in
+   * `isSaveTierProtected`, and this bar's own ladder — the save pill is TIER 1).
+   *
+   * It is also what keeps the occupancy predicate SOUND. That predicate is
+   * state-independent only because the protected width `R` does not depend on
+   * the verdict; feeding the verdict into a tier-1 element's width makes `R`
+   * a function of the rule's own output and re-opens the flip-flop the
+   * predicate exists to close (bar-occupancy.ts).
+   *
+   * Defaults to `topbarRightCollapsed` for a bare mount (no occupancy rule).
+   */
+  collapsePreference?: boolean;
+  /**
+   * The user's persisted pref setter. Written ONLY by an explicit toggle —
+   * the auto rule never touches it. Kept in the bundle because `TopBar`'s
+   * occupancy hook is what threads it into the toggle below.
+   */
   setTopbarRightCollapsed: Dispatch<SetStateAction<boolean>>;
+  /**
+   * The chip's click handler, supplied by `TopBar`'s occupancy hook so that
+   * expanding out of an AUTO collapse can out-rank the rule instead of writing
+   * a pref the user never set. Falls back to a plain pref toggle for a bare
+   * mount, so the chip is never a control that does nothing.
+   */
+  onToggleTools?: () => void;
+  /**
+   * Ref callback for the collapsible group's `max-content` wrapper — the
+   * NATURAL width the occupancy rule needs in BOTH states (bar-occupancy.ts).
+   */
+  toolsMeasureRef?: (el: HTMLElement | null) => void;
 
   // Service-worker update banner.
 
@@ -107,7 +148,10 @@ function StatusClusterImpl(props: StatusClusterProps) {
     collabEnabled,
     zenModeOn,
     topbarRightCollapsed,
+    collapsePreference,
     setTopbarRightCollapsed,
+    onToggleTools,
+    toolsMeasureRef,
     hasDoc,
     skillSyncError,
     skillSyncNotice,
@@ -148,6 +192,36 @@ function StatusClusterImpl(props: StatusClusterProps) {
     onToggleCodeView,
     onTogglePdfView,
   } = props;
+
+  // ── Collapse focus hand-off (task 395) ──────────────────────────────────
+  // The group is hidden by `aria-hidden` + `visibility: hidden` and its
+  // children are remounted, so a collapse that lands while focus is INSIDE it
+  // drops the caret to <body> and, for one commit, puts `aria-hidden` over the
+  // focused element — which ARIA forbids and which loses the user's place with
+  // nothing on screen to explain it. Focus moves to the chip instead: the chip
+  // is TIER 1 (always rendered) and is the affordance that brings the group
+  // back, so it is the correct landing spot rather than merely a safe one.
+  // A LAYOUT effect, so the move happens in the same commit that hides the
+  // group — a passive one would let a frame paint with focus in a hidden
+  // subtree.
+  // `document.activeElement` is the WRONG question by the time the effect can
+  // ask it: the collapse REMOUNTS the group's children, so React has already
+  // detached the focused button and the browser has already dropped focus to
+  // <body>. What survives the commit is the tracked fact, so the group records
+  // focus-within itself — `focusin` sets it, `focusout` clears it (including
+  // the legitimate move to the chip, which is outside the group), and node
+  // REMOVAL fires neither, which is exactly why the flag is still true when
+  // the effect runs. Asking `activeElement === body` instead would steal focus
+  // whenever the bar auto-collapsed with nothing focused at all.
+  const toolsGroupRef = useRef<HTMLDivElement | null>(null);
+  const collapseChipRef = useRef<HTMLButtonElement | null>(null);
+  const groupHadFocusRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!topbarRightCollapsed) return;
+    if (!groupHadFocusRef.current) return;
+    groupHadFocusRef.current = false;
+    collapseChipRef.current?.focus();
+  }, [topbarRightCollapsed]);
 
   const collabIconBtn = (
     <CollabStatusPill
@@ -222,7 +296,10 @@ function StatusClusterImpl(props: StatusClusterProps) {
           preference, the two data-integrity tiers never do. */}
       <SaveStateBadge
         docId={currentDocId}
-        collapsed={topbarRightCollapsed || zenModeOn}
+        // The USER's own choice, not the bar's occupancy verdict — see
+        // `collapsePreference` above. Narrowing a window must not take a
+        // tier-1 save surface with it.
+        collapsed={(collapsePreference ?? topbarRightCollapsed) || zenModeOn}
       />
       {/* Skill-bundle sync surface. Sits before the topbarRightCollapsed gate
           (like the Virgil-update banner) so a sync failure can't be hidden by
@@ -245,7 +322,66 @@ function StatusClusterImpl(props: StatusClusterProps) {
           zen is on). Its ICON takes the ordinary tool rules below — see
           there. */}
       <PomodoroTimer />
-      {!topbarRightCollapsed && (<>
+      {/* ── TIER 3: the collapsible tool group (task 395) ──────────────────
+          Everything above this point is TIER 1 (PROTECTED) and everything in
+          here is the bar's lowest-priority occupant: under compression it
+          yields its width to the tabs, which is Gabriel's stated priority
+          ("text tabs should occlude the tools in this case"). The verdict is
+          resolved once, in bar-occupancy.ts, and arrives as
+          `topbarRightCollapsed` — the user's own pref OR the auto rule.
+
+          It COLLAPSES by width rather than unmounting, and that is what makes
+          the rule cheap and honest: the `max-content` inner wrapper keeps
+          reporting the group's NATURAL width in BOTH states, so the predicate
+          never has to guess (or cache) how wide the group would be if it were
+          open. `visibility: hidden` gives the collapsed group exactly the
+          semantics unmounting gave it — out of the tab order, out of the
+          hit-test, out of the accessibility tree — while `width: 0` +
+          `overflow: hidden` hand every pixel back to the tab strip. */}
+      <div
+        ref={toolsGroupRef}
+        data-bar-tier="collapsible"
+        onFocus={() => { groupHadFocusRef.current = true; }}
+        onBlur={() => { groupHadFocusRef.current = false; }}
+        className="flex items-center shrink-0"
+        style={{
+          // Clip ONLY while collapsed. An unconditional `overflow: hidden`
+          // clips every button's `:focus-visible` ring against the group's own
+          // edge in the EXPANDED state too — the keyboard affordance trimmed
+          // by a rule that exists for the zero-width one.
+          width: topbarRightCollapsed ? 0 : undefined,
+          overflow: topbarRightCollapsed ? "hidden" : undefined,
+        }}
+        aria-hidden={topbarRightCollapsed || undefined}
+      >
+      <div
+        ref={toolsMeasureRef}
+        data-bar-occupant="status-tools"
+        className="flex items-center"
+        style={{
+          width: "max-content",
+          visibility: topbarRightCollapsed ? "hidden" : undefined,
+          pointerEvents: topbarRightCollapsed ? "none" : undefined,
+        }}
+      >
+      {/* KEYED on the collapse state, so flipping it REMOUNTS the group's
+          children. That is not churn-for-nothing: it restores byte-for-byte
+          what unmounting used to give, which is that a child's own open menu
+          CLOSES when the group goes away. `visibility: hidden` cannot reach a
+          child that body-PORTALS its dropdown (CollabStatusPill through
+          `MenuProvider`, and the shared `<Menu>` primitive generally), so
+          without this a collapse leaves a menu floating over the canvas with
+          no trigger under it. Remounting answers it for every portal owner
+          present and future, where a per-child gate answers it for the one
+          somebody remembered. The measured wrapper above is deliberately
+          OUTSIDE the key: its ref must stay bound, or the collapse would drop
+          the measurement and the rule would fail open into a flip-flop.
+          A surface whose OPEN state lives outside the group (the help menu,
+          owned by EditorLayout) is unaffected by a remount and is gated
+          explicitly below — same behaviour as pre-395 unmounting, where the
+          prop likewise re-opened it on expand. */}
+      <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center">
+      {(<>
       {/* ── Status-indicator group (left of divider) ───────────────
           Passive indicators for system-wide modes that are activated
           elsewhere (Focus from card actions, Helper from the "?" menu,
@@ -362,7 +498,13 @@ function StatusClusterImpl(props: StatusClusterProps) {
             <path d="M12 17h.01" />
           </svg>
         </button>
-        {helperMenuOpen && typeof document !== "undefined" && createPortal(
+        {/* `!topbarRightCollapsed` (task 395): this dropdown PORTALS to
+            <body>, so it is the one child of the collapsible group that
+            `visibility: hidden` cannot reach. Gating it here reproduces
+            exactly what unmounting the group used to do — otherwise an auto
+            collapse (an OS window narrowing while the menu is open) would
+            leave the menu floating with no trigger under it. */}
+        {helperMenuOpen && !topbarRightCollapsed && typeof document !== "undefined" && createPortal(
           <div
             ref={helperPositionRef}
             className="bg-surface border border-edge-subtle rounded-lg shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
@@ -559,11 +701,23 @@ function StatusClusterImpl(props: StatusClusterProps) {
       </button>
       </>)}
       </>)}
-      {/* Collapse toggle — always rendered. Hides everything to its left in
-          this cluster so the document area can breathe. State is per-window
-          via useViewPrefs. */}
+      </div>
+      </div>
+      </div>
+      {/* Collapse toggle — TIER 1 (protected): always rendered, never hidden,
+          because it is what makes a collapse REVERSIBLE. Hides everything to
+          its left in this cluster so the document area can breathe. The user's
+          own choice is per-window state in useViewPrefs; since task 395 the
+          click routes through the bar's occupancy hook instead of writing the
+          pref directly, so expanding out of an AUTO collapse out-ranks the
+          rule rather than clearing a pref the user never set. */}
       <button
-        onClick={() => setTopbarRightCollapsed((v) => !v)}
+        ref={collapseChipRef}
+        onClick={() =>
+          onToggleTools
+            ? onToggleTools()
+            : setTopbarRightCollapsed((v) => !v)
+        }
         className="topbarbtn"
         aria-pressed={topbarRightCollapsed}
         {...iconHint({ label: topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar", hint: "Collapse toolbar" })}

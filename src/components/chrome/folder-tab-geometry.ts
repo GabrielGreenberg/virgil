@@ -105,8 +105,10 @@ export const FOLDER_TAB_SEAM_OVERLAP = 1;
  * `overflow: hidden` clip boundary at ANY DPR. Combined with
  * {@link TAB_TOP_GUTTER} the top ink sits ≥ (STRIP_TOP_HEADROOM +
  * TAB_TOP_GUTTER) CSS px inside the strip clip — the ink-cushion invariant,
- * unit-tested against these constants. (The OUTER Virgil-bar strip has no
- * overflow clip; its cushion is the in-cap TAB_TOP_GUTTER.)
+ * unit-tested against these constants. (The OUTER Virgil-bar strip clips only
+ * HORIZONTALLY since task 395 — `overflow-x: clip` with `overflow-y: visible`,
+ * so no vertical cushion is needed there either; its top cushion remains the
+ * in-cap TAB_TOP_GUTTER, and the seam overhang below stays unclipped.)
  */
 export const STRIP_TOP_HEADROOM = 2;
 
@@ -127,6 +129,21 @@ export const STRIP_SIDE_PAD = 4;
  * scrolls; it never ellipsizes the active tab.
  */
 export const ACTIVE_MIN_CONTENT = 116;
+
+/**
+ * Maximum rendered width (px) of a Virgil-bar tab's LABEL, for BOTH of the
+ * bar's two tab renderers — {@link InlineTabLabel} (inactive) and the active
+ * folder tab's label span in `TabStrip`. One constant, because the cap was
+ * declared in one renderer and not the other: the inline label has capped at
+ * 220px since it shipped, while the active tab's `calc-size(max-content, …)`
+ * width let a long composed name ("Coherence Intro: main.tex") grow the tab
+ * without bound — which is what put a tab across the status cluster at a
+ * narrow window (task 395). Both labels already carry `truncate`; this is the
+ * width at which that truncation engages, and giving the active tab the same
+ * one RESTORES the inline↔folder pixel-stability contract rather than
+ * inventing a second rule.
+ */
+export const TAB_LABEL_MAX_PX = 220;
 
 /**
  * Horizontal ink span of one cap: foot flare (S) + shoulder (R). The
