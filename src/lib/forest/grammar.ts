@@ -340,10 +340,33 @@ function scanLabel(
   while (i < limit) {
     const c = matchCommentTailAt(src, i);
     if (c) {
-      // A comment is not ink. TeX also eats the newline that ends it; the
-      // whitespace collapse below makes that difference invisible in a label.
+      // A comment is not ink — and in a LABEL it is not whitespace either.
+      //
+      // TeX's end-of-line `%` is the standard CONTINUATION idiom: the `%`
+      // discards the rest of its line INCLUDING the newline TeX appends, and
+      // the next line is entered in state N so its leading spaces are eaten
+      // too. So `[{Deter%\nmine}]` typesets `Determine`, with no space.
+      //
+      // The pre-387 line said the whitespace collapse made that difference
+      // invisible, and it did not: `matchCommentTailAt` returns the newline's
+      // INDEX rather than a position past it, so `i = c.end` landed ON the
+      // `\n` — this branch pushed a space, the next iteration fell through to
+      // the tail `pushText(ch)` and pushed the newline, and the collapse turned
+      // the pair into ONE space where TeX yields none. `parseForestSource`
+      // answered `ok`, the badge stayed silent, and the renderer painted
+      // `Deter mine` — a picture the source does not say, which is the exact
+      // failure task 384's design exists to refuse. The comment stating the
+      // opposite is corrected rather than left standing.
+      //
+      // Consuming the newline and the continuation line's own leading
+      // whitespace, and pushing NOTHING, reproduces TeX. Where the comment ends
+      // the source rather than a line, `c.end` is already `src.length` and the
+      // skip is a no-op.
       i = c.end;
-      pushText(" ");
+      if (src[i] === "\n") {
+        i++;
+        while (i < limit && (src[i] === " " || src[i] === "\t")) i++;
+      }
       continue;
     }
     const ch = src[i];

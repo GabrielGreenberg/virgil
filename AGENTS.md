@@ -3860,6 +3860,158 @@ render over bytes — so pasting two or three real trees from a paper (subset
 members and a `for tree=` refusal) and looking at both states is a cheap, real
 check that a worktree cannot run.
 
+##### The tail half: an anchor appended after USER-EDITABLE bytes needs those bytes to END where the reader looks
+
+Same node, and the case where task 348's position law was correct, was cited by
+the arm that broke it, and held only by an accident the source pod removed (task
+387, the cluster's DATA-SAFETY adversarial pass).
+
+348 says a construct's `%!v:` anchor is APPENDED to the end of its serialized
+body and DETACHED from the end of that body — one rule, so the two ends cannot
+disagree. For every other construct the emitter BUILDS the body, so they are the
+same place by construction. `forestBlock`'s body is a user-editable ATTR, and
+both pod write doors (`SourcePodNodeView.setSource`, the float's write-back)
+store CodeMirror's buffer verbatim, with no normalizer on the node spec. So the
+two ends coincided only while nobody put a byte after `\end{forest}`.
+
+> **The renderer accepts `\s*` after the closer and the anchor reader accepts
+> `[ \t]*`. A source in that gap renders perfectly and DE-ANCHORS silently.**
+
+One press of Enter after the closer — or a paste, since every editor line-copies
+with a trailing newline — put the anchor on its own line, where
+`NODE_UUID_ANCHOR` cannot see it. Measured through the real save pipeline: the
+tree came back uuid-less, `assignUuids` minted a fresh id, and the stranded
+` %!v:ab12` line took the parser's standalone-anchor branch and became an EMPTY
+PARAGRAPH holding the old identity. Every card, marginalia marker and
+sidecar-only `parTitle` keyed on that uuid followed it onto a blank line;
+`collapsed` was dropped outright (a `paragraph` is in `TITLED_NODE_TYPES` and not
+in `COLLAPSIBLE_NODE_TYPES`). A fixed point after one cycle, with no edit to the
+document itself — **the task-342 class verbatim**, and invisible to every gate:
+the write gate's multiset word measure is unchanged, and 384's `END_RE` tolerates
+`\s*$`, so the refusal badge stayed green for exactly this shape.
+
+Three rules it earned:
+
+- **Normalize at the EMIT site, not at the doors.** The serializer's arm trims
+  the source's trailing whitespace before appending the anchor, so the append
+  point and the detach point coincide *by construction* rather than by two write
+  doors remembering to agree. The shipped siblings show both shapes and are the
+  reason this is forest-specific: `texBlock` is immune because its anchor rides a
+  `%!vtex:begin` SENTINEL LINE, and `graphicsBlock` — the only other
+  `${bytes}${anchor}` emitter — is immune only because its edit door happens to
+  `.trim()`. `forestBlock` was the one emitter of that shape whose every write
+  door wrote raw.
+- **It is a whitespace normalization, and idempotent.** Whitespace before the
+  closer's own line end is not content and the arm appends `\n\n` regardless,
+  so cycle 1 canonicalizes and cycle 2 is byte-identical.
+- **Residual, stated: NON-whitespace after the closer is left alone because it
+  is already LOUD.** A trailing `% note` or a second pasted environment makes
+  `END_RE` refuse, and 384's badge names it. A fix that made the quiet case loud
+  and the loud case quiet would be the wrong trade.
+
+**A bookkeeping SENTINEL is invisible to every predicate the serializer asks
+about its own output.** The same pass found 383's `carriedSource` marker leaking
+into a question one arm over: `listItem` chooses its head/tail separator with
+`startsBlockBoundary(tailText…)`, which is anchored `^\\(…|begin|…)` and
+therefore answered *false* for a `forestBlock` tail child whose true first bytes
+are `\begin{forest}` but whose emitted first bytes are the NUL-led sentinel
+(stripped only later, in `collapseBlankRuns`). The item gained a blank line — a
+LaTeX `\par` inside `\item`, typesetting the tree as a fresh indented paragraph
+— while a nested `\begin{itemize}` in the identical slot was correct. That makes
+it the cluster's own regression rather than a shared property: forestBlock is the
+one node whose real first bytes ARE a boundary and are hidden behind the
+sentinel. The predicate now reads `withoutCarrySentinels(…)`, a named helper
+beside `carriedSource` so the next such question inherits it.
+
+**And the renderer painted text the source does not say.** TeX's end-of-line `%`
+is the standard CONTINUATION idiom — the `%` discards the rest of its line
+INCLUDING the newline, and the next line is entered in state N so its leading
+spaces are eaten — so `[{Deter%\nmine}]` typesets `Determine`. `matchCommentTailAt`
+returns the newline's INDEX rather than a position past it, so `scanLabel`'s
+`i = c.end` landed ON the `\n`: the branch pushed a space, the next iteration
+pushed the newline as text, and the whitespace collapse turned the pair into ONE
+space where TeX yields none. The parse answered `ok`, the badge stayed silent,
+and the tree read `Deter mine` — the silently-wrong picture 384's whole design
+exists to refuse. The site's own comment asserted the opposite ("the whitespace
+collapse below makes that difference invisible in a label") and is corrected
+there rather than left standing. Only `scanLabel` was affected: `skipInert`, the
+brace matcher and the option scan all skip whitespace anyway.
+
+CI: [forest-source-tail-integrity.test.ts](src/lib/__tests__/forest-source-tail-integrity.test.ts).
+**No pre-387 suite could see any of the three.** Every `source` fixture in the
+repo ends EXACTLY at `\end{forest}` (they all come from a parse, which slices to
+the closer), so a trailing byte is unrepresentable in all of them; the cluster's
+one list fixture asserts the MODEL SHAPE (`paragraph` head + `forestBlock` tail)
+and never the bytes; and every grammar fixture spells its labels without the `%`
+continuation. Each leg carries its control through the identical harness — an
+untouched tree is byte-identical, a nested list keeps its single newline, a
+second PARAGRAPH keeps its `\par`, an ordinary line break inside a label is still
+one space, and an escaped `\%` is still ink. Measured by neutering each half in
+turn: the trailing trim takes 4 legs, the sentinel strip 1, and the label
+continuation 3.
+
+**Owed, not claimed:** the preview eyeball — open a tree's source pod, press
+Enter after `\end{forest}`, save and reload with a note card anchored to it. This
+class is not FSA-masked (it is `.tex` bytes through the real save cycle), so the
+check is cheap and real.
+
+##### The projection half: a schema's vocabulary is every PROJECTION's vocabulary
+
+Same pass, and the case where two hand-written tables had a comment telling the
+next author to keep them aligned, and `forestBlock` was added and they were not.
+
+A card body's schema admits six BLOCK ATOMS (`CARD_BODY_BLOCK_ATOMS`, now
+declared in the import-free leaf [node-attr-sets.ts](src/lib/node-attr-sets.ts)
+and re-exported by `borrowed-schema.ts` as `BORROWED_BLOCK_ATOM_NAMES`, whose own
+contract test pins it against the REAL card and main-editor extension lists in
+both directions). A block atom keeps its content in ATTRS, so a walker with no
+arm for it does not degrade — it falls through to `if (node.content) …` and
+returns `""`.
+
+> **Every PROJECTION of a card body is TOTAL over the block-atom vocabulary that
+> body's SCHEMA registers.**
+
+`richJsonToPlainText` losing an arm costs a blank preview. `richJsonToLatex` is
+what a `\footnote{}` body is SERIALIZED with, so losing one costs the user's
+bytes: a forest tree dropped or pasted into a footnote/note body mounted happily,
+rendered, and was DELETED from the `.tex` on the next save — no throw, no
+warning, the rest of the body intact, while its shipped sibling `texBlock`, whose
+arm sat four lines away, kept its bytes. Both tables are now
+`Record<CardBodyBlockAtom, …>`, so a new block atom is a COMPILE ERROR rather
+than a silent deletion.
+
+Two rules it earned:
+
+- **The vocabulary lives where the layer that needs it can REACH it** — the
+  placement rule `latex-markers.ts` and `node-attr-sets.ts` each earned.
+  `footnote-content.ts` is on the TipTap-free `.tex` side and cannot import the
+  extension list, which is exactly why it re-typed the vocabulary and exactly how
+  the re-typed copy came to be missing a member.
+- **An INLINE-registered atom keeps its own arm.** `displayMath` is in
+  `BORROWED_INLINE_ATOM_NAMES`, not the block table, and is still an attr-carrier
+  the fall-through would erase — so it is handled beside the table with the
+  reason at the site, rather than smuggled into a set it is not a member of.
+
+CI: [card-body-block-atom-projection.test.ts](src/lib/__tests__/card-body-block-atom-projection.test.ts),
+swept FROM the vocabulary so a new kind arrives with no fixture and the coverage
+leg fails first. **No pre-387 suite could see this**: the footnote-content suites
+drive bodies of prose plus inline atoms — the shape a footnote body normally has
+— so a block atom reaching either walker is unrepresentable in all of them, and
+the borrowed-schema contract asks only whether the two SCHEMAS agree, never
+whether anything downstream can represent what they admit. The leg with teeth is
+the CENSUS, and its membership is DISCOVERED by the SHAPE the defect had — a
+walker dispatching on `node.type === "<atom>"` for two or more block atoms —
+because a bare "names ≥2 atoms" needle indicts ten files that merely carry a
+union, a registry key or a kind list, and answers a different question
+(measured). Measured by neutering each half: dropping the forest arms takes 3
+legs, restoring the pre-387 if-chain 5.
+
+**Residual, stated.** `richJsonToLatex` collapses whitespace — a footnote body is
+INLINE — so a tree projected into one arrives on a single line. That is the
+shipped `texBlock` behaviour and it is what forest's own whitespace-insensitive
+grammar tolerates; the contract this closes is that no byte is lost, not that the
+layout survives an inline flattening.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

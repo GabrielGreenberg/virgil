@@ -66,6 +66,49 @@ export const UUID_BEARING_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The BLOCK-ATOM node types a CARD BODY's schema registers — the vocabulary
+ * both card scopes (`"card"` and `"excerpt"`) mount, and therefore the
+ * vocabulary every PROJECTION of a card body must be total over.
+ *
+ * A block atom keeps its content in ATTRS, not in child text, so a walker with
+ * no arm for it does not degrade — it returns `""`. In a *view* that costs a
+ * blank preview; in `richJsonToLatex`, which is what a `\footnote{}` body is
+ * SERIALIZED with, it costs the user's bytes.
+ *
+ * **The bug this exists to prevent** (task 387). `forestBlock` joined both card
+ * schemas with task 383 and neither projection in
+ * [footnote-content.ts](footnote-content.ts) gained an arm — while its shipped
+ * sibling `texBlock`, whose arm sits four lines away, kept its bytes. So a
+ * forest tree dropped or pasted into a footnote/note body mounted happily,
+ * rendered, and was DELETED from the `.tex` on the next save: no throw, no
+ * warning, the rest of the body intact. The comment directly above the table
+ * said "Keep aligned with the schema … if a new block atom is added there, add
+ * a case here too" — a stated invariant with no consumer, which is the shape
+ * this repo keeps re-learning.
+ *
+ * Declared HERE rather than in `borrowed-schema.ts` for the placement rule at
+ * the top of this file: `footnote-content.ts` is on the TipTap-free `.tex` side
+ * and cannot import the extension list, so a vocabulary it cannot reach is one
+ * it will re-type. `borrowed-schema.ts` re-exports this as
+ * `BORROWED_BLOCK_ATOM_NAMES`, whose own contract test already pins it against
+ * the REAL card and main-editor extension lists in both directions — so the
+ * projections are now total over a set the schema itself keeps honest.
+ */
+export const CARD_BODY_BLOCK_ATOMS = [
+  "texBlock",
+  "forestBlock",
+  "figureBlock",
+  "figureCaption",
+  "graphicsBlock",
+  "latexComment",
+] as const;
+
+/** One member of {@link CARD_BODY_BLOCK_ATOMS}. A projection typed
+ *  `Record<CardBodyBlockAtom, …>` fails to COMPILE when a new atom lands,
+ *  which is the difference between this and the comment it replaces. */
+export type CardBodyBlockAtom = (typeof CARD_BODY_BLOCK_ATOMS)[number];
+
+/**
  * Node types that carry a `parTitle` attr — the optional user-typed title
  * rendered in a strip above the block.
  *

@@ -8,6 +8,7 @@
 // promote those old strings to JSON the first time they're read.
 
 import type { JSONContent } from "@tiptap/react";
+import type { CardBodyBlockAtom } from "@/lib/node-attr-sets";
 import { generateShortId } from "@/lib/uuid";
 import {
   emitMarker,
@@ -430,40 +431,25 @@ export function richJsonToLatex(json: JSONContent): string {
     if (node.type === "doc") {
       return (node.content || []).map(walk).join(" ");
     }
-    // Block atoms — these end up here only when card-borne content
-    // (note / footnote body that originated from an archive restore)
-    // is serialized back to inline LaTeX. The main editor's LaTeX
-    // serializer (latex-serializer.ts) handles the full-document path;
-    // this is the inline / footnote-body fallback. Emit a sensible
-    // LaTeX projection so atoms don't silently vanish on save.
-    if (node.type === "texBlock") {
-      return (node.attrs?.code as string) || "";
-    }
-    if (node.type === "latexComment") {
-      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
-      return `% ${text}`;
-    }
+    // `displayMath` is registered as an INLINE atom in the card schema
+    // (BORROWED_INLINE_ATOM_NAMES), so it is not a member of the block-atom
+    // table below — but it is still an attr-carrier the fall-through would
+    // erase, so it keeps its own arm here.
     if (node.type === "displayMath") {
       return `$$${(node.attrs?.latex as string) || ""}$$`;
     }
-    if (node.type === "figureBlock") {
-      // Bare-bones rebuild — the structured caption + sources we'd
-      // need for a full `\begin{figure}` re-emit live in the main
-      // LaTeX serializer. This fallback shouldn't typically fire
-      // (figures don't normally end up inside footnote bodies);
-      // preserve the verbatim env if we have it, otherwise emit a
-      // stub the user can clean up.
-      const raw = (node.attrs?.raw as string) || "";
-      if (raw) return `\\begin{figure}${raw}\\end{figure}`;
-      const source = (node.attrs?.source as string) || "";
-      return source ? `\\includegraphics{${source}}` : "";
-    }
-    if (node.type === "graphicsBlock") {
-      const command = (node.attrs?.command as string) || "";
-      if (command) return command;
-      const source = (node.attrs?.source as string) || "";
-      return source ? `\\includegraphics{${source}}` : "";
-    }
+    // Block atoms — these end up here only when card-borne content
+    // (note / footnote body that originated from an archive restore, a
+    // paste, or a cross-editor drop) is serialized back to inline LaTeX.
+    // The main editor's LaTeX serializer (latex-serializer.ts) handles the
+    // full-document path; this is the inline / footnote-body fallback.
+    //
+    // TOTAL over CardBodyBlockAtom (task 387): a card body's schema and
+    // this projection are the same vocabulary, so an atom the schema admits
+    // can never reach the `node.content` fall-through below and return `""`.
+    // That is what happened to `forestBlock`, whose whole model is its bytes.
+    const blockAtom = BLOCK_ATOM_TO_LATEX[node.type as CardBodyBlockAtom];
+    if (blockAtom) return blockAtom(node, walk);
     if (node.content) {
       return node.content.map(walk).join("");
     }
@@ -472,6 +458,57 @@ export function richJsonToLatex(json: JSONContent): string {
 
   return walk(json).replace(/\s+/g, " ").trim();
 }
+
+/** Walk callback a container-shaped block atom uses for its own children. */
+type BlockAtomWalk = (node: JSONContent) => string;
+
+/**
+ * The LaTeX projection of every block atom a card body may hold — TOTAL over
+ * {@link CardBodyBlockAtom}, so a new block-atom kind is a COMPILE ERROR
+ * here rather than a silent deletion on the next save (task 387).
+ *
+ * Every arm emits bytes the atom can be rebuilt from where one exists. The
+ * round trip through `richLatexToJson` is lossy in NODE TYPE (an inline parse
+ * has no block vocabulary, so a re-read carries the bytes on the raw-LaTeX
+ * mark) and must not be lossy in BYTES — that is the shipped `texBlock`
+ * contract this table generalizes.
+ */
+const BLOCK_ATOM_TO_LATEX: Record<
+  CardBodyBlockAtom,
+  (node: JSONContent, walk: BlockAtomWalk) => string
+> = {
+  texBlock: (node) => (node.attrs?.code as string) || "",
+  // `source` IS the whole `\begin{forest}…\end{forest}` environment (task
+  // 383), so emitting it verbatim is the same "carry the bytes" answer
+  // `texBlock` gives one line up.
+  forestBlock: (node) => (node.attrs?.source as string) || "",
+  latexComment: (node) => {
+    const text = (node.content ?? []).map((c) => c.text ?? "").join("");
+    return `% ${text}`;
+  },
+  figureBlock: (node) => {
+    // Bare-bones rebuild — the structured caption + sources we'd
+    // need for a full `\begin{figure}` re-emit live in the main
+    // LaTeX serializer. This fallback shouldn't typically fire
+    // (figures don't normally end up inside footnote bodies);
+    // preserve the verbatim env if we have it, otherwise emit a
+    // stub the user can clean up.
+    const raw = (node.attrs?.raw as string) || "";
+    if (raw) return `\\begin{figure}${raw}\\end{figure}`;
+    const source = (node.attrs?.source as string) || "";
+    return source ? `\\includegraphics{${source}}` : "";
+  },
+  // A caption is a CONTAINER, not an attr-carrier: its prose lives in child
+  // nodes, so it walks them. Declared rather than left to the fall-through so
+  // the table stays total and the next reader can see it was decided.
+  figureCaption: (node, walk) => (node.content ?? []).map(walk).join(""),
+  graphicsBlock: (node) => {
+    const command = (node.attrs?.command as string) || "";
+    if (command) return command;
+    const source = (node.attrs?.source as string) || "";
+    return source ? `\\includegraphics{${source}}` : "";
+  },
+};
 
 /**
  * Parse the inline body of a `\footnote{...}` back into JSONContent. Reuses
@@ -881,39 +918,64 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
     }
     if (node.type === "listItem") return (node.content || []).map(walk).join("");
     if (node.type === "doc") return (node.content || []).map(walk).join("\n");
-    // Block atoms — content lives in attrs, not in child text. Without
-    // these cases compressed-card previews, search, drag ghosts, and
-    // tooltips would all show "" for any selection that contains
-    // (only) a block atom. Keep aligned with the schema in
-    // RichTextField.tsx — if a new block atom is added there, add a
-    // case here too.
-    if (node.type === "texBlock") {
-      const title = (node.attrs?.parTitle as string | null) || "";
-      const code = (node.attrs?.code as string) || "";
-      return title ? `${title}\n${code}` : code;
-    }
-    if (node.type === "figureBlock") {
-      const caption = (node.attrs?.caption as string | undefined) || "";
-      const source = (node.attrs?.source as string | null) || "";
-      return caption || source || "[figure]";
-    }
-    if (node.type === "graphicsBlock") {
-      const source = (node.attrs?.source as string | undefined) || "";
-      return source || "[graphic]";
-    }
-    if (node.type === "latexComment") {
-      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
-      return `% ${text}`;
-    }
     if (node.type === "displayMath") {
       return `$$${(node.attrs?.latex as string) || ""}$$`;
     }
+    // Block atoms — content lives in attrs, not in child text. Without
+    // these cases compressed-card previews, search, drag ghosts, and
+    // tooltips would all show "" for any selection that contains
+    // (only) a block atom.
+    //
+    // TOTAL over CardBodyBlockAtom (task 387) — the comment that used to
+    // sit here said "keep aligned with the schema … if a new block atom is
+    // added there, add a case here too", and `forestBlock` was added and this
+    // table was not. A stated invariant with no consumer is not an invariant.
+    const blockAtom = BLOCK_ATOM_TO_PLAIN[node.type as CardBodyBlockAtom];
+    if (blockAtom) return blockAtom(node, walk);
     if (node.content) return node.content.map(walk).join("");
     return "";
   }
 
   return walk(json as JSONContent).replace(/\n{2,}/g, "\n").trim();
 }
+
+/**
+ * The PLAIN-TEXT projection of every block atom a card body may hold — TOTAL
+ * over {@link CardBodyBlockAtom} for the same reason its LaTeX sibling is
+ * (task 387). This one feeds views (card previews, drag ghosts, search,
+ * tooltips), so a missing arm costs a blank preview rather than the user's
+ * bytes — but it is the same table, missing the same way, and the two are
+ * fixed together so neither can be the one that drifts.
+ */
+const BLOCK_ATOM_TO_PLAIN: Record<
+  CardBodyBlockAtom,
+  (node: JSONContent, walk: BlockAtomWalk) => string
+> = {
+  texBlock: (node) => {
+    const title = (node.attrs?.parTitle as string | null) || "";
+    const code = (node.attrs?.code as string) || "";
+    return title ? `${title}\n${code}` : code;
+  },
+  forestBlock: (node) => {
+    const title = (node.attrs?.parTitle as string | null) || "";
+    const source = (node.attrs?.source as string) || "";
+    return title ? `${title}\n${source}` : source;
+  },
+  figureBlock: (node) => {
+    const caption = (node.attrs?.caption as string | undefined) || "";
+    const source = (node.attrs?.source as string | null) || "";
+    return caption || source || "[figure]";
+  },
+  figureCaption: (node, walk) => (node.content ?? []).map(walk).join(""),
+  graphicsBlock: (node) => {
+    const source = (node.attrs?.source as string | undefined) || "";
+    return source || "[graphic]";
+  },
+  latexComment: (node) => {
+    const text = (node.content ?? []).map((c) => c.text ?? "").join("");
+    return `% ${text}`;
+  },
+};
 
 function htmlToPlain(html: string): string {
   if (typeof window === "undefined") {
