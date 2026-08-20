@@ -1,4 +1,4 @@
-<!-- last-verified: fb1fd726 2026-08-19 -->
+<!-- last-verified: 31d34eac 2026-08-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -24,7 +24,7 @@ the other four primitives exist *within* or *alongside* it.
 
 | Primitive | What it is | A skill's handle on it |
 |---|---|---|
-| **TextObject** | The structural unit of text — paragraph, heading, list, listItem, exampleItem, blockquote, standalone blocks (math/code/figure/texBlock), and selection-backed linked ranges. The one canonical "graspable" abstraction. | A `%!v:<4hex>` block marker in the `.tex` ([identity.md](identity.md)); the `TEXT_OBJECT_REGISTRY` is the SSOT for what counts. |
+| **TextObject** | The structural unit of text — paragraph, heading, list, listItem, exampleItem, blockquote, standalone blocks (math/code/figure/texBlock/forestBlock), and selection-backed linked ranges. The one canonical "graspable" abstraction. | A `%!v:<4hex>` block marker in the `.tex` ([identity.md](identity.md)); the `TEXT_OBJECT_REGISTRY` is the SSOT for what counts. |
 | **Atom** | Inline element *within* a TextObject, finer than a TextObject but not one itself — `\cite{}`, `\footnote{}`, `\ref{}`, `$…$`. Often bidirectionally linked to a Card. | An inline marker (`\vfid{}` / `\vcid{}` / …) just before the command ([atoms.md](atoms.md), [identity.md](identity.md)); `ATOM_REGISTRY` is the SSOT for the kinds. |
 | **Card** | Almost everything that isn't text: notes, footnotes, citations, bib entries, todos, reports, comments, suggestions, examples, **Tasks**. A parallel structure, *not* a TextObject sub-type. | A JSON entry in a `virgil/*.json` sidecar ([structure.md](structure.md)), carrying `"id"`; written only through `apply_response.py`. The card spine SSOT is `CARD_REGISTRY` (`src/cards/`), mirroring `TEXT_OBJECT_REGISTRY`. |
 | **Omni-View gutter** | The in-context rendering of Cards beside the text they anchor to. | Read-only surface; skills don't write it. |
@@ -44,7 +44,8 @@ schema group. Members (SSOT: the `TextObjectKind` union +
 
 `paragraph` · `heading` · `bulletList` · `orderedList` · `listItem` ·
 `blockquote` · `codeBlock` · `displayMath` · `titleField` · `latexComment` ·
-`texBlock` · `figureBlock` · `graphicsBlock` · `exampleBlock` · `exampleItem`.
+`texBlock` · `forestBlock` · `figureBlock` · `graphicsBlock` · `exampleBlock` ·
+`exampleItem`.
 
 `linkedRange` is a TextObject too, but lives **outside** the node group — it is a
 mark range (the `linkedAnchor` mark), not a node.

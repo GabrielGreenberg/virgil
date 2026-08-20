@@ -1,4 +1,4 @@
-<!-- last-verified: fb1fd726 2026-08-19 -->
+<!-- last-verified: 31d34eac 2026-08-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -41,6 +41,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\begin{quote}…\end{quote}` | `blockquote` |
 | `\begin{itemize}` / `\begin{enumerate}` | `bulletList` / `orderedList` |
 | `\begin{figure}` / `\begin{figure*}` | `figureBlock` (+ `figureCaption`; non-caption body kept verbatim as `extras`) |
+| `\begin{forest}…\end{forest}` | `forestBlock` — claimed WHOLE (task 383): the env verbatim in `source`, so the drawn tree (task 384) is a derivation that can't subtract from it. Its leading `[` is the TREE, not an option |
 | `\hrulefill` | `horizontalRule` |
 | `% …` **full-line** comment | `latexComment` (a MID-line `%` is a comment *tail*, inline table below) |
 | any other `\begin{env}…\end{env}` | carried **byte-literally** — see the fallbacks below |
@@ -96,8 +97,8 @@ editor doesn't model"; `latexVerbatim` = "these bytes are literal";
    environment **byte-literally** on `latexVerbatim` (env name + arguments
    included), and
    carrying the block's `%!v:` uuid so its identity survives the save (task 342).
-   Only `verbatim`, `quote`, `itemize`, `enumerate`, `figure`, `figure*` are
-   modeled; everything else (tables, `align`, `tikzpicture`, `alltt`, the fancyvrb
+   Only `verbatim`, `quote`, `itemize`, `enumerate`, `figure`, `figure*`, `forest`
+   are modeled; everything else (tables, `align`, `tikzpicture`, `alltt`, the fancyvrb
    family, custom envs) takes this path. **Byte-literal is the DEFAULT**, so an
    env Virgil will fail to model in future is safe with nothing to add — the
    verbatim vocabulary (`VERBATIM_ENVS_FULL`) now decides only the *richer*

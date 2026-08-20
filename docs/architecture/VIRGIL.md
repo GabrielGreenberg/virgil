@@ -1,4 +1,4 @@
-<!-- last-verified: fb1fd726 2026-08-19 -->
+<!-- last-verified: 31d34eac 2026-08-20 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -51,7 +51,7 @@ Layer 3 — DERIVATIVE DOCS (each has a clear upstream)
 Every Layer-2 and Layer-3 doc carries a small header block of HTML comments at the very top of the file (before the first heading). Three fields, each on its own line, each independently greppable:
 
 ```markdown
-<!-- last-verified: <short-sha> <YYYY-MM-DD> -->
+<!-- last-verified: 31d34eac 2026-08-20 -->
 <!-- derives-from: <repo-root-relative-path>#<anchor>[, <path>#<anchor>...] -->
 <!-- covers-code: <repo-root-relative-path>[, <path>...] -->
 ```
@@ -323,7 +323,7 @@ Virgil keeps a stable identity for every block and inline entity across `.tex` p
 
 The marker family:
 
-- **`%!v:<hex>`** — a **TextObject** (block) id, a trailing *comment* **appended to the end of the block's serialized body** — and detached from that same end, which is the whole rule (task 348: a `listItem` used to anchor after its head LINE while the reader read from the slice END, so an item with a tail child and that child swapped identities on every save). Anchors therefore stack innermost-first (`\end{itemize} %!v:child %!v:me`). Which node types bear one is `UUID_BEARING_NODE_TYPES` in [src/lib/node-attr-sets.ts](../../src/lib/node-attr-sets.ts) — paragraph, heading, both lists, list item, blockquote, `codeBlock`, `displayMath`, `latexComment`, `titleField`, `texBlock`, `figureBlock`, `graphicsBlock`, `exampleBlock`, `exampleItem`, `maketitleMarker`. `%!v:blank` marks an empty unidentified paragraph.
+- **`%!v:<hex>`** — a **TextObject** (block) id, a trailing *comment* **appended to the end of the block's serialized body** — and detached from that same end, which is the whole rule (task 348: a `listItem` used to anchor after its head LINE while the reader read from the slice END, so an item with a tail child and that child swapped identities on every save). Anchors therefore stack innermost-first (`\end{itemize} %!v:child %!v:me`). Which node types bear one is `UUID_BEARING_NODE_TYPES` in [src/lib/node-attr-sets.ts](../../src/lib/node-attr-sets.ts) — paragraph, heading, both lists, list item, blockquote, `codeBlock`, `displayMath`, `latexComment`, `titleField`, `texBlock`, `forestBlock`, `figureBlock`, `graphicsBlock`, `exampleBlock`, `exampleItem`, `maketitleMarker`. `%!v:blank` marks an empty unidentified paragraph.
 - **`\vfid{}`** / **`\vcid{}`** — a **footnote** / **citation** Atom id, emitted just before the `\footnote{}`/`\thanks{}` or cite command.
 - **`\vbid{}`** — a **bibliography-entry** durable id, a bare line emitted just before each entry's BibTeX block **in the `.bib`** (not the `.tex`); minted + round-tripped by `src/lib/bib-uid.ts`.
 - **`\vexid{}`** / **`\vxid{}`** — an **example-block** / **example-item** id, emitted before `\ex`/`\pex` and `\a`.
