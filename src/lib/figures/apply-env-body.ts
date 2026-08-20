@@ -65,6 +65,10 @@ export function applyFigureEnvBodyEdit(
   const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
     ...node.attrs,
     extras: attrs.extras,
+    // The post-caption half of the body (task 379) — re-extracted here for the
+    // same reason `extras` is: whatever this writeback fails to thread is
+    // ERASED from the model on the next round-trip.
+    trailingExtras: attrs.trailingExtras,
     source: attrs.source,
     widthPercent: attrs.widthPercent,
     sources: attrs.sources,

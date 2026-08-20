@@ -502,6 +502,16 @@ After.`;
         emptyShort: `\\includegraphics{a}\n\\caption[]{C}`,
         labelFirst: `\\label{fig:a}\n\\includegraphics{a}\n\\caption{C}`,
         labelInCaption: `\\includegraphics{a}\n\\caption{C \\label{fig:a}}`,
+        // Task 379 — the shapes that made the "survives EXACTLY once" invariant
+        // VACUOUS: no corpus entry had ever carried two figure-depth labels (or
+        // two figure-depth captions), so the assertion was green while labels
+        // 2..n were being deleted outright. Behaviour is pinned in detail by
+        // `figure-multi-label-roundtrip.test.ts`; these entries are what make
+        // the corpus properties above speak for the shape at all.
+        twoLabelsAcrossCaption: `\\includegraphics{a}\\label{fig:one}\n\\caption{C}\\label{fig:two}`,
+        twoLabelsNoCaption: `\\includegraphics{a}\n\\label{fig:a}\\label{fig:b}`,
+        labelInCaptionPlusBody: `\\includegraphics{a}\\label{fig:out}\n\\caption{C \\label{fig:in}}`,
+        twoCaptions: `\\includegraphics{a}\n\\caption{A}\n\\caption{B}`,
         verbPercent: `\\verb|%| \\caption{C}\n\\label{fig:a}`,
         verbBracket: `\\verb[x[\n\\caption{C}\n\\label{fig:a}`,
         lstinlineOpts: `\\lstinline[keywordstyle=[2]\\color{red}]|x|\n\\caption{C}`,

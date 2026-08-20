@@ -2157,6 +2157,92 @@ CI: [list-item-anchor-position.test.ts](src/lib/__tests__/list-item-anchor-posit
 
 **Residuals, stated.** The census covers the EMIT form; the READ side still has four private `%!v:` regexes (`stripUuidAnchor`, `latex-paragraph-map`, and the two preamble helpers) answering differently-shaped questions — a separate sweep, not claimed here. `exampleItem` was checked rather than assumed and does **not** share this bug: it carries a `\vxid{…}` PREFIX marker, which is positionally bound to the item's own token and needs no end-of-body rule; `blockquote` serializes its children with uuids suppressed and anchors after `\end{quote}`, measured stable. Two adjacent quirks were measured while checking those siblings and left alone as pre-existing and independent: a multi-paragraph `blockquote` glues its `\end{quote}` onto its last paragraph (top level and inside an item alike), and `parseExampleBodyAsBlocks` DROPS a nested `itemize` inside an expex `\a` item outright — the second is content loss and is recorded for triage rather than folded in here.
 
+#### The multiplicity half: a scan that recognizes a CONSTRUCT must recognize how MANY
+
+Same round trip, and the case where the model held exactly one of something a
+figure may carry several of — so the extras strip cut EVERY occurrence while the
+emitter re-wrote ONE (task 379). Three members, all silent, all landing on OPEN
+via `readDocBundle`'s unconditional load-writeback, and none of them visible to
+the write gate (the shortfall is 3 word tokens against
+`PRESERVATION_SLACK_WORDS = 4`):
+
+- **A second figure-depth `\label` was DELETED, and the WRONG one survived.**
+  `extractFigureAttrs` kept `labels[0]` — the first in source order — while the
+  strip cut them all. `\caption` calls `\refstepcounter{figure}`, so a `\label`
+  written after the caption is the key that names the figure and one written
+  before it names whatever was stepped last (normally the section). So
+  `\includegraphics{a}\label{fig:one}` + `\caption{c}\label{fig:two}` came back
+  with `fig:two` gone and `fig:one` silently PROMOTED from naming nothing to
+  naming the figure: every `\ref{fig:two}` in the paper became `??`, and every
+  `\ref{fig:one}` started resolving to a number it had never had.
+- **A caption-carried label plus a body-level one looked fine for ONE cycle.**
+  Cycle 1 kept both (the attr held `fig:out`, the caption's own bytes held
+  `fig:in`); cycle 2 read `labels[0]` as the in-caption `fig:in`, suppressed the
+  figure-level emit as a duplicate declaration, and cut `fig:out` out of extras —
+  so the body-level key vanished on the SECOND save. Not a fixed point, which is
+  the one thing the corpus invariant could have caught if any fixture had had the
+  shape.
+- **Two figure-depth `\caption`s OSCILLATED forever.** The scan takes the first
+  and the strip cut only that one, so the leftover was re-emitted from `extras` —
+  i.e. AHEAD of the caption the model kept. The two traded places on every save
+  of a document nobody was editing, moving the `.tex` under the disk ledger, the
+  DiskWatcher and git.
+
+> **The model holds ONE caption and ONE label, so the strip cuts exactly those
+> two and everything else survives — on the SIDE OF THE CAPTION it was written
+> on.** `extras` is the body before the caption and `trailingExtras` the body
+> after it; the emitter writes `extras + \caption + \label + trailingExtras`.
+> And the label the model keeps is the one LaTeX would resolve `\ref` to: the
+> FIRST at or after the caption, falling back to the first when there is none.
+
+Four rules it earned:
+
+- **The position is the whole of it, and a plain `extras` is not enough.** The
+  site's pre-379 note said leaving extras in `extras` "would move it ahead of the
+  caption on re-emit and oscillate", and measurement confirmed that for the
+  no-caption pair. But oscillation is the lesser half: a label re-emitted on the
+  wrong side of the caption **stops naming the figure**, silently. So the carry
+  is position-aware — task 342/356's "carry what you cannot model, in the
+  position it was in", read one axis in.
+- **No cut can straddle the pivot, which is what makes the split arithmetic
+  honest.** The pivot is the caption's start (or the binding label's, or the end
+  of the body), the caption cut begins exactly there, and a binding label outside
+  the caption lies wholly on one side of it. Stated at the site rather than left
+  to be re-derived.
+- **The second caption cost nothing extra.** Nothing in the split is
+  label-specific — it cuts the two commands the model holds and carries the rest
+  — so the caption oscillation closed by construction rather than by a second
+  rule. That is the test of whether a fix is at the right altitude.
+- **`extractLabel` was DELETED rather than corrected.** An exported helper with
+  ZERO callers anywhere (task 202's dead-SSOT shape) that stated the RETIRED rule
+  — the next reader reaching for it would have re-introduced the defect with a
+  name that looked authoritative.
+
+**Stated normalizations, both one-time and idempotent.** A `\caption` written
+INSIDE a transparent box env (`\begin{center}…\caption{C}…\end{center}`, a very
+common idiom) now stays inside it, where pre-379 the whole box was extras and the
+caption was re-emitted after `\end{center}`. And a trailing comment after the
+caption stays after it rather than being hoisted above. Both are improvements in
+fidelity and both are fixed points from cycle 1.
+
+CI: [figure-multi-label-roundtrip.test.ts](src/lib/__tests__/figure-multi-label-roundtrip.test.ts).
+Its shape is the point: `figure-roundtrip.test.ts` has asserted "every `\label`
+survives EXACTLY once" over a corpus since task 245 and was **green on the
+pre-379 tree**, because no fixture in the repo had ever carried two figure-depth
+labels — a vacuous invariant, which is the same blindness the `\caption*` star
+(376 M4) and the `parTitle` write-set (343) each shipped behind. Every leg runs
+TWO cycles (cycle 1 is where a loss lands, cycle 2 is where an oscillation shows)
+and asserts bytes, survivor and fixed point together, with four single-label
+fixtures as passing CONTROLS. The corpus gains four entries so its own invariants
+speak for the shape at all. Measured by neutering each half in turn: reverting to
+`labels[0]` takes 4 legs, reverting to the cut-every-label strip takes 10.
+
+**Residual, stated.** The DECLARATION scan (`declareFromRawLatex`) reads the two
+halves as ONE joined string rather than twice, because the projection is stateful
+over what it is given and a `\begin{verbatim}` opened in `extras` and closed in
+`trailingExtras` must be seen as the pair it is — which also keeps task 345's
+census at its deliberately brittle "exactly two callers".
+
 #### The provenance half: a construct with no representation becomes PROSE, and the escape table then decides its meaning
 
 Same round trip, and the case where the carrier rule was applied to environments (342) and comments (347) and never to the things a COMMAND is made of — its arguments — nor to the two ACTIVE characters a document is written with (task 349). The escape/typography rungs are correct about prose and are handed bytes that were never prose, so they rewrite them as if the user had typed those characters. All seven members; every one was a **fixed point** (no later save healed it) and every one landed on OPEN, since `readDocBundle` runs the save pipeline and then fires `writeReStampedTexOnLoad` unconditionally:

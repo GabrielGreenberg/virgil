@@ -2234,6 +2234,12 @@ function parseBody(
             type: "figureBlock",
             attrs: {
               extras: figAttrs.extras,
+              // Bytes after the figure's own `\caption` — a second
+              // figure-depth `\label`, a stray second `\caption`, a trailing
+              // comment. Carried on the side they were written on, because a
+              // `\label` that crosses the caption changes which counter it
+              // names (task 379).
+              trailingExtras: figAttrs.trailingExtras,
               placement: optArg,
               starred: env === "figure*",
               source: figAttrs.source,
