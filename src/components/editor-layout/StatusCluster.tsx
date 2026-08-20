@@ -11,6 +11,7 @@ import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { SoftwareUpdateBanner } from "@/components/SoftwareUpdateBanner";
 import { MirrorRecoveryBadge } from "@/components/MirrorRecoveryBadge";
+import { SaveStateBadge } from "@/components/SaveStateBadge";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
@@ -18,7 +19,6 @@ import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
-import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
 import type { AiDotTone } from "@/components/AIWindow";
@@ -55,8 +55,6 @@ export type StatusClusterProps = {
   onDismissSkillSyncNotice: () => void;
 
   // Status-marker slices.
-  externalChangeActive: boolean;
-  setExternalChangeActive: (active: boolean) => void;
   focusActive: boolean;
   onFocusDeactivate: () => void;
   helperOn: boolean;
@@ -116,8 +114,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
     onResyncSkills,
     onDismissSkillSyncError,
     onDismissSkillSyncNotice,
-    externalChangeActive,
-    setExternalChangeActive,
     focusActive,
     onFocusDeactivate,
     helperOn,
@@ -208,6 +204,26 @@ function StatusClusterImpl(props: StatusClusterProps) {
           does — a data-integrity notice must not be hideable by a layout
           preference. */}
       <SyncConflictBadge docId={currentDocId} />
+      {/* External-change notice (task 364). Another app or a sync service
+          changed this paper's file, so the 364 clobber guard has PAUSED
+          autosave. Self-gates (renders null when severity == null) and — since
+          task 392 — sits BEFORE the topbarRightCollapsed gate, with its three
+          siblings, for the reason their comments already state: a
+          data-integrity notice must not be hideable by a layout preference.
+          It was inside BOTH gates until then, which made the very pause the
+          save badge routes its "Resolve…" button to unreachable in a
+          collapsed or zen toolbar. */}
+      <ExternalChangeBadge />
+      {/* SAVE STATE (task 392). The one answer to "is my work on disk?" — a
+          quiet timestamp when clean, an aging amber pill once writing has not
+          landed, and a red pill NAMING the gate that is holding the write with
+          a button that opens that gate's own flow. Self-gating and
+          tier-gated: the two reassurance tiers honour the collapse/zen
+          preference, the two data-integrity tiers never do. */}
+      <SaveStateBadge
+        docId={currentDocId}
+        collapsed={topbarRightCollapsed || zenModeOn}
+      />
       {/* Skill-bundle sync surface. Sits before the topbarRightCollapsed gate
           (like the Virgil-update banner) so a sync failure can't be hidden by
           a collapsed right toolbar. Pure UI: no per-keystroke work. */}
@@ -238,10 +254,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
           Suppressed in zen mode. */}
       {!zenModeOn && (
         <div className="flex items-center">
-          {/* Reporter: a provider-descendant that lifts the badge-active
-              boolean up into EditorLayout so the divider gate can OR it in.
-              Renders nothing itself. */}
-          <ExternalChangeActiveReporter onActiveChange={setExternalChangeActive} />
           {focusActive && (
             <button
               onClick={onFocusDeactivate}
@@ -268,16 +280,12 @@ function StatusClusterImpl(props: StatusClusterProps) {
             </button>
           )}
           {collabEnabled && collabBadge}
-          {/* External-change badge — self-gates (renders null when
-              severity == null), so it's mounted unconditionally inside the
-              cluster. Sits left of the divider, beside the collab pill. */}
-          <ExternalChangeBadge />
         </div>
       )}
       {/* Divider — only shown when there's at least one status marker on the
           left, so the line reads as a real boundary between markers and
           standard buttons. Suppressed in zen mode regardless. */}
-      {!zenModeOn && (focusActive || helperOn || collabEnabled || externalChangeActive) && (
+      {!zenModeOn && (focusActive || helperOn || collabEnabled) && (
         <span
           aria-hidden
           className="self-center h-5 w-px mx-2"

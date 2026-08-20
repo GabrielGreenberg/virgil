@@ -91,8 +91,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     onResyncSkills: noop,
     onDismissSkillSyncError: noop,
     onDismissSkillSyncNotice: noop,
-    externalChangeActive: false,
-    setExternalChangeActive: noop,
     focusActive: false,
     onFocusDeactivate: noop,
     helperOn: false,

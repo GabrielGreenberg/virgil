@@ -4097,9 +4097,136 @@ two minutes, hard-reload → the offer restores within seconds of the last tick;
 and a real-Dropbox eyeball of the aged pause badge. This class masks in the dev
 preview, so the durable proof here is the unit contracts.
 
+### The honesty half: a gate that stops writing SAYS SO, in one voice
+
+Same path, and the half the incident of 2026-08-19 turned on (task 392).
+Gabriel's ask afterwards was *"verify that auto-save is working properly, and
+consider adding a save button"* — and the honest answer to the first half is
+that it **was** working properly. It was deliberately paused by the 364 clobber
+guard, correctly, for seventy minutes, and the user could not tell. Task 391
+gave that state a durable second copy; this half gives it a VOICE.
+
+The reason it needed a law rather than a pill is that each silencing path
+decided for itself whether to speak, and they had settled on different answers:
+the conflict pause spoke through the external-change badge (which sat inside
+BOTH the collapse and zen gates, so a layout preference could hide it), a
+preservation refusal through its own badge, an FSA throw through
+`console.error`, a stale-pipeline drop through `console.warn` — and the
+destroyed-editor drops in `debouncedSave` / `flushNow` / `flushAnchorCommit`
+through nothing at all. `useDocument` did export a `saveStatus`, and **nothing
+in the app read it**: declared, written at six sites, consumed by no pixel — the
+task-202 dead-export shape, in the hook whose subject is telling the user what
+is happening.
+
+> **Every path that declines to write REPORTS on the ONE channel, and the
+> topbar renders the ONE tier ladder derived from it. A gate with no voice is
+> the incident; a second vocabulary is how the voices come to disagree.**
+
+[src/lib/save-state.ts](src/lib/save-state.ts) is the vocabulary over task 391's
+channel — the four tiers (`clean` / `pending` / `unsaved` / `blocked`), their
+thresholds, `isSaveTierProtected`, and `describeBlockReason`, which is the one
+table that says what a reason MEANS and **which flow can resolve it**.
+[src/lib/save-request.ts](src/lib/save-request.ts) is the manual door.
+Seven rules they earned:
+
+- **The report is the CHANNEL, and that is the whole reason the surgical
+  version of this feature is wrong.** A Save button wired to `flushPending`
+  would have reported success throughout the incident, because a refused write
+  resolves normally. `SaveDoor` returns a `SaveAttemptOutcome` read off
+  `unsaved-work` AFTER the attempt — the rule `keepMineOverDisk` and the reload
+  door already follow, now stated for the user-facing door too.
+- **A Save that cannot land ROUTES; it never re-refuses.** A blocked write is
+  held by a flow that belongs to another surface (the 364 conflict doors, the
+  357 acknowledge dialog), and answering it is a decision only the user can
+  make. So the button asks that surface to open itself
+  (`requestBlockingFlow`), keyed by `describeBlockReason(...).flow` so the
+  button and the opener cannot disagree about which dialog a reason leads to.
+  A Save that silently re-refuses is this incident's silence with a button on
+  it. The one reason that names no flow is `error` — it has a next attempt
+  rather than a dialog, so its button says "Try again".
+- **…and it respects the guard it is asking about.** The manual door consults
+  `shouldPauseAutosave` and reports `conflict` rather than writing. A Save
+  button that walked past the clobber guard would do the one thing every
+  automatic path in `useDocument` refuses to do — overwrite the external edit —
+  and it would do it on a gesture the user thinks is safe.
+- **ONE dirty predicate.** `saveTimerRef.current !== null` was the de-facto
+  answer on three flush paths, and task 391 had already recorded why it is
+  unsound in both directions: the debounce callback nulls the handle BEFORE
+  calling `save`, so a REFUSED write leaves the document dirty with the flag
+  already cleared. 391 migrated `beforeunload`; the other three stayed, which
+  meant `flushAllPendingDocs` — the reload door's first move — was a **no-op on
+  exactly the documents it exists for**. `hasWorkToWrite` is the one predicate
+  now, and the census forbids the comparison anywhere else.
+- **A tier decides its own hideability, once.** The two reassurance tiers may be
+  collapsed away; the two data-integrity tiers may not — the task-357 rule,
+  lifted out of one badge's placement into `isSaveTierProtected` so the whole
+  ladder inherits it. That is also what forced the external-change badge out of
+  both gates, where it had sat since it shipped: the pill for the pause is
+  precisely what the save badge's "Resolve…" button routes to, so a collapsed
+  toolbar made the way out unreachable. Its now-unused `externalChangeActive`
+  lift (state + prop + a whole reporter component) was DELETED rather than left
+  written-and-unread.
+- **No button in the `pending` tier, and the keyboard door is always open.**
+  An affordance whose only effect is to do what is already happening is dead
+  chrome, and one that blinks in and out on every typing pause is the fastest
+  way to teach someone to stop seeing it. Cmd/Ctrl+S (previously unbound — the
+  browser's "Save Page As…", which for a PWA whose document is on the user's
+  own disk is exactly the wrong thing) enters the SAME door in every tier,
+  because a shortcut costs no pixels and so has no reason to hide.
+- **Retiring `saveStatus` is part of the fix, not a tidy-up.** Keeping a second,
+  unread status vocabulary beside the channel is how the next surface comes to
+  render the wrong one — and the state had a live defect nobody could see: the
+  stale-pipeline arm returned without resetting it, so a dropped write left the
+  status stuck at `"saving"` forever. WIRE-it or DELETE-it.
+
+**The census is the deliverable, and it is what makes "verify autosave works" a
+permanent answer instead of an afternoon's.**
+[save-state-census.test.ts](src/lib/__tests__/save-state-census.test.ts)
+DISCOVERS the write doors from `useDocument.ts` itself (the declarations that
+reach `save(` / `writeDocBundle(` — never a hand list, which could only be
+missing the door that drifted) and fails any early return inside one that
+neither publishes a reason nor carries an in-place `save-silent-ok: <why>`
+marker; the allowlist is EMPTY. Beside it: every `catch` in a door reports, the
+retired dead state stays retired, every caller of `requestSaveNow` also spells
+`requestBlockingFlow`, only `useDocument` publishes a door, and the two loud
+badges render BEFORE the collapse gate. The behavioural halves are
+[save-state-view.test.ts](src/lib/__tests__/save-state-view.test.ts) (the
+ladder), [useDocument.manual-save.test.ts](src/hooks/__tests__/useDocument.manual-save.test.ts)
+(the door against the REAL hook — including the leg that asserts a conflicted
+manual save writes NOTHING) and
+[save-state-badge.test.tsx](src/components/__tests__/save-state-badge.test.tsx)
+(the four tiers, the collapse rule, both click behaviours, and the ticker,
+which arms no timer at all while the document is clean and schedules the next
+tier BOUNDARY rather than polling). Measured by neutering each half in turn:
+restoring one silent gate takes 1 census leg, restoring the debounce-handle
+predicate 2, moving the badge inside the collapse gate 1, dropping the manual
+door's clobber guard 1, reporting from the absence of a throw 1, collapsing
+every tier 1, and re-attempting instead of routing 2.
+
+**Owed, not claimed:** the preview eyeball, and a real-conflict pass. The
+conflict tier is FSA-masked (the dev preview's `virgil-data/` has no external
+writer), so the durable proof there is the unit contract; the amber tier and the
+button are not masked and are worth watching once — type, wait past the warn
+threshold, click **Save now**, see the pill go green with a timestamp.
+
+**Residuals, stated.** The `pending` tier says "Saving…" from the fact that a
+write is ARMED, not from one being in flight — `writeDocBundle` has no
+in-progress channel and inventing one for a label would be a second status
+vocabulary, which is what this task deletes. The escalated tier grows inside the
+32 px bar rather than becoming a real banner: a taller surface is a layout
+decision this task did not take, and the sentence beside the pill is what the
+incident actually needed. And the census reads `useDocument.ts` only — a save
+path added in another module would be invisible to it, which is honest rather
+than complete: every write door lives in that hook today, and the door census's
+`registerSaveDoor` leg is what would notice a second one trying to publish.
+
 ### CI, and the limits stated rather than implied
 
-Suites: [write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),
+Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),
+[save-state-view](src/lib/__tests__/save-state-view.test.ts),
+[save-state-badge](src/components/__tests__/save-state-badge.test.tsx),
+[useDocument.manual-save](src/hooks/__tests__/useDocument.manual-save.test.ts),
+[write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),
 [preservation-refusal-posture](src/lib/__tests__/preservation-refusal-posture.test.ts),
 [preservation-notice-badge](src/components/__tests__/preservation-notice-badge.test.tsx),
 [mount-preservation-gate](src/lib/__tests__/mount-preservation-gate.test.ts),

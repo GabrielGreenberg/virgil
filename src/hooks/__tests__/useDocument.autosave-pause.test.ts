@@ -9,7 +9,7 @@
 // context module.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { ReactNode } from "react";
 import React from "react";
@@ -27,6 +27,9 @@ vi.mock("@/lib/storage", () => ({
   readDocBundle: (...args: unknown[]) => mockRead(...args),
   writeDocBundle: (...args: unknown[]) => mockWrite(...args),
   snapshotConflictSides: (...args: unknown[]) => mockSnapshot(...args),
+  // Reached only on a REAL unmount, which this file never exercised until
+  // task 392 added `cleanup()` to the harness.
+  invalidateSidecarBundle: () => {},
 }));
 
 // Controllable fake watcher: the test flips `unresolved` to model an external
@@ -68,6 +71,7 @@ import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { __resetForTests as resetPipelines } from "@/lib/multi-window/doc-pipeline";
 import { __resetForTests as resetFlushers } from "@/lib/multi-window/pending-saves";
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
+import { clearUnsavedWork } from "@/lib/unsaved-work";
 
 const EMPTY_CONTENT: JSONContent = { type: "doc", content: [] };
 const SAMPLE_CONTENT: JSONContent = {
@@ -76,12 +80,23 @@ const SAMPLE_CONTENT: JSONContent = {
 };
 
 beforeEach(() => {
+  // Unmount FIRST — before `resetPipelines()`, or the unmount cleanups run
+  // against a registry that has already forgotten them.
+  cleanup();
   mockRead.mockReset();
   mockWrite.mockReset();
   mockWrite.mockResolvedValue(undefined);
   mockRead.mockResolvedValue({ content: EMPTY_CONTENT, editorState: {} });
   resetPipelines();
   resetFlushers();
+  // TASK 392 — this file renders many hooks for "doc-1" and nothing unmounted
+  // them, so every previous test's hook stayed subscribed to `pagehide`. That
+  // was invisible while each one gated its flush on its OWN debounce handle;
+  // with the dirty predicate now reading the per-doc CHANNEL (module state),
+  // one blocked write makes all of them answer. Production never has two live
+  // pipelines for one docId (DocPipeline's key + the pipeline registry), so
+  // this is harness isolation rather than a behaviour the code must tolerate.
+  clearUnsavedWork();
   unresolved = false;
   activeDocId = "doc-1";
   docActions = null;

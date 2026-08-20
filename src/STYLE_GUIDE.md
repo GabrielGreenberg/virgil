@@ -107,6 +107,31 @@ Two rules the family carries:
   with nothing red on a genuinely destructive path, the answer is usually a net,
   not a redder pill.
 
+- **The SAVE-STATE ladder is the same rule read as four tiers** (task 392;
+  `src/lib/save-state.ts` is the vocabulary, `SaveStateBadge` the surface).
+  A quiet `--ink-subtle` line for the two REASSURANCE tiers — "Saved · 13:28"
+  when everything has landed, "Saving…" in the ordinary gap between a keystroke
+  and the 1500 ms debounce; the warm WARNING family once writing has been
+  unsaved past `UNSAVED_WARN_MS` ("Unsaved · 3 minutes", with a **Save now**
+  button); and the alarm ramp only where a gate has actually REFUSED, which is
+  the one state in which the user's work is on no disk and nothing is coming to
+  put it there. Two consequences worth stating, because both were mistakes the
+  first cut made:
+  - **A reassurance may be collapsed away; a data-integrity state may not.**
+    `isSaveTierProtected` decides it once, and `topbarRightCollapsed` / zen are
+    read through that — the task-357 rule ("a data-integrity notice must not be
+    hideable by a layout preference"), stated for the whole ladder rather than
+    per badge.
+  - **Past `UNSAVED_ESCALATE_MS` the pill stops being a pill.** The 2026-08-19
+    loss ran seventy minutes behind a badge that said the same words at minute 1
+    and minute 70, so the escalated tier brings the whole SENTENCE out beside
+    it — what happened, and which flow the user has to answer. A warning that
+    cannot grow is furniture by the second hour.
+  The reason vocabulary (`describeBlockReason`) is single-sourced for the same
+  reason the tone ladder is: the update banner, the topbar pill and any future
+  surface must call a paused conflict the same thing, or the user reads three
+  descriptions of one event and concludes they are three problems.
+
 - **Two rungs ALIAS the rust scale rather than restating its hex.** That is the
   point, not an optimization. The historical migration record
   (`docs/virgil-design-system/10-audit.md` §8, no longer the spec) complains

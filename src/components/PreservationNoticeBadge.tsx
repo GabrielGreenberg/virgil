@@ -31,6 +31,7 @@
 
 import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { usePreservationNotice } from "@/hooks/usePreservationNotice";
+import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { acknowledgePreservationNotice } from "@/lib/preservation-notice";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
@@ -137,6 +138,15 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
     () => kebabRef.current?.getBoundingClientRect() ?? null,
     [],
   );
+
+  // TASK 392 — "Save now" on a document a preservation gate is refusing routes
+  // here: the way out is the informed acknowledgement this menu offers, and a
+  // Save button is not entitled to make that call on the user's behalf.
+  const openMenu = useCallback(() => {
+    setMenuOpen(true);
+    setAnchorRect(kebabRef.current?.getBoundingClientRect() ?? null);
+  }, []);
+  useBlockingFlowRequest(docId, "preservation", openMenu);
 
   const lost = notice?.lost ?? 0;
   const region = notice?.region ?? "body";

@@ -281,10 +281,17 @@ describe("census · every refusal reaches the channel", () => {
     // inferred success from "nothing threw" would report Saved over a write
     // that never happened — and advance `lastSavedRef` to a doc that never
     // reached disk, which suppresses a later legitimate flush of it.
+    //
+    // TASK 392 renegotiated the NEEDLE, not the rule. `saveStatus` was a dead
+    // export (declared, written, read by nothing) and is retired; the "saved
+    // claim" this leg guards is now the channel publish, which is what every
+    // surface actually reads. Keying on the retired state would have left the
+    // leg passing vacuously on a `src` that no longer contains it.
     const src = read("src/hooks/useDocument.ts");
     expect(src).toContain("isWriteProtected(handle.docId)");
+    expect(src).not.toContain("setSaveStatus");
     const at = src.indexOf("isWriteProtected(handle.docId)");
-    const savedAt = src.indexOf('setSaveStatus("saved")', at);
+    const savedAt = src.indexOf("noteSaveLanded(handle.docId)", at);
     const assignAt = src.indexOf("lastSavedRef.current = doc", at);
     expect(savedAt, "the refusal check must precede the saved claim").toBeGreaterThan(at);
     expect(assignAt, "…and precede the lastSaved assignment").toBeGreaterThan(at);
