@@ -159,7 +159,7 @@ describe("DA-5 selection-mode taxonomy — the declarative `selection` field", (
     // atom
     ref: "optional",
     // blocks — headings/title-fields are conversions/singletons ("ignored");
-    // the inserts (tex/example/math/figure/graphics) are "optional".
+    // the inserts (tex/example/math/figure/graphics/forest) are "optional".
     "heading-chapter": "ignored",
     "heading-section": "ignored",
     "heading-subsection": "ignored",
@@ -170,6 +170,7 @@ describe("DA-5 selection-mode taxonomy — the declarative `selection` field", (
     graphics: "optional",
     "inline-math": "optional",
     "display-math": "optional",
+    forest: "optional",
     title: "ignored",
     author: "ignored",
     date: "ignored",

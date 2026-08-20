@@ -33,7 +33,8 @@ export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
 export { TextColor } from "./text-color";
 export { TexBlock, insertTexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";
-export { ForestBlock, freshForestSource } from "./forest-block";
+export { ForestBlock } from "./forest-block";
+export { freshForestSource } from "@/lib/forest/grammar";
 export type { ForestBlockOptions } from "./forest-block";
 export {
   FigureBlock,

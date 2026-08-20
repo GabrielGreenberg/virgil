@@ -430,13 +430,13 @@ export function ActionsMenuPanel({
       canEdit,
     } as ActionContext) === "disabled";
 
-  // Task 147 (DATA-LOSS): the five block-atom INSERT cells (example /
-  // display-math / `\tex` / figure / graphics) grey out when the caret sits in a
+  // Task 147 (DATA-LOSS): the six block-atom INSERT cells (example /
+  // display-math / `\tex` / figure / graphics / forest) grey out when the caret sits in a
   // block that can't host a block child (titleField / codeBlock / latexComment)
   // — inserting there would SPLIT the container into two `\title{}` (silent
   // data-loss on reload) or two verbatim blocks. All five share the registry's
   // container-aware `blockInsertApplies`, so one probe (the `example` row) covers
-  // all five. `!canEdit` is folded in (collab gate) for a uniform render, exactly
+  // all six. `!canEdit` is folded in (collab gate) for a uniform render, exactly
   // like `wrappersDisabled`. inline-math / `\ref` insert INLINE atoms (no split,
   // valid in a title) and are NOT gated here. Computed at menu-open, never per
   // keystroke.
@@ -536,7 +536,7 @@ export function ActionsMenuPanel({
           padding: `${MENU_PAD_Y}px 0`,
         }}
       >
-        {/* ── Formatting icon grid (4 cols × 4 rows) ─────────────── */}
+        {/* ── Formatting icon grid (4 cols × 5 rows) ─────────────── */}
         <MenuGrid
           cols={GRID_COLS}
           style={{ gap: 2, padding: "0 4px" }}
@@ -754,6 +754,29 @@ export function ActionsMenuPanel({
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
               \ref
             </span>
+          </FmtBtn>
+
+          {/* Row 4 — the `forest` syntax-tree block (task 385). Routed through
+              the SHARED `runGridAction` dispatch, NOT a private ctx-builder: the
+              `\tex` cell beside it still calls `insertTexBlock(editor)` directly
+              and so builds an ActionContext with no `canEdit` (the known task-228
+              member-5 trap). A new cell must never copy that. The tree glyph is
+              a two-child syntax tree — the same shape the starter template
+              inserts. */}
+          <FmtBtn
+            id="forest"
+            row={4}
+            col={0}
+            title="Insert syntax tree (forest)"
+            disabled={blockAtomsDisabled}
+            run={() => runGridAction("forest")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+              <path d="M8 3.5 L4 8.5 M8 3.5 L12 8.5" />
+              <circle cx="8" cy="2.75" r="1.1" fill="currentColor" stroke="none" />
+              <circle cx="4" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
           </FmtBtn>
         </MenuGrid>
 

@@ -273,6 +273,13 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // synthesizes the view-only ActionContext (`texRun` reads the live selection
   // off `ctx.view.state`, not the synthesized CursorRef).
   { name: "tex", action: (view) => runViewOnlyAction("tex", view) },
+  // Task 385: `\forest` routes through the SINGLE canonical `forestRun` (mint a
+  // collision-free uuid, seed the subset-clean starter tree, insert the
+  // `forestBlock`) — the SAME `run()` the lightning grid's tree cell calls. Pure
+  // ProseMirror, so NO bridge: `runViewOnlyAction` synthesizes the view-only
+  // ActionContext, and `forestRun` reads the live selection off `ctx.view.state`
+  // (it carries the CHIP 7b collab gate itself, as `texRun` does).
+  { name: "forest", action: (view) => runViewOnlyAction("forest", view) },
   // Bug sweep #6: the 5 structural WRAPPER toggles. `\list`/`\itemize` → bullet
   // list, `\enumerate` → numbered list, `\quote`/`\quotation` → blockquote.
   //

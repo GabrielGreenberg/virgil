@@ -110,6 +110,11 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   packageReq("natbib"),
   packageReq("biblatex"),
   packageReq("tikz"),
+  // `forest` — the syntax-tree package `forestBlock` carries (task 383/385).
+  // Injected only when the body actually holds one, via the node-model
+  // declaration in the serializer's `forestBlock` arm plus the
+  // `PACKAGE_DETECTORS` fallback for hand-typed passthrough.
+  packageReq("forest"),
   // `xlist` is how Virgil serializes a nested example tier (latex-serializer.ts)
   // and how it parses one back (latex-parser.ts). It is NOT an expex
   // environment — despite the comments elsewhere calling it one, current expex

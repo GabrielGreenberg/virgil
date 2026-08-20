@@ -674,12 +674,15 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const source = (node.attrs?.source as string) ?? "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuidAnchorSuffix(uuid);
-      // A forest body is real LaTeX the editor does not model, so declare from
-      // its OWN bytes exactly as the `texBlock` arm does — a `\\tikz` or an
+      // The package this node's env NEEDS is declared from the NODE MODEL: the
+      // emitter knows it is about to write a `\\begin{forest}` (task 385), so it
+      // searches for nothing and needs no projection — the 345 rule, which
+      // exempts a declaration read off the model from the detector discipline.
+      need("forest");
+      // Its BODY is real LaTeX the editor does not model, so declare from its
+      // OWN bytes exactly as the `texBlock` arm does — a `\\tikz` or an
       // `\\includegraphics` inside a tree label must reach its `\\usepackage`.
-      // (`\\usepackage{forest}` itself is task 385's; nothing declares it today
-      // and nothing did before this node existed, so this arm changes no
-      // preamble.) `declareFromRawLatex` projects inert bytes itself (task 345).
+      // `declareFromRawLatex` projects inert bytes itself (task 345).
       declareFromRawLatex(source);
       return `${carriedSource(source)}${anchor}\n\n`;
     }

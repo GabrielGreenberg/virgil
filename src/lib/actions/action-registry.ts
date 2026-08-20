@@ -140,7 +140,14 @@ import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // the grid cell and any future figure/graphics FILE-DROP path converge on one
 // creator. Pure ProseMirror (operates on `editor.view`) — no React/DOM — so the
 // value import is free for every consumer of this registry.
-import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
+import { smartInsertBlock, collectUuids } from "@/lib/tiptap/smart-insert";
+// VALUE import: the ONE starter tree an insertion surface seeds a fresh
+// `forestBlock` with, and the grammar it must satisfy. It lives on the forest
+// GRAMMAR leaf (not beside the node) precisely so this registry can reach it —
+// `@/lib/tiptap/forest-block` pulls the React NodeView in, and a facet the
+// layer that needs it cannot import gets re-copied (the `latex-markers` /
+// `node-attr-sets` placement rule).
+import { freshForestSource } from "@/lib/forest/grammar";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 // VALUE imports: the figure/graphics fresh-attrs builders. `figureRun` /
 // `graphicsRun` seed the new block with the SAME stub attrs the former
@@ -291,7 +298,8 @@ export type BlockActionId =
   | "figure" // figure block
   | "graphics" // \includegraphics image block
   | "inline-math" // $x$ wrap/insert
-  | "display-math"; // $$…$$ wrap/insert
+  | "display-math" // $$…$$ wrap/insert
+  | "forest"; // \begin{forest} syntax-tree block
 
 /** The HEADING subset of `BlockActionId` — the four `heading-*` ids. Named once
  *  (task 260) so the level table, the row table and the coverage slice all read
@@ -300,7 +308,7 @@ export type BlockActionId =
 export type HeadingActionId = BlockActionId & `heading-${string}`;
 
 /** The NON-heading half of `BlockActionId` — `example` / `tex` / `figure` /
- *  `graphics` / `inline-math` / `display-math`. DERIVED by `Exclude`, never
+ *  `graphics` / `inline-math` / `display-math` / `forest`. DERIVED by `Exclude`, never
  *  hand-listed: the two halves partition `BlockActionId` by construction, so a
  *  new block insert (`table`, `verbatim`, …) is forced into exactly one of them
  *  and its exhaustive row table stops compiling until someone gives it a row
@@ -1751,6 +1759,73 @@ const TEX_ACTION_ROW: ActionSpec = {
 };
 
 // ---------------------------------------------------------------------------
+// forestRun — the `forest` syntax-tree block (task 385, the insertion half of
+// the 383/384 cluster). Pure ProseMirror on `ctx.view`, exactly like `texRun`:
+// the slash surface reaches it through `runViewOnlyAction`, whose synthesized
+// ctx carries no `.chain()`, so `smartInsertBlock` (which needs a live TipTap
+// `Editor`) is not available to it — the uuid scan is nonetheless the SAME
+// `collectUuids` that helper uses, so there is no third copy of the mint.
+//
+// SELECTION POLICY, stated because it deviates from the sibling block-atom
+// inserts on purpose. `figure`/`graphics` (through `smartInsertBlock`) and
+// `\tex` DELETE a non-empty selection: for `\tex` that is paid for — the
+// selected text becomes the block's `code` — and for figure/graphics it is the
+// documented "block atoms can't absorb inline content" rule. A forest tree can
+// absorb NOTHING: its starter source is fixed and nothing about the selection
+// could seed it, so consuming the user's prose would be pure loss with nothing
+// bought. The selection is therefore COLLAPSED to its start (never deleted) and
+// the tree lands at that caret — which is also the position `applies()` gates
+// (`blockInsertApplies` reads `ref.from`), so the affordance and the commit
+// address the SAME position by construction. At a collapsed caret — the
+// overwhelmingly common case — this is byte-identical to the siblings.
+// ---------------------------------------------------------------------------
+export function forestRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  const { state } = ctx.view;
+  const forestType = state.schema.nodes.forestBlock;
+  if (!forestType) return;
+  const { from, empty } = state.selection;
+  // CONTAINER GUARD (task 147/229, defense-in-depth — the same bail `texRun`
+  // and `smartInsertBlock` take): a block atom inserted at a caret inside a
+  // block that can't host a block child (titleField / codeBlock /
+  // latexComment, or a figureCaption whose figureBlock parent can't re-host)
+  // would SPLIT it. Bail so NO surface can corrupt.
+  if (!posHostsBlockInsert(state.doc, from, forestType)) return;
+  const attrs = {
+    uuid: generateShortId(collectUuids(state.doc, "forestBlock")),
+    source: freshForestSource(),
+  };
+  let tr = state.tr;
+  // Collapse (never delete) — see the SELECTION POLICY note above.
+  if (!empty) tr = tr.setSelection(TextSelection.create(tr.doc, from));
+  tr = tr.replaceSelectionWith(forestType.create(attrs));
+  ctx.view.dispatch(tr.scrollIntoView());
+}
+
+/**
+ * The single `forest` registry row — `category: "block"`, exposed on the slash
+ * surface (`\forest`) AND the lightning surface (the grid's tree cell). No
+ * grab/typed/keyboard surface (a tree is not a grab-handle action, and there is
+ * no `\forest{}`-style input rule). Both surfaces call `forestRun`, so the
+ * starter bytes and the container guard can never diverge between them.
+ *
+ * `selection: "optional"` — a caret is a perfectly good insert point and the
+ * row never wants a range (see the SELECTION POLICY note on `forestRun`), so it
+ * must not grey at a collapsed caret.
+ */
+const FOREST_ACTION_ROW: ActionSpec = {
+  id: "forest",
+  label: "Syntax tree",
+  category: "block",
+  selection: "optional",
+  surfaces: { slash: true, lightning: true },
+  slashName: "forest",
+  // Shared block-atom gate (CHIP 6a: `blockApplies` + the container check).
+  applies: blockInsertApplies("forestBlock"),
+  run: forestRun,
+};
+
+// ---------------------------------------------------------------------------
 // refRun — the `\ref` cross-reference action. Unlike citation/footnote, `\ref`
 // has NO card: the `LabelRef` POPOVER is the creator. `refRun` opens the SHARED
 // inline-atom create popover in ref mode via the `ctx.openAtomCreate("ref")`
@@ -2951,6 +3026,7 @@ const NON_HEADING_BLOCK_ACTION_ROWS: Readonly<
   "display-math": DISPLAY_MATH_ACTION_ROW,
   figure: FIGURE_ACTION_ROW,
   graphics: GRAPHICS_ACTION_ROW,
+  forest: FOREST_ACTION_ROW,
 };
 
 /**
@@ -3132,6 +3208,7 @@ export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   cite: "citation",
   footnote: "footnote",
   tex: "tex",
+  forest: "forest",
   list: "bullet-list",
   itemize: "bullet-list",
   enumerate: "ordered-list",
@@ -3181,7 +3258,27 @@ const COVERED_BLOCK_IDS: readonly NonHeadingBlockActionId[] = keysOf(
 );
 
 /**
- * The block ids that own the SLASH surface (tex `\tex`, example `\ex`) — the
+ * Which ids of a given slice own the SLASH surface — DERIVED from
+ * `SLASH_NAME_TO_ACTION_ID`, the one place the slash vocabulary is reconciled
+ * with the action vocabulary, rather than hand-listed beside it (task 385).
+ *
+ * The two sets below were hand lists, and a hand list can only be missing a
+ * name: adding `\forest` to `VIRGIL_COMMANDS` + the name map left the block
+ * list stale, so the assertion reported the new row as "prematurely" claiming a
+ * surface it demonstrably owns. Deriving is exact in both directions — an id
+ * with no mapped command still trips the premature-slash arm, and an id WITH
+ * one is required to declare `surfaces.slash` + a `slashName`.
+ */
+function slashOwnersAmong<K extends ActionId>(
+  slice: readonly K[],
+): ReadonlySet<K> {
+  const mapped = new Set<ActionId>(Object.values(SLASH_NAME_TO_ACTION_ID));
+  return new Set(slice.filter((id) => mapped.has(id)));
+}
+
+/**
+ * The block ids that own the SLASH surface (tex `\tex`, example `\ex`, forest
+ * `\forest`) — the
  * subset of `COVERED_BLOCK_IDS` whose rows must claim `surfaces.slash` + a
  * `slashName` reconciled against `VIRGIL_COMMAND_NAMES`. The CHIP 6a block-atom
  * rows (`inline-math` / `display-math` / `figure` / `graphics`) are GRID-ONLY:
@@ -3189,10 +3286,9 @@ const COVERED_BLOCK_IDS: readonly NonHeadingBlockActionId[] = keysOf(
  * assertion partitions on this set so a lightning-only row isn't wrongly flagged
  * for missing a slashName.
  */
-const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>([
-  "tex",
-  "example",
-]);
+const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = slashOwnersAmong(
+  COVERED_BLOCK_IDS,
+);
 
 /**
  * The 8 format ids — the slice CHIP 6b populates, completing the GRID fold. Each
@@ -3215,7 +3311,7 @@ const COVERED_FORMAT_IDS: readonly FormatActionId[] = keysOf(FORMAT_ACTION_ROWS)
  * slice instead of blanket-forbidding slash on every format row.
  */
 const FORMAT_IDS_WITH_SLASH: ReadonlySet<FormatActionId> =
-  new Set<FormatActionId>(["bullet-list", "ordered-list", "blockquote"]);
+  slashOwnersAmong(COVERED_FORMAT_IDS);
 
 /**
  * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,

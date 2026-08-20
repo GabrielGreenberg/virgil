@@ -648,3 +648,26 @@ export function parseForestSource(source: string): ForestParse {
     throw err;
   }
 }
+
+/**
+ * The bytes an INSERTION surface seeds a fresh `forestBlock` with — one SSOT,
+ * so the slash command, the lightning grid cell and any future surface cannot
+ * mint different starting trees (task 385).
+ *
+ * It lives HERE, beside the grammar, rather than beside the node, because its
+ * one real constraint is a fact about the GRAMMAR: a starter that fell outside
+ * the v1 whitelist would open badge-first — a new user's first tree telling
+ * them Virgil can't draw it — so the parse of this string is a contract, not a
+ * hope. `forest-insert-surfaces.test.ts` runs it through `parseForest` and
+ * fails on any refusal. (Placement is also the leaf rule `latex-markers.ts` /
+ * `node-attr-sets.ts` earned: the action registry cannot import the NodeView
+ * module without dragging React in, and a facet the layer that needs it cannot
+ * import gets re-copied.)
+ */
+export function freshForestSource(): string {
+  return (
+    `\\begin{${FOREST_ENV_NAME}}\n` +
+    `[S\n  [NP]\n  [VP]\n]\n` +
+    `\\end{${FOREST_ENV_NAME}}`
+  );
+}

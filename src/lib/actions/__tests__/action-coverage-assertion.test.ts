@@ -87,9 +87,11 @@ const HEADING_IDS = [
 ] as const;
 
 // CHIP 5b — `tex`; CHIP 5c — `example`; CHIP 6a — the 4 block-ATOM rows
-// (`inline-math` / `display-math` / `figure` / `graphics`). All non-heading
-// block rows, appended after the heading slice in registration order. tex/example
-// own the slash surface; the 4 block-atom rows are LIGHTNING-ONLY (grid cells).
+// (`inline-math` / `display-math` / `figure` / `graphics`); task 385 — `forest`.
+// All non-heading block rows, appended after the heading slice in registration
+// order. tex/example/forest own the slash surface AND the grid; the 4 block-atom
+// rows are LIGHTNING-ONLY (grid cells). This list is deliberately HAND-written:
+// it pins the registry's key ORDER, which no derivation off the registry could.
 const BLOCK_IDS = [
   "tex",
   "example",
@@ -97,6 +99,7 @@ const BLOCK_IDS = [
   "display-math",
   "figure",
   "graphics",
+  "forest",
 ] as const;
 
 // CHIP 6b — the 8 FORMAT rows (mark/list/quote toggles + text-color), appended

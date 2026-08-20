@@ -78,7 +78,7 @@ export const TIKZ_RE =
  * for nothing and needs no projection; those `need()` sites do not read this
  * table.
  *
- * These five patterns are module-level singletons read by two call sites, so
+ * These patterns are module-level singletons read by two call sites, so
  * none may carry `/g` or `/y` — `lastIndex` would persist across `.test()`
  * calls and skip matches on alternate ones. Pinned in
  * raw-passthrough-declaration.test.ts.
@@ -109,6 +109,16 @@ export const PACKAGE_DETECTORS: ReadonlyArray<{
   { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
   { id: "tikz", re: TIKZ_RE },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
+  // The `forest` syntax-tree package (task 385). `forestBlock` declares its own
+  // requirement from the NODE MODEL (the serializer knows the env it is about to
+  // emit), so this member is the FALLBACK half — a `\begin{forest}` hand-typed
+  // into a `texBlock`, a figure's `extras`, or a paper Virgil parsed before the
+  // node existed. `\useforestlibrary` is the second entry point the package
+  // documents and costs nothing to recognize.
+  {
+    id: "forest",
+    re: /\\begin\{forest\}|\\useforestlibrary(?![a-zA-Z])/,
+  },
 ];
 
 /**
