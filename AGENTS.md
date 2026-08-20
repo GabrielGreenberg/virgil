@@ -2517,13 +2517,36 @@ Five rules it earned:
   protects, whether or not this edit touched it and whether or not promotion
   declined it for an OPAQUE crossing. A missed demotion is the status quo; a
   wrong one changes the bytes.
-- **The block gate gains its third disjunct, and the demotion it opens is
-  FREE.** Scan the block when it still CARRIES the mark even with no lead left —
-  and then skip the scan, because with no `\` and no `{` it is provably empty.
-  The marked-run walk costs nothing extra either: it rides the walk that already
-  had to happen to build the text. Measured: a stranded bare word costs ZERO
-  scans, a keystroke beside a settled command still costs ONE, and only the
+- **A BRACE IS NOT A CONSTRUCT ON ITS OWN, so marked braces come off in PAIRS
+  or not at all.** The carrier marks a `{`/`}` only as a group's DELIMITERS —
+  promotion gives the pair one shared extent and marks them together — so a
+  demotion that takes one and leaves the other emits *unbalanced* LaTeX: the
+  demoted brace goes through the escape rung to `\}`, the next parse reads it
+  as the literal character it now is, and the surviving `{` has no partner. The
+  paper stops compiling, and the 357 write gate cannot see it (`\}` against `}`
+  moves zero word tokens). The shape that reaches it is ordinary: the two braces
+  of a SOURCE bare group are permanently stale here (349 M6 carries them, this
+  scanner declines them), they are two SEPARATE marked runs, and the adjacency
+  rule reaches exactly one of them for a keystroke immediately before the `{`,
+  immediately before the `}`, or immediately after it. Reconciling the demotion
+  against the block's marked brace pairs refuses all three — the safe direction,
+  since for a group this scanner never claimed, leaving it untouched is the
+  honest answer to an edit that merely happened next to it. ONE pass is provably
+  enough: an offset is either a `{` or a `}`, so it belongs to at most one
+  balanced pair and a refusal cannot cascade.
+- **The block gate gains its third disjunct, and most of the demotion it opens
+  is FREE.** Scan the block when it still CARRIES the mark even with no lead
+  left — and then skip the scan, because with no `\` and no `{` it is provably
+  empty. The marked-run walk costs nothing extra either: it rides the walk that
+  already had to happen to build the text. Measured: a stranded bare word costs
+  ZERO scans, a keystroke beside a settled command still costs ONE, and the
   broken-construct recovery costs a second — of that one block's prior text.
+  **What is NOT free, stated because the first draft of this section said it
+  was:** a block holding a run this scanner permanently declines while the parse
+  rung carries it — again the source bare group — has a "stale" run forever, so
+  every keystroke anywhere in that block pays the recovery. Block-bounded, never
+  document-bounded, so the law holds; roughly 2x the carrier's per-keystroke
+  work in that one paragraph, and pinned by its own leg rather than described.
 - **The result is parse-consistent, so nothing oscillates.** `\emph{\bf hi}`
   minus its lead demotes `emph` and the group's prose and keeps the braces and
   the `\bf` — which is exactly what parsing `emph{\bf hi}` produces. Where the
@@ -2532,12 +2555,10 @@ Five rules it earned:
 
 **Residuals, stated.** A PASTE is a writer in both directions, symmetrically with
 360's own rule — so pasting a run whose marks came from a source-minted bare
-group demotes its braces. And a source group whose LaTeX the parse itself
-normalized to a glyph (`{\'e}` → `{é}`) reads to this scanner as a prose group,
-so an edit that TOUCHES its braces demotes them. Both are the standing
-typed-vs-source group asymmetry, touch-scoped, and both are the mirror of the
-residual promotion already carries (an edit INSIDE a literal backslash promotes
-it).
+group demotes its braces (the pair goes together, so the output stays balanced).
+That is the standing typed-vs-source group asymmetry, touch-scoped, and the
+mirror of the residual promotion already carries (an edit INSIDE a literal
+backslash promotes it).
 
 CI: the same [typed-raw-latex-carrier.test.ts](src/lib/tiptap/__tests__/typed-raw-latex-carrier.test.ts),
 in its own shape — a REAL editor, typed character by character, then the real
@@ -2545,7 +2566,8 @@ deletion. The leg with teeth is the SCOPE leg, and it needs a block holding BOTH
 a source-minted bare group and an unmodeled command, because the divergence is
 unrepresentable with either alone. Measured by neutering each half in turn: the
 pre-390 promotion-only plugin takes 10 legs, the block gate 5, the touch scoping
-2, the old-text recovery 2, and narrowing the protective cover to touched spans 3.
+2, the old-text recovery 2, narrowing the protective cover to touched spans 3,
+and dropping the brace-pair reconciliation 3.
 **Owed, not claimed:** the preview eyeball — type `\Overall`, backspace the `\`
 (the word returns to prose immediately); type `\%`, backspace the `\`, save and
 reload (the `%` is still prose and the line is intact).
