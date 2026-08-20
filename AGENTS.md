@@ -2553,6 +2553,15 @@ Five rules it earned:
   every keystroke anywhere in that block pays the recovery. Block-bounded, never
   document-bounded, so the law holds; roughly 2x the carrier's per-keystroke
   work in that one paragraph, and pinned by its own leg rather than described.
+  **And the trigger class is RARER than that reads**, measured rather than
+  guessed: swept over every `.tex` in the repo, essentially every bare-looking
+  group inside `\begin{document}` is a `]{…}` command argument, which the
+  scanner CLAIMS (so it is covered and never pending); the only genuinely bare
+  groups sit inside a `texBlock`, which `allowsMarkType` skips before any of
+  this runs; and the `{\'e}` → `{é}` idiom the docstring names appears in the
+  `.bib` files and in ZERO document bodies. Stated so the next reader prices it
+  correctly — it is a real per-keystroke doubling in a paragraph that has the
+  shape, and almost no paragraph does.
 - **The result is parse-consistent, so nothing oscillates.** `\emph{\bf hi}`
   minus its lead demotes `emph` and the group's prose and keeps the braces and
   the `\bf` — which is exactly what parsing `emph{\bf hi}` produces. Where the

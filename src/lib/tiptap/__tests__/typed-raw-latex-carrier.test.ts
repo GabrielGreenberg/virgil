@@ -564,6 +564,34 @@ describe("marked braces demote in PAIRS, or not at all", () => {
     expect(out).toBe("A {b {c} d} e.X");
   });
 
+  it("survives an edit that reaches BOTH braces (`caf{\\'e}s`)", () => {
+    // The case that discriminates this rule from both-or-neither, and the
+    // commonest carrier of the shape: the parse folds `\'e` to a glyph, so the
+    // group holds no LaTeX and both braces are permanently stale here. Deleting
+    // the accented letter to retype it reaches BOTH, so both-or-neither would
+    // have escaped the pair — balanced, valid, and silently printing braces the
+    // user never wrote.
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: parseLatex(
+        "\\documentclass{article}\n\\begin{document}\n" +
+          "caf{\\'e}s and more\n\\end{document}\n",
+      ) as JSONContent,
+    });
+    const ed = editor;
+    let at = -1;
+    ed.state.doc.descendants((node, p) => {
+      if (node.isText && node.text === "\u00e9") at = p;
+      return true;
+    });
+    expect(at).toBeGreaterThan(0);
+    ed.commands.deleteRange({ from: at, to: at + 1 });
+    expect(saved(ed)).toBe("caf{}s and more");
+    ed.commands.insertContentAt(at, "e");
+    expect(saved(ed)).toBe("caf{e}s and more");
+    expect(markedRuns(ed)).toEqual(["{", "}"]);
+  });
+
   it("does NOT block a genuinely orphaned brace", () => {
     // The group twin from above: the `{` is GONE, so the surviving `}` has no
     // marked partner and the pairing rule has nothing to say. Refusing here

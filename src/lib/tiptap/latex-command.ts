@@ -426,7 +426,10 @@ function markedBracePairs(
  * "stale" forever, so every keystroke anywhere in that block buys a second
  * `readBlock` + a second scan + one `Mapping` build. Block-bounded, never
  * document-bounded — the law holds — but it is roughly 2x the carrier's
- * per-keystroke work in that one paragraph, not nothing.
+ * per-keystroke work in that one paragraph, not nothing. Measured over every
+ * `.tex` in the repo, almost no paragraph has the shape: a bare-looking group
+ * in a body is nearly always a `]{…}` command argument, which the scanner
+ * claims (hence covered, never pending).
  */
 function brokenConstructs(
   oldDoc: PMNode,
