@@ -226,7 +226,14 @@ describe("residency on the bar", () => {
     act(() => { openPomodoro(); });
     mountCluster({ topbarRightCollapsed: true });
     expect(clock()).toBe("0:00 / 25:00");
-    expect(screen.queryByLabelText("Timer")).toBeNull();
+    // Renegotiated by task 395, same invariant, stronger question. The
+    // collapsible group now collapses by WIDTH rather than unmounting (the
+    // bar's occupancy rule needs its natural width in both states), so the
+    // icon's element survives inside an `aria-hidden` / `visibility: hidden`
+    // subtree. What the leg is actually about is REACHABILITY, so it asks the
+    // accessibility tree — a role query excludes an inaccessible subtree,
+    // where the old `queryByLabelText` only ever asked about the DOM.
+    expect(screen.queryByRole("button", { name: "Timer" })).toBeNull();
   });
 
   it("the WIDGET survives zen mode; the icon is an ordinary tool and does not", () => {

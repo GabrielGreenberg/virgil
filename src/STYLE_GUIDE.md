@@ -2284,6 +2284,38 @@ Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
 author 14px or 20px topbar icons.
 
+### Occupancy priority — who yields when the bar is narrow
+
+The bar has more occupants than a narrow window has room for, so it has ONE
+priority ladder rather than three independent positioners. Stated once, in
+[bar-occupancy.ts](components/editor-layout/bar-occupancy.ts), and resolved from
+measurements by `useBarOccupancy`:
+
+1. **PROTECTED STATUS** — the data-integrity badges (save state, preservation
+   refusal, external change, sync conflict, mirror recovery), the running
+   Pomodoro widget, and the collapse chip itself. Never yields. That is not a
+   layout preference: a data-integrity notice must not be hideable (see the save
+   badge's tier rule), and the chip is what makes a collapse reversible.
+2. **TABS** — Gabriel's decision (2026-08-19): *"text tabs should occlude the
+   tools in this case."* Tabs outrank the collapsible tools.
+3. **COLLAPSIBLE TOOLS** — the `topbarRightCollapsed` group. Auto-collapses
+   behind the chip when tiers 1+2 need the room, so the tools stay REACHABLE.
+   Collapse beats bare z-order for exactly that reason: a tool hidden under a tab
+   is unclickable with no affordance to reach it. An explicit user toggle
+   outranks the rule in both directions — the rule governs the DEFAULT.
+
+Under the ladder is a structural FLOOR: the tab strip clips its own horizontal
+overflow (`overflow-x: clip` with `overflow-y: visible`, so the active tab keeps
+its 1px seam overhang), so even a tab row too wide to fit after the tools have
+yielded can never paint over tier 1. **A new bar occupant declares which tier it
+is in; it does not position itself against the others.**
+
+Both tab renderers cap their label at `TAB_LABEL_MAX_PX`
+([folder-tab-geometry.ts](components/chrome/folder-tab-geometry.ts)) — the
+inline (inactive) label and the ACTIVE folder tab's label span. A tab that grows
+without bound with its document's name is what put a label across the status
+cluster in the first place.
+
 **Dropdowns from a sticky bar must be body-portaled.** The Virgil bar is
 `sticky top-0 z-30`, which establishes a stacking context — any dropdown
 rendered `position:absolute` inline inside it is trapped at z-30 and

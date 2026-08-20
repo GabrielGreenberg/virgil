@@ -321,6 +321,86 @@ Two guards enforce it (the same probe + grep-allowlist pattern as the laws above
 
 Deliberately NOT done, and a UX call rather than an oversight: **no root-level `PaneFreeze`**. Its anchor must be the *stationary* edge (anchoring to the moving one is visibly worse than no freeze at all), knowing which window edge moved requires a `screenX`/`screenY` probe this codebase otherwise doesn't use, and freezing the whole app during a live OS resize shows background slivers until release.
 
+## Bar occupancy: several occupants, ONE priority rule
+
+> **Where several elements share a fixed-width strip, they do not position
+> themselves against each other — the strip RESOLVES a priority ladder, once,
+> from measured natural widths, and the lowest tier yields.** The ladder for the
+> Virgil bar is stated in
+> [src/components/editor-layout/bar-occupancy.ts](src/components/editor-layout/bar-occupancy.ts)
+> (protected status > tabs > collapsible tools; `STYLE_GUIDE.md` → "Occupancy
+> priority") and resolved by `useBarOccupancy` from ONE ResizeObserver over three
+> boxes. Under it sits a structural FLOOR: the tab strip clips its own
+> horizontal overflow, so an overlap is unrepresentable rather than merely
+> avoided.
+
+This is the "tool icons paint across the tab label at a narrow window" class
+(task 395), and it is the marginalia lane's law one strip over — same shape as
+"The lane regime" and "The ordering half" below, arriving in the bar because
+`TabStrip` is `flex-1 min-w-0` while every tab inside it is `shrink-0` with no
+clip, and `StatusCluster` is `shrink-0`. Three occupants, no negotiation: the tab
+row simply spilled RIGHT and the two interleaved by paint order.
+
+**The prose outlived the mechanism by two months, which is why it read as safe.**
+`TopBar` promised "the toolbar never overlaps tabs even when they crowd the
+middle", clamped against a "topbar-left sentinel" `TabStrip` described in a
+comment — with NO element and no consumer anywhere. Git archaeology: the clamp
+was real once (`1b2bed95`, a floating MenuBar pod with two ResizeObservers on the
+bar's left and right groups), the pod moved into the pod chrome header
+(`93b286c0`) and its `menuLocation` pref was deleted as dead (`bab3a399`). The
+task-202 shape, in comments rather than exports: **a comment describing a
+retired mechanism is how the next reader concludes the invariant is held.**
+
+Four rules it earned:
+
+- **The predicate is STATE-INDEPENDENT, so it needs neither hysteresis nor a
+  cached "width in the other state".** Written naively — *do the tabs overflow
+  their box?* — collapsing frees room, the tabs then fit, the rule expands, and
+  it re-collapses on the next frame, forever, in the band where the freed width
+  is just enough. The strip's own assigned box already nets out the protected
+  width AND (while expanded) the tools, so `T + (collapsed ? K : 0) ≤ tabStripPx`
+  reduces to `T + K + R ≤ W` in BOTH states. Cancellation, not damping.
+- **Live during a layout gesture, deliberately** — the `useWindowChrome`
+  exemption in "Layout-gesture stability" above. Parking the verdict means the
+  bar visibly overlaps for the whole of an OS window drag, which is the defect.
+  Affordable because the per-fire cost is three `contentRect.width` reads
+  (post-layout, forces no layout) behind a per-role equality bail plus one
+  boolean; a whole resize drag commits ONE React render, at the crossing.
+- **The rule governs the DEFAULT; the user outranks it.** The auto rule never
+  writes the persisted `topbarRightCollapsed` pref, and expanding out of an AUTO
+  collapse sets a session override that is dropped the moment the crowding
+  clears — so the chip is never a control that does nothing (the false-affordance
+  class, "what the hover OFFERS is what the commit ACCEPTS").
+- **The collapsible group collapses by WIDTH, not by unmounting**, which is what
+  makes rule 1 cheap: its `max-content` wrapper keeps reporting the group's
+  natural width in both states. `visibility: hidden` + `aria-hidden` gives the
+  collapsed group exactly the semantics unmounting gave it, and the one child
+  that escapes a hidden subtree — a body-PORTALED dropdown — is gated explicitly.
+
+A composed ref on a measured element is a **stable** `useCallback`, never an
+inline arrow: React detaches and re-attaches an unstable ref callback on every
+render, and this one's detach drops the strip's measurement, so an inline arrow
+makes an ordinary re-render look like "the tab strip left the bar" and can bounce
+the verdict against its own re-renders (measured — the suite hung until it was
+stabilized).
+
+CI: [bar-occupancy.test.tsx](src/components/editor-layout/__tests__/bar-occupancy.test.tsx)
+drives the REAL `TopBar` (real `TabStrip`, real `StatusCluster`) through a fake
+`ResizeObserver`, because jsdom has no layout and "the boxes do not intersect" is
+not a question it can answer at all — what IS measurable is the DECISION, and the
+flip-flop leg is the one a naive overflow rule fails. Its census covers the two
+halves no render can see: the strip's `overflow-x: clip` / `overflow-y: visible`
+pair (`hidden` would coerce the vertical axis to `auto` and eat the active tab's
+seam overhang), and the shared label cap — declared in the inline renderer and
+NOT in the active folder tab, whose `calc-size(max-content, …)` width therefore
+grew without bound with the document's name. Measured by neutering each half in
+turn: the naive rule takes 3 legs, no auto-collapse 4, the clip 1, the label cap
+2, and restoring the retired sentinel prose 1.
+
+**Owed, not claimed:** the preview eyeball at the screenshot's width plus one
+narrower. NOT FSA-masked; this run was unattended and could not start a dev
+server.
+
 ## Editor geometry ("where is it on screen?")
 
 > **Per-block screen geometry has ONE owner per editor: the EditorGeometry service** ([src/lib/editor-geometry/](src/lib/editor-geometry/service.ts), perf Wave 2 — the marginalia registry's engine evolved editor-attached, the `getBus`/`getDocProducts` precedent). IO near-zone culling (viewport ±800 px), one per-editor RO, a sparse uuid-keyed metrics cache with ε bails and parked (positioned-but-unpainted) twins, a RAF-coalesced gesture-parked measure pass. A consumer that needs a block's Y asks `getGeometry(editor)` (`blocksAtY`, `getMetrics`) or derives from the DocStructure snapshot (`computeSectionPathAt` — the breadcrumb: ONE `posAtCoords` at the reference line + binary search over pos-sorted headings ∪ `BlockEntry.parTitled` blocks) — it does not walk the doc calling `coordsAtPos` per block, and it does not `querySelectorAll` + rect-read per candidate. The pre-service scans survive only as automatic fallbacks (service null) behind kill-switches (`virgil:geom-breadcrumb`, `virgil:geom-hover` — `"off"` reverts). `useMarginaliaRegistry` is a thin adapter over the service; its suites are the engine's parity gate. The service also owns the **viewport frame** (wave-2b C7): text edges / pod rect / scroll band / portal context, measured ONCE per editor by the engine's single RO (the editor element + its scroll container ride the same observer as the near-zone blocks) + window-resize + gesture park, equality-bailed, read through `useViewportFrame` ([src/lib/editor-geometry/use-viewport-frame.ts](src/lib/editor-geometry/use-viewport-frame.ts)) by the placement overlays (`SelectionActionsMenu`, `TextObjectGrabHandle`, `PendingChangePill`, `LiftHost`) — plus ONE non-placement reader that takes the channel directly rather than through the hook, `Marginalia`'s `useLaneCols`, because it needs a per-side COLUMN COUNT rather than a frame and subscribes with a primitive snapshot so an unchanged regime costs no render (see "The lane regime" below) — the per-consumer `useEditorViewportCache` (4 hook instances, 8 ROs + 4 resize listeners per pane measuring identical geometry) is DELETED. Caret line boxes on the placement path go through `coordsAtPosCached` (per-frame + per-doc memo on the service; service-less editors fall back to a direct read). Same inversion for the active-paragraph nav history (wave-2b C6): `computeActiveParagraphId` ([src/lib/editor-geometry/active-block.ts](src/lib/editor-geometry/active-block.ts)) — hidden-pane bail, `__DOC_TOP__` sentinel, ONE `posAtCoords` at the viewport top edge + snapshot binary search, legacy triple-walk retained as automatic fallback behind `virgil:geom-active-block`; its two wall-clock pollers (EditorLayout recorder, reader `useParaNavHistory`) gate on `document.hidden` + `isLayoutGestureActive()`. `useInTextPositions` (wave-2b C5) exact-reads only the scroll band and interpolates out-of-band anchors (`approxTopForPos`; scroll-idle refinement settles them exact) — with band membership decided on the anchor's document POSITION, never on the card's own last-committed top (see "The refinement gate" below). On the drop path, the per-move hit-test's block-rect read is THREADED into the placement builders (wave-2b C8) — one forced-layout read per move, with the builders' own read kept only as the fallback for rect-less callers. Probe: `window.__geometryStats()` (alias of `__marginaliaStats`; includes the `blocksAtY` hover-path counters). The wave-2 residual conversions (C5/C6/C7/C8) are all delivered.

@@ -228,17 +228,24 @@ describe("census · the manual-save door", () => {
 describe("census · a data-integrity state is never hideable", () => {
   const CLUSTER = "src/components/editor-layout/StatusCluster.tsx";
 
-  it("the save badge and the conflict badge render BEFORE the collapse gate", () => {
+  it("the save badge and the conflict badge render OUTSIDE the collapsible group", () => {
+    // Renegotiated in place by task 395, same invariant, new spelling. The
+    // collapsible tools used to be an inline `{!topbarRightCollapsed && (<>`
+    // fragment; the bar's occupancy rule needs the group's NATURAL width in
+    // BOTH states, so it is now a `max-content` wrapper that collapses by
+    // width instead of unmounting. The question the census asks is unchanged
+    // and is now structural rather than positional: a data-integrity badge
+    // must not be a DESCENDANT of the group a layout preference can hide.
     const src = read(CLUSTER);
-    const gate = src.indexOf("{!topbarRightCollapsed &&");
-    expect(gate, "the collapse gate must exist to be measured against").toBeGreaterThan(0);
+    const gate = src.indexOf('data-bar-occupant="status-tools"');
+    expect(gate, "the collapsible tool group must exist to be measured against").toBeGreaterThan(0);
     for (const el of ["<SaveStateBadge", "<ExternalChangeBadge"]) {
       const at = src.indexOf(el);
       expect(at, `${el} is not rendered at all`).toBeGreaterThan(0);
       expect(
         at,
-        `${el} sits INSIDE the collapse gate — a data-integrity notice must ` +
-          "not be hideable by a layout preference (the task-357 rule)",
+        `${el} sits INSIDE the collapsible tool group — a data-integrity ` +
+          "notice must not be hideable by a layout preference (the task-357 rule)",
       ).toBeLessThan(gate);
     }
   });
