@@ -276,22 +276,59 @@ describe("342 · the verbatim family is ONE list", () => {
   /** Source of a censused file, comments stripped and literals KEPT: the drift
    *  lives in quoted arrays, Set literals and regexes, while a member NAMED in
    *  prose (this file's neighbours are full of it) is not a decision. */
-  const codeOf = (rel: string) =>
-    commentsStripped(fs.readFileSync(path.join(REPO, rel), "utf8"));
+  const codeCache = new Map<string, string>();
+  const codeOf = (rel: string) => {
+    let hit = codeCache.get(rel);
+    if (hit === undefined) {
+      hit = commentsStripped(fs.readFileSync(path.join(REPO, rel), "utf8"));
+      codeCache.set(rel, hit);
+    }
+    return hit;
+  };
+
+  /** Every leg wants the same file as LINES. Split once, not once per leg. */
+  const linesCache = new Map<string, string[]>();
+  const linesOf = (rel: string) => {
+    let hit = linesCache.get(rel);
+    if (hit === undefined) {
+      hit = codeOf(rel).split("\n");
+      linesCache.set(rel, hit);
+    }
+    return hit;
+  };
 
   const CENSUSED = () => censusFiles().filter((rel) => rel !== LEXER);
 
   /** The member as a WORD. `verbatim*` must not be matched by the `verbatim`
    *  needle (or every starred member would double-count as two), so the
    *  trailing guard excludes `*` as well as letters. */
-  const wordNeedle = (member: string) =>
-    new RegExp(`(?<![A-Za-z])${member.replace("*", "\\*")}(?![A-Za-z*])`);
+  const needleCache = new Map<string, RegExp>();
+  const wordNeedle = (member: string) => {
+    let hit = needleCache.get(member);
+    if (hit === undefined) {
+      // No `g` flag, so `.test()` keeps no `lastIndex` state and one shared
+      // instance behaves exactly as a fresh one per call did.
+      hit = new RegExp(`(?<![A-Za-z])${member.replace("*", "\\*")}(?![A-Za-z*])`);
+      needleCache.set(member, hit);
+    }
+    return hit;
+  };
+
+  /** Members named on ONE line. The window below slides by one, so testing per
+   *  WINDOW position re-tested every line against every member `WINDOW` times;
+   *  answering per LINE once and unioning is the same answer for a quarter of
+   *  the regex work. */
+  const membersOnLine = (line: string) => {
+    const found: string[] = [];
+    for (const m of VERBATIM_ENVS_FULL) if (wordNeedle(m).test(line)) found.push(m);
+    return found;
+  };
 
   /** Members named within a window of consecutive lines. */
-  function membersInWindow(lines: string[], from: number, size: number) {
+  function membersInWindow(perLine: string[][], from: number, size: number) {
     const seen = new Set<string>();
-    for (let i = from; i < Math.min(lines.length, from + size); i++) {
-      for (const m of VERBATIM_ENVS_FULL) if (wordNeedle(m).test(lines[i])) seen.add(m);
+    for (let i = from; i < Math.min(perLine.length, from + size); i++) {
+      for (const m of perLine[i]) seen.add(m);
     }
     return seen;
   }
@@ -308,9 +345,10 @@ describe("342 · the verbatim family is ONE list", () => {
     // the lexer, so there is no allowlist to drift.
     const hits: string[] = [];
     for (const rel of CENSUSED()) {
-      const lines = codeOf(rel).split("\n");
+      const lines = linesOf(rel);
+      const perLine = lines.map(membersOnLine);
       for (let i = 0; i < lines.length; i++) {
-        const found = membersInWindow(lines, i, WINDOW);
+        const found = membersInWindow(perLine, i, WINDOW);
         if (found.size >= 2) {
           hits.push(`${rel}:${i + 1} {${[...found].join(", ")}}`);
           i += WINDOW - 1;
@@ -329,7 +367,7 @@ describe("342 · the verbatim family is ONE list", () => {
     // excluded with every other lexer line.
     const hits: string[] = [];
     for (const rel of CENSUSED()) {
-      const lines = codeOf(rel).split("\n");
+      const lines = linesOf(rel);
       lines.forEach((line, i) => {
         for (const m of VERBATIM_ENVS_FULL) {
           // Source spells the backslash escaped (`"\\begin{…}"`) or
@@ -375,7 +413,7 @@ describe("342 · the verbatim family is ONE list", () => {
     // shapes that decide anything.
     const hits: string[] = [];
     for (const rel of CENSUSED()) {
-      const lines = codeOf(rel).split("\n");
+      const lines = linesOf(rel);
       lines.forEach((line, i) => {
         for (const m of VERBATIM_ENVS_FULL) {
           if (m === LITERAL_CENSUS_EXEMPT_NAME) continue;
@@ -409,7 +447,10 @@ describe("342 · the verbatim family is ONE list", () => {
       const copy = commentsStripped(
         `const ENVS = new Set(["${m}", "${other}"]); // x`,
       );
-      expect(membersInWindow(copy.split("\n"), 0, WINDOW).size, m).toBeGreaterThanOrEqual(2);
+      expect(
+        membersInWindow(copy.split("\n").map(membersOnLine), 0, WINDOW).size,
+        m,
+      ).toBeGreaterThanOrEqual(2);
       expect(wordNeedle(m).test(commentsStripped(`const x = "${m}";`)), m).toBe(true);
       expect(
         wordNeedle(m).test(commentsStripped(`// ${m} bodies are literal\nconst x = 1;`)),
@@ -518,11 +559,17 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** Memoized: the walk is a full recursive `readdirSync` over both silos, and
+ *  the three census legs below each asked for it. One walk per run, not three
+ *  — the answer cannot change mid-suite. */
+let censusFilesCache: string[] | null = null;
+
 function censusFiles(): string[] {
+  if (censusFilesCache) return censusFilesCache;
   const files: string[] = [];
   for (const silo of ["src", "library"]) {
     const root = path.join(REPO, silo);
     if (fs.existsSync(root)) walk(root, files);
   }
-  return files.map((f) => path.relative(REPO, f)).sort();
+  return (censusFilesCache = files.map((f) => path.relative(REPO, f)).sort());
 }
