@@ -32,6 +32,7 @@ import { Input, Textarea } from "./field-primitives";
 import { iconHint } from "@/components/Hint";
 import { enqueueWrite } from "@/lib/write-queue";
 import { extFromMime, writeBugReport } from "@/lib/bug-report";
+import { imagesFromClipboard } from "@/lib/transfer-files";
 import { useBugReportFolder } from "@/hooks/useBugReportFolder";
 import { ensureReadWritePermission } from "@library/lib/library-folder";
 
@@ -161,19 +162,10 @@ export default function BugReportWindow({
   const handlePaste = useCallback(
     (e: ClipboardEvent<HTMLDivElement>) => {
       if (phase !== "compose") return;
-      const files: File[] = [];
-      for (const item of Array.from(e.clipboardData.items)) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      }
-      // Finder "Copy" puts the file on clipboardData.files instead.
-      for (const file of Array.from(e.clipboardData.files)) {
-        if (file.type.startsWith("image/") && !files.includes(file)) {
-          files.push(file);
-        }
-      }
+      // ONE door reads both clipboard views and dedupes by CONTENT, scoped to
+      // this event — see `transfer-files.ts`. Reading them here and deduping
+      // by object identity is what pasted every screenshot twice (task 419).
+      const files = imagesFromClipboard(e.clipboardData);
       if (files.length > 0) {
         // An image paste is consumed whole; a text paste falls through
         // to the textarea untouched.

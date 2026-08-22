@@ -38,6 +38,7 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { SyncResult } from "@library/lib/skill-sync";
 import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
+import { filesFromTransfer } from "@/lib/transfer-files";
 import DropZone from "./DropZone";
 import PdfDropIntroDialog from "./PdfDropIntroDialog";
 import LibraryPaneFill from "./LibraryPaneFill";
@@ -763,7 +764,10 @@ export default function LibraryView({
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     };
     const onDrop = (e: DragEvent) => {
-      const files = Array.from(e.dataTransfer?.files ?? []);
+      // BOTH views, deduped by CONTENT, scoped to this event — see
+      // `transfer-files.ts`. Reading `files` alone was the mirror of task
+      // 419's paste bug: a payload that fills only `items` ingests nothing.
+      const files = filesFromTransfer(e.dataTransfer);
       if (files.length === 0) return;
       e.preventDefault();
       dragCounterRef.current = 0;
