@@ -1506,6 +1506,137 @@ predicate over.
 serializer), so the check is cheap and real: select a word inside a `% comment`
 line, open the bolt, and see `$x$` and `Cross-ref` greyed.
 
+#### The row half: a surface answers PER ROW, and a WRAPPER is a container question too
+
+Same family, and the case where the container SSOTs were right, the registry was
+right, and the SURFACE asked one row for six types (task 397). The two halves
+above give the block and inline atoms a per-NodeType FACTORY each —
+`blockInsertApplies` says so in its own docstring — and the lightning grid then
+computed ONE `blockAtomsDisabled` from the `example` row and rendered it on six
+cells, and ONE `wrappersDisabled` from the `bullet-list` row on three. The GRAB
+menu had it right from the start (`row.applies(ctx) === "disabled"`, one call per
+row), so the precedent was already in the tree.
+
+Three members, one disease, all measured against the real stack:
+
+- **A shared probe is an assertion that the SCHEMA answers identically for every
+  type in the group**, and inside an expex example it does not.
+  `exampleBlock` hosts `graphicsBlock | displayMath` and none of the other four
+  — the union was widened for exactly that (Feature A2) — so **Display math**
+  and **Image** greyed out although each row said `ok`, the schema hosted them,
+  and the run worked. The typed `$$` rule at the same caret succeeded, so two
+  surfaces routing to one node disagreed. A FALSE REFUSAL of the feature the
+  widening was built to serve.
+- **The wrapper gate read the block TYPE and never the CONTAINER.**
+  `selectionIsListable` asks "is this block a `paragraph`/`listItem`?", which is
+  a question about IDENTITY (would the wrap coerce a `titleField` into a
+  paragraph?) and says nothing about where the wrapper would GO. So Blockquote
+  was lit and inert inside an example, and Bullet/Numbered at a caret inside an
+  example ITEM **silently destroyed the item**: `exampleItem`'s union has no
+  list, so ProseMirror lifts the paragraph OUT — `\vxid{it1}` gone, fresh uuids
+  minted in its place (every card / marginalia marker / sidecar entry anchored to
+  it orphans), and because expex numbers items by POSITION, `(1a)` now denotes
+  what was the SECOND item, so every `\ref` into that example points at
+  different text. Schema-valid, `doc.check()` clean, nothing logged.
+- **The five MARK cells were gated on `!canEdit` alone** and sat lit and inert in
+  the two markless (`marks: ""`) verbatim blocks — the lowest-severity member and
+  the same disease.
+
+> **A surface renders one verdict per ROW, from that row's own `applies()`; a
+> row's gate is schema-precise in the row's OWN type; and the wrapper question is
+> the THIRD member of the container family — `posHostsBlockInsert` (a block lands
+> BESIDE the caret's textblock), `posHostsInlineAtom` (an inline atom lands
+> INSIDE it), `selectionHostsWrapper` (a wrapper goes AROUND the blocks the
+> selection spans).**
+
+Seven rules it earned:
+
+- **Ask ProseMirror's own predicate, not a restatement of it.**
+  `selectionHostsWrapper` calls `findWrapping` — the question `wrapIn` /
+  `wrapInList` themselves ask — so the affordance and the commit cannot come to
+  disagree about what "wrappable" means. A `container.canReplaceWith(type)` gate
+  was the obvious move and is strictly weaker: it asks whether the container
+  accepts the WRAPPER and never whether the wrapper accepts the CONTENT, so it
+  waves through a `codeBlock` that no `listItem` can hold.
+- **…and a toggle is not always a wrap.** A wrapper toggle is SUBTRACTIVE — a
+  lift out, or a convert in place — exactly when the caret already sits inside a
+  container of the wrapper's own family, and there `findWrapping` answers null
+  for a gesture that is not merely legal but ordinary: `listItem`'s content pins
+  a leading `(paragraph | graphicsBlock)`, so at index 0 NOTHING can be wrapped,
+  while bullet→off and bullet→numbered are the two commonest list gestures there
+  are. A `findWrapping`-only gate greys both (measured: 3 legs).
+- **The family is DERIVED, never a list of node names.** An ancestor is family to
+  the wrapper iff BOTH content models accept the affected block range's own
+  parent type. `bulletList` and `orderedList` are family because both host a
+  `listItem`; a nested `blockquote` is family to the blockquote row; an
+  `exampleItemList` — which hosts only `exampleItem`, a child no wrapper accepts
+  — is family to none, which is precisely why a list toggle inside a bullet list
+  must stay enabled while the same toggle inside an expex ITEM must grey. The doc
+  node is excluded from the walk: the document is not a container anything can be
+  lifted out of, and `block+` would make it family to everything.
+- **The failure direction is stated and deliberate.** The family test is only
+  consulted after `findWrapping` has already said NO, so a wrongly-EXEMPT case
+  leaves the pre-397 behaviour (the cell stays enabled) while a wrongly-NON-exempt
+  case greys a toggle ProseMirror itself reports it cannot perform.
+- **A mark row asks about its OWN mark, over the RANGE, with "any" not "all".**
+  `formatApplies` is a per-mark factory reading `allowsMarkType` off the live
+  schema — not a list of block names, so a future verbatim kind is covered by
+  shipping. A selection running from prose INTO a `codeBlock` still bolds the
+  prose half, so the cell greys only when the toggle is inert everywhere it could
+  act; and the mark RUN is deliberately unguarded, because unlike the wrappers
+  there is nothing to prevent and a guard would have to re-answer the
+  mixed-selection question.
+- **The row DECLARES what it toggles, as a discriminated union**
+  (`{ wrapper: "bulletList" } | { mark: "bold" }`), so "exactly one" is a compile
+  error rather than a convention — and the `run()` guard reads the SAME
+  `wrapperSafeHere` predicate the affordance does. That guard is what the SLASH
+  twins inherit (`\list` / `\enumerate` / `\quote` route through the bridge into
+  this same `run()`, and the popup asks no container question of its own).
+- **The census is the leg with teeth, and it needs to be — the rows were never
+  the part that could misbehave.** Each of the six answered correctly the whole
+  time; a consumer that asks one of them for all six type-checks, renders, and is
+  invisible to every behavioural test of every row.
+
+CI: [grid-row-applies.test.tsx](src/lib/actions/__tests__/grid-row-applies.test.tsx)
+drives the REAL stack, and — the leg the registry legs structurally cannot reach
+— mounts the REAL `ActionsMenuPanel` over the REAL editor and reads each cell's
+native `disabled` out of the DOM. **No existing fixture could see any of this**:
+every block-atom container fixture in the repo is `titleField` / `codeBlock` /
+`latexComment` / prose, where all six types AGREE — which is exactly why the
+shared probe shipped and survived. The destruction is legible only in the bytes,
+so its legs assert the serialized `.tex`.
+[grid-cell-applicability-census.test.ts](src/components/__tests__/grid-cell-applicability-census.test.ts)
+is the source census: every grid cell's `disabled` must read `gridCellDisabled`
+with its OWN literal id, membership DISCOVERED from the file's own JSX, the two
+bespoke cells carrying a STATED answer rather than an exemption (a missing `id`
+prop must never read as "excused"), allowlist EMPTY — a hit is WIRE-it. It reads
+`commentsStripped` and NOT `codeOnly`, since every needle lives inside a quoted
+attribute. Measured by neutering each half in turn: the shared block-atom probe
+takes 2 legs, the wrapper's container half 9, the subtractive-family half 3, the
+mark factory 3, and the wrapper `run()` guard 6. Two legs in
+[chip8-format-marks.test.ts](src/lib/actions/__tests__/chip8-format-marks.test.ts)
+are RENEGOTIATED in place with the reason at the site: they pinned the defect as
+the contract ("the code cell is 'ok' but the inline mark cannot land — the
+oracle's stated divergence between an enabled cell and a near-zero effect", and
+"wrapper cells STAY 'ok' … on a listItem", which is true of the two list rows and
+false of blockquote).
+
+**Residual, filed rather than fixed** (its own task): the wrapper actions have
+THREE more live surfaces that reach `toggleBulletList` / `toggleOrderedList` /
+`toggleBlockquote` **without touching the registry at all** — StarterKit's
+keyboard chords (`Mod-Shift-8/7/B`), its markdown input rules (`- `, `1. `, `> `),
+and `RichTextField`'s FormatToolbar buttons on card bodies. None of the three
+Virgil `.extend()` factories overrides `addKeyboardShortcuts` or `addInputRules`,
+so the base bindings survive verbatim; and `assertActionCoverage` actively FAILS
+a format row that declares `surfaces.typed` or `surfaces.keyboard`, so wiring them
+honestly is a renegotiation of that census rather than a call site to fix. Typing
+`- ` inside an expex item destroys it exactly as the grid used to.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (schema + serializer,
+no disk), so the check is cheap and real: put the caret in an `\ex` item, open
+the bolt — Bullet/Numbered/Blockquote greyed, Display math and Image lit — then
+check the code view.
+
 #### The proxy half: an adapter asks the SCHEMA before it asks the classifier
 
 Same gesture, one rung earlier (task 234). The fit above is the authority on what a container can hold, but it only ever sees what the registry ADAPTER proposed — and the adapter can refuse the drop outright (`no-op`) before the fit is consulted. So the adapter's own wrap-vs-direct decision has to rest on the same truth the fit does.
