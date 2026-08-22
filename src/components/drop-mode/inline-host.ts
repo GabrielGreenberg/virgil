@@ -215,6 +215,16 @@ export function inlineCursorHostsSlice(
   return true;
 }
 
+/**
+ * Every node type the slice would place, walking CONTENT only.
+ *
+ * Deliberately NOT into attrs, and the omission is the precision: a footnote
+ * carries its whole body in `attrs.content`, but that body is never spliced into
+ * this textblock — the `footnote` ATOM is, and the atom is collected. Walking
+ * attrs would report `paragraph` for every footnote in the payload and refuse a
+ * drop that is perfectly legal. `payloadFromJson` mirrors this exactly, so the
+ * affordance's name list and the commit's exact answer agree by construction.
+ */
 function sliceNodeTypes(content: Fragment, out = new Set<NodeType>()): Set<NodeType> {
   content.forEach((child) => {
     out.add(child.type);

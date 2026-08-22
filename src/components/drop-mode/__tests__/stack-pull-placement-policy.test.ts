@@ -52,6 +52,7 @@ import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { hitTest } from "../hit-test";
 import { resolveSessionPlacements } from "../placement-policy";
+import { TEXT_ONLY_PAYLOAD } from "../inline-host";
 import { registerDropTarget } from "../target-registry";
 import {
   beginDropSession,
@@ -186,6 +187,11 @@ function hit(editor: Editor, y: number): Placement | null {
     resolveSessionPlacements(stackPullDropSpec, KEY),
     KEY,
     editor,
+    // This suite's schema has no verbatim block and its payloads are cards /
+    // paragraphs, so the inline CONTAINER question (task 414) has nothing to
+    // refuse here — stated explicitly rather than defaulted, which is why the
+    // parameter is required.
+    TEXT_ONLY_PAYLOAD,
   );
 }
 

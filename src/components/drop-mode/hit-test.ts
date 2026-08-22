@@ -49,6 +49,14 @@ import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
  * `sourceCardKey` is the cardKey of the popped-out item being dropped.
  * Used to reject self-drops (target editor belongs to the source card).
  *
+ * `inlinePayload` is the SESSION's answer to the OTHER once-per-gesture question
+ * (task 414): the schema node names this drop would splice at an inline caret,
+ * so the container question can be asked in the AFFORDANCE. REQUIRED rather
+ * than defaulted — a default is a decision nobody made, and the decision it
+ * would silently make here is "skip the gate", which is the defect. The only
+ * production caller is the controller's move pass; `TEXT_ONLY_PAYLOAD` is the
+ * explicit way to say "plain text, nothing to refuse".
+ *
  * `placements` is the SESSION's ordered list — `DropSession.placements`,
  * resolved once at `beginDropSession` from `spec.placementsFor` (per payload)
  * or `spec.allowedPlacements`. Passed in rather than read off the spec here so
@@ -62,7 +70,7 @@ export function hitTest(
   placements: ReadonlyArray<PlacementKind>,
   sourceCardKey: string,
   mainEditor: Editor | null,
-  inlinePayload: InlineDropPayload = [],
+  inlinePayload: InlineDropPayload,
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
