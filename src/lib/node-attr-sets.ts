@@ -194,3 +194,112 @@ export const DEFERRING_PARENTS: ReadonlySet<string> = new Set([
 export function deferringParent(parentType: string | null | undefined): boolean {
   return !!parentType && DEFERRING_PARENTS.has(parentType);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Content PRESENCE — "did this JSON carry anything a reader would miss?"
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * **A gate written in the vocabulary of NODE TYPES and TEXT cannot see content
+ * that lives in ATTRS.** Virgil's payload very often lives in attrs — an
+ * `inlineMath`'s `latex`, a `texBlock`'s `code`, a `forestBlock`'s `source`, a
+ * `citation`'s `command`, a `graphicsBlock`'s `command`. A walker that recurses
+ * looking for a `text` node reports **empty** for every one of them.
+ *
+ * The bug this exists to prevent (task 401): `hasJsonContent` was exactly that
+ * walker, and it backed the destructive-delete confirm for all seven
+ * `bodyField: "content"` card kinds AND the footnote pristine reap. So a
+ * footnote whose body was `$\lambda$` (or a pasted forest tree) stayed
+ * "pristine", and the click-away watcher **deleted it** — no confirm, no orphan
+ * card, no undo affordance, on a body that is by construction the only copy.
+ * Four card-delete doors skipped the "This item has text" dialog on the same
+ * evidence; the ARCHIVE case is the worst blast radius, because the archive
+ * card IS the only surviving copy of a passage already cut from the document.
+ *
+ * **The inversion is the design.** An allowlist of nodes that carry nothing by
+ * themselves is CLOSED and small; a denylist of atoms can only be missing the
+ * tenth (this repo's own recurring lesson — task 342's env dispatcher, task
+ * 343's titled-node read set, task 387's projection table). So: everything
+ * carries content EXCEPT the empty structural wrappers a blank document is made
+ * of — and a wrapper that carries a payload ATTR of its own is not empty
+ * either, which is the same disease one level in and is why the `parTitle`
+ * check below is DERIVED from {@link TITLED_NODE_TYPES} rather than re-listed.
+ *
+ * Cross-checked against the REAL main-editor schema by
+ * [node-attr-sets.test.ts](__tests__/node-attr-sets.test.ts): every member must
+ * be a node type the schema has AND one it can legally leave empty, and every
+ * NON-member of the live schema must be reported as content. A census in the
+ * same suite forbids a second copy of this set anywhere in production.
+ */
+export const EMPTY_WRAPPER_NODE_TYPES: ReadonlySet<string> = new Set([
+  "doc",
+  "paragraph",
+]);
+
+/** True iff `v` is a string with something other than whitespace in it. */
+function visibleString(v: unknown): boolean {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+/**
+ * Did this `JSONContent` model carry anything a reader would miss?
+ *
+ * The ONE walker for that question — the destructive-delete confirms, the
+ * footnote pristine reap and orphan gates (via `cardHasContent`), and the
+ * mount-preservation door (`checkKeptEverything`) all read it, so no two of
+ * them can answer differently about the same body.
+ *
+ * Walked as PLAIN JSON, no schema: the `.tex` layers and the card layer both
+ * need it and neither can reach a live `Schema`. Accepts a doc, a bare
+ * fragment, or an array of nodes.
+ */
+export function jsonCarriesContent(json: unknown): boolean {
+  let found = false;
+  const walk = (n: unknown): void => {
+    if (found || !n || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      for (const item of n) walk(item);
+      return;
+    }
+    const node = n as {
+      type?: string;
+      text?: string;
+      content?: unknown;
+      attrs?: Record<string, unknown> | null;
+    };
+    // A TEXT node's content IS its `text` field, so it is answered here and
+    // never falls through to the type rule below — otherwise `{type:"text",
+    // text:""}` reports content because "text" is not a wrapper NAME. That
+    // shape is unreachable from a live ProseMirror doc (PM forbids empty text
+    // nodes) and entirely reachable from hand-built JSON: a sidecar written by
+    // an `/editor/*` skill, a legacy blob, a fixture.
+    if (typeof node.type === "string" && node.type === "text") {
+      found = visibleString(node.text);
+      return;
+    }
+    if (visibleString(node.text)) {
+      found = true;
+      return;
+    }
+    if (typeof node.type === "string" && !EMPTY_WRAPPER_NODE_TYPES.has(node.type)) {
+      found = true;
+      return;
+    }
+    // A wrapper still carries content when it carries a payload attr of its
+    // own. `parTitle` is the only one: `uuid` is IDENTITY (a blank paragraph
+    // has one and carries nothing), `collapsed` is view state — and neither is
+    // declared on a wrapper type anyway except uuid, which is why this reads
+    // the titled set rather than "any attr".
+    if (
+      typeof node.type === "string" &&
+      TITLED_NODE_TYPES.has(node.type) &&
+      visibleString(node.attrs?.parTitle)
+    ) {
+      found = true;
+      return;
+    }
+    walk(node.content);
+  };
+  walk(json);
+  return found;
+}

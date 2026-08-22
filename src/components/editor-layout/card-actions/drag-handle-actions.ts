@@ -939,8 +939,7 @@ function lifecycleLabel(action: DragHandleAction): string {
  *   • `isAtomNode` (ATOM_REGISTRY, the inline-Atom SSOT) covers the inline
  *     atoms: `footnote`, `citation`, `labelRef` (`\ref`), `inlineMath`.
  *   • This set covers the BLOCK atoms — every `TEXT_OBJECT_REGISTRY` kind
- *     flagged `isMeaningfulBlockAtom` (`displayMath`, `texBlock`,
- *     `graphicsBlock`, `latexComment`), the kind name being the PM node name —
+ *     flagged `isMeaningfulBlockAtom`, the kind name being the PM node name —
  *     PLUS `figureBlock`, which is NOT a schema atom (`content: figureCaption?`)
  *     but is still meaningful, destroy-with-a-confirm content.
  *

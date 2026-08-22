@@ -31,6 +31,17 @@ import {
 } from "@/links/_shared/inline-atom-lifecycle-policy";
 import type { OrphanedFootnote } from "@/lib/types";
 
+/** A footnote body doc carrying real prose.
+ *
+ *  Renegotiated in task 401: these fixtures used to pair `{ type: "doc" }` — an
+ *  EMPTY body — with a non-empty `plainText`, which is internally inconsistent
+ *  and passed only because orphan-worthiness read the FLATTEN. It reads the
+ *  body through `cardHasContent` now, the same predicate the flag-OFF twin has
+ *  asked since FN-A1-02, so the fixture has to say one thing. */
+function docWith(text: string): unknown {
+  return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
+}
+
 function fn(id: string, pos = 1): FootnoteEntry {
   return { id, pos, thanks: false, number: 1 };
 }
@@ -93,7 +104,7 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
       live: new Set(),
       open: new Set(),
       bodies: new Map([
-        ["f1", { content: { type: "doc" }, plainText: "a real body", title: "T", thanks: false }],
+        ["f1", { content: docWith("a real body"), plainText: "a real body", title: "T", thanks: false }],
       ]),
     };
     const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
@@ -151,7 +162,7 @@ describe("makeInlineAtomLifecyclePolicy — (a') archive suppress (bug sweep #3)
       live: new Set(),
       open: new Set(),
       bodies: new Map([
-        ["f1", { content: { type: "doc" }, plainText: "a real body", thanks: false }],
+        ["f1", { content: docWith("a real body"), plainText: "a real body", thanks: false }],
       ]),
       archivedSuppress: new Set(["f1"]),
     };
@@ -166,7 +177,7 @@ describe("makeInlineAtomLifecyclePolicy — (a') archive suppress (bug sweep #3)
       orphans: [{ footnoteId: "f1", content: { type: "doc" } } as OrphanedFootnote],
       live: new Set(),
       open: new Set(),
-      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      bodies: new Map([["f1", { content: docWith("body"), plainText: "body", thanks: false }]]),
       archivedSuppress: new Set(["f1"]),
     };
     const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
@@ -180,7 +191,7 @@ describe("makeInlineAtomLifecyclePolicy — (a') archive suppress (bug sweep #3)
       orphans: [],
       live: new Set(),
       open: new Set([key]),
-      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      bodies: new Map([["f1", { content: docWith("body"), plainText: "body", thanks: false }]]),
       archivedSuppress: new Set(["f1"]),
     };
     const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
@@ -193,7 +204,7 @@ describe("makeInlineAtomLifecyclePolicy — (a') archive suppress (bug sweep #3)
       orphans: [],
       live: new Set(),
       open: new Set(),
-      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      bodies: new Map([["f1", { content: docWith("body"), plainText: "body", thanks: false }]]),
       archivedSuppress: new Set(["OTHER"]), // f1 not in the set
     };
     const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
@@ -272,7 +283,7 @@ describe("makeInlineAtomLifecyclePolicy — (c) float prune/re-point", () => {
       orphans: [],
       live: new Set(),
       open: new Set([key]),
-      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "recoverable body", thanks: false }]]),
+      bodies: new Map([["f1", { content: docWith("recoverable body"), plainText: "recoverable body", thanks: false }]]),
     };
     const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
