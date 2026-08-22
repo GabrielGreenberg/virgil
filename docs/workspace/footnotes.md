@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -154,3 +154,5 @@ the per-pane, docId-routed `useFootnoteOrphanBridges`
 `detail.docId` so a teardown in doc A no longer bleeds into doc B's store. The
 detector stamps that `docId` onto the event via the `Footnote` plugin's new
 `docIdRef` option (`src/lib/tiptap/footnote.ts`).
+
+**Task 401 — an atom-only body IS content.** That predicate used to be written in node types and TEXT, with no `attrs` arm, so a footnote whose body is entirely one atom — `$\lambda$`, a citation, a `\ref`, a nested marker — reported EMPTY. For footnotes the cost was not a missing dialog but **destruction**: `EditorPane.handleEditFootnote` marks a new footnote dirty only when the predicate says the body has content, so an atom-only one stayed *pristine* and `usePristineCardManager`'s document-level capture-phase `pointerdown` watcher discarded it on the next click elsewhere — and the discard handler re-asked the same blind predicate before deleting. Create a footnote, type `$\lambda$`, click away: it was gone, and a footnote body is by construction the only copy. The walker is inverted now (everything carries content EXCEPT `EMPTY_WRAPPER_NODE_TYPES`, [node-attr-sets.ts](../../src/lib/node-attr-sets.ts)); the orphan gate reads the same predicate, so a recoverable orphan can't be dropped either. See [cards.md](cards.md) for the full rule.

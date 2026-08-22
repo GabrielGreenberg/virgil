@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -72,6 +72,17 @@ are detailed in [atoms.md](atoms.md). The ontological facts a skill needs:
 - An Atom is usually one half of an **Atom link** to a Card (the `\footnote{}`
   Atom ↔ a `footnotes.json` Card; a `\cite{}` Atom ↔ a `bib`/`citation` Card).
   `\ref{}` and `$…$` carry no Card.
+- Text-bound also bounds where an Atom may be **placed**. A textblock that admits
+  literal text but not inline nodes — `codeBlock` and `latexComment`, both
+  `content: "text*"` — cannot host one at all, and an insert there does not merely
+  fail: ProseMirror truncates the block at the offset and ejects its tail into a
+  fresh top-level paragraph, which in a `latexComment` promotes a commented-out
+  line into live printed prose. Every insert asks `posHostsInlineAtom` first
+  (task 396), through the one door `insertInlineAtom`, and a refusal returns
+  `{ refused: true }` over an untouched document — so a caller that mints a Card
+  after the splice must READ that report, or it registers a Card with no Atom.
+  This is a DIFFERENT question from the block gate: a `titleField` is
+  `content: "inline*"` and legitimately hosts inline math.
 
 ## Cards — the parallel structure
 

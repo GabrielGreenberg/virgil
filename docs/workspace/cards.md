@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -144,6 +144,52 @@ the panel-trash confirm (`EditableCard.tryDelete`,
 gutter-marker delete (`deleteMarginItem`) — so no kind can silently delete
 content the confirm couldn't see. Every declared field is pinned to the record
 shape by `assertContentCoverage` (card-registry.tsx).
+
+**A gate written in NODE TYPES and TEXT cannot see ATTRS** (task 401). `hasJsonContent`
+recursed looking for `text` nodes and had no `attrs` arm, so `cardHasContent` answered
+**false** for a body that is entirely one ATOM — `$\lambda$`, a `citation`, a `\ref`, a
+nested footnote marker, a `displayMath`, a `texBlock`, a `forestBlock`, a caption-less
+`figureBlock`. That is not an exotic body; it is the ordinary shape of a footnote holding
+one formula, and the headline cost was **destruction, not a missing dialog**: `EditorPane`
+marks a new footnote dirty only when the predicate says the body has content, so an
+atom-only footnote stayed **pristine** and `usePristineCardManager`'s document-level
+`pointerdown` watcher reaped it on the next click elsewhere. Four more doors share the
+predicate (`EditableCard.tryDelete` — trash click AND the task-386 key door —
+`usePanelCardTryDelete`, `deleteMarginItem`, the footnote ORPHAN gate), which is what made
+the one-function fix total. The walker is **inverted** now: everything carries content
+EXCEPT the empty structural wrappers a blank document is made of
+(`EMPTY_WRAPPER_NODE_TYPES` / `jsonCarriesContent` in the import-free leaf
+[node-attr-sets.ts](../../src/lib/node-attr-sets.ts) — an allowlist of "nodes that carry
+nothing by themselves" is CLOSED and small, where a denylist of atoms can only ever be
+missing the tenth). Three details are load-bearing: a WRAPPER carrying a payload attr is
+not empty (`parTitle`, derived from `TITLED_NODE_TYPES`, never re-listed); a TEXT node's
+content IS its `text` field, answered there so `{type:"text",text:""}` can't report content
+because `"text"` is not a wrapper NAME; and the premise is CHECKED against the live schema,
+including the direction with consequences — every NON-member of the vocabulary is reported
+as content, so a new node kind is covered by shipping. The same pass retired a FORK: the
+flag-ON `inline-atom-lifecycle-policy` orphan writer hand-wrote "plainText or title" where
+its flag-OFF twin asks `cardHasContent`. CI:
+`atom-only-body-content.test.tsx` (swept per member, DISCOVERED from `ATOM_REGISTRY` ∪
+`CARD_BODY_BLOCK_ATOMS`, one leg per DOOR, plus a census with an EMPTY allowlist).
+
+**A destructive capture judges the payload the WRITE stores** (task 393). The task-308
+capture/schema guard validates an excerpt against the destination body's real schema — the
+one check that cannot drift from what the body will do — and it was handed the RAW slice
+while the write path stores the NORMALIZED one. `normalizeRichContent` strips
+`DOC_ONLY_MARKS` (`linkedAnchor`), and the excerpt schema deliberately does not register
+that mark *for exactly that reason*, so the two tables disagreed by construction: any
+passage carrying a Mode-B `\vlid{…}` span — i.e. worked-over prose, the prose a user most
+wants to archive — was refused with "the Archive panel can't hold part of it", a FALSE
+refusal blocking the action entirely. One door now derives the payload ONCE
+([card-body-capture.ts](../../src/lib/tiptap/card-body-capture.ts):
+`prepareCardBodyCapture` — slice-or-JSON → the normalizer's own strip → `canMountInCardBody`
+→ `{ ok, content }`), so the object VALIDATED is the object STORED, and a refusal NAMES the
+construct via `unsupportedConstructs(schema, json)` — derived from the schema's own
+vocabulary, never parsed out of ProseMirror's message, and failing OPEN to the raw reason
+(`nodeFromJSON` also throws on a malformed model whose every type name is known). CI:
+`card-body-capture.test.ts` — no production file may CALL `canMountInCardBody` outside the
+door (allowlist EMPTY), the door must spell `normalizeRichContent`, and every capture site
+is DISCOVERED from the tree.
 
 ## Per-card archive — the set-aside affordance
 

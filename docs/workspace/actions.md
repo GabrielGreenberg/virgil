@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -154,8 +154,8 @@ set all three read — editorial facts the schema cannot express. Full write-up:
 ### The formatting vocabulary: the 4×4 grid
 
 The grid in [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx) is
-now **16 used cells** (the former spacer is filled by the new `\ref` cell,
-CHIP 7a). CHIP 6a/6b folded the FORMAT mark / list / blockquote / math /
+now **17 used cells** (the former spacer was filled by the `\ref` cell in
+CHIP 7a; task 385 added the **tree** cell for `forest`). CHIP 6a/6b folded the FORMAT mark / list / blockquote / math /
 text-color / block-atom cells INTO the registry: each cell dispatches via
 `runGridAction(id)` → `VIRGIL_ACTION_REGISTRY[id].run(ctx)` (a view-only
 `ActionContext` off the live selection — the SAME SSOT the slash/typed surfaces
@@ -174,6 +174,7 @@ reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
 | Cross-ref (`\ref`) | open the shared inline-atom create popover in `\ref` mode | `runGridAction("ref")` → registry `refRun` → `openAtomCreate("ref")` (the unified seam — see [the create popover](#the-unified-inline-atom-create-popover), below) |
 | Figure (`fig.`) | insert a figure block | `runGridAction("figure")` → registry `figureRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 | Image | insert a graphics block | `runGridAction("graphics")` → registry `graphicsRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
+| Tree (`forest`) | insert a `forestBlock` syntax tree | `runGridAction("forest")` → registry `forestRun` (task 385) — seeded from `freshForestSource()` ([src/lib/forest/grammar.ts](../../src/lib/forest/grammar.ts)); the slash `\forest` calls the same row |
 
 **The container gate (tasks 147–150, 153, 229).** An insert at a caret must honor the
 **containing block** — a block-type can refuse a child it can't host without
@@ -187,13 +188,61 @@ inserted block's `NodeType` and adds a schema-precise **container** layer: it gr
 insert whose containing block can't host that block as a sibling (via `canReplaceWith`),
 so a caret inside a `figureCaption` — whose non-isolating `figureBlock` parent hosts no
 block child, and would otherwise split into dup-uuid copies — is rejected too, name-
-agnostically (and type-precisely for `exampleItem`). `blockTypeHostsInlineAtom` (pos entry
-`posHostsInlineAtom`) greys INLINE-atom inserts (inline-math `$x$`, `\ref`) inside the
-`text*` verbatim blocks only (`contentMatch.matchType`), leaving them valid in a
-`titleField`. The same gate is consulted by the slash/menu heading conversion (`headingRun` in
+agnostically (and type-precisely for `exampleItem`). `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
+citation, footnote) — greying them inside the `text*` verbatim blocks only
+(`contentMatch.matchType`), leaving them valid in a `titleField`, which is a
+`content: "inline*"` node that legitimately hosts inline math. Its narrow type-only twin
+`blockTypeHostsInlineAtom` was made **private** in task 396: a type-only helper cannot clamp
+a stale caret, every real consumer holds a position, and an exported one is an invitation to
+ask the smaller question. The same gate is consulted by the slash/menu heading conversion (`headingRun` in
 [action-registry.ts](../../src/lib/actions/action-registry.ts)), the typed-math input
 rules ([math.ts](../../src/lib/tiptap/math.ts)), and the MenuBar `BlockTypeDropdown`'s
 out-of-scope heading levels ([MenuBar.tsx](../../src/components/MenuBar.tsx)).
+
+**Every insert ASKS, every row answers for ITSELF, and the offer matches the commit**
+(tasks 396–398, the 2026-08-21 applicability cluster). The gates above were correct and
+were not universally consulted, which is the shape all three share:
+
+- **396 — the door, not just the affordance.** Eight sites landed inline atoms with no
+  schema question: the two lightning cells greyed nothing (the grid's hand-computed
+  `blockAtomsDisabled` probed only the `example` row), the `\ref` popover committed at a
+  position captured at TRIGGER time that no `applies()` can see, and both native
+  `MIME_CITATION` drops (`Editor.tsx`, `RichTextField.tsx`) landed at a bare `posAtCoords`.
+  A markless block does not merely refuse the atom — ProseMirror TRUNCATES it at the
+  insert offset and EJECTS its tail into a fresh top-level paragraph, which in a
+  `latexComment` promotes a commented-out line into live printed prose. So the gate sits
+  at the DEEPEST point, `insertInlineAtom`, which returns `{ refused: true }` — and the
+  callers that MINT a card after the splice read that report, or a card is registered with
+  no atom. CI: `inline-atom-container-census.test.ts`, membership DISCOVERED, allowlist EMPTY.
+- **397 — one verdict per ROW.** The grid rendered ONE block-atom verdict on six cells and
+  ONE wrapper verdict on three. Both were wrong inside an expex example, in opposite
+  directions: **Display math** and **Image** greyed although `exampleBlock` hosts them
+  (a FALSE REFUSAL of the feature the union was widened for), while Bullet/Numbered were
+  lit and *destroyed* an `exampleItem` — no list is in its content union, so ProseMirror
+  LIFTS the paragraph out, the `\vxid` is gone, fresh uuids are minted, and because expex
+  numbers by POSITION every `\ref` into that example silently retargets. The wrapper
+  question is the THIRD member of the container family — `selectionHostsWrapper`, asking
+  ProseMirror's own `findWrapping` rather than a restatement, with a DERIVED family
+  exemption so a *subtractive* toggle (bullet→off, bullet→numbered) isn't greyed. Mark rows
+  ask `formatApplies`, a per-mark factory over `allowsMarkType`. CI:
+  `grid-cell-applicability-census.test.ts` — every cell reads `gridCellDisabled` with its
+  OWN id, membership discovered from the file's own JSX, allowlist EMPTY.
+- **398 — ask before you offer.** The slash popup filtered by prefix and dispatched
+  `tr.delete(slashPos, cursor)` as its OWN transaction *before* the action refused, so
+  `\forest` at a caret in a `% comment` ate seven characters and said nothing — a LOSSY
+  refusal, where the other three surfaces merely grey. Verdicts now come from the registry
+  row's own `applies()` via [slash-applicability.ts](../../src/lib/tiptap/slash-applicability.ts),
+  re-derived on every transaction while the popup is open, and the delete runs behind ONE
+  `commitSlashCommand` door shared with the popup-less `virgilCommands` Enter executor in
+  `latex-command.ts` — the FIFTH surface, which carried its own copy of the same defect and
+  is why a popup-only fix would have shipped green. *Residual:* a successful command is still
+  TWO undo steps.
+
+*Residual across the cluster:* the wrapper actions have three more live surfaces that never
+touch the registry — StarterKit's `Mod-Shift-8/7/B` chords, its markdown input rules (`- `,
+`1. `, `> `), and `RichTextField`'s FormatToolbar — so typing `- ` inside an expex item still
+destroys it. Filed; wiring them honestly is a renegotiation of `assertActionCoverage`, which
+actively FAILS a format row that declares `surfaces.typed`/`surfaces.keyboard`.
 
 ### Four surfaces, one registry
 

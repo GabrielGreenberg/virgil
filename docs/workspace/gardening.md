@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -39,7 +39,9 @@ save** even against a user preamble:
 You never write these — the serializer manages them; you author only the content
 command they wrap ([identity.md → injected macros](identity.md#the-injected-macros)).
 The expex control words (`\ex \pex \xe \a \begingl \endgl \gla …`) are package
-commands the parser depends on — don't redefine them either.
+commands the parser depends on — don't redefine them either. The same holds for
+`\begin{forest}…\end{forest}`, which the parser **claims whole** (task 383) rather
+than leaving to the generic carrier — its bytes are the node's authoritative `source`.
 
 **Comment conventions** (all `%!v`-prefixed) — the invisible id surface:
 
@@ -58,7 +60,12 @@ nested child's (`\end{itemize} %!v:child %!v:me`, task 348 — the LAST anchor i
 outer item's). So "splice just before the trailing `%!v:`" can land your text inside
 a comment (where LaTeX will not typeset it) or inside the wrong node. Splice through
 `apply_response.py`'s `texEdit`, which owns the placement, rather than computing the
-offset yourself.
+offset yourself. Task 387 adds a third case: a `forestBlock`'s
+`\begin{forest}…\end{forest}` is a **user-editable attr** whose anchor is appended
+after the closer, so ANY byte you add after `\end{forest}` — a newline included —
+moves the anchor off the reader's `[ \t]*` window and de-anchors the block silently
+(fresh uuid on the next save, the old id stranded on an empty paragraph). Never append
+to a claimed environment's tail.
 
 **Reserved CSS classes & `data-*` attributes** (SSOT [src/app/globals.css](../../src/app/globals.css)).
 A skill rarely emits CSS, but **content a skill pastes or authors must not collide**

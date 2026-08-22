@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 92e921fb 2026-08-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -132,6 +132,8 @@ not Atoms, but a skill editing inline content meets them:
    drifted while the portal popover was open.
    Deliberate scrolls (block inserts, jump-to-link) land below the sticky chrome
    via the chrome-aware `scrollMargin` in `src/lib/tiptap/chrome-scroll-margin.ts`.
+
+**…and it is also the GATE (task 396).** `posHostsInlineAtom` ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)) is the SSOT for *can this position host an inline node?*, and `insertInlineAtom` asks it before it splices. The markless verbatim blocks (`codeBlock`, `latexComment`) declare `content: "text*"`, so an atom placed there does not merely fail: measured against the real stack, ProseMirror TRUNCATES the block at the insert offset and EJECTS its tail text into a fresh top-level paragraph — in a `latexComment` that promotes a commented-out line into live printed prose, and `insertLanded` (the task-332 net) reads `+3` growth against a floor of 1, so it false-passes. It is a DIFFERENT predicate from `posHostsBlockInsert` (a `titleField` is `content: "inline*"` and legitimately hosts inline math), and it is scoped to the corrupting case: at a NON-textblock position (a gap beside a block atom, a GapCursor) there is nothing to tear, and refusing there would turn a bib-entry drop beside a figure into a silent no-op. Two consequences worth carrying: gating the DOOR rather than the affordance is what covers the deferred create-popover commits (they land at a TRIGGER-time position no `applies()` can see), and **the report is the permission** — a refusal returns `{ refused: true }` with the document untouched, read by the callers that MINT a citation/footnote card after the splice, or a card is registered with no atom. `posHostsInlineAtom` is now the ONE door: its type-only twin `blockTypeHostsInlineAtom` was made private, since it cannot clamp a stale caret and an exported one invites the smaller question. CI: `inline-atom-container-census.test.ts` — membership DISCOVERED in two halves (a line resolving an inline-atom NodeType inside a declaration that also splices; every splice in a module that DECLARES an atom), allowlist EMPTY.
 
 ## Stable atom identity (default-OFF)
 
