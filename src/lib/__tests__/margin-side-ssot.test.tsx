@@ -226,13 +226,14 @@ function markerSideUnderDock(panelSides: PanelSideMap): "left" | "right" {
     entityKind: "note",
     type: "note",
     textObjectId: PARA_UUID,
-    // Orphan so the grid needs no live block metrics to place it — it still
-    // runs the identical side resolution first (that is the whole point of
-    // resolving the side BEFORE the metrics gate).
-    unanchored: true,
   };
+  // An ANCHORED marker with live metrics. Pre-410 this used an `unanchored`
+  // one, because an orphan resolved a side without needing block metrics —
+  // but since task 410 an unanchored marker is not a lane occupant at all
+  // (it is surfaced by the pane's chip, not by this grid), so the side
+  // question has to be asked of a real placed marker.
   const res = computeMarkerPositions(
-    () => null as AnchorNodeMetrics | null,
+    () => METRICS,
     [marker],
     panelSides,
     // Both lanes host their full column count: this suite is about which SIDE
@@ -240,8 +241,18 @@ function markerSideUnderDock(panelSides: PanelSideMap): "left" | "right" {
     // (the cramped regime, pinned in `marginalia-lane-regime.test.ts`).
     { left: 1, right: 2 },
   );
-  return res.orphans[0].side;
+  return res.positioned[0].side;
 }
+
+const METRICS: AnchorNodeMetrics = {
+  id: PARA_UUID,
+  top: 100,
+  domTop: 100,
+  height: 24,
+  lineHeight: 24,
+  lineCount: 1,
+  isAtom: false,
+};
 
 describe("margin side — the rail follows the DOCK, not a value frozen at create time", () => {
   afterEach(() => {

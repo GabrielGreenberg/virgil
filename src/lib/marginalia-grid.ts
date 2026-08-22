@@ -49,13 +49,6 @@ export interface MarkerPositionsResult {
   /** One group per overflowing (node, side): the reserved last cell where
    *  the "+K" pill renders, plus the hidden markers it stands in for. */
   overflowGroups: MarkerOverflowGroup[];
-  /** CHIP-B: markers whose card resolved to `source:'orphan'` (`m.unanchored`).
-   *  They have no live paragraph to line-align against, so they're carried
-   *  out of the grid for the margin's fixed "unanchored — click to re-pin"
-   *  dock instead of being silently dropped (the RC2 vanish bug). Side is
-   *  resolved the same way as a positioned marker (override > dock > default).
-   */
-  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
 }
 
 /**
@@ -98,13 +91,15 @@ function colX(side: "left" | "right", col: number): number {
  *                    but resolved block re-renders once the registry observes
  *                    it — CHIP-B part 2). An `m.unanchored` (orphan) marker
  *                    has no live paragraph at all, so it never consults
- *                    `getMetrics` — it goes straight to the `orphans` bucket.
+ *                    `getMetrics` — since task 410 it is not a lane occupant
+ *                    at all and is skipped before the side is even resolved
+ *                    (the pane's `UnanchoredCardsChip` surfaces it instead).
  * @param markers     Flat list of markers from the margin-marker builder
  * @param panelSides  Which side each panel is currently docked on
  * @param laneCols    Per-side effective marker COLUMNS at the current margin,
  *                    from `resolveMarkerCols` in the lane SSOT (tasks 214/325).
- *                    `0` renders NOTHING on that side — no cells, no "+K" pill,
- *                    no re-pin dock — because the whole column is pod-anchored
+ *                    `0` renders NOTHING on that side — no cells and no "+K"
+ *                    pill — because the whole column is pod-anchored
  *                    at lane offsets the prose has taken back; placing any of it
  *                    would paint over the last words of the line. A REDUCED
  *                    count is the cramped right lane, where the tucked selection
@@ -115,11 +110,13 @@ function colX(side: "left" | "right", col: number): number {
  *                    inherit a count it never decided; the fail-open case
  *                    belongs to `resolveMarkerCols`, which owns what unmeasured
  *                    means.
- * @returns Positioned markers, overflow groups (R16 — one per over-full
- *          (node, side) grid, plus one per folded crowd, task 366), and the
- *          orphan markers for the fixed re-pin dock (CHIP-B). Every measured,
- *          non-orphan marker on a hosted side comes back exactly once: in
- *          `positioned`, or in some group's `hidden`.
+ * @returns Positioned markers and overflow groups (R16 — one per over-full
+ *          (node, side) grid, plus one per folded crowd, task 366). Every
+ *          measured, ANCHORED marker on a hosted side comes back exactly once:
+ *          in `positioned`, or in some group's `hidden`. An unanchored marker
+ *          comes back in NEITHER — the lane has exactly one kind of occupant
+ *          since task 410, which is what makes "the LANE is packed, once, in
+ *          one walk" (task 366) a complete statement about this column.
  */
 export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
@@ -128,9 +125,7 @@ export function computeMarkerPositions(
   laneCols: { left: number; right: number },
 ): MarkerPositionsResult {
   if (markers.length === 0)
-    return { positioned: [], overflowGroups: [], orphans: [] };
-
-  const orphans: Array<MarginaliaMarker & { side: "left" | "right" }> = [];
+    return { positioned: [], overflowGroups: [] };
 
   // Pass 1 — resolve each marker's side + metrics and group per
   // (textObjectId, side), preserving input order. Grouping first lets us
@@ -144,6 +139,22 @@ export function computeMarkerPositions(
   }
   const groups = new Map<string, NodeGroup>();
   for (const m of markers) {
+    // Task 410 — an UNANCHORED marker is not a lane occupant at all, so it is
+    // skipped BEFORE the side and the lane regime are even asked. Pre-410 it
+    // was bucketed here for a `position:absolute` re-pin dock the packer
+    // itself could not see: a second owner in the same column, painting an
+    // opaque `pointer-events-auto` surface at zIndex 12 over the first blocks'
+    // markers and STEALING their clicks (the task-325 bolt-over-col1 shape,
+    // one axis over) — and, being pinned at `top: 6` of a naturally tall,
+    // non-scrolling pod, invisible on any scrolled document. The unanchored
+    // set is a fact about the CARD, not about the lane's geometry, so it is
+    // derived at the marker source and surfaced in the pane's chrome header
+    // (`UnanchoredCardsChip`). Two consequences fall out for free: the lane
+    // gate below can no longer silence it (a cramped lane, zen, and the
+    // read-only reader used to cull the dock with the cells), and this
+    // function has no non-marker owner left to disagree with.
+    if (m.unanchored) continue;
+
     // Resolve side first, through the ONE margin-side authority
     // (`@/lib/margin-side`): explicit override > current panel dock >
     // registry default. The anchor rail runs the same call with the same
@@ -161,13 +172,6 @@ export function computeMarkerPositions(
     // takes the outboard bands); that is the sub-lane the pre-325 comment here
     // wrongly said a two-column grid had none of.
     if (laneCols[side] <= 0) continue;
-
-    // CHIP-B: an orphan card has no live paragraph — it can't be line-aligned.
-    // Carry it to the fixed re-pin dock instead of culling it (the RC2 vanish).
-    if (m.unanchored) {
-      orphans.push({ ...m, side });
-      continue;
-    }
 
     const node = getMetrics(m.textObjectId);
     if (!node) continue; // anchor TextObject not visible / not yet measured
@@ -339,5 +343,5 @@ export function computeMarkerPositions(
     }
   }
 
-  return { positioned, overflowGroups, orphans };
+  return { positioned, overflowGroups };
 }

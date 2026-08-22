@@ -98,7 +98,7 @@ function render(
   n = 4,
   markers = markersOn(side, n),
 ) {
-  const { positioned, overflowGroups, orphans } = computeMarkerPositions(
+  const { positioned, overflowGroups } = computeMarkerPositions(
     (uuid) => (uuid === "p1" ? NODE : null),
     markers,
     {},
@@ -121,7 +121,7 @@ function render(
       containerLeft + p.cell.x + MARGINALIA_ICON_SIZE,
     ],
   );
-  return { positioned, overflowGroups, orphans, boxes, textEdge };
+  return { positioned, overflowGroups, boxes, textEdge };
 }
 
 describe("lane regime — the grid's inset is DERIVED from where the cells land", () => {
@@ -217,7 +217,14 @@ describe("lane regime — THE invariant: no marker cell ever paints over the pro
 });
 
 describe("lane regime — a hidden side hides its WHOLE column, and only that side", () => {
-  it("the +K overflow pill and the orphan re-pin dock go with the cells", () => {
+  // RENEGOTIATED (task 410). The pre-410 contract was "the dock goes with the
+  // cells" — true of the code and wrong as a design: the dock was the one
+  // surface that exists so an anchor-less card does NOT vanish, and a cramped
+  // lane made it vanish. The unanchored set now leaves the lane entirely and
+  // lives in the pane's chrome header, so what this leg pins is the stronger
+  // statement: the lane hides its own cells and pill, and has no opinion about
+  // the unanchored set in EITHER regime.
+  it("the +K overflow pill goes with the cells; an unanchored marker is absent from both regimes", () => {
     const withOrphan: MarginaliaMarker[] = [
       ...markersOn("right", 9),
       {
@@ -229,18 +236,18 @@ describe("lane regime — a hidden side hides its WHOLE column, and only that si
         unanchored: true,
       },
     ];
-    // Lane-reserved: cells + a pill + the dock all render.
+    // Lane-reserved: cells + a pill render, and the unanchored marker is in
+    // NEITHER — it is not a lane occupant at any width.
     const wide = render("right", MARGINALIA_MARGIN_WIDTH_RIGHT, 0, withOrphan);
     expect(wide.positioned.length).toBeGreaterThan(0);
     expect(wide.overflowGroups).toHaveLength(1);
-    expect(wide.orphans).toHaveLength(1);
-    // Cramped: nothing. The dock is pod-anchored inside the same column, so
-    // leaving it behind would strand one badge in a lane the layout no longer
-    // reserves — and at a narrow enough margin it paints on the prose too.
+    expect([...wide.positioned, ...wide.overflowGroups.flatMap((g) => g.hidden)]
+      .some((m) => m.entityId === "orph")).toBe(false);
+    // Cramped: the lane hides its own chrome. The unanchored card is unaffected
+    // — its chip lives outside this column, which is the whole point of 410.
     const cramped = render("right", CODE_VIEW_GUTTER_PX, 0, withOrphan);
     expect(cramped.positioned).toHaveLength(0);
     expect(cramped.overflowGroups).toHaveLength(0);
-    expect(cramped.orphans).toHaveLength(0);
   });
 
   it("the sides are independent — a cramped RIGHT margin never hides the LEFT markers", () => {

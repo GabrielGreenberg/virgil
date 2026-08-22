@@ -238,7 +238,21 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
 });
 
 // ===========================================================================
-// CHIP-B — orphan surfacing + no silent cull of resolved-but-unmeasured
+// CHIP-B — the unanchored set leaves the lane (task 410) + no silent cull of
+// resolved-but-unmeasured
+//
+// RENEGOTIATED IN PLACE (task 410). Pre-410 these legs asserted that an
+// `unanchored` marker came back in an `orphans` bucket, which the margin then
+// rendered as an in-lane re-pin dock — a second `position:absolute` owner in a
+// column whose packer could not see it (it overlapped the first blocks' cells,
+// stole their clicks, was culled with them in a cramped lane, and was pinned
+// to the top of a non-scrolling pod so it vanished on any scroll). That is the
+// defect, so the contract it pinned is retired rather than re-scoped: the lane
+// has exactly ONE kind of occupant, and the unanchored set is derived at the
+// marker source and surfaced in the pane's chrome header
+// (`UnanchoredCardsChip`). What survives unchanged is the half that was always
+// right — an unanchored marker is never line-aligned and never consults
+// `getMetrics`, and a merely-UNMEASURED marker is not confused with it.
 // ===========================================================================
 
 /** An orphan marker (resolver `source:'orphan'` → `unanchored:true`). */
@@ -246,13 +260,10 @@ function orphanMarker(i: number, side: "left" | "right"): MarginaliaMarker {
   return { ...marker(i, side), unanchored: true };
 }
 
-describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
-  it("an `unanchored` (orphan) marker is NOT line-aligned; it goes to `orphans` even with NO metrics", () => {
-    // getMetrics returns null for EVERY uuid (the orphan has no live
-    // paragraph). The orphan must still surface — carried in `orphans`,
-    // never silently dropped (the RC2 vanish).
+describe("computeMarkerPositions — CHIP-B unanchored + no-cull", () => {
+  it("an `unanchored` marker is not a lane occupant: neither positioned nor overflowed, with NO metrics", () => {
     const m = orphanMarker(1, "right");
-    const { positioned, overflowGroups, orphans } = computeMarkerPositions(
+    const { positioned, overflowGroups } = computeMarkerPositions(
       () => null, // no metrics for anyone
       [m],
       {},
@@ -260,48 +271,65 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toEqual([]);
-    expect(orphans).toHaveLength(1);
-    expect(orphans[0].entityId).toBe("m1");
-    expect(orphans[0].unanchored).toBe(true);
-    expect(orphans[0].side).toBe("right");
+    // …and the RESULT carries no second bucket for a second owner to render.
+    expect(Object.keys({ positioned, overflowGroups }).sort()).toEqual([
+      "overflowGroups",
+      "positioned",
+    ]);
   });
 
-  it("orphans never consult getMetrics (no paragraph) and resolve a side for the dock", () => {
-    // Side resolution still applies (explicit override on the marker → left).
+  it("an unanchored marker never consults getMetrics (it has no paragraph)", () => {
     const m = orphanMarker(2, "left");
-    const { orphans } = computeMarkerPositions(
+    const { positioned, overflowGroups } = computeMarkerPositions(
       () => {
-        throw new Error("getMetrics must NOT be called for an orphan");
+        throw new Error("getMetrics must NOT be called for an unanchored marker");
       },
       [m],
       {},
       BOTH_FIT,
     );
-    expect(orphans).toHaveLength(1);
-    expect(orphans[0].side).toBe("left");
+    expect(positioned).toEqual([]);
+    expect(overflowGroups).toEqual([]);
   });
 
-  it("a NON-orphan marker with live metrics is still line-aligned; an orphan in the same batch docks separately", () => {
+  it("a NON-orphan marker with live metrics is still line-aligned; an unanchored one in the same batch is simply absent from the lane", () => {
     const live = marker(1, "right"); // p1, will measure
     const orphan = { ...marker(2, "right"), unanchored: true }; // no live paragraph
-    const { positioned, orphans } = computeMarkerPositions(
+    const { positioned, overflowGroups } = computeMarkerPositions(
       (uuid) => (uuid === "p1" ? metricsFor(2) : null),
       [live, orphan],
       {},
       BOTH_FIT,
     );
     expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
-    expect(orphans.map((m) => m.entityId)).toEqual(["m2"]);
+    expect(overflowGroups).toEqual([]);
   });
 
-  it("REGRESSION GUARD (the RC2 cull): a resolved (non-orphan) marker whose getMetrics is null is skipped from the GRID but is NOT reported as orphan — it re-renders once the registry observes it (CHIP-B part 2/4)", () => {
+  it("an unanchored marker is skipped even where the lane hosts NOTHING (cramped / zen / reader) — pre-410 the dock was culled with the cells, which is the one case the affordance had to survive", () => {
+    // The grid's answer is the same in both regimes, which is the point: it
+    // has no opinion about the unanchored set at all, so the chip's visibility
+    // can never be decided by the lane's width.
+    const m = orphanMarker(3, "right");
+    for (const lane of [BOTH_FIT, { left: 0, right: 0 }]) {
+      const { positioned, overflowGroups } = computeMarkerPositions(
+        () => null,
+        [m],
+        {},
+        lane,
+      );
+      expect(positioned).toEqual([]);
+      expect(overflowGroups).toEqual([]);
+    }
+  });
+
+  it("REGRESSION GUARD (the RC2 cull): a resolved (non-orphan) marker whose getMetrics is null is skipped from the GRID but keeps its `unanchored:false` — it re-renders once the registry observes it (CHIP-B part 2/4)", () => {
     // This is the by-design measurement skip: a genuinely-offscreen or
     // not-yet-observed block has no metrics, so it can't be placed THIS pass.
-    // It must NOT be mis-surfaced as an orphan (it has a coherent live pid);
-    // it simply waits for the registry to measure it. So: no positioned, no
-    // overflow, AND crucially `orphans` is empty (it's not an orphan).
+    // It must NOT be mistaken for an unanchored card (it has a coherent live
+    // pid) — it simply waits for the registry to measure it.
     const resolvedButUnmeasured = marker(1, "right"); // unanchored:false
-    const { positioned, overflowGroups, orphans } = computeMarkerPositions(
+    expect(resolvedButUnmeasured.unanchored).toBeFalsy();
+    const { positioned, overflowGroups } = computeMarkerPositions(
       () => null,
       [resolvedButUnmeasured],
       {},
@@ -309,6 +337,5 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toEqual([]);
-    expect(orphans).toEqual([]); // NOT an orphan — just unmeasured this pass
   });
 });

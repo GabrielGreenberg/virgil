@@ -270,6 +270,7 @@ import WordCountPanel from "@/panels/WordCount";
 import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
 import type { LatexError } from "@/lib/latex-errors";
 import Marginalia from "./Marginalia";
+import { UnanchoredCardsChip } from "./UnanchoredCardsChip";
 import {
   PendingChangePill,
   type PendingChangeIndex,
@@ -3602,6 +3603,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     menuBar?.prefs.hiddenMarginaliaTypes,
   ]);
 
+  /**
+   * The UNANCHORED set (task 410) — the cards whose anchor resolved to
+   * `source:'orphan'`. Derived here, at the marker SOURCE, because it is a
+   * pure fact about the card: it needs no paragraph metrics, no side and no
+   * lane regime, which is exactly why the margin's grid is the wrong owner
+   * for it (pre-410 it bucketed them for an in-lane dock the packer could not
+   * see — the overlap + stolen clicks + scroll-invisibility this retires).
+   *
+   * Deliberately derived from `marginaliaMarkers`, NOT from the view-filtered
+   * `visibleMarginaliaMarkers`: the master "show marginalia" toggle and the
+   * per-type hide set are preferences about the LANE, and a card that lost its
+   * anchor is not hideable by a layout preference (the rule the save badge's
+   * placement already states). Archived cards are excluded — they are
+   * deliberately out of the margin and reachable in the Archive panel.
+   */
+  const unanchoredMarkers = useMemo(
+    () =>
+      marginaliaMarkers.filter(
+        (m) => m.unanchored && !archivedIds.has(m.entityId),
+      ),
+    [marginaliaMarkers, archivedIds],
+  );
+
   const cardCreation = useCardCreation({
     editorRef: innerRef,
     addNote: notesHook.addNote,
@@ -6394,8 +6418,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     to the left of the paragraph back/forward nav. Margin-edit
                     Save/Cancel renders in-page next to the drag guides, so
                     nothing lives here during margin edit. */}
-                {(chromeHeaderTrailing || menuBar) && (
+                {(chromeHeaderTrailing || menuBar || unanchoredMarkers.length > 0) && (
                   <div className="pointer-events-auto shrink-0 flex items-center gap-2">
+                    {/* Task 410 — the "N unanchored" affordance. It sits in
+                        the STICKY chrome header (not the margin lane) so it is
+                        reachable at any scroll position, in either margin
+                        regime, and on a side too cramped to host the lane. */}
+                    <UnanchoredCardsChip
+                      markers={unanchoredMarkers}
+                      // The SAME predicate `<Marginalia>` applies to its own
+                      // markers — these are the same `MarkerButton`s, so the
+                      // two surfaces must agree about whether a re-pin grab is
+                      // available (a read-only Reader host is click-only).
+                      dragEnabled={editor?.isEditable !== false}
+                    />
                     {chromeHeaderTrailing}
                     {menuBar && (
                     <MenuBar

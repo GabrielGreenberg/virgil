@@ -95,11 +95,17 @@ describe("content-drag guardrail", () => {
     // The four hooks the margin chrome actually emits. Each must appear under
     // a `body[data-drop-mode-active]` rule whose declaration is
     // `pointer-events: none`.
+    // Task 410 retired `[data-marginalia-orphan-dock]` from this list WITH the
+    // element: the unanchored affordance left the margin lane for the pod's
+    // sticky chrome header, which is not inside `.ProseMirror`'s padding band
+    // and where the MenuBar already sits click-taking. The rule this leg
+    // enforces is the one it always was — the member list and the emitted
+    // hooks move together, so a hook removed here must be gone from the CSS
+    // AND from the component, which the emit half below checks.
     const HOOKS = [
       ".text-object-grab-handle",
       ".marginalia-marker",
       "[data-marginalia-overflow]",
-      "[data-marginalia-orphan-dock]",
     ];
     // Collect every drop-mode rule that turns pointer events off.
     const clickThrough = new Set<string>();
@@ -116,7 +122,12 @@ describe("content-drag guardrail", () => {
     const marginalia = read("src/components/Marginalia.tsx");
     expect(marginalia).toContain("marginalia-marker");
     expect(marginalia).toContain("data-marginalia-overflow");
-    expect(marginalia).toContain("data-marginalia-orphan-dock");
+    // …and the retired hook must be gone from BOTH sides, or the CSS keeps a
+    // rule matching nothing (the drift this leg exists to catch, inverted).
+    expect(marginalia).not.toContain("data-marginalia-orphan-dock");
+    expect(read("src/app/globals.css")).not.toContain(
+      "data-marginalia-orphan-dock",
+    );
     expect(read("src/text-objects/TextObjectGrabHandle.tsx")).toContain(
       "text-object-grab-handle",
     );
