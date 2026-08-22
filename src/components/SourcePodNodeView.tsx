@@ -406,7 +406,27 @@ export default function SourcePodNodeView({
       {banner && <div className="source-pod-banner">{banner}</div>}
 
       {collapsed ? (
-        /* Compact preview: title (rendered above) + first 2 lines + … */
+        <>
+        {/* PAPER body of a collapsed pod (task 408, decision 2). Rendered
+            UNCONDITIONALLY and hidden by the `.print-only` idiom, so the pod
+            carries no React dependency on print state — which is the whole
+            requirement: `html[data-printing]` is stamped only by `runPrint`
+            (src/lib/print.ts), so anything keyed on it silently fails for the
+            browser's own File → Print, the door most people use. Its screen
+            twin `.source-pod-preview` below is the one dropped in print media.
+
+            The SOURCE, not the derived picture: a tree mounted while the pod is
+            collapsed measures 0x0 and lays out from canvas ESTIMATES, whose
+            ResizeObserver recovery cannot land inside a synchronous print
+            snapshot. See the matching rules in globals.css. */}
+        <pre
+          className="print-only source-pod-print-source"
+          contentEditable={false}
+          aria-hidden="true"
+        >
+          {source}
+        </pre>
+        {/* Compact preview: title (rendered above) + first 2 lines + … */}
         <div
           className="source-pod-preview"
           contentEditable={false}
@@ -426,6 +446,7 @@ export default function SourcePodNodeView({
           )}
           <div className="source-pod-preview-more">…</div>
         </div>
+        </>
       ) : sourceMode ? (
         <div contentEditable={false} className="source-pod-editor relative">
           <CodeMirror

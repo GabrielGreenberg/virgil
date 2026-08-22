@@ -4,6 +4,27 @@
  * window.print(). The matching CSS lives in `src/app/globals.css` under
  * `@media print`. Cleanup runs from afterprint OR a matchMedia change
  * handler — Safari and some Chromium builds skip the former.
+ *
+ * ── THE LAW: what prints is the DOCUMENT, not the editor's fold state ──
+ *
+ * A screen-only visibility state — a folded section, a LOCKED focus band, a
+ * collapsed source pod — is a statement about the editor, never about the
+ * paper. None of the three was ever chosen as a print posture, and each leaked
+ * a different unstated answer onto paper: a folded section printed nothing, a
+ * locked band printed ONLY the band with the rest of the document silently
+ * absent, and a collapsed pod printed a two-line truncated stub (task 408).
+ *
+ * This module OWNS print state and deliberately implements none of it, because
+ * it cannot: **there are two print doors and this module is only on one.**
+ * `runPrint` below stamps `html[data-printing]` + the `data-print-e-*` toggles;
+ * the browser's own File → Print reaches nothing but the `beforeprint` listener
+ * at the bottom of this file, which never calls `applyPrintAttrs`. So ANY
+ * future print behaviour keyed on `data-printing` (or on any attribute stamped
+ * here) silently does nothing for the door most people use. That is the reason
+ * the fold posture lives in media queries in globals.css — `@media screen`
+ * around the two hide-class declarations, `@media print` for the pod's paper
+ * body — and it is a constraint on every future print change, not a note about
+ * one fix. Contract: src/lib/__tests__/print-fold-posture.test.ts.
  */
 
 import type { PanelKind } from "@/panels/_shared/types";
@@ -172,6 +193,13 @@ export async function runPrint(options: PrintOptions): Promise<void> {
 }
 
 // ── Native File→Print fallback ─────────────────────────────────────────
+// THE SECOND DOOR. Everything `applyPrintAttrs` stamps is absent here — no
+// `data-printing`, no `data-print-e-*` element toggles, no print-ancestor /
+// print-hide walk — so this path prints with the DEFAULT element posture and
+// no page isolation. Anything that must hold on paper regardless of door
+// therefore belongs in a media query, not behind an attribute stamped above
+// (see the module docstring; task 408).
+//
 // Cmd+P is intercepted (EditorLayout → PrintDialog → runPrint), but the
 // browser's own menu item fires `beforeprint` with no chance to await a
 // mount. Best-effort: activate the appendices synchronously so React can
