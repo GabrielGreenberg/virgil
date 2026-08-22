@@ -370,6 +370,8 @@ describe("refusals — each names its own construct", () => {
       "unbalanced",
       "multiple-roots",
       "trailing",
+      "after-environment",
+      "second-environment",
       "text-after-child",
       "too-deep",
       "too-large",

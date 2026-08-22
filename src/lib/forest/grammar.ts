@@ -34,7 +34,12 @@
  * embedded TikZ, a second root, trailing content, unbalanced brackets.
  */
 
-import { matchCommentTailAt, matchCommandToken, isEscaped } from "@/lib/latex-lexer";
+import {
+  carriedEnvEnd,
+  isEscaped,
+  matchCommandToken,
+  matchCommentTailAt,
+} from "@/lib/latex-lexer";
 import { latexToDisplayText } from "@/lib/latex-typography";
 import { FOREST_ENV_NAME } from "@/lib/latex-lexer";
 import { noteForestWork } from "./stats";
@@ -82,6 +87,8 @@ export type ForestRefusalKind =
   | "unbalanced"
   | "multiple-roots"
   | "trailing"
+  | "after-environment"
+  | "second-environment"
   | "text-after-child"
   | "too-deep"
   | "too-large"
@@ -158,6 +165,10 @@ export function describeForestRefusal(kind: ForestRefusalKind, token: string): s
       return "a second tree after the first (one tree per environment)";
     case "trailing":
       return `content after the tree (\`${t}\`)`;
+    case "after-environment":
+      return `content after \\end{${FOREST_ENV_NAME}} (\`${t}\`) — the pod holds one environment and nothing after it`;
+    case "second-environment":
+      return `a second \\begin{${FOREST_ENV_NAME}} in the same pod — one environment per pod`;
     case "text-after-child":
       return `text after a child node (\`${t}\`)`;
     case "too-deep":
@@ -649,6 +660,33 @@ export function parseForestSource(source: string): ForestParse {
   noteForestWork("parse");
   try {
     const begin = BEGIN_RE.exec(source);
+    // Bytes past the environment's own closer, named for what they ARE.
+    //
+    // The two doors over this one attr used to disagree about where the
+    // environment ends — `END_RE` is `\end{forest}\s*$`, so it resolves to the
+    // LAST closer in the string, while the parser (and now the emitter, task
+    // 405) stop at the FIRST properly-matched one. That gap is what made both
+    // messages wrong: a trailing `% note` refused as "not a
+    // \begin{forest}…\end{forest} environment" (it is one, plus a note), and a
+    // second pasted tree refused as "content after the tree", naming tree A's
+    // own closer as the offending content. `carriedEnvEnd` is the shared
+    // answer — the same `matchBeginEnvAt` + `findMatchingEnv` pair the parser
+    // dispatcher and the serializer read — so the renderer, the reader and the
+    // writer can no longer come to three views of one boundary.
+    if (begin) {
+      const envEnd = carriedEnvEnd(source);
+      if (envEnd !== null) {
+        const rest = source.slice(envEnd);
+        const token = rest.trimStart();
+        if (token !== "") {
+          refuse(
+            BEGIN_RE.test(token) ? "second-environment" : "after-environment",
+            token.slice(0, TOKEN_CLIP),
+            envEnd + (rest.length - token.length),
+          );
+        }
+      }
+    }
     const end = END_RE.exec(source);
     if (!begin || !end) {
       refuse("delimiters", source.slice(0, 24), 0);

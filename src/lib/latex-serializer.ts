@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import {
+  anchorCarriedBody,
   appendUuidAnchor,
   generateShortId,
   uuidAnchorSuffix,
@@ -18,6 +19,7 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { graphicsCommandEnd } from "@/lib/figures/parse-attrs";
 import { headingTypeCommand } from "@/lib/heading-types";
 import {
   applyWrapperMarks,
@@ -38,6 +40,7 @@ import {
   escapeLatexChars,
 } from "@/lib/latex-typography";
 import {
+  carriedEnvEnd,
   END_DOCUMENT_TOKEN,
   extractBraced,
   findDocumentBoundary,
@@ -598,6 +601,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // diverge — the projection is inside `declareFromRawLatex`, never here).
       declareFromRawLatex(rawCode);
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
+      // carried-anchor-exempt: the anchor rides the `%!vtex:begin <uuid>`
+      // SENTINEL LINE, not the body's last byte — so this arm is immune to the
+      // task-405 class BY CONSTRUCTION rather than by placing the anchor well.
+      // Arbitrary trailing bytes inside `code` cannot displace an anchor that
+      // is not in the body at all. (It is the precedent the 405 design weighed
+      // and declined to generalize: wrapping every carried node in sentinels
+      // would change the emitted bytes of every well-formed tree.)
+      //
       // The BODY is declared carried (task 383): `collapseBlankRuns`' recognizer
       // only knows `\\begin{env}` shapes, so a texBlock whose code held a 3+
       // newline run lost one of those blank lines on the FIRST save — silently,
@@ -697,23 +708,40 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // silently, and the multiset word measure the write gate uses cannot see
       // it either.
       //
-      // Trimming HERE rather than at the two pod write doors is deliberate:
-      // this is the ONE place the anchor is appended, so the append point and
-      // the detach point coincide by construction rather than by two doors
-      // remembering to agree. (The shipped siblings show both shapes: `texBlock`
-      // is immune because its anchor rides a `%!vtex:begin` SENTINEL line, and
-      // `graphicsBlock` — the only other `${bytes}${anchor}` emitter — is immune
-      // only because its edit door happens to `.trim()`.)
+      // Placing the anchor HERE rather than at the two pod write doors is
+      // deliberate: this is the ONE place it is appended, so the append point
+      // and the detach point coincide by construction rather than by two doors
+      // remembering to agree. (`texBlock` is immune to the whole class because
+      // its anchor rides a `%!vtex:begin` SENTINEL line.)
       //
       // Whitespace before the closer's own line-end is not content, and the arm
-      // appends `\n\n` regardless, so this is a whitespace normalization and a
-      // fixed point from cycle 1. Residual, stated: NON-whitespace after the
-      // closer (a trailing `% note`, a second pasted environment) still puts the
-      // anchor somewhere the reader will not find it — but that shape is already
-      // LOUD, because `END_RE` refuses it and the 384 badge names it.
+      // appends `\n\n` regardless, so the trim is a whitespace normalization
+      // and a fixed point from cycle 1.
+      //
+      // NON-whitespace after the closer — a trailing `% note`, a SECOND pasted
+      // `\begin{forest}` — is the other half, and 387's trim justified itself
+      // against whitespace and was then read as covering the tail (task 405).
+      // "Already loud" was the stated ground and it is wrong on its own terms:
+      // the 384 badge is loud BEFORE the save and GONE AFTER it, and the
+      // transition is exactly the save that moves the identity. So the anchor
+      // goes at the CONSTRUCT boundary — asked of `carriedEnvEnd`, the parser's
+      // own `matchBeginEnvAt` + `findMatchingEnv` pair — and the bytes the
+      // reader will not claim follow it, each half carried in its own span so
+      // an interior blank run still survives `collapseBlankRuns`. The full rule
+      // (including why an unrecognized body OMITS the anchor rather than
+      // handing it to whatever those bytes become) is `anchorCarriedBody`.
+      //
+      // What the pod does with the extra bytes, stated: it LOSES them, and they
+      // round-trip as themselves one block over — the `% note` becomes a
+      // document-level comment, the second tree becomes a second `forestBlock`.
+      // That restructuring already happened pre-405; what changes is that the
+      // FIRST tree keeps its uuid, its `parTitle` and its `collapsed` state
+      // instead of handing all three to the thief. There is deliberately no
+      // commit-time refusal at the pod: it is a surface the user TYPES in, and
+      // refusing a commit mid-edit would be Virgil's only such refusal.
       const source = ((node.attrs?.source as string) ?? "").replace(/\s+$/, "");
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuidAnchorSuffix(uuid);
+      const carried = anchorCarriedBody(source, uuid, carriedEnvEnd);
       // The package this node's env NEEDS is declared from the NODE MODEL: the
       // emitter knows it is about to write a `\\begin{forest}` (task 385), so it
       // searches for nothing and needs no projection — the 345 rule, which
@@ -724,17 +752,32 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // `\\includegraphics` inside a tree label must reach its `\\usepackage`.
       // `declareFromRawLatex` projects inert bytes itself (task 345).
       declareFromRawLatex(source);
-      return `${carriedSource(source)}${anchor}\n\n`;
+      return `${carriedSource(carried.head)}${carried.anchor}${
+        carried.tail ? carriedSource(carried.tail) : ""
+      }\n\n`;
     }
 
     case "graphicsBlock": {
       // Standalone `\includegraphics` — emit the verbatim command from
       // `command`, with the trailing UUID anchor if present.
+      //
+      // The SECOND `${bytes}${anchor}` emitter, and the other node whose body
+      // is a user-editable attr — so it takes the same door (task 405) rather
+      // than resting on the accident that its edit door happens to `.trim()`.
+      // It is immune by more than that today: `applyGraphicsCommandEdit` routes
+      // through `extractGraphicsAttrs`, which returns the MATCHED
+      // `\includegraphics…` substring, so a trailing `% note` is dropped
+      // outright before it can reach here. The live sub-case is that door's
+      // `attrs === null` fallback, which stores the raw text verbatim: those
+      // bytes open no `\includegraphics` at all, so the reader will not build a
+      // `graphicsBlock` from them — `matchIncludegraphics` answers null, the
+      // anchor is OMITTED, and the identity is lost loudly on reload instead of
+      // being handed to the paragraph those bytes become.
       const command = (node.attrs?.command as string) ?? "";
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuidAnchorSuffix(uuid);
+      const carried = anchorCarriedBody(command, uuid, graphicsCommandEnd);
       need("graphicx"); // \includegraphics is graphicx-bound
-      return `${command}${anchor}\n\n`;
+      return `${carried.head}${carried.anchor}${carried.tail}\n\n`;
     }
 
     case "blockquote": {

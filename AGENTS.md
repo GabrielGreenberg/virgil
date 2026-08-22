@@ -5719,6 +5719,110 @@ Enter after `\end{forest}`, save and reload with a note card anchored to it. Thi
 class is not FSA-masked (it is `.tex` bytes through the real save cycle), so the
 check is cheap and real.
 
+###### The tail's other half: an exemption is scoped to the shape it JUSTIFIES
+
+Same emit site, same law, and the case where the fix above was right about the
+bytes it examined and was then read as covering the tail (task 405). 387 trimmed
+trailing WHITESPACE before the append and recorded NON-whitespace as a residual
+on one stated ground: *"that shape is already LOUD, because `END_RE` refuses it
+and the 384 badge names it."*
+
+**The badge is loud BEFORE the save and gone AFTER it, and the transition is
+exactly the save that does the damage.** Two shapes, both reachable by one
+ordinary gesture in a surface the user TYPES in:
+
+- **A trailing `% note`.** `uuidAnchorSuffix` always prepends a space, so the
+  emitted line is `% note %!v:ab12`. `NODE_UUID_ANCHOR` is `^[ \t]*`-anchored
+  and the dispatcher tries it right after `\end{forest}` — a miss — so the tree
+  comes back uuid-less and `assignUuids` mints a fresh one, while the stranded
+  line becomes a **`latexComment` holding the old id**. That comment is in
+  `UUID_BEARING_NODE_TYPES` and in NEITHER `TITLED_NODE_TYPES` nor
+  `COLLAPSIBLE_NODE_TYPES`, so `mergeSidecarTitles` **DESTROYS the pod's
+  `parTitle` and its `collapsed` state** on the way past — task 343's read sets,
+  arriving as a loss rather than as a refusal.
+- **A second pasted `\begin{forest}`.** The anchor lands after tree B's closer,
+  so tree B harvests it and the title and the collapse migrate with it.
+
+Only the IDENTITY is silent — unlike tasks 342/348 the user must first type
+bytes the pod visibly refuses, and the document visibly restructures. That is
+why this was `normal` and not `high`, and it is also why the "already loud"
+argument was so nearly right.
+
+> **Where the emitter does NOT own the body, the end of the ATTR and the end of
+> the CONSTRUCT are different places, and the anchor goes at the CONSTRUCT's.**
+> [`anchorCarriedBody`](src/lib/uuid.ts) is the rule, beside the 348 pair;
+> [`carriedEnvEnd`](src/lib/latex-lexer.ts) and
+> [`graphicsCommandEnd`](src/lib/figures/parse-attrs.ts) are the two scanners,
+> each the SAME primitive the node's own parser branch reads. The bytes the
+> reader will not claim follow the anchor, where they round-trip as themselves.
+
+Six rules it earned:
+
+- **The scanner is INJECTED, not dispatched on.** Only the emitter knows which
+  construct it is writing, and the whole invariant is that its answer comes from
+  the scanner the READER uses — `matchBeginEnvAt` + `findMatchingEnv` for an
+  env, `matchIncludegraphics` for the command. A two-entry dispatch table inside
+  the door would be a hand list that has to stay in step with the two emitters,
+  which is the drift this file legislates against everywhere else.
+- **`null` OMITS the anchor.** Bytes that open no recognizable construct are
+  bytes whose node is not coming back as itself, so appending only decides WHO
+  steals the identity. Omitting re-mints on reload and orphans the cards
+  LOUDLY, which is a fact the user can see. That is design option (b) applied
+  exactly where option (a) has nothing to hold on to.
+- **The sentinel was weighed and declined.** `texBlock` is immune to this whole
+  class because its anchor rides a `%!vtex:begin <uuid>` LINE rather than the
+  body's last byte, and generalizing that shape would have been the safest
+  possible fix — at the price of changing the emitted bytes of every well-formed
+  tree in every paper. Its arm now carries the `carried-anchor-exempt:` marker
+  that says so, rather than being immune by an accident nothing states.
+- **`graphicsBlock` stops being immune by ACCIDENT.** Its edit door happens to
+  route through `extractGraphicsAttrs`, which returns the MATCHED substring and
+  drops a tail outright — true, pinned, and not a property of the emit site. Its
+  `attrs === null` fallback stores raw text verbatim, and there the door now
+  omits rather than handing the id to the paragraph those bytes become.
+- **Two carried spans, not one.** The head and the tail are each wrapped in the
+  383 carry sentinel with the anchor between them, so an interior blank run in
+  either half still survives `collapseBlankRuns`.
+- **The third door had to agree too, and that is what made the badge honest.**
+  `END_RE` is `\end{forest}\s*$` — it resolves to the LAST closer in the string,
+  where the parser and the emitter stop at the FIRST properly-matched one. That
+  gap is why BOTH messages were wrong: a trailing note refused as "not a
+  `\begin{forest}…\end{forest}` environment" (it is one, plus a note), and a
+  second tree refused as "content after the tree", naming tree A's own closer as
+  the offending content. The renderer reads `carriedEnvEnd` now and names the
+  tail for what it is (`after-environment` / `second-environment`), so the
+  writer, the reader and the renderer hold ONE view of that boundary.
+
+**Decided, stated at the site: no commit-time refusal at the pod.** It is a
+surface the user types in, and refusing a commit mid-edit would be Virgil's only
+such refusal. What the pod does with the extra bytes is LOSE them, one block
+over, as themselves — which it already did; what changed is that the first tree
+keeps its uuid, its title and its collapse instead of handing all three away.
+
+CI: [carried-body-anchor-position.test.ts](src/lib/__tests__/carried-body-anchor-position.test.ts).
+Every leg drives the REAL save pipeline over TWO cycles carrying the SIDECAR
+(nothing serializes `parTitle` or `collapsed` into the `.tex`, so a round trip
+that drops it cannot see the loss at all) and asserts the parsed node's `uuid`
+ATTR, never a `%!v:` grep of the emitted bytes — a dead marker stranded inside a
+comment still matches the grep, the trap that sank the first draft of 387's own
+M4 leg. The FIXED POINT is cycle 3, not cycle 2, and the leg says why: the
+displaced bytes come back as a block with no id, so `assignUuids` mints one for
+them on the next open — the ordinary path for any new block, and precisely the
+settle the pre-405 emitter never reached, where the TREE was the block being
+re-minted every cycle forever. The leg with teeth is the CENSUS: membership is
+DISCOVERED from the serializer's own arms (a `case` spelling `carriedSource(` or
+`anchorCarriedBody(` is a node whose model IS its bytes), each must enter the
+door or carry the marker, the allowlist is EMPTY, and the retired
+`${attr}${anchor}` shape is pinned to its two legitimate non-members by REPORT
+rather than excluded by name. Measured by neutering each half in turn: the
+pre-405 append takes 9 legs, the omit-on-`null` rule 3, the badge half 3 (one of
+them 387's own renegotiated leg), and the dropped exempt marker 1.
+
+**Owed, not claimed:** the preview eyeball — paste a tree, press Enter after
+`\end{forest}`, type `% note`, save and reload with a note card anchored to it.
+Not FSA-masked (`.tex` bytes through the real save cycle), so the check is cheap
+and real.
+
 ##### The projection half: a schema's vocabulary is every PROJECTION's vocabulary
 
 Same pass, and the case where two hand-written tables had a comment telling the

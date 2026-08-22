@@ -79,6 +79,80 @@ export function uuidAnchorSuffix(uuid: string | null | undefined): string {
 }
 
 /**
+ * Where the READER stops consuming the construct a set of CARRIED bytes opens,
+ * as an index into those bytes — or `null` when they open no construct the
+ * node's parser branch would claim.
+ *
+ * Supplied by the EMITTER rather than derived here, because only the emitter
+ * knows which construct it is writing, and the whole invariant is that this
+ * answer comes from the SAME scanner the parser branch reads. `carriedEnvEnd`
+ * (the lexer, beside `findMatchingEnv`) is the environment answer; the
+ * `\includegraphics` answer is `matchIncludegraphics`.
+ */
+export type CarriedConstructEnd = (bytes: string) => number | null;
+
+/** The three pieces of an anchored carried body — see {@link anchorCarriedBody}. */
+export interface AnchoredCarriedBody {
+  /** The construct the reader WILL claim, ending exactly where it stops. */
+  head: string;
+  /** `" %!v:ab12"`, or `""` for a uuid-less node or an unreachable position. */
+  anchor: string;
+  /** The bytes the reader will NOT claim as part of this node. */
+  tail: string;
+}
+
+/**
+ * **The position rule for a body the emitter does NOT own** (task 405).
+ *
+ * {@link appendUuidAnchor} states task 348's law — the anchor is APPENDED to
+ * the end of the construct's serialized body and DETACHED from the same place
+ * — and for every emitter that BUILDS its body the two ends are the same place
+ * by construction. Two nodes carry a body that is a user-editable ATTR
+ * (`forestBlock.source`, `graphicsBlock.command`), and there the end of the
+ * ATTR and the end of the CONSTRUCT are different places the moment the user
+ * types a byte past the closer. The reader stops at the construct; the emitter
+ * appended past it; the anchor lands where nothing will look for it.
+ *
+ * The cost is not a missing anchor, it is a MIGRATING identity. A trailing
+ * `% note` after `\end{forest}` makes the emitted line `% note %!v:ab12`,
+ * which the block-level comment branch happily takes: the tree comes back
+ * uuid-less (`assignUuids` mints a fresh one) while a `latexComment` answers to
+ * the old id — and `latexComment` is in `UUID_BEARING_NODE_TYPES` but in
+ * neither `TITLED_NODE_TYPES` nor `COLLAPSIBLE_NODE_TYPES`, so the pod's
+ * `parTitle` and `collapsed` are DESTROYED on the way past (task 343's read
+ * sets, arriving as a loss). A second pasted `\begin{forest}` is the same
+ * theft with tree B as the thief. Task 387 closed the whitespace half with a
+ * trailing trim, which is sufficient only while the emitter owns the tail.
+ *
+ * So the anchor is placed at the CONSTRUCT boundary and the bytes the reader
+ * will not claim follow it, where they round-trip as themselves (a comment
+ * stays a comment; a second environment stays a second environment). The
+ * document visibly restructures — it already did, and the pod already REFUSED
+ * those bytes loudly before the save — but nothing silently changes owner.
+ *
+ * **`null` OMITS the anchor**, deliberately: bytes that open no recognizable
+ * construct are bytes whose node is not coming back as itself, and handing its
+ * identity to whatever they DO become is the silent migration this exists to
+ * prevent. Losing it re-mints on reload and orphans the cards loudly, which is
+ * a fact the user can see. A construct that fills the whole body returns
+ * `bytes.length`, so the ordinary case is byte-identical to a plain append.
+ */
+export function anchorCarriedBody(
+  bytes: string,
+  uuid: string | null | undefined,
+  constructEnd: CarriedConstructEnd,
+): AnchoredCarriedBody {
+  const end = constructEnd(bytes);
+  if (end === null) return { head: bytes, anchor: "", tail: "" };
+  const at = Math.max(0, Math.min(end, bytes.length));
+  return {
+    head: bytes.slice(0, at),
+    anchor: uuidAnchorSuffix(uuid),
+    tail: bytes.slice(at),
+  };
+}
+
+/**
  * ONE trailing anchor, plus the optional user comment REMAINDER that may follow
  * it (task 347: the anchor is itself comment bytes, so a note typed after it in
  * the code pane is ordinary content, not a parse failure).
