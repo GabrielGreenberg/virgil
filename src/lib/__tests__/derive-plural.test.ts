@@ -110,7 +110,7 @@ describe("derivePlural — idempotent + symmetric (fixpoint)", () => {
     const single = [r("a", "p. 1")];
     const t = derivePlural("cites", single, "biblatex");
     const cmd = serializeCiteCommand(
-      { type: t, starred: false, capitalized: false, entries: single },
+      { type: t, starred: false, capitalized: false, noteScope: "per-key", entries: single },
       "biblatex",
     );
     expect(cmd).toBe("\\cite[p. 1]{a}");
@@ -119,7 +119,7 @@ describe("derivePlural — idempotent + symmetric (fixpoint)", () => {
     const multi = [r("a", "p. 1"), r("b", "p. 2")];
     const tp = derivePlural("cite", multi, "biblatex");
     const cmdp = serializeCiteCommand(
-      { type: tp, starred: false, capitalized: false, entries: multi },
+      { type: tp, starred: false, capitalized: false, noteScope: "per-key", entries: multi },
       "biblatex",
     );
     expect(cmdp).toBe("\\cites[p. 1]{a}[p. 2]{b}");

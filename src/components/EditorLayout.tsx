@@ -2411,6 +2411,9 @@ export default function EditorLayout() {
           type: "cite",
           starred: false,
           capitalized: false,
+          // A fresh cite carries no `[pre][post]` at all, so its one bracket
+          // group governs the whole citation — the note-less WHOLE arm (403).
+          noteScope: "whole",
           entries: keys.map((key) => ({ key })),
         },
         "natbib",

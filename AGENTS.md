@@ -3946,6 +3946,107 @@ neutering each half in turn: the sectioning door takes 18 legs, the list options
 bracket scanner 1 — and the serializer's level-indexed array takes exactly ONE,
 the census, because it emits byte-identical output.
 
+#### The two-homes half: a datum with two homes, and every reader picking by convention
+
+Same law, twelfth tense (task 403) — and the case where the SSOT was not dead,
+not stale, not half-consolidated, but **doubled**: a citation's
+`[prenote][postnote]` existed BOTH top-level on `ParsedCiteCommand` and per-entry
+on `entries[]`, and each of the three consumers guessed which home was
+authoritative, with three DIFFERENT guesses.
+
+- `parseNatbibCommand` put the notes at the top level (natbib's brackets govern
+  the WHOLE citation) and left `entries[]` note-less;
+- `parseBiblatexCommand` put them per-entry **and mirrored `entries[0]`'s onto
+  the top level**;
+- `serializeCiteCommand` read `entries[]` only, so a natbib
+  `\citep[p.~22]{k}` round-tripped as `\citep{k}` — the note silently DROPPED;
+- the panel's `rowsFromCommand` mirrored `entries[0]`'s note onto EVERY row;
+- the display formatter guessed a third way, from the command NAME plus the
+  document's package — and it was the only one of the three that was RIGHT.
+
+The panel's guess is the one that writes bytes. For a biblatex
+`\cites[p. 1]{a}{b}` — which the UI itself emits — row `b` inherited `"p. 1"`,
+and the next `persist()` wrote `\cites[p. 1]{a}[p. 1]{b}` into the user's
+`.tex`: **a page range invented on a citation that never had one**, permanent
+from then on, reachable with no package flip and no unusual gesture (any fresh
+mount re-derives the rows — a reload, or the same citation rendered as a float
+or in omni).
+
+> **The tell for this class is always a COMMENT asserting which home is
+> authoritative next to code that does not check.** The fix is not to make the
+> readers agree; it is to make the second home UNREPRESENTABLE — a discriminated
+> union whose WHOLE arm's entries carry no note field and whose PER-KEY arm
+> carries no top-level note — and then to publish the ONE projection every
+> reader actually wants.
+
+[src/lib/cite-command-model.ts](src/lib/cite-command-model.ts) is that model.
+Six rules it earned:
+
+- **The discriminant is the SYNTAX, not the package.** One bracket group before
+  one brace group is WHOLE — natbib always, and biblatex's singular forms too
+  (`\parencite[p. 1]{a,b}`); a repeated `[…]{…}` is PER-KEY, which is the only
+  thing biblatex's plural `\xxxs` forms buy. Keying on the package instead is
+  what made `\parencite[p. 1]{a,b}` re-serialize as
+  `\parencites[p. 1][]{a}[p. 1][]{b}` — the same invention one command shape
+  over, and it fell out of the model with no second rule.
+- **ONE projection, read by both renderers.** `resolveCiteNoteRows` places a
+  whole-citation note where LaTeX itself renders it — prenote before the FIRST
+  key, postnote after the LAST — and nowhere else. The display formatter and
+  the panel's editable rows are the same question asked twice, so they read the
+  same answer instead of each deriving it. That is what makes the two agree BY
+  CONSTRUCTION rather than by two implementations staying in step.
+- **The discriminant is REQUIRED and undefaulted at the serializer.** Every
+  call site had to name its arm, which is the point: a defaulted `noteScope`
+  is a decision nobody made, and the compiler naming the four sites is what a
+  comment saying "For natbib" could never do.
+- **A lossy user action WARNS before it writes, once, at the altitude the
+  decision is made.** natbib cannot represent divergent per-key notes, so a
+  biblatex→natbib flip really does drop one — and the confirm lives at the
+  Package control (ONE decision the user makes once) rather than in each card's
+  flip effect, which would ask N times and still miss the archived cards. The
+  predicate `citeNotesDroppedByPackage` is DERIVED by running the REAL
+  serializer and reading the answer back through the REAL parser, never by
+  restating the flatten rule — a second statement of the rule is the thing this
+  whole section is about.
+- **…and the same-package click still WRITES.** Picking the package the view
+  already shows is how a user confirms a DETECTED seed as their own choice
+  (task 344 made the stored family optional), so the gate's early return is
+  "nothing can be lost", not "nothing happens".
+- **The Library silo's whole-file copy stops being a fourth copy of the
+  ANSWER.** `library/lib/bib-parser.ts` had re-typed the entire model and had
+  already diverged (the empty-key filter and the `matchedGroup` guard never
+  landed there), while its serialize half had no caller at all. It reads the
+  leaf now — the placement rule `latex-markers.ts` and `node-attr-sets.ts` each
+  earned — and its dead half is deleted rather than re-exported. Visible in the
+  task-341 census, whose allowlist went from two entries to one.
+
+**Declared normalization, stated rather than claimed away:** a biblatex
+`\parencite[p. 1]{a,b}` is re-spelled `\parencites{a}[p. 1]{b}` by the card's
+next save, because the card's rows ARE per-key (each row owns a `+range`
+input). One-time, idempotent, and the single note stays on the single key that
+owns it — where pre-403 the same save DUPLICATED it onto both.
+
+CI: [cite-note-homes.test.ts](src/lib/__tests__/cite-note-homes.test.ts) runs
+every byte leg over TWO cycles (this class's fixed points are what make an
+invention permanent) with controls through the identical harness, and
+[citation-note-mirroring.test.tsx](src/panels/Citations/__tests__/citation-note-mirroring.test.tsx)
+drives the REAL card and edits a DIFFERENT row — the invention's whole cost is
+in what `onUpdateCitation` receives, and a rows-only assertion passes on an
+implementation that renders right and writes wrong. The leg with teeth is the
+CENSUS: the model was never the part that could misbehave, a call site that
+places the note by its own convention is, and `parsed.prenote` type-checks
+perfectly on the arm that has it. So no production file outside the SSOT may
+re-declare the parse/serialize model, every file that parses a command AND
+touches a note must ask `resolveCiteNoteRows` (allowlist EMPTY), and the
+Package control must ask before it writes. Measured by neutering each half in
+turn: the pre-403 mirroring takes 8 legs, the entries-only serialize read 3,
+and the package gate 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked — this is `.tex`
+bytes through the real save cycle — so the check is cheap and real: make a
+multi-key biblatex cite with a range on the first key only, reload, and look at
+the other key's row and the source.
+
 ### The membership half: a per-kind capability is spelled once, and its guard is the sibling every other facet already has
 
 Same law, fifth tense (task 259) — and the case where the dead facet and the missing guard were the *same* fact.
