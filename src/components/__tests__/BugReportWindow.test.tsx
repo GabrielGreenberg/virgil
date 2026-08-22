@@ -66,21 +66,44 @@ vi.mock("@library/lib/library-folder", () => ({
 
 import BugReportWindow from "@/components/BugReportWindow";
 
-function pngFile(name: string): File {
-  return new File(["png-bytes"], name, { type: "image/png" });
+function pngFile(name: string, lastModified = 1000): File {
+  return new File([`png-bytes-${name}`], name, { type: "image/png", lastModified });
 }
 
+/**
+ * A real clipboard hands you the SAME image through BOTH views, as two
+ * INDEPENDENTLY-MATERIALIZED File objects (task 419). The pre-419 harness
+ * could represent neither half of that: `getAsFile` returned a stable
+ * identity, and `files` was ALWAYS empty — so the second loop never ran and
+ * the reference-identity dedupe in front of it was never asked a question it
+ * could get wrong. Fixed at the root here: a fixture states which views the
+ * payload populates, and `both` mints a DISTINCT File per view.
+ */
+type ClipboardViews = "items" | "files" | "both";
+
+function paste(target: Element, files: File[], views: ClipboardViews = "items"): boolean {
+  // Two File objects for one image — same name/size/type/lastModified,
+  // different object identity. That is exactly what the browser produces.
+  const twin = (f: File) =>
+    new File([`png-bytes-${f.name}`], f.name, { type: f.type, lastModified: f.lastModified });
+  const clipboardData: Record<string, unknown> = {};
+  if (views !== "files") {
+    clipboardData.items = files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+    }));
+  }
+  if (views !== "items") {
+    clipboardData.files = files.map((file) => (views === "both" ? twin(file) : file));
+  }
+  return fireEvent.paste(target, { clipboardData });
+}
+
+/** The pre-419 spelling: `items` only. Kept as the CONTROL every other leg
+ *  is measured against. */
 function pasteImages(target: Element, files: File[]): boolean {
-  return fireEvent.paste(target, {
-    clipboardData: {
-      items: files.map((file) => ({
-        kind: "file",
-        type: file.type,
-        getAsFile: () => file,
-      })),
-      files: [],
-    },
-  });
+  return paste(target, files, "items");
 }
 
 function mount(over: Partial<React.ComponentProps<typeof BugReportWindow>> = {}) {
@@ -115,6 +138,8 @@ afterEach(() => {
   cleanup();
 });
 
+const textarea = () => screen.getByPlaceholderText(/What went wrong/);
+
 describe("paste", () => {
   it("an image paste adds thumbnails (and is consumed); a text paste is left alone", () => {
     mount();
@@ -129,6 +154,50 @@ describe("paste", () => {
       clipboardData: { items: [], files: [] },
     });
     expect(textPaste).toBe(true); // preventDefault NOT called
+  });
+
+  // ---- task 419: the two clipboard views ------------------------------
+  // The DEFECT leg. Both views describe ONE screenshot as two distinct File
+  // objects; the pre-419 handler's `!files.includes(file)` reference test
+  // could not see they were the same image and added the thumbnail twice.
+  it("one image in BOTH clipboard views adds exactly ONE thumbnail", () => {
+    mount();
+    const textarea = screen.getByPlaceholderText(/What went wrong/);
+
+    const notCancelled = paste(textarea, [pngFile("shot.png")], "both");
+    expect(notCancelled).toBe(false); // preventDefault WAS called
+    expect(screen.getByText("1 screenshot")).toBeTruthy();
+  });
+
+  it("`items` only still yields the image (control — today's passing path)", () => {
+    mount();
+    paste(textarea(), [pngFile("shot.png")], "items");
+    expect(screen.getByText("1 screenshot")).toBeTruthy();
+  });
+
+  // The Finder-"Copy" case the second loop was written for, which no fixture
+  // had ever exercised — `files` was hard-coded empty in every one of them.
+  it("`files` only still yields the image (the Finder-Copy case)", () => {
+    mount();
+    paste(textarea(), [pngFile("shot.png")], "files");
+    expect(screen.getByText("1 screenshot")).toBeTruthy();
+  });
+
+  it("two DIFFERENT images in both views still add two", () => {
+    mount();
+    paste(textarea(), [pngFile("a.png"), pngFile("b.png")], "both");
+    expect(screen.getByText("2 screenshots")).toBeTruthy();
+  });
+
+  // PER-EVENT SCOPE. Deduping across the session would silently swallow a
+  // deliberate second paste of the same screenshot — a paste that visibly
+  // does nothing, which is worse than the bug being fixed.
+  it("the same image pasted in TWO separate gestures adds two", () => {
+    mount();
+    const ta = textarea();
+    paste(ta, [pngFile("shot.png")], "both");
+    paste(ta, [pngFile("shot.png")], "both");
+    expect(screen.getByText("2 screenshots")).toBeTruthy();
   });
 
   it("remove drops the right image", () => {
