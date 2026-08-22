@@ -728,12 +728,19 @@ describe("(F) per-kind: a text mark applies inside each PROSE kind's text run", 
     });
   }
 
-  // codeBlock: the `code` ROW lists codeBlock as applies:"ok" (the cell is
-  // enabled) but the codeBlock schema is `marks: ""`, so the inline mark is a
-  // near-NO-OP inside it (the oracle's stated divergence between an enabled cell
-  // and a near-zero effect). Prove the cell IS enabled AND that no mark lands
-  // (the text is untouched — no data loss).
-  it("codeBlock: the code cell is 'ok' but the inline mark cannot land (marks: '')", () => {
+  // codeBlock: `marks: ""`, so no inline mark can land there.
+  //
+  // RENEGOTIATED (task 397), and the reason is at the site because this leg used
+  // to assert the defect as the contract. It read `expect(CODE.applies(ctx)).toBe("ok")`
+  // with the comment "the cell is enabled … the oracle's stated divergence
+  // between an enabled cell and a near-zero effect". An enabled, clickable cell
+  // that cannot do anything is not a sanctioned divergence — it is the
+  // false-affordance class (`AGENTS.md` → "what the hover OFFERS is what the
+  // commit ACCEPTS"), and all five mark cells sat lit and inert in both markless
+  // verbatim blocks. `formatApplies` is a per-mark FACTORY now and reads
+  // `allowsMarkType` off the live schema. What the leg still pins unchanged is
+  // the half that always mattered: no mark lands, and the text is untouched.
+  it("codeBlock: the code cell is DISABLED — the schema admits no mark (marks: '')", () => {
     const editor = mountEditor(kindDoc());
     expect(editor.state.schema.nodes.codeBlock.spec.marks).toBe("");
     const [from, to] = rangeOfText(editor, (n) => n.type.name === "codeBlock");
@@ -741,7 +748,7 @@ describe("(F) per-kind: a text mark applies inside each PROSE kind's text run", 
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
     );
     const ctx = lightningCtx(editor);
-    expect(CODE.applies(ctx)).toBe("ok"); // enabled cell
+    expect(CODE.applies(ctx)).toBe("disabled"); // greyed — the toggle is inert here
     const beforeText = editor.state.doc.textContent;
     CODE.run(ctx);
     // No mark landed (the code-block schema forbids marks), text preserved.
@@ -940,17 +947,26 @@ describe("(F) wrapper toggle on heading/titleField — DATA-LOSS guard (Bug #1)"
     expect(countOfType(editor, "blockquote")).toBe(0);
   });
 
-  it("wrapper cells STAY 'ok' on a plain paragraph / listItem (no over-gating)", () => {
+  it("wrapper cells STAY 'ok' where the wrapper can actually go (no over-gating)", () => {
     const editor = mountEditor(kindDoc());
-    // plain paragraph
+    // plain paragraph — all three wrap
     selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-1");
     let ctx = lightningCtx(editor);
     for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
-    // a paragraph inside a list item (toggle-off / re-list case)
+    // A paragraph inside a LIST ITEM. RENEGOTIATED (task 397): this leg used to
+    // assert all THREE stay "ok" under the label "toggle-off / re-list case",
+    // which is true of the two list rows and false of blockquote. `listItem`'s
+    // content pins a leading `(paragraph | graphicsBlock)`, so at index 0 the
+    // quote has nowhere to go — measured, `toggleBlockquote` there returns false
+    // and changes nothing, i.e. the cell was lit over a dead click. The two list
+    // rows stay "ok" because they are SUBTRACTIVE here (lift out / convert in
+    // place), which is exactly the distinction `selectionHostsWrapper` draws.
     selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-li");
     ctx = lightningCtx(editor);
-    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
-    // a paragraph inside a blockquote (toggle-off case)
+    for (const { row, wrap } of WRAPPER_ROWS) {
+      expect(row.applies(ctx)).toBe(wrap === "blockquote" ? "disabled" : "ok");
+    }
+    // a paragraph inside a blockquote (toggle-off case) — all three still fit
     selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-bq");
     ctx = lightningCtx(editor);
     for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");

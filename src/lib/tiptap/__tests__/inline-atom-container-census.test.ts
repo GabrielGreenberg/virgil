@@ -271,12 +271,21 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     // ZERO production consumers and "the cells are greyed" was false. A facet
     // nothing reads is this repo's own recurring finding, one level up from the
     // one this task fixes.
+    //
+    // GENERALIZED (task 397): the per-id helper `rowDisabled` this leg pinned is
+    // now `gridCellDisabled`, and it is no longer the exception — it is the ONE
+    // door EVERY grid cell enters, both shared probes having been retired for the
+    // same reason these two cells never shared one. The general form of the leg
+    // (every cell asks its OWN id, allowlist EMPTY) lives in
+    // `src/components/__tests__/grid-cell-applicability-census.test.ts`; what
+    // stays here is the inline-atom pair specifically, so this suite still fails
+    // on its own if these two rows are un-wired.
     const src = read("src/components/ActionsMenuPanel.tsx");
-    expect(src).toMatch(/id="inline-math"[\s\S]{0,200}?disabled=\{rowDisabled\("inline-math"\)\}/);
-    expect(src).toMatch(/id="ref"[\s\S]{0,200}?disabled=\{rowDisabled\("ref"\)\}/);
-    // …and NOT via a second shared probe: the two rows pass different schema
-    // node names, so one probe would assert the schema answers identically.
-    expect(src).toMatch(/const rowDisabled = \(id: ActionId\)/);
+    expect(src).toMatch(/id="inline-math"[\s\S]{0,200}?disabled=\{gridCellDisabled\("inline-math"\)\}/);
+    expect(src).toMatch(/id="ref"[\s\S]{0,200}?disabled=\{gridCellDisabled\("ref"\)\}/);
+    // …and NOT via a shared probe: the two rows pass different schema node
+    // names, so one probe would assert the schema answers identically.
+    expect(src).toMatch(/const gridCellDisabled = \(id: ActionId\)/);
   });
 
   it("both native drops GATE BEFORE they MINT — ordering, which no grep of the region can see", () => {

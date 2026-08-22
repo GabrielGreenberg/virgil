@@ -407,64 +407,34 @@ export function ActionsMenuPanel({
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
 
-  // Bug #1 (DATA-LOSS): the three structural WRAPPER cells (bullet-list /
-  // ordered-list / blockquote) grey out when the caret/selection sits on a block
-  // a list/quote wrapper would DESTROY (titleField / heading / atom blocks) — the
-  // registry's `wrapperApplies` decides this off the live selection. The three
-  // share one `applies()` (only `view` + `ref` + `canEdit` matter), so one probe
-  // covers all three. `!canEdit` still disables them (collab gate is folded into
-  // `applies()` too, but the other cells use the bare `!canEdit`, so we OR it for
-  // a uniform render). Computed at render (menu-open), never per keystroke.
-  const wrappersDisabled =
-    !canEdit ||
-    VIRGIL_ACTION_REGISTRY["bullet-list"]!.applies({
-      editor,
-      view: editor.view,
-      ref: {
-        kind: "selection",
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-        paragraphId: "",
-      },
-      surface: "lightning",
-      canEdit,
-    } as ActionContext) === "disabled";
-
-  // Task 147 (DATA-LOSS): the six block-atom INSERT cells (example /
-  // display-math / `\tex` / figure / graphics / forest) grey out when the caret sits in a
-  // block that can't host a block child (titleField / codeBlock / latexComment)
-  // — inserting there would SPLIT the container into two `\title{}` (silent
-  // data-loss on reload) or two verbatim blocks. All five share the registry's
-  // container-aware `blockInsertApplies`, so one probe (the `example` row) covers
-  // all six. `!canEdit` is folded in (collab gate) for a uniform render, exactly
-  // like `wrappersDisabled`. inline-math / `\ref` insert INLINE atoms and are
-  // gated SEPARATELY below (task 396): they are legitimate in a `titleField`
-  // (`inline*`) — which is why they cannot share this probe — but they DO corrupt
-  // the markless `text*` verbatim blocks, contrary to the task-147 sentence that
-  // used to stand here. Computed at menu-open, never per keystroke.
-  const blockAtomsDisabled =
-    !canEdit ||
-    VIRGIL_ACTION_REGISTRY["example"]!.applies({
-      editor,
-      view: editor.view,
-      ref: {
-        kind: "selection",
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-        paragraphId: "",
-      },
-      surface: "lightning",
-      canEdit,
-    } as ActionContext) === "disabled";
-
-  // Task 396 — the two INLINE-atom cells (`$x$`, `Cross-ref`). Deliberately NOT
-  // a second SHARED probe: the two rows pass DIFFERENT schema node names
-  // (`inlineMath` / `labelRef`) to `inlineAtomInsertApplies`, so one probe would
-  // be asserting that the schema answers identically for both — the shared-probe
-  // substitution this grid is already filed for. Each cell asks its OWN row.
-  // `!canEdit` folds in for a uniform render, as above. Computed at menu-open,
-  // never per keystroke.
-  const rowDisabled = (id: ActionId): boolean =>
+  // ───────────────────────────────────────────────────────────────────────
+  // THE grid's one applicability door (task 397). Every cell asks ITS OWN row.
+  //
+  // Until 397 the panel carried two SHARED probes — one `blockAtomsDisabled`
+  // computed from the `example` row and fed to SIX block-atom cells, and one
+  // `wrappersDisabled` computed from the `bullet-list` row and fed to all THREE
+  // wrapper cells — on the stated ground that the rows behind each group "share
+  // one `applies()`". They do not: `blockInsertApplies` is deliberately a
+  // per-NodeType FACTORY (its own docstring says so) and `wrapperApplies` became
+  // one in 397, so a shared probe is an assertion that the SCHEMA answers
+  // identically for every type in the group. Inside an expex example it does not
+  // — `exampleBlock` hosts `displayMath` and `graphicsBlock` and nothing else of
+  // the six, so **Display math** and **Image** greyed out although each row said
+  // `ok`, the schema hosted them and the run worked (Feature A2, unreachable from
+  // the grid) — while inside an example ITEM the two list cells stayed lit over a
+  // toggle that DESTROYS the item's `\vxid` identity and renumbers the example.
+  //
+  // The GRAB menu had this right from the start (`DragHandleMenu`:
+  // `disabled: row.applies(ctx) === "disabled"`, one call per row), which is the
+  // precedent this restores. The census in `grid-row-applies.test.ts` is what
+  // keeps it: no `disabled=` on a grid cell may read anything but this door,
+  // called with the cell's own id.
+  //
+  // `!canEdit` folds in (the collab gate is inside `applies()` too, but the
+  // uniform OR keeps every cell rendering the same way). One ctx per call;
+  // computed at menu-open, never per keystroke — keystroke sanctity.
+  // ───────────────────────────────────────────────────────────────────────
+  const gridCellDisabled = (id: ActionId): boolean =>
     !canEdit ||
     VIRGIL_ACTION_REGISTRY[id]!.applies({
       editor,
@@ -572,7 +542,7 @@ export function ActionsMenuPanel({
             col={0}
             title="Bold (⌘B)"
             active={isActive("bold")}
-            disabled={!canEdit}
+            disabled={gridCellDisabled("bold")}
             run={() => runGridAction("bold")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -585,7 +555,7 @@ export function ActionsMenuPanel({
             col={1}
             title="Italic (⌘I)"
             active={isActive("italic")}
-            disabled={!canEdit}
+            disabled={gridCellDisabled("italic")}
             run={() => runGridAction("italic")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -598,7 +568,7 @@ export function ActionsMenuPanel({
             col={2}
             title="Strikethrough"
             active={isActive("strike")}
-            disabled={!canEdit}
+            disabled={gridCellDisabled("strike")}
             run={() => runGridAction("strike")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -612,7 +582,7 @@ export function ActionsMenuPanel({
             col={3}
             title="Inline code"
             active={isActive("code")}
-            disabled={!canEdit}
+            disabled={gridCellDisabled("code")}
             run={() => runGridAction("code")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -635,7 +605,7 @@ export function ActionsMenuPanel({
             col={1}
             title="Bullet list"
             active={isActive("bulletList")}
-            disabled={wrappersDisabled}
+            disabled={gridCellDisabled("bullet-list")}
             run={() => runGridAction("bullet-list")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -653,7 +623,7 @@ export function ActionsMenuPanel({
             col={2}
             title="Numbered list"
             active={isActive("orderedList")}
-            disabled={wrappersDisabled}
+            disabled={gridCellDisabled("ordered-list")}
             run={() => runGridAction("ordered-list")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
@@ -671,7 +641,7 @@ export function ActionsMenuPanel({
             col={3}
             title="Blockquote"
             active={isActive("blockquote")}
-            disabled={wrappersDisabled}
+            disabled={gridCellDisabled("blockquote")}
             run={() => runGridAction("blockquote")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
@@ -685,7 +655,7 @@ export function ActionsMenuPanel({
             row={2}
             col={0}
             title="Wrap selection in example block"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("example")}
             run={() => wrapSelectionInExample()}
           >
             <IconExample size={16} />
@@ -695,7 +665,7 @@ export function ActionsMenuPanel({
             row={2}
             col={1}
             title="Wrap selection in inline math"
-            disabled={rowDisabled("inline-math")}
+            disabled={gridCellDisabled("inline-math")}
             run={() => runGridAction("inline-math")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
@@ -707,7 +677,7 @@ export function ActionsMenuPanel({
             row={2}
             col={2}
             title="Wrap selection in display math"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("display-math")}
             run={() => runGridAction("display-math")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
@@ -719,7 +689,7 @@ export function ActionsMenuPanel({
           <ColorGridCell
             row={2}
             col={3}
-            disabled={!canEdit}
+            disabled={gridCellDisabled("text-color")}
             lastAppliedColor={lastAppliedColor}
             run={(rect) => runGridAction("text-color", { anchorRect: rect })}
           />
@@ -730,7 +700,7 @@ export function ActionsMenuPanel({
             row={3}
             col={0}
             title="Insert raw LaTeX block"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("tex")}
             run={() => insertTexBlock(editor)}
           >
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
@@ -742,7 +712,7 @@ export function ActionsMenuPanel({
             row={3}
             col={1}
             title="Insert figure block"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("figure")}
             run={() => runGridAction("figure")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
@@ -754,7 +724,7 @@ export function ActionsMenuPanel({
             row={3}
             col={2}
             title="Insert image"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("graphics")}
             run={() => runGridAction("graphics")}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
@@ -772,7 +742,7 @@ export function ActionsMenuPanel({
             row={3}
             col={3}
             title="Insert cross-reference (\ref)"
-            disabled={rowDisabled("ref")}
+            disabled={gridCellDisabled("ref")}
             run={() => runGridAction("ref")}
           >
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
@@ -792,7 +762,7 @@ export function ActionsMenuPanel({
             row={4}
             col={0}
             title="Insert syntax tree (forest)"
-            disabled={blockAtomsDisabled}
+            disabled={gridCellDisabled("forest")}
             run={() => runGridAction("forest")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">

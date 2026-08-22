@@ -211,6 +211,7 @@ import {
   posHostsBlockInsert,
   posHostsInlineAtom,
   blockTypeHostsBlockInsert,
+  selectionHostsWrapper,
 } from "@/text-objects/text-object-registry";
 import {
   getSectionRangeByUuid,
@@ -2220,7 +2221,7 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
 // ---------------------------------------------------------------------------
 // blockInsertApplies (task 147 + 229) — the CONTAINER-AWARE gate for the
 // block-atom rows that INSERT a block node at the caret (example / display-math /
-// `\tex` / figure / graphics). It tightens `blockApplies`: when a mid-content
+// `\tex` / figure / graphics / forest). It tightens `blockApplies`: when a mid-content
 // insert would SPLIT the caret's container, grey the cell so no click can
 // corrupt. Two split shapes: the caret's own textblock (`titleField` /
 // `codeBlock` / `latexComment`), AND a fine textblock whose PARENT can't re-host
@@ -2596,27 +2597,87 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
 /**
  * Applicability for the MARK format rows (bold / italic / strike / code /
  * text-color) — REAL as of CHIP 7b (it was a placeholder `() => "ok"` in CHIP
- * 6b). Every mark action is selection-`"ignored"`: a mark toggle is fully valid
- * at a COLLAPSED CARET — it flips the pending/STORED mark, so the next typed
- * character is bold; text-color pops the popover. None need a live range, so the
- * DA-5 range check is a no-op and the cell stays `"ok"` at a caret — EXACTLY
- * matching how the grid renders the mark cells today (always enabled). A mark is
- * harmless on ANY block (you can bold text inside a heading / titleField; on a
- * `marks: ""` codeBlock it's a near-no-op that leaves the text untouched), so
- * the mark base is unconditionally `"ok"`.
+ * 6b), and SCHEMA-PRECISE as of task 397. Every mark action is
+ * selection-`"ignored"`: a mark toggle is fully valid at a COLLAPSED CARET — it
+ * flips the pending/STORED mark, so the next typed character is bold; text-color
+ * pops the popover. None need a live range, so the DA-5 range check is a no-op
+ * and the cell stays `"ok"` at a caret in ordinary prose.
  *
- * The only thing that greys a mark cell is the UNIFORM collab read-only gate
- * (`ctx.canEdit === false`): a partner holding the pen disables marks too.
- * Routed through `gateApplies` (base `"ok"`, `selection: "ignored"`).
+ * A FACTORY, for the reason `blockInsertApplies` is one: the question is
+ * schema-precise in the row's OWN mark type. The pre-397 base was an
+ * unconditional `"ok"` on the stated ground that "a mark is harmless on ANY
+ * block … on a `marks: ""` codeBlock it's a near-no-op". Harmless it is; but a
+ * cell that is enabled, clickable and CANNOT DO ANYTHING is the false-affordance
+ * class (`AGENTS.md` → "what the hover OFFERS is what the commit ACCEPTS"), and
+ * the markless verbatim blocks (`codeBlock` / `latexComment`, `marks: ""`) are
+ * exactly where all five sat lit and inert. Read from the schema
+ * (`allowsMarkType`) — not a list of block names — so a future verbatim kind, or
+ * a block that admits SOME marks and not this one, is covered by shipping.
+ *
+ * Over a RANGE the verdict is "does any touched textblock accept this mark",
+ * not "do all of them": a selection running from prose into a `codeBlock` still
+ * bolds the prose half, so greying it would take away a working gesture. The
+ * cell greys only when the toggle is inert everywhere it could act — which is the
+ * honest statement of what the user is being offered. (Bounded by the selection,
+ * computed at menu-open, never per keystroke — keystroke sanctity.)
+ *
+ * The RUN is deliberately NOT guarded: unlike the wrappers there is nothing to
+ * prevent — a mark on a markless block changes nothing — and a guard would have
+ * to re-answer the mixed-selection question, i.e. add a second table for a
+ * hazard that does not exist.
+ *
+ * The only other thing that greys a mark cell is the UNIFORM collab read-only
+ * gate (`ctx.canEdit === false`): a partner holding the pen disables marks too.
+ * Routed through `gateApplies` (base as computed, `selection: "ignored"`).
  *
  * NOTE — the structural WRAPPER rows (bullet-list / ordered-list / blockquote)
- * do NOT use this; they route through `wrapperApplies` (below), which greys on
- * blocks a list/quote wrapper would destroy. Splitting the two keeps the mark
- * applicability byte-identical to CHIP 7b while the wrappers gain the data-loss
- * guard (Bug #1).
+ * do NOT use this; they route through `wrapperApplies(node)` (below), which greys
+ * on blocks a list/quote wrapper would DESTROY and in containers that cannot host
+ * the wrapper at all.
  */
-function formatApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
-  return gateApplies({ selection: "ignored" }, ctx, "ok");
+function formatApplies(
+  markName: string,
+): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
+  return (ctx: ActionContext) => {
+    const base: "ok" | "disabled" = rangeAllowsMark(ctx, markName) ? "ok" : "disabled";
+    return gateApplies({ selection: "ignored" }, ctx, base);
+  };
+}
+
+/**
+ * Does any textblock the ref touches admit a mark of type `markName`? Reads the
+ * live schema through `NodeType.allowsMarkType`, so `marks: ""` (codeBlock /
+ * latexComment) answers false and every other container answers for itself.
+ *
+ * Degrades to `true` when no live view / no such mark in this schema is threaded
+ * (the minimal menu-decoration ctx, a unit-test probe, a card body built without
+ * the mark) — the historic "allow" fallback every container gate in this file
+ * takes: a verdict is only issued when the question can actually be asked.
+ */
+function rangeAllowsMark(ctx: ActionContext, markName: string): boolean {
+  const doc = ctx.view?.state?.doc;
+  if (!doc || typeof doc.resolve !== "function") return true; // no live view → allow
+  const markType = doc.type.schema.marks[markName];
+  if (!markType) return true; // mark absent from this schema → allow (historic)
+  const ref = ctx.ref;
+  let from: number;
+  let to: number;
+  if (ref.kind === "cursor") from = to = ref.pos;
+  else if (ref.kind === "selection") {
+    from = ref.from;
+    to = ref.to;
+  } else return true; // a text-object ref has no caret to read — allow (historic)
+  const size = doc.content.size;
+  const lo = Math.max(0, Math.min(from, size));
+  const hi = Math.max(lo, Math.min(to, size));
+  if (lo === hi) return doc.resolve(lo).parent.type.allowsMarkType(markType);
+  let anyAllows = false;
+  doc.nodesBetween(lo, hi, (node) => {
+    if (anyAllows) return false;
+    if (node.isTextblock && node.type.allowsMarkType(markType)) anyAllows = true;
+    return !anyAllows;
+  });
+  return anyAllows;
 }
 
 // ---------------------------------------------------------------------------
@@ -2708,9 +2769,54 @@ function selectionIsListable(view: EditorView): boolean {
  * blockquote-or-list) stays `"ok"`. The collab gate still layers via
  * `gateApplies`.
  */
-function wrapperApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
-  const base: "ok" | "disabled" = selectionIsListable(ctx.view) ? "ok" : "disabled";
-  return gateApplies({ selection: "ignored" }, ctx, base);
+function wrapperApplies(
+  wrapperNodeName: string,
+): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
+  return (ctx: ActionContext) => {
+    const base: "ok" | "disabled" = wrapperSafeHere(ctx.view, wrapperNodeName)
+      ? "ok"
+      : "disabled";
+    return gateApplies({ selection: "ignored" }, ctx, base);
+  };
+}
+
+/**
+ * The WHOLE wrapper safety question, in one place, so the affordance (`applies`)
+ * and the commit (`run`) can never answer it from two tables — the shape task
+ * 258 states for placements and task 321 for drop decisions.
+ *
+ * Two halves, and they are genuinely different questions:
+ *   • **identity** — `selectionIsListable`: would the wrap DESTROY the block's
+ *     own identity (a `titleField`, a `heading`, an atom block coerced into a
+ *     paragraph)? Byte-identical to its pre-397 behaviour.
+ *   • **container** — `selectionHostsWrapper`: can the wrapper be placed AROUND
+ *     those blocks at all, or would ProseMirror lift them out of a container
+ *     that cannot host it? THE container SSOT (`text-object-registry`), the
+ *     third member of the `posHostsBlockInsert` / `posHostsInlineAtom` family.
+ *
+ * The second half is the one task 397 adds. Without it the gate answers a
+ * question about the BLOCK when the destruction is a property of the CONTAINER:
+ * a bullet toggle at a caret inside an expex `exampleItem` passes the identity
+ * half (the block IS a paragraph) and silently destroys the item.
+ *
+ * A view-less ctx (the minimal menu-decoration ctx, a unit-test probe) answers
+ * `true` — the historic "allow" fallback every other container gate takes: a
+ * verdict is only issued when the question can actually be asked.
+ */
+function wrapperSafeHere(
+  view: EditorView | undefined,
+  wrapperNodeName: string,
+): boolean {
+  const state = view?.state;
+  if (!state?.selection) return true; // no live view → allow (historic)
+  if (!selectionIsListable(view!)) return false;
+  // The container half needs a real schema + a resolvable doc. A stubbed state
+  // (the minimal menu-decoration ctx, a unit-test double) has neither, so it gets
+  // the pre-397 verdict rather than a fabricated one — the same "a verdict is
+  // only issued when the question can actually be asked" fallback
+  // `blockInsertApplies` and `inlineAtomInsertApplies` both take.
+  if (!state.schema || typeof state.doc?.resolve !== "function") return true;
+  return selectionHostsWrapper(state, state.schema.nodes[wrapperNodeName]);
 }
 
 /**
@@ -2727,31 +2833,50 @@ function wrapperApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
  * doc while the partner holds the pen — belt-and-suspenders with the
  * `readOnlyEnforcer` plugin (which would reject the tx anyway).
  *
- * Bug #1 (DATA-LOSS): the WRAPPER toggles (`wrapper: true`) additionally route
- * `applies` through `wrapperApplies` (greying on non-listable blocks) AND guard
- * the `run()` with the SAME `selectionIsListable` check — defense-in-depth, so a
- * future surface that bypasses `applies()` (e.g. a held keyboard shortcut, or a
- * new menu) still can't destroy a titleField / heading / atom block. The mark
- * toggles (`wrapper` unset) keep `formatApplies` + the unconditional run, exactly
- * as before.
+ * Bug #1 (DATA-LOSS) + task 397: the WRAPPER toggles NAME the schema node they
+ * wrap with (`wrapper: "bulletList"` / `"orderedList"` / `"blockquote"`). That
+ * name routes `applies` through `wrapperApplies(node)` AND guards the `run()`
+ * with the SAME `wrapperSafeHere(view, node)` predicate — defense-in-depth, so a
+ * surface that bypasses `applies()` (a held keyboard shortcut, the slash twins, a
+ * new menu) still can't destroy a titleField / heading / atom block, nor lift a
+ * paragraph out of a container that cannot host the wrapper. Per-node rather than
+ * one shared boolean because the three rows place three DIFFERENT types and the
+ * schema does not answer identically for all three. The mark toggles (`wrapper`
+ * unset) keep `formatApplies` + the unconditional run, exactly as before.
  */
 function formatToggleRow(
   id: FormatActionId,
   label: string,
   chainCmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>,
-  opts: {
-    wrapper?: boolean;
-    /** The structural WRAPPER rows (bullet-list / ordered-list / blockquote) are
-     *  ALSO reachable via slash (`\list`/`\enumerate`/`\quote` + the two `itemize`/
-     *  `quotation` aliases), routed through the bridge from `commands.ts`. Passing
-     *  this makes the surface map TRUTHFUL: the row claims `surfaces.slash` and
-     *  names its command(s), so `assertActionCoverage` reconciles all five live
-     *  names against it (task 062). The MARK toggles omit it — a mark is not a
-     *  slash command. */
-    slash?: { name: string; aliases?: string[] };
-  } = {},
+  /**
+   * WHAT this row toggles, named in the SCHEMA's own vocabulary — a discriminated
+   * union, so "exactly one of wrapper / mark" is a COMPILE-TIME fact rather than
+   * a convention (task 397). Naming it is what makes each row's gate
+   * schema-PRECISE: the seven rows place seven DIFFERENT types, so a shared probe
+   * was asserting the schema answers identically for all of them, and inside an
+   * expex example — and inside the markless verbatim blocks — it does not.
+   *
+   *   • `wrapper` — the block node this row WRAPS with (`bulletList` /
+   *     `orderedList` / `blockquote`). Routes `applies` through
+   *     `wrapperApplies(node)` and guards the `run()` with the SAME
+   *     `wrapperSafeHere(view, node)` predicate.
+   *   • `mark` — the mark this row toggles (`bold` / `italic` / `strike` /
+   *     `code`). Routes `applies` through `formatApplies(mark)`, which greys the
+   *     cell where the schema admits no such mark.
+   *
+   * `slash` is orthogonal and rides either arm: the WRAPPER rows are ALSO
+   * reachable via slash (`\list`/`\enumerate`/`\quote` + the two `itemize`/
+   * `quotation` aliases), routed through the bridge from `commands.ts`. Passing
+   * it makes the surface map TRUTHFUL — the row claims `surfaces.slash` and names
+   * its command(s), so `assertActionCoverage` reconciles all five live names
+   * against it (task 062). The MARK toggles pass none: a mark is not a slash
+   * command.
+   */
+  opts:
+    | { wrapper: string; mark?: never; slash?: { name: string; aliases?: string[] } }
+    | { mark: string; wrapper?: never; slash?: { name: string; aliases?: string[] } },
 ): ActionSpec {
-  const isWrapper = opts.wrapper === true;
+  const wrapperNode = opts.wrapper;
   const slash = opts.slash;
   return {
     id,
@@ -2762,31 +2887,41 @@ function formatToggleRow(
     surfaces: slash ? { lightning: true, slash: true } : { lightning: true },
     ...(slash ? { slashName: slash.name } : {}),
     ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
-    applies: isWrapper ? wrapperApplies : formatApplies,
+    applies:
+      opts.wrapper !== undefined
+        ? wrapperApplies(opts.wrapper)
+        : formatApplies(opts.mark),
     run: (ctx) => {
       if (isCollabReadOnly(ctx)) return; // uniform collab gate — no-op
-      // Bug #1 defense-in-depth: a wrapper toggle on a non-listable block
-      // (titleField / heading / atom block) would DESTROY its identity — no-op
-      // here even if a surface invoked us without consulting `applies()`.
-      if (isWrapper && !selectionIsListable(ctx.view)) return;
+      // Defense-in-depth (Bug #1 + task 397): a wrapper toggle on a block whose
+      // IDENTITY the wrap destroys (titleField / heading / atom block) or in a
+      // CONTAINER that cannot host the wrapper (an expex `exampleItem`, whose
+      // union has no list — PM lifts the paragraph OUT and the item's `\vxid`
+      // identity and position-derived number go with it) is a no-op here even if
+      // a surface invoked us without consulting `applies()`. The SAME predicate
+      // the affordance reads, so the two cannot disagree — which matters most for
+      // the slash twins (`\list` / `\enumerate` / `\quote`), whose popup asks
+      // no container question of its own.
+      if (wrapperNode && !wrapperSafeHere(ctx.view, wrapperNode)) return;
       chainCmd(ctx.editor.chain().focus()).run();
     },
   };
 }
 
 /** The four MARK toggles + the three list/quote WRAPPER toggles. The wrappers
- *  pass `{ wrapper: true }` so they grey + no-op on non-listable blocks (Bug
- *  #1) AND `{ slash: … }` so the surface map records the slash commands that
+ *  pass `{ wrapper: "<node>" }` so they grey + no-op on a block whose identity
+ *  the wrap destroys (Bug #1) or in a container that cannot host THAT node
+ *  (task 397) AND `{ slash: … }` so the surface map records the commands that
  *  reach them (task 062): `\list` (+ alias `itemize`) → bullet-list,
  *  `\enumerate` → ordered-list, `\quote` (+ alias `quotation`) → blockquote.
  *  The marks stay unconditionally applicable and slash-less. */
-const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold());
-const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic());
-const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike());
-const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode());
-const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: true, slash: { name: "list", aliases: ["itemize"] } });
-const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: true, slash: { name: "enumerate" } });
-const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: true, slash: { name: "quote", aliases: ["quotation"] } });
+const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), { mark: "bold" });
+const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic" });
+const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike" });
+const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code" });
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] } });
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" } });
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] } });
 
 /**
  * The text-color row (CHIP 6b). Unlike the toggles, this opens the
@@ -2816,7 +2951,12 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
   selection: "ignored",
   backbone: "tiptap-chain",
   surfaces: { lightning: true },
-  applies: formatApplies,
+  // The mark this row ultimately applies is `textColor` (via the popover's
+  // `chain.setTextColor()`), so it takes the SAME schema-precise gate as the four
+  // toggles — a colour cell that opens a picker over a `marks: ""` verbatim block
+  // is the false-affordance shape one step removed: the popover opens, the user
+  // picks, and nothing happens (task 397).
+  applies: formatApplies("textColor"),
   run: textColorRun,
 };
 
