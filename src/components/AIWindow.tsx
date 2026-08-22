@@ -44,6 +44,7 @@ import type {
   RevisionCard,
 } from "@/lib/types";
 import { isRequestOpen } from "@/lib/ai-request-open";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import { linkedCardKindFrom } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
@@ -752,7 +753,8 @@ export default function AIWindow({
                           <datalist id="ai-window-bib-keys">
                             {bibEntries.map((b) => (
                               <option key={b.key} value={b.key}>
-                                {b.fields.title || b.type}
+                                {/* DISPLAY — task 409. */}
+                                {bibFieldDisplay(b, "title") || b.type}
                               </option>
                             ))}
                           </datalist>

@@ -5,6 +5,15 @@
  * Implements natbib command semantics for WYSIWYG display text.
  */
 
+/**
+ * bib-display-exempt-file: THE DOOR'S OWN HOME. Every `entry.fields` read in
+ * this module is an INPUT to a formatter that projects its own output (task
+ * 368's census enforces that, per exported `format*`/`bibField*` name), or is
+ * the door itself. Projecting an input as well would double-project; the
+ * failure this file's guards watch for is an exported producer that projects
+ * NEITHER.
+ */
+
 import type { BibEntry } from "./types";
 import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
 import { latexToDisplayText } from "./latex-typography";
@@ -402,18 +411,51 @@ export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): stri
   return latexToDisplayText(`${author} (${year})`);
 }
 
-/** Returns author / year / title parts for a single bib key. Missing fields come back as empty strings. */
-export function formatMediumCitationParts(
-  key: string,
-  bibEntries: BibEntry[],
-): { author: string; year: string; title: string } {
-  const entry = bibEntries.find((e) => e.key === key);
-  if (!entry) return { author: key, year: "", title: "" };
-  return {
-    author: latexToDisplayText(formatAuthorLastNames(entry, false, false)),
-    year: latexToDisplayText(getEntryYear(entry)),
-    title: latexToDisplayText(entry.fields.title || ""),
-  };
+/**
+ * Project ONE raw `.bib` field for DISPLAY — the bib-ROW family's door onto
+ * {@link latexToDisplayText} (task 409).
+ *
+ * Task 368 gave the four citation FORMATTERS a projection; the row surfaces
+ * (the Library list row, the picker, the bib cards, the Citations rows) read
+ * `entry.fields.*` straight into JSX and were never reached, because 368's
+ * census discovers its population from the bib-parsers' `format*` exports and
+ * is structurally blind to a component that reads a field itself. So the same
+ * bytes rendered as `L{\'o}pez` beside a body paragraph that rendered `L{ó}pez`.
+ *
+ * ── PER-FIELD, NOT A RECORD ──
+ * A `bibEntryDisplayFields(entry) → Record<string,string>` over a hand-listed
+ * field set would be a new SSOT-of-field-names (the drift AGENTS.md legislates
+ * against) and would allocate a whole record for a caller that wants one field.
+ * EVERY field is projectable — `latexToDisplayText` cheap-bails on ASCII — so
+ * the door is a per-field accessor and the field name is the caller's own.
+ *
+ * ── PRESENCE IS PRESERVED ──
+ * `undefined` iff the field is ABSENT, so a `?? catalogValue` fallback chain
+ * reads exactly as it did against the raw field. An EMPTY field comes back as
+ * the empty string, which is what it was.
+ *
+ * ── DISPLAY ONLY ──
+ * Inherited whole from the door: nothing this returns may be written back.
+ * The `.bib` bytes are the round trip's own record. The EDIT surfaces
+ * (`BibEditModal`, `BibEntryCard`'s field editor) and the RAW-SOURCE views
+ * (the field-by-field pods beside them) therefore keep reading `entry.fields`
+ * directly, and say so at the site.
+ *
+ * ── PARTIAL, BY DECISION (Gabriel, 2026-08-21) ──
+ * `L{ó}pez` — the BibTeX grouping braces SURVIVE, because the door models no
+ * BibTeX brace semantics and inventing one here is the hand-listed vocabulary
+ * every census in this file exists to prevent. That is strictly better than
+ * `L{\'o}pez` and it is the SAME characters body text shows for the same bytes,
+ * which is the property task 368's suite pins. The braces surviving is the
+ * DECIDED behaviour, not a gap — pinned as such in the suite.
+ */
+export function bibFieldDisplay(
+  entry: { fields?: Record<string, string> } | null | undefined,
+  name: string,
+): string | undefined {
+  const raw = entry?.fields?.[name];
+  if (raw === undefined) return undefined;
+  return latexToDisplayText(raw);
 }
 
 /**

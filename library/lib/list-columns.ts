@@ -5,6 +5,7 @@
 
 import type { CatalogEntry, IndexedState, BibAuthState } from "./catalog";
 import type { BibEntry } from "./types";
+import { bibFieldDisplay } from "./bib-parser";
 import colOrderDefaults from "./list-columns.defaults.json";
 
 /** Columns the user can sort by. */
@@ -337,6 +338,9 @@ export function defaultDirForStatusFacet(): SortDir {
 // fields are a snapshot from index time and can drift after auth runs.
 
 function numericYear(e: CatalogEntry, bibByKey: Map<string, BibEntry>): number {
+  // bib-display-exempt: non-display — this parses an INTEGER out of the year
+  // field for a numeric sort; there is no reader and nothing a projection
+  // could change about `parseInt`.
   const bibYear = e.citekey ? bibByKey.get(e.citekey)?.fields.year : undefined;
   if (bibYear) {
     const n = parseInt(bibYear, 10);
@@ -346,9 +350,14 @@ function numericYear(e: CatalogEntry, bibByKey: Map<string, BibEntry>): number {
   return -Infinity;
 }
 
+// The Library list's sort keys are PROJECTED for the same reason the
+// Bibliography panel's are (task 409, decision 3): sorting the raw bytes files
+// every accented surname under its escape, so the order the reader sees is
+// wrong. Unlike the Bibliography panel's, these feed no export — this is
+// display order only.
 function titleOf(e: CatalogEntry, bibByKey: Map<string, BibEntry>): string {
   return (
-    (e.citekey ? bibByKey.get(e.citekey)?.fields.title : undefined) ??
+    (e.citekey ? bibFieldDisplay(bibByKey.get(e.citekey), "title") : undefined) ??
     e.title ??
     e.originalFilename ??
     ""
@@ -362,8 +371,10 @@ function firstAuthorSurname(
   let raw = "";
   if (e.citekey) {
     const bib = bibByKey.get(e.citekey);
-    if (bib?.fields.author) raw = bib.fields.author.split(" and ")[0];
-    else if (bib?.fields.editor) raw = bib.fields.editor.split(" and ")[0];
+    const authorField = bibFieldDisplay(bib, "author");
+    const editorField = bibFieldDisplay(bib, "editor");
+    if (authorField) raw = authorField.split(" and ")[0];
+    else if (editorField) raw = editorField.split(" and ")[0];
   }
   if (!raw && e.authors && e.authors.length > 0) raw = e.authors[0];
   raw = raw.trim();

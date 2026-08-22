@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * bib-display-exempt-file: EDIT SURFACE — every `fields` read in this file is
+ * the user's own editable value, and its raw-mode textarea round-trips back
+ * through `parseSingleEntry` into the saved fields. Projecting anything here
+ * is the ONE change in the bib-row family (task 409) that would write a
+ * rendering into the `.bib` instead of avoiding one.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@library/lib/types";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";

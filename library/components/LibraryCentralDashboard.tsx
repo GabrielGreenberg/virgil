@@ -5,6 +5,7 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { computeCatalogStats, type CatalogStats } from "@library/lib/catalog-stats";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
+import { bibFieldDisplay } from "@library/lib/bib-parser";
 import { IndexedPill, BibPill } from "./StatusPill";
 
 /** How many fuzzy matches the inline palette renders before collapsing the
@@ -262,10 +263,15 @@ function PaletteRow({
   bib: BibEntry | undefined;
   onOpen: (citekey: string) => void;
 }) {
+  // DISPLAY — projected through the bib-row door (task 409); mirrors LeftListRow.
   const title =
-    bib?.fields.title ?? entry.title ?? entry.originalFilename ?? "(untitled)";
+    bibFieldDisplay(bib, "title") ??
+    entry.title ??
+    entry.originalFilename ??
+    "(untitled)";
   const author = firstAuthor(entry, bib);
-  const year = bib?.fields.year ?? (entry.year != null ? String(entry.year) : "");
+  const year =
+    bibFieldDisplay(bib, "year") ?? (entry.year != null ? String(entry.year) : "");
   const ck = entry.citekey;
   const disabled = !ck;
 
@@ -309,8 +315,9 @@ function summarize(s: CatalogStats): string {
 function firstAuthor(entry: CatalogEntry, bib: BibEntry | undefined): string {
   let raw = "";
   let total = 0;
-  if (bib?.fields.author) {
-    const parts = bib.fields.author.split(" and ");
+  const authorField = bibFieldDisplay(bib, "author");
+  if (authorField) {
+    const parts = authorField.split(" and ");
     raw = parts[0];
     total = parts.length;
   } else if (entry.authors && entry.authors.length > 0) {

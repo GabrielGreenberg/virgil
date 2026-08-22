@@ -346,6 +346,7 @@ export function countEmptyTargetFields(
   ];
   let n = 0;
   for (const f of target) {
+    // bib-display-exempt: non-display — an emptiness COUNT over stored bytes.
     const v = fields[f];
     if (v == null) {
       n++;

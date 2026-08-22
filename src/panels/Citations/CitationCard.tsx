@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
+  bibFieldDisplay,
   citationCommandOrNull,
   derivePlural,
   parseCiteCommand,
@@ -126,14 +127,16 @@ function fullAuthorsForRow(authorField: string): string {
 
 function venueForRow(entry: BibEntry | undefined): string {
   if (!entry) return "";
-  const f = entry.fields;
-  const journal = f.journal || f.booktitle || f.series || "";
+  // DISPLAY — every field through the bib-row door (task 409).
+  const f = (name: string) => bibFieldDisplay(entry, name) || "";
+  const journal = f("journal") || f("booktitle") || f("series");
+  const volume = f("volume"), number = f("number");
   const bits: string[] = [];
   if (journal) bits.push(journal);
-  if (f.volume) bits.push(`vol. ${f.volume}${f.number ? `, no. ${f.number}` : ""}`);
-  else if (f.number) bits.push(`no. ${f.number}`);
-  if (f.pages) bits.push(`pp. ${f.pages}`);
-  if (f.publisher) bits.push(f.publisher);
+  if (volume) bits.push(`vol. ${volume}${number ? `, no. ${number}` : ""}`);
+  else if (number) bits.push(`no. ${number}`);
+  if (f("pages")) bits.push(`pp. ${f("pages")}`);
+  if (f("publisher")) bits.push(f("publisher"));
   return bits.join(", ");
 }
 
@@ -681,11 +684,14 @@ export function CitationCard({
     return {
       id: r.id,
       key,
+      // DISPLAY — the name logic runs on PROJECTED text, which is safe because
+      // the projection can neither create nor destroy the " and " separator or
+      // a comma (task 409).
       author: entry
-        ? firstThreeAuthorLastNames(entry.fields.author || "")
+        ? firstThreeAuthorLastNames(bibFieldDisplay(entry, "author") || "")
         : "",
-      year: entry?.fields.year || entry?.fields.date || "",
-      title: entry?.fields.title || "",
+      year: bibFieldDisplay(entry, "year") || bibFieldDisplay(entry, "date") || "",
+      title: bibFieldDisplay(entry, "title") || "",
     };
   });
   const hasAnyHeaderKey = headerRowData.some((r) => r.key);
@@ -1309,21 +1315,24 @@ function CitationKeyRow({
             {entry ? (
               <>
                 <span className="font-medium">
-                  {fullAuthorsForRow(entry.fields.author || "") || trimmed}
+                  {fullAuthorsForRow(bibFieldDisplay(entry, "author") || "") ||
+                    trimmed}
                 </span>
-                {(entry.fields.year || entry.fields.date) && (
+                {(bibFieldDisplay(entry, "year") ||
+                  bibFieldDisplay(entry, "date")) && (
                   <>
                     <span>. </span>
                     <span className="font-medium">
-                      {entry.fields.year || entry.fields.date}
+                      {bibFieldDisplay(entry, "year") ||
+                        bibFieldDisplay(entry, "date")}
                     </span>
                   </>
                 )}
-                {entry.fields.title && (
+                {bibFieldDisplay(entry, "title") && (
                   <>
                     <span>. </span>
                     <span className="italic">
-                      “{entry.fields.title}”
+                      “{bibFieldDisplay(entry, "title")}”
                     </span>
                   </>
                 )}

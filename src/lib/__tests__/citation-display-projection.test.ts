@@ -10,9 +10,9 @@ import {
   NBSP,
 } from "@/lib/latex-typography";
 import {
+  bibFieldDisplay,
   formatAuthorsTruncated,
   formatInlineCitation,
-  formatMediumCitationParts,
   formatMinimalCitation,
   parseCiteCommand,
 } from "@/lib/bib-parser";
@@ -143,8 +143,10 @@ describe("bib field text is projected too", () => {
     for (const shown of [
       formatInlineCitation("\\citep{lopez2009}", BIB, "natbib"),
       formatMinimalCitation("lopez2009", BIB),
-      formatMediumCitationParts("lopez2009", BIB).author,
       formatAuthorsTruncated(LOPEZ.fields.author!),
+      // `formatMediumCitationParts` (a dead 3-field record helper) was retired
+      // in task 409 for the per-field accessor the bib-ROW surfaces read.
+      bibFieldDisplay(LOPEZ, "author")!,
     ]) {
       expect(shown).toContain("ó");
       expect(shown).toContain("ü");
@@ -156,9 +158,9 @@ describe("bib field text is projected too", () => {
   });
 
   it("an escaped ampersand and an en-dashed range in a title/parts render as glyphs", () => {
-    const parts = formatMediumCitationParts("lopez2009", BIB);
-    expect(parts.title).toBe("Ellipsis, Anaphora & the {DNA} of Language");
-    expect(parts.title).not.toContain("\\&");
+    const title = bibFieldDisplay(LOPEZ, "title");
+    expect(title).toBe("Ellipsis, Anaphora & the {DNA} of Language");
+    expect(title).not.toContain("\\&");
   });
 
   it("the formatter's own intentional markup survives the projection", () => {
@@ -287,7 +289,13 @@ describe("census — every exported display formatter asks the door", () => {
     let discovered = 0;
     for (const rel of BIB_PARSERS) {
       const code = commentsStripped(readFileSync(join(REPO_ROOT, rel), "utf8"));
-      for (const m of code.matchAll(/export function (format[A-Za-z]*)\(/g)) {
+      // Discovery covers the `format*` family AND the per-field `bibField*`
+      // accessor task 409 added — both produce DISPLAY text out of these two
+      // modules, and a display producer here that skips the door is the whole
+      // failure this leg exists for.
+      for (const m of code.matchAll(
+        /export function ((?:format|bibField)[A-Za-z]*)\(/g,
+      )) {
         const name = m[1];
         discovered++;
         if (PERMITTED_UNPROJECTED_FORMATTERS[name]) continue;

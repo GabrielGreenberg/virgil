@@ -5086,17 +5086,114 @@ HTML behind its own sanitizer — is keyed by NAME with its reason. Measured by
 neutering each half in turn: stubbing the door takes 11 legs, reverting the ONE
 call site 5 (the census among them), and re-forking either parser vocabulary 1.
 
-**Residuals, stated:** the bib ROW surfaces (`BibEntryCard`, the Citations
-per-key row, the Library entry chrome and picker) still read `entry.fields.*`
-raw, and each sits beside an EDITABLE input bound to the same field — so
-projecting there needs a display/edit split, which is a product change to the bib
-editor rather than a call this pass could make. Routed to the catcher
-(`inbox/2026-08-19-from-worker-368-raw-tex-display-residuals.md`) along with the
-brace question and one unrelated asymmetry found in passing:
+**Residual, CLOSED by task 409** — the bib ROW surfaces; see "The row half"
+immediately below. One unrelated asymmetry found in passing was routed to the
+catcher with the brace question:
 `serializeCiteCommand` reads pre/post from `entries[]` while `parseNatbibCommand`
 deliberately stores them top-level, so the round trip through those two functions
 drops a natbib annotation (no shipped path is known to reach it — the atom keeps
 its raw bytes — but the shape is how a silent drop ships).
+
+##### The row half: a census discovers by MECHANISM, so the surface that reads the FIELD is invisible to it
+
+Same door, the surface family it could not see (task 409) — and the case where
+the projection was right, its census was right, and the census's POPULATION was
+derived from the one mechanism the offending surfaces do not use.
+
+368's census discovers its members from the bib-parsers' `format*` EXPORTS.
+That is the correct population for a formatter and structurally blind to a
+COMPONENT that reads `entry.fields.title` into JSX itself — which is the whole
+bib ROW family: the Library list row (the most-viewed bib surface in the app),
+the entry picker, the two bib cards, the Citations per-key rows, the paper
+detail header. Every one of them printed `L{\'o}pez` and `\&` verbatim beside
+body text that rendered the same bytes correctly. The sharpest single piece of
+evidence: ONE picker row already projected its AUTHOR
+(`formatAuthorsTruncated` has projected since 368) beside a RAW title.
+
+> **A raw `.bib` field reaching a reader goes through ONE per-field accessor —
+> [`bibFieldDisplay(entry, name)`](src/lib/bib-parser.ts) — and the census that
+> polices it asks the QUESTION (who reads a field?) rather than the MECHANISM
+> (who exports a formatter?).**
+
+Seven rules it earned:
+
+- **Per-FIELD, never a record.** A `bibEntryDisplayFields(entry) → Record<…>`
+  over a hand-listed 17-field set is a new SSOT-of-field-names — the drift this
+  file legislates against everywhere — and it allocates a whole record for a
+  caller that wants one. Every field is projectable (the door cheap-bails on
+  ASCII), so the field name is the caller's own.
+- **Presence is PRESERVED**, and that is load-bearing rather than tidy. The
+  accessor answers `undefined` iff the field is ABSENT, so every converted site
+  keeps its `?? catalogValue` chain byte-for-byte; a door that coalesced absent
+  and empty to `""` would let an empty bib title shadow a real catalog title.
+- **The name logic runs on PROJECTED text.** Five surname formatters split on
+  `" and "` and a comma, and the projection can neither create nor destroy
+  either — so the field is projected at the READ and the helpers are untouched.
+  That is what keeps the projection ONE accessor instead of a call at fifteen
+  JSX sites, which is the shape that goes raw again with the sixteenth.
+- **The write-back hazard is REFUTED, and checking it is what made the fix
+  cheap.** Not one input in either silo is seeded from a rendered string —
+  every editor seeds from `entry.fields` — so a projection at the JSX sites
+  cannot round-trip into the `.bib`. Pinned as a leg (the field editor's input
+  values must hold the BYTES), because it is the premise the whole fix rests on.
+- **A projected header above a RAW source pod, in one card, is CORRECT**
+  (Gabriel, decision 2): a rendered view above its source, the same
+  relationship the editor has to the code pane. `BibEntryCard`'s "BibTeX
+  Fields" pod, `BibCard`'s `ExpandedFields` grid and the whole of
+  `BibEditModal` stay raw and say why at the site. Projecting the third is the
+  one change in this family that WOULD write a rendering into the file.
+- **The SORT keys project too** (decision 3), and the case took measurement to
+  state honestly: `L{\'o}pez` does NOT sort wrong — ICU treats the interior
+  braces as punctuation and collates it under "l" either way. What moves is a
+  field whose FIRST character is the escape, since ICU's default collation is
+  `alternate: non-ignorable`: a leading `\` or `{` sorts before every letter
+  and files the entry at the TOP of the list. `\'Alvarez` is the ordinary shape
+  of that. `BibliographyPanel`'s list and its cited-EXPORT share ONE comparator
+  (two is how the exported byte order drifts from what the user was looking
+  at), and the accepted cost is stated: the first `cited.bib` export after this
+  is a one-time deterministic re-ordering — a diff, not a loss.
+- **The exemptions are in-place MARKERS, not a table.** `bib-display-exempt:`
+  (governing its line and the next 12) and `bib-display-exempt-file:`, each
+  stating one of three declared reasons — and the third is the one the obvious
+  display/edit split misses: a NON-DISPLAY read reaches no reader at all (field
+  equality, a numeric-sort `parseInt`, a synthetic catalog record, a BibTeX
+  block emitted into an AI-request note, the fuzzy-search haystack). A naive
+  `.fields.<name>` regex fires on all of them.
+
+The census's own population is the finding one level up: it found
+`library/components/PaperHeader.tsx` — the paper detail header, absent from the
+task's hand-built census, and the one production caller of the leaf-pure
+`BibEntryChrome` whose raw read was always one level up in it. Two of the
+task's census entries were WRONG and are recorded as such rather than "fixed":
+`bib-entry-chrome.tsx` never touches `entry.fields` at all, and `BibEditModal`
+is the edit surface. The dead `formatMediumCitationParts` (a 3-field record
+helper with test-only callers, in BOTH silos) was DELETED rather than converted
+— a suite is not a consumer.
+
+CI: [bib-row-display-projection.test.tsx](src/lib/__tests__/bib-row-display-projection.test.tsx)
+(the accessor's contract, the two DECIDED behaviours a later reader would file
+as bugs — the grouping braces survive, absence is `undefined` — the sort, and
+the CENSUS) and [bib-row-raw-vs-projected.test.tsx](src/components/__tests__/bib-row-raw-vs-projected.test.tsx),
+which drives the REAL `BibEntryCard` and asserts BOTH directions in one card:
+the header projects, the fields pod does not, and the editor seeds from bytes.
+The 368 census's discovery widened to cover the new accessor, so it is
+auto-enforced there too. Measured by neutering the card's three field reads:
+2 behavioural legs and the census fail; the raw-pod legs stay green, which is
+exactly the pre-409 tree.
+
+**Residuals, stated.** The projection is PARTIAL by decision: BibTeX's grouping
+braces survive (`L{ó}pez`), because a full BibTeX-semantics projection needs a
+vocabulary this codebase has no SSOT for and hand-listing one is the drift
+every census here exists to prevent. The fuzzy-search HAYSTACK
+(`catalog-search.ts`, `bib-searcher.ts`'s Fuse keys) is deliberately unprojected
+— whether typing "López" should match `L{\'o}pez`, and whether typing `\'o`
+should stop matching, is a decision about MATCHING semantics rather than about
+what a reader sees. And the Library list's sort keys are projected for the same
+reason the Bibliography panel's are, but feed no export, so they carry no
+one-time diff.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked — open the Library
+list with an accented-surname entry.
 
 #### The composition half: a CARRIER says how a run's bytes are made, not what wraps them
 

@@ -69,6 +69,11 @@ function getSynthRecords(
   if (cached) return cached;
 
   const records = entries.map((e): SynthRecord => {
+    // bib-display-exempt: non-display — this is the fuzzy-search HAYSTACK, not
+    // a rendering. Projecting it is a real question (should typing "López"
+    // match `L{\'o}pez`? should typing `\'o` stop matching?) and a decision
+    // about MATCHING semantics rather than about what a reader sees, so task
+    // 409 recorded it as a residual rather than answering it in passing.
     const bib = e.citekey ? bibByKey.get(e.citekey) : undefined;
     const author =
       (e.authors && e.authors.length ? e.authors.join(" and ") : "") ||
@@ -79,6 +84,7 @@ function getSynthRecords(
     const journal = bib?.fields.journal ?? "";
     // Fold the filename into booktitle (an indexed key) since FUSE_OPTIONS
     // has no `filename` key and is shared — see header note.
+    // bib-display-exempt: non-display — search haystack, as above.
     const booktitle = [bib?.fields.booktitle ?? "", e.originalFilename ?? ""]
       .filter(Boolean)
       .join(" ");
