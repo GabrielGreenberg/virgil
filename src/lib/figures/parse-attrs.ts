@@ -142,6 +142,26 @@ export function matchIncludegraphics(
   };
 }
 
+/**
+ * **Where the READER stops** consuming the `\includegraphics` a carried
+ * `graphicsBlock.command` opens — the index just past its `{path}` group, or
+ * `null` when the bytes open no graphics command at all.
+ *
+ * The {@link CarriedConstructEnd} the `graphicsBlock` emitter supplies to
+ * `anchorCarriedBody` (task 405): the parser's own question — it builds the
+ * node from this very matcher — asked at the emit site, so the place the
+ * `%!v:` anchor is APPENDED and the place it is DETACHED coincide by
+ * construction. `null` there is the honest answer rather than a gap: bytes
+ * that open no `\includegraphics` come back as prose, not as a
+ * `graphicsBlock`, so the node's identity is not going to survive the reload
+ * whatever we do, and appending the anchor only decides WHO steals it.
+ */
+export function graphicsCommandEnd(bytes: string): number | null {
+  const start = bytes.search(/\S/);
+  if (start === -1) return null;
+  return matchIncludegraphics(bytes, start)?.end ?? null;
+}
+
 /** Walk an env body string and pull out all `\includegraphics` commands. */
 export function extractFigureSources(envContent: string): FigureSource[] {
   const sources: FigureSource[] = [];

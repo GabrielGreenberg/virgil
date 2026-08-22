@@ -1689,6 +1689,47 @@ export function findMatchingEnv(
   );
 }
 
+/**
+ * **Where the READER stops** consuming the environment a CARRIED body opens —
+ * the index just past its `\end{env}`, or `null` when the bytes open no
+ * environment or its close never appears.
+ *
+ * The {@link CarriedConstructEnd} the two attr-carried env emitters supply to
+ * `anchorCarriedBody` (task 405). It is the parser's own question asked at the
+ * emit site: `matchBeginEnvAt` then `findMatchingEnv`, the exact pair the env
+ * dispatcher runs — so the place the anchor is APPENDED and the place it is
+ * DETACHED coincide by construction rather than by two layers remembering to
+ * agree about what may follow a closer. That disagreement is the whole defect:
+ * the renderer's `END_RE` accepts `\s*$`, the anchor reader accepts `[ \t]*`,
+ * and a source in the gap renders one way and de-anchors the other.
+ *
+ * The option bracket is deliberately NOT consumed before the terminator scan,
+ * mirroring the dispatcher's own `forest` carve-out: for that env the leading
+ * `[` is the TREE, and reading it as an optional argument starts the scan past
+ * the real close. Starting at `begin.end` is safe for every env — `scanLive`
+ * skips nested constructs, comments and `\verb` runs wholesale, so an option
+ * bracket cannot hide or fake a terminator.
+ *
+ * Leading whitespace is skipped because the parser skips it too: a user who
+ * presses Enter at the TOP of a source pod has changed nothing about which
+ * construct the reader claims, and answering `null` there would drop a
+ * perfectly reachable anchor.
+ *
+ * **Unterminated ⇒ `null`**, the policy this module already states one function
+ * up: an environment whose close never appears is not that environment, the
+ * dispatcher carries its bytes as ordinary prose, and the anchor must not be
+ * handed to the paragraph that results.
+ */
+export function carriedEnvEnd(bytes: string): number | null {
+  const start = bytes.search(/\S/);
+  if (start === -1) return null;
+  const begin = matchBeginEnvAt(bytes, start);
+  if (!begin) return null;
+  const endIdx = findMatchingEnv(bytes, begin.end, begin.name);
+  if (endIdx === -1) return null;
+  return endIdx + `\\end{${begin.name}}`.length;
+}
+
 
 /**
  * Given a `\begingl` that has ALREADY been consumed (so `startPos` points

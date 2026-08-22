@@ -98,12 +98,19 @@ describe("a pod edit that leaves a tail cannot move the block's identity", () =>
     expect(out.trim()).toBe(`${TREE} %!v:${uuid}`);
   });
 
-  it("CONTROL — non-whitespace after the closer is already LOUD, so it is left alone", () => {
-    // The renderer refuses it (`END_RE` is `\\end{forest}\s*$`), so the 384
-    // badge names the problem. This leg exists so the stated residual is a
-    // recorded decision rather than an oversight.
+  it("non-whitespace after the closer still refuses — and now NAMES itself", () => {
+    // RENEGOTIATED (task 405). This leg used to read "…is already LOUD, so it
+    // is left alone", which pinned the residual as the contract: the badge is
+    // loud BEFORE the save and gone AFTER it, and the transition is exactly the
+    // save that moved the identity. The refusal is unchanged; what changed is
+    // the anchor's position (see `carried-body-anchor-position.test.ts`) and
+    // the sentence, which used to claim these bytes were not a
+    // `\begin{forest}…\end{forest}` environment at all.
     const r = parseForestSource(`${TREE} % a note`);
     expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.kind).toBe("after-environment");
+    expect(r.refusal.message).toContain("% a note");
   });
 });
 
