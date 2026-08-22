@@ -32,6 +32,7 @@ import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import {
@@ -1937,14 +1938,11 @@ export default function EditorLayout() {
           return;
         }
 
-        // Paragraph/list with a parTitle — track the most recent one
-        // above the reference line inside the current section.
-        if (
-          (node.type.name === "paragraph" ||
-            node.type.name === "bulletList" ||
-            node.type.name === "orderedList") &&
-          node.attrs?.parTitle
-        ) {
+        // A titled block — track the most recent one above the reference
+        // line inside the current section. Task 404: the SET, not a
+        // three-name copy of it, so this legacy fallback and the
+        // `computeSectionPathAt` fast path above it answer the same question.
+        if (TITLED_NODE_TYPES.has(node.type.name) && node.attrs?.parTitle) {
           let top: number | null = null;
           try {
             const coords = view.coordsAtPos(offset + 1);

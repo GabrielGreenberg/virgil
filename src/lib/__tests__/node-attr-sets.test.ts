@@ -21,9 +21,13 @@
 //      cannot be added write-only: it arrives with no fixture and this suite
 //      fails before it can ship. The four already-working kinds stay as passing
 //      controls, so no leg can pass vacuously.
-//   3. THE CENSUS — the `.tex` round-trip layer may not re-hand-list an
+//   3. THE CENSUS — no file that deals with `parTitle` may re-hand-list an
 //      attr-bearing node-type set. The sets were never the part that could
-//      misbehave; a reader that keeps its own copy is.
+//      misbehave; a reader that keeps its own copy is. Task 404 widened the
+//      discovery predicate from "touches the sidecar `paragraphs` map" (the
+//      WRITE side's mechanism) to the ATTR NAME — because a census that
+//      discovers by MECHANISM cannot see a reader that only asks the
+//      QUESTION, which is how five UI readers sat three-of-six for a year.
 import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -489,7 +493,7 @@ describe("node-attr-sets · assignUuids mints for every uuid-bearing type", () =
 
 // ── Layer 3 · the census: the .tex layer keeps no second copy ──────────────
 
-describe("node-attr-sets · the round-trip layer holds no second hand list", () => {
+describe("node-attr-sets · no parTitle file holds a second hand list", () => {
   /** Every production `.ts`/`.tsx` in either silo. */
   function productionFiles(): string[] {
     const out: string[] = [];
@@ -509,18 +513,43 @@ describe("node-attr-sets · the round-trip layer holds no second hand list", () 
     return out;
   }
 
+  const stripped = (rel: string) =>
+    commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+
   /**
-   * The scope is DISCOVERED, not hand-listed: every file that touches a sidecar
-   * `paragraphs` map is asked the question. A hand list would have been the
-   * defect one level up — it could only speak for the files someone remembered,
-   * which is exactly how the read set went one member short in the first place.
-   * Today this resolves to the parser and the serializer; a third reader is
-   * censused the day it appears rather than the day someone updates a list.
+   * The scope is DISCOVERED, not hand-listed — and since task 404 it is
+   * discovered by the ATTR NAME rather than by the sidecar `paragraphs` map.
+   *
+   * That is the whole finding of 404, and it is a rule about census REACH:
+   * the pre-404 predicate discovered by MECHANISM (who touches the map the
+   * write side writes), so its population was the write side's silo — the
+   * parser and the serializer. Five UI READERS that only ask the QUESTION
+   * ("is this block titled?") touch no such map, were never in the
+   * population, and each hand-listed THREE of the set's six members. Titles
+   * on a texBlock / forestBlock / exampleBlock were written, persisted, and
+   * invisible in the Outline, Search breadcrumbs, the section-path
+   * breadcrumb (the shipped primary), the section tracker and the Reader.
+   *
+   * The needle is a plain substring, so it also catches every name DERIVED
+   * from the attr (`parTitled`, `activeParTitleIdx`, `renameParTitleByUuid`)
+   * — a file that reasons about par titles is a file that can drift, whether
+   * or not it spells the raw attr. Comments are stripped: a comment naming
+   * the attr is not a reader.
    */
-  const readers = productionFiles().filter((rel) =>
-    /\.paragraphs\b|paragraphs\[/.test(
-      commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")),
-    ),
+  const titleFiles = productionFiles().filter(
+    (rel) =>
+      // The DECLARATION is not a copy of itself. The pre-404 predicate
+      // excluded the leaf only by accident (it touches no `paragraphs` map);
+      // widening to the attr name makes the exclusion something the census
+      // has to STATE, and it is stated by path rather than by segment
+      // content — an allowlisted segment would go stale the moment a member
+      // is added, and would excuse the same literal appearing elsewhere.
+      rel !== "src/lib/node-attr-sets.ts" && stripped(rel).includes("parTitle"),
+  );
+
+  /** The pre-404 population, kept for the IMPORT leg alone (below). */
+  const sidecarReaders = productionFiles().filter((rel) =>
+    /\.paragraphs\b|paragraphs\[/.test(stripped(rel)),
   );
 
   /**
@@ -540,7 +569,7 @@ describe("node-attr-sets · the round-trip layer holds no second hand list", () 
    * sit below the needle rather than in an allowlist.
    */
   function handListsIn(rel: string): string[] {
-    const src = commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+    const src = stripped(rel);
     const hits: string[] = [];
     for (const seg of src.split(/[;{}]/)) {
       const named = [...TITLED_NODE_TYPES].filter((t) => seg.includes(`"${t}"`));
@@ -571,15 +600,29 @@ describe("node-attr-sets · the round-trip layer holds no second hand list", () 
     'block: new Set([ "paragraph", "exampleGloss", "bulletList", "orderedList", "graphicsBlock", "displayMath", ])',
   ];
 
-  it("the discovered reader set is non-empty (the census can see anything at all)", () => {
+  it("the discovered set covers BOTH silos (the census can see anything at all)", () => {
     // Without this, a broken walk or a renamed accessor would empty the scope
-    // and every leg below would pass by looking at nothing.
-    expect(readers).toContain("src/lib/latex-parser.ts");
-    expect(readers).toContain("src/lib/latex-serializer.ts");
+    // and every leg below would pass by looking at nothing. The write side is
+    // the pre-404 population; the five UI READERS below are the reach 404
+    // added, and each is named because reverting ANY ONE of them to its
+    // three-name chain must fail the hand-list leg — which it can only do
+    // while the file is in the population at all.
+    expect(titleFiles).toContain("src/lib/latex-parser.ts");
+    expect(titleFiles).toContain("src/lib/latex-serializer.ts");
+    for (const reader of [
+      "src/lib/editor-geometry/section-path.ts", // the shipped primary
+      "src/panels/Outline/OutlinePanel.tsx",
+      "src/panels/Search/SearchPanel.tsx",
+      "src/components/EditorLayout.tsx", // section tracker (legacy fallback)
+      "src/components/editor-layout/reader-view-prefs.ts", // Reader's twin
+      "src/lib/tiptap/structural-edit.ts", // the MUTATOR's domain
+    ]) {
+      expect(titleFiles, `${reader} left the census population`).toContain(reader);
+    }
   });
 
-  it("no sidecar-paragraph reader re-lists the titled node types", () => {
-    expect(readers.flatMap(handListsIn)).toEqual([]);
+  it("no parTitle file re-lists the titled node types", () => {
+    expect(titleFiles.flatMap(handListsIn)).toEqual([]);
   });
 
   it("the census sees BOTH hand-list shapes this task deleted (canary)", () => {
@@ -603,8 +646,14 @@ describe("node-attr-sets · the round-trip layer holds no second hand list", () 
     // comment saying "mirrors @/lib/node-attr-sets — keep in sync", which is
     // the fork this whole task exists to prevent. So: comments stripped, and a
     // real import statement binding at least one of the three names.
-    for (const rel of readers) {
-      const src = commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+    // Scoped to the ROUND-TRIP layer deliberately, and NOT widened with the
+    // hand-list leg above: this asks "does the file that must enumerate node
+    // types read the SSOT", which is a claim about the parser/serializer. A
+    // NodeView that declares `parTitle` on ONE node type answers no set
+    // question and owes no import — requiring one would be a census demanding
+    // a dependency nothing needs.
+    for (const rel of sidecarReaders) {
+      const src = stripped(rel);
       const importsSsot = /import\s*(type\s*)?\{[^}]*\}\s*from\s*["']@\/lib\/node-attr-sets["']/.test(
         src,
       );

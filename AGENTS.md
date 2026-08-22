@@ -3825,6 +3825,113 @@ CI: [list-item-anchor-position.test.ts](src/lib/__tests__/list-item-anchor-posit
 
 **Residuals, stated.** The census covers the EMIT form; the READ side still has four private `%!v:` regexes (`stripUuidAnchor`, `latex-paragraph-map`, and the two preamble helpers) answering differently-shaped questions — a separate sweep, not claimed here. `exampleItem` was checked rather than assumed and does **not** share this bug: it carries a `\vxid{…}` PREFIX marker, which is positionally bound to the item's own token and needs no end-of-body rule; `blockquote` serializes its children with uuids suppressed and anchors after `\end{quote}`, measured stable. Two adjacent quirks were measured while checking those siblings and left alone as pre-existing and independent: a multi-paragraph `blockquote` glues its `\end{quote}` onto its last paragraph (top level and inside an item alike), and `parseExampleBodyAsBlocks` DROPS a nested `itemize` inside an expex `\a` item outright — the second is content loss and is recorded for triage rather than folded in here.
 
+##### The reach half: a census that discovers by MECHANISM cannot see a reader that only asks the QUESTION
+
+Same set, and the case where the SSOT was right, the write side was right, the
+round trip was right, and the guard that would have caught the rest had a
+POPULATION scoped to the write side's silo (task 404).
+
+343 gave `parTitle` its declaration and pinned it with a census whose scope is
+DISCOVERED rather than hand-listed — the rule this file states everywhere, and
+correctly applied. What it discovered by was the sidecar `paragraphs` MAP: the
+mechanism the WRITE side uses. So its population was the parser and the
+serializer, and **five UI READERS each hand-listed THREE of the set's six
+members**, none of them ever in the population:
+
+| reader | what it costs |
+|---|---|
+| `section-path.ts` — the shipped breadcrumb primary | the breadcrumb omits the titled block you are standing in |
+| `OutlinePanel.tsx` | no Outline row at all: nothing shows the title, renames it, or folds it |
+| `SearchPanel.tsx` | a hit inside the block breadcrumbs to the section instead |
+| `EditorLayout.tsx` — the section tracker's legacy fallback | a fast-path/fallback divergence |
+| `reader-view-prefs.ts` — the Reader's twin | the same, one surface over |
+
+A title typed on a `texBlock`, a `forestBlock` or an `exampleBlock` was written,
+persisted, reloaded onto the node — and invisible on every surface that could
+have shown it. Nothing threw; the round trip that 343 pinned was intact the
+whole time. **The suite's third layer was even NAMED "the round-trip layer holds
+no second hand list" — the scope sentence IS the defect.**
+
+> **Discover a census's population by the QUESTION, not by the MECHANISM.** The
+> question here is the ATTR NAME; the mechanism is one silo's way of touching
+> it. A file that only ASKS ("is this block titled?") writes no sidecar map,
+> spells no write-side API, and is invisible to any predicate written about how
+> the answer gets to disk.
+
+Six rules it earned:
+
+- **The defect is a partial READER, not a missing affordance**, and the framing
+  is what scopes the fix. Nothing in the Outline can CREATE a title; the Outline
+  could only fail to show one that already existed. So the fix is five call
+  sites, not a new surface.
+- **It must LEAD with the shipped primary.** `computeSectionPathAt` is the path
+  that actually runs; the `EditorLayout` / `reader-view-prefs` walks are its
+  FALLBACKS. Converting the fallbacks alone is a no-op that introduces a
+  fast-path/fallback divergence — the thing each fallback exists not to be.
+- **A written decision is renegotiated in place, never silently contradicted.**
+  `section-path.ts` carried one — *"tex/expex par-titles are deliberately not
+  breadcrumb entries"* — which read as a bug-compatible port of the fallback's
+  vocabulary rather than independent product judgment. It is retired with its
+  reason at the site: a breadcrumb that omits the block you are standing in is
+  the invisibility bug by another name.
+- **Where the derived flag is TOTAL, the flag IS the membership test.**
+  `BlockEntry.parTitled` is `deriveParTitled(attrs)`, and ProseMirror drops an
+  undeclared attr — so only a member can carry one and there is no second
+  vocabulary to drift. `section-path` reads the flag alone; the four JSON/PM
+  walkers, which see raw nodes, ask `TITLED_NODE_TYPES.has(...)`.
+- **The MUTATOR's domain is the set too, and a NEGATIVE guard is not a domain.**
+  `renameParTitleByUuid` guarded `node.type.name !== "heading"` — right about the
+  one type it names (`OUT-F8-04`) and wrong at both ends: it admits every titled
+  kind by luck, and it admits every type that declares no `parTitle` at all,
+  where PM drops the attr, `setAttrs` reports success, and the rename is a
+  mis-write that silently did nothing. The positive test refuses a heading for
+  exactly the same reason it refuses a `figureBlock` — neither is a member.
+- **The IMPORT leg stays narrow while the HAND-LIST leg widens**, and that
+  asymmetry is deliberate: "does the file that must enumerate node types read the
+  SSOT?" is a claim about the round-trip layer, and a NodeView that declares
+  `parTitle` on ONE node type answers no set question and owes no import. Two
+  populations, two questions — widening both would be a census demanding a
+  dependency nothing needs.
+- **The DECLARATION is not a copy of itself.** The pre-404 predicate excluded the
+  leaf by accident (it touches no `paragraphs` map); the attr-name predicate has
+  to STATE the exclusion, and states it by PATH rather than by segment content —
+  an allowlisted segment goes stale the moment a member is added, and would
+  excuse the same literal appearing elsewhere.
+
+**Deliberately NOT generalized to `COLLAPSIBLE_NODE_TYPES` /
+`UUID_BEARING_NODE_TYPES` / `CARD_BODY_BLOCK_ATOMS`** — checked, and none has a
+partial reader. The phenomenon is specific to `parTitle`'s UI silo, and widening
+here would be the "broadest blast radius" mistake the central principle warns
+against.
+
+**DISPLAY is undifferentiated, stated at the site:** every titled kind's Outline
+row takes the one `--par-title-color-dense` ink, because that is what the set
+already means. Typing the rows by kind is a `STYLE_GUIDE` decision worth its own
+pass.
+
+CI: the widened census in
+[node-attr-sets.test.ts](src/lib/__tests__/node-attr-sets.test.ts) is the leg
+with teeth, and its membership assertion names all five readers plus the mutator
+— reverting ANY ONE of them to its three-name chain can only fail the hand-list
+leg while that file is in the population at all. Beside it, the behavioural
+halves are swept FROM the set, so a seventh titled kind arrives with no fixture
+and fails before it can ship: `renameParTitleByUuid` is driven per member in
+[structural-edit.test.ts](src/lib/tiptap/__tests__/structural-edit.test.ts) with
+`figureBlock` as the control the negative guard admitted, and `extractHeadings`
+per member in
+[outline-fold-by-uuid.test.ts](src/panels/Outline/__tests__/outline-fold-by-uuid.test.ts)
+— a row exists, and its uuid is INSERT-STABLE, so the persisted fold bucket still
+holds the same string after a block is added above. Measured by neutering each
+half in turn: each of the five readers takes the census (measured per reader, not
+assumed), the negative mutator guard takes 1, and the pre-404 OutlinePanel chain
+takes 6 — three missing kinds × two legs, with the three working kinds passing as
+controls.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor gesture
+plus a JSON walk — no disk), so the check is cheap and real: give a `texBlock` a
+title from its pod's `+T`, and the Outline shows it, renames it, and folds it.
+
+
 #### The multiplicity half: a scan that recognizes a CONSTRUCT must recognize how MANY
 
 Same round trip, and the case where the model held exactly one of something a

@@ -78,6 +78,7 @@ import {
   parkDuringLayoutGesture,
 } from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import type { SectionPathEntry } from "@/panels/Outline";
 import {
   DOC_START_BLOCK_INDEX,
@@ -448,12 +449,10 @@ function useReaderSectionPath(
           return;
         }
 
-        if (
-          (node.type.name === "paragraph" ||
-            node.type.name === "bulletList" ||
-            node.type.name === "orderedList") &&
-          node.attrs?.parTitle
-        ) {
+        // Task 404: the SET, not a three-name copy of it — this legacy walk
+        // is the FALLBACK behind `computeSectionPathAt`, so a narrower
+        // vocabulary here is a fast-path/fallback divergence.
+        if (TITLED_NODE_TYPES.has(node.type.name) && node.attrs?.parTitle) {
           let top: number | null = null;
           try {
             top = view.coordsAtPos(offset + 1).top;

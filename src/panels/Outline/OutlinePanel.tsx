@@ -11,6 +11,7 @@ import { Panel } from "@/panels/_shared/Panel";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { flattenInlineText } from "@/lib/inline-content";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import {
   subscribeOutlinePrefs,
   getOutlinePrefsSnapshot,
@@ -467,12 +468,13 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         index: idx,
         parTitles: [],
       });
-    } else if (
-      (node.type === "paragraph" ||
-        node.type === "bulletList" ||
-        node.type === "orderedList") &&
-      node.attrs?.parTitle
-    ) {
+    } else if (TITLED_NODE_TYPES.has(node.type ?? "") && node.attrs?.parTitle) {
+      // Task 404: the SET, not a three-name copy of it. A title on a
+      // texBlock / forestBlock / exampleBlock is written and persisted like
+      // any other, so it gets a row like any other — DISPLAY is deliberately
+      // undifferentiated (one `--par-title-color-dense` ink for every titled
+      // kind), because that is what the set already means; typing the rows by
+      // kind is a STYLE_GUIDE decision worth its own pass.
       pendingTitles.push({
         title: node.attrs.parTitle as string,
         index: idx,

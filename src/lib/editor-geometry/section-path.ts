@@ -50,11 +50,6 @@ export interface SectionSkipBand {
   end: number;
 }
 
-/** The block types whose `parTitle` participates in the breadcrumb — the
- *  legacy walk's exact vocabulary (tex/expex par-titles are deliberately
- *  not breadcrumb entries). */
-const PAR_TITLE_TYPES = new Set(["paragraph", "bulletList", "orderedList"]);
-
 /**
  * Kill-switch: `localStorage["virgil:geom-breadcrumb"] = "off"` reverts the
  * three breadcrumb sites to the legacy full-walk path (which also remains
@@ -93,7 +88,15 @@ function parTitledVocab(
   if (cached && cached.version === structure.version) return cached.uuids;
   const entries: { uuid: string; pos: number }[] = [];
   for (const b of structure.blocks.values()) {
-    if (b.parTitled && PAR_TITLE_TYPES.has(b.typeName)) {
+    // `parTitled` is `deriveParTitled(attrs)`, and only the six members of
+    // TITLED_NODE_TYPES declare the attr at all (ProseMirror drops an
+    // undeclared one), so the flag IS the membership test — there is no
+    // second vocabulary here to drift from the set. Task 404 retired the
+    // legacy walk's three-name list, which read "tex/expex par-titles are
+    // deliberately not breadcrumb entries": a breadcrumb that omits the
+    // titled block you are standing in is the invisibility bug by another
+    // name, and the four sibling readers were widened in the same pass.
+    if (b.parTitled) {
       entries.push({ uuid: b.uuid, pos: b.pos });
     }
   }
