@@ -582,17 +582,22 @@ export function createEditorGeometryService(
   // a long drag. Each crossing paid a `measureBlock` (a forced-layout rect
   // read) plus a `notify()` — and `notify()` is the marginalia deck's full
   // repack, i.e. the one O(markers) cost in this file. A pane-divider drag
-  // and an OS window resize produce no scroll, so a KIND-BLIND park is
-  // exactly right here and needs no `hasActiveLayoutGesture` filter: it is a
-  // no-op for the two gestures that cannot reach it.
-  let notifyPark: ReturnType<typeof parkDuringLayoutGesture> | null = null;
-
-  /** Route a subscriber notification through the gesture park — one settle
-   *  per gesture instead of one repack per crossed near-zone boundary. */
-  function fireNotify() {
-    if (notifyPark) notifyPark.fire();
-    else notify();
-  }
+  // and an OS window resize produce no scroll OF THEIR OWN (a rewrap that
+  // shortens the scroll range can still make the UA clamp and fire one, and
+  // parking is the right answer there too — the same discipline 317 already
+  // applies to that gesture), so a KIND-BLIND park is right here and needs no
+  // `hasActiveLayoutGesture` filter.
+  //
+  // The deferred NOTIFICATION rides the recompute park rather than a park of
+  // its own, and that is load-bearing rather than tidy. Two parks settle
+  // through two different CLOCKS — `scheduleRecompute` only ARMS a RAF while
+  // `notify()` is synchronous — so a second park publishes the deck one full
+  // frame BEFORE the measures it is announcing, against a cache holding every
+  // mid-gesture LEAVE eviction and none of the deferred ENTER measurements.
+  // Every block that left and re-entered the near-zone during the drag would
+  // lose its marker for that frame, and the gesture would cost TWO O(markers)
+  // repacks instead of the one this claims. One park, one clock, one settle.
+  let pendingNotify = false;
 
   /** Re-measure UUIDs in `pendingRecompute` on the next paint. */
   function scheduleRecompute() {
@@ -653,7 +658,12 @@ export function createEditorGeometryService(
 
   function flushRecompute() {
     if (!editor || editor.isDestroyed || !visible) return;
-    if (pendingRecompute.size === 0) return;
+    // `pendingNotify` is a mid-gesture LEAVE's deferred repack (task 416): the
+    // eviction happened inline but must not PUBLISH until the deferred ENTERS
+    // beside it have been measured, so it settles here rather than on a second
+    // park. A pure-leave gesture therefore has to reach this body with an
+    // empty work list — hence the `||`, not a bare `size === 0` bail.
+    if (pendingRecompute.size === 0 && !pendingNotify) return;
     const host = hostEl ?? resolveMarginaliaHost(editor);
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
@@ -663,7 +673,12 @@ export function createEditorGeometryService(
 
     const resolvePos = makePosResolver();
 
-    let changed = false;
+    // Seeded with what the deferred half already knows changed. Cleared only
+    // once we are past the two bails above, so a flush that could not run
+    // (hidden pane, no host) still owes the notify to the next one rather
+    // than dropping it.
+    let changed = pendingNotify;
+    pendingNotify = false;
     for (const uuid of pending) {
       if (!observed.has(uuid)) {
         // No longer observed (left the near-zone or removed). Drop cache.
@@ -997,12 +1012,17 @@ export function createEditorGeometryService(
         }
       }
     }
-    // Both exits route through the park: mid-gesture the deck settles ONCE on
-    // the end edge (a deferred ENTER through the measure park, a LEAVE's cache
-    // eviction through the notify park), and off-gesture both fire inline on
-    // this frame exactly as they did pre-416.
-    if (deferred) fireRecompute();
-    if (changed) fireNotify();
+    // Mid-gesture BOTH halves settle through the ONE park, in the one order
+    // that is correct: `flushRecompute` measures the deferred enters and THEN
+    // notifies, so the deck is published complete. Off-gesture `deferred` is
+    // false by construction and this reduces to the pre-416 `if (changed)
+    // notify()`, byte for byte.
+    if (gestureActive) {
+      if (changed) pendingNotify = true;
+      if (deferred || changed) fireRecompute();
+    } else if (changed) {
+      notify();
+    }
   }
 
   function onResize(entries: ResizeObserverEntry[]) {
@@ -1112,9 +1132,6 @@ export function createEditorGeometryService(
       () => refreshViewportFrame(),
       LAYOUT_SITE_VIEWPORT_CACHE,
     );
-    // The IO half's park (task 416) — reported under the same site id as the
-    // measure park, because it is the same follower's other trigger.
-    notifyPark = parkDuringLayoutGesture(() => notify(), LAYOUT_SITE_MARGINALIA);
 
     // Subscribe to the DocStructureObserver — wakes only when blocks are
     // added or removed. Text edits within blocks don't wake the service; the
@@ -1187,8 +1204,7 @@ export function createEditorGeometryService(
       recomputePark = null;
       viewportPark?.dispose();
       viewportPark = null;
-      notifyPark?.dispose();
-      notifyPark = null;
+      pendingNotify = false;
       window.removeEventListener("resize", onWindowResize);
       if (rafId) cancelAnimationFrame(rafId);
       rafId = 0;

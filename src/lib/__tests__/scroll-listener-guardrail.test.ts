@@ -52,6 +52,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { commentsStripped } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
@@ -86,7 +87,7 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
   "src/components/PendingChangePill.tsx":
     "SUPPRESS — a text-anchored fixed portal; `update()` returns early while a gesture is live and the render gate hides the pill, settling on the end edge.",
   "src/components/SelectionActionsMenu.tsx":
-    "SUPPRESS — the margin bolt, same shape as the pending pill; `update()` hits the suppression and returns before scheduling a RAF.",
+    "SUPPRESS, by its own OLDER channel — the margin bolt's scroll path registers `onScroll` (not the `update` its RESIZE path registers, which is what the pending pill uses for both): `onScroll` calls `suppress()` and resets a 120 ms scroll-idle timer, so the bolt hides for any scroll and re-seats on idle. That predates the layout-gesture bus and covers a content drag's auto-scroll by construction; the file's bus participation is on its resize path.",
   "src/components/SlashCommandPopup.tsx":
     "SUPPRESS — a caret-anchored fixed portal; `scheduleUpdate` bails on `isLayoutGestureActive()`.",
   "src/components/editor-layout/editor-scrollbar.tsx":
@@ -102,7 +103,7 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
   "src/lib/scroll-reposition-probe.ts":
     "LIVE by definition — see PERMITTED_LIVE_SCROLL_HANDLERS.",
   "src/text-objects/TextObjectGrabHandle.tsx":
-    "PARK — the grab handle's placement re-solve. Task 317 parked its resize path and argued the scroll path could stay live because 'an OS window drag delivers no pointer events to the page'; a CONTENT drag delivers them, so task 336's modality gate reads POINTER and the hover branch re-ran `blocksAtY` plus one `computePlacement` per containing level for the whole of a long drag — under a lift ghost, on chrome `globals.css` has already made `pointer-events: none` for the session.",
+    "PARK — the grab handle's placement re-solve. Task 317 parked its resize path and argued the scroll path could stay live because 'an OS window drag delivers no pointer events to the page'; a CONTENT drag delivers them, so task 336's modality gate reads POINTER and the hover branch re-ran `blocksAtY` plus one `computePlacement` per containing level for the whole of a long drag — under a lift ghost, on chrome `globals.css` has already made `pointer-events: none` for the session. Its MOUSEMOVE path has fired the same park since perf Wave 2, so the scroll path was the LAST live refresher and this finishes a decision already taken; the stale window is the whole gesture, which is what Wave 2 chose when it said the handle 'sits invisible under the drag ghost'.",
 };
 
 // ── Leg 2: the stay-live allowlist ──────────────────────────────────────────
@@ -118,7 +119,7 @@ const PERMITTED_LIVE_SCROLL_HANDLERS: Record<string, string> = {
   "library/components/PaperRender.tsx":
     "The Library Reader's scroll-position persist, RAF-coalesced to one `scrollTop` read whose only consumer is a QUIET session-store write (no subscriber re-render; the store's own 250 ms debounce owns the disk cadence). This one IS reachable by a content drag — the Reader mounts an EditorPane inside this scroller — and stays live because the read is a value the browser already holds and the write is off the frame: a park would buy nothing measurable and would drop the reader's last position if a gesture ever wedged.",
   "library/hooks/usePgmarkPages.ts":
-    "The reader's current-page readout. RAF-coalesced to one `scrollTop` + one `clientHeight` read per frame, which is the value being displayed; a parked page number is a wrong page number for the length of the gesture. The Library reader is not scrolled by the main editor's auto-scroll in any case.",
+    "The reader's current-page readout. RAF-coalesced to one `scrollTop` + one `clientHeight` read per frame, which is the value being DISPLAYED; a parked page number is a wrong page number for the length of the gesture. It shares PaperRender's `[data-virgil-row-scroll]` container, so — like its neighbour — it IS reachable by a drag begun inside the Reader; the argument is the obligation, not unreachability.",
   "src/components/HintLayer.tsx":
     "`onScroll = () => hide()` — an anchored hint whose anchor has moved must vanish, and it must vanish on the frame the scroll happens. This IS the suppress half; there is nothing to defer.",
   "src/components/editor-layout/editor-scrollbar.tsx":
@@ -138,10 +139,17 @@ const DOCTRINE_API =
 
 /** Strip comments so doctrine prose (this repo documents the guarded call
  *  forms heavily — including in this very file) can't read as a live
- *  registration. Conservative: only removes text, never manufactures a
- *  match. */
+ *  registration.
+ *
+ *  This is the SHARED one-pass scanner, not a fifth hand-rolled regex chain —
+ *  the rule `_source-scan.ts`'s own header states ("a routine with that
+ *  history gets one copy, not one per caller"), earned by the task-202b
+ *  runaway. The chain form's failure direction is the one that matters for a
+ *  census: it REMOVES text, and removing a real registration silently exempts
+ *  the file. `keepStrings` is true (`commentsStripped`) because the needles
+ *  are quoted event names. */
 export function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  return commentsStripped(source);
 }
 
 /**
@@ -154,11 +162,18 @@ export function stripComments(source: string): string {
  * assignment form is the natural next thing an author reaches for, and the
  * React `onScroll={…}` prop is the same follower wearing JSX.
  *
- * Stated residual: a listener registered through a HELPER that takes the
- * event name as a parameter, or a computed event name, would evade this. No
- * such shape exists in either silo today — and the two censused JSX props
- * were found by asking the QUESTION rather than by trusting the regex, which
- * is the only thing that ever widens a census.
+ * Stated residual, and it is not hypothetical: a listener registered through a
+ * HELPER that takes the event NAME as a parameter evades this, and
+ * `useEditorScrollParentEvent`
+ * ([src/hooks/useEditorDomEvent.ts](../../hooks/useEditorDomEvent.ts)) is
+ * exactly that shape — its own JSDoc recommends it "for scroll listeners that
+ * need to track the editor's actual scroll source". It has ZERO callers today,
+ * so the file LIST below is accurate; what the residual names is a pre-built
+ * escape hatch sitting under the guarded behaviour's own name. Wire a caller
+ * and this census goes quiet about it.
+ *
+ * The two censused JSX props were found by asking the QUESTION rather than by
+ * trusting the regex, which is the only thing that ever widens a census.
  */
 export function detectScrollListener(source: string): boolean {
   const src = stripComments(source);

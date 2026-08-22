@@ -449,7 +449,9 @@ ran per auto-scroll frame with CI green:
   modality gate reads POINTER and the hover branch stayed answerable: it re-ran
   `blocksAtY` plus one `computePlacement` per containing level for the whole
   drag — under a lift ghost, on chrome `globals.css` has already made
-  `pointer-events: none` for the session.
+  `pointer-events: none` for the session. Its MOUSEMOVE path has parked since
+  perf Wave 2, so the scroll path was the last live refresher and closing it
+  finishes a decision already taken rather than making a new one.
 - **The geometry service's IntersectionObserver.** `onResize` has been
   gesture-gated since 317 and `onIntersection` never was, although the IO is the
   one the auto-scroll actually fires: blocks cross the ±800 px near-zone
@@ -462,9 +464,22 @@ Five rules it earned:
 
 - **A kind-blind park is EXACTLY right here, and that is worth stating rather
   than reaching for `hasActiveLayoutGesture`.** A pane drag and a window resize
-  produce no scroll of their own, so the park is unreachable for them; a content
-  drag is the only family that can enter it. One park per follower covers all
-  three correctly with no filter to keep in step.
+  produce no scroll OF THEIR OWN, so the park is essentially unreachable for
+  them — and where a rewrap that shortens the scroll range does make the UA
+  clamp and fire one, parking is the answer 317 already chose for that gesture,
+  so the kind-blind form is not merely harmless there but correct. One park per
+  follower covers all three families with no filter to keep in step.
+- **ONE park, one clock, one settle — a second park publishes a HOLED deck.**
+  The adversarial pass on this fix found the first cut using a separate notify
+  park, and the two settle through different clocks: `scheduleRecompute` only
+  ARMS a RAF while `notify()` is synchronous, so the deck was announced one
+  full frame BEFORE the measures it was announcing, against a cache holding
+  every mid-gesture LEAVE eviction and none of the deferred ENTER measurements.
+  Every block that left and re-entered the near zone during the drag lost its
+  marker for a painted frame at drop time, and the gesture cost TWO O(markers)
+  repacks instead of the one the code claimed. The deferred notification rides
+  the recompute park as a flag (`pendingNotify`), so `flushRecompute` measures
+  and then publishes.
 - **Defer the MEASUREMENT, never the BOOKKEEPING.** The IO's observed set is the
   engine's memory of which blocks it is tracking, and a swallowed crossing
   leaves it permanently wrong after the drag — including the detach-heal path,
@@ -494,7 +509,11 @@ Five rules it earned:
   content drag, since the Reader mounts an `EditorPane` inside its scroller).
   An `addEventListener`-only grep saw neither. Both were found by asking the
   QUESTION rather than by trusting the regex, which is the only thing that
-  ever widens a census.
+  ever widens a census. The residual it still carries is named rather than
+  waved away — `useEditorScrollParentEvent` takes the event NAME as a
+  parameter and is documented as the way to attach an editor scroll listener,
+  so the census's file list is accurate only because that helper has no
+  callers yet.
 - **The census is the leg with teeth, and leg 2 is per FILE — so the
   justifications are written about the SCROLL path.** `editor-scrollbar.tsx` is
   the live example: its resize path parks and its thumb suppresses, so it passes
@@ -511,9 +530,11 @@ which fails on the pre-416 source) and
 which drives the REAL service through a REAL content gesture. **No pre-416 suite
 could see any of this**: every geometry suite in the repo drives the observers
 with no gesture live, where the parked and unparked paths are byte-identical by
-construction. Measured by neutering each half in turn — the IO gate takes 2
-legs, the notify park 1, the lazy host rect 1, and each converted site its own
-pin.
+construction. Measured by neutering each half in turn: the pre-416 handler
+takes 6 legs, a whole-handler bail (the shape the bookkeeping rule outlaws) 5
+— including the detach-heal leg no fixture that primed every block could have
+reached — a second notify park 1, dropping the per-batch host-rect memo 1, and
+each converted site its own census pin.
 
 **Owed, not claimed:** a DevTools trace of a 5 s drag over `doc_perftest` with
 no >8 ms task attributable to the drag path, plus Gabriel's own feel check.

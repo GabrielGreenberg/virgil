@@ -1045,12 +1045,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // space). The DOM-walk resolver re-runs from scratch each frame;
       // no separate cache to invalidate.
       //
-      // Cost of parking it, stated rather than waved away: while the pointer
-      // MOVES the handle stays fresh anyway (`onMouseMove` schedules the same
-      // resolve), so the only stale window is a pointer PARKED in the
-      // auto-scroll edge zone — which is exactly the case this is protecting,
-      // and where the handle is `pointer-events: none` chrome underneath a
-      // lift ghost. The end edge re-seats it once.
+      // Cost of parking it, stated precisely because the first draft of this
+      // comment got it wrong in the flattering direction: the MOUSEMOVE path
+      // has fired this same park since perf Wave 2, so the scroll path was the
+      // LAST live refresher during a content drag and this closes it. The
+      // stale window is therefore the WHOLE gesture, not a pointer parked in
+      // the edge zone. That is what Wave 2 already decided and said at the
+      // mousemove site — "mid-gesture the handle sits invisible under the drag
+      // ghost, so re-resolving per frame is pure waste" — and `globals.css`
+      // has additionally made this chrome `pointer-events: none` for the
+      // session since task 351. The end edge re-seats it once.
       gesturePark.fire();
     };
     const onResize = () => {
