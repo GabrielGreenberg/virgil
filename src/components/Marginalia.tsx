@@ -203,13 +203,15 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // returns null for off-screen blocks — those markers are skipped,
   // which is correct since their anchor isn't visible either. Overflowing
   // grids come back as overflow groups (R16) rendered as "+K" pills.
-  // Orphan markers (card resolved to `source:'orphan'`, CHIP-B) have no live
-  // paragraph to line-align against — they come back in `orphans` and render
-  // in the fixed re-pin dock instead of being silently culled.
+  // An unanchored marker (card resolved to `source:'orphan'`, CHIP-B) has no
+  // live paragraph to line-align against, so since task 410 it is not a lane
+  // occupant at all: `computeMarkerPositions` skips it and the pane's chrome
+  // header surfaces it (`UnanchoredCardsChip`). It is NOT silently culled —
+  // the RC2 vanish is still closed, just by a surface outside this column.
   // Lane regime (tasks 214/325) — see `useLaneCols` below.
   const { left: colsLeft, right: colsRight } = useLaneCols(editor);
 
-  const { positioned, overflowGroups, orphans } = useMemo(
+  const { positioned, overflowGroups } = useMemo(
     () =>
       computeMarkerPositions(registry.getMetrics, markers, panelSides, {
         left: colsLeft,
@@ -227,19 +229,12 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // dragover/drop/indicator machinery that used to live here is gone.
 
   if (!scrollEl) return null;
-  if (
-    positioned.length === 0 &&
-    overflowGroups.length === 0 &&
-    orphans.length === 0
-  )
-    return null;
+  if (positioned.length === 0 && overflowGroups.length === 0) return null;
 
   const leftMarkers = positioned.filter((m) => m.side === "left");
   const rightMarkers = positioned.filter((m) => m.side === "right");
   const leftOverflow = overflowGroups.filter((g) => g.side === "left");
   const rightOverflow = overflowGroups.filter((g) => g.side === "right");
-  const leftOrphans = orphans.filter((m) => m.side === "left");
-  const rightOrphans = orphans.filter((m) => m.side === "right");
 
   // When the host editor is read-only (Library Reader), suppress
   // drag-to-rebind on every marker. Click + Delete still work.
@@ -247,8 +242,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   return createPortal(
     <>
-      <MarginColumn side="left" markers={leftMarkers} overflow={leftOverflow} orphans={leftOrphans} dragEnabled={dragEnabled} />
-      <MarginColumn side="right" markers={rightMarkers} overflow={rightOverflow} orphans={rightOrphans} dragEnabled={dragEnabled} />
+      <MarginColumn side="left" markers={leftMarkers} overflow={leftOverflow} dragEnabled={dragEnabled} />
+      <MarginColumn side="right" markers={rightMarkers} overflow={rightOverflow} dragEnabled={dragEnabled} />
     </>,
     scrollEl
   );
@@ -537,61 +532,29 @@ function OverflowPill({
 }
 
 /**
- * Orphan dock (CHIP-B). A card whose anchor resolved to `source:'orphan'`
- * (its stored uuid + mark + text-snapshot are all dead in the live doc) has
- * no live paragraph to line-align against. Rather than silently culling it
- * (the RC2 "card vanishes ~10s later" bug), its marker docks here — a fixed,
- * faintly-tinted strip pinned to the top of the margin that reads
- * "unanchored — click to re-pin". Each entry is a normal `MarkerButton`, so:
- *   - click opens the card's panel (the user can read/triage it), and
- *   - the grab gesture (when editable) starts a drop-mode re-anchor session
- *     exactly like a live margin pin — that's the "re-pin".
- * Rendered in normal flow (no `cell`), so no paragraph metrics are needed.
+ * The margin column — the ONE lane, with ONE kind of occupant.
+ *
+ * Task 410: the "unanchored — click to re-pin" dock used to render here as a
+ * `position:absolute; top:6; zIndex:12` box, a second owner in this same
+ * column that `computeMarkerPositions` could not see. It overlapped the first
+ * blocks' marker cells (and, on the right, covered col1 entirely) and, being
+ * `pointer-events-auto` above them, STOLE their clicks; pinned to the top of a
+ * naturally tall, non-scrolling pod, it was also unreachable on any scrolled
+ * document — the affordance vanished exactly when it was needed. It now lives
+ * in the pane's sticky chrome header (`UnanchoredCardsChip`), so this column
+ * holds marker cells and "+K" pills and nothing else. **Do not add a
+ * non-marker owner here**: the packer's cross-owner walk (task 366) is a
+ * complete statement about this lane only while it is the lane's sole author.
  */
-function OrphanDock({
-  side,
-  orphans,
-  dragEnabled,
-}: {
-  side: "left" | "right";
-  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
-  dragEnabled: boolean;
-}) {
-  if (orphans.length === 0) return null;
-  const count = orphans.length;
-  const label = `${count} unanchored — click to re-pin`;
-  return (
-    <div
-      className="pointer-events-auto absolute flex flex-col items-center gap-1 rounded-md border border-edge-subtle bg-surface/90 shadow-sm"
-      style={{
-        top: 6,
-        [side]: 2,
-        padding: 4,
-        zIndex: 12,
-      }}
-      data-marginalia-orphan-dock={side}
-      data-hint={label}
-      aria-label={label}
-      role="group"
-    >
-      {orphans.map((m) => (
-        <MarkerButton key={`orphan:${m.type}:${m.id}`} m={m} dragEnabled={dragEnabled} />
-      ))}
-    </div>
-  );
-}
-
-function MarginColumn({
+export function MarginColumn({
   side,
   markers,
   overflow,
-  orphans,
   dragEnabled,
 }: {
   side: "left" | "right";
   markers: PositionedMarker[];
   overflow: MarkerOverflowGroup[];
-  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
   dragEnabled: boolean;
 }) {
   // Subscribe to panel color changes so the margin re-renders when the user
@@ -617,7 +580,6 @@ function MarginColumn({
       {overflow.map((g) => (
         <OverflowPill key={`overflow:${g.side}:${g.textObjectId}`} group={g} dragEnabled={dragEnabled} />
       ))}
-      <OrphanDock side={side} orphans={orphans} dragEnabled={dragEnabled} />
     </div>
   );
 }

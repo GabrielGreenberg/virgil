@@ -2308,24 +2308,39 @@ narrow to host the lane would paint badges over the text. Every margin-lane
 element asks the same predicate — `laneSlotClearsProse(inset, available)` in
 `src/lib/marginalia.ts`, given the MEASURED pod-edge → text-edge distance — and
 degrades in its own way: the selection bolt TUCKS against the scrollbar (task
-045), the marker grid HIDES that side outright (cells, "+K" pill and orphan
-dock together — a two-column grid has no sub-lane to tuck into). Thresholds are
+045), the marker grid HIDES that side outright (cells and "+K" pill together
+— a two-column grid has no sub-lane to tuck into). Thresholds are
 derived from where each element actually paints: bolt ≥ 104px, right grid
 ≥ 70px, left grid ≥ 52px. Reachable in the compressed code-split (48px comfort
 gutter), zen, and any hand-dragged margin below the floor.
 
-**Orphan dock ("unanchored — click to re-pin").** A card whose anchor can
-no longer be resolved to any live paragraph (its stored UUID, its
-`linkedAnchor` mark, and its text snapshot are all dead — the resolver SSOT
-`resolveCardAnchor` returns `source:'orphan'`) has no line to align against.
-Rather than silently culling its marker (the old "card vanishes ~10s later"
-bug), the margin surfaces it in a **fixed dock** pinned to the top of the
-side it would dock on (`OrphanDock` in `Marginalia.tsx`): a faint
-`bg-surface/90` + `border-edge-subtle` rounded strip of the card's normal
-marker buttons, with a `data-hint`/`aria-label` of "N unanchored — click to
-re-pin". Each entry behaves like any margin marker — click opens the card's
-panel; grab (when editable) starts a drop-mode re-anchor session (the
-re-pin). The dock only appears when a card genuinely orphans against a
+**"N unanchored" chip (task 410) — the margin lane holds MARKERS only.** A
+card whose anchor can no longer be resolved to any live paragraph (its stored
+UUID, its `linkedAnchor` mark, and its text snapshot are all dead — the
+resolver SSOT `resolveCardAnchor` returns `source:'orphan'`) has no line to
+align against, so it has no place in a lane whose x-axis means "beside the
+text this points at". It surfaces instead as an **`omni-bin-pill` chip in the
+pod's sticky chrome header**, beside the MenuBar
+(`UnanchoredCardsChip.tsx`): a `BadgeOrphaned` dot + "N unanchored",
+click-to-expand into a small popover of that card's normal marker buttons.
+Each entry behaves like any margin marker — click opens the card's panel; grab
+(when editable) starts a drop-mode re-anchor session (the re-pin).
+
+It used to be an `OrphanDock` pinned inside the margin column itself, and the
+three reasons it moved are the reasons **nothing else may be added to that
+column**: it overlapped the first blocks' marker cells and, being an opaque
+`pointer-events-auto` surface above them, stole their clicks; it was culled by
+the cramped-lane rule along with the cells, so the one surface that exists to
+stop a card vanishing could itself vanish; and pinned at `top: 6` of a
+non-scrolling pod it was unreachable on any scrolled document. The chrome
+header is STICKY, so the chip survives every scroll position, both margin
+regimes, and a side too narrow to host the lane.
+
+It is deliberately NOT gated on the "show marginalia" toggle or the per-type
+hide set — those are preferences about the lane, and a lost anchor is a
+data-integrity fact, which this guide's own rule says is not hideable by a
+layout preference. Archived cards ARE excluded (their home is the Archive
+panel). The chip only appears when a card genuinely orphans against a
 **non-empty** live-UUID set — never during the editor-mount gap (the marker
 builder treats a zero-UUID resolve index as not-ready and falls back to the
 raw stored pids, so a momentarily-empty doc can't false-flag every card).

@@ -4017,7 +4017,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"] {
  * The rule above exists because the hit-test must reach the editor through
  * whatever is on top ("floats become click-through so the cursor falls through
  * to the editor for hit-testing"). The MARGIN chrome — grab handles, marginalia
- * markers and their overflow / orphan docks — sits inside `.ProseMirror`'s own
+ * markers and their overflow pills — sits inside `.ProseMirror`'s own
  * 88px/72px padding band and was never added, and the cost of that is not a
  * missed hover: it is a doc-proportional forced-layout sweep on the hottest
  * path in the gesture. `view.posAtCoords` asks `document.elementFromPoint`
@@ -4031,8 +4031,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"] {
  * through is also the correct ANSWER, not merely the cheap one. */
 body[data-drop-mode-active="true"] .text-object-grab-handle,
 body[data-drop-mode-active="true"] .marginalia-marker,
-body[data-drop-mode-active="true"] [data-marginalia-overflow],
-body[data-drop-mode-active="true"] [data-marginalia-orphan-dock] {
+body[data-drop-mode-active="true"] [data-marginalia-overflow] {
   pointer-events: none;
 }
 body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-source="true"] {

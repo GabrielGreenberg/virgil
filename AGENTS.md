@@ -692,7 +692,7 @@ Three rules it earned:
 
 - **The question is geometric, not a flag.** `available` is the MEASURED pod-edge → text-edge distance (`podRight − editorRight`, `contentLeft − podLeft` from the geometry service's viewport frame), never the `--editor-pl`/`--editor-pr` pref — the pod sits inside the code-split clip, so `podRight` is the VISIBLE edge and the pref overstates the room. Reading geometry rather than a flag also covers every OTHER narrowing path (zen, a hand-dragged margin, the reader) without threading a second flag to a third consumer, which is exactly how the first one was missed.
 - **The threshold is DERIVED per element, from where it actually paints.** `inset` is the distance from the pod edge to that element's INNERMOST edge: the bolt's inboard slot is 96 (⇒ needs a 104px margin — byte-identical to the inline comparison it replaced), the marker grid's is `marginGridInset(side)` — right 62 (⇒ 70), left 44 (⇒ 52, because the left grid is ONE column and the inner-left slot belongs to the popout button). The thresholds differing is the point: the bolt is inboard of the markers, so it tucks at margins where the markers still clear the prose honestly.
-- **Failure mode per element, and the unmeasured frame FAILS OPEN.** The bolt tucks; the grid gives up COLUMNS, and at nothing-left it hides that side entirely — cells, "+K" pill and the orphan re-pin dock together, since all three are pinned in the same column. (The original text said "a two-column grid has no sub-lane left to tuck into" and that was the sentence task 325 had to retire: there is one, and the tuck was sitting on it.) An uncommitted viewport frame (`frame.editorEl === null`: pre-first-refresh, a keep-alive pane mounted while `display:none`, a detached view) is every-field-zero, so keying the regime on the arithmetic instead of that sentinel would cull every marker on the first commit of every pane and on every warm tab switch — far worse than the overlap being guarded.
+- **Failure mode per element, and the unmeasured frame FAILS OPEN.** The bolt tucks; the grid gives up COLUMNS, and at nothing-left it hides that side entirely — cells and the "+K" pill together, since both are pinned in the same column. (Pre-410 the orphan re-pin dock was culled with them, which was the wrong answer for a surface whose whole job is that an anchor-less card does NOT vanish; it has since left the lane — see "The occupancy half" below.) (The original text said "a two-column grid has no sub-lane left to tuck into" and that was the sentence task 325 had to retire: there is one, and the tuck was sitting on it.) An uncommitted viewport frame (`frame.editorEl === null`: pre-first-refresh, a keep-alive pane mounted while `display:none`, a detached view) is every-field-zero, so keying the regime on the arithmetic instead of that sentinel would cull every marker on the first commit of every pane and on every warm tab switch — far worse than the overlap being guarded.
 
 `computeMarkerPositions` takes the resolved per-side COLUMN COUNTS as a REQUIRED argument (a defaulted answer is a decision nobody made), and `Marginalia`'s `useLaneCols` reads the service's viewport channel through `useSyncExternalStore` with a PRIMITIVE packed-integer snapshot — no new observer, no editor subscription, and React bails the re-render on every refresh that leaves the regime unchanged (which is every refresh a keystroke can cause: a height change moves the frame's vertical fields and the regime reads only horizontal ones). CI: [src/lib/\_\_tests\_\_/marginalia-lane-regime.test.ts](src/lib/__tests__/marginalia-lane-regime.test.ts) sweeps every margin 0–200 on both sides through the REAL predicate into the REAL grid and asserts no cell (or pill) ever starts inside `text edge ± INNER_PAD`; it also censuses the production call sites, because a test of the predicate alone structurally cannot catch the original shape — the predicate was never the part that misbehaved, the call site that never asked was.
 
@@ -709,9 +709,100 @@ Same lane, one axis in (task 325) — and the case where both predicates were ri
 - **The count is DERIVED by walking the same column offsets `cellAt` packs against** (`rightColumnsClearingBolt`), never a hand-written "one", so it follows the bolt size, the icon width and the gaps automatically.
 - **This cost nothing at the prose threshold, and the reason is worth knowing.** Right cells run OUTWARD from col0, so `marginGridInset("right")` is col0's left edge at ANY column count — losing col1 cannot move 214's derived 70. A future change that made the right grid pack INWARD would have to renegotiate that, which is why the suite pins the independence explicitly.
 
-**Known residual, stated rather than implied:** the orphan re-pin dock is not a band. It is flow-positioned at `right: 2` inside the same column, so it overlaps the scrollbar gutter in EVERY regime and the tucked bolt in this one — pre-existing, independent of the bolt, and a visible chrome relocation to fix, so it is out of scope here and explicitly outside the disjointness sweep, which asks about cells and the pill.
+**The residual this section used to record is CLOSED by task 410.** It read: *the orphan re-pin dock is not a band — it is pinned at `right: 2` inside the same column, so it overlaps the scrollbar gutter in EVERY regime and the tucked bolt in this one … a visible chrome relocation to fix, so it is out of scope here and explicitly outside the disjointness sweep.* The relocation happened: the dock is gone from the lane entirely, so the sweep's scope ("cells and the pill") is now a statement about every occupant there is, rather than an exclusion. See "The occupancy half" immediately below.
 
 CI: the same [marginalia-lane-regime.test.ts](src/lib/__tests__/marginalia-lane-regime.test.ts), widened with the sweep in the prose-clearance sweep's own shape — every margin 0–200, markers enough to force a second row and a pill, and at each one the bolt's band must miss every rendered cell, with counters asserting the sweep crossed BOTH regimes *with markers up* so it cannot pass by hiding everything. Three legs fail when the cramped branch is reverted to the full column count.
+
+#### The occupancy half: a lane packed by ONE walk has ONE kind of occupant
+
+Same lane, and the case where the packer was complete, correct, and simply not
+the only thing rendering into the column it packs (task 410). Task 366 made
+"the LANE is packed, once, in one walk" true of the marker ROWS. `OrphanDock`
+was a second owner in that column — `position: absolute; top: 6; zIndex: 12`,
+`pointer-events-auto`, rendered as the last child of the same `MarginColumn`
+and invisible to `computeMarkerPositions` by construction.
+
+Three costs, measured, and the third is what made this a relocation rather
+than a z-index nudge:
+
+- **It overlapped the first blocks' cells, and it STOLE their clicks.** Its
+  band is `6 … 12 + 26n`; the prose root sits below a 40px
+  `doc-prose-leadin::before`, so the first cell lands at ≈83 at the default
+  40px top margin and ≈43 at `MARGIN_MIN.top` — n ≥ 3 and n ≥ 2 respectively.
+  Horizontally the dock is 32 wide, so on the LEFT it clipped col0 by 12px and
+  on the RIGHT it covered col1 entirely. Being an opaque `pointer-events-auto`
+  surface ABOVE the cells, a covered marker lost its pixels AND its clicks —
+  the task-325 bolt-over-col1 shape, one axis over.
+- **It was culled with the cells.** The `laneCols[side] <= 0` gate (a cramped
+  margin, zen, the read-only reader) dropped the dock along with the grid, so
+  the one surface that exists to stop an anchor-less card vanishing could
+  itself vanish.
+- **It was unreachable on any scrolled document.** `top: 6` inside a naturally
+  tall, non-scrolling pod (`.editor-pane-pod` is `overflow: clip`) means the
+  re-pin entry point is only on screen at the very top of the paper.
+
+> **A lane whose packing is "one walk" has exactly ONE kind of occupant, or the
+> claim is about the walk and not about the lane. And an affordance for a fact
+> that is not POSITIONAL does not live in a positional lane: the unanchored set
+> needs no metrics, no side and no lane regime, so it is derived at the marker
+> SOURCE and surfaced in chrome that is visible from anywhere in the document.**
+
+[`UnanchoredCardsChip`](src/components/UnanchoredCardsChip.tsx) is that
+surface — an "N unanchored" pill in the pod's STICKY chrome header, beside the
+MenuBar. Six rules it earned:
+
+- **The deep move is that the packer stops KNOWING about them.**
+  `MarkerPositionsResult` no longer carries an `orphans` bucket at all, and
+  `computeMarkerPositions` skips an `m.unanchored` marker before the side is
+  even resolved. Reserving a band for the dock (the other candidate) was
+  rejected for the reason 366 exists: it teaches the packer about a
+  non-marker-row owner, which is exactly the claim being repaired. A bucket
+  left behind is a bucket a future renderer reaches for.
+- **The relocation is what makes the cramped-lane cull go away** — not a
+  second exemption inside the gate. The chip takes no lane input, so its
+  visibility cannot be decided by a margin width.
+- **The entries are the SAME `MarkerButton` the lane renders**, in flow layout
+  (the shape the "+K" overflow popover already uses). Click still opens the
+  card's panel and the grab still starts the drop-mode re-anchor session —
+  nothing about that gesture depends on where the button sits, which is why
+  the relocation costs no behaviour.
+- **It is fed from the UNFILTERED marker set.** The master "show marginalia"
+  toggle and the per-type hide set are preferences about the LANE; a card that
+  lost its anchor is the same class of fact as a save refusal, and this file's
+  own rule is that a data-integrity notice is not hideable by a layout
+  preference. Archived cards ARE excluded — an archived card is deliberately
+  out of the margin and out of its panel's default list, and its home is the
+  Archive panel.
+- **The chip renders NOTHING at zero**, rather than a disabled control that
+  does nothing (the false-affordance rule).
+- **`MarginColumn` is exported for the sweep**, the way `MarkerButton` already
+  is for the pin-gesture suite — the interception half is a DOM fact, and a
+  geometry-only assertion passes on an implementation that paints correctly and
+  still eats the click.
+
+CI: [unanchored-cards-chip.test.tsx](src/components/__tests__/unanchored-cards-chip.test.tsx).
+The sweep drives the REAL grid into the REAL `MarginColumn` over n = 1..4
+unanchored × margin 0–200 × both sides, with counters proving it crossed both
+lane regimes, and asserts BOTH halves: no unanchored marker in either lane
+bucket, and **no click-taking surface in the column that is not a marker
+button**. Its fixture's `node.top` includes the 40px lead-in — without it the
+sweep false-positives at n = 1. The leg with teeth is the CENSUS: the packer
+was never the part that could misbehave, a second owner rendered into the
+column is, and so is a chip fed from the view-filtered set or mounted inside
+the scrolling pod — none of which any test of `computeMarkerPositions` can see.
+Measured by neutering each half in turn: restoring the in-lane dock takes 2
+legs (the sweep's interception half and the census), feeding the chip
+`visibleMarginaliaMarkers` 1, and mounting it in the pod 1. The pre-410
+contracts in `marginalia-grid.test.ts` ("it goes to `orphans`") and
+`marginalia-lane-regime.test.ts` ("the dock goes with the cells") are
+RENEGOTIATED in place with the reason at the site — both pinned the defect as
+the contract.
+
+**Owed, not claimed:** a real-FSA eyeball. Orphan state comes from real anchor
+death, which is the FSA-masked class, so the durable proof here is the unit
+sweep — delete a paragraph carrying three same-side cards, then click the first
+block's markers (they answer) and open the chip (all three are there, and one
+of them drags back onto a paragraph).
 
 #### The vertical half: a per-owner layout with no cross-owner resolution
 

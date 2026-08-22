@@ -244,9 +244,13 @@ export interface MarginaliaMarker {
    * `resolveCardAnchor`). The card still exists in its sidecar but has no
    * live paragraph to sit beside. The grid CANNOT line-align an orphan (no
    * paragraph metrics), so instead of silently culling it (the RC2 "card
-   * vanishes" bug) the margin surfaces it in a fixed "unanchored — click to
-   * re-pin" dock. `textObjectId` still carries the card's last-known stored
-   * pid so the marker keys stably and the re-pin grab gesture has a kind+id.
+   * vanishes" bug) it is surfaced OUTSIDE the lane, in the pane's sticky
+   * chrome header (`UnanchoredCardsChip`, task 410) — a card that lost its
+   * anchor is a fact about the CARD, not about the margin's geometry, and an
+   * affordance for it must be reachable at any scroll position and on a side
+   * the lane is too cramped to host. `textObjectId` still carries the card's
+   * last-known stored pid so the marker keys stably and the re-pin grab
+   * gesture has a kind+id.
    */
   unanchored?: boolean;
 }
