@@ -53,7 +53,12 @@ import {
   isActive,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
-import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
+import {
+  stampDiskFingerprint,
+  fingerprintOf,
+  getDiskFingerprint,
+  hashContent,
+} from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
 
 // Re-export types that consumers import alongside functions.
@@ -154,6 +159,125 @@ async function fetchJsonIfExists<T>(url: string): Promise<T | null> {
 
 async function putText(url: string, body: string): Promise<void> {
   await fetch(url, { method: "PUT", body }).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// The gated write funnel (task 415) — the dev twin of storage-fsa's
+// `writeTrackedText` / `readTrackedText`. The contract, the fail-open
+// direction and the reason the gate STATS rather than trusting the ledger hash
+// alone all live at the FSA declarations; this exists so the two backends
+// cannot answer differently about whether a write should happen, which is the
+// twin-fork shape this repo keeps re-learning (task 341).
+//
+// The fork risk that motivates the gate is a sync daemon watching the paper
+// folder, which the dev backend's local `virgil-data/` has none of. What it
+// gains here instead is that the behaviour the app is PREVIEWED on is the
+// behaviour it ships — a write count that differs between backends is a
+// difference someone eventually debugs in the wrong one.
+//
+// Stated limit: dev's stat is an HTTP HEAD, so `Last-Modified` has one-second
+// resolution. An external write landing inside the same second AND producing
+// the same byte length would not move the confirm, where FSA's `File`
+// `lastModified` is millisecond-resolution. Nothing watches this folder, so the
+// exposure is a fixture one.
+// ---------------------------------------------------------------------------
+
+/** Dev twin of `diskAlreadyHas`. Never throws; "cannot prove" is `false`. */
+async function diskAlreadyHas(
+  docId: string,
+  relPath: string,
+  content: string,
+): Promise<boolean> {
+  const fp = getDiskFingerprint(docId, relPath);
+  if (!fp) return false;
+  if (fp.hash !== hashContent(content)) return false;
+  const live = await statOneFile(docId, relPath);
+  return !!live && live.mtimeMs === fp.mtimeMs && live.size === fp.size;
+}
+
+/**
+ * THE write door for every ledgered text file in this backend: gate, PUT,
+ * stamp. Returns whether bytes actually landed.
+ */
+async function putTrackedText(
+  docId: string,
+  relPath: string,
+  content: string,
+  opts?: { force?: boolean; beforeWrite?: () => Promise<void> },
+): Promise<boolean> {
+  if (!opts?.force && (await diskAlreadyHas(docId, relPath, content))) {
+    return false;
+  }
+  if (opts?.beforeWrite) await opts.beforeWrite();
+  // tex-write-exempt: this IS the door — see the FSA twin `writeTrackedText`.
+  // Accountability is asked of the CALLERS, not of the funnel they enter.
+  // write-gate-exempt: this IS the byte-equality gate — see the FSA twin.
+  await putText(docFileUrl(docId, relPath), content);
+  await stampLedger(docId, relPath, content);
+  return true;
+}
+
+/**
+ * Read a tracked text file THROUGH the ledger (dev twin of `readTrackedText`):
+ * ONE GET serves both the bytes and the fingerprint, so the write gate is
+ * effective from the session's first save rather than only from its second.
+ *
+ * The fingerprint must be built from the SAME fields `statOneFile` reports, or
+ * the confirm can never match — so a response with no `content-length` stamps
+ * nothing rather than stamping a size the stat would contradict.
+ */
+async function fetchTextTracked(
+  docId: string,
+  relPath: string,
+): Promise<string | null> {
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(docFileUrl(docId, relPath));
+    if (!res.ok) return null;
+    text = await res.text();
+  } catch {
+    return null;
+  }
+  // The stamp is its OWN try/catch, never the read's. A stamp that could fail
+  // the read would turn a header the server happened not to send into the
+  // caller's DEFAULT VALUE — which for `mutateSidecar` is an empty base, i.e.
+  // the merge silently dropping everything on disk. A best-effort bookkeeping
+  // write must never be able to change what a read returns.
+  try {
+    const lastMod = res.headers.get("last-modified");
+    const len = res.headers.get("content-length");
+    if (lastMod !== null && len !== null) {
+      const mtimeMs = new Date(lastMod).getTime();
+      const size = Number(len);
+      if (Number.isFinite(mtimeMs) && Number.isFinite(size)) {
+        stampDiskFingerprint(
+          docId,
+          relPath,
+          fingerprintOf({ mtimeMs, size }, text),
+        );
+      }
+    }
+  } catch {
+    // A stamp can never break a read.
+  }
+  return text;
+}
+
+/** `fetchTextTracked`, parsed. `null` = absent/unreadable (never a parse of
+ *  garbage: a bad body throws out of `JSON.parse` exactly as `fetchJsonIfExists`
+ *  would swallow it, so the two keep their existing shapes). */
+async function fetchJsonTracked<T>(
+  docId: string,
+  relPath: string,
+): Promise<T | null> {
+  const text = await fetchTextTracked(docId, relPath);
+  if (text === null) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -309,7 +433,8 @@ export async function readSidecar<T>(
   filename: string,
   defaultValue: T,
 ): Promise<T> {
-  return fetchJson<T>(docFileUrl(docId, `virgil/${filename}`), defaultValue);
+  const parsed = await fetchJsonTracked<T>(docId, `virgil/${filename}`);
+  return parsed ?? defaultValue;
 }
 
 export async function readSidecarIfExists<T>(
@@ -319,7 +444,7 @@ export async function readSidecarIfExists<T>(
   const bundle = ensureSidecarBundle(docId);
   if (bundle.inflight) await bundle.inflight;
   if (bundle.files.has(filename)) return (bundle.files.get(filename) ?? null) as T | null;
-  return fetchJsonIfExists<T>(docFileUrl(docId, `virgil/${filename}`));
+  return fetchJsonTracked<T>(docId, `virgil/${filename}`);
 }
 
 /** Dev mirror of storage-fsa's `persistSidecarInLock` — the write half, run
@@ -334,14 +459,12 @@ async function persistSidecarInLock<T>(
   data: T,
 ): Promise<void> {
   const serialized = JSON.stringify(data, null, 2);
-  await putText(docFileUrl(docId, `virgil/${filename}`), serialized);
+  // Through the gated funnel (task 415), which also owns the disk-ledger stamp
+  // — the own-write guard that keeps the `SidecarWatcher` from misreading
+  // Virgil's own debounced autosave as an external change.
+  await putTrackedText(docId, `virgil/${filename}`, serialized);
   const bundle = sidecarCache.get(docId);
   if (bundle) bundle.files.set(filename, data);
-  // Stamp the disk ledger so the SidecarWatcher never misreads Virgil's own
-  // debounced sidecar autosave as an external change (own-write guard; dev
-  // mirror of storage-fsa). Keyed on the `virgil/<filename>` relPath the watcher
-  // stats. Best-effort: `stampLedger` never throws.
-  await stampLedger(docId, `virgil/${filename}`, serialized);
 }
 
 /** The per-file serial-queue key, shared by BOTH sidecar write doors so a
@@ -426,9 +549,9 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
     const docs = await getDevIndex();
     const entry = findEntry(docs, h.docId);
     const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
-    await putText(`${API}/doc/${h.docId}/${filename}`, latex);
-    // Stamp the ledger with the authoritative post-write fingerprint.
-    await stampLedger(h.docId, filename, latex);
+    // Through the gated funnel (task 415), which also stamps the ledger with
+    // the authoritative post-write fingerprint.
+    await putTrackedText(h.docId, filename, latex);
   });
 }
 
@@ -521,14 +644,18 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
           recordPreservationRefusal(docId, preservationRefusalDetail(verdict));
           return;
         }
+        // Both files through the gated funnel (task 415), which also carries
+        // the CRITICAL false-positive guard: the load-writeback rewrites the
+        // `.tex` seconds after load, and the funnel stamps the bytes it writes
+        // so the watcher recognizes it as Virgil's own.
         await Promise.all([
-          putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
-          putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+          putTrackedText(docId, texFilename, newLatex),
+          putTrackedText(
+            docId,
+            "virgil/virgil.json",
+            JSON.stringify(newSidecar, null, 2),
+          ),
         ]);
-        // CRITICAL false-positive guard (parity with storage-fsa): the load-
-        // writeback rewrites the .tex seconds after load. Stamp with the bytes
-        // we just wrote so the watcher recognizes it as Virgil's own write.
-        await stampLedger(docId, texFilename, newLatex);
       } catch {
         // Silent — this is an opportunistic UUID-stamp, not a save.
       }
@@ -631,13 +758,19 @@ export async function writeDocBundle(
     // is still safe to write to, only a SUPERSEDED one would corrupt.
     assertNotSuperseded(h);
     // editor-state.json is owned by useEditorUIState, not the bundle save.
+    // PER-FILE byte-equality through the gated funnel (task 415) — parity with
+    // storage-fsa, where the reason lives. A conflict resolution IS the user's
+    // decision (task 364), so it FORCES past the gate.
+    const force = opts?.userResolvedConflict === true;
     await Promise.all([
-      putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
-      putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+      putTrackedText(h.docId, texFilename, latex, { force }),
+      putTrackedText(
+        h.docId,
+        "virgil/virgil.json",
+        JSON.stringify(newSidecar, null, 2),
+        { force },
+      ),
     ]);
-    // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
-    // preserved), not the JSONContent — so the next poll matches exactly.
-    await stampLedger(h.docId, texFilename, latex);
   });
 }
 
@@ -659,6 +792,10 @@ export async function writeDocBundle(
  * it exists to preserve would be a category error, which is the same reason the
  * FSA twin's slot writes sit beside `copyFileIfPresent` rather than on the
  * shared text-write primitive.
+ *
+ * write-gate-exempt: a `.history/<timestamp>/` slot is minted fresh per
+ * resolution and is watched by nothing, so it has no ledger entry to compare
+ * against and no fork risk to shrink (task 415).
  *
  * Stated limit: no pruning. The FSA twin caps a doc at HISTORY_LIMIT slots by
  * listing the folder; the dev API has no directory listing, so a dev history
@@ -771,7 +908,7 @@ export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void
     if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
   }
   assertNotSuperseded(h);
-  await putText(docFileUrl(h.docId, bibFilename), bibText);
+  await putTrackedText(h.docId, bibFilename, bibText);
   // Stamp the ledger with the authoritative post-write .bib fingerprint.
   await stampLedger(h.docId, bibFilename, bibText);
 }
@@ -938,8 +1075,12 @@ export async function writeFigureIndex(
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
-  await putText(
-    docFileUrl(h.docId, "virgil/figures-cache/index.json"),
+  // Derived, but it lives inside the paper folder, so a rewrite of identical
+  // bytes is traffic exactly like any other (task 415) — parity with the FSA
+  // twin.
+  await putTrackedText(
+    h.docId,
+    "virgil/figures-cache/index.json",
     JSON.stringify(index, null, 2),
   );
 }
@@ -1136,6 +1277,9 @@ export async function listDocs(): Promise<FsaDocMeta[]> {
 // tex-write-exempt: the dev doc REGISTRY (`index.json`), not a paper file — it
 // records which folders exist, and it is read-modify-written from the file it
 // is about to replace, so it cannot carry a document's words away.
+// write-gate-exempt: writes the dev backend's own `index.json` catalogue at the
+// API root — not a paper file, not ledgered, and touched only on a discrete
+// rename gesture (task 415).
 export async function renameDoc(id: string, newName: string): Promise<void> {
   const raw = await fetchText(`${API}/index.json`);
   if (!raw) return;
@@ -1150,6 +1294,8 @@ export async function renameDoc(id: string, newName: string): Promise<void> {
 
 // tex-write-exempt: the dev doc REGISTRY (`index.json`), not a paper file — see
 // `renameDoc` above. Removing a row leaves every byte on disk untouched.
+// write-gate-exempt: the dev backend's own `index.json` catalogue — see
+// `renameDoc` above (task 415).
 export async function deleteDocFromIndex(id: string): Promise<void> {
   const raw = await fetchText(`${API}/index.json`);
   if (!raw) return;
