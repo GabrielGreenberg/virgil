@@ -31,7 +31,7 @@ import { pickActiveByEditor } from "@/lib/active-editor-probe";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { resolveSessionPlacements } from "./placement-policy";
-import { resolveSessionInlinePayload } from "./inline-host";
+import { resolveSessionInlinePayload, TEXT_ONLY_PAYLOAD } from "./inline-host";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
@@ -263,6 +263,14 @@ export function beginDropSession(opts: {
   if (!spec) return false;
 
   const inPlace = opts.inPlace === true;
+  // Both session-scoped resolutions, taken once here. The inline payload is
+  // resolved only when this session can actually PRODUCE an inline caret: its
+  // one consumer is `makeInlineCursorPlacement`, which the hit-test reaches only
+  // when `winningPlacementKind` returns "inline-cursor", so for a gap-only or
+  // paragraph-side payload the answer is unobservable — and for stack-pull both
+  // resolvers reach the same `readEnvelope`, i.e. a second whole-localStorage
+  // parse at mousedown for a payload that can never use it.
+  const placements = resolveSessionPlacements(spec, opts.cardKey);
   session = {
     cardKey: opts.cardKey,
     kind,
@@ -273,11 +281,13 @@ export function beginDropSession(opts: {
     // envelope), a cost the throttled per-move hit-test must never pay, and
     // freezing the CHOICE at mousedown keeps the affordance stable. The payload
     // can still vanish mid-drag, which `classifyDrop` re-checks at commit.
-    placements: resolveSessionPlacements(spec, opts.cardKey),
+    placements,
     // The inline-cursor CONTAINER question's input, resolved on the same edge
     // and for the same reasons (task 414): it may walk a document range or parse
     // the Stack's localStorage envelope, so it must never run per pointermove.
-    inlinePayload: resolveSessionInlinePayload(spec, opts.cardKey, ctx),
+    inlinePayload: placements.includes("inline-cursor")
+      ? resolveSessionInlinePayload(spec, opts.cardKey, ctx)
+      : TEXT_ONLY_PAYLOAD,
     origin: opts.origin,
     placement: null,
     inPlace,

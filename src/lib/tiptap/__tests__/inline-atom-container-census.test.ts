@@ -51,7 +51,7 @@
 // cannot honour, so the hover and the commit answer from one table — is asked of
 // the live spec objects in `placement-reachability.test.ts` (every spec that can
 // offer an inline caret declares `inlinePayloadFor`), and driven end to end in
-// `drop-mode-inline-container-gate.test.tsx`.
+// `src/components/drop-mode/__tests__/inline-cursor-container-gate.test.tsx`.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";

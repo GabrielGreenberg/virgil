@@ -80,6 +80,12 @@ import {
 } from "@/lib/editor-extensions";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { hitTest } from "../hit-test";
+import {
+  beginDropSession,
+  cancelDropSession,
+  setDropCtx,
+} from "../controller";
+import { insertLanded } from "../schema-adopt";
 import { registerDropTarget } from "../target-registry";
 import { resolveSessionInlinePayload } from "../inline-host";
 import { resolveSessionPlacements } from "../placement-policy";
@@ -152,6 +158,39 @@ function mountFixture(): Editor {
           type: "latexComment",
           attrs: { uuid: "cmt-A" },
           content: [{ type: "text", text: "% todo fix later" }],
+        },
+        // The two families a WEAKER block reading waved through: an `inline*`
+        // textblock whose CONTAINER can host no block sibling. Both are
+        // `inline*`, so every atom predicate answers "yes" for them — which is
+        // exactly why the block arm cannot be a proxy for "is this verbatim?".
+        {
+          type: "figureBlock",
+          attrs: { uuid: "fig-A" },
+          content: [
+            {
+              type: "figureCaption",
+              content: [{ type: "text", text: "Cap tion here" }],
+            },
+          ],
+        },
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "ex-A" },
+          content: [
+            {
+              type: "exampleGloss",
+              content: [
+                {
+                  type: "alignedGlossRow",
+                  attrs: { tier: "gla" },
+                  content: [
+                    { type: "glossCell", content: [{ type: "text", text: "aa bb" }] },
+                    { type: "glossCell", content: [{ type: "text", text: "cc" }] },
+                  ],
+                },
+              ],
+            },
+          ],
         },
       ],
     },
@@ -326,6 +365,76 @@ describe("the hover offers no caret a verbatim block cannot hold", () => {
   });
 });
 
+describe("the payload is resolved ONCE per gesture, never per pointermove", () => {
+  // The law's own justification is that the resolution may parse the Stack's
+  // whole localStorage envelope or walk a document range — so it must never run
+  // on the throttled move path. `placementsFor`'s identical claim is pinned by a
+  // read-count leg through the REAL controller (task 258); this is its twin, and
+  // without it the claim is prose.
+  it("beginDropSession reads the envelope; six moves read it zero more times", async () => {
+    const editor = mount();
+    aimAt(editor, midOf(editor, "paragraph"));
+    const key = `${STACK_PULL_PREFIX}:item-9`;
+    seedStack(
+      {
+        kind: "text",
+        plain: "XX",
+        slice: { content: [{ type: "text", text: "XX" }], openStart: 0, openEnd: 0 },
+      } as unknown as StackPayload,
+      key,
+    );
+
+    let reads = 0;
+    const realGet = localStorage.getItem.bind(localStorage);
+    const spy = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation((k: string) => {
+        if (k === STACK_STORAGE_KEY) reads += 1;
+        return realGet(k);
+      });
+    try {
+      setDropCtx(ctxFor(editor));
+      expect(
+        beginDropSession({ cardKey: key, origin: { x: CURSOR_X, y: IN_TEXT_Y } }),
+      ).toBe(true);
+      // Both session resolutions have run by now — the placements and the
+      // inline payload — and the count is what it is; what the law forbids is
+      // GROWTH per move.
+      const afterBegin = reads;
+      expect(afterBegin).toBeGreaterThan(0);
+      for (let i = 0; i < 6; i++) {
+        window.dispatchEvent(
+          new MouseEvent("mousemove", {
+            clientX: CURSOR_X + i,
+            clientY: IN_TEXT_Y,
+            buttons: 1,
+          }),
+        );
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      expect(reads).toBe(afterBegin);
+    } finally {
+      cancelDropSession();
+      spy.mockRestore();
+      setDropCtx(null as unknown as DropCtx);
+    }
+  });
+
+  it("a gap-only payload resolves NO inline payload at all", () => {
+    // The consumer is reachable only when the session can produce an inline
+    // caret, so resolving it for a gap-only payload is a second envelope parse
+    // at mousedown for an answer nothing can read.
+    const editor = mount();
+    const key = `${STACK_PULL_PREFIX}:item-8`;
+    seedStack(
+      { kind: "paragraph", node: { type: "paragraph" } } as unknown as StackPayload,
+      key,
+    );
+    const placements = resolveSessionPlacements(stackPullDropSpec, key);
+    expect(placements).not.toContain("inline-cursor");
+  });
+});
+
 // ===========================================================================
 // 2. THE COMMIT — one leg per splice site
 // ===========================================================================
@@ -382,6 +491,16 @@ describe("every inline splice refuses rather than tear the block", () => {
     });
     inTextAtomGrabSpec.applyDrop(placement, "atom-grab:tok", ctx);
     expect(tex(editor)).toBe(before);
+
+    // CONTROL through the identical harness — the `no-op` above must be THIS
+    // gate's refusal, not the resolver failing to find the captured source (the
+    // in-text grab configures no `createAtom`, so an unresolvable source is
+    // ALSO a `no-op` with an unchanged document). Same spec, same stash, same
+    // ctx; only the target block differs.
+    const inProse = caretAt(editor, midOf(editor, "titleField"));
+    expect(inTextAtomGrabSpec.classifyDrop(inProse, "atom-grab:tok", ctx)).toEqual({
+      kind: "apply",
+    });
   });
 
   it("MOVE-ACROSS — the SOURCE atom and its footnote BODY survive the refusal", () => {
@@ -410,6 +529,14 @@ describe("every inline splice refuses rather than tear the block", () => {
     expect(tex(source)).toBe(sourceBefore);
     expect(tex(source)).toContain("the note body");
     expect(tex(target)).toBe(targetBefore);
+
+    // CONTROL — the same cross-editor move into the target's PROSE lands, so
+    // the refusal above is this gate and not `locateAtom` failing to find the
+    // source in another editor (which would also be a `no-op`).
+    const intoProse = caretAt(target, midOf(target, "paragraph"));
+    expect(footnoteDropSpec.classifyDrop(intoProse, "footnote:fn-9", ctx)).toEqual({
+      kind: "apply",
+    });
   });
 
   it("the growth FLOOR alone would have passed it — which is why the gate is the answer", () => {
@@ -422,6 +549,11 @@ describe("every inline splice refuses rather than tear the block", () => {
     });
     const at = posInside(editor, "latexComment", "% todo".length);
     const tr = editor.state.tr.insert(at, atom);
+    // The SHIPPED net, not a re-derivation of its rule — a leg that re-computes
+    // "steps > 0 and growth >= payload" by hand proves nothing about the
+    // predicate the cross-editor move actually consults.
+    expect(insertLanded(tr, atom.nodeSize)).toBe(true);
+    // …and the arithmetic that explains WHY it passes.
     expect(tr.steps.length).toBe(1);
     expect(tr.doc.content.size - editor.state.doc.content.size).toBeGreaterThan(
       atom.nodeSize,
@@ -515,6 +647,13 @@ describe("every inline splice refuses rather than tear the block", () => {
     });
     textRangeMoveDropSpec.applyDrop(placement, key, ctx);
     expect(tex(editor)).toBe(before);
+
+    // CONTROL — the same marked run into the TITLE (an `inline*` textblock)
+    // lands, so the refusal above is this gate and not `locateRange` failing.
+    const intoTitle = caretAt(editor, midOf(editor, "titleField"));
+    expect(textRangeMoveDropSpec.classifyDrop(intoTitle, key, ctx)).toEqual({
+      kind: "apply",
+    });
   });
 });
 
@@ -522,7 +661,20 @@ describe("every inline splice refuses rather than tear the block", () => {
 // 3. THE BLOCK READING
 // ===========================================================================
 
-describe("an open multi-block slice is refused by a text-only block and splits prose", () => {
+describe("an open multi-block slice enters the container family's BLOCK member", () => {
+  const BLOCK_PAYLOAD = {
+    kind: "text",
+    plain: "AAA BBB",
+    slice: {
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "AAA" }] },
+        { type: "paragraph", content: [{ type: "text", text: "BBB" }] },
+      ],
+      openStart: 1,
+      openEnd: 1,
+    },
+  } as unknown as StackPayload;
+
   function multiBlockSlice(editor: Editor): Slice {
     const p = editor.schema.nodes.paragraph;
     return new Slice(
@@ -560,20 +712,76 @@ describe("an open multi-block slice is refused by a text-only block and splits p
     expect(tr.doc.textContent).toContain("BBB");
   });
 
+  it.each(["titleField", "figureCaption", "glossCell"])(
+    "MEASURED: it tears %s too — an `inline*` textblock whose CONTAINER holds no block",
+    (nodeName) => {
+      // This module's own first-cut defect. The block arm asked "does this
+      // textblock host any non-text content?", which is TRUE of every `inline*`
+      // textblock — so all three of these landed, with the same
+      // truncate-and-eject shape the verbatim blocks have.
+      const editor = mount();
+      const at = posInside(editor, nodeName, 5);
+      const tr = editor.state.tr.replace(at, at, multiBlockSlice(editor));
+      const host = (n: PMNode): PMNode | null => {
+        let found: PMNode | null = null;
+        n.descendants((c) => {
+          if (found || c.type.name !== nodeName) return !found;
+          found = c;
+          return false;
+        });
+        return found;
+      };
+      // TRUNCATED…
+      expect(host(tr.doc)?.textContent).not.toBe(host(editor.state.doc)?.textContent);
+      // …and its tail EJECTED into a fresh paragraph. Asserted over the whole
+      // tree rather than the top level, because the DEPTH the tail surfaces at
+      // is a property of `isolating`, not of the tear: `titleField` and
+      // `figureCaption` eject to the document, while a `glossCell`'s tail is
+      // contained by the `isolating` `exampleGloss` / `exampleBlock` pair and
+      // lands INSIDE the example — one `\begingl` split into two with body
+      // prose between them, which destroys the interlinear alignment just as
+      // surely.
+      let ejected = false;
+      tr.doc.descendants((n) => {
+        if (n.type.name === "paragraph" && n.textContent.startsWith("BBB")) {
+          ejected = true;
+        }
+        return !ejected;
+      });
+      expect(ejected).toBe(true);
+    },
+  );
+
+  it.each(["titleField", "figureCaption", "glossCell"])(
+    "the door refuses a block payload at a caret inside %s",
+    (nodeName) => {
+      const editor = mount();
+      const key = `${STACK_PULL_PREFIX}:item-4`;
+      seedStack(BLOCK_PAYLOAD, key);
+      const before = tex(editor);
+      const ctx = ctxFor(editor);
+      const at = caretAt(editor, posInside(editor, nodeName, 5));
+      expect(stackPullDropSpec.classifyDrop(at, key, ctx)).toEqual({ kind: "no-op" });
+      stackPullDropSpec.applyDrop(at, key, ctx);
+      expect(tex(editor)).toBe(before);
+    },
+  );
+
+  it("CONTROL — the same payload still lands in a list ITEM, which hosts blocks", () => {
+    // The precision of the block arm: `listItem` is `(paragraph|graphicsBlock)
+    // block*`, so a block sibling is legal there and the drop must land. A gate
+    // that refused every non-prose container would kill this.
+    const editor = mount();
+    const key = `${STACK_PULL_PREFIX}:item-5`;
+    seedStack(BLOCK_PAYLOAD, key);
+    const ctx = ctxFor(editor);
+    const at = caretAt(editor, posInside(editor, "paragraph", 5));
+    expect(stackPullDropSpec.classifyDrop(at, key, ctx)).toEqual({ kind: "apply" });
+  });
+
   it("the stack-pull door refuses it in a code block and accepts it in prose", () => {
     const key = `${STACK_PULL_PREFIX}:item-3`;
-    const payload = {
-      kind: "text",
-      plain: "AAA BBB",
-      slice: {
-        content: [
-          { type: "paragraph", content: [{ type: "text", text: "AAA" }] },
-          { type: "paragraph", content: [{ type: "text", text: "BBB" }] },
-        ],
-        openStart: 1,
-        openEnd: 1,
-      },
-    } as unknown as StackPayload;
+    const payload = BLOCK_PAYLOAD;
 
     const refused = mount();
     seedStack(payload, key);

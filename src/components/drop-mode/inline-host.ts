@@ -34,16 +34,34 @@
  *  - **INLINE** payload nodes take `posHostsInlineAtom` verbatim — the precise
  *    per-type answer (a container could admit `citation` and not `footnote`).
  *  - **BLOCK** payload nodes (an OPEN slice whose ends sit in different blocks —
- *    an ordinary multi-paragraph selection) may NOT take it. Measured: splicing
- *    `<p>AAA</p><p>BBB</p>` at a caret inside a `paragraph` legitimately SPLITS
- *    it, which is what the user asked for; `posHostsInlineAtom(paragraph)` is
- *    false for a paragraph type, so that reading would refuse a working drop.
- *    What such a payload may NOT do is enter a textblock that hosts *nothing but
- *    text*, where the fitter truncates and ejects exactly as it does for an atom
- *    (measured: `codeBlock("hello|world")` → `codeBlock("helloAAA")` +
- *    `paragraph("BBB world")`). So the block reading asks the WEAKER question —
- *    "does this textblock host any non-text content at all?" — which refuses the
- *    verbatim blocks and nothing else.
+ *    an ordinary multi-paragraph selection) take the container family's THIRD
+ *    member, `posHostsBlockInsert`. They may not take the atom predicate:
+ *    measured, splicing `<p>AAA</p><p>BBB</p>` at a caret inside a `paragraph`
+ *    legitimately SPLITS it, which is what the user asked for, and
+ *    `posHostsInlineAtom(paragraph)` is false for a paragraph type — so that
+ *    reading refuses a working drop.
+ *
+ *    They may not take a WEAKER proxy either, and that is this module's own
+ *    first-cut defect, recorded rather than quietly corrected. It asked "does
+ *    this textblock host any non-text content at all?" — true of every `inline*`
+ *    textblock, since `citation`/`footnote`/`inlineMath` are all `group: inline`
+ *    — on the stated ground that it "refuses the verbatim blocks and nothing
+ *    else". That sentence was true and was the bug: an open slice at a caret does
+ *    not merely split the textblock, it puts a BLOCK between the halves, so the
+ *    question is what the caret's CONTAINER can host. Measured against the real
+ *    schema, the proxy waved through three more families whose eject is the same
+ *    truncate-and-eject shape:
+ *
+ *      titleField("My Lo|ng Title") → titleField("My LoAAA") + paragraph("BBBng Title")
+ *      figureCaption("Cap t|ion")   → figureBlock[figureCaption("Cap tAAA")] + paragraph("BBBion")
+ *      glossCell("aa| bb")          → the interlinear row torn in two, alignment destroyed
+ *
+ *    `posHostsBlockInsert` asks both halves at once — the caret's own textblock
+ *    must survive the split (layer 1: the `titleField` singleton, the markless
+ *    verbatim family) AND its container must host the block as a sibling (layer
+ *    2: `figureBlock` is `figureCaption?`, `alignedGlossRow` is `glossCell*`,
+ *    neither hosts one) — and it allows `doc` / `listItem` / `blockquote` /
+ *    `exampleItem`, so every ordinary prose split still lands.
  *
  * SCOPE, stated rather than implied. This answers the NODE question only. Marked
  * text spliced into a markless block is a DIFFERENT question and deliberately
@@ -62,7 +80,11 @@ import type {
   NodeType,
   Slice,
 } from "@tiptap/pm/model";
-import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
+import {
+  posHostsBlockInsert,
+  posHostsInlineAtom,
+} from "@/text-objects/text-object-registry";
+import { refuseOnThrow } from "./planned-spec";
 import type { DropCtx, DropSpec } from "./types";
 
 /**
@@ -99,6 +121,18 @@ export const TEXT_ONLY_PAYLOAD: InlineDropPayload = [];
  * that DOES — so the census in `placement-reachability.test.ts` asks the LIVE
  * spec objects for the implication `declares inline-cursor ⇒ declares
  * inlinePayloadFor`, allowlist EMPTY.
+ *
+ * A THROW is TEXT-ONLY, contained at the DOOR rather than at the call site — the
+ * rule `inlineAtomMoveSpec` states about its own resolution ("the guard wraps the
+ * RESOLUTION rather than each door, so a third door cannot forget it"). It is
+ * reachable: the in-text grab's resolver ends at `doc.nodeAt(src.pos)`, and
+ * `Fragment.findIndex` throws `RangeError` on a position past the fragment — a
+ * captured position can be stale if a collab edit shrank the doc between the
+ * grab and the mousedown. `beginDropSession` is called from a producer's
+ * mousedown with no catch, so an escaped throw would abort the gesture before
+ * `installListeners`, leaving the crosshair and the lift overlay with no session
+ * to end them. Answering TEXT-ONLY costs nothing: the same resolver failing is
+ * what makes `resolveDrop` refuse the whole drop a moment later.
  */
 export function resolveSessionInlinePayload(
   spec: DropSpec,
@@ -106,7 +140,11 @@ export function resolveSessionInlinePayload(
   ctx: DropCtx,
 ): InlineDropPayload {
   if (!spec.inlinePayloadFor) return TEXT_ONLY_PAYLOAD;
-  return spec.inlinePayloadFor(cardKey, ctx) ?? TEXT_ONLY_PAYLOAD;
+  return (
+    refuseOnThrow("resolveSessionInlinePayload", () =>
+      spec.inlinePayloadFor?.(cardKey, ctx),
+    ) ?? TEXT_ONLY_PAYLOAD
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -120,50 +158,11 @@ export function resolveSessionInlinePayload(
 function hostsType(doc: PMNode, pos: number, type: NodeType): boolean {
   if (type.isText) return true; // every textblock hosts text
   if (type.isInline) return posHostsInlineAtom(doc, pos, type);
-  return hostsNonText(doc, pos);
-}
-
-/**
- * The WEAKER question the block reading needs: does the textblock containing
- * `pos` admit any non-text content at all? False for exactly the markless
- * verbatim family (`content: "text*"`), true for every `inline*` textblock — so
- * an open multi-block slice still splits ordinary prose, which is the drop the
- * user asked for.
- *
- * Answered by asking the schema for a witness rather than by reading a content
- * expression as a STRING: the expression is the schema's business, and a
- * `"text*"` literal check would miss `text{0,}` and every equivalent spelling.
- * Memoized per `NodeType`, so the sweep runs once per container type per
- * process, never per pointermove.
- */
-const NON_TEXT_HOSTS = new WeakMap<NodeType, boolean>();
-
-function hostsNonText(doc: PMNode, pos: number): boolean {
-  const parent = doc.resolve(clamp(doc, pos)).parent;
-  if (!parent.isTextblock) return true; // a gap — PM wraps, nothing to tear
-  const cached = NON_TEXT_HOSTS.get(parent.type);
-  if (cached !== undefined) return cached;
-  // The witness comes from the PARENT's own schema, never the payload type's:
-  // `matchType` compares `NodeType`s by IDENTITY, so a candidate drawn from a
-  // foreign schema could only ever answer "no" and would turn a vocabulary
-  // question (settled by `schema-adopt.ts` before any of these callers) into a
-  // silent refusal here.
-  const schema = parent.type.schema;
-  let answer = false;
-  for (const name of Object.keys(schema.nodes)) {
-    const candidate = schema.nodes[name];
-    if (candidate.isText || !candidate.isInline) continue;
-    if (parent.type.contentMatch.matchType(candidate) != null) {
-      answer = true;
-      break;
-    }
-  }
-  NON_TEXT_HOSTS.set(parent.type, answer);
-  return answer;
-}
-
-function clamp(doc: PMNode, pos: number): number {
-  return Math.max(0, Math.min(pos, doc.content.size));
+  // A block at an inline cursor SPLITS the caret's textblock and lands between
+  // the halves — so both questions the container family's block member asks are
+  // exactly the right ones. See the header for the three families a weaker
+  // proxy waved through.
+  return posHostsBlockInsert(doc, pos, type);
 }
 
 /**

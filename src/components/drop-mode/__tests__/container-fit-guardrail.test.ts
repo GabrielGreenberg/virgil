@@ -501,14 +501,36 @@ describe("container-fit guardrail — every block splice asks the container", ()
     expect(region.some((l) => ADOPT_EXEMPT_MARKER.test(l))).toBe(false);
   });
 
-  it("every FIT-EXEMPT splice asks the INLINE container question (task 414)", () => {
-    // The population is precisely question 1's exemptions: a `container-fit-
-    // exempt:` marker IS the claim "this is an inline-cursor splice", and this
-    // is the question that claim does not answer. On the pre-414 tree this leg
-    // names all seven inline splices in `util/inline-atom-move.ts`,
-    // `specs/stack-pull.ts` and `specs/text-range-move.ts`.
+  it("EVERY splice asks the INLINE container question (task 414)", () => {
+    // MEMBERSHIP IS DERIVED FROM THE MECHANISM, never inherited from question
+    // 1's exemption LIST. The tempting population is "the fit-exempt sites" — a
+    // `container-fit-exempt:` marker IS, in every live case, the claim "this is
+    // an inline-cursor splice" — and it is the wrong one: question 1 passes a
+    // site on `fitted` alone, so a splice with NO marker and no fit would never
+    // enter this question at all. A leg whose population is another leg's
+    // allowlist can only ever see what that list happens to hold.
+    //
+    // So the population is every splice that `fitNodesAtInsert` does NOT govern.
+    // `fitted` is a positive claim about the MECHANISM rather than a marker: the
+    // fit's whole contract is "where do these BLOCKS go in this container", so a
+    // splice that entered it is a between-blocks insert and the textblock
+    // question is not its own. That leaves exactly the inline family plus the
+    // four structural sites (two dispatch helpers, the shared door, the probe),
+    // which carry `inline-host-exempt:` markers with per-LINE entries.
+    //
+    // STATED LIMIT, and it is the file's own granularity rather than a new one:
+    // the region is the enclosing DECLARATION, so an inline splice added inside
+    // a declaration that also fits would be vouched for by its sibling branch.
+    // `specs/stack-pull.ts`'s `planInsertText` is exactly that shape today (a
+    // between-blocks branch that fits beside an inline-cursor branch that
+    // cannot) — which is why its inline splice asks the question EXPLICITLY,
+    // and why a future one there must too.
+    //
+    // On the pre-414 tree this leg names all seven inline splices in
+    // `util/inline-atom-move.ts`, `specs/stack-pull.ts` and
+    // `specs/text-range-move.ts`.
     const ungated = spliceSites()
-      .filter((s) => s.exempt && !s.inlineGated)
+      .filter((s) => !s.fitted && !s.inlineGated)
       .filter((s) => !(s.inlineExempt && isPermittedUngatedInline(s)))
       .map((s) => `${s.file}:${s.line}  ${s.text}`);
     expect(
@@ -520,7 +542,9 @@ describe("container-fit guardrail — every block splice asks the container", ()
   });
 
   it("only allowlisted LINES carry an inline-gate exemption (no stale, no new)", () => {
-    const marked = spliceSites().filter((s) => s.inlineExempt && !s.inlineGated);
+    const marked = spliceSites().filter(
+      (s) => s.inlineExempt && !s.inlineGated && !s.fitted,
+    );
     expect(
       marked.filter((s) => !isPermittedUngatedInline(s)).map((s) => `${s.file}:${s.line}`),
     ).toEqual([]);

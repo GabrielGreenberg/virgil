@@ -1633,7 +1633,9 @@ Six rules it earned:
   in the one subsystem whose own guardrails (`placement-reachability`,
   `planned-decision-guardrail`) exist to outlaw exactly that. So the fix is an
   affordance change, and it is user-visible: no caret paints inside a verbatim
-  block during a drag.
+  block **for a payload that block cannot hold**. Plain text still gets one —
+  `text*` hosts text, and refusing there would be the false refusal task 396's
+  own first cut shipped, which is what the two CONTROL legs pin.
 - **A net whose measure is a growth FLOOR cannot see a corruption that GROWS the
   document.** `insertLanded` (task 332) is the cross-editor move's net, and the
   ejected tail INFLATES the growth — measured `+3` against a floor of 1 — so it
@@ -1683,20 +1685,33 @@ probe), and the LIVE-OBJECT half is in `placement-reachability` (every spec that
 can offer an inline caret declares `inlinePayloadFor`, asked of the objects for
 the two reasons that file already gives about `placementsFor` — the ES
 method-shorthand form is invisible to a grep, and most specs are authored outside
-this directory). Both allowlists EMPTY. `inline-atom-container-census` drops its
-`OUT_OF_SCOPE` carve-out for this directory and says why a green answer from
-THERE about it would have been a vacuous one. Measured by neutering each half in
+this directory). The live-object half's allowlist is EMPTY — a hit is DECLARE-it;
+the source half's is the four per-LINE exemptions named above, and it may only
+shrink. Its population is DERIVED from the fit MECHANISM (`fitted`), never
+inherited from question 1's exemption LIST, so a splice carrying no marker and no
+fit enters it too; the residual is the file's own region granularity, stated at
+the leg. `inline-atom-container-census` drops its `OUT_OF_SCOPE` carve-out for
+this directory and says why a green answer from THERE about it would have been a
+vacuous one. Measured by neutering each half in
 turn: the affordance gate takes 3 legs, the three atom-move commit gates 4, the
-stack-pull commit gate 3, the text-range commit gate 2, the block reading 1, and
-a spec that drops its declaration 1.
+stack-pull commit gate 3, the text-range commit gate 2, the block reading 1 (the
+atom predicate) and 3 more (the weak proxy — `titleField` / `figureCaption` /
+`glossCell`), a spec that drops its declaration 1, a per-MOVE payload resolution
+1, and a dropped `inline-host-exempt:` marker 2.
 
-**Residuals, stated.** The gate is a SINGLE-POSITION question, inheriting task
-396's own second residual: a payload whose splice spans blocks is judged at its
-insert position alone. And `text-range-move`'s same-editor branch asks at the
-PRE-delete position while inserting at the mapped one — the same textblock in
-every reachable shape (the self-drop is refused, and a text-bounded delete cannot
-change a block's TYPE), so the answer is the honest one, and it is what lets the
-refusal return before anything is dispatched.
+**Residuals, stated.** A caret in a top-level `heading` still passes the block arm
+(the `doc` hosts a paragraph beside it), so an open slice dropped mid-heading
+splits it and its tail becomes body prose — a real split rather than a loss, and
+the same answer the `paragraph` control gets, but it is a type CHANGE and wants
+its own decision rather than being folded in here. The gate is also a
+SINGLE-POSITION question, inheriting task 396's own second residual: a payload
+whose splice spans blocks is judged at its insert position alone. And `text-range-move`'s same-editor branch asks at the
+PRE-delete position while inserting at the MAPPED one. That is the honest place
+to ask — it is what lets the refusal return before anything is dispatched — and
+it is not free of assumption: a text-bounded delete that spans a block boundary
+JOINS the blocks, and the survivor takes the LEADING block's type, so a range
+running out of a `heading` could leave the mapped position in a different node
+type than the one the gate was asked about. Stated rather than closed.
 
 **Owed, not claimed:** the preview eyeball, and it is REQUIRED here rather than
 nice to have, because the fix changes what the indicator PAINTS: drag a footnote
@@ -2091,12 +2106,12 @@ The cost is the worst outcome this whole section legislates against, and it is s
 
 [src/components/drop-mode/schema-adopt.ts](src/components/drop-mode/schema-adopt.ts) is the SSOT — `adoptNodeIntoSchema` / `adoptSliceIntoSchema` (same schema ⇒ the same object by identity, zero cost; foreign ⇒ re-parse or `null`) and `insertLanded`. `fitNodesAtInsert` calls the first, so nothing on the fitting path changed; the exempted splices call it directly. Five rules it earned:
 
-- **An exemption is scoped to the shape it justifies** — task 204's rule, arriving here from the other direction. There the finding was a census exempting a whole category on ergonomic grounds; here it is a marker whose author was right about the question they were answering and silent about the one they weren't. The generalizable half: **when an exemption's reason names a specific mechanism ("no container is entered"), check what ELSE that mechanism happens to gate.** The two questions now carry distinct markers (`container-fit-exempt:` / `schema-adopt-exempt:`) precisely so neither can answer for the other.
+- **An exemption is scoped to the shape it justifies** — task 204's rule, arriving here from the other direction. There the finding was a census exempting a whole category on ergonomic grounds; here it is a marker whose author was right about the question they were answering and silent about the one they weren't. The generalizable half: **when an exemption's reason names a specific mechanism ("no container is entered"), check what ELSE that mechanism happens to gate.** The two questions now carry distinct markers (`container-fit-exempt:` / `schema-adopt-exempt:`, joined in task 414 by `inline-host-exempt:`) precisely so none can answer for another.
 - **The two nets are independent, and the second is not a corollary.** `Slice.fromJSON` / `Node.fromJSON` validate the **vocabulary** — an unknown node type or mark throws — and say nothing about the **content expression**, so a payload the target can NAME but cannot HOLD still reaches the fitter and is still swallowed. `insertLanded` (steps > 0 **and** growth ≥ the payload) is the same rule `restoreExcerptAtCaret` earned in "The return half", for the same reason: `replace` / `insert` / `insertContent` all swallow a mismatch, so `void` looks identical for "landed" and "destroyed". It is deliberately redundant — it catches the next swallowed splice even if someone adds one without adopting. Its stated limit: it reads a NET growth, so it is meaningful only for an insert-ONLY transaction, which is exactly the cross-editor shape.
 - **Adopt ABOVE the same/cross fork, not inside it.** `text-range-move` resolves the payload once before it asks which editor it is talking to — the same-editor answer is the identical slice by identity — so the obligation is unconditional rather than a branch someone has to remember, and the census's declaration-level region honestly vouches for both splices instead of one branch vouching for its sibling.
 - **A refusal only `applyDrop` can see is the task-321 defect.** `inlineAtomMoveSpec` is one of the two specs allowlisted out of the `plannedDropSpec` derivation on the ground that its doors are "symmetric by construction"; adding a refusal to one of them would have retired that ground. Both doors now derive from ONE pure `resolveDrop` (`create` | `move-within` | `move-across`), which is what makes the allowlist entry true rather than merely traditional. The cross-editor insert transaction is BUILT there, where the answer can still be `null`; `commit` only dispatches it and then deletes the source.
 - **Moving a transaction onto the CLASSIFY door moves a THROW there with it** — the trap `planned-spec.ts` had described as unreachable, made reachable by this very fix and caught by the adversarial pass on it. `Transform.replace` resolves both positions (`RangeError` on a stale `placement.pos`) and `Transform.step` throws `TransformError` on a step that fails to apply; a hit-test position recorded on the last throttled mousemove can be stale by mouseup if the target card body shrank under it. `applyDrop` is caught by `finishApply`; `classifyDrop` is called BARE inside the controller's `async commitDropSession`, whose callers `void` it with no `.catch` — so an escaped throw becomes a rejected promise that never reaches `endDropSession()`, leaking the window listeners, the `data-drop-mode-active` body attr and the lift overlay past mouseup. So the containment is EXPORTED (`refuseOnThrow`) rather than re-derived, the hand-written spec wraps its RESOLUTION (not each door, so a third door cannot forget), and `planned-spec.ts`'s "no such throw is reachable today" sentence was retired rather than left standing. **An entry on `PERMITTED_HAND_WRITTEN_DECISIONS` is a claim about AGREEMENT between the doors, never about safety** — its allowlist reason now says so, because this fix is what proved the two are different claims.
-- **The census is the leg with teeth, and it needs TWO editors to have any.** The primitive was never the part that could misbehave — a call site that doesn't ask it is. So [container-fit-guardrail.test.ts](src/components/drop-mode/__tests__/container-fit-guardrail.test.ts) asks two questions over the same splice-site family (*did you fit?* AND *did you adopt?*), with the adoption exemptions allowlisted **per LINE** — a file-scoped list would excuse the next splice added beside them, and two of the three entries live in the very file whose cross-editor splice was the defect. Measured on the pre-fix tree, it names all three defect sites. The behavioural half ([cross-editor-adoption.test.ts](src/components/drop-mode/__tests__/cross-editor-adoption.test.ts)) builds **two genuinely distinct `Schema` objects**, which is the reason no existing suite could see any of this: every one of them builds ONE schema and hands the same object to both editors, where the splice is native by construction and the defect is unrepresentable.
+- **The census is the leg with teeth, and it needs TWO editors to have any.** The primitive was never the part that could misbehave — a call site that doesn't ask it is. So [container-fit-guardrail.test.ts](src/components/drop-mode/__tests__/container-fit-guardrail.test.ts) asks two questions over the same splice-site family (*did you fit?* AND *did you adopt?* — a THIRD, *did you ask the INLINE container?*, joined them in task 414), with the adoption exemptions allowlisted **per LINE** — a file-scoped list would excuse the next splice added beside them, and two of the three entries live in the very file whose cross-editor splice was the defect. Measured on the pre-fix tree, it names all three defect sites. The behavioural half ([cross-editor-adoption.test.ts](src/components/drop-mode/__tests__/cross-editor-adoption.test.ts)) builds **two genuinely distinct `Schema` objects**, which is the reason no existing suite could see any of this: every one of them builds ONE schema and hands the same object to both editors, where the splice is native by construction and the defect is unrepresentable.
 
 **Reachability, stated honestly rather than implied.** Narrow today, and a reason to price it below "urgent" rather than to leave it: the target must be a REGISTERED drop-target editor other than the main one (only `RichTextField` card bodies register — `BorrowedMainText` does not), expanded and editable; it must be hit-testable during a drop session, and `globals.css` makes every `[data-floating-panel="true"]` subtree `pointer-events: none` while one is active, so the reachable surface is the omni column; and the body must contain a node DECLARING a `uuid` attr, since `hitTest` bails when `resolveAnchorableBlock` returns null and card-body `paragraph`/`heading` carry none. A note with display math, or an archived excerpt holding a figure, is enough. The same two lines are also a **latent trap** — anything that registers a second drop-target editor, or gives card bodies uuid'd paragraphs, widens this to every card body at once.
 
