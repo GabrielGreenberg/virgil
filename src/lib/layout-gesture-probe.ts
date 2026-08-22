@@ -57,6 +57,7 @@ export const LAYOUT_SITE_SELECTION_BOLT = "selection-actions-bolt";
 export const LAYOUT_SITE_PENDING_PILL = "pending-change-pill";
 export const LAYOUT_SITE_GRAB_HANDLE = "grab-handle";
 export const LAYOUT_SITE_FLOATING_MENU = "floating-menu";
+export const LAYOUT_SITE_SCROLL_PERSIST = "editor-scroll-persist";
 
 /** Per-site public stats shape. */
 export interface LayoutGestureSiteStat {

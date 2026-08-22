@@ -492,17 +492,21 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(compute);
     };
-    // Resize path parked, scroll path live — the second copy of the breadcrumb
-    // walk (main pane, Reader; the mirror pane's copy retired with the editor
-    // split in task 115), each O(headings) `coordsAtPos` (task 317).
-    const resizePark = parkDuringLayoutGesture(
+    // BOTH geometry paths parked — the second copy of the breadcrumb walk
+    // (main pane, Reader; the mirror pane's copy retired with the editor split
+    // in task 115), each O(headings) `coordsAtPos` (task 317 parked the
+    // resize, task 416 the scroll: a content drag's auto-scroll writes
+    // `scrollTop` once per RAF, and a user scroll is not a layout gesture at
+    // all, so the park is a no-op for it). Kept byte-for-byte in step with
+    // EditorLayout's copy — the twin rule.
+    const gesturePark = parkDuringLayoutGesture(
       schedule,
       LAYOUT_SITE_READER_SECTION_PATH,
     );
-    const onWindowResize = () => resizePark.fire();
+    const onGeometryEvent = () => gesturePark.fire();
     compute();
-    scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", onWindowResize);
+    scrollEl.addEventListener("scroll", onGeometryEvent, { passive: true });
+    window.addEventListener("resize", onGeometryEvent);
 
     // Fresh-open breadcrumb fix: the synchronous mount-time compute() above
     // runs BEFORE the doc has laid out, so coordsAtPos reads stale/zero tops
@@ -528,9 +532,9 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
       clearTimeout(settleTimer);
-      scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", onWindowResize);
-      resizePark.dispose();
+      scrollEl.removeEventListener("scroll", onGeometryEvent);
+      window.removeEventListener("resize", onGeometryEvent);
+      gesturePark.dispose();
     };
   }, [editor, scrollEl]);
 

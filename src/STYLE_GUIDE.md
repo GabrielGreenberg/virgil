@@ -1203,12 +1203,15 @@ bail on element identity and persistence stays commit-once. Heavyweight pane
 content (iframes, full editors) wraps in `PaneFreeze`; gesture-time observers
 park via `parkDuringLayoutGesture`, and text-anchored overlays suppress via
 `useLayoutGestureActive` (all keyed on the edge-only `LayoutGestureBus`,
-which carries the OS window resize as well as pane drags — a follower wired
-once covers both). A bespoke window-listener divider fails CI — the guardrail
-keys on the resize cursor chrome AND the shared `.drag-gap`/`.band-grip`
-classes above (`pane-drag-guardrail.test.ts`), and a new `resize` listener
-that neither parks nor suppresses fails the census in
-`window-resize-guardrail.test.ts`; doctrine in AGENTS.md "Pane-drag
+which carries the OS window resize AND a content drag as well as pane drags —
+a follower wired once covers all three). A bespoke window-listener divider
+fails CI — the guardrail keys on the resize cursor chrome AND the shared
+`.drag-gap`/`.band-grip` classes above (`pane-drag-guardrail.test.ts`), and a
+new `resize` **or `scroll`** listener that neither parks nor suppresses fails
+the census in `window-resize-guardrail.test.ts` /
+`scroll-listener-guardrail.test.ts` (the scroll half because a CONTENT drag
+auto-scrolls the document, so its followers are the scroll listeners — a user
+scroll is not a gesture and is unaffected); doctrine in AGENTS.md "Pane-drag
 stability" + "Layout-gesture stability".
 
 ## Code view

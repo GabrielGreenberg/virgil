@@ -1023,20 +1023,40 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // fresh closure per mount doesn't retain the torn-down editor graph.
     const disposeFontReady = onFontReady(() => scheduleRaf());
 
-    const onScroll = () => {
-      // Scroll re-schedules placement (block rects change in clientY
-      // space). The DOM-walk resolver re-runs from scratch each frame;
-      // no separate cache to invalidate.
-      scheduleRaf();
-    };
     // Parked, not suppressed (task 317). A grab handle only exists while the
     // pointer is in the margin hover zone, and an OS window drag delivers no
     // pointer events to the page — so during that gesture there is nothing on
-    // screen to look detached. The scroll path stays live.
+    // screen to look detached.
     const gesturePark = parkDuringLayoutGesture(
       scheduleRaf,
       LAYOUT_SITE_GRAB_HANDLE,
     );
+    // Task 416 — the SCROLL path parks too, and the pre-416 reason it did not
+    // is precisely the gesture family that argument could not see. A CONTENT
+    // drag DOES deliver pointer events, so the resolver's hover branch is
+    // answerable (task 336's modality gate reads POINTER), and its
+    // auto-scroll writes `scrollTop` once per RAF: the handle re-ran
+    // `blocksAtY` + one `computePlacement` PER containing level for the whole
+    // of a long drag, under a lift ghost, on chrome `globals.css` has already
+    // made `pointer-events: none` for the session. A user scroll is not a
+    // layout gesture, so the live path is unchanged for it.
+    const onScroll = () => {
+      // Scroll re-schedules placement (block rects change in clientY
+      // space). The DOM-walk resolver re-runs from scratch each frame;
+      // no separate cache to invalidate.
+      //
+      // Cost of parking it, stated precisely because the first draft of this
+      // comment got it wrong in the flattering direction: the MOUSEMOVE path
+      // has fired this same park since perf Wave 2, so the scroll path was the
+      // LAST live refresher during a content drag and this closes it. The
+      // stale window is therefore the WHOLE gesture, not a pointer parked in
+      // the edge zone. That is what Wave 2 already decided and said at the
+      // mousemove site — "mid-gesture the handle sits invisible under the drag
+      // ghost, so re-resolving per frame is pure waste" — and `globals.css`
+      // has additionally made this chrome `pointer-events: none` for the
+      // session since task 351. The end edge re-seats it once.
+      gesturePark.fire();
+    };
     const onResize = () => {
       gesturePark.fire();
     };
