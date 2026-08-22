@@ -15,15 +15,30 @@
  * hold writing**. The menu lists them by name, because "some files" is not
  * something a user can act on and a filename is.
  *
- * ## Why it offers no fix
+ * ## What it offers, and the line it does not cross (task 411)
  *
- * Virgil deliberately does not merge or delete. The two sides are whole-file
- * snapshots taken at unknown times; picking a winner is precisely the
- * destructive act the sync service itself declined to make, and doing it
- * silently on the user's writing would be worse than the divergence. Deleting
- * is the same call one step further. So the badge REPORTS, and the user deals
- * with the folder in Finder — which is also the only place they can, since a
- * web app cannot reveal a file.
+ * Virgil deliberately does not MERGE. The two sides are whole-file snapshots
+ * taken at unknown times; picking a winner is precisely the destructive act the
+ * sync service itself declined to make, and doing it silently on the user's
+ * writing would be worse than the divergence. That has not changed, and it is
+ * why there is still no in-app compare (DECIDED, Gabriel 2026-08-21): a real
+ * one needs a reader for arbitrary sidecar shapes AND an adopt path through
+ * each panel's own hook — a genuine feature with its own design pass, not a
+ * badge affordance. `tools/triage-sync-conflicts.mjs --extract` is where a
+ * human reads a divergent fork.
+ *
+ * What it now offers is a one-click DELETE of the debris the app's own
+ * declarations PROVE carries nothing — a fork of a VIEW-tier sidecar, and
+ * browser `.crswap` leftovers. The set is decided in ONE place
+ * ([sync-conflict-cleanup.ts](../lib/sync-conflict-cleanup.ts)) and re-derived
+ * by the storage door from a fresh listing, so this component cannot name a
+ * file into it; **a fork of a content sidecar is never deletable from inside
+ * Virgil**, whatever a comparison of its bytes might say.
+ *
+ * Two counts, and they are deliberately different numbers: the PILL says how
+ * many forks the folder holds (that is the report), and the cleanup row says
+ * how many of them are proved inert (that is the offer). Conflating them would
+ * make one of the two lie.
  *
  * ## Tone
  *
@@ -39,10 +54,23 @@
  * work.
  */
 
-import { memo, useCallback, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useSyncConflictNotice } from "@/hooks/useSyncConflictNotice";
 import { dismissSyncConflictNotice } from "@/lib/sync-conflict-notice";
 import { SYNC_ORIGIN_LABEL } from "@/lib/sync-conflict";
+import {
+  isEmptyCleanupReceipt,
+  planSidecarCleanup,
+} from "@/lib/sync-conflict-cleanup";
+import { runSyncConflictCleanup } from "@/lib/sync-conflict-scan";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -80,13 +108,24 @@ function KebabIcon() {
   );
 }
 
-function MenuRow({ id, label, run }: { id: string; label: string; run: () => void }) {
+function MenuRow({
+  id,
+  label,
+  run,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  run: () => void;
+  disabled?: boolean;
+}) {
   const { active, getItemProps } = useMenuItem({ id, region: "list", run });
   return (
     <button
       {...getItemProps()}
       type="button"
-      className="w-full px-3 py-1.5 text-left text-[12px] hover-on-light"
+      disabled={disabled}
+      className="w-full px-3 py-1.5 text-left text-[12px] hover-on-light disabled:opacity-50"
       style={{
         background: active ? "var(--menu-roving-bg)" : undefined,
         color: "var(--ink-strong)",
@@ -99,6 +138,8 @@ function MenuRow({ id, label, run }: { id: string; label: string; run: () => voi
 
 function SyncConflictBadge({ docId }: { docId: string | null }) {
   const notice = useSyncConflictNotice(docId);
+  const { confirm, dialog } = useConfirmDialog();
+  const [cleaning, setCleaning] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
@@ -129,10 +170,120 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
     if (docId) dismissSyncConflictNotice(docId);
   }, [closeMenu, docId]);
 
+  // What Virgil may delete from THIS report, derived — never a set this
+  // component decides. The storage door re-derives the same answer from a fresh
+  // listing at delete time, so these names are only ever a filter over it.
+  const plan = useMemo(
+    () =>
+      notice
+        ? planSidecarCleanup([
+            ...notice.groups.flatMap((g) => g.siblings.map((sib) => sib.name)),
+            ...notice.swapFiles,
+          ])
+        : [],
+    [notice],
+  );
+
+  const handleCleanup = useCallback(async () => {
+    closeMenu();
+    if (!docId || plan.length === 0 || cleaning) return;
+    const forks = plan.filter((e) => e.reason === "view-tier");
+    const swaps = plan.filter((e) => e.reason === "swap");
+    // How many forks this run is deliberately NOT touching — the half the
+    // confirm has to name, or "delete the safe ones" reads as "delete them all".
+    const kept = notice?.contentTotal ?? 0;
+    const ok = await confirm({
+      title: `Delete ${plan.length} file${plan.length === 1 ? "" : "s"}?`,
+      message: (
+        <div className="flex flex-col gap-2 text-[12px]">
+          <p>
+            These are the files in this paper&apos;s <code>virgil/</code> folder
+            that Virgil can prove carry nothing:{" "}
+            {forks.length > 0 && (
+              <>
+                copies of files it keeps only view state in (a scroll position,
+                which sections are folded, who is editing)
+              </>
+            )}
+            {forks.length > 0 && swaps.length > 0 && ", and "}
+            {swaps.length > 0 && <>leftover browser temp files</>}. Deleting is
+            permanent — Virgil keeps no copy.
+          </p>
+          <ul className="list-none font-mono text-[11px] leading-snug max-h-[180px] overflow-y-auto">
+            {plan.map((e) => (
+              <li key={e.name} className="truncate">
+                {e.name}
+              </li>
+            ))}
+          </ul>
+          {kept > 0 && (
+            <p>
+              The {kept} cop
+              {kept === 1 ? "y" : "ies"} of files that hold
+              your writing {kept === 1 ? "is" : "are"} NOT
+              touched. Open the folder in Finder to compare those.
+            </p>
+          )}
+        </div>
+      ),
+      confirmLabel: `Delete ${plan.length} file${plan.length === 1 ? "" : "s"}`,
+      tone: "danger",
+    });
+    if (!ok) return;
+    setCleaning(true);
+    let receipt;
+    try {
+      receipt = await runSyncConflictCleanup(
+        docId,
+        plan.map((e) => e.name),
+      );
+    } finally {
+      setCleaning(false);
+    }
+    // THE REPORT IS THE PERMISSION (tasks 357/364/392): a door that infers
+    // success from the absence of a throw is the false-affordance shape this
+    // cluster legislates against. A clean run needs no words — the re-scan
+    // inside the runner drops the names and the pill updates or disappears by
+    // itself — but anything that did NOT happen is said, in the shape it
+    // happened in. The two failures are genuinely different facts: "the door
+    // ran and kept some" is not "the door never ran", and one message covering
+    // both would tell the user a number that is not true of their folder.
+    if (isEmptyCleanupReceipt(receipt)) {
+      await confirm({
+        title: "Nothing was deleted",
+        message:
+          `Virgil could not reach this paper's virgil/ folder just now, so ` +
+          `none of the ${plan.length} file${plan.length === 1 ? "" : "s"} ` +
+          `${plan.length === 1 ? "was" : "were"} removed. Nothing was changed. ` +
+          `Try again, or open the folder in Finder.`,
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+      return;
+    }
+    const unremoved = receipt.refused.length + receipt.failed.length;
+    if (unremoved > 0) {
+      await confirm({
+        title: "Some files were kept",
+        message:
+          `Removed ${receipt.deleted.length} of ${plan.length}. ` +
+          `${unremoved} could not be removed and ${unremoved === 1 ? "is" : "are"} ` +
+          `still in the folder — open it in Finder to deal with ` +
+          `${unremoved === 1 ? "it" : "them"}.`,
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
+  }, [closeMenu, confirm, docId, plan, cleaning, notice]);
+
   // ── render gate ────────────────────────────────────────────────────
   // Nothing to report, or the user has seen it → nothing to say. `.crswap`
   // debris ALONE is deliberately not worth a pill: it is never user data, so it
   // rides an existing conflict report as context and raises nothing on its own.
+  // Consequence, stated rather than discovered: a folder holding ONLY debris
+  // offers no cleanup either, because there is no surface to offer it from. That
+  // is the right trade — raising a pill for files the user was never told to
+  // care about would make a warning out of housekeeping.
   if (!notice || notice.total === 0) return null;
 
   const { total, contentTotal, groups, swapFiles, origin } = notice;
@@ -162,6 +313,18 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
         trackAnchor={trackAnchor}
         containerClassName="min-w-[280px] max-w-[360px] py-1"
       >
+        {plan.length > 0 && (
+          <MenuRow
+            id="cleanup"
+            label={
+              cleaning
+                ? "Deleting…"
+                : `Delete ${plan.length} file${plan.length === 1 ? "" : "s"} that carry nothing…`
+            }
+            run={handleCleanup}
+            disabled={cleaning}
+          />
+        )}
         <MenuRow id="dismiss" label="Dismiss for this session" run={handleDismiss} />
         <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
           {writer} could not merge two versions of these files, so it kept both
@@ -241,6 +404,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
       </button>
 
       {menu}
+      {dialog}
     </div>
   );
 }

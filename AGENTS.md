@@ -1546,6 +1546,96 @@ genuinely synced folder — the dev preview's `virgil-data/` is local and nothin
 watches it — so the durable proof here is the unit contracts plus the triage
 tool's measured run against the reporting folder.
 
+#### The cleanup half: what may be deleted is what a DECLARATION already proves
+
+Same folder, the affordance the daemon half deliberately withheld (task 411).
+363 shipped detection and stopped at a stated boundary — *Virgil does not merge
+or delete a fork; it REPORTS* — which was the right answer to the question it
+could answer, and left a folder that keeps filling with nothing the user can do
+about it from inside the app. Measured after 363 shipped: the fork rate fell
+roughly 10x (92 forks on the pre-fix day against 10 and 6 after) and the
+population kept growing.
+
+> **A delete is offered only where a DECLARATION already proves the bytes carry
+> nothing — never where a computation says so.** Two shapes qualify: a fork of a
+> **VIEW-tier** sidecar (`sidecar-value.ts` declares it recomputable) and a
+> **`.crswap`** leftover (`sync-conflict.ts` declares it browser debris).
+> Everything else is REPORTED and KEPT, a content fork above all — *an inert
+> verdict is POSITIVE evidence, and a shape the tool does not understand is not
+> evidence*, which is the rule 363's own adversarial pass earned and which this
+> half inherits rather than re-derives.
+
+[sync-conflict-cleanup.ts](src/lib/sync-conflict-cleanup.ts) is the plan;
+`deleteSidecarSiblings` in both backends is the door. Six rules it earned:
+
+- **The DOOR decides, not the caller.** It re-lists `virgil/` INSIDE the write
+  critical section and re-derives the sanctioned set through
+  `planSidecarCleanup`; the caller's `names` are a FILTER (so nothing is deleted
+  that the user was not shown) and never an instruction (so no call site can
+  name a content fork into the set). That is the half no type can see —
+  `deleteSidecarSiblings(h, notice.groups.flatMap(…))` compiles, runs, and
+  deletes the user's unmerged writing.
+- **The in-app rule is DECLARATIONS-only, and the offline tool's is not — on
+  purpose.** `tools/triage-sync-conflicts.mjs` also prunes a CONTENT fork whose
+  parsed JSON matches the live file, and it is entitled to: it runs with the app
+  closed, on an operator's decision. In-app the same `deepEqual` would be a
+  verdict the user cannot see, and a second copy of the inert test is the third
+  speller this file keeps having to retire. CI pins the containment in the one
+  direction that matters — anything the app deletes, the tool would too.
+- **The net is the PROOF.** No `virgil/.history/` archive, deliberately: a slot
+  is itself sync traffic in the folder whose whole problem is sync traffic (task
+  415's rule), and archiving bytes that provably carry nothing keeps the file
+  count while claiming to reduce it. What the user gets is the check they can
+  make — the confirm NAMES every file, and names how many it is leaving alone.
+- **Two counts, deliberately different numbers.** The PILL says how many forks
+  the folder holds (the report); the cleanup row says how many are proved inert
+  (the offer). Conflating them would make one of the two lie, and only a RENDER
+  leg can see which number reached the user.
+- **It takes the DOC LOCK, and that is about `.crswap` rather than about the
+  forks.** A fork is a name Virgil never writes, so it races nothing — but a
+  `.crswap` is Chrome's own in-flight write buffer for a file Virgil DOES write,
+  and deleting one mid-write breaks that write. `enqueueDocWrite` wraps the task
+  in the doc-wide, cross-window `withDocLock`, so a `.crswap` still present while
+  we hold it is by construction not one of ours in flight. That is also why the
+  fresh listing must be read inside the lock rather than handed in.
+- **THE REPORT IS THE PERMISSION.** The receipt has three buckets
+  (`deleted` / `refused` / `failed`) and a requested name already gone is in
+  none of them — nothing deleted, nothing kept. The affordance reads it rather
+  than inferring success from the absence of a throw (tasks 357/364/392), and
+  the runner re-scans afterwards so the notice converges by itself.
+
+**Two decisions recorded at their sites rather than re-litigated.** There is
+still **no in-app compare** for a divergent fork: a real one needs a reader for
+arbitrary sidecar shapes AND an adopt path through each panel's own hook — a
+feature with its own design pass, not a badge affordance (`--extract` remains the
+answer). And **`virgil.json` is not decoupled from the bundle write** to quiet it
+down: that would break the "one bundle, one write" coherence the load-writeback
+rests on, which is load-bearing for the whole content-loss cluster. Its entry in
+the SSOT also gains the correction the post-415 measurement forced — it holds a
+per-block 80-character content FINGERPRINT alongside titles and collapsed state,
+so a fork of it is not automatically inert, which is exactly why it is `content`.
+
+CI: [sync-conflict-cleanup.test.ts](src/lib/__tests__/sync-conflict-cleanup.test.ts)
+sweeps the PLAN over the REAL `SIDECAR_VALUE` (so a sidecar declared later is
+covered by declaration alone, with counters proving the sweep crossed BOTH
+tiers), drives the REAL door in BOTH backends against a fake disk, and carries
+the CENSUS — the plan was never the part that could misbehave, a call site that
+decides for itself is, so every backend door must spell `planSidecarCleanup` over
+its OWN fresh listing, nothing outside the one runner may call the door, and the
+badge may name no file itself. The count legs live in
+[sync-conflict-badge.test.tsx](src/components/__tests__/sync-conflict-badge.test.tsx),
+because which NUMBER reached the user is a render fact. Measured by neutering
+each half in turn: a door that trusts its argument takes 2 legs per backend, the
+tier gate 7, and a second door-caller the census.
+
+**Owed, not claimed:** a real-Dropbox eyeball of the affordance end to end. This
+class is both FSA-masked and SYNC-masked, so the durable proof is the unit
+contracts; the cheap real check is to run the badge's cleanup on the reporting
+folder and then `tools/triage-sync-conflicts.mjs` over it — the tool's
+"PROVED to carry nothing" count should have dropped by exactly what the badge
+said it deleted, and its "DIFFER and are kept" count should not have moved at
+all.
+
 ## Capture/schema symmetry — never delete what you cannot restore
 
 > **A destructive action must never delete content its capture destination cannot represent.** A card body that holds a verbatim slice of the document declares `bodySchema: "excerpt"` in `CARD_REGISTRY` and mounts the FULL main-document vocabulary; anything that deletes-and-captures validates the capture against that schema (`canMountInCardBody`) **before** dispatching the delete, and aborts + notifies if it doesn't fit.

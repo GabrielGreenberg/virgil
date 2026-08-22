@@ -37,6 +37,12 @@ export const invalidateSidecarBundle = backend.invalidateSidecarBundle;
 // The `virgil/` directory listing (task 363) — input to the sync-conflict scan
 // (`sync-conflict.ts`). Read-only; never creates the directory.
 export const listSidecarNames = backend.listSidecarNames;
+// The CLEANUP door (task 411): delete the sync-conflict debris a run PROVES
+// carries nothing — a fork of a VIEW-tier sidecar, or browser `.crswap` debris.
+// The DOOR decides: it re-lists `virgil/` inside the write critical section and
+// re-derives the sanctioned set through `planSidecarCleanup`, so the caller's
+// names are a filter and no call site can name a CONTENT fork into the set.
+export const deleteSidecarSiblings = backend.deleteSidecarSiblings;
 export const readTex = backend.readTex;
 export const writeTex = backend.writeTex;
 export const readDocBundle = backend.readDocBundle;

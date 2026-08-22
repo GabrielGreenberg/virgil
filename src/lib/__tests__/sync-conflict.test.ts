@@ -26,6 +26,7 @@ import {
   SYNC_ORIGIN_LABEL,
 } from "@/lib/sync-conflict";
 import { ALL_VIRGIL_SIDECAR_FILENAMES, SIDECAR_VALUE } from "@/lib/sidecar-value";
+import { codeOnly } from "./_source-scan";
 
 /** Verbatim from the reporting folder. */
 const REAL_NAMES = [
@@ -241,6 +242,31 @@ describe("triage tool — held to the app's SSOTs", () => {
     expect(TOOL).toMatch(/newRecordHint/);
     const pruneRegion = TOOL.slice(TOOL.indexOf("const prunable"));
     expect(pruneRegion).not.toMatch(/prunable\.push\([^)]*newRecordHint/);
+  });
+
+  it("prunes a SUPERSET of what the in-app cleanup deletes (task 411)", () => {
+    // The badge's cleanup (`planSidecarCleanup`) is DECLARATIONS-only: a fork of
+    // a VIEW-tier base, and `.crswap` debris. The tool prunes those two plus a
+    // CONTENT fork whose parsed JSON matches the live file — a comparison it is
+    // entitled to make and the app is not (it runs with the app closed, on an
+    // operator's decision). So the containment must hold in ONE direction:
+    // anything the app deletes, the tool would too. Both of the app's branches
+    // are therefore pinned present in the tool.
+    //
+    // Asserted as SOURCE rather than by running the tool, because it is a
+    // `.mjs` script whose `main()` runs at module scope — the same reason its
+    // sibling legs above read it as text.
+    expect(TOOL).toMatch(/const prunable = \[\.\.\.swap\]/); // debris, unconditionally
+    expect(TOOL).toMatch(/tier === "view"/); // and every fork of a view base
+    // …and the app half must not have grown a byte comparison of its own. A
+    // third speller of the inert test is the drift this cluster keeps retiring;
+    // the in-app rule is the two DECLARATIONS or nothing.
+    // Comments stripped: the module's own header EXPLAINS why it carries no
+    // `deepEqual`, and a raw grep would indict the explanation.
+    const APP = codeOnly(
+      fs.readFileSync(path.join(REPO, "src/lib/sync-conflict-cleanup.ts"), "utf8"),
+    );
+    expect(APP).not.toMatch(/deepEqual|newRecordHint/);
   });
 });
 

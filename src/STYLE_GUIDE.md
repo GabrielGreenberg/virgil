@@ -107,6 +107,20 @@ Two rules the family carries:
   with nothing red on a genuinely destructive path, the answer is usually a net,
   not a redder pill.
 
+- **…and "a net" can be a PROOF rather than an archive** (task 411). The
+  sync-conflict badge's cleanup deletes files with no `virgil/.history/` copy
+  behind it, and that is not an exception to the rule above: the set is
+  restricted to what the app's own declarations PROVE carries nothing (a fork of
+  a VIEW-tier sidecar, browser `.crswap` debris), so there is no content to
+  destroy. An archive there would be worse than useless — a `.history/` slot is
+  itself sync traffic in the folder whose whole problem is sync traffic, so it
+  would keep the file count while claiming to reduce it. What the user gets
+  instead is the check they can actually make: the confirm NAMES every file
+  before it deletes, and names how many it is deliberately leaving alone. The
+  PILL stays warm-amber (it is still a warning about the folder); the CONFIRM's
+  primary action is `tone="danger"`, because the delete itself is irreversible
+  from the user's side — which by task 389's rule cues Cancel.
+
 - **The SAVE-STATE ladder is the same rule read as four tiers** (task 392;
   `src/lib/save-state.ts` is the vocabulary, `SaveStateBadge` the surface).
   A quiet `--ink-subtle` line for the two REASSURANCE tiers — "Saved · 13:28"
