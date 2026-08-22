@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
-import { AddMarkStep, Mapping, RemoveMarkStep } from "@tiptap/pm/transform";
+import { Mapping } from "@tiptap/pm/transform";
 import { isHistoryTransaction } from "@tiptap/pm/history";
 import { commitSlashCommand } from "./commands";
 import {
@@ -12,6 +12,11 @@ import {
   matchBraceGroupAt,
   scanRawLatexSpans,
 } from "@/lib/latex-lexer";
+import {
+  contentChangedRanges,
+  touchedRanges,
+  touchedTextblocks,
+} from "./changed-ranges";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -192,39 +197,6 @@ function isOpaqueRun(child: PMNode): boolean {
       m.type.name === LATEX_VERBATIM_MARK ||
       m.type.name === LATEX_COMMENT_TAIL_MARK,
   );
-}
-
-/**
- * Every range the given transactions CHANGED, in the coordinates of the final
- * document.
- *
- * Read per STEP against that step's own map and then mapped forward through the
- * rest of the transaction and through every later transaction — the rule
- * `BlockUuidBackfill` earned (task 320): a per-transaction `tr.mapping` re-applies
- * earlier steps' maps to positions that already reflect them, which for the
- * delete-then-insert shape every relocation uses collapses the inserted range to
- * nothing.
- */
-function changedRanges(
-  trs: readonly Transaction[],
-): { from: number; to: number }[] {
-  const out: { from: number; to: number }[] = [];
-  trs.forEach((tr, ti) => {
-    if (!tr.docChanged) return;
-    tr.steps.forEach((step, si) => {
-      step.getMap().forEach((_oldFrom, _oldTo, newFrom, newTo) => {
-        const rest = tr.mapping.slice(si + 1);
-        let from = rest.map(newFrom, -1);
-        let to = rest.map(newTo, 1);
-        for (let k = ti + 1; k < trs.length; k++) {
-          from = trs[k].mapping.map(from, -1);
-          to = trs[k].mapping.map(to, 1);
-        }
-        out.push({ from, to });
-      });
-    });
-  });
-  return out;
 }
 
 /**
@@ -564,49 +536,151 @@ export const LatexCommandMark = Mark.create({
       return added;
     }
 
+    /**
+     * Every decoration ONE textblock carries. The unit of re-derivation for
+     * both the cold build and the per-transaction rebuild, so the two can never
+     * come to disagree about what a block's decorations are.
+     *
+     * Paragraphs additionally get the `p-cmd-only` NODE decoration — the
+     * DOM-semantics twin of the retired `p:has(> .latex-cmd:first-child:last-child)`
+     * rhythm selector (perf Wave 0, plan P5.1): exactly ONE element child, and
+     * it is a `.latex-cmd` span. Bare unmarked text renders as text nodes (not
+     * elements); each inline deco, each latexCommand-marked text run, each
+     * other-marked run, and each inline atom renders one element. The aggregate
+     * is paragraph-LOCAL, which is exactly what makes a block-scoped rebuild
+     * sufficient rather than merely cheaper.
+     */
+    function decorateBlock(
+      decos: Decoration[],
+      node: any,
+      pos: number,
+    ): void {
+      if (node.type?.name === "paragraph") {
+        let cmdElements = 0;
+        let otherElements = 0;
+        node.forEach((child: any, offset: number) => {
+          if (child.isText) {
+            if (child.marks.some((m: any) => m.type === markType)) {
+              cmdElements++;
+            } else if (child.marks.length > 0) {
+              otherElements++;
+            } else {
+              cmdElements += decorateTextNode(decos, child, pos + 1 + offset);
+            }
+          } else {
+            otherElements++;
+          }
+        });
+        if (cmdElements === 1 && otherElements === 0) {
+          decos.push(
+            Decoration.node(pos, pos + node.nodeSize, { class: "p-cmd-only" }),
+          );
+        }
+        return;
+      }
+      // Any other textblock (heading, codeBlock, …): inline decos only.
+      node.forEach((child: any, offset: number) => {
+        decorateTextNode(decos, child, pos + 1 + offset);
+      });
+    }
+
+    /** The cold build — a whole document, once at init and on a document
+     *  REPLACEMENT. Every other transaction goes through `rebuildBlocks`. */
     function buildDecorations(doc: any): DecorationSet {
       const decos: Decoration[] = [];
       doc.descendants((node: any, pos: number) => {
-        if (node.type?.name === "paragraph") {
-          // Per-paragraph pass: paint the inline decos AND decide whether the
-          // paragraph is "command-only" — the DOM-semantics twin of the old
-          // `p:has(> .latex-cmd:first-child:last-child)` rhythm selector
-          // (perf Wave 0, plan P5.1): exactly ONE element child, and it is a
-          // `.latex-cmd` span. Bare unmarked text renders as text nodes (not
-          // elements); each inline deco, each latexCommand-marked text run,
-          // each other-marked run, and each inline atom renders one element.
-          let cmdElements = 0;
-          let otherElements = 0;
-          node.forEach((child: any, offset: number) => {
-            if (child.isText) {
-              if (child.marks.some((m: any) => m.type === markType)) {
-                cmdElements++;
-              } else if (child.marks.length > 0) {
-                otherElements++;
-              } else {
-                cmdElements += decorateTextNode(decos, child, pos + 1 + offset);
-              }
-            } else {
-              otherElements++;
-            }
-          });
-          if (cmdElements === 1 && otherElements === 0) {
-            decos.push(
-              Decoration.node(pos, pos + node.nodeSize, { class: "p-cmd-only" }),
-            );
-          }
-          return false; // children handled above
-        }
-        decorateTextNode(decos, node, pos);
-        return undefined;
+        if (!node.isTextblock) return true;
+        decorateBlock(decos, node, pos);
+        return false; // children handled above
       });
       return DecorationSet.create(doc, decos);
     }
 
+    /**
+     * Re-derive ONLY the given blocks: drop what the set holds inside each one,
+     * paint it fresh.
+     *
+     * The removal window is "anything that REACHES INTO this block", not
+     * "anything the query returned" and not "anything wholly inside it", and
+     * both halves of that are load-bearing:
+     *
+     *  • `find(from, to)` is INCLUSIVE at both endpoints, so a neighbour's
+     *    `p-cmd-only` NODE decoration — whose range abuts this block exactly —
+     *    comes back. Removing it without re-adding it would silently un-flag
+     *    the paragraph next door.
+     *  • A mapped inline decoration CAN straddle a block boundary: press Enter
+     *    inside a command run and the split maps its `from` into the first
+     *    paragraph and its `to` into the second, where ProseMirror's `forChild`
+     *    paints it on BOTH halves. A wholly-inside test would leave that
+     *    stale span standing — the one case the retired whole-document rebuild
+     *    cleaned up by accident. A straddle can only be produced by a change
+     *    that crossed the boundary, so both blocks are in `blocks` and both get
+     *    repainted.
+     *
+     * Cost, stated rather than implied: `find`/`remove`/`add` each sweep the
+     * root's own `local` array and its child index, so this is O(decorated
+     * blocks x touched blocks) in cheap integer comparisons — the same order as
+     * the `oldSet.map(...)` that precedes it on every transaction, and roughly
+     * two orders below the `DecorationSet.create` it replaces, whose `buildTree`
+     * re-scans the ENTIRE decoration array once per top-level child. Taking that
+     * floor to zero means moving `p-cmd-only` off decorations onto a NodeView
+     * class stamp; filed separately.
+     */
+    function rebuildBlocks(
+      set: DecorationSet,
+      doc: any,
+      blocks: Map<number, PMNode>,
+    ): DecorationSet {
+      const stale: Decoration[] = [];
+      const fresh: Decoration[] = [];
+      for (const [pos, node] of blocks) {
+        const end = pos + node.nodeSize;
+        for (const deco of set.find(pos, end)) {
+          // Merely touching the boundary is a NEIGHBOUR's decoration; anything
+          // that reaches inside is this block's, straddles included.
+          if (deco.to <= pos || deco.from >= end) continue;
+          stale.push(deco);
+        }
+        decorateBlock(fresh, node, pos);
+      }
+      const kept = set.remove(stale);
+      return fresh.length > 0 ? kept.add(doc, fresh) : kept;
+    }
+
     return [
       // Live decoration for \commands while typing.
-      // Canonical mapping pattern: forward-map existing decorations,
-      // then rebuild only when a changed region might contain `\`.
+      //
+      // ONE question per transaction — WHICH BLOCKS DID THIS EDIT TOUCH — and a
+      // rebuild scoped to the answer. Until task 400 there were three PROBES in
+      // front of an all-or-nothing `buildDecorations(tr.doc)`: a backslash scan
+      // of the changed text, an overlap test against the mapped set, and a
+      // mark-step test. Each was correct, and each gated a WHOLE-DOCUMENT walk
+      // ending in `DecorationSet.create`, whose `buildTree` re-scans the entire
+      // decoration array once per top-level child. MEASURED on the pre-fix tree
+      // through `decoration-probe-cost.test.ts`: typing the nine characters of
+      // `\emph{hi}` into paragraph 0 re-derived 605 decorations in a
+      // 60-paragraph document and 2405 in a 240-paragraph one — the keystroke
+      // cost scaling with the PAPER. (The task's own trace counted 14 rebuilds
+      // for that string typed into an empty paragraph, since `applyTransaction`
+      // runs `applyInner` on the root transaction and again per appended one,
+      // and put the per-rebuild cost near 320 000 iterations at 400 paragraphs.)
+      // The probes only existed because the
+      // rebuild was all-or-nothing; once re-derivation is per block there is
+      // nothing left to gate, and the mark-step case that motivated the third
+      // probe is just another positional step in the shared answer.
+      //
+      // Every decoration this plugin paints is block-LOCAL (inline spans inside
+      // one textblock; the `p-cmd-only` aggregate over one paragraph's own
+      // children), which is what makes the scoped rebuild sufficient and not
+      // merely cheaper. The correctness the third probe bought is kept whole: a
+      // mark step reaches `touchedRanges` through `positionalStepRange`, so an
+      // inline deco standing over a run the carrier has just MARKED is dropped
+      // in the same dispatch — otherwise it paints a second `.latex-cmd` inside
+      // the mark's own span and the nested `font-size: 0.9em` compounds to
+      // 0.81em. It also gains what no probe could see: any OTHER mark landing in
+      // a `p-cmd-only` paragraph (bolding a word beside the command) now clears
+      // the flag, where before all three probes missed the empty step map and
+      // the stale class survived.
       new Plugin({
         key: new PluginKey("latexCmdDecorations"),
         state: {
@@ -616,68 +690,15 @@ export const LatexCommandMark = Mark.create({
           apply(tr, oldSet) {
             const mapped = oldSet.map(tr.mapping, tr.doc);
             if (!tr.docChanged) return mapped;
-            // Cheap text scan of the changed regions for a backslash —
-            // the only character that could create or break a command.
-            // If absent, the mapped set is correct.
-            let touched = false;
-            tr.mapping.maps.forEach((stepMap) => {
-              if (touched) return;
-              stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
-                if (touched) return;
-                const expandedFrom = Math.max(0, newFrom - 1);
-                const expandedTo = Math.min(tr.doc.content.size, newTo + 1);
-                if (expandedTo <= expandedFrom) return;
-                const text = tr.doc.textBetween(expandedFrom, expandedTo, "\n", "\n");
-                if (text.includes("\\")) touched = true;
-              });
-            });
-            // Also rebuild if any existing decoration overlaps a
-            // changed region (the typed text might land mid-command and
-            // change its length without inserting a `\`).
-            //
-            // KEYSTROKE SANCTITY (task 337): this loop used to be gated on
-            // `oldSet.find().length > 0` — an ARGLESS find, which is the one
-            // DecorationSet call that is O(all decorations in the document):
-            // `findInner` with the default `0 … 1e9` range enters EVERY child
-            // subtree and allocates a copied `Decoration` per hit. It ran on
-            // exactly the path that exists to be cheap — a plain keystroke
-            // whose changed region holds no backslash — so a paper with
-            // hundreds of `\commands` paid a full-set walk per character.
-            // The gate bought nothing: `find(from, to)` descends only into
-            // children whose span overlaps the query, so on an empty set the
-            // loop below is already O(steps), and mapping can never ADD a
-            // decoration — so the guard could never suppress a `touched` the
-            // loop would have set. Bounded ranges only; never argless.
-            if (!touched) {
-              tr.mapping.maps.forEach((stepMap) => {
-                if (touched) return;
-                stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
-                  if (touched) return;
-                  if (mapped.find(newFrom, newTo).length > 0) touched = true;
-                });
-              });
-            }
-            // A MARK step carries an EMPTY step map (`AddMarkStep` moves
-            // nothing), so neither probe above can see the type-time carrier
-            // promoting a bare span to the mark — and a decoration left
-            // standing over a now-MARKED run paints a second `.latex-cmd`
-            // over the one the mark renders itself. The two carriers of the
-            // same grey are the same state since task 360, so the set is
-            // rebuilt whenever this mark's presence changes. The DETECTION is
-            // O(steps); the REBUILD it gates is O(document) — the pre-existing
-            // cost of the promote arm's own AddMarkStep, which a demotion
-            // reaches too since task 390. Bounded by being one-shot per
-            // construct: once the mark is off, the block carries no marked run
-            // and no further step is produced.
-            if (!touched) {
-              touched = tr.steps.some(
-                (step) =>
-                  (step instanceof AddMarkStep ||
-                    step instanceof RemoveMarkStep) &&
-                  step.mark.type === markType,
-              );
-            }
-            return touched ? buildDecorations(tr.doc) : mapped;
+            // A document REPLACEMENT (the load, the code-pane bridge's
+            // re-parse, a raw full-range dispatch) touches every block, so the
+            // cold build is both correct and cheaper than removing and re-adding
+            // block by block. The same predicate the carrier below uses, for the
+            // same reason.
+            if (replacesWholeDoc(tr)) return buildDecorations(tr.doc);
+            const blocks = touchedTextblocks(tr.doc, touchedRanges([tr]));
+            if (blocks.size === 0) return mapped;
+            return rebuildBlocks(mapped, tr.doc, blocks);
           },
         },
         props: {
@@ -698,20 +719,15 @@ export const LatexCommandMark = Mark.create({
           if (trs.some((t) => replacesWholeDoc(t) || isHistoryTransaction(t)))
             return null;
 
-          const ranges = changedRanges(trs);
+          const ranges = contentChangedRanges(trs);
           if (ranges.length === 0) return null;
 
           // The touched TEXTBLOCKS, deduped by position — a construct can start
           // well before the edit (`\definecolor{a}{b}{c}` typed into its last
-          // argument), so the block is the smallest honest scan window.
-          const blocks = new Map<number, PMNode>();
-          for (const r of ranges) {
-            newState.doc.nodesBetween(r.from, r.to, (node, pos) => {
-              if (!node.isTextblock) return true;
-              blocks.set(pos, node);
-              return false;
-            });
-          }
+          // argument), so the block is the smallest honest scan window. Shared
+          // with the decoration plugin above since task 400; the helper adds an
+          // O(depth) fast path for the single-block shape every keystroke has.
+          const blocks = touchedTextblocks(newState.doc, ranges);
 
           // old ⇄ new positions, composed ONCE and only if the demotion half
           // asks (see `brokenConstructs`). An ordinary keystroke never gets
