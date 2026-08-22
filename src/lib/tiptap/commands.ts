@@ -21,10 +21,18 @@ import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 // former `titleFieldCommand` factory here is GONE; the registry row is the SSOT.
 import {
   VIRGIL_ACTION_REGISTRY,
-  type ActionContext,
   type ActionId,
 } from "@/lib/actions/action-registry";
-import { paragraphUuidAt } from "@/links/links";
+// Task 398: the slash surface's applicability DOOR. `runViewOnlyAction` builds
+// its ctx here rather than inline, so the OFFER (the popup's greyed rows +
+// `executeSelection`'s pre-delete refusal) and this COMMIT ask the registry the
+// same question through the same constructor — the two halves cannot come to
+// answer from two tables.
+import {
+  buildSlashActionContext,
+  slashCommandEnabled,
+} from "./slash-applicability";
+import type { Transaction } from "@tiptap/pm/state";
 // Task 061: the cross-surface applicability SSOT — the slash `/cite` · `/footnote`
 // commands honor the SAME curated per-kind set the menus consult. `/cite` also
 // rides the bridge's `applies()` gate, but bail HERE too (symmetry with the
@@ -71,22 +79,10 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
   // editor is always editable.
   const canEdit = view.editable;
   if (!canEdit) return;
-  const pos = view.state.selection.head;
-  const ctx: ActionContext = {
-    // For a TipTap editor `view === editor.view`; the slash plugin has only the
-    // view, so `editor` is filled with the same view-bearing object the registry
-    // heading `run()` reads `state.schema` / `selection` off of. (`headingRun`
-    // touches ONLY `ctx.view`.)
-    editor: { view, state: view.state } as unknown as ActionContext["editor"],
-    view,
-    ref: {
-      kind: "cursor",
-      pos,
-      paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
-    },
-    surface: "slash",
-    canEdit,
-  };
+  // Task 398: ONE ctx constructor, shared with the popup's OFFER. It was inline
+  // here; the popup then had no way to ask the same question without re-deriving
+  // it, which is exactly how the offer and the commit came to disagree.
+  const ctx = buildSlashActionContext(view);
   // Task 149: honor the applicability SSOT before running — mirroring the bridge
   // path (`EditorPane.tsx`, `if (spec.applies(ctx) === "disabled") return`). The
   // view-only slash surface previously called `spec.run(ctx)` DIRECTLY, skipping
@@ -317,15 +313,62 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
 /** Fast lookup by command name (without backslash). */
 export const COMMAND_MAP = new Map(VIRGIL_COMMANDS.map((c) => [c.name, c]));
 
+/**
+ * The slash surface's ONE COMMIT DOOR (task 398).
+ *
+ * Two Enter-time executors reach the same vocabulary and each used to own a
+ * private copy of the same three steps — resolve the name, DELETE the typed
+ * `\name`, run the action:
+ *
+ *   • `slash-popup.ts`'s `executeSelection` (the popup's Enter / Tab / click);
+ *   • `latex-command.ts`'s `virgilCommands` plugin, which matches a trailing
+ *     `\[a-zA-Z]+` on Enter and fires even when the popup was never opened
+ *     (dismissed with Escape, or suppressed by `isFreshPosition`).
+ *
+ * Both deleted FIRST and let the action refuse afterwards, so a command that
+ * cannot run at this caret ate the user's characters and said nothing. Two
+ * doors, one defect, and a fix applied to one of them would have left the other
+ * live — which is why the door is here, beside the vocabulary both read, rather
+ * than in either caller.
+ *
+ * **Ask before you delete.** The verdict is the registry row's own `applies()`
+ * (through `slashCommandEnabled` — the same door the popup greys its rows
+ * from), so what the popup OFFERS is what this ACCEPTS. A refusal returns
+ * `false` having dispatched NOTHING: the document is byte-identical and the
+ * caller decides whether to consume the key or let it through.
+ *
+ * `mutate` lets the popup fold its own close-meta into the delete transaction,
+ * so a successful command still costs exactly the transactions it did before.
+ */
+export function commitSlashCommand(
+  view: EditorView,
+  name: string,
+  from: number,
+  to: number,
+  mutate?: (tr: Transaction) => void,
+): boolean {
+  const cmd = COMMAND_MAP.get(name);
+  if (!cmd) return false;
+  // ASK FIRST — this ordering IS the fix. Nothing below runs on a refusal.
+  if (!slashCommandEnabled(view, name)) return false;
+  const tr = view.state.tr.delete(from, to);
+  mutate?.(tr);
+  view.dispatch(tr);
+  cmd.action(view, "\\" + name);
+  return true;
+}
+
 /** Names of all native Virgil commands (without the leading backslash). */
 export const VIRGIL_COMMAND_NAMES: readonly string[] = VIRGIL_COMMANDS.map((c) => c.name);
 
 // Dev-only: expose the slash command map for the live-harness verification
 // sweep (CHIP 8), mirroring the existing `window.__virgil` / `__virgilBusStats`
 // dev hooks. Lets a preview_eval driver invoke a slash command's `action`
-// exactly as `executeSelection` (slash-popup.ts) does after it deletes the
-// typed `\name` — the faithful slash-surface destination. Gated on the
-// dev-storage flag so it never ships in a production (static-export) build.
+// directly — the ACTION's destination, deliberately BELOW the slash surface's
+// applicability door (task 398), so a harness can exercise a `run()` without
+// the popup's verdict in front of it. The same reason the cross-surface suites
+// call `.action` rather than driving the popup. Gated on the dev-storage flag
+// so it never ships in a production (static-export) build.
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   (
     window as unknown as { __virgilSlashCommands?: unknown }

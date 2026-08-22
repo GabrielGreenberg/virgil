@@ -10,6 +10,15 @@
  * The ProseMirror plugin in {@link SlashPopupExtension} owns the
  * canonical state and mirrors it to {@link slashPopupStore}; this
  * component subscribes via {@link useSlashPopupState}.
+ *
+ * Task 398: the plugin also carries the registry's `applies()` verdict
+ * (`state.disabled`), and this component RENDERS it — a command that
+ * cannot run at the caret is greyed and inert. Greying beats hiding
+ * (a command that vanishes reads as "Virgil doesn't have `\section`"),
+ * and it is the same visible-disabled idiom `MenuActionRow` and the
+ * lightning grid already use. The verdict shown here is the same one
+ * `executeSelection` refuses on, so what a row OFFERS is what the
+ * commit ACCEPTS.
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
@@ -147,19 +156,30 @@ export function SlashCommandPopup({
       }}
     >
       {state.filtered.map((name, i) => {
-        const selected = i === state.selectedIndex;
+        // Task 398: the popup RENDERS the registry's verdict. A command that
+        // cannot run at this caret is greyed and inert — never hidden (a command
+        // that vanishes reads as "Virgil doesn't have `\\section`") and never
+        // silently offered (which is how this surface came to eat the user's
+        // keystrokes on its way to refusing). The `disabled` list is derived in
+        // the plugin's state from the SAME `applies()` `executeSelection` reads,
+        // so what this row offers is what the commit accepts.
+        const isDisabled = state.disabled.includes(name);
+        const selected = i === state.selectedIndex && !isDisabled;
         return (
           <button
             key={name}
             type="button"
+            disabled={isDisabled}
             onClick={() => {
               const editor = editorRef.current;
               if (!editor) return;
               executeSlashSelectionAt(editor.view, i);
               editor.commands.focus();
             }}
-            className={`block w-full text-left px-3 font-mono text-xs text-ink-body ${
-              selected ? "bg-edge-subtle" : "hover-on-light"
+            className={`block w-full text-left px-3 font-mono text-xs ${
+              isDisabled
+                ? "text-ink-faint cursor-not-allowed"
+                : `text-ink-body ${selected ? "bg-edge-subtle" : "hover-on-light"}`
             }`}
             style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT}px` }}
           >

@@ -1768,6 +1768,25 @@ CSS-anchored follow-ups (the Fonts-dialog combobox, the library pod's add menu,
 and the Help menu's hover sub-menu) — each with a stated reason it is a
 different job from swapping the shell.
 
+#### A command surface RENDERS its verdict — greyed, never hidden
+
+Every surface that offers an action asks the registry row's `applies()` and
+paints the answer: the grab menu per row, the lightning grid per cell, and —
+since task 398 — the **slash popup**, whose rows carry the same verdict its
+Enter/click commit refuses on.
+
+- **Greying beats hiding.** A command that VANISHES reads as "Virgil doesn't
+  have `\section`"; a greyed one reads as "not here." Same reason
+  `MenuActionRow` renders a real disabled `<button>` (`text-ink-faint
+  cursor-not-allowed`) rather than dropping the row.
+- **Roving navigation skips the greyed rows**, so the selection can only ever
+  sit on something Enter can run — and the arrows are INERT rather than looping
+  when every row is greyed.
+- **Activating a disabled row does nothing at all.** For the slash popup that
+  is load-bearing rather than cosmetic: the popup used to delete the typed
+  `\name` before the action was ever asked whether it applied, so a refusal ate
+  the user's characters. A refusal must leave the document byte-identical.
+
 ### Z-index ladder
 
 The float/menu tiers are named constants in `src/floats/float-policy.ts`
