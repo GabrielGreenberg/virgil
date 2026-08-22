@@ -12,6 +12,7 @@ import {
   citationCommandOrNull,
   derivePlural,
   parseCiteCommand,
+  resolveCiteNoteRows,
   sanitizeInlineCitationHtml,
   serializeCiteCommand,
   type ParsedCiteKey,
@@ -162,15 +163,17 @@ function inferTypeFromBare(command: string): {
 function rowsFromCommand(command: string): UiRow[] {
   const parsed = parseCiteCommand(command);
   if (!parsed || parsed.entries.length === 0) return [{ id: nextRowId(), key: "" }];
-  // For natbib, the parser puts pre/post at the top level. Mirror that
-  // onto each row so the UI shows the shared value uniformly.
-  const sharedPre = parsed.entries[0]?.prenote ?? parsed.prenote;
-  const sharedPost = parsed.entries[0]?.postnote ?? parsed.postnote;
-  return parsed.entries.map((e) => ({
+  // The rows ARE the per-key view, so they read the model's ONE placement rule
+  // rather than a second copy of it (task 403). What stood here mirrored
+  // `entries[0]`'s note onto EVERY row under a comment that said "For natbib"
+  // over code that ran always — so a biblatex `\cites[p. 1]{a}{b}` showed
+  // "p. 1" on `b` and the next `persist()` wrote that invented page range into
+  // the user's `.tex`.
+  return resolveCiteNoteRows(parsed).map((r) => ({
     id: nextRowId(),
-    key: e.key,
-    prenote: e.prenote ?? sharedPre,
-    postnote: e.postnote ?? sharedPost,
+    key: r.key,
+    prenote: r.prenote,
+    postnote: r.postnote,
   }));
 }
 
@@ -365,6 +368,11 @@ export function CitationCard({
           type: nextType,
           starred: nextStarred,
           capitalized: nextCapitalized,
+          // Each row owns its own `[pre][post]` input, so the card always
+          // speaks PER-KEY. The serializer flattens where the target package
+          // cannot represent that — see `citeNotesDroppedByPackage`, which is
+          // what the Package control asks before it lets the flip happen.
+          noteScope: "per-key",
           entries,
         },
         bibPackage,

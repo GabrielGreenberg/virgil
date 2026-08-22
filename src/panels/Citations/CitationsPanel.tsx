@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useCallback, memo, useRef } from "react";
+import { useMemo, useEffect, useCallback, useState, memo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
@@ -13,6 +13,8 @@ import {
   useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
@@ -289,6 +291,50 @@ function CitationsPanel({
     ],
   );
 
+  /* ── The package flip is allowed to be LOSSY, but never SILENTLY (403 #3) ──
+   *
+   * natbib's `[pre][post]` is whole-citation BY DEFINITION, so a biblatex
+   * `\cites[p. 1]{a}[p. 99]{b}` cannot be represented under it — one of the two
+   * ranges leaves the user's `.tex`, and flipping back will not bring it home.
+   * Of the three defensible answers (flatten silently / refuse the demotion /
+   * warn first) this takes the repo's standing posture: a loss the user has
+   * been TOLD about and chosen beats either a silent one or a blocked control.
+   *
+   * Asked HERE, at the Package control, rather than inside each card's flip
+   * effect: the flip is ONE decision the user makes once, while the cards
+   * rewrite themselves one by one (and only the mounted, non-archived ones do
+   * — so a per-card confirm would ask N times and still miss the rest). The
+   * scan is per CLICK, never per render.
+   */
+  const [pendingPackage, setPendingPackage] = useState<{
+    pkg: string;
+    keys: string[];
+  } | null>(null);
+
+  const requestBibPackage = useCallback(
+    (pkg: string) => {
+      // Picking the package the view ALREADY shows is how a user confirms a
+      // DETECTED seed as their own choice (task 344 made the stored family
+      // optional and the shown one `stored ?? detected ?? default`), so that
+      // click still writes — it just cannot lose anything.
+      if (pkg === bibPackage) {
+        onSetBibPackage(pkg);
+        return;
+      }
+      const keys = Array.from(
+        new Set(
+          citations.flatMap((c) => citeNotesDroppedByPackage(c.command, pkg)),
+        ),
+      );
+      if (keys.length === 0) {
+        onSetBibPackage(pkg);
+        return;
+      }
+      setPendingPackage({ pkg, keys });
+    },
+    [bibPackage, citations, onSetBibPackage],
+  );
+
   // Render-scoped flags (reset every render): the first nested cite of each
   // kind that CardListPanel actually RENDERS gets its kind's divider ("In
   // footnotes" / "In examples"). Tracking the first rendered card per kind (not
@@ -301,6 +347,7 @@ function CitationsPanel({
     example: false,
   };
   return (
+    <>
     <CardListPanel
       kind="citations"
       onAdd={() => {
@@ -316,7 +363,7 @@ function CitationsPanel({
           {BIB_PACKAGES.map((p) => (
             <button
               key={p.value}
-              onClick={() => onSetBibPackage(p.value)}
+              onClick={() => requestBibPackage(p.value)}
               className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             >
               <span>{p.label}</span>
@@ -447,6 +494,24 @@ function CitationsPanel({
         );
       }}
     />
+    <ConfirmDialog
+      open={pendingPackage !== null}
+      title="Switch citation package?"
+      message={
+        pendingPackage
+          ? `natbib writes one page range per citation, not one per key — so these ranges cannot be represented under it: ${pendingPackage.keys.join(", ")}. They are dropped from the .tex as those citations are rewritten, and switching back will not restore them.`
+          : ""
+      }
+      confirmLabel="Switch anyway"
+      tone="danger"
+      onConfirm={() => {
+        const next = pendingPackage;
+        setPendingPackage(null);
+        if (next) onSetBibPackage(next.pkg);
+      }}
+      onCancel={() => setPendingPackage(null)}
+    />
+    </>
   );
 }
 

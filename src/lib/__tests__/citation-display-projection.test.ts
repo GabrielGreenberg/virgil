@@ -108,7 +108,12 @@ describe("the reported chip (Gabriel, 2026-08-18)", () => {
     // rewrite of the user's source that every rung of this vocabulary exists to
     // prevent.
     const parsed = parseCiteCommand(REPORTED)!;
-    // One bracket in natbib is the POSTnote — `\citep[post]{k}`.
+    // One bracket in natbib is the POSTnote — `\citep[post]{k}`. RENEGOTIATED
+    // (task 403): the note's home is now a discriminated union, so the arm has
+    // to be named before the field can be read — which is the whole point. A
+    // natbib command can only ever parse to the WHOLE arm.
+    expect(parsed.noteScope).toBe("whole");
+    if (parsed.noteScope !== "whole") throw new Error("unreachable");
     expect(parsed.postnote).toBe("ex.\\textasciitilde{}38, p.\\textasciitilde{}22");
 
     const tex = `\\documentclass{article}\n\\begin{document}\nSee ${REPORTED} here.\n\\end{document}\n`;

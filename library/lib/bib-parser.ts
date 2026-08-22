@@ -6,7 +6,6 @@
  */
 
 import type { BibEntry } from "./types";
-import { MULTI_CITE_NAMES } from "@/lib/cite-commands";
 import { latexToDisplayText } from "@/lib/latex-typography";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
@@ -142,199 +141,22 @@ export function serializeBibFile(entries: BibEntry[]): string {
 // ---------------------------------------------------------------------------
 // Citation command parsing (natbib + biblatex)
 // ---------------------------------------------------------------------------
+//
+// This file is a whole-file COPY of `src/lib/bib-parser.ts` (the fork task 341
+// records), and its cite-command half had already diverged from the original
+// (the empty-key filter and the `matchedGroup` guard never landed here). The
+// MODEL — where a citation's `[prenote][postnote]` annotations live and how
+// they are placed per key — is now `@/lib/cite-command-model`, a leaf BOTH
+// silos read, so the ANSWER cannot fork again even while the RENDERING below
+// stays a copy (task 403 #4).
+//
+// The parse/serialize half is not re-exported: nothing in `library/` consumed
+// it, and a re-export with no caller is the dead-SSOT shape task 202 outlaws.
 
-export interface ParsedCiteKey {
-  key: string;
-  prenote?: string;
-  postnote?: string;
-}
-
-export interface ParsedCiteCommand {
-  type: string; // normalized: "cite", "citet"/"textcite", "citep"/"parencite", "citealt", "citealp", "citeauthor", "citeyear", "citeyearpar", "autocite", "footcite", "cites", "textcites", "parencites"
-  starred: boolean;
-  capitalized: boolean;
-  keys: string[];
-  entries: ParsedCiteKey[]; // per-key with individual pre/post notes
-  prenote?: string;
-  postnote?: string;
-}
-
-// Natbib commands: \cite, \citet, \citep, \citealt, \citealp, \citeauthor,
-// \citeyear, \citeyearpar, \citetext, \citenum, plus capitalized variants.
-// Longest names listed first to avoid partial-match shadowing.
-const NATBIB_HEAD_RE = /^\\(citeyearpar|citeauthor|citeyear|citealp|citealt|citetext|citenum|citep|citet|cite|Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citetext|Citenum|Citep|Citet|Cite)(\*?)(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]+)\}$/;
-
-// Biblatex command head: matches the leading `\cmd*` (no arguments).
-// Longer names listed first so e.g. `\footfullcite` is preferred over
-// `\footcite`, and `\textcites` over `\textcite` over `\cite`.
-const BIBLATEX_HEAD_RE = /^\\(footfullcite|footfullcites|fullcite|fullcites|textcites|parencites|autocites|footcites|smartcites|textcite|parencite|autocite|footcite|smartcite|citetitle|citedate|citeurl|citeauthor|citeyear|nocite|cites|cite|Footfullcite|Footfullcites|Fullcite|Fullcites|Textcites|Parencites|Autocites|Footcites|Smartcites|Textcite|Parencite|Autocite|Footcite|Smartcite|Citetitle|Citedate|Citeurl|Citeauthor|Citeyear|Nocite|Cites|Cite)(\*?)/;
-
-/**
- * Parse a citation command string (natbib or biblatex) into its components.
- */
-export function parseCiteCommand(command: string): ParsedCiteCommand | null {
-  // Try natbib first
-  const natbib = parseNatbibCommand(command);
-  if (natbib) return natbib;
-
-  // Try biblatex
-  return parseBiblatexCommand(command);
-}
-
-/** Parse a natbib command string */
-export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
-  const m = command.match(NATBIB_HEAD_RE);
-  if (!m) return null;
-
-  let cmdName = m[1];
-  const starred = m[2] === "*";
-  const capitalized = cmdName[0] === "C";
-  if (capitalized) cmdName = cmdName[0].toLowerCase() + cmdName.slice(1);
-
-  let prenote: string | undefined;
-  let postnote: string | undefined;
-  if (m[4] !== undefined) {
-    prenote = m[3];
-    postnote = m[4];
-  } else if (m[3] !== undefined) {
-    postnote = m[3];
-  }
-
-  const keys = m[5].split(",").map((k) => k.trim());
-  // Natbib: pre/post applies to the *whole* citation (rendered once at the
-  // edges). Don't put them on individual entries — the formatter reads the
-  // top-level fields for natbib commands.
-  const entries: ParsedCiteKey[] = keys.map((k) => ({ key: k }));
-  return { type: cmdName, starred, capitalized, keys, entries, prenote, postnote };
-}
-
-/**
- * Parse a biblatex command string. Supports:
- *   - single-key:   \textcite[pre][post]{key}
- *   - multi-key in single braces: \parencite{a,b,c}  (treated like natbib)
- *   - multi-cite plural form with per-key brackets:
- *       \cites[pre1][post1]{key1}[pre2][post2]{key2}
- */
-export function parseBiblatexCommand(command: string): ParsedCiteCommand | null {
-  const head = command.match(BIBLATEX_HEAD_RE);
-  if (!head) return null;
-
-  let cmdName = head[1];
-  const starred = head[2] === "*";
-  const capitalized = cmdName[0] >= "A" && cmdName[0] <= "Z";
-  if (capitalized) cmdName = cmdName[0].toLowerCase() + cmdName.slice(1);
-
-  const isMultiCite = MULTI_CITE_NAMES.has(cmdName);
-
-  // Walk the rest of the string consuming `[pre][post]{key}` groups.
-  let rest = command.slice(head[0].length);
-  const entries: ParsedCiteKey[] = [];
-  const groupRe = /^(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]*)\}/;
-  while (rest.length > 0) {
-    const m = rest.match(groupRe);
-    if (!m) break;
-    let kPre: string | undefined;
-    let kPost: string | undefined;
-    if (m[2] !== undefined) { kPre = m[1]; kPost = m[2]; }
-    else if (m[1] !== undefined) { kPost = m[1]; }
-
-    const keyContent = m[3].trim();
-    if (!isMultiCite && keyContent.includes(",")) {
-      // Singular biblatex command with comma-separated keys: split into
-      // multiple entries that share the same pre/post.
-      for (const k of keyContent.split(",")) {
-        const trimmed = k.trim();
-        if (trimmed) entries.push({ key: trimmed, prenote: kPre, postnote: kPost });
-      }
-    } else {
-      entries.push({ key: keyContent, prenote: kPre, postnote: kPost });
-    }
-    rest = rest.slice(m[0].length);
-  }
-
-  if (entries.length === 0) return null;
-  if (rest.trim().length > 0) return null;
-
-  const keys = entries.map((e) => e.key);
-  return {
-    type: cmdName,
-    starred,
-    capitalized,
-    keys,
-    entries,
-    prenote: entries[0]?.prenote,
-    postnote: entries[0]?.postnote,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Serialize structured citation back to LaTeX command
-// ---------------------------------------------------------------------------
-
-// Biblatex commands that have a `\xxxs` plural form for multi-cite. Anything
-// not in this set must use comma-separated keys in a single brace group.
-const HAS_PLURAL_FORM = new Set<string>([
-  "cite",
-  "cites",
-  "textcite",
-  "textcites",
-  "parencite",
-  "parencites",
-  "autocite",
-  "autocites",
-  "footcite",
-  "footcites",
-  "smartcite",
-  "smartcites",
-]);
-
-function bracketsFor(pre: string | undefined, post: string | undefined): string {
-  if (pre !== undefined && pre !== "") return `[${pre}][${post || ""}]`;
-  if (post) return `[${post}]`;
-  return "";
-}
-
-/** Reconstruct a LaTeX citation command from parsed components. */
-export function serializeCiteCommand(
-  parsed: { type: string; starred: boolean; capitalized: boolean; entries: ParsedCiteKey[] },
-  bibPackage: string = "natbib"
-): string {
-  const { type, starred, capitalized, entries } = parsed;
-  if (entries.length === 0) return "";
-
-  const cmdBase = capitalized ? type[0].toUpperCase() + type.slice(1) : type;
-  const star = starred ? "*" : "";
-
-  if (bibPackage === "natbib") {
-    // Natbib: \citep[pre][post]{key1,key2} — shared pre/post from first entry
-    const brackets = bracketsFor(entries[0]?.prenote, entries[0]?.postnote);
-    const keys = entries.map((e) => e.key).join(",");
-    return `\\${cmdBase}${star}${brackets}{${keys}}`;
-  }
-
-  // ── Biblatex ────────────────────────────────────────────────────────
-  // Single entry → singular form regardless of plural availability
-  if (entries.length === 1) {
-    const { key, prenote: pre, postnote: post } = entries[0];
-    return `\\${cmdBase}${star}${bracketsFor(pre, post)}{${key}}`;
-  }
-
-  // Multiple entries: use plural `\xxxs` if available, otherwise fall back
-  // to comma-separated keys (with shared pre/post from the first entry).
-  const baseLower = cmdBase.toLowerCase();
-  const hasPlural = HAS_PLURAL_FORM.has(baseLower);
-
-  if (!hasPlural) {
-    const brackets = bracketsFor(entries[0]?.prenote, entries[0]?.postnote);
-    const keys = entries.map((e) => e.key).join(",");
-    return `\\${cmdBase}${star}${brackets}{${keys}}`;
-  }
-
-  const pluralType = type.endsWith("s") ? type : type + "s";
-  const pluralBase = capitalized ? pluralType[0].toUpperCase() + pluralType.slice(1) : pluralType;
-  const parts = entries.map((e) => `${bracketsFor(e.prenote, e.postnote)}{${e.key}}`);
-  return `\\${pluralBase}${star}${parts.join("")}`;
-}
+import {
+  parseCiteCommand,
+  resolveCiteNoteRows,
+} from "@/lib/cite-command-model";
 
 // ---------------------------------------------------------------------------
 // WYSIWYG display text
@@ -397,14 +219,6 @@ export function formatMediumCitationParts(
     title: latexToDisplayText(entry.fields.title || ""),
   };
 }
-
-// Natbib commands always read pre/post from the top-level command (it's a
-// single shared annotation). Biblatex multi-cite forms read per-entry. The
-// biblatex singular forms also use top-level (since there's only one entry).
-const NATBIB_COMMANDS = new Set<string>([
-  "cite", "citet", "citep", "citealt", "citealp",
-  "citeauthor", "citeyear", "citeyearpar", "citetext", "citenum",
-]);
 
 /**
  * Decode the small set of HTML entities that citation-js's bibliography
@@ -482,27 +296,17 @@ function formatInlineCitationRaw(
   const getTitle = (entry: BibEntry | undefined): string =>
     entry?.fields.title || (entry ? "??" : "??");
 
-  const { type, starred, capitalized, entries: parsedEntries, prenote, postnote } = parsed;
+  const { type, starred, capitalized } = parsed;
 
-  // For natbib commands and biblatex single forms, the top-level prenote
-  // applies before the first entry and the top-level postnote after the
-  // last entry. Synthesize per-entry brackets so the rendering helpers
-  // below stay simple.
-  //
-  // For biblatex multi-cite, brackets are already on individual entries.
-  const isNatbib = NATBIB_COMMANDS.has(type) || (bibPackage === "natbib" && type === "cite");
-  const useTopLevelBrackets =
-    isNatbib || (parsedEntries.length === 1 && !MULTI_CITE_NAMES.has(type));
-
-  const resolved = parsedEntries.map((pe, i) => ({
-    bib: entryMap.get(pe.key),
-    prenote: useTopLevelBrackets
-      ? (i === 0 ? prenote : undefined)
-      : pe.prenote,
-    postnote: useTopLevelBrackets
-      ? (i === parsedEntries.length - 1 ? postnote : undefined)
-      : pe.postnote,
-    key: pe.key,
+  // WHERE a note goes is the MODEL's answer, read from the same leaf the `src/`
+  // twin reads (task 403). It used to be re-derived here from the command NAME
+  // plus the document's package — a third convention beside the parser's and
+  // the panel's.
+  const resolved = resolveCiteNoteRows(parsed).map((r) => ({
+    bib: entryMap.get(r.key),
+    prenote: r.prenote,
+    postnote: r.postnote,
+    key: r.key,
   }));
 
   // Render helpers — each embeds a per-entry prenote (before the author) and

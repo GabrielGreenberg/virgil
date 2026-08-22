@@ -341,18 +341,21 @@ describe("341 · the escape table has ONE reader per direction", () => {
  * an invariant.
  */
 const PERMITTED_CITE_NAME_LISTS: Record<string, string> = {
-  // A DIFFERENT question, filed as a residual rather than folded in here:
-  // `bib-parser` parses a complete command STRING into normalized typed parts,
-  // and its natbib/biblatex split IS that normalization (which branch claims a
-  // command decides the pre/post-note semantics), not a recognition vocabulary.
-  // Its lists are also not the registry's: they carry `fullcites` /
+  // A DIFFERENT question, filed as a residual rather than folded in here: the
+  // cite-command MODEL parses a complete command STRING into normalized typed
+  // parts, and its natbib/biblatex split IS that normalization (which branch
+  // claims a command decides the pre/post-note semantics), not a recognition
+  // vocabulary. Its lists are also not the registry's: they carry `fullcites` /
   // `footfullcites`, which `KNOWN_CITE_COMMANDS` does not have — so deriving
   // them would silently DROP two real biblatex commands unless the vocabulary
   // is widened first, which is a judgement call about what Virgil recognizes,
-  // not a de-duplication. `library/lib/bib-parser.ts` is a whole-file copy of
-  // the same module (its own pre-existing fork).
-  "src/lib/bib-parser.ts": "command→typed-parts normalization; see the note above",
-  "library/lib/bib-parser.ts": "whole-file copy of the above; same residual",
+  // not a de-duplication.
+  //
+  // ONE entry since task 403: this WAS two, because `library/lib/bib-parser.ts`
+  // was a whole-file copy of the same model. Both silos read the leaf now, so
+  // the exemption covers one file instead of two — a census draining by half is
+  // what retiring a fork looks like from here.
+  "src/lib/cite-command-model.ts": "command→typed-parts normalization; see the note above",
 };
 
 function sourceFiles(root: string): string[] {
