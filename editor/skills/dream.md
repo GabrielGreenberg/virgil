@@ -333,12 +333,12 @@ inherited branch you composed onto):
    `npx tsc --noEmit` · `npx vitest run` · every
    `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
 2. **All green AND the primary checkout is clean on `main`**
-   (`git -C /Users/gabriel/Programming/virgil status --porcelain` empty of
+   (`git -C "$VIRGIL_REPO_ROOT" status --porcelain` empty of
    tracked changes, `branch --show-current` = `main`) **AND the guard answers
    `neverSelfMerge: false`** (the clause below — ask it *before* you merge, not
    after) → **land-and-clean**, the
    task worker's own discipline (`~/virgil-tasks/PROFILE.md`):
-   `git -C /Users/gabriel/Programming/virgil merge --no-ff dream/<date>`, remove
+   `git -C "$VIRGIL_REPO_ROOT" merge --no-ff dream/<date>`, remove
    the worktree, delete the branch. Record **LANDED** in the digest entry.
 3. **Green but the primary tree is dirty** (the human mid-edit) → **export and
    delete**, exactly as rule 4 does. Do **not** leave the branch standing "for
@@ -358,13 +358,13 @@ inherited branch you composed onto):
 shape, so no path can be half-followed):
 
 ```bash
-git -C /Users/gabriel/Programming/virgil diff main...dream/$DATE \
+git -C "$VIRGIL_REPO_ROOT" diff main...dream/$DATE \
   > ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
 # verify it applies before you delete the only other copy of the work:
-git -C /Users/gabriel/Programming/virgil apply --check \
+git -C "$VIRGIL_REPO_ROOT" apply --check \
   ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
-git -C /Users/gabriel/Programming/virgil worktree remove .claude/worktrees/dream-$DATE
-git -C /Users/gabriel/Programming/virgil branch -D dream/$DATE
+git -C "$VIRGIL_REPO_ROOT" worktree remove .claude/worktrees/dream-$DATE
+git -C "$VIRGIL_REPO_ROOT" branch -D dream/$DATE
 ```
 
 The inbox note (or DECISION task) carries the patch path, the one-line
@@ -376,7 +376,7 @@ delete is not optional: after `branch -D` the patch is the only copy.
 the autonomy ruling). **Ask the guard; never eyeball the membership:**
 
 ```bash
-git -C /Users/gabriel/Programming/virgil diff --name-only main...dream/$DATE \
+git -C "$VIRGIL_REPO_ROOT" diff --name-only main...dream/$DATE \
   | python3 editor/scripts/dream_land.py --self-merge-check
 # → { "neverSelfMerge": true, "procedurePaths": [...], "reason": "..." }
 ```

@@ -33,11 +33,11 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/gabriel/Programming/virgil/tools/sync-defaults.sh</string>
+    <string>/Users/gabrielgreenberg/Programming/virgil/tools/sync-defaults.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/gabriel/Programming/virgil</string>
+  <string>/Users/gabrielgreenberg/Programming/virgil</string>
 
   <!-- Tuesday + Friday at 11:00 local. Array form: launchd treats each
        dict as an independent calendar trigger. -->
@@ -67,8 +67,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/gabriel/Library/Logs/virgil-promote-defaults.log</string>
+  <string>/Users/gabrielgreenberg/Library/Logs/virgil-promote-defaults.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/gabriel/Library/Logs/virgil-promote-defaults.log</string>
+  <string>/Users/gabrielgreenberg/Library/Logs/virgil-promote-defaults.log</string>
 </dict>
 </plist>

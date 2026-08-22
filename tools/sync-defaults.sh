@@ -25,7 +25,10 @@ if [ "${1:-}" = "--check" ]; then
   MODE="check"
 fi
 
-REPO="/Users/gabriel/Programming/virgil"
+# Self-locating: this script lives at <repo>/tools/, so derive the repo from
+# its own path. Works under launchd (minimal env, no $VIRGIL_REPO_ROOT), under
+# `npm run promote-defaults`, and under /cleanup-virgil alike.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 # Source nvm/PATH so node + npx are available under launchd's minimal env.
