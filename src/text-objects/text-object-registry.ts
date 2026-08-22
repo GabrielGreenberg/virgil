@@ -1490,7 +1490,7 @@ export function typeHostsInlineInsert(
  * verbatim kind is covered without editing this predicate; the titleField
  * preamble singleton is named explicitly (no schema flag distinguishes it).
  * INLINE-atom inserts (inline-math `$x$`, `\ref`) do NOT consult this gate —
- * they have their own container SSOT below (`blockTypeHostsInlineAtom`): an
+ * they have their own container SSOT below (`posHostsInlineAtom`): an
  * inline atom is valid in a `titleField` but STILL corrupts the `text*`
  * verbatim blocks (codeBlock / latexComment), which admit literal text only.
  *
@@ -1580,8 +1580,15 @@ export function posHostsBlockInsert(
  * expression admits the atom iff `contentMatch.matchType(atomType)` succeeds
  * (true for `inline*`, false for `text*`). Reading the schema — not a hardcoded
  * kind list — covers any future verbatim OR inline-hosting container for free.
+ *
+ * PRIVATE (task 396): the type-only form answers a NARROWER question than any
+ * caller wants — it cannot clamp a stale caret, and every real consumer holds a
+ * position, not a parent type. Exported it was a dead SSOT (`AGENTS.md` → "A
+ * registry earns its name by being read": a sibling call is not a consumer), and
+ * an exported narrow twin is exactly how a call site comes to ask the smaller
+ * question. `posHostsInlineAtom` below is the ONE door.
  */
-export function blockTypeHostsInlineAtom(
+function blockTypeHostsInlineAtom(
   parentType: NodeType,
   atomType: NodeType,
 ): boolean {
@@ -1589,10 +1596,36 @@ export function blockTypeHostsInlineAtom(
 }
 
 /**
- * Resolve the textblock containing `pos` and test whether it can host an
- * inline atom of type `atomType` — the position-based entry point for
- * `blockTypeHostsInlineAtom`, used by the typed-math input rules whose ref is a
- * bare caret. `pos` is clamped into the doc so a stale caret can't throw.
+ * **THE inline-atom container SSOT.** Resolve the node containing `pos` and
+ * answer: can an inline atom of type `atomType` land here WITHOUT corrupting
+ * the container? `pos` is clamped into the doc so a stale caret can't throw.
+ *
+ * Consumers (task 396 — before it, this had exactly ONE, which is how three
+ * later surfaces inherited the retired premise that "an inline atom never
+ * splits"; see `AGENTS.md` → "A registry earns its name by being read"):
+ *   1. the typed `$…$` input rules (`lib/tiptap/math.ts`, task 150);
+ *   2. `inlineAtomInsertApplies` — the AFFORDANCE, greying the lightning grid's
+ *      `$x$` and `Cross-ref` cells (`lib/actions/action-registry.ts`);
+ *   3. `insertInlineAtom` — the ONE insert DOOR, which is the only layer the
+ *      deferred create-popover commit passes through (it lands at a captured
+ *      `at` that no menu gate can see).
+ *
+ * SCOPED TO TEXTBLOCK PARENTS, and the scope is the whole precision of the
+ * predicate. The corruption is a property of a TEXTBLOCK that admits text and
+ * not inline nodes — ProseMirror truncates it and ejects its tail. At a
+ * NON-textblock position (a top-level gap beside a block atom, a GapCursor, a
+ * `posAtCoords` that landed between blocks) there is nothing to tear: measured
+ * against the real stack, `tr.insert(gapPos, citation)` on
+ * `[p, displayMath, p]` yields `[p, displayMath, p(citation), p]` — a fresh
+ * paragraph holding the atom, nothing destroyed. Answering FALSE there would
+ * refuse a benign insert (a bib-entry drop beside a figure; a footnote at a
+ * GapCursor), which is a silent no-op the user cannot explain.
+ *
+ * Out of scope, stated because it is adjacent and NOT what this answers: a
+ * `NodeSelection` handed to `insertContent` REPLACES the selected block rather
+ * than wrapping beside it, which destroys that block's text. That is a
+ * different API and a different question (a RANGE hazard, pre-dating this
+ * predicate); it is not made better or worse here.
  */
 export function posHostsInlineAtom(
   doc: PMNode,
@@ -1600,7 +1633,9 @@ export function posHostsInlineAtom(
   atomType: NodeType,
 ): boolean {
   const clamped = Math.max(0, Math.min(pos, doc.content.size));
-  return blockTypeHostsInlineAtom(doc.resolve(clamped).parent.type, atomType);
+  const parent = doc.resolve(clamped).parent;
+  if (!parent.isTextblock) return true; // a gap — PM wraps, nothing to corrupt
+  return blockTypeHostsInlineAtom(parent.type, atomType);
 }
 
 /**

@@ -2416,12 +2416,18 @@ export default function EditorLayout() {
         "natbib",
       );
       const citationId = generateShortId(handle.getCitationIds());
-      insertInlineAtom({
+      const landed = insertInlineAtom({
         editor: targetEd,
         type: "citation",
         attrs: { citationId, command, displayText: "" },
         at: pos,
       });
+      // THE REPORT IS THE PERMISSION (task 396). `pos` was captured at TRIGGER
+      // time and the document can move while the popover is open, so the door's
+      // container gate can refuse this commit — and it is the one path no
+      // `applies()` can see. Registering the card anyway would leave a citation
+      // card with no atom in the document, which is the defect one layer down.
+      if (landed.refused) return;
       // Card registration is editor-independent — it lands a panel card keyed by
       // `citationId` (no second atom, no cursor read), so it works the same for
       // a footnote-nested cite (the `nestedInFootnoteId` machinery resolves its

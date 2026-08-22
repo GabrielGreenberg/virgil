@@ -21,7 +21,10 @@ import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 // rule must honor the SAME curated per-kind action set the menus consult, so a
 // citation atom can't land in a `titleField` / non-prose block where the
 // curated set greys `citation` out. Resolved by the block kind at the caret.
-import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
+import {
+  blockKindAllowsAction,
+  posHostsInlineAtom,
+} from "@/text-objects/text-object-registry";
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
@@ -169,6 +172,11 @@ export const Citation = Node.create<CitationOptions>({
             if (!blockKindAllowsAction($from.parent.type.name, "citation")) {
               return false;
             }
+            // Task 396 — the SCHEMA half beside the POLICY half above (see the
+            // twin in `footnote.ts`): the two coincide for the markless verbatim
+            // blocks only by construction of the curated set, so the SSOT is asked
+            // too. Covers BOTH branches below (they share this `$from`).
+            if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 120),
               $from.parentOffset,

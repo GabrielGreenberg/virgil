@@ -115,8 +115,15 @@ const PERMITTED_UNFITTED_INSERTS: Record<string, string> = {
   "util/inline-atom-move.ts":
     "INLINE atoms (footnote / citation / ref / inline math) placed at an " +
     "inline-cursor position inside a textblock — not a block-in-container " +
-    "insert, so there is no wrap-or-refuse decision to make and no container " +
-    "the fitter could split to accommodate them.",
+    "insert, so there is no wrap-or-refuse decision for the FIT to make. " +
+    "CORRECTED (task 396): this reason used to end '…and no container the " +
+    "fitter could split to accommodate them', which is FALSE. The markless " +
+    "verbatim blocks (codeBlock / latexComment, `content: \"text*\"`) admit " +
+    "literal text and no inline nodes, so an atom landed at an offset inside " +
+    "one is TRUNCATED-and-EJECTED (measured). That is the INLINE container " +
+    "question `posHostsInlineAtom` answers, and this file still does not ask " +
+    "it — a real, filed residual of task 396, NOT something this exemption " +
+    "covers. The exemption is from the BLOCK fit only.",
   "specs/stack-pull.ts":
     "The inline-cursor branch of the text payload: an OPEN slice merging with " +
     "the text around a caret is exactly what the fitter is for. Its " +

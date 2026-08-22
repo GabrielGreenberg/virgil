@@ -30,7 +30,10 @@ import { paragraphUuidAt } from "@/links/links";
 // rides the bridge's `applies()` gate, but bail HERE too (symmetry with the
 // `view.editable` early-return); `/footnote` inserts its atom synchronously
 // BEFORE the bridge call, so its gate MUST be here to prevent an orphan atom.
-import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
+import {
+  blockKindAllowsAction,
+  posHostsInlineAtom,
+} from "@/text-objects/text-object-registry";
 
 export interface VirgilCommand {
   /** The command name without backslash (e.g. "section") */
@@ -235,6 +238,12 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       if (!blockKindAllowsAction(state.selection.$from.parent.type.name, "footnote")) return;
       const footnoteNodeType = state.schema.nodes.footnote;
       if (!footnoteNodeType) return;
+      // Task 396 — the SCHEMA half beside the POLICY half above (the twin in
+      // `footnote.ts` / `citation.ts` states why both are asked). `\cite` above
+      // needs none: it opens a popover whose COMMIT goes through
+      // `insertInlineAtom`, which carries the gate at the door.
+      if (!posHostsInlineAtom(state.doc, state.selection.from, footnoteNodeType))
+        return;
       const existing = new Set<string>();
       state.doc.descendants((node) => {
         if (node.type.name === "footnote" && node.attrs.footnoteId) {

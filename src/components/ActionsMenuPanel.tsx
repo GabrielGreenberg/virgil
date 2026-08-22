@@ -437,12 +437,36 @@ export function ActionsMenuPanel({
   // data-loss on reload) or two verbatim blocks. All five share the registry's
   // container-aware `blockInsertApplies`, so one probe (the `example` row) covers
   // all six. `!canEdit` is folded in (collab gate) for a uniform render, exactly
-  // like `wrappersDisabled`. inline-math / `\ref` insert INLINE atoms (no split,
-  // valid in a title) and are NOT gated here. Computed at menu-open, never per
-  // keystroke.
+  // like `wrappersDisabled`. inline-math / `\ref` insert INLINE atoms and are
+  // gated SEPARATELY below (task 396): they are legitimate in a `titleField`
+  // (`inline*`) — which is why they cannot share this probe — but they DO corrupt
+  // the markless `text*` verbatim blocks, contrary to the task-147 sentence that
+  // used to stand here. Computed at menu-open, never per keystroke.
   const blockAtomsDisabled =
     !canEdit ||
     VIRGIL_ACTION_REGISTRY["example"]!.applies({
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
+      canEdit,
+    } as ActionContext) === "disabled";
+
+  // Task 396 — the two INLINE-atom cells (`$x$`, `Cross-ref`). Deliberately NOT
+  // a second SHARED probe: the two rows pass DIFFERENT schema node names
+  // (`inlineMath` / `labelRef`) to `inlineAtomInsertApplies`, so one probe would
+  // be asserting that the schema answers identically for both — the shared-probe
+  // substitution this grid is already filed for. Each cell asks its OWN row.
+  // `!canEdit` folds in for a uniform render, as above. Computed at menu-open,
+  // never per keystroke.
+  const rowDisabled = (id: ActionId): boolean =>
+    !canEdit ||
+    VIRGIL_ACTION_REGISTRY[id]!.applies({
       editor,
       view: editor.view,
       ref: {
@@ -671,7 +695,7 @@ export function ActionsMenuPanel({
             row={2}
             col={1}
             title="Wrap selection in inline math"
-            disabled={!canEdit}
+            disabled={rowDisabled("inline-math")}
             run={() => runGridAction("inline-math")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
@@ -748,7 +772,7 @@ export function ActionsMenuPanel({
             row={3}
             col={3}
             title="Insert cross-reference (\ref)"
-            disabled={!canEdit}
+            disabled={rowDisabled("ref")}
             run={() => runGridAction("ref")}
           >
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
