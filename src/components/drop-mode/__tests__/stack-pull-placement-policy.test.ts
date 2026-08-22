@@ -63,6 +63,7 @@ import {
 import {
   CARD_PLACEMENTS,
   STACK_PULL_PLACEMENT_LISTS,
+  stackPullBlockPayloadFor,
   stackPullDropSpec,
   stackPullPlacementsFor,
 } from "../specs/stack-pull";
@@ -192,6 +193,10 @@ function hit(editor: Editor, y: number): Placement | null {
     // refuse here — stated explicitly rather than defaulted, which is why the
     // parameter is required.
     TEXT_ONLY_PAYLOAD,
+    // The BLOCK payload (task 416), through the spec's own resolver — the
+    // paragraph/heading pulls declare one and the card/text pulls declare
+    // EMPTY, which is exactly what keeps a card's paragraph-side reach intact.
+    stackPullBlockPayloadFor(KEY),
   );
 }
 
@@ -308,16 +313,26 @@ describe("the other payloads — the placements a naive reorder would have broke
     expect(hit(editor, IN_GAP_Y)?.kind).toBe("between-blocks");
   });
 
-  it("a PARAGRAPH payload over TEXT offers NOTHING (no misleading caret)", () => {
+  // RENEGOTIATED in place (task 416), with the reason at the site. These two
+  // legs pinned `null` over TEXT, and the sentence they carried — "an inline
+  // caret painted here and the commit refused it" — names the defect the 258
+  // fix closed, which was that a CARET painted. It was never a claim that a
+  // whole-block payload has nothing to offer over a block's text: over a LIST,
+  // where there are no top-level gaps between the items, that reading meant no
+  // bar anywhere over the list body, which is the F0 half of task 416. Since
+  // 416 a block payload declares itself (`blockPayloadFor`) and gets the
+  // candidate ladder over text as well as in gaps. What must NOT come back is
+  // the caret, and that is what these legs now pin — plus the gap answer,
+  // unchanged.
+  it("a PARAGRAPH payload over TEXT offers a BLOCK bar, never a caret", () => {
     seedStack({ kind: "paragraph", node: { type: "paragraph" } });
-    // Pre-fix: an inline caret painted here and the commit refused it.
-    expect(hit(editor, IN_TEXT_Y)).toBeNull();
+    expect(hit(editor, IN_TEXT_Y)?.kind).toBe("between-blocks");
     expect(hit(editor, IN_GAP_Y)?.kind).toBe("between-blocks");
   });
 
-  it("a HEADING payload behaves the same (gap-only)", () => {
+  it("a HEADING payload behaves the same", () => {
     seedStack({ kind: "heading", nodes: [] });
-    expect(hit(editor, IN_TEXT_Y)).toBeNull();
+    expect(hit(editor, IN_TEXT_Y)?.kind).toBe("between-blocks");
     expect(hit(editor, IN_GAP_Y)?.kind).toBe("between-blocks");
   });
 

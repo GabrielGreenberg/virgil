@@ -57,7 +57,11 @@ import {
 } from "@/lib/editor-extensions";
 import { canDropDirectAt, classifyParentAt } from "../specs/drop-context";
 import { textObjectDropSpec } from "../specs/textobject";
-import { resolveSubItemPeerBlock } from "../hit-test";
+import {
+  chooseInsertCandidate,
+  filterInsertCandidates,
+  resolveInsertCandidates,
+} from "../insert-candidates";
 import type { DropCtx, Placement } from "../types";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -199,16 +203,24 @@ describe("nested xlist tier — preconditions on the REAL schema", () => {
   });
 
   it("the drop indicator IS surfaced at the nested tier (so the affordance is honest, not a lie)", () => {
+    // Renegotiated to the CANDIDATE LADDER (task 416): R3's peer resolver is
+    // retired and the nested-tier boundary is simply the innermost candidate,
+    // reached now for every payload rather than only a same-kind sub-item drag.
+    // The claim this leg makes is unchanged — the affordance is offered where
+    // the commit (the leg below) accepts it.
     const d = nestedDoc();
     const { editor } = mockEditor(d);
     const i2 = findByType(d, "exampleItem").find((i) => i.uuid === "i2")!;
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      i2.pos + 2, // inside the nested item's paragraph text
-      "textobject:exampleItem:iB",
+    const chosen = chooseInsertCandidate(
+      filterInsertCandidates(
+        editor,
+        resolveInsertCandidates(editor, i2.pos, 0),
+        ["exampleItem"],
+      ),
+      10_000,
     );
-    expect(peer).not.toBeNull();
-    expect(peer!.blockPos).toBe(i2.pos);
+    expect(chosen).not.toBeNull();
+    expect(chosen!.refPos).toBe(i2.pos);
   });
 });
 

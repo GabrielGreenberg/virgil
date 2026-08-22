@@ -132,6 +132,34 @@ describe("every declared placement is reachable", () => {
     ).toEqual([]);
   });
 
+  it("EVERY spec that can offer a between-blocks bar declares its BLOCK payload", () => {
+    // Task 416's census — the exact twin of the inline one above, and it belongs
+    // beside it for the same reasons. `blockPayloadFor` is the input to the
+    // candidate LADDER, so a spec that offers `between-blocks` without one
+    // resolves to the empty payload and silently keeps the pre-416 rule: no
+    // midpoint at any level, no X axis choosing the level, no filter — and,
+    // over a LIST, no bar anywhere over its body at all, because
+    // `between-blocks` matches the gap only and a list has no top-level gaps
+    // between its items. EMPTY is a legitimate ANSWER (a text slice merges into
+    // the prose; a card anchors to a paragraph side), which is precisely why the
+    // declaration has to be made rather than inferred.
+    //
+    // Asked of the LIVE spec objects, ALLOWLIST EMPTY — a hit is DECLARE-it.
+    const offersGapBar = ({ spec }: { spec: DropSpec }): boolean => {
+      const lists = PER_PAYLOAD_LISTS.get(spec) ?? [spec.allowedPlacements];
+      return lists.some((l) => l.includes("between-blocks"));
+    };
+    const gapSpecs = specs.filter(offersGapBar);
+    // The census can SEE the family (a filter matching nothing passes vacuously).
+    expect(gapSpecs.length).toBeGreaterThanOrEqual(3);
+    expect(
+      gapSpecs.filter((s) => !s.spec.blockPayloadFor).map((s) => s.name),
+      "a spec offering a between-blocks bar with no blockPayloadFor — DECLARE " +
+        "it (EMPTY is a fine answer and keeps the pre-416 reach); never " +
+        "allowlist it",
+    ).toEqual([]);
+  });
+
   it("every published per-payload list is reachable end to end", () => {
     for (const [spec, lists] of PER_PAYLOAD_LISTS) {
       expect(lists.length).toBeGreaterThan(0);

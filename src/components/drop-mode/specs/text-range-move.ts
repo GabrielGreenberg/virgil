@@ -127,6 +127,15 @@ function textRangeInlinePayloadFor(
 export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["inline-cursor", "between-blocks"],
   inlinePayloadFor: textRangeInlinePayloadFor,
+  /**
+   * EMPTY, deliberately (task 416): a text RANGE merges INTO the prose. Its
+   * inline reading is the caret and its block reading is the gap-only fallback
+   * the placement list already encodes, so declaring block names here would put
+   * a block bar over paragraph text and steal the caret this spec exists to
+   * offer. Stated rather than omitted, because the census asks the implication
+   * and an omission would read as an oversight.
+   */
+  blockPayloadFor: () => [],
   targetScope: "any-editor",
   postDrop: "close",
   /**

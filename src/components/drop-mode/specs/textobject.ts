@@ -56,6 +56,19 @@ import type { DropPlan, DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["between-blocks"],
+  /**
+   * The dragged object's own schema node kind (task 416) — read straight off
+   * the cardKey, which carries it, so this costs no doc walk at all. A heading
+   * collects its whole SECTION, whose extra nodes are ordinary top-level blocks
+   * the heading's own type already stands for at every level the ladder offers.
+   * An unparseable key answers EMPTY, which keeps the pre-416 gap-only reach
+   * rather than inventing a payload — and such a key is refused a plan a moment
+   * later anyway.
+   */
+  blockPayloadFor: (cardKey) => {
+    const ref = parseTextObjectPopoutKey(cardKey);
+    return ref ? [ref.kind] : [];
+  },
   targetScope: "any-editor",
   postDrop: "close",
   /**

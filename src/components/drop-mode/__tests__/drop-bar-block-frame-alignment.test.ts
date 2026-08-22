@@ -184,7 +184,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
 
     const placement = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: items[0].pos, depth: 3, uuid: "a", dom: item },
+      { blockPos: items[0].pos, uuid: "a", dom: item },
       ITEM_TOP - 5, // above the top edge → insert before
     );
     // AFTER: the bar sits at the prose-left (the frame), the §4 fix.
@@ -225,7 +225,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
     // reorder: an exampleItem lifted over its peer → between-blocks over the item.
     const reorder = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: i0.pos, depth: 3, uuid: "a", dom: faithfulItemEl() },
+      { blockPos: i0.pos, uuid: "a", dom: faithfulItemEl() },
       ITEM_TOP - 5,
     );
 
@@ -244,7 +244,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
 
     const placement = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: p.pos, depth: 1, uuid: "p1", dom: pEl },
+      { blockPos: p.pos, uuid: "p1", dom: pEl },
       290, // above the paragraph's top (300) → insert before
     );
     // No wrapper to descend → contentLeft == box left, so this chip does not

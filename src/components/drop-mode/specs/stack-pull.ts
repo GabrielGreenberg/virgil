@@ -41,6 +41,7 @@ import {
   payloadFromJson,
   type InlineDropPayload,
 } from "../inline-host";
+import type { BlockDropPayload } from "../block-payload";
 import { readStackItem } from "@/hooks/useStack";
 import type {
   StackCardKind,
@@ -252,10 +253,41 @@ export function stackPullInlinePayloadFor(cardKey: string): InlineDropPayload {
   return payloadFromJson(item.payload.slice);
 }
 
+/**
+ * What ONE pull would place as WHOLE BLOCKS at a between-blocks gap (task 416),
+ * off the same envelope and on the same edge as its two siblings above.
+ *
+ * Only the two whole-block payloads answer with names. The others answer EMPTY,
+ * and each for a stated reason rather than by omission:
+ *
+ *  - `text` — a slice MERGES into the prose. Its inline reading is the caret,
+ *    and its block reading is the gap-only fallback the placement list already
+ *    encodes (`INTO_PROSE`). Declaring block names here would put a block bar
+ *    over paragraph TEXT and steal the caret this payload exists to offer.
+ *  - `card` — a card is not a block at all; it anchors to a paragraph side or
+ *    lands unanchored in a gap, neither of which the ladder speaks for.
+ *
+ * A key this build cannot resolve answers EMPTY too — and has already been
+ * refused every placement by {@link stackPullPlacementsFor}.
+ */
+export function stackPullBlockPayloadFor(cardKey: string): BlockDropPayload {
+  const item = lookup(cardKey);
+  if (!item) return [];
+  switch (item.payload.kind) {
+    case "paragraph":
+      return ["paragraph"];
+    case "heading":
+      return ["heading"];
+    default:
+      return [];
+  }
+}
+
 export const stackPullDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ALLOWED_PLACEMENTS,
   placementsFor: stackPullPlacementsFor,
   inlinePayloadFor: stackPullInlinePayloadFor,
+  blockPayloadFor: stackPullBlockPayloadFor,
   targetScope: "main-only",
   postDrop: "keep",
   /**

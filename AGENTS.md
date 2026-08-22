@@ -2030,7 +2030,119 @@ Three adjacent silent-failure doors closed with it, each the same shape one fiel
 
 CI: [planned-decision-guardrail.test.ts](src/components/drop-mode/__tests__/planned-decision-guardrail.test.ts) — a SOURCE census (every drop-mode file that calls `fitNodesAtInsert` must build through `plannedDropSpec`; allowlist empty, a hit is CONVERT-it) plus a RUNTIME census over every spec a drag can dispatch (expose `planDrop`, or sit on `PERMITTED_HAND_WRITTEN_DECISIONS` with a stated reason the two doors cannot disagree — asked of the live objects, for the same reasons `placement-reachability` gives), the derivation's own contract, and the real specs against a container that genuinely refuses, with an accepting control so no leg can pass vacuously. [refused-drop-keeps-float.test.ts](src/components/drop-mode/__tests__/refused-drop-keeps-float.test.ts) drives the REAL controller through all three endings — lands / refuses / throws — because the close is the controller's branch, not the spec's. Both suites' defect legs fail on the pre-fix derivation. Renegotiated on the way: two `sub-item-drop-resolution` legs asserted `{kind:"apply"}` three lines above asserting nothing was dispatched, which **is** this defect, pinned as intended behaviour.
 
-Known residual, unchanged by this and stated in the affordance half above: a refused position still paints an inviting bar and says nothing on release. Making refused positions unhoverable needs a predicate cheap enough for the per-frame hit-test (the plan is not — it builds transactions), so it is a product decision, not a follow-on.
+Known residual, unchanged by this and stated in the affordance half above: a refused position still paints an inviting bar and says nothing on release. Making refused positions unhoverable needs a predicate cheap enough for the per-frame hit-test (the plan is not — it builds transactions), so it is a product decision, not a follow-on. **CLOSED by task 416** — the predicate exists and is rungs 1+2 of the fit, which are pure schema arithmetic; see "The candidate half" immediately below.
+
+#### The candidate half: a ROW is several positions, so resolve a SET
+
+Same gesture, one question earlier (task 416) — and the case where three
+special-cased resolvers each answered a slice of ONE question, and the residual
+above turned out to be closable by asking that question properly rather than by
+a product decision.
+
+Gabriel, from a real paper: *"drag and drop within bullet pointed lists is an
+absolute mess. do a full audit of moving things, in, out, over lists. practice
+sequences of moves, etc."* Task 351 closed the PERFORMANCE half of the same
+gesture; this is where things LAND and what the drag PROMISES.
+
+Hovering the second item of a nested bullet list, every one of these is a legal
+place for a dragged block: before/after the inner item, before/after the inner
+LIST, before/after the outer item, before/after the outer list. The hit-test
+answered "which SINGLE position is nearest?" with a fixed rule — the innermost
+anchorable container (`resolveAnchorableBlock` honours `DEFERRING_PARENTS`), a Y
+threshold at that block's TOP edge, and X read for nothing — then painted a bar
+for whatever it collapsed to, whether or not the commit would accept it.
+
+**And the headline defect was the one the report could not name, because it is
+an ABSENCE.** `between-blocks` matches the GAP only (`placement-policy.ts`), and
+a list has **no top-level gaps between its items**. The only thing that made a
+list draggable at all was the R3 `resolveSubItemPeerBlock` pre-switch resolver,
+which fires exclusively when the payload is ITSELF a `listItem`. Measured over
+540 cells sampled inside a block's row — where the cursor is for essentially the
+whole of a drag — the pre-416 rule offered **a bar in NONE of them**. Dragging a
+bullet felt Notion-ish; dragging a paragraph, a heading, a figure or a `texBlock`
+over the same rows produced nothing, anywhere.
+
+> **A row is not ONE insert position; it is several. So the hit-test RESOLVES a
+> candidate set, FILTERS it for legality against the payload, and CHOOSES from
+> it with BOTH axes — Y the boundary at each level's own MIDPOINT, X the LEVEL.
+> With the set filtered, a level the commit would refuse is never offered, so
+> the false affordance dies by CONSTRUCTION rather than by a warning.**
+
+[src/components/drop-mode/insert-candidates.ts](src/components/drop-mode/insert-candidates.ts)
+is the ladder; [block-payload.ts](src/components/drop-mode/block-payload.ts) is
+its input. Seven rules it earned:
+
+- **The FILTER is rungs 1 and 2 of the SSOT the COMMIT already reads**
+  (`fitNodeInContainer` — the parent accepts the bare node, or a wrapper in
+  `buildWrap`'s vocabulary is both valid there and able to hold it). That is
+  pure schema arithmetic and O(depth); it is **not** `planDrop`, which builds
+  transactions and is exactly why task 321 called this a product decision.
+  Reusing the ladder rather than re-deriving it is the whole point: the hover
+  answers from the same table the release does, which is the law 258/321/332
+  already state.
+- **The payload is DECLARED, not inferred** — `DropSpec.blockPayloadFor`, the
+  exact twin of task 414's `inlinePayloadFor`, resolved ONCE at
+  `beginDropSession`. EMPTY is a legitimate ANSWER and three specs give it with
+  a stated reason: a text SLICE merges into the prose (its inline reading is the
+  caret, and a block bar over text would steal it), and a CARD anchors to a
+  paragraph side. Which is precisely why it has to be declared rather than
+  guessed — the reach over TEXT is a per-payload fact, and inferring it would
+  have broken the two payloads whose whole design is the caret.
+- **The FLOOR of the ladder is `resolveAnchorableBlock`'s answer**, deliberately
+  — so "into this item as content" is not a candidate and the default (cursor
+  deep in the text ⇒ deepest level) is byte-identical to the level the pre-416
+  rule chose. The new reach is everything to the LEFT of that.
+- **`snapToMidpoint` was a flag with ONE `true` call site**, which is what made
+  a list read as a stack of after-targets for every other payload. It is deleted
+  rather than defaulted: the midpoint is now the rule at every level, and on the
+  gap-only path it survives — where the cursor is by construction OUTSIDE the
+  block's box, the midpoint and the pre-416 top edge give the same answer.
+- **X is monotone by construction and its right-hand limit is the old answer.**
+  Deeper levels sit further right (a list indents its items by one marker band),
+  so the rule is "the deepest candidate whose box the cursor has reached, else
+  the shallowest". The bar's WIDTH already encoded the scope the hit-test chose
+  (task 007) — so the user was SHOWN the level and could not CHOOSE it; the same
+  encoding is now a live affordance.
+- **One resolver where three sat.** The ladder SUBSUMES `resolveSubItemPeerBlock`
+  (a peer-item boundary is simply the candidate whose container is the list, now
+  reached for every payload rather than only a same-kind sub-item drag — which
+  is what F4, its `node.type.name === sourceKind` gate, was). `resolveBlockIntoExpex`
+  stays AHEAD of it deliberately: a vertical into-item bar with its own geometry
+  is a genuinely different affordance, not another rung of the same one.
+- **RESIDUAL, stated:** the filter runs rungs 1+2 and NOT rung 3 (the empirical
+  `bareInsertIsSafe` probe, which builds a trial transaction and is O(doc) — it
+  cannot run per frame). A candidate ONLY rung 3 would accept is therefore not
+  offered: the conservative direction (a missing affordance, never a false one),
+  and the one shipped rung-3 case is reached here by the WRAP rung instead.
+
+CI: [list-drop-matrix.test.ts](src/components/drop-mode/__tests__/list-drop-matrix.test.ts)
+is the audit, committed as an artifact rather than run as a session — **every
+other suite in that directory drives ONE cell**, which is exactly how four
+independent defects accumulated with all of them green. It drives the REAL
+`hitTest` over a synthetic LAYOUT (jsdom answers an all-zero rect for
+everything, so a layout model is the only way to ask a geometry question at all)
+and then the REAL `planDrop`, over 540 cells = 4 sources × 9 target rows × 5 Y
+fractions × 3 cursor X positions, plus four SEQUENCES whose `.tex` must be a
+fixed point. Post-fix: **513 correct, 0 mis-landed, 0 corrupting**, and the 27
+refusals are all the SELF-DROP (releasing a block back onto its own position,
+which every spec declares a no-op and which has its own leg saying so). The
+defect leg re-runs the identical sweep with `NO_BLOCK_PAYLOAD`, which IS the
+pre-416 rule, and measures 540/540 no-target. The census in
+[placement-reachability.test.ts](src/components/drop-mode/__tests__/placement-reachability.test.ts)
+is the leg with teeth — the ladder was never the part that could misbehave, a
+spec that offers a between-blocks bar and declares no payload is, and it would
+type-check perfectly while silently keeping the pre-416 rule. Allowlist EMPTY.
+
+**Found in passing, filed rather than folded in:** a `bulletList`'s own `%!v:`
+anchor is emitted after `\end{itemize}` and `parseList` never harvests it, so a
+whole-LIST uuid does not survive a save/reload and anything anchored to it
+orphans on the next open. Task 348's position law with a reader missing, wholly
+independent of the drop gesture.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real — drag a paragraph into the
+middle of a bullet list, drag a bullet out to top level and back, and drag a
+bullet over a nested list at three cursor X positions.
 
 #### The other gesture: the Stack capture never asked the facet built to answer it
 

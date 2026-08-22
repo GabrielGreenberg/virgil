@@ -32,6 +32,10 @@ import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { resolveSessionPlacements } from "./placement-policy";
 import { resolveSessionInlinePayload, TEXT_ONLY_PAYLOAD } from "./inline-host";
+import {
+  NO_BLOCK_PAYLOAD,
+  resolveSessionBlockPayload,
+} from "./block-payload";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
@@ -288,6 +292,13 @@ export function beginDropSession(opts: {
     inlinePayload: placements.includes("inline-cursor")
       ? resolveSessionInlinePayload(spec, opts.cardKey, ctx)
       : TEXT_ONLY_PAYLOAD,
+    // The between-blocks half of the same question (task 416), resolved on the
+    // same edge and gated the same way: its ONE consumer is the candidate
+    // ladder, which the hit-test reaches only when the session can produce a
+    // between-blocks placement at all.
+    blockPayload: placements.includes("between-blocks")
+      ? resolveSessionBlockPayload(spec, opts.cardKey, ctx)
+      : NO_BLOCK_PAYLOAD,
     origin: opts.origin,
     placement: null,
     inPlace,
@@ -472,6 +483,7 @@ function runMovePass() {
     session.cardKey,
     session.ctx.mainEditor,
     session.inlinePayload,
+    session.blockPayload,
   );
   updatePlacement(placement);
 }

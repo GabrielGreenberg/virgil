@@ -8,10 +8,14 @@
  *   2. Reject read-only / out-of-scope / self-drop targets.
  *   3. Use ProseMirror's `posAtCoords` to find the relevant position.
  *   4. Walk up to the nearest anchorable block; ensure it has a UUID.
- *   5. Classify the cursor as "inGap" (between blocks) or "inText"
- *      (inside a block's text rect).
- *   6. Ask `winningPlacementKind` which of the SESSION's placements wins at
- *      that geometry, and build it.
+ *   5. For a session with a BLOCK payload, run the candidate LADDER
+ *      (`insert-candidates.ts`): resolve every insert position the ancestor
+ *      chain offers at this row, filter them against the payload through the
+ *      same schema SSOT the commit reads, and let Y pick the boundary and X the
+ *      level. A survivor IS the answer; nothing surviving means "not here".
+ *   6. Otherwise classify the cursor as "inGap" (between blocks) or "inText"
+ *      (inside a block's text rect) and ask `winningPlacementKind` which of the
+ *      SESSION's placements wins at that geometry, and build it.
  *
  * Step 6's rule lives in `placement-policy.ts`, not inline here, so the CI
  * reachability guard reads the same function the loop does (task 258). The
@@ -27,19 +31,19 @@ import { generateShortId } from "@/lib/uuid";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { markAnchorMint } from "@/lib/anchor-mint-signal";
 import { contentSpanFor } from "./move-geometry";
-import {
-  EXPEX_INNER_KINDS,
-  isCompatibleParent,
-} from "@/text-objects/drop-adapters";
-import {
-  parseTextObjectPopoutKey,
-  TEXT_OBJECT_REGISTRY,
-} from "@/text-objects/text-object-registry";
-import type { TextObjectKind } from "@/text-objects/types";
+import { EXPEX_INNER_KINDS } from "@/text-objects/drop-adapters";
+import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
 import { winningPlacementKind } from "./placement-policy";
 import { inlineCursorHostsPayload, type InlineDropPayload } from "./inline-host";
+import type { BlockDropPayload } from "./block-payload";
+import {
+  chooseInsertCandidate,
+  filterInsertCandidates,
+  resolveInsertCandidates,
+  type InsertCandidate,
+} from "./insert-candidates";
 import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
 
 /**
@@ -71,6 +75,7 @@ export function hitTest(
   sourceCardKey: string,
   mainEditor: Editor | null,
   inlinePayload: InlineDropPayload,
+  blockPayload: BlockDropPayload,
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
@@ -86,30 +91,14 @@ export function hitTest(
   }
   if (!posResult) return null;
 
-  // R3 — source-kind-aware resolution for lifted SUB-ITEMS. A lifted
-  // sub-item (listItem / exampleItem) is a first-class movable object: it
-  // should drop AMONG its peers, not only inside one of them. When the
-  // dragged source is a sub-object and the cursor sits inside a peer item in
-  // a container that accepts it, resolve the between-blocks placement at the
-  // nearest PEER ITEM boundary — surfacing the inter-item insert positions
-  // the commit path (classifyDropTarget → inside-compatible → drop-direct)
-  // already honors, within a list AND across same-kind lists. Gated on
-  // isSubObject + isCompatibleParent, so a non-sub-object drag, or a sub-item
-  // over a top-level gap (not inside a compatible container), falls through
-  // to the existing resolution below — preserving the top-level pull-out
-  // (wrap) behavior byte-for-byte.
+  // Feature A1 — a lifted text/picture/equation block (paragraph /
+  // graphicsBlock / displayMath) over an expex example surfaces ONE forgiving
+  // left-edge VERTICAL bar that snaps to the nearest slot (item-gap → a new
+  // exampleItem; into an item → its content). Kept AHEAD of the ladder below:
+  // it is a genuinely different affordance (a vertical into-item bar with its
+  // own geometry), not another rung of the same one. It returns null — falling
+  // through — for every other source, so all other drags are byte-unchanged.
   if (placements.includes("between-blocks")) {
-    const peer = resolveSubItemPeerBlock(editor, posResult.pos, sourceCardKey);
-    if (peer) return makeBetweenBlocksPlacement(editor, peer, y, true);
-    // Feature A1 — a lifted text/picture/equation block (paragraph /
-    // graphicsBlock / displayMath) over an expex example surfaces ONE forgiving
-    // left-edge VERTICAL bar that snaps to the nearest slot (item-gap → a new
-    // exampleItem; into an item → its content). The resolver gates on source
-    // kind ∈ the three kinds AND cursor-inside-an-exampleBlock, returning null
-    // (falls through to resolveAnchorableBlock + the existing top-level drop)
-    // for every other source — so all other drags are byte-unchanged. It
-    // returns the finished vertical-bar Placement directly (NOT fed through
-    // makeBetweenBlocksPlacement, whose horizontal rect is the wrong shape).
     const intoExpex = resolveBlockIntoExpex(
       editor,
       posResult.pos,
@@ -125,20 +114,58 @@ export function hitTest(
   if (!block) return null;
 
   // ONE rect read per move for this block (wave-2b C8): the classification
-  // read below is THREADED into the placement builders, which used to
-  // re-read the same element's rect — 2 forced-layout reads per throttled
-  // mousemove where one suffices. (The builders keep their own read as the
-  // fallback for callers that arrive without one, e.g. the R3 peer path.)
+  // read below is THREADED into the placement builders AND into the candidate
+  // ladder's floor rung, which used to re-read the same element's rect — 2
+  // forced-layout reads per throttled mousemove where one suffices.
   const blockRect = block.dom.getBoundingClientRect();
+
+  // The BLOCK-payload ladder (task 416) — ONE resolver where three special
+  // cases used to sit. `resolveInsertCandidates` walks the ancestor ladder from
+  // this floor outward and yields EVERY legal insert position at this row; the
+  // filter drops the levels this container cannot hold; X picks the level and Y
+  // the boundary, at each level's own MIDPOINT. It SUBSUMES the retired R3
+  // `resolveSubItemPeerBlock`: a peer-item boundary is simply the candidate
+  // whose container is the list, now reached for EVERY payload rather than only
+  // for a same-kind sub-item drag.
+  //
+  // Gated on the session's DECLARED block payload rather than on "does the
+  // source key parse as a sub-item". That gate is the F0 half of the task: a
+  // list has no top-level gaps between its items and `between-blocks` matches
+  // the GAP only, so before this the only payload offered anything anywhere
+  // over a list body was one that was itself a `listItem` — every other block
+  // drag saw nothing at all over the same rows.
+  //
+  // A session with no block payload (a card pull, a plain-text slice, a
+  // paragraph-side re-anchor) skips the ladder entirely and takes the gap-only
+  // switch below, byte-identical to the pre-416 tree.
+  let effective = placements;
+  if (blockPayload.length > 0 && placements.includes("between-blocks")) {
+    const chosen = chooseInsertCandidate(
+      filterInsertCandidates(
+        editor,
+        resolveInsertCandidates(editor, block.blockPos, y, blockRect),
+        blockPayload,
+      ),
+      x,
+    );
+    if (chosen) return makeCandidatePlacement(editor, chosen);
+    // The ladder is the ONLY producer of `between-blocks` for a session that
+    // has a block payload, so a ladder that survived nothing is an ANSWER —
+    // "not here" — and F3 dies by construction: a level the commit would refuse
+    // is never painted, rather than painted and then silently declined on
+    // release. The session's OTHER placements are still asked below.
+    effective = placements.filter((k) => k !== "between-blocks");
+  }
+
   const inText = y >= blockRect.top && y <= blockRect.bottom;
 
   // Which of the session's placements wins at this geometry — the priority
   // rule itself lives in `placement-policy.ts` (its `winningPlacementKind` IS
   // this loop), so the CI reachability guard can read the rule rather than a
   // second copy of it. Here we only BUILD the winner.
-  switch (winningPlacementKind(placements, inText ? "text" : "gap")) {
+  switch (winningPlacementKind(effective, inText ? "text" : "gap")) {
     case "between-blocks":
-      return makeBetweenBlocksPlacement(editor, block, y, false, blockRect);
+      return makeBetweenBlocksPlacement(editor, block, y, blockRect);
     case "inline-cursor":
       return makeInlineCursorPlacement(editor, posResult.pos, inlinePayload);
     case "paragraph-side":
@@ -155,8 +182,6 @@ export function hitTest(
 interface AnchorableBlockInfo {
   /** Position immediately before the block's open token. */
   blockPos: number;
-  /** ProseMirror depth of the block. */
-  depth: number;
   /** UUID — minted on the fly if the node had none. */
   uuid: string;
   /** The block's own DOM element. */
@@ -225,12 +250,7 @@ export function resolveAnchorableBlock(
         // stable (same node, same size), so `resolved.nodePos` is still valid.
         const domAt = editor.view.nodeDOM(resolved.nodePos);
         if (domAt instanceof HTMLElement) {
-          return {
-            blockPos: resolved.nodePos,
-            depth: $pos.depth,
-            uuid,
-            dom: domAt,
-          };
+          return { blockPos: resolved.nodePos, uuid, dom: domAt };
         }
       }
     }
@@ -281,7 +301,7 @@ export function resolveAnchorableBlock(
   }
   const domAt = editor.view.nodeDOM(bestPos);
   if (!(domAt instanceof HTMLElement)) return null;
-  return { blockPos: bestPos, depth: 0, uuid, dom: domAt };
+  return { blockPos: bestPos, uuid, dom: domAt };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -337,66 +357,6 @@ function hasAnchorableAncestor($pos: ResolvedPos): boolean {
     if (isAnchorableNode($pos.node(d).type)) return true;
   }
   return false;
-}
-
-/**
- * Source-kind-aware block resolution for lifted SUB-ITEMS (R3).
- *
- * `resolveAnchorableBlock` resolves the innermost anchorable node, which
- * inside a list/expex item is the item's inner paragraph — so a dragged
- * sub-item only ever gets drop positions INSIDE one item, never at the
- * boundary BETWEEN peer items. This resolver instead targets the nearest
- * ancestor that is a PEER ITEM of the dragged kind (`type.name ===
- * sourceKind`), provided that item sits inside a container that accepts the
- * kind (`isCompatibleParent`). The resulting `blockPos` is the item's own
- * position, so `makeBetweenBlocksPlacement` yields an inter-item insert
- * position (a sibling boundary) that the commit path already honors.
- *
- * Returns null — so the caller falls through to `resolveAnchorableBlock` and
- * the existing behavior is preserved byte-for-byte — for every other case:
- *   - the source isn't a sub-object (registry `isSubObject` false),
- *   - the cursor isn't inside a peer item of the same kind (e.g. a listItem
- *     dragged over an expex item, or over a top-level gap → still pulls out),
- *   - the peer item isn't inside a compatible container.
- *
- * O(depth): a single `$pos` ancestor walk + an `isCompatibleParent` scan of
- * the enclosing ancestors. No doc walk — safe on every throttled mousemove.
- */
-export function resolveSubItemPeerBlock(
-  editor: Editor,
-  pos: number,
-  sourceCardKey: string,
-): AnchorableBlockInfo | null {
-  const ref = parseTextObjectPopoutKey(sourceCardKey);
-  if (!ref) return null;
-  const sourceKind = ref.kind;
-  if (!TEXT_OBJECT_REGISTRY[sourceKind]?.isSubObject) return null;
-
-  const doc = editor.state.doc;
-  if (pos < 0 || pos > doc.content.size) return null;
-  const $pos = doc.resolve(pos);
-
-  // Walk innermost→outermost for the nearest ancestor that is a peer item of
-  // the dragged kind, then confirm a compatible container encloses it.
-  for (let d = $pos.depth; d >= 1; d--) {
-    const node = $pos.node(d);
-    if (node.type.name !== sourceKind) continue;
-    let inCompatibleContainer = false;
-    for (let p = d - 1; p >= 0; p--) {
-      const ancestorKind = $pos.node(p).type.name as TextObjectKind;
-      if (isCompatibleParent(sourceKind, ancestorKind)) {
-        inCompatibleContainer = true;
-        break;
-      }
-    }
-    if (!inCompatibleContainer) return null;
-    const blockPos = $pos.before(d);
-    const domAt = editor.view.nodeDOM(blockPos);
-    if (!(domAt instanceof HTMLElement)) return null;
-    const uuid = (node.attrs?.uuid as string | undefined) ?? "";
-    return { blockPos, depth: d, uuid, dom: domAt };
-  }
-  return null;
 }
 
 /**
@@ -725,53 +685,89 @@ export function makeBetweenBlocksPlacement(
   editor: Editor,
   block: AnchorableBlockInfo,
   cursorY: number,
-  snapToMidpoint = false,
   // The caller's already-read rect for `block.dom` (C8 — hitTest threads its
-  // classification read). Optional: paths that arrive without one (R3 peer
-  // resolution) pay the single read here instead.
+  // classification read). Optional: paths that arrive without one pay the
+  // single read here instead.
   preReadRect?: DOMRect,
 ): Placement {
   const blockRect = preReadRect ?? block.dom.getBoundingClientRect();
-  // Cursor above the threshold → insert before; below → insert after. For
-  // sub-item peer drops (R3) the threshold is the block's vertical MIDPOINT
-  // (Notion-style), so the line snaps to the nearest item boundary as the
-  // cursor moves over the list rather than firing only in the hairline gap.
-  // Top-level block drops keep the top-edge threshold (snapToMidpoint
-  // defaults false → byte-identical to before).
-  const threshold = snapToMidpoint
-    ? blockRect.top + blockRect.height / 2
-    : blockRect.top;
-  const insertBefore = cursorY < threshold;
+  // Cursor above the block's vertical MIDPOINT → insert before; below → after.
+  // ONE threshold for every payload since task 416: `snapToMidpoint` was a flag
+  // with a single `true` call site (the retired R3 sub-item path), so a list
+  // read as a stack of after-targets for every other drag. On the gap-only path
+  // this reaches — where the cursor is by construction OUTSIDE the block's box —
+  // the midpoint and the pre-416 top edge give the same answer, so nothing here
+  // moves; the flag's removal is what makes the rule one rule.
+  const insertBefore = cursorY < blockRect.top + blockRect.height / 2;
   const node = editor.state.doc.nodeAt(block.blockPos);
   const insertPos = insertBefore
     ? block.blockPos
     : block.blockPos + (node ? node.nodeSize : 0);
-
-  // Horizontal extent — the bar WIDTH encodes the insert SCOPE (task 007), not
-  // the neighbor's text length:
-  //
-  //  • TOP-LEVEL sibling insert (the block sits at doc depth 0) → the bar spans
-  //    the block's OWN COLUMN box (`block.dom`'s border box). A top-level block
-  //    fills the prose column, and its content-left IS the column-left — for a
-  //    paragraph / heading / figure that box already equals the descended
-  //    content edge (byte-identical to before), but for a CONTAINER (exampleBlock
-  //    / list) the descended first-line target is the narrow, INDENTED inner item
-  //    (`resolveContentEdges` walks into it), which made the sibling bar read
-  //    short below an example. Because the descended target is always a
-  //    DESCENDANT of `block.dom`, the outer box is never narrower — this can only
-  //    widen the bar to true column scope, never shrink it, so "a new top-level
-  //    block lands here" reads full-width for every kind.
-  //
-  //  • SUB-TIER peer insert (an item among its peers, depth ≥ 1) → keep the
-  //    shared content-edge primitive `resolveContentEdges` (which `resolveBlock-
-  //    Frame` composes — the SAME content-left / width the grab handles read), so
-  //    the reorder bar hugs the item's indented TEXT-left and coincides with the
-  //    into-item bar over the same item (chip 4a §4). The indented item width is
-  //    the correct scope here.
-  //
-  // Y still comes from the block's own box (the gap line above/below).
   const isTopLevelSibling =
     editor.state.doc.resolve(block.blockPos).depth === 0;
+  return {
+    kind: "between-blocks",
+    editor,
+    insertPos,
+    rect: betweenBlocksBarRect(block.dom, blockRect, insertBefore, isTopLevelSibling),
+  };
+}
+
+/**
+ * The between-blocks placement for one resolved {@link InsertCandidate} — the
+ * ladder's builder (task 416). Same bar rule as the flat path above; the
+ * candidate has already decided the boundary (Y, at its OWN midpoint) and the
+ * level (X).
+ */
+function makeCandidatePlacement(
+  editor: Editor,
+  cand: InsertCandidate,
+): Placement {
+  return {
+    kind: "between-blocks",
+    editor,
+    insertPos: cand.insertPos,
+    rect: betweenBlocksBarRect(
+      cand.dom,
+      cand.rect,
+      cand.insertBefore,
+      cand.refDepth === 1,
+    ),
+  };
+}
+
+/**
+ * The bar's rect. Its horizontal extent encodes the insert SCOPE (task 007),
+ * not the neighbour's text length — and since task 416 that encoding is a LIVE
+ * affordance rather than a readout, because X chooses which level the bar is
+ * drawn for:
+ *
+ *  • TOP-LEVEL sibling insert (the reference block sits at doc depth 0) → the
+ *    bar spans the block's OWN COLUMN box (its border box). A top-level block
+ *    fills the prose column, and its content-left IS the column-left — for a
+ *    paragraph / heading / figure that box already equals the descended content
+ *    edge, but for a CONTAINER (exampleBlock / list) the descended first-line
+ *    target is the narrow, INDENTED inner item (`resolveContentEdges` walks into
+ *    it), which made the sibling bar read short below an example. Because the
+ *    descended target is always a DESCENDANT of the block's DOM, the outer box
+ *    is never narrower — this can only widen the bar to true column scope, never
+ *    shrink it, so "a new top-level block lands here" reads full-width for every
+ *    kind.
+ *
+ *  • SUB-TIER insert (a level at depth ≥ 1) → the shared content-edge primitive
+ *    `resolveContentEdges` (which `resolveBlockFrame` composes — the SAME
+ *    content-left / width the grab handles read), so the bar hugs that level's
+ *    indented TEXT-left and coincides with the into-item bar over the same item
+ *    (chip 4a §4).
+ *
+ * Y comes from the reference block's own box (the gap line above/below).
+ */
+function betweenBlocksBarRect(
+  dom: HTMLElement,
+  blockRect: DOMRect,
+  insertBefore: boolean,
+  isTopLevelSibling: boolean,
+): ViewportRect {
   const barY = insertBefore ? blockRect.top : blockRect.bottom;
   let barLeft: number;
   let barWidth: number;
@@ -779,11 +775,11 @@ export function makeBetweenBlocksPlacement(
     barLeft = blockRect.left;
     barWidth = blockRect.width;
   } else {
-    const span = contentSpanFor(block.dom);
+    const span = contentSpanFor(dom);
     barLeft = span.left;
     barWidth = span.width;
   }
-  const rect: ViewportRect = {
+  return {
     x: barLeft,
     y: barY - 1,
     // Floor the span above the 2px bar height so a (theoretical) zero-width
@@ -792,7 +788,6 @@ export function makeBetweenBlocksPlacement(
     width: Math.max(barWidth, 3),
     height: 2,
   };
-  return { kind: "between-blocks", editor, insertPos, rect };
 }
 
 function makeParagraphSidePlacement(

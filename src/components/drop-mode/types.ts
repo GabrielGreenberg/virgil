@@ -28,6 +28,7 @@ import type {
 } from "@/lib/types";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import type { InlineDropPayload } from "./inline-host";
+import type { BlockDropPayload } from "./block-payload";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -457,6 +458,27 @@ export interface DropSpec {
    */
   inlinePayloadFor?: (cardKey: string, ctx: DropCtx) => InlineDropPayload;
   /**
+   * What THIS dragged key will place as WHOLE BLOCKS at a `between-blocks`
+   * placement, as schema node NAMES (task 416) — the input to the candidate
+   * ladder in `insert-candidates.ts`, which decides BOTH which insert positions
+   * are offered and whether a bar may appear over a block's TEXT at all.
+   *
+   * REQUIRED of every spec whose placements can include `between-blocks`, and
+   * the answer may legitimately be EMPTY: that is what a card pull, a
+   * plain-text slice and a paragraph-side re-anchor each say, and it keeps
+   * those gestures byte-identical to the pre-416 tree (gap-only reach, no
+   * filtering). A spec that drags whole blocks says so, and gains the ladder —
+   * midpoint snapping at every level, an X axis that chooses the level, and a
+   * filter that never offers a level the commit refuses.
+   *
+   * Resolved ONCE per session by `resolveSessionBlockPayload`, at
+   * `beginDropSession` — the twin of {@link inlinePayloadFor}, for the same
+   * reasons. Optional in the type and pinned as an implication by CI
+   * (`placement-reachability.test.ts`, allowlist EMPTY), exactly as its inline
+   * sibling is.
+   */
+  blockPayloadFor?: (cardKey: string, ctx: DropCtx) => BlockDropPayload;
+  /**
    * Whether this kind may drop into card-body editors or only the main
    * editor. Attachment cards (note, todo, etc.) anchor to paragraph
    * UUIDs in the main document — re-anchoring them to a paragraph
@@ -561,6 +583,12 @@ export interface DropSession {
    *  {@link placements}, and handed to every hit-test so the container question
    *  is asked in the AFFORDANCE and not only at the commit (task 414). */
   inlinePayload: InlineDropPayload;
+  /** What THIS session will place as whole blocks at a between-blocks gap, as
+   *  schema node names — `spec.blockPayloadFor`'s answer for this cardKey, else
+   *  empty. Resolved once at session start alongside {@link placements}; the
+   *  hit-test reads it to filter the candidate ladder and to decide whether the
+   *  ladder may be offered over a block's text (task 416). */
+  blockPayload: BlockDropPayload;
   /** Where the user mousedowned, used by ESC / leave logic. */
   origin: { x: number; y: number };
   /** Current placement under the cursor, or null when not over a valid

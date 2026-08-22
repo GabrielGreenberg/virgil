@@ -26,10 +26,6 @@ import { describe, expect, it } from "vitest";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import {
-  makeBetweenBlocksPlacement,
-  resolveSubItemPeerBlock,
-} from "../hit-test";
 import { textObjectDropSpec } from "../specs/textobject";
 import type { DropCtx, Placement } from "../types";
 
@@ -164,130 +160,154 @@ function mockEditor(d: PMNode, rect?: Partial<DOMRect>) {
   return { editor, dispatched, ctx: { mainEditor: editor } as unknown as DropCtx };
 }
 
-// ── 1. resolveSubItemPeerBlock — source-kind-aware resolution ───────────────
+// ── 1+2. The CANDIDATE LADDER — what R3's peer resolver became ──────────────
+//
+// RENEGOTIATED in place (task 416), with the reason at the site. R3 asked ONE
+// question — "is the cursor inside a peer item of the DRAGGED kind, in a
+// container that accepts it?" — and answered it with a bespoke resolver plus a
+// `snapToMidpoint` flag whose single `true` call site was that resolver's. Both
+// are retired: the ladder yields EVERY legal insert position at the row, filters
+// them against the payload through the same `fitNodeInContainer` SSOT the commit
+// reads, and snaps at each level's own midpoint for every payload.
+//
+// So the peer-item boundary is no longer a special case — it is simply the
+// candidate whose container is the list. Three of R3's `null` legs are therefore
+// renegotiated rather than kept: a null there meant "nothing painted", which for
+// a cross-kind sub-item over a foreign container's item gap is the very silent
+// refusal `AGENTS.md` records as the proxy half's residual. The ladder answers
+// with the OUTERMOST level that can legally hold the payload instead.
 
-describe("resolveSubItemPeerBlock — peer-item resolution + gates", () => {
-  it("listItem source over a list item resolves the ITEM boundary, not the inner paragraph", () => {
+import {
+  chooseInsertCandidate,
+  filterInsertCandidates,
+  resolveInsertCandidates,
+} from "../insert-candidates";
+
+/** The whole ladder, as the hit-test runs it. */
+function ladder(
+  editor: Editor,
+  floorPos: number,
+  cursorY: number,
+  payload: readonly string[],
+  cursorX = 10_000,
+) {
+  return chooseInsertCandidate(
+    filterInsertCandidates(
+      editor,
+      resolveInsertCandidates(editor, floorPos, cursorY),
+      payload,
+    ),
+    cursorX,
+  );
+}
+
+describe("the candidate ladder — peer-item resolution, for EVERY payload", () => {
+  it("a listItem payload over a list item chooses the ITEM boundary, not the inner paragraph", () => {
     const d = doc(
       para("intro"),
       bulletList("L", li("one", "a"), li("two", "b"), li("three", "c")),
       para("outro"),
     );
-    const { editor } = mockEditor(d);
-    const items = findByType(d, "listItem");
-    const item2 = items[1]; // "two"
-    // A pos inside item2's inner paragraph text (depth 3).
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      item2.pos + 2,
-      "textobject:listItem:c",
-    );
-    expect(peer).not.toBeNull();
-    // Resolves the listItem (depth 2) at the item boundary — NOT the inner
-    // paragraph, whose before-position would be item2.pos + 1 (depth 3).
-    expect(peer!.blockPos).toBe(item2.pos);
-    expect(peer!.depth).toBe(2);
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
+    const item2 = findByType(d, "listItem")[1];
+    const chosen = ladder(editor, item2.pos, 110, ["listItem"]);
+    expect(chosen).not.toBeNull();
+    expect(chosen!.refPos).toBe(item2.pos);
+    expect(chosen!.container.type.name).toBe("bulletList");
   });
 
-  it("listItem source over a top-level paragraph gap returns null (pull-out preserved)", () => {
+  it("a PARAGRAPH payload over the same item is offered the same row — the F0 half", () => {
+    // Pre-416 this answered NOTHING: `resolveSubItemPeerBlock` gated on the
+    // dragged kind, and `between-blocks` matches the GAP only, so a paragraph
+    // dragged over a list saw no bar anywhere over its body.
+    const d = doc(bulletList("L", li("one", "a"), li("two", "b")));
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
+    const item2 = findByType(d, "listItem")[1];
+    const chosen = ladder(editor, item2.pos, 110, ["paragraph"]);
+    expect(chosen).not.toBeNull();
+    expect(chosen!.container.type.name).toBe("bulletList");
+  });
+
+  it("a listItem payload over a top-level paragraph still offers the pull-out (wrap)", () => {
     const d = doc(
       para("intro"),
       bulletList("L", li("one", "a"), li("two", "b")),
     );
-    const { editor } = mockEditor(d);
-    const intro = findByType(d, "paragraph")[0]; // top-level "intro" at pos 0
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      intro.pos + 1,
-      "textobject:listItem:a",
-    );
-    expect(peer).toBeNull();
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
+    const intro = findByType(d, "paragraph")[0];
+    const chosen = ladder(editor, intro.pos, 110, ["listItem"]);
+    // `doc` cannot hold a bare listItem, but the wrap rung fabricates the list
+    // around it — which is exactly what the commit's adapter does.
+    expect(chosen).not.toBeNull();
+    expect(chosen!.container.type.name).toBe("doc");
   });
 
-  it("paragraph source (not a sub-object) returns null over a list item", () => {
-    const d = doc(bulletList("L", li("one", "a"), li("two", "b")));
-    const { editor } = mockEditor(d);
-    const item2 = findByType(d, "listItem")[1];
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      item2.pos + 2,
-      "textobject:paragraph:x",
-    );
-    expect(peer).toBeNull();
-  });
-
-  it("exampleItem source over an exampleItem resolves the exampleItem boundary", () => {
+  it("an exampleItem payload over an exampleItem chooses the exampleItem boundary", () => {
     const d = doc(
       exBlock("E", exItem("alpha", "ea"), exItem("beta", "eb"), exItem("gamma", "ec")),
     );
-    const { editor } = mockEditor(d);
-    const exItems = findByType(d, "exampleItem");
-    const ex2 = exItems[1]; // "beta"
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      ex2.pos + 2,
-      "textobject:exampleItem:ec",
-    );
-    expect(peer).not.toBeNull();
-    // depth 3 here (doc > exampleBlock > exampleItemList > exampleItem); the
-    // compatible container (exampleBlock) is the GRANDPARENT, not the
-    // immediate parent (exampleItemList).
-    expect(peer!.blockPos).toBe(ex2.pos);
-    expect(peer!.depth).toBe(3);
-  });
-
-  it("listItem source over an exampleItem (cross-kind) returns null (same-kind gate)", () => {
-    const d = doc(exBlock("E", exItem("alpha", "ea"), exItem("beta", "eb")));
-    const { editor } = mockEditor(d);
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
     const ex2 = findByType(d, "exampleItem")[1];
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      ex2.pos + 2,
-      "textobject:listItem:c",
-    );
-    expect(peer).toBeNull();
+    const chosen = ladder(editor, ex2.pos, 110, ["exampleItem"]);
+    expect(chosen).not.toBeNull();
+    expect(chosen!.refPos).toBe(ex2.pos);
+    // The compatible container is the exampleItemList — the item's own parent,
+    // which R3 could not name because it is not a registered TextObjectKind.
+    expect(chosen!.container.type.name).toBe("exampleItemList");
   });
 
-  it("listItem source over a blockquote paragraph returns null (incompatible container)", () => {
+  it("a listItem payload over an exampleItem is offered the OUTERMOST legal level, not silence", () => {
+    // R3 answered null here (its same-kind gate) and the pre-416 hit-test then
+    // painted an ordinary between-blocks bar whose commit was refused — the
+    // "bar painted, nothing happens, no message" residual. The ladder filters
+    // the two inner levels out (no wrapper the expex containers accept can hold
+    // a listItem) and offers the top-level pull-out, which the commit accepts.
+    const d = doc(exBlock("E", exItem("alpha", "ea"), exItem("beta", "eb")));
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
+    const ex2 = findByType(d, "exampleItem")[1];
+    const chosen = ladder(editor, ex2.pos, 110, ["listItem"]);
+    expect(chosen).not.toBeNull();
+    expect(chosen!.container.type.name).toBe("doc");
+  });
+
+  it("a listItem payload inside a blockquote is offered the blockquote's own level", () => {
     const d = doc(blockquote("Q", para("quoted")));
-    const { editor } = mockEditor(d);
+    const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
     const quoted = findByType(d, "paragraph")[0];
-    const peer = resolveSubItemPeerBlock(
-      editor,
-      quoted.pos + 1,
-      "textobject:listItem:c",
-    );
-    expect(peer).toBeNull();
+    const chosen = ladder(editor, quoted.pos, 110, ["listItem"]);
+    expect(chosen).not.toBeNull();
+    // `blockquote` is `block+`, so the wrap rung builds the list inside it.
+    expect(chosen!.container.type.name).toBe("blockquote");
   });
 });
 
-// ── 2. makeBetweenBlocksPlacement — Notion-style midpoint snapping ──────────
-
-describe("makeBetweenBlocksPlacement — sub-item midpoint snapping", () => {
+describe("the candidate ladder — Y snaps at the MIDPOINT, at every level", () => {
   const d = doc(bulletList("L", li("one", "a"), li("two", "b"), li("three", "c")));
 
-  it("snapToMidpoint: top half inserts BEFORE the item, bottom half AFTER — both at sibling boundaries", () => {
+  it("top half inserts BEFORE the item, bottom half AFTER — for every payload", () => {
     const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
     const item2 = findByType(d, "listItem")[1];
-    const peer = resolveSubItemPeerBlock(editor, item2.pos + 2, "textobject:listItem:c")!;
-
-    // midpoint = 120. Cursor at 110 (top half) → insert before this item.
-    const before = makeBetweenBlocksPlacement(editor, peer, 110, true);
-    expect(before.kind).toBe("between-blocks");
-    expect((before as Extract<Placement, { kind: "between-blocks" }>).insertPos).toBe(item2.pos);
-    // Cursor at 130 (bottom half) → insert after this item.
-    const after = makeBetweenBlocksPlacement(editor, peer, 130, true);
-    expect((after as Extract<Placement, { kind: "between-blocks" }>).insertPos).toBe(item2.pos + item2.size);
+    for (const payload of [["listItem"], ["paragraph"]]) {
+      // midpoint = 120. Cursor at 110 (top half) → before this item.
+      expect(ladder(editor, item2.pos, 110, payload)!.insertPos).toBe(item2.pos);
+      // Cursor at 130 (bottom half) → after this item.
+      expect(ladder(editor, item2.pos, 130, payload)!.insertPos).toBe(
+        item2.pos + item2.size,
+      );
+    }
   });
 
-  it("default (snapToMidpoint=false) keeps the top-edge threshold — byte-identical to the top-level path", () => {
+  it("X chooses the LEVEL: far left walks out to the top-level sibling", () => {
     const { editor } = mockEditor(d, { top: 100, bottom: 140, height: 40 });
     const item2 = findByType(d, "listItem")[1];
-    const peer = resolveSubItemPeerBlock(editor, item2.pos + 2, "textobject:listItem:c")!;
-    // Cursor at 110 is BELOW the top edge (100) → insert after (NOT before, as
-    // midpoint snapping would). This is the unchanged top-level behavior.
-    const p = makeBetweenBlocksPlacement(editor, peer, 110);
-    expect((p as Extract<Placement, { kind: "between-blocks" }>).insertPos).toBe(item2.pos + item2.size);
+    // This fixture's `nodeDOM` stub answers the SAME box for every level, so
+    // the two candidates share a left edge and the deeper one wins at any X at
+    // or right of it. What X can still prove here is the fallback: a cursor
+    // LEFT of every candidate's box takes the shallowest level.
+    const deep = ladder(editor, item2.pos, 110, ["paragraph"], 10_000);
+    expect(deep!.container.type.name).toBe("bulletList");
+    const shallow = ladder(editor, item2.pos, 110, ["paragraph"], -10_000);
+    expect(shallow!.container.type.name).toBe("doc");
   });
 });
 
