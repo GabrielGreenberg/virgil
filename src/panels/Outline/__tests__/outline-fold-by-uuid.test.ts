@@ -26,6 +26,7 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { extractHeadings } from "../OutlinePanel";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 
 function heading(level: number, text: string, uuid: string | null): JSONContent {
   return {
@@ -106,6 +107,75 @@ describe("extractHeadings — id keyed on uuid (OUT-A2-01)", () => {
     // The Intro heading is NOT mistakenly considered folded.
     const intro = headingsAfter.find((h) => h.text === "Intro")!;
     expect(folded.has(intro.id)).toBe(false);
+  });
+
+  // ── Task 404 · a titled row exists for EVERY member of the set ──────────
+  //
+  // Pre-404 `extractHeadings` hand-listed three of the six, so a title on a
+  // texBlock / forestBlock / exampleBlock was written to the sidecar,
+  // reloaded onto the node, and then had NO Outline row at all — nothing to
+  // show it, nothing to rename it from, nothing to fold. These legs are
+  // DEFECT legs for those three and non-regression pins for the other three.
+
+  /** A minimal top-level node of `type` carrying a par title + uuid. */
+  function titled(type: string, title: string, uuid: string): JSONContent {
+    return { type, attrs: { uuid, parTitle: title } };
+  }
+
+  it.each([...TITLED_NODE_TYPES].sort())("a titled %s produces an Outline row", (type) => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        heading(1, "Intro", "uuid-intro"),
+        titled(type, `Title on ${type}`, `uuid-${type}`),
+      ],
+    };
+    const { headings } = extractHeadings(doc);
+    expect(headings[0].parTitles.map((t) => t.title)).toEqual([`Title on ${type}`]);
+    // The row carries the block's own durable uuid — which is the fold key
+    // AND the address `renameParTitleByUuid` dispatches on.
+    expect(headings[0].parTitles[0].uuid).toBe(`uuid-${type}`);
+  });
+
+  it.each([...TITLED_NODE_TYPES].sort())(
+    "a titled %s row's uuid is INSERT-STABLE (the fold bucket still matches)",
+    (type) => {
+      const folded = new Set<string>([`uuid-${type}`]);
+      const after: JSONContent = {
+        type: "doc",
+        content: [
+          para("inserted above", "uuid-new"),
+          heading(1, "Intro", "uuid-intro"),
+          titled(type, `Title on ${type}`, `uuid-${type}`),
+        ],
+      };
+      const row = extractHeadings(after).headings[0].parTitles[0];
+      // The index DID shift (1 → 2); the uuid did not, so the persisted
+      // fold bucket still holds the same string.
+      expect(row.index).toBe(2);
+      expect(folded.has(row.uuid!)).toBe(true);
+    },
+  );
+
+  it("an UNTITLED member of the set produces no row (the attr, not the type)", () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [heading(1, "Intro", "uuid-intro"), { type: "texBlock", attrs: { uuid: "u-tex" } }],
+    };
+    expect(extractHeadings(doc).headings[0].parTitles).toEqual([]);
+  });
+
+  it("a NON-member carrying a stale parTitle produces no row", () => {
+    // Belt and braces on the widened test: the set is the domain, so a blob
+    // that somehow carries the attr on an undeclared type is still ignored.
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        heading(1, "Intro", "uuid-intro"),
+        { type: "figureBlock", attrs: { uuid: "u-fig", parTitle: "Stale" } },
+      ],
+    };
+    expect(extractHeadings(doc).headings[0].parTitles).toEqual([]);
   });
 
   it("falls back to the positional id for an un-hydrated heading (null uuid)", () => {

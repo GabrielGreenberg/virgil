@@ -39,6 +39,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import {
   editStructuredNodeByUuid,
@@ -416,6 +417,101 @@ describe("renameParTitleByUuid — drift guard (OUT-F8-04)", () => {
       renameParTitleByUuid(editor, PARA_UUID, "First");
       renameParTitleByUuid(editor, PARA_UUID, "   ");
       expect(findNodeByUuid(editor, PARA_UUID)?.node.attrs.parTitle).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ── Task 404 · the mutator's domain IS the set ────────────────────────────
+//
+// Pre-404 the guard was the NEGATIVE `node.type.name !== "heading"`, so its
+// domain was "everything but heading" rather than TITLED_NODE_TYPES. That is
+// right about the one type it names and wrong at both ends: it happens to
+// admit every titled kind (so the sweep below is a NON-REGRESSION pin for the
+// three that already worked and a DEFECT leg for nothing), and it admits every
+// type that declares no `parTitle` at all — where ProseMirror drops the
+// undeclared attr, `setAttrs` reports success, and the rename reads as a
+// mis-write that silently did nothing. `figureBlock` is that control: a
+// top-level block with a uuid and no `parTitle` in its spec.
+
+const TITLED_FIXTURE_UUID: Record<string, string> = {
+  paragraph: "uuid-t-paragraph",
+  bulletList: "uuid-t-bulletList",
+  orderedList: "uuid-t-orderedList",
+  texBlock: "uuid-t-texBlock",
+  forestBlock: "uuid-t-forestBlock",
+  exampleBlock: "uuid-t-exampleBlock",
+};
+const FIGURE_UUID = "uuid-t-figureBlock";
+
+/** One top-level node per titled kind (uuid pre-stamped), plus the untitled
+ *  `figureBlock` control. Shapes mirror `node-attr-sets.test.ts`'s fixtures. */
+function titledContent(): Content {
+  const u = TITLED_FIXTURE_UUID;
+  const li = (text: string) => ({
+    type: "listItem",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+  return {
+    type: "doc",
+    content: [
+      { type: "paragraph", attrs: { uuid: u.paragraph }, content: [{ type: "text", text: "Alpha." }] },
+      { type: "bulletList", attrs: { uuid: u.bulletList }, content: [li("Bullet one.")] },
+      { type: "orderedList", attrs: { uuid: u.orderedList }, content: [li("Number one.")] },
+      { type: "texBlock", attrs: { uuid: u.texBlock, code: "\\draw (0,0) -- (1,1);" } },
+      {
+        type: "forestBlock",
+        attrs: { uuid: u.forestBlock, source: "\\begin{forest}\n[S]\n\\end{forest}" },
+      },
+      {
+        type: "exampleBlock",
+        attrs: { uuid: u.exampleBlock, kind: "single" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Example body." }] }],
+      },
+      { type: "figureBlock", attrs: { uuid: FIGURE_UUID } },
+    ],
+  };
+}
+
+function mountTitled(): { editor: Editor; cleanup: () => void } {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: titledContent(),
+  });
+  return { editor, cleanup: () => { editor.destroy(); element.remove(); } };
+}
+
+describe("renameParTitleByUuid — the domain equals TITLED_NODE_TYPES (task 404)", () => {
+  it("the fixture covers every member of the set", () => {
+    expect(Object.keys(TITLED_FIXTURE_UUID).sort()).toEqual([...TITLED_NODE_TYPES].sort());
+  });
+
+  it.each([...TITLED_NODE_TYPES].sort())("titles a %s", (type) => {
+    const { editor, cleanup } = mountTitled();
+    try {
+      const uuid = TITLED_FIXTURE_UUID[type];
+      expect(renameParTitleByUuid(editor, uuid, "My Title")).toBe(true);
+      const hit = findNodeByUuid(editor, uuid);
+      expect(hit?.node.type.name).toBe(type);
+      expect(hit?.node.attrs.parTitle).toBe("My Title");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a block that declares no parTitle (the negative guard's own hole)", () => {
+    const { editor, cleanup } = mountTitled();
+    try {
+      // `figureBlock` is not in the set. Pre-404 this passed the
+      // `!== "heading"` guard, PM dropped the undeclared attr, and the
+      // mutator reported `true` for a write that never landed.
+      expect(renameParTitleByUuid(editor, FIGURE_UUID, "Wrong")).toBe(false);
+      expect(findNodeByUuid(editor, FIGURE_UUID)?.node.attrs.parTitle).toBeUndefined();
     } finally {
       cleanup();
     }

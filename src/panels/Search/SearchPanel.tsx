@@ -34,6 +34,7 @@ import {
   compileQuery,
   buildUuidPosMap,
 } from "@/lib/search-sources";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import { SCOPE_DISPATCH, UUID_POS_SCOPES } from "@/panels/Search/scope-dispatch";
 import {
   resolveLiveBlockRange,
@@ -259,12 +260,9 @@ export function buildBreadcrumbIndex(editor: Editor): BreadcrumbIndex {
     }
 
     const titleAttr = node.attrs?.parTitle as string | null | undefined;
-    if (
-      titleAttr &&
-      (node.type.name === "paragraph" ||
-        node.type.name === "bulletList" ||
-        node.type.name === "orderedList")
-    ) {
+    // Task 404: the SET, not a three-name copy of it — a title on a texBlock /
+    // forestBlock / exampleBlock breadcrumbs its hits like any other.
+    if (titleAttr && TITLED_NODE_TYPES.has(node.type.name)) {
       const end = nodePos + node.nodeSize;
       parTitles.push({ start: nodePos, end, text: titleAttr });
       parMaxEnd.push(

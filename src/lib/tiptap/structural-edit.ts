@@ -38,6 +38,7 @@
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { atomTextOf } from "@/lib/inline-content";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 
 // ---------------------------------------------------------------------------
 // UUID addressing
@@ -349,11 +350,18 @@ export function renameHeadingByUuid(
 }
 
 /**
- * Set a block's `parTitle` attr, addressed by uuid. The block can be a
- * paragraph / bulletList / orderedList — anything BUT a heading (a heading uses
- * its own rename), so we refuse a heading explicitly to close `OUT-F8-04`. A
- * uuid that doesn't resolve to a parTitle-bearing block is a NO-OP, not a
- * mis-write (`OUT-F5-02`).
+ * Set a block's `parTitle` attr, addressed by uuid. The domain is
+ * {@link TITLED_NODE_TYPES} — the set that DECLARES the attr — so the
+ * mutator's reach equals the set's.
+ *
+ * Task 404 replaced the NEGATIVE guard this carried (`!== "heading"`, which
+ * closed `OUT-F8-04` by naming the one type to refuse). A negative guard's
+ * domain is "everything but heading": it happens to admit every titled kind,
+ * and it also admits every type that declares no `parTitle` at all, where
+ * ProseMirror silently drops the attr and the rename reads as a mis-write
+ * that did nothing. The positive test refuses a heading exactly as before —
+ * `heading` is not a member — and refuses the rest for the same reason.
+ * A uuid that doesn't resolve to a titled block is a NO-OP (`OUT-F5-02`).
  */
 export function renameParTitleByUuid(
   editor: Editor,
@@ -362,8 +370,7 @@ export function renameParTitleByUuid(
 ): boolean {
   const trimmed = newTitle.trim();
   return editStructuredNodeByUuid(editor, uuid, {
-    // No heading: par titles never live on headings.
-    guard: (node) => node.type.name !== "heading",
+    guard: (node) => TITLED_NODE_TYPES.has(node.type.name),
     setAttrs: (attrs) => ({ ...attrs, parTitle: trimmed ? trimmed : null }),
   });
 }
