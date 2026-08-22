@@ -2,72 +2,42 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { isDeferredInnerParagraph } from "@/lib/anchor-uuid";
 
 /**
- * Shared spec for the `uuid` attribute used by every anchorable node type.
+ * `UUID_ATTR_SPEC` / `makeUuidAttr` are DECLARED in the import-free leaf
+ * `@/lib/node-attr-sets` (task 402) and re-exported here so every existing
+ * importer is unchanged.
  *
- * The UUID lives in node attrs (ProseMirror state). It is NOT serialized
- * to HTML on copy-paste — `parseHTML` returns null so paste always
- * produces a node without a UUID, which `ensureAnchorUuid` then hydrates
- * with a fresh one. That keeps UUIDs unique within a doc.
+ * They moved because they are two of the nineteen node x attr pairs
+ * `MAIN_STARTERKIT_NODE_ATTRS` has to state, and that table cannot import this
+ * module — `stampTextObjectAttrs` below reaches `@/lib/anchor-uuid`, which
+ * reaches the editor. A spec spelled twice is a spec that can drift, and the
+ * drift this whole cluster is about cost the user their `\label{}`s.
  *
  * DOM exposure (typing-latency fix 2d — the per-block `UuidAttrDecorator`
  * decoration union is GONE; it cost a DecorationSet.map + a #blocks-sized
  * outer-deco reconcile per keystroke):
  *   - NodeView-bearing anchorable types stamp `data-uuid` +
  *     `data-text-object-kind` on their own outer `dom` via
- *     `stampTextObjectAttrs` below — at construction and again in
- *     `update()` when `attrs.uuid` changes (the BlockUuidBackfill mint
- *     arrives as an AttrStep, which fires `update`). MAIN surface only —
- *     the old decorator was main-only chrome, and `useMarginaliaRegistry`
- *     resolves blocks via document-global `[data-uuid="…"]` queries, so a
- *     popped-out float must not carry a second copy of the attribute.
- *   - NodeView-less anchorable types (listItem, blockquote, codeBlock) get
- *     both attributes from `renderHTML` via `makeUuidAttr(typeName)`.
+ *     `stampTextObjectAttrs` below — at construction and again in `update()`
+ *     when `attrs.uuid` changes (the BlockUuidBackfill mint arrives as an
+ *     AttrStep, which fires `update`). MAIN surface only — the old decorator
+ *     was main-only chrome, and `useMarginaliaRegistry` resolves blocks via
+ *     `[data-uuid="…"]` queries, so a popped-out float must not carry a second
+ *     copy of the attribute. The EXCERPT card body is the same rule read one
+ *     surface over: it takes the attrs through `dataOnlyAttrs`, so they exist
+ *     in its schema and never reach its DOM.
+ *   - NodeView-less anchorable types (listItem, blockquote, codeBlock) get both
+ *     attributes from `renderHTML` via `makeUuidAttr(typeName)`.
  *
  * Spread into an extension's `addAttributes()`:
  *
  *   addAttributes() {
  *     return {
  *       ...this.parent?.(),
- *       ...UUID_ATTR_SPEC,          // NodeView-bearing type
- *       // or: uuid: makeUuidAttr("listItem"),  // renderHTML-rendered type
+ *       ...MAIN_STARTERKIT_NODE_ATTRS.paragraph,   // the whole row (preferred)
  *     };
  *   }
  */
-export const UUID_ATTR_SPEC = {
-  uuid: {
-    default: null as string | null,
-    // Don't carry UUID across copy-paste — fresh node, fresh identity.
-    parseHTML: () => null,
-    // Cosmetic: when a node is serialized to HTML (export, devtools
-    // inspect) and has no NodeView in the way, emit `data-uuid` so the
-    // representation matches the live DOM. For NodeView-bearing nodes
-    // this is dead code; the live attributes come from the NodeView stamp.
-    renderHTML: (attrs: Record<string, unknown>) => {
-      const uuid = attrs.uuid;
-      return typeof uuid === "string" && uuid ? { "data-uuid": uuid } : {};
-    },
-  },
-};
-
-/**
- * uuid attr spec for anchorable types WITHOUT a NodeView (listItem,
- * blockquote, codeBlock): their live DOM comes from `renderHTML`, so it must
- * emit BOTH `data-uuid` and `data-text-object-kind` (the grab-handle hover
- * resolver reads the kind straight off the DOM). NodeView-bearing types use
- * `UUID_ATTR_SPEC` + `stampTextObjectAttrs` instead.
- */
-export function makeUuidAttr(typeName: string) {
-  return {
-    default: null as string | null,
-    parseHTML: () => null,
-    renderHTML: (attrs: Record<string, unknown>) => {
-      const uuid = attrs.uuid;
-      return typeof uuid === "string" && uuid
-        ? { "data-uuid": uuid, "data-text-object-kind": typeName }
-        : {};
-    },
-  };
-}
+export { UUID_ATTR_SPEC, makeUuidAttr } from "@/lib/node-attr-sets";
 
 /**
  * Stamp (or clear) `data-uuid` + `data-text-object-kind` on an anchorable

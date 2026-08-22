@@ -26,7 +26,8 @@ import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
-import { UUID_ATTR_SPEC, makeUuidAttr, stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
+import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
+import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -142,8 +143,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
     addAttributes() {
       return {
         ...this.parent?.(),
-        parTitle: { default: null },
-        uuid: UUID_ATTR_SPEC.uuid,
+        ...MAIN_STARTERKIT_NODE_ATTRS.paragraph,
       };
     },
     addNodeView() {
@@ -719,14 +719,7 @@ export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
     addAttributes() {
       return {
         ...this.parent?.(),
-        parTitle: { default: null },
-        uuid: UUID_ATTR_SPEC.uuid,
-        listPreamble: { default: null, rendered: false },
-        // Raw `\begin{itemize}[options]` bracket (task 376) — opaque LaTeX,
-        // the list-level twin of `listItem.itemLabel`. Source provenance, so
-        // `rendered: false`; `keepOnSplit: false` for the same reason a label
-        // is not carried onto a freshly split sibling.
-        listOptions: { default: null, rendered: false, keepOnSplit: false },
+        ...MAIN_STARTERKIT_NODE_ATTRS.bulletList,
       };
     },
     addNodeView() {
@@ -741,14 +734,7 @@ export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
     addAttributes() {
       return {
         ...this.parent?.(),
-        parTitle: { default: null },
-        uuid: UUID_ATTR_SPEC.uuid,
-        listPreamble: { default: null, rendered: false },
-        // Raw `\begin{itemize}[options]` bracket (task 376) — opaque LaTeX,
-        // the list-level twin of `listItem.itemLabel`. Source provenance, so
-        // `rendered: false`; `keepOnSplit: false` for the same reason a label
-        // is not carried onto a freshly split sibling.
-        listOptions: { default: null, rendered: false, keepOnSplit: false },
+        ...MAIN_STARTERKIT_NODE_ATTRS.orderedList,
       };
     },
     addNodeView() {
@@ -763,8 +749,7 @@ export function createBlockquoteWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
-        uuid: makeUuidAttr("blockquote"),
+        ...MAIN_STARTERKIT_NODE_ATTRS.blockquote,
       };
     },
   });
@@ -783,25 +768,7 @@ export function createListItemWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
-        uuid: makeUuidAttr("listItem"),
-        // Raw `\item[label]` optional argument (task 340) — opaque LaTeX, the
-        // per-item twin of the list's own `listPreamble`. Registered on the
-        // NODE rather than re-read from the source at save time so it survives
-        // an edit to the item's text; `rendered: false` because it is source
-        // provenance, not something the live DOM shows (the editor draws the
-        // list's own marker), which also means copy-paste cannot carry it —
-        // same fresh-node reasoning as `uuid`'s `parseHTML: () => null`.
-        // `null` = a bare `\item`; `""` = `\item[]`.
-        //
-        // `keepOnSplit: false` is load-bearing and NOT what `uuid` does one
-        // line up: TipTap's default is to carry an attr across a split, so
-        // pressing Enter at the end of `\item[(b)] beta` would mint a second
-        // item ALSO labelled `(b)` — a duplicate marker in the compiled PDF
-        // that the user never typed. `uuid` can afford the default because
-        // `BlockUuidBackfill` re-mints the collision; a label has no such net
-        // and no meaning to re-mint, so the new item must simply have none.
-        itemLabel: { default: null, rendered: false, keepOnSplit: false },
+        ...MAIN_STARTERKIT_NODE_ATTRS.listItem,
       };
     },
   });
@@ -813,8 +780,7 @@ export function createCodeBlockWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
-        uuid: makeUuidAttr("codeBlock"),
+        ...MAIN_STARTERKIT_NODE_ATTRS.codeBlock,
       };
     },
   });
@@ -860,19 +826,7 @@ export function createHeadingWithLabel(
     addAttributes() {
       return {
         ...this.parent?.(),
-        label: { default: null },
-        uuid: UUID_ATTR_SPEC.uuid,
-        numbered: { default: true, rendered: false },
-        sectionNumber: { default: null, rendered: false },
-        // Raw `\section[short]{…}` running-head / ToC title (task 376) — opaque
-        // LaTeX, the heading twin of `figureBlock.shortCaption` and
-        // `listItem.itemLabel`. `rendered: false` because it is source
-        // provenance, not something the live DOM shows. `keepOnSplit: false`
-        // for `itemLabel`'s reason: pressing Enter at the end of a heading
-        // mints a NEW heading, and carrying the short title across would give
-        // it a running head the user never typed, on a section it does not
-        // name. `null` = the source had no bracket.
-        shortTitle: { default: null, rendered: false, keepOnSplit: false },
+        ...MAIN_STARTERKIT_NODE_ATTRS.heading,
       };
     },
     parseHTML() {

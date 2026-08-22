@@ -65,6 +65,8 @@ import {
   deferringParent,
   EMPTY_WRAPPER_NODE_TYPES,
   jsonCarriesContent,
+  MAIN_STARTERKIT_NODE_ATTRS,
+  dataOnlyAttrs,
 } from "@/lib/node-attr-sets";
 // Comments stripped, string literals KEPT — the drift this census hunts lives
 // in literals (`new Set(["paragraph", …])`), so blanking them would make the
@@ -233,6 +235,87 @@ describe("node-attr-sets · the declared sets equal the real schema", () => {
     // would demand the sets be emptied rather than proving anything.
     expect(schemaTypesDeclaring("parTitle")).toContain("exampleBlock");
     expect(schemaTypesDeclaring("parTitle").length).toBeGreaterThan(4);
+  });
+});
+
+describe("node-attr-sets · MAIN_STARTERKIT_NODE_ATTRS is checked against the schema", () => {
+  // TASK 402. The seven StarterKit block nodes the main editor turns OFF and
+  // re-registers with extras. This table is what stops the excerpt card body
+  // from mounting the PLAIN ones and dropping nineteen node x attr pairs on the
+  // first keystroke in the card.
+  //
+  // The direction checked HERE is "no stale entry": every pair the table claims
+  // is one the real schema really declares. The OTHER direction — "no attr
+  // added to a main node without joining the table" — is the widened reverse
+  // contract in `excerpt-schema.test.ts`, which is where it belongs, because
+  // there it is enforced against the surface that would actually lose it.
+
+  it("every node type in the table is one the real schema declares", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    const unknown = Object.keys(MAIN_STARTERKIT_NODE_ATTRS)
+      .filter((n) => !(n in schema.nodes))
+      .sort();
+    expect(unknown, "a node type the schema has never heard of").toEqual([]);
+  });
+
+  it("every node x attr pair in the table is really declared on that type", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    const stale: string[] = [];
+    for (const [type, attrs] of Object.entries(MAIN_STARTERKIT_NODE_ATTRS)) {
+      const declared = schema.nodes[type]?.spec.attrs ?? {};
+      for (const attr of Object.keys(attrs)) {
+        if (!(attr in declared)) stale.push(`${type}.${attr}`);
+      }
+    }
+    expect(
+      stale,
+      "The table claims an attr the main editor no longer declares. A stale " +
+        "row is not inert: the excerpt surface registers it too, so the two " +
+        "schemas stay equal while the attr means nothing to either.",
+    ).toEqual([]);
+  });
+
+  it("the table really carries the nine names, across nineteen pairs", () => {
+    // A canary for the two legs above: both would pass vacuously on an empty
+    // table, which is precisely the shape the pre-402 excerpt surface had.
+    const pairs = Object.entries(MAIN_STARTERKIT_NODE_ATTRS).flatMap(
+      ([type, attrs]) => Object.keys(attrs).map((a) => `${type}.${a}`),
+    );
+    expect(pairs.length).toBe(19);
+    const names = new Set(pairs.map((p) => p.split(".")[1]));
+    expect([...names].sort()).toEqual([
+      "itemLabel",
+      "label",
+      "listOptions",
+      "listPreamble",
+      "numbered",
+      "parTitle",
+      "sectionNumber",
+      "shortTitle",
+      "uuid",
+    ]);
+  });
+
+  it("dataOnlyAttrs keeps the DATA facts and drops every DOM fact", () => {
+    // The excerpt half of the derivation. `default` and `keepOnSplit` decide
+    // what the JSON round trip carries and what a split mints; `rendered` /
+    // `parseHTML` / `renderHTML` decide what reaches the DOM — and `data-uuid`
+    // is a resolution key (`resolveDomForUuid`, the grab-handle hover scan, the
+    // marginalia registry) that a card body must not mint a second copy of.
+    const out = dataOnlyAttrs(MAIN_STARTERKIT_NODE_ATTRS.listItem);
+    expect(Object.keys(out).sort()).toEqual(["itemLabel", "uuid"]);
+    // keepOnSplit is CARRIED, not defaulted away — an item split in a card body
+    // must no more inherit its neighbour's `\item[(b)]` than one in the doc.
+    expect(out.itemLabel.keepOnSplit).toBe(false);
+    expect(out.uuid.keepOnSplit).toBe(true);
+    for (const spec of Object.values(out)) {
+      expect(spec.rendered).toBe(false);
+      expect(spec.parseHTML).toBeUndefined();
+      expect(spec.renderHTML).toBeUndefined();
+    }
+    // …and the MAIN spec it derived from still renders, or the main editor's
+    // own `data-uuid` exposure would have gone with it.
+    expect(MAIN_STARTERKIT_NODE_ATTRS.listItem.uuid.renderHTML).toBeTypeOf("function");
   });
 });
 
