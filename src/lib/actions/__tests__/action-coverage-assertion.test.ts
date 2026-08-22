@@ -756,3 +756,115 @@ describe("slash reconciliation — map-key leg (task 261)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// (10) task 399 — the CARD slice's slash partition was the LAST hand list of
+//      the three the assertion partitions on. Task 385 derived the block and
+//      format slices with the reason "a hand list can only be missing a name";
+//      the card set (`CARD_IDS_WITH_PM_SURFACES = new Set(["citation",
+//      "footnote"])`) kept its literal, so it carried 385's symptom verbatim in
+//      the one slice it did not convert: give a card kind a slash command and
+//      the loop reports the CORRECT `surfaces.slash` flag as "menu-only by
+//      design", instructing the author to delete it — after which the forward
+//      reconciliation leg fires instead. CI red either way, with a message
+//      pointing at the wrong file.
+//
+//      The slash half is now `slashOwnersAmong(COVERED_CARD_IDS)`, resolved per
+//      assertion run (a module-scope snapshot is derived-ONCE, which is a
+//      different claim). The TYPED half stays declared and is partitioned
+//      SEPARATELY — the typed surface has no live vocabulary to reconcile
+//      against (task 228), and splitting the two lets the assertion express a
+//      card with a slash command and no input rule.
+// ---------------------------------------------------------------------------
+
+describe("card slash partition is DERIVED from the live vocabulary (task 399)", () => {
+  /** Give a menu-only card a live slash command, the way a real chip would:
+   *  a `VIRGIL_COMMANDS` entry + a `SLASH_NAME_TO_ACTION_ID` mapping + the row
+   *  flag. Restores everything it touched. */
+  function withSlashCommandForNote(body: () => void) {
+    const names = VIRGIL_COMMAND_NAMES as string[];
+    const map = SLASH_NAME_TO_ACTION_ID as Record<string, ActionId>;
+    const note = VIRGIL_ACTION_REGISTRY["note"]!;
+    const originalSlash = note.surfaces.slash;
+    const originalName = note.slashName;
+    names.push("note");
+    map["note"] = "note";
+    (note as { surfaces: { slash?: boolean } }).surfaces.slash = true;
+    (note as { slashName?: string }).slashName = "note";
+    try {
+      body();
+    } finally {
+      names.splice(names.indexOf("note"), 1);
+      delete map["note"];
+      (note as { surfaces: { slash?: boolean } }).surfaces.slash = originalSlash;
+      (note as { slashName?: string }).slashName = originalName;
+    }
+  }
+
+  it("a card that GAINS a slash command + declares it leaves the assertion GREEN", () => {
+    expect(assertActionCoverage()).toEqual([]); // green baseline
+    withSlashCommandForNote(() => {
+      // Pre-399 this returned the false "menu-only by design" problem (and, had
+      // the author obeyed it and dropped the flag, the forward leg's "does not
+      // claim surfaces.slash" instead). Derived, both directions are exact.
+      expect(assertActionCoverage()).toEqual([]);
+    });
+    // Restored → still green (no leakage into the SSOT baseline).
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the SLASH and TYPED halves are independent — slash without an input rule is legal", () => {
+    // `note` has no `inputRulePattern` and does not claim `surfaces.typed`. The
+    // single pre-399 set could not express this shape: membership flipped BOTH
+    // checks at once, so a slash-owning card was also required to carry a typed
+    // surface it does not have.
+    withSlashCommandForNote(() => {
+      const note = VIRGIL_ACTION_REGISTRY["note"]!;
+      expect(note.surfaces.typed).toBeFalsy();
+      expect(note.inputRulePattern).toBeUndefined();
+      expect(assertActionCoverage()).toEqual([]);
+    });
+  });
+
+  it("a card with NO mapped slash command that claims the surface still trips (the complement)", () => {
+    // The derivation must stay exact in BOTH directions — deriving the owners
+    // must not turn the premature-slash arm into a no-op.
+    const note = VIRGIL_ACTION_REGISTRY["note"]!;
+    const original = note.surfaces.slash;
+    try {
+      (note as { surfaces: { slash?: boolean } }).surfaces.slash = true;
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) => p.includes('card id "note"') && p.includes("menu-only by design"),
+        ),
+        `expected a premature-slash problem for note; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (note as { surfaces: { slash?: boolean } }).surfaces.slash = original;
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the TYPED half is still checked independently — dropping surfaces.typed on citation trips", () => {
+    // Splitting the set must not drop the typed obligation on the two cards that
+    // DO own an input rule (`CARD_IDS_WITH_TYPED_RULE`, declared).
+    const citation = VIRGIL_ACTION_REGISTRY["citation"]!;
+    const original = citation.surfaces.typed;
+    try {
+      (citation as { surfaces: { typed?: boolean } }).surfaces.typed = false;
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) =>
+            p.includes('card id "citation"') &&
+            p.includes("must set surfaces.typed"),
+        ),
+        `expected a typed-half problem for citation; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (citation as { surfaces: { typed?: boolean } }).surfaces.typed = original;
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+});

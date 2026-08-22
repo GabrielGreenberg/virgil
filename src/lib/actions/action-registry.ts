@@ -3465,12 +3465,24 @@ const COVERED_BLOCK_IDS: readonly NonHeadingBlockActionId[] = keysOf(
  * `SLASH_NAME_TO_ACTION_ID`, the one place the slash vocabulary is reconciled
  * with the action vocabulary, rather than hand-listed beside it (task 385).
  *
- * The two sets below were hand lists, and a hand list can only be missing a
- * name: adding `\forest` to `VIRGIL_COMMANDS` + the name map left the block
- * list stale, so the assertion reported the new row as "prematurely" claiming a
- * surface it demonstrably owns. Deriving is exact in both directions — an id
- * with no mapped command still trips the premature-slash arm, and an id WITH
- * one is required to declare `surfaces.slash` + a `slashName`.
+ * The three slash partitions in `assertActionCoverage` were hand lists, and a
+ * hand list can only be missing a name: adding `\forest` to `VIRGIL_COMMANDS` +
+ * the name map left the block list stale, so the assertion reported the new row
+ * as "prematurely" claiming a surface it demonstrably owns. Deriving is exact in
+ * both directions — an id with no mapped command still trips the premature-slash
+ * arm, and an id WITH one is required to declare `surfaces.slash` + a
+ * `slashName`. Task 385 converted the block + format slices; task 399 finished
+ * the job with the CARD slice, which had kept the last hand list and so carried
+ * 385's symptom verbatim: give a card kind a `\note` and the loop reported the
+ * correct `surfaces.slash` flag as "menu-only by design", instructing the author
+ * to delete it — after which the forward reconciliation leg fired instead.
+ *
+ * Called PER ASSERTION RUN rather than frozen into a module-scope `const`: the
+ * whole claim is that the set tracks the LIVE slash vocabulary, and a snapshot
+ * taken at import time cannot — it is derived-once, which is a different thing.
+ * Cost is nil (the assertion is dev-only and runs once per call), and it is what
+ * lets a test add a mapping through the cast idiom the other reconciliation legs
+ * already use and see the partition move with it.
  */
 function slashOwnersAmong<K extends ActionId>(
   slice: readonly K[],
@@ -3480,41 +3492,14 @@ function slashOwnersAmong<K extends ActionId>(
 }
 
 /**
- * The block ids that own the SLASH surface (tex `\tex`, example `\ex`, forest
- * `\forest`) — the
- * subset of `COVERED_BLOCK_IDS` whose rows must claim `surfaces.slash` + a
- * `slashName` reconciled against `VIRGIL_COMMAND_NAMES`. The CHIP 6a block-atom
- * rows (`inline-math` / `display-math` / `figure` / `graphics`) are GRID-ONLY:
- * they must claim `surfaces.lightning` and must NOT claim slash/typed/grab. The
- * assertion partitions on this set so a lightning-only row isn't wrongly flagged
- * for missing a slashName.
- */
-const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = slashOwnersAmong(
-  COVERED_BLOCK_IDS,
-);
-
-/**
  * The 8 format ids — the slice CHIP 6b populates, completing the GRID fold. Each
  * is `category: "format"`, `backbone: "tiptap-chain"`, and on the lightning grid.
  * The five MARK toggles (bold/italic/strike/code/text-color) are lightning-ONLY
  * (a mark is not a slash command or input rule; StarterKit owns the keybindings).
- * The three structural WRAPPER toggles (in `FORMAT_IDS_WITH_SLASH`) ALSO own the
+ * The three structural WRAPPER toggles (the slash owners among this slice) ALSO own the
  * slash surface as of task 062.
  */
 const COVERED_FORMAT_IDS: readonly FormatActionId[] = keysOf(FORMAT_ACTION_ROWS);
-
-/**
- * The format ids that ALSO own the SLASH surface (task 062) — the three
- * structural WRAPPER rows the five `\list`/`\itemize`/`\enumerate`/`\quote`/
- * `\quotation` commands fan into (many-to-one). Each row must claim
- * `surfaces.slash` + a `slashName` (primary), and carries its second name in
- * `slashAliases`; the reconciliation below pins every live name to one of these
- * rows. The other five format ids (the mark toggles) are lightning-only and must
- * NOT claim slash. Mirrors `BLOCK_IDS_WITH_SLASH` so the assertion partitions the
- * slice instead of blanket-forbidding slash on every format row.
- */
-const FORMAT_IDS_WITH_SLASH: ReadonlySet<FormatActionId> =
-  slashOwnersAmong(COVERED_FORMAT_IDS);
 
 /**
  * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,
@@ -3539,13 +3524,23 @@ const COVERED_ATOM_IDS: readonly AtomActionId[] = keysOf(ATOM_ACTION_ROWS);
 const COVERED_TITLE_IDS: readonly TitleActionId[] = keysOf(TITLE_ACTION_ROWS);
 
 /**
- * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
- * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
- * grab/lightning-only (they have no slash/typed surface to migrate). The
- * assertion uses this set to flip the slash/typed checks from "must be absent"
- * (premature) to "must be present + reconciled" for exactly these ids.
+ * The card ids that own the TYPED surface — a LaTeX-shaped ProseMirror input
+ * rule (`citation`, CHIP 4a-ii; `footnote`, CHIP 4b). Each must claim
+ * `surfaces.typed` and carry an `inputRulePattern`; the other 9 card actions
+ * have no typed vocabulary and must claim none.
+ *
+ * DECLARED, not derived — and that asymmetry with its slash twin
+ * (`slashOwnersAmong(COVERED_CARD_IDS)`, below) is the point rather than an
+ * omission. The slash surface HAS a live vocabulary to reconcile against
+ * (`VIRGIL_COMMANDS` → `SLASH_NAME_TO_ACTION_ID`), so its partition is exact in
+ * both directions. The typed surface has none: input rules are registered
+ * inside their own extensions with no table this registry can read, which is
+ * precisely task 228's un-reconciled `typed` surface. Until that table exists,
+ * an explicit member list is the honest statement — a hand list whose hazard
+ * ("it can only be missing a name") is real and accepted, not one hiding a
+ * derivation nobody wrote.
  */
-const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
+const CARD_IDS_WITH_TYPED_RULE: ReadonlySet<CardActionId> =
   new Set<CardActionId>(["citation", "footnote"]);
 
 /**
@@ -3574,10 +3569,11 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
  *   1. every card id in `COVERED_CARD_IDS` has a registry row whose key === id;
  *   2. every card row is `category: "card"` and sets `surfaces.grab` AND
  *      `surfaces.lightning` with a non-empty single-letter `letter`;
- *   3. a card NOT in `CARD_IDS_WITH_PM_SURFACES` must NOT claim the slash/typed
- *      surfaces (still menu-owned); a card IN that set (citation) MUST set
- *      `surfaces.slash` + `surfaces.typed` AND carry a `slashName` +
- *      `inputRulePattern` (the PM-land join keys).
+ *   3. the two PM-land surfaces are partitioned INDEPENDENTLY (task 399). SLASH:
+ *      a card the live vocabulary maps a command onto (`slashOwnersAmong`) MUST
+ *      set `surfaces.slash` + a `slashName`; any other card must claim neither.
+ *      TYPED: a card in the declared `CARD_IDS_WITH_TYPED_RULE` MUST set
+ *      `surfaces.typed` + an `inputRulePattern`; any other must claim neither.
  *
  * And, across the whole vocabulary:
  *   4. nothing has a row outside the covered set (a stray/typo'd row);
@@ -3615,6 +3611,34 @@ export function assertActionCoverage(): string[] {
     ...COVERED_TITLE_IDS,
   ]);
 
+  // ── The three SLASH partitions, all derived from the live vocabulary. Each
+  // says which ids of its slice must claim `surfaces.slash` + a `slashName`
+  // (reconciled below against `VIRGIL_COMMAND_NAMES`) and, by complement, which
+  // must claim none — so a surface-less row is never flagged for a missing
+  // slashName, and a row that demonstrably owns a command is never told to drop
+  // a correct flag. Resolved here rather than at module scope: see
+  // `slashOwnersAmong`.
+
+  // CARD (task 399): `citation` (`\cite`) + `footnote` (`\footnote`) today.
+  // The other 9 card actions have no slash command and must claim no slash
+  // surface. The TYPED half is partitioned separately, on the declared
+  // `CARD_IDS_WITH_TYPED_RULE` — the two halves are independent, so this can
+  // express a card with a slash command and no input rule (and vice versa),
+  // which the single pre-399 set could not.
+  const cardIdsWithSlash = slashOwnersAmong(COVERED_CARD_IDS);
+
+  // BLOCK: tex `\tex`, example `\ex`, forest `\forest`. The CHIP 6a
+  // block-atom rows (`inline-math` / `display-math` / `figure` / `graphics`)
+  // are GRID-ONLY: `surfaces.lightning`, never slash/typed/grab.
+  const blockIdsWithSlash = slashOwnersAmong(COVERED_BLOCK_IDS);
+
+  // FORMAT (task 062): the three structural WRAPPER rows the five
+  // `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` commands fan into
+  // (many-to-one) — each names its primary in `slashName` and its second in
+  // `slashAliases`. The five MARK toggles are lightning-only (a mark is not a
+  // slash command).
+  const formatIdsWithSlash = slashOwnersAmong(COVERED_FORMAT_IDS);
+
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
   for (const id of COVERED_CARD_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
@@ -3638,13 +3662,17 @@ export function assertActionCoverage(): string[] {
     if (!row.letter || row.letter.length < 1) {
       problems.push(`[actions] card id "${id}" is missing its menu letter`);
     }
-    if (CARD_IDS_WITH_PM_SURFACES.has(id)) {
-      // CHIP 4a-ii: this card owns the slash + typed surfaces. It MUST claim
-      // them and carry the PM-land join keys, or the bridge's `runAction` and
-      // the `citation.ts` input rule can't reconcile back to this row.
-      if (!row.surfaces.slash || !row.surfaces.typed) {
+    // The two PM-land surfaces are partitioned INDEPENDENTLY (task 399): slash
+    // against the live command vocabulary, typed against the declared set. A
+    // card owning one and not the other is a legitimate shape the single
+    // pre-399 set could not express.
+    if (cardIdsWithSlash.has(id)) {
+      // This card owns a live `\<name>` (CHIP 4a-ii `\cite`, 4b `\footnote`).
+      // It MUST claim the surface and carry the join key, or the bridge's
+      // `runAction` and the forward reconciliation below can't reach this row.
+      if (!row.surfaces.slash) {
         problems.push(
-          `[actions] card id "${id}" must set surfaces.slash AND surfaces.typed (it owns the PM-land surfaces)`,
+          `[actions] card id "${id}" must set surfaces.slash (it owns the slash surface)`,
         );
       }
       if (!row.slashName) {
@@ -3652,26 +3680,34 @@ export function assertActionCoverage(): string[] {
           `[actions] card id "${id}" sets surfaces.slash but is missing slashName`,
         );
       }
+    } else if (row.surfaces.slash) {
+      // No live slash command maps to this card, so the flag claims a surface
+      // no plugin reads. Note the direction: this arm fires because the
+      // VOCABULARY says so, never because a list here forgot the row.
+      problems.push(
+        `[actions] card id "${id}" sets surfaces.slash but has no slash command (this card is menu-only by design)`,
+      );
+    }
+
+    if (CARD_IDS_WITH_TYPED_RULE.has(id)) {
+      // This card owns a LaTeX-shaped input rule (`citation.ts` / `footnote.ts`)
+      // — it must claim the surface and carry the pattern the rule joins on.
+      if (!row.surfaces.typed) {
+        problems.push(
+          `[actions] card id "${id}" must set surfaces.typed (it owns the typed input rule)`,
+        );
+      }
       if (!row.inputRulePattern) {
         problems.push(
           `[actions] card id "${id}" sets surfaces.typed but is missing inputRulePattern`,
         );
       }
-    } else {
-      // The remaining card actions are menu-only BY DESIGN — they have no
-      // slash/typed vocabulary (highlight/note/todo/… never became `\`-commands
-      // or input rules). A flag here would claim a PM-land surface no plugin
-      // actually reads, so it's an error regardless of chip.
-      if (row.surfaces.slash) {
-        problems.push(
-          `[actions] card id "${id}" sets surfaces.slash but has no slash command (this card is menu-only by design)`,
-        );
-      }
-      if (row.surfaces.typed) {
-        problems.push(
-          `[actions] card id "${id}" sets surfaces.typed but has no typed-LaTeX input rule (this card is menu-only by design)`,
-        );
-      }
+    } else if (row.surfaces.typed) {
+      // The remaining card actions are menu-only BY DESIGN — highlight / note /
+      // todo / … never became input rules.
+      problems.push(
+        `[actions] card id "${id}" sets surfaces.typed but has no typed-LaTeX input rule (this card is menu-only by design)`,
+      );
     }
   }
 
@@ -3715,7 +3751,7 @@ export function assertActionCoverage(): string[] {
   // `category: "block"`, claim `surfaces.lightning` (every block row is on the
   // grid), and never claim grab/typed (a block insert is not a grab-handle
   // action and has no `\block{}`-style input rule). The SLASH surface is
-  // PARTITIONED: tex/example (in `BLOCK_IDS_WITH_SLASH`) MUST claim
+  // PARTITIONED: tex/example/forest (in `blockIdsWithSlash`) MUST claim
   // `surfaces.slash` + a `slashName` (reconciled below against
   // `VIRGIL_COMMAND_NAMES`); the CHIP 6a block-atom rows are GRID-ONLY and must
   // NOT claim slash.
@@ -3743,7 +3779,7 @@ export function assertActionCoverage(): string[] {
         `[actions] block id "${id}" claims a grab/typed/keyboard surface it does not expose`,
       );
     }
-    if (BLOCK_IDS_WITH_SLASH.has(id)) {
+    if (blockIdsWithSlash.has(id)) {
       // tex / example own the slash surface (`\tex` / `\ex`).
       if (!row.surfaces.slash) {
         problems.push(
@@ -3773,7 +3809,7 @@ export function assertActionCoverage(): string[] {
   // a pure `editor.chain()` call, no Virgil SSOT), claim `surfaces.lightning`
   // (every format cell is a grid cell), and never claim typed/grab/keyboard
   // (a mark toggle is not an input rule; its keybindings are owned by StarterKit,
-  // not this registry). PARTITIONED on `FORMAT_IDS_WITH_SLASH` (task 062): the
+  // not this registry). PARTITIONED on `formatIdsWithSlash` (task 062): the
   // three structural WRAPPER rows ALSO own the slash surface (`\list`/`\enumerate`/
   // `\quote` + aliases, reconciled below) so they MUST claim slash + a slashName;
   // the five MARK rows must NOT claim slash (a mark is not a slash command).
@@ -3806,7 +3842,7 @@ export function assertActionCoverage(): string[] {
         `[actions] format id "${id}" claims a grab/typed/keyboard surface it does not expose`,
       );
     }
-    if (FORMAT_IDS_WITH_SLASH.has(id)) {
+    if (formatIdsWithSlash.has(id)) {
       // the structural WRAPPERS (bullet-list / ordered-list / blockquote) own the
       // slash surface — must claim it + name it (primary; aliases reconciled below).
       if (!row.surfaces.slash) {
