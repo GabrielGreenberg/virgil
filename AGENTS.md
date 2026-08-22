@@ -5904,6 +5904,159 @@ path added in another module would be invisible to it, which is honest rather
 than complete: every write door lives in that hook today, and the door census's
 `registerSaveDoor` leg is what would notice a second one trying to publish.
 
+### The redundancy half: a write of bytes already on disk has zero information and all of the risk
+
+Same path, one question earlier (task 415). Every gate above answers *may this
+write land?* This one asks the cheaper question underneath it: **should this
+write happen at all?** Gabriel, from a real Dropbox folder: *"the conflicted
+copies keep coming at a constant and fast rate."*
+
+Measured over `~/Dropbox/Apps/Overleaf` on 2026-08-21, the report is not
+evidence that task 363 failed — the two post-363 days are 10 and 6 forks against
+the pre-fix day's 92, roughly the 10x cut 363 predicted. What it is, is the
+residue, and its distribution is the finding: of the sixteen post-fix forks
+**`virgil.json` is the LOUDEST base at 8** — a file holding paragraph titles,
+collapsed state and a per-block 80-character content fingerprint, whose bytes
+barely move while you write.
+
+Two sites, one disease. `writeDocBundle`'s byte-equality skip was
+**ALL-OR-NOTHING** — it returned only when BOTH outputs matched what this
+session last put on disk, so the moment the `.tex` moved by one character the
+byte-identical `virgil.json` was rewritten beside it, once per autosave, for the
+whole session. And `persistSidecarInLock` had **no equality gate at all**, while
+the guard above it (`usePersistentState.update`) bails only on REFERENTIAL
+equality — so any hook that rebuilds a structurally-equal array re-writes the
+identical bytes. Chrome's FSA has no in-place write mode: `createWritable()`
+mints a `<name>.crswap` sibling and renames it over the target, so each of those
+is two filesystem events a sync daemon watches.
+
+> **No FSA write of a file whose bytes are already on disk.** The test lives at
+> the write FUNNEL — [`writeTrackedText`](src/lib/storage-fsa.ts) /
+> `putTrackedText` — so every writer inherits it: the two bundle files, the
+> `.tex`, `references.bib`, the figure index, and every `writeSidecar` /
+> `mutateSidecar` caller. 363 shrank the race window by CADENCE, which is a
+> heuristic; byte-equality is a proof.
+
+Seven rules it earned:
+
+- **The skip STATS, because the ledger is a belief about disk and not disk.**
+  The pre-415 gate compared its serialized `.tex` against the ledger fingerprint
+  and returned — and nothing re-baselines that fingerprint on a genuine external
+  change: the `DiskWatcher` deliberately KEEPS the stale one and flags (that is
+  how the badge stays lit across polls), and the `SidecarWatcher` **is not
+  mounted anywhere in production** today. So a hash-only gate can decline to
+  write over an external edit, silently, which is the one failure this whole
+  subsystem exists to prevent. A skip is taken only when the file is PROVABLY
+  the one we stamped: the content hash matches AND the live `{mtimeMs, size}`
+  still match the fingerprint — the DiskWatcher's own cheap-path predicate, read
+  off the SAME handle the write would have used, so the gate and the watcher can
+  never disagree about whether a file moved. **The task's own premise ("the
+  DiskWatcher already invalidates the ledger fingerprint on a genuine
+  divergence") is FALSE and is corrected here rather than left standing** — it
+  is exactly why the stat is needed.
+- **Everything unprovable FAILS OPEN and writes.** No fingerprint (a page reload
+  starts with an empty ledger), a stat that throws, any drift. A needless write
+  is the pre-415 behaviour; a wrongly-skipped write leaves the user's state
+  unpersisted, which is the direction that costs.
+- **The stat makes a skip CHEAPER, not dearer.** One metadata read replaces an
+  entire `createWritable` + rename + the post-write stat `stampLedger` would
+  have done anyway.
+- **The funnel owns the STAMP as well as the write**, because "what is on disk"
+  and "who may skip writing it" are one fact. A writer that could stamp without
+  writing — or write without stamping — is how the gate would come to believe
+  something the disk does not say.
+- **READS stamp too, which is what makes the gate effective from a session's
+  FIRST save.** The ledger's contract has always been *"what Virgil last put on
+  **or read from** disk"* (both watchers' PRIME passes stamp exactly this way)
+  and only the `.tex` load path was doing it, so every sidecar's first write of
+  a session landed however unchanged its bytes. `readTrackedText` takes the
+  fingerprint off the `getFile()` the read already does — free, and guaranteed
+  to describe the same revision. Inside `mutateSidecar` it is stronger still:
+  the read runs in the same critical section as the write, so a mutation
+  producing structurally-equal JSON is proven a no-op microseconds later. **That
+  closes `usePersistentState`'s referential-equality hole from underneath rather
+  than auditing ~20 hooks for structural equality.**
+- **A stamp may never change what a READ returns.** The dev twin's first cut
+  wrapped the header reads and the fetch in ONE `try`, so a response with no
+  `content-length` returned `null` — which for `mutateSidecar` is an EMPTY base,
+  i.e. a merge that silently drops everything on disk. Found by the existing
+  `mutate-sidecar-primitive` suite, and worth stating as a rule: best-effort
+  bookkeeping gets its own `try`, always.
+- **The forensic snapshot rides `beforeWrite`.** A `.history/` slot is itself
+  sync traffic, and there is nothing forensic about archiving bytes no write is
+  about to replace. `onceBeforeWrite` latches it so a bundle takes at most ONE
+  snapshot however many of its files move — and which file moves first is now a
+  per-file verdict rather than something the caller knows in advance.
+- **`userResolvedConflict` FORCES past the gate** (task 364's keep-mine door),
+  and `force` is not an optimisation escape hatch: the gate's whole
+  justification is that the bytes are already there, so a caller that disagrees
+  says why at its own site.
+
+The `lastSidecarHashByDoc` module cache is **retired**, not merely aligned: the
+ledger holds the same fact keyed on the relPath the watchers stat, confirmed
+against a live stat, where a module Map keyed on the doc was invalidated by
+nothing. **This is not a decoupling** — 411's decision 3 stands: the bundle's two
+files are still computed together and committed inside ONE serialized critical
+section making ONE coherent decision. Declining to rewrite a file with the bytes
+it already has is not letting it drift out of the bundle.
+
+**Both backends move together** (the twin rule): the fork risk is a daemon
+watching the paper folder, which the dev backend's local `virgil-data/` has
+none of, but a write count that differs between backends is a difference someone
+eventually debugs in the wrong one.
+
+CI: [per-file-write-gate.test.ts](src/lib/__tests__/per-file-write-gate.test.ts).
+**No pre-415 suite could see any of this**: the defect is a RATE and every one of
+them (`write-tex-forensic-snapshot`, `mutate-sidecar-primitive`,
+`sidecar-bundle`, `conflict-net`, `storage-fsa-load-writeback`) drives ONE write
+and asserts its PAYLOAD, which the pre-fix code satisfies perfectly. The shape
+here is `editor-state-write-cadence`'s: drive a simulated session and COUNT. Its
+fake disk models real `mtime`/`size` — every other FSA fake in the repo reports a
+constant `lastModified: 1`, so the confirm-stat would answer for reasons
+unrelated to what the legs assert. The leg with teeth is the CENSUS, sharing ONE
+`writeSites()` extraction with `tex-write-accountability` (which asks a DIFFERENT
+question of the same population, so the two cannot come to disagree about who the
+writers are): every RAW primitive call is inside the funnel or carries a
+`write-gate-exempt: <reason>`, and `diskAlreadyHas` has exactly one caller per
+backend — a second is a partial gate. Measured by neutering each half in turn:
+the pre-415 ungated sidecar write takes 4 legs, the all-or-nothing bundle gate 2,
+the stat-confirm 1 (the external-write masking leg), read-stamping 1, `force` 1,
+and a dropped exemption marker 1 (the census).
+
+**That census was nearly DRAINED by this fix, which is the other half worth
+recording.** `tex-write-accountability`'s needle was exactly `writeTextToHandle(`
+/ `putText(`, and every real writer moved behind the new door: measured on this
+tree with the old needle it fell from eleven sites to TWO — the funnel's own —
+and its `.tex`-writer leg to ZERO, while four of its five legs kept passing. So
+the needle is renegotiated in place to the FAMILY (raw primitives AND gated
+doors), which keeps the population identical to the pre-415 one. **A wrapper
+relocates an obligation to its callers; it never absorbs one** — task 331's rule,
+arriving at a census instead of a splice site.
+
+**A correction the task itself needs, recorded rather than left to be
+rediscovered:** `virgil.json` does NOT hold only titles and collapsed state — it
+also holds a per-block first-80-character content FINGERPRINT
+(`extractSidecarData`). So an edit inside a block's opening 80 characters really
+does move its bytes, and the gate correctly writes there. What is true, and what
+the cost leg models, is that essentially all typing in a real paragraph lands
+past that window, so the sidecar's bytes hold still through a writing session.
+
+**Residual, and the honest ceiling.** With the doc open on two machines at once
+some conflicts are inherent: no write-rate reduction reaches zero, it only
+shrinks the window proportionally. And the dev backend's stat is an HTTP HEAD, so
+`Last-Modified` has one-second resolution — an external write inside the same
+second at the same byte length would not move the confirm there, where FSA's
+`File.lastModified` is millisecond-resolution. Nothing watches that folder, so
+the exposure is a fixture one.
+
+**Owed, not claimed:** a real-Dropbox eyeball. This class is both FSA-masked and
+SYNC-masked — the dev preview's `virgil-data/` is local and nothing watches it —
+so the durable proof here is the write-COUNT contract. The check is cheap and
+exact: after a few days of ordinary writing, count new `virgil.json` forks, and
+the expectation is ZERO rather than fewer, because its bytes genuinely do not
+move during a session.
+`find ~/Dropbox/Apps/Overleaf -name "*conflicted copy*" | grep -oE 'conflicted copy [0-9-]{10}' | sort | uniq -c | tail`
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),
@@ -5919,7 +6072,8 @@ Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),
 [tex-write-accountability](src/lib/__tests__/tex-write-accountability.test.ts),
 [write-tex-forensic-snapshot](src/lib/__tests__/write-tex-forensic-snapshot.test.ts),
 [preservation-measure-parity](src/lib/__tests__/preservation-measure-parity.test.ts),
-[preservation-measure-python](src/lib/__tests__/preservation-measure-python.test.ts)
+[preservation-measure-python](src/lib/__tests__/preservation-measure-python.test.ts),
+[per-file-write-gate](src/lib/__tests__/per-file-write-gate.test.ts)
 + `editor/scripts/tests/test_preservation_measure.py`.
 
 **The legs with teeth are the censuses, every time** — the gates were never the

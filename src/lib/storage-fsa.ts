@@ -200,6 +200,170 @@ async function writeTextToHandle(
   await writable.close();
 }
 
+// ---------------------------------------------------------------------------
+// The gated write funnel (task 415)
+//
+// > **No FSA write of a file whose bytes are already on disk.**
+//
+// Chrome's FSA has no in-place write mode: `createWritable()` mints a
+// `<name>.crswap` sibling and renames it over the target, so EVERY write is two
+// filesystem events a sync daemon watches — and every one of them is a fresh
+// chance to mint a conflicted copy. A write of bytes that are already there has
+// zero information content and 100% of that risk.
+//
+// Task 363 shrank the race window by CADENCE (a per-tier debounce). This is the
+// cheaper question one layer down, and the one with a proof behind it rather
+// than a heuristic: SHOULD THIS WRITE HAPPEN AT ALL?
+//
+// ── Why the gate STATS, instead of trusting the ledger hash alone ───────────
+//
+// The pre-415 `writeDocBundle` gate compared its serialized `.tex` against the
+// ledger fingerprint and returned. That rests on a claim the ledger cannot
+// make: the ledger records what Virgil last PUT ON (or READ FROM) disk, which
+// is a belief about disk, not disk. Nothing re-baselines it on a genuine
+// external change — the `DiskWatcher` deliberately keeps the STALE fingerprint
+// and flags (that is how the badge stays lit across polls), and the
+// `SidecarWatcher` is not mounted at all today. So a hash-only gate can decline
+// to write over an external edit, silently, which is the one failure this whole
+// subsystem exists to prevent.
+//
+// So a skip is only taken when the file is PROVABLY the one we stamped: the
+// content hash matches AND the live `{mtimeMs, size}` still match the
+// fingerprint. That is the DiskWatcher's own cheap-path predicate, read off the
+// SAME handle we would have written through — so the gate and the watcher can
+// never disagree about whether a file moved. Anything we cannot prove (no
+// fingerprint, a stat we cannot take, any drift) FAILS OPEN and writes: a
+// needless write is the pre-415 behaviour, where a wrongly-skipped write leaves
+// the user's state unpersisted.
+//
+// The stat costs one metadata read on the SKIP path and replaces an entire
+// `createWritable` + rename + post-write stat. A skip is strictly cheaper than
+// the write it declines.
+// ---------------------------------------------------------------------------
+
+/**
+ * Is `content` PROVABLY already the content of `relPath` on disk?
+ *
+ * Three rungs, all of which must hold: a fingerprint exists (we have stamped
+ * this file), its hash matches these bytes, and the live stat still matches the
+ * fingerprint's `{mtimeMs, size}`. Never throws — an unreadable stat is "cannot
+ * prove", which is `false`.
+ */
+async function diskAlreadyHas(
+  docId: string,
+  relPath: string,
+  fileHandle: FileSystemFileHandle,
+  content: string,
+): Promise<boolean> {
+  const fp = getDiskFingerprint(docId, relPath);
+  if (!fp) return false; // never stamped — no claim to make
+  if (fp.hash !== hashContent(content)) return false;
+  try {
+    const file = await fileHandle.getFile();
+    return file.lastModified === fp.mtimeMs && file.size === fp.size;
+  } catch {
+    return false; // cannot confirm → write
+  }
+}
+
+/**
+ * THE write door for every ledgered text file: gate, write, stamp.
+ *
+ * Returns whether bytes actually landed, so a caller can make the rest of its
+ * tail conditional (the doc-index timestamp touch, a forensic snapshot). The
+ * ledger stamp is INSIDE this door rather than beside each call site, because
+ * "what is on disk" and "who is allowed to skip writing it" are one fact: a
+ * writer that could stamp without writing (or write without stamping) is how
+ * the gate would come to believe something the disk does not say.
+ *
+ * `beforeWrite` runs only when a write is going to happen, immediately before
+ * it — that is where a forensic snapshot belongs, so a declined write cannot
+ * mint a `.history/` slot holding bytes nothing is about to overwrite.
+ *
+ * `force` is for a write that IS the user's decision (task 364's keep-mine
+ * door). It is not an optimization escape hatch: the gate's whole justification
+ * is that the bytes are already there, and a caller that disagrees with that
+ * must say why at its own site.
+ */
+async function writeTrackedText(
+  docId: string,
+  relPath: string,
+  fileHandle: FileSystemFileHandle,
+  content: string,
+  opts?: { force?: boolean; beforeWrite?: () => Promise<void> },
+): Promise<boolean> {
+  if (
+    !opts?.force &&
+    (await diskAlreadyHas(docId, relPath, fileHandle, content))
+  ) {
+    return false;
+  }
+  if (opts?.beforeWrite) await opts.beforeWrite();
+  // tex-write-exempt: this IS the door. Accountability is asked of the CALLERS
+  // — the funnel writes whatever bytes it is handed and cannot know whether a
+  // gate or a snapshot was owed; asking the question here would let every
+  // caller inherit one blanket answer.
+  // write-gate-exempt: this IS the byte-equality gate — `diskAlreadyHas` ran
+  // four lines up. A site cannot be asked to enter the door it is (task 415).
+  await writeTextToHandle(fileHandle, content);
+  await stampLedger(docId, relPath, content);
+  return true;
+}
+
+/**
+ * Wrap a `beforeWrite` obligation so it runs AT MOST ONCE across the several
+ * files a bundle write hands to the funnel.
+ *
+ * A bundle's forensic snapshot archives the whole prior bundle, so it must be
+ * taken before the FIRST file moves and never again — and which file moves
+ * first is now a per-file verdict rather than something the caller knows in
+ * advance. Sharing one latched thunk between the two calls states that as
+ * structure instead of as a flag the second call site has to remember.
+ */
+function onceBeforeWrite(run: () => Promise<void>): () => Promise<void> {
+  let done = false;
+  return async () => {
+    if (done) return;
+    done = true;
+    await run();
+  };
+}
+
+/**
+ * Read a tracked text file THROUGH the ledger: one `getFile()` serves both the
+ * bytes and the fingerprint, so the stamp is free and is guaranteed to describe
+ * the same file revision the caller just read.
+ *
+ * This is what makes the write gate effective from a session's FIRST save. The
+ * ledger's own contract has always been "what Virgil last put on **or read
+ * from** disk" (and the two watchers' PRIME passes stamp exactly this way), but
+ * only the `.tex` load path was read-stamping — so every sidecar's first write
+ * of a session had no fingerprint to compare against and always landed, however
+ * unchanged its bytes. Inside `mutateSidecar` it is stronger still: the read
+ * runs in the same critical section as the write, so a mutation that produces
+ * structurally-equal JSON is proven to be a no-op microseconds later. That
+ * closes `usePersistentState`'s referential-equality hole from underneath,
+ * rather than auditing ~20 hooks for structural equality.
+ */
+async function readTrackedText(
+  docId: string,
+  relPath: string,
+  fileHandle: FileSystemFileHandle,
+): Promise<string> {
+  const file = await fileHandle.getFile();
+  const text = await file.text();
+  try {
+    stampDiskFingerprint(
+      docId,
+      relPath,
+      fingerprintOf({ mtimeMs: file.lastModified, size: file.size }, text),
+    );
+  } catch {
+    // A stamp can never break a read.
+  }
+  return text;
+}
+
 /**
  * Combine the in-window write queue with the cross-window doc lock and
  * the per-doc pipeline check. `enqueueWrite` serializes writes to the
@@ -256,13 +420,14 @@ interface SidecarBundle {
 const sidecarCache = new Map<string, SidecarBundle>();
 
 async function readOneSidecarInto(
+  docId: string,
   virgil: FileSystemDirectoryHandle,
   filename: string,
   files: Map<string, unknown | null>,
 ): Promise<void> {
   try {
     const fileHandle = await virgil.getFileHandle(filename);
-    const text = await readTextFromHandle(fileHandle);
+    const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
     files.set(filename, JSON.parse(text));
   } catch (e) {
     if (isNotFound(e)) files.set(filename, null); // confirmed absent
@@ -288,7 +453,9 @@ function ensureSidecarBundle(docId: string): SidecarBundle {
       return;
     }
     await Promise.all(
-      ALL_SIDECAR_FILENAMES.map((f) => readOneSidecarInto(virgil, f, bundle!.files)),
+      ALL_SIDECAR_FILENAMES.map((f) =>
+        readOneSidecarInto(docId, virgil, f, bundle!.files),
+      ),
     );
   })();
   bundle.inflight = run.finally(() => {
@@ -321,7 +488,9 @@ export async function readSidecar<T>(
   try {
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename);
-    const text = await readTextFromHandle(fileHandle);
+    // Read THROUGH the ledger: this is `mutateSidecar`'s in-lock base read, so
+    // the fingerprint it stamps is the one the matching write is gated on.
+    const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
     return JSON.parse(text) as T;
   } catch (e) {
     if (isNotFound(e)) return defaultValue;
@@ -356,7 +525,7 @@ export async function readSidecarIfExists<T>(
   try {
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename);
-    const text = await readTextFromHandle(fileHandle);
+    const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
     return JSON.parse(text) as T;
   } catch (e) {
     if (isNotFound(e)) return null;
@@ -388,17 +557,21 @@ async function persistSidecarInLock<T>(
   const virgil = await getVirgilSubdir(docHandle);
   const fileHandle = await virgil.getFileHandle(filename, { create: true });
   const serialized = JSON.stringify(data, null, 2);
-  await writeTextToHandle(fileHandle, serialized);
+  // Through the gated funnel (task 415): a sidecar whose bytes are already on
+  // disk is not rewritten. `usePersistentState.update` bails only on
+  // REFERENTIAL equality, so any hook that rebuilds a structurally-equal array
+  // or map used to re-write the identical bytes — one `.crswap` + rename per
+  // rebuild, each a fresh chance for the sync daemon to fork the file. The
+  // funnel also owns the disk-ledger stamp, which is the own-write guard that
+  // keeps the `SidecarWatcher` from misreading Virgil's own debounced autosave
+  // as an external change.
+  await writeTrackedText(docId, `virgil/${filename}`, fileHandle, serialized);
   // Keep the bundle coherent: the value we just wrote IS the freshest, so
   // update it in place rather than invalidating (a read-after-write sees it).
+  // Unconditional on the funnel's verdict — a DECLINED write means those exact
+  // bytes are already on disk, so the cache is just as correct either way.
   const bundle = sidecarCache.get(docId);
   if (bundle) bundle.files.set(filename, data);
-  // Stamp the disk ledger with the authoritative post-write fingerprint so
-  // the SidecarWatcher never misreads Virgil's OWN debounced sidecar autosave
-  // as an external change (the own-write guard — same false-positive killer
-  // the .tex/.bib path uses). Keyed on the `virgil/<filename>` relPath the
-  // watcher stats. Best-effort: `stampLedger` never throws.
-  await stampLedger(docId, `virgil/${filename}`, serialized);
 }
 
 export async function writeSidecar<T>(
@@ -504,14 +677,20 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
     // identical ones when the autosave follows it.
     const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
-    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
-    lastSnapshotAtByDoc.set(h.docId, Date.now());
     const fh = await getTexFileHandle(h.docId, { create: true });
-    await writeTextToHandle(fh, latex);
-    await touchDocTimestamp(h.docId);
-    // Stamp the ledger with the authoritative post-write fingerprint so the
-    // watcher never misreads this write as an external change.
-    await stampLedger(h.docId, meta.texFilename, latex);
+    // Through the gated funnel (task 415). The snapshot rides `beforeWrite`
+    // rather than running ahead of it: it is unconditional with respect to the
+    // RATE LIMIT (this fires on a discrete gesture, never a timer) but there is
+    // nothing forensic about archiving bytes no write is about to replace, and
+    // a `.history/` slot is itself sync traffic.
+    const takeSnapshot = onceBeforeWrite(async () => {
+      await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+      lastSnapshotAtByDoc.set(h.docId, Date.now());
+    });
+    const wrote = await writeTrackedText(h.docId, meta.texFilename, fh, latex, {
+      beforeWrite: takeSnapshot,
+    });
+    if (wrote) await touchDocTimestamp(h.docId);
   });
 }
 
@@ -720,39 +899,59 @@ async function writeReStampedTexOnLoad(
       return;
     }
 
-    // Snapshot the prior bundle before overwriting — same forensic safety
-    // net writeDocBundle uses.
-    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+    // Snapshot the prior bundle before overwriting — same forensic safety net
+    // writeDocBundle uses, and on the same terms (task 415): it rides the
+    // funnel's `beforeWrite`, so it is taken at most ONCE and only if one of
+    // the two files is actually going to move.
+    const takeSnapshot = onceBeforeWrite(() =>
+      snapshotPriorBundle(docHandle, virgil, meta.texFilename),
+    );
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,
     });
-    await writeTextToHandle(texFh, latex);
+    // CRITICAL false-positive guard: the load-writeback is the #1 source of
+    // spurious "changed on disk" — it rewrites the .tex seconds after load
+    // (minted-UUID markers). The funnel stamps the ledger with the bytes it
+    // writes so the watcher recognizes this as Virgil's own write; when it
+    // DECLINES, the stamp it is comparing against is already that fact.
+    const wroteTex = await writeTrackedText(
+      h.docId,
+      meta.texFilename,
+      texFh,
+      latex,
+      { beforeWrite: takeSnapshot },
+    );
 
     const sidecarFh = await virgil.getFileHandle("virgil.json", {
       create: true,
     });
-    await writeTextToHandle(sidecarFh, JSON.stringify(newSidecar, null, 2));
+    const wroteSidecar = await writeTrackedText(
+      h.docId,
+      "virgil/virgil.json",
+      sidecarFh,
+      JSON.stringify(newSidecar, null, 2),
+      { beforeWrite: takeSnapshot },
+    );
 
-    await touchDocTimestamp(h.docId);
-    // CRITICAL false-positive guard: the load-writeback is the #1 source of
-    // spurious "changed on disk" — it rewrites the .tex seconds after load
-    // (minted-UUID markers). Stamp the ledger with the bytes we just wrote so
-    // the watcher recognizes this as Virgil's own write, not an external edit.
-    await stampLedger(h.docId, meta.texFilename, latex);
+    if (wroteTex || wroteSidecar) await touchDocTimestamp(h.docId);
   });
 }
 
 /** Per-doc save-path caches (perf Wave 1 / S3). Module-level, in-memory:
  *  - delimiters keyed on the .tex content hash the ledger already tracks,
  *    so a steady-state autosave skips the full-file disk read;
- *  - the last-written sidecar hash, half of the byte-equality skip;
- *  - the last forensic-snapshot time, rate-limiting plain autosaves. */
+ *  - the last forensic-snapshot time, rate-limiting plain autosaves.
+ *
+ *  (The former `lastSidecarHashByDoc` — the other half of the pre-415
+ *  all-or-nothing byte-equality skip — is retired: the disk ledger holds the
+ *  same fact per relPath, is confirmed against a live stat by the write funnel,
+ *  and is re-baselined by the watchers' acknowledge path. A module map is none
+ *  of those things.) */
 const delimiterCacheByDoc = new Map<
   string,
   { texHash: string; delimiters: { preamble: string; postamble: string } }
 >();
-const lastSidecarHashByDoc = new Map<string, string>();
 const lastSnapshotAtByDoc = new Map<string, number>();
 const SNAPSHOT_MIN_INTERVAL_MS = 60_000;
 
@@ -878,22 +1077,25 @@ export async function writeDocBundle(
     }
     const latexHash = hashContent(latex);
     const sidecarJson = JSON.stringify(newSidecar, null, 2);
-    const sidecarHash = hashContent(sidecarJson);
 
-    // (S3) Byte-equality gate: when BOTH outputs are identical to what this
-    // session last put on disk (the ledger tracks the .tex hash; the
-    // sidecar hash is cached at write), the whole tail — forensic snapshot,
-    // two file writes, timestamp touch, ledger re-stat — is a no-op. This
-    // kills re-armed-debounce and drag-mint-flush no-op saves outright. An
-    // EXTERNAL disk edit changes the ledger hash via the DiskWatcher, so
-    // this never masks a real divergence.
-    const ledgerTexHash = getDiskFingerprint(h.docId, meta.texFilename)?.hash;
-    if (
-      ledgerTexHash === latexHash &&
-      lastSidecarHashByDoc.get(h.docId) === sidecarHash
-    ) {
-      return;
-    }
+    // PER-FILE byte-equality (task 415). The pre-415 gate was ALL-OR-NOTHING:
+    // it skipped the whole tail only when BOTH outputs matched, so the moment
+    // the `.tex` moved by one character — every ordinary autosave — the
+    // byte-identical `virgil.json` was rewritten alongside it. `virgil.json`
+    // holds paragraph titles and collapsed state, which change almost never
+    // during a writing session, and it was nonetheless the LOUDEST base in the
+    // measured conflicted-copy census. Handing each file to the funnel writes
+    // the `.tex` and declines the sidecar.
+    //
+    // This is not a decoupling: the two files are still computed together and
+    // committed inside ONE serialized critical section making ONE coherent
+    // decision. Declining to rewrite a file with the bytes it already has is
+    // not the same thing as letting it drift out of the bundle.
+    //
+    // The `lastSidecarHashByDoc` module cache is RETIRED with it — the ledger
+    // holds the same fact authoritatively, keyed on the relPath the watchers
+    // stat, and the funnel confirms it against a live stat. A module map could
+    // do neither.
 
     // Shadow snapshot the prior bundle BEFORE overwriting. This is the
     // forensic safety net: if a regression ever slipped past the
@@ -901,34 +1103,57 @@ export async function writeDocBundle(
     // (S3) Rate-limited for plain autosaves — at most one snapshot per
     // minute of continuous work — but ALWAYS taken for a discrete
     // delimiters commit (a code-pane preamble edit is exactly the risky
-    // kind of save the forensic net exists for).
-    const now = Date.now();
-    const lastSnap = lastSnapshotAtByDoc.get(h.docId) ?? 0;
-    if (opts?.delimiters || now - lastSnap > SNAPSHOT_MIN_INTERVAL_MS) {
-      await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
-      lastSnapshotAtByDoc.set(h.docId, now);
-    }
+    // kind of save the forensic net exists for). It rides the funnel's
+    // `beforeWrite`, so a save where NEITHER file moves takes no snapshot at
+    // all — the pre-415 early return's behaviour, now per-file.
+    const takeSnapshot = onceBeforeWrite(async () => {
+      const now = Date.now();
+      const lastSnap = lastSnapshotAtByDoc.get(h.docId) ?? 0;
+      if (opts?.delimiters || now - lastSnap > SNAPSHOT_MIN_INTERVAL_MS) {
+        await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+        lastSnapshotAtByDoc.set(h.docId, now);
+      }
+    });
+
+    // A conflict resolution IS the user's decision (task 364), so it writes
+    // whatever the gate thinks: the door has already archived both sides, and
+    // silently declining to do the one thing the user just asked for is this
+    // cluster's own silence failure mode.
+    const force = opts?.userResolvedConflict === true;
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,
     });
-    await writeTextToHandle(texFh, latex);
+    // The funnel stamps the ledger with the FINAL serialized `.tex` that hit
+    // disk (preamble preserved), not the JSONContent — so the next poll matches
+    // exactly.
+    const wroteTex = await writeTrackedText(
+      h.docId,
+      meta.texFilename,
+      texFh,
+      latex,
+      { force, beforeWrite: takeSnapshot },
+    );
 
     const sidecarFh = await virgil.getFileHandle("virgil.json", {
       create: true,
     });
-    await writeTextToHandle(sidecarFh, sidecarJson);
+    const wroteSidecar = await writeTrackedText(
+      h.docId,
+      "virgil/virgil.json",
+      sidecarFh,
+      sidecarJson,
+      { force, beforeWrite: takeSnapshot },
+    );
 
     // editor-state.json is owned by useEditorUIState, not the bundle save.
 
-    await touchDocTimestamp(h.docId);
-    // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
-    // preserved), not the JSONContent — so the next poll matches exactly.
-    await stampLedger(h.docId, meta.texFilename, latex);
-    lastSidecarHashByDoc.set(h.docId, sidecarHash);
-    // Cache the delimiters as they exist in the FILE WE JUST WROTE (the
-    // serializer may have injected requirements into the preamble), keyed on
-    // its hash — the next steady-state autosave skips the full-file read.
+    if (wroteTex || wroteSidecar) await touchDocTimestamp(h.docId);
+    // Cache the delimiters as they exist in the FILE ON DISK (the serializer
+    // may have injected requirements into the preamble), keyed on its hash —
+    // the next steady-state autosave skips the full-file read. Unconditional on
+    // the funnel's verdict: a declined `.tex` write means these bytes ARE the
+    // file, so the cache is equally exact either way.
     const writtenDelimiters = resolveWriteDelimiters(latex);
     if (writtenDelimiters) {
       delimiterCacheByDoc.set(h.docId, {
@@ -1145,11 +1370,17 @@ export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void
   return enqueueDocWrite(h, `bib/${bibFilename}`, async () => {
     const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
-    await snapshotPriorBib(docHandle, virgil, bibFilename);
     const fh = await docHandle.getFileHandle(bibFilename, { create: true });
-    await writeTextToHandle(fh, bibText);
-    // Stamp the ledger with the authoritative post-write .bib fingerprint.
-    await stampLedger(h.docId, bibFilename, bibText);
+    // Through the gated funnel (task 415), which also stamps the ledger with
+    // the authoritative post-write `.bib` fingerprint. The forensic snapshot
+    // rides `beforeWrite` for the same reason the bundle's does — a declined
+    // write mints no `.history/` slot.
+    const takeSnapshot = onceBeforeWrite(() =>
+      snapshotPriorBib(docHandle, virgil, bibFilename),
+    );
+    await writeTrackedText(h.docId, bibFilename, fh, bibText, {
+      beforeWrite: takeSnapshot,
+    });
   });
 }
 
@@ -1305,7 +1536,15 @@ export async function writeFigureIndex(
     const docHandle = await requireDocHandle(h.docId);
     const cacheDir = await getFiguresCacheDir(docHandle, { create: true });
     const fh = await cacheDir.getFileHandle(FIGURE_INDEX_FILE, { create: true });
-    await writeTextToHandle(fh, JSON.stringify(index, null, 2));
+    // Derived, but it lives INSIDE the paper folder, so a rewrite of identical
+    // bytes is sync traffic exactly like any other (task 415). Nothing watches
+    // this relPath, so the ledger entry here exists only to serve the gate.
+    await writeTrackedText(
+      h.docId,
+      `virgil/${FIGURES_CACHE_DIR}/${FIGURE_INDEX_FILE}`,
+      fh,
+      JSON.stringify(index, null, 2),
+    );
   });
 }
 
@@ -1595,6 +1834,10 @@ function resolveTemplate(id?: string): DocumentTemplate {
 // `createDocInFolder`) refuse when any of the template's filenames already
 // exists, so this can never overwrite a byte of anyone's document — there is
 // no prior state for a gate to compare against or for a snapshot to keep.
+// write-gate-exempt: same fact, the other question (task 415) — a file that
+// does not exist yet cannot already hold these bytes, so the byte-equality
+// gate has nothing to answer and the ledger has nothing to stamp. The doc's
+// first real write stamps every one of these paths.
 async function writeTemplateFiles(
   docHandle: FileSystemDirectoryHandle,
   template: DocumentTemplate,

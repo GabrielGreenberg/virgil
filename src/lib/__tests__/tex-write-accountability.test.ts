@@ -26,11 +26,29 @@
 // list wearing a regex's clothes, and one that this repo's own history says
 // will be missing a name (AGENTS.md, "The default half"). `writeTemplateFiles`
 // writes a `.tex` and never spells the word. So the needle is the WRITE call
-// itself — `writeTextToHandle(` in the FSA backend, `putText(` in the dev one,
-// which between them are every text write either backend makes — and the
-// accountability question is then asked of ALL of them. The two that write
+// itself, which between the two backends is every text write either makes — and
+// the accountability question is then asked of ALL of them. The ones that write
 // something other than the `.tex` answer with a marker that says so, which is a
 // sentence someone had to write and a reviewer can read back.
+//
+// ── The needle is a FAMILY, renegotiated in place (task 415) ────────────────
+//
+// It used to be exactly `writeTextToHandle(` / `putText(` — the two raw
+// primitives. Task 415 put a GATED FUNNEL in front of both
+// (`writeTrackedText` / `putTrackedText`: skip a file whose bytes are already
+// on disk, then write, then stamp the ledger), and every real writer moved
+// behind it. Measured on that tree with the old needle, this census fell from
+// eleven sites to TWO — the funnel's own — and its `.tex`-writer leg to ZERO.
+// It would have gone on passing four of its five legs while speaking for almost
+// nothing, which is the population-evaporation shape a census is least able to
+// report about itself.
+//
+// So the needle is the FAMILY: the raw primitives AND the gated doors. That
+// keeps the population identical to the pre-415 one (the same eleven writers,
+// now spelled through a door), and it is why this file exports `writeSites()` —
+// the byte-equality census in `per-file-write-gate.test.ts` asks a DIFFERENT
+// question of the SAME extraction, so the two can never come to disagree about
+// who the writers are.
 //
 // ── Scope, stated rather than implied ──────────────────────────────────────
 //
@@ -48,9 +66,16 @@ import { codeOnlyLines } from "@/lib/__tests__/_source-scan";
 const SRC = path.join(__dirname, "../..");
 const BACKENDS = ["lib/storage-fsa.ts", "lib/storage-dev.ts"] as const;
 
-/** The two text-write primitives. A CALL, never the helper's own signature. */
-const WRITE_CALL = /\b(?:writeTextToHandle|putText)\(/;
-const WRITE_DECLARATION = /\bfunction\s+(?:writeTextToHandle|putText)\b/;
+/** The RAW text-write primitives — the two calls that actually touch a file. */
+export const RAW_WRITE_CALL = /\b(?:writeTextToHandle|putText)\(/;
+/** The GATED doors every real writer goes through since task 415. */
+export const GATED_WRITE_CALL = /\b(?:writeTrackedText|putTrackedText)\(/;
+/** Either. A CALL, never the helper's own signature. */
+const WRITE_CALL = new RegExp(
+  `${RAW_WRITE_CALL.source}|${GATED_WRITE_CALL.source}`,
+);
+const WRITE_DECLARATION =
+  /\bfunction\s+(?:writeTextToHandle|putText|writeTrackedText|putTrackedText)\b/;
 
 /** Either preservation gate: the load-writeback's, or the write side's. */
 const GATE = /\b(?:checkTexPreservation|checkWriteAgainstRetained)\(/;
@@ -58,6 +83,9 @@ const GATE = /\b(?:checkTexPreservation|checkWriteAgainstRetained)\(/;
 const SNAPSHOT = /\b(?:snapshotPriorBundle|snapshotPriorBib)\(/;
 /** The in-place excuse, which must be followed by a stated reason. */
 const EXEMPT = /tex-write-exempt:\s*(\S.*)$/;
+/** The task-415 byte-equality excuse — a DIFFERENT question, its own marker
+ *  (task 204's rule: an exemption is scoped to the shape it justifies). */
+const GATE_EXEMPT = /write-gate-exempt:\s*(\S.*)$/;
 
 /**
  * The enclosing top-level declaration, the same shape `container-fit-guardrail`
@@ -86,6 +114,10 @@ interface WriteSite {
   snapshotted: boolean;
   writesTex: boolean;
   exemptReason: string | null;
+  /** A raw primitive call (touches the file), vs. one through the 415 door. */
+  raw: boolean;
+  /** The 415 byte-equality excuse, read by `per-file-write-gate.test.ts`. */
+  gateExemptReason: string | null;
 }
 
 /**
@@ -107,6 +139,7 @@ export function writeSites(): WriteSite[] {
       const region = enclosingRegion(rawLines, i);
       const codeRegion = enclosingRegion(codeLines, i);
       const marker = region.map((l) => l.match(EXEMPT)).find(Boolean);
+      const gateMarker = region.map((l) => l.match(GATE_EXEMPT)).find(Boolean);
       sites.push({
         file: rel,
         line: i + 1,
@@ -115,6 +148,8 @@ export function writeSites(): WriteSite[] {
         snapshotted: codeRegion.some((l) => SNAPSHOT.test(l)),
         writesTex: codeRegion.some((l) => TEX_TARGET.test(l)),
         exemptReason: marker ? marker[1].trim() : null,
+        raw: RAW_WRITE_CALL.test(code),
+        gateExemptReason: gateMarker ? gateMarker[1].trim() : null,
       });
     });
   }
