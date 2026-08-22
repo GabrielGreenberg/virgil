@@ -575,6 +575,25 @@ export function createEditorGeometryService(
   // (it holds a live bus subscription).
   let recomputePark: ReturnType<typeof parkDuringLayoutGesture> | null = null;
 
+  // Task 416 — the SAME rule for the IO half. `onResize` has been
+  // gesture-gated since 317; `onIntersection` never was, and a CONTENT drag
+  // is the gesture that fires it: `auto-scroll.ts` writes `scrollTop` once
+  // per RAF, so blocks cross the ±800 px near-zone boundary for the whole of
+  // a long drag. Each crossing paid a `measureBlock` (a forced-layout rect
+  // read) plus a `notify()` — and `notify()` is the marginalia deck's full
+  // repack, i.e. the one O(markers) cost in this file. A pane-divider drag
+  // and an OS window resize produce no scroll, so a KIND-BLIND park is
+  // exactly right here and needs no `hasActiveLayoutGesture` filter: it is a
+  // no-op for the two gestures that cannot reach it.
+  let notifyPark: ReturnType<typeof parkDuringLayoutGesture> | null = null;
+
+  /** Route a subscriber notification through the gesture park — one settle
+   *  per gesture instead of one repack per crossed near-zone boundary. */
+  function fireNotify() {
+    if (notifyPark) notifyPark.fire();
+    else notify();
+  }
+
   /** Re-measure UUIDs in `pendingRecompute` on the next paint. */
   function scheduleRecompute() {
     if (rafId) return;
@@ -843,7 +862,15 @@ export function createEditorGeometryService(
     if (!editor || editor.isDestroyed || !visible) return;
     const host = hostEl ?? resolveMarginaliaHost(editor);
     if (!host) return;
-    const hostRect = host.getBoundingClientRect();
+
+    // The host rect resolves LAZILY, for the same reason `resolvePos` does:
+    // `getBoundingClientRect()` is a forced-layout read, and a batch with no
+    // measurable entry — a pure viewport-LEAVE (scroll-away), or ANY batch
+    // during a layout gesture, both of which are exactly what a drag's
+    // auto-scroll produces — must pay nothing. It was read unconditionally
+    // at the top of this function until task 416.
+    let hostRectCache: DOMRect | null = null;
+    const hostRectOf = (): DOMRect => (hostRectCache ??= host.getBoundingClientRect());
 
     // Positions resolve LAZILY once per IO batch — bus-first via the
     // structure snapshot (zero doc walks; S3b), the one-walk fallback only
@@ -851,7 +878,18 @@ export function createEditorGeometryService(
     // resolves nothing and pays nothing.
     const resolvePos = makePosResolver();
 
+    // Mid-gesture the ENTER branch does its BOOKKEEPING (observe the element,
+    // join the observed set, run the detach heal) and defers only the
+    // MEASUREMENT — the uuid goes onto `pendingRecompute`, which is the same
+    // work list `onResize` collects into, and the parked measure pass settles
+    // the union exactly once on the gesture's end edge. Splitting it this way
+    // rather than bailing outright is what keeps the observed set honest: the
+    // set is the engine's memory of which blocks it is tracking, and dropping
+    // a crossing would leave it permanently wrong after the drag.
+    const gestureActive = isLayoutGestureActive();
+
     let changed = false;
+    let deferred = false;
     for (const entry of entries) {
       const el = entry.target as HTMLElement;
       const uuid = el.getAttribute("data-uuid");
@@ -862,11 +900,19 @@ export function createEditorGeometryService(
           observed.set(uuid, el);
           resizeObserver?.observe(el);
         }
+        if (gestureActive) {
+          // Deferred measure — see `gestureActive` above. `pendingRecompute`
+          // accumulates across the whole gesture (that set IS the work list
+          // and must not be dropped); only the pass defers.
+          pendingRecompute.add(uuid);
+          deferred = true;
+          continue;
+        }
         // Resolve pos from the once-per-batch resolver (positions can have
         // shifted since the last sync, e.g. an upstream paragraph split).
         const meta = resolvePos(uuid);
         if (!meta) continue;
-        const next = measureBlock(editor, meta.pos, meta.isAtom, hostRect, uuid);
+        const next = measureBlock(editor, meta.pos, meta.isAtom, hostRectOf(), uuid);
         if (!next) continue;
         // Re-entry after a genuine viewport-leave: prefer the PARKED
         // position. If the block did not meaningfully reflow while
@@ -951,7 +997,12 @@ export function createEditorGeometryService(
         }
       }
     }
-    if (changed) notify();
+    // Both exits route through the park: mid-gesture the deck settles ONCE on
+    // the end edge (a deferred ENTER through the measure park, a LEAVE's cache
+    // eviction through the notify park), and off-gesture both fire inline on
+    // this frame exactly as they did pre-416.
+    if (deferred) fireRecompute();
+    if (changed) fireNotify();
   }
 
   function onResize(entries: ResizeObserverEntry[]) {
@@ -1061,6 +1112,9 @@ export function createEditorGeometryService(
       () => refreshViewportFrame(),
       LAYOUT_SITE_VIEWPORT_CACHE,
     );
+    // The IO half's park (task 416) — reported under the same site id as the
+    // measure park, because it is the same follower's other trigger.
+    notifyPark = parkDuringLayoutGesture(() => notify(), LAYOUT_SITE_MARGINALIA);
 
     // Subscribe to the DocStructureObserver — wakes only when blocks are
     // added or removed. Text edits within blocks don't wake the service; the
@@ -1133,6 +1187,8 @@ export function createEditorGeometryService(
       recomputePark = null;
       viewportPark?.dispose();
       viewportPark = null;
+      notifyPark?.dispose();
+      notifyPark = null;
       window.removeEventListener("resize", onWindowResize);
       if (rafId) cancelAnimationFrame(rafId);
       rafId = 0;

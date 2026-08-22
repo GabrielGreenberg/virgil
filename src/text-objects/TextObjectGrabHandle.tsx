@@ -1023,20 +1023,36 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // fresh closure per mount doesn't retain the torn-down editor graph.
     const disposeFontReady = onFontReady(() => scheduleRaf());
 
-    const onScroll = () => {
-      // Scroll re-schedules placement (block rects change in clientY
-      // space). The DOM-walk resolver re-runs from scratch each frame;
-      // no separate cache to invalidate.
-      scheduleRaf();
-    };
     // Parked, not suppressed (task 317). A grab handle only exists while the
     // pointer is in the margin hover zone, and an OS window drag delivers no
     // pointer events to the page — so during that gesture there is nothing on
-    // screen to look detached. The scroll path stays live.
+    // screen to look detached.
     const gesturePark = parkDuringLayoutGesture(
       scheduleRaf,
       LAYOUT_SITE_GRAB_HANDLE,
     );
+    // Task 416 — the SCROLL path parks too, and the pre-416 reason it did not
+    // is precisely the gesture family that argument could not see. A CONTENT
+    // drag DOES deliver pointer events, so the resolver's hover branch is
+    // answerable (task 336's modality gate reads POINTER), and its
+    // auto-scroll writes `scrollTop` once per RAF: the handle re-ran
+    // `blocksAtY` + one `computePlacement` PER containing level for the whole
+    // of a long drag, under a lift ghost, on chrome `globals.css` has already
+    // made `pointer-events: none` for the session. A user scroll is not a
+    // layout gesture, so the live path is unchanged for it.
+    const onScroll = () => {
+      // Scroll re-schedules placement (block rects change in clientY
+      // space). The DOM-walk resolver re-runs from scratch each frame;
+      // no separate cache to invalidate.
+      //
+      // Cost of parking it, stated rather than waved away: while the pointer
+      // MOVES the handle stays fresh anyway (`onMouseMove` schedules the same
+      // resolve), so the only stale window is a pointer PARKED in the
+      // auto-scroll edge zone — which is exactly the case this is protecting,
+      // and where the handle is `pointer-events: none` chrome underneath a
+      // lift ghost. The end edge re-seats it once.
+      gesturePark.fire();
+    };
     const onResize = () => {
       gesturePark.fire();
     };

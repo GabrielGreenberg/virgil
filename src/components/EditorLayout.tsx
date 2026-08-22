@@ -1986,22 +1986,33 @@ export default function EditorLayout() {
       if (isTier1BDisabled()) return;
       schedule();
     };
-    // Only the RESIZE path parks (task 317). `compute` walks every heading
-    // calling `coordsAtPos` — ProseMirror's most expensive forced-layout call —
-    // so re-solving it per frame of a window drag is the single heaviest
-    // per-frame cost in the app at ×1 pane (×2 with the Reader). The SCROLL
-    // path stays live: the breadcrumb must follow the scroll it describes.
-    const resizePark = parkDuringLayoutGesture(schedule, LAYOUT_SITE_SECTION_PATH);
-    const onWindowResize = () => resizePark.fire();
+    // BOTH geometry paths park (task 317 parked the resize; task 416 added
+    // the scroll). `compute` costs ONE `posAtCoords` + a binary search on the
+    // fast path and an O(headings) `coordsAtPos` walk on the flag-off /
+    // service-null fallback — ProseMirror's most expensive forced-layout call,
+    // and the single heaviest per-frame cost in the app at ×1 pane (×2 with
+    // the Reader).
+    //
+    // The pre-416 comment argued the scroll path must stay live because "a
+    // breadcrumb must follow the scroll it describes" — true of a scroll the
+    // USER performs, and that scroll is not a layout gesture, so this park is
+    // a no-op for it. What the argument missed is the scroll a CONTENT DRAG
+    // performs: `auto-scroll.ts` writes `scrollTop` once per RAF for the whole
+    // of a long drag, and there the user is watching a drop indicator, not a
+    // breadcrumb. A pane-divider drag and a window resize produce no scroll of
+    // their own, so ONE kind-blind park covers all three families correctly
+    // and needs no `hasActiveLayoutGesture` filter.
+    const gesturePark = parkDuringLayoutGesture(schedule, LAYOUT_SITE_SECTION_PATH);
+    const onGeometryEvent = () => gesturePark.fire();
     compute();
-    scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", onWindowResize);
+    scrollEl.addEventListener("scroll", onGeometryEvent, { passive: true });
+    window.addEventListener("resize", onGeometryEvent);
     editorInstance.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
-      scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", onWindowResize);
-      resizePark.dispose();
+      scrollEl.removeEventListener("scroll", onGeometryEvent);
+      window.removeEventListener("resize", onGeometryEvent);
+      gesturePark.dispose();
       editorInstance.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the breadcrumb recomputes when focus

@@ -60,6 +60,8 @@ import {
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_SCROLL_PERSIST } from "@/lib/layout-gesture-probe";
 import AIWindow, { aiRequestDotStatus, type AiDotTone } from "./AIWindow";
 import { EditorChromeProvider } from "./editor-layout/chrome-context";
 import {
@@ -4181,7 +4183,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const onScroll = () => {
+    const capture = () => {
       // NEVER read scrollTop while hidden: a display:none container reports 0,
       // which would corrupt both liveScrollRef and the persisted value to 0
       // (sending the doc to the top on the next show / cold mount).
@@ -4196,11 +4198,23 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // own tier (task 363), so a reading session's pauses cost ONE write.
       }, SETTLE_MS);
     };
+    // PARKED (task 416). `el.offsetHeight` is a FORCED-LAYOUT read, and this
+    // handler runs once per scroll event — which during a content drag means
+    // once per auto-scroll frame, interleaved with the drop indicator's own
+    // React `top` write, i.e. the write → read → write thrash task 330 names.
+    // Parking is also the semantically right answer: the value being captured
+    // is "where the reader left the document", and mid-gesture there is no
+    // such position — the gesture's end edge re-reads the settled one exactly
+    // once. A zero-arg runner, so the settle re-reads its source of truth
+    // (the park's own contract) rather than replaying a stale coordinate.
+    const scrollPark = parkDuringLayoutGesture(capture, LAYOUT_SITE_SCROLL_PERSIST);
+    const onScroll = () => scrollPark.fire();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       if (timer) clearTimeout(timer);
       cancelScrollRestoreRef.current?.();
       el.removeEventListener("scroll", onScroll);
+      scrollPark.dispose();
     };
   }, [uiStateHook.loaded, uiStateHook.stateRef, uiStateHook.writeScroll]);
 

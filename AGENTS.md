@@ -411,6 +411,105 @@ Two guards enforce it (the same probe + grep-allowlist pattern as the laws above
 - **Runtime probe** — `window.__layoutGestureStats()` ([src/lib/layout-gesture-probe.ts](src/lib/layout-gesture-probe.ts)) reports `{ gestures, framesInGesture, active }` plus per-site `{ parkedFires, settles, liveRuns }`. During a continuous drag every parked site reports `settles === 0` and `parkedFires ≈ framesInGesture`; after release, **exactly 1** settle per site that fired; a one-shot resize reports `gestures === 0`. Honest floor: the publisher needs two events to know a gesture started, so a real drag's first event or two run live and are counted in `liveRuns`.
 - **Grep-allowlist test** — [src/lib/\_\_tests\_\_/window-resize-guardrail.test.ts](src/lib/__tests__/window-resize-guardrail.test.ts) censuses every resize registration in `src/` **and** `library/` (`addEventListener("resize"` on any receiver, plus the `onresize =` and `visualViewport` forms) against `PERMITTED_RESIZE_LISTENERS`, and — the leg with teeth — asserts each censused file actually *references* the park/suppress API unless it is on `PERMITTED_LIVE_RESIZE_HANDLERS` with a why-live justification. **None of the three older censuses greps a resize listener**, and that gap is precisely how eighteen ungoverned sites accumulated without a single CI failure. Keep this prose and both allowlists in sync — same discipline as the other laws.
 
+### The scroll half: a CONTENT drag scrolls the document, so its followers are the SCROLL listeners
+
+> **A pane drag and a window resize scroll nothing — but a CONTENT drag scrolls
+> the document ITSELF, so during that gesture every scroll listener is a
+> per-frame follower exactly as every resize listener is a window drag's.** A
+> user scroll is not a layout gesture, so the same park is a no-op for ordinary
+> scroll-tracking chrome; the rule costs nothing outside a drag.
+
+This is the residual half of the "list drag and drop is an absolute mess" report
+(task 416; the placement half is "The candidate half" below, the performance
+half was task 351). The content publisher has been on the bus since perf Wave 2
+and reached **none** of the scroll listeners, because every census in this file
+asks a question that cannot see one: `keystroke-subscriber` greps
+`editor.on(…)`, `scroll-reposition` greps `position: fixed` + `coordsAtPos`,
+`pane-drag` greps pointer moves + drag chrome, and `window-resize` greps
+`resize`. Meanwhile [auto-scroll.ts](src/components/drop-mode/auto-scroll.ts)
+writes `scrollTop` once per RAF for the whole of a long drag, so four followers
+ran per auto-scroll frame with CI green:
+
+- **The two section-path breadcrumb walks** (`EditorLayout` and the Reader's
+  twin), whose comment stated the exemption outright — *"the scroll path stays
+  live: a breadcrumb must follow the scroll it describes."* True of a scroll the
+  USER performs, and blind to the one a drag performs. `compute` is ONE
+  `posAtCoords` + a binary search on the fast path and an O(headings)
+  `coordsAtPos` walk on the flag-off fallback, which is the single heaviest
+  per-frame cost in the app at ×1 pane (×2 with the Reader).
+- **`EditorPane`'s scroll-position persist**, whose `el.offsetHeight` is a
+  FORCED-LAYOUT read once per scroll event, interleaved with the drop
+  indicator's own React `top` write — the write → read → write thrash the
+  float-move law names. Parking is also the semantically right answer: the value
+  captured is *where the reader left the document*, and mid-gesture there is no
+  such position.
+- **The grab handle's placement re-solve.** Task 317 parked its resize path and
+  argued the scroll path could stay live because *"an OS window drag delivers no
+  pointer events to the page."* A content drag delivers them, so task 336's
+  modality gate reads POINTER and the hover branch stayed answerable: it re-ran
+  `blocksAtY` plus one `computePlacement` per containing level for the whole
+  drag — under a lift ghost, on chrome `globals.css` has already made
+  `pointer-events: none` for the session.
+- **The geometry service's IntersectionObserver.** `onResize` has been
+  gesture-gated since 317 and `onIntersection` never was, although the IO is the
+  one the auto-scroll actually fires: blocks cross the ±800 px near-zone
+  boundary continuously, each crossing paying a `measureBlock` plus a
+  `notify()` — the marginalia deck's full repack, the one O(markers) cost in
+  that file — and each BATCH paying one unconditional `host.getBoundingClientRect()`
+  even when it measured nothing.
+
+Five rules it earned:
+
+- **A kind-blind park is EXACTLY right here, and that is worth stating rather
+  than reaching for `hasActiveLayoutGesture`.** A pane drag and a window resize
+  produce no scroll of their own, so the park is unreachable for them; a content
+  drag is the only family that can enter it. One park per follower covers all
+  three correctly with no filter to keep in step.
+- **Defer the MEASUREMENT, never the BOOKKEEPING.** The IO's observed set is the
+  engine's memory of which blocks it is tracking, and a swallowed crossing
+  leaves it permanently wrong after the drag — including the detach-heal path,
+  whose whole job is to re-observe an element ProseMirror redrew. So mid-gesture
+  the ENTER branch observes, joins the set and runs the heal, and only the
+  measure defers, onto the same `pendingRecompute` work list `onResize` already
+  collects into. Same shape as "park the MEASURE PASS, never the accumulation".
+- **A forced-layout read belongs behind the branch that needs it.** The host
+  rect resolves LAZILY now, for the same reason the position resolver already
+  did — a batch that measures nothing (a pure scroll-away, or any batch during a
+  gesture) must pay nothing.
+- **"Live" buys a per-frame OBLIGATION, never a per-frame COST.** The four
+  followers that stay live are the ones for which the scroll ITSELF is the
+  feedback — the scrollbar thumb (whose suppress is already kind-filtered so a
+  content drag keeps it VISIBLE), the Library page lozenge and its page readout,
+  a hint that must vanish, and the reposition probe that cannot park on the
+  gestures it instruments. Each is O(1) per event with no doc walk. The
+  scroll-activity tracker earned its place by getting CHEAPER: `setAttribute`
+  invalidates style even when the value is unchanged, so the write is now
+  idempotence-gated and a continuous scroll costs one invalidation instead of
+  one per frame.
+- **The census is the leg with teeth, and leg 2 is per FILE — so the
+  justifications are written about the SCROLL path.** `editor-scrollbar.tsx` is
+  the live example: its resize path parks and its thumb suppresses, so it passes
+  participation on a scroll path that is deliberately live. The pre-416
+  breadcrumbs were the same shape in the other direction — a park existed in the
+  file while the heavier path ran raw — which is why four per-site pins sit
+  beside the census.
+
+CI: [scroll-listener-guardrail.test.ts](src/lib/__tests__/scroll-listener-guardrail.test.ts)
+(the fifth grep-allowlist sibling: `PERMITTED_SCROLL_LISTENERS` +
+`PERMITTED_LIVE_SCROLL_HANDLERS`, plus the four converted-site pins, each of
+which fails on the pre-416 source) and
+[gesture-scroll-parking.test.tsx](src/lib/editor-geometry/__tests__/gesture-scroll-parking.test.tsx),
+which drives the REAL service through a REAL content gesture. **No pre-416 suite
+could see any of this**: every geometry suite in the repo drives the observers
+with no gesture live, where the parked and unparked paths are byte-identical by
+construction. Measured by neutering each half in turn — the IO gate takes 2
+legs, the notify park 1, the lazy host rect 1, and each converted site its own
+pin.
+
+**Owed, not claimed:** a DevTools trace of a 5 s drag over `doc_perftest` with
+no >8 ms task attributable to the drag path, plus Gabriel's own feel check.
+A worktree cannot run the dev server, so both happen against clean `main`.
+
 Deliberately NOT done, and a UX call rather than an oversight: **no root-level `PaneFreeze`**. Its anchor must be the *stationary* edge (anchoring to the moving one is visibly worse than no freeze at all), knowing which window edge moved requires a `screenX`/`screenY` probe this codebase otherwise doesn't use, and freezing the whole app during a live OS resize shows background slivers until release.
 
 ## Bar occupancy: several occupants, ONE priority rule
