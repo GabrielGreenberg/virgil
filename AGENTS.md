@@ -103,6 +103,98 @@ Four rules the cache half earned:
 
 Probe: `window.__docProductsStats()` gains `childPartMisses` / `childPartHits` — a keystroke inside a list must move the first by ONE item's subtree, never by the list. CI: [container-granularity.test.ts](src/lib/doc-products/__tests__/container-granularity.test.ts) drives a REAL 100-item list and measures Tier A with an implementation-INDEPENDENT probe (calls to prosemirror's own `Node.prototype.toJSON`, which `Fragment.toJSON` invokes once per descendant): **301 per keystroke pre-fix, under 20 after**, measured by neutering the fix. Its byte-identity legs compare the cached output against a full cache-free re-serialize, since the produced bytes are the thing that must NOT move. [decoration-probe-cost.test.ts](src/lib/tiptap/__tests__/decoration-probe-cost.test.ts) counts argless `find` calls across a real typing burst (12 pre-fix, 0 after) and censuses both silos for the shape — the plugin was never the only place it can appear, and a second one would be invisible to any behavioural test of this plugin.
 
+#### The probe half: a gate exists because the REBUILD is all-or-nothing
+
+Same plugin, same law, one probe over (task 400) — and the case where the gate
+this repo already fixed once grew back, later, under a different name. Task 337
+took the ARGLESS `DecorationSet.find()` off `latex-command`'s `apply` because it
+was an O(all decorations) call on the path that exists to be cheap. What it left
+standing was the SHAPE: three probes in front of an all-or-nothing
+`buildDecorations(tr.doc)`.
+
+Each probe was correct. A backslash scan of the changed text, an overlap test
+against the mapped set, and — added with the type-time carrier in task 360 — a
+MARK-step test, because an `AddMarkStep` carries an empty step map and neither
+earlier probe can see the carrier promoting a bare run to the mark, so a
+decoration left standing over the now-marked run paints a SECOND `.latex-cmd`
+inside the mark's own span and the nested `font-size: 0.9em` compounds to 0.81em.
+Every one of them gated a WHOLE-DOCUMENT walk ending in `DecorationSet.create`,
+whose `buildTree` re-scans the entire decoration array once per top-level child.
+**Measured:** typing the nine characters of `\emph{hi}` into paragraph 0
+re-derived **605** decorations in a 60-paragraph document and **2405** in a
+240-paragraph one — the keystroke cost scaling with the paper, at ~320 000
+`buildTree` iterations per rebuild on a 400-paragraph one. And the reach was
+wider than "while typing a command": probe 2 fires for a keystroke ANYWHERE in a
+paragraph carrying the `p-cmd-only` NODE decoration, which is every prose
+paragraph holding exactly one command run.
+
+> **A probe in front of a re-derivation is a symptom of the re-derivation's
+> GRANULARITY. Ask the one question that has an answer — WHICH BLOCKS DID THIS
+> TRANSACTION TOUCH — and scope the rebuild to it; there is then nothing left to
+> gate.**
+
+Six rules it earned:
+
+- **The empty-StepMap rule now has ONE home.** `AGENTS.md` states it two
+  sections down ("a step map is not a description of what changed") and it was
+  implemented in three places — one of which did not carry it, which is exactly
+  why the third probe had to exist beside a range extractor that could not see a
+  mark step. [src/lib/tiptap/changed-ranges.ts](src/lib/tiptap/changed-ranges.ts)
+  states it once (`positionalStepRange`) and derives both readings from it: the
+  PREDICATE (`stepTouches`, moved out of `float-source-range.ts`) and the
+  EXTRACTOR (`touchedRanges`).
+- **Two exports, not one function with a boolean, because the two answers are
+  different claims.** `contentChangedRanges` (step maps only) is what a consumer
+  that derives something FROM TEXT wants — the type-time carrier derives marks
+  from characters, so a mark step is its OUTPUT and never its input, and that
+  exclusion is what makes its re-entry on its own appended transaction
+  terminate. `touchedRanges` (maps plus every positional step) is what a
+  consumer that re-derives RENDERING wants. A defaulted argument would be a
+  decision nobody made.
+- **The narrowing is sufficient because every decoration here is block-LOCAL** —
+  inline spans inside one textblock, and a `p-cmd-only` aggregate over one
+  paragraph's own children. That is a property to CHECK before scoping a
+  rebuild, not a hope: an aggregate over anything wider would need its own
+  invalidation.
+- **The removal window is "reaches INTO the block", not "lies wholly inside
+  it".** `find(from, to)` is inclusive at both endpoints, so a neighbour's
+  `p-cmd-only` node deco — whose range abuts exactly — comes back from the query
+  and must NOT be dropped; and a mapped inline deco can STRADDLE a boundary
+  (press Enter inside a command run and the split maps its `from` into the first
+  paragraph and its `to` into the second, where `forChild` paints it on both
+  halves), which a wholly-inside test would leave standing. The retired
+  whole-document rebuild cleaned that up by accident.
+- **The block lookup takes an O(depth) fast path**, and it is shared: an
+  ordinary keystroke and every mark step sit inside ONE textblock, so
+  `doc.resolve` answers in O(depth) where `Fragment.nodesBetween` walks the
+  parent's children from index 0 until it passes `to` — cheap per step, but
+  proportional to the block's INDEX. Both plugins in this file consume it, so
+  the carrier got the fast path too.
+- **It CLOSED a correctness hole no probe could see.** Any OTHER mark landing in
+  a `p-cmd-only` paragraph (bolding a word beside the command) changes the
+  aggregate from one element child to two — and all three probes missed it,
+  because the map is empty and the third filtered on `latexCommand` alone. The
+  stale class survived until something else rebuilt the document.
+
+**The silo is the finding.** Nothing greps a plugin `apply` or an
+`appendTransaction`: the keystroke-sanctity guardrail matches the
+`editor.on(…)` call form, and this file makes no such call. That is a
+doctrine-level gap, filed rather than closed here.
+
+CI: [decoration-probe-cost.test.ts](src/lib/tiptap/__tests__/decoration-probe-cost.test.ts)
+counts whole-document WALKS (`Node.prototype.descendants`, which prosemirror
+recurses past through `nodesBetween`, so one build registers exactly one call)
+and DERIVATIONS (`Decoration.inline` / `Decoration.node` constructions). The leg
+with teeth asserts the nine-keystroke cost is IDENTICAL at 60 and at 240
+paragraphs — no whole-document rebuild can satisfy that, whatever its constant.
+[latex-command-cmd-only.test.ts](src/lib/tiptap/__tests__/latex-command-cmd-only.test.ts)
+pins all four `p-cmd-only` crossings plus the mark step, and
+[changed-ranges.test.ts](src/lib/tiptap/__tests__/changed-ranges.test.ts) pins
+the two readings and the exclusion between them. Measured by neutering each half
+in turn: the pre-400 probes take 3 legs (2 cost, 1 the stale flag), a
+wholly-inside removal window 1, and the four transition legs are non-regression
+pins that pass either way — stated at the site rather than counted as defects.
+
 ### The stylesheet half
 
 Style invalidation is keystroke work too. [src/lib/\_\_tests\_\_/css-invalidation-guardrail.test.ts](src/lib/__tests__/css-invalidation-guardrail.test.ts) (Wave-4 P6) pins globals.css: **zero live `:has()`** (every historical one was a measured invalidation cliff; a new one needs a write-time replacement — class stamp, node decoration, or NodeView data-attr, the four Wave-0 patterns), the universal drop-mode descendant selector stays dead (body-only form inherits identically at none of the 36 ms full-tree cost), every `contain:` rule stays scoped under `body.perf-contain` (**Wave-4 Stage A**: `contain: layout style` on card/omni/panel-list/float containers, flag `virgil:perf-contain` via [src/lib/perf-feature-flags.ts](src/lib/perf-feature-flags.ts), DEFAULT OFF until soak — containment changes containing-block semantics for absolutely-positioned descendants; the targets were verified portal-safe), and `content-visibility` stays out entirely (Stage B was decision-gated on the visible-window trace, which found no per-keystroke style mass for it to win against — [docs/perf/style-invalidation-findings.md](docs/perf/style-invalidation-findings.md)).

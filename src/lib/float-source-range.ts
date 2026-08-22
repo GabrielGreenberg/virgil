@@ -38,7 +38,11 @@
  * transaction is still `docChanged`. Reading only the maps would therefore
  * report "nothing happened" for bolding a word inside the mirrored paragraph —
  * silently stale, and then destructive, because the float's next write-back
- * rebuilds the source from its stale copy. `stepTouches` covers that gap.
+ * rebuilds the source from its stale copy. `stepTouches` covers that gap —
+ * and since task 400 it lives in `tiptap/changed-ranges.ts`, the one home of
+ * that rule, beside the EXTRACTOR reading of it that the decoration and
+ * carrier plugins consume. The rule was restated in three places and one of
+ * the three did not carry it.
  *
  * Boundary convention — a source range is a NODE range `[from, to)`:
  * `from` maps with assoc `+1` and `to` with assoc `-1`, so content inserted at
@@ -51,6 +55,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
+import { stepTouches } from "@/lib/tiptap/changed-ranges";
 
 /** A half-open region of the MAIN document a float mirrors. */
 export interface SourceRange {
@@ -125,37 +130,6 @@ export function trackSourceRange(
   if (to < from) to = from;
 
   return { touched, mapped: { from, to } };
-}
-
-/**
- * Does a step whose StepMap has NO ranges touch `[from, to]`?
- *
- * A step map describes how positions MOVE, not what changed — and a step that
- * moves nothing returns `StepMap.empty`. Six do: `AddMarkStep` /
- * `RemoveMarkStep` (`from`/`to`), `AddNodeMarkStep` / `RemoveNodeMarkStep` /
- * `AttrStep` (`pos`), and `DocAttrStep` (no position at all). Their
- * transactions are still `docChanged`, so a gate that read only the maps would
- * report "nothing happened" for bolding a word — the mirrored float would keep
- * showing unbolded text, and its next write-back would rebuild the paragraph
- * from that stale copy and DELETE the mark from the document. Hence: when a
- * step contributes no ranges, ask the step itself, and fail safe (re-read) for
- * a shape we don't recognize.
- */
-function stepTouches(
-  step: Transaction["steps"][number] | undefined,
-  from: number,
-  to: number,
-): boolean {
-  if (!step) return true;
-  const s = step as unknown as { from?: unknown; to?: unknown; pos?: unknown };
-  if (typeof s.from === "number" && typeof s.to === "number") {
-    return s.from <= to && s.to >= from;
-  }
-  if (typeof s.pos === "number") {
-    return s.pos <= to && s.pos >= from;
-  }
-  // DocAttrStep, or a step type that didn't exist when this was written.
-  return true;
 }
 
 /** The parent's own range at a resolved position, or null at the doc root. */

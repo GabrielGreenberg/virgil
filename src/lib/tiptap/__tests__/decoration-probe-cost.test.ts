@@ -27,7 +27,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Node as PMNode } from "@tiptap/pm/model";
 import { LatexCommandMark } from "@/lib/tiptap/latex-command";
 import { commentsStripped } from "@/lib/__tests__/_source-scan";
 
@@ -82,6 +83,124 @@ describe("latex-command decoration probe cost", () => {
     // in the editor, so a bare `> 0` would stay satisfied by some other
     // plugin's bounded probe if this loop were deleted outright.
     expect(bounded).toBeGreaterThanOrEqual(12);
+  });
+
+  /**
+   * Type `\emph{hi}` into paragraph 0 of an n-paragraph document and report
+   * how much was re-derived: `Node.prototype.descendants` counts whole-document
+   * WALKS (prosemirror recurses through `nodesBetween`, so one build registers
+   * exactly one call), and the two Decoration constructors count the
+   * DERIVATIONS — how many blocks' decorations were actually recomputed, which
+   * is the contract.
+   */
+  function typingCost(n: number): { walks: number; derived: number; text: string } {
+    const paras = Array.from(
+      { length: n },
+      (_, i) => `<p>para ${i} holds \\emph{x} inline</p>`,
+    ).join("");
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: paras,
+    });
+    const ed = editor;
+
+    const proto = PMNode.prototype as unknown as {
+      descendants: (...a: unknown[]) => unknown;
+    };
+    const realDescendants = proto.descendants;
+    const realInline = Decoration.inline;
+    const realNode = Decoration.node;
+    let walks = 0;
+    let derived = 0;
+    proto.descendants = function patched(this: PMNode, ...args: unknown[]) {
+      walks++;
+      return (realDescendants as (...a: unknown[]) => unknown).apply(this, args);
+    };
+    const count = (real: unknown) =>
+      ((...args: unknown[]) => {
+        derived++;
+        return (real as (...a: unknown[]) => unknown)(...args);
+      }) as never;
+    (Decoration as unknown as { inline: unknown }).inline = count(realInline);
+    (Decoration as unknown as { node: unknown }).node = count(realNode);
+
+    try {
+      const typed = "\\emph{hi}";
+      for (let i = 0; i < typed.length; i++) {
+        ed.commands.insertContentAt(1 + i, typed[i]!);
+      }
+    } finally {
+      proto.descendants = realDescendants;
+      (Decoration as unknown as { inline: unknown }).inline = realInline;
+      (Decoration as unknown as { node: unknown }).node = realNode;
+    }
+    const text = ed.state.doc.firstChild!.textContent;
+    ed.destroy();
+    editor = null;
+    return { walks, derived, text };
+  }
+
+  it("re-derives O(touched blocks), not the whole document, while a command is typed", () => {
+    // Task 400. The three probes in front of the old rebuild were each correct
+    // and each gated a WHOLE-DOCUMENT `buildDecorations` — so a keystroke's
+    // cost scaled with the paper. `applyTransaction` runs `applyInner` on the
+    // root transaction and again per appended transaction, so every key that
+    // also fires the type-time carrier paid two.
+    //
+    // The leg with teeth is the second one: the cost of typing nine characters
+    // into paragraph 0 must be IDENTICAL for a 60- and a 240-paragraph
+    // document. No whole-document rebuild can satisfy that, whatever its
+    // constant. MEASURED on the pre-fix tree: 5 walks and 605 derivations at
+    // n = 60, 2405 at n = 240. After: 0 and 22 at both.
+    const small = typingCost(60);
+    const large = typingCost(240);
+
+    // Asserted FIRST because it is the leg with teeth, and because its failure
+    // message is what reports the pre-fix scaling.
+    expect(large.derived).toBe(small.derived);
+    expect(small.walks).toBe(0);
+    expect(large.walks).toBe(0);
+    // Nine keys, at most two re-derivations each (the root transaction and the
+    // carrier's appended one), one block apiece, at most two decorations in it
+    // (an inline span, and — while the paragraph still renders exactly one
+    // element child — its `p-cmd-only` node deco).
+    expect(small.derived).toBeLessThanOrEqual(9 * 2 * 2);
+    // …and not zero, or the leg would pass on a plugin that stopped painting.
+    expect(small.derived).toBeGreaterThan(0);
+    expect(small.text).toBe("\\emph{hi}para 0 holds \\emph{x} inline");
+  });
+
+  it("a keystroke in a p-cmd-only paragraph re-derives that paragraph only", () => {
+    // The broad half of the class. Probe 2 (`mapped.find(newFrom, newTo)`) is
+    // true for a keystroke ANYWHERE in a paragraph carrying the `p-cmd-only`
+    // NODE decoration, because `findInner` tests inclusively while the node
+    // deco lives in the parent's `local`. So every keystroke in any paragraph
+    // holding exactly one command run used to rebuild the document.
+    const paras = Array.from(
+      { length: 40 },
+      (_, i) => `<p>para ${i} holds \\emph{x} inline</p>`,
+    ).join("");
+    editor = new Editor({
+      extensions: [StarterKit, LatexCommandMark],
+      content: paras,
+    });
+    const ed = editor;
+    const realInline = Decoration.inline;
+    let derived = 0;
+    (Decoration as unknown as { inline: unknown }).inline = ((
+      ...args: unknown[]
+    ) => {
+      derived++;
+      return (realInline as unknown as (...a: unknown[]) => unknown)(...args);
+    }) as unknown as typeof Decoration.inline;
+    try {
+      // A plain character in the LAST decorated paragraph.
+      ed.commands.insertContentAt(ed.state.doc.content.size - 2, "z");
+    } finally {
+      (Decoration as unknown as { inline: unknown }).inline = realInline;
+    }
+    // One block re-derived ⇒ one inline span. Pre-fix: 40.
+    expect(derived).toBe(1);
   });
 
   it("still REBUILDS when typing lands inside an existing command run", () => {
