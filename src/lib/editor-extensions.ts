@@ -76,6 +76,7 @@ import {
   ExpexNumbering,
   SmartQuotes,
   TabIndent,
+  VirgilListKeymap,
   PgMarkChip,
   TextColor,
   TexBlock,
@@ -1789,6 +1790,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       // Main styles the drop-cursor; floats disable it (they don't host
       // cross-block drops — matches the bodies' pre-FCU StarterKit config).
       dropcursor: isFloat ? false : { color: "var(--drag-highlight)", width: 2 },
+      // Task 418. Upstream's Backspace helper asks a TEXTBLOCK-scoped question
+      // ("am I at the start of the list item?" answered by `$from.parentOffset`),
+      // so a caret at the start of an item's SECOND block took the item-start
+      // branch and LIFTED the whole item out of the list — killing its uuid and
+      // orphaning every card anchored to it. Virgil's `listItem` is
+      // `(paragraph | graphicsBlock) block*` and multi-block items arrive from
+      // ordinary `.tex` with no user gesture, so this is an everyday press here.
+      // `VirgilListKeymap` gates the key on the item-scoped predicate and then
+      // DELEGATES to upstream's own helpers — no vendored fork.
+      listKeymap: false,
     }),
     // Position 0 (after StarterKit). The observer must run first so
     // any appendTransaction plugin that wants to read the diff via
@@ -1804,6 +1815,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // floats sync uuid-bearing content from main, and the move/re-sync identity
     // guard keeps those uuids stable (see block-uuid-backfill.ts).
     BlockUuidBackfill,
+    // Task 418's replacement for the `listKeymap` disabled above. Its slot in
+    // the array is not load-bearing: when the gate DECLINES it returns false and
+    // every later Backspace owner still runs, exactly as if it were absent; and
+    // when it ALLOWS, the caret is by construction inside the item's FIRST
+    // child, which `listItem`'s content model pins to `paragraph | graphicsBlock`
+    // — so it can never be inside an `exampleItem`, a `latexComment` or a
+    // `codeBlock`, the only other blocks in this stack that own Backspace. It
+    // sits after the observer + backfill so their two position comments above
+    // stay true.
+    VirgilListKeymap,
     createParagraphWithTitle(
       isFloat
         ? { surface: "float", host: ctx.host ?? undefined }

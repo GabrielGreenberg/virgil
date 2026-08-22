@@ -50,6 +50,13 @@ const EXPECTED_MAIN_ORDER = [
   "starterKit",
   "docStructureObserver",
   "blockUuidBackfill",
+  // Task 418: Virgil's replacement for StarterKit's `listKeymap`, which is
+  // turned off at the one configure site. Upstream's Backspace helper asked a
+  // TEXTBLOCK-scoped question about a list ITEM and lifted multi-block items
+  // out of the list; this gates the key on the item-scoped predicate and then
+  // delegates to upstream's own helpers. Both surfaces carry it — a card-body
+  // float has lists too.
+  "virgilListKeymap",
   "paragraph",
   "heading",
   "bulletList",
@@ -129,6 +136,13 @@ const EXPECTED_FLOAT_ORDER = [
   "starterKit",
   "docStructureObserver",
   "blockUuidBackfill",
+  // Task 418: Virgil's replacement for StarterKit's `listKeymap`, which is
+  // turned off at the one configure site. Upstream's Backspace helper asked a
+  // TEXTBLOCK-scoped question about a list ITEM and lifted multi-block items
+  // out of the list; this gates the key on the item-scoped predicate and then
+  // delegates to upstream's own helpers. Both surfaces carry it — a card-body
+  // float has lists too.
+  "virgilListKeymap",
   "paragraph",
   "heading",
   "bulletList",
