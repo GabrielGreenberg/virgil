@@ -112,10 +112,21 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     "revisions.json": { tier: "content", mount: true },
     "suggestions.json": { tier: "content", mount: true },
     "todos.json": { tier: "content", mount: true },
-    // Paragraph titles + collapsed state. Content (a `parTitle` is the user's
-    // prose), but its cadence is NOT ours to set here: it rides the `.tex`
-    // autosave inside `writeDocBundle`, one write per bundle write. Declared so
-    // the conflict scanner and the mount derivation can both see it.
+    // Paragraph titles, collapsed state, AND a per-block first-80-character
+    // content FINGERPRINT — so its bytes move with the user's prose, and a fork
+    // of it is not automatically inert. Content, and its cadence is NOT ours to
+    // set here: it rides the `.tex` autosave inside `writeDocBundle`, one write
+    // per bundle write. Declared so the conflict scanner and the mount
+    // derivation can both see it.
+    //
+    // DECIDED (Gabriel, 2026-08-21, task 411): do NOT decouple this file from
+    // the bundle write to quiet it down. It was the loudest surviving fork base
+    // in the post-363 measurement (8 of 16), and giving it its own cadence
+    // would break the "one bundle, one write" coherence the load-writeback
+    // rests on — which is load-bearing for the whole content-loss cluster
+    // (tasks 350 / 356 / 357). A 27-fork reduction does not buy that. The right
+    // lever was the redundant-write gate (task 415), which took those 8 out
+    // without touching the bundle's coherence.
     "virgil.json": { tier: "content", mount: false },
   });
 

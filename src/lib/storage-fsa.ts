@@ -27,6 +27,10 @@
 
 import { generateEntityId } from "@/lib/uuid";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
+import {
+  planSidecarCleanup,
+  type SidecarCleanupReceipt,
+} from "@/lib/sync-conflict-cleanup";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
 import { parseLatex, resolveWriteDelimiters } from "@/lib/latex-parser";
@@ -2148,6 +2152,101 @@ export async function listSidecarNames(docId: string): Promise<string[]> {
     if (entry.kind === "file") out.push(entry.name);
   }
   return out;
+}
+
+/**
+ * Delete the sync-conflict debris a run PROVES carries nothing (task 411).
+ *
+ * **The door decides, not the caller.** It re-lists `virgil/` INSIDE the write
+ * critical section and re-derives the sanctioned set through
+ * `planSidecarCleanup` — the one place that answer is computed. `names` is a
+ * FILTER, never an instruction: a file is removed only when it is in BOTH the
+ * caller's list (so nothing is deleted that the user was not shown) and the
+ * freshly-derived plan (so no call site can name a content fork into the set).
+ * A name present on disk but outside the plan comes back as `refused`; a name
+ * that is no longer on disk at all is in no bucket, because there was nothing to
+ * delete and nothing was kept.
+ *
+ * **What the serialization actually buys, stated precisely.** A conflict fork is
+ * a name Virgil never writes, so it races nothing. A `.crswap` is different: it
+ * is Chrome's own in-flight write buffer for a file Virgil DOES write, created
+ * by `createWritable()` and renamed over the target by `close()`. Deleting one
+ * mid-write makes that `close()` reject.
+ *
+ * The obvious claim — "`enqueueDocWrite` takes `withDocLock`, so every Virgil
+ * write is excluded" — is FALSE in the ordinary case, and saying it would be the
+ * gate-not-callback shape this repo legislates against: a window that has
+ * `claimDoc`ed the paper already HOLDS that Web Lock, so `withDocLock`
+ * short-circuits and in-window exclusion falls to `enqueueWrite`'s per-SUBKEY
+ * queue, which does not serialize a cleanup against a sidecar write. What holds
+ * instead is: (1) only the OWNING window writes a doc, so cross-window is
+ * covered by the ownership claim; (2) this door DRAINS that window's pending
+ * writes before it enqueues, so nothing queued is mid-write when it enumerates;
+ * and (3) the listing is read INSIDE the queued task rather than handed in, so
+ * the plan describes the folder as it is at delete time.
+ *
+ * The residual is a write DISPATCHED during the delete itself, and it is
+ * accepted with its cost named: the loser is a `close()` that rejects, i.e. one
+ * write that does not land. Its bytes were in the swap and never in the live
+ * file, which is untouched — so the failure is a retry (the autosave's next
+ * debounce, and task 392's channel reports it), never a lost byte.
+ *
+ * No `.history/` net, deliberately — see the header of
+ * [sync-conflict-cleanup.ts](sync-conflict-cleanup.ts).
+ */
+export async function deleteSidecarSiblings(
+  h: DocWriteHandle,
+  names: readonly string[],
+): Promise<SidecarCleanupReceipt> {
+  const empty: SidecarCleanupReceipt = { deleted: [], refused: [], failed: [] };
+  // Drain this window's pending writes BEFORE enqueueing — from inside the
+  // queue this would wait on itself. See the note above on what this buys.
+  await flushPrefix(h.docId);
+  const result = await enqueueDocWrite<SidecarCleanupReceipt>(
+    h,
+    "virgil/_cleanup",
+    async () => {
+      const receipt: SidecarCleanupReceipt = {
+        deleted: [],
+        refused: [],
+        failed: [],
+      };
+      const docHandle = await requireDocHandle(h.docId);
+      let virgil: FileSystemDirectoryHandle;
+      try {
+        virgil = await docHandle.getDirectoryHandle(VIRGIL_SUBDIR);
+      } catch (e) {
+        if (isNotFound(e)) return receipt;
+        throw e;
+      }
+      const onDisk: string[] = [];
+      for await (const entry of virgil.values()) {
+        if (entry.kind === "file") onDisk.push(entry.name);
+      }
+      const present = new Set(onDisk);
+      const sanctioned = new Set(
+        planSidecarCleanup(onDisk).map((e) => e.name),
+      );
+      for (const name of names) {
+        if (!present.has(name)) continue; // already gone — nothing kept
+        if (!sanctioned.has(name)) {
+          receipt.refused.push(name);
+          continue;
+        }
+        try {
+          await virgil.removeEntry(name);
+          receipt.deleted.push(name);
+        } catch (e) {
+          if (isNotFound(e)) continue;
+          receipt.failed.push(name);
+        }
+      }
+      return receipt;
+    },
+  );
+  // `enqueueDocWrite` short-circuits a library-paper doc to `undefined` without
+  // running the task — normalize to "nothing happened" rather than crash.
+  return result ?? empty;
 }
 
 /**

@@ -60,6 +60,10 @@ import {
   hashContent,
 } from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
+import {
+  planSidecarCleanup,
+  type SidecarCleanupReceipt,
+} from "@/lib/sync-conflict-cleanup";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -1327,6 +1331,62 @@ export async function listSidecarNames(docId: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * The dev twin of the FSA `deleteSidecarSiblings` (task 411). Same contract, and
+ * it MOVES WITH IT: the fork class is sync-masked (nothing watches
+ * `virgil-data/`), so the dev backend can never produce a fork of its own — but
+ * a door that exists in one backend and not the other is a difference someone
+ * eventually debugs in the wrong one, and the dev preview is where this
+ * affordance is looked at.
+ *
+ * **The door decides, not the caller**: it re-lists `virgil/` and re-derives the
+ * sanctioned set through `planSidecarCleanup`, so `names` is a filter and never
+ * an instruction. Same drain-then-enqueue shape as the FSA side, for the reason
+ * stated there — the dev backend has no `.crswap` of its own, but a door whose
+ * ordering differs between backends is a difference someone eventually debugs in
+ * the wrong one.
+ */
+export async function deleteSidecarSiblings(
+  h: DocWriteHandle,
+  names: readonly string[],
+): Promise<SidecarCleanupReceipt> {
+  const receipt: SidecarCleanupReceipt = {
+    deleted: [],
+    refused: [],
+    failed: [],
+  };
+  // Read-only library papers never mutate their source (parity with the FSA
+  // funnel's LIBRARY_PAPER_PREFIX short-circuit).
+  if (isLibraryPaper(h.docId)) return receipt;
+  assertActive(h);
+  // Drain BEFORE enqueueing — from inside the queue this would wait on itself.
+  await flushPrefix(h.docId);
+  return enqueueWrite(`${h.docId}/virgil-cleanup`, async () => {
+    assertNotSuperseded(h);
+    const onDisk = await listSidecarNames(h.docId);
+    const present = new Set(onDisk);
+    const sanctioned = new Set(planSidecarCleanup(onDisk).map((e) => e.name));
+    for (const name of names) {
+      if (!present.has(name)) continue; // already gone — nothing kept
+      if (!sanctioned.has(name)) {
+        receipt.refused.push(name);
+        continue;
+      }
+      try {
+        const resp = await fetch(
+          docFileUrl(h.docId, `virgil/${encodeURIComponent(name)}`),
+          { method: "DELETE" },
+        );
+        if (resp.ok) receipt.deleted.push(name);
+        else receipt.failed.push(name);
+      } catch {
+        receipt.failed.push(name);
+      }
+    }
+    return receipt;
+  });
 }
 
 export async function readPaperFolder(docId: string): Promise<PaperFile[]> {

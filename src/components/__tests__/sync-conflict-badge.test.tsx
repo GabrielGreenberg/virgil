@@ -24,17 +24,30 @@
 //   5. WIRING   — the production doc-open path actually calls the scan (a
 //                 SOURCE leg: the defect this closes is silence, and an unwired
 //                 scan is silent in exactly the same way).
+//   6. CLEANUP  — task 411. The row is offered only where the PLAN is
+//                 non-empty, and the number it shows is the PROVED-INERT count,
+//                 never the pill's fork total — conflating the two would make
+//                 one of them lie, and only a render leg can see which number
+//                 reached the user. The confirm names every file it will
+//                 delete, and the request handed to the door is exactly the
+//                 plan.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { render, act } from "@testing-library/react";
 
 const mockList = vi.fn();
+const mockDelete = vi.fn();
 vi.mock("@/lib/storage", () => ({
   listSidecarNames: (...a: unknown[]) => mockList(...a),
+  deleteSidecarSiblings: (...a: unknown[]) => mockDelete(...a),
 }));
 
 import SyncConflictBadge from "../SyncConflictBadge";
+import {
+  beginDocPipeline,
+  __resetForTests as resetPipelines,
+} from "@/lib/multi-window/doc-pipeline";
 import { scanSyncConflicts } from "@/lib/sync-conflict-scan";
 import {
   clearSyncConflictNotices,
@@ -53,6 +66,9 @@ const FORKED = [
 
 beforeEach(() => {
   mockList.mockReset();
+  mockDelete.mockReset();
+  mockDelete.mockResolvedValue({ deleted: [], refused: [], failed: [] });
+  resetPipelines();
   clearSyncConflictNotices();
 });
 afterEach(() => clearSyncConflictNotices());
@@ -175,6 +191,195 @@ describe("sync-conflict badge", () => {
       await scanSyncConflicts("doc-1");
     });
     expect(container.innerHTML).not.toBe("");
+  });
+});
+
+describe("sync-conflict cleanup affordance (task 411)", () => {
+  /** Open the kebab menu and return the rendered menu element. */
+  async function openMenu(container: HTMLElement): Promise<HTMLElement> {
+    const kebab = container.querySelector("button[aria-haspopup='menu']");
+    expect(kebab, "the badge must render its kebab").not.toBeNull();
+    await act(async () => {
+      (kebab as HTMLButtonElement).click();
+    });
+    const menu = document.querySelector("[role='menu']");
+    expect(menu, "the menu must open").not.toBeNull();
+    return menu as HTMLElement;
+  }
+
+  function rowLabelled(menu: HTMLElement, needle: string): HTMLButtonElement | null {
+    return (
+      [...menu.querySelectorAll("button")].find((b) =>
+        (b.textContent ?? "").includes(needle),
+      ) ?? null
+    );
+  }
+
+  it("offers the row with the PROVED-INERT count, not the pill's fork total", async () => {
+    // FORKED holds 3 conflict forks (2 of `notes`, 1 of `editor-state`) plus one
+    // `.crswap`. The pill says 3 — that is the report. The plan is 2: the
+    // view-tier fork and the debris. A row that said "3" would be offering to
+    // delete a note the user wrote.
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    expect(
+      container
+        .querySelector("[data-sync-conflict-notice]")!
+        .getAttribute("data-sync-conflict-notice"),
+    ).toBe("3");
+    const menu = await openMenu(container);
+    const row = rowLabelled(menu, "that carry nothing");
+    expect(row, "the cleanup row must be offered").not.toBeNull();
+    expect(row!.textContent).toContain("Delete 2 files");
+  });
+
+  it("offers NOTHING when every fork is content — the row is absent, not disabled", async () => {
+    // A false affordance is the shape this cluster legislates against: a row
+    // that opens a confirm the door would then refuse in full.
+    mockList.mockResolvedValue([
+      "notes.json",
+      "notes (Gabriel Greenberg's conflicted copy 2026-06-09).json",
+    ]);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    const menu = await openMenu(container);
+    expect(rowLabelled(menu, "that carry nothing")).toBeNull();
+    expect(rowLabelled(menu, "Dismiss for this session")).not.toBeNull();
+  });
+
+  it("names every file in the confirm, and hands the door exactly the plan", async () => {
+    beginDocPipeline("doc-1");
+    mockDelete.mockResolvedValue({
+      deleted: [
+        "editor-state (Gabriel Greenberg's conflicted copy 2026-08-18).json",
+        "archive.json.1.crswap",
+      ],
+      refused: [],
+      failed: [],
+    });
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    const menu = await openMenu(container);
+    await act(async () => {
+      rowLabelled(menu, "that carry nothing")!.click();
+    });
+
+    // The confirm names EXACTLY what will go, and says what is being kept.
+    const dialog = document.querySelector("[role='dialog']");
+    expect(dialog, "the confirm must open before anything is deleted").not.toBeNull();
+    const text = dialog!.textContent ?? "";
+    expect(text).toContain(
+      "editor-state (Gabriel Greenberg's conflicted copy 2026-08-18).json",
+    );
+    expect(text).toContain("archive.json.1.crswap");
+    // …and never a content fork.
+    expect(text).not.toContain(
+      "notes (Gabriel Greenberg's conflicted copy 2026-06-09).json",
+    );
+    // Nothing has been asked of the door yet.
+    expect(mockDelete).not.toHaveBeenCalled();
+
+    const go = [...dialog!.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").startsWith("Delete 2"),
+    );
+    expect(go, "the confirm must carry its own delete button").not.toBeUndefined();
+    await act(async () => {
+      go!.click();
+    });
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    const [, requested] = mockDelete.mock.calls[0]!;
+    expect([...(requested as string[])].sort()).toEqual(
+      [
+        "archive.json.1.crswap",
+        "editor-state (Gabriel Greenberg's conflicted copy 2026-08-18).json",
+      ].sort(),
+    );
+  });
+
+  it("says so when the door could not run at all", async () => {
+    // No open pipeline ⇒ `runSyncConflictCleanup` refuses with an empty receipt
+    // rather than guessing a destination. A surface that read that as success
+    // would silently claim a cleanup that never happened.
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    const menu = await openMenu(container);
+    await act(async () => {
+      rowLabelled(menu, "that carry nothing")!.click();
+    });
+    const confirmBtn = [...document.querySelectorAll("[role='dialog'] button")].find(
+      (b) => (b.textContent ?? "").startsWith("Delete 2"),
+    );
+    await act(async () => {
+      (confirmBtn as HTMLButtonElement).click();
+    });
+    expect(mockDelete).not.toHaveBeenCalled(); // no handle — the door is never reached
+    const report = document.querySelector("[role='dialog']")!;
+    expect(report.textContent).toContain("Nothing was deleted");
+    // Dismiss it — an open portal would otherwise be the next leg's `[role=dialog]`.
+    await act(async () => {
+      ([...report.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "OK",
+      ) as HTMLButtonElement).click();
+    });
+  });
+
+  it("a door that THROWS is reported, not swallowed into a dead button", async () => {
+    beginDocPipeline("doc-1");
+    mockDelete.mockRejectedValue(new Error("permission lost"));
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    const menu = await openMenu(container);
+    await act(async () => {
+      rowLabelled(menu, "that carry nothing")!.click();
+    });
+    await act(async () => {
+      ([...document.querySelectorAll("[role='dialog'] button")].find((b) =>
+        (b.textContent ?? "").startsWith("Delete 2"),
+      ) as HTMLButtonElement).click();
+    });
+    const report = document.querySelector("[role='dialog']")!;
+    expect(report.textContent).toContain("Nothing was deleted");
+    await act(async () => {
+      ([...report.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "OK",
+      ) as HTMLButtonElement).click();
+    });
+  });
+
+  it("cancelling deletes NOTHING", async () => {
+    beginDocPipeline("doc-1");
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    const menu = await openMenu(container);
+    await act(async () => {
+      rowLabelled(menu, "that carry nothing")!.click();
+    });
+    const dialog = document.querySelector("[role='dialog']")!;
+    const cancel = [...dialog.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Cancel",
+    );
+    expect(cancel, "a danger confirm cues its safest button").not.toBeUndefined();
+    await act(async () => {
+      cancel!.click();
+    });
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });
 
