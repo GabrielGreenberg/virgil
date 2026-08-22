@@ -7,11 +7,15 @@ import { Mapping } from "@tiptap/pm/transform";
 import { isHistoryTransaction } from "@tiptap/pm/history";
 import { commitSlashCommand } from "./commands";
 import {
+  CARRIER_MARK_NAMES,
   LATEX_COMMENT_TAIL_MARK,
   LATEX_VERBATIM_MARK,
+  carrierRowFor,
   matchBraceGroupAt,
   scanRawLatexSpans,
+  verbatimFormOf,
 } from "@/lib/latex-lexer";
+import type { CarrierRow, VerbatimForm } from "@/lib/latex-lexer";
 import {
   contentChangedRanges,
   touchedRanges,
@@ -65,6 +69,30 @@ export const LatexVerbatimMark = Mark.create({
   // changes, and the boundary of a `\verb|…|` run is its closing delimiter, so
   // extending it was never right.
   inclusive: false,
+
+  // The one attribute this family declares, and the reason it is worth the
+  // JSON-shape change its sibling `latexCommand` deliberately avoided (task
+  // 407): a run's own text cannot tell a BROKEN inline `\verb` from an
+  // arbitrary REFUSAL carrier, so the demotion half has to read provenance
+  // recorded at the push site. `verbatimFormOf` reads anything unrecognized —
+  // an older stored card body, a clipboard round trip through a DOM that never
+  // carried the attribute — as `"carrier"`, which never demotes: a missed
+  // demotion is the status quo, a wrong one escapes the user's source.
+  //
+  // RENDERED, so a copy/paste inside the app keeps the distinction; only the
+  // `"inline"` value is written, so a carrier's DOM is byte-identical to what
+  // it was before this attr existed.
+  addAttributes() {
+    return {
+      form: {
+        default: "carrier" satisfies VerbatimForm,
+        parseHTML: (el: HTMLElement) =>
+          verbatimFormOf({ form: el.getAttribute("data-verbatim-form") }),
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.form === "inline" ? { "data-verbatim-form": "inline" } : {},
+      },
+    };
+  },
 
   parseHTML() {
     return [{ tag: "span[data-latex-verbatim]" }];
@@ -179,6 +207,20 @@ export const LatexCommentTailMark = Mark.create({
 //    text as well as the new — see `brokenConstructs`, and the note there on
 //    why the new text alone cannot answer it.
 //
+//  - **…and the law is about CARRIERS, not about this mark** (task 407). Its
+//    two siblings were left one-way for a year, and the comment tail was the
+//    silent one: a run whose leading `%` an edit removed kept
+//    `latexCommentTail`, whose serializer arm emits the bytes VERBATIM with no
+//    `%` re-prefix, so the user's annotation started typesetting in the PDF.
+//    They demote through the SAME `touches` scoping and the SAME
+//    replacement/history exemptions, off the family table in `latex-lexer.ts`
+//    — but their predicate can NOT be `scanRawLatexSpans`: a comment tail's
+//    bytes are not raw LaTeX at all (they are not typeset), and a `\verb` run
+//    is one whole construct rather than a sequence of them, so each row asks
+//    its own anchored question of the run's own text. The one row that never
+//    demotes is `latexVerbatim`'s REFUSAL form — arbitrary source with no
+//    grammar, which no edit can break.
+//
 // Cost: O(edit) to collect the ranges, then one scan of each TOUCHED TEXTBLOCK
 // — never a doc walk, and nothing at all when the block holds no `\`, no `{`
 // and no mark. A block that holds a STALE mark the edit did not itself reach
@@ -190,13 +232,31 @@ export const LatexCommentTailMark = Mark.create({
 const OPAQUE = "￼";
 
 /** The two carriers whose bytes are LITERAL or INERT. A `\` inside one of them
- *  is not a construct this scanner may claim. */
+ *  is not a construct this scanner may claim.
+ *
+ *  DERIVED from the family table (task 407) rather than hand-listed: the
+ *  census of "which marks are stricter carriers" belongs in exactly one place,
+ *  beside the rows that say what each one CLAIMS. */
+const SIBLING_CARRIER_MARKS = new Set(CARRIER_MARK_NAMES);
+
 function isOpaqueRun(child: PMNode): boolean {
-  return child.marks.some(
-    (m) =>
-      m.type.name === LATEX_VERBATIM_MARK ||
-      m.type.name === LATEX_COMMENT_TAIL_MARK,
-  );
+  return child.marks.some((m) => SIBLING_CARRIER_MARKS.has(m.type.name));
+}
+
+/**
+ * One maximal run of a block's text children that all carry the SAME carrier
+ * row — its own bytes and its BLOCK-RELATIVE range (task 407).
+ *
+ * Merged by ROW, not by mark-set identity: bolding the word `verb` inside
+ * `\verb|x|` splits it into three text nodes with different mark arrays, and
+ * asking each third whether it spells a `\verb` run would demote all three.
+ * Two runs of the SAME mark with different `form` attrs are different rows and
+ * stay separate, which is what keeps an inline `\verb` abutting a refusal
+ * carrier from being answered by one question.
+ */
+interface CarrierRun extends Range {
+  row: CarrierRow;
+  text: string;
 }
 
 /**
@@ -314,9 +374,10 @@ function subtractCover(run: Range, cover: Range[]): Range[] {
 function readBlock(
   block: PMNode,
   type: { name: string },
-): { text: string; marked: Range[] } {
+): { text: string; marked: Range[]; carriers: CarrierRun[] } {
   let text = "";
   const marked: Range[] = [];
+  const carriers: CarrierRun[] = [];
   let at = 0;
   block.forEach((child) => {
     const size = child.nodeSize;
@@ -327,9 +388,32 @@ function readBlock(
       if (last && last.to === at) last.to = at + size;
       else marked.push({ from: at, to: at + size });
     }
+    // The SIBLING carriers ride this same walk (task 407) rather than a second
+    // one: their demotion half asks a whole-RUN question, and the runs are
+    // exactly the children this loop is already visiting. A block carrying no
+    // sibling mark therefore pays one `Set.has` per child and nothing else.
+    if (child.isText) {
+      for (const m of child.marks) {
+        if (!SIBLING_CARRIER_MARKS.has(m.type.name)) continue;
+        const row = carrierRowFor(m.type.name, m.attrs);
+        if (!row) continue;
+        const last = carriers[carriers.length - 1];
+        if (last && last.row === row && last.to === at) {
+          last.to = at + size;
+          last.text += child.text as string;
+        } else {
+          carriers.push({
+            row,
+            text: child.text as string,
+            from: at,
+            to: at + size,
+          });
+        }
+      }
+    }
     at += size;
   });
-  return { text, marked };
+  return { text, marked, carriers };
 }
 
 /**
@@ -750,10 +834,56 @@ export const LatexCommandMark = Mark.create({
             // `codeBlock` / `latexComment` declare `marks: ""` — the markless
             // pair the serializer emits byte-raw. Nothing to promote, nothing
             // that could be carrying a stale mark, and `addMark` would silently
-            // decline anyway.
+            // decline anyway. The SIBLING pass below sits under the same guard
+            // for the same reason and one more: `marks: ""` excludes the whole
+            // vocabulary, so such a block cannot be carrying a stale sibling
+            // mark either.
             if (!block.type.allowsMarkType(markType)) continue;
             const start = pos + 1;
-            const { text, marked } = readBlock(block, markType);
+            const { text, marked, carriers } = readBlock(block, markType);
+
+            // ── the SIBLING carriers demote too (task 407) ─────────────────
+            //
+            // Task 390's law is about CARRIERS, not about `latexCommand`, and
+            // its two siblings were left one-way. The comment tail was the
+            // SILENT leg: backspace the `%` of `x % TODO cite` and the
+            // remainder kept `latexCommentTail`, whose serializer arm emits the
+            // run's bytes VERBATIM with no `%` re-prefix anywhere — so the
+            // user's annotation reached the `.tex` as live body text and
+            // started TYPESETTING in the PDF, as a fixed point (the next parse
+            // reads unmarked prose and the `%` is gone for good). The inline
+            // `\verb` twin is the loud one: delete its lead and a live `%`
+            // inside the payload comments out the rest of the source line;
+            // delete a delimiter and the paper stops compiling.
+            //
+            // WHOLE-RUN, so this half is strictly cheaper than the sub-span
+            // machinery below — one anchored match per marked run in a touched
+            // block, no cover subtraction, no brace pairing and no old-text
+            // pass. The run IS the construct, so an edit that can break it lies
+            // inside it or is adjacent to its boundary, which `touches` already
+            // counts in both directions (a deletion's changed range is
+            // ZERO-WIDTH in the new document — the commonest demotion there is).
+            //
+            // A REFUSAL-carrier row (`claims === null`) never demotes, and that
+            // is a decision rather than an omission: a stale mark there is a
+            // VISIBLE compile error, while demoting an unmodeled environment or
+            // a `\begingl…` gloss would push a screenful of the user's source
+            // through the escape rung (`\`→`\textbackslash{}`, `{`→`\{`) —
+            // strictly worse than the thing being fixed. Which row a run takes
+            // is PROVENANCE read off the mark, never a guess from its text: a
+            // damaged inline `\verb` and an arbitrary carrier both fail every
+            // lexer door, so a text-shape test would be a blacklist that leaks
+            // onto all four carrier shapes.
+            for (const run of carriers) {
+              if (!run.row.claims) continue;
+              const abs = { from: start + run.from, to: start + run.to };
+              if (run.row.claims(run.text)) continue;
+              if (!ranges.some((r) => touches(abs, r))) continue;
+              const siblingType = newState.schema.marks[run.row.mark];
+              if (!siblingType) continue;
+              tr ??= newState.tr;
+              tr.removeMark(abs.from, abs.to, siblingType);
+            }
 
             // THE BLOCK GATE, in both directions. Promotion needs a `\` or a
             // `{` to have anything to find; DEMOTION needs the block to still

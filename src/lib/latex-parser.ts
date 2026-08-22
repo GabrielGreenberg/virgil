@@ -586,7 +586,7 @@ export function parseInlineContent(
         nodes.push({
           type: "text",
           text: text.slice(i, verbEnd),
-          marks: [verbatimMark()],
+          marks: [verbatimMark("inline")],
         });
         i = verbEnd;
         continue;
@@ -2039,7 +2039,7 @@ function parseBody(
             {
               type: "text",
               text: ctx.src.slice(glOpenStart, endIdx + "\\endgl".length),
-              marks: [verbatimMark()],
+              marks: [verbatimMark("carrier")],
             },
           ],
         });
@@ -2600,7 +2600,7 @@ function pushVerbatimEnvCarrier(
       {
         type: "text",
         text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
-        marks: [verbatimMark()],
+        marks: [verbatimMark("carrier")],
       },
     ],
   });
@@ -3685,7 +3685,7 @@ function exampleBodyCarrierParagraph(
   return {
     type: "paragraph",
     ...(typeof uuid === "string" && uuid ? { attrs: { uuid } } : {}),
-    content: [{ type: "text", text: raw, marks: [verbatimMark()] }],
+    content: [{ type: "text", text: raw, marks: [verbatimMark("carrier")] }],
   };
 }
 
@@ -3761,7 +3761,7 @@ function parseExampleBodyAsBlocks(
             text: wrapVerbatimEnvBody(
               (child.content ?? []).map((c) => c.text ?? "").join(""),
             ),
-            marks: [verbatimMark()],
+            marks: [verbatimMark("carrier")],
           },
         ],
       });

@@ -343,8 +343,17 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
  * `code` wrapper (memo §A). Both carriers used to sit here as an early `return`
  * ABOVE the wrapper loop, which DELETED whatever wrapped the run: a footnote
  * reading `\textbf{\textsc{x}}` came back `\textsc{x}`, a fixed point.
- * This fork carries no comment tails at all — a card body is itself a braced
- * ARGUMENT, so its parser never produces one.
+ * This fork PRODUCES no comment tails at all — a card body is itself a braced
+ * ARGUMENT, so its parser never makes one. It can still RECEIVE one (the mark
+ * is registered on card surfaces, and an archived excerpt captures a document
+ * slice), and there the missing arm is the RIGHT answer rather than the
+ * inverse of task 347: everything this fork emits lands inside `\footnote{…}`,
+ * so a raw `%` would comment out the closing brace and the rest of that source
+ * line. Escaping it prints the annotation, which is visible and recoverable;
+ * emitting it raw breaks the document. The main serializer can emit one raw
+ * only because `serializeInlineSequence` discharges the carrier's LINE
+ * obligation (`closeCommentTail`), and a braced argument has nowhere to put
+ * that newline.
  */
 function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
@@ -640,7 +649,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         nodes.push({
           type: "text",
           text: text.slice(i, verbEnd),
-          marks: [verbatimMark()],
+          marks: [verbatimMark("inline")],
         });
         i = verbEnd;
         continue;

@@ -3693,6 +3693,119 @@ touched ones 2.
 (the word returns to prose immediately); type `\%`, backspace the `\`, save and
 reload (the `%` is still prose and the line is intact).
 
+###### The family half: the law was about CARRIERS, and one of three had it
+
+Same law, and the case where it was written down for a MARK and owed by a
+FAMILY (task 407). 390 gave `latexCommand` both directions. Its two siblings
+were left one-way for five weeks, and the reason the gap was invisible is
+structural: the only re-derivation plugin in the family is keyed to
+`markType = this.type`, so a reader looking for "where does the mark come off?"
+finds an answer that is complete about the one mark it names.
+
+- **The comment tail was the SILENT leg.** The parser pushes a whole tail
+  INCLUDING its `%` as ONE text node; ProseMirror rebuilds a backspaced text
+  node as `text.slice(1)` carrying the same marks array (`inclusive: false` is
+  consulted only for insertion at a boundary, never for deletion), and nothing
+  anywhere removed the mark. The serializer's arm then emits the run's bytes
+  VERBATIM with **no `%` re-prefix anywhere** — it assumes `raw` already begins
+  with one, which is precisely the assumption a demotion-less carrier breaks.
+  So `x % TODO cite` minus its `%` reached the `.tex` as LIVE BODY TEXT and the
+  user's annotation started TYPESETTING in the PDF, in all three of the
+  serializer's line shapes, as a FIXED POINT — the next parse reads unmarked
+  prose and the `%` is gone for good.
+- **The inline `\verb` twin is LOUD.** Delete its lead and `verb|100% sure|`
+  reaches the `.tex` with a live `%` that comments out the rest of that source
+  line. Delete a delimiter and the paper stops compiling, and on re-parse
+  `matchInlineVerbAt` returns -1, so the bytes are not verbatim to the parser
+  either.
+- **Neither is caught by anything.** `write-preservation`'s gate does not run at
+  all after an UNDOABLE edit, and Backspace is one.
+
+> **The unit of the law is the CARRIER, and the axis it is stated on is
+> `(mark, FORM)` — not `mark`.** Each row asks ONE anchored question of a run's
+> own text: *does this run still SPELL what its carrier says it is?* A row whose
+> answer is `null` is a REFUSAL carrier — arbitrary bytes with no grammar, which
+> no edit can break and which must NEVER demote.
+
+The table is [`CARRIER_ROWS`](src/lib/latex-lexer.ts), in the TipTap-free leaf
+both the `.tex` layers and the TipTap layer already read for this vocabulary.
+Six rules it earned:
+
+- **`latexVerbatim` wears TWO opposite claims, and the axis correction is the
+  whole fix.** The inline `\verb` form is a CONSTRUCT with a spelling; the other
+  four push sites are the schema's REFUSAL — an unmodeled environment, a
+  `\begingl…` gloss, an example child, a `verbatim` env inside an example. At
+  demotion time a run's own text cannot tell a DAMAGED inline `\verb` from an
+  arbitrary carrier: both fail every lexer door. **A text-shape predicate is
+  therefore a blacklist and it LEAKS** — it would demote all four carrier
+  shapes, and a demoted carrier leaves through the escape rung
+  (`\`→`\textbackslash{}`, `{`→`\{`), destroying a screenful of the user's
+  source on ONE keystroke. Strictly worse than the stale mark being fixed.
+- **So the row is PROVENANCE, recorded where it is known.**
+  `verbatimMark(form)` takes a REQUIRED argument — a defaulted one would be a
+  decision nobody made, and the two answers are opposite claims — and the attr
+  travels with the mark across every later split. It is the JSON-shape change
+  `latexVerbatim`'s own header gives as its reason for NOT being an attr on
+  `latexCommand`, and it is affordable here for a reason that does not
+  generalize: this repo controls both producers (the parser emits the attrs key
+  unconditionally, exactly as `Mark.toJSON()` does) and the mark is rare, where
+  `latexCommand` is on every raw run in every document.
+- **Every unrecognized answer is the REFUSAL row.** A card body persisted before
+  the attr existed carries no attrs at all, and a clipboard round trip through a
+  DOM that never rendered it carries none either. A missed demotion is the
+  status quo; a wrong one escapes the user's source, so `verbatimFormOf` reads
+  anything but `"inline"` as `"carrier"`.
+- **The rows are WHOLE-RUN, which is what makes the sibling half CHEAPER than
+  the arm it sits beside** — one anchored match per marked run in a touched
+  block, no `subtractCover`/`mergeRanges`, no `markedBracePairs` (a brace inside
+  a `\verb` run was never a group delimiter) and no `brokenConstructs` old-text
+  pass. The run IS the construct, so an edit that can break it lies inside it or
+  is adjacent to its boundary, which `touches` already counts in both
+  directions. It rides `readBlock`'s existing walk, so a block carrying no
+  sibling mark pays one `Set.has` per child and nothing else.
+- **Merged by ROW, not by mark-set identity.** ProseMirror merges adjacent text
+  nodes only on identical mark ARRAYS, so another mark landing inside a `\verb`
+  run splits it into three; asking each third whether it spells a `\verb` run
+  answers no three times and demotes all three.
+- **The comment row is NEWLINE-TOLERANT**, because `closeCommentTail`
+  explicitly documents an interior newline as reachable by EDITING and
+  re-comments its continuation lines. A claim written as "the whole run is one
+  comment line" would demote exactly the shape the serializer has an arm for.
+- **`isOpaqueRun` no longer hand-lists the siblings** — it reads
+  `CARRIER_MARK_NAMES`, derived from the rows, so the family census exists in
+  one place. That predicate is what keeps a `latexCommand` scan out of a
+  sibling's bytes, and a fourth carrier would have been invisible to it while
+  being perfectly visible to the table.
+
+**Stated collateral, pinned rather than discovered:** a demoted tail that
+CARRIED LaTeX prints it — `% see \cite{a}` → ` see \textbackslash{}cite\{a\}`.
+Law-consistent (the bytes ARE prose now) and a fixed point, but surprising.
+
+**And the card fork's missing comment arm is the RIGHT answer, not the inverse
+inconsistency it reads as.** `footnote-content.ts` has a verbatim arm and no
+comment-tail arm while `borrowed-schema.ts` REGISTERS the mark on card
+surfaces — but everything that fork emits lands inside `\footnote{…}`, so a raw
+`%` would comment out the closing brace. The main serializer can emit one raw
+only because `serializeInlineSequence` discharges the carrier's LINE obligation,
+and a braced argument has nowhere to put that newline.
+
+CI: [carrier-family-demotion.test.ts](src/lib/tiptap/__tests__/carrier-family-demotion.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack over the REAL parse and
+then serializes, with a two-cycle fixed-point check on every red leg. **No
+pre-407 suite could see any of this**: grepping `removeMark|Backspace|
+deleteRange` across the four carrier suites returns ZERO — every one of them
+drives PARSE → SERIALIZE over source the parser produced, where a carrier run
+always spells its own construct and the divergence is unrepresentable. Measured
+by neutering each half in turn: the pre-407 one-way plugin takes 11 legs, a
+text-shape blacklist over the refusal row 7, a form-less `verbatimMark` 8, the
+whole-run merge 1, a whole-run comment claim 1, the touch scoping 1 (and it
+needs an ALREADY-BROKEN run, which no intact fixture can represent), an
+unrendered `form` attr 1, and the hand-listed `isOpaqueRun` 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked — type
+`x % TODO cite`, backspace the `%`, and open the code view: the annotation must
+be escaped prose, not a live comment.
+
 #### The dispatcher half: the LAST layer that still read "unterminated" as "yours"
 
 Same round trip, and the case where the law had been written down twice, applied
