@@ -44,6 +44,7 @@ import { getRegisteredEditors } from "../target-registry";
 import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
 import { insertNodesAdvancing } from "./mapped-insert";
 import { refuseOnThrow } from "../planned-spec";
+import { inlineCursorHostsNode, type InlineDropPayload } from "../inline-host";
 import { parseAnyKey } from "@/floats/float-key";
 import type {
   DropCtx,
@@ -227,7 +228,18 @@ export function inlineAtomMoveSpec<
       const node = opts.createAtom
         ? buildCreateNode(opts, placement, cardKey, ctx)
         : null;
-      return node ? { kind: "create", node } : null;
+      if (!node) return null;
+      // CONTAINER (task 414), defence in depth behind the hit-test's own gate.
+      // A markless verbatim block (`codeBlock` / `latexComment`, `text*`) is
+      // TRUNCATED and its tail EJECTED by an inline atom — for a `latexComment`
+      // that promotes a commented-out line into live printed prose. The
+      // affordance refuses to paint a caret there, and this is what keeps the
+      // refusal true for any path that reaches the commit with a placement the
+      // hover never offered (a stale placement, a future producer).
+      if (!inlineCursorHostsNode(placement.editor.state.doc, placement.pos, node)) {
+        return null;
+      }
+      return { kind: "create", node };
     }
     // The in-text grab is same-editor only (v1): a cross-editor move splits
     // into two transactions and would fire an unsuppressed footnote-orphan
@@ -242,7 +254,14 @@ export function inlineAtomMoveSpec<
     ) {
       return null;
     }
-    if (placement.editor === src.editor) return { kind: "move-within", src };
+    if (placement.editor === src.editor) {
+      // Same CONTAINER question as the create branch — the node is native here,
+      // so its own type is the exact answer.
+      if (!inlineCursorHostsNode(placement.editor.state.doc, placement.pos, src.node)) {
+        return null;
+      }
+      return { kind: "move-within", src };
+    }
 
     // CROSS-EDITOR (task 328). A footnote/citation card's marker released
     // inside a card body: `footnoteDropSpec` / `citationDropSpec` do not set
@@ -256,6 +275,16 @@ export function inlineAtomMoveSpec<
     // decision cancels the session).
     const node = adoptNodeIntoSchema(src.node, placement.editor.state.schema);
     if (!node) return null;
+    // CONTAINER, and here it is the LOAD-BEARING one (task 414). `insertLanded`
+    // below measures a growth FLOOR, and this corruption GROWS the document —
+    // measured `+3` against a floor of 1, because the ejected tail text inflates
+    // it — so the net FALSE-PASSES and the unconditional source delete two doors
+    // down takes the atom, and a footnote's `content` body with it. A net whose
+    // measure is a growth floor cannot see a corruption that grows the document;
+    // the honest test is the container question, asked BEFORE the delete.
+    if (!inlineCursorHostsNode(placement.editor.state.doc, placement.pos, node)) {
+      return null;
+    }
     // container-fit-exempt: an INLINE atom at an inline-cursor position inside a
     // textblock — there is no block-in-container fit to decide and no container
     // the fitter could split to accommodate it. (The VOCABULARY question, which
@@ -273,6 +302,24 @@ export function inlineAtomMoveSpec<
   return {
     allowedPlacements: opts.allowedPlacements ?? ["inline-cursor"],
     targetScope: "any-editor",
+    /**
+     * The inline payload (task 414) is ONE atom node, and the two source modes
+     * name it differently: a by-id spec configures `nodeName` statically (and
+     * its `createAtom` factory builds that same type — the create branch reuses
+     * the card's id, never its own vocabulary), while the in-text grab has no
+     * name until its captured source is resolved. Both are cheap: a constant, or
+     * one `doc.nodeAt` on a position captured at mousedown.
+     *
+     * An unresolvable source answers TEXT-ONLY rather than refusing, because
+     * `resolveDrop` already refuses that drop outright — painting or not
+     * painting a caret for a gesture that can never commit is not this
+     * question's business, and refusing here would be a second table for it.
+     */
+    inlinePayloadFor(cardKey, ctx): InlineDropPayload {
+      if (opts.nodeName) return [opts.nodeName];
+      const name = resolve(cardKey, ctx)?.node.type.name;
+      return name ? [name] : [];
+    },
     // Surface BOTH halves of the create-branch obligation on the spec, from the
     // mechanism itself: that this spec rebuilds an atom at all, and which ctx
     // accessor it declared for the card's half of it. The contract test asserts
@@ -434,6 +481,10 @@ function insertNewAtom(
   // schema-adopt-exempt: the CREATE branch — `buildCreateNode` builds this node
   // with `placement.editor.schema`, i.e. THIS editor's own vocabulary, so there
   // is no foreign node to adopt. Nothing crosses an editor boundary here.
+  // inline-host-exempt: a DISPATCH helper. `resolveDrop` reaches it only after
+  // asking `inlineCursorHostsNode` on its create branch, which is where a
+  // refusal can still be a `no-op` DECISION — refusing HERE would dispatch
+  // nothing and report success, which is the task-321 defect (task 414).
   const tr = editor.state.tr.insert(insertPos, node);
   try {
     tr.setSelection(
@@ -493,6 +544,9 @@ function moveInlineAtomWithin(
   // one editor, so the node is native by construction and no boundary is
   // crossed. (The landed net is likewise inapplicable: this transaction deletes
   // and inserts, so its net growth is not the payload's.)
+  // inline-host-exempt: the same reasoning one question over — that branch asks
+  // `inlineCursorHostsNode` before it resolves, and a refusal in this DISPATCH
+  // helper would be a silent no-op rather than a decision (task 414).
   const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, [node]);
   try {
     tr.setSelection(

@@ -27,6 +27,7 @@ import type {
   UserNote,
 } from "@/lib/types";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import type { InlineDropPayload } from "./inline-host";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -429,6 +430,33 @@ export interface DropSpec {
    */
   placementsFor?: (cardKey: string) => ReadonlyArray<PlacementKind>;
   /**
+   * What THIS dragged key will splice at an `inline-cursor` placement, as schema
+   * node NAMES (task 414) — the input to the inline container question
+   * (`inline-host.ts`), which the hit-test asks BEFORE it paints a caret and
+   * every inline splice re-asks before it dispatches.
+   *
+   * REQUIRED of every spec whose placements can include `inline-cursor`: the
+   * markless verbatim blocks (`codeBlock` / `latexComment`, `content: "text*"`)
+   * are TRUNCATED-and-EJECTED by anything but text, so a spec that offers a
+   * caret there is offering the user a corruption. A spec that never produces an
+   * inline caret needs none (a paragraph-side re-anchor splices nothing), which
+   * is why this is optional in the type and pinned as an implication by CI
+   * (`placement-reachability.test.ts`, allowlist EMPTY).
+   *
+   * Resolved ONCE per session by `resolveSessionInlinePayload`, at
+   * `beginDropSession` — the twin of {@link placementsFor}, for the same reason:
+   * the resolution may read persisted state or walk a document range, which a
+   * throttled pointermove must never pay for, and freezing the answer at
+   * mousedown keeps the affordance stable for the gesture. The payload can still
+   * vanish mid-drag, which is why the commit re-asks against the node/slice it
+   * actually holds rather than trusting this list.
+   *
+   * An empty array is the ANSWER "plain text only" — nothing that can tear a
+   * container — not "unknown". A payload that cannot be resolved at all has
+   * already been refused every placement by {@link placementsFor}.
+   */
+  inlinePayloadFor?: (cardKey: string, ctx: DropCtx) => InlineDropPayload;
+  /**
    * Whether this kind may drop into card-body editors or only the main
    * editor. Attachment cards (note, todo, etc.) anchor to paragraph
    * UUIDs in the main document — re-anchoring them to a paragraph
@@ -527,6 +555,12 @@ export interface DropSession {
    *  so a per-payload policy costs one localStorage read per GESTURE rather
    *  than one per throttled pointermove. */
   placements: ReadonlyArray<PlacementKind>;
+  /** What THIS session will splice at an inline caret, as schema node names —
+   *  `spec.inlinePayloadFor`'s answer for this cardKey, else the empty
+   *  (text-only) payload. Resolved once at session start alongside
+   *  {@link placements}, and handed to every hit-test so the container question
+   *  is asked in the AFFORDANCE and not only at the commit (task 414). */
+  inlinePayload: InlineDropPayload;
   /** Where the user mousedowned, used by ESC / leave logic. */
   origin: { x: number; y: number };
   /** Current placement under the cursor, or null when not over a valid

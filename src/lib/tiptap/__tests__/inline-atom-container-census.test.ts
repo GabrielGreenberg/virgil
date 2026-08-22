@@ -33,18 +33,25 @@
 //      Stated residual: a future INLINE splice in such a module guarded only by
 //      the block gate would pass this half. Half A has no such give.
 //
-// SCOPE, stated rather than implied. This censuses the CREATE DOORS. It does NOT
-// reach the drop-mode / slice family (`inline-atom-move.ts`, `stack-pull.ts`,
-// `text-range-move.ts` + the per-panel `drop-spec.ts` node BUILDERS they call),
-// which lands atoms at `makeInlineCursorPlacement` positions that ask no schema
-// question either — a real, separate member of this class whose fix belongs at
-// the ONE hit-test chokepoint and is an AFFORDANCE change (what the hover offers
-// is what the commit accepts), so it is filed as its own task rather than made
-// here. `container-fit-guardrail.test.ts` is the natural home for the inline
-// question — its splice family already greps that directory — but it does NOT
-// ask it today, and it EXEMPTS the inline-atom sites outright, so nothing
-// censuses them at present. Saying otherwise would be the overstatement this
-// whole class is about.
+// SCOPE, stated rather than implied. This censuses the CREATE DOORS. The
+// drop-mode / slice family (`inline-atom-move.ts`, `stack-pull.ts`,
+// `text-range-move.ts`) is governed by its OWN census, in the file the splice
+// family already lives in: `container-fit-guardrail.test.ts`'s THIRD question
+// (task 414) — every splice excused from the container FIT must ask the inline
+// container question in its enclosing declaration, allowlisted per LINE. This
+// file's `OUT_OF_SCOPE` no longer carves that directory out; what remains in the
+// list is the SSOT's own home. Half A finds nothing there today (a drop-mode
+// splice resolves its type from a source node or a persisted blob, never from
+// `schema.nodes.<atom>`), which is exactly why the teeth had to be a census of
+// the SPLICE family rather than of the type-resolution shape — a green answer
+// from this file about that directory would be a vacuous one, and saying
+// otherwise would be the overstatement this whole class is about.
+//
+// The AFFORDANCE half of 414 — that the hit-test refuses to PAINT a caret it
+// cannot honour, so the hover and the commit answer from one table — is asked of
+// the live spec objects in `placement-reachability.test.ts` (every spec that can
+// offer an inline caret declares `inlinePayloadFor`), and driven end to end in
+// `drop-mode-inline-container-gate.test.tsx`.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -78,11 +85,10 @@ const ASKS_DOOR = /insertInlineAtom\s*\(/;
 const ASKS_INLINE_SSOT = /posHostsInlineAtom\s*\(/;
 const ASKS_BLOCK_SSOT = /posHostsBlockInsert\s*\(/;
 
-/** Owned by the drop-mode / slice census — see the header. */
-const OUT_OF_SCOPE = [
-  "src/components/drop-mode/",
-  "src/text-objects/text-object-registry.ts", // the SSOT's own home
-];
+/** The SSOT's own home — it DECLARES the predicate rather than asking it. The
+ *  drop-mode directory is NO LONGER carved out (task 414 gave it a real census
+ *  of its own; see the header). */
+const OUT_OF_SCOPE = ["src/text-objects/text-object-registry.ts"];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

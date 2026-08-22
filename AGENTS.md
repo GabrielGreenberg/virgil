@@ -1574,18 +1574,9 @@ ungated sites, and six of its nine legs fail. The task-147 suite's inline-row
 expectation is RENEGOTIATED in place with the reason at the site: it pinned this
 defect as intended behaviour.
 
-**Residual, filed rather than fixed** (its own task): the drop-mode / slice family
-— `inline-atom-move.ts`'s CREATE branch, `stack-pull.ts`, `text-range-move.ts`,
-and the per-panel `drop-spec.ts` node builders they call — lands atoms at
-`makeInlineCursorPlacement` positions that ask no schema question either.
-`posHostsInlineAtom` is imported nowhere under `src/components/drop-mode/`. The
-fix belongs at the ONE hit-test chokepoint, which makes it an AFFORDANCE change
-("what the hover OFFERS is what the commit ACCEPTS"), not a door gate — and the
-cross-editor move is strictly worse than a create there, because `insertLanded`
-returns TRUE on the corrupted result and the unconditional source delete then
-fires, taking a footnote's body with it. `container-fit-guardrail` EXEMPTS those
-sites, and its exemption reason stated the same retired premise — corrected in
-place, so the exemption now says what it does and does not cover.
+**The residual this filed is CLOSED by task 414** — the drop-mode / slice family,
+which landed atoms at `makeInlineCursorPlacement` positions asking no schema
+question at all. See "The drop half" immediately below.
 
 **A second residual, also filed:** the gate is a SINGLE-POSITION question, where
 the block twin (`blockRangeAllowsAction`, task 148) requires EVERY reachable
@@ -1597,6 +1588,120 @@ predicate over.
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (pure schema +
 serializer), so the check is cheap and real: select a word inside a `% comment`
 line, open the bolt, and see `$x$` and `Cross-ref` greyed.
+
+##### The drop half: the AFFORDANCE is where a per-payload container question is asked
+
+Same law, the DRAG carrier (task 414) — and the case where the SSOT was the one
+door 396 had just wired everywhere, and the seven sites that skipped it skipped
+it from a layer no door gate can reach.
+
+A drop-mode gesture resolves its landing at ONE chokepoint,
+`makeInlineCursorPlacement` ([hit-test.ts](src/components/drop-mode/hit-test.ts)),
+which returned the raw `posAtCoords` position. `codeBlock` and `latexComment`
+both declare a `uuid` attr, so `resolveAnchorableBlock` resolves them, `inText`
+is true over their text, and a caret painted inside them like anywhere else.
+Measured against the real stack, dropping a citation into `% todo| fix later`:
+
+```
+latexComment("% todo") + paragraph[citation, " fix later"]
+.tex:  % % todo %!v:m1
+       \vcid{x}\cite{a} fix later
+```
+
+**A line the user had commented OUT becomes live printed prose** — task 347's
+promotion class, arriving through a drag. Nothing throws, the doc is
+schema-valid, the save writes it through.
+
+Seven sites: the CREATE branch (`insertNewAtom`, a footnote/citation card
+dragged out of its panel), the CREATE-BY-COPY (`stack-pull`'s inline-cursor
+`tr.replace`), and five MOVEs — `moveInlineAtomWithin` (all four atom kinds via
+the in-text grab), the cross-editor atom insert, and `text-range-move`'s two
+slice splices.
+
+> **A container question with a PER-PAYLOAD answer is asked at the ONE hit-test
+> chokepoint, so the hover and the commit answer from the same table — and the
+> payload is resolved ONCE per session, never per pointermove.** `DropSpec`
+> declares `inlinePayloadFor` (the twin of `placementsFor`, resolved on the same
+> `beginDropSession` edge); [inline-host.ts](src/components/drop-mode/inline-host.ts)
+> folds it over `posHostsInlineAtom`; every splice re-asks against the node or
+> slice it actually holds.
+
+Six rules it earned:
+
+- **A gate at each splice alone would have been the FALSE-AFFORDANCE class.**
+  The indicator would keep lighting a caret the release then silently refuses —
+  in the one subsystem whose own guardrails (`placement-reachability`,
+  `planned-decision-guardrail`) exist to outlaw exactly that. So the fix is an
+  affordance change, and it is user-visible: no caret paints inside a verbatim
+  block during a drag.
+- **A net whose measure is a growth FLOOR cannot see a corruption that GROWS the
+  document.** `insertLanded` (task 332) is the cross-editor move's net, and the
+  ejected tail INFLATES the growth — measured `+3` against a floor of 1 — so it
+  FALSE-PASSED and the unconditional source delete fired, taking a footnote's
+  `content` body, which lives nowhere else. The honest test is the container
+  question, asked BEFORE the delete; the gate therefore sits above `insertLanded`
+  rather than beside it.
+- **The BLOCK reading is a DIFFERENT question from the inline one, and reusing
+  the atom predicate for it would refuse a working drop.** An open
+  multi-paragraph slice at a caret legitimately SPLITS ordinary prose (measured),
+  and `posHostsInlineAtom` answers false for a `paragraph` type — so a naive
+  one-rule gate kills the commonest slice move there is. What such a payload may
+  not do is enter a textblock that hosts *nothing but text*, where the fitter
+  truncates and ejects exactly as it does for an atom (measured:
+  `codeBlock("hello|world")` → `codeBlock("helloAAA")` + `paragraph("BBB
+  world")`). So the block reading asks the WEAKER question, answered by asking
+  the schema for a witness rather than by reading a content expression as the
+  STRING `"text*"`.
+- **The payload is NAMES, not `NodeType`s.** A payload may be resolved from a
+  source editor, from persisted JSON, or from a spec's static configuration,
+  while the question is asked against the TARGET's schema — and two schemas built
+  from one extension list hold DISTINCT `NodeType` objects (the identity fact
+  behind task 328). A name is the one currency both ends share, and a name this
+  build cannot resolve is SKIPPED: that is the vocabulary question, which
+  `schema-adopt.ts` already owns, and answering it here would be a second table
+  for one question.
+- **Marks are deliberately NOT asked.** Measured, PM drops the disallowed marks
+  and the block is intact, so there is no corruption to refuse — and inventing
+  one would be the false refusal task 396's own first cut shipped. Stated at the
+  door rather than left to be rediscovered.
+- **THREE markers on one splice line is not redundancy.** `container-fit-exempt:`
+  says no container is entered, `schema-adopt-exempt:` says the payload speaks
+  this vocabulary, and `inline-host-exempt:` says this site is not where a
+  refusal belongs. Each answers a question the other two are not entitled to
+  answer — task 204's rule, and the reason the second question had to exist at
+  all.
+
+CI: [inline-cursor-container-gate.test.tsx](src/components/drop-mode/__tests__/inline-cursor-container-gate.test.tsx)
+drives the REAL hit-test and the REAL specs over a fixture holding a
+`titleField`, prose, a `codeBlock` and a `latexComment` carrying a real commented
+line — asserting the serialized `.tex`, because the promotion is only visible in
+the bytes. The leg with teeth is the CENSUS, in two halves: the SOURCE half is
+`container-fit-guardrail`'s THIRD question (every splice excused from the FIT
+must ask the inline question in its enclosing declaration; the four exemptions
+are per LINE and each is a dispatch helper, a shared door or a never-dispatched
+probe), and the LIVE-OBJECT half is in `placement-reachability` (every spec that
+can offer an inline caret declares `inlinePayloadFor`, asked of the objects for
+the two reasons that file already gives about `placementsFor` — the ES
+method-shorthand form is invisible to a grep, and most specs are authored outside
+this directory). Both allowlists EMPTY. `inline-atom-container-census` drops its
+`OUT_OF_SCOPE` carve-out for this directory and says why a green answer from
+THERE about it would have been a vacuous one. Measured by neutering each half in
+turn: the affordance gate takes 3 legs, the three atom-move commit gates 4, the
+stack-pull commit gate 3, the text-range commit gate 2, the block reading 1, and
+a spec that drops its declaration 1.
+
+**Residuals, stated.** The gate is a SINGLE-POSITION question, inheriting task
+396's own second residual: a payload whose splice spans blocks is judged at its
+insert position alone. And `text-range-move`'s same-editor branch asks at the
+PRE-delete position while inserting at the mapped one — the same textblock in
+every reachable shape (the self-drop is refused, and a text-bounded delete cannot
+change a block's TYPE), so the answer is the honest one, and it is what lets the
+refusal return before anything is dispatched.
+
+**Owed, not claimed:** the preview eyeball, and it is REQUIRED here rather than
+nice to have, because the fix changes what the indicator PAINTS: drag a footnote
+card over a `%` comment line and confirm no caret appears. NOT FSA-masked (pure
+schema + serializer), so the check is cheap and real.
 
 #### The row half: a surface answers PER ROW, and a WRAPPER is a container question too
 

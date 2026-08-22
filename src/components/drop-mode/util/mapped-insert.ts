@@ -116,6 +116,10 @@ export function insertNodesAdvancing(
     // wrapper that absorbed either question would hand every converted site a
     // silent exemption, which is the drift both halves of that guard exist to
     // catch.
+    // inline-host-exempt: the shared splice DOOR. It claims nothing and fits
+    // nothing; the inline CONTAINER question is asked of every CALLER through
+    // the `insertNodesAdvancing(` splice-call form, which is also the only
+    // place a refusal can return before a source is deleted (task 414).
     tr.insert(cursor, n);
     cursor += tr.doc.content.size - before;
   }

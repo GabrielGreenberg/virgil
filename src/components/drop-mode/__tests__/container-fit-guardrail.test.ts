@@ -93,6 +93,34 @@
 // exemption for its callers, it relocates the question to them, where a refusal
 // can still return before the source is deleted.
 //
+// ── The THIRD question (task 414): did you ask the INLINE container? ────────
+//
+// Same splice-site family, one axis over again — and this time the population is
+// exactly the sites the FIRST question excused. A `container-fit-exempt:` marker
+// is, in every live case, the claim "this is an INLINE-CURSOR splice: an atom or
+// an open slice at a caret inside a textblock". True about the BLOCK-in-container
+// fit, and silent about whether that TEXTBLOCK can hold the payload at all.
+//
+// It cannot, for the MARKLESS verbatim family (`codeBlock` / `latexComment`,
+// `content: "text*"`): measured against the real stack, ProseMirror TRUNCATES
+// the block at the offset and EJECTS its tail into a fresh top-level paragraph.
+// In a `latexComment` that promotes a line the user had commented OUT into live
+// printed prose — `% % todo %!v:m1` / `\vcid{x}\cite{a} fix later`. Nothing
+// throws; the doc is schema-valid; the save writes it through. For the
+// CROSS-EDITOR move it is worse: `insertLanded` (question 2's sibling net)
+// measures a growth FLOOR, and the ejected tail INFLATES the growth (+3 against
+// a floor of 1), so the net FALSE-PASSES and the unconditional source delete
+// takes the atom — and a footnote's `content` body, which lives nowhere else.
+//
+// `posHostsInlineAtom` (task 150) has answered this since before any of it, and
+// task 396 wired every CREATE door to it while scoping this directory OUT. So:
+// a splice excused from the FIT must either ask the inline question in its
+// enclosing declaration (`inline-host.ts`'s `inlineCursorHosts*`, or the SSOT
+// itself) or carry its own `inline-host-exempt: <why>` marker, allowlisted PER
+// LINE. Three markers on one line is not redundancy — each answers a question
+// the other two are not entitled to answer, which is task 204's rule and the
+// reason question 2 had to exist at all.
+//
 // STATED LIMIT, shared by both questions: the region is the enclosing
 // DECLARATION, so an adoption in one branch vouches for a splice in a sibling
 // branch of the same function. That is deliberate — the two live specs adopt
@@ -120,10 +148,10 @@ const PERMITTED_UNFITTED_INSERTS: Record<string, string> = {
     "fitter could split to accommodate them', which is FALSE. The markless " +
     "verbatim blocks (codeBlock / latexComment, `content: \"text*\"`) admit " +
     "literal text and no inline nodes, so an atom landed at an offset inside " +
-    "one is TRUNCATED-and-EJECTED (measured). That is the INLINE container " +
-    "question `posHostsInlineAtom` answers, and this file still does not ask " +
-    "it — a real, filed residual of task 396, NOT something this exemption " +
-    "covers. The exemption is from the BLOCK fit only.",
+    "one is TRUNCATED-and-EJECTED (measured). CLOSED (task 414): that is the " +
+    "INLINE container question, and this file now asks it — see the THIRD " +
+    "question below, which is scoped to exactly this exemption's population. " +
+    "The exemption remains from the BLOCK fit only.",
   "specs/stack-pull.ts":
     "The inline-cursor branch of the text payload: an OPEN slice merging with " +
     "the text around a caret is exactly what the fitter is for. Its " +
@@ -192,6 +220,52 @@ const PERMITTED_UNADOPTED_INSERTS: ReadonlyArray<{
 ];
 
 /**
+ * The permitted UN-GATED inline splices (task 414), keyed by LINE for the same
+ * reason as the adoption list above.
+ *
+ * An entry is a claim that the site CANNOT be the place a refusal belongs — a
+ * dispatch helper reached only from a resolution that already asked, a shared
+ * door that relocates the question to its callers, or a probe that never
+ * dispatches. It is NOT a claim that the splice is safe: two of the three files
+ * below hold the very splices this question exists to govern, three lines away.
+ */
+const PERMITTED_UNGATED_INLINE_INSERTS: ReadonlyArray<{
+  file: string;
+  line: string;
+  why: string;
+}> = [
+  {
+    file: "util/inline-atom-move.ts",
+    line: "const tr = editor.state.tr.insert(insertPos, node);",
+    why:
+      "`insertNewAtom` — a DISPATCH helper. `resolveDrop` asks " +
+      "`inlineCursorHostsNode` on its create branch before it resolves, which " +
+      "is where a refusal is still a `no-op` DECISION; refusing here would " +
+      "dispatch nothing and report success (the task-321 defect).",
+  },
+  {
+    file: "util/inline-atom-move.ts",
+    line: "const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, [node]);",
+    why: "`moveInlineAtomWithin` — the same dispatch-helper claim, move branch.",
+  },
+  {
+    file: "util/mapped-insert.ts",
+    line: "tr.insert(cursor, n);",
+    why:
+      "The shared splice door's own splice. `insertNodesAdvancing(` is itself " +
+      "in SPLICE_CALL, so this question is asked of every CALLER — the only " +
+      "place a refusal can return before a source is deleted.",
+  },
+  {
+    file: "specs/drop-context.ts",
+    line: "trialDoc = editor.state.tr.insert(insertPos, node).doc;",
+    why:
+      "The container-fit PROBE: a trial transaction that is never dispatched, " +
+      "built to discover what the fitter would do at a between-blocks GAP.",
+  },
+];
+
+/**
  * A splice site is governed by what appears in its ENCLOSING TOP-LEVEL
  * DECLARATION, not by what appears anywhere in the file. The region is found by
  * scanning up to the previous line that closes one (`}` at column 0) — crude,
@@ -231,6 +305,15 @@ const ADOPT_EXEMPT_MARKER = /schema-adopt-exempt:/;
  *  SSOT directly, or the container fit, which calls it on every node. */
 const ADOPTS = /\b(?:fitNodesAtInsert|adoptNodeIntoSchema|adoptSliceIntoSchema)\(/;
 
+/** The INLINE container question's own marker — distinct from both markers
+ *  above, because "no container is entered" and "the payload speaks this
+ *  vocabulary" each say nothing about whether the TEXTBLOCK can hold it. */
+const INLINE_EXEMPT_MARKER = /inline-host-exempt:/;
+
+/** Either reading of the inline container question: the drop-mode door family
+ *  (`inline-host.ts`), or `posHostsInlineAtom` — the SSOT both fold over. */
+const ASKS_INLINE_HOST = /\b(?:inlineCursorHosts\w*|posHostsInlineAtom)\(/;
+
 /** A DECLARATION is not a call. Only relevant for the bare-name arm of
  *  `SPLICE_CALL`: `export function insertNodesAdvancing(` would otherwise
  *  report the shared door's own signature as a splice site. */
@@ -268,6 +351,8 @@ interface SpliceSite {
   fitted: boolean;
   adoptExempt: boolean;
   adopted: boolean;
+  inlineExempt: boolean;
+  inlineGated: boolean;
 }
 
 /** Every splice site in the tree, each tagged with whether a fit governs it,
@@ -288,10 +373,19 @@ export function spliceSites(root = DROP_MODE): SpliceSite[] {
         fitted: region.some((l) => /\bfitNodesAtInsert\(/.test(l)),
         adoptExempt: region.some((l) => ADOPT_EXEMPT_MARKER.test(l)),
         adopted: region.some((l) => ADOPTS.test(l)),
+        inlineExempt: region.some((l) => INLINE_EXEMPT_MARKER.test(l)),
+        inlineGated: region.some((l) => ASKS_INLINE_HOST.test(l)),
       });
     });
   }
   return sites;
+}
+
+/** Is this exact splice line on the per-LINE inline-gate allowlist? */
+function isPermittedUngatedInline(site: SpliceSite): boolean {
+  return PERMITTED_UNGATED_INLINE_INSERTS.some(
+    (ok) => ok.file === site.file && site.text.includes(ok.line),
+  );
 }
 
 /** Is this exact splice line on the per-LINE adoption allowlist? */
@@ -405,6 +499,74 @@ describe("container-fit guardrail — every block splice asks the container", ()
     // …and yet it neither adopts nor claims an adoption exemption.
     expect(region.some((l) => ADOPTS.test(l))).toBe(false);
     expect(region.some((l) => ADOPT_EXEMPT_MARKER.test(l))).toBe(false);
+  });
+
+  it("every FIT-EXEMPT splice asks the INLINE container question (task 414)", () => {
+    // The population is precisely question 1's exemptions: a `container-fit-
+    // exempt:` marker IS the claim "this is an inline-cursor splice", and this
+    // is the question that claim does not answer. On the pre-414 tree this leg
+    // names all seven inline splices in `util/inline-atom-move.ts`,
+    // `specs/stack-pull.ts` and `specs/text-range-move.ts`.
+    const ungated = spliceSites()
+      .filter((s) => s.exempt && !s.inlineGated)
+      .filter((s) => !(s.inlineExempt && isPermittedUngatedInline(s)))
+      .map((s) => `${s.file}:${s.line}  ${s.text}`);
+    expect(
+      ungated,
+      "an inline-cursor splice that never asks whether the TEXTBLOCK can hold " +
+        "its payload — call inlineCursorHostsNode / inlineCursorHostsSlice " +
+        "(inline-host.ts) and refuse BEFORE any source delete",
+    ).toEqual([]);
+  });
+
+  it("only allowlisted LINES carry an inline-gate exemption (no stale, no new)", () => {
+    const marked = spliceSites().filter((s) => s.inlineExempt && !s.inlineGated);
+    expect(
+      marked.filter((s) => !isPermittedUngatedInline(s)).map((s) => `${s.file}:${s.line}`),
+    ).toEqual([]);
+    for (const ok of PERMITTED_UNGATED_INLINE_INSERTS) {
+      expect(
+        marked.some((s) => s.file === ok.file && s.text.includes(ok.line)),
+        `stale inline-gate exemption: ${ok.file} — ${ok.line}`,
+      ).toBe(true);
+    }
+  });
+
+  it("the THREE exemptions are DISTINCT markers — none excuses another's question", () => {
+    // The shape that let question 2 ship, and then question 3 after it: one
+    // marker read as covering everything it happened to sit beside. Pinned on a
+    // synthetic fixture rather than a live line — a canary must not stand on the
+    // defect.
+    const fixture = [
+      `function crossEditor(targetEditor, sourceEditor, insertPos, slice) {`,
+      `  // container-fit-exempt: an open slice at a caret enters no container.`,
+      `  // schema-adopt-exempt: same-editor, so the payload is native.`,
+      `  const tr = targetEditor.state.tr.replace(insertPos, insertPos, slice);`,
+      `}`,
+    ];
+    const idx = fixture.findIndex((l) => l.includes("tr.replace("));
+    const region = enclosingRegion(fixture, idx);
+    expect(detectSpliceCall(fixture[idx])).toBe(true);
+    expect(region.some((l) => EXEMPT_MARKER.test(l))).toBe(true);
+    expect(region.some((l) => ADOPT_EXEMPT_MARKER.test(l))).toBe(true);
+    // …and neither of those answers the INLINE question, nor claims to.
+    expect(region.some((l) => ASKS_INLINE_HOST.test(l))).toBe(false);
+    expect(region.some((l) => INLINE_EXEMPT_MARKER.test(l))).toBe(false);
+  });
+
+  it("the inline detector sees BOTH readings of the question", () => {
+    // Both drop-mode doors and the SSOT they fold over. The two commit doors are
+    // distinct functions (a node and a slice), so a needle spelling only one
+    // would silently exempt half the family.
+    expect(ASKS_INLINE_HOST.test(`if (!inlineCursorHostsNode(doc, pos, node)) return null;`)).toBe(true);
+    expect(ASKS_INLINE_HOST.test(`if (!inlineCursorHostsSlice(doc, pos, slice)) return null;`)).toBe(true);
+    expect(ASKS_INLINE_HOST.test(`return posHostsInlineAtom(doc, pos, type);`)).toBe(true);
+    // A bare mention is not a call…
+    expect(ASKS_INLINE_HOST.test(`// see inlineCursorHostsNode for the rule`)).toBe(false);
+    // …but a CALL SPELLED IN A COMMENT does satisfy it. Stated as a limit rather
+    // than implied: the gate region is scanned raw, exactly as it is for the
+    // other two questions, so all three share this give.
+    expect(ASKS_INLINE_HOST.test(`// call inlineCursorHostsNode(doc, pos, n) here`)).toBe(true);
   });
 
   it("the region is the enclosing DECLARATION: a fit in another function does not vouch", () => {

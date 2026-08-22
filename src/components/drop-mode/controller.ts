@@ -31,6 +31,7 @@ import { pickActiveByEditor } from "@/lib/active-editor-probe";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { resolveSessionPlacements } from "./placement-policy";
+import { resolveSessionInlinePayload } from "./inline-host";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
@@ -273,6 +274,10 @@ export function beginDropSession(opts: {
     // freezing the CHOICE at mousedown keeps the affordance stable. The payload
     // can still vanish mid-drag, which `classifyDrop` re-checks at commit.
     placements: resolveSessionPlacements(spec, opts.cardKey),
+    // The inline-cursor CONTAINER question's input, resolved on the same edge
+    // and for the same reasons (task 414): it may walk a document range or parse
+    // the Stack's localStorage envelope, so it must never run per pointermove.
+    inlinePayload: resolveSessionInlinePayload(spec, opts.cardKey, ctx),
     origin: opts.origin,
     placement: null,
     inPlace,
@@ -456,6 +461,7 @@ function runMovePass() {
     session.placements,
     session.cardKey,
     session.ctx.mainEditor,
+    session.inlinePayload,
   );
   updatePlacement(placement);
 }
