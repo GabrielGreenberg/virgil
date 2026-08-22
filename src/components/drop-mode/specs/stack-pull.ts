@@ -36,6 +36,11 @@ import type {
 } from "../types";
 import { fitNodesAtInsert } from "./drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import {
+  inlineCursorHostsSlice,
+  payloadFromJson,
+  type InlineDropPayload,
+} from "../inline-host";
 import { readStackItem } from "@/hooks/useStack";
 import type {
   StackCardKind,
@@ -230,9 +235,27 @@ export function stackPullPlacementsFor(
   return placementsForPayload(item.payload);
 }
 
+/**
+ * What ONE pull would splice at an inline caret (task 414), read off the SAME
+ * persisted envelope `stackPullPlacementsFor` reads and on the same edge.
+ *
+ * Only the `text` payload ever reaches an inline caret — every other kind is
+ * gap-only or paragraph-side by {@link placementsForPayload} — so the others
+ * answer TEXT-ONLY, which refuses nothing. The slice's node names come from the
+ * JSON rather than from a rehydrated `Slice`, because rehydrating needs the
+ * TARGET editor's schema and the answer is wanted before any target is known;
+ * a name this build cannot resolve is skipped by the gate anyway.
+ */
+export function stackPullInlinePayloadFor(cardKey: string): InlineDropPayload {
+  const item = lookup(cardKey);
+  if (!item || item.payload.kind !== "text") return [];
+  return payloadFromJson(item.payload.slice);
+}
+
 export const stackPullDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ALLOWED_PLACEMENTS,
   placementsFor: stackPullPlacementsFor,
+  inlinePayloadFor: stackPullInlinePayloadFor,
   targetScope: "main-only",
   postDrop: "keep",
   /**
@@ -414,6 +437,14 @@ function planInsertText(
     };
   }
   const target = placement.pos;
+  // CONTAINER (task 414), defence in depth behind the hit-test's gate: a
+  // markless verbatim block (`codeBlock` / `latexComment`, `text*`) is
+  // TRUNCATED and its tail EJECTED by anything but bare text — measured for an
+  // atom carried in the slice AND for an open multi-block slice, which tore
+  // `codeBlock("hello|world")` into `codeBlock("helloAAA")` +
+  // `paragraph("BBB world")`. Asked of the REHYDRATED slice, so it is exact
+  // where the affordance's name list was a per-payload approximation.
+  if (!inlineCursorHostsSlice(editor.state.doc, target, slice)) return null;
   // container-fit-exempt: the INLINE-CURSOR branch — an open slice merging with
   // the text around a caret is exactly what ProseMirror's fitter is for, and no
   // container is being entered. The between-blocks branch above goes through the

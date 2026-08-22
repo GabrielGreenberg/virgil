@@ -85,6 +85,11 @@ import {
   selectInsertedSpan,
 } from "../util/mapped-insert";
 import { plannedDropSpec } from "../planned-spec";
+import {
+  inlineCursorHostsSlice,
+  payloadFromSlice,
+  type InlineDropPayload,
+} from "../inline-host";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
 interface RangeSource {
@@ -103,8 +108,25 @@ function locateRange(cardKey: string, mainEditor: Editor | null): RangeSource | 
   return { editor: mainEditor, from: range.from, to: range.to };
 }
 
+/**
+ * What the moved run would splice at an inline caret (task 414) — the node types
+ * of the marked range itself, resolved from the SOURCE document once at
+ * `beginDropSession`. A range that no longer resolves answers TEXT-ONLY: the
+ * drop is already a refusal (`planDrop` returns null), so there is nothing for
+ * this question to protect.
+ */
+function textRangeInlinePayloadFor(
+  cardKey: string,
+  ctx: import("../types").DropCtx,
+): InlineDropPayload {
+  const src = locateRange(cardKey, ctx.mainEditor);
+  if (!src) return [];
+  return payloadFromSlice(src.editor.state.doc.slice(src.from, src.to));
+}
+
 export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["inline-cursor", "between-blocks"],
+  inlinePayloadFor: textRangeInlinePayloadFor,
   targetScope: "any-editor",
   postDrop: "close",
   /**
@@ -175,6 +197,17 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     // is the leading one, which is precisely the one that merges away here. That
     // is a property of the delete rather than of this code, so the guarantee
     // rests on `BlockUuidBackfill` — which is what a net is for.
+    // CONTAINER (task 414), asked ONCE above the same/cross fork — the same
+    // placement as the ADOPTION two paragraphs up, and for the same reason: an
+    // obligation both branches owe is a branch neither may forget. A markless
+    // verbatim block (`codeBlock` / `latexComment`, `text*`) is TRUNCATED and
+    // its tail EJECTED by an atom carried in the run, and by the run's own block
+    // boundaries when the selection spans paragraphs. In the CROSS-editor branch
+    // this is the load-bearing net: `insertLanded` below measures a growth FLOOR
+    // and the ejected tail INFLATES the growth, so it false-passes and the
+    // unconditional source delete takes the user's prose.
+    if (!inlineCursorHostsSlice(targetEditor.state.doc, insertPos, slice)) return null;
+
     if (targetEditor === sourceEditor) {
       // Single transaction: delete the source, then ASK the transaction where
       // the caret went (task 331). This was `insertPos - (to - from)`; the cut

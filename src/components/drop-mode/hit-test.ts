@@ -39,6 +39,7 @@ import type { TextObjectKind } from "@/text-objects/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
 import { winningPlacementKind } from "./placement-policy";
+import { inlineCursorHostsPayload, type InlineDropPayload } from "./inline-host";
 import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
 
 /**
@@ -47,6 +48,14 @@ import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
  *
  * `sourceCardKey` is the cardKey of the popped-out item being dropped.
  * Used to reject self-drops (target editor belongs to the source card).
+ *
+ * `inlinePayload` is the SESSION's answer to the OTHER once-per-gesture question
+ * (task 414): the schema node names this drop would splice at an inline caret,
+ * so the container question can be asked in the AFFORDANCE. REQUIRED rather
+ * than defaulted — a default is a decision nobody made, and the decision it
+ * would silently make here is "skip the gate", which is the defect. The only
+ * production caller is the controller's move pass; `TEXT_ONLY_PAYLOAD` is the
+ * explicit way to say "plain text, nothing to refuse".
  *
  * `placements` is the SESSION's ordered list — `DropSession.placements`,
  * resolved once at `beginDropSession` from `spec.placementsFor` (per payload)
@@ -61,6 +70,7 @@ export function hitTest(
   placements: ReadonlyArray<PlacementKind>,
   sourceCardKey: string,
   mainEditor: Editor | null,
+  inlinePayload: InlineDropPayload,
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
@@ -130,7 +140,7 @@ export function hitTest(
     case "between-blocks":
       return makeBetweenBlocksPlacement(editor, block, y, false, blockRect);
     case "inline-cursor":
-      return makeInlineCursorPlacement(editor, posResult.pos);
+      return makeInlineCursorPlacement(editor, posResult.pos, inlinePayload);
     case "paragraph-side":
       return makeParagraphSidePlacement(editor, block, x, blockRect);
     default:
@@ -813,7 +823,25 @@ function makeParagraphSidePlacement(
   };
 }
 
-function makeInlineCursorPlacement(editor: Editor, pos: number): Placement | null {
+/**
+ * The ONE chokepoint every inline-cursor drop resolves its landing through — so
+ * the container question is asked HERE (task 414), where it answers for all
+ * seven splice sites at once AND in the affordance rather than only at the
+ * commit. "What the hover OFFERS is what the commit ACCEPTS" (tasks 258 / 321 /
+ * 332): a gate at each splice alone would leave the indicator lighting a caret
+ * inside a `codeBlock` / `latexComment` that the release then silently refuses,
+ * which is the false-affordance class this subsystem's own guardrails outlaw.
+ *
+ * `inlinePayload` is the session's answer, resolved once at `beginDropSession`;
+ * an empty payload is plain text, which every textblock hosts, so nothing is
+ * refused for it.
+ */
+function makeInlineCursorPlacement(
+  editor: Editor,
+  pos: number,
+  inlinePayload: InlineDropPayload,
+): Placement | null {
+  if (!inlineCursorHostsPayload(editor, pos, inlinePayload)) return null;
   let coords: { left: number; top: number; bottom: number };
   try {
     coords = editor.view.coordsAtPos(pos);

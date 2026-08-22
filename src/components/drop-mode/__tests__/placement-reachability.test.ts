@@ -104,6 +104,34 @@ describe("every declared placement is reachable", () => {
     }
   });
 
+  it("EVERY spec that can offer an inline caret declares its inline PAYLOAD", () => {
+    // Task 414's census, and it belongs here because this file already has the
+    // enumeration: `inlinePayloadFor` is the input to the inline CONTAINER
+    // question, so a spec that offers an `inline-cursor` placement without one
+    // resolves to the empty (text-only) payload and its caret paints inside a
+    // `codeBlock` / `latexComment` — which the release then splices, TRUNCATING
+    // the block and EJECTING its tail (for a `latexComment`, promoting a
+    // commented-out line into live printed prose).
+    //
+    // Asked of the LIVE spec objects for the two reasons the header gives about
+    // `placementsFor`: the ES method-shorthand form is invisible to a grep, and
+    // most specs are authored outside this directory. ALLOWLIST EMPTY — a hit is
+    // DECLARE-it. A spec that can never produce an inline caret needs nothing.
+    const offersInlineCaret = ({ spec }: { spec: DropSpec }): boolean => {
+      const lists = PER_PAYLOAD_LISTS.get(spec) ?? [spec.allowedPlacements];
+      return lists.some((l) => l.includes("inline-cursor"));
+    };
+    const inlineSpecs = specs.filter(offersInlineCaret);
+    // The census can SEE the family (a filter matching nothing passes vacuously).
+    expect(inlineSpecs.length).toBeGreaterThanOrEqual(3);
+    expect(
+      inlineSpecs.filter((s) => !s.spec.inlinePayloadFor).map((s) => s.name),
+      "a spec offering an inline caret with no inlinePayloadFor — DECLARE it " +
+        "(the hit-test cannot ask the container question without one); never " +
+        "allowlist it",
+    ).toEqual([]);
+  });
+
   it("every published per-payload list is reachable end to end", () => {
     for (const [spec, lists] of PER_PAYLOAD_LISTS) {
       expect(lists.length).toBeGreaterThan(0);

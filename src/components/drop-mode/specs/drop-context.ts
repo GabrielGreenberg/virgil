@@ -198,6 +198,9 @@ function bareInsertTearsContainer(
     // schema-adopt-exempt: the node reaching this probe was adopted by
     // `fitNodesAtInsert` before it was handed to `fitNodeInContainer`, so it is
     // already in `editor`'s vocabulary; and nothing here is dispatched.
+    // inline-host-exempt: the container-fit PROBE — a throwaway trial
+    // transaction, never dispatched, built to discover what the fitter would do
+    // at a BETWEEN-BLOCKS gap (task 414).
     trialDoc = editor.state.tr.insert(insertPos, node).doc;
   } catch {
     return true;
