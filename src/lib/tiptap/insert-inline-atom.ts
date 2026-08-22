@@ -40,10 +40,23 @@
  * roots the "inline atoms never scroll" rule in ONE place: focus WITHOUT scroll,
  * optionally replace the selection, insert the atom, and never `scrollIntoView`.
  *
+ * # It roots a SECOND rule (task 396): the container gate
+ *
+ * Being the one door, it is also the one place that can ask whether the landing
+ * position can HOST an inline atom at all — `posHostsInlineAtom`, the SSOT task
+ * 150 built. It matters here rather than only at the menu gates because the
+ * deferred create-popover commit (`handleInsertRef` / `commitCitationCreate`)
+ * lands at a position captured at TRIGGER time, which no `applies()` can see.
+ * A refusal leaves the document completely untouched and reports
+ * `{ refused: true }`.
+ *
  * Runs on a user gesture (a menu pick / grab-bar action), never per keystroke.
  */
 
 import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+
+import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 
 export interface InsertInlineAtomArgs {
   /** The live editor. The insert runs through its command chain. */
@@ -72,8 +85,36 @@ export interface InsertInlineAtomArgs {
 export interface InsertInlineAtomResult {
   /** Document position of the inserted atom in the post-dispatch doc (the node
    *  immediately before the resulting caret), so a caller can locate it. -1 if
-   *  it could not be resolved (defensive — should not happen). */
+   *  it could not be resolved (defensive — should not happen), and -1 when the
+   *  container gate REFUSED (see `refused`). */
   pos: number;
+  /**
+   * True when the CONTAINER GATE declined the insert and the document was left
+   * **completely untouched** (task 396). A caller that mints an id / registers a
+   * card before calling can read this to know its atom never landed. `false` on
+   * every insert that ran — including the pre-396 shape, so no existing caller
+   * changes behaviour by ignoring it.
+   */
+  refused: boolean;
+}
+
+/**
+ * TipTap's own `setTextSelection` clamp, spelled once so the CONTAINER GATE and
+ * the insert agree on the landing position (task 396). `setTextSelection` bounds
+ * its argument by `TextSelection.atStart(doc).from` / `atEnd(doc).to` — the first
+ * and last TEXT positions — never by `doc.content.size`.
+ */
+function clampToTextRange(editor: Editor, at: number): number {
+  const { doc } = editor.state;
+  try {
+    const min = TextSelection.atStart(doc).from;
+    const max = TextSelection.atEnd(doc).to;
+    return Math.max(min, Math.min(at, max));
+  } catch {
+    // A doc with no text position at all (an empty/atom-only doc). Fall back to
+    // the raw clamp; the gate then answers about the position we will use.
+    return Math.max(0, Math.min(at, doc.content.size));
+  }
 }
 
 /**
@@ -91,6 +132,42 @@ export interface InsertInlineAtomResult {
 export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomResult {
   const { editor, type, attrs, at } = args;
 
+  // ── CONTAINER GATE (task 396) — the DEEPEST point, and the only one the
+  // deferred create-popover commit passes through. `handleInsertRef` /
+  // `commitCitationCreate` land at a captured `at` no menu gate can see, so a
+  // gate on the two `applies()` alone would leave that path (and every future
+  // inline atom) open. Ask the ONE SSOT: can this landing position host the
+  // atom? The MARKLESS verbatim blocks (`codeBlock` / `latexComment`) declare
+  // `content: "text*"` — literal text, no inline nodes — so ProseMirror's fitter
+  // wraps the atom in a fresh paragraph and SPLITS the block around it, and a
+  // commented-out line's tail is promoted into the typeset document. A
+  // `titleField` (`content: "inline*"`) legitimately hosts one and stays allowed,
+  // which is precisely why this reads `posHostsInlineAtom` and not the block gate.
+  //
+  // Refusing is the right failure direction: an atom that cannot land without
+  // corrupting its container is one the user cannot want. The doc is left
+  // COMPLETELY untouched (the capture/schema-symmetry rule — never delete what
+  // you cannot restore, here: never splice what the container can't hold).
+  //
+  // The gate must ask about the position the insert will ACTUALLY use, not the
+  // caller's raw `at`: `setTextSelection` below clamps into TipTap's own
+  // `[TextSelection.atStart, TextSelection.atEnd]` TEXT range, so a stale
+  // past-the-end `at` resolves to the last text position, NOT to
+  // `doc.content.size` (which resolves to the doc itself — a non-textblock, and
+  // a refusal for a caller that is landing in prose). Mirroring that clamp here
+  // is what keeps "what the gate judged" and "where the atom lands" the same
+  // position.
+  const landing =
+    typeof at === "number" ? clampToTextRange(editor, at) : editor.state.selection.from;
+  const atomType = editor.state.schema.nodes[type];
+  // No such node in THIS editor's schema (a card body built without
+  // `includeLabelRefFootnote`): the question cannot be asked and no atom can be
+  // built either, so degrade to the historic path rather than inventing a
+  // verdict — the `blockInsertApplies` / `cardActionAllowedForCtx` fallback rule.
+  if (atomType && !posHostsInlineAtom(editor.state.doc, landing, atomType)) {
+    return { pos: -1, refused: true };
+  }
+
   // focus(null, { scrollIntoView: false }): focus the doc (the grab-bar /
   // action-menu item is a button, so focus may be off the doc) but suppress the
   // deferred scrollIntoView that `focus()` schedules by default — the whole point.
@@ -100,8 +177,7 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   // so a stale/collab-shifted pos can't throw — `setTextSelection` carries no
   // scrollIntoView, so the no-scroll invariant is preserved.
   if (typeof at === "number") {
-    const max = editor.state.doc.content.size;
-    chain.setTextSelection(Math.max(0, Math.min(at, max)));
+    chain.setTextSelection(landing);
   }
   chain.insertContent({ type, attrs }).run();
 
@@ -110,5 +186,5 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   // holds for any inline atom, not just the nodeSize-1 leaves of today.
   const caret = editor.state.selection.from;
   const before = editor.state.doc.resolve(caret).nodeBefore;
-  return { pos: before ? caret - before.nodeSize : -1 };
+  return { pos: before ? caret - before.nodeSize : -1, refused: false };
 }

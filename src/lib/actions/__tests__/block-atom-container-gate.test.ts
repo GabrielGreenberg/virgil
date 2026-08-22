@@ -12,14 +12,23 @@
 // save `collectPreambleTitleFields` dedups first-occurrence-wins, so the second
 // title's text is written NOWHERE → silent data-loss on reload. The same gesture
 // in a `codeBlock` / `latexComment` splits the verbatim block in two → structural
-// corruption. INLINE inserts (`$x$`, `\ref`) never split → valid in a title.
+// corruption. INLINE inserts (`$x$`, `\ref`) never split an `inline*` textblock
+// → valid in a TITLE, which is why they cannot reuse the block gate. RENEGOTIATED
+// (task 396): the CODE-BLOCK half of that sentence was FALSE. The markless
+// verbatim blocks declare `content: "text*"`, so an inline atom there truncates
+// the block and ejects its tail as live prose — task 150 falsified this premise
+// one day after 147 recorded it and fixed only `math.ts`. The inline rows now
+// take `inlineAtomInsertApplies` and are GREY in the two verbatim blocks; their
+// own contract lives in `inline-atom-container-gate.test.tsx`. Here they survive
+// only as the TITLE control: the one container where the two gates must differ.
 //
 // WHAT IS PROVEN (driving the REAL editor stack + REAL schema + REAL serializer —
 // only `@/lib/storage` is stubbed, per the extension-barrel gotcha):
 //   1. Applicability: a caret/selection inside titleField/codeBlock/latexComment
 //      greys the five block-atom INSERT rows via the container-aware
-//      `blockInsertApplies`; inline-math / `\ref` stay enabled (they don't split);
-//      prose keeps all block atoms enabled.
+//      `blockInsertApplies`; inline-math / `\ref` stay enabled in a TITLE (an
+//      inline atom is legitimate in `inline*` — the whole reason the two gates
+//      are separate predicates); prose keeps all block atoms enabled.
 //   2. Run-helper defense-in-depth: `texRun` / `exampleRun` / `figureRun` /
 //      `graphicsRun` / display-`mathRun` at a mid-title (or mid-code) caret BAIL —
 //      the container stays a SINGLE node, no atom is inserted (covers the slash
@@ -171,9 +180,12 @@ function countOfType(editor: Editor, typeName: string): number {
 }
 
 // The five block-atom INSERT rows that SPLIT (gated by task 147) + the two
-// INLINE inserts that never split (NOT gated — valid in a title / code block).
+// INLINE inserts, which are legitimate in a `titleField` (`inline*`) and are
+// separately gated by task 396 in the `text*` verbatim blocks — see that task's
+// own suite. Named for the container in which they must stay ENABLED, because
+// "ungated" is what task 396 retired.
 const GATED_BLOCK_ATOMS: ActionId[] = ["example", "tex", "figure", "graphics", "display-math"];
-const UNGATED_INLINE: ActionId[] = ["inline-math", "ref"];
+const INLINE_IN_TITLE: ActionId[] = ["inline-math", "ref"];
 // The block node each gated row would insert (for the run-bail count assertions).
 const INSERTED_NODE: Record<string, string> = {
   example: "exampleBlock",
@@ -221,15 +233,21 @@ afterEach(() => {
 
 describe("block-atom INSERT cells honor the containing block (task 147)", () => {
   for (const container of ["titleField", "codeBlock", "latexComment"]) {
-    it(`${container} caret greys every block-atom insert, keeps inline-math/\\ref`, () => {
+    it(`${container} caret greys every block-atom insert`, () => {
       const editor = mountFixture();
       for (const refMaker of [selectionRefInside, cursorRefInside]) {
         const ref = refMaker(editor, container);
         for (const id of GATED_BLOCK_ATOMS) {
           expect(decorate(id, ref, editor), `${container} × ${id}`).toBe("disabled");
         }
-        for (const id of UNGATED_INLINE) {
-          expect(decorate(id, ref, editor), `${container} × ${id}`).toBe("ok");
+        // The inline rows' verdict here is task 396's, and it DIFFERS per
+        // container — "ok" in the title, "disabled" in the two verbatim blocks —
+        // so it is asserted in that task's suite rather than restated as one
+        // value across all three (which is how the false half shipped).
+        if (container === "titleField") {
+          for (const id of INLINE_IN_TITLE) {
+            expect(decorate(id, ref, editor), `${container} × ${id}`).toBe("ok");
+          }
         }
       }
       editor.destroy();
@@ -240,7 +258,7 @@ describe("block-atom INSERT cells honor the containing block (task 147)", () => 
     const editor = mountFixture();
     for (const refMaker of [selectionRefInside, cursorRefInside]) {
       const ref = refMaker(editor, "paragraph");
-      for (const id of [...GATED_BLOCK_ATOMS, ...UNGATED_INLINE]) {
+      for (const id of [...GATED_BLOCK_ATOMS, ...INLINE_IN_TITLE]) {
         expect(decorate(id, ref, editor), `paragraph × ${id}`).toBe("ok");
       }
     }

@@ -209,6 +209,7 @@ import {
   blockRangeAllowsAction,
   INLINE_INSERT_ACTIONS,
   posHostsBlockInsert,
+  posHostsInlineAtom,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
 import {
@@ -1863,16 +1864,20 @@ export function refRun(ctx: ActionContext): void {
  * no `\ref{}`-style typed input rule — `\ref` is a slash command, and the popover
  * is the creator). Both surfaces call `refRun` → `ctx.openAtomCreate("ref")`.
  *
- * `applies`: a `\ref` is insertable at any caret / selection (the popover lands
- * the atom at the cursor). A meaningful-block-atom ref (the
- * `isMeaningfulBlockAtom` kinds — `displayMath` / `texBlock` / `graphicsBlock` /
- * `latexComment`) is a nonsensical block-insert target → "disabled", via the
- * shared `blockApplies` gate (the same gate tex/example/math use). NOTE:
- * `figureBlock` is NOT a meaningful block atom (it has
- * caption content), so `blockApplies` returns "ok" for it — verified by the
- * CHIP 8 real-stack matrix (RESULTS-realstack.md finding #4). In practice `ref`
- * is only invoked from a caret/selection (the slash command or the grid bolt),
- * so it is "ok" everywhere it is normally reachable.
+ * `applies`: a `\ref` is insertable at any caret / selection whose container can
+ * HOST an inline atom (the popover lands the atom at the cursor). A
+ * meaningful-block-atom ref (the `isMeaningfulBlockAtom` kinds — `displayMath` /
+ * `texBlock` / `graphicsBlock` / `latexComment`) is a nonsensical block-insert
+ * target → "disabled", via the shared `blockApplies` base. NOTE: `figureBlock`
+ * is NOT a meaningful block atom (it has caption content), so the base returns
+ * "ok" for it — verified by the CHIP 8 real-stack matrix (RESULTS-realstack.md
+ * finding #4).
+ *
+ * Task 396 layers the CONTAINER question on top via `inlineAtomInsertApplies`:
+ * a caret inside a MARKLESS verbatim block (`codeBlock` / `latexComment`,
+ * `content: "text*"`) greys the cell, because landing a `labelRef` there SPLITS
+ * the block and promotes commented-out source into the typeset document. A
+ * `titleField` stays enabled — an inline atom is legitimate in `inline*`.
  */
 const REF_ACTION_ROW: ActionSpec = {
   id: "ref",
@@ -1883,7 +1888,7 @@ const REF_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ref",
-  applies: (ctx) => blockApplies(ctx),
+  applies: inlineAtomInsertApplies("labelRef"),
   run: refRun,
 };
 
@@ -2226,8 +2231,13 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
 // schema-precise container question. Greys the cell exactly as
 // `cardActionAllowedForCtx` greys the inline-atom rows via `posBlockAllowsAction`.
 //
-// `inline-math` (`$x$`) and `ref` (`\ref`) insert INLINE atoms (no split, valid
-// inside a title/code block) and stay on the bare `blockApplies` — NOT greyed.
+// `inline-math` (`$x$`) and `ref` (`\ref`) insert INLINE atoms and take the
+// INLINE sibling of this factory, `inlineAtomInsertApplies` below — NOT the bare
+// `blockApplies`. (Task 147 left a comment here asserting they "never split, valid
+// inside a title/code block"; task 150 falsified the code-block half ONE DAY LATER
+// and fixed only the surface it was reported on, so this comment outlived its own
+// premise and three later surfaces inherited it — task 396. The TITLE half is
+// true and is exactly why the inline rows canNOT reuse THIS gate.)
 //
 // Degrades to `blockApplies`'s verdict when no live view / a non-PM mock doc is
 // threaded (the minimal `{ ref, canEdit }` menu-decoration ctx or a unit-test
@@ -2246,6 +2256,47 @@ function blockInsertApplies(
     const pos = ref.kind === "cursor" ? ref.pos : ref.from;
     const insertType = doc.type.schema.nodes[nodeName];
     return posHostsBlockInsert(doc, pos, insertType) ? "ok" : "disabled";
+  };
+}
+
+// ---------------------------------------------------------------------------
+// inlineAtomInsertApplies (task 396) — the INLINE sibling of the factory above,
+// for the rows that insert an inline ATOM (`inline-math` `$x$`, `ref` `\ref`).
+// It asks the OTHER container SSOT, `posHostsInlineAtom` (task 150): an inline
+// atom never splits an `inline*` textblock — so a `titleField` stays ALLOWED,
+// which is the whole reason these rows canNOT take `blockInsertApplies` — but the
+// MARKLESS verbatim blocks (`codeBlock` / `latexComment`) declare `content:
+// "text*"`, admitting literal text only. There ProseMirror's fitter wraps the
+// atom in a fresh paragraph and SPLITS the verbatim block around it: a
+// commented-out line's tail is silently PROMOTED into the typeset document.
+//
+// A FACTORY for the same reason `blockInsertApplies` is one — the question is
+// schema-precise in the atom's own NodeType, so each row passes its own node
+// name and the gate resolves the live type. Degrades to `blockApplies`'s verdict
+// when no live view is threaded (the minimal menu-decoration ctx / a unit-test
+// probe) or when this editor's schema doesn't register the atom at all (a card
+// body built without `includeLabelRefFootnote`) — matching the historic "allow"
+// fallback `blockInsertApplies` and `cardActionAllowedForCtx` both take: a
+// verdict is only issued when the question can actually be asked.
+//
+// This is the AFFORDANCE half only. `insertInlineAtom` (the one insert door) and
+// `mathRun("inline")` carry the same gate, because the deferred create-popover
+// commit lands at a captured position no `applies()` can see.
+// ---------------------------------------------------------------------------
+function inlineAtomInsertApplies(
+  nodeName: string,
+): (ctx: ActionContext) => "ok" | "disabled" | "absent" {
+  return (ctx: ActionContext) => {
+    const base = blockApplies(ctx);
+    if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
+    const ref = ctx.ref;
+    if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
+    const doc = ctx.view?.state?.doc;
+    if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
+    const pos = ref.kind === "cursor" ? ref.pos : ref.from;
+    const atomType = doc.type.schema.nodes[nodeName];
+    if (!atomType) return base; // atom absent from this schema → allow (historic)
+    return posHostsInlineAtom(doc, pos, atomType) ? "ok" : "disabled";
   };
 }
 
@@ -2281,6 +2332,15 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     }
     const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
     if (kind === "inline") {
+      // CONTAINER GUARD (task 396) — the inline twin of the display branch's
+      // `posHostsBlockInsert` bail below, and the 147/229 defence-in-depth idiom:
+      // the row's `applies()` already greys this cell, `insertInlineAtom` refuses
+      // at the door, and the RUN bails too, so no surface can corrupt. The
+      // MARKLESS verbatim blocks (`codeBlock` / `latexComment`, `content:
+      // "text*"`) can't hold an inline node: the fitter would split them and
+      // promote a commented-out line's tail into the typeset document.
+      if (!posHostsInlineAtom(editor.state.doc, from, editor.state.schema.nodes.inlineMath))
+        return;
       // `inlineMath` is an INLINE atom — like footnote/citation it must never
       // jump the viewport (insertInlineAtom enforces the no-scroll invariant).
       // insertContent replaces the selected range (the harvested `latex`), matching
@@ -2291,8 +2351,9 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // CONTAINER GUARD (task 147 + 229): a `displayMath` BLOCK atom at a caret
     // inside a block that can't host a block child (titleField / codeBlock /
     // latexComment, OR a figureCaption whose figureBlock parent can't re-host)
-    // would SPLIT it. Bail — the inline branch above is exempt (inline atoms
-    // never split). display-math is lightning-only (greyed by blockInsertApplies);
+    // would SPLIT it. Bail — the inline branch above has its own INLINE twin of
+    // this guard (task 396; it is NOT exempt, as this comment used to claim).
+    // display-math is lightning-only (greyed by blockInsertApplies);
     // this is the belt-and-suspenders on the run itself.
     if (!posHostsBlockInsert(editor.state.doc, from, editor.state.schema.nodes.displayMath))
       return;
@@ -2479,7 +2540,9 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
-  applies: blockApplies,
+  // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
+  // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
+  applies: inlineAtomInsertApplies("inlineMath"),
   run: mathRun("inline"),
 };
 const DISPLAY_MATH_ACTION_ROW: ActionSpec = {

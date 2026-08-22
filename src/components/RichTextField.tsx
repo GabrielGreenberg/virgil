@@ -33,6 +33,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { iconHint } from "@/components/Hint";
+import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -377,7 +378,14 @@ function RichTextFieldImpl({
               resolvedId = generateShortId(existing);
             }
 
-            const node = view.state.schema.nodes.citation.create({
+            const citType = view.state.schema.nodes.citation;
+            // CONTAINER GATE (task 396) — the card-body twin of `Editor.tsx`'s
+            // citation drop. `latexComment` is registered in EVERY card-body
+            // scope and `codeBlock` rides `EXCERPT_STARTER_KIT_CONFIG`, so both
+            // `content: "text*"` blocks genuinely exist here: a bare
+            // `posAtCoords` drop truncates one and ejects its tail as live prose.
+            if (!posHostsInlineAtom(view.state.doc, pos.pos, citType)) return true;
+            const node = citType.create({
               citationId: resolvedId,
               command,
               displayText,

@@ -63,6 +63,7 @@ import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
+import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -654,7 +655,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             const coords = { left: event.clientX, top: event.clientY };
             const pos = view.posAtCoords(coords);
             if (!pos) return true;
-            const node = view.state.schema.nodes.citation.create({
+            const citType = view.state.schema.nodes.citation;
+            // CONTAINER GATE (task 396). A native drop lands at a bare
+            // `posAtCoords` with no schema question asked — and the two MARKLESS
+            // verbatim blocks (`codeBlock` / `latexComment`, `content: "text*"`)
+            // are ordinary drop targets. Measured against the real stack: the
+            // block is TRUNCATED at the drop offset and its tail text is ejected
+            // into a fresh top-level paragraph beside the atom, so a commented-out
+            // line's tail becomes live printed prose. Refuse (the drop is
+            // consumed, nothing changes) rather than corrupt — the same SSOT the
+            // typed rules and `insertInlineAtom` read.
+            if (!posHostsInlineAtom(view.state.doc, pos.pos, citType)) return true;
+            const node = citType.create({
               citationId: result.id,
               command,
               displayText: result.displayText,
@@ -737,7 +749,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 }
               }
               const mappedPos = tr.mapping.map(dropPos);
-              const newNode = view.state.schema.nodes.footnote.create({
+              const fnType = view.state.schema.nodes.footnote;
+              // CONTAINER GATE (task 396) — the twin of the citation branch
+              // above. This branch is DEAD today (no `setData(MIME_FOOTNOTE)`
+              // survives; FootnoteCard records the drag's removal and this
+              // handler's deliberate retention), so the gate is a latent-trap
+              // closure: it is armed the moment a footnote-card drag returns.
+              if (!posHostsInlineAtom(tr.doc, mappedPos, fnType)) return;
+              const newNode = fnType.create({
                 footnoteId,
                 content,
                 number: 0,
@@ -1229,11 +1248,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // No scroll: inline atoms must never jump the viewport (insertInlineAtom
       // enforces the invariant). insertContent replaces the selected range, so the
       // highlighted text becomes the footnote's seed content.
-      insertInlineAtom({
+      const landed = insertInlineAtom({
         editor,
         type: "footnote",
         attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
       });
+      // THE REPORT IS THE PERMISSION (task 396): the door's container gate can
+      // refuse (a caret in a `text*` verbatim block). `null` is this handle's
+      // existing "no footnote was made" answer and every caller already reads it,
+      // so a refusal cannot leave a card behind with no atom.
+      if (landed.refused) return null;
       return { footnoteId };
     },
     createEmptyFootnote(opts): { footnoteId: string } | null {
@@ -1248,11 +1272,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const footnoteId = generateShortId(existing);
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
       // No scroll: inline atoms must never jump the viewport.
-      insertInlineAtom({
+      const landed = insertInlineAtom({
         editor,
         type: "footnote",
         attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
       });
+      if (landed.refused) return null; // task 396 — see the sibling above.
       return { footnoteId };
     },
     renumberFootnotes(): void {

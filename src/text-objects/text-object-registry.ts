@@ -1490,7 +1490,7 @@ export function typeHostsInlineInsert(
  * verbatim kind is covered without editing this predicate; the titleField
  * preamble singleton is named explicitly (no schema flag distinguishes it).
  * INLINE-atom inserts (inline-math `$x$`, `\ref`) do NOT consult this gate —
- * they have their own container SSOT below (`blockTypeHostsInlineAtom`): an
+ * they have their own container SSOT below (`posHostsInlineAtom`): an
  * inline atom is valid in a `titleField` but STILL corrupts the `text*`
  * verbatim blocks (codeBlock / latexComment), which admit literal text only.
  *
@@ -1580,8 +1580,15 @@ export function posHostsBlockInsert(
  * expression admits the atom iff `contentMatch.matchType(atomType)` succeeds
  * (true for `inline*`, false for `text*`). Reading the schema — not a hardcoded
  * kind list — covers any future verbatim OR inline-hosting container for free.
+ *
+ * PRIVATE (task 396): the type-only form answers a NARROWER question than any
+ * caller wants — it cannot clamp a stale caret, and every real consumer holds a
+ * position, not a parent type. Exported it was a dead SSOT (`AGENTS.md` → "A
+ * registry earns its name by being read": a sibling call is not a consumer), and
+ * an exported narrow twin is exactly how a call site comes to ask the smaller
+ * question. `posHostsInlineAtom` below is the ONE door.
  */
-export function blockTypeHostsInlineAtom(
+function blockTypeHostsInlineAtom(
   parentType: NodeType,
   atomType: NodeType,
 ): boolean {
@@ -1589,10 +1596,26 @@ export function blockTypeHostsInlineAtom(
 }
 
 /**
- * Resolve the textblock containing `pos` and test whether it can host an
- * inline atom of type `atomType` — the position-based entry point for
- * `blockTypeHostsInlineAtom`, used by the typed-math input rules whose ref is a
- * bare caret. `pos` is clamped into the doc so a stale caret can't throw.
+ * **THE inline-atom container SSOT.** Resolve the node containing `pos` and
+ * answer: can an inline atom of type `atomType` land here WITHOUT corrupting
+ * the container? `pos` is clamped into the doc so a stale caret can't throw.
+ *
+ * Consumers (task 396 — before it, this had exactly ONE, which is how three
+ * later surfaces inherited the retired premise that "an inline atom never
+ * splits"; see `AGENTS.md` → "A registry earns its name by being read"):
+ *   1. the typed `$…$` input rules (`lib/tiptap/math.ts`, task 150);
+ *   2. `inlineAtomInsertApplies` — the AFFORDANCE, greying the lightning grid's
+ *      `$x$` and `Cross-ref` cells (`lib/actions/action-registry.ts`);
+ *   3. `insertInlineAtom` — the ONE insert DOOR, which is the only layer the
+ *      deferred create-popover commit passes through (it lands at a captured
+ *      `at` that no menu gate can see).
+ *
+ * A NON-textblock parent (doc / blockquote / listItem at a block gap, i.e. a
+ * `NodeSelection`) also answers FALSE, and that is correct rather than
+ * incidental: measured against the real stack, `insertContent` there does not
+ * split — it REPLACES the selected block with a fresh paragraph holding only the
+ * atom, destroying that block's text. A second data-loss shape, refused by the
+ * same predicate.
  */
 export function posHostsInlineAtom(
   doc: PMNode,

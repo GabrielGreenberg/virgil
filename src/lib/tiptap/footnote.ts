@@ -39,7 +39,10 @@ import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 // input rule honors the SAME curated per-kind set the menus consult. Footnote
 // IS allowed in a `titleField` (see TITLE_FIELD_ACTIONS) but NOT in a non-prose
 // block, resolved by the caret's containing block kind.
-import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
+import {
+  blockKindAllowsAction,
+  posHostsInlineAtom,
+} from "@/text-objects/text-object-registry";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -164,6 +167,15 @@ export const Footnote = Node.create<FootnoteOptions>({
             if (!blockKindAllowsAction($from.parent.type.name, "footnote")) {
               return false;
             }
+            // Task 396 — the SCHEMA half, beside the POLICY half above. The two
+            // questions are different (may a footnote be created here? / can this
+            // textblock hold an inline node at all?) and they COINCIDE for the two
+            // markless verbatim blocks only by construction of the curated set
+            // (MARKLESS_BLOCK_ACTIONS subtracts INLINE_INSERT_ACTIONS). Asking the
+            // SSOT too costs nothing today (measured: both already refuse) and is
+            // what keeps a future markless kind, or an edit to the curated set,
+            // from silently re-opening the truncate-and-eject corruption.
+            if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 200),
               $from.parentOffset,

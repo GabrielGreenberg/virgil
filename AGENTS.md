@@ -1367,6 +1367,108 @@ Rejection is **atomic over the payload** (one unfittable node refuses the whole 
 
 CI: [container-fit-guardrail.test.ts](src/components/drop-mode/__tests__/container-fit-guardrail.test.ts) flags every SPLICE SITE in `src/components/drop-mode/` — the whole `insert`/`replace`/`replaceWith`/`replaceRangeWith`/`replaceSelectionWith`/`step`/`insertContentAt` family, any receiver — and fails any whose **enclosing declaration** neither calls `fitNodesAtInsert` nor carries an in-place `container-fit-exempt: <why>` marker (files carrying markers are allowlisted in `PERMITTED_UNFITTED_INSERTS`; today: inline-atom placement at a caret, the two inline-cursor slice moves, and the probe's own trial transaction). Both halves of that shape were learned the hard way: the guard's first version matched only `.insert(` and asked its question per FILE, and the two holes conspired — the stack-pull slice door was invisible to the regex *and* would have been exempted by a fit elsewhere in the same file, so CI was green while that door still tore examples. This is the guard that catches the ORIGINAL shape — a test of the fit function alone structurally cannot, since the fit was never the part that misbehaved; the part that misbehaved was a call site that never asked.
 
+#### The inline half: the INLINE sibling of the container question, and its five silent skippers
+
+Same law, the INLINE axis (task 396) — and the case where the SSOT existed, was
+correct, was documented with the exact corruption it prevents, and was consulted
+by ONE caller for five weeks while five others landed the atom straight past it.
+
+Task 150 built `posHostsInlineAtom` for one question: *can this position host an
+INLINE atom?* The MARKLESS verbatim blocks (`codeBlock`, `latexComment`) declare
+`content: "text*"` — literal text, no inline nodes — so ProseMirror's fitter
+cannot place the atom there. Measured against the real stack, what it does is
+worse than the docstring's "splits the block": it **TRUNCATES the block at the
+insert offset and EJECTS its tail text into a fresh top-level paragraph beside
+the atom.** In a `latexComment` that means a line the user had commented OUT
+becomes live printed prose. Nothing throws, the doc is schema-valid, the save
+writes it straight through — and `insertLanded` (the 332 net) reads `+3` growth
+against a floor of 1, so it false-passes.
+
+> **The inline sibling of "an insert asks the CONTAINER what it can hold":
+> `posHostsInlineAtom` is the SSOT, and EVERY site that splices an inline atom
+> asks it — through the ONE door `insertInlineAtom`, or by spelling it directly.**
+> It is a DIFFERENT predicate from the block gate and must stay one: a
+> `titleField` (`content: "inline*"`) legitimately hosts inline math, so reusing
+> `posHostsBlockInsert` would grey the title too.
+
+Six rules it earned:
+
+- **A comment describing a retired premise is how the next reader concludes the
+  invariant is held.** Task 147 gated the BLOCK-atom cells and recorded, as a
+  deliberate exclusion, that "`inline-math` and `ref` insert INLINE atoms (no
+  split, valid inside a title/code block)". Task 150 falsified the code-block
+  half **one day later** and fixed only the surface it was reported on
+  (`math.ts`). That comment then outlived its own premise for five weeks, and
+  three later surfaces inherited it unexamined — the grid cell, the `\ref`
+  popover commit, and the shared door. The title half was true, which is exactly
+  what made the sentence survive review.
+- **Gate the DOOR, not just the affordance.** Greying the two cells closes two
+  clicks and leaves the deferred create-popover commit open — `handleInsertRef` /
+  `commitCitationCreate` land at a position captured at TRIGGER time, which no
+  `applies()` can see. `insertInlineAtom` is the deepest point and the only one
+  that covers it, plus every future inline atom.
+- **The gate asks about the position the insert will ACTUALLY use.** TipTap's
+  `setTextSelection` clamps into `[TextSelection.atStart, TextSelection.atEnd]` —
+  the TEXT range — never `doc.content.size`, which resolves to the doc itself. A
+  gate reading the raw clamp refuses a stale past-the-end `at` that the insert
+  would have landed in prose (measured: it broke the primitive's own clamp
+  suite). Mirror the clamp; do not re-derive a different one.
+- **THE REPORT IS THE PERMISSION.** A refusal returns `{ refused: true }` with
+  the document untouched, and the callers that mint an entity AFTER the insert
+  read it — otherwise a citation/footnote CARD is registered with no atom in the
+  document, which is this defect one layer down.
+- **The SCHEMA half sits BESIDE the POLICY half, never instead of it.** The typed
+  input rules were already refused by `blockKindAllowsAction` (a curated
+  per-kind set) and the two answers coincide for the verbatim blocks only by
+  construction — `MARKLESS_BLOCK_ACTIONS` happens to subtract
+  `INLINE_INSERT_ACTIONS`. They are different questions (*may a footnote be
+  created here?* / *can this textblock hold an inline node at all?*), so both are
+  asked; the schema half costs nothing today and is what survives an edit to the
+  curated set or a new markless kind.
+- **A narrow type-only twin does not stay exported.** `blockTypeHostsInlineAtom`
+  cannot clamp a stale caret and every real consumer holds a position, so it was
+  a dead export (a sibling call is not a consumer) AND an invitation to ask the
+  smaller question. Private now; `posHostsInlineAtom` is the one door.
+
+**The census found two live sites the report did not name**, both the same shape
+one layer out: the native HTML5 `MIME_CITATION` drops in `Editor.tsx` and
+`RichTextField.tsx` land at a bare `posAtCoords` with no schema question at all —
+so dragging a bib entry onto a `%` comment corrupted it, in the main document and
+in a card body (where `latexComment` is registered in EVERY scope and `codeBlock`
+rides `EXCERPT_STARTER_KIT_CONFIG`). The dead `MIME_FOOTNOTE` drop beside them is
+gated too, as a latent-trap closure.
+
+CI: [inline-atom-container-gate.test.tsx](src/lib/actions/__tests__/inline-atom-container-gate.test.tsx)
+drives the REAL stack over the affordance, the run, the door and the REAL `\ref`
+popover commit, asserting the serialized `.tex` as well as the node shape — the
+`% todo` → live-line promotion is only visible in the bytes. The leg with teeth
+is [inline-atom-container-census.test.ts](src/lib/tiptap/__tests__/inline-atom-container-census.test.ts):
+the SSOT was never the part that could misbehave, a call site that never asks it
+is, and that type-checks perfectly. Membership is DISCOVERED in two precise
+halves rather than one loose window — a line that RESOLVES an inline-atom
+NodeType off a schema inside a declaration that also splices (half A, which
+accepts ONLY the inline gate), and every splice inside a module that DECLARES an
+atom (half B, where `math.ts`'s `displayMath` branch legitimately answers with
+the BLOCK gate). Allowlist EMPTY. Measured on the pre-396 tree it names all eight
+ungated sites, and six of its nine legs fail. The task-147 suite's inline-row
+expectation is RENEGOTIATED in place with the reason at the site: it pinned this
+defect as intended behaviour.
+
+**Residual, filed rather than fixed** (its own task): the drop-mode / slice family
+— `inline-atom-move.ts`'s CREATE branch, `stack-pull.ts`, `text-range-move.ts`,
+and the per-panel `drop-spec.ts` node builders they call — lands atoms at
+`makeInlineCursorPlacement` positions that ask no schema question either.
+`posHostsInlineAtom` is imported nowhere under `src/components/drop-mode/`. The
+fix belongs at the ONE hit-test chokepoint, which makes it an AFFORDANCE change
+("what the hover OFFERS is what the commit ACCEPTS"), not a door gate — and the
+cross-editor move is strictly worse than a create there, because `insertLanded`
+returns TRUE on the corrupted result and the unconditional source delete then
+fires, taking a footnote's body with it.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (pure schema +
+serializer), so the check is cheap and real: select a word inside a `% comment`
+line, open the bolt, and see `$x$` and `Cross-ref` greyed.
+
 #### The proxy half: an adapter asks the SCHEMA before it asks the classifier
 
 Same gesture, one rung earlier (task 234). The fit above is the authority on what a container can hold, but it only ever sees what the registry ADAPTER proposed — and the adapter can refuse the drop outright (`no-op`) before the fit is consulted. So the adapter's own wrap-vs-direct decision has to rest on the same truth the fit does.
