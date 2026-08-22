@@ -52,6 +52,7 @@
  * is O(added + removed atoms), never O(doc).
  */
 
+import { cardHasContent } from "@/cards/has-content";
 import type { CardStore } from "./anchored-card-store";
 import { cardKeyForEntity } from "./entity-hover";
 import {
@@ -72,7 +73,10 @@ import type { OrphanedFootnote } from "@/lib/types";
 export interface RemovedFootnoteContent {
   /** Rich-body JSON (TipTap doc) of the dying footnote, or null if empty. */
   content: unknown | null;
-  /** Plain-text flatten of body + title — the orphan-worthiness test reads it. */
+  /** Plain-text flatten of body + title. Read by the REGEN matcher's
+   *  same-position-swap discriminator, NOT by the orphan-worthiness test —
+   *  that asks `cardHasContent` off the body itself (task 401), because a
+   *  flattened projection is a second, lossier table for the same question. */
   plainText: string;
   title?: string;
   thanks?: boolean;
@@ -188,12 +192,26 @@ export function makeInlineAtomLifecyclePolicy(
       // Orphan upsert IFF the dying footnote had recoverable content (body or
       // title) AND was not archived. Folds FN-A1-02: title counts toward
       // orphan-worthiness.
+      // ORPHAN-WORTHINESS IS `cardHasContent`, NOT A SECOND RULE (task 401).
+      // The flag-OFF twin (`tiptap/footnote.ts`) has asked the shared predicate
+      // since FN-A1-02; this arm hand-wrote "plainText or title", which is the
+      // same question answered from a DIFFERENT TABLE — a flattened DISPLAY
+      // projection rather than the body itself.
+      //
+      // Stated honestly: this is a fork closure, not a bug fix. Measured against
+      // every shipped body shape the two tables AGREE, because
+      // `richJsonToPlainText` gives each attr-carrying block atom a non-empty
+      // placeholder (`[figure]`, `[graphic]`, `%`). That agreement is a property
+      // of those fallbacks and not of the question — an arm added later that
+      // returns `""` for a body the schema can hold would make this writer drop
+      // a recoverable footnote while its flag-OFF twin orphaned it, on a flag
+      // flip nobody would connect to the loss. A display projection is the wrong
+      // authority for a destruction gate whether or not it currently differs.
       const dying = deps.removedFootnoteContent(id);
       const recoverable =
         !archiveSuppressed &&
         !!dying &&
-        (dying.plainText.trim().length > 0 ||
-          (dying.title?.trim().length ?? 0) > 0);
+        cardHasContent("footnote", { content: dying.content, title: dying.title });
       if (recoverable && dying) {
         deps.upsertOrphan({
           footnoteId: id,

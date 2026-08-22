@@ -1700,6 +1700,109 @@ Four rules, mirroring the capture side's:
 
 **Two doors, one queue** — the persistence half, and the reason the bug had a second life. `usePersistentState` exposes `update()` (coalesced through a 300 ms debounce) and `persist()` (write now), and only the first owned the queue: an immediate write could be OUTLIVED by an older scheduled payload, which flushed afterwards and **resurrected on disk** what had just been removed, with in-memory state and the sidecar permanently disagreeing until the next edit. That is a PRIMITIVE hazard rather than one caller's slip — it is inherent to two write doors where one owns the queue — so `persist()` now cancels the pending timer and drops the stale payload, once, for every caller, and stamps the loader-stomp flag *after* the two guards that can make the write not happen (stamping it for a suppressed or dropped write would hide the sidecar for the whole session). Scope, stated honestly: the sidecar hooks with their own bespoke `persist` (`useFootnotes`, `useExamples`, `useAiRequests`, `useBibReview`, `useStack`, `useEditorUIState`) do **not** go through this door; among this hook's consumers only `useSuggestions.clearSuggestions` still calls it directly. Prefer `update()` regardless; `persist()` is for a read-then-write that needs the computed value back synchronously, and it cancels rather than merges, so its payload must already reflect any `update()` issued before it. Contracts: [archive-restore-contract.test.tsx](src/hooks/__tests__/archive-restore-contract.test.tsx), [restore-excerpt.test.ts](src/lib/tiptap/__tests__/restore-excerpt.test.ts), [card-restore-affordance.test.tsx](src/components/__tests__/card-restore-affordance.test.tsx).
 
+### The attrs half: a gate written in NODE TYPES and TEXT cannot see ATTRS
+
+Same law, the PREDICATE that decides whether a destruction needs a confirm at
+all (task 401) — and the case where the guard was correct about the vocabulary
+it could see and blind to the one Virgil's payload actually lives in.
+
+`hasJsonContent` recursed looking for `text` nodes and had no `attrs` arm, so
+`cardHasContent(kind, rec)` answered **false** for a body that is entirely one
+atom: `$\lambda$`, a `citation`, a `\ref`, a nested footnote marker, a
+`displayMath`, a `texBlock`, a `forestBlock`, a `graphicsBlock`, a caption-less
+`figureBlock`. That is not an exotic body — it is the ordinary shape of a
+footnote holding one formula.
+
+**The headline cost was DESTRUCTION, not a missing dialog.** `EditorPane`'s
+`handleEditFootnote` marks a new footnote DIRTY only when the predicate says the
+body has content, so an atom-only footnote stayed **pristine**; the
+document-level capture-phase `pointerdown` watcher in `usePristineCardManager`
+then fired the discard, and the discard handler re-asked the SAME blind
+predicate before deleting. **Create a footnote, type `$\lambda$`, click anywhere
+else: it is gone.** No confirm, no orphan card, no undo affordance — and a
+footnote body is by construction the only copy. Four more doors share the
+predicate, which is what made the one-function fix total: `EditableCard.tryDelete`
+(the trash click AND the task-386 key door), `usePanelCardTryDelete`,
+`deleteMarginItem`, and the footnote ORPHAN gate. The ARCHIVE case is the worst
+blast radius — the capture dispatches `tr.delete` FIRST, an archive card is born
+`title: ""` with no auto-title rescue, so the gate has nothing else to see.
+
+> **A gate written in the vocabulary of NODE TYPES and TEXT cannot see content
+> that lives in ATTRS.** So it is inverted: everything carries content EXCEPT
+> the empty structural wrappers a blank document is made of
+> ([`EMPTY_WRAPPER_NODE_TYPES` / `jsonCarriesContent`](src/lib/node-attr-sets.ts)).
+> An allowlist of "nodes that carry nothing by themselves" is CLOSED and small;
+> a denylist of atoms can only ever be missing the tenth.
+
+Six rules it earned:
+
+- **The correct-shaped twin already existed two files over, and taking it was
+  the fix.** `jsonCarriesContent` (`schema-mount.ts`'s mount-preservation door)
+  asked exactly this question and got it right, with a private
+  `EMPTY_WRAPPERS = new Set(["doc","paragraph"])`. Two walkers for one question
+  is the fork; the set moved to the import-free leaf (the placement rule
+  `latex-markers.ts` earned) and both doors read the ONE operation, so the mount
+  door and the delete confirms can no longer answer differently about one body.
+  `hasJsonContent` is DELETED rather than aliased — it had no caller outside its
+  own file, and a second name for one question is a name the next author reaches
+  for.
+- **A WRAPPER carrying a payload attr is not empty**, which is the same disease
+  one level in and would have survived the fix. `parTitle` is the one such attr,
+  and the check is DERIVED from `TITLED_NODE_TYPES` rather than re-listed —
+  `uuid` is identity (a blank paragraph has one and carries nothing) and
+  `collapsed` is view state.
+- **A TEXT node's content IS its `text` field**, so it is answered there and
+  never falls through to the type rule — otherwise `{type:"text",text:""}`
+  reports content because `"text"` is not a wrapper NAME. Unreachable from a
+  live ProseMirror doc (PM forbids empty text nodes) and entirely reachable from
+  hand-built JSON: an `/editor/*` skill's sidecar write, a legacy blob, a
+  fixture. Found by a real-editor fixture, not by inspection.
+- **The CONTROLS are half the contract.** A genuinely empty body must still
+  answer false, or the fix becomes "confirm on everything" — every blank card
+  nagging on delete and no pristine card ever reaped, which is a worse product
+  than the bug.
+- **The premise is CHECKED against the live schema**, the instrument task 148
+  earned: every member is a node type the schema declares, the set IS the node
+  types `emptyRichContent()` is made of, every member is a CONTAINER (never an
+  atom or a leaf — the category error that would reopen the class), and — the
+  direction with the consequences — **every NON-member of the live vocabulary is
+  reported as content**, swept over the whole schema so a new node kind is
+  covered by shipping rather than by a fixture. Note `doc` is `block+`: "can be
+  empty" is NOT the property and asserting it fails, which is why the leg asks
+  about containment instead.
+- **The flag-ON orphan writer was a second table, closed as a FORK rather than
+  as a bug.** `inline-atom-lifecycle-policy` hand-wrote "plainText or title"
+  where its flag-OFF twin has asked `cardHasContent` since FN-A1-02. Measured,
+  the two AGREE on every shipped body — `richJsonToPlainText` hands each
+  attr-carrying block atom a non-empty placeholder (`[figure]`, `[graphic]`,
+  `%`) — so this is a hardening and the census is the only leg that can see it.
+  Stated that way rather than dressed as a live defect: a display projection is
+  the wrong authority for a destruction gate whether or not it currently
+  differs, and an arm added later returning `""` would drop a recoverable
+  footnote on a flag flip nobody would connect to the loss.
+
+CI: [atom-only-body-content.test.tsx](src/cards/__tests__/atom-only-body-content.test.tsx)
+sweeps the blind set per member — DISCOVERED from `ATOM_REGISTRY`'s `nodeName`
+column ∪ `CARD_BODY_BLOCK_ATOMS`, so a new atom kind is covered by declaring
+itself — and drives a leg per DOOR, because they share the predicate and a leg
+per door is what proves the sharing. The pristine reap runs the REAL
+`usePristineCardManager` `pointerdown` path with the REAL predicate composed as
+EditorPane composes it; the two EditableCard doors drive the REAL component. The
+leg with teeth is the CENSUS (EditorPane's two gates and both orphan writers
+must spell the shared predicate; no production file may re-declare a wrapper
+set, allowlist EMPTY, with a SYNTHETIC canary rather than one standing on the
+drained line). The schema premise lives in
+[node-attr-sets.test.ts](src/lib/__tests__/node-attr-sets.test.ts). Measured by
+neutering each half in turn: the pre-401 text-only walker takes 25 legs, a
+has-content that re-forks its own walker 24, the text-node rule 3, the
+parTitle-on-wrapper rule 1, and the orphan-writer unification 1 (the census).
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked for the headline (it
+is a live editor gesture, no disk involved), so the check is cheap and real —
+make a footnote, type `$\lambda$`, click away, and it must still be there. The
+ARCHIVE half touches sidecars and is partially FSA-masked; the unit contract is
+the durable proof there.
+
 ### The keyboard half: a destructive key asks ONE door, and a danger confirm cues its SAFEST button
 
 Same law, the KEYBOARD carrier (task 386). Gabriel's repro: archive some text,

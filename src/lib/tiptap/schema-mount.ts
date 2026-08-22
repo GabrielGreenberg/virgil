@@ -29,6 +29,7 @@
  * NodeView tree behind it.
  */
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import { jsonCarriesContent } from "../node-attr-sets";
 
 /** Result of {@link canMountInSchema}. */
 export type SchemaMountCheck = { ok: true } | { ok: false; reason: string };
@@ -73,36 +74,20 @@ export function docIsEffectivelyEmpty(doc: PMNode): boolean {
 }
 
 /**
- * Did the JSON we handed over carry anything a reader would miss? Any non-empty
- * text anywhere, or any node that is not one of the empty structural wrappers a
- * blank document is made of.
+ * Did the JSON we handed over carry anything a reader would miss?
+ *
+ * Re-exported from the import-free leaf that OWNS the question
+ * ([node-attr-sets.ts](../node-attr-sets.ts)) rather than answered here: the
+ * CARD layer asks exactly the same thing before a destructive delete, and this
+ * module's private copy of the wrapper allowlist was the correct half of a
+ * fork whose other half (`hasJsonContent`, text-only) destroyed footnote bodies
+ * (task 401). One walker, one wrapper set, so the mount door and the delete
+ * confirms cannot answer differently about the same body.
  *
  * Walked as PLAIN JSON (no schema), and only ever on the failure path — the
  * happy path is answered O(1) by {@link docIsEffectivelyEmpty}.
  */
-export function jsonCarriesContent(json: unknown): boolean {
-  const EMPTY_WRAPPERS = new Set(["doc", "paragraph"]);
-  let found = false;
-  const walk = (n: unknown): void => {
-    if (found || !n || typeof n !== "object") return;
-    if (Array.isArray(n)) {
-      for (const item of n) walk(item);
-      return;
-    }
-    const node = n as { type?: string; text?: string; content?: unknown };
-    if (typeof node.text === "string" && node.text.trim() !== "") {
-      found = true;
-      return;
-    }
-    if (typeof node.type === "string" && !EMPTY_WRAPPERS.has(node.type)) {
-      found = true;
-      return;
-    }
-    walk(node.content);
-  };
-  walk(json);
-  return found;
-}
+export { jsonCarriesContent } from "../node-attr-sets";
 
 /** The verdict of a mount: did the editor keep what it was given? */
 export interface MountVerdict {

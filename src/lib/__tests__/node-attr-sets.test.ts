@@ -55,6 +55,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { parseLatex } from "@/lib/latex-parser";
+import { emptyRichContent } from "@/lib/footnote-content";
 import { serializeToLatex, extractSidecarData, assignUuids } from "@/lib/latex-serializer";
 import {
   UUID_BEARING_NODE_TYPES,
@@ -62,6 +63,8 @@ import {
   COLLAPSIBLE_NODE_TYPES,
   DEFERRING_PARENTS,
   deferringParent,
+  EMPTY_WRAPPER_NODE_TYPES,
+  jsonCarriesContent,
 } from "@/lib/node-attr-sets";
 // Comments stripped, string literals KEPT — the drift this census hunts lives
 // in literals (`new Set(["paragraph", …])`), so blanking them would make the
@@ -133,6 +136,85 @@ describe("node-attr-sets · DEFERRING_PARENTS is checked against the schema too"
     // stops a "tidy-up" from deleting a member on the theory that it must be.
     const schema = getSchema(buildEditorExtensions(mainCtx()));
     expect(schema.nodes.codeBlock.spec.content ?? "").not.toContain("paragraph");
+  });
+});
+
+describe("node-attr-sets · EMPTY_WRAPPER_NODE_TYPES is checked against the schema", () => {
+  // Task 401. The blind-set inversion: everything carries content EXCEPT the
+  // empty structural wrappers a blank document is made of. An allowlist can be
+  // checked; the denylist it replaces could only ever be missing the tenth atom.
+  // Two things about the members are derivable and both are failures the
+  // pre-401 walker would have shown.
+
+  it("every member is a node type the real schema declares", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    const unknown = sorted(EMPTY_WRAPPER_NODE_TYPES).filter((n) => !(n in schema.nodes));
+    expect(unknown, "a wrapper the schema has never heard of").toEqual([]);
+  });
+
+  it("the set IS the node types a BLANK body is made of", () => {
+    // The definition, checked against the shipped constructor rather than
+    // restated. `emptyRichContent()` is what every card body and every new
+    // footnote starts as, so if its shape ever changes the wrapper set must
+    // move with it — otherwise the four delete doors begin confirming on every
+    // blank card and no pristine card is ever reaped again.
+    const names = new Set<string>();
+    const walk = (n: unknown): void => {
+      if (!n || typeof n !== "object") return;
+      const node = n as { type?: string; content?: unknown[] };
+      if (node.type) names.add(node.type);
+      for (const c of node.content ?? []) walk(c);
+    };
+    walk(emptyRichContent());
+    expect([...names].sort()).toEqual(sorted(EMPTY_WRAPPER_NODE_TYPES));
+  });
+
+  it("every member is a CONTAINER, never an atom or a leaf", () => {
+    // A wrapper carries nothing by ITSELF, which for the schema means it is a
+    // node whose meaning is entirely its children. An atom or a leaf is the
+    // opposite — its payload is its attrs — so naming one here is the category
+    // error that would make the walker blind to exactly the class task 401 is
+    // about. (`doc` is `block+`, so "can be empty" is NOT the property: it
+    // cannot be, and it is still a pure container.)
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    for (const name of EMPTY_WRAPPER_NODE_TYPES) {
+      const type = schema.nodes[name];
+      expect(type.isAtom, `${name} is an atom — its payload is its attrs`).toBe(false);
+      expect(type.isLeaf, `${name} is a leaf — it has no children to carry meaning`).toBe(false);
+    }
+  });
+
+  it("every NON-member of the live schema is reported as content", () => {
+    // The direction with the consequences. A node type the walker does not
+    // recognize must default to CONTENT, because the four card-delete doors and
+    // the footnote pristine reap read this answer before destroying the only
+    // copy of the user's writing. Swept over the whole live vocabulary, so a
+    // new node kind is covered by shipping rather than by a fixture.
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    const missed = Object.keys(schema.nodes).filter((name) => {
+      if (EMPTY_WRAPPER_NODE_TYPES.has(name)) return false;
+      if (name === "text") return false; // answered by its own `text` field
+      return !jsonCarriesContent({ type: "doc", content: [{ type: name }] });
+    });
+    expect(missed, "a schema node type the content gate cannot see").toEqual([]);
+  });
+
+  it("a wrapper carrying a parTitle is NOT empty (the same disease, one level in)", () => {
+    // Derived from TITLED_NODE_TYPES rather than re-listed: `paragraph` is both
+    // a wrapper and a titled type, and a title is user-authored content that
+    // lives in an attr — exactly what the walker exists to see.
+    expect(EMPTY_WRAPPER_NODE_TYPES.has("paragraph")).toBe(true);
+    expect(TITLED_NODE_TYPES.has("paragraph")).toBe(true);
+    expect(
+      jsonCarriesContent({ type: "doc", content: [{ type: "paragraph", attrs: { parTitle: "Intro" } }] }),
+    ).toBe(true);
+    // …while identity and view state on a wrapper are NOT content.
+    expect(
+      jsonCarriesContent({
+        type: "doc",
+        content: [{ type: "paragraph", attrs: { uuid: "abcd", parTitle: null } }],
+      }),
+    ).toBe(false);
   });
 });
 

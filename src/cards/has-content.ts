@@ -21,9 +21,21 @@
  * NO kind can carry content the confirm can't see — and a new kind can't ship
  * without declaring its model (`assertContentCoverage`).
  *
+ * THE SECOND DEFICIENCY (task 401): the body walk asked for TEXT. Virgil's
+ * payload very often lives in ATTRS — `$\lambda$`, a tex block, a forest tree,
+ * a citation, a caption-less figure — so a body that was entirely one atom read
+ * as EMPTY. A footnote whose body was one atom stayed "pristine" and the
+ * click-away watcher DELETED it with no confirm and no undo, and all four
+ * card-delete doors below skipped the "This item has text" dialog on a card
+ * that is often the only surviving copy. The body walk is now
+ * `jsonCarriesContent` — the ONE walker, shared with the mount-preservation
+ * door, whose allowlist of empty wrappers is closed and small where a denylist
+ * of atoms could only ever be missing the tenth.
+ *
  * Two layers:
- *  - `hasJsonContent(value)` walks a Tiptap JSONContent doc and returns
- *    true if any text node contains visible (non-whitespace) text.
+ *  - `jsonCarriesContent(value)` ([@/lib/node-attr-sets](../lib/node-attr-sets.ts))
+ *    walks a Tiptap JSONContent doc and returns true if it carries anything a
+ *    reader would miss.
  *  - `cardHasContent(kind, card)` reads the kind's declared `content` descriptor
  *    and checks every counted field (the rich `bodyField` walked for visible
  *    text; the `textFields` matched as non-empty string or non-empty array) —
@@ -32,6 +44,7 @@
 
 import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind } from "./types";
+import { jsonCarriesContent } from "@/lib/node-attr-sets";
 
 /** Card-kind discriminator used by `cardHasContent`. Retained as a NARROW alias
  *  of `CardKind` for the margin-marker call sites (`delete-margin-item.ts`),
@@ -49,19 +62,6 @@ export type CardContentKind =
   | "revision-suggestion"
   | "report"
   | "report-request";
-
-/** Walk a Tiptap JSONContent doc (or fragment) for visible text. */
-export function hasJsonContent(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const node = value as { text?: unknown; content?: unknown };
-  if (typeof node.text === "string" && node.text.trim() !== "") return true;
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) {
-      if (hasJsonContent(child)) return true;
-    }
-  }
-  return false;
-}
 
 /** True iff a named field on the card record holds visible user content. A
  *  string counts when trimmed-non-empty; an array counts when non-empty (e.g.
@@ -108,7 +108,7 @@ export function cardHasContent(kind: CardKind, card: unknown): boolean {
   const model = CARD_REGISTRY[kind].content;
   if (model === null) return false; // no-user-content kind (highlight/bib/ai/error)
   const rec = card as Record<string, unknown>;
-  if (model.bodyField && hasJsonContent(rec[model.bodyField])) return true;
+  if (model.bodyField && jsonCarriesContent(rec[model.bodyField])) return true;
   for (const f of model.textFields) {
     if (textFieldHasContent(rec, f)) return true;
   }
