@@ -39,6 +39,9 @@ export interface BlockMoveOptions {
 export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
   return plannedDropSpec({
     allowedPlacements: ["between-blocks"],
+    /** The payload is exactly one block of this factory's node kind (task 416)
+     *  — a static answer, so it needs neither the key nor the ctx. */
+    blockPayloadFor: () => [opts.nodeName],
     targetScope: "any-editor",
     postDrop: "close",
     /**

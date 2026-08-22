@@ -174,7 +174,7 @@ describe("task 007 — between-blocks bar width = insert SCOPE", () => {
 
     const placement = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: block.pos, depth: 1, uuid: "E", dom: blockEl },
+      { blockPos: block.pos, uuid: "E", dom: blockEl },
       EX_BOTTOM + 5, // below the example → sibling insert after
     );
     // AFTER: full column — left at column-left, width the whole column.
@@ -194,12 +194,12 @@ describe("task 007 — between-blocks bar width = insert SCOPE", () => {
 
     const shortBar = makeBetweenBlocksPlacement(
       mockEditor(d, () => shortEl),
-      { blockPos: block.pos, depth: 1, uuid: "E", dom: shortEl },
+      { blockPos: block.pos, uuid: "E", dom: shortEl },
       EX_BOTTOM + 5,
     );
     const wideBar = makeBetweenBlocksPlacement(
       mockEditor(d, () => wideEl),
-      { blockPos: block.pos, depth: 1, uuid: "E", dom: wideEl },
+      { blockPos: block.pos, uuid: "E", dom: wideEl },
       EX_BOTTOM + 5,
     );
     // Width tracks the COLUMN, not the example's text length — the bug's core.
@@ -216,7 +216,7 @@ describe("task 007 — between-blocks bar width = insert SCOPE", () => {
 
     const placement = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: items[0].pos, depth: 3, uuid: "a", dom: itemEl },
+      { blockPos: items[0].pos, uuid: "a", dom: itemEl },
       EX_TOP - 5,
     );
     // The item sits at doc depth ≥ 1 → NOT a top-level sibling → indented edge.
@@ -234,7 +234,7 @@ describe("task 007 — between-blocks bar width = insert SCOPE", () => {
 
     const placement = makeBetweenBlocksPlacement(
       editor,
-      { blockPos: p.pos, depth: 1, uuid: "p1", dom: pEl },
+      { blockPos: p.pos, uuid: "p1", dom: pEl },
       290,
     );
     expect(placement.rect.x).toBe(COLUMN_LEFT); // 64
@@ -260,14 +260,14 @@ describe("wave-2b C8 — the builder honors a pre-read rect (one layout read per
     };
     const editor = mockEditor(d, () => pEl);
     const p = findByType(d, "paragraph")[0];
-    const info = { blockPos: p.pos, depth: 1, uuid: "p1", dom: pEl };
+    const info = { blockPos: p.pos, uuid: "p1", dom: pEl };
 
     const threaded = asBetween(
-      makeBetweenBlocksPlacement(editor, info, 290, false, box),
+      makeBetweenBlocksPlacement(editor, info, 290, box),
     );
     expect(reads).toBe(0); // hitTest's classification read is REUSED
     const reRead = asBetween(makeBetweenBlocksPlacement(editor, info, 290));
-    expect(reads).toBe(1); // rect-less callers (R3 peer path) pay one read
+    expect(reads).toBe(1); // a rect-less caller pays the one read here instead
     expect(threaded.rect).toEqual(reRead.rect);
     expect(threaded.insertPos).toBe(reRead.insertPos);
   });

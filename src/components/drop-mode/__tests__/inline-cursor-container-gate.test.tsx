@@ -87,6 +87,7 @@ import {
 } from "../controller";
 import { insertLanded } from "../schema-adopt";
 import { registerDropTarget } from "../target-registry";
+import { resolveSessionBlockPayload } from "../block-payload";
 import { resolveSessionInlinePayload } from "../inline-host";
 import { resolveSessionPlacements } from "../placement-policy";
 import { inTextAtomGrabSpec } from "../specs/in-text-atom-grab";
@@ -290,6 +291,10 @@ function hit(editor: Editor, spec: DropSpec, key: string): Placement | null {
     key,
     editor,
     resolveSessionInlinePayload(spec, key, ctx),
+    // The BLOCK payload (task 416), resolved through the same door the
+    // controller uses. Stated rather than defaulted, for the reason the inline
+    // one is: a default is a decision nobody made.
+    resolveSessionBlockPayload(spec, key, ctx),
   );
 }
 

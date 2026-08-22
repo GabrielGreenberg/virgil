@@ -24,17 +24,21 @@
  *    cannot drift from it. A guard that re-states the loop is a second copy of
  *    the thing that was wrong. **Scope, stated because the guard is only as
  *    honest as its reach:** the switch is step 6 of the hit-test, and TWO
- *    resolvers run before it (`resolveSubItemPeerBlock`, `resolveBlockIntoExpex`
- *    — the R3 sub-item peer path and the A1 into-expex path), each gated only on
- *    `placements.includes("between-blocks")` and each returning a
- *    `between-blocks` placement for a cursor INSIDE a block's rect. So
- *    `between-blocks` is reachable for a text-object source wherever it appears
- *    in the list, and {@link unreachablePlacements} — which models the switch
- *    alone — would wrongly condemn it in a hypothetical
- *    `["paragraph-side", "between-blocks"]` spec. No such spec exists (both
- *    resolvers gate on a `textobject:` source key, and every text-object spec
- *    declares `between-blocks` first), so the guard is exact today; a future one
- *    would need this residual folded in rather than the assertion relaxed.
+ *    things run before it — the A1 `resolveBlockIntoExpex` path, and (task 416)
+ *    the CANDIDATE LADDER, which produces a `between-blocks` placement for a
+ *    cursor INSIDE a block's rect whenever the session declares a BLOCK payload
+ *    (`DropSpec.blockPayloadFor`). That declaration is the honest form of what
+ *    used to be the R3 `resolveSubItemPeerBlock` resolver's source-key gate, and
+ *    it is why the ladder is a deliberate exception to the partition rather than
+ *    a leak: a whole-block payload has no inline reading at all, and a list has
+ *    no top-level gaps between its items, so the partition's gap-only reading
+ *    meant NO BAR anywhere over a list's body. So `between-blocks` is reachable
+ *    over text for a block payload, and {@link unreachablePlacements} — which
+ *    models the switch alone — would wrongly condemn it in a hypothetical
+ *    `["paragraph-side", "between-blocks"]` spec. No such spec exists (every
+ *    spec that declares a block payload declares `between-blocks` first), so the
+ *    guard is exact today; a future one would need this residual folded in
+ *    rather than the assertion relaxed.
  *  - **A static priority order cannot answer a PER-PAYLOAD question.** When one
  *    spec key covers several payload shapes (stack-pull: a text slice, a
  *    paragraph, a heading, a card), the placement a payload wants over the same
