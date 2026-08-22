@@ -5,7 +5,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
 import { AddMarkStep, Mapping, RemoveMarkStep } from "@tiptap/pm/transform";
 import { isHistoryTransaction } from "@tiptap/pm/history";
-import { COMMAND_MAP } from "./commands";
+import { commitSlashCommand } from "./commands";
 import {
   LATEX_COMMENT_TAIL_MARK,
   LATEX_VERBATIM_MARK,
@@ -863,7 +863,24 @@ export const LatexCommandMark = Mark.create({
           return tr;
         },
       }),
-      // Virgil command execution on Enter
+      // Virgil command execution on Enter — the slash surface's SECOND commit
+      // door, and the one with no popup in front of it: it matches a trailing
+      // `\name` on Enter, so it fires when the popup was never opened
+      // (dismissed with Escape, or suppressed by `isFreshPosition`).
+      //
+      // Task 398: it used to carry its own copy of the popup's three steps and
+      // its own copy of the popup's DEFECT — delete the typed text first, let
+      // the action refuse afterwards — so fixing the popup alone would have left
+      // this door eating characters in exactly the same containers. Both now
+      // route through `commitSlashCommand`, which asks the registry row's
+      // `applies()` BEFORE it deletes anything.
+      //
+      // On a refusal this returns FALSE rather than consuming the key, and the
+      // asymmetry with the popup is deliberate: there is no offered row here to
+      // report a refusal on, so the least surprising outcome is an ordinary
+      // Enter with the user's text left where they typed it. (The popup, which
+      // DOES show the row, consumes — activating a disabled control does
+      // nothing.)
       new Plugin({
         key: new PluginKey("virgilCommands"),
         props: {
@@ -885,18 +902,12 @@ export const LatexCommandMark = Mark.create({
             const cmdMatch = textBefore.match(/\\([a-zA-Z]+)$/);
             if (!cmdMatch) return false;
 
-            const cmd = COMMAND_MAP.get(cmdMatch[1]);
-            if (!cmd) return false;
-
-            // Delete the typed \command text
-            const cmdLen = cmdMatch[0].length;
-            const deleteFrom = from - cmdLen;
-            const tr = state.tr.delete(deleteFrom, from);
-            view.dispatch(tr);
-
-            // Run the command action
-            cmd.action(view, cmdMatch[0]);
-            return true;
+            return commitSlashCommand(
+              view,
+              cmdMatch[1]!,
+              from - cmdMatch[0].length,
+              from,
+            );
           },
         },
       }),

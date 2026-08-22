@@ -1637,6 +1637,114 @@ no disk), so the check is cheap and real: put the caret in an `\ex` item, open
 the bolt — Bullet/Numbered/Blockquote greyed, Display math and Image lit — then
 check the code view.
 
+#### The offer half: a surface that can REFUSE asks before it OFFERS
+
+Same law, the fourth surface (task 398) — and the case where three of the four
+action surfaces asked and the fourth committed the user's keystrokes first.
+
+Grab asks per row (`DragHandleMenu`), lightning asks per row (task 397), typed
+asks at its input rule (`math.ts`). The slash popup asked **nothing**:
+`filterByPrefix` filtered `VIRGIL_COMMAND_NAMES` by typed prefix and rendered
+the result, and `executeSelection` dispatched `tr.delete(slashPos, cursor)` as
+its OWN transaction and called `cmd.action` afterwards. The action's `applies()`
+bail — `runViewOnlyAction` for the pure-PM rows, the bridge's `runAction` for
+the rest — then refused, *after* the characters were gone. Caret in a
+`latexComment` / `codeBlock` / `titleField`, type `\forest`, press Enter: **seven
+characters vanish, nothing is inserted, nothing is said.** The lightning grid's
+forest cell is correctly greyed at the same caret, so two surfaces routing to
+ONE `run()` disagreed about ONE gate — with the extra cost that this refusal was
+**lossy** rather than merely silent.
+
+> **A surface that can refuse ASKS BEFORE IT OFFERS, and asks the SAME question
+> it will ask at the commit — so a refusal costs the user NOTHING.** The verdict
+> is the registry row's own `applies()`, resolved through
+> `SLASH_NAME_TO_ACTION_ID` and published by ONE door
+> ([slash-applicability.ts](src/lib/tiptap/slash-applicability.ts)); the COMMIT
+> is one door too (`commitSlashCommand`, beside the vocabulary both executors
+> read), and it asks before it deletes.
+
+Seven rules it earned:
+
+- **There was a FIFTH surface, and finding it is what made the fix a fix.**
+  `latex-command.ts`'s `virgilCommands` plugin is a second Enter-time executor:
+  it matches a trailing `\name` and fires when the popup was never opened
+  (dismissed with Escape, or suppressed by `isFreshPosition`). It carried its own
+  copy of the same three steps and its own copy of the same DEFECT, so a fix to
+  the popup alone would have closed the reported case and left this door eating
+  characters in the very same containers with every behavioural test of the popup
+  green. The door lives beside the vocabulary, not in either caller, for exactly
+  that reason.
+- **One CONTEXT constructor, or "the same question" is a hope.**
+  `buildSlashActionContext` is what `runViewOnlyAction` builds its ctx with too;
+  it was inline there, which is precisely why the popup had no way to ask the same
+  question without re-deriving it.
+- **One POSITION, and the two cannot disagree.** The offer is asked at the caret
+  with the typed `\name` still present, the commit after the delete at `slashPos`
+  — both inside the SAME textblock, because deleting text never changes a block's
+  type or its container. Stated at the door rather than assumed.
+- **The verdict is re-derived on every transaction while the popup is open**,
+  including on the `tail === value.query` short-circuit: the caret can move and the
+  block can change TYPE without one character of the query changing, and a stale
+  verdict is the two-tables defect wearing the fix's clothes. It is derived from
+  the transaction's NEW state (inside `apply` the view still holds the OLD one),
+  with `view.editable` — a view PROP, not state — read off a per-editor captured
+  view so CHIP 7b's collab gate reaches the OFFER and not only the run.
+- **Greying beats hiding**, the choice both menus already made: a command that
+  VANISHES reads as "Virgil doesn't have `\section`". Navigation skips greyed rows
+  (initial selection and arrows), so the roving selection can only sit on a
+  command Enter can run, and the arrows are inert rather than looping when every
+  row is greyed.
+- **The two doors END the gesture differently, deliberately.** The popup CONSUMES
+  the key on a refusal — activating a disabled control does nothing, and the popup
+  closes so the user's next Enter is an ordinary one — where the popup-less door
+  returns `false` and lets an ordinary Enter through, because there is no offered
+  row there to report a refusal on. Consuming is also what keeps a refusal from
+  trading the eaten `\name` for a surprise paragraph split.
+- **Keystroke sanctity is unchanged**: the plugin's `apply` returns O(1) while the
+  popup is CLOSED, so no verdict work touches ordinary typing; the ~18 verdicts
+  are O(depth) each and run only while the popup is open.
+
+CI: [slash-popup-applicability.test.ts](src/lib/tiptap/__tests__/slash-popup-applicability.test.ts)
+drives the REAL `SlashPopupExtension` inside the REAL `buildEditorExtensions("main")`
+stack — the shipped `handleTextInput` / `handleKeyDown` props, typed one character
+at a time, because a single `insertContent` never opens the popup at all. **No
+pre-398 suite could see any of this**: every cross-surface suite calls
+`COMMAND_MAP.get(name)!.action(view, …)` DIRECTLY, which is the destination the
+popup reaches *after* its delete — so the delete, and therefore the whole defect,
+is unrepresentable in all of them. The per-container expectation is DERIVED from
+`VIRGIL_ACTION_REGISTRY` rather than hand-listed, so a future gate change moves
+both sides. The leg with teeth is the CENSUS
+([slash-commit-door-census.test.ts](src/lib/tiptap/__tests__/slash-commit-door-census.test.ts)):
+the door was never the part that could misbehave, a private executor is, and
+membership is DISCOVERED (the production files that IMPORT a runnable
+`VirgilCommand`) with every allowlist EMPTY. It reads TWO views of each file —
+strings KEPT for the needles that are quoted text, strings BLANKED for the symbol
+needles, because `action-registry.ts` names `VIRGIL_COMMANDS` inside error-message
+templates and would otherwise be indicted for prose.
+
+Measured by neutering each half in turn: the pre-398 "never asks" surface takes 18
+legs, the second door's private executor 2 behavioural + 1 census, the pre-398
+navigation 2, the inline slash ctx 1 census, a door that deletes before it asks 1
+census (plus every byte-identity leg), and a popup that ignores the verdict 1
+census.
+
+**Residual, stated rather than implied.** The delete and the action are still TWO
+transactions, so a SUCCESSFUL command is two undo steps (Cmd+Z removes the
+inserted block and leaves a document the `\name` has already left). Folding them
+into one means threading a pre-built `tr` through every `cmd.action` — including
+the bridge-routed rows, whose transaction is built later in React-land — which is
+wider than this pass; the LOSSY half is what mattered. And the two bespoke
+pre-gates in `commands.ts` (`\cite` / `\footnote`'s `blockKindAllowsAction` +
+`posHostsInlineAtom`) stay as defence-in-depth: they cannot diverge from
+`applies()` for the containers in play today, and if that coincidence ever breaks
+the schema half must move INTO the row's `applies()` where task 396 put its
+siblings, not be re-forked at the offer.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor gesture,
+no disk), so the check is cheap and real: caret in a `% comment` line, type
+`\forest` — the row is greyed — press Enter, and the seven characters are still
+there.
+
 #### The proxy half: an adapter asks the SCHEMA before it asks the classifier
 
 Same gesture, one rung earlier (task 234). The fit above is the authority on what a container can hold, but it only ever sees what the registry ADAPTER proposed — and the adapter can refuse the drop outright (`no-op`) before the fit is consulted. So the adapter's own wrap-vs-direct decision has to rest on the same truth the fit does.

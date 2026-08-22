@@ -20,6 +20,17 @@ export type SlashPopupState =
       query: string;
       selectedIndex: number;
       filtered: string[];
+      /**
+       * The subset of `filtered` that must render GREYED — the registry's own
+       * `applies()` verdict for this caret, resolved ONCE in the plugin's state
+       * derivation (task 398) so the OFFER (this list) and the COMMIT
+       * (`executeSelection`) read literally the same array.
+       *
+       * A plain sorted `string[]` rather than a `Set` so `statesEqual` below can
+       * compare two snapshots BY VALUE: a fresh Set identity per transaction
+       * would re-render the popup on every keystroke while it is open.
+       */
+      disabled: string[];
     };
 
 let _state: SlashPopupState = { open: false };
@@ -53,6 +64,10 @@ function statesEqual(a: SlashPopupState, b: SlashPopupState): boolean {
   if (a.filtered.length !== b.filtered.length) return false;
   for (let i = 0; i < a.filtered.length; i++) {
     if (a.filtered[i] !== b.filtered[i]) return false;
+  }
+  if (a.disabled.length !== b.disabled.length) return false;
+  for (let i = 0; i < a.disabled.length; i++) {
+    if (a.disabled[i] !== b.disabled[i]) return false;
   }
   return true;
 }
