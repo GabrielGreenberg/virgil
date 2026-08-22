@@ -71,6 +71,10 @@ const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
   "library/components/PageScrollLozenge.tsx":
     "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS. The Library reader's page lozenge; the handler is one `scheduleFade()` timer reset and the lozenge IS the scroll's feedback.",
+  "library/components/LeftList.tsx":
+    "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS. A React `onScroll` prop (the JSX form of the same follower): the Library list's virtual-window driver.",
+  "library/components/PaperRender.tsx":
+    "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS. A React `onScroll` prop; the Library Reader's scroll-position persist.",
   "library/hooks/usePgmarkPages.ts":
     "LIVE — the reader's current-page tracker, RAF-coalesced to one `scrollTop`/`clientHeight` read per frame. The page number is what the scroll is FOR, so parking it would freeze the readout mid-scroll; the file participates in the doctrine through its ResizeObserver park.",
   "src/components/EditorLayout.tsx":
@@ -109,6 +113,10 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
 const PERMITTED_LIVE_SCROLL_HANDLERS: Record<string, string> = {
   "library/components/PageScrollLozenge.tsx":
     "The Library reader's page lozenge reveals ON scroll and fades after idle — parking it would blank the very affordance the scroll is supposed to summon. Per event: one `clearTimeout` + `setTimeout` + an already-true `setVisible`. It measures nothing.",
+  "library/components/LeftList.tsx":
+    "The Library list's virtual window: RAF-coalesced to one `scrollTop` + one `clientHeight` read per frame, and that pair IS the window's input — parking it would freeze the rendered range mid-scroll, i.e. blank rows. No layout gesture scrolls this container in any case (the content drag's auto-scroll targets an EDITOR's scroller), so the park would be unreachable.",
+  "library/components/PaperRender.tsx":
+    "The Library Reader's scroll-position persist, RAF-coalesced to one `scrollTop` read whose only consumer is a QUIET session-store write (no subscriber re-render; the store's own 250 ms debounce owns the disk cadence). This one IS reachable by a content drag — the Reader mounts an EditorPane inside this scroller — and stays live because the read is a value the browser already holds and the write is off the frame: a park would buy nothing measurable and would drop the reader's last position if a gesture ever wedged.",
   "library/hooks/usePgmarkPages.ts":
     "The reader's current-page readout. RAF-coalesced to one `scrollTop` + one `clientHeight` read per frame, which is the value being displayed; a parked page number is a wrong page number for the length of the gesture. The Library reader is not scrolled by the main editor's auto-scroll in any case.",
   "src/components/HintLayer.tsx":
@@ -143,12 +151,26 @@ export function stripComments(source: string): string {
  * on an element, on `window` in the capture phase, on `document`): a census
  * narrower than its doctrine is how the pane-drag guardrail's first version
  * let a `document.body` listener through (task 187). The `onscroll =`
- * assignment form is the natural next thing an author reaches for.
+ * assignment form is the natural next thing an author reaches for, and the
+ * React `onScroll={…}` prop is the same follower wearing JSX.
+ *
+ * Stated residual: a listener registered through a HELPER that takes the
+ * event name as a parameter, or a computed event name, would evade this. No
+ * such shape exists in either silo today — and the two censused JSX props
+ * were found by asking the QUESTION rather than by trusting the regex, which
+ * is the only thing that ever widens a census.
  */
 export function detectScrollListener(source: string): boolean {
   const src = stripComments(source);
   return (
-    /addEventListener\(\s*["']scroll["']/.test(src) || /\.onscroll\s*=/.test(src)
+    /addEventListener\(\s*["']scroll["']/.test(src) ||
+    /\.onscroll\s*=/.test(src) ||
+    // The JSX prop form. React's `onScroll` is the SAME follower — it
+    // registers a listener on the element and fires once per scroll frame —
+    // and the Library silo uses it for two real geometry followers, both of
+    // which the first cut of this census missed. That is precisely the
+    // "narrower than its doctrine" hole task 187 records.
+    /\bonScroll\s*=\s*\{/.test(src)
   );
 }
 
@@ -315,6 +337,13 @@ describe("scroll-listener guardrail — detector fixtures", () => {
 
   it("flags the `onscroll` assignment form", () => {
     expect(detectScrollListener(`el.onscroll = () => measure();`)).toBe(true);
+  });
+
+  it("flags the React `onScroll` prop (the form the first cut missed)", () => {
+    expect(detectScrollListener(`<div onScroll={handleRowsScroll} />`)).toBe(true);
+    // …and does not confuse an ordinary handler DECLARATION for a
+    // registration: `const onScroll = () => {}` is not a listener.
+    expect(detectScrollListener(`const onScroll = () => hide();`)).toBe(false);
   });
 
   it("does not flag a file that only MENTIONS the pattern in comments", () => {

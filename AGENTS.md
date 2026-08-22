@@ -486,6 +486,15 @@ Five rules it earned:
   invalidates style even when the value is unchanged, so the write is now
   idempotence-gated and a continuous scroll costs one invalidation instead of
   one per frame.
+- **The detector's own first cut was narrower than its doctrine, which is the
+  hole every census in this file has had to be widened out of once.** React's
+  `onScroll={…}` prop registers the same listener and fires once per scroll
+  frame, and the Library silo uses it for two real followers (the list's
+  virtual window, the Reader's position persist — the second reachable by a
+  content drag, since the Reader mounts an `EditorPane` inside its scroller).
+  An `addEventListener`-only grep saw neither. Both were found by asking the
+  QUESTION rather than by trusting the regex, which is the only thing that
+  ever widens a census.
 - **The census is the leg with teeth, and leg 2 is per FILE — so the
   justifications are written about the SCROLL path.** `editor-scrollbar.tsx` is
   the live example: its resize path parks and its thumb suppresses, so it passes
