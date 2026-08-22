@@ -135,6 +135,11 @@ describe("the corner does not swallow clicks the pod used to receive", () => {
 });
 
 describe("print", () => {
+  // This describe is about the DERIVED body — a rendered tree on paper. The
+  // wider posture it sits inside (what a folded section, a locked focus band and
+  // a COLLAPSED pod put on paper) is task 408's, and lives in
+  // `src/lib/__tests__/print-fold-posture.test.ts`. Kept apart on purpose: that
+  // law governs three surfaces and two of them have nothing to do with forest.
   const PRINT = (() => {
     const i = CSS.indexOf("@media print");
     return CSS.slice(i);

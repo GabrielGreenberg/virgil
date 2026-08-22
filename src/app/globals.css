@@ -1291,18 +1291,42 @@ textarea,
   top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px);
 }
 
-/* Blocks hidden by section folding — ProseMirror decoration applies this
-   class to each top-level child that sits under a folded heading. */
-.section-folded {
-  display: none !important;
-}
+/* ── Screen-only fold suppression ─────────────────────────────────
+   THE law, in one place, for every class that hides a top-level document
+   block because of the EDITOR's current state:
 
-/* Blocks hidden by focus view — `focusViewPlugin` applies this class (via a
-   ProseMirror node decoration) to each top-level child OUTSIDE the focused
-   band. Twin of `.section-folded`; the decoration mechanism reaches
-   React-NodeView blocks (figure / tex / graphics) the same way. */
-.focus-hidden {
-  display: none !important;
+     WHAT PRINTS IS THE DOCUMENT, NOT THE EDITOR'S FOLD STATE.
+
+   Both wearers are ProseMirror NODE decorations over top-level children:
+   `.section-folded` (sectionFoldingPlugin — a child under a folded heading)
+   and `.focus-hidden` (focusViewPlugin — a child OUTSIDE a LOCKED focus band;
+   the decoration mechanism reaches React-NodeView blocks the same way).
+   Neither state was ever chosen as a print posture, and their paged-media
+   consequences were the two worst directions available: a folded section
+   printed NOTHING, and a locked band printed ONLY the band — the rest of the
+   paper silently absent, on the door most people use (task 408).
+
+   MECHANISM — why this is `@media screen` and not an override inside
+   `@media print`. The obvious move is to restate `display` in the print block
+   and let the later `!important` win. There is no value it could restate:
+   `display: revert` discards the whole AUTHOR origin for the property, so an
+   `.expex-block` (`display: grid`) or a `.latex-comment` (`display: flex`)
+   that happened to sit inside a folded section would print as a plain block
+   with its layout destroyed — silently, on paper, with no error. The only
+   exact answer is for the declaration to be ABSENT in paged media, and the
+   only CSS mechanism for absence is a media query around it. Path-independent
+   like an `@media print` rule, and unlike `html[data-printing]`, which only
+   `runPrint` stamps (`src/lib/print.ts`) — the browser's own File → Print
+   never sets it.
+
+   A third hiding decoration joins by adding its class HERE, not by declaring
+   its own `display: none`. That membership is CI-enforced from the plugins'
+   own stamped class literals — src/lib/__tests__/print-fold-posture.test.ts. */
+@media screen {
+  .section-folded,
+  .focus-hidden {
+    display: none !important;
+  }
 }
 
 /* ── source-pod chrome ────────────────────────────────────────────
@@ -5525,6 +5549,41 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   }
   .source-pod-corner,
   .forest-refusal-badge { display: none !important; }
+
+  /* A COLLAPSED pod prints its SOURCE (task 408, decision 2).
+     The screen body of a collapsed pod is `.source-pod-preview` — the first two
+     non-blank lines plus an ellipsis. That is a screen affordance ("there is
+     more here, click to open"), not a claim about the paper, so on paper it is
+     replaced by the pod's whole source, which the NodeView renders beside it as
+     an always-present `.print-only` element (SourcePodNodeView.tsx). Rendering
+     it unconditionally is the point: the pod then has NO React dependency on
+     print state, so both print doors behave identically.
+
+     SOURCE rather than the derived picture, and that is a measured choice: a
+     tree mounted while hidden measures 0x0 and falls back to canvas ESTIMATES
+     (src/lib/forest/measure-watch.ts), whose ResizeObserver recovery is async
+     and cannot land inside a synchronous `window.print()` snapshot — so the
+     printed tree would be visibly slightly wrong with no error. The source is
+     exact, and byte-identical to what an expanded source-mode pod already
+     prints. */
+  .source-pod-preview { display: none !important; }
+  .source-pod-print-source {
+    font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
+    font-size: 0.9em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    margin: 0;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+
+  /* Pod chrome that is an editor AFFORDANCE, not document content: the fold
+     chevron (which paints RED while folded — a collapsed pod that now prints
+     its body would otherwise carry a red arrow into the margin of the paper)
+     and the invisible row-wide hover sensor. Same reason `.source-pod-corner`
+     and the title-field chips are dropped above. */
+  .source-pod-fold-chevron,
+  .source-pod-row-sensor { display: none !important; }
 
   /* Strip non-content card chrome (grip, collab pills, popout/close, jump)
      inside appendices via ONE marker. The former selectors

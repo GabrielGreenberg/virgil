@@ -2192,6 +2192,43 @@ supplies neither and its pod is byte-for-byte the pod it was. Three rules:
   place is the source it was pointing at. Pinned in both directions by
   `src/lib/forest/__tests__/forest-chrome-contract.test.ts`.
 
+## Printing a fold — what reaches paper
+
+> **What prints is the DOCUMENT, not the editor's current fold state.**
+
+A folded section, a LOCKED focus band and a collapsed source pod are three
+statements about the EDITOR. None was ever chosen as a print posture, and each
+leaked a different unstated answer onto paper: a folded section printed nothing,
+a locked band printed only the band with the rest of the document silently
+absent, and a collapsed pod printed its two-line preview stub (task 408). All
+three states are persisted per doc, so all three are ordinary starting
+conditions, not transients. Four rules:
+
+- **A screen-only fold suppresses nothing on paper.** `.section-folded` and
+  `.focus-hidden` hide inside a single `@media screen` block in `globals.css`; a
+  third hiding decoration joins THAT block rather than declaring its own
+  `display: none`, and the membership is CI-enforced from the plugins' own
+  stamped class literals.
+- **The mechanism is a media query, never an attribute.** `html[data-printing]`
+  and the `data-print-e-*` toggles are stamped only by `runPrint`; the browser's
+  own File → Print stamps nothing, so a posture keyed on any of them silently
+  fails for the door most people use. This is a constraint on every future print
+  change, not a note about one fix.
+- **The print block may not restate `display` for a folded block.** There is no
+  value it could restate: `revert` discards the whole author origin for the
+  property, so an `.expex-block` (grid) or a `.latex-comment` (flex) that
+  happened to sit inside a folded section would print as a plain block with its
+  layout destroyed, silently. Absence is the only exact answer.
+- **A collapsed pod prints its SOURCE**, as an always-rendered `.print-only`
+  body beside the screen preview — so the pod has no React dependency on print
+  state at all. Source rather than the derived picture because a tree mounted
+  while hidden lays out from canvas estimates whose ResizeObserver recovery
+  cannot land inside a synchronous print snapshot. Editor-only pod affordances
+  (the fold chevron, which paints red while folded, and the row hover sensor)
+  stay off the paper for the same reason the corner and the badge do. Pinned by
+  `src/lib/__tests__/print-fold-posture.test.ts` and
+  `src/components/__tests__/source-pod-print-body.test.tsx`.
+
 ## Block images (figures & pictures)
 
 `graphicsBlock` (a bare `\includegraphics`) and `figureBlock` (a captioned
