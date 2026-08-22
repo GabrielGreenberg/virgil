@@ -8,7 +8,7 @@ import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
-import { serializeBibForExport } from "@/lib/bib-parser";
+import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
@@ -34,6 +34,9 @@ import { iconHint } from "@/components/Hint";
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
  *  field order) don't count as a conflict. */
 function bibEntryFieldsEqual(a: BibEntry, b: BibEntry): boolean {
+  // bib-display-exempt: non-display — this compares stored BYTES to decide
+  // whether two records conflict. A projection here would call `L{\'o}pez` and
+  // `L{ó}pez` the same entry and silently swallow a real difference.
   if (a.type !== b.type) return false;
   const aKeys = Object.keys(a.fields);
   const bKeys = Object.keys(b.fields);
@@ -48,12 +51,31 @@ function bibEntryFieldsEqual(a: BibEntry, b: BibEntry): boolean {
  *  entry assembled in-memory). Produces a BibTeX-ish block suitable for
  *  embedding in `requestNotes`. */
 function formatBibEntryForNote(entry: BibEntry): string {
+  // bib-display-exempt: non-display — this emits a BibTeX block into an AI
+  // request note; it is source, not a rendering.
   const lines = [`@${entry.type}{${entry.key},`];
   for (const [field, value] of Object.entries(entry.fields)) {
     lines.push(`  ${field} = {${value}},`);
   }
   lines.push("}");
   return lines.join("\n");
+}
+
+/**
+ * Author sort, on PROJECTED text (task 409, decision 3). Sorting the raw `.bib`
+ * bytes filed every accented surname under its escape — `L{\'o}pez` sorts on
+ * `L{` and lands above "Adams" — so the list order was simply wrong. ONE
+ * comparator, read by the panel list AND by the cited-export, because the two
+ * disagreeing about order is how the export's byte order drifts from what the
+ * user was looking at.
+ *
+ * Stated cost: the first `cited.bib` export after this lands is a one-time
+ * deterministic RE-ORDERING of the exported file. That is a diff, not a loss.
+ */
+function byProjectedAuthor(a: BibEntry, b: BibEntry): number {
+  const keyOf = (e: BibEntry) =>
+    (bibFieldDisplay(e, "author") || e.key).toLowerCase();
+  return keyOf(a).localeCompare(keyOf(b));
 }
 
 interface BibliographyPanelProps {
@@ -278,11 +300,7 @@ function BibliographyPanel({
       });
     }
 
-    return entries.sort((a, b) => {
-      const authorA = (a.fields.author || a.key).toLowerCase();
-      const authorB = (b.fields.author || b.key).toLowerCase();
-      return authorA.localeCompare(authorB);
-    });
+    return entries.sort(byProjectedAuthor);
   }, [bibEntries, citedKeys, filter]);
 
   // Central-library master.bib — parsed once via the catalog-store's
@@ -381,11 +399,7 @@ function BibliographyPanel({
       return true;
     });
     if (cited.length === 0) return;
-    cited.sort((a, b) => {
-      const authorA = (a.fields.author || a.key).toLowerCase();
-      const authorB = (b.fields.author || b.key).toLowerCase();
-      return authorA.localeCompare(authorB);
-    });
+    cited.sort(byProjectedAuthor);
     // Reconstruct every entry through the serializer — NEVER the raw-passthrough
     // that `.filter(Boolean)`-drops an in-memory entry with empty `raw`
     // (BIB-F7-01, DATA-LOSS). `serializeBibForExport` rebuilds from fields when

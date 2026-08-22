@@ -44,6 +44,10 @@ export default function PaperFileBody({
     const found = entries.find((e) => e.citekey === citekey);
     if (found) return found;
     const bib = bibByKey.get(citekey);
+    // bib-display-exempt: non-display — this builds a synthetic CatalogEntry
+    // (a DATA record), not a rendering. Its consumers project at their own
+    // display sites; projecting into the record would put rendered text in a
+    // structure that also feeds sorting and search.
     return {
       citekey,
       title: bib?.fields.title,

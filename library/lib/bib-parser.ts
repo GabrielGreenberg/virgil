@@ -5,6 +5,11 @@
  * Implements natbib command semantics for WYSIWYG display text.
  */
 
+/**
+ * bib-display-exempt-file: the whole-file copy of `src/lib/bib-parser.ts` —
+ * same reason. See that file's header.
+ */
+
 import type { BibEntry } from "./types";
 import { latexToDisplayText } from "@/lib/latex-typography";
 
@@ -206,19 +211,14 @@ export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): stri
   return latexToDisplayText(`${author} (${year})`);
 }
 
-/** Returns author / year / title parts for a single bib key. Missing fields come back as empty strings. */
-export function formatMediumCitationParts(
-  key: string,
-  bibEntries: BibEntry[],
-): { author: string; year: string; title: string } {
-  const entry = bibEntries.find((e) => e.key === key);
-  if (!entry) return { author: key, year: "", title: "" };
-  return {
-    author: latexToDisplayText(formatAuthorLastNames(entry, false, false)),
-    year: latexToDisplayText(getEntryYear(entry)),
-    title: latexToDisplayText(entry.fields.title || ""),
-  };
-}
+/**
+ * The per-field DISPLAY door, RE-EXPORTED rather than re-implemented (task
+ * 409). This file is a whole-file copy of `src/lib/bib-parser.ts`, and the
+ * answer to "how does a raw `.bib` field reach a reader" must not become its
+ * fourth copy — the cross-silo bridge is already sanctioned precedent here
+ * (`@/lib/latex-typography` at the head of this file).
+ */
+export { bibFieldDisplay } from "@/lib/bib-parser";
 
 /**
  * Decode the small set of HTML entities that citation-js's bibliography

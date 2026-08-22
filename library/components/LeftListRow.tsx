@@ -4,6 +4,7 @@ import { Fragment, memo, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { COL_TEMPLATE_VAR, type ReorderableColId } from "@library/lib/list-columns";
+import { bibFieldDisplay } from "@library/lib/bib-parser";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
@@ -78,13 +79,18 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
   // Bib wins over catalog: master.bib is the authoritative source for
   // bibliographic display fields. Catalog title/authors/year is a snapshot
   // taken at index time and can drift after /authenticate-bib runs.
+  // DISPLAY — the most-viewed bib surface in the app, projected through the
+  // bib-row door (task 409). `??` is preserved because the door reports
+  // ABSENCE as `undefined`, so the bib-wins-over-catalog fallback chain reads
+  // exactly as it did against the raw field.
   const title =
-    bib?.fields.title ??
+    bibFieldDisplay(bib, "title") ??
     entry.title ??
     entry.originalFilename ??
     "(untitled)";
   const firstAuthor = formatFirstAuthor(entry, bib);
-  const year = bib?.fields.year ?? (entry.year != null ? String(entry.year) : "");
+  const year =
+    bibFieldDisplay(bib, "year") ?? (entry.year != null ? String(entry.year) : "");
   const citekeyLabel = entry.citekey ?? "(triaging)";
 
   // The menu actions key off citekey, so triage rows (no citekey yet) get
@@ -486,12 +492,17 @@ function formatFirstAuthor(entry: CatalogEntry, bib: BibEntry | undefined): stri
   let total = 0;
   let isEditor = false;
 
-  if (bib?.fields.author) {
-    const parts = bib.fields.author.split(" and ");
+  // DISPLAY — the surname logic runs on PROJECTED text (task 409); the
+  // projection can neither create nor destroy the " and " separator or the
+  // comma this splits on.
+  const authorField = bibFieldDisplay(bib, "author");
+  const editorField = bibFieldDisplay(bib, "editor");
+  if (authorField) {
+    const parts = authorField.split(" and ");
     raw = parts[0];
     total = parts.length;
-  } else if (bib?.fields.editor) {
-    const parts = bib.fields.editor.split(" and ");
+  } else if (editorField) {
+    const parts = editorField.split(" and ");
     raw = parts[0];
     total = parts.length;
     isEditor = true;

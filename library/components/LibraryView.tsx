@@ -454,6 +454,8 @@ export default function LibraryView({
     const bibOnlySynthetic: CatalogEntry[] = [];
     for (const b of bibEntries) {
       if (seenKeys.has(b.key)) continue;
+      // bib-display-exempt: non-display — a synthetic CatalogEntry (a DATA
+      // record). Its readers project at their own display sites.
       bibOnlySynthetic.push({
         citekey: b.key,
         title: b.fields.title,
@@ -476,6 +478,7 @@ export default function LibraryView({
     for (const entries of unsortedBibByFile.values()) {
       for (const b of entries) {
         if (!b.key || seenKeys.has(b.key)) continue;
+        // bib-display-exempt: non-display — a synthetic CatalogEntry, as above.
         const authorField = b.fields.author;
         unsortedBibSynthetic.push({
           citekey: b.key,

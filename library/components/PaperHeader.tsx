@@ -13,7 +13,7 @@ import {
   refreshQueueState,
   useQueueState,
 } from "@library/lib/queue-state-store";
-import { formatBibliography } from "@library/lib/bib-parser";
+import { bibFieldDisplay, formatBibliography } from "@library/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
 import { IndexedPill, BibPill, BibImportedPill } from "./StatusPill";
 import PaperAiRequestsMenu, {
@@ -194,10 +194,15 @@ export default function PaperHeader({
   };
 
   // ── render ──────────────────────────────────────────────────────────
-  const fields = bib?.fields ?? {};
-  const titleText = fields.title ?? entry.title ?? "(no title)";
-  const authorText = fields.author ?? (entry.authors?.join(", ") ?? "");
-  const yearText = fields.year ?? (entry.year ? String(entry.year) : "");
+  // DISPLAY — the paper detail header, projected through the bib-row door
+  // (task 409). This is the one production caller of `BibEntryChrome`, which
+  // is leaf-pure and takes these as PROPS: the raw read was always one level
+  // up, here.
+  const titleText = bibFieldDisplay(bib, "title") ?? entry.title ?? "(no title)";
+  const authorText =
+    bibFieldDisplay(bib, "author") ?? (entry.authors?.join(", ") ?? "");
+  const yearText =
+    bibFieldDisplay(bib, "year") ?? (entry.year ? String(entry.year) : "");
 
   // Disclosure for the instructions field. `queued` is now externally polled,
   // so gating purely on it would let a background drain unmount a textarea the

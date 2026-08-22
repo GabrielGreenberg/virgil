@@ -12,6 +12,7 @@
 import type { Editor, JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import { richJsonToPlainText } from "@/lib/footnote-content";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
@@ -436,7 +437,12 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
           text = (c.data.keys || []).join(", ") || c.data.command;
           break;
         case "bibliography":
-          text = `${c.data.key}${c.data.fields?.title ? ": " + c.data.fields.title : ""}`;
+          {
+            // DISPLAY — the Stack thumbnail label is read by a human, so the
+            // title goes through the bib-row door (task 409).
+            const t = bibFieldDisplay(c.data, "title");
+            text = `${c.data.key}${t ? ": " + t : ""}`;
+          }
           break;
         case "todo":
           text = c.data.text;

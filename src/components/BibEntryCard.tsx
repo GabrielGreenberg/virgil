@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
-import { formatMinimalCitation } from "@/lib/bib-parser";
+import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { Input } from "./field-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -309,9 +309,13 @@ export default function BibEntryCard({
 
   const draftKey = (type: string) => `${entry.key}:${type}`;
 
-  const author = entry.fields.author || "";
-  const year = entry.fields.year || entry.fields.date || "";
-  const title = entry.fields.title || "";
+  // DISPLAY — projected through the bib-row door (task 409), so `L{\'o}pez`
+  // and `\&` read as characters here exactly as they do in body text. The
+  // RAW field bytes are still what the fields pod below shows and what the
+  // editor seeds from; nothing projected is ever written back.
+  const author = bibFieldDisplay(entry, "author") || "";
+  const year = bibFieldDisplay(entry, "year") || bibFieldDisplay(entry, "date") || "";
+  const title = bibFieldDisplay(entry, "title") || "";
   const annotation = getAnnotation(entry.key);
   const fieldsReviewStatus = getReviewStatus(entry.key, "fields");
   const notesReviewStatus = getReviewStatus(entry.key, "notes");
@@ -425,18 +429,24 @@ export default function BibEntryCard({
         // wrappers; the raw field text is rendered as a JSX child (React
         // escapes it), so the sink is gone entirely.
         const parts: React.ReactNode[] = [];
-        const f = entry.fields;
-        if (f.journal) parts.push(<i>{f.journal}</i>);
-        if (f.booktitle) parts.push(<>In <i>{f.booktitle}</i></>);
-        if (f.editor) parts.push(`Ed. ${f.editor}`);
-        if (f.volume) parts.push(f.number ? `${f.volume}(${f.number})` : `vol. ${f.volume}`);
-        if (f.pages) parts.push(`pp. ${f.pages}`);
-        if (f.publisher) parts.push(f.publisher);
-        if (f.institution) parts.push(f.institution);
-        if (f.school) parts.push(f.school);
-        if (f.edition) parts.push(`${f.edition} ed.`);
-        if (f.doi) parts.push(`doi: ${f.doi}`);
-        if (f.url && !f.doi) parts.push(f.url);
+        // DISPLAY — every field read through the bib-row door (task 409).
+        const f = (name: string) => bibFieldDisplay(entry, name) || "";
+        const journal = f("journal"), booktitle = f("booktitle"), editor = f("editor");
+        const volume = f("volume"), number = f("number"), pages = f("pages");
+        const publisher = f("publisher"), institution = f("institution");
+        const school = f("school"), edition = f("edition");
+        const doi = f("doi"), url = f("url");
+        if (journal) parts.push(<i>{journal}</i>);
+        if (booktitle) parts.push(<>In <i>{booktitle}</i></>);
+        if (editor) parts.push(`Ed. ${editor}`);
+        if (volume) parts.push(number ? `${volume}(${number})` : `vol. ${volume}`);
+        if (pages) parts.push(`pp. ${pages}`);
+        if (publisher) parts.push(publisher);
+        if (institution) parts.push(institution);
+        if (school) parts.push(school);
+        if (edition) parts.push(`${edition} ed.`);
+        if (doi) parts.push(`doi: ${doi}`);
+        if (url && !doi) parts.push(url);
         if (parts.length === 0) return null;
         return (
           // BODY CONTENT — the per-panel font picker applies here (the
@@ -553,6 +563,13 @@ export default function BibEntryCard({
                 </div>
               ) : (
                 <div className="space-y-0.5 text-xs text-ink-subtle min-w-0">
+                  {/* RAW-SOURCE VIEW — deliberately unprojected (task 409,
+                      decision 2). This pod is the `.bib` entry's own source,
+                      shown field-by-field beside the "Edit entry" button that
+                      seeds from exactly these bytes; a projected header above a
+                      raw source pod in one card is the same relationship the
+                      editor has to the code pane. Projecting here is the one
+                      change that would round-trip a rendering into the file. */}
                   {/* @type{key} shown as first line */}
                   <div className="break-words font-mono text-ink-muted mb-0.5">
                     @{entry.type}{"{" + entry.key + "}"}

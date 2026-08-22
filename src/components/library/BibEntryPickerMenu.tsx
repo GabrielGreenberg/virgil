@@ -51,7 +51,7 @@ import {
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import type { BibEntry } from "@/lib/types";
 import { searchBibFuzzy } from "@/lib/bib-searcher";
-import { formatAuthorsTruncated } from "@/lib/bib-parser";
+import { bibFieldDisplay, formatAuthorsTruncated } from "@/lib/bib-parser";
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import { LibraryMembershipChips } from "@/components/library/provenance-chips";
 import { MenuProvider } from "@/components/menu/MenuProvider";
@@ -579,9 +579,12 @@ function BibEntryPickerRow({
   onToggleExpand,
   onPickClick,
 }: RowProps) {
-  const authors = formatAuthorsTruncated(entry.fields.author || "", 3);
-  const year = entry.fields.year || entry.fields.date || "";
-  const title = entry.fields.title || "";
+  // DISPLAY — `formatAuthorsTruncated` has projected since task 368, and the
+  // two lines beside it did not: one picker row showed a projected author next
+  // to a raw title. All three go through the door now (task 409).
+  const authors = formatAuthorsTruncated(bibFieldDisplay(entry, "author") || "", 3);
+  const year = bibFieldDisplay(entry, "year") || bibFieldDisplay(entry, "date") || "";
+  const title = bibFieldDisplay(entry, "title") || "";
   const verified = libraryItem?.bibState === "authenticated";
   const showVerifiedPill = libraryItem !== undefined;
 
@@ -779,19 +782,17 @@ function ExpandedDetails({
   entry: BibEntry;
   membershipChips: MembershipChips;
 }) {
-  const author = entry.fields.author || "";
-  const title = entry.fields.title || "";
-  const year = entry.fields.year || entry.fields.date || "";
-  const journal =
-    entry.fields.journal ||
-    entry.fields.booktitle ||
-    entry.fields.series ||
-    "";
-  const volume = entry.fields.volume || "";
-  const number = entry.fields.number || "";
-  const pages = entry.fields.pages || "";
-  const publisher = entry.fields.publisher || "";
-  const doi = entry.fields.doi || "";
+  // DISPLAY — every field through the bib-row door (task 409).
+  const f = (name: string) => bibFieldDisplay(entry, name) || "";
+  const author = f("author");
+  const title = f("title");
+  const year = f("year") || f("date");
+  const journal = f("journal") || f("booktitle") || f("series");
+  const volume = f("volume");
+  const number = f("number");
+  const pages = f("pages");
+  const publisher = f("publisher");
+  const doi = f("doi");
 
   const pubBits: string[] = [];
   if (journal) pubBits.push(journal);

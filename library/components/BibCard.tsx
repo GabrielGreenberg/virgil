@@ -10,6 +10,7 @@ import {
   knownFieldsForType,
 } from "@library/lib/bib-edit";
 import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
+import { bibFieldDisplay } from "@library/lib/bib-parser";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
@@ -54,7 +55,9 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
     );
   }
 
-  const { fields } = entry;
+  // DISPLAY — the card header reads through the bib-row door (task 409). The
+  // EXPANDED field grid below is deliberately RAW; see `ExpandedFields`.
+  const f = (name: string) => bibFieldDisplay(entry, name);
 
   const flashFor = (ms = 2400) => (kind: "review" | "copy", message: string) => {
     setFlash({ kind, message });
@@ -159,21 +162,21 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
       </div>
 
       <div style={{ fontSize: 18, lineHeight: 1.35, marginBottom: 8 }}>
-        {fields.title ?? "(no title)"}
+        {f("title") ?? "(no title)"}
       </div>
       <div style={{ color: "var(--muted)", marginBottom: 4 }}>
-        {fields.author ?? "(no author)"}
+        {f("author") ?? "(no author)"}
       </div>
       <div style={{ color: "var(--muted)", fontSize: 13 }}>
-        {[fields.journal, fields.booktitle, fields.publisher, fields.year]
+        {[f("journal"), f("booktitle"), f("publisher"), f("year")]
           .filter(Boolean)
           .join(" · ")}
-        {fields.volume ? ` · vol. ${fields.volume}` : ""}
-        {fields.pages ? ` · pp. ${fields.pages}` : ""}
+        {f("volume") ? ` · vol. ${f("volume")}` : ""}
+        {f("pages") ? ` · pp. ${f("pages")}` : ""}
       </div>
-      {fields.doi && (
+      {f("doi") && (
         <div style={{ marginTop: 8, fontSize: 12, fontFamily: FONT_MONO, color: "var(--muted)" }}>
-          doi:{fields.doi}
+          doi:{f("doi")}
         </div>
       )}
 
@@ -308,7 +311,16 @@ export function AiNotePanel({
 // Expanded view
 // ────────────────────────────────────────────────────────────────────────
 
+/**
+ * RAW-SOURCE VIEW — deliberately unprojected (task 409, decision 2). This is
+ * the entry's own `.bib` source shown field by field, under a header that IS
+ * projected: a rendered view above its source, the same relationship the
+ * editor has to the code pane. It is also the grid the "Edit" action opens
+ * over, so projecting it is the one change in this family that could
+ * round-trip a rendering back into the file.
+ */
 export function ExpandedFields({ entry }: { entry: BibEntry }) {
+  // bib-display-exempt: raw-source view — see the docstring above.
   const { fields, type } = entry;
   const known = knownFieldsForType(type);
   const otherKeys = Object.keys(fields).filter((k) => !known.has(k) && k !== "title" && k !== "author");
@@ -337,6 +349,7 @@ export function ExpandedFields({ entry }: { entry: BibEntry }) {
           <FieldGroup
             key={s.label}
             label={s.label}
+            // bib-display-exempt: raw-source view — see the docstring above.
             entries={s.keys.map((k) => [k, fields[k] ?? ""] as [string, string])}
           />
         );
@@ -344,6 +357,7 @@ export function ExpandedFields({ entry }: { entry: BibEntry }) {
       {otherKeys.length > 0 && (
         <FieldGroup
           label="Other"
+          // bib-display-exempt: raw-source view — see the docstring above.
           entries={otherKeys.map((k) => [k, fields[k] ?? ""] as [string, string])}
         />
       )}
