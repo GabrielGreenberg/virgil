@@ -169,9 +169,58 @@ export function isVerbatimFamilyEnv(envName: string): boolean {
  *  `src/lib/tiptap/latex-command.ts` reads it. */
 export const LATEX_VERBATIM_MARK = "latexVerbatim";
 
-/** The mark object every verbatim-emitting parser branch pushes. */
-export function verbatimMark(): { type: string } {
-  return { type: LATEX_VERBATIM_MARK };
+/**
+ * WHICH of the two things wearing this one mark a run is (task 407).
+ *
+ * They emit identically — raw — which is why one mark was enough until the
+ * carrier family gained its DEMOTION half. There they are opposites:
+ *
+ *  - `"inline"` is a CONSTRUCT: `\verb<delim>…<delim>`, a grammar with a
+ *    spelling. An edit can BREAK it, and when it does the bytes must leave
+ *    through the escape rung like any prose — otherwise a `verb|100% sure|`
+ *    reaches the `.tex` with a LIVE `%` that comments out the rest of the line,
+ *    and a `\verb` missing its closing delimiter stops the paper compiling.
+ *  - `"carrier"` is the schema's REFUSAL: arbitrary source bytes the target
+ *    container could not represent (an unmodeled environment, a `\begingl…`
+ *    gloss, an example child). It has no grammar, so no edit can break it, and
+ *    it must NEVER demote — escaping a screenful of the user's source
+ *    (`\`→`\textbackslash{}`, `{`→`\{`) is strictly worse than the stale
+ *    mark it would be fixing.
+ *
+ * The distinction is PROVENANCE and cannot be recovered from the run's own
+ * text: a damaged inline `\verb` and an arbitrary carrier both fail every
+ * lexer door, so any text-shape test is a heuristic blacklist that would
+ * destroy the four carrier shapes. So it is recorded where it is KNOWN — at
+ * the push site — and travels with the mark across every later split.
+ */
+export type VerbatimForm = "inline" | "carrier";
+
+/**
+ * The mark object every verbatim-emitting parser branch pushes.
+ *
+ * `form` is REQUIRED: a defaulted argument here would be a decision nobody
+ * made, and the two answers are opposite claims about whether the run has a
+ * grammar. The attrs key is always present because ProseMirror's
+ * `Mark.toJSON()` emits one as soon as the type declares any attribute — the
+ * two producers (this parser and a live editor) have to agree byte-for-byte,
+ * since a footnote/card body compares parser JSON against `editor.getJSON()`.
+ */
+export function verbatimMark(form: VerbatimForm): {
+  type: string;
+  attrs: { form: VerbatimForm };
+} {
+  return { type: LATEX_VERBATIM_MARK, attrs: { form } };
+}
+
+/** Read a `form` off whatever a mark's attrs bag holds, failing to the SAFE
+ *  answer. An older stored card body (archived excerpt, footnote sidecar)
+ *  carries no attrs at all, and a clipboard round trip through a DOM that
+ *  never rendered the attribute carries none either — a missed demotion is the
+ *  status quo, a wrong one destroys source. */
+export function verbatimFormOf(attrs: unknown): VerbatimForm {
+  return (attrs as { form?: unknown } | null | undefined)?.form === "inline"
+    ? "inline"
+    : "carrier";
 }
 
 /**
@@ -331,6 +380,105 @@ export function matchInlineVerbAt(text: string, i: number): number {
   const eol = text.indexOf("\n", payloadStart);
   if (eol !== -1 && eol < closeIdx) return -1;
   return closeIdx + 1;
+}
+
+
+// ---------------------------------------------------------------------------
+// The CARRIER FAMILY table — one row per (mark, form), not per mark (task 407)
+// ---------------------------------------------------------------------------
+//
+// Task 360 gave `latexCommand` a type-time derivation and task 390 gave it the
+// other direction: *deleting what made a run LaTeX is a WRITER too*. The law is
+// about CARRIERS, not about that one mark, so its two siblings owe it verbatim
+// — and the axis it has to be stated on is `(mark, form)` rather than `mark`,
+// because `latexVerbatim` wears two opposite claims (see {@link VerbatimForm}).
+//
+// Each row answers ONE question of a run's own text: **does this run still
+// SPELL what its carrier says it is?** A `null` says the row is a REFUSAL
+// carrier — arbitrary bytes with no grammar, which nothing can break and which
+// must never demote.
+//
+// The rows are WHOLE-RUN, which is what makes the sibling half strictly
+// cheaper than `latexCommand`'s: the run IS the construct, so there is no
+// sub-span cover to subtract, no brace pairing to withhold, and no old-text
+// pass — any edit that can break a whole-run construct lies inside it or is
+// adjacent to its boundary, which the plugin's `touches` predicate already
+// counts in both directions.
+//
+// `latexCommand` is deliberately NOT a row here. Its bytes are a SEQUENCE of
+// constructs inside a mixed prose run, so its question is `scanRawLatexSpans`
+// over the whole block and its answer is a set of sub-spans — a different shape
+// with a different cost, kept where task 390 built it.
+
+/** One carrier row. `form` is `null` for a mark that wears a single claim. */
+export interface CarrierRow {
+  /** The mark name this row governs. */
+  readonly mark: string;
+  /** The `form` attr value this row governs, or `null` when the mark has no
+   *  form axis (every run of that mark takes this row). */
+  readonly form: VerbatimForm | null;
+  /** Does the run still spell its construct? `null` ⇒ a REFUSAL carrier: it has
+   *  no grammar, nothing can break it, and it never demotes. */
+  readonly claims: ((runText: string) => boolean) | null;
+  /** Why this row answers the way it does — read by the census, and by the
+   *  next person tempted to make a refusal carrier demote. */
+  readonly why: string;
+}
+
+export const CARRIER_ROWS: readonly CarrierRow[] = [
+  {
+    mark: LATEX_COMMENT_TAIL_MARK,
+    form: null,
+    // "Does this run still OPEN a comment." Escape-aware through the shared
+    // door, and NEWLINE-TOLERANT by construction: `matchCommentTailAt` stops at
+    // the first newline and still answers non-null, so a tail carrying an
+    // interior newline — which the serializer explicitly re-comments and
+    // documents as reachable by editing — is intact, not broken.
+    claims: (t) => matchCommentTailAt(t, 0) !== null,
+    why: "a comment tail IS its leading unescaped `%`; delete that and the bytes are prose",
+  },
+  {
+    mark: LATEX_VERBATIM_MARK,
+    form: "inline",
+    // The WHOLE run must be exactly one `\verb<delim>…<delim>`. A partial match
+    // is not enough: `\verb|x| tail` would claim on its prefix while the tail
+    // rides the byte-literal contract it never earned.
+    claims: (t) => matchInlineVerbAt(t, 0) === t.length,
+    why: "an inline \\verb run is a construct: its lead, its name and both delimiters can each be deleted",
+  },
+  {
+    mark: LATEX_VERBATIM_MARK,
+    form: "carrier",
+    claims: null,
+    why: "the schema's REFUSAL carrier holds arbitrary source; demoting it would escape a screenful of the user's LaTeX into printed prose",
+  },
+];
+
+/** Every mark name in the family — the ONE census, so no consumer hand-lists
+ *  the sibling carriers (they are what a `latexCommand` scan must treat as
+ *  OPAQUE, and what a serializer must return raw). */
+export const CARRIER_MARK_NAMES: readonly string[] = [
+  ...new Set(CARRIER_ROWS.map((r) => r.mark)),
+];
+
+/**
+ * The row governing a run wearing `mark` with `attrs`, or `undefined` when the
+ * mark is not in the family.
+ *
+ * Fails to the SAFE row by construction: `verbatimFormOf` reads an absent or
+ * unrecognized `form` as `"carrier"`, whose `claims` is `null`, so a run whose
+ * provenance was lost (an old stored card body, a clipboard round trip) never
+ * demotes.
+ */
+export function carrierRowFor(
+  mark: string,
+  attrs?: unknown,
+): CarrierRow | undefined {
+  if (mark === LATEX_VERBATIM_MARK) {
+    const form = verbatimFormOf(attrs);
+    return CARRIER_ROWS.find((r) => r.mark === mark && r.form === form);
+  }
+  return CARRIER_ROWS.find((r) => r.mark === mark && r.form === null);
 }
 
 /**

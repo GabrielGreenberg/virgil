@@ -179,6 +179,12 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
       // one construct are counted alike (task 347). Checked first: a comment is
       // never a caption, so it must not reach the `\caption{…}` extraction the
       // raw-LaTeX branch runs.
+      //
+      // The mark is the ONLY evidence here, which is why the family's demotion
+      // half is what keeps this honest (task 407): before it, a run whose `%`
+      // an edit had removed kept the carrier, so live prose was counted — and
+      // written — as a comment. This branch needs no guard of its own; a
+      // demoted run simply arrives unmarked and falls through to prose.
       if (n.marks?.some((m) => m.type === LATEX_COMMENT_TAIL_MARK)) {
         cats.comments.push(n.text);
         return;
