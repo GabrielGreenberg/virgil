@@ -212,11 +212,14 @@ describe("action registry — the completeness pin is union-exhaustive at compil
   });
 
   it("leaves NO hand-listed id manifest behind (the shape that made the old guard a tautology)", () => {
-    // Every id list in this file is now `keysOf(…)`. The sets that remain
-    // literal are deliberate SUBSETS (`BLOCK_IDS_WITH_SLASH`,
-    // `FORMAT_IDS_WITH_SLASH`, `CARD_IDS_WITH_PM_SURFACES`) — `new Set<…>([…])`,
-    // saying something about a handful of rows that a Record over the family
-    // cannot, so they are outside this needle by shape rather than by exemption.
+    // Every id list in this file is now `keysOf(…)`. The three SLASH subsets are
+    // derived too (`slashOwnersAmong(…)` — the block + format halves in task
+    // 385, the card half in task 399), so the only set that remains literal is
+    // `CARD_IDS_WITH_TYPED_RULE`: `new Set<…>([…])`, saying something about a
+    // handful of rows that a Record over the family cannot AND that no live
+    // vocabulary can reconcile (input rules have no table — task 228). It is
+    // outside this needle by shape rather than by exemption, and its own doc
+    // states why it stays declared.
     expect(handListedManifests(code)).toEqual([]);
   });
 
