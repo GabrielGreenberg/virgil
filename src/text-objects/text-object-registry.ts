@@ -1610,12 +1610,22 @@ function blockTypeHostsInlineAtom(
  *      deferred create-popover commit passes through (it lands at a captured
  *      `at` that no menu gate can see).
  *
- * A NON-textblock parent (doc / blockquote / listItem at a block gap, i.e. a
- * `NodeSelection`) also answers FALSE, and that is correct rather than
- * incidental: measured against the real stack, `insertContent` there does not
- * split — it REPLACES the selected block with a fresh paragraph holding only the
- * atom, destroying that block's text. A second data-loss shape, refused by the
- * same predicate.
+ * SCOPED TO TEXTBLOCK PARENTS, and the scope is the whole precision of the
+ * predicate. The corruption is a property of a TEXTBLOCK that admits text and
+ * not inline nodes — ProseMirror truncates it and ejects its tail. At a
+ * NON-textblock position (a top-level gap beside a block atom, a GapCursor, a
+ * `posAtCoords` that landed between blocks) there is nothing to tear: measured
+ * against the real stack, `tr.insert(gapPos, citation)` on
+ * `[p, displayMath, p]` yields `[p, displayMath, p(citation), p]` — a fresh
+ * paragraph holding the atom, nothing destroyed. Answering FALSE there would
+ * refuse a benign insert (a bib-entry drop beside a figure; a footnote at a
+ * GapCursor), which is a silent no-op the user cannot explain.
+ *
+ * Out of scope, stated because it is adjacent and NOT what this answers: a
+ * `NodeSelection` handed to `insertContent` REPLACES the selected block rather
+ * than wrapping beside it, which destroys that block's text. That is a
+ * different API and a different question (a RANGE hazard, pre-dating this
+ * predicate); it is not made better or worse here.
  */
 export function posHostsInlineAtom(
   doc: PMNode,
@@ -1623,7 +1633,9 @@ export function posHostsInlineAtom(
   atomType: NodeType,
 ): boolean {
   const clamped = Math.max(0, Math.min(pos, doc.content.size));
-  return blockTypeHostsInlineAtom(doc.resolve(clamped).parent.type, atomType);
+  const parent = doc.resolve(clamped).parent;
+  if (!parent.isTextblock) return true; // a gap — PM wraps, nothing to corrupt
+  return blockTypeHostsInlineAtom(parent.type, atomType);
 }
 
 /**

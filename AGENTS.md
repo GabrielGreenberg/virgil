@@ -1407,12 +1407,35 @@ Six rules it earned:
   `commitCitationCreate` land at a position captured at TRIGGER time, which no
   `applies()` can see. `insertInlineAtom` is the deepest point and the only one
   that covers it, plus every future inline atom.
+- **…and the affordance half had no CONSUMER until the CELLS were wired.** The
+  adversarial pass on this fix found it: the lightning grid greys through a
+  hand-computed `blockAtomsDisabled` (ONE probe of the `example` row) and the two
+  inline cells carried `disabled={!canEdit}` only, so a correct `applies()` on the
+  rows greyed nothing on screen. Each cell asks its OWN row now — deliberately not
+  a second shared probe, since the two rows pass different schema node names. *A
+  facet nothing reads is this file's own recurring finding, arriving one level up
+  from the one the task set out to fix.*
+- **The gate is SCOPED to the corrupting case, and the scope is the precision.**
+  The tear is a property of a TEXTBLOCK that admits text and not inline nodes. At
+  a NON-textblock position (a top-level gap beside a block atom, a GapCursor, a
+  `posAtCoords` between blocks) there is nothing to tear — measured,
+  `tr.insert(gapPos, citation)` yields a fresh paragraph holding the atom and
+  destroys nothing. The first cut refused there too, on an argument about
+  `insertContent` REPLACING a `NodeSelection`, which is a different API and a
+  different (RANGE) hazard: it would have turned a bib-entry drop beside a figure,
+  and a footnote at a gap cursor, into silent no-ops. *A refusal needs the same
+  evidence a fix does.*
+- **A gate placed after the MINT trades the corruption for a ghost card.** Both
+  native drops call a callback that PERSISTS a citation card before the splice, so
+  the gate has to run first — otherwise a refused drop leaves an anchored card
+  with no atom, which is this defect one layer down. Ordering is invisible to a
+  region grep, so it has its own leg.
 - **The gate asks about the position the insert will ACTUALLY use.** TipTap's
   `setTextSelection` clamps into `[TextSelection.atStart, TextSelection.atEnd]` —
-  the TEXT range — never `doc.content.size`, which resolves to the doc itself. A
-  gate reading the raw clamp refuses a stale past-the-end `at` that the insert
-  would have landed in prose (measured: it broke the primitive's own clamp
-  suite). Mirror the clamp; do not re-derive a different one.
+  the TEXT range — never `doc.content.size`, which resolves to the doc itself. So
+  an out-of-range `at` is judged where it LANDS (the first/last textblock) rather
+  than at the doc node the scope above waves through. Mirror the clamp; do not
+  re-derive a different one.
 - **THE REPORT IS THE PERMISSION.** A refusal returns `{ refused: true }` with
   the document untouched, and the callers that mint an entity AFTER the insert
   read it — otherwise a citation/footnote CARD is registered with no atom in the
@@ -1429,6 +1452,11 @@ Six rules it earned:
   cannot clamp a stale caret and every real consumer holds a position, so it was
   a dead export (a sibling call is not a consumer) AND an invitation to ask the
   smaller question. Private now; `posHostsInlineAtom` is the one door.
+
+**Three of the fix's own first-cut errors are recorded above rather than quietly
+corrected, because each is a rule:** an affordance with no consumer, a refusal
+without evidence, and a gate behind a mint. All three were found by the
+adversarial pass, none by any leg — which is why each now has one.
 
 **The census found two live sites the report did not name**, both the same shape
 one layer out: the native HTML5 `MIME_CITATION` drops in `Editor.tsx` and
@@ -1463,7 +1491,16 @@ fix belongs at the ONE hit-test chokepoint, which makes it an AFFORDANCE change
 ("what the hover OFFERS is what the commit ACCEPTS"), not a door gate — and the
 cross-editor move is strictly worse than a create there, because `insertLanded`
 returns TRUE on the corrupted result and the unconditional source delete then
-fires, taking a footnote's body with it.
+fires, taking a footnote's body with it. `container-fit-guardrail` EXEMPTS those
+sites, and its exemption reason stated the same retired premise — corrected in
+place, so the exemption now says what it does and does not cover.
+
+**A second residual, also filed:** the gate is a SINGLE-POSITION question, where
+the block twin (`blockRangeAllowsAction`, task 148) requires EVERY reachable
+textblock. A selection running from prose INTO a verbatim block passes on its
+start position and `insertContent` then replaces the whole cross-block range.
+Closing it means giving the inline side the range form — the same shape, one
+predicate over.
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (pure schema +
 serializer), so the check is cheap and real: select a word inside a `% comment`

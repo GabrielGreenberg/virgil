@@ -650,22 +650,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           event.preventDefault();
           try {
             const { command, citationId } = JSON.parse(citData);
-            const result = onCitationDropRef.current(command, citationId);
-            if (!result) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const pos = view.posAtCoords(coords);
             if (!pos) return true;
             const citType = view.state.schema.nodes.citation;
-            // CONTAINER GATE (task 396). A native drop lands at a bare
-            // `posAtCoords` with no schema question asked — and the two MARKLESS
-            // verbatim blocks (`codeBlock` / `latexComment`, `content: "text*"`)
-            // are ordinary drop targets. Measured against the real stack: the
-            // block is TRUNCATED at the drop offset and its tail text is ejected
-            // into a fresh top-level paragraph beside the atom, so a commented-out
-            // line's tail becomes live printed prose. Refuse (the drop is
-            // consumed, nothing changes) rather than corrupt — the same SSOT the
-            // typed rules and `insertInlineAtom` read.
+            // CONTAINER GATE (task 396), and it runs BEFORE the drop callback
+            // because that callback MINTS AND PERSISTS the citation card
+            // (`useCitations.addCitation` → `citations.json`). A native drop
+            // lands at a bare `posAtCoords` with no schema question asked, and
+            // the two MARKLESS verbatim blocks (`codeBlock` / `latexComment`,
+            // `content: "text*"`) are ordinary drop targets: measured, the block
+            // is TRUNCATED at the drop offset and its tail text is ejected into a
+            // fresh top-level paragraph beside the atom, so a commented-out
+            // line's tail becomes live printed prose. Gating AFTER the mint would
+            // trade that corruption for a card with no atom — the same defect one
+            // layer down, which is why the order here is load-bearing rather than
+            // tidy.
             if (!posHostsInlineAtom(view.state.doc, pos.pos, citType)) return true;
+            const result = onCitationDropRef.current(command, citationId);
+            if (!result) return true;
             const node = citType.create({
               citationId: result.id,
               command,

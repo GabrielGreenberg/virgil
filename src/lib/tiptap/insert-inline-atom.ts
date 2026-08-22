@@ -106,15 +106,13 @@ export interface InsertInlineAtomResult {
  */
 function clampToTextRange(editor: Editor, at: number): number {
   const { doc } = editor.state;
-  try {
-    const min = TextSelection.atStart(doc).from;
-    const max = TextSelection.atEnd(doc).to;
-    return Math.max(min, Math.min(at, max));
-  } catch {
-    // A doc with no text position at all (an empty/atom-only doc). Fall back to
-    // the raw clamp; the gate then answers about the position we will use.
-    return Math.max(0, Math.min(at, doc.content.size));
-  }
+  // No try/catch: these are the inherited `Selection.atStart`/`atEnd` statics,
+  // which do `findSelectionIn(…) || new AllSelection(doc)` and cannot throw — a
+  // doc with no text position at all yields `[0, doc.content.size]`, i.e. the
+  // raw clamp. A catch here would describe a failure mode that does not exist.
+  const min = TextSelection.atStart(doc).from;
+  const max = TextSelection.atEnd(doc).to;
+  return Math.max(min, Math.min(at, max));
 }
 
 /**

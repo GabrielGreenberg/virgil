@@ -40,8 +40,11 @@
 // question either — a real, separate member of this class whose fix belongs at
 // the ONE hit-test chokepoint and is an AFFORDANCE change (what the hover offers
 // is what the commit accepts), so it is filed as its own task rather than made
-// here. Those files are censused by `container-fit-guardrail.test.ts`, whose
-// splice family is the natural home for the inline question.
+// here. `container-fit-guardrail.test.ts` is the natural home for the inline
+// question — its splice family already greps that directory — but it does NOT
+// ask it today, and it EXEMPTS the inline-atom sites outright, so nothing
+// censuses them at present. Saying otherwise would be the overstatement this
+// whole class is about.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -118,28 +121,53 @@ const FUNCTION_OPENER = /=>\s*\{|\bfunction\b|^\s*[A-Za-z_$][\w$]*\s*\([^)]*\)\s
 const indentOf = (line: string): number =>
   line.trim() === "" ? Number.MAX_SAFE_INTEGER : line.length - line.trimStart().length;
 
-/**
- * The enclosing DECLARATION region of a hit: from the nearest FUNCTION opener at
- * a shallower indent (never a bare `if`/`try` block, which would cut a shared
- * gate off from the branch it guards) down to 30 lines past the hit. Capped at
- * 200 lines up so a runaway search can't swallow a neighbouring declaration's
- * gate and exonerate a real one.
- */
-function region(src: string, line: number): string {
-  const lines = src.split("\n");
-  const idx = line - 1;
+/** The nearest FUNCTION opener at a shallower indent than `line` — never a bare
+ *  `if`/`try` block, which would cut a shared gate off from the branch it
+ *  guards (`citation.ts` puts one gate above two branches). Capped at 200 lines. */
+function openerAbove(lines: string[], idx: number): number {
   const hitIndent = indentOf(lines[idx] ?? "");
-  let start = Math.max(0, idx - 200);
-  for (let i = idx - 1; i >= start; i--) {
+  const floor = Math.max(0, idx - 200);
+  for (let i = idx - 1; i >= floor; i--) {
     const l = lines[i];
     if (indentOf(l) >= hitIndent) continue;
     if (BLOCK_KEYWORDS.test(l)) continue;
-    if (FUNCTION_OPENER.test(l)) {
-      start = i;
-      break;
-    }
+    if (FUNCTION_OPENER.test(l)) return i;
   }
-  return lines.slice(start, idx + 31).join("\n");
+  return floor;
+}
+
+/**
+ * DISCOVERY window — opener → 80 lines past the hit. Generous FORWARD, because
+ * half A's hit is the type RESOLUTION and its splice can sit well below it (38
+ * lines in `RichTextField.tsx`'s drop handler).
+ */
+function discoveryRegion(src: string, line: number): string {
+  const lines = src.split("\n");
+  const idx = line - 1;
+  return lines.slice(openerAbove(lines, idx), idx + 81).join("\n");
+}
+
+/** The line the payload actually LANDS on: the hit itself for half B (the hit IS
+ *  the splice), or the first splice at/below a half-A type resolution. */
+function spliceLine(src: string, hit: Hit): number {
+  if (hit.half === "B") return hit.line;
+  const lines = src.split("\n");
+  for (let i = hit.line - 1; i < Math.min(lines.length, hit.line + 80); i++) {
+    if (LANDS.test(lines[i])) return i + 1;
+  }
+  return hit.line;
+}
+
+/**
+ * GATE window — opener → the SPLICE line, and never past it. A gate that runs
+ * AFTER the insert answers nothing, so the census must not accept one: that is
+ * the difference between "the region mentions the SSOT" and "the SSOT was asked
+ * before the atom landed."
+ */
+function gateRegion(src: string, hit: Hit): string {
+  const lines = src.split("\n");
+  const end = spliceLine(src, hit) - 1;
+  return lines.slice(openerAbove(lines, end), end + 1).join("\n");
 }
 
 function hits(): Hit[] {
@@ -149,7 +177,7 @@ function hits(): Hit[] {
     const declaresAtom = DECLARES_ATOM.test(src);
     lines.forEach((line, i) => {
       const n = i + 1;
-      if (RESOLVES_ATOM_TYPE.test(line) && LANDS.test(region(src, n))) {
+      if (RESOLVES_ATOM_TYPE.test(line) && LANDS.test(discoveryRegion(src, n))) {
         out.push({ rel, line: n, text: line.trim(), half: "A" });
         return;
       }
@@ -188,7 +216,7 @@ describe("every inline-atom splice asks the container question (task 396)", () =
 
   it("ALLOWLIST EMPTY — every site asks a container SSOT before it splices", () => {
     const ungated = HITS.filter((h) => {
-      const r = region(SRC_BY_FILE.get(h.rel)!, h.line);
+      const r = gateRegion(SRC_BY_FILE.get(h.rel)!, h);
       if (ASKS_DOOR.test(r) || ASKS_INLINE_SSOT.test(r)) return false;
       // Half B only: `math.ts`'s `displayMath` branch is a BLOCK atom living in
       // an inline atom's own module, and its SSOT is the block one.
@@ -208,7 +236,7 @@ describe("every inline-atom splice asks the container question (task 396)", () =
     const aHits = HITS.filter((h) => h.half === "A");
     expect(aHits.length).toBeGreaterThan(0);
     for (const h of aHits) {
-      const r = region(SRC_BY_FILE.get(h.rel)!, h.line);
+      const r = gateRegion(SRC_BY_FILE.get(h.rel)!, h);
       expect(
         ASKS_DOOR.test(r) || ASKS_INLINE_SSOT.test(r),
         `${h.rel}:${h.line} must spell the INLINE gate or the door`,
@@ -234,6 +262,40 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     // how these two rows rode the wrong one for five weeks.
     expect(src).toMatch(/applies:\s*inlineAtomInsertApplies\("inlineMath"\)/);
     expect(src).toMatch(/applies:\s*inlineAtomInsertApplies\("labelRef"\)/);
+  });
+
+  it("the lightning CELLS ask their own row — the affordance has a consumer", () => {
+    // The rows were a DEAD FACET until this: the grid greys via a hand-computed
+    // `blockAtomsDisabled` (one probe of the `example` row) and the two inline
+    // cells carried `disabled={!canEdit}` only, so `inlineAtomInsertApplies` had
+    // ZERO production consumers and "the cells are greyed" was false. A facet
+    // nothing reads is this repo's own recurring finding, one level up from the
+    // one this task fixes.
+    const src = read("src/components/ActionsMenuPanel.tsx");
+    expect(src).toMatch(/id="inline-math"[\s\S]{0,200}?disabled=\{rowDisabled\("inline-math"\)\}/);
+    expect(src).toMatch(/id="ref"[\s\S]{0,200}?disabled=\{rowDisabled\("ref"\)\}/);
+    // …and NOT via a second shared probe: the two rows pass different schema
+    // node names, so one probe would assert the schema answers identically.
+    expect(src).toMatch(/const rowDisabled = \(id: ActionId\)/);
+  });
+
+  it("both native drops GATE BEFORE they MINT — ordering, which no grep of the region can see", () => {
+    // A gate placed after the card mint trades the corruption for a card with no
+    // atom: the same defect one layer down. Asserted as an ORDER because the
+    // ALLOWLIST leg only asks whether the region SPELLS a gate.
+    for (const [rel, mint] of [
+      ["src/components/Editor.tsx", "onCitationDropRef.current("],
+      ["src/components/RichTextField.tsx", "onCitationCreatedRef.current("],
+    ] as const) {
+      const src = read(rel);
+      const drop = src.indexOf("MIME_CITATION");
+      expect(drop, `${rel}: no MIME_CITATION branch`).toBeGreaterThan(0);
+      const gateAt = src.indexOf("posHostsInlineAtom(", drop);
+      const mintAt = src.indexOf(mint, drop);
+      expect(gateAt, `${rel}: no gate in the drop branch`).toBeGreaterThan(0);
+      expect(mintAt, `${rel}: no mint in the drop branch`).toBeGreaterThan(0);
+      expect(gateAt, `${rel}: the gate must precede the card mint`).toBeLessThan(mintAt);
+    }
   });
 
   it("mathRun's INLINE branch carries its own bail (defence in depth)", () => {

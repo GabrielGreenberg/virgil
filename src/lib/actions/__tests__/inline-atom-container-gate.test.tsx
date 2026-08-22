@@ -142,6 +142,58 @@ function mountFixture(): Editor {
   });
 }
 
+/** A prose-only editor. The shared fixture's LAST block is a `latexComment`, so
+ *  `TextSelection.atEnd` lands inside a verbatim block there — correct, and the
+ *  wrong shape for asking whether a stale past-the-end `at` CLAMPS. */
+function mountProseOnly(): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  return new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "para-only" },
+          content: [{ type: "text", text: "alpha beta gamma" }],
+        },
+      ],
+    },
+  });
+}
+
+/** A doc whose FIRST block is a verbatim `codeBlock`, so `TextSelection.atStart`
+ *  lands INSIDE it. (The shared fixture cannot show this from the other end: the
+ *  trailing-node extension always appends an empty paragraph, so `atEnd` is
+ *  always prose there.) */
+function mountCodeFirst(): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  return new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "codeBlock",
+          attrs: { uuid: "code-first" },
+          content: [{ type: "text", text: "alpha beta gamma" }],
+        },
+        {
+          type: "paragraph",
+          attrs: { uuid: "para-B" },
+          content: [{ type: "text", text: "prose after" }],
+        },
+      ],
+    },
+  });
+}
+
 /** The inner-text range of the first block named `nodeName`. */
 function rangeInside(editor: Editor, nodeName: string): { from: number; to: number } {
   let range: { from: number; to: number } | null = null;
@@ -350,13 +402,41 @@ describe("mathRun('inline') bails inside a verbatim block (task 396)", () => {
 
   it("the `% todo fix later` line is NOT promoted into the typeset document", () => {
     const editor = mountFixture();
-    runRow(editor, "inline-math", selectInnerText(editor, "latexComment"));
+    // A MID-CONTENT sub-selection ("fix"), NOT the whole block. Selecting the
+    // whole content makes the harvested `latex` the entire line, so pre-fix the
+    // atom serialized as `$% todo fix later$` — which still CONTAINS the comment
+    // text and never produces `$fix$`, i.e. two of the three assertions below
+    // would have passed on the defect. The tear this task is named after needs a
+    // selection with text on BOTH sides of it.
+    const r = rangeInside(editor, "latexComment");
+    const text = editor.state.doc.textBetween(r.from, r.to, " ");
+    const at = r.from + text.indexOf("fix");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, at, at + 3)),
+    );
+    runRow(editor, "inline-math", {
+      kind: "selection",
+      from: at,
+      to: at + 3,
+      paragraphId: "",
+    });
+
     const tex = bodyTex(editor);
-    // Pre-396 the comment was torn at the selection: `% todo` stayed a comment
+    // Pre-396 the comment was torn at the selection: `% todo ` stayed a comment
     // and `$fix$ later` became a LIVE line that compiles and prints.
     expect(tex).toContain("% todo fix later");
     expect(tex).not.toContain("$fix$");
     expect(tex).not.toMatch(/^\s*\$.*later/m);
+    // The block survives WHOLE — the run path's own truncate-and-eject pin (the
+    // whole-content selection EMPTIES the block instead, so `countOfType === 1`
+    // held either way and could not fail).
+    expect(countOfType(editor, "latexComment")).toBe(1);
+    let inner = "";
+    editor.state.doc.descendants((n) => {
+      if (n.type.name === "latexComment") inner = n.textContent;
+      return true;
+    });
+    expect(inner).toBe("% todo fix later");
     editor.destroy();
   });
 
@@ -442,6 +522,101 @@ describe("insertInlineAtom refuses at a container that can't host (task 396)", (
     expect(countOfType(editor, "footnote")).toBe(0);
     expect(bodyTex(editor)).toBe(before);
     editor.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3b. What the gate must NOT refuse - the over-refusal legs
+// ---------------------------------------------------------------------------
+
+describe("the gate is scoped to the CORRUPTING case (task 396)", () => {
+  it("a stale past-the-end `at` still lands - the clamp is TipTap's, not doc.content.size", () => {
+    // `doc.content.size` resolves to the DOC node, not a textblock. A gate
+    // reading the raw clamp refuses a stale captured `at` that the insert would
+    // have landed in prose — and a stale `at` is exactly what the deferred
+    // create popover carries. Neutering `clampToTextRange` back to
+    // `Math.min(at, doc.content.size)` fails this leg.
+    const editor = mountProseOnly();
+    const result = insertInlineAtom({
+      editor,
+      type: "labelRef",
+      attrs: REF_ATTRS,
+      at: editor.state.doc.content.size + 500,
+    });
+    expect(result.refused, "a stale `at` must clamp, not refuse").toBe(false);
+    expect(countOfType(editor, "labelRef")).toBe(1);
+    editor.destroy();
+  });
+
+  it("an out-of-range `at` is judged at its REAL landing, not at the doc node", () => {
+    // The leg with TEETH for `clampToTextRange`. `at: 0` is before the first
+    // text position; the RAW clamp leaves it at 0, whose parent is the DOC — a
+    // non-textblock the scope above waves through — while `setTextSelection`
+    // then moves the caret into the first TEXTBLOCK, here a `codeBlock`, and the
+    // atom lands in it. So the two clamps judge DIFFERENT positions, and only
+    // TipTap's own answers about the one the insert uses.
+    const editor = mountCodeFirst();
+    settle(editor);
+    const before = bodyTex(editor);
+    const result = insertInlineAtom({
+      editor,
+      type: "labelRef",
+      attrs: REF_ATTRS,
+      at: 0,
+    });
+    expect(result.refused, "judged at the codeBlock, not the doc node").toBe(true);
+    expect(countOfType(editor, "labelRef")).toBe(0);
+    expect(countOfType(editor, "codeBlock"), "not split").toBe(1);
+    expect(bodyTex(editor)).toBe(before);
+    editor.destroy();
+  });
+
+  it("a NON-textblock gap position still lands - PM wraps there, nothing to tear", () => {
+    // A `posAtCoords` that lands beside a block atom, or a GapCursor, resolves to
+    // a position whose parent is the DOC. Measured: `tr.insert` there yields a
+    // fresh paragraph holding the atom and destroys nothing, so refusing would be
+    // a silent no-op the user cannot explain (a bib-entry drop beside a figure, a
+    // footnote at a gap cursor).
+    const editor = mountFixture();
+    let gapPos = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (gapPos < 0 && n.type.name === "codeBlock") gapPos = pos; // the gap BEFORE it
+      return true;
+    });
+    expect(gapPos).toBeGreaterThan(0);
+    expect(editor.state.doc.resolve(gapPos).parent.isTextblock).toBe(false);
+
+    const result = insertInlineAtom({
+      editor,
+      type: "labelRef",
+      attrs: REF_ATTRS,
+      at: gapPos,
+    });
+    expect(result.refused, "a block gap is not a corrupting position").toBe(false);
+    expect(countOfType(editor, "labelRef")).toBe(1);
+    expect(countOfType(editor, "codeBlock"), "the neighbour is untouched").toBe(1);
+    editor.destroy();
+  });
+
+  it("a citation refuses in a verbatim block and lands in prose (the atom the drops carry)", () => {
+    for (const [container, wantRefused] of [
+      ["latexComment", true],
+      ["paragraph", false],
+    ] as const) {
+      const editor = mountFixture();
+      const r = rangeInside(editor, container);
+      const result = insertInlineAtom({
+        editor,
+        type: "citation",
+        attrs: { citationId: "cit-1", command: "\\cite{a}", displayText: "A" },
+        at: Math.floor((r.from + r.to) / 2),
+      });
+      expect(result.refused, `${container} refused?`).toBe(wantRefused);
+      expect(countOfType(editor, "citation"), `${container} atom count`).toBe(
+        wantRefused ? 0 : 1,
+      );
+      editor.destroy();
+    }
   });
 });
 
