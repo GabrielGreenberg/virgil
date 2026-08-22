@@ -2031,6 +2031,133 @@ Four rules, mirroring the capture side's:
 
 **Two doors, one queue** — the persistence half, and the reason the bug had a second life. `usePersistentState` exposes `update()` (coalesced through a 300 ms debounce) and `persist()` (write now), and only the first owned the queue: an immediate write could be OUTLIVED by an older scheduled payload, which flushed afterwards and **resurrected on disk** what had just been removed, with in-memory state and the sidecar permanently disagreeing until the next edit. That is a PRIMITIVE hazard rather than one caller's slip — it is inherent to two write doors where one owns the queue — so `persist()` now cancels the pending timer and drops the stale payload, once, for every caller, and stamps the loader-stomp flag *after* the two guards that can make the write not happen (stamping it for a suppressed or dropped write would hide the sidecar for the whole session). Scope, stated honestly: the sidecar hooks with their own bespoke `persist` (`useFootnotes`, `useExamples`, `useAiRequests`, `useBibReview`, `useStack`, `useEditorUIState`) do **not** go through this door; among this hook's consumers only `useSuggestions.clearSuggestions` still calls it directly. Prefer `update()` regardless; `persist()` is for a read-then-write that needs the computed value back synchronously, and it cancels rather than merges, so its payload must already reflect any `update()` issued before it. Contracts: [archive-restore-contract.test.tsx](src/hooks/__tests__/archive-restore-contract.test.tsx), [restore-excerpt.test.ts](src/lib/tiptap/__tests__/restore-excerpt.test.ts), [card-restore-affordance.test.tsx](src/components/__tests__/card-restore-affordance.test.tsx).
 
+### The schema half: a TYPE contract is blind to the ATTRS the type carries
+
+Same law, the SCHEMA the excerpt body mounts (task 402, DATA LOSS) — and the
+case where the reverse-direction guard was complete over the axis it asks about,
+silent on the axis that loses, and had written its own blindness into a fixture
+comment as a verified fact.
+
+Task 308 gave the excerpt surface the full block VOCABULARY and pinned it with
+the direction that has teeth: every node and mark type the main editor can
+produce must be mountable in a card body. `EXCERPT_STARTER_KIT_CONFIG` is the
+empty override, so an excerpt body mounted StarterKit's PLAIN `heading` /
+`paragraph` / `bulletList` / `orderedList` / `listItem` / `blockquote` /
+`codeBlock` — while the MAIN editor turns those same StarterKit nodes OFF and
+registers its own carrying nine more names across **nineteen node x attr
+pairs**: `uuid`, `parTitle`, `label`, `numbered`, `sectionNumber`, `shortTitle`,
+`listPreamble`, `listOptions`, `itemLabel`. Type membership was complete and the
+two schemas still disagreed about every one of them.
+
+**ProseMirror drops an undeclared attr in SILENCE.** `computeAttrs` iterates the
+TYPE's attrs; `Node.fromJSON` does call `checkAttrs`, but on the
+already-computed result, which by construction holds no undeclared key. And
+TipTap only runs `node.check()` under `enableContentCheck`, which is off. No
+throw, no warning, no console line.
+
+**The stripper is the card-body EDIT, not the restore**, which is the whole of
+the repro and the reason no leg can be written without typing.
+`restoreExcerptAtCaret` strips nothing; `RichTextField`'s `onUpdate` (250 ms
+debounce) and its `onBlur` flush both call `onChange(editor.getJSON())` on the
+attr-poor mounted schema, and `ArchiveCard`'s `handleEditContent` writes that
+straight over `snippet.content`. So: **archive (attrs intact) -> the user edits
+ONE character in the card -> `archive.json` holds an attr-less heading ->
+restore faithfully hands back the lamed version.** An UNEDITED excerpt restored
+whole, which is exactly why it read as flaky.
+
+Measured on the restored `.tex`: `label` / `numbered` / `shortTitle` are the
+heading's `\label{}`, its `*` and its `[short]`; `listOptions` / `listPreamble`
+are `\begin{itemize}[…]` and its tuning lines; `itemLabel` is `\item[…]`.
+`parTitle` has no `.tex` carrier at all — it lives in the sidecar and was simply
+gone. And `uuid` is IDENTITY rather than bytes: `BlockUuidBackfill` mints a
+FRESH one on restore, so every card, marginalia marker and sidecar entry
+anchored to the archived block ORPHANS — from the only surviving copy of prose
+already cut from the document.
+
+> **A contract over node TYPES is not a contract over the schema. Where two
+> surfaces must agree about a node, the attrs it declares are DECLARED ONCE and
+> both surfaces read that declaration — and the reverse-direction guard asks
+> about the ATTRS as well as the types.**
+
+[`MAIN_STARTERKIT_NODE_ATTRS`](src/lib/node-attr-sets.ts) is the declaration:
+the seven rows, full specs, in the import-free leaf that already holds
+`UUID_BEARING_NODE_TYPES` / `TITLED_NODE_TYPES` / `CARD_BODY_BLOCK_ATOMS` — the
+placement rule `latex-markers.ts` earned. Six rules it earned:
+
+- **The MAIN editor reads it too, or the table is a second copy of the schema
+  rather than its source.** Each builder in `editor-extensions.ts` spreads its
+  row; byte-identical to what shipped, and it is what makes the reverse contract
+  meaningful rather than tautological — the excerpt gets exactly what the table
+  holds, so an attr added INLINE to a main node fails the guard (measured).
+- **`UUID_ATTR_SPEC` / `makeUuidAttr` MOVED into the leaf**, with
+  `tiptap/uuid-attr.ts` re-exporting them so every importer is unchanged. They
+  are two of the nineteen pairs, and the leaf cannot import a module that
+  reaches `EditorView`. A spec spelled twice is a spec that can drift.
+- **The registration route was tried first and DECLINED, for a stated reason.**
+  Re-registering the main builders would drag their machinery — the `+T` title
+  strip, the fold chevron, the label handler, and for `heading` a host main
+  editor to proxy structural writes to, none of which a card body has — and it
+  would pull `editor-extensions.ts` into a module every card surface imports.
+  `addGlobalAttributes` adds attributes to a registered node without
+  re-registering it, and TipTap ignores a global attribute naming a type the
+  schema has not got, so it is inert at the `"card"` scope by construction.
+  Mirror the schema, not the machinery.
+- **The excerpt takes the attrs DATA-only** (`dataOnlyAttrs`: same `default` and
+  `keepOnSplit`, `rendered: false`, no parse/render). `rendered` is a DOM fact —
+  `toJSON`/`fromJSON` carry the attr regardless, which is why every already
+  non-rendered member round-trips today — and `data-uuid` is a RESOLUTION KEY:
+  `resolveDomForUuid`, the grab-handle hover scan and the marginalia registry
+  all query it. A card body has none of that chrome, so a second copy of the
+  document's identity attributes would have no reader and every opportunity to
+  become one. `keepOnSplit` is CARRIED rather than defaulted away: an item split
+  in a card body must no more inherit its neighbour's `\item[(b)]` than one in
+  the document.
+- **`sectionNumber` is in the table although it is not a loss.** The serializer
+  never reads it and main's numberer recomputes it, so it is self-healing — but
+  excluding it would buy an exemption list on a guard whose whole value is
+  being an exact equality. Zero cost, one fewer thing to be wrong about.
+- **The fixture comment that waved this through is RENEGOTIATED in place, with
+  the reason at the site.** It read: *"main-editor blocks carry their `uuid` /
+  `parTitle` / `label` attrs, which the card schemas' plain StarterKit nodes do
+  not declare. (Verified tolerated — ProseMirror ignores undeclared attrs on a
+  known type; only an unknown TYPE or MARK blanks the doc.)* Both sentences are
+  true and the conclusion drawn from them was the defect, asserted as the
+  contract — the shape this file's own rule about guards pinning the wrong thing
+  is written against.
+
+CI: [excerpt-attr-preservation.test.ts](src/lib/tiptap/__tests__/excerpt-attr-preservation.test.ts)
+drives the REAL story per row of the table — `parseLatex` -> the REAL capture
+door (`prepareCardBodyCapture` over a real `doc.slice`) -> the REAL card body
+composed extension for extension as `RichTextField` composes it -> ONE typed
+character -> `normalizeRichContent(getJSON())`, which IS what the archive host
+persists -> `restoreExcerptAtCaret` -> the `.tex` bytes AND the node attrs, over
+TWO cycles. Every fixture carries an explicit `%!v:` anchor, which is
+load-bearing rather than tidy: `assignUuids` mints RANDOM ids, so a fixture
+without one makes an identity assertion unfalsifiable in both directions. The
+widened reverse contract lives in
+[excerpt-schema.test.ts](src/lib/tiptap/__tests__/excerpt-schema.test.ts) (per
+node type AND per mark type), the table's own premise — no stale row — in
+[node-attr-sets.test.ts](src/lib/__tests__/node-attr-sets.test.ts), and the
+census (no attr spec re-declared outside the SSOT; both card surfaces resolve
+their StarterKit config and body schema BY SCOPE) beside the round trip.
+Measured by neutering each half in turn: the pre-402 excerpt schema takes 10
+behavioural legs plus the widened guard, `dataOnlyAttrs` 1, an inline attr on a
+main node 1, and a re-declared spec 1 (the census). The two non-regression pins
+— an UNEDITED excerpt restores whole, and the narrow `"card"` scope mints no doc
+attrs — pass either way, and say so at the site.
+
+**Owed, not claimed:** a real-FSA eyeball. The archive sidecar round trip is
+FSA-masked, so the durable proof here is the unit contract — archive a
+`\section*[Short]{X}` carrying a `\label`, edit the card, restore, read the
+`.tex`.
+
+**Known related gap, stated rather than fixed:** `listItem`'s CONTENT expression
+also forks — `"paragraph block*"` (StarterKit) vs `"(paragraph | graphicsBlock)
+block*"` (main). `canMountInSchema` is `schema.nodeFromJSON`, which routes to
+`NodeType.create` and does NO content-expression check, so a `graphicsBlock`
+inside a `listItem` is mountable in the excerpt body by a route the guard does
+not model. Real, adjacent, and its own task.
+
 ### The attrs half: a gate written in NODE TYPES and TEXT cannot see ATTRS
 
 Same law, the PREDICATE that decides whether a destruction needs a confirm at

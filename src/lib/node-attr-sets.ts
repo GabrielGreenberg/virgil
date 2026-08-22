@@ -303,3 +303,226 @@ export function jsonCarriesContent(json: unknown): boolean {
   walk(json);
   return found;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Structural ATTRS on the StarterKit block nodes — the schema fork that lost
+// nine attr names on a card-body edit (task 402)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One attribute's ProseMirror/TipTap spec, spelled structurally so this leaf
+ * stays import-free. Assignable to TipTap's `Attribute` (a spec that declares
+ * FEWER fields inherits the framework defaults: `rendered: true`,
+ * `keepOnSplit: true`, no custom parse/render).
+ */
+export interface StructuralAttrSpec {
+  readonly default: string | number | boolean | null;
+  /** `false` = the attr exists in the schema and never touches the DOM. Source
+   *  provenance (`listOptions`, `itemLabel`, `shortTitle`) and recomputed state
+   *  (`numbered`, `sectionNumber`) are both invisible to the live render. */
+  readonly rendered?: boolean;
+  /** `false` = a split does NOT carry the attr onto the new sibling. Required
+   *  for anything that NAMES the node (`itemLabel`, `shortTitle`, `listOptions`):
+   *  carrying one across an Enter mints a duplicate marker the user never typed,
+   *  with no re-mint net (contrast `uuid`, which `BlockUuidBackfill` re-mints). */
+  readonly keepOnSplit?: boolean;
+  readonly parseHTML?: (element: HTMLElement) => unknown;
+  readonly renderHTML?: (
+    attrs: Record<string, unknown>,
+  ) => Record<string, string | undefined>;
+}
+
+/** A node type's extra attrs, keyed by attr name. */
+export type StructuralAttrSpecs = Readonly<Record<string, StructuralAttrSpec>>;
+
+/**
+ * Shared spec for the `uuid` attribute used by every anchorable node type.
+ *
+ * The UUID lives in node attrs (ProseMirror state). It is NOT serialized to
+ * HTML on copy-paste — `parseHTML` returns null so paste always produces a node
+ * without a UUID, which `ensureAnchorUuid` then hydrates with a fresh one. That
+ * keeps UUIDs unique within a doc.
+ *
+ * Declared HERE rather than in `tiptap/uuid-attr.ts` (which re-exports it, so
+ * every existing importer is unchanged) because it is one of the nineteen
+ * node x attr pairs {@link MAIN_STARTERKIT_NODE_ATTRS} has to state, and that
+ * table cannot import a module that reaches `EditorView`. A spec spelled twice
+ * is a spec that can drift.
+ */
+export const UUID_ATTR_SPEC: { readonly uuid: StructuralAttrSpec } = {
+  uuid: {
+    default: null,
+    // Don't carry UUID across copy-paste — fresh node, fresh identity.
+    parseHTML: () => null,
+    // Cosmetic: when a node is serialized to HTML (export, devtools inspect)
+    // and has no NodeView in the way, emit `data-uuid` so the representation
+    // matches the live DOM. For NodeView-bearing nodes this is dead code; the
+    // live attributes come from the NodeView stamp.
+    renderHTML: (attrs: Record<string, unknown>) => {
+      const uuid = attrs.uuid;
+      return typeof uuid === "string" && uuid ? { "data-uuid": uuid } : {};
+    },
+  },
+};
+
+/**
+ * uuid attr spec for anchorable types WITHOUT a NodeView (listItem, blockquote,
+ * codeBlock): their live DOM comes from `renderHTML`, so it must emit BOTH
+ * `data-uuid` and `data-text-object-kind` (the grab-handle hover resolver reads
+ * the kind straight off the DOM). NodeView-bearing types use
+ * {@link UUID_ATTR_SPEC} + `stampTextObjectAttrs` instead.
+ */
+export function makeUuidAttr(typeName: string): StructuralAttrSpec {
+  return {
+    default: null,
+    parseHTML: () => null,
+    renderHTML: (attrs: Record<string, unknown>) => {
+      const uuid = attrs.uuid;
+      return typeof uuid === "string" && uuid
+        ? { "data-uuid": uuid, "data-text-object-kind": typeName }
+        : {};
+    },
+  };
+}
+
+/**
+ * The attrs the MAIN editor adds ON TOP of StarterKit's own, per block node —
+ * the ONE declaration both the main editor and the EXCERPT card body read.
+ *
+ * **The bug this exists to prevent** (task 402, DATA LOSS). An archive card
+ * body is an excerpt surface: it holds a verbatim slice of the document, and
+ * after the capture deleted that slice it is the ONLY copy. It mounted
+ * StarterKit's PLAIN nodes while the main editor turned those same nodes off
+ * and registered its own with these extras — so the two schemas agreed about
+ * every node TYPE and disagreed about nineteen node x attr pairs.
+ *
+ * ProseMirror drops an attr the mounted schema does not declare, SILENTLY:
+ * `computeAttrs` iterates the TYPE's attrs, and `checkAttrs` then validates the
+ * already-computed result, which by construction contains no undeclared keys.
+ * So the loss had no throw, no warning and no symptom until the `.tex` came
+ * back short.
+ *
+ * **The stripper was the card-body EDIT, not the restore.** `RichTextField`'s
+ * `onUpdate` (250 ms debounce) and its `onBlur` flush both call
+ * `onChange(editor.getJSON())` on the attr-poor mounted schema, and the archive
+ * host writes that straight over `snippet.content`. So: archive (attrs intact)
+ * -> the user edits ONE character in the card -> `archive.json` now holds an
+ * attr-less heading -> restore faithfully hands back the lamed version. An
+ * UNEDITED excerpt restored whole, which is exactly why it read as flaky.
+ *
+ * What each loss cost, on the restored `.tex`: `label` / `numbered` /
+ * `shortTitle` are the heading's `\label{}`, its `*` and its `[short]`;
+ * `listOptions` / `listPreamble` are `\begin{itemize}[…]` and its tuning lines;
+ * `itemLabel` is `\item[…]`. `parTitle` has no `.tex` carrier at all — it lives
+ * in the sidecar and was simply gone. `uuid` is IDENTITY, not bytes:
+ * `BlockUuidBackfill` mints a FRESH one on restore, so every card anchored to
+ * the archived block ORPHANS rather than re-anchoring.
+ *
+ * Read by `editor-extensions.ts` (each builder spreads its row) and by
+ * `borrowed-schema.ts` (the excerpt surface adds the same rows via
+ * {@link dataOnlyAttrs}). Held to the REAL main schema in BOTH directions by
+ * [node-attr-sets.test.ts](__tests__/node-attr-sets.test.ts) and by the widened
+ * reverse contract in
+ * [excerpt-schema.test.ts](../lib/tiptap/__tests__/excerpt-schema.test.ts), so
+ * the next attr added to a main node fails the build until the excerpt surface
+ * admits it — which is the part with teeth. The table was never the thing that
+ * could misbehave; a surface that does not read it is.
+ */
+export const MAIN_STARTERKIT_NODE_ATTRS = {
+  paragraph: {
+    parTitle: { default: null },
+    ...UUID_ATTR_SPEC,
+  },
+  heading: {
+    label: { default: null },
+    ...UUID_ATTR_SPEC,
+    numbered: { default: true, rendered: false },
+    sectionNumber: { default: null, rendered: false },
+    // Raw `\section[short]{…}` running-head / ToC title (task 376) — opaque
+    // LaTeX, the heading twin of `figureBlock.shortCaption` and
+    // `listItem.itemLabel`. `rendered: false` because it is source provenance,
+    // not something the live DOM shows. `keepOnSplit: false` for `itemLabel`'s
+    // reason: pressing Enter at the end of a heading mints a NEW heading, and
+    // carrying the short title across would give it a running head the user
+    // never typed, on a section it does not name. `null` = no bracket.
+    shortTitle: { default: null, rendered: false, keepOnSplit: false },
+  },
+  bulletList: {
+    parTitle: { default: null },
+    ...UUID_ATTR_SPEC,
+    listPreamble: { default: null, rendered: false },
+    // Raw `\begin{itemize}[options]` bracket (task 376) — opaque LaTeX, the
+    // list-level twin of `listItem.itemLabel`. Source provenance, so
+    // `rendered: false`; `keepOnSplit: false` for the same reason a label is
+    // not carried onto a freshly split sibling.
+    listOptions: { default: null, rendered: false, keepOnSplit: false },
+  },
+  orderedList: {
+    parTitle: { default: null },
+    ...UUID_ATTR_SPEC,
+    listPreamble: { default: null, rendered: false },
+    listOptions: { default: null, rendered: false, keepOnSplit: false },
+  },
+  listItem: {
+    // No NodeView -> renderHTML is the live DOM; emit uuid + kind (2d).
+    uuid: makeUuidAttr("listItem"),
+    // Raw `\item[label]` optional argument (task 340) — opaque LaTeX, the
+    // per-item twin of the list's own `listPreamble`. Registered on the NODE
+    // rather than re-read from the source at save time so it survives an edit
+    // to the item's text; `rendered: false` because it is source provenance,
+    // not something the live DOM shows (the editor draws the list's own
+    // marker), which also means copy-paste cannot carry it — same fresh-node
+    // reasoning as `uuid`'s `parseHTML: () => null`.
+    // `null` = a bare `\item`; `""` = `\item[]`.
+    //
+    // `keepOnSplit: false` is load-bearing and NOT what `uuid` does: TipTap's
+    // default is to carry an attr across a split, so pressing Enter at the end
+    // of `\item[(b)] beta` would mint a second item ALSO labelled `(b)` — a
+    // duplicate marker in the compiled PDF that the user never typed. `uuid`
+    // can afford the default because `BlockUuidBackfill` re-mints the
+    // collision; a label has no such net and no meaning to re-mint, so the new
+    // item must simply have none.
+    itemLabel: { default: null, rendered: false, keepOnSplit: false },
+  },
+  blockquote: {
+    // No NodeView -> renderHTML is the live DOM; emit uuid + kind (2d).
+    uuid: makeUuidAttr("blockquote"),
+  },
+  codeBlock: {
+    // No NodeView -> renderHTML is the live DOM; emit uuid + kind (2d).
+    uuid: makeUuidAttr("codeBlock"),
+  },
+} as const satisfies Readonly<Record<string, StructuralAttrSpecs>>;
+
+/** One node type {@link MAIN_STARTERKIT_NODE_ATTRS} speaks for. */
+export type MainStarterKitNodeName = keyof typeof MAIN_STARTERKIT_NODE_ATTRS;
+
+/**
+ * The same attrs, DATA ONLY — same `default` and `keepOnSplit`, never emitted
+ * to or parsed from the DOM.
+ *
+ * The EXCERPT card body needs the attrs to EXIST (so the JSON round trip
+ * carries them) and must NOT stamp them into a second DOM tree. `data-uuid` in
+ * particular is a resolution key: `resolveDomForUuid`, the grab-handle hover
+ * scan and the marginalia registry all key on it, and a card body running
+ * inside its own editor has none of that chrome. Same discipline
+ * `buildExcerptOnlySchema` already states one file over — **mirror the schema,
+ * not the machinery** — arriving one level in, at the attribute.
+ *
+ * `rendered` is a DOM fact only: `toJSON`/`fromJSON` read `node.attrs`
+ * regardless, which is why every already-`rendered: false` member of the table
+ * (`listOptions`, `itemLabel`, `shortTitle`, `numbered`) round-trips through
+ * the sidecar and the serializer today.
+ */
+export function dataOnlyAttrs(specs: StructuralAttrSpecs): StructuralAttrSpecs {
+  return Object.fromEntries(
+    Object.entries(specs).map(([name, spec]) => [
+      name,
+      {
+        default: spec.default,
+        keepOnSplit: spec.keepOnSplit ?? true,
+        rendered: false,
+      },
+    ]),
+  );
+}

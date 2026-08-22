@@ -128,10 +128,20 @@ function typesIn(json: unknown): Set<string> {
 // ── The capture fixtures ───────────────────────────────────────────────────
 //
 // These are shaped like real `sliceToDocJson` output: main-editor blocks carry
-// their `uuid` / `parTitle` / `label` attrs, which the card schemas' plain
-// StarterKit nodes do not declare. (Verified tolerated — ProseMirror ignores
-// undeclared attrs on a known type; only an unknown TYPE or MARK blanks the
-// doc. Pinned by the `card` cluster row below, which fails on `heading` alone.)
+// their `uuid` / `parTitle` / `label` attrs.
+//
+// RENEGOTIATED (task 402). This block used to read "…which the card schemas'
+// plain StarterKit nodes do not declare. (Verified tolerated — ProseMirror
+// ignores undeclared attrs on a known type; only an unknown TYPE or MARK blanks
+// the doc.)" Both sentences are true and the conclusion drawn from them was
+// the defect, asserted as the contract: ProseMirror does not blank the doc, it
+// DROPS the attr, silently — and the archive card's own `onUpdate` then wrote
+// the lamed JSON back over `archive.json`. Nineteen node x attr pairs, nine
+// names, from the only surviving copy of prose already cut from the document.
+// The EXCERPT scope now declares them (`MAIN_STARTERKIT_NODE_ATTRS`); the
+// per-type ATTR leg below is what keeps it that way, and
+// `excerpt-attr-preservation.test.ts` drives the archive -> edit -> restore
+// path the loss actually travelled.
 
 /** A whole section as the heading grab-bar Archive captures it: the heading,
  *  its body, a sub-heading, and the sub-section body. */
@@ -327,6 +337,68 @@ describe("task 308 — main-document vocabulary ⊆ excerpt vocabulary", () => {
         "excerpt, confirm `canMountInCardBody` refuses it so the Archive action " +
         "aborts the delete instead of destroying the content.",
     ).toEqual([]);
+  });
+
+  it("every MAIN editor node type declares the SAME ATTRS in the excerpt schema", () => {
+    // TASK 402 — the axis the two legs above are blind to.
+    //
+    // Type membership was complete and the surfaces still disagreed about
+    // nineteen node x attr pairs: an excerpt body mounted StarterKit's PLAIN
+    // `heading` / `paragraph` / `bulletList` / `orderedList` / `listItem` /
+    // `blockquote` / `codeBlock` while the main editor turned those same nodes
+    // OFF and registered its own carrying `uuid`, `parTitle`, `label`,
+    // `numbered`, `sectionNumber`, `shortTitle`, `listPreamble`, `listOptions`
+    // and `itemLabel`. `computeAttrs` iterates the TYPE's attrs and drops the
+    // rest in SILENCE, so the card body's `getJSON()` — which the archive host
+    // writes straight over `snippet.content` — lamed the capture on the first
+    // keystroke. A `\label{}` and a `[short]` gone from the `.tex`, a
+    // `parTitle` gone from the sidecar, and the block's `uuid` re-minted on
+    // restore so every card anchored to it orphaned.
+    //
+    // The excerpt's copies are DATA-only (`dataOnlyAttrs`): same `default` and
+    // `keepOnSplit`, never rendered to or parsed from the DOM, because
+    // `data-uuid` is a resolution key and a card body has none of the chrome
+    // that reads it. `rendered` is a DOM fact; `toJSON`/`fromJSON` carry the
+    // attr regardless, which is what makes the round trip work.
+    const dropped: string[] = [];
+    for (const [name, mainType] of Object.entries(mainSchema.nodes)) {
+      const excerptType = excerptSchema.nodes[name];
+      if (!excerptType) continue; // the leg above owns that failure
+      const mainAttrs = Object.keys(mainType.spec.attrs ?? {});
+      const excerptAttrs = new Set(Object.keys(excerptType.spec.attrs ?? {}));
+      for (const attr of mainAttrs) {
+        if (!excerptAttrs.has(attr)) dropped.push(`${name}.${attr}`);
+      }
+    }
+    expect(
+      dropped.sort(),
+      "A main-editor node ATTR the archive body cannot hold. ProseMirror drops " +
+        "it SILENTLY on mount, and the card's own onUpdate then persists the " +
+        "lamed JSON over the only surviving copy — no throw, no warning, and " +
+        "nothing downstream to heal it. Declare it in " +
+        "`MAIN_STARTERKIT_NODE_ATTRS` (src/lib/node-attr-sets.ts), which both " +
+        "the main builder and the excerpt surface read, so it cannot be added " +
+        "to one side alone.",
+    ).toEqual([]);
+  });
+
+  it("every MAIN editor mark type declares the same attrs in the excerpt schema", () => {
+    // The mark twin of the leg above. Empty today (`highlight`/`textColor` are
+    // the SAME extension objects on both sides), which is exactly why it is
+    // worth pinning: a mark that grows an attr on the main side alone loses it
+    // the same silent way.
+    const STRIPPED_BY_NORMALIZER = new Set(["linkedAnchor"]);
+    const dropped: string[] = [];
+    for (const [name, mainType] of Object.entries(mainSchema.marks)) {
+      if (STRIPPED_BY_NORMALIZER.has(name)) continue;
+      const excerptType = excerptSchema.marks[name];
+      if (!excerptType) continue;
+      const excerptAttrs = new Set(Object.keys(excerptType.spec.attrs ?? {}));
+      for (const attr of Object.keys(mainType.spec.attrs ?? {})) {
+        if (!excerptAttrs.has(attr)) dropped.push(`mark:${name}.${attr}`);
+      }
+    }
+    expect(dropped.sort(), "A main-editor mark ATTR the archive body drops.").toEqual([]);
   });
 
   it("every MAIN editor mark type is registered in the excerpt schema (or stripped by the normalizer)", () => {

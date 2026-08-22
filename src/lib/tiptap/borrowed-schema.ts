@@ -54,14 +54,18 @@
  * Threading any other surface here would be a behavior CHANGE, not a refactor.
  */
 
-import { getSchema, type AnyExtension } from "@tiptap/core";
+import { Extension, getSchema, type AnyExtension } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import {
   canMountInSchema,
   type SchemaMountCheck,
 } from "@/lib/tiptap/schema-mount";
 import StarterKit from "@tiptap/starter-kit";
-import { CARD_BODY_BLOCK_ATOMS } from "@/lib/node-attr-sets";
+import {
+  CARD_BODY_BLOCK_ATOMS,
+  MAIN_STARTERKIT_NODE_ATTRS,
+  dataOnlyAttrs,
+} from "@/lib/node-attr-sets";
 import Highlight from "@tiptap/extension-highlight";
 import {
   InlineMath,
@@ -166,8 +170,48 @@ export function starterKitConfigForScope(scope: CardBodySchemaScope) {
  * are NOT stripped by `normalizeRichContent` (which filters `DOC_ONLY_MARKS`
  * only) — task 308's cluster.
  */
+/**
+ * The MAIN editor's structural attrs, added to the EXCERPT surface's plain
+ * StarterKit nodes (task 402, DATA LOSS).
+ *
+ * StarterKit's `heading` / `paragraph` / `bulletList` / `orderedList` /
+ * `listItem` / `blockquote` / `codeBlock` declare a handful of attrs each; the
+ * main editor turns those same nodes OFF and registers its own carrying nine
+ * more names across nineteen node x attr pairs — `uuid`, `parTitle`, `label`,
+ * `numbered`, `sectionNumber`, `shortTitle`, `listPreamble`, `listOptions`,
+ * `itemLabel`. An excerpt body mounted the PLAIN ones, and ProseMirror drops an
+ * attr the mounted schema does not declare in SILENCE. So editing one character
+ * in an archive card ran the capture through the attr-poor schema and wrote the
+ * lamed JSON back over `archive.json` — the `\label{}`, the `[short]`, the
+ * `\item[…]` and the block's anchor IDENTITY, gone with no throw and no
+ * warning, from the only surviving copy of prose already cut from the document.
+ *
+ * `addGlobalAttributes` rather than re-registering the nodes: the main
+ * builders drag NodeViews (the `+T` title strip, the fold chevron, the label
+ * handler) and, for `heading`, a host main editor to proxy structural writes
+ * to — none of which an archive card body has. Mirror the schema, not the
+ * machinery, exactly as {@link buildExcerptOnlySchema} does one function down.
+ * TipTap ignores a global attribute naming a type the schema has not got, so
+ * this is inert at any scope that disables one of the seven.
+ *
+ * {@link dataOnlyAttrs} is the other half: the attrs must EXIST (so the JSON
+ * round trip carries them) and must never reach the card's DOM. `data-uuid` is
+ * a resolution key — `resolveDomForUuid`, the grab-handle hover scan and the
+ * marginalia registry all query it — and a card body has none of that chrome.
+ */
+const ExcerptDocumentAttrs = Extension.create({
+  name: "excerptDocumentAttrs",
+  addGlobalAttributes() {
+    return Object.entries(MAIN_STARTERKIT_NODE_ATTRS).map(([type, attrs]) => ({
+      types: [type],
+      attributes: dataOnlyAttrs(attrs),
+    }));
+  },
+});
+
 function buildExcerptOnlySchema(): AnyExtension[] {
   return [
+    ExcerptDocumentAttrs,
     Highlight.configure({ multicolor: true }),
     TextColor,
     // ── expex example family ────────────────────────────────────────────
