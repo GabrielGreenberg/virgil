@@ -30,7 +30,7 @@ import {
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
 import { canCaptureToStack } from "@/floats/stack-capture";
-import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
+import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 
@@ -971,7 +971,17 @@ function FloatingPanelInner({
     // CARD surface inside a float lifts the card (PanelCard's 5px-threshold
     // lift), not the whole window. The window stays draggable from inter-card
     // gaps / background (outside any [data-card]).
-    if (target.closest(WINDOW_DRAG_BLOCK_SELECTOR)) {
+    // Scoped to strict descendants of the float root through the shared
+    // door (task 423) — the float is body-portaled, so today nothing above
+    // or at the root can match, but the rule is stated once for all four
+    // gestures rather than re-derived per site.
+    if (
+      pressFromInteractiveControl(
+        target,
+        rootRef.current ?? (e.currentTarget as Element),
+        WINDOW_DRAG_BLOCK_SELECTOR,
+      )
+    ) {
       return;
     }
     let origX = pos.x;

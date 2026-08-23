@@ -40,7 +40,7 @@ import {
 } from "@/components/editor-layout/omni-pin-store";
 import { holdOmniCard } from "@/components/editor-layout/omni-card-placement";
 import { useLayoutGestureActive } from "@/lib/pane-resize";
-import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
+import { cardShellWithin, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { iconHint } from "@/components/Hint";
 
 /**
@@ -801,11 +801,25 @@ function OmniViewPanel({
               // Capture phase so it runs before any descendant onMouseDown
               // (notably PanelCard's lift-threshold watcher).
               onMouseDownCapture={(e) => {
-                // Skip clicks on interactive controls that don't change
-                // layout (header buttons, dropdowns, trash, drag handles).
-                // Mirrors the lift blocker at panel-primitives.tsx:1552.
-                const target = e.target as HTMLElement;
-                if (target.closest(INTERACTIVE_CONTROL_SELECTOR)) {
+                // Skip presses on interactive controls NESTED INSIDE the card
+                // — header buttons, dropdowns, trash, drag handles, and the
+                // card's own `contenteditable` prose body. The body is a
+                // deliberate member, not a side effect of the shared
+                // selector: clicking into live prose changes no height, and
+                // a pin published there would be one the user did not ask
+                // for, REPLACING whatever pin another card holds (the "a hold
+                // that moved a different card" hazard `omni-card-placement`
+                // names). The check is asked of the CARD SHELL inside this
+                // wrapper, through the shared scoped door: the shell is
+                // often `draggable="true"` (cross-editor anchor drags —
+                // CitationCard ships it), and an unscoped `closest()` matched
+                // that root, so every citation card was dead to pin-on-touch
+                // and jumped on collapse/expand (task 423). Scoping to THIS
+                // wrapper would not help — the shell is inside it — which is
+                // why the shell is resolved first; a wrapper holding no shell
+                // (a bare content node) falls back to the wrapper itself.
+                const shell = cardShellWithin(e.target, e.currentTarget) ?? e.currentTarget;
+                if (pressFromInteractiveControl(e.target, shell)) {
                   return;
                 }
                 holdOmniCard(e.currentTarget);

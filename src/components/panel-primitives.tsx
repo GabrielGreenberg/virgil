@@ -55,7 +55,7 @@ import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-conten
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
-import { INTERACTIVE_CONTROL_SELECTOR, isEditableEventTarget } from "@/lib/drag-blocklist";
+import { pressFromInteractiveControl, isEditableEventTarget } from "@/lib/drag-blocklist";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
@@ -101,11 +101,7 @@ import { iconHint } from "@/components/Hint";
  * with the card shell — not a field — focused still deletes.
  */
 export function keyEventFromInteractiveControl(e: ReactKeyboardEvent): boolean {
-  const target = e.target as HTMLElement | null;
-  const shell = e.currentTarget as HTMLElement | null;
-  if (!target || !shell || target === shell) return false;
-  const blocker = target.closest(INTERACTIVE_CONTROL_SELECTOR);
-  return !!blocker && blocker !== shell && shell.contains(blocker);
+  return pressFromInteractiveControl(e.target, e.currentTarget as Element | null);
 }
 
 /**
@@ -2654,12 +2650,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     // reordering, etc.). The generic chrome elements that DO want the
     // gesture (titles, label text, decorative wrappers) bubble through.
     //
-    // Scoping by `headerEl.contains(blocker)` is critical: the card root
-    // itself is often `draggable="true"` (for cross-editor anchor drags),
-    // and an unscoped `closest('[draggable="true"]')` walks past the
-    // header and matches that root — which would block every lift.
-    const blocker = target.closest(INTERACTIVE_CONTROL_SELECTOR);
-    if (blocker && headerEl.contains(blocker)) return;
+    // Scoped to strict descendants of the HEADER through the shared door:
+    // the card root itself is often `draggable="true"` (for cross-editor
+    // anchor drags), and an unscoped `closest('[draggable="true"]')` walks
+    // past the header and matches that root — which would block every
+    // lift. The rule lives in `drag-blocklist` so the omni pin blocker and
+    // the delete-key guard read the SAME scoping (task 423: the pin copy
+    // had dropped it).
+    if (pressFromInteractiveControl(target, headerEl)) return;
     const startX = e.clientX;
     const startY = e.clientY;
     let triggered = false;
