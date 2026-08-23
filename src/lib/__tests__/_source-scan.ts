@@ -30,6 +30,10 @@
  * caller. Callers: [margin-side-ssot.test.ts](margin-side-ssot.test.tsx),
  * [action-context-honesty.test.ts](../actions/__tests__/action-context-honesty.test.ts).
  */
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 export function strip(
   src: string,
   keepStrings: boolean,
@@ -410,4 +414,92 @@ function subtreeFrom(
     step.lastIndex = end;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// POPULATION: what does the repo SHIP?
+// ---------------------------------------------------------------------------
+
+/** The repo root — every census resolves its roots against this. */
+export const REPO_ROOT = path.resolve(__dirname, "../../..");
+
+/**
+ * A census that means "no SHIPPED file does X" must derive its population
+ * from what the repo ships, not from whatever happens to be on disk.
+ *
+ * A `readdirSync` walk filtered by extension reads the WORKING COPY, and the
+ * working copy holds gitignored scratch — `editor/dev/iterations/` critique
+ * memos, `editor/dev/sandboxes/` paper clones, dream digests — that quotes the
+ * very shapes the censuses retire while explaining why they are wrong. So
+ * `npm test` went RED on the one checkout that holds that scratch and GREEN
+ * in every worktree and in CI, which checks out tracked files only: the
+ * person who sees the failure is the one least able to connect it to a
+ * change (task 429).
+ *
+ * The population here is `git ls-files --cached --others --exclude-standard`:
+ * every tracked file PLUS every untracked file git would not ignore. The
+ * second half is deliberate — a file Gabriel is mid-writing and has not yet
+ * `git add`ed is exactly the file a census should see before it is committed;
+ * what is unrepresentable is the gitignored scratch, which no checkout ever
+ * ships. A hand list of excluded directories (`editor/dev/`) is the shape
+ * every census in AGENTS.md is written against: it can only be missing the
+ * next scratch folder.
+ *
+ * Entries still in the index but deleted from disk are dropped, so a census
+ * never reads a file that is not there. One subprocess per root, cached for
+ * the test run. Outside a git checkout (no `.git`, no `git` binary) the call
+ * FAILS OPEN to a plain disk walk — a broader population is the pre-429
+ * behaviour, while an empty one would let every census pass vacuously.
+ */
+const lsFilesCache = new Map<string, string[]>();
+
+function lsFiles(relRoot: string): string[] {
+  const cached = lsFilesCache.get(relRoot);
+  if (cached) return cached;
+  let rels: string[];
+  try {
+    const out = execFileSync(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", relRoot],
+      { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    rels = out.split("\0").filter((s) => s.length > 0);
+  } catch {
+    rels = diskWalk(path.join(REPO_ROOT, relRoot)).map((p) => path.relative(REPO_ROOT, p));
+  }
+  const abs = Array.from(new Set(rels))
+    .map((r) => path.join(REPO_ROOT, r))
+    .filter((p) => fs.existsSync(p));
+  lsFilesCache.set(relRoot, abs);
+  return abs;
+}
+
+function diskWalk(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) diskWalk(p, out);
+    else out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Absolute paths of every file the repo SHIPS (or is about to) under
+ * `relRoot` whose basename matches `ext`. Sorted, so a census's report order
+ * is stable across machines.
+ *
+ * @param relRoot  A path relative to the repo root (`"editor"`, `"docs"`).
+ * @param ext      Basename filter, e.g. `/\.(py|md)$/`.
+ */
+export function trackedFiles(relRoot: string, ext: RegExp): string[] {
+  return lsFiles(relRoot)
+    .filter((p) => ext.test(path.basename(p)))
+    .sort();
+}
+
+/** Test-only: drop the per-run cache so a leg that plants a file can re-ask. */
+export function resetTrackedFilesCache(): void {
+  lsFilesCache.clear();
 }

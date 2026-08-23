@@ -1,6 +1,9 @@
 {
   "name": "virgil",
   "version": "0.1.97",
+  "engines": {
+    "node": "22.x || 24.x"
+  },
   "private": true,
   "scripts": {
     "postinstall": "patch-package",

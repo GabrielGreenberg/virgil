@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { trackedFiles } from "../lib/__tests__/_source-scan";
 
 /**
  * SPEC AUTHORITY — there is exactly ONE style spec, and everything else says so
@@ -67,22 +68,14 @@ const SKIP_DIRS = new Set([
   "build",
 ]);
 
-function walkMarkdown(rel: string, out: string[] = []): string[] {
-  const abs = path.join(ROOT, rel);
-  let entries: string[];
-  try {
-    entries = readdirSync(abs);
-  } catch {
-    return out;
-  }
-  for (const name of entries) {
-    if (SKIP_DIRS.has(name)) continue;
-    const childRel = path.join(rel, name);
-    const st = statSync(path.join(ROOT, childRel));
-    if (st.isDirectory()) walkMarkdown(childRel, out);
-    else if (name.endsWith(".md")) out.push(childRel);
-  }
-  return out;
+/** Markdown the repo SHIPS under `rel` — `trackedFiles` (task 429), so a
+ *  gitignored scratch memo under `editor/dev/` or `docs/` is unrepresentable
+ *  rather than excluded by name. `SKIP_DIRS` still prunes the TRACKED trees
+ *  this sweep deliberately leaves out (samples, vendored data). */
+function walkMarkdown(rel: string): string[] {
+  return trackedFiles(rel, /\.md$/)
+    .map((abs) => path.relative(ROOT, abs))
+    .filter((r) => !r.split(path.sep).some((seg) => SKIP_DIRS.has(seg)));
 }
 
 const ALL_DOCS: string[] = [
