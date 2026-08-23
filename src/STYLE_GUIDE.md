@@ -728,8 +728,10 @@ perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
 text, hover deepening one step (bg → `--surface-muted-strong`, border →
 `--edge-strong`). Beware the hover trap: never rest a hover-able pill at
 the same token its hover lands on, or the feedback vanishes. The leading
-glyph stays per-bin (a `◎` vs a `BadgeOrphaned` badge). The class is
-spelled ONCE, inside the `OmniBinPill` component
+glyph stays per-bin (`◎` outside-focus, `◌` unplaced, a `BadgeOrphaned`
+badge for unanchored), and every pill declares its TONE (`neutral` /
+`error`, published as `data-omni-bin-tone`). The class is spelled ONCE,
+inside the `OmniBinPill` component
 (`src/panels/Omni/OmniViewPanel.tsx`) — both bins are call sites of it, and
 a future "N collected X" chip in the cascade should be a third call site
 rather than a re-authored pill (the census in `omni-bin-posture.test`
@@ -1007,10 +1009,22 @@ in its panel wearing a **neutral "drag to anchor" cue**: a **dashed
 border + reduced opacity**, plus a hover `title` ("Unanchored <noun> —
 drag into the editor to anchor it"). This is **not** an error affordance
 — it is deliberately distinct from the `orphaned` ERROR state, whose card
-keeps its faded `BadgeOrphaned` "no anchor" dot. The omni layer already
-draws the same line (an unanchored footnote resolves to the neutral
-`free` state, not `orphaned` — `Footnotes/omni.tsx`); the parked cue is
-that intent made visible on the docked card.
+keeps its faded `BadgeOrphaned` "no anchor" dot. The omni layer draws
+the same line at BOTH its layers (task 422): the builders resolve a parked
+footnote to the neutral `free` state, not `orphaned` (`Footnotes/omni.tsx`),
+and the gutter shows one bin pill PER state — **"N unanchored"** (error
+tone, `BadgeOrphaned`, the ORPHANED set: the same word, badge and set as
+the pane-chrome `UnanchoredCardsChip`, differing only in being per side
+and filter-scoped) and **"N unplaced"** (neutral tone, a dashed-circle `◌`
+cue, the FREE set). Pre-422 the two were summed into one error-badged
+pill, so a parked card was announced as an error; the parked cue on the
+docked card is that same intent made visible.
+
+**Vocabulary.** "Unanchored" names the ORPHAN set (anchor died) wherever
+it is a pill or chip label. A deliberately parked card is "unplaced" in
+the omni gutter. (The docked card's hover title still says "Unanchored
+<noun> — drag into the editor to anchor it"; renaming that copy is a
+wider change and was left alone.)
 
 **The cue is ONE prop, and it carries the mechanism** (task 316):
 `unanchored={{ kind, cardKey, canAnchor }}` on `EditableCard` /

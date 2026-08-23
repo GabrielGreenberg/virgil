@@ -212,7 +212,7 @@ describe("OmniViewPanel — portals its bins into the column slot", () => {
     }
     expect(stack.querySelectorAll("[data-omni-entry-wrapper]").length).toBe(0);
     // The pill still works through the portal.
-    expect(stack.textContent).toContain("1 unanchored");
+    expect(stack.textContent).toContain("1 unplaced");
     fireEvent.click(stack.querySelector("button")!);
     expect(stack.querySelector('[data-test-card="free-1"]')).not.toBeNull();
   });
