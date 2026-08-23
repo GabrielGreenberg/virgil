@@ -1106,6 +1106,16 @@ def test_no_other_python_writer_free_types_a_fusion_head():
     for py in sorted(Path(_SCRIPTS).glob("*.py")):
         if py.name == ssot:
             continue
+        if py.name.startswith("test_"):
+            # The docstring's stated scope already excludes suites ("a suite
+            # legitimately spells heads to assert about them, and a fixture
+            # is not a writer") — but the glob is the scripts directory, and
+            # some suites live there rather than in `tests/`. Same skip the
+            # two citekey censuses in this file already take. NOT a widening:
+            # the needle stays raw (strings included, since
+            # `log("…failed: …")` is exactly the writer 373 caught) for every
+            # production file.
+            continue
         for i, line in enumerate(py.read_text().splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue

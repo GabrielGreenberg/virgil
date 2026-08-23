@@ -219,6 +219,15 @@ kind:
 - `pgmark-gap-false-positive: <why it's correct>`
 - `pgmark-out-of-order-false-positive: <why it's correct>`
 
+A finding a **fusion** discovered is written on the row under
+`pgmark-fusion-<kind>:` — but suppress it under the BARE
+`pgmark-<kind>:` spelling above. The fact being recorded ("this gap
+is a journal offset") is a fact about the paper, not about which
+pass found it, and the validator's baseline reader strips only
+`pgmark-`, so a `pgmark-fusion-…-false-positive:` line resolves to a
+kind no finding can carry. Since task 413 the writer refuses that
+spelling and names the bare one.
+
 A concrete `<why it's correct>` is required (e.g., `span fits in
 PDF page count (offset reprint)`) — these warnings are auditable.
 Subsequent validator runs read the catalog warnings and treat any
@@ -251,13 +260,29 @@ matching audit finding kind. Run the audit with
 only suppressed items remain (shimojima2015semantic memo: without
 this, the loop can't tell "work remaining" from "work suppressed").
 
+The category must be spelled **exactly** as the audit emits it —
+`audit_deepindex._catalog_suppression_categories` matches verbatim,
+so a near-miss stores fine and silences nothing. Three spellings in
+an earlier version of this table were near-misses
+(`hyphenation-artifact`, `title-thanks`, and
+`pgmark-low-confidence-flood` filed as an *audit* kind); since task
+413 `add_validator_suppression.py` REFUSES a category no reader can
+match and names the one to use instead, so a typo is a message
+rather than a silent no-op. `python3 .virgil/scripts/library/suppression_vocabulary.py`
+lists every consumable category.
+
 | Audit kind | Suppression prefix | When to use |
 |---|---|---|
 | `case-errors` | `case-errors-false-positive:` | Brand-name CamelCase (covered by allowlist, but for edge cases not yet in the list) |
-| `hyphenation-artifact` | `hyphenation-artifact-false-positive:` | Coordinated compounds the negative-lookahead missed |
+| `hyphenation-artifacts` | `hyphenation-artifacts-false-positive:` | Coordinated compounds the negative-lookahead missed |
 | `footnote-inline-rate` | `footnote-inline-rate-false-positive:` | Philosophy premise enumerations (`1. a. ... b. ...`), TOC scope, submission-date lines |
-| `pgmark-low-confidence-flood` | `pgmark-low-confidence-flood-false-positive:` | Scanned-OCR book where every marker is positionally verified (use `recover_low_confidence_pgmarks.py --cascade` first) |
-| `title-thanks` | `title-thanks-false-positive:` | Title containing legitimate `\\thanks{}` that the brace-balanced parser already handles |
+| `pgmark-low-confidence` | `pgmark-low-confidence-false-positive:` | Scanned-OCR book where every marker is positionally verified (use `recover_low_confidence_pgmarks.py --cascade` first). Note the VALIDATOR's sibling kind is `pgmark-low-confidence-flood` — two different findings, two different spellings, both consumable |
+| `title-metadata` | `title-metadata-false-positive:` | Title cross-check the metadata comparison gets wrong — e.g. a legitimate `\\thanks{}` the brace-balanced parser already handles |
+| `invisibles` | `invisibles-false-positive:` | Invisible/ligature glyphs that are genuinely part of the source |
+| `references.bib-quality` | `references.bib-quality-false-positive:` | Bib-shape findings on an entry that is correct as printed |
+| `citation-completeness` | `citation-completeness-false-positive:` | `\\cite{}` keys resolved outside `references.bib` |
+| `unbalanced-brace` | `unbalanced-brace-false-positive:` | A long but genuinely balanced argument the runaway heuristic flags |
+| `missing-pgmark-range` | `missing-pgmark-range-false-positive:` | Front/back matter the PDF carries and the extraction correctly omits |
 
 ### Known false-positive patterns (do not chase with new validator carveouts)
 

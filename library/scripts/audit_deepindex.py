@@ -44,6 +44,44 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import citekey_matches, suppression_categories_from_catalog  # noqa: E402
 
 
+# ── Finding-category vocabulary (the ONE declaration) ───────────────────
+
+#: Every `(category, …)` this audit can emit, in declaration order.
+#:
+#: This is a VOCABULARY, not a description of one. It exists for the same
+#: reason `pgmark_validate.CONTINUITY_FINDING_KINDS` does: the categories are
+#: the head of an operator-authored suppression family
+#: (`<category>-false-positive:`, written by `add_validator_suppression.py`),
+#: and `_catalog_suppression_categories` matches them VERBATIM. So a category
+#: an operator cannot name exactly is a suppression that stores fine and
+#: silences nothing — the whole of task 413's bug class.
+#:
+#: The write door validates against this set
+#: (`suppression_vocabulary.classify_suppression_category`) and
+#: `test_pgmark_suppression.py` censuses the emit sites' own category
+#: literals against it in BOTH directions — so a new audit category is a test
+#: failure until it is declared here, and a stale entry is one until it is
+#: removed. Derive from here; never re-list.
+AUDIT_FINDING_CATEGORIES: tuple[str, ...] = (
+    "invisibles",
+    "hyphenation-artifacts",
+    "case-errors",
+    "title-metadata",
+    "footnote-inline-rate",
+    "references.bib-quality",
+    "citation-completeness",
+    "pgmark-low-confidence",
+    "unbalanced-brace",
+    "missing-pgmark-range",
+    # Not a finding about the paper's content but about the audit's own
+    # inputs (`main.tex not found`). Declared because it reaches the same
+    # punch-list and the same suppression comparison as every other row.
+    "error",
+)
+
+AUDIT_FINDING_CATEGORY_SET = frozenset(AUDIT_FINDING_CATEGORIES)
+
+
 # Invisible character codepoints to detect.
 # Soft hyphen, ZWSP, BOM, ZWNJ, ZWJ, NBSP, Braille blank.
 INVISIBLES = {
@@ -777,7 +815,34 @@ def audit(paper_dir: Path) -> dict:
     if range_finding is not None:
         findings.append(("missing-pgmark-range", range_finding))
 
+    _assert_declared_categories(findings)
     return {"citekey": citekey, "findings": findings}
+
+
+def _assert_declared_categories(findings: list) -> None:
+    """Hold the emit sites to `AUDIT_FINDING_CATEGORIES`, not merely describe
+    them — the sibling of `ContinuityFinding.__post_init__`, and for the same
+    reason.
+
+    An undeclared category is silent twice over: the punch-list renders it
+    fine, and `add_validator_suppression.py` then REFUSES the suppression an
+    operator writes for it (the category is not in `suppressible_categories()`),
+    so a real finding becomes unsilenceable. Fail loudly here instead.
+
+    Like its sibling this only fires on branches a run actually reaches, which
+    is why the source census in `test_pgmark_suppression.py` is the leg with
+    teeth.
+    """
+    undeclared = sorted({
+        cat for cat, _ in findings
+        if cat not in AUDIT_FINDING_CATEGORY_SET
+    })
+    if undeclared:
+        raise ValueError(
+            f"undeclared audit finding categor{'y' if len(undeclared) == 1 else 'ies'} "
+            f"{undeclared} — add to AUDIT_FINDING_CATEGORIES in audit_deepindex.py "
+            f"so an operator can suppress the finding at all"
+        )
 
 
 def format_punch_list(result: dict) -> str:
