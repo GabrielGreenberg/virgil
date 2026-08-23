@@ -30,6 +30,7 @@
 import { OMNI_PANELS, getPanelByCardKind } from "@/panels/panel-registry";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
 import type { Side } from "@/hooks/useViewPrefs";
+import { APPLIED_SPLICE_KIND_LIST } from "@/cards/lifecycle/applied-splice";
 import {
   defaultPanelSide,
   panelSidesFromPlacements,
@@ -108,6 +109,48 @@ export function deriveCategorySides(
     result[p.kind] = resolvePanelSide(p.kind, sides);
   }
   return result;
+}
+
+/**
+ * The ONE side that hosts the applied-pending NAVIGATOR (task 420) — the sticky
+ * prev/next + Keep-all / Dismiss-all header over every applied pending AI
+ * change in the document.
+ *
+ * ## Placement decides WHERE; visibility decides NOTHING
+ *
+ * The count of unreviewed applied changes is a fact about the DOCUMENT (live
+ * light-blue ranges in the user's `.tex`), not a card-filter preference — the
+ * same class of fact as an unanchored card (task 410's chip reads the
+ * UNFILTERED marker set) or a save refusal (task 357's notice renders before
+ * the collapse gate). So this resolver reads only the derived category SIDES
+ * (`deriveCategorySides`, the task-381 ladder) and never the hidden set: hiding
+ * Revisions and Cutter in the filter menu cannot move or remove the header.
+ * Pre-420 the host gated on `enabledForSide.has("revisions") ||
+ * enabledForSide.has("cutter")` — a per-side VIEW-FILTER predicate, so the
+ * header rendered TWICE when the two panels sat on opposite strips (both sides
+ * passed the `||`, one shared cursor driven from two navigators) and NOWHERE
+ * when either strip's filter hid both, taking the only document-wide review
+ * affordance with it.
+ *
+ * ## Derived from the family SSOT, with a STATED tie-break
+ *
+ * The panels that can hold an applied change are exactly the owners of
+ * `PendingChangeFamily` (`APPLIED_SPLICE_KIND_LIST`, task 238 — a third family
+ * member is a compile error there, and is covered here by declaration). When
+ * those panels sit on different strips the header follows the FIRST family in
+ * that list (`revision-suggestion` → Revisions), because the revision family
+ * is the larger producer of applied changes. A decision, not an accident of
+ * `||` order; a panel with no omni column falls back to its registry default.
+ */
+export function appliedPendingSide(categorySides: Partial<Record<OmniCategory, Side>>): Side {
+  for (const kind of APPLIED_SPLICE_KIND_LIST) {
+    const panel = getPanelByCardKind(kind);
+    if (!panel) continue;
+    return categorySides[panel.kind] ?? defaultPanelSide(panel.kind);
+  }
+  // Unreachable while the family is non-empty (pinned by applied-splice's
+  // own coverage suite); the registry default keeps the type total.
+  return "right";
 }
 
 /**

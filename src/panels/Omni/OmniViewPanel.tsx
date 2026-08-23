@@ -13,6 +13,7 @@ import {
   CATEGORY_LABELS,
   OMNI_CATEGORIES,
   omniCategoriesOnSide,
+  appliedPendingSide,
   type OmniCategory,
 } from "./omni-categories";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
@@ -106,6 +107,7 @@ export {
   deriveCategorySides,
   omniCategoriesForSide,
   omniCategoriesOnSide,
+  appliedPendingSide,
   hiddenFromLegacySides,
   type OmniCategory,
 } from "./omni-categories";

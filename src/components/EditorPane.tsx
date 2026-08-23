@@ -7633,6 +7633,7 @@ function PaneRail({
           deleteReportCard={reportsHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
+          categorySides={viewPrefs.categorySides}
           focusState={viewPrefs.focusState}
           onVisibleCardsChange={setOmniCardCount}
           bulkPendingChanges={omniBulkPendingChanges}
