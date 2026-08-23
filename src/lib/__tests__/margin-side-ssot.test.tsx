@@ -50,7 +50,7 @@ import path from "node:path";
 // shipped a defect (202b's runaway; this file's own unfalsifiable `orphan`
 // leg) gets ONE copy. Behaviour byte-identical; the why-a-scanner doc moved
 // with it.
-import { codeOnly, commentsStripped } from "./_source-scan";
+import { codeOnly, commentsStripped, trackedFiles } from "./_source-scan";
 import { Editor } from "@tiptap/core";
 import type { Decoration } from "@tiptap/pm/view";
 import { act, renderHook } from "@testing-library/react";
@@ -109,7 +109,13 @@ const PROD_FILES = ALL_FILES.filter((f) => !isTest(f));
  *  the `src/`+`library/` census structurally cannot see it: different root,
  *  different extensions. That blind spot is exactly how a fifth `anchor.margin`
  *  writer survived the first cut of this task. */
-const AGENT_FILES = walkAny(path.join(REPO, "editor"), /\.(py|md)$/);
+//
+//  Population = what the repo SHIPS (`trackedFiles`, task 429), never the
+//  working copy: `editor/dev/` holds gitignored critique memos that QUOTE the
+//  retired `"margin": { "side": … }` shape while explaining it is wrong, and a
+//  disk walk indicted them — red on the one checkout that holds the scratch,
+//  green in CI and every worktree.
+const AGENT_FILES = trackedFiles("editor", /\.(py|md)$/);
 
 /** Files whose CODE (comments + literals stripped) matches `re`. */
 function codeHits(files: string[], re: RegExp): string[] {

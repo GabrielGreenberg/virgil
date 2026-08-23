@@ -36,7 +36,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { commentsStripped } from "./_source-scan";
+import { commentsStripped, trackedFiles } from "./_source-scan";
 import {
   ALL_VIRGIL_MARKERS,
   BLOCK_TEX_MARKERS,
@@ -164,20 +164,14 @@ describe("marker vocabulary — the third root (leg 1b)", () => {
   const ROOTS = ["library", "editor"];
   const TOKEN = /\\(v[a-z]*id[a-z]*)(?![a-zA-Z])/g;
 
-  function proseFiles(dir: string, out: string[] = []): string[] {
-    if (!fs.existsSync(dir)) return out;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) proseFiles(full, out);
-      else if (/\.(md|py)$/.test(e.name)) out.push(full);
-    }
-    return out;
-  }
+  // Population = what the repo SHIPS (`trackedFiles`, task 429): `editor/dev/`
+  // holds gitignored sandboxes and critique memos that spell marker commands
+  // freely, and a disk walk would census them on exactly one machine.
+  const proseFiles = (root: string) => trackedFiles(root, /\.(md|py)$/);
 
   const spelled = new Map<string, string[]>();
   for (const root of ROOTS) {
-    for (const f of proseFiles(path.join(REPO, root))) {
+    for (const f of proseFiles(root)) {
       const text = fs.readFileSync(f, "utf8");
       for (const m of text.matchAll(TOKEN)) {
         const rel = path.relative(REPO, f);
