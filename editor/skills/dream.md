@@ -136,7 +136,36 @@ all of them), and emits one JSON blob:
 - `memos` — the full selected set (frontmatter + the non-empty buckets) for your
   own pattern detection.
 
-**Preflight — are you running the current prompt?** This skill is *distributed*:
+**Preflight 0 — can you hear at all?** Read **`memoSinkPresent`** before you
+read a single count. `memoCount: 0` means *"a quiet night"* **only** when that
+flag is true; when it is false the sink at `memosRoot` does not exist, so the
+zero means the dream **could not look** — nothing was captured and the run
+cannot know it. This is the same *"could not look" vs "looked and found
+nothing"* split `driftChecked` draws and `selfReferentialOnly` follows, applied
+to the loop's **primary input**: read the flag, never re-derive it by eye with
+an `ls`.
+
+A false sink outranks drift as the night's top finding, and the asymmetry is
+the point — a drifted prompt still *records* (tomorrow's dream reads today's
+memos and can still learn), whereas an absent sink records **nothing** and
+every subsequent night reports the same healthy-looking no-op over it. The
+digest is the only durable output, so unflagged the silence is permanent.
+
+`reflect.py` creates the sink on first write, so `false` means precisely
+*"nothing has been captured here since the sink last existed"* — benign on a
+machine's first day, a broken capture layer on its thirtieth. Don't guess which:
+a fresh clone, a wrong `VIRGIL_REPO_ROOT`, or a stale `VIRGIL_DEV_HOME` pin all
+produce it. Record the fact and the calendar in the digest and let the human
+rule; the corpus is not yours to reconstruct.
+
+*Migration note (task 431, 2026-08-23):* the loop's memory moved from the
+machine-global `~/.virgil-dev` — which the dev-machine move left behind, zeroing
+it with no signal — to `<primary checkout>/editor/dev` (gitignored), resolved
+via `VIRGIL_REPO_ROOT` or the git common dir so a worktree reads the main
+checkout's sink, never its own empty twin. The old home's contents were copied
+across once; nothing reads `~/.virgil-dev` any more.
+
+**Preflight 1 — are you running the current prompt?** This skill is *distributed*:
 the copy that actually runs is a built artifact — the skill BUNDLE that
 skill-sync writes into a paper's `.virgil/`, mirrored for dev convenience under
 `.claude/commands/editor/` — regenerated only by `npm run build:skill-bundles`

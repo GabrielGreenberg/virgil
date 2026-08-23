@@ -18,8 +18,9 @@ frozen spec: `EDITOR_SKILLS_V1.html` §14 · conceptual home:
 > *paper-directed cowork sessions* (cwd = a paper folder, **not** the repo, which
 > is where most editing happens and where nothing was captured before): an
 > `apply_response` tail-trigger writes the memo mechanically for every writeback,
-> and all three streams resolve **one machine-global sink** (`~/.virgil-dev`), so
-> the repo-side dream reads exactly where a paper-folder `reflect` wrote — see
+> and all three streams resolve **one sink under the primary checkout**
+> (`<repo>/editor/dev`, gitignored — task 431), so the repo-side dream reads
+> exactly where a paper-folder `reflect` wrote — see
 > [The dev-loop sink](#the-dev-loop-sink) and
 > [Capture without the agent remembering](#capture-without-the-agent-remembering-the-tail-trigger).
 > The remaining work is the Phase-8 UI.
@@ -63,17 +64,21 @@ claude                     # a normal session: reflection is a no-op
 **Making every session a dev session — the config for cowork capture.** A
 paper-directed cowork session's cwd is a *paper folder outside the repo*, so the
 repo's project `.claude/settings.local.json` toggle never reaches it. To capture
-those sessions (where most real editing happens), set the toggle **and** the sink
-pin at **user scope** — the only settings scope that reaches an out-of-repo cwd —
-in `~/.claude/settings.json`:
+those sessions (where most real editing happens), set the toggle **and** the
+repo pin at **user scope** — the only settings scope that reaches an out-of-repo
+cwd — in `~/.claude/settings.json`:
 
 ```jsonc
 "env": {
   "VIRGIL_DEV": "1",
-  "VIRGIL_DEV_HOME": "/Users/<you>/.virgil-dev",   // the one machine-global sink
-  "VIRGIL_REPO_ROOT": "/Users/<you>/…/virgil"       // best-effort skillSha lookups
+  "VIRGIL_REPO_ROOT": "/Users/<you>/…/virgil"   // LOAD-BEARING: names the checkout whose editor/dev/ is the sink
 }
 ```
+
+`VIRGIL_REPO_ROOT` used to be a best-effort convenience (skillSha lookups); since
+task 431 it is what a paper-folder session resolves the sink FROM — without it
+(and without a `VIRGIL_DEV_HOME` pin) `reflect.py` refuses loudly rather than
+writing somewhere the dream will never read.
 
 `VIRGIL_`-namespaced and read **only** by these dev-loop scripts, so it is inert
 in every non-Virgil session and, via the runtime gate, in end-user Virgil
@@ -153,19 +158,36 @@ in later by the convention when the agent reflects. Floor + ceiling, one memo.
 ### The dev-loop sink
 
 Memos (reflect), digests (dream), and iterations (iterate) resolve **one
-machine-global home**, `~/.virgil-dev/` (override the base with `VIRGIL_DEV_HOME`;
-each stream also has its own `VIRGIL_DEV_MEMOS_DIR` / `VIRGIL_DREAM_DIGESTS_DIR` /
-`VIRGIL_DEV_ITERATIONS_DIR` pin). Resolved once in
-[`_common`](../scripts/_common.py) (`dev_home` / `memos_root` / `digests_root` /
-`iterations_root`) — reflect and dream import the **same** resolver, never a
-duplicated default. This is the load-bearing invariant: **the writer (reflect)
-and the reader (dream) must resolve identically**, or the dream reads an empty
-dir with no error. A machine-global *absolute* default (not a `REPO_ROOT`-
-relative one) is what makes them agree from **any** cwd — a repo checkout, a git
-worktree, or a synced paper's `.virgil/scripts/editor/` copy (where a
-`__file__`-relative root would otherwise land *inside* the paper's `.virgil/`).
-That decoupling from any one checkout is exactly what lets a paper-directed
-session's memo reach the dream.
+home under the primary checkout**, `<repo>/editor/dev/` — gitignored bar the
+`.gitkeep`s, so it moves with the clone and never with a user account (override
+the base with `VIRGIL_DEV_HOME`; each stream also has its own
+`VIRGIL_DEV_MEMOS_DIR` / `VIRGIL_DREAM_DIGESTS_DIR` / `VIRGIL_DEV_ITERATIONS_DIR`
+pin). Resolved once in [`_common`](../scripts/_common.py) (`dev_home` /
+`memos_root` / `digests_root` / `iterations_root`) — reflect and dream import
+the **same** resolver, never a duplicated default. This is the load-bearing
+invariant: **the writer (reflect) and the reader (dream) must resolve
+identically**, or the dream reads an empty dir with no error.
+
+The home has moved twice, each time over that invariant. It began here,
+`REPO_ROOT`-relative off `__file__` — which diverged for a synced paper's
+`.virgil/scripts/editor/` copy (the root landed *inside* the paper's `.virgil/`)
+— so it moved to a machine-global `~/.virgil-dev`. Then the dev-machine move
+(28fc58fd) carried every tracked file and left that untracked home behind: the
+loop's whole memory started at zero and the dream read it as a quiet night
+(task 431). So it is repo-relative again, with the divergence closed by
+**resolving the PRIMARY checkout rather than inferring it from `__file__`**:
+`VIRGIL_REPO_ROOT` first (set at user scope it reaches a paper-folder cwd), else
+the git *common dir* of the tree the script lives in — which is the primary even
+from a worktree, whose own `editor/dev/` is a different, always-empty directory
+that a tracked `.gitkeep` makes LOOK present. Where neither resolves there is
+**no second default**: `dev_home()` raises `DevHomeUnresolved`, the gate reads
+that as "dev mode off", and every writer refuses loudly naming the two env vars.
+The dev-mode marker lives in the same home (`<repo>/editor/dev/dev-mode`).
+
+**Migration (one-time, 2026-08-23):** whatever sat under `~/.virgil-dev/`
+(`memos/`, `dream-digests/`, `iterations/`, `dev-mode`) is copied into
+`<repo>/editor/dev/`. Nothing reads the old path any more; delete it when you
+are satisfied.
 
 ### It consumes the contract — it does not re-derive the outcome
 
@@ -178,17 +200,12 @@ of the contract, not new per-skill machinery.
 
 ## The memo
 
-Path: `~/.virgil-dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` (the machine-global
-[sink](#the-dev-loop-sink); `VIRGIL_DEV_MEMOS_DIR` overrides). It is the sibling
-of `~/.virgil-dev/iterations/` and is **distinct** from the per-paper cowork memo
-stream (`<docPath>/.virgil/memos/`) and the library memo stream
-(`~/Virgil-Library/.virgil/memos/`). The three streams never mix — different
-audience, different consumer. (The home moved off the old repo-side
-`editor/dev/memos/` — whose `REPO_ROOT`-relative default diverged between a
-paper-folder writer and the repo-side reader — to the machine-global sink both
-now share. The in-repo `editor/dev/{memos,dream-digests,iterations}/` `.gitkeep`
-dirs are retained only as the documented shape; they are no longer the resolved
-root.)
+Path: `<repo>/editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` (the
+primary-checkout [sink](#the-dev-loop-sink); `VIRGIL_DEV_MEMOS_DIR` overrides).
+It is the sibling of `<repo>/editor/dev/iterations/` and is **distinct** from
+the per-paper cowork memo stream (`<docPath>/.virgil/memos/`) and the library
+memo stream (`~/Virgil-Library/.virgil/memos/`). The three streams never mix —
+different audience, different consumer.
 
 ### Frontmatter (what the dream reads mechanically)
 

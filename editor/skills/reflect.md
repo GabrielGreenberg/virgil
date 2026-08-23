@@ -68,8 +68,9 @@ what misrouted reflections into `<docPath>/.virgil/memos/`.
 
 **A matching cue means RUN THE SCRIPT — never interrogate the user about
 routing or dev-ness.** The gate is the script's job, not yours: `reflect.py`
-no-ops safely on a non-dev machine and says so, and dev mode is a machine fact
-(the `~/.virgil-dev/dev-mode` marker), not something to be divined from prose.
+no-ops safely on a non-dev machine and says so, and dev mode is a checkout fact
+(`VIRGIL_DEV=1`, or the `<repo>/editor/dev/dev-mode` marker), not something to
+be divined from prose.
 So on "make a dream memo about X": compose the buckets from X and run
 `/editor/reflect <docPath> <skill> -` with `--memo-json` — use the skill the
 observation is about, or `session` for a general observation (a compile issue,

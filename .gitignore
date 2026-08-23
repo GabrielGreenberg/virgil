@@ -71,6 +71,9 @@ next-env.d.ts
 !/editor/dev/iterations/.gitkeep
 /editor/dev/memos/*
 !/editor/dev/memos/.gitkeep
+# the dev-mode marker (task 431: dev mode is a fact about the CHECKOUT, so the
+# marker lives in the home that moves with the clone — never tracked)
+/editor/dev/dev-mode
 /editor/dev/dream-digests/*
 !/editor/dev/dream-digests/.gitkeep
 /editor/dev/sandboxes/*

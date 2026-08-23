@@ -105,17 +105,69 @@ def only_skill(memos):
     return fm.get("skill")
 
 
-# ── the SSOT identity invariant (writer == reader, machine-global) ───────────
-print("\n=== sink SSOT: writer==reader, machine-global, relative→$HOME ===")
+# ── the SSOT identity invariant (writer == reader, one PRIMARY-checkout home) ─
+# RENEGOTIATED (task 431): this leg used to pin the default to the
+# machine-global `~/.virgil-dev` — the home that the dev-machine move left
+# behind, zeroing the loop's memory with no signal. The default is now
+# `<primary checkout>/editor/dev` (gitignored), and the property that made the
+# old home right — writer and reader resolve IDENTICALLY from any cwd — is
+# kept by resolving the PRIMARY checkout (VIRGIL_REPO_ROOT, else the git common
+# dir), never `__file__`'s own tree. The three legs below are the contract.
+print("\n=== sink SSOT: writer==reader, primary-checkout home, relative→$HOME ===")
 _saved = {k: os.environ.get(k) for k in
-          ("VIRGIL_DEV_MEMOS_DIR", "VIRGIL_DREAM_DIGESTS_DIR", "VIRGIL_DEV_HOME")}
+          ("VIRGIL_DEV_MEMOS_DIR", "VIRGIL_DREAM_DIGESTS_DIR", "VIRGIL_DEV_HOME",
+           "VIRGIL_REPO_ROOT", "VIRGIL_DEV")}
 for k in _saved:
     os.environ.pop(k, None)
 try:
     a, b, c = reflect._memos_root(), dream._memos_root(), _common.memos_root()
     check(a == b == c, f"reflect==dream==common memos_root ({a})")
-    check("Programming/virgil" not in str(c) and str(c).endswith(".virgil-dev/memos"),
-          "default is the machine-global home, NOT a repo-relative path")
+    check(str(c).endswith("/editor/dev/memos") and ".virgil-dev" not in str(c),
+          "default is <checkout>/editor/dev/memos, NOT the retired ~/.virgil-dev")
+    # (1) a WORKTREE resolves the PRIMARY checkout's sink, not its own empty
+    # twin — whose tracked .gitkeep would make it read as present-but-quiet,
+    # which is exactly the silent divergence the home exists to prevent.
+    _git_common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--git-common-dir"],
+                                 capture_output=True, text=True).stdout.strip()
+    _primary = Path(_git_common if os.path.isabs(_git_common) else ROOT / _git_common).resolve().parent
+    check(c == (_primary / "editor" / "dev" / "memos").resolve(),
+          f"the home is under the PRIMARY checkout ({_primary}), worktree or not")
+    _common._PRIMARY_CACHE.clear()
+    _wt = Path(tempfile.mkdtemp(prefix="cowork-wt-"))
+    _r = subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(_wt)],
+                        capture_output=True, text=True)
+    if _r.returncode == 0:
+        try:
+            os.environ["VIRGIL_REPO_ROOT"] = str(_wt)   # pin names the WORKTREE…
+            _common._PRIMARY_CACHE.clear()
+            check(_common.dev_home() == (_primary / "editor" / "dev").resolve(),
+                  "…and dev_home still resolves the primary checkout through the git common dir")
+        finally:
+            os.environ.pop("VIRGIL_REPO_ROOT", None)
+            _common._PRIMARY_CACHE.clear()
+            subprocess.run(["git", "-C", str(ROOT), "worktree", "remove", "--force", str(_wt)],
+                           capture_output=True, text=True)
+    else:
+        print(f"       SKIP worktree leg (git worktree add failed: {_r.stderr.strip()[:80]})")
+    # (2) an UNRESOLVABLE home is a loud refusal, never a second default —
+    # simulated by pointing VIRGIL_REPO_ROOT at a non-checkout while making
+    # the __file__ walk fail is impossible from inside the repo, so this drives
+    # the resolver's own seam: source_repo_root() → None.
+    _orig_srr = _common.source_repo_root
+    _common.source_repo_root = lambda: None
+    try:
+        try:
+            _common.dev_home(); _raised = False
+        except _common.DevHomeUnresolved as e:
+            _raised = "VIRGIL_REPO_ROOT" in str(e) and "VIRGIL_DEV_HOME" in str(e)
+        check(_raised is True, "no checkout + no pin → DevHomeUnresolved naming both env vars")
+        check(_common.dev_home_or_none() is None, "dev_home_or_none reads it as None")
+        os.environ.pop("VIRGIL_DEV", None)
+        check(not _common.dev_mode_enabled(), "…and the gate reads an unresolvable home as OFF")
+    finally:
+        _common.source_repo_root = _orig_srr
+        if _saved.get("VIRGIL_DEV") is not None:
+            os.environ["VIRGIL_DEV"] = _saved["VIRGIL_DEV"]
     check(_common.digests_root() == dream._digests_root(),
           "digests_root shared between dream and _common")
     os.environ["VIRGIL_DEV_HOME"] = "/tmp/vh"
@@ -283,7 +335,7 @@ check(len(memo_files(mem)) == 0, "DEV-off wrote NO memo (the never-ships-to-user
 # The dominant source of dev-loop noise until 2026-08-09: this suite runs under
 # VIRGIL_DEV=1, and the tail-trigger spawns reflect.py as a subprocess that
 # inherits the ambient env — so a test that pins no sink filed its sandbox's
-# card ops into the human's real ~/.virgil-dev/memos, ~280 per suite run.
+# card ops into the human's real default memo sink, ~280 per suite run.
 # See _common._is_throwaway_paper.
 print("\n=== throwaway-paper guard (temp sandbox + default sink → no memo) ===")
 import _common  # noqa: E402  (imported here: the guard is the subject, not a helper)
@@ -368,7 +420,7 @@ check(not probe.exists() or len(sorted(probe.rglob('*.md'))) == 0,
 
 
 # ── the gate itself: explicit env wins; unset env falls to the machine marker ─
-# Dev mode is a fact about the MACHINE (the ~/.virgil-dev/dev-mode marker), so
+# Dev mode is a fact about the CHECKOUT (the <dev_home>/dev-mode marker), so
 # a session type that doesn't inherit ~/.zshenv still gates correctly — the
 # 2026-08-16 cowork refusal class. An explicit env value beats the marker both
 # ways, which is what keeps "simulate an end-user machine" testable on a dev box.

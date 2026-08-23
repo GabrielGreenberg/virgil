@@ -58,8 +58,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import (
+    DevHomeUnresolved,
     atomic_write,
     dev_mode_enabled,
+    die,
     digests_root as _shared_digests_root,
     memos_root as _shared_memos_root,
     source_repo_root,
@@ -109,14 +111,23 @@ def _now_iso_date() -> tuple[str, str]:
 
 
 def _memos_root() -> Path:
-    # The one machine-global sink (shared with reflect.py) — resolves the same
-    # from a repo checkout OR a synced paper's .virgil/scripts/editor/ copy, so
-    # the dream reads exactly where reflect wrote.
-    return _shared_memos_root()
+    # The one sink (shared with reflect.py), under the PRIMARY checkout —
+    # resolves the same from a repo checkout, a worktree, OR a synced paper's
+    # .virgil/scripts/editor/ copy (via VIRGIL_REPO_ROOT), so the dream reads
+    # exactly where reflect wrote. Unresolvable is a loud refusal (task 431).
+    try:
+        return _shared_memos_root()
+    except DevHomeUnresolved as e:
+        die(str(e))
+        raise  # unreachable; for the type checker
 
 
 def _digests_root() -> Path:
-    return _shared_digests_root()
+    try:
+        return _shared_digests_root()
+    except DevHomeUnresolved as e:
+        die(str(e))
+        raise  # unreachable; for the type checker
 
 
 def _dream_sha() -> str:
@@ -434,8 +445,47 @@ def _load_memo(path: Path, memos_root: Path) -> dict:
     }
 
 
+def _memo_sink_present(memos_root: Path) -> bool:
+    """Does the capture sink the dream READS actually exist?
+
+    `_select` returns `[]` for a sink that does not exist and for one that is
+    empty — the same bytes for "the loop recorded nothing" and "the loop cannot
+    hear at all". That is the exact conflation `driftChecked`/`driftReason`
+    exist to prevent one field over, and this is the loop's PRIMARY input, so
+    it gets the same treatment: the SCRIPT computes the condition, the prompt
+    reads the flag instead of re-deriving it by eye (an `ls` the prompt never
+    asks for).
+
+    Reachable and CONFIG-DEPENDENT, which is what makes it worth a flag rather
+    than a comment. `dev_home()` defaulted to `~/.virgil-dev` — HOME-relative
+    and machine-global, outside the repo and outside git — so a new machine, a
+    new ACCOUNT on the same machine, or an unset/mistyped `VIRGIL_DEV_HOME`
+    silently yielded a sink that had never existed. Measured on 2026-08-21,
+    after the dev-machine move (28fc58fd) carried the tracked files to a new
+    account but not the untracked sink: `~/.virgil-dev` was absent, `select`
+    reported `memoCount: 0`, and the documented flow read that as a clean quiet
+    night. Left unflagged the failure is SILENT and PERMANENT — every
+    subsequent dream reports the same healthy no-op, and the digest, which is
+    the only durable record, agrees.
+
+    False alarms are impossible in the direction that matters: `reflect.py`
+    creates the sink on its first write, so `False` means precisely "nothing
+    has been captured here since the sink last existed" — benign on a machine's
+    first day, and the whole story on its thirtieth. The script reports the
+    fact; the human reads the calendar.
+
+    Since task 431 the home is `<primary checkout>/editor/dev` (gitignored),
+    so the sink travels with the clone — but a wrong `VIRGIL_REPO_ROOT`, a
+    fresh clone, or a `VIRGIL_DEV_HOME` pin at a stale path still produce the
+    same zero, which is why the flag stays."""
+    return memos_root.is_dir()
+
+
 def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
-    """Every memo strictly after `marker`, sorted oldest→newest."""
+    """Every memo strictly after `marker`, sorted oldest→newest.
+
+    An empty result is ambiguous by construction — see `_memo_sink_present`,
+    which callers publish alongside it so the two cases can be told apart."""
     if not memos_root.is_dir():
         return []
     recs = []
@@ -541,6 +591,11 @@ def cmd_select(_argv: list[str]) -> int:
         # two calendar dates (dream.py digest keys off the same _now_iso_date()).
         "dreamDate": _now_iso_date()[1],
         "memosRoot": str(memos_root),
+        # ...and `memoCount: 0` is only "a quiet night" when this is true. A
+        # missing sink means the dream recorded nothing and CANNOT know it —
+        # the same "could not look" vs "looked and found nothing" split
+        # `driftChecked` draws. See `_memo_sink_present`.
+        "memoSinkPresent": _memo_sink_present(memos_root),
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),
         "lastDigest": (str(last_digest.relative_to(_digests_root()))
@@ -610,8 +665,8 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
 
     out: list[str] = ["---"]
     for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
-              "memoCount", "acted", "proposed", "refused", "bootstrap",
-              "dreamSha"):
+              "memoCount", "memoSinkPresent", "acted", "proposed", "refused",
+              "bootstrap", "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
             v = "true" if v else "false"
@@ -628,6 +683,20 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         f"Acted on {len(acted)}, proposed {len(proposed)}, refused {len(refused)}."
     )
     out.append("")
+    if not fm.get("memoSinkPresent", True):
+        out.append(
+            f"> **⚠️ The capture sink does not exist — this was not a quiet "
+            f"night, it was a deaf one.** `{fm.get('_memosRoot', '?')}` is "
+            f"absent, so `memoCount: 0` above means the dream could not look, "
+            f"NOT that nothing was captured. `reflect.py` creates the sink on "
+            f"its first write, so this reads as benign on a machine's first "
+            f"day and as a broken capture layer on its thirtieth — check the "
+            f"calendar, `VIRGIL_REPO_ROOT` and any `VIRGIL_DEV_HOME` pin before "
+            f"trusting any zero here. "
+            f"Left unaddressed, every following digest repeats this same "
+            f"healthy-looking no-op."
+        )
+        out.append("")
     if fm.get("_rotated"):
         out.append(
             f"> **Second run today.** The earlier run's digest was preserved as "
@@ -786,6 +855,8 @@ def cmd_digest(argv: list[str]) -> int:
         "refused": len(report.get("refused") or []),
         "bootstrap": bool((report.get("bootstrap") or "").strip()),
         "dreamSha": _dream_sha(),
+        "memoSinkPresent": _memo_sink_present(memos_root),
+        "_memosRoot": str(memos_root),
         "_date": date_str,
     }
 
@@ -820,7 +891,7 @@ def main(argv: list[str]) -> int:
     # The gate. OFF (the default) → do nothing, succeed. The dream is a dev
     # affordance; it never runs — or writes — outside a DEV session.
     if not dev_mode_enabled():
-        print("dream: DEV mode off (no VIRGIL_DEV, no ~/.virgil-dev/dev-mode marker) — no-op.")
+        print("dream: DEV mode off (no VIRGIL_DEV, no <repo>/editor/dev/dev-mode marker) — no-op.")
         return 0
 
     return _SUBCOMMANDS[argv[0]](argv[1:])

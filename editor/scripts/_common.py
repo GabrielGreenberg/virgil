@@ -392,7 +392,8 @@ DEV_MODE_MARKER = "dev-mode"  # file under dev_home(); its EXISTENCE means on
 
 def dev_mode_enabled() -> bool:
     """True iff `VIRGIL_DEV` is set truthy, or — with the env entirely unset —
-    the machine carries the `~/.virgil-dev/dev-mode` marker file.
+    the checkout carries the `<dev_home()>/dev-mode` marker file
+    (`<primary checkout>/editor/dev/dev-mode`, gitignored).
 
     Two rungs, in order:
     1. An EXPLICIT env value always wins, both ways: a truthy token
@@ -400,44 +401,75 @@ def dev_mode_enabled() -> bool:
        (`0`, `false`, empty, garbage) is OFF — which is how a test simulates
        a non-dev machine on a dev machine.
     2. Env unset → the marker file decides. The marker exists so dev mode is
-       a fact about the MACHINE, not about which shells sourced which rc file:
+       a fact about the CHECKOUT, not about which shells sourced which rc file:
        a session type that doesn't inherit `~/.zshenv` (2026-08-16: a cowork
        session refused a "dream memo" over exactly this doubt) still gates
-       correctly, because every process agrees on `$HOME`.
+       correctly, because every process resolves the same primary checkout
+       (task 431 moved the home under the repo; `VIRGIL_REPO_ROOT` at user
+       scope is what reaches a paper-folder cwd). An unresolvable home reads
+       as OFF — no checkout, no dev loop.
 
-    OFF stays the safe default for end users: their machines have no
-    `~/.virgil-dev/` at all, so nothing ships capture to them."""
+    OFF stays the safe default for end users: their machines have no Virgil
+    source checkout at all, so nothing ships capture to them."""
     raw = os.environ.get(DEV_MODE_ENV)
     if raw is not None:
         return raw.strip().lower() in _DEV_TRUE_TOKENS
+    home = dev_home_or_none()
+    if home is None:
+        return False  # no resolvable home → no marker → not a dev checkout
     try:
-        return (dev_home() / DEV_MODE_MARKER).is_file()
+        return (home / DEV_MODE_MARKER).is_file()
     except OSError:
         return False
 
 
 # ---------------------------------------------------------------------------
-# Dev-loop sink — the one machine-global home for dev-dream artifacts
+# Dev-loop sink — the one home for dev-dream artifacts, under the PRIMARY repo
 #
 # The capture layer (reflect.py), the dream (dream.py), and iterate
 # (dev_loop.py) must ALL resolve the memo / digest / iteration roots
 # identically, from ANY cwd — a repo checkout, a git worktree, or a *synced
 # paper folder* (where the scripts run from `<paper>/.virgil/scripts/editor/`
 # and a `__file__`-relative REPO_ROOT would land *inside* the paper's
-# `.virgil/`). So the roots default to a machine-global home (`~/.virgil-dev`),
-# NOT a REPO_ROOT-relative path: the writer (reflect) and the reader (dream)
-# then agree even when no env var is set — the one hard invariant, since a
-# silent divergence makes the dream read an empty dir with no error. Each root
-# still honors its explicit env override first (the test seam + the user pin).
+# `.virgil/`). That is the one hard invariant: the writer (reflect) and the
+# reader (dream) must agree, since a silent divergence makes the dream read an
+# empty dir with no error.
 #
-# This is what lets a paper-directed cowork session accumulate memos the
-# repo-side dream can later consume: memos land in the shared home regardless of
-# which checkout (if any) the running script physically lives in.
+# History, because the home has moved TWICE and each move was about that
+# invariant. It began REPO-relative (`editor/dev/memos`), diverged for a
+# paper-folder writer, and moved to a machine-global `~/.virgil-dev` (2026-08).
+# Then the dev-machine move (28fc58fd) carried every tracked file and left the
+# untracked `~/.virgil-dev` behind: the loop's entire memory — every memo, every
+# digest, the high-water marker — started at zero, and the dream read that as
+# a quiet night (task 431). So the home is now `<primary checkout>/editor/dev`
+# (gitignored, so it moves with the clone and never with the account), and the
+# two lessons are kept at once:
+#
+#   * "primary checkout" is RESOLVED, never inferred from `__file__`: the
+#     `VIRGIL_REPO_ROOT` pin first (set at user scope it reaches a paper-folder
+#     cwd — see editor/dev/README.md), else the git COMMON dir of the tree this
+#     file lives in, which is the primary even from a worktree. A worktree's own
+#     `editor/dev/` is a different, always-empty directory whose tracked
+#     `.gitkeep` would make it LOOK present — reading it is exactly the silent
+#     divergence above, which is why the git common dir is load-bearing.
+#   * where the primary cannot be resolved there is NO fallback home. A second
+#     default is a second place memos can land unread; the honest answer is a
+#     `DevHomeUnresolved` the gate reads as "dev mode off" and every writer
+#     reports as a loud refusal naming the two env vars that fix it.
+#
+# Each root still honors its explicit env override first (the test seam + the
+# user pin): `VIRGIL_DEV_HOME` for the base, per-stream `VIRGIL_DEV_*_DIR`.
 # ---------------------------------------------------------------------------
 
 DEV_HOME_ENV = "VIRGIL_DEV_HOME"
-_DEV_HOME_DEFAULT = Path.home() / ".virgil-dev"
+DEV_HOME_SUBDIR = "editor/dev"  # under the PRIMARY checkout; gitignored bar .gitkeeps
 SOURCE_REPO_ENV = "VIRGIL_REPO_ROOT"
+
+
+class DevHomeUnresolved(RuntimeError):
+    """No dev home: `VIRGIL_DEV_HOME` is unset, `VIRGIL_REPO_ROOT` is unset or
+    wrong, and this file does not live inside a Virgil source checkout. Raised
+    rather than defaulted — see the header above."""
 
 
 def _dir_override(env_name: str) -> Path | None:
@@ -453,11 +485,67 @@ def _dir_override(env_name: str) -> Path | None:
     return (p if p.is_absolute() else Path.home() / p).resolve()
 
 
+_PRIMARY_CACHE: dict[Path, Path] = {}
+
+
+def _primary_checkout(root: Path) -> Path:
+    """The PRIMARY working tree of the repo `root` belongs to — `root` itself
+    for an ordinary clone, the main checkout for a git worktree (whose
+    `--git-common-dir` is `<primary>/.git`). Falls back to `root` when git is
+    unavailable or the dir is not a repo (a synced copy pinned by env), so the
+    pinned path still wins. Cached per root: the answer cannot change within a
+    process and a subprocess per `dev_home()` call would be a real cost."""
+    root = root.resolve()
+    hit = _PRIMARY_CACHE.get(root)
+    if hit is not None:
+        return hit
+    primary = root
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            common = Path(r.stdout.strip())
+            if not common.is_absolute():
+                common = root / common
+            common = common.resolve()
+            if common.name == ".git" and (common.parent / "editor" / "skills").is_dir():
+                primary = common.parent
+    except Exception:
+        pass
+    _PRIMARY_CACHE[root] = primary
+    return primary
+
+
 def dev_home() -> Path:
-    """The machine-global root for dev-dream artifacts (memos / digests /
-    iterations). `VIRGIL_DEV_HOME` overrides; default `~/.virgil-dev`. Always
-    absolute and cwd-independent, so every session resolves the same home."""
-    return _dir_override(DEV_HOME_ENV) or _DEV_HOME_DEFAULT
+    """The root for dev-dream artifacts (memos / digests / iterations):
+    `VIRGIL_DEV_HOME` if set; else `<primary checkout>/editor/dev`, where the
+    primary checkout is `VIRGIL_REPO_ROOT` or the git common dir of the tree
+    this file lives in (so a worktree resolves the MAIN checkout's sink, not
+    its own empty twin). Always absolute and cwd-independent. Raises
+    `DevHomeUnresolved` when none of those resolve — there is deliberately no
+    second default (header above)."""
+    pinned = _dir_override(DEV_HOME_ENV)
+    if pinned is not None:
+        return pinned
+    repo = source_repo_root()
+    if repo is None:
+        raise DevHomeUnresolved(
+            "virgil dev home unresolved: set VIRGIL_REPO_ROOT to the Virgil source "
+            "checkout (or VIRGIL_DEV_HOME to an explicit sink) — this script is not "
+            "running inside one, so there is nowhere to put dev-loop memos"
+        )
+    return _primary_checkout(repo) / DEV_HOME_SUBDIR
+
+
+def dev_home_or_none() -> Path | None:
+    """`dev_home()` for callers that want "unresolved" as a value (the gate,
+    the throwaway guard) rather than an exception."""
+    try:
+        return dev_home()
+    except DevHomeUnresolved:
+        return None
 
 
 def memos_root() -> Path:
@@ -532,8 +620,9 @@ def _is_throwaway_paper(doc: Path) -> bool:
         # no intent — it is an ambient convenience export — and honoring it
         # disarmed this guard machine-wide for every test run (2026-08-14: 30
         # synthetic memos per suite run into the human's real stream).
+        home = dev_home_or_none()
         try:
-            default_sink = (dev_home() / "memos").resolve()
+            default_sink = (home / "memos").resolve() if home is not None else None
         except OSError:
             default_sink = None
         if default_sink is None or override.resolve() != default_sink:
@@ -562,6 +651,15 @@ def spawn_reflection(doc: Path, skill: str, task_id: str = "-", *, timeout: int 
     if not dev_mode_enabled():
         return
     if _is_throwaway_paper(doc):
+        return
+    # The sink must resolve BEFORE the subprocess, whose stderr is captured and
+    # dropped: an unresolved home would otherwise be the silent loss the home
+    # relocation (task 431) exists to end. One line on OUR stderr, never stdout
+    # (the caller's result JSON lives there).
+    try:
+        memos_root()
+    except DevHomeUnresolved as e:
+        print(f"reflect: no memo written — {e}", file=sys.stderr)
         return
     try:
         script = Path(__file__).resolve().parent / "reflect.py"
