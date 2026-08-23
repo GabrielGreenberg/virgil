@@ -1466,6 +1466,8 @@ export function createHeadingWithLabel(
         focusViewPlugin(),
         new Plugin({
           key: new PluginKey("sectionNumbers"),
+          // [cost: O(1)/tx — docChanged + observer-diff structural gate (headings / figures / examples / labels); deferred body O(doc) (three descendants walks) only on such a change] (task 433 census)
+          // A plain keystroke inside a paragraph publishes contentChangedUuids only and bails before any walk. With no observer diff (pending === null: the observer is not installed, e.g. a bare test stack) the numberer runs whole — a stated, tagged exemption.
           appendTransaction(transactions, _oldState, newState) {
             if (!transactions.some((tr) => tr.docChanged)) return null;
 

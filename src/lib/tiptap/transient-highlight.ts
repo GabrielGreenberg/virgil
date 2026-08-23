@@ -168,6 +168,7 @@ export const TransientHighlightDecorator = Extension.create({
           init() {
             return DecorationSet.empty;
           },
+          // [cost: O(#bands)/tx — DecorationSet.map only (at most one band); O(targets) buildSet + DecorationSet.create only on this plugin's own meta, never on a keystroke] (task 433 census)
           apply(tr: Transaction, value: DecorationSet) {
             // KEYSTROKE SANCTITY: forward-map on every transaction
             // (O(#bands) — at most one), never a doc walk.

@@ -778,7 +778,10 @@ export const LatexCommandMark = Mark.create({
             // re-parse, a raw full-range dispatch) touches every block, so the
             // cold build is both correct and cheaper than removing and re-adding
             // block by block. The same predicate the carrier below uses, for the
-            // same reason.
+            // same reason. [cost: O(doc) — the ONE whole-document arm, reachable
+            // only from a document replacement, never from a keystroke] (the
+            // task-433 census's stated exemption; the ordinary path below takes
+            // the `touchedTextblocks` door).
             if (replacesWholeDoc(tr)) return buildDecorations(tr.doc);
             const blocks = touchedTextblocks(tr.doc, touchedRanges([tr]));
             if (blocks.size === 0) return mapped;

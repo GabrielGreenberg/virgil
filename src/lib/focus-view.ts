@@ -247,6 +247,7 @@ export function focusViewPlugin(): Plugin<FocusViewState> {
     key: focusViewPluginKey,
     state: {
       init: () => ({ band: INACTIVE_BAND, decoSet: DecorationSet.empty }),
+      // [cost: O(1)/tx — meta check, docChanged + bandConfines bails, then an O(steps) top-level-boundary test; DecorationSet.map on a plain keystroke; O(top-level blocks) buildFocusDecoSet only on a band change or a top-level node boundary replace] (task 433 census)
       apply(tr, value, oldState, newState): FocusViewState {
         const meta = tr.getMeta(focusViewPluginKey) as FocusViewMeta | undefined;
         if (meta) {
