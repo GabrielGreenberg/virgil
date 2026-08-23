@@ -68,6 +68,8 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `float-sync.tsx` (`useMainTransactionSync`, one subscription per OPEN text-object float). docChanged-gated + own-write meta filter + the **source-touch gate** (task 140): the handler maps the float's live source range forward through the transaction's steps — and its `appendedTransactions`' — asking in the same O(steps) pass whether any step intersected it, and invokes `readSource` only if one did (steps, not step maps: see the note below on `StepMap.empty`). That third gate is the load-bearing one: `readSource` is O(doc) in every body, so the first two alone made each main keystroke cost a full-document walk PER OPEN FLOAT. **This is the entry that proves a justification must describe the CALLBACK, not just the gate** — it previously read "O(1) per tx", which was true of the subscriber and false of what it called, and the grep guardrail can only see the `editor.on(...)` call form. Contract: [src/lib/\_\_tests\_\_/float-source-touch-gate.test.tsx](src/lib/__tests__/float-source-touch-gate.test.tsx) counts `readSource` calls on the real hook against a real editor — typing in five other paragraphs with three floats open must run it zero times.
 - `src/lib/identity/useIdentityBusConsumer.ts` — the SINGLE inline-atom bus consumer (PLAN D1.2/D1.4; behind `virgil:identity-cascade`, default OFF). NOT an `editor.on(...)` subscriber: it opens exactly ONE `DocStructureBus.onAnyChange` subscription (`onAnyChange` is `emitCount`-gated, so it never fires on a plain keystroke), then bails O(1) when no citation/footnote entered or left the transaction. Only on a markerless re-parse (same-tx add+remove of atoms whose ids regenerated) does it run `detectRegenRemap` — O(addedAtoms+removedAtoms) = edit size, never doc size — and route the `oldId→newId` remap through the `IdentityCascade` so selection/float/pin survive (OMNI-F3-02, CI-A3-01, the CI-F1-02 id-survival class). This is the **+1, not +3** consumer: Wave-2 T2 (inline-atom lifecycle) and T5 (citation add-resync) register as ordered POLICIES on this one dispatcher (`registerPolicy`) rather than opening their own `onCitations*`/`onFootnotes*` subscriptions. Typing N plain chars leaves `__virgilBusStats().emitCount` flat and runs zero consumer code.
 
+**Plugin `apply` / `appendTransaction` bodies are censused too** (task 433) — see "The probe half" below: a whole-document walk reachable from one must take the `touchedTextblocks` door or carry a `[cost: …]` line directly above the method ([plugin-apply-guardrail.test.ts](src/lib/__tests__/plugin-apply-guardrail.test.ts)).
+
 Anything else added to that list needs a comment explaining why it's O(1) — and a matching entry (with the same justification) in the `PERMITTED_KEYSTROKE_SUBSCRIBERS` allowlist of the guardrail test above, or CI fails. **Cost-class tags (Wave-4 P6):** every allowlist justification must BEGIN with a `[cost: …]` tag naming the per-event cost AND the deferred body's class ("RAF-coalesced" alone no longer qualifies — a RAF-coalesced O(doc) walk is still an O(doc) walk one frame later); the guardrail's tag-format test enforces the prefix. **selectionUpdate census (Wave-4 P6):** `editor.on("selectionUpdate", …)` is governed by the SAME test under its own exact-set allowlists (`PERMITTED_SELECTION_SUBSCRIBERS`; the library twin is deliberately empty) — the caret moves on every keystroke, so a selection handler IS a keystroke handler; the 8 censused sites are tag-justified in the test, which is their SSOT. The lone `<VirgilEditor onUpdate=` JSX mount (EditorPane) is pinned by its own census in the same file.
 
 **A justification must cover the CALLBACK, not just the gate.** The grep guardrail sees the `editor.on(...)` call form and the surrounding conditionals; it cannot see the cost of what the handler *calls*. `float-sync.tsx` sat on this list for a year reading "docChanged-gated + own-write meta filter — O(1) per tx" — accurate about the subscriber, silent about the O(doc) `readSource` behind it, so CI was green while the law was broken once per open float per keystroke (task 140). When you write or review an entry, name what the handler ultimately runs and why *that* is bounded. If the callback is O(doc), the fix is a gate that answers "is this transaction relevant to me?" from the edit — the observer's `StructureDiff` for entity-shaped questions, or [src/lib/float-source-range.ts](src/lib/float-source-range.ts) (`trackSourceRange`) for positional ones, which maps a tracked region through the transaction's steps and tests intersection in one O(steps) pass. Note that `readPendingDiff` is NOT available to an `editor.on('transaction')` handler — the observer's `view.update` clears it before TipTap emits the event — which is why the positional primitive exists.
@@ -176,10 +178,31 @@ Six rules it earned:
   because the map is empty and the third filtered on `latexCommand` alone. The
   stale class survived until something else rebuilt the document.
 
-**The silo is the finding.** Nothing greps a plugin `apply` or an
-`appendTransaction`: the keystroke-sanctity guardrail matches the
-`editor.on(…)` call form, and this file makes no such call. That is a
-doctrine-level gap, filed rather than closed here.
+**The silo is the finding — and it is CLOSED (task 433).** Nothing used to grep
+a plugin `apply` or an `appendTransaction`: the keystroke-sanctity guardrail
+matches the `editor.on(…)` call form, and this file makes no such call.
+[plugin-apply-guardrail.test.ts](src/lib/__tests__/plugin-apply-guardrail.test.ts)
+is the sibling census for that silo. Membership is DISCOVERED (every shipped
+file in either silo that constructs a `new Plugin`; every method-shaped
+`apply(` / `appendTransaction(` inside it), and each site's REACH is the
+transitive closure over same-file functions — so a walk hidden one helper down
+(`buildDecorations`, `buildSet`, `buildFoldArtifacts`) is attributed to the
+site that calls it. A site whose reach performs a whole-document walk
+(`descendants(`, `nodesBetween(0, …)`, `DecorationSet.create(`) must either
+spell the `touchedTextblocks` DOOR in its own body or carry a `[cost: …]` line
+in the comment block DIRECTLY ABOVE the method, naming the per-keystroke cost
+AND the class of the deferred walk. The allowlist of untagged walks is EMPTY;
+every site's verdict (`door` / `tagged` / `clean`) is an exact-set pin, so a
+new plugin must be acknowledged and a retired walk must be retired there.
+Two placements are load-bearing: the site tag is read ABOVE the method only,
+because a door site keeps a whole-doc arm (`replacesWholeDoc` — setContent /
+code-pane re-parse) stated with its own in-body `[cost:` line, and counting
+that as the site's justification would let a neutered door pass; and a door
+site with a residual walk MUST carry that in-body statement. Measured:
+restoring a whole-document `buildDecorations(tr.doc)` in this plugin's
+`apply` fails three legs. Stated limit: the reach follows same-file functions
+only — a walk behind an IMPORTED helper is invisible, the same limit the
+subscriber census states about its callbacks.
 
 CI: [decoration-probe-cost.test.ts](src/lib/tiptap/__tests__/decoration-probe-cost.test.ts)
 counts whole-document WALKS (`Node.prototype.descendants`, which prosemirror

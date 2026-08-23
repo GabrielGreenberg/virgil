@@ -168,6 +168,7 @@ export const AnchorHighlightDecorator = Extension.create({
           init() {
             return DecorationSet.empty;
           },
+          // [cost: O(#decorations)/tx — DecorationSet.map only; O(targets) buildSet + DecorationSet.create only on this plugin's own meta (a reconciler frame), never on a keystroke] (task 433 census)
           apply(tr: Transaction, value: DecorationSet) {
             // KEYSTROKE-SANCTITY: forward-map existing decorations on every
             // transaction (O(#decorations), tiny — never a doc walk).

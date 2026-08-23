@@ -152,6 +152,7 @@ export const LinkedAnchorGuard = Extension.create({
             },
           };
         },
+        // [cost: O(1)/tx — docChanged + observer-diff removedAnchors gate; O(doc) descendants only on an anchor-removal transaction, and then inside a setTimeout off the dispatch, never on plain typing] (task 433 census)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           // Read the diff already computed by DocStructureObserver
@@ -277,6 +278,7 @@ export const TextObjectOrphanGuard = Extension.create({
             },
           };
         },
+        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; O(doc) descendants only on a block-removal transaction, and then inside a setTimeout off the dispatch, never on plain typing] (task 433 census)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readPendingDiff(newState);

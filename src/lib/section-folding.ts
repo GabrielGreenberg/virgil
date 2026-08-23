@@ -176,6 +176,8 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
         decoSet: DecorationSet.empty,
         hiddenIdx: EMPTY_HIDDEN_INDICES,
       }),
+      // [cost: O(1)/tx — meta check, then docChanged + folded.size === 0 bail, then an O(removedHeadings) prune off the observer diff; DecorationSet.map with the SAME folded/hiddenIdx references on an in-block keystroke; O(doc) buildFoldArtifacts (DecorationSet.create) only on a fold change, a structural diff entry, or a map-unsafe top-level replace] (task 433 census)
+      // With no observer diff (observer not installed — tests) the prune falls back to an O(headings) collectHeadingUuids walk; a stated, tagged exemption.
       apply(tr, value, oldState, newState): SectionFoldingState {
         // A real fold change rebuilds the artifacts from the new fold set.
         const rebuiltWith = (folded: Set<string>): SectionFoldingState => ({

@@ -180,6 +180,7 @@ export const PgMarkChip = Extension.create({
         key: new PluginKey("pgmarkChip"),
         state: {
           init: (_c, state) => buildDecorations(state.doc),
+          // [cost: O(changed region)/tx — DecorationSet.map + a textBetween probe over the step maps (±8 chars); O(doc) buildDecorations + DecorationSet.create only when the edit touched a `\pgmark` run] (task 433 census)
           apply: (tr, old) => {
             // Cheap forward-map first — keeps existing decorations
             // anchored to their new positions for any docChanged tx

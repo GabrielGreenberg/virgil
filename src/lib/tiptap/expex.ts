@@ -1837,6 +1837,8 @@ export const ExpexNumbering = Extension.create({
             },
           };
         },
+        // [cost: O(1)/tx — docChanged + observer-diff example gate, plus O(touched uuids) resolveTouchedBlock lookups on a content edit; deferred body O(doc) (two descendants walks + setNodeMarkup) only when an example was added / removed / restructured / edited inside] (task 433 census)
+        // With no observer diff (pending === null: observer not installed) the renumberer runs whole — a stated, tagged exemption.
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
