@@ -116,6 +116,18 @@ export interface UseEditorUIStateApi {
  * seconds of scroll position to an abrupt kill, which is precisely what "view
  * state" means.
  *
+ * ## Where it lives (task 417)
+ *
+ * This hook does NOT decide. It calls the same `readSidecarIfExists` /
+ * `writeSidecar` every sidecar owner calls, and the storage doors route the file
+ * by its `store` column on `sidecar-value.ts` — which for `editor-state.json` is
+ * `"local"`: this browser's IndexedDB, never the paper folder. Per-machine state
+ * (where THIS window is scrolled to) in a folder a sync daemon mirrors to other
+ * machines was the single loudest fork base in the measured folder, and no write
+ * cadence can reduce a conflict whose two sides are both legitimately right. The
+ * coalescer below is kept anyway: it is cheap, and it is what settles at the
+ * doc-switch / unmount / tab-hidden edges.
+ *
  * The capture listener is gated on `loaded` so it can't clobber the
  * sidecar before the initial read lands.
  */

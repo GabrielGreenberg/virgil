@@ -8,7 +8,13 @@
  */
 
 import type { JSONContent } from "@tiptap/react";
-import type { EditorStateData, VirgilSidecar } from "@/lib/types";
+import type { VirgilSidecar } from "@/lib/types";
+import {
+  isLocalSidecar,
+  mutateLocalSidecar,
+  readLocalSidecar,
+  writeLocalSidecar,
+} from "@/lib/local-sidecar";
 import { parseLatex, resolveWriteDelimiters } from "@/lib/latex-parser";
 import {
   serializeToLatex,
@@ -374,12 +380,6 @@ function findEntry(docs: DevIndexEntry[], docId: string): DevIndexEntry | undefi
 // Sidecar JSON files (everything in `virgil/`)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_EDITOR_STATE: EditorStateData = {
-  lastParagraphId: null,
-  foldedSections: [],
-  lastModified: new Date().toISOString(),
-};
-
 const DEFAULT_SIDECAR: VirgilSidecar = { paragraphs: {} };
 
 const DEFAULT_LATEX = `\\documentclass{article}
@@ -437,6 +437,14 @@ export async function readSidecar<T>(
   filename: string,
   defaultValue: T,
 ): Promise<T> {
+  // ROUTE (task 417) — see the FSA twin. Both backends route identically so a
+  // local-store file behaves the same in the preview as in production.
+  if (isLocalSidecar(filename)) {
+    const local = await readLocalSidecar<T>(docId, filename, () =>
+      fetchJsonTracked<T>(docId, `virgil/${filename}`),
+    );
+    return local ?? defaultValue;
+  }
   const parsed = await fetchJsonTracked<T>(docId, `virgil/${filename}`);
   return parsed ?? defaultValue;
 }
@@ -445,6 +453,11 @@ export async function readSidecarIfExists<T>(
   docId: string,
   filename: string,
 ): Promise<T | null> {
+  if (isLocalSidecar(filename)) {
+    return readLocalSidecar<T>(docId, filename, () =>
+      fetchJsonTracked<T>(docId, `virgil/${filename}`),
+    );
+  }
   const bundle = ensureSidecarBundle(docId);
   if (bundle.inflight) await bundle.inflight;
   if (bundle.files.has(filename)) return (bundle.files.get(filename) ?? null) as T | null;
@@ -487,6 +500,8 @@ export async function writeSidecar<T>(
   // "No folder handle stored" throw the Reader hits in production).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
+  // ROUTE (task 417): a `store: "local"` file never reaches the dev route.
+  if (isLocalSidecar(filename)) return writeLocalSidecar(h.docId, filename, data);
   // Serialize per file, matching storage-fsa's `enqueueDocWrite` funnel. Before
   // task 220 the dev backend PUT straight through, so two writers for one
   // sidecar raced here in a way they never could under FSA — and the
@@ -507,6 +522,11 @@ export async function mutateSidecar<T>(
 ): Promise<T | null> {
   if (isLibraryPaper(h.docId)) return null;
   assertActive(h);
+  if (isLocalSidecar(filename)) {
+    return mutateLocalSidecar(h.docId, filename, defaultValue, mutate, () =>
+      fetchJsonTracked<T>(h.docId, `virgil/${filename}`),
+    );
+  }
   return enqueueWrite(sidecarWriteKey(h.docId, filename), async () => {
     const current = await readSidecar<T>(h.docId, filename, defaultValue);
     const next = mutate(current);
@@ -563,15 +583,14 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
 // Document bundle
 // ---------------------------------------------------------------------------
 
-export async function readDocBundle(docId: string): Promise<{ content: JSONContent; editorState: EditorStateData }> {
+export async function readDocBundle(docId: string): Promise<{ content: JSONContent }> {
   const docs = await getDevIndex();
   const entry = findEntry(docs, docId);
   const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
 
-  const [latex, sidecar, editorState] = await Promise.all([
+  const [latex, sidecar] = await Promise.all([
     fetchText(`${API}/doc/${docId}/${texFilename}`).then((t) => t ?? DEFAULT_LATEX),
     fetchJson<VirgilSidecar>(`${API}/doc/${docId}/virgil/virgil.json`, DEFAULT_SIDECAR),
-    fetchJson<EditorStateData>(`${API}/doc/${docId}/virgil/editor-state.json`, DEFAULT_EDITOR_STATE),
   ]);
 
   // Baseline the disk ledger from what we just read. Superseded below by the
@@ -614,7 +633,7 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
     // state at their own sites. Returning here opens the paper against the
     // INTACT file and skips only the writeback, which is what a refusal means.
     if (!reportSerializeRefusal(err, docId)) throw err;
-    return { content, editorState };
+    return { content };
   }
   const newLatex = serialized;
   const writebackHandle = getActiveHandle(docId);
@@ -665,7 +684,7 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
       }
     });
   }
-  return { content, editorState };
+  return { content };
 }
 
 export async function writeDocBundle(
@@ -761,7 +780,8 @@ export async function writeDocBundle(
     // landed between the awaits above. Lenient: an ended-cleanly pipeline
     // is still safe to write to, only a SUPERSEDED one would corrupt.
     assertNotSuperseded(h);
-    // editor-state.json is owned by useEditorUIState, not the bundle save.
+    // editor-state.json is owned by useEditorUIState — a LOCAL-store sidecar
+    // since task 417, so it never reaches this folder at all.
     // PER-FILE byte-equality through the gated funnel (task 415) — parity with
     // storage-fsa, where the reason lives. A conflict resolution IS the user's
     // decision (task 364), so it FORCES past the gate.
@@ -822,7 +842,6 @@ export async function snapshotConflictSides(
     for (const [from, name] of [
       [`${base}/${texFilename}`, texFilename],
       [`${base}/virgil/virgil.json`, "virgil.json"],
-      [`${base}/virgil/editor-state.json`, "editor-state.json"],
     ] as const) {
       const body = await fetchText(from);
       if (body === null) continue;

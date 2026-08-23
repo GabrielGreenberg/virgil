@@ -12,7 +12,6 @@
  *   ├── references.bib             (or whatever the .tex declares; optional)
  *   └── virgil/
  *       ├── virgil.json            paragraph UUID sidecar
- *       ├── editor-state.json
  *       ├── revisions.json
  *       ├── citations.json
  *       ├── notes.json
@@ -28,11 +27,17 @@
 import { generateEntityId } from "@/lib/uuid";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 import {
+  isLocalSidecar,
+  mutateLocalSidecar,
+  readLocalSidecar,
+  writeLocalSidecar,
+} from "@/lib/local-sidecar";
+import {
   planSidecarCleanup,
   type SidecarCleanupReceipt,
 } from "@/lib/sync-conflict-cleanup";
 import type { JSONContent } from "@tiptap/react";
-import type { EditorStateData, VirgilSidecar } from "@/lib/types";
+import type { VirgilSidecar } from "@/lib/types";
 import { parseLatex, resolveWriteDelimiters } from "@/lib/latex-parser";
 import {
   serializeToLatex,
@@ -110,12 +115,6 @@ Start writing here...
 
 \\end{document}
 `;
-
-const DEFAULT_EDITOR_STATE: EditorStateData = {
-  lastParagraphId: null,
-  foldedSections: [],
-  lastModified: new Date().toISOString(),
-};
 
 const DEFAULT_SIDECAR: VirgilSidecar = { paragraphs: {} };
 
@@ -483,11 +482,17 @@ export function invalidateSidecarBundle(docId: string): void {
   sidecarCache.delete(docId);
 }
 
-export async function readSidecar<T>(
+/**
+ * The DIRECT disk read of one sidecar — no bundle cache, `null` on absent,
+ * re-throws everything else. The base read of `readSidecar` / the cache-miss
+ * read of `readSidecarIfExists`, and the ONE-TIME MIGRATION source for a
+ * `store: "local"` file (task 417): a pre-417 build wrote `editor-state.json`
+ * to `virgil/`, and the first local miss on each machine reads it from here.
+ */
+async function readSidecarFromDisk<T>(
   docId: string,
   filename: string,
-  defaultValue: T,
-): Promise<T> {
+): Promise<T | null> {
   const docHandle = await requireDocHandle(docId);
   try {
     const virgil = await getVirgilSubdir(docHandle);
@@ -497,9 +502,25 @@ export async function readSidecar<T>(
     const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
     return JSON.parse(text) as T;
   } catch (e) {
-    if (isNotFound(e)) return defaultValue;
+    if (isNotFound(e)) return null;
     throw e;
   }
+}
+
+export async function readSidecar<T>(
+  docId: string,
+  filename: string,
+  defaultValue: T,
+): Promise<T> {
+  // ROUTE (task 417): a `store: "local"` file lives in IndexedDB, never in
+  // `virgil/`. The declaration decides; no caller does.
+  if (isLocalSidecar(filename)) {
+    const local = await readLocalSidecar<T>(docId, filename, () =>
+      readSidecarFromDisk<T>(docId, filename),
+    );
+    return local ?? defaultValue;
+  }
+  return (await readSidecarFromDisk<T>(docId, filename)) ?? defaultValue;
 }
 
 /**
@@ -515,6 +536,14 @@ export async function readSidecarIfExists<T>(
   docId: string,
   filename: string,
 ): Promise<T | null> {
+  // ROUTE (task 417): local-store files are never in the mount bundle (a
+  // directory read cannot see IndexedDB), so ask the local store first and
+  // let a local miss migrate from the disk file a pre-417 build wrote.
+  if (isLocalSidecar(filename)) {
+    return readLocalSidecar<T>(docId, filename, () =>
+      readSidecarFromDisk<T>(docId, filename),
+    );
+  }
   // Cache-first: the bundle coalesces all of a mount's sidecar reads into one
   // directory walk. `has(filename)` distinguishes "bundled (value or confirmed
   // null)" from "not bundled" (outside ALL_SIDECAR_FILENAMES, or left UNSET by a
@@ -525,16 +554,7 @@ export async function readSidecarIfExists<T>(
   if (bundle.files.has(filename)) {
     return (bundle.files.get(filename) ?? null) as T | null;
   }
-  const docHandle = await requireDocHandle(docId);
-  try {
-    const virgil = await getVirgilSubdir(docHandle);
-    const fileHandle = await virgil.getFileHandle(filename);
-    const text = await readTrackedText(docId, `virgil/${filename}`, fileHandle);
-    return JSON.parse(text) as T;
-  } catch (e) {
-    if (isNotFound(e)) return null;
-    throw e;
-  }
+  return readSidecarFromDisk<T>(docId, filename);
 }
 
 /**
@@ -583,6 +603,17 @@ export async function writeSidecar<T>(
   filename: string,
   data: T,
 ): Promise<void> {
+  // ROUTE (task 417): a `store: "local"` file goes to IndexedDB and never
+  // enters the disk funnel — no swap file, no ledger stamp, nothing for a
+  // sync daemon to see. The two guards the funnel would have applied are
+  // kept: a read-only library-paper doc persists nothing (parity with disk —
+  // the Reader's view state is deliberately not remembered either way), and
+  // a superseded pipeline's write is dropped.
+  if (isLocalSidecar(filename)) {
+    if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return;
+    assertActive(h);
+    return writeLocalSidecar(h.docId, filename, data);
+  }
   // Read-only library-paper docs never persist — the guard lives at the
   // `enqueueDocWrite` funnel below, which this (and every other writer) routes
   // through.
@@ -620,6 +651,14 @@ export async function mutateSidecar<T>(
   defaultValue: T,
   mutate: (current: T) => T | null,
 ): Promise<T | null> {
+  // ROUTE (task 417): the local twin serializes per key and migrates once.
+  if (isLocalSidecar(filename)) {
+    if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return null;
+    assertActive(h);
+    return mutateLocalSidecar(h.docId, filename, defaultValue, mutate, () =>
+      readSidecarFromDisk<T>(h.docId, filename),
+    );
+  }
   const result = await enqueueDocWrite<T | null>(
     h,
     `virgil/${filename}`,
@@ -699,7 +738,7 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
 }
 
 // ---------------------------------------------------------------------------
-// Document bundle (.tex + virgil.json + editor-state.json)
+// Document bundle (.tex + virgil.json)
 //
 // This replaces the old `/api/document` route. The whole bundle is
 // serialized through a single per-doc queue so the three files always
@@ -708,7 +747,6 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
 
 export interface DocBundle {
   content: JSONContent;
-  editorState: EditorStateData;
 }
 
 export async function readDocBundle(docId: string): Promise<DocBundle> {
@@ -731,12 +769,6 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
     "virgil.json",
     DEFAULT_SIDECAR,
   );
-  const editorState = await safeReadJson<EditorStateData>(
-    virgil,
-    "editor-state.json",
-    DEFAULT_EDITOR_STATE,
-  );
-
   const content = parseLatex(latex, sidecar);
   // Assign UUIDs immediately on load so every paragraph is addressable
   // from the moment the editor opens (no waiting for the first save).
@@ -770,7 +802,7 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
     });
   }
 
-  return { content, editorState };
+  return { content };
 }
 
 /**
@@ -1150,7 +1182,8 @@ export async function writeDocBundle(
       { force, beforeWrite: takeSnapshot },
     );
 
-    // editor-state.json is owned by useEditorUIState, not the bundle save.
+    // editor-state.json is owned by useEditorUIState — and since task 417 it
+    // is a LOCAL-store sidecar that never reaches this folder at all.
 
     if (wroteTex || wroteSidecar) await touchDocTimestamp(h.docId);
     // Cache the delimiters as they exist in the FILE ON DISK (the serializer
@@ -1184,8 +1217,8 @@ export async function writeDocBundle(
  * > A resolution that discards one side puts that side in the net FIRST, and
  * > which door was chosen may not change what the net holds.
  *
- * The disk side is copied under its own names (`main.tex`, `virgil.json`,
- * `editor-state.json`) — the same slot shape `snapshotPriorBundle` writes, so
+ * The disk side is copied under its own names (`main.tex`, `virgil.json`;
+ * `editor-state.json` left the folder in task 417) — the same slot shape `snapshotPriorBundle` writes, so
  * recovery from a conflict slot is recovery from any other slot. The editor's
  * side lands beside it as `unsaved-<tex>`, serialized through the SAME
  * `buildSerializeOpts` door the save path uses, so the archived copy is the
@@ -1221,7 +1254,6 @@ export async function snapshotConflictSides(
     for (const [dir, name] of [
       [docHandle, texName],
       [virgil, "virgil.json"],
-      [virgil, "editor-state.json"],
     ] as const) {
       if (await copyFileIfPresent(dir, name, slot)) disk.push(name);
     }
@@ -2440,7 +2472,6 @@ async function snapshotPriorBundle(
     });
     await copyFileIfPresent(docHandle, texFilename, slot);
     await copyFileIfPresent(virgil, "virgil.json", slot);
-    await copyFileIfPresent(virgil, "editor-state.json", slot);
     await pruneHistory(history, HISTORY_LIMIT);
   } catch (e) {
     console.warn("[storage] failed to snapshot prior bundle:", e);
