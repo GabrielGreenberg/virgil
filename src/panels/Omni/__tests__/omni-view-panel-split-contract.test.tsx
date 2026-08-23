@@ -164,7 +164,11 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     const { container } = renderPanel(liveEditor);
     const bin = container.querySelector("[data-omni-unanchored-bin]");
     expect(bin).not.toBeNull();
-    expect(bin!.textContent).toContain("2 unanchored");
+    // RENEGOTIATED (task 422): the two states are two pills — the summed
+    // "2 unanchored" this leg used to pin announced a FREE card with the
+    // error badge, the defect asserted as the contract.
+    expect(bin!.textContent).toContain("1 unanchored");
+    expect(bin!.textContent).toContain("1 unplaced");
     // The anchored card renders OUTSIDE the bin, positioned by the cascade.
     const wrapper = container.querySelector(
       `[data-omni-entry-wrapper="${anchoredNote.id}"]`,

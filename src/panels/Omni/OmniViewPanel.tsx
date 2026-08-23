@@ -370,13 +370,19 @@ export function OmniBinStack({
 
 /**
  * The ONE omni bin primitive: a collapsed count PILL that expands into a
- * bounded, self-scrolling list growing DOWNWARD. Both bins are call sites of
+ * bounded, self-scrolling list growing DOWNWARD. Every bin is a call site of
  * this — the class string, the chevron, the list chrome, the maxHeight and
- * the expand state are spelled once (task 422's extraction; STYLE_GUIDE
- * "Omni bin pill"). `tone` selects the pill's glyph ink: `"error"` is the
- * recoverable-error tier (an orphaned card), `"neutral"` everything else.
+ * the expand state are spelled once (task 422; STYLE_GUIDE "Omni bin pill").
  * Default-COLLAPSED (Gabriel-ratified) so no card body — and no live editor —
  * mounts until the user asks.
+ *
+ * `tone` is the pill's TIER, published as `data-omni-bin-tone` so the render
+ * surface can be asked which state it announces: `"error"` is the
+ * recoverable-error tier (an ORPHANED card — its anchor died; the glyph is
+ * the `BadgeOrphaned` dot), `"neutral"` is everything that is not an error
+ * (a deliberately parked card, a card outside the focus band). That is the
+ * `AnchorState` SSOT's own line (`free` is "a normal, non-error state (plain
+ * card, no red badge)"), carried all the way to the pixel.
  *
  * Rendered as a NORMAL-FLOW block inside the shared `OmniBinStack`; carries
  * no `data-omni-entry-wrapper`, so its expand/collapse never bumps
@@ -386,6 +392,7 @@ export function OmniBinPill({
   count,
   label,
   glyph,
+  tone,
   hintCollapsed,
   hintExpanded,
   ariaCollapsed,
@@ -397,6 +404,7 @@ export function OmniBinPill({
   /** The pill's text, already carrying the count (e.g. "3 unanchored"). */
   label: string;
   glyph: ReactNode;
+  tone: "neutral" | "error";
   hintCollapsed: string;
   hintExpanded: string;
   ariaCollapsed: string;
@@ -412,6 +420,7 @@ export function OmniBinPill({
         type="button"
         onClick={() => setExpanded((e) => !e)}
         className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium"
+        data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
         aria-label={expanded ? ariaExpanded : ariaCollapsed}
         aria-expanded={expanded}
@@ -433,9 +442,28 @@ export function OmniBinPill({
 }
 
 /**
- * The unanchored-card bin. Holds every card with no live text anchor —
- * `free` (no link at all) + `orphaned` (link target gone) together (R7) —
- * as ONE collapsed count pill over the shared `OmniBinPill` primitive.
+ * The two bins for cards with no live text anchor — ONE per `AnchorState`
+ * that cannot cascade, because they are different facts (task 422):
+ *
+ *   - **"N unanchored"** — ORPHANED: the card's stored anchor DIED (its uuid,
+ *     its `linkedAnchor` mark and its text snapshot are all dead). The
+ *     recoverable-ERROR tier: `BadgeOrphaned` glyph, error tone. The word
+ *     is reserved for this set, so it means the SAME thing here as on the
+ *     pane-chrome `UnanchoredCardsChip` (task 410) — the remaining difference
+ *     between the two counts is only that this bin is per SIDE and follows
+ *     the omni category filter, which the hint says.
+ *   - **"N unplaced"** — FREE: a card the user deliberately made without an
+ *     anchor, or parked (an archive→unarchive citation/footnote ref, a note
+ *     with no link). NOT an error — the neutral tone and a dashed-circle
+ *     glyph, the same "drag to anchor" cue the docked card wears (STYLE_GUIDE
+ *     "Unanchored / parked card rest-state").
+ *
+ * Pre-422 the two were SUMMED into one pill wearing the error badge, so a
+ * normal, non-error state was announced with the error glyph and an
+ * error-tier count — the distinction `resolveAnchorState` exists to make,
+ * erased at the one surface the user looks at. Both pills flow inside the
+ * shared `OmniBinStack` column (unplaced below unanchored), so expanding
+ * either pushes what follows down rather than painting over it (task 127).
  */
 export function OmniUnanchoredBin({
   free,
@@ -444,30 +472,45 @@ export function OmniUnanchoredBin({
   free: OmniItem[];
   orphaned: OmniItem[];
 }) {
-  const count = free.length + orphaned.length;
+  if (free.length + orphaned.length === 0) return null;
   return (
-    <OmniBinPill
-      data-omni-unanchored-bin=""
-      count={count}
-      label={`${count} unanchored`}
-      glyph={<BadgeOrphaned theme={CARD_THEMES.error} />}
-      hintCollapsed="Show unanchored cards"
-      hintExpanded="Collapse unanchored cards"
-      ariaCollapsed="Show unanchored cards"
-      ariaExpanded="Collapse unanchored cards"
-    >
-      {orphaned.map((item) => (
-        <div key={item.id} className="flex items-start gap-2">
-          <span className="pt-1 shrink-0" data-omni-bin-orphan-marker="">
-            <BadgeOrphaned theme={CARD_THEMES.error} />
-          </span>
-          <div className="min-w-0 flex-1">{item.content}</div>
-        </div>
-      ))}
-      {free.map((item) => (
-        <div key={item.id}>{item.content}</div>
-      ))}
-    </OmniBinPill>
+    <div data-omni-unanchored-bin="" className="flex flex-col gap-1">
+      <OmniBinPill
+        data-omni-orphaned-bin=""
+        count={orphaned.length}
+        label={`${orphaned.length} unanchored`}
+        tone="error"
+        glyph={<BadgeOrphaned theme={CARD_THEMES.error} />}
+        hintCollapsed="Cards on this side whose anchor was deleted — click to show them; drag one onto a paragraph to re-pin it"
+        hintExpanded="Collapse unanchored cards"
+        ariaCollapsed="Show unanchored cards"
+        ariaExpanded="Collapse unanchored cards"
+      >
+        {orphaned.map((item) => (
+          <div key={item.id} className="flex items-start gap-2">
+            <span className="pt-1 shrink-0" data-omni-bin-orphan-marker="">
+              <BadgeOrphaned theme={CARD_THEMES.error} />
+            </span>
+            <div className="min-w-0 flex-1">{item.content}</div>
+          </div>
+        ))}
+      </OmniBinPill>
+      <OmniBinPill
+        data-omni-free-bin=""
+        count={free.length}
+        label={`${free.length} unplaced`}
+        tone="neutral"
+        glyph={<span className="text-[11px] leading-none text-ink-muted">◌</span>}
+        hintCollapsed="Cards parked without an anchor — click to show them; drag one into the editor to place it"
+        hintExpanded="Collapse unplaced cards"
+        ariaCollapsed="Show unplaced cards"
+        ariaExpanded="Collapse unplaced cards"
+      >
+        {free.map((item) => (
+          <div key={item.id}>{item.content}</div>
+        ))}
+      </OmniBinPill>
+    </div>
   );
 }
 
@@ -491,6 +534,7 @@ export function OmniOutsideFocusBin({
       data-omni-outside-focus-bin=""
       count={count}
       label={`${count} outside focus`}
+      tone="neutral"
       glyph={<span className="text-[11px] leading-none">◎</span>}
       hintCollapsed="These cards are anchored outside your focus band. Switch off focus or extend the band to see them inline."
       hintExpanded="Collapse cards outside the focus band"

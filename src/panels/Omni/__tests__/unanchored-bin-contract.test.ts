@@ -74,18 +74,20 @@ describe("OmniUnanchoredBin — classification + render", () => {
     );
     const bin = container.querySelector("[data-omni-unanchored-bin]")!;
     expect(bin).not.toBeNull();
-    // 1 free + 1 orphaned = 2.
-    expect(bin.textContent).toContain("2 unanchored");
+    // RENEGOTIATED (task 422): one pill per AnchorState, never a sum — a
+    // free card must not be counted under the error badge.
+    expect(bin.textContent).toContain("1 unanchored");
+    expect(bin.textContent).toContain("1 unplaced");
     // Bodies are not rendered while collapsed.
     expect(container.querySelector('[data-test-card="free-1"]')).toBeNull();
     expect(container.querySelector('[data-test-card="orphan-1"]')).toBeNull();
   });
 
   it("expanded: lists exactly the free + orphaned bodies; orphaned row carries BadgeOrphaned", () => {
-    const { container, getByRole } = render(
+    const { container } = render(
       createElement(OmniUnanchoredBin, { free: [freeItem], orphaned: [orphanItem] }),
     );
-    fireEvent.click(getByRole("button"));
+    for (const b of Array.from(container.querySelectorAll("button"))) fireEvent.click(b);
     expect(container.querySelector('[data-test-card="free-1"]')).not.toBeNull();
     expect(container.querySelector('[data-test-card="orphan-1"]')).not.toBeNull();
 
