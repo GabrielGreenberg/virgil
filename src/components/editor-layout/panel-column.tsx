@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { OmniBinSlotContext, DATA_OMNI_BIN_SLOT } from "./omni-bin-slot";
 import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import {
   PanelId,
@@ -269,6 +270,12 @@ export function PanelColumn({
   tail?: React.ReactNode;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
+  // The omni BIN SLOT (task 421) — the last flex child of the sticky band
+  // frame, published to the omni view through context so its bins portal in
+  // and stack BELOW the docked bands by flex order. State (not a ref) so the
+  // provider re-renders once when the element mounts/unmounts; the callback
+  // ref is stable, so React never detaches and re-attaches it per render.
+  const [binSlot, setBinSlot] = useState<HTMLElement | null>(null);
   const colRef = useRef<HTMLDivElement>(null);
   // Instance-unique gesture id: keep-alive doc panes AND the Library Reader
   // each mount a PanelColumn per side, so a bare `editor-panel-${side}` would
@@ -483,8 +490,10 @@ export function PanelColumn({
         >
           {/* Layer A — omni desktop, natural flex flow. Tall content
               scrolls with the page. Bands above overlay (sticky) but never
-              bound omni's height. Always rendered, never hidden. */}
-          {omni}
+              bound omni's height. Always rendered, never hidden. The omni
+              BINS are not here: they portal into the bin slot at the bottom
+              of Layer C (see omni-bin-slot.ts). */}
+          <OmniBinSlotContext.Provider value={binSlot}>{omni}</OmniBinSlotContext.Provider>
 
           {/* Layer B — pass-through overlay so empty gaps between/below
               bands click straight through to omni. Each occupied band
@@ -525,6 +534,30 @@ export function PanelColumn({
                   onFocusBand={onFocusBand}
                 />
               ))}
+              {/* The omni BIN SLOT — last in the frame's flex column, so the
+                  bins sit directly below the docked bands (or at the frame's
+                  top when nothing is docked) and ride the frame's sticky
+                  pin. `pointerEvents: auto` re-enables clicks that Layer B
+                  disabled; `zIndex: 20` is the bin rung of the ladder stated
+                  in omni-bin-slot.ts (pinned card 10 < bins 20 < frame 30).
+                  `minHeight: 0` so an expanded bin list shrinks into what
+                  the bands leave rather than overflowing the frame. */}
+              <div
+                ref={setBinSlot}
+                {...{ [DATA_OMNI_BIN_SLOT]: side }}
+                style={{
+                  position: 'relative',
+                  zIndex: 20,
+                  pointerEvents: 'auto',
+                  minHeight: 0,
+                  flex: '0 1 auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  paddingLeft: 8,
+                  paddingRight: 8,
+                  marginTop: hasStack ? 'var(--pod-gap)' : 4,
+                }}
+              />
             </div>
           </div>
         </div>

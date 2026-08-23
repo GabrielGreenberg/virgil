@@ -113,11 +113,14 @@ describe("OmniBinStack — zero-flow wrapper / measurement exclusion", () => {
     );
     const stack = container.querySelector("[data-omni-bin-stack]") as HTMLElement;
     // The WRAPPER carries the load-bearing zero-flow guard (absolute → no flow
-    // space → cannot displace the cascade pod's top). The exact `top` is a
-    // thin design gap above the pod top (4px), not the zero-flow guard — the
-    // guard is `position: absolute`, which any non-negative top preserves.
+    // space → cannot displace the cascade pod's top). RENEGOTIATED (task 421):
+    // this leg used to pin `top: 4px` — a DOCUMENT coordinate on a pod that is
+    // as tall as the paper, i.e. the defect asserted as the contract. The
+    // in-pod host is now `inset: 0` with a STICKY inner, and a real column
+    // portals the stack into its band frame instead (omni-bin-posture.test).
     expect(stack.style.position).toBe("absolute");
-    expect(stack.style.top).toBe("4px");
+    expect(stack.style.top).toBe("");
+    expect(stack.style.inset).toBe("0px");
     // The individual bin now flows in NORMAL layout inside the wrapper (task
     // 127) — it is NOT its own absolute sibling, so the outside-focus bin can
     // stack below it whether it is collapsed or expanded.
