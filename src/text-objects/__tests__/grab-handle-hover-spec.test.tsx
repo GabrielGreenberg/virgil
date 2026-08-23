@@ -1,15 +1,30 @@
 // @vitest-environment jsdom
 //
-// Task 394 — Gabriel's grab-handle spec, RENEGOTIATED by its own author, driven
-// as a CONTRACT on the real component over a rendered 3-item list AND over the
-// nested list he screenshotted.
+// Task 425 — Gabriel's grab-handle spec, RENEGOTIATED a third time by its own
+// author, driven as a CONTRACT on the real component over a rendered 3-item
+// list AND over a nested list.
 //
-// SPEC POINTS 1-2 ARE UNCHANGED (task 353, verbatim): the FULL-LIST handle is
-// visible while the pointer is anywhere over the list; in addition exactly ONE
-// item handle shows, the item the pointer is on. Every set-membership leg below
-// is 353's, untouched.
+// THE SET (task 425, Gabriel 2026-08-22, superseding 353 points 1-2 and 394):
 //
-// WHAT 394 FLIPS is the VERTICAL policy. 353 measured this on a FLAT list and
+//     If you are at the top row of a list of nested items, you get two
+//     handles — one for the item, one for the list. If you are not at the
+//     top row, you get one — for that item. The same rule applies up and
+//     down the hierarchy.
+//
+// So the hovered item ALWAYS has its handle; a container has one ONLY when
+// the hovered line is that container's own top row — structurally, its first
+// ITEM (a wrapped first item hovered on its second visual line still counts).
+// The visible set is ≤2 by construction, and it is decided at the SET level
+// (`restrictToTopRowSet` → `isTopRowOf`), never by computing every level's
+// placement and discarding the ones off the hovered row.
+//
+// 353's set legs ("the full-list handle + ONLY that item's", on EVERY row) are
+// RENEGOTIATED below with the reason at the site: they pinned the list handle
+// on rows 2-3, which this rule says is wrong. 394's PLACEMENT is untouched —
+// each level at its own first line — because under this rule a container's
+// first line IS the hovered row whenever its handle shows at all.
+//
+// WHAT 394 FLIPPED was the VERTICAL policy. 353 measured this on a FLAT list and
 // concluded the container must anchor to the HOVERED row ("a container and its
 // item produce the SAME opticalCenterY"), which the implementation delivered by
 // threading a `descendTo` hint into `resolveFirstLineTarget`. On a NESTED list
@@ -21,13 +36,14 @@
 //     marker-derived X. The hovered (lowest) node contributes exactly one
 //     handle, on its own row.
 //
-// So on the flat list the list handle sits beside ROW 1 — which is the list's
-// own first line — and the item handle sits on the hovered row:
+// So on the flat list, under 425's set on top of 394's placement:
 //
-//     hover item 1   item (202,202)   list (178,202)   ← coincident: 353's
-//                                                        separation + 382's cap
-//     hover item 2   item (198,242)   list (178,202)   ← distinct rows
-//     hover item 3   item (198,282)   list (178,202)   ← distinct rows
+//     hover item 1   item (202,202)   list (178,202)   ← row 1 IS the list's
+//                                                        top row: two handles,
+//                                                        353's separation +
+//                                                        382's cap govern
+//     hover item 2   item (198,242)   — no list handle —
+//     hover item 3   item (198,282)   — no list handle —
 //
 // Row 1 is a GENUINE coincidence (a list's first line IS its first item's), so
 // the 353 same-row separation and the 382 ink cap still govern it — which is
@@ -152,58 +168,58 @@ const OWNERS = () =>
     top: parseFloat(el.style.top),
   }));
 
+/** Portal-space top of flat row n: its inner <p>'s top (jsdom reports a zero
+ *  cap-band offset), viewport − PORTAL_ORIGIN.top. */
+const rowTop = (n: number) => ROWS[n].t + 2 - PORTAL_ORIGIN.top;
+
 describe("Gabriel's spec, as a contract", () => {
-  for (const i of [0, 1, 2]) {
-    it(`hovering item ${i + 1}: the full-list handle + ONLY that item's`, () => {
+  it("hovering item 1 (the list's top row): item 1's handle + the list's", () => {
+    hoverRow(0);
+    const owners = OWNERS();
+    expect(
+      owners.map((o) => o.uuid).sort(),
+      "the wrong set of handles is painted",
+    ).toEqual(["li1", "ul1"].sort());
+    const item = owners.find((o) => o.uuid === "li1")!;
+    const list = owners.find((o) => o.uuid === "ul1")!;
+    // Both on row 1 — the list's own first line IS item 1's (394's placement).
+    expect(item.top, "the item handle is not on the hovered row").toBe(rowTop(0));
+    expect(list.top, "the list handle left its own first row").toBe(rowTop(0));
+    // Stacking ORDER: the container's marker-derived slot is one track-width
+    // outboard of its item's, and 353's separation still applies on this
+    // genuinely shared row: handles are 12px wide, so this is a real void
+    // between the boxes rather than two glyphs touching.
+    expect(list.left).toBeLessThan(item.left);
+    expect(Math.abs(item.left - list.left)).toBeGreaterThanOrEqual(24);
+  });
+
+  for (const i of [1, 2]) {
+    it(`hovering item ${i + 1} (not the top row): ONLY that item's handle`, () => {
+      // RENEGOTIATED (task 425). Task 353's leg here read "the full-list
+      // handle + ONLY that item's" and asserted `[li${i+1}, ul1]` — the list
+      // handle on EVERY row. Gabriel's 2026-08-22 rule: off the top row you
+      // get ONE handle, the item's; to grab the list you go to row 1. The
+      // defect the old leg pinned as the contract was the extra handle.
       hoverRow(i);
       const owners = OWNERS();
       expect(
-        owners.map((o) => o.uuid).sort(),
+        owners.map((o) => o.uuid),
         "the wrong set of handles is painted",
-      ).toEqual([`li${i + 1}`, "ul1"].sort());
+      ).toEqual([`li${i + 1}`]);
+      expect(
+        owners.find((o) => o.uuid === "ul1"),
+        "the list handle is lit on a row that is not the list's top row",
+      ).toBeUndefined();
       // …and no OTHER item's handle, stated as its own assertion so a failure
       // names the sibling rather than a count.
       const strangers = owners.filter(
         (o) => o.kind === "listItem" && o.uuid !== `li${i + 1}`,
       );
       expect(strangers, "a non-hovered item's handle is lit").toEqual([]);
-    });
-
-    it(`hovering item ${i + 1}: each handle sits on its OWN structure's row`, () => {
-      // Task 394's whole point. The item handle tracks the pointer; the LIST
-      // handle stays beside the LIST's first line, whichever row is hovered —
-      // so the gutter reads as a structural breadcrumb instead of a pile.
-      hoverRow(i);
-      const owners = OWNERS();
-      const item = owners.find((o) => o.uuid === `li${i + 1}`)!;
-      const list = owners.find((o) => o.uuid === "ul1")!;
-      // Each row's optical center is its inner <p>'s top (jsdom reports a zero
-      // cap-band offset), in portal coords (viewport − PORTAL_ORIGIN.top).
-      const rowTop = (n: number) => ROWS[n].t + 2 - PORTAL_ORIGIN.top;
+      // The item handle is on the hovered row, at its RESTING slot — there is
+      // nothing on the row to separate from.
+      const item = owners[0];
       expect(item.top, "the item handle is not on the hovered row").toBe(rowTop(i));
-      expect(list.top, "the list handle left its own first row").toBe(rowTop(0));
-    });
-
-    it(`hovering item ${i + 1}: the container stays OUTBOARD of the item`, () => {
-      hoverRow(i);
-      const owners = OWNERS();
-      const item = owners.find((o) => o.uuid === `li${i + 1}`)!;
-      const list = owners.find((o) => o.uuid === "ul1")!;
-      // Stacking ORDER, stated once and true at every row: the container's
-      // marker-derived slot is one track-width outboard of its item's.
-      expect(list.left).toBeLessThan(item.left);
-      if (i === 0) {
-        // Row 1 is a GENUINE coincidence — the list's own first line IS item
-        // 1's — so 353's separation still applies: handles are 12px wide, so
-        // this is a real void between the boxes rather than two glyphs
-        // touching.
-        expect(list.top).toBe(item.top);
-        expect(Math.abs(item.left - list.left)).toBeGreaterThanOrEqual(24);
-      } else {
-        // Distinct rows: nothing to separate, so no push, and the item keeps
-        // its resting slot.
-        expect(Math.abs(list.top - item.top)).toBeGreaterThan(16);
-      }
     });
   }
 
@@ -226,19 +242,90 @@ describe("Gabriel's spec, as a contract", () => {
   it("the container handle stays OUT of the margin lane", () => {
     // The separation pushes the INNER handle inboard precisely because the
     // outer one is already on `editorColumnLeft - marginInset` and must not be
-    // taken further out.
-    hoverRow(1);
+    // taken further out. Row 1 since 425 — the only row the list handle shows.
+    hoverRow(0);
     const list = OWNERS().find((o) => o.uuid === "ul1")!;
     expect(list.left).toBeGreaterThanOrEqual(200 - 22);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Task 394 — the NESTED shape Gabriel screenshotted. This is the fixture no
-// pre-394 suite had: every grab-handle suite in the repo drives a FLAT list,
-// where a container has exactly one containing level and "one handle per level
-// on the hovered row" is indistinguishable from "one handle". The defect needs
-// FOUR containing levels to be representable at all.
+// Task 425 — "top row" is STRUCTURAL (the list's first ITEM), not geometric
+// (the first visual line). A two-line first item hovered on its SECOND visual
+// line still shows item 1 + the list, both placed at item 1's first line — one
+// visual row above the pointer. This is the fixture that separates the
+// structural reading from the tempting pixel-equality one (compute every
+// level's placement, keep the ones whose Y equals the innermost's): on a
+// wrapped first item the two readings DIFFER, and only the structural one
+// matches Gabriel's rule.
+// ---------------------------------------------------------------------------
+describe("task 425 — a wrapped first item is still the list's top row", () => {
+  const WRAP_ROWS = [ { t: 300, b: 380 }, { t: 380, b: 420 }, { t: 420, b: 460 } ];
+
+  function buildWrappedListDom() {
+    items.length = 0;
+    editorEl = document.createElement("div");
+    editorEl.className = "ProseMirror";
+    Object.defineProperty(editorEl, "offsetHeight", { value: 800, configurable: true });
+    editorEl.getBoundingClientRect = () => rect(0, 800, 200, 700);
+    listEl = document.createElement("ul");
+    listEl.setAttribute("data-uuid", "ul1");
+    listEl.setAttribute("data-text-object-kind", "bulletList");
+    listEl.getBoundingClientRect = () => rect(300, 460, 230, 700);
+    WRAP_ROWS.forEach((r, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("data-uuid", `li${i + 1}`);
+      li.setAttribute("data-text-object-kind", "listItem");
+      li.getBoundingClientRect = () => rect(r.t, r.b, 260, 700);
+      const p = document.createElement("p");
+      p.textContent = i === 0 ? "a first item long enough to wrap onto a second line" : `item ${i + 1}`;
+      p.getBoundingClientRect = () => rect(r.t + 2, r.b - 2, 260, 700);
+      li.appendChild(p); listEl.appendChild(li); items.push(li);
+    });
+    editorEl.appendChild(listEl);
+    document.body.appendChild(editorEl);
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    buildWrappedListDom();
+    buildFrame();
+    notePointerInput();
+  });
+
+  it("hovering item 1's SECOND visual line paints item 1 + the list, both at item 1's first line", () => {
+    blocksAtY.mockImplementation(() => [
+      { uuid: "li1", el: items[0] },
+      { uuid: "ul1", el: listEl },
+    ]);
+    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    // y=360: inside item 1 (300-380) but on its second visual line (~340-380).
+    movePointerTo(360);
+    const owners = OWNERS();
+    expect(owners.map((o) => o.uuid).sort()).toEqual(["li1", "ul1"].sort());
+    const firstLine = WRAP_ROWS[0].t + 2 - PORTAL_ORIGIN.top;
+    expect(owners.find((o) => o.uuid === "li1")!.top, "the item handle left its first line").toBe(firstLine);
+    expect(owners.find((o) => o.uuid === "ul1")!.top, "the list handle left the list's first line").toBe(firstLine);
+  });
+
+  it("hovering item 2 (the row directly under the wrapped item) paints item 2 only", () => {
+    blocksAtY.mockImplementation(() => [
+      { uuid: "li2", el: items[1] },
+      { uuid: "ul1", el: listEl },
+    ]);
+    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    movePointerTo(400);
+    expect(OWNERS().map((o) => o.uuid)).toEqual(["li2"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 394's NESTED shape, now swept per row under task 425's set. This is the
+// fixture no pre-394 suite had: every grab-handle suite in the repo drove a
+// FLAT list, where a container has exactly one containing level and the three
+// statements of the rule (353 / 394 / 425) differ only on row 1's X. Under 425
+// the nested fixture is what separates the rules: 394 painted FOUR handles on
+// three rows when liD was hovered; 425 paints ONE.
 //
 //   ulOuter                                   rows 300-460
 //     liA   "outer item one"                  rows 300-340
@@ -330,7 +417,7 @@ function movePointerTo(y: number) {
   flushFrames();
 }
 
-describe("task 394 — nested list: handles arrange hierarchically", () => {
+describe("task 425 — nested list: a container's handle only on its own top row", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     buildNestedDom();
@@ -339,64 +426,97 @@ describe("task 394 — nested list: handles arrange hierarchically", () => {
     notePointerInput();
   });
 
-  it("hovering the deepest item paints FOUR handles at FOUR distinct rows", () => {
+  it("hovering liA (the outer list's top row) paints liA + ulOuter, both on that row", () => {
     render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
-    movePointerTo(440);
+    movePointerTo(320);
+    const owners = OWNERS();
+    expect(owners.map((o) => o.uuid).sort()).toEqual(["liA", "ulOuter"].sort());
+    const by = (uuid: string) => owners.find((o) => o.uuid === uuid)!;
+    expect(by("liA").top).toBe(nestTop(NEST.liA));
+    expect(by("ulOuter").top, "outer list left its own first row").toBe(nestTop(NEST.liA));
+    expect(by("ulOuter").left, "the container is not outboard of its item").toBeLessThan(by("liA").left);
+  });
+
+  it("hovering liB's own line (outer row 2, not a top row) paints liB only", () => {
+    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    movePointerTo(360);
+    const owners = OWNERS();
+    expect(owners.map((o) => o.uuid)).toEqual(["liB"]);
+    expect(owners[0].top).toBe(nestTop(NEST.liBp));
+  });
+
+  it("hovering liC (the INNER list's top row) paints liC + ulInner — never liB, never ulOuter", () => {
+    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    movePointerTo(400);
     const owners = OWNERS();
     expect(
       owners.map((o) => o.uuid).sort(),
       "the wrong set of handles is painted",
-    ).toEqual(["liB", "liD", "ulInner", "ulOuter"].sort());
-
+    ).toEqual(["liC", "ulInner"].sort());
+    // Named separately so a failure says WHICH outer level leaked rather than
+    // reporting a count: liC is the inner list's top row and NOT the outer
+    // item's (liB's own line is its paragraph) nor the outer list's (liA).
+    expect(owners.find((o) => o.uuid === "liB"), "the outer ITEM leaked onto the inner top row").toBeUndefined();
+    expect(owners.find((o) => o.uuid === "ulOuter"), "the outer LIST leaked onto the inner top row").toBeUndefined();
     const by = (uuid: string) => owners.find((o) => o.uuid === uuid)!;
-    // Each level beside its OWN structure's first visual line. This is the
-    // whole renegotiation: pre-394 every one of these read nestTop(NEST.liD).
-    expect(by("ulOuter").top, "outer list left its own first row").toBe(nestTop(NEST.liA));
-    expect(by("liB").top, "outer item left its own first row").toBe(nestTop(NEST.liBp));
+    expect(by("liC").top).toBe(nestTop(NEST.liC));
     expect(by("ulInner").top, "inner list left its own first row").toBe(nestTop(NEST.liC));
-    expect(by("liD").top, "the hovered item is not on the hovered row").toBe(nestTop(NEST.liD));
-
-    // …and no two of them share a visual row, so nothing bunches.
-    const tops = owners.map((o) => o.top).sort((a, b) => a - b);
-    for (let i = 1; i < tops.length; i++) {
-      expect(tops[i] - tops[i - 1], `handles bunched at ${tops[i]}`).toBeGreaterThan(16);
-    }
+    expect(by("ulInner").left).toBeLessThan(by("liC").left);
   });
 
-  it("outer levels sit further LEFT, by their own indent", () => {
+  it("hovering the deepest item (liD, inner row 2) paints ONE handle", () => {
+    // RENEGOTIATED (task 425). Task 394's leg here read "hovering the deepest
+    // item paints FOUR handles at FOUR distinct rows" — outer list, outer item,
+    // inner list, item — each at its own first line. Gabriel's 2026-08-22
+    // rule: off a top row you get ONE handle, the hovered item's. Inverted,
+    // this is the canary: it FAILS on the 394 tree.
     render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
     movePointerTo(440);
-    const by = (uuid: string) => OWNERS().find((o) => o.uuid === uuid)!;
-    // The gutter reads outward-in: outer list < outer item < inner list < item.
-    expect(by("ulOuter").left).toBeLessThan(by("liB").left);
-    expect(by("liB").left).toBeLessThan(by("ulInner").left);
-    expect(by("ulInner").left).toBeLessThan(by("liD").left);
+    const owners = OWNERS();
+    expect(owners.map((o) => o.uuid), "the wrong set of handles is painted").toEqual(["liD"]);
+    expect(owners[0].top, "the hovered item is not on the hovered row").toBe(nestTop(NEST.liD));
   });
 
-  it("travelling UP to a container's handle keeps that handle alive, in place", () => {
-    // The UX risk of distributing vertically, and the reason this leg drives
-    // ONE mounted component across two pointer positions rather than two
-    // renders: the user aims at a handle that is rows away from the text they
-    // were hovering, and the pointer crosses rows on the way.
+  it("the set is decided STRUCTURALLY: non-qualifying levels are never PLACED", () => {
+    // The deepFix's whole point versus the surgical one ("compute every
+    // level's placement, keep the ones on the hovered row"): placement is a
+    // rect-reading operation, and `computePlacement` must run ≤2 times per
+    // hover. Placing ulOuter reads liA's first-line rect (its own top row);
+    // placing liB reads liBp's. Hovering liD, neither may be read at all.
+    const liAPara = nestEls.liA.querySelector("p")!;
+    const readA = vi.fn(liAPara.getBoundingClientRect);
+    liAPara.getBoundingClientRect = readA;
+    const liBPara = nestEls.liB.querySelector(":scope > p") as HTMLElement;
+    const readB = vi.fn(liBPara.getBoundingClientRect);
+    liBPara.getBoundingClientRect = readB;
     render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
     movePointerTo(440);
-    const before = OWNERS().find((o) => o.uuid === "ulOuter")!;
+    expect(OWNERS().map((o) => o.uuid)).toEqual(["liD"]);
+    expect(readA, "ulOuter's placement was computed and discarded").not.toHaveBeenCalled();
+    expect(readB, "liB's placement was computed and discarded").not.toHaveBeenCalled();
+  });
 
-    // Up through the inner list's first row…
+  it("travelling UP from a deep row: the list handle appears only on ARRIVAL at its top row", () => {
+    // RENEGOTIATED (task 425). Task 394's leg here read "travelling UP to a
+    // container's handle keeps that handle alive, in place" — the outer list
+    // handle stayed lit the whole way up from liD. That property is GIVEN UP
+    // deliberately: hovering row 3 shows no list handle; to grab the list you
+    // go to row 1. What survives is that the handle, once you arrive, sits
+    // where 394 put it — the list's own top row, outboard of its first item.
+    render(<TextObjectGrabHandle editorRef={{ current: fakeEditor() }} />);
+    movePointerTo(440);
+    expect(OWNERS().find((o) => o.uuid === "ulOuter"), "outer list lit on a deep row").toBeUndefined();
+
+    // Up through the inner list's top row: the INNER list, not the outer.
     movePointerTo(400);
-    expect(
-      OWNERS().find((o) => o.uuid === "ulOuter"),
-      "the outer list handle vanished mid-travel",
-    ).toBeTruthy();
+    expect(OWNERS().find((o) => o.uuid === "ulOuter"), "outer list lit on the inner top row").toBeUndefined();
+    expect(OWNERS().find((o) => o.uuid === "ulInner")).toBeTruthy();
 
-    // …and on to the outer list's own first row, where its handle lives.
+    // …and on to the outer list's own top row, where its handle lives.
     movePointerTo(320);
-    const after = OWNERS().find((o) => o.uuid === "ulOuter")!;
-    expect(after, "the outer list handle vanished on arrival").toBeTruthy();
-    expect({ top: after.top, left: after.left }).toEqual({
-      top: before.top,
-      left: before.left,
-    });
+    const arrived = OWNERS().find((o) => o.uuid === "ulOuter")!;
+    expect(arrived, "the outer list handle is missing on arrival").toBeTruthy();
+    expect(arrived.top).toBe(nestTop(NEST.liA));
   });
 });
 
