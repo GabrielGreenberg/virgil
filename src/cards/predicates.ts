@@ -312,14 +312,14 @@ export function linkedCardKindFrom(
   reqKind: AiRequestKind,
   panel: AiRequestLink["panel"],
 ): CardKind | null {
-  return LINKED_CARD_KIND_BY_PAIR.get(`${reqKind} ${panel}`) ?? null;
+  return LINKED_CARD_KIND_BY_PAIR.get(`${reqKind}\0${panel}`) ?? null;
 }
 
 const LINKED_CARD_KIND_BY_PAIR: Map<string, CardKind> = (() => {
   const m = new Map<string, CardKind>();
   for (const k of CARD_KINDS) {
     const routing = CARD_REGISTRY[k].aiRequest;
-    if (routing) m.set(`${routing.kind} ${routing.linkPanel}`, k);
+    if (routing) m.set(`${routing.kind}\0${routing.linkPanel}`, k);
   }
   return m;
 })();

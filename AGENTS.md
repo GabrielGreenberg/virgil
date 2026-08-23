@@ -7127,12 +7127,14 @@ Seven rules it earned:
 
 - **The skip STATS, because the ledger is a belief about disk and not disk.**
   The pre-415 gate compared its serialized `.tex` against the ledger fingerprint
-  and returned — and nothing re-baselines that fingerprint on a genuine external
-  change: the `DiskWatcher` deliberately KEEPS the stale one and flags (that is
-  how the badge stays lit across polls), and the `SidecarWatcher` **is not
-  mounted anywhere in production** today. So a hash-only gate can decline to
-  write over an external edit, silently, which is the one failure this whole
-  subsystem exists to prevent. A skip is taken only when the file is PROVABLY
+  and returned — and the `.tex`/`.bib` fingerprint is never re-baselined on a
+  genuine external change: the `DiskWatcher` deliberately KEEPS the stale one
+  and flags (that is how the badge stays lit across polls). The sidecar
+  fingerprints ARE re-baselined by the `SidecarWatcher` — but only on its ~3 s
+  poll, so a window remains. (415 recorded that watcher as "not mounted
+  anywhere in production"; that was FALSE, see "The grep half" below.) So a
+  hash-only gate can decline to write over an external edit, silently, which is
+  the one failure this whole subsystem exists to prevent. A skip is taken only when the file is PROVABLY
   the one we stamped: the content hash matches AND the live `{mtimeMs, size}`
   still match the fingerprint — the DiskWatcher's own cheap-path predicate, read
   off the SAME handle the write would have used, so the gate and the watcher can
@@ -7242,6 +7244,57 @@ exact: after a few days of ordinary writing, count new `virgil.json` forks, and
 the expectation is ZERO rather than fewer, because its bytes genuinely do not
 move during a session.
 `find ~/Dropbox/Apps/Overleaf -name "*conflicted copy*" | grep -oE 'conflicted copy [0-9-]{10}' | sort | uniq -c | tail`
+
+### The grep half: a census can only see the files its grep can READ
+
+Same path, and the case where the watcher was right, the provider was right,
+the prose was wrong, and a DECISION was routed to Gabriel about a mechanism
+that had been live for seven weeks (task 432). The 415 worker grepped both
+silos for `createSidecarWatcher`, found only its own file and a `vi.mock`, and
+filed *"built, tested, and MOUNTED NOWHERE"*. This file then repeated it as a
+fact in the section above. Gabriel ruled "MOUNT it."
+
+It was mounted — in `DiskWatcherProvider`, since 2026-06-30. The provider's
+file held a raw **NUL BYTE** inside a string literal (`live.join("<NUL>")`, a
+composite-key separator typed as the byte rather than the `"\0"` escape), and
+one byte below 0x20 makes `grep` classify the whole file as BINARY: every match
+becomes `Binary file … matches`, and the zsh `grep` wrapper every worker,
+auditor and catcher reaches for suppresses those lines entirely. `git diff`
+showed the same files as `Bin`. The repo's OWN censuses — `_source-scan.ts` and
+forty guardrail suites — read through Node and were never fooled, which is
+exactly why nothing noticed: the instruments that could see the file agreed
+with each other, and the one that could not is the one humans use. Four
+production files carried the idiom (`disk-watcher.tsx`, `predicates.ts`,
+`parse-tex-log.ts`, `cross-window-storage.ts`).
+
+> **A text source file is TEXT to every reader, or a shell census is lying
+> about it.** No control byte other than TAB / LF / CR; a NUL separator is
+> spelled `"\0"`. And a filing that names an ABSENCE ("mounted nowhere",
+> "zero callers") is checked with a second instrument before it becomes a
+> decision — a grep's silence is not evidence.
+
+Three rules it earned:
+
+- **The runtime string is identical either way**, so the fix is a four-file
+  byte swap with no behavioural change — and a census, because the next
+  `join("\0")` typed as a byte is one keystroke away.
+- **Every prior suite drove ONE piece.** `sidecar-watcher.test.ts` the poller,
+  `usePersistentState.test.tsx` the consumer on a HAND-DISPATCHED event,
+  `disk-watcher-multidoc.test.tsx` the provider with the watcher MOCKED OUT —
+  so "an external sidecar edit re-hydrates the panel" was pinned by nothing,
+  and a filing claiming it could not happen had no leg to contradict it.
+- **The decision that was routed is RECORDED as moot, not silently closed.**
+  Gabriel's "MOUNT it" ruling described the tree as it already stood; 220's
+  "The sidecar half" was true the whole time.
+
+CI: [source-text-hygiene.test.ts](src/__tests__/source-text-hygiene.test.ts)
+sweeps every tracked text file (population from `git ls-files`, allowlist
+EMPTY) for a control byte, naming the file and line; measured, it fails on any
+one of the four pre-432 files. [sidecar-watcher-wiring.test.tsx](src/components/editor-layout/contexts/__tests__/sidecar-watcher-wiring.test.tsx)
+drives the REAL provider → REAL `createSidecarWatcher` → REAL
+`usePersistentState` over a fake disk with real mtimes: an out-of-band write
+re-hydrates on the next poll with no hand-dispatched event, and a removal
+empties the panel. Measured by neutering the provider's `start()`: 2 legs fail.
 
 ### CI, and the limits stated rather than implied
 

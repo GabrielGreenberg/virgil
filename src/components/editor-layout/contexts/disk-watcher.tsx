@@ -276,9 +276,9 @@ export function DiskWatcherProvider({
   // active⇄warm switch leaves the set unchanged, so it never disposes. Keyed on
   // the set's CONTENT (join) so it doesn't thrash on unrelated re-renders.
   const live = liveDocIds ?? [docId];
-  const liveKey = live.join(" ");
+  const liveKey = live.join("\0");
   useEffect(() => {
-    const alive = new Set(liveKey ? liveKey.split(" ") : []);
+    const alive = new Set(liveKey ? liveKey.split("\0") : []);
     for (const [id, w] of [...watchersByDoc.current]) {
       // Never dispose the active doc (defensive — it's always in `alive`).
       if (id !== docId && !alive.has(id)) {
