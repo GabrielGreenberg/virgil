@@ -223,11 +223,14 @@ async function writeTextToHandle(
 // The pre-415 `writeDocBundle` gate compared its serialized `.tex` against the
 // ledger fingerprint and returned. That rests on a claim the ledger cannot
 // make: the ledger records what Virgil last PUT ON (or READ FROM) disk, which
-// is a belief about disk, not disk. Nothing re-baselines it on a genuine
-// external change — the `DiskWatcher` deliberately keeps the STALE fingerprint
-// and flags (that is how the badge stays lit across polls), and the
-// `SidecarWatcher` is not mounted at all today. So a hash-only gate can decline
-// to write over an external edit, silently, which is the one failure this whole
+// is a belief about disk, not disk. The `.tex`/`.bib` half is never
+// re-baselined on a genuine external change — the `DiskWatcher` deliberately
+// keeps the STALE fingerprint and flags (that is how the badge stays lit across
+// polls) — and the sidecar half is re-baselined only by the `SidecarWatcher`'s
+// ~3 s poll (mounted per doc by `DiskWatcherProvider`; task 432 corrected an
+// earlier claim here that it was unmounted), which leaves a window between the
+// external write and the next poll. So a hash-only gate can decline to write
+// over an external edit, silently, which is the one failure this whole
 // subsystem exists to prevent.
 //
 // So a skip is only taken when the file is PROVABLY the one we stamped: the
