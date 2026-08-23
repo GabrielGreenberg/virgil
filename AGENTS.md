@@ -5838,6 +5838,26 @@ Seven rules it earned:
   inside the thing it called unsupported. Both were found by the adversarial
   pass, both are the module contradicting its own stated subset, and both are
   now assembled from the LIVE spans.
+- **…and a primitive that publishes HALF an operation is how the fourth scanner
+  gets it wrong** (task 406, the residual of the residual). `matchCommentTailAt`
+  answers a REPRESENTATION question — *which bytes are the comment* — and stops
+  short of the newline; every caller assembling TEXT also needs the READING
+  answer — *where does TeX RESUME*, past the newline TeX discards and past the
+  continuation line's leading indent (state N). That second half was re-derived
+  per scanner, correctly in `scanLabel` and nowhere else, so `scanOptions`
+  spliced the continuation's bytes into its token and refused LOUDLY with
+  `node option \`ro\nof\`` on `[NP,ro%\nof]` — a user breaking forest's only
+  legal option across a `%` continuation, which TeX reads as `roof`. It ships as
+  a documented PAIR now (`skipCommentContinuationAt`, immediately below its
+  sibling), because a caller genuinely has to CHOOSE — and the half that proves
+  it is the NEGATIVE one, stated at both ends: the byte carrier in
+  `parseInlineContent` must NOT call the door, since the newline is the USER's
+  byte and is carried into the `latexCommentTail` node. **A cleanup that made
+  the two "consistent" would silently eat a line break out of the source on
+  every save.** Task 273's rule ("publish whole OPERATIONS, never the pieces")
+  in its mildest form — and note the census here was worth almost nothing: five
+  of six callers were already right, two of them *precisely because* they do not
+  skip. The value was the door and the two sentences beside it, not the sweep.
 - **A view measured with NO BOX must be told when it gets one.** A `forestBlock`
   inside a folded section stays MOUNTED — `.section-folded` is a node
   DECORATION, not an unmount — so its first layout runs with every rect at 0×0
