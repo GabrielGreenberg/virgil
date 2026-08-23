@@ -37,6 +37,10 @@ function layoutOf(body: string, widthOf?: (n: ForestRenderNode) => number) {
   return { t, layout: computeForestLayout(t, sizes(t, widthOf)) };
 }
 
+/** The corpus member whose geometry task 412 accepted and pinned. */
+const ROOF_CROSSER =
+  "an outer edge clipping a roofed middle sibling (accepted + pinned, task 412)";
+
 const CORPUS: { name: string; body: string }[] = [
   { name: "the standard syntax tree", body: "[S [NP [Det [the]] [N [dog]]] [VP [V [barks]]]]" },
   { name: "a single node", body: "[S]" },
@@ -50,6 +54,17 @@ const CORPUS: { name: string; body: string }[] = [
   { name: "a roofed phrase", body: "[S [NP,roof [Det [the]] [N [dog]]] [VP [{barks}]]]" },
   { name: "a roofed leaf", body: "[S [{the dog},roof] [VP]]" },
   { name: "math labels", body: "[$\\alpha$ [$\\beta$] [$\\gamma$]]" },
+  // Task 412 — the ONE corpus shape whose outer edge clips a roofed sibling's
+  // triangle. Both halves are load-bearing and neither is obvious: the roof has
+  // to be a roofed LEAF (a roofed INTERNAL node is flattened into a roofed
+  // ONLY-child one row down, so it can never be a middle sibling), and the left
+  // label has to be wide enough (~46 chars under this suite's metric) to swing
+  // the parent's centre past the triangle. Pinned, not fixed — see
+  // "edges vs roofs" below and the roof-building comment in `layout.ts`.
+  {
+    name: ROOF_CROSSER,
+    body: "[S [{a label long enough to push the left sibling out past five gaps}] [{x},roof] [z]]",
+  },
 ];
 
 function boxes(layout: ReturnType<typeof computeForestLayout>) {
@@ -183,6 +198,184 @@ describe("roofs", () => {
   it("a roofed ROOT still fits inside the box (the apex is not clipped)", () => {
     const { layout } = layoutOf("[{the dog},roof]");
     expect(layout.roofs[0].apexY).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * Task 412 — edges and roofs are built from the placed boxes in two loops that
+ * do not know about each other, so an outer sibling's edge CAN clip a roofed
+ * sibling's triangle. Gabriel's ruling (2026-08-21) was ACCEPT, not route — so
+ * these legs exist to make the acceptance explicit and the geometry immovable.
+ *
+ * The sweep is an EXACT SET, not a floor: every corpus shape is asked, and the
+ * one that crosses is the one that DECLARES it. A future layout change that
+ * introduces a crossing anywhere else fails here rather than shipping quietly.
+ *
+ * Beware the obvious fixture. The memo that filed this proposed a roofed
+ * INTERNAL middle child, which produces NO roof on the sibling row at all
+ * (`flattenRoofs` gives such a node a synthesized roofed ONLY-child one row
+ * down) and therefore no crossing — a worker following it would have measured a
+ * false all-clear. That shape is a passing control below.
+ */
+
+/** The vertices of a roof triangle, apex first. */
+function triangleOf(r: { apexX: number; apexY: number; leftX: number; rightX: number; baseY: number }) {
+  return [
+    { x: r.apexX, y: r.apexY },
+    { x: r.rightX, y: r.baseY },
+    { x: r.leftX, y: r.baseY },
+  ];
+}
+
+/**
+ * The length of the part of segment `e` that lies strictly INSIDE the triangle,
+ * in px — 0 when it misses or merely touches.
+ *
+ * Exact convex clipping (each triangle side is a half-plane; the interior is
+ * their intersection), deliberately NOT point sampling: a sampled probe reports
+ * a grazing clip as a miss, or a real one as a hairline, purely from where its
+ * samples happened to land. A pin decided by sampling density is not a pin.
+ */
+function chordInsideTriangle(
+  e: { x1: number; y1: number; x2: number; y2: number },
+  tri: { x: number; y: number }[],
+): number {
+  const dx = e.x2 - e.x1;
+  const dy = e.y2 - e.y1;
+  let t0 = 0;
+  let t1 = 1;
+  for (let i = 0; i < 3; i++) {
+    const a = tri[i];
+    const b = tri[(i + 1) % 3];
+    const c = tri[(i + 2) % 3];
+    // Normal to a→b, flipped so that "inside" (the side c is on) is n·(p−a) < 0.
+    let nx = b.y - a.y;
+    let ny = -(b.x - a.x);
+    if (nx * (c.x - a.x) + ny * (c.y - a.y) > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const num = nx * (e.x1 - a.x) + ny * (e.y1 - a.y);
+    const den = nx * dx + ny * dy;
+    if (Math.abs(den) < 1e-12) {
+      if (num >= 0) return 0; // parallel and outside
+      continue;
+    }
+    const t = -num / den;
+    if (den > 0) t1 = Math.min(t1, t);
+    else t0 = Math.max(t0, t);
+    if (t0 >= t1) return 0;
+  }
+  return (t1 - t0) * Math.hypot(dx, dy);
+}
+
+/** Every (edge, roof) pair of a layout whose edge passes through the roof. */
+function edgeRoofCrossings(layout: ReturnType<typeof computeForestLayout>) {
+  const out: { edge: number; roof: number; chord: number }[] = [];
+  layout.roofs.forEach((r, ri) => {
+    const tri = triangleOf(r);
+    layout.edges.forEach((e, ei) => {
+      const chord = chordInsideTriangle(e, tri);
+      if (chord > 1e-9) out.push({ edge: ei, roof: ri, chord });
+    });
+  });
+  return out;
+}
+
+describe("edges vs roofs — an ACCEPTED and PINNED crossing (task 412)", () => {
+  it("across the whole corpus, exactly the DECLARED shape crosses a roof", () => {
+    const crossing = CORPUS.filter(
+      (c) => edgeRoofCrossings(layoutOf(c.body).layout).length > 0,
+    ).map((c) => c.name);
+    expect(crossing).toEqual([ROOF_CROSSER]);
+  });
+
+  it("the declared shape really does put a roof on the SIBLING row", () => {
+    // The half the memo's fixture failed. Without this the crossing leg below
+    // could pass for a reason unrelated to the shape it claims to describe.
+    const body = CORPUS.find((c) => c.name === ROOF_CROSSER)!.body;
+    const { t, layout } = layoutOf(body);
+    const flat = flattenForestTree(t);
+    const middle = t.children[1];
+    const idx = flat.indexOf(middle);
+    expect(t.children).toHaveLength(3);
+    expect(layout.nodes[idx].roofed).toBe(true);
+    expect(layout.roofs).toHaveLength(1);
+    expect(layout.roofs[0].baseY).toBeCloseTo(layout.nodes[idx].y, 6);
+    // …and it is a MIDDLE child, which is what makes an outer edge pass it.
+    expect(flat.indexOf(t.children[0])).toBeLessThan(idx);
+    expect(flat.indexOf(t.children[2])).toBeGreaterThan(idx);
+  });
+
+  it("pins the crossing geometry, so a layout change renegotiates it on purpose", () => {
+    const body = CORPUS.find((c) => c.name === ROOF_CROSSER)!.body;
+    const { layout } = layoutOf(body);
+    const hits = edgeRoofCrossings(layout);
+    expect(hits).toHaveLength(1);
+
+    // The last child's edge, clipping the right flank of the middle roof.
+    const edge = layout.edges[hits[0].edge];
+    const roof = layout.roofs[hits[0].roof];
+    expect(edge).toEqual({ x1: 374, y1: 18, x2: 521.5, y2: 57 });
+    expect(roof).toEqual({
+      apexX: 482.5,
+      apexY: 44,
+      leftX: 473,
+      rightX: 492,
+      baseY: 57,
+    });
+    expect(hits[0].chord).toBeCloseTo(4.2214, 4);
+  });
+
+  it("a short left sibling does NOT cross — the crossing needs the extreme shape", () => {
+    // The control that keeps the sweep from passing vacuously: same tree,
+    // same roofed middle leaf, a label too narrow to swing the parent past it.
+    const { layout } = layoutOf("[S [{ab}] [{x},roof] [z]]");
+    expect(layout.roofs).toHaveLength(1);
+    expect(edgeRoofCrossings(layout)).toEqual([]);
+  });
+
+  it("a roofed INTERNAL middle child cannot cross — it puts no roof on that row", () => {
+    // The memo's own proposed fixture, kept as a passing control so the false
+    // all-clear it produces can never be mistaken for coverage again.
+    const { t, layout } = layoutOf("[S [A] [NP,roof [Det [the]] [N [dog]]] [z]]");
+    const flat = flattenForestTree(t);
+    const middle = t.children[1];
+    expect(layout.nodes[flat.indexOf(middle)].roofed).toBe(false);
+    expect(middle.children).toHaveLength(1); // the synthesized roofed only-child
+    expect(layout.nodes[flat.indexOf(middle.children[0])].roofed).toBe(true);
+    expect(edgeRoofCrossings(layout)).toEqual([]);
+  });
+
+  it("an edge never enters its OWN child's roof — it terminates at the apex", () => {
+    // A property, not a fixture fact: the triangle's interior lies strictly
+    // BELOW the apex, and a roofed child's edge stops there.
+    for (const c of CORPUS) {
+      const { t, layout } = layoutOf(c.body);
+      const flat = flattenForestTree(t);
+      const indexOf = new Map(flat.map((n, i) => [n, i]));
+      const roofByNode = new Map(
+        layout.roofs.map((r) => [Math.round(r.apexX * 1e6) + ":" + Math.round(r.baseY * 1e6), r]),
+      );
+      let ei = 0;
+      const walk = (node: ForestRenderNode) => {
+        for (const kid of node.children) {
+          const k = layout.nodes[indexOf.get(kid)!];
+          const edge = layout.edges[ei++];
+          if (k.roofed) {
+            const r = roofByNode.get(
+              Math.round((k.x + k.width / 2) * 1e6) + ":" + Math.round(k.y * 1e6),
+            )!;
+            expect(
+              chordInsideTriangle(edge, triangleOf(r)),
+              `${c.name}: an edge entered its own child's roof`,
+            ).toBe(0);
+          }
+          walk(kid);
+        }
+      };
+      walk(t);
+    }
   });
 });
 
