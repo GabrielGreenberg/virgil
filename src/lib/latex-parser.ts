@@ -554,6 +554,13 @@ export function parseInlineContent(
           text: tail.raw,
           marks: [commentTailMark()],
         });
+        // DELIBERATELY `tail.end`, and NOT the lexer's sibling door
+        // `skipCommentContinuationAt` (task 406). That door answers "where does
+        // TeX RESUME", which is the right question for a scanner assembling
+        // TEXT and the wrong one here: this is the byte CARRIER, and the
+        // newline is the USER's byte. Skipping the continuation would drop a
+        // line break out of the source on every save — the silent, fixed-point
+        // rewrite the comment carrier exists to prevent (task 347).
         i = tail.end;
         continue;
       }

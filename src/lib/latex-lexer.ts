@@ -324,6 +324,31 @@ export function hasCommentTailMark(
  * the document). This one is a REPRESENTATION question asked from inside the
  * inline parser, at a position every command / verb / math / URL matcher has
  * already declined, so `\url{http://ex.com/a%20b}` never reaches it.
+ *
+ * ## Half of an operation, and the other half is {@link skipCommentContinuationAt}
+ *
+ * `.end` obeys this file's uniform rule — one past the last byte this matcher
+ * CONSUMED — and what it consumes deliberately stops SHORT of the newline. That
+ * is a SCOPE decision, not an off-by-one: the two questions a caller can ask are
+ * genuinely different, and this primitive answers only the first.
+ *
+ * - **REPRESENTATION — "which bytes are the comment?"** `raw` / `.end`, here.
+ * - **READING — "where does TeX RESUME?"** {@link skipCommentContinuationAt},
+ *   which additionally steps past the newline TeX discards and the continuation
+ *   line's own leading spaces. A caller assembling TEXT wants this one:
+ *   `[{Deter%\nmine}]` typesets `Determine`, and stopping at `.end` leaves the
+ *   newline in the buffer to be collapsed into a space that TeX does not yield
+ *   (task 387's `Deter mine`, and task 406's `[NP,ro%\nof]`).
+ *
+ * **And the negative half, which is the one a future "consistency" cleanup
+ * would break:** `parseInlineContent`'s comment-carrier branch
+ * ([latex-parser.ts](src/lib/latex-parser.ts), the `opts.commentTails` arm)
+ * must NOT call the sibling. The newline is the USER's byte — it is carried
+ * into the `latexCommentTail` node and re-emitted verbatim, and the carrier's
+ * whole promise is that a comment's bytes survive a save unchanged (task 347).
+ * Skipping the continuation there would silently eat a line break out of the
+ * user's source. So: a scanner that READS calls the pair; a carrier that
+ * REPRESENTS calls only this one.
  */
 export function matchCommentTailAt(
   text: string,
@@ -333,6 +358,34 @@ export function matchCommentTailAt(
   const nl = text.indexOf("\n", i);
   const end = nl === -1 ? text.length : nl;
   return { raw: text.slice(i, end), end };
+}
+
+/**
+ * Where does TeX RESUME after a comment tail? — the READING half of the pair
+ * whose REPRESENTATION half is {@link matchCommentTailAt}. Give it a
+ * `matchCommentTailAt(...).end`; it returns the index of the next byte TeX
+ * actually reads.
+ *
+ * TeX's end-of-line `%` is the standard CONTINUATION idiom: the `%` discards
+ * the rest of its line INCLUDING the newline TeX appends, and the next line is
+ * entered in state N, so its leading spaces and tabs are eaten too. Hence
+ * `Deter%\n    mine` is one word.
+ *
+ * Two boundaries, both deliberate. Where the comment ended the SOURCE rather
+ * than a line there is nothing to skip and this is the identity. And neither
+ * step may cross `limit`, so a scanner working inside a bounded region (a
+ * `{…}` group, a `[…]` option list) can never be handed a resume position
+ * outside the region it was asked about.
+ */
+export function skipCommentContinuationAt(
+  text: string,
+  i: number,
+  limit: number = text.length,
+): number {
+  if (i >= limit || text[i] !== "\n") return i;
+  i++;
+  while (i < limit && (text[i] === " " || text[i] === "\t")) i++;
+  return i;
 }
 
 /** The inline-`\verb` delimiter class, as ONE definition. `\verb` is a control

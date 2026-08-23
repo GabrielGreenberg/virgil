@@ -341,6 +341,29 @@ describe("the carrier's line obligation", () => {
     expect(out).toContain("typed after");
   });
 
+  it("the CONTINUATION is the user's bytes — the carrier must not skip it", () => {
+    // The NEGATIVE half of task 406's lexer pair, pinned here because it is the
+    // half a future "consistency" cleanup would break.
+    //
+    // `matchCommentTailAt` answers a REPRESENTATION question ("which bytes are
+    // the comment") and its sibling `skipCommentContinuationAt` answers a
+    // READING one ("where does TeX resume" — past the newline AND past the
+    // continuation line's leading indent). Every scanner assembling TEXT wants
+    // the second; this branch, the byte CARRIER, must have only the first. The
+    // newline and the indent are the USER's bytes: routed through the sibling
+    // door they would be swallowed on every save, silently, as a fixed point —
+    // exactly the rewrite the carrier exists to prevent (task 347).
+    //
+    // The INDENT is what makes this leg measurable. `closeCommentTail` re-emits
+    // a newline after a comment run whether or not one was carried, so a bare
+    // `%\nfoo` round-trips byte-identically either way and the leg above passes
+    // on the broken carrier — measured. Leading whitespace has no such repair.
+    const src = "A line that continues%\n    onto an indented line.\n";
+    expect(twoCycles(src).bodyText).toBe(src.trim());
+    // …and the run the carrier claimed stops AT the newline, never past it.
+    expect(commentTailRuns(parseLatex(src))).toEqual(["%"]);
+  });
+
   it("a tail already followed by a newline gains no second one", () => {
     // Byte-neutrality for everything the parser produces: it always reads a
     // tail up to (never across) a newline and leaves that newline at the head

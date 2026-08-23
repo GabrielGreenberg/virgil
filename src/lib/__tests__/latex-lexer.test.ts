@@ -8,6 +8,8 @@ import {
   findMatchingEnv,
   findMatchingGloss,
   matchCommandToken,
+  matchCommentTailAt,
+  skipCommentContinuationAt,
 } from "@/lib/latex-lexer";
 
 describe("projectLiveLatex — comment stripping", () => {
@@ -287,5 +289,57 @@ describe("findMatchingEnv — verbatim family reads the VERBATIM_ENVS_FULL SSOT 
     );
     // Sanity: the two policies genuinely differ on this fixture.
     expect(src.indexOf(endTok, startPos)).not.toBe(src.lastIndexOf(endTok));
+  });
+});
+
+describe("the comment pair — matchCommentTailAt + skipCommentContinuationAt", () => {
+  // Task 406. The primitive answers a REPRESENTATION question ("which bytes are
+  // the comment") and the door answers a READING one ("where does TeX resume").
+  // They ship as a documented pair because a caller genuinely has to pick: the
+  // byte CARRIER in `latex-parser` wants the first and must not have the second.
+
+  const resume = (src: string, limit?: number) => {
+    const tail = matchCommentTailAt(src, src.indexOf("%"));
+    if (!tail) throw new Error("no comment tail in fixture");
+    return skipCommentContinuationAt(src, tail.end, limit);
+  };
+
+  it("the matcher stops SHORT of the newline — that is the scope, not an off-by-one", () => {
+    const src = "a%c\nb";
+    const tail = matchCommentTailAt(src, 1)!;
+    expect(tail.raw).toBe("%c");
+    // The file's uniform rule: `.end` is one past the last byte CONSUMED, and
+    // `text.slice(pos, end) === raw`.
+    expect(src.slice(1, tail.end)).toBe(tail.raw);
+    expect(src[tail.end]).toBe("\n");
+  });
+
+  it("the door resumes past the newline AND the continuation line's indent", () => {
+    expect(resume("Deter%\nmine")).toBe("Deter%\n".length);
+    expect(resume("Deter%\n    mine")).toBe("Deter%\n    ".length);
+    expect(resume("Deter%\n\t\tmine")).toBe("Deter%\n\t\t".length);
+  });
+
+  it("stops at the first non-blank — a BLANK line is not eaten", () => {
+    // Only spaces and tabs; a second newline is a `\par` and belongs to
+    // whatever reads next, not to the continuation.
+    const src = "a%c\n\nb";
+    expect(resume(src)).toBe(src.indexOf("\n") + 1);
+  });
+
+  it("is the IDENTITY where the comment ended the source rather than a line", () => {
+    const src = "a%c";
+    expect(resume(src)).toBe(src.length);
+  });
+
+  it("neither step crosses `limit`", () => {
+    // A scanner working inside a bounded region (a `{…}` group, a `[…]` option
+    // list) must never be handed a resume position outside the region it asked
+    // about — the inlined copy this door replaced had no such bound.
+    const src = "a%c\n   b";
+    const nl = src.indexOf("\n");
+    expect(resume(src, nl)).toBe(nl);
+    expect(resume(src, nl + 1)).toBe(nl + 1);
+    expect(resume(src, nl + 3)).toBe(nl + 3);
   });
 });

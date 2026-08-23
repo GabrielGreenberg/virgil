@@ -130,6 +130,34 @@ describe("the accepted subset", () => {
     expect(refusal("[NP,l sep=2cm % why\n [x]]").token).toBe("l sep=2cm");
   });
 
+  it("an option BROKEN across a `%` continuation is read as ONE token", () => {
+    // TeX's end-of-line `%` discards the newline AND the next line's leading
+    // whitespace, so `ro%\nof` is the word `roof`. The option scan stopped at
+    // `matchCommentTailAt(...).end` — the newline's INDEX — so those bytes were
+    // spliced into the token and the scan refused LOUDLY with
+    // `node option \`ro\nof\`` on source TeX reads as forest's ONE legal
+    // option. Data-safe, and a refusal that fires for the wrong reason is a
+    // wrong message. Asserting the option is RECOGNIZED, not merely that
+    // nothing threw: `refuse` is the only other outcome, so a leg that only
+    // checked `ok` would pass on a scan that dropped the option entirely.
+    expect(accept("[NP,ro%\nof\n  [x]]").children[0].roofed).toBe(true);
+    // …with the continuation line indented, which state N also eats.
+    expect(accept("[NP,ro%\n    of\n  [x]]").children[0].roofed).toBe(true);
+    // …and the break may fall anywhere in the token, including before it.
+    expect(accept("[NP,%\nroof\n  [x]]").children[0].roofed).toBe(true);
+    expect(accept("[NP,roo%\nf\n  [x]]").children[0].roofed).toBe(true);
+  });
+
+  it("a continuation joins ONE token and does not fuse two", () => {
+    // The door skips the newline and the indent, and nothing else. A comma
+    // still ends a token, so a break between two options leaves two tokens —
+    // and the unsupported one is named as the word TeX reads, not with the
+    // continuation's bytes wedged into it. (Also red pre-fix, for the same
+    // reason as the leg above; the CONTROLS for this branch are the two
+    // already-green legs immediately before it.)
+    expect(refusal("[NP,roof,l sep%\n=2cm\n [x]]").token).toBe("l sep=2cm");
+  });
+
   it("a brace inside a comment neither closes a group nor breaks one", () => {
     // `findMatchingBrace` counts every unescaped brace, comments included, so a
     // `}` in a comment closed the group early and the REAL `}` fell through as

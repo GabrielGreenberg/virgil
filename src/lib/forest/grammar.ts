@@ -39,6 +39,7 @@ import {
   isEscaped,
   matchCommandToken,
   matchCommentTailAt,
+  skipCommentContinuationAt,
 } from "@/lib/latex-lexer";
 import { latexToDisplayText } from "@/lib/latex-typography";
 import { FOREST_ENV_NAME } from "@/lib/latex-lexer";
@@ -246,7 +247,13 @@ function skipInert(src: string, i: number): number {
   for (;;) {
     const c = matchCommentTailAt(src, i);
     if (c) {
-      i = c.end;
+      // The pair, not just the matcher: `matchCommentTailAt` says which bytes
+      // are the comment, `skipCommentContinuationAt` says where TeX resumes.
+      // Byte-neutral HERE — this loop's own whitespace branch would have eaten
+      // the newline and the continuation line's indent one character at a time
+      // — and spelled anyway so the continuation rule lives in ONE place rather
+      // than being re-derived, correctly or otherwise, per scanner (task 406).
+      i = skipCommentContinuationAt(src, c.end);
       continue;
     }
     const ch = src[i];
@@ -281,7 +288,9 @@ function findMatchingBraceLive(src: string, open: number, limit: number): number
   while (i < limit) {
     const tail = matchCommentTailAt(src, i);
     if (tail) {
-      i = tail.end;
+      // Byte-neutral (a newline is neither brace, so the loop would have
+      // stepped over it) — the door for the same reason `skipInert` spells it.
+      i = skipCommentContinuationAt(src, tail.end, limit);
       continue;
     }
     const ch = src[i];
@@ -387,11 +396,13 @@ function scanLabel(
       // whitespace, and pushing NOTHING, reproduces TeX. Where the comment ends
       // the source rather than a line, `c.end` is already `src.length` and the
       // skip is a no-op.
-      i = c.end;
-      if (src[i] === "\n") {
-        i++;
-        while (i < limit && (src[i] === " " || src[i] === "\t")) i++;
-      }
+      //
+      // Task 406 lifted the four lines that did this into
+      // `skipCommentContinuationAt`, the READING half of the lexer pair — this
+      // scanner was the only caller that had derived the rule correctly, and a
+      // rule that lives in exactly one place is one a fifth scanner cannot get
+      // wrong. (`scanOptions` below is the one that had.)
+      i = skipCommentContinuationAt(src, c.end, limit);
       continue;
     }
     const ch = src[i];
@@ -504,8 +515,17 @@ function scanOptions(
     while (j < limit) {
       const tail = matchCommentTailAt(src, j);
       if (tail) {
+        // The READING half, not just the matcher (task 406). Stopping at
+        // `tail.end` leaves the position ON the newline, so the continuation
+        // line's own bytes — its leading indent included — were spliced into
+        // the token: `[NP,ro%\nof]`, a user breaking forest's only legal
+        // option across a `%` continuation, assembled `ro\nof` and refused
+        // LOUDLY with `node option \`ro\nof\``. Data-safe and a wrong
+        // message: TeX reads that source as `roof`. `.trim()` masked it for
+        // every other shape, since a break anywhere but MID-TOKEN leaves the
+        // stray whitespace at an edge.
         live += src.slice(spanStart, j);
-        j = tail.end;
+        j = skipCommentContinuationAt(src, tail.end, limit);
         spanStart = j;
         continue;
       }
