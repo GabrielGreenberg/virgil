@@ -6268,9 +6268,50 @@ preview, which is neither of Virgil's two existing postures (a folded section
 prints nothing, an expanded pod prints its body) and needs a render change plus
 a product call; `figureBlock` and `graphicsBlock` still project to nothing in the
 static tier, each named with its reason in the sweep's own
-`NO_STATIC_PROJECTION`; and an edge to an outer child can cross a roofed middle
-sibling's triangle. **Owed, not claimed:** the preview eyeball — this run was
+`NO_STATIC_PROJECTION`. **Owed, not claimed:** the preview eyeball — this run was
 unattended and could not start a dev server.
+
+**The fourth residual is now a DECIDED posture rather than an open one (task
+412): an edge to an outer child MAY cross a roofed middle sibling's triangle,
+and that is accepted and pinned.** Edges and roofs are built from the placed
+boxes in two loops that do not know about each other, so where a parent has ≥3
+children and a NON-OUTER one is a roofed LEAF, an outer sibling's edge clips the
+triangle's flank. Gabriel's ruling: the reading is a line clipping a triangle
+tip rather than a misread tree, and routing edges around obstacles is a real
+layout feature with its own failure modes — it would either move labels
+(renegotiating every pin the placement already carries) or bend edges, a look
+nobody asked for. Three things make the acceptance honest rather than silent, and
+the second is the one that took the measuring:
+
+- **The comment is at the roof-building loop**, because silence there is how the
+  next reader concludes the engine considered it — and it says the upstream
+  `forest` question is **UNVERIFIED** rather than borrowing authority it has not
+  checked.
+- **The obvious fixture is a FALSE ALL-CLEAR, so it ships as a passing control.**
+  A roofed INTERNAL middle child — which is what the filing memo proposed — puts
+  no roof on the sibling row at all: `flattenRoofs` gives it a synthesized
+  roofed ONLY-child one row down, and an only child can never be a middle
+  sibling. The crossing needs the `[{x},roof]` LEAF spelling AND a left sibling
+  label wide enough (~46 characters under the suite's own width metric) to swing
+  the parent's centre past the triangle. A worker following the memo would have
+  measured a clean tree and concluded the engine already routes.
+- **The sweep is an EXACT SET over the corpus, not a fixture.** Every shape is
+  asked which of its edges cross a roof, and the set that does must be exactly
+  the member that DECLARES it — so a future layout change that introduces a
+  crossing in some other shape fails rather than shipping quietly. Beside it, the
+  declared crosser's numbers are pinned outright, and a property leg says an edge
+  can never enter its OWN child's roof (the triangle's interior lies strictly
+  below the apex, where that edge terminates).
+
+The intersection test is exact convex clipping, deliberately not point sampling:
+a sampled probe reports a grazing clip as a miss, or a real one as a hairline,
+from where its samples happened to land — and it did, during this task's own
+diagnosis, before the analytic form replaced it. **A pin decided by sampling
+density is not a pin.** CI:
+[forest-layout.test.ts](src/lib/forest/__tests__/forest-layout.test.ts) ("edges
+vs roofs"). Measured by neutering each half in turn: the memo's fixture as the
+corpus member takes 3 legs, a roof-height drift 1, and a hypothetical routing
+change 4.
 
 ## The write path: no automatic write may lose content
 

@@ -271,6 +271,34 @@ export function computeForestLayout(
   };
   link(placed);
 
+  // ── Roofs, built from the placed boxes with NO awareness of the edges just
+  // laid above them. That is a DECISION rather than an oversight (task 412),
+  // and it is recorded here because silence is how the next reader concludes
+  // the engine considered it.
+  //
+  // Where a parent has >= 3 children and a NON-OUTER one is a roofed LEAF, an
+  // outer sibling's edge can clip the triangle's flank. Both halves of that
+  // shape are needed and both are extreme. The roof must sit on the SIBLING
+  // row, which a roofed INTERNAL node never produces — `flattenRoofs` gives it
+  // a synthesized roofed ONLY-child one row down, and an only child can never
+  // be a middle sibling — so it takes the `[{x},roof]` leaf spelling. And the
+  // outer sibling's own label must be wide enough to swing the parent's centre
+  // past the triangle: measured against the suite's own width metric, about 46
+  // characters, for a clip that tops out at half the roofed label's width.
+  //
+  // ACCEPTED rather than routed (Gabriel, 2026-08-21): the reading is a line
+  // clipping a triangle tip, not a misread tree, and routing edges around
+  // obstacles is a real layout feature with its own failure modes — it would
+  // either move labels (renegotiating every pin the placement already carries)
+  // or bend edges, which is a look nobody asked for. What is NOT accepted is
+  // silence: the geometry is PINNED in `forest-layout.test.ts` ("edges vs
+  // roofs"), as an EXACT SET over the corpus plus the numbers of the one
+  // declared crosser — so a future layout change that alters it fails loudly
+  // and is renegotiated on purpose.
+  //
+  // Whether upstream `forest` routes around its own roofs is UNVERIFIED; it is
+  // likely and it has not been checked, so this pin borrows no authority from
+  // it.
   for (const n of nodes) {
     if (!n.roofed) continue;
     roofs.push({
