@@ -3019,6 +3019,22 @@ Five rules it earned:
   key would be dead app-wide with nothing to show for it. `PanelCard`'s own lift
   blocklist scopes the identical query for the identical reason; this was latent
   rather than live, and would have gone live the moment EditableCard gained a drag.
+  **It was already LIVE one surface over (task 423):** the omni pin-on-touch blocker
+  was written as a "mirror" of the lift blocker and dropped the scoping, so a press
+  anywhere on a `CitationCard` (whose ROOT is draggable) matched the root and
+  `holdOmniCard` never ran — the card and its whole deck jumped on every
+  collapse/expand. The scoping rule now has ONE home,
+  [`pressFromInteractiveControl`](src/lib/drag-blocklist.ts) (strict descendant of
+  the gesture's own container), read by the lift, the pin, the delete-key guard and
+  the float window-drag; and the half the task's own first cut got wrong is stated
+  there too — a surface that wraps a card from OUTSIDE cannot scope to itself,
+  because the draggable shell is a strict descendant of it, so it resolves the
+  `[data-card]` shell first (`cardShellWithin`) and asks against that. CI:
+  [interactive-control-scope-census.test.ts](src/lib/__tests__/interactive-control-scope-census.test.ts)
+  (no production site spells `closest(<shared selector>)`, allowlist EMPTY) and
+  [pin-on-touch-draggable-card.test.tsx](src/panels/Omni/__tests__/pin-on-touch-draggable-card.test.tsx)
+  (the REAL omni wrapper around a draggable `[data-card]` root). Measured by
+  neutering: 5 legs.
 - **The in-flight title is read LIVE, not committed per keystroke.** A title input
   REGISTERS ITS ELEMENT with the enclosing card
   ([panel-primitives.tsx](src/components/panel-primitives.tsx) `CardTitleRegistry`)
