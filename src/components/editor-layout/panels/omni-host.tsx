@@ -19,6 +19,7 @@ import OmniViewPanel, {
   type OmniCategory,
   type OmniBulkPendingChanges,
 } from "@/panels/Omni";
+import { appliedPendingSide } from "@/panels/Omni/omni-categories";
 import { buildCitationOmniItems } from "@/panels/Citations";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes";
 import { buildNoteOmniItems } from "@/panels/Notes";
@@ -174,6 +175,10 @@ export interface OmniHostProps {
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
+  /** Each omni category's LIVE strip side (`deriveCategorySides`, task 381) —
+   *  the PLACEMENT fact, independent of the filter menu's hidden set. Read only
+   *  by the applied-pending header gate (`appliedPendingSide`, task 420). */
+  categorySides: Partial<Record<OmniCategory, Side>>;
   /** When true, omni cards rest dimmed and brighten on hover (the
    *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
   omniDimResting?: boolean;
@@ -190,11 +195,11 @@ export interface OmniHostProps {
   /** Phase 3 / task 023 — the applied-pending NAVIGATOR affordance (prev/next
    *  cursor + Keep-all / Dismiss-all kebab). EditorPane derives the cursor +
    *  drains from the applied revision + cutter cards (routed through the shared
-   *  `pending-change-actions` sequence). The header renders only when this side
-   *  actually SHOWS an applied pending card (computed below from the enabled
-   *  categories), so it appears once — on whichever side hosts the
-   *  revisions/cutter omni cards. Absent / count 0 → no header (flag-OFF never
-   *  produces applied cards). */
+   *  `pending-change-actions` sequence). Threaded to BOTH hosts; the header
+   *  renders on exactly the ONE side `appliedPendingSide(categorySides)`
+   *  resolves (task 420) — a PLACEMENT decision, never a visibility one, so
+   *  hiding the Revisions/Cutter categories cannot remove it. Absent / count 0
+   *  → no header (flag-OFF never produces applied cards). */
   bulkPendingChanges?: OmniBulkPendingChanges;
 }
 
@@ -750,17 +755,20 @@ export function OmniHost(p: OmniHostProps) {
     return filterOmniItemsByFoldAndFocus(nestedItems, doc, hiddenTopLevel, p.focusState, resolvePos);
   }, [nestedItems, hiddenTopLevel, p.focusState, editorInstance, resolvePos]);
 
-  // Phase 3 — show the bulk Keep-all / Revert-all header on THIS side only when
-  // applied pending cards exist AND this side hosts the revisions/cutter omni
-  // cards (so it appears exactly once, not on both strips). `getOmniEnabled`
-  // returns the enabled categories for this side; the applied cards live under
-  // the `revisions` / `cutter` categories. Gated this way the header tracks the
-  // panels' placement (drag a panel to the other strip → the header follows).
   const enabledForSide = p.getOmniEnabled(p.side);
+
+  // Task 420 — the applied-pending navigator renders on exactly ONE side: the
+  // one `appliedPendingSide` resolves from the derived category PLACEMENTS.
+  // Deliberately NOT `enabledForSide` (placement MINUS the filter menu's hidden
+  // set): that predicate rendered the header twice with Revisions and Cutter on
+  // opposite strips, and nowhere once the filter hid both — while the blue
+  // applied ranges stayed live in the `.tex` with no document-wide way to find,
+  // keep or revert them. The count is a fact about the document, so only
+  // placement may decide where it is shown. Drag a panel across → it follows.
   const bulkForSide =
     p.bulkPendingChanges &&
     p.bulkPendingChanges.count > 0 &&
-    (enabledForSide.has("revisions") || enabledForSide.has("cutter"))
+    p.side === appliedPendingSide(p.categorySides)
       ? p.bulkPendingChanges
       : undefined;
 
