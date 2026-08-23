@@ -434,8 +434,42 @@ def _load_memo(path: Path, memos_root: Path) -> dict:
     }
 
 
+def _memo_sink_present(memos_root: Path) -> bool:
+    """Does the capture sink the dream READS actually exist?
+
+    `_select` returns `[]` for a sink that does not exist and for one that is
+    empty — the same bytes for "the loop recorded nothing" and "the loop cannot
+    hear at all". That is the exact conflation `driftChecked`/`driftReason`
+    exist to prevent one field over, and this is the loop's PRIMARY input, so
+    it gets the same treatment: the SCRIPT computes the condition, the prompt
+    reads the flag instead of re-deriving it by eye (an `ls` the prompt never
+    asks for).
+
+    Reachable and CONFIG-DEPENDENT, which is what makes it worth a flag rather
+    than a comment. `dev_home()` defaults to `~/.virgil-dev` — HOME-relative
+    and machine-global, outside the repo and outside git — so a new machine, a
+    new ACCOUNT on the same machine, or an unset/mistyped `VIRGIL_DEV_HOME`
+    silently yields a sink that has never existed. Measured on 2026-08-21,
+    after the dev-machine move (28fc58fd) carried the tracked files to a new
+    account but not the untracked sink: `~/.virgil-dev` was absent, `select`
+    reported `memoCount: 0`, and the documented flow read that as a clean quiet
+    night. Left unflagged the failure is SILENT and PERMANENT — every
+    subsequent dream reports the same healthy no-op, and the digest, which is
+    the only durable record, agrees.
+
+    False alarms are impossible in the direction that matters: `reflect.py`
+    creates the sink on its first write, so `False` means precisely "nothing
+    has been captured here since the sink last existed" — benign on a machine's
+    first day, and the whole story on its thirtieth. The script reports the
+    fact; the human reads the calendar."""
+    return memos_root.is_dir()
+
+
 def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
-    """Every memo strictly after `marker`, sorted oldest→newest."""
+    """Every memo strictly after `marker`, sorted oldest→newest.
+
+    An empty result is ambiguous by construction — see `_memo_sink_present`,
+    which callers publish alongside it so the two cases can be told apart."""
     if not memos_root.is_dir():
         return []
     recs = []
@@ -541,6 +575,11 @@ def cmd_select(_argv: list[str]) -> int:
         # two calendar dates (dream.py digest keys off the same _now_iso_date()).
         "dreamDate": _now_iso_date()[1],
         "memosRoot": str(memos_root),
+        # ...and `memoCount: 0` is only "a quiet night" when this is true. A
+        # missing sink means the dream recorded nothing and CANNOT know it —
+        # the same "could not look" vs "looked and found nothing" split
+        # `driftChecked` draws. See `_memo_sink_present`.
+        "memoSinkPresent": _memo_sink_present(memos_root),
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),
         "lastDigest": (str(last_digest.relative_to(_digests_root()))
@@ -610,8 +649,8 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
 
     out: list[str] = ["---"]
     for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
-              "memoCount", "acted", "proposed", "refused", "bootstrap",
-              "dreamSha"):
+              "memoCount", "memoSinkPresent", "acted", "proposed", "refused",
+              "bootstrap", "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
             v = "true" if v else "false"
@@ -628,6 +667,19 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         f"Acted on {len(acted)}, proposed {len(proposed)}, refused {len(refused)}."
     )
     out.append("")
+    if not fm.get("memoSinkPresent", True):
+        out.append(
+            f"> **⚠️ The capture sink does not exist — this was not a quiet "
+            f"night, it was a deaf one.** `{fm.get('_memosRoot', '?')}` is "
+            f"absent, so `memoCount: 0` above means the dream could not look, "
+            f"NOT that nothing was captured. `reflect.py` creates the sink on "
+            f"its first write, so this reads as benign on a machine's first "
+            f"day and as a broken capture layer on its thirtieth — check the "
+            f"calendar and `VIRGIL_DEV_HOME` before trusting any zero here. "
+            f"Left unaddressed, every following digest repeats this same "
+            f"healthy-looking no-op."
+        )
+        out.append("")
     if fm.get("_rotated"):
         out.append(
             f"> **Second run today.** The earlier run's digest was preserved as "
@@ -786,6 +838,8 @@ def cmd_digest(argv: list[str]) -> int:
         "refused": len(report.get("refused") or []),
         "bootstrap": bool((report.get("bootstrap") or "").strip()),
         "dreamSha": _dream_sha(),
+        "memoSinkPresent": _memo_sink_present(memos_root),
+        "_memosRoot": str(memos_root),
         "_date": date_str,
     }
 

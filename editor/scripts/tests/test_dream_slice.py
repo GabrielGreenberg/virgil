@@ -532,6 +532,40 @@ check(dream_memos[0]["tier"] == "flagged", "the low-confidence self-reflection i
 check(sel["counts"]["bySkill"].get("dream") == 1, "skill=dream counted in the next dream")
 
 
+# ── (g) a MISSING sink is not a quiet night ──────────────────────────────────
+# The leg with teeth is the CONTROL: `memoCount == 0` in BOTH arms, so a flag
+# that merely echoed the count would pass the absent arm and fail here.
+print("\n=== (g) missing memo sink is distinguishable from an empty one ===")
+dig_g = tempfile.mkdtemp(prefix="chip18d-")
+
+absent = Path(tempfile.mkdtemp(prefix="chip18m-")) / "never-created"
+sel_absent = select(absent, dig_g)
+check(sel_absent["memoSinkPresent"] is False, "absent sink → memoSinkPresent false")
+check(sel_absent["memoCount"] == 0, "absent sink → memoCount 0 (the ambiguous half)")
+
+present = Path(tempfile.mkdtemp(prefix="chip18m-"))       # exists, holds no memos
+sel_empty = select(present, tempfile.mkdtemp(prefix="chip18d-"))
+check(sel_empty["memoSinkPresent"] is True, "empty-but-present sink → memoSinkPresent true")
+check(sel_empty["memoCount"] == 0, "empty sink → memoCount 0 (same count, different flag)")
+check(sel_absent["memoCount"] == sel_empty["memoCount"]
+      and sel_absent["memoSinkPresent"] != sel_empty["memoSinkPresent"],
+      "the two states share a count and differ ONLY in the flag")
+
+# ...and the durable record carries it, or the silence is permanent.
+r = dream(absent, dig_g, "digest", now="2026-06-07T23:00:00")
+check(r.returncode == 0, "digest over an absent sink still writes")
+dtext = (Path(dig_g) / "2026-06-07.md").read_text()
+check("memoSinkPresent: false" in dtext, "digest frontmatter records the absent sink")
+check("deaf one" in dtext, "digest body calls out the deaf night")
+check(str(absent) in dtext, "digest names the sink path the human must check")
+
+dig_ok = tempfile.mkdtemp(prefix="chip18d-")
+r = dream(present, dig_ok, "digest", now="2026-06-07T23:00:00")
+ok_text = (Path(dig_ok) / "2026-06-07.md").read_text()
+check("deaf one" not in ok_text, "a genuinely quiet night raises NO deaf-night callout")
+check("memoSinkPresent: true" in ok_text, "healthy digest still records the flag")
+
+
 # ── sync invariant: the result-lens keys are real contract results ───────────
 print("\n=== sync invariant: lens results ⊆ contract results ===")
 LENS_RESULTS = {"rejected", "silent-applied", "refused", "impossible"}
