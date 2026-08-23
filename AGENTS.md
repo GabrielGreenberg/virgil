@@ -1041,6 +1041,77 @@ correct — X was never the defect and that leg is a non-regression pin.
 none touching a bullet). This class is NOT FSA-masked, so the check is cheap and
 real.
 
+###### The set half: both prior passes held the SET fixed and argued PLACEMENT
+
+Same gutter, the third statement of one rule (task 425) — and the case where
+two passes each corrected the other's geometry while carrying the same
+unexamined premise. 353 said every containing level gets a handle, all on the
+hovered row; 394 said every containing level gets a handle, each at its own
+first line. Gabriel, on 394's own nested screenshot: FOUR handles on three rows
+for a pointer on the deepest item is wrong. His rule, verbatim:
+
+> If you are at the top row of a list of nested items, you get two handles —
+> one for the item, one for the list. If you are not at the top row, you get
+> one — for that item. And that's it. The same rule applies up and down the
+> hierarchy.
+
+So the hovered item ALWAYS gets its handle, and a container gets one ONLY when
+the hovered line is that container's own top row. The visible set is ≤2 by
+construction under the list schema — a `listItem`'s first child is a
+paragraph, so no row is the top row of two nested lists at once — not by a
+cap. And it is a SET change only: with the set fixed, 394's placement (each
+level at its own first line) is already right, because under this rule a
+container's first line IS the hovered row whenever its handle shows at all.
+
+Four rules it earned:
+
+- **"Top row" is STRUCTURAL, decided by the chain the placement already
+  descends.** [`isTopRowOf`](src/text-objects/block-frame.ts) walks
+  `GRABBABLE_CHILD_SELECTOR` down from the container — the literal descent
+  `resolveFirstLineTarget` performs to PLACE a container's handle — and asks
+  whether it arrives at the hovered item. So "is this the top row" and "where
+  does the container's handle go" cannot disagree, the answer costs zero rect
+  reads, and a WRAPPED first item hovered on its second visual line still
+  shows both handles (the geometric reading is the tempting one and differs
+  exactly there).
+- **The decision is made at the SET, never by computing and discarding.**
+  `restrictToTopRowSet` runs inside `resolveTextObjectsAtMouse` on the
+  innermost-first chain: keep the item, walk outward, keep a level only while
+  it still owns the top row, stop at the first that does not (an inner list's
+  non-first item cannot be the top row of anything above it). `computePlacement`
+  therefore runs ≤2 times per hover, and the leg that pins it spies the
+  non-qualifying levels' first-line rects rather than counting handles — a
+  surgical "place every level, keep the ones on the hovered row" paints the
+  same pixels on the common case and fails that leg.
+- **A non-container ancestor grants nothing.** An outer `listItem` above a
+  nested list has no top row of its own to confer, so the walk stops there:
+  that is what keeps liB off the inner list's top row in the nested fixture,
+  and it is the rule rather than a list special case (the descent is
+  `CONTAINER_KINDS`-keyed).
+- **394's "travel up the gutter" property is given up deliberately**, stated
+  at the renegotiated leg: hovering a deep row shows no list handle, and to
+  grab the list you go to its top row. The same-row machinery (353's
+  separation, 382's ink cap) now governs the ONE shape that produces two
+  handles on a row, and the ink-clearance suite gains level-2 and level-3
+  top-row cases with both handles present — measured, the band between the
+  floor and the bullet widens by one marker band per level, so two handles
+  fit at every depth with room to spare and no "item wins, list dropped" arm
+  is needed in the lane resolver today.
+
+CI: the renegotiated [grab-handle-hover-spec.test.tsx](src/text-objects/__tests__/grab-handle-hover-spec.test.tsx)
+— 353's per-row set legs and 394's four-handle and travel legs renegotiated in
+place with the reason at the site, the nested fixture swept per row, a wrapped
+first-item fixture, and the rect-spy leg above — plus the nested legs in
+[handle-marker-ink-clearance.test.tsx](src/text-objects/__tests__/handle-marker-ink-clearance.test.tsx).
+Measured by neutering the set restriction back to the 394 tree: 8 legs fail;
+the 5 that pass are the controls (row 1, the outer top row, the wrapped row 1,
+X consistency, the margin lane).
+
+**Owed, not claimed:** the preview eyeball, REQUIRED here — the last two passes
+each shipped green and looked wrong. Add a nested list to the dev doc, hover
+each row in a real Chrome tab: two handles on a top row, one everywhere else,
+none on a bullet.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.

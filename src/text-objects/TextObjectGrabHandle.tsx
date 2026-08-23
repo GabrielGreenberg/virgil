@@ -86,7 +86,7 @@ import {
   isTextObjectKind,
   textObjectPopoutKey,
 } from "./text-object-registry";
-import { resolveBlockFrame } from "./block-frame";
+import { isTopRowOf, resolveBlockFrame } from "./block-frame";
 import { resolveHandleLane, resolveHandleMarkerLeft } from "./handle-layout";
 import { useLiftHost } from "./LiftHost";
 import type {
@@ -388,7 +388,7 @@ function resolveTextObjectsAtMouse(
           refs.push({ ref: { kind, id: uuid }, el });
         }
       }
-      return refs;
+      return restrictToTopRowSet(refs);
     }
   }
 
@@ -431,10 +431,54 @@ function resolveTextObjectsAtMouse(
       seen.add(id);
     }
   }
-  return refs;
+  return restrictToTopRowSet(refs);
 }
 
 const EMPTY_RESOLVED: ResolvedRef[] = [];
+
+/**
+ * Task 425 — the hover SET. Gabriel's rule (2026-08-22), superseding 394:
+ *
+ *     If you are at the top row of a list of nested items, you get two
+ *     handles — one for the item, one for the list. If you are not at the
+ *     top row, you get one — for that item. The same rule applies up and
+ *     down the hierarchy.
+ *
+ * `refs` arrive innermost-first (every `[data-uuid]` band containing the
+ * pointer Y). The hovered item — `refs[0]` — ALWAYS keeps its handle. Walking
+ * outward, a containing level keeps its handle only while the hovered item is
+ * still that level's TOP ROW (`isTopRowOf`: the first-grabbable-child chain
+ * from the container reaches the item), and the walk STOPS at the first
+ * level that fails — an inner list's non-first item cannot be the top row of
+ * anything above it. The set that reaches `schedule()` is therefore ≤2 by
+ * construction under the list schema, and `computePlacement` runs ≤2 times
+ * per hover: the decision is made here, structurally and rect-free, never by
+ * computing every level's placement and discarding the ones off the hovered
+ * row (which would decide "top row" by pixel equality and break on a wrapped
+ * first item).
+ *
+ * Both prior passes (353, 394) held this set fixed at "every containing
+ * level" and argued only about PLACEMENT. With the set fixed here, 394's
+ * placement — each level at its OWN first line — is already right: under this
+ * rule a container's first line IS the hovered row whenever its handle shows
+ * at all.
+ *
+ * An element we cannot resolve (`el === null`) answers nothing structurally,
+ * so the walk stops there: the item handle is always right, and a container
+ * handle we cannot justify is exactly the over-painting this retires.
+ */
+function restrictToTopRowSet(refs: ResolvedRef[]): ResolvedRef[] {
+  if (refs.length <= 1) return refs;
+  const item = refs[0];
+  if (!item.el) return [item];
+  const kept: ResolvedRef[] = [item];
+  for (let i = 1; i < refs.length; i++) {
+    const level = refs[i];
+    if (!level.el || !isTopRowOf(level.el, item.el)) break;
+    kept.push(level);
+  }
+  return kept;
+}
 
 /**
  * Compute placement for a single ref. Pins the handle's LEFT edge to the
@@ -932,13 +976,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
       const resolved = resolveActiveRefs(editor);
       // Task 394 — HIERARCHICAL placement: every level anchors at its OWN
-      // block's first visual line, so the hovered row carries exactly one
-      // handle and each containing level sits beside the top of the structure
-      // it grabs. The hover SET is unchanged (innermost-first, every containing
-      // level: task 353 spec points 1-2), so travelling UP the gutter toward a
-      // container's handle keeps the pointer inside that container and the
-      // handle alive. `computePlacement` therefore takes no per-hover hint —
+      // block's first visual line. `computePlacement` takes no per-hover hint —
       // see `resolveFirstLineTarget` in block-frame.ts for the retired one.
+      //
+      // Task 425 — the hover SET is no longer "every containing level": it is
+      // the hovered item plus only the containers whose TOP ROW the hovered
+      // line is (`restrictToTopRowSet`, applied inside the resolver), so
+      // `resolved` is ≤2 long and this loop runs ≤2 placements per hover.
+      // Under that rule every container handle shown here sits ON the hovered
+      // row by construction — 394's placement and 425's set agree.
       const next: Placement[] = [];
       for (const { ref, el } of resolved) {
         const p = computePlacement(editor, cacheRef.current, ref, el);

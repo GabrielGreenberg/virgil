@@ -184,6 +184,56 @@ function buildList(
   return { list, items };
 }
 
+/** A bullet list nested `depth` levels deep, each level ONE item whose first
+ *  child is its paragraph and whose second child is the next level's list —
+ *  the schema's own shape. Every level's content edge is one marker band
+ *  further in. Returns the innermost list + item and the FULL containing chain
+ *  innermost-first, as `blocksAtY` reports it for a pointer on the deepest
+ *  row (which is the top row of every level at once: the fixture's rows all
+ *  coincide, as they do in a real document's first line). */
+function buildNestedList(
+  depth: number,
+  padLeftPx: number,
+  fontSizePx: number,
+): { chain: Array<{ uuid: string; el: HTMLElement }>; list: HTMLElement; item: HTMLElement; liLeft: number } {
+  const chain: Array<{ uuid: string; el: HTMLElement }> = [];
+  let parent: HTMLElement = editorEl;
+  let list: HTMLElement | null = null;
+  let item: HTMLElement | null = null;
+  let liLeft = EDITOR_LEFT;
+  for (let d = 1; d <= depth; d++) {
+    const listLeft = liLeft;
+    liLeft = listLeft + padLeftPx;
+    const ul = document.createElement("ul");
+    ul.setAttribute("data-uuid", `list${d}`);
+    ul.setAttribute("data-text-object-kind", "bulletList");
+    ul.style.paddingLeft = `${padLeftPx}px`;
+    ul.style.fontSize = `${fontSizePx}px`;
+    ul.style.listStyleType = "disc";
+    ul.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, listLeft);
+    const li = document.createElement("li");
+    li.setAttribute("data-uuid", `li${d}`);
+    li.setAttribute("data-text-object-kind", "listItem");
+    const left = liLeft;
+    li.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, left);
+    const p = document.createElement("p");
+    p.textContent = `level ${d}`;
+    p.style.fontSize = `${fontSizePx}px`;
+    p.style.setProperty("--margin-handle-gap", `${GAP_EM}em`);
+    p.style.setProperty("--margin-track-width", `${TRACK_EM}em`);
+    p.getBoundingClientRect = () => rect(ROW_TOP + 2, ROW_BOTTOM - 2, left);
+    li.appendChild(p);
+    ul.appendChild(li);
+    parent.appendChild(ul);
+    chain.unshift({ uuid: `list${d}`, el: ul });
+    chain.unshift({ uuid: `li${d}`, el: li });
+    parent = li;
+    list = ul;
+    item = li;
+  }
+  return { chain, list: list!, item: item!, liLeft };
+}
+
 /** The expex shape: a block whose `(n)` sits left of its first item's `a.`,
  *  both MEASURED marker spans on one row. */
 function buildExample(fontSizePx: number, numberLeft: number, itemMarkerLeft: number) {
@@ -320,6 +370,45 @@ describe("a handle never paints on the row's marker ink", () => {
       expect(ul.left).toBeLessThan(li.left);
       expect(li.left - ul.left).toBeGreaterThan(20);
     });
+
+    for (const depth of [2, 3]) {
+      it(`nested list level ${depth} @${fontSizePx}px: the TOP ROW's two handles clear the bullet`, () => {
+        // Task 425: a container's handle shows only on its own top row, so a
+        // deep top row is exactly where TWO handles must fit between the margin
+        // floor and a bullet that sits `depth` bands in. The hover chain is
+        // the FULL containing chain (innermost-first); the set rule keeps the
+        // inner item + its own list and drops every outer level.
+        const { chain, list, item, liLeft } = buildNestedList(depth, bandPx, fontSizePx);
+        const ink = resolveMarkerGeometry(item, "listItem", liLeft, 0).inkLeft;
+        const painted = hover(chain);
+        expect(
+          painted.map((p) => p.uuid).sort(),
+          "the set rule leaked an outer level onto the inner top row",
+        ).toEqual([item.getAttribute("data-uuid"), list.getAttribute("data-uuid")].sort());
+        const glyphLeft = fixtureGlyphLeft(liLeft, "•", fontSizePx);
+        for (const p of painted) {
+          expect(p.left, `${p.uuid}'s handle is in the margin lane`).toBeGreaterThanOrEqual(FLOOR);
+          expect(
+            clearance(p.left, ink),
+            `${p.uuid}'s handle crosses the resolved ink boundary (left ${p.left}, ink ${ink})`,
+          ).toBeGreaterThanOrEqual(minClearance);
+          expect(
+            clearance(p.left, glyphLeft),
+            `${p.uuid}'s handle is on the painted bullet (left ${p.left}, glyph ${glyphLeft})`,
+          ).toBeGreaterThan(0);
+        }
+        // The MEASURED bound the task asked for: the band between the floor and
+        // the ink widens by one marker band per level (2em each), so two handles
+        // (2 × 12px + the 24px same-row target) fit at every depth with room
+        // to spare — no "item wins, list dropped" arm is needed in the lane
+        // resolver today, and this leg is what would notice if the band ever
+        // narrowed enough to need one.
+        const li = painted.find((p) => p.uuid === item.getAttribute("data-uuid"))!;
+        const ul = painted.find((p) => p.uuid === list.getAttribute("data-uuid"))!;
+        expect(ul.left).toBeLessThan(li.left);
+        expect(li.left - ul.left).toBeGreaterThan(20);
+      });
+    }
 
     it(`ordered list @${fontSizePx}px: a two-digit marker is cleared too`, () => {
       // The RESTING position collides here, before any separation push: `10.`

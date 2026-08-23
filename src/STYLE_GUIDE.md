@@ -2028,19 +2028,22 @@ Two vertical policies, branched on `meta.chromeAnchor`:
   to its own `(n)` chip / wrapper metrics.) Works for any font / line-height
   — a heading at 1.75rem reads the same as a paragraph at 1.05rem.
 
-  **Handles arrange HIERARCHICALLY (task 394).** Every level anchors at its
-  OWN block's first visual line, at its own marker-derived X — never at the
-  row the pointer happens to be on. Hovering the last item of a nested list
-  therefore paints the outer list beside the outer list's top row, the outer
-  item beside its own line, the inner list beside ITS top row, and exactly
-  one handle on the hovered node: the gutter reads as a structural
-  breadcrumb rather than a pile of three handles on one row (the shape that
-  also shoved the innermost onto the bullet glyph). The same-row separation
-  and the ink cap below still govern GENUINE coincidences — hovering a
-  list's first row, or a container whose first child is a container — where
-  two levels legitimately share one line. A container whose first line has
-  scrolled off-screen paints its handle off-screen with it: the chrome
-  belongs to its structure, and there is deliberately no viewport pinning.
+  **Handles: the hovered item, plus a container ONLY on its own top row
+  (task 425, superseding 394's "one handle per containing level").** Gabriel's
+  rule: on the top row of a list you get two handles — the item's and the
+  list's; on any other row you get one — the item's; and the same rule
+  applies up and down the hierarchy. "Top row" is STRUCTURAL (the list's
+  first ITEM, decided by the same first-grabbable-child chain the placement
+  descends — `isTopRowOf` in `block-frame.ts`), not the first visual line,
+  so a wrapped first item hovered on its second line still shows both. The
+  visible set is therefore ≤2 by construction, never by a cap. Each handle
+  still anchors at its OWN block's first visual line, at its own
+  marker-derived X (394's placement, unchanged) — and under this rule a
+  container's first line IS the hovered row whenever its handle shows, so
+  the two-handle row is the one GENUINE coincidence the same-row separation
+  and the ink cap below govern. To grab an outer list, go to its top row;
+  hovering a deep row shows no list handle (394's "travel up the gutter with
+  the handle alive" property is given up deliberately).
 - **`block-top`** (texBlock, latexComment, displayMath, graphicsBlock,
   figureBlock) — handle sits a half-glyph below the wrapper's visual top
   edge. For framed visual kinds where there's no "first line of prose" to

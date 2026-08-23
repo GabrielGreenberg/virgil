@@ -245,6 +245,44 @@ function resolveFirstLineTarget(el: HTMLElement, guard = 0): HTMLElement {
 }
 
 /**
+ * Task 425 — is `item`'s line `container`'s TOP ROW?
+ *
+ * The grab-handle hover SET asks this of every containing level above the
+ * hovered item: a container's handle shows ONLY when the hovered line is that
+ * container's own top row (Gabriel's rule, superseding task 394's "one handle
+ * per containing level"). "Top row" is STRUCTURAL — the container's first
+ * ITEM, not its first visual line — so a wrapped first item hovered on its
+ * second visual line still answers true, and the answer needs ZERO rect
+ * reads.
+ *
+ * It is literally the descent `resolveFirstLineTarget` performs to PLACE a
+ * container's handle, read as a predicate: walk `GRABBABLE_CHILD_SELECTOR`
+ * down from `container` through any intermediate containers and ask whether
+ * it arrives at `item`. Sharing the chain is the point — "is this the top
+ * row" and "where does the container's handle go" cannot disagree, because
+ * a container's handle sits beside the very element this walk reaches.
+ * O(depth), bounded by `MAX_CONTAINER_DESCENT` like the resolver it mirrors.
+ *
+ * A non-container ancestor (an outer `listItem` above a nested list) answers
+ * `false` unless it IS the item: an item has no "top row" of its own to grant,
+ * which is what keeps the set ≤2 on every row under the list schema (a
+ * `listItem`'s first child is a paragraph, so no line is the top row of two
+ * nested lists at once).
+ */
+export function isTopRowOf(container: HTMLElement, item: HTMLElement): boolean {
+  let cur = container;
+  for (let guard = 0; guard <= MAX_CONTAINER_DESCENT; guard++) {
+    if (cur === item) return true;
+    const kind = cur.getAttribute("data-text-object-kind");
+    if (!kind || !CONTAINER_KINDS.has(kind)) return false;
+    const child = cur.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
+    if (!child) return false;
+    cur = child;
+  }
+  return false;
+}
+
+/**
  * First-line rect of a text-bearing element. Use `getBoundingClientRect()`:
  * its `.top` is the first line's LINE-BOX top — exactly what `capTopOffset`
  * expects as its base (it adds the half-leading from there). `resolveInline-
