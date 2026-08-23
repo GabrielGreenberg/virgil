@@ -481,7 +481,14 @@ const WRAPPER_SLASH: Record<string, { name: string; aliases?: string[] }> = {
 };
 
 describe("format rows (CHIP 6b — completes the grid fold)", () => {
-  it("each format row is category 'format', backbone 'tiptap-chain', on the lightning grid, never grab/typed/keyboard", () => {
+  // RENEGOTIATED (task 427). This leg used to pin "never typed/keyboard" on
+  // EVERY format row. True of the marks; false of the three WRAPPERS, which own
+  // a StarterKit chord (`Mod-Shift-8/7/b`) and a markdown input rule (`- ` /
+  // `1. ` / `> `) — both measured reaching the toggles with no container guard.
+  // A registry that denied those surfaces existed was the "guard overstates
+  // its reach" failure; the rows now RECORD them and the factories route both
+  // through the one wrapper door.
+  it("each format row is category 'format', backbone 'tiptap-chain', on the lightning grid, never grab; WRAPPERS record their chord + input rule, MARKS claim neither", () => {
     for (const id of FORMAT_IDS) {
       const r = row(id);
       expect(r.id).toBe(id);
@@ -489,10 +496,18 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
       expect(r.backbone).toBe("tiptap-chain");
       expect(r.surfaces.lightning).toBe(true);
       expect(r.surfaces.grab).toBeFalsy();
-      expect(r.surfaces.typed).toBeFalsy();
-      expect(r.surfaces.keyboard).toBeFalsy();
-      // No input-rule pattern on any format row (StarterKit owns the marks).
-      expect(r.inputRulePattern).toBeUndefined();
+      if (id in WRAPPER_SLASH) {
+        expect(r.surfaces.typed, id).toBe(true);
+        expect(r.surfaces.keyboard, id).toBe(true);
+        expect(r.inputRulePattern, id).toBeInstanceOf(RegExp);
+        expect(r.keybinding, id).toMatch(/^Mod-Shift-[87b]$/);
+      } else {
+        expect(r.surfaces.typed, id).toBeFalsy();
+        expect(r.surfaces.keyboard, id).toBeFalsy();
+        // No input-rule pattern on a MARK row (StarterKit owns the marks).
+        expect(r.inputRulePattern, id).toBeUndefined();
+        expect(r.keybinding, id).toBeUndefined();
+      }
     }
   });
 

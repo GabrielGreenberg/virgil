@@ -415,11 +415,15 @@ describe("(B) selection-mode taxonomy: format is 'ignored' (stays ok at a caret)
       expect(row.category).toBe("format");
       expect(row.backbone).toBe("tiptap-chain");
       expect(row.surfaces.lightning).toBe(true);
-      // The keyboard/typed/grab surfaces are FALSE on every format row (StarterKit
-      // owns the chords; no format toggle is an input rule or a grab-handle action).
-      expect(row.surfaces.keyboard ?? false).toBe(false);
-      expect(row.surfaces.typed ?? false).toBe(false);
+      // grab is FALSE on every format row (no format toggle is a grab-handle
+      // action). RENEGOTIATED (task 427): keyboard/typed are TRUE on the three
+      // WRAPPERS — they own a StarterKit chord + markdown input rule, both now
+      // routed through the wrapper door — and false on the marks, whose chords
+      // StarterKit owns outright.
       expect(row.surfaces.grab ?? false).toBe(false);
+      const isWrapper = [BULLET, ORDERED, BLOCKQUOTE].includes(row);
+      expect(row.surfaces.keyboard ?? false).toBe(isWrapper);
+      expect(row.surfaces.typed ?? false).toBe(isWrapper);
     }
   });
 

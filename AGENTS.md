@@ -2214,16 +2214,69 @@ oracle's stated divergence between an enabled cell and a near-zero effect", and
 "wrapper cells STAY 'ok' … on a listItem", which is true of the two list rows and
 false of blockquote).
 
-**Residual, filed rather than fixed** (its own task): the wrapper actions have
-THREE more live surfaces that reach `toggleBulletList` / `toggleOrderedList` /
-`toggleBlockquote` **without touching the registry at all** — StarterKit's
-keyboard chords (`Mod-Shift-8/7/B`), its markdown input rules (`- `, `1. `, `> `),
-and `RichTextField`'s FormatToolbar buttons on card bodies. None of the three
-Virgil `.extend()` factories overrides `addKeyboardShortcuts` or `addInputRules`,
-so the base bindings survive verbatim; and `assertActionCoverage` actively FAILS
-a format row that declares `surfaces.typed` or `surfaces.keyboard`, so wiring them
-honestly is a renegotiation of that census rather than a call site to fix. Typing
-`- ` inside an expex item destroys it exactly as the grid used to.
+**The residual this filed is CLOSED by task 427** — see "The surface half"
+immediately below.
+
+##### The surface half: the SSOT was built and ONE caller adopted it
+
+Same predicate, the three surfaces that never entered the registry (task 427) —
+397's own recorded residual. StarterKit's `Mod-Shift-8/7/b` chords, its `- ` /
+`1. ` / `> ` markdown input rules and `RichTextField`'s toolbar each reach
+`toggleBulletList` / `toggleOrderedList` / `toggleBlockquote` without touching
+`VIRGIL_ACTION_REGISTRY`, and the wrapper gate lived INSIDE that registry — a
+module the `.extend()` factories and a card-body toolbar cannot import. Measured
+on the pre-427 tree through the REAL stack:
+
+- the **chords** destroyed an expex item (`toggleList` LIFTS the paragraph out
+  of `exampleItem`; `\vxid` gone, example renumbered) and mangled a heading;
+- the **toolbar** coerced a card body's `codeBlock` into `bulletList > listItem >
+  paragraph` — its verbatim bytes now prose;
+- the **input rules** did NOT destroy anything. Upstream's `wrappingInputRule`
+  asks PM's own `findWrapping` first and declines. That half of the filed
+  diagnosis is REFUTED and pinned as a CONTROL; the rules are routed through the
+  door anyway so every surface answers from one table.
+
+> **The gate lives in a LEAF the lowest surface can reach** —
+> [src/lib/tiptap/wrapper-gate.ts](src/lib/tiptap/wrapper-gate.ts)
+> (`wrapperSafeInState` = identity half `selectionIsListable` + container half
+> `selectionHostsWrapper`, moved out of the two editor-coupled modules that held
+> them; `text-object-registry` re-exports the container half). The `.extend()`
+> owns the binding and the binding asks the predicate: `guardWrapperShortcuts` /
+> `guardWrapperInputRules` wrap the PARENT binding, restating nothing about what
+> triggers a wrap. A refused chord is CONSUMED (a disabled control does nothing);
+> a refused input-rule match answers `null` (the typed characters stay text).
+
+Three rules it earned:
+
+- **The registry RECORDS the surfaces it does not own.** `assertActionCoverage`
+  used to FAIL a format row claiming `typed`/`keyboard` ("its keybindings are
+  owned by StarterKit") — true of the marks, false of the wrappers, and a guard
+  that says a surface does not exist while it destroys examples is the
+  "overstates its reach" class. The partition is renegotiated in place: WRAPPERS
+  must claim both and carry `keybinding` + `inputRulePattern` (the latter
+  imported from the extension that owns it, never re-spelled); MARKS claim
+  neither. The record cannot drift from the binding because the suite presses
+  the DECLARED keybinding through the real stack.
+- **The card-body toolbar is the grid's twin**, so its buttons take `disabled`
+  from the same door AND guard the click, via `useEditorState` with a packed
+  primitive selector (O(depth) per transaction, React bails on an unchanged
+  verdict).
+- **The census discovers by SHAPE.** Every production `toggle*(` call must sit
+  in a declaration that spells the door or be a `formatToggleRow` argument
+  (whose builder is censused separately); every `.extend()` of the three nodes
+  must spell both guard helpers; `findWrapping` may be spelled in ONE file; the
+  gate imports nothing from `@/`. Allowlists EMPTY.
+
+CI: [wrapper-surfaces-guard.test.ts](src/lib/tiptap/__tests__/wrapper-surfaces-guard.test.ts)
+(real `buildEditorExtensions("main")`, typed one character at a time and keyed
+through `handleKeyDown`) and
+[rich-text-field-wrapper-guard.test.tsx](src/components/__tests__/rich-text-field-wrapper-guard.test.tsx)
+(the REAL `RichTextField`, not the mock every panel suite installs). Measured by
+neutering each half in turn: the chords take 6 legs, the toolbar 2, the input
+rules the census alone (stated — that half was never destructive).
+
+**Owed, not claimed:** the preview eyeball — caret in an `\ex` item, press
+`Mod-Shift-8`, open the code view: `\vxid` still there. Not FSA-masked.
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (schema + serializer,
 no disk), so the check is cheap and real: put the caret in an `\ex` item, open

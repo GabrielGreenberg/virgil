@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
-import { useEditor, EditorContent, JSONContent } from "@tiptap/react";
+import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
@@ -34,6 +34,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { iconHint } from "@/components/Hint";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
+import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -101,11 +102,33 @@ function FormatToolbar({
   selected: boolean;
   inline?: boolean;
 }) {
+  // Task 427: the two list buttons are the card-body twin of the lightning
+  // grid's wrapper cells, so they read the SAME wrapper door (identity +
+  // container) for their `disabled` AND guard the click — a card body mounts the
+  // block atoms and `codeBlock`, so a non-listable block is reachable here. The
+  // selector is O(depth) per transaction (one `blockRange` + one
+  // `findWrapping`) and packs two booleans into one primitive so React bails
+  // the re-render on every keystroke that leaves the verdict unchanged.
+  const wrapperBits = useEditorState({
+    editor,
+    selector: ({ editor: ed }) =>
+      ed
+        ? (wrapperSafeInState(ed.state, "bulletList") ? 1 : 0) |
+          (wrapperSafeInState(ed.state, "orderedList") ? 2 : 0)
+        : 3,
+  });
   if (!editor) return null;
+  const bulletOk = ((wrapperBits ?? 3) & 1) !== 0;
+  const orderedOk = ((wrapperBits ?? 3) & 2) !== 0;
+  const runWrapper = (name: "bulletList" | "orderedList") => {
+    if (!wrapperSafeInState(editor.state, name)) return;
+    const chain = editor.chain().focus();
+    (name === "bulletList" ? chain.toggleBulletList() : chain.toggleOrderedList()).run();
+  };
 
   const btnClass = selected
-    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark focus-ring"
-    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light focus-ring";
+    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark focus-ring disabled:opacity-40 disabled:cursor-default"
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light focus-ring disabled:opacity-40 disabled:cursor-default";
   const dividerClass = selected
     ? "w-px h-4 bg-surface/20 mx-0.5"
     : "w-px h-4 bg-[var(--border-light)] mx-0.5";
@@ -137,8 +160,9 @@ function FormatToolbar({
       >U</button>
       <div className={dividerClass} />
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); runWrapper("bulletList"); }}
         className={btnClass}
+        disabled={!bulletOk}
         {...iconHint({ label: "Bullet list" })}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -151,8 +175,9 @@ function FormatToolbar({
         </svg>
       </button>
       <button
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); runWrapper("orderedList"); }}
         className={btnClass}
+        disabled={!orderedOk}
         data-hint="Numbered list" aria-label="Numbered list"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">

@@ -25,13 +25,8 @@
 import type {
   Node as PMNode,
   NodeType,
-  NodeRange,
   ResolvedPos,
 } from "@tiptap/pm/model";
-// VALUE import: `findWrapping` is the predicate ProseMirror's own `wrapIn` /
-// `wrapInList` consult, so the wrapper AFFORDANCE and the wrapper COMMIT ask
-// one question rather than two implementations of one rule (task 397).
-import { findWrapping } from "@tiptap/pm/transform";
 import type { EditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
@@ -1652,89 +1647,14 @@ export function posHostsInlineAtom(
  * **THE list/quote WRAPPER container SSOT** (task 397) — the THIRD member of the
  * container family, beside `posHostsBlockInsert` (a block atom lands BESIDE the
  * caret's textblock) and `posHostsInlineAtom` (an inline atom lands INSIDE it).
- * This one asks the remaining shape: can a WRAPPER (`bulletList` / `orderedList`
- * / `blockquote`) be placed AROUND the blocks the selection spans?
- *
- * The wrapper rows had a `LISTABLE_BLOCK_TYPES` gate that asks only about the
- * BLOCK ("is it a paragraph?") and never about the CONTAINER ("can a list live
- * where that paragraph lives?"). The two questions come apart the moment a
- * container's content model is narrower than `block+`: an expex `exampleItem`
- * holds `(paragraph | graphicsBlock | displayMath)+` and no list, so a bullet
- * toggle at a caret inside an item does not wrap it — ProseMirror LIFTS the
- * paragraph out of the item, destroying the item's `\vxid` identity and (because
- * expex numbers items by POSITION) silently renumbering every later item, so
- * every `\ref` into that example points at different text. Nothing throws; the
- * document stays schema-valid.
- *
- * Two layers, both read from the schema, never from a list of node names:
- *
- *   1. **Can the wrapper be placed here at all?** `findWrapping` is the question
- *      ProseMirror's own `wrapIn` / `wrapInList` ask (it searches for the whole
- *      wrapper CHAIN — `bulletList > listItem` — and answers null when the
- *      container refuses the wrapper OR the wrapper refuses the content).
- *      Asking PM's own predicate rather than restating it means the affordance
- *      and the commit can never disagree about what "wrappable" means.
- *
- *   2. **…unless the toggle is SUBTRACTIVE**, in which case layer 1 does not
- *      apply, because nothing new is being placed. A wrapper toggle removes or
- *      converts in place exactly when the caret ALREADY sits inside a container
- *      of the wrapper's own family — one that hosts the same kind of child the
- *      wrapper hosts. That family is DERIVED (`contentMatch.matchType`), not
- *      enumerated: `bulletList` and `orderedList` are family because both host a
- *      `listItem` (so bullet→numbered converts in place, and bullet→off lifts
- *      out — both must stay enabled), a nested `blockquote` is family to the
- *      blockquote row, and an `exampleItemList` — which hosts only `exampleItem`,
- *      a child no wrapper accepts — is family to NONE. That is precisely why a
- *      list toggle inside a bullet list must stay enabled while the same toggle
- *      inside an expex ITEM must grey.
- *
- * The doc node is excluded from the ancestor walk: the document is not a
- * container anything can be lifted out of, and `block+` would make it family to
- * every wrapper.
- *
- * Failure direction is deliberate. Layer 2 is only consulted after layer 1 has
- * already said NO, so a wrongly-EXEMPT case leaves the pre-397 behaviour (the
- * cell stays enabled) while a wrongly-NON-exempt case greys a toggle that
- * ProseMirror itself reports it cannot perform — inert at worst, never a lost
- * capability. A degenerate selection with no block range (a `NodeSelection` on an
- * opaque atom) answers `false`: there is nothing safely wrappable.
- *
- * Cheap and menu-open-only (one `blockRange` + one `findWrapping` + an O(depth)
- * ancestor walk), never per keystroke — keystroke sanctity.
+ * Since task 427 it LIVES in the import-free leaf `@/lib/tiptap/wrapper-gate`
+ * (beside the identity half and the whole-question door `wrapperSafeInState`),
+ * because the three `.extend()`ed StarterKit factories and the card-body
+ * toolbar — surfaces that fire the wrapper toggles without entering the action
+ * registry — cannot import this editor-coupled module. Re-exported here so the
+ * container family keeps one home for its readers.
  */
-export function selectionHostsWrapper(
-  state: EditorState,
-  wrapperType: NodeType | undefined,
-): boolean {
-  if (!wrapperType) return true; // wrapper absent from this schema → historic allow
-  const { $from, $to } = state.selection;
-  const range = $from.blockRange($to);
-  if (!range) return false;
-  if (findWrapping(range, wrapperType) !== null) return true;
-  return hasSameFamilyAncestor($from, range, wrapperType);
-}
-
-/**
- * Layer 2 of `selectionHostsWrapper`: does the affected block range sit inside a
- * container of `wrapperType`'s own family — i.e. an ancestor whose content model
- * accepts the SAME child type the wrapper accepts (`range.parent.type`)? Such an
- * ancestor is the container this toggle removes or replaces, so the toggle is
- * subtractive and needs no home for a new wrapper.
- */
-function hasSameFamilyAncestor(
-  $from: ResolvedPos,
-  range: NodeRange,
-  wrapperType: NodeType,
-): boolean {
-  const childType = range.parent.type;
-  // The wrapper must be able to host the affected container's own type, or it is
-  // not a peer of whatever hosts it now.
-  if (wrapperType.contentMatch.matchType(childType) == null) return false;
-  for (let depth = range.depth; depth >= 1; depth -= 1) {
-    if ($from.node(depth).type.contentMatch.matchType(childType) != null) return true;
-  }
-  return false;
-}
+export { selectionHostsWrapper } from "@/lib/tiptap/wrapper-gate";
 
 /**
  * Construct the canonical float key for a TextObject — the
