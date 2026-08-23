@@ -211,8 +211,13 @@ import {
   posHostsBlockInsert,
   posHostsInlineAtom,
   blockTypeHostsBlockInsert,
-  selectionHostsWrapper,
 } from "@/text-objects/text-object-registry";
+import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
+// VALUE imports: the markdown triggers the three WRAPPER rows record as their
+// `inputRulePattern` (task 427) are the extension's OWN regexes, never a
+// re-spelling — the binding lives in StarterKit and the row only RECORDS it.
+import { bulletListInputRegex, orderedListInputRegex } from "@tiptap/extension-list";
+import { inputRegex as blockquoteInputRegex } from "@tiptap/extension-blockquote";
 import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
@@ -2713,53 +2718,6 @@ function rangeAllowsMark(ctx: ActionContext, markName: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * The schema node-type names a list/quote wrapper can safely wrap WITHOUT
- * destroying structural identity. Centralized (not inlined) so the rule has one
- * home + this comment. `paragraph` is the generic prose container both wrapper
- * content models (`listItem` = "paragraph block*", `blockquote` = "block+")
- * accept and KEEP as a paragraph; `listItem` is already a list item (a list
- * toggle re-lists it losslessly). Every other block — titleField, heading,
- * codeBlock, displayMath, texBlock, figureBlock, graphicsBlock, latexComment,
- * maketitleMarker, exampleBlock, and the list/quote containers themselves — is
- * NON-listable: wrapping it loses or corrupts its identity. These are SCHEMA
- * node names (PM `node.type.name`), not `TextObjectKind`s — the caret may sit in
- * a node (maketitleMarker) that has no TextObject twin.
- */
-const LISTABLE_BLOCK_TYPES: ReadonlySet<string> = new Set(["paragraph", "listItem"]);
-
-/**
- * True iff EVERY block a list/quote wrapper would act on for the current
- * selection is listable — i.e. wrapping preserves each block's identity. We take
- * the SAME block range ProseMirror's `wrapInList` / `wrapIn` take (`$from.
- * blockRange($to)`): the contiguous run of sibling blocks at the shared depth
- * that the wrapper would lift into the new container. Each of those siblings
- * must be a listable node (`paragraph` / `listItem`); a single non-listable
- * block (titleField / heading / atom block) greys the cell.
- *
- * A collapsed caret resolves to the single containing block. If no block range
- * resolves (a degenerate selection — e.g. a NodeSelection on an opaque atom),
- * we refuse: there is nothing safely listable to wrap. Cheap — bounded by the
- * selection (O(blocks-in-range)), and only called at menu-open, never per
- * keystroke (keystroke sanctity).
- */
-function selectionIsListable(view: EditorView): boolean {
-  const { $from, $to } = view.state.selection;
-  const range = $from.blockRange($to);
-  if (!range) return false; // no wrappable block range → not listable, grey it
-  const parent = range.parent;
-  for (let i = range.startIndex; i < range.endIndex; i += 1) {
-    if (!LISTABLE_BLOCK_TYPES.has(parent.child(i).type.name)) return false;
-  }
-  // A zero-width range (startIndex === endIndex) means the resolved block isn't
-  // a direct child of `parent` at this depth — the caret's own textblock IS the
-  // affected block; check it directly.
-  if (range.startIndex === range.endIndex) {
-    return LISTABLE_BLOCK_TYPES.has($from.parent.type.name);
-  }
-  return true;
-}
-
-/**
  * Applicability for the three structural WRAPPER rows. Same `selection:
  * "ignored"` + uniform-collab base as the mark rows, but with the DATA-LOSS
  * guard: when the caret/selection sits on a non-listable block (titleField,
@@ -2781,42 +2739,20 @@ function wrapperApplies(
 }
 
 /**
- * The WHOLE wrapper safety question, in one place, so the affordance (`applies`)
- * and the commit (`run`) can never answer it from two tables — the shape task
- * 258 states for placements and task 321 for drop decisions.
- *
- * Two halves, and they are genuinely different questions:
- *   • **identity** — `selectionIsListable`: would the wrap DESTROY the block's
- *     own identity (a `titleField`, a `heading`, an atom block coerced into a
- *     paragraph)? Byte-identical to its pre-397 behaviour.
- *   • **container** — `selectionHostsWrapper`: can the wrapper be placed AROUND
- *     those blocks at all, or would ProseMirror lift them out of a container
- *     that cannot host it? THE container SSOT (`text-object-registry`), the
- *     third member of the `posHostsBlockInsert` / `posHostsInlineAtom` family.
- *
- * The second half is the one task 397 adds. Without it the gate answers a
- * question about the BLOCK when the destruction is a property of the CONTAINER:
- * a bullet toggle at a caret inside an expex `exampleItem` passes the identity
- * half (the block IS a paragraph) and silently destroys the item.
- *
- * A view-less ctx (the minimal menu-decoration ctx, a unit-test probe) answers
- * `true` — the historic "allow" fallback every other container gate takes: a
- * verdict is only issued when the question can actually be asked.
+ * The WHOLE wrapper safety question — identity (`selectionIsListable`) then
+ * container (`selectionHostsWrapper`) — read off the ONE door every surface
+ * reads, `wrapperSafeInState` (`@/lib/tiptap/wrapper-gate`, task 427). The
+ * affordance (`applies`) and the commit (`run`) both enter here, and so do the
+ * three `.extend()`ed StarterKit factories' chords / input rules and the
+ * card-body toolbar, which never reach this registry at all. A view-less ctx
+ * answers `true` — the historic "allow" fallback every other container gate
+ * takes: a verdict is only issued when the question can actually be asked.
  */
 function wrapperSafeHere(
   view: EditorView | undefined,
   wrapperNodeName: string,
 ): boolean {
-  const state = view?.state;
-  if (!state?.selection) return true; // no live view → allow (historic)
-  if (!selectionIsListable(view!)) return false;
-  // The container half needs a real schema + a resolvable doc. A stubbed state
-  // (the minimal menu-decoration ctx, a unit-test double) has neither, so it gets
-  // the pre-397 verdict rather than a fabricated one — the same "a verdict is
-  // only issued when the question can actually be asked" fallback
-  // `blockInsertApplies` and `inlineAtomInsertApplies` both take.
-  if (!state.schema || typeof state.doc?.resolve !== "function") return true;
-  return selectionHostsWrapper(state, state.schema.nodes[wrapperNodeName]);
+  return wrapperSafeInState(view?.state, wrapperNodeName);
 }
 
 /**
@@ -2873,20 +2809,47 @@ function formatToggleRow(
    * command.
    */
   opts:
-    | { wrapper: string; mark?: never; slash?: { name: string; aliases?: string[] } }
+    | {
+        wrapper: string;
+        mark?: never;
+        slash?: { name: string; aliases?: string[] };
+        /**
+         * Task 427: a WRAPPER row ALSO owns two PM-land surfaces the registry
+         * used to deny it had — StarterKit's `Mod-Shift-8/7/b` chord and its
+         * `- ` / `1. ` / `> ` markdown input rule. Both bindings live in the
+         * `.extend()`ed factory (`editor-extensions.ts`), which routes them
+         * through the SAME `wrapperSafeInState` door this row's `run()` reads.
+         * The row RECORDS them (`keybinding` / `inputRulePattern`, the latter
+         * imported from the extension that owns it) so the surface map is
+         * truthful and `assertActionCoverage` can reconcile it; the chord leg
+         * in `wrapper-surfaces-guard.test.ts` drives the declared binding
+         * through the real stack so the record cannot drift from the binding.
+         */
+        keybinding: string;
+        inputRulePattern: RegExp;
+      }
     | { mark: string; wrapper?: never; slash?: { name: string; aliases?: string[] } },
 ): ActionSpec {
   const wrapperNode = opts.wrapper;
   const slash = opts.slash;
+  const pmLand =
+    opts.wrapper !== undefined
+      ? { typed: true, keyboard: true, keybinding: opts.keybinding, inputRulePattern: opts.inputRulePattern }
+      : null;
   return {
     id,
     label,
     category: "format",
     selection: "ignored",
     backbone: "tiptap-chain",
-    surfaces: slash ? { lightning: true, slash: true } : { lightning: true },
+    surfaces: {
+      lightning: true,
+      ...(slash ? { slash: true } : {}),
+      ...(pmLand ? { typed: true, keyboard: true } : {}),
+    },
     ...(slash ? { slashName: slash.name } : {}),
     ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
+    ...(pmLand ? { keybinding: pmLand.keybinding, inputRulePattern: pmLand.inputRulePattern } : {}),
     applies:
       opts.wrapper !== undefined
         ? wrapperApplies(opts.wrapper)
@@ -2919,9 +2882,9 @@ const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold(), {
 const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic(), { mark: "italic" });
 const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike(), { mark: "strike" });
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code" });
-const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] } });
-const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" } });
-const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] } });
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] }, keybinding: "Mod-Shift-8", inputRulePattern: bulletListInputRegex });
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" }, keybinding: "Mod-Shift-7", inputRulePattern: orderedListInputRegex });
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] }, keybinding: "Mod-Shift-b", inputRulePattern: blockquoteInputRegex });
 
 /**
  * The text-color row (CHIP 6b). Unlike the toggles, this opens the
@@ -3807,12 +3770,22 @@ export function assertActionCoverage(): string[] {
   // registry). Each format row must be `category: "format"`, declare
   // `backbone: "tiptap-chain"` (the explicit record that it is backbone-less —
   // a pure `editor.chain()` call, no Virgil SSOT), claim `surfaces.lightning`
-  // (every format cell is a grid cell), and never claim typed/grab/keyboard
-  // (a mark toggle is not an input rule; its keybindings are owned by StarterKit,
-  // not this registry). PARTITIONED on `formatIdsWithSlash` (task 062): the
-  // three structural WRAPPER rows ALSO own the slash surface (`\list`/`\enumerate`/
-  // `\quote` + aliases, reconciled below) so they MUST claim slash + a slashName;
-  // the five MARK rows must NOT claim slash (a mark is not a slash command).
+  // (every format cell is a grid cell), and never claim grab. PARTITIONED on
+  // `formatIdsWithSlash` (task 062): the three structural WRAPPER rows ALSO own
+  // the slash surface (`\list`/`\enumerate`/`\quote` + aliases, reconciled
+  // below) so they MUST claim slash + a slashName; the five MARK rows must NOT
+  // claim slash (a mark is not a slash command).
+  //
+  // RENEGOTIATED (task 427): this leg used to deny every format row `typed` and
+  // `keyboard` on the ground that "a mark toggle is not an input rule; its
+  // keybindings are owned by StarterKit". True of the MARKS and false of the
+  // WRAPPERS, which DO have a markdown input rule (`- ` / `1. ` / `> `) and a
+  // chord (`Mod-Shift-8/7/b`) — both live in the `.extend()`ed factories and
+  // both were measured reaching the toggles with no container guard. A guard
+  // that says those surfaces do not exist while they destroy examples is the
+  // "guard overstates its reach" failure. So the partition is now: WRAPPERS
+  // must claim typed + keyboard and carry `inputRulePattern` + `keybinding`;
+  // MARKS must claim neither.
   for (const id of COVERED_FORMAT_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) {
@@ -3837,9 +3810,26 @@ export function assertActionCoverage(): string[] {
         `[actions] format id "${id}" must set surfaces.lightning (every format cell is a grid cell)`,
       );
     }
-    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
+    if (row.surfaces.grab) {
       problems.push(
-        `[actions] format id "${id}" claims a grab/typed/keyboard surface it does not expose`,
+        `[actions] format id "${id}" claims a grab surface it does not expose`,
+      );
+    }
+    if (formatIdsWithSlash.has(id)) {
+      // the structural WRAPPERS own the chord + the markdown input rule (task 427).
+      if (!row.surfaces.typed || !row.inputRulePattern) {
+        problems.push(
+          `[actions] format id "${id}" must set surfaces.typed + inputRulePattern (the wrapper owns a markdown input rule)`,
+        );
+      }
+      if (!row.surfaces.keyboard || !row.keybinding) {
+        problems.push(
+          `[actions] format id "${id}" must set surfaces.keyboard + keybinding (the wrapper owns a StarterKit chord)`,
+        );
+      }
+    } else if (row.surfaces.typed || row.surfaces.keyboard || row.inputRulePattern || row.keybinding) {
+      problems.push(
+        `[actions] format id "${id}" claims a typed/keyboard surface it does not expose (a mark's bindings are StarterKit's)`,
       );
     }
     if (formatIdsWithSlash.has(id)) {

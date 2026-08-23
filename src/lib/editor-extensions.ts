@@ -28,6 +28,7 @@ import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
+import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -714,6 +715,20 @@ function createListTitleNodeView(
   };
 }
 
+// ── Wrapper-toggle surfaces outside the registry (task 427) ─────────────────
+// StarterKit's bullet / ordered / blockquote extensions each ship TWO surfaces
+// that reach `toggleBulletList` / `toggleOrderedList` / `toggleBlockquote`
+// without entering the action registry: a `Mod-Shift-8/7/b` chord and a
+// markdown input rule (`- `, `1. `, `> `). The registry rows' `applies`/`run`
+// guard (task 397) covers the lightning grid and the slash twins only, so the
+// chords were MEASURED destroying an expex item (`toggleList` lifts the
+// paragraph out of the `exampleItem`; `\vxid` gone, example renumbered).
+// Every `.extend()` below therefore overrides BOTH hooks and routes the parent
+// binding through the ONE wrapper door (`@/lib/tiptap/wrapper-gate`) — the
+// `.extend()` owns the binding, the binding asks the predicate. The input-rule
+// half was measured SAFE already (upstream asks `findWrapping` first) and is
+// routed anyway so every surface answers from one table.
+
 export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
   return BulletList.extend({
     group: "block list textObject",
@@ -722,6 +737,12 @@ export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
         ...this.parent?.(),
         ...MAIN_STARTERKIT_NODE_ATTRS.bulletList,
       };
+    },
+    addKeyboardShortcuts() {
+      return guardWrapperShortcuts(this.parent?.() ?? {}, "bulletList", () => this.editor?.state);
+    },
+    addInputRules() {
+      return guardWrapperInputRules(this.parent?.() ?? [], "bulletList");
     },
     addNodeView() {
       return createListTitleNodeView("ul", "bulletList", opts);
@@ -738,6 +759,12 @@ export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
         ...MAIN_STARTERKIT_NODE_ATTRS.orderedList,
       };
     },
+    addKeyboardShortcuts() {
+      return guardWrapperShortcuts(this.parent?.() ?? {}, "orderedList", () => this.editor?.state);
+    },
+    addInputRules() {
+      return guardWrapperInputRules(this.parent?.() ?? [], "orderedList");
+    },
     addNodeView() {
       return createListTitleNodeView("ol", "orderedList", opts);
     },
@@ -752,6 +779,12 @@ export function createBlockquoteWithUuid() {
         ...this.parent?.(),
         ...MAIN_STARTERKIT_NODE_ATTRS.blockquote,
       };
+    },
+    addKeyboardShortcuts() {
+      return guardWrapperShortcuts(this.parent?.() ?? {}, "blockquote", () => this.editor?.state);
+    },
+    addInputRules() {
+      return guardWrapperInputRules(this.parent?.() ?? [], "blockquote");
     },
   });
 }
