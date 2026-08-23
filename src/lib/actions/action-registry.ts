@@ -207,9 +207,9 @@ import {
   isTextObjectKind,
   posBlockAllowsAction,
   blockRangeAllowsAction,
+  inlineRangeAllowsAtom,
   INLINE_INSERT_ACTIONS,
   posHostsBlockInsert,
-  posHostsInlineAtom,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
@@ -2299,10 +2299,13 @@ function inlineAtomInsertApplies(
     if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
     const doc = ctx.view?.state?.doc;
     if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
-    const pos = ref.kind === "cursor" ? ref.pos : ref.from;
     const atomType = doc.type.schema.nodes[nodeName];
     if (!atomType) return base; // atom absent from this schema → allow (historic)
-    return posHostsInlineAtom(doc, pos, atomType) ? "ok" : "disabled";
+    // RANGE form (task 428): a selection ref is REPLACED by the atom, so every
+    // textblock it reaches must host it — a selection running from prose into a
+    // `codeBlock` greys the cell. A cursor ref is the caret form (from === to).
+    const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
+    return inlineRangeAllowsAtom(doc, from, to, atomType) ? "ok" : "disabled";
   };
 }
 
@@ -2345,7 +2348,10 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
       // MARKLESS verbatim blocks (`codeBlock` / `latexComment`, `content:
       // "text*"`) can't hold an inline node: the fitter would split them and
       // promote a commented-out line's tail into the typeset document.
-      if (!posHostsInlineAtom(editor.state.doc, from, editor.state.schema.nodes.inlineMath))
+      // RANGE form (task 428): `insertInlineAtom` below REPLACES `[from, to]`,
+      // so a selection reaching INTO a verbatim block is refused whole — the
+      // `from`-only read let a prose→`codeBlock` selection destroy the block.
+      if (!inlineRangeAllowsAtom(editor.state.doc, from, to, editor.state.schema.nodes.inlineMath))
         return;
       // `inlineMath` is an INLINE atom — like footnote/citation it must never
       // jump the viewport (insertInlineAtom enforces the no-scroll invariant).

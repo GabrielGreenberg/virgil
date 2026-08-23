@@ -1241,9 +1241,16 @@ const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every textblock TYPE NAME an inline insert over `[from, to]` can reach, in
- * document order, deduplicated. Empty when the range holds no textblock at all
- * (a true block atom's node range, an empty container).
+ * Every textblock TYPE an inline insert over `[from, to]` can reach, in
+ * document order, deduplicated by type. Empty when the range holds no
+ * textblock at all (a true block atom's node range, an empty container).
+ *
+ * **ONE walk, two families** (task 428): `blockRangeAllowsAction` (the curated
+ * per-kind POLICY, task 148) and `inlineRangeAllowsAtom` (the SCHEMA question,
+ * task 150/396) both read this, so the two predicates cannot come to disagree
+ * about what "the textblocks this range reaches" means — which is exactly how
+ * the inline gate spent a year as a SINGLE-position question beside a block
+ * twin that already asked the range.
  *
  * The two seeds matter: a caret — and any range whose ends sit inside ONE
  * textblock — has nothing strictly BETWEEN its positions, so `nodesBetween`
@@ -1257,25 +1264,30 @@ const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
  * by that textblock's own kind — the pre-148 behaviour, which the resolved
  * decision says to leave permissive — while a container-level range never
  * proposes one as a landing site.
+ *
+ * `from`/`to` are clamped and ordered, so a stale or borderline ref can't throw.
  */
-function inlineInsertTargets(doc: PMNode, from: number, to: number): string[] {
-  const names: string[] = [];
-  const seen = new Set<string>();
+function inlineInsertTargetTypes(doc: PMNode, from: number, to: number): NodeType[] {
+  const size = doc.content.size;
+  const lo = Math.max(0, Math.min(Math.min(from, to), size));
+  const hi = Math.max(0, Math.min(Math.max(from, to), size));
+  const types: NodeType[] = [];
+  const seen = new Set<NodeType>();
   const push = (node: PMNode) => {
-    if (!node.isTextblock || seen.has(node.type.name)) return;
-    seen.add(node.type.name);
-    names.push(node.type.name);
+    if (!node.isTextblock || seen.has(node.type)) return;
+    seen.add(node.type);
+    types.push(node.type);
   };
-  push(doc.resolve(from).parent);
-  push(doc.resolve(to).parent);
-  if (to > from) {
-    doc.nodesBetween(from, to, (node) => {
+  push(doc.resolve(lo).parent);
+  push(doc.resolve(hi).parent);
+  if (hi > lo) {
+    doc.nodesBetween(lo, hi, (node) => {
       if (NO_INLINE_LANDING_INSIDE.has(node.type.name)) return false;
       push(node);
       return true;
     });
   }
-  return names;
+  return types;
 }
 
 /**
@@ -1313,15 +1325,14 @@ export function blockRangeAllowsAction(
   to: number,
   action: DragHandleAction,
 ): boolean {
-  const size = doc.content.size;
-  const lo = Math.max(0, Math.min(Math.min(from, to), size));
-  const hi = Math.max(0, Math.min(Math.max(from, to), size));
   if (!INLINE_INSERT_ACTIONS.has(action)) {
+    const size = doc.content.size;
+    const lo = Math.max(0, Math.min(Math.min(from, to), size));
     return blockKindAllowsAction(doc.resolve(lo).parent.type.name, action);
   }
-  const targets = inlineInsertTargets(doc, lo, hi);
+  const targets = inlineInsertTargetTypes(doc, from, to);
   if (targets.length === 0) return false;
-  return targets.every((name) => blockKindAllowsAction(name, action));
+  return targets.every((type) => blockKindAllowsAction(type.name, action));
 }
 
 /**
@@ -1637,10 +1648,41 @@ export function posHostsInlineAtom(
   pos: number,
   atomType: NodeType,
 ): boolean {
-  const clamped = Math.max(0, Math.min(pos, doc.content.size));
-  const parent = doc.resolve(clamped).parent;
-  if (!parent.isTextblock) return true; // a gap — PM wraps, nothing to corrupt
-  return blockTypeHostsInlineAtom(parent.type, atomType);
+  return inlineRangeAllowsAtom(doc, pos, pos, atomType);
+}
+
+/**
+ * **The RANGE form of the inline-atom container SSOT** (task 428) — the inline
+ * twin of {@link blockRangeAllowsAction}, and the door every caller that acts
+ * over a SELECTION must enter. `posHostsInlineAtom` above is its caret form
+ * (`from === to`), so the two cannot disagree.
+ *
+ * An inline atom inserted over a non-empty selection REPLACES `[from, to]`
+ * (`insertContent` / `replaceSelectionWith`), so "can the atom land here?" is
+ * a question about EVERY textblock the range reaches, not about `from` alone.
+ * Task 396's own recorded residual: select from mid-paragraph INTO a
+ * `codeBlock`, click the lightning `$x$` cell — the gate read the paragraph and
+ * said "ok", and the replace then destroyed the code block's text and merged
+ * the blocks. Same shape task 148 closed on the block side, for the same
+ * reason: a payload arrives in the target's vocabulary or not at all.
+ *
+ * Reads the SAME walk the block gate reads (`inlineInsertTargetTypes`), fails
+ * CLOSED (every reachable textblock must admit the atom), and keeps the one
+ * permissive answer the caret form already gave: a range reaching NO textblock
+ * (a gap beside a block atom, a GapCursor) is a place PM wraps rather than
+ * tears, so it stays allowed. A `NodeSelection` over a block atom is that
+ * shape and remains the RANGE hazard `posHostsInlineAtom`'s header names as
+ * out of scope — `mathRun`'s data-loss guard is what protects it today.
+ */
+export function inlineRangeAllowsAtom(
+  doc: PMNode,
+  from: number,
+  to: number,
+  atomType: NodeType,
+): boolean {
+  const targets = inlineInsertTargetTypes(doc, from, to);
+  if (targets.length === 0) return true; // a gap — PM wraps, nothing to corrupt
+  return targets.every((type) => blockTypeHostsInlineAtom(type, atomType));
 }
 
 /**

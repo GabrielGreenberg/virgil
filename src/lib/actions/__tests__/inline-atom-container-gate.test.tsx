@@ -664,3 +664,112 @@ describe("the ref popover commit refuses at a captured verbatim position (task 3
     editor.destroy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 5. THE RANGE HALF (task 428) — a selection is REPLACED, so the gate asks
+//    about every textblock it reaches, not about `from` alone.
+//
+// Task 396's own recorded residual: `posHostsInlineAtom` is a SINGLE-position
+// question where its block twin (`blockRangeAllowsAction`, task 148) requires
+// EVERY reachable textblock. Measured on the pre-428 tree: select from
+// mid-paragraph INTO the `codeBlock`, click `$x$` — the gate reads the paragraph
+// ("ok"), `mathRun`'s data-loss guard passes (non-empty text), and
+// `insertContent` replaces `[from, to]`: the code block's text is gone and the
+// two blocks merge into one paragraph. Visible only in the bytes.
+// ---------------------------------------------------------------------------
+
+/** A live selection from the MIDDLE of the paragraph INTO the middle of the
+ *  `codeBlock` that follows it (the fixture's block order: title, para, code,
+ *  comment). */
+function selectProseIntoCode(editor: Editor): ActionRef {
+  const p = rangeInside(editor, "paragraph");
+  const c = rangeInside(editor, "codeBlock");
+  const from = Math.floor((p.from + p.to) / 2);
+  const to = Math.floor((c.from + c.to) / 2);
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+  );
+  return { kind: "selection", from, to, paragraphId: "" };
+}
+
+describe("a selection reaching INTO a verbatim block is refused whole (task 428)", () => {
+  for (const { id } of INLINE_ATOM_ROWS) {
+    it(`AFFORDANCE — ${id} greys for a prose→codeBlock selection`, () => {
+      const editor = mountFixture();
+      const ref = selectProseIntoCode(editor);
+      expect(decorate(id, ref, editor)).toBe("disabled");
+      editor.destroy();
+    });
+  }
+
+  it("RUN — mathRun('inline') leaves the code block whole and the .tex byte-identical", () => {
+    const editor = mountFixture();
+    settle(editor);
+    const ref = selectProseIntoCode(editor);
+    const before = bodyTex(editor);
+    const beforeBlocks = editor.state.doc.childCount;
+
+    runRow(editor, "inline-math", ref);
+
+    expect(countOfType(editor, "inlineMath"), "no atom landed").toBe(0);
+    expect(countOfType(editor, "codeBlock"), "the code block survives").toBe(1);
+    expect(editor.state.doc.childCount, "the blocks did not merge").toBe(beforeBlocks);
+    // Pre-428 the merge produced a paragraph holding `alpha beta $gamma alpha$
+    // beta gamma` and NO `\begin{verbatim}`-family block at all.
+    expect(bodyTex(editor), "the .tex did not move").toBe(before);
+    editor.destroy();
+  });
+
+  it("DOOR — insertInlineAtom over the live prose→codeBlock selection refuses and touches nothing", () => {
+    const editor = mountFixture();
+    settle(editor);
+    selectProseIntoCode(editor);
+    const before = editor.state.doc;
+    const res = insertInlineAtom({ editor, type: "labelRef", attrs: REF_ATTRS });
+    expect(res.refused).toBe(true);
+    expect(res.pos).toBe(-1);
+    expect(editor.state.doc.eq(before)).toBe(true);
+    editor.destroy();
+  });
+
+  it("DOOR — the same selection with an explicit `at` in prose still lands (caret form — nothing is replaced)", () => {
+    // With `at`, `setTextSelection` COLLAPSES the selection first, so the range
+    // form would be the wrong question: the insert replaces nothing.
+    const editor = mountFixture();
+    settle(editor);
+    selectProseIntoCode(editor);
+    const p = rangeInside(editor, "paragraph");
+    const res = insertInlineAtom({ editor, type: "labelRef", attrs: REF_ATTRS, at: p.from + 2 });
+    expect(res.refused).toBe(false);
+    expect(countOfType(editor, "labelRef")).toBe(1);
+    expect(countOfType(editor, "codeBlock")).toBe(1);
+    editor.destroy();
+  });
+
+  it("CONTROL — a selection wholly inside prose is unchanged: cells lit, atom lands", () => {
+    const editor = mountFixture();
+    const ref = selectInnerText(editor, "paragraph");
+    for (const { id } of INLINE_ATOM_ROWS) expect(decorate(id, ref, editor)).toBe("ok");
+    runRow(editor, "inline-math", ref);
+    expect(countOfType(editor, "inlineMath")).toBe(1);
+    editor.destroy();
+  });
+
+  it("CONTROL — a selection from the title INTO prose stays allowed (both hosts host)", () => {
+    const editor = mountFixture();
+    const t = rangeInside(editor, "titleField");
+    const p = rangeInside(editor, "paragraph");
+    const from = Math.floor((t.from + t.to) / 2);
+    const to = Math.floor((p.from + p.to) / 2);
+    const ref: ActionRef = { kind: "selection", from, to, paragraphId: "" };
+    for (const { id } of INLINE_ATOM_ROWS) expect(decorate(id, ref, editor)).toBe("ok");
+    editor.destroy();
+  });
+
+  it("CONTROL — a caret in prose is unchanged", () => {
+    const editor = mountFixture();
+    const ref = cursorRefInside(editor, "paragraph");
+    for (const { id } of INLINE_ATOM_ROWS) expect(decorate(id, ref, editor)).toBe("ok");
+    editor.destroy();
+  });
+});
