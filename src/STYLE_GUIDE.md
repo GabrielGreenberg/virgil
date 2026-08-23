@@ -728,9 +728,22 @@ perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
 text, hover deepening one step (bg → `--surface-muted-strong`, border →
 `--edge-strong`). Beware the hover trap: never rest a hover-able pill at
 the same token its hover lands on, or the feedback vanishes. The leading
-glyph stays per-bin (a `◎` vs a `BadgeOrphaned` badge). Reuse this class
-for any future "N collected X" chip rather than re-authoring the faint
-white-on-white recipe.
+glyph stays per-bin (a `◎` vs a `BadgeOrphaned` badge). The class is
+spelled ONCE, inside the `OmniBinPill` component
+(`src/panels/Omni/OmniViewPanel.tsx`) — both bins are call sites of it, and
+a future "N collected X" chip in the cascade should be a third call site
+rather than a re-authored pill (the census in `omni-bin-posture.test`
+pins the single spelling).
+
+**Where the bins sit (task 421).** An omni bin is an affordance for a fact
+with no position (a card that cannot cascade), so it does not live at a
+document coordinate. The column publishes a BIN SLOT as the last flex
+child of its sticky band frame (`omni-bin-slot.ts`), and the omni view
+portals the bin stack into it: the bins stack directly BELOW any docked
+band by flex order and stay pinned in the viewport at every scroll
+position. The z ladder is stated once there — pinned cascade card 10 <
+bins 20 < docked band frame 30, and the bins sit INSIDE the frame when a
+band is docked, so the ladder never has to choose between them.
 
 ## Cards & themes
 
