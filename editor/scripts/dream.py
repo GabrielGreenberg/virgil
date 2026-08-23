@@ -58,8 +58,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import (
+    DevHomeUnresolved,
     atomic_write,
     dev_mode_enabled,
+    die,
     digests_root as _shared_digests_root,
     memos_root as _shared_memos_root,
     source_repo_root,
@@ -109,14 +111,23 @@ def _now_iso_date() -> tuple[str, str]:
 
 
 def _memos_root() -> Path:
-    # The one machine-global sink (shared with reflect.py) — resolves the same
-    # from a repo checkout OR a synced paper's .virgil/scripts/editor/ copy, so
-    # the dream reads exactly where reflect wrote.
-    return _shared_memos_root()
+    # The one sink (shared with reflect.py), under the PRIMARY checkout —
+    # resolves the same from a repo checkout, a worktree, OR a synced paper's
+    # .virgil/scripts/editor/ copy (via VIRGIL_REPO_ROOT), so the dream reads
+    # exactly where reflect wrote. Unresolvable is a loud refusal (task 431).
+    try:
+        return _shared_memos_root()
+    except DevHomeUnresolved as e:
+        die(str(e))
+        raise  # unreachable; for the type checker
 
 
 def _digests_root() -> Path:
-    return _shared_digests_root()
+    try:
+        return _shared_digests_root()
+    except DevHomeUnresolved as e:
+        die(str(e))
+        raise  # unreachable; for the type checker
 
 
 def _dream_sha() -> str:
@@ -446,10 +457,10 @@ def _memo_sink_present(memos_root: Path) -> bool:
     asks for).
 
     Reachable and CONFIG-DEPENDENT, which is what makes it worth a flag rather
-    than a comment. `dev_home()` defaults to `~/.virgil-dev` — HOME-relative
+    than a comment. `dev_home()` defaulted to `~/.virgil-dev` — HOME-relative
     and machine-global, outside the repo and outside git — so a new machine, a
     new ACCOUNT on the same machine, or an unset/mistyped `VIRGIL_DEV_HOME`
-    silently yields a sink that has never existed. Measured on 2026-08-21,
+    silently yielded a sink that had never existed. Measured on 2026-08-21,
     after the dev-machine move (28fc58fd) carried the tracked files to a new
     account but not the untracked sink: `~/.virgil-dev` was absent, `select`
     reported `memoCount: 0`, and the documented flow read that as a clean quiet
@@ -461,7 +472,12 @@ def _memo_sink_present(memos_root: Path) -> bool:
     creates the sink on its first write, so `False` means precisely "nothing
     has been captured here since the sink last existed" — benign on a machine's
     first day, and the whole story on its thirtieth. The script reports the
-    fact; the human reads the calendar."""
+    fact; the human reads the calendar.
+
+    Since task 431 the home is `<primary checkout>/editor/dev` (gitignored),
+    so the sink travels with the clone — but a wrong `VIRGIL_REPO_ROOT`, a
+    fresh clone, or a `VIRGIL_DEV_HOME` pin at a stale path still produce the
+    same zero, which is why the flag stays."""
     return memos_root.is_dir()
 
 
@@ -675,7 +691,8 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             f"NOT that nothing was captured. `reflect.py` creates the sink on "
             f"its first write, so this reads as benign on a machine's first "
             f"day and as a broken capture layer on its thirtieth — check the "
-            f"calendar and `VIRGIL_DEV_HOME` before trusting any zero here. "
+            f"calendar, `VIRGIL_REPO_ROOT` and any `VIRGIL_DEV_HOME` pin before "
+            f"trusting any zero here. "
             f"Left unaddressed, every following digest repeats this same "
             f"healthy-looking no-op."
         )
@@ -874,7 +891,7 @@ def main(argv: list[str]) -> int:
     # The gate. OFF (the default) → do nothing, succeed. The dream is a dev
     # affordance; it never runs — or writes — outside a DEV session.
     if not dev_mode_enabled():
-        print("dream: DEV mode off (no VIRGIL_DEV, no ~/.virgil-dev/dev-mode marker) — no-op.")
+        print("dream: DEV mode off (no VIRGIL_DEV, no <repo>/editor/dev/dev-mode marker) — no-op.")
         return 0
 
     return _SUBCOMMANDS[argv[0]](argv[1:])

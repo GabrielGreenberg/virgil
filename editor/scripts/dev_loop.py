@@ -57,7 +57,7 @@ rides the `result` frontmatter field; `stream: iterations` labels the stream so
 it is never confused with a contract result (the dream never reads iterations/).
 
 Env overrides:
-  VIRGIL_DEV_ITERATIONS_DIR  iterations root (default: ~/.virgil-dev/iterations,
+  VIRGIL_DEV_ITERATIONS_DIR  iterations root (default: <repo>/editor/dev/iterations,
                              via _common.iterations_root / VIRGIL_DEV_HOME)
   VIRGIL_ITERATE_NOW         ISO timestamp for reflectedAt + the filename clock
 

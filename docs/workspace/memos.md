@@ -24,8 +24,8 @@ to be running.
 >
 > **And a matching cue means RUN the script, not ask.** Never interrogate the
 > user about where a reflection "should go" or whether this session is
-> dev-enough: `reflect.py` gates itself (dev mode is a machine marker,
-> `~/.virgil-dev/dev-mode`) and says so plainly when it declines. Only after
+> dev-enough: `reflect.py` gates itself (dev mode is `VIRGIL_DEV=1` or the
+> `<repo>/editor/dev/dev-mode` marker) and says so plainly when it declines. Only after
 > the script itself reports DEV mode off do you offer a paper-side note
 > instead.
 

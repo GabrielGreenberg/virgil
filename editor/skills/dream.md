@@ -154,11 +154,16 @@ digest is the only durable output, so unflagged the silence is permanent.
 `reflect.py` creates the sink on first write, so `false` means precisely
 *"nothing has been captured here since the sink last existed"* — benign on a
 machine's first day, a broken capture layer on its thirtieth. Don't guess which:
-`dev_home()` is `~/.virgil-dev` by default — **HOME-relative, machine-global,
-outside the repo and outside git** — so a new machine, a new *account* on the
-same machine, or an unset `VIRGIL_DEV_HOME` all produce it. Record the fact and
-the calendar in the digest and let the human rule; the corpus is not yours to
-reconstruct.
+a fresh clone, a wrong `VIRGIL_REPO_ROOT`, or a stale `VIRGIL_DEV_HOME` pin all
+produce it. Record the fact and the calendar in the digest and let the human
+rule; the corpus is not yours to reconstruct.
+
+*Migration note (task 431, 2026-08-23):* the loop's memory moved from the
+machine-global `~/.virgil-dev` — which the dev-machine move left behind, zeroing
+it with no signal — to `<primary checkout>/editor/dev` (gitignored), resolved
+via `VIRGIL_REPO_ROOT` or the git common dir so a worktree reads the main
+checkout's sink, never its own empty twin. The old home's contents were copied
+across once; nothing reads `~/.virgil-dev` any more.
 
 **Preflight 1 — are you running the current prompt?** This skill is *distributed*:
 the copy that actually runs is a built artifact — the skill BUNDLE that

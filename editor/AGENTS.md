@@ -352,7 +352,7 @@ absolute, both work.
   step** — do not copy a "now write a memo" step into individual skill files.
   Reflection consumes the Task's already-stamped two-field `result` (it does not
   re-derive the outcome), is read-only on the paper, and writes only to the
-  machine-global dev sink (`~/.virgil-dev/memos`, `VIRGIL_DEV_MEMOS_DIR`
+  primary-checkout dev sink (`<repo>/editor/dev/memos`, `VIRGIL_DEV_MEMOS_DIR`
   overrides). Outside DEV mode it is a no-op (both the tail-trigger and the
   script gate on `_common.dev_mode_enabled`), so it never runs — and cannot be
   turned on — in an end-user session, even though the scripts ship to every

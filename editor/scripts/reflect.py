@@ -78,6 +78,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import (
+    DevHomeUnresolved,
     atomic_write,
     dev_mode_enabled,
     die,
@@ -208,9 +209,15 @@ def _now_parts() -> tuple[str, str, str]:
 
 
 def _memos_root() -> Path:
-    # The one machine-global sink (shared with dream.py) — resolves the same
-    # from a repo checkout OR a synced paper's .virgil/scripts/editor/ copy.
-    return _shared_memos_root()
+    # The one sink (shared with dream.py), under the PRIMARY checkout —
+    # resolves the same from a repo checkout, a worktree, OR a synced paper's
+    # .virgil/scripts/editor/ copy (via VIRGIL_REPO_ROOT). Unresolvable is a
+    # loud refusal, never a second default (task 431).
+    try:
+        return _shared_memos_root()
+    except DevHomeUnresolved as e:
+        die(str(e))
+        raise  # unreachable; for the type checker
 
 
 def _skill_sha(skill: str) -> str:
@@ -621,7 +628,7 @@ def main(argv: list[str]) -> int:
     # The gate. OFF (the default) → write nothing, succeed. This is the whole
     # "never in an end-user session" guarantee: no VIRGIL_DEV, no memo.
     if not dev_mode_enabled():
-        print("reflect: DEV mode off (no VIRGIL_DEV, no ~/.virgil-dev/dev-mode marker) — no memo written.")
+        print("reflect: DEV mode off (no VIRGIL_DEV, no <repo>/editor/dev/dev-mode marker) — no memo written.")
         return 0
 
     doc = resolve_doc(a.doc)
