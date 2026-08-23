@@ -24,6 +24,15 @@ Examples:
 The kind is appended verbatim with the `-false-positive:` suffix:
 e.g. `pgmark-low-confidence-flood-false-positive: <reason>`.
 Duplicates are not appended.
+
+A kind NO reader can match is REFUSED (exit 2) rather than written —
+`suppression_vocabulary.classify_suppression_category` is the one place that
+answers "can any reader match this?", derived from the validator's and the
+audit's own vocabularies. Before task 413 an inert kind stored correctly,
+survived every recompute, and silenced nothing; this script's own `--help`
+advertised two such kinds, and `skills/di-validate.md` advertised three. The
+refusal names the category to use instead. There is deliberately no `--force`:
+writing the line anyway is the defect.
 """
 from __future__ import annotations
 
@@ -39,6 +48,9 @@ from _tools import (
     citekey_matches, lock_catalog, normalize_citekey,
     read_catalog, write_catalog,
 )
+from suppression_vocabulary import (
+    classify_suppression_category, vocabulary_help,
+)
 
 
 def add_suppression(library: Path, citekey: str, kind: str, reason: str) -> dict:
@@ -46,6 +58,11 @@ def add_suppression(library: Path, citekey: str, kind: str, reason: str) -> dict
     indexed.warnings, idempotently. Returns a status dict.
     """
     citekey = normalize_citekey(citekey)
+    # The gate is HERE, not only in `main()`, so no caller can reach the write
+    # around it — this function is the API other scripts import.
+    verdict = classify_suppression_category(kind)
+    if not verdict.ok:
+        return {"status": "refused", "warning": verdict.message()}
     warning = f"{kind}-false-positive: {reason.strip()}"
     with lock_catalog(library):
         catalog = read_catalog(library)
@@ -72,15 +89,7 @@ def add_suppression(library: Path, citekey: str, kind: str, reason: str) -> dict
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("citekey")
-    ap.add_argument(
-        "kind",
-        help=(
-            "Validator/audit kind being suppressed — e.g. "
-            "pgmark-low-confidence-flood, case-errors, "
-            "hyphenation-artifact, footnote-inline-rate, "
-            "title-thanks. The `-false-positive:` suffix is added."
-        ),
-    )
+    ap.add_argument("kind", help=vocabulary_help())
     ap.add_argument(
         "reason",
         help=(
@@ -102,11 +111,22 @@ def main() -> int:
             library = Path("~/Virgil-Library").expanduser()
     library = library.resolve()
     result = add_suppression(library, args.citekey, args.kind, args.reason)
-    print(
-        f"{args.citekey}: {result['status']} — {result['warning']}",
-        file=sys.stderr if result["status"] == "no-entry" else sys.stdout,
-    )
-    return 0 if result["status"] in ("added", "already-present") else 1
+    ok = result["status"] in ("added", "already-present")
+    if result["status"] == "refused":
+        # The verdict already opens with `refused:` and carries a multi-line
+        # remedy; wrapping it in the status line again reads as a stutter.
+        print(f"{args.citekey}: {result['warning']}", file=sys.stderr)
+    else:
+        print(
+            f"{args.citekey}: {result['status']} — {result['warning']}",
+            file=sys.stdout if ok else sys.stderr,
+        )
+    if ok:
+        return 0
+    # Distinct codes: a refused CATEGORY is a fixable typo on this command
+    # line, where `no-entry` is a missing catalog row. A caller that retried
+    # a refusal verbatim would loop forever.
+    return 2 if result["status"] == "refused" else 1
 
 
 if __name__ == "__main__":
