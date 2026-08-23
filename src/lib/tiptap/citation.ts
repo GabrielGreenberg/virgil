@@ -176,6 +176,8 @@ export const Citation = Node.create<CitationOptions>({
             // twin in `footnote.ts`): the two coincide for the markless verbatim
             // blocks only by construction of the curated set, so the SSOT is asked
             // too. Covers BOTH branches below (they share this `$from`).
+            // Caret form, deliberately (task 428): the typed match lies inside
+            // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 120),

@@ -1959,16 +1959,61 @@ defect as intended behaviour.
 which landed atoms at `makeInlineCursorPlacement` positions asking no schema
 question at all. See "The drop half" immediately below.
 
-**A second residual, also filed:** the gate is a SINGLE-POSITION question, where
-the block twin (`blockRangeAllowsAction`, task 148) requires EVERY reachable
-textblock. A selection running from prose INTO a verbatim block passes on its
-start position and `insertContent` then replaces the whole cross-block range.
-Closing it means giving the inline side the range form — the same shape, one
-predicate over.
+**A second residual, also filed — CLOSED by task 428**, see "The range half"
+below: the gate was a SINGLE-POSITION question where the block twin
+(`blockRangeAllowsAction`, task 148) requires EVERY reachable textblock.
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (pure schema +
 serializer), so the check is cheap and real: select a word inside a `% comment`
 line, open the bolt, and see `$x$` and `Cross-ref` greyed.
+
+##### The range half: a gate over a SELECTION asks about every textblock the selection reaches
+
+Same predicate, the other axis (task 428) — 396's own recorded second residual.
+An inline atom inserted over a non-empty selection REPLACES `[from, to]`
+(`insertContent`, `replaceSelectionWith`), and every gate read `selection.from`
+alone. Measured on the pre-428 tree: select from mid-paragraph INTO a
+`codeBlock`, click the lightning `$x$` cell — the affordance reads the
+paragraph and says "ok", `mathRun`'s data-loss guard passes (non-empty text),
+the door judges `from`, and the replace destroys the code block's text and
+merges the two blocks into one paragraph. The block twin had asked the range
+since task 148, and recorded why.
+
+> **`inlineRangeAllowsAtom(doc, from, to, atomType)` is the RANGE form of the
+> inline-atom SSOT and `posHostsInlineAtom` is its caret form (`from === to`).
+> Both families read ONE walk — `inlineInsertTargetTypes`, factored out of
+> `blockRangeAllowsAction` — so the policy gate and the schema gate cannot
+> disagree about what "the textblocks this range reaches" means. Fails CLOSED:
+> every reachable textblock must admit the atom.**
+
+Three rules it earned:
+
+- **Which form a site owes is decided by what its SPLICE consumes.** A splice
+  that replaces the live selection (`insertContent` with no `at`,
+  `replaceSelectionWith`, `mathRun`'s wrap) owes the range; a splice that names
+  its position (an explicit `at`, which `setTextSelection` first COLLAPSES to,
+  a `posAtCoords` drop, an input rule whose match lies inside one textblock)
+  owes the caret form, stated at each site.
+- **The one permissive answer survives the widening.** A range reaching NO
+  textblock (a gap beside a block atom, a GapCursor) is a place PM wraps rather
+  than tears, and stays allowed — which keeps the caret form byte-identical to
+  its pre-428 self. A `NodeSelection` over a block atom is that shape and
+  remains the out-of-scope RANGE hazard `posHostsInlineAtom`'s header names;
+  `mathRun`'s data-loss guard is what protects it today.
+- **The census asks the SHAPE of the splice.** `inline-atom-container-census`
+  gains a fourth question with an EMPTY allowlist: a censused site whose splice
+  is `replaceSelectionWith` / `insertContent` must spell the range form or
+  enter the door, and the door itself must read `selection.to`.
+
+CI: the range legs in
+[inline-atom-container-gate.test.tsx](src/lib/actions/__tests__/inline-atom-container-gate.test.tsx)
+drive the REAL stack over a prose→`codeBlock` selection through the affordance,
+the run and the door, with the wholly-in-prose, title→prose and caret controls.
+Measured by neutering the range primitive back to `from`: 4 legs fail, plus the
+census leg when the slash `\footnote` is reverted to the caret form.
+
+**Owed, not claimed:** the preview eyeball — drag-select from a paragraph into
+a code block, open the bolt: `$x$` and Cross-ref greyed. Not FSA-masked.
 
 ##### The drop half: the AFFORDANCE is where a per-payload container question is asked
 

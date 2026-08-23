@@ -232,6 +232,8 @@ export const InlineMath = Node.create<MathOptions>({
             // (codeBlock / latexComment), which admit literal text only. Bail so
             // the `$` falls through as a literal char — the "refuse, don't
             // insert" contract shared with the typed cite/footnote rules (061).
+            // Caret form, deliberately (task 428): an input rule's match range
+            // lies inside ONE textblock, so `from` names every block it reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const $from = state.doc.resolve(from);
             const textBefore = $from.parent.textBetween(

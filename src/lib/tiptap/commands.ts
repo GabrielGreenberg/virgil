@@ -40,7 +40,7 @@ import type { Transaction } from "@tiptap/pm/state";
 // BEFORE the bridge call, so its gate MUST be here to prevent an orphan atom.
 import {
   blockKindAllowsAction,
-  posHostsInlineAtom,
+  inlineRangeAllowsAtom,
 } from "@/text-objects/text-object-registry";
 
 export interface VirgilCommand {
@@ -238,7 +238,16 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // `footnote.ts` / `citation.ts` states why both are asked). `\cite` above
       // needs none: it opens a popover whose COMMIT goes through
       // `insertInlineAtom`, which carries the gate at the door.
-      if (!posHostsInlineAtom(state.doc, state.selection.from, footnoteNodeType))
+      // RANGE form (task 428): `replaceSelectionWith` below REPLACES the live
+      // selection, so every textblock it reaches must host the atom.
+      if (
+        !inlineRangeAllowsAtom(
+          state.doc,
+          state.selection.from,
+          state.selection.to,
+          footnoteNodeType,
+        )
+      )
         return;
       const existing = new Set<string>();
       state.doc.descendants((node) => {

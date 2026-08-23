@@ -175,6 +175,8 @@ export const Footnote = Node.create<FootnoteOptions>({
             // SSOT too costs nothing today (measured: both already refuse) and is
             // what keeps a future markless kind, or an edit to the curated set,
             // from silently re-opening the truncate-and-eject corruption.
+            // Caret form, deliberately (task 428): the typed match lies inside
+            // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 200),

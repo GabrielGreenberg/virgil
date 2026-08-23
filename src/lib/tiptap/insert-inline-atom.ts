@@ -56,7 +56,7 @@
 import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
-import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
+import { inlineRangeAllowsAtom } from "@/text-objects/text-object-registry";
 
 export interface InsertInlineAtomArgs {
   /** The live editor. The insert runs through its command chain. */
@@ -140,7 +140,7 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   // wraps the atom in a fresh paragraph and SPLITS the block around it, and a
   // commented-out line's tail is promoted into the typeset document. A
   // `titleField` (`content: "inline*"`) legitimately hosts one and stays allowed,
-  // which is precisely why this reads `posHostsInlineAtom` and not the block gate.
+  // which is precisely why this reads the inline-atom SSOT and not the block gate.
   //
   // Refusing is the right failure direction: an atom that cannot land without
   // corrupting its container is one the user cannot want. The doc is left
@@ -155,14 +155,27 @@ export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomRe
   // a refusal for a caller that is landing in prose). Mirroring that clamp here
   // is what keeps "what the gate judged" and "where the atom lands" the same
   // position.
-  const landing =
-    typeof at === "number" ? clampToTextRange(editor, at) : editor.state.selection.from;
+  //
+  // RANGE form (task 428): with no `at`, `insertContent` REPLACES the live
+  // selection `[from, to]`, so every textblock that range reaches must host the
+  // atom — a selection running from prose INTO a `codeBlock` is refused whole
+  // rather than judged at `from` alone. With an explicit `at`, `setTextSelection`
+  // first COLLAPSES the selection to that caret, so nothing is replaced and the
+  // single-position (caret) form is the exact question.
+  const [landingFrom, landingTo] =
+    typeof at === "number"
+      ? (() => {
+          const p = clampToTextRange(editor, at);
+          return [p, p] as const;
+        })()
+      : ([editor.state.selection.from, editor.state.selection.to] as const);
+  const landing = landingFrom;
   const atomType = editor.state.schema.nodes[type];
   // No such node in THIS editor's schema (a card body built without
   // `includeLabelRefFootnote`): the question cannot be asked and no atom can be
   // built either, so degrade to the historic path rather than inventing a
   // verdict — the `blockInsertApplies` / `cardActionAllowedForCtx` fallback rule.
-  if (atomType && !posHostsInlineAtom(editor.state.doc, landing, atomType)) {
+  if (atomType && !inlineRangeAllowsAtom(editor.state.doc, landingFrom, landingTo, atomType)) {
     return { pos: -1, refused: true };
   }
 

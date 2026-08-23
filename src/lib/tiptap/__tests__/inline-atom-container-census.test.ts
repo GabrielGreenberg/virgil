@@ -82,8 +82,20 @@ const SPLICE =
 const LANDS = new RegExp(`${SPLICE.source}|\\bdispatch\\s*\\(`);
 
 const ASKS_DOOR = /insertInlineAtom\s*\(/;
-const ASKS_INLINE_SSOT = /posHostsInlineAtom\s*\(/;
+/** Either form of the inline SSOT: the caret form or (task 428) the RANGE form. */
+const ASKS_INLINE_SSOT = /(?:posHostsInlineAtom|inlineRangeAllowsAtom)\s*\(/;
+/** The RANGE form alone (task 428) — what a selection-REPLACING splice owes. */
+const ASKS_INLINE_RANGE = /inlineRangeAllowsAtom\s*\(/;
 const ASKS_BLOCK_SSOT = /posHostsBlockInsert\s*\(/;
+/**
+ * A splice that consumes the LIVE SELECTION rather than an explicit position:
+ * `replaceSelectionWith` and `insertContent` both replace `[from, to]`, so the
+ * question they owe is about every textblock the selection reaches, not about
+ * `from` alone (task 428). `insertContentAt` / `replaceRangeWith` / `tr.insert`
+ * / `tr.replace` / `replaceWith` name their range explicitly and are judged at
+ * the positions they name.
+ */
+const REPLACES_SELECTION = /\.(?:replaceSelectionWith|insertContent)\s*\(/;
 
 /** The SSOT's own home — it DECLARES the predicate rather than asking it. The
  *  drop-mode directory is NO LONGER carved out (task 414 gave it a real census
@@ -235,6 +247,31 @@ describe("every inline-atom splice asks the container question (task 396)", () =
     ).toEqual([]);
   });
 
+  it("ALLOWLIST EMPTY — a splice that REPLACES THE SELECTION asks the RANGE form (task 428)", () => {
+    // Task 396's own recorded residual: the gate was a SINGLE-position question
+    // beside a block twin that asked the range. A selection from prose INTO a
+    // `codeBlock` passed the `from`-only read, and `insertContent` then replaced
+    // the whole cross-block range — the code block's text gone, the blocks
+    // merged. So every censused site whose splice consumes the live selection
+    // must spell `inlineRangeAllowsAtom` (or enter the door, which does).
+    const rangeShaped = HITS.filter((h) => {
+      const src = SRC_BY_FILE.get(h.rel)!;
+      const splice = src.split("\n")[spliceLine(src, h) - 1] ?? "";
+      return REPLACES_SELECTION.test(splice);
+    });
+    // Self-check: the needle can SEE a range-shaped site (the slash `\footnote`).
+    expect(rangeShaped.map((h) => h.rel)).toContain("src/lib/tiptap/commands.ts");
+    const caretOnly = rangeShaped.filter((h) => {
+      const r = gateRegion(SRC_BY_FILE.get(h.rel)!, h);
+      return !(ASKS_DOOR.test(r) || ASKS_INLINE_RANGE.test(r));
+    });
+    expect(
+      caretOnly.map((h) => `[${h.half}] ${h.rel}:${h.line}  ${h.text}`),
+      "a selection-replacing inline-atom splice gated at ONE position — ask " +
+        "inlineRangeAllowsAtom(doc, from, to, type); never allowlist it",
+    ).toEqual([]);
+  });
+
   it("half A accepts ONLY the inline gate (a block gate is not an answer there)", () => {
     // Pins the asymmetry the header states, so a later "simplification" that
     // let half A take `posHostsBlockInsert` is a failing test rather than a
@@ -255,10 +292,26 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
   const read = (rel: string) =>
     keepLiteralsAligned(readFileSync(join(REPO, rel), "utf8"));
 
-  it("insertInlineAtom itself spells posHostsInlineAtom", () => {
+  it("insertInlineAtom itself spells the RANGE form of the inline SSOT", () => {
     // The door is what covers the deferred create-popover commit (a captured
-    // `at` no `applies()` can see) and every FUTURE inline atom.
-    expect(ASKS_INLINE_SSOT.test(read("src/lib/tiptap/insert-inline-atom.ts"))).toBe(true);
+    // `at` no `applies()` can see) and every FUTURE inline atom. It REPLACES the
+    // live selection when no `at` is given, so the caret form is not enough
+    // (task 428) — and the selection's `.to` must reach the gate.
+    const src = read("src/lib/tiptap/insert-inline-atom.ts");
+    expect(ASKS_INLINE_RANGE.test(src)).toBe(true);
+    expect(src).toMatch(/editor\.state\.selection\.to/);
+  });
+
+  it("the affordance judges a SELECTION ref over its whole range (task 428)", () => {
+    // `inlineAtomInsertApplies` greys the `$x$` / `Cross-ref` cells; a selection
+    // ref carries `from` AND `to`, and reading only `from` is the defect.
+    const src = read("src/lib/actions/action-registry.ts");
+    const at = src.indexOf("function inlineAtomInsertApplies(");
+    expect(at).toBeGreaterThan(0);
+    const body = src.slice(at, at + 1500);
+    expect(body).toMatch(ASKS_INLINE_RANGE);
+    expect(body).toMatch(/ref\.to\b/);
+    expect(body).not.toMatch(/posHostsInlineAtom\s*\(/);
   });
 
   it("the two inline-atom rows take the container-aware factory, not the bare gate", () => {
@@ -321,7 +374,9 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     const src = read("src/lib/actions/action-registry.ts");
     const at = src.indexOf('if (kind === "inline")');
     expect(at, "mathRun inline branch not found").toBeGreaterThan(0);
-    expect(src.slice(at, at + 1200)).toMatch(ASKS_INLINE_SSOT);
+    // …and it is the RANGE form (task 428): the run hands `insertInlineAtom` a
+    // live selection that the insert REPLACES.
+    expect(src.slice(at, at + 1400)).toMatch(ASKS_INLINE_RANGE);
   });
 
   it("THE REPORT IS THE PERMISSION — every card-minting caller reads `refused`", () => {
