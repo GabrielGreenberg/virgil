@@ -1,4 +1,4 @@
-<!-- last-verified: 92e921fb 2026-08-22 -->
+<!-- last-verified: 7a917bfd 2026-08-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/, src/components/SkillSyncControls.tsx, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/cards/predicates.ts -->
 

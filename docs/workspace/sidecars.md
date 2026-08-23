@@ -1,4 +1,4 @@
-<!-- last-verified: 31d34eac 2026-08-20 -->
+<!-- last-verified: 7a917bfd 2026-08-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -283,6 +283,34 @@ user's writing) — is declared in
 also the complete list of what Virgil writes into `virgil/`. It decides the write
 cadence and how a cloud-sync conflicted-copy fork of the file is reported;
 `editor-state.json`, `focus.json` and `collab.json` are the three `"view"` files.
+
+**Cleanup (task 411).** 363 shipped detection and stopped at *report, never
+delete*, so a synced folder kept filling with forks nothing in the app could
+clear. What may now be deleted is what a **DECLARATION already proves** carries
+nothing: a fork of a `"view"`-tier sidecar (recomputable by the table above) or a
+`.crswap` leftover (browser debris). Everything else — a content fork above all —
+is reported and KEPT, since *an inert verdict is positive evidence and a shape the
+tool does not understand is not evidence.* The DOOR decides, not the caller:
+`deleteSidecarSiblings` re-lists `virgil/` INSIDE the write critical section and
+re-derives the sanctioned set through `planSidecarCleanup`
+([sync-conflict-cleanup.ts](../../src/lib/sync-conflict-cleanup.ts)), treating the
+caller's names as a FILTER (nothing is deleted the user was not shown) and never
+as an instruction. It takes the doc lock because a `.crswap` is Chrome's in-flight
+write buffer for a file Virgil *does* write. The offline
+`tools/triage-sync-conflicts.mjs` is allowed a wider rule (it also prunes a
+content fork whose parsed JSON matches the live file) precisely because it runs
+with the app closed, on an operator's decision.
+
+**No write of bytes already on disk (task 415).** The byte-equality skip used to
+be all-or-nothing over the bundle, so one changed `.tex` character rewrote a
+byte-identical `virgil.json` beside it once per autosave — and `persistSidecarInLock`
+had no equality gate at all. The test now lives at the write FUNNEL
+(`writeTrackedText` / `putTrackedText`), so every writer inherits it. A skip is
+taken only when the file is PROVABLY the one we stamped (content hash matches AND
+the live `{mtimeMs, size}` still match the fingerprint — the ledger is a *belief*
+about disk, and nothing re-baselines it on a genuine external change); everything
+unprovable FAILS OPEN and writes. READS stamp too, which is what makes the gate
+effective from a session's first save.
 
 ```ts
 // virgil.json — paragraph titles + content fingerprints

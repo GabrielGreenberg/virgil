@@ -1,4 +1,4 @@
-<!-- last-verified: 92e921fb 2026-08-22 -->
+<!-- last-verified: 7a917bfd 2026-08-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -29,7 +29,7 @@ Deeper docs in `docs/agents/`. Load them on demand when their topic comes up —
 
 If the user uses a term that doesn't resolve cleanly to a code name, append it to the **Pending terminology** section at the bottom of `docs/agents/glossary.md` with your best-guess code referent and today's date. The cleanup skill consolidates these on the next merge cycle.
 
-Each sub-doc begins with `<!-- last-verified: 92e921fb 2026-08-22 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
+Each sub-doc begins with `<!-- last-verified: 7a917bfd 2026-08-23 -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
 
 ## Keystroke sanctity
 
@@ -2567,11 +2567,19 @@ is the leg with teeth — the ladder was never the part that could misbehave, a
 spec that offers a between-blocks bar and declares no payload is, and it would
 type-check perfectly while silently keeping the pre-416 rule. Allowlist EMPTY.
 
-**Found in passing, filed rather than folded in:** a `bulletList`'s own `%!v:`
-anchor is emitted after `\end{itemize}` and `parseList` never harvests it, so a
-whole-LIST uuid does not survive a save/reload and anything anchored to it
-orphans on the next open. Task 348's position law with a reader missing, wholly
-independent of the drop gesture.
+**Found in passing, filed — and then REFUTED (task 426).** The filing reported
+that a `bulletList`'s own `%!v:` anchor is emitted after `\end{itemize}` and
+never harvested, so a whole-LIST uuid would not survive a save/reload. Measured
+against the REAL `parseLatex` / `serializeBodyOnly` pair: **false.** The
+`\begin{env}` dispatcher harvests the post-closer anchor unconditionally (task
+342) and the list arm applies it. The filing's fixture spelled its ids `%!v:ul1`
+/ `%!v:a` / `%!v:b`, which are **not anchors** — the grammar is exactly four hex
+characters on BOTH readers — so they were never harvested on either side. No
+read-side fix landed; what did is the durable half: a sweep per uuid-bearing
+CONTAINER kind, DERIVED from `UUID_BEARING_NODE_TYPES` ∩ the real schema's
+container types, two full cycles each, asserting every container-level uuid ATTR
+by structural path plus a byte fixed point, with the filing's own fixture pinned
+as a CONTROL so it is not re-filed. *A premise is checked before it is fixed.*
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
 gesture, no disk), so the check is cheap and real — drag a paragraph into the

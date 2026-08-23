@@ -1,4 +1,4 @@
-<!-- last-verified: 92e921fb 2026-08-22 -->
+<!-- last-verified: 7a917bfd 2026-08-23 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -238,11 +238,22 @@ were not universally consulted, which is the shape all three share:
   is why a popup-only fix would have shipped green. *Residual:* a successful command is still
   TWO undo steps.
 
-*Residual across the cluster:* the wrapper actions have three more live surfaces that never
-touch the registry — StarterKit's `Mod-Shift-8/7/B` chords, its markdown input rules (`- `,
-`1. `, `> `), and `RichTextField`'s FormatToolbar — so typing `- ` inside an expex item still
-destroys it. Filed; wiring them honestly is a renegotiation of `assertActionCoverage`, which
-actively FAILS a format row that declares `surfaces.typed`/`surfaces.keyboard`.
+- **427 — the SSOT was built and ONE caller adopted it.** The residual 397 filed: the
+  wrapper actions had three live surfaces that never touched the registry — StarterKit's
+  `Mod-Shift-8/7/B` chords, its markdown input rules (`- `, `1. `, `> `), and
+  `RichTextField`'s FormatToolbar — because the gate lived INSIDE the registry, a module an
+  `.extend()` factory and a card-body toolbar cannot import. Measured: the chords DESTROYED
+  an expex item (`toggleList` lifts the paragraph out, `\vxid` gone, example renumbered) and
+  the toolbar coerced a card body's `codeBlock` into a list. The gate moved to a leaf
+  ([wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts), `wrapperSafeInState`); the
+  `.extend()` owns the binding and the binding asks the predicate
+  (`guardWrapperShortcuts` / `guardWrapperInputRules`). A refused chord is CONSUMED; a
+  refused input-rule match answers `null`, so the typed characters stay text. The
+  **input rules were REFUTED** — upstream's `wrappingInputRule` asks `findWrapping` first
+  and already declined; they are routed through the door anyway so every surface answers
+  from one table, and pinned as a CONTROL. `assertActionCoverage`'s partition is
+  renegotiated in place: wrappers must now claim `typed`/`keyboard` and carry
+  `keybinding` + `inputRulePattern`; marks claim neither.
 
 ### Four surfaces, one registry
 
@@ -514,10 +525,11 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 | `Tab` / `Shift-Tab` | move to the next / previous gloss cell (append a cell at the end) | inside a gloss row (`ExpexNumbering`) | [expex.ts](../../src/lib/tiptap/expex.ts) |
 | `Enter` | exit the comment — insert a paragraph after it and move the caret there (a comment is one `%` source line, never multi-line) | caret inside a `latexComment` | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
 | `Delete` / `Backspace` | delete the whole `latexComment` block; `Backspace` at the start of an EMPTY comment dissolves it back to a plain paragraph | node-selected `latexComment` (delete) / empty-comment caret (dissolve) | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
+| `Backspace` / `Delete` | list-boundary handling — gates upstream's `ListKeymap` on an ITEM-scoped `atListItemStart` and DELEGATES to its own helpers; a declined press falls through to the core chain (which merges the block inside the same item). Task 418: upstream's `isAtStartOfNode` is TEXTBLOCK-scoped, so Backspace on a second paragraph inside a `listItem` destroyed the item and its uuid | around a list (`listKeymap: false` in StarterKit) | [list-keymap.ts](../../src/lib/tiptap/list-keymap.ts) |
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
-`StarterKit.configure({…})` ([editor-extensions.ts:1807](../../src/lib/editor-extensions.ts))
+`StarterKit.configure({…})` ([editor-extensions.ts:1815](../../src/lib/editor-extensions.ts))
 **disables** the block nodes (`heading`, `paragraph`, `bulletList`,
 `orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
 Virgil builder that `.extend()`s the base — so they keep the inherited keymaps
@@ -530,8 +542,8 @@ their default bindings survive:
 | `Mod-Z` / `Mod-Shift-Z`, `Mod-Y` | Undo / Redo | StarterKit history |
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
-| `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote | the list/blockquote builders (extend the base) |
-| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1900](../../src/lib/editor-extensions.ts)) |
+| `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote — **gated** since task 427: `guardWrapperShortcuts` wraps the parent binding and CONSUMES the key where `wrapperSafeInState` refuses (an expex item, a `codeBlock`, a heading) | the list/blockquote builders (extend the base) + [wrapper-gate.ts](../../src/lib/tiptap/wrapper-gate.ts) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1939](../../src/lib/editor-extensions.ts)) |
 
 > The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
 > Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`
