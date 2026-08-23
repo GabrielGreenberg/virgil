@@ -51,11 +51,6 @@ export interface SessionState {
   totalReviews: number;
 }
 
-export interface DocumentPayload {
-  content: Record<string, unknown>;
-  editorState: EditorStateData;
-}
-
 export interface ReviewRequest {
   proseText: string;
 }

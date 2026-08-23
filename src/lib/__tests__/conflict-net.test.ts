@@ -131,6 +131,11 @@ function seed(): void {
   docHandle.files.set(TEX, { text: DISK_TEX });
   const virgil = new FakeDirHandle("virgil");
   virgil.files.set("virgil.json", { text: '{"paragraphs":{}}' });
+  // A pre-417 build's leftover. RENEGOTIATED (task 417): `editor-state.json`
+  // is a LOCAL-store sidecar now — per-machine scroll/caret/fold state that
+  // never reaches the synced folder — so a forensic slot, which archives the
+  // DISK bundle, must not copy it even when a stale one is still lying there.
+  // The pre-417 leg pinned the copy as the contract.
   virgil.files.set("editor-state.json", { text: '{"folds":[]}' });
   docHandle.dirs.set("virgil", virgil);
 }
@@ -153,13 +158,9 @@ describe("snapshotConflictSides — both sides, one slot", () => {
     const files = slotFiles(receipt!.slot);
     expect(files.get(TEX)?.text).toBe(DISK_TEX);
     expect(files.get("virgil.json")?.text).toBe('{"paragraphs":{}}');
-    expect(files.get("editor-state.json")?.text).toBe('{"folds":[]}');
+    expect(files.has("editor-state.json")).toBe(false);
     // The receipt REPORTS what landed rather than claiming it.
-    expect([...receipt!.disk].sort()).toEqual([
-      "editor-state.json",
-      "main.tex",
-      "virgil.json",
-    ]);
+    expect([...receipt!.disk].sort()).toEqual(["main.tex", "virgil.json"]);
   });
 
   it("archives the EDITOR's unsaved side beside it, as .tex", async () => {

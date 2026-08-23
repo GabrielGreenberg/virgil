@@ -1617,6 +1617,83 @@ genuinely synced folder — the dev preview's `virgil-data/` is local and nothin
 watches it — so the durable proof here is the unit contracts plus the triage
 tool's measured run against the reporting folder.
 
+#### The address half: per-MACHINE state does not live in the synced folder
+
+Same folder, the lever the two halves above could not reach (task 417). 363
+shrank the write RATE by cadence and 415 by byte-equality, and both left the
+premise standing: `editor-state.json` — where THIS window is scrolled to, which
+paragraph THIS caret was in, which sections THIS user folded — lived in a folder
+whose whole job is to be identical on every machine. Two machines legitimately
+DISAGREE about that file, so every sync of it is a conflict the daemon has to
+mint, and no cadence reaches zero. It was the loudest fork base in the measured
+folder (102 of 197) and holds nothing a second machine wants.
+
+> **A sidecar declares WHERE it lives — `store: "disk" | "local"` on
+> `sidecar-value.ts` — and the four sidecar doors in BOTH storage backends
+> (`readSidecar` / `readSidecarIfExists` / `writeSidecar` / `mutateSidecar`)
+> route on that declaration.** A `"local"` file lives in this browser's
+> IndexedDB ([local-sidecar.ts](src/lib/local-sidecar.ts), the same `virgil`/`kv`
+> store the emergency mirror uses) and never reaches the paper folder: no swap
+> file, no ledger stamp, nothing for a daemon to see. The hook that owns it does
+> not know where its bytes went — which is the point, since no writer anywhere
+> can then put a local-store file on disk.
+
+Five rules it earned:
+
+- **The VIEW tier is necessary but not sufficient.** `focus.json` is view state
+  Gabriel wants waiting on the other machine (a focus band is an authoring
+  choice), and `collab.json` is collaborator mode's cross-machine TRANSPORT — a
+  partner's tab polls it THROUGH the synced folder, and it is written only while
+  collab is enabled. Both stay `"disk"`, stated at the row. The task's resolved
+  decision named `collab.json` for local storage; moving it would silently
+  delete the feature it carries, so that half is routed back as a question
+  rather than shipped.
+- **The migration is ONE-TIME and read-only on the folder.** A local miss asks
+  the backend's direct disk reader once, copies what it finds in, and the next
+  read is local. The disk original is NOT deleted — a delete is itself sync
+  traffic (415's rule), the badge's cleanup already drains a view-tier fork, the
+  stale file is inert (nothing reads it after the first open, nothing writes it
+  again), and it is the seed a second machine migrates from.
+- **The name stays in the table**, so the conflict scanner still recognises the
+  `editor-state (conflicted copy …).json` debris a folder already holds and the
+  cleanup plan still sanctions it. A relocation must not orphan the mess its
+  predecessor left.
+- **The forensic `.history/` slot and the conflict net stop copying it.** A
+  per-machine scroll offset is not evidence of anything, and post-417 it is not
+  on disk to copy — the conflict-net leg that pinned the copy is renegotiated in
+  place with the reason at the site.
+- **`readDocBundle` stops reading it.** Both backends read `editor-state.json`
+  into a `bundle.editorState` that NO caller consumed — a disk read per open,
+  feeding a dead field (the task-202 shape). Deleted along with the unused
+  `DocumentPayload` type.
+
+CI: [local-sidecar-store.test.ts](src/lib/__tests__/local-sidecar-store.test.ts)
+drives the REAL FSA doors over a fake disk with a write journal — the complement
+every pre-417 sidecar suite lacks, since each of them asserts what a write PUT on
+disk and a routing that silently kept the file on disk would pass all of them —
+plus the migration, the scanner, and the CENSUS: both backends must route all
+four doors, neither may spell a local-store filename in code, and the owning
+hook may not reach IndexedDB itself. Measured by neutering each half in turn:
+reverting the declaration takes 5 legs, dropping one backend's write route 3.
+
+**Decisions 1 and 3 of the task did NOT land, and the reason is checked rather
+than assumed.** Dropbox has no `.dropboxignore`: per its current help pages the
+ONLY ignore mechanism is a per-file extended attribute (`com.dropbox.ignored`),
+which a browser under the File System Access API cannot set, and the only
+name-based rule it honours is the `~$` / `.~` temp-file prefix. So an ignore
+file Virgil could write does not exist, and excluding `.history/` from sync has
+no mechanism either — the one candidate (renaming it `.~history/`) is an
+unverified reading of a rule documented for files. Both are routed back.
+
+**Residual, stated.** With the doc open on two machines at once some conflicts
+are inherent; write-rate reduction shrinks the window and never reaches zero.
+This half removes one file from the race entirely rather than shrinking it.
+
+**Owed, not claimed:** a real-Dropbox eyeball. FSA-masked AND sync-masked, so
+the durable proof is the unit contract; the cheap real check is that no new
+`editor-state (conflicted copy …)` appears in the reporting folder after this
+ships, ever.
+
 #### The cleanup half: what may be deleted is what a DECLARATION already proves
 
 Same folder, the affordance the daemon half deliberately withheld (task 411).

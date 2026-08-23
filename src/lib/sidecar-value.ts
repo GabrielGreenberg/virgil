@@ -34,7 +34,7 @@
  * reading session, each one a `createWritable()` swap-file + rename that a sync
  * daemon watches. Nothing anywhere said that file was disposable.
  *
- * ## The three columns, and the reader each one earns
+ * ## The columns, and the reader each one earns
  *
  * - `tier` — read by {@link sidecarWriteDebounceMs} (the write cadence) and by
  *   [sync-conflict.ts](sync-conflict.ts) (a fork of a content file is reported;
@@ -44,6 +44,9 @@
  *   read" list can no longer drift from the "which files does Virgil write" list
  *   — they were two hand-kept arrays before this, and the three files the storm
  *   was made of were in neither.
+ * - `store` (task 417) — WHERE the file lives: the paper's `virgil/` folder, or
+ *   this browser's IndexedDB. Read by the four sidecar doors in both storage
+ *   backends, which route on it; see {@link SidecarStore}.
  *
  * This module imports NOTHING. It is a leaf on purpose: the storage backends,
  * the React hooks and the conflict scanner all read it, and a facet the layer
@@ -64,8 +67,44 @@
  */
 export type SidecarTier = "view" | "content";
 
+/**
+ * WHERE a sidecar lives (task 417).
+ *
+ * - `"disk"` — a file in the paper's `virgil/` folder, which is the folder a
+ *   sync daemon watches. Everything the user's writing depends on, and
+ *   everything a SECOND machine must see, lives here.
+ * - `"local"` — this browser's IndexedDB, keyed by doc id, never written to
+ *   the paper folder at all. For state that is per-MACHINE by nature (where
+ *   THIS window was scrolled to), a file in the synced folder was never the
+ *   right home: two machines legitimately disagree about it, so every sync
+ *   of it is a conflict waiting to be minted — `editor-state.json` was the
+ *   single loudest fork base in the measured folder (102 of 197) and it holds
+ *   nothing a second machine wants. The VIEW tier is necessary but not
+ *   sufficient for `"local"`: `focus.json` is view state the user DOES want
+ *   waiting on the other machine (an authoring choice), and `collab.json` is
+ *   the cross-machine transport of collaborator mode — its whole job is to be
+ *   read by the other machine through the daemon. Both stay on disk.
+ *
+ * Read by the four sidecar doors in BOTH storage backends
+ * (`readSidecar` / `readSidecarIfExists` / `writeSidecar` / `mutateSidecar`
+ * route a `"local"` file through [local-sidecar.ts](local-sidecar.ts)), so no
+ * writer anywhere can put a local-store file on disk — the hook that owns it
+ * does not even know where it lives. A `"local"` file is never mount-bundled
+ * (the bundle is a DIRECTORY read) and is never forensic-snapshotted into
+ * `.history/` (a per-machine scroll offset is not evidence of anything).
+ *
+ * Historical forks of a file that MOVED local are still recognised by the
+ * conflict scanner, because its base vocabulary is the whole table — so the
+ * `editor-state (conflicted copy …).json` debris a folder already holds stays
+ * cleanable by the badge.
+ */
+export type SidecarStore = "disk" | "local";
+
 interface SidecarValueEntry {
   tier: SidecarTier;
+  /** Where the file lives. See {@link SidecarStore}. A `"local"` entry must
+   *  be `mount: false` (CI pins it — a directory read cannot see IndexedDB). */
+  store: SidecarStore;
   /** Pre-read by the doc-mount sidecar bundle (one directory acquire + a
    *  parallel batch). True for exactly the files a `usePersistentState` hook
    *  owns; the three files with their own readers (`virgil.json` rides the doc
@@ -88,30 +127,39 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     // ── VIEW ───────────────────────────────────────────────────────────────
     // The scroll offset, the caret's paragraph and the fold set. Reconstructed
     // by the user in one scroll; written ~100×/session before task 363.
-    "editor-state.json": { tier: "view", mount: false },
-    // Focus-mode band — which region the user narrowed to. A UI mode.
-    "focus.json": { tier: "view", mount: true },
+    // DECIDED (Gabriel, 2026-08-22, task 417): per-MACHINE state, so it lives
+    // in this browser's IndexedDB and never in the synced folder. The name is
+    // kept in the table so the conflict scanner still recognises the forks a
+    // folder already holds, and so a one-time migration can read the file a
+    // pre-417 build wrote.
+    "editor-state.json": { tier: "view", store: "local", mount: false },
+    // Focus-mode band — which region the user narrowed to. A UI mode — but an
+    // AUTHORING choice Gabriel wants waiting on the other machine, so disk.
+    "focus.json": { tier: "view", store: "disk", mount: true },
     // Presence + pen heartbeats. Ephemeral by construction: every field is a
-    // timestamp that goes stale on a clock, and the sweeps discard it.
-    "collab.json": { tier: "view", mount: false },
+    // timestamp that goes stale on a clock, and the sweeps discard it. On DISK
+    // by necessity: the file IS collaborator mode's cross-machine transport
+    // (a partner's tab polls it through the synced folder), and it is written
+    // only while collab is enabled.
+    "collab.json": { tier: "view", store: "disk", mount: false },
 
     // ── CONTENT ────────────────────────────────────────────────────────────
-    "ai-requests.json": { tier: "content", mount: true },
-    "annotations.json": { tier: "content", mount: true },
-    "archive.json": { tier: "content", mount: true },
-    "bib-review-requests.json": { tier: "content", mount: true },
-    "bib-settings.json": { tier: "content", mount: true },
-    "citations.json": { tier: "content", mount: true },
-    "cutter.json": { tier: "content", mount: true },
-    "document-settings.json": { tier: "content", mount: true },
-    "examples.json": { tier: "content", mount: true },
-    "footnotes.json": { tier: "content", mount: true },
-    "notes.json": { tier: "content", mount: true },
-    "orphaned-footnotes.json": { tier: "content", mount: true },
-    "reports.json": { tier: "content", mount: true },
-    "revisions.json": { tier: "content", mount: true },
-    "suggestions.json": { tier: "content", mount: true },
-    "todos.json": { tier: "content", mount: true },
+    "ai-requests.json": { tier: "content", store: "disk", mount: true },
+    "annotations.json": { tier: "content", store: "disk", mount: true },
+    "archive.json": { tier: "content", store: "disk", mount: true },
+    "bib-review-requests.json": { tier: "content", store: "disk", mount: true },
+    "bib-settings.json": { tier: "content", store: "disk", mount: true },
+    "citations.json": { tier: "content", store: "disk", mount: true },
+    "cutter.json": { tier: "content", store: "disk", mount: true },
+    "document-settings.json": { tier: "content", store: "disk", mount: true },
+    "examples.json": { tier: "content", store: "disk", mount: true },
+    "footnotes.json": { tier: "content", store: "disk", mount: true },
+    "notes.json": { tier: "content", store: "disk", mount: true },
+    "orphaned-footnotes.json": { tier: "content", store: "disk", mount: true },
+    "reports.json": { tier: "content", store: "disk", mount: true },
+    "revisions.json": { tier: "content", store: "disk", mount: true },
+    "suggestions.json": { tier: "content", store: "disk", mount: true },
+    "todos.json": { tier: "content", store: "disk", mount: true },
     // Paragraph titles, collapsed state, AND a per-block first-80-character
     // content FINGERPRINT — so its bytes move with the user's prose, and a fork
     // of it is not automatically inert. Content, and its cadence is NOT ours to
@@ -127,7 +175,7 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     // (tasks 350 / 356 / 357). A 27-fork reduction does not buy that. The right
     // lever was the redundant-write gate (task 415), which took those 8 out
     // without touching the bundle's coherence.
-    "virgil.json": { tier: "content", mount: false },
+    "virgil.json": { tier: "content", store: "disk", mount: false },
   });
 
 /** Every filename the value table declares. Stable order (declaration order). */
@@ -143,6 +191,22 @@ export const ALL_VIRGIL_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
 export const MOUNT_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
   ALL_VIRGIL_SIDECAR_FILENAMES.filter((f) => SIDECAR_VALUE[f]!.mount),
 );
+
+/**
+ * The files that live in this browser's IndexedDB rather than in `virgil/` —
+ * DERIVED from the `store` column (task 417).
+ */
+export const LOCAL_SIDECAR_FILENAMES: readonly string[] = Object.freeze(
+  ALL_VIRGIL_SIDECAR_FILENAMES.filter((f) => SIDECAR_VALUE[f]!.store === "local"),
+);
+
+/**
+ * Where this file lives. **Fails closed to `"disk"`**: an undeclared file is
+ * written where it always was. The routing question every sidecar door asks.
+ */
+export function sidecarStore(filename: string): SidecarStore {
+  return SIDECAR_VALUE[filename]?.store ?? "disk";
+}
 
 /**
  * What this file is worth. **Fails closed to `"content"`**: an undeclared file
