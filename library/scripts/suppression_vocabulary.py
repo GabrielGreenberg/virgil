@@ -221,8 +221,9 @@ def vocabulary_help() -> str:
     `hyphenation-artifact` and `title-thanks`, neither of which any reader has
     ever emitted.
     """
-    pg = sorted(f"{PGMARK_WARNING_PREFIX}{k}" for k in CONTINUITY_FINDING_KINDS)
-    audit = sorted(AUDIT_FINDING_CATEGORIES)
+    by_reader = categories_by_reader()
+    pg = by_reader["validator"]
+    audit = by_reader["audit"]
     return (
         "Validator/audit category being suppressed. The `-false-positive:` "
         "suffix is added. A category no reader can match is REFUSED (it would "
@@ -232,9 +233,37 @@ def vocabulary_help() -> str:
     )
 
 
+def categories_by_reader() -> dict[str, list[str]]:
+    """The consumable set SPLIT by which reader consumes it.
+
+    The union `suppressible_categories()` returns is what a WRITE door needs
+    ("may this be written?"). A reader that documents the vocabulary — the
+    `di-validate.md` tables — needs the split, because the two families are
+    typed differently by the operator and the prefix cannot tell them apart:
+    `pgmark-low-confidence-flood` is a VALIDATOR kind and
+    `pgmark-low-confidence` is an AUDIT category. So the split is published
+    here rather than re-derived by each consumer.
+    """
+    return {
+        "validator": sorted(
+            f"{PGMARK_WARNING_PREFIX}{k}" for k in CONTINUITY_FINDING_KINDS
+        ),
+        "audit": sorted(AUDIT_FINDING_CATEGORIES),
+    }
+
+
 def main() -> int:
-    """`python3 suppression_vocabulary.py [category …]` — list or classify."""
+    """`python3 suppression_vocabulary.py [--json] [category …]` — list or classify."""
     args = sys.argv[1:]
+    if args and args[0] == "--json":
+        import json
+
+        by_reader = categories_by_reader()
+        print(json.dumps({
+            **by_reader,
+            "all": sorted(suppressible_categories()),
+        }, indent=2))
+        return 0
     if not args:
         for c in sorted(suppressible_categories()):
             print(c)
