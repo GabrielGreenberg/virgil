@@ -66,7 +66,8 @@ import {
   TEXT_FLOAT_BODY_PAD_Y,
   TEXT_FLOAT_BORDER,
 } from "@/floats/float-policy";
-import { FloatHeaderContent } from "./FloatHeaderContent";
+import { FloatChromeContent } from "@/floats/FloatChrome";
+import { buildFloatKey } from "@/floats/float-key";
 import type { TextObjectRef } from "./types";
 
 /** Popout chrome dimensions. The real popout's chrome, so the overlay's
@@ -387,12 +388,23 @@ export function LiftedTextOverlay({
   // parent resolves it once at threshold cross via
   // `meta.computeLabel?.(editor, ref) ?? meta.label` so per-instance
   // overrides (heading → Chapter/Section/Subsection) match the real
-  // popout's `setHeaderLabel` at handoff. The label + chevron + X are
-  // rendered by the SHARED `FloatHeaderContent` (L3d.1) — the exact same
-  // inner content the real popout mounts, so the label can't drift between
-  // the overlay and the released popout. Handlers are omitted (visual-only)
-  // and the overlay header is pointer-events:none, so the icons are inert.
-  // CSS hides the header in ghost mode and fades it in when popout engages.
+  // popout's `setHeaderLabel` at handoff. The whole child row — grip, label,
+  // jump, drop, close — is rendered by the SHARED `FloatChromeContent`, the
+  // exact same content the released float mounts, so nothing in the header can
+  // drift between the ghost and the popout it becomes.
+  //
+  // It used to say that about `FloatHeaderContent`, and the claim was false:
+  // `FloatChrome` gained the 6-dot grip and the (re)anchor drop button and its
+  // twin was never updated, so the ghost's label sat ~14px left of where the
+  // release put it and the icon cluster was one button narrower (task 437).
+  // The retired component's remaining mount was this one; naming a source of
+  // truth is not being one.
+  //
+  // The preview passes `inert`, and the header container carries the HTML
+  // `inert` attribute so nothing inside it is focusable — which the earlier
+  // `pointer-events: none` alone did not give (a tab-focusable control inside
+  // an `aria-hidden` subtree). CSS hides the header in ghost mode and fades it
+  // in when popout engages.
 
   // The overlay tracks the cursor (not the source) so scroll-during-
   // gesture moves the source but keeps the overlay glued under the cursor
@@ -445,18 +457,27 @@ export function LiftedTextOverlay({
   // chrome reads as one continuous box.
   //
   // Crucially this also makes the header's CONTENT box (the border+padding
-  // inset where the shared `FloatHeaderContent` label sits) line up with the
-  // released float's header content box, so the label does NOT shift on
-  // release (Issue-6). The released `TextObjectFloat` header is a flex row
-  // INSIDE the FloatCard's 1px border, so its label lands at
-  // cardLeft + 1(border) + 8(padding); here the label lands at
+  // inset where the shared `FloatChromeContent` row starts) line up with the
+  // released float's header content box, so nothing in the header shifts on
+  // release (Issue-6). The released float's header is `FloatChrome`'s flex row
+  // INSIDE the FloatingPanel's 1px border, so its first child starts at
+  // cardLeft + 1(border) + 8(padding); here it starts at
   // overlayLeft + 1(border) + 8(padding), and overlayLeft == the released
   // card's left (both = textX − BODY_PADDING_X − POPOUT_BORDER). Equal x ⇒
   // no jump. A prior `overlayLeft − 1` / `overlayWidth + 2` (mis-described as
   // border-overlap) made the header 1px wider on each side, pushing its
-  // content origin 1px left of the float's — a measured +1px label jump
-  // right on release (overlay label .left 1133 vs released 1134, driven on a
-  // real section/paragraph gesture); corrected here to delta 0.
+  // content origin 1px left of the float's — a measured +1px jump right on
+  // release (overlay label .left 1133 vs released 1134, driven on a real
+  // section/paragraph gesture); corrected here to delta 0.
+  //
+  // That 1px correction was real and still holds. What it could not survive was
+  // the CHILD ROW diverging: `FloatChrome` later put a 14px grip in front of the
+  // label and a drop button beside the close, and the ghost's own header
+  // component did not follow — so the delta-0 sentence above went on describing
+  // a header that no longer existed while the label jumped 14px (task 437).
+  // Both halves are load-bearing now and both are pinned: the CONTAINER inset
+  // here, and the ONE child row (`FloatChromeContent`), by
+  // `lift-ghost-header-parity.test.tsx`.
   //
   // Sibling positioning replaces L1.7's `position: absolute; bottom: 100%`
   // child-of-overlay approach, which silently clipped against any
@@ -520,13 +541,31 @@ export function LiftedTextOverlay({
           willChange: "transform",
         }}
         aria-hidden="true"
+        // A PREVIEW takes nothing from the user: `inert` is the subtree claim
+        // (unfocusable AND unclickable), which `pointer-events: none` alone is
+        // not — the shared row's close button is a `PopoutButton`, whose API has
+        // no `tabIndex` seam, so before this it was a tab stop inside an
+        // `aria-hidden` subtree (task 437).
+        inert
       >
-        {/* Inner header content (label + chevron + X) is shared with the
-            real popout via FloatHeaderContent — one source of truth so the
-            label renders identically here and after release, with no drift
-            (L3d.1). Handlers are omitted: the overlay header is
-            pointer-events:none, so the icons are visual-only. */}
-        <FloatHeaderContent label={label} />
+        {/* The header's children are the SAME component the released float
+            mounts (`FloatChromeContent`) — one implementation, so grip, label,
+            jump, drop and close cannot drift between the preview and what the
+            release produces (task 437). `inert` is the preview: no handler is
+            attached, and none may be passed (the prop union forbids it).
+            `canJump`/`canDrop` mirror what `textObjectFloatable` declares
+            statically for every text-object float. */}
+        <FloatChromeContent
+          title={label}
+          canJump
+          canDrop
+          dropCardKey={buildFloatKey({
+            domain: "textobject",
+            kind: ref.kind,
+            id: ref.id,
+          })}
+          inert
+        />
       </div>
     </Fragment>,
     document.body,

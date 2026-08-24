@@ -333,8 +333,9 @@ function descriptorForHeading(
 // ---------------------------------------------------------------------------
 // Float body placeholder — registered concretely in Phase D5 (float
 // collapse). Each kind plugs its existing float body in via this slot.
-// Today the slot is `null`; the unified TextObjectFloat will check
-// `floatBodyComponent != null` before mounting.
+// The slot DEFAULTS to `null`; `registerFloatBody` fills it at boot (see
+// `floats/index.ts`), and `textObjectFloatable` checks
+// `floatBodyComponent != null` before building a `Floatable` at all.
 // ---------------------------------------------------------------------------
 
 const PLACEHOLDER_FLOAT_BODY = null as unknown;

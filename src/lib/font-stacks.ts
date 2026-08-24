@@ -15,9 +15,9 @@
  *    "invalid at computed-value time" and every one of those surfaces silently
  *    inherited the surrounding sans. A monospace page-picker, monospace tab
  *    labels, serif dialog headings — none of them ever rendered.
- *  - The sans chain had three hand-spelled copies (`FloatChrome`,
- *    `FloatHeaderContent`, and `body` in `globals.css`), two of them carrying
- *    doc comments explaining that they must not drift from the third. The
+ *  - The sans chain had three hand-spelled copies (`FloatChrome`, the
+ *    now-retired text-object `FloatHeaderContent`, and `body` in
+ *    `globals.css`), two of them carrying doc comments explaining that they must not drift from the third. The
  *    serif chain had two (`HighlightCard` and the editor-body rule).
  *
  * So: consume these constants from `.tsx`, and the identical chain from
@@ -27,7 +27,8 @@
  * The chains mirror `globals.css` verbatim (`body` ~786, the editor serif rule
  * ~805, and the ~13 mono rules), which is what makes an element styled from
  * here resolve identically to one styled by the stylesheet — the property the
- * two float headers needed and documented at length.
+ * float header needed and documented at length (there were two of them until
+ * task 437 made the lift ghost mount the same one).
  *
  * Leaf-pure by design: zero imports, so `library/` may take it as a shared
  * utility (see library/AGENTS.md "Don't"), exactly like `@/lib/bib-searcher`.

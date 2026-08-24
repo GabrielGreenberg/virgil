@@ -7,8 +7,9 @@
  * keyed by the heading's `uuid`.
  *
  * Migrated from the deleted `src/components/HeadingFloat.tsx`. The
- * outer FloatCard wrapper and header chrome now live in the unified
- * `TextObjectFloat`; this module is body-only.
+ * outer FloatCard wrapper and header chrome now live in `FloatWindow` +
+ * `FloatChrome`; this module is body-only. (The intermediate unified
+ * `TextObjectFloat` that used to own them is itself deleted.)
  *
  * Per-instance label: heading bodies override the static "Heading" via
  * `setHeaderLabel` based on the underlying node's level

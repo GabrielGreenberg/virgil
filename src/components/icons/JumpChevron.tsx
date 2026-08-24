@@ -6,14 +6,15 @@
  * the drop chevron in any header row.
  *
  * Purely presentational — NO card / jump-target imports. This is a runtime
- * LEAF so the THREE jump-button surfaces can all share ONE glyph without a
- * cycle or a card-code dependency (it previously lived hand-triplicated,
- * verbatim, at each site with a drifting strokeWidth):
+ * LEAF so every jump-button surface can share ONE glyph without a cycle or a
+ * card-code dependency (it previously lived hand-triplicated, verbatim, at each
+ * site with a drifting strokeWidth):
  *   - the docked card header (`CardJumpChevron`, panel-primitives.tsx),
- *   - the popped-float chrome button (`FloatChrome`),
- *   - the text-object float header (`FloatHeaderContent`).
- * Keeping it here (not in card code) lets the domain-neutral FloatChrome and
- * the float header import it without pulling in `panel-primitives` / card kinds.
+ *   - the popped-float chrome button (`FloatChrome`) — which since task 437 is
+ *     also the lift ghost's preview header, the third site having been the
+ *     text-object `FloatHeaderContent` that mount retired.
+ * Keeping it here (not in card code) lets the domain-neutral FloatChrome
+ * import it without pulling in `panel-primitives` / card kinds.
  */
 
 /** Default glyph edge in px — matches `DropChevrons`'s DEFAULT_SIZE so the

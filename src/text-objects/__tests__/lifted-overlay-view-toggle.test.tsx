@@ -13,17 +13,35 @@
  * handle needs a trusted hover) — so this is the headless class-presence
  * check the plan specifies; the in-drag visual is a user-verify step.
  *
- * `FloatHeaderContent` is stubbed: it pulls in panel-primitives (heavier
- * module graph) and only renders the popout-mode header chrome, which is
- * irrelevant to the root className wiring under test.
+ * Nothing is stubbed. The header content used to be mocked away for module
+ * weight; since task 437 the ghost mounts the SAME `FloatChromeContent` the
+ * released float does, and a suite that mocks away the component under test
+ * can't be evidence for anything — so it renders for real here too.
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 
-vi.mock("@/text-objects/FloatHeaderContent", () => ({
-  FloatHeaderContent: () => null,
-}));
+// The shared float chrome pulls panel-primitives → `@/lib/storage`, whose
+// backend pick is a raw `require` the vitest resolver can't follow (the known
+// barrel gotcha). Nothing here touches a sidecar. This is a RESOLVER
+// workaround, not a stub of anything under test.
+vi.mock("@/lib/storage", () => {
+  const noop = () => undefined;
+  const names = [
+    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
+    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
+    "writeBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  return Object.fromEntries(names.map((n) => [n, noop]));
+});
+
 
 import { LiftedTextOverlay } from "@/text-objects/LiftedTextOverlay";
 import type { TextObjectRef } from "@/text-objects/types";

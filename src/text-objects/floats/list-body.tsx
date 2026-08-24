@@ -6,8 +6,9 @@
  * to the main editor's list node, keyed by the list's `uuid`.
  *
  * Migrated from the deleted `src/components/ListFloat.tsx`. The outer
- * FloatCard wrapper and header chrome now live in the unified
- * `TextObjectFloat`; this module is body-only.
+ * FloatCard wrapper and header chrome now live in `FloatWindow` +
+ * `FloatChrome`; this module is body-only. (The intermediate unified
+ * `TextObjectFloat` that used to own them is itself deleted.)
  *
  * Two TextObject kinds — `bulletList` and `orderedList` — share this
  * body. The dynamic header label ("BULLET LIST" / "ORDERED LIST") comes
