@@ -310,6 +310,13 @@ suppression entry, not a script change:
 python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS --exit-on-suppressed
 ```
 
+**This block is the SSOT for the invocation** — `deep-index.md` §9.5
+runs the punch-list every pass and deliberately spells no command of its
+own, because when it did the two copies drifted and the copy that ran
+every pass was the one missing the flag (task 446). Keep the flag here;
+`library/lib/__tests__/skill-script-cli-guardrail.test.ts` pins both that
+requirement and the one-runnable-spelling rule.
+
 The `--exit-on-suppressed` flag returns 0 when every remaining
 finding sits in a category the catalog explicitly marked
 `*-false-positive:`. The convergence loop relies on this to

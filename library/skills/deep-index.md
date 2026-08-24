@@ -633,16 +633,26 @@ punch-list) as the convergence fingerprint — see
 
 ### 9.5. Audit punch-list (REQUIRED — drives convergence)
 
-After steps 1–9 complete for the pass:
+After steps 1–9 complete for the pass, run the `audit_deepindex.py`
+punch-list and append its output as a `## Audit punch-list` section to
+the same summary log.
 
-```bash
-python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS
-```
+**The exact invocation lives in [di-validate.md](di-validate.md) §9.5 —
+run it from there; do not re-type it here.** That section is the SSOT for
+the command line as well as the full check inventory and the empty-state
+template, and it states why the run must carry `--exit-on-suppressed`:
+without the flag the audit exits **1** on a paper whose every remaining
+finding sits in a catalog-suppressed category, and an agent reading a
+non-zero exit as "not clean" keeps iterating on findings a prior pass
+already adjudicated (the shimojima2015semantic churn the flag was added
+for). This section deliberately spells **no** command — the family had
+two spellings, and the one that ran every pass was the one that had
+dropped the flag. `library/lib/__tests__/skill-script-cli-guardrail.test.ts`
+pins both halves: the flag is required at every documented invocation, and
+there is exactly one runnable spelling of the command in the family.
 
-Append the output as a `## Audit punch-list` section to the same
-summary log. Full check inventory + empty-state template live in
-[di-validate.md](di-validate.md) §9.5. Pass-fingerprint includes
-this list as a set; see [_doctrine.md](_doctrine.md) §Persistence.
+Pass-fingerprint includes this list as a set; see
+[_doctrine.md](_doctrine.md) §Persistence.
 
 ### 10. Streamlining memo (REQUIRED — always emit, even if empty)
 

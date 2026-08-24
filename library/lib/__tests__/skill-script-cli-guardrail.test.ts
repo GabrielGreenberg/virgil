@@ -70,6 +70,51 @@ const PERMITTED_UNDECLARED_SKILL_FLAGS: string[] = [];
  */
 const PERMITTED_MISSING_SCRIPTS: string[] = [];
 
+/**
+ * The dual census (task 446): a flag the caller's contract REQUIRES, and how
+ * many runnable spellings of that command the family may hold.
+ *
+ * The leg above asks whether a documented flag exists. This one asks the
+ * question a scanner cannot answer from the script alone — whether a flag the
+ * script treats as optional is optional *for this caller*. That is a judgement
+ * about the caller, so the population is DECLARED and each entry states its
+ * reason; a discovered version would have to read the obligation out of a
+ * Python comment.
+ *
+ * `commandSites` is the exact number of RUNNABLE spellings (an explicit
+ * `python3 …` line an agent copies) the family is allowed to hold. Pinning it
+ * exactly is what stops the value being re-typed somewhere else and drifting:
+ * a bare prose mention that happens to carry the flag is fine and is still
+ * policed by `flags`, but a second copy-pasteable command line is not.
+ */
+interface RequiredInvocation {
+  /** Flags that must appear on EVERY documented invocation of the script. */
+  flags: string[];
+  /** Exact number of runnable (`python3 …`) spellings across skill markdown. */
+  commandSites: number;
+  why: string;
+}
+
+const REQUIRED_INVOCATION_FLAGS: Record<string, RequiredInvocation> = {
+  // The flag changes ONLY the exit code — `format_punch_list` prints
+  // identically either way ("The findings still print so the user can see
+  // them"), so a dropped flag is invisible in the output. What it produces is
+  // an exit 1 on a paper whose every remaining finding sits in a
+  // catalog-suppressed category, which the convergence loop reads as "work
+  // remaining" and iterates on forever. `audit_deepindex.py` says so in its
+  // own source ("the convergence loop should always pass
+  // --exit-on-suppressed"), and the family had TWO spellings of the command
+  // with the flag on the one that does NOT run every pass — deep-index §9.5,
+  // the per-pass call, dropped it. §9.5 now defers to di-validate §9.5 (the
+  // SSOT it already linked for the check inventory), so exactly one runnable
+  // spelling survives.
+  "audit_deepindex.py": {
+    flags: ["--exit-on-suppressed"],
+    commandSites: 1,
+    why: "without it the audit exits 1 when every remaining finding is catalog-suppressed, and the convergence loop reads that as work remaining",
+  },
+};
+
 interface Finding {
   file: string;
   line: number;
@@ -255,5 +300,69 @@ describe("skill markdown ↔ Python CLI contract", () => {
     // shell variable.
     expect((flagsByScript.get("create_card.py") ?? new Set()).size).toBeGreaterThan(5);
     expect((flagsByScript.get("setup.py") ?? new Set()).has("--force")).toBe(true);
+  });
+
+  it("a flag the caller's contract requires is on every documented invocation", () => {
+    const findings: string[] = [];
+    const seen = new Map<string, number>();
+    for (const dir of SKILL_DIRS) {
+      for (const rel of listFiles(dir, ".md")) {
+        const lines = readFileSync(path.join(REPO_ROOT, rel), "utf8").split("\n");
+        lines.forEach((_raw, i) => {
+          const inv = invocationAt(lines, i);
+          if (!inv) return;
+          const req = REQUIRED_INVOCATION_FLAGS[inv.script];
+          if (!req) return;
+          seen.set(inv.script, (seen.get(inv.script) ?? 0) + 1);
+          const used = new Set(inv.rest.match(FLAG) ?? []);
+          const missing = req.flags.filter((f) => !used.has(f));
+          if (missing.length > 0) {
+            findings.push(
+              `  ${rel}:${i + 1} — ${inv.script} is missing ${missing.join(", ")}: ${req.why}`,
+            );
+          }
+        });
+      }
+    }
+
+    // A table entry naming a script nobody invokes would pass vacuously.
+    for (const script of Object.keys(REQUIRED_INVOCATION_FLAGS)) {
+      expect(seen.get(script) ?? 0, `${script} is in the required-flag table but no skill invokes it`)
+        .toBeGreaterThan(0);
+    }
+
+    expect(
+      findings,
+      `A skill documents an invocation without a flag its caller depends on.\n` +
+        `The flag is not decoration: its absence is a different contract, and\n` +
+        `nothing downstream complains.\n${findings.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("a required-flag command has exactly the runnable spellings it declares", () => {
+    // The failure this pins is the one that actually happened: the command was
+    // spelled in two places, and the copy that ran every pass drifted. A
+    // second copy-pasteable line is the drift; a prose mention is not (it is
+    // still flag-policed by the leg above).
+    const runnable = new Map<string, string[]>();
+    for (const dir of SKILL_DIRS) {
+      for (const rel of listFiles(dir, ".md")) {
+        const lines = readFileSync(path.join(REPO_ROOT, rel), "utf8").split("\n");
+        lines.forEach((_raw, i) => {
+          const inv = invocationAt(lines, i);
+          if (!inv || !inv.strong) return;
+          if (!REQUIRED_INVOCATION_FLAGS[inv.script]) return;
+          runnable.set(inv.script, [...(runnable.get(inv.script) ?? []), `${rel}:${i + 1}`]);
+        });
+      }
+    }
+    for (const [script, req] of Object.entries(REQUIRED_INVOCATION_FLAGS)) {
+      const sites = runnable.get(script) ?? [];
+      expect(
+        sites,
+        `${script}: expected ${req.commandSites} runnable spelling(s) across skill markdown, ` +
+          `found ${sites.length}.\nSpell it ONCE and link the rest.\n  ${sites.join("\n  ")}`,
+      ).toHaveLength(req.commandSites);
+    }
   });
 });
