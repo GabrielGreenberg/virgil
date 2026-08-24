@@ -1,4 +1,4 @@
-<!-- last-verified: 7a917bfd 2026-08-23 -->
+<!-- last-verified: 94852c26 2026-08-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -280,9 +280,31 @@ hand-edits** the writeback-owned ones ([gardening.md](gardening.md#the-deny-list
 The **value** of each file — `"view"` (recomputable UI state) vs `"content"` (the
 user's writing) — is declared in
 [src/lib/sidecar-value.ts](../../src/lib/sidecar-value.ts) (task 363), which is
-also the complete list of what Virgil writes into `virgil/`. It decides the write
+also the complete list of what Virgil writes. It decides the write
 cadence and how a cloud-sync conflicted-copy fork of the file is reported;
 `editor-state.json`, `focus.json` and `collab.json` are the three `"view"` files.
+
+**Where each one lives (task 417).** A third column, `store: "disk" | "local"`,
+says WHERE the file is, and the four sidecar doors in BOTH storage backends
+(`readSidecar` / `readSidecarIfExists` / `writeSidecar` / `mutateSidecar`) route
+on it. `"disk"` is the paper's `virgil/` folder — the folder a sync daemon
+watches — and is everything the user's writing depends on plus everything a
+SECOND machine must see. `"local"` is this browser's IndexedDB
+([src/lib/local-sidecar.ts](../../src/lib/local-sidecar.ts), the same `virgil`/`kv`
+store the emergency mirror uses), keyed by doc id and never written to the paper
+folder at all. **`editor-state.json` is the one `"local"` file today**: where THIS
+window is scrolled to and which sections THIS user folded is per-MACHINE by
+nature, two machines legitimately disagree about it, so every sync of it was a
+conflict waiting to be minted — it was the loudest fork base in the measured
+folder (102 of 197) and holds nothing a second machine wants. A local MISS asks
+the backend's direct disk reader once and migrates the file in; the disk original
+is NOT deleted (a delete is itself sync traffic, the stale file is inert, and it
+is the seed a second machine migrates from). `focus.json` and `collab.json` stay
+`"disk"` deliberately, stated at their rows: a focus band is an authoring choice
+Gabriel wants waiting on the other machine, and `collab.json` is collaborator
+mode's cross-machine TRANSPORT. The owning hook does not know where its bytes
+went — which is what makes it impossible for any writer to put a local-store file
+on disk.
 
 **Cleanup (task 411).** 363 shipped detection and stopped at *report, never
 delete*, so a synced folder kept filling with forks nothing in the app could

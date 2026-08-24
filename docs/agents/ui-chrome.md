@@ -1,4 +1,4 @@
-<!-- last-verified: 7a917bfd 2026-08-23 -->
+<!-- last-verified: 94852c26 2026-08-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts -->
 
@@ -64,7 +64,7 @@ Rendered by `IconStrip` (inside `PaneRail`) in `EditorPane.tsx` (~line 7412 for 
    - Click toggles open/closed
    - Draggable: drag to reorder, or drag across strips to move panel to the other side
    - Badge support (e.g. Revisions shows count when > 0)
-3. **`OmniFilterMenu`** — horizontal kebab pinned to the bottom via `mt-auto`. Opens a dropdown that toggles which omni categories appear in this side's omni-view. Includes a "Default view" item that resets the side to its registry-default categories (`DEFAULT_OMNI_CATEGORIES[side]`). Lives in [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx).
+3. **`OmniFilterMenu`** — horizontal kebab pinned to the bottom via `mt-auto`. Opens a dropdown that toggles which omni categories appear in this side's omni-view. Includes a "Default view" item that resets the side's hidden set. Since task 381 a category's COLUMN is DERIVED from the live strip side of the panel that owns it (`resolvePanelSide` over `prefs.placements`) rather than stored — `registry.omniSide` and `DEFAULT_OMNI_CATEGORIES` are deleted, and the stored fact is side-free VISIBILITY (`prefs.omniHiddenCategories`, a hidden SET, so a newly omni-eligible panel is visible by declaration with no migration). The two facts combine once in [src/panels/Omni/omni-categories.ts](../../src/panels/Omni/omni-categories.ts) (`omniCategoriesForSide`), a light leaf `useViewPrefs` + the Reader's derivation can read without pulling the React component. Menu lives in [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx).
 
 `StripButton` lives in [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx).
 
@@ -100,7 +100,7 @@ All panels share the wrapper system in [src/components/panel-primitives.tsx](../
 - `label` (display name)
 - `folder` (path to its source)
 - `card` (optional: card kind, key prefix, theme key)
-- `omniEligible` + `omniSide`
+- `omniEligible` (the `omniSide` column was retired in task 381 — a category's column is DERIVED from the owning panel's live strip side)
 - `defaultStripSide`
 
 Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanelByCardKind(cardKind)`, `OMNI_PANELS` (filtered list).
@@ -111,7 +111,9 @@ See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, 
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, reports, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
 
-Omni-view surfaces a **`OmniBulkPendingHeader`** when applied-pending changes exist: since 209eac4d it's a **navigator** — `[▲ prev] [counter "i of N"] [▼ next] … [⋮]` — where ▲/▼ step the applied changes in doc order (scroll-into-view + light the blue range, via `sortAppliedKeysByDocPos` in [pending-change-nav.ts](../../src/links/pending-change-nav.ts)) and the ⋮ kebab holds Keep-all / Dismiss-all (was a flat count + Keep-all/Dismiss-all strip).
+**Omni bins (tasks 421–422).** A card omni cannot place in the cascade is surfaced in a collapsed **bin pill** at the head of the column — one pill per state, all three rendering through the ONE `OmniBinPill` primitive: **"N unanchored"** (error tone, `BadgeOrphaned` — the same word/badge/set as the pane-chrome `UnanchoredCardsChip`, differing only by side and filter scope), **"N unplaced"** (neutral — a `free` card, deliberately parked, which is a normal state and gets no red badge), and **"N outside focus"** (neutral). The split follows the `AnchorState` SSOT: summing `free` + `orphaned` into one error-toned pill made one word name two sets on screen at once. `tone` is a REQUIRED prop (published as `data-omni-bin-tone`) so a new bin can't inherit an error look by default. **Placement**: the bins live in the column's ONE sticky layer, not the document-tall cascade pod — `PanelColumn` renders an empty slot as the last flex child of the band frame (Layer C) and publishes it through [omni-bin-slot.ts](../../src/components/editor-layout/omni-bin-slot.ts); `OmniViewPanel` portals its `OmniBinStack` into it. So the bins stack BELOW whatever bands are docked by flex order rather than a z-index race, are sticky for free, and take zero flow space in the pod. With no column host (unit fixtures, a bare mount) the stack falls back to an in-pod sticky posture.
+
+Omni-view surfaces a **`OmniBulkPendingHeader`** when applied-pending changes exist: since 209eac4d it's a **navigator** — `[▲ prev] [counter "i of N"] [▼ next] … [⋮]` — where ▲/▼ step the applied changes in doc order (scroll-into-view + light the blue range, via `sortAppliedKeysByDocPos` in [pending-change-nav.ts](../../src/links/pending-change-nav.ts)) and the ⋮ kebab holds Keep-all / Dismiss-all (was a flat count + Keep-all/Dismiss-all strip). **It renders on ONE side, chosen by PLACEMENT (task 420):** `appliedPendingSide(categorySides)` ([omni-categories.ts](../../src/panels/Omni/omni-categories.ts)) resolves the side from the derived category placements (the task-381 ladder), with the family set derived from `APPLIED_SPLICE_KIND_LIST` and a stated tie-break (first family → Revisions). The old per-host gate was a per-side VIEW-FILTER predicate, so Revisions and Cutter on opposite strips gave two navigators driving one cursor, and hiding both in the filter menu removed the only document-wide way to find/keep/revert unreviewed applied AI text while the blue ranges stayed live in the `.tex`. Placement decides WHERE; visibility decides nothing.
 
 Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx)) exporting a `buildXOmniItems(args): OmniItem[]` builder. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. New omni-eligible panels add their builder there.
 
