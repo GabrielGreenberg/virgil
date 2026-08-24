@@ -12,8 +12,9 @@
  * The in-place twin of this split is `SourcePodNodeView`.
  *
  * Migrated from the deleted `src/components/TexBlockFloat.tsx`. The outer
- * FloatCard wrapper and header chrome now live in the unified
- * `TextObjectFloat`; this module is body-only.
+ * FloatCard wrapper and header chrome now live in `FloatWindow` +
+ * `FloatChrome`; this module is body-only. (The intermediate unified
+ * `TextObjectFloat` that used to own them is itself deleted.)
  *
  * Content sync is hand-rolled because a source pod's content is a plain string
  * attr, not TipTap JSON — `useFloatMainSync`'s

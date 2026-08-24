@@ -6,8 +6,9 @@
  * main doc (identified by `uuid`) via `useFloatMainSync`.
  *
  * Migrated from the deleted `src/components/ParagraphFloat.tsx`. The
- * outer FloatCard wrapper and header chrome now live in the unified
- * `TextObjectFloat` — this module is body-only.
+ * outer FloatCard wrapper and header chrome now live in `FloatWindow` +
+ * `FloatChrome` — this module is body-only. (The intermediate unified
+ * `TextObjectFloat` that used to own them is itself deleted.)
  *
  * Extension stack: built by the shared `buildEditorExtensions` factory
  * with `surface: "float"` (FCU Chip C1) — the SAME chrome NodeViews as the

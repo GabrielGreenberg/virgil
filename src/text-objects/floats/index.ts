@@ -3,7 +3,8 @@
  *
  * Importing this module registers every per-kind float body component
  * with the `TEXT_OBJECT_REGISTRY` via `registerFloatBody`. The chrome
- * (`TextObjectFloat`) then looks each up at render time.
+ * (`FloatWindow` + `FloatChrome`, reached through `textObjectFloatable`)
+ * then looks each up at render time.
  *
  * Imported once from `src/components/Editor.tsx` (the main editor entry
  * point) so the registrations run at app boot, before any popout tries

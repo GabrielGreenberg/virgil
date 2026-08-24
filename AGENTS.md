@@ -1333,6 +1333,80 @@ anchor death reproduces under prod File System Access), so the durable proof
 there is the unit contract; the text-object half is NOT masked — pop a paragraph
 out, delete it in the main editor, and look at the float's header.
 
+###### The preview half: a preview shows what the RELEASE produces
+
+Same header, one moment earlier (task 437) — and the case where the two
+renderers were declared to be one component, in four files, by prose alone.
+
+Dragging a text object out of the document shows a **lift ghost**; past the
+popout threshold it grows a header bar, and on release that ghost becomes a
+real float. Those two headers are the same thing or the handoff moves. They
+had not been for months: `FloatChrome` gained a 14px `FloatGrip` as its FIRST
+child and a (re)anchor **drop** button (which `textObjectFloatable` sets
+`canDrop: true` for unconditionally, so it is on EVERY text-object float), and
+the ghost's own `FloatHeaderContent` gained neither. The arithmetic, from the
+shipped utilities (`px-2`=8, `gap-1`=4, grip `p-0.5` around a `width=10` svg,
+`-ml-1`=−4): ghost label at `+9`, float label at `+23` — **a ~14px jump on
+release**, plus one `w-4` button and one gap of extra width on the right.
+
+> **A preview shows what the release produces, so the two render the SAME
+> children — ONE component.** Where the CONTAINERS genuinely differ (they are
+> positioned by different owners), a census states what may not: the leading
+> inset, the gap and the height, because that inset is where the label lands.
+
+Six rules it earned:
+
+- **The fork was in the CHILD ROW, not the container**, so that is what became
+  one thing: `FloatChromeContent` (the grip · title · spacer · trailing · jump
+  · drop · close row) is exported from `FloatChrome` and mounted by exactly two
+  places — `FloatChrome` itself (the release) and `LiftedTextOverlay` (the
+  preview). `FloatHeaderContent` is DELETED, which is the honest end state for
+  a component whose stated purpose was to be shared with a file that no longer
+  exists. Adding the grip and the drop glyph to it instead was the alternative
+  and was declined: it re-creates the shared fork one level up.
+- **`inert` is a SUBTREE claim, and that is why the per-button one was not
+  enough.** The preview's close button is a `PopoutButton`, whose API has no
+  `tabIndex` seam — so under `pointer-events: none` + `aria-hidden` it was a
+  focusable control inside a hidden subtree, the shape "Pane-drag stability"
+  already outlaws for divider chrome. The ghost's container carries the HTML
+  `inert` attribute; the content attaches no handler at all.
+- **The prop type is a DISCRIMINATED UNION** (`{ inert: true }` forbids the
+  handlers; the live arm requires them), so a preview cannot be handed a
+  handler and a live mount cannot forget one. A defaulted no-op would be a
+  decision nobody made.
+- **The container inset is spelled twice and PINNED as a mirror.**
+  `FLOAT_CHROME_CONTAINER_CLASS` (`px-2 gap-1 h-6`) and globals.css
+  `.lifted-text-overlay__header` (`padding: 0 8px; gap: 4px`, height
+  `CARD_FLOAT_HEADER_H`) — CSS can't import TS, so the census reads BOTH
+  spellings. A drift between them IS a label jump.
+- **The four false SSOT claims are renegotiated in place with the reason at the
+  site**, never quietly deleted: they pinned a defect as the contract, and the
+  1px correction the overlay's Issue-6 comment records was REAL — what it could
+  not survive was a 14px element being inserted in front of the label it
+  described. Both halves are load-bearing now and both are pinned.
+- **The same sweep closed eight more stale claims** naming the deleted
+  `TextObjectFloat` as a live chrome (four in `globals.css`, four per-kind body
+  docstrings plus `types.ts`, `floats/index.ts`, `text-object-registry.ts`) —
+  the "Bar occupancy" shape, and the reason a census is a phrase-vocabulary
+  rather than a name grep: a note saying a claim USED to hold is wanted; a live
+  claim is not.
+
+CI: [lift-ghost-header-parity.test.tsx](src/text-objects/__tests__/lift-ghost-header-parity.test.tsx)
+renders the REAL ghost header and the REAL `FloatChrome` for the same
+text-object float and compares a signature derived from what the user can
+PERCEIVE (the `aria-label`s `iconHint` stamps, plus the one decorative child
+that publishes none) — never a test-only `data-*` marker, which would be a
+signature only the test can see. **No pre-437 suite could see any of this**:
+both suites that render the overlay `vi.mock`ed the header content to
+`() => null` for module weight, so the one thing that would have failed was the
+one thing both stubbed out — they render it for real now. Measured by neutering
+each half in turn: the pre-437 child row takes 4 legs, the `inert` attribute 1,
+a re-forked private row 1 (the census), and a live `TextObjectFloat` claim 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live pointer
+gesture, no disk), so the check is cheap and real — lift a paragraph out slowly
+and watch the header label at the moment of release.
+
 
 #### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
 

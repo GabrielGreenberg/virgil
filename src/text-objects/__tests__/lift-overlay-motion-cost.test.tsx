@@ -47,11 +47,10 @@ vi.mock("@/lib/storage", () => {
   return Object.fromEntries(names.map((n) => [n, noop]));
 });
 
-// The overlay's popout-mode header renders the shared float chrome; the motion
-// channel writes to the header NODE, not to anything inside it.
-vi.mock("@/text-objects/FloatHeaderContent", () => ({
-  FloatHeaderContent: () => null,
-}));
+// The overlay's popout-mode header renders the shared `FloatChromeContent`
+// for real (task 437) — the motion channel writes to the header NODE, not to
+// anything inside it, so the real children are free and a stub would only hide
+// a re-fork. `@/lib/storage` above is what keeps panel-primitives resolvable.
 
 // A lift starts a drop session; the session machinery (hit-test, indicator,
 // LayoutGestureBus edges) is not what this suite measures.

@@ -2137,8 +2137,8 @@ textarea,
                  no border / background / shadow. Communicates
                  "this is what you're moving; the move will commit
                  in place when you release."
-   - "popout"  = cursor in margin or beyond; full frame matching
-                 TextObjectFloat's chrome, 100% opacity. Communicates
+   - "popout"  = cursor in margin or beyond; full frame matching the
+                 released float's chrome, 100% opacity. Communicates
                  "release here to spawn a floating popout."
 
    Base rules ARE the ghost state, so mount renders at the correct
@@ -2194,7 +2194,7 @@ textarea,
     box-shadow 120ms ease;
 }
 
-/* Popout deviation — full chrome matching TextObjectFloat. The header
+/* Popout deviation — full chrome matching the released float. The header
    sits above the overlay's top edge (rendered as a portal SIBLING of
    the overlay, see `.lifted-text-overlay__header` below) and carries
    the top-corner rounding for the combined chrome, so the overlay's
@@ -2219,16 +2219,25 @@ textarea,
    overflow-visible invariant from the design entirely — see
    LIFTED-OVERLAY-REFACTOR.md L1.9.
 
-   The INNER content (label + chevron + X) is rendered by the shared
-   `FloatHeaderContent` React component (L3d.1) — the same content the real
-   popout (TextObjectFloat) mounts — so the label's typography lives there,
-   NOT here. This rule keeps only the overlay-specific chrome: positioning,
-   flex layout, bg/border/radius, and the popout-mode fade transition. The
-   label font-size/weight/letter-spacing/transform/family/color that used
-   to live here (and diverged from the real popout's inherited stack) moved
-   into FloatHeaderContent so there is one source of truth and no drift.
-   Icons are non-interactive (pointer-events: none) since the overlay's
-   hit-testing happens against the editor below. */
+   The INNER content (grip + label + jump + drop + close) is rendered by
+   `FloatChromeContent` (src/floats/FloatChrome.tsx) — the SAME children the
+   released float mounts — so the label's typography lives there, NOT here.
+   This rule keeps only the overlay-specific chrome: positioning, flex
+   layout, bg/border/radius, and the popout-mode fade transition.
+
+   The `padding: 0 8px` / `gap: 4px` / 24px height below are a deliberate
+   MIRROR of FloatChrome's own container utilities (`px-2 gap-1 h-6`; CSS
+   can't import TS). They are what puts the first child at the same x as the
+   released float's — a drift between them IS a label jump on release, so
+   `lift-ghost-header-parity.test.tsx` reads both spellings and fails if they
+   diverge. Until task 437 this comment claimed one source of truth for a
+   component (`FloatHeaderContent`) that had drifted from FloatChrome by a
+   14px grip and a drop button, and named as its other mount a component
+   (the text-object float's own chrome) that had already been deleted.
+
+   Icons are non-interactive: `pointer-events: none` here plus the HTML
+   `inert` attribute set on the element in LiftedTextOverlay.tsx, since the
+   overlay's hit-testing happens against the editor below. */
 .lifted-text-overlay__header {
   display: none;
   /* position / left / top / width / height set inline by JS */
@@ -2275,8 +2284,8 @@ textarea,
    Ghost mode = no padding: the clone fills the body edge-to-edge so
    the text wraps exactly as it did in the source (body width =
    sourceWidth, line breaks unchanged, no vertical clipping). Popout
-   mode adds `padding: 16px 32px` to match the real TextObjectFloat
-   body (paragraph-body.tsx's `flex-1 overflow-auto px-8 py-4`) for a
+   mode adds `padding: 16px 32px` to match the real float body
+   (paragraph-body.tsx's `flex-1 overflow-auto px-8 py-4`) for a
    seamless visual handoff when the gesture releases into a real
    popout. L3: when generalizing liftMode to other kinds, expose this
    padding via the registry — see meta.floatBodyPadding follow-up. */

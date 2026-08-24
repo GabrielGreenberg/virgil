@@ -204,8 +204,9 @@ export interface TextObjectTransportPayload {
 // ---------------------------------------------------------------------------
 
 /**
- * Props the unified `TextObjectFloat` chrome passes to a kind-specific
- * body component. The chrome owns layout, header, popout/drop-mode
+ * Props the shared float chrome (`FloatWindow` + `FloatChrome`, reached
+ * through `textObjectFloatable`) passes to a kind-specific body
+ * component. The chrome owns layout, header, popout/drop-mode
  * integration, and data attrs for hit-testing. The body owns content
  * rendering and main↔float sync (per-kind: TipTap-on-TipTap, CodeMirror,
  * slice-render, etc.).
@@ -306,8 +307,8 @@ export interface TextObjectMeta {
    *  per-environment patches. */
   chromeAnchor: "text-top" | "block-top";
 
-  /** Float-body component for popouts. Chrome is unified via
-   *  `TextObjectFloat`; body owns sync. Typed as `unknown` here to keep
+  /** Float-body component for popouts. Chrome is unified via `FloatWindow`
+   *  + `FloatChrome`; body owns sync. Typed as `unknown` here to keep
    *  this module React-free; the registry module narrows it. */
   floatBodyComponent: unknown;
 
