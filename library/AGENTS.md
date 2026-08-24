@@ -956,6 +956,130 @@ the suite's 25 legs fail.
 `/library/merge-bibs` filtered to one paper should report its duplicates as
 `deferred_dup` rather than `would-collective-auth`.
 
+### The WRITE half: the gate had three enforcers and one of them forgot
+
+> **No writer mints a catalog row without asking
+> [`_tools.admit_catalog_row`](scripts/_tools.py) — the mirror of the read
+> door above. It answers "is this citekey entitled to a row?" and, when the
+> answer is no, DISCHARGES the state to its home before returning, so a
+> caller cannot ask without discharging.**
+
+Same migration, the other half (task 443): 442 is about who READS the state,
+this is about who may MINT the row. F#4's holdings gate was stated once
+(`paper_has_holdings`) and enforced by two of the three catalog writers —
+`merge_paper_references._upsert_catalog_row` and
+`triage_apply._upsert_catalog_row_bib_only`, each asking it and each
+discharging the state by hand. `index_paper._sync_catalog_entry_from_master`
+asked nothing and called `upsert_catalog_entry` unconditionally, whose
+no-match branch APPENDS. So the third writer created exactly the row the
+other two refuse.
+
+**It sat on a live, high-volume path.** `/library/triage-pdf`'s `.bib` fan-out
+queues one `kind: "authenticate"` per imported entry; `/library/index-pending`
+drains that queue by invoking `/library/authenticate-bib <citekey>`; that
+skill's **step 7** is this function. So importing a 500-entry `.bib` minted 500
+rows F#4 had refused three lines earlier.
+
+Three costs, and the first is the one no UI change could have fixed:
+
+- **A frozen snapshot shadows the live projection.** `LibraryView` synthesizes
+  a row per fileless reference and reads its state off the bib-index (projected
+  from `% bib.state`) — but skips any citekey already seen in the catalog. A
+  minted row therefore *replaces* that live read with whatever `bib` block was
+  written at auth time, and nothing re-syncs it when a later
+  `/library/merge-bibs` or triage run rewrites the comment. (It does NOT add a
+  ghost paper to the list, which was the first reading of the report: the list
+  already shows fileless references. The wrong framing would have sent the fix
+  at the UI.)
+- **It defeats the perf model the gate exists for.** F#4's stated win is a
+  small catalog; the reporting library is 3 722 rows against 24 082 master
+  entries. This was the one path that grew it without bound.
+- **It falsified the skill's own text.** `/library/authenticate-bib` step 7
+  documents an `exit 1` for *"no catalog row for this citekey (a
+  reference-only entry … the F#4 gate never minted one)"* — a branch the
+  `_sync_catalog_entry_from_master` call three lines above made unreachable by
+  minting the row the next command would have failed on. A documented branch
+  that the same step makes unreachable is a claim the next reader acts on.
+
+Six rules it earned:
+
+- **Fuse the ASK and the DISCHARGE, because the obligation is what gets
+  forgotten.** What the three writers share is not the row PAYLOAD — a merge
+  carries accumulated `fieldChanges`, a triage row preserves `addedAt`/`tags`,
+  the indexer writes an `indexed` block — it is the QUESTION and what its
+  `False` answer obliges. One door that answers and discharges makes "the
+  false branch has homework" unforgettable; three call sites each spelling
+  `paper_has_holdings` and each remembering to write the comment is exactly
+  the shape that let one of them skip it.
+- **A `"none"` state discharges NOTHING.** `update_master_bib_entry` writes
+  `% bib.state = none` verbatim, so passing "I have no state to record"
+  through would be a silent DOWNGRADE of whatever an earlier run
+  authenticated, not a no-op. (`merge_paper_references` guarded this by hand;
+  the guard moved into the door with everything else.)
+- **The re-assert had to be made FREE, and doing so uncovered a real
+  accumulating defect.** The discharge is a re-assert at every shipped call
+  site — each caller's own master.bib write has already stamped the comment —
+  so on a 500-entry import it is 500 rewrites of a ~10 MB file for no change.
+  `update_master_bib_entry` now skips a write whose resulting text is
+  byte-identical to what it read under the same lock. Writing that revealed
+  the writer was **not idempotent at all**: `entry_end` stops at the closing
+  `}` while `emit_bib_entry` ends `}\n`, so every rewrite of an unchanged
+  entry INSERTED a blank line, forever.
+- **`index_paper` stopped forking the source probe.** Its private
+  `_resolve_source` was a copy of `_tools.resolve_paper_source` — the scan
+  `paper_has_holdings` is derived from — minus the NFC/NFD lookup the SSOT was
+  widened for, so a citekey with diacritics whose folder sits on disk under
+  the other normalization was reported as "no source" for a paper that is
+  right there (the 1976-Tichý memo class). It calls the SSOT directly now,
+  which also makes its main pipeline's catalog write honestly gated: getting
+  past that line ESTABLISHES holdings.
+- **`/library/apply-bib-edit` step 4 inherited its sibling's exit codes.** It
+  ran `update_catalog_entry.py` unconditionally over an entry step 3 had just
+  blessed as legitimately fileless, and said nothing about exit codes — so the
+  `KeyError`/exit-1 read as a failure, steps 5–7 did not run, and the
+  queue-entry cleanup that lives there never happened: the bib-edit was
+  re-attempted on every subsequent `/library/index-pending`. The path is live
+  (the list renders fileless references and their Edit button queues from
+  one). Drift, not convention — its sibling documented the same code
+  correctly.
+- **Open decision, answered: a fileless-but-authenticated work gets NO
+  catalog row.** That is the documented F#4 model, it is what 85% of the
+  corpus already looks like, the frontend reads such entries correctly from
+  the bib-index, and step 7's own prose assumes it. If the answer ever
+  changes it belongs in `_tools.py`'s F#4 comment and in all three writers at
+  once — never in one of them by omission.
+
+CI: [library/scripts/tests/test_f4_write_gate.py](scripts/tests/test_f4_write_gate.py).
+The leg with teeth is the CENSUS — the gate was never the part that could
+misbehave, a writer that never asks it is, and
+`upsert_catalog_entry(catalog, citekey, **fields)` runs perfectly while
+appending a row F#4 refuses. Membership is DISCOVERED (every shipped script
+under `library/scripts/`), the mint is read through `ast` rather than a line
+window (the ask and the write are routinely thirty lines apart, and only the
+INNERMOST declaration counts so a nested function's ask cannot exonerate its
+parent), and it matches BOTH mint shapes — the shared `upsert_catalog_entry`
+and a hand-rolled append onto the catalog, because `triage_apply` does not use
+the shared writer and a needle that saw only it would be blind to that one.
+Three spellings exonerate, as three names for one question: the door, the bare
+`paper_has_holdings`, and `resolve_paper_source` (a declaration that resolved
+a real source has given a strictly stronger answer than the boolean — this is
+`index_paper`'s main pipeline). **DOCSTRINGS ARE BLANKED**, and that is not
+hypothetical: the first cut of this fix was measured by neutering the gate CALL,
+and the census kept passing off the docstring left standing above it — "a
+comment describing a retired mechanism is how the next reader concludes the
+invariant is held", one level up, inside the guard that exists to prevent it.
+Quoted strings elsewhere are KEPT, because `triage_apply`'s mint is
+`catalog["entries"].append(...)` and the key is the needle. **The allowlist is
+EMPTY** and stays that way: a hit is ASK-it, never list-it. Measured by
+neutering each half in turn: the pre-443 ungated writer takes 5 legs (the
+census among them), a door that asks without discharging 6, the `"none"`
+downgrade guard 1, and each half of the master.bib writer 1.
+
+**Owed, not claimed:** a real-library eyeball. The queue/drain path needs a
+real library, so the durable proof here is the unit contract; after this, a
+`.bib` import should leave `catalog.json`'s row count unchanged while every
+imported entry's state shows in the Library list from `bib-index.json`.
+
 ## Reader inheritance from the main editor
 
 > **Debugging a Reader regression?** Read [READER_INHERITANCE.md](READER_INHERITANCE.md) first. It defines the architectural pattern, the three legitimate fix locations (shared component / `READER_CHROME` / the named `READER_NOOP_HANDLERS` + view-derivations in `reader-view-prefs.ts`), the triage flow, and the vocabulary the user expects you to use. **Do not write Reader-specific render code under `library/components/`** — channel the fix through the shared layer or its declarative knobs. The user typically reports Reader bugs by pointing at that doc; treat it as a hard constraint, not a suggestion.

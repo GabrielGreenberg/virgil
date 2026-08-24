@@ -1373,6 +1373,7 @@ def update_master_bib_entry(
         if not master_path.exists():
             master_path.write_text("")
         text = master_path.read_text()
+        original_text = text
         # Try NFC first, then NFD if NFC isn't present.
         m = None
         for form in ("NFC", "NFD"):
@@ -1423,6 +1424,15 @@ def update_master_bib_entry(
             if effective_bib_state:
                 replacement += f"% bib.state = {effective_bib_state}\n"
             replacement += emit_bib_entry(citekey, entry_type, fields)
+            # `entry_end` stops at the closing `}`; `emit_bib_entry` ends with
+            # `}\n`. Splicing the two together therefore INSERTED a newline on
+            # every rewrite — so a re-assert of an unchanged entry was not a
+            # no-op at all, it grew master.bib by one blank line, every time,
+            # forever (task 443: the F#4 write gate re-asserts once per refused
+            # row, which on a 500-entry `.bib` import is 500 blank lines a run).
+            # Hand the newline back to the tail that already has it.
+            if replacement.endswith("\n") and text[entry_end:entry_end + 1] == "\n":
+                replacement = replacement[:-1]
             text = text[:entry_start] + replacement + text[entry_end:]
         else:
             replacement = ""
@@ -1432,7 +1442,23 @@ def update_master_bib_entry(
             if text and not text.endswith("\n"):
                 text += "\n"
             text += "\n" + replacement
-        _atomic_write_text(master_path, text)
+        # Skip a write that would change nothing. master.bib is ~10 MB /
+        # 24 k entries in the reporting library, and this writer is
+        # RE-ASSERTED far more often than it is asked to change anything:
+        # every `ensure_bib_state_comment` call site has already stamped the
+        # comment through its own write a moment earlier, and since task 443
+        # the F#4 write gate (`admit_catalog_row`) re-asserts it once per
+        # refused row — which on a 500-entry `.bib` import is 500 rewrites of
+        # the file for no change at all. Skipping here is what makes that
+        # door free to ask, and it is exact: the comparison is the whole
+        # resulting text against the whole text read under this same lock.
+        #
+        # `_mark_bib_index_dirty` stays UNCONDITIONAL — it only schedules a
+        # rebuild at process exit, it is cheap, and a caller that reached
+        # this writer at all may be repairing an index that is stale for some
+        # other reason.
+        if text != original_text:
+            _atomic_write_text(master_path, text)
     _mark_bib_index_dirty(library)
 
 
@@ -1601,3 +1627,73 @@ def ensure_bib_state_comment(
             "the bib-index reader would drop it to 'none'."
         )
     update_master_bib_entry(library, citekey, entry_type, fields, bib_state=state)
+
+
+# ── F#4 WRITE side: ONE door, asked before every catalog row is minted ─
+#
+# The gate below is the mirror of `resolve_bib_state` above: that one is the
+# single place a READER asks "what is this citekey's auth state?", this one is
+# the single place a WRITER asks "is this citekey even entitled to a catalog
+# row, and if not, where does its state go?".
+#
+# It exists because the gate had three enforcers and one of them forgot
+# (task 443). `merge_paper_references._upsert_catalog_row` and
+# `triage_apply._upsert_catalog_row_bib_only` each asked `paper_has_holdings`
+# and each discharged the state to master.bib by hand;
+# `index_paper._sync_catalog_entry_from_master` — reached by
+# `/library/authenticate-bib` step 7, i.e. once per entry of every `.bib`
+# import — asked nothing and called `upsert_catalog_entry` unconditionally,
+# whose no-match branch APPENDS. So a 500-entry `.bib` drop minted 500 rows
+# the other two writers had refused three lines earlier: a frozen snapshot of
+# the `bib` block shadowing the live bib-index projection the frontend reads
+# for a fileless reference, and the one path that grows the catalog without
+# bound (the reporting library: 3 722 rows against 24 082 master entries).
+#
+# The lesson is the one this repo keeps re-learning: a rule enforced by each
+# caller is a rule the next caller can skip in silence. What is shared here is
+# not the row PAYLOAD — the three writers' rows genuinely differ (a merge
+# carries accumulated `fieldChanges`, a triage row preserves `addedAt`/`tags`,
+# the indexer writes an `indexed` block) — it is the QUESTION and the
+# OBLIGATION its `False` answer carries. Fusing the two is what makes the
+# obligation unforgettable: a caller cannot ask without discharging.
+
+
+def admit_catalog_row(
+    library: Path,
+    citekey: str,
+    *,
+    entry_type: str,
+    fields: dict[str, str],
+    bib_state: str,
+) -> bool:
+    """THE F#4 write gate. Ask BEFORE minting a catalog row.
+
+    Returns **True** iff `citekey` is a HOLDING — a source document sits at
+    `papers/<citekey>/<citekey>.{tex,docx,pdf}` — i.e. iff it is entitled to
+    a row in catalog.json. The caller then writes its row however its own
+    payload requires; this door has touched nothing.
+
+    Returns **False** for a reference-only entry (cited but not held), and
+    before returning DISCHARGES the auth state to its home: the
+    `% bib.state = <state>` comment in master.bib, which `build_bib_index`
+    projects into bib-index.json and every reader resolves through
+    `resolve_bib_state`. So a `False` caller has nothing left to do but
+    return — which is the point of fusing the ask and the discharge into one
+    call rather than leaving them as two things to remember.
+
+    The discharge is a RE-ASSERT in every shipped caller (each one's own
+    master.bib write has already stamped the comment), and is idempotent:
+    `update_master_bib_entry` skips the write outright when the emitted block
+    is byte-identical to what is on disk, so asking this on a per-entry hot
+    path costs one read of master.bib, not one rewrite of it.
+
+    `bib_state` falsy or `"none"` discharges NOTHING. "I have no state to
+    record" must never overwrite a state some earlier run authenticated —
+    `update_master_bib_entry` writes `% bib.state = none` verbatim, so
+    passing it through would be a silent downgrade rather than a no-op.
+    """
+    if paper_has_holdings(library, citekey):
+        return True
+    if bib_state and bib_state != "none":
+        ensure_bib_state_comment(library, citekey, entry_type, fields, bib_state)
+    return False

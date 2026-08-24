@@ -45,16 +45,15 @@ sys.path.insert(0, str(THIS_DIR))
 from _bib_parse import read_bib_file  # noqa: E402
 from _tools import (  # noqa: E402
     TERMINAL_BIB_STATES,
+    admit_catalog_row,
     append_inbox_item,
     citekey_matches,
-    ensure_bib_state_comment,
     lock_catalog,
     is_terminal_bib_state,
     lock_master_bib,
     mark_bib_imported,
     master_bib_state_map,
     normalize_citekey,
-    paper_has_holdings,
     read_catalog,
     read_master_bib,
     resolve_bib_state,
@@ -479,22 +478,24 @@ def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
     A reference-only entry (cited but not held — the common case during a
     bib merge) must NOT mint a catalog row; its auth state lives solely in
     the `% bib.state` comment in master.bib, which `_write_master` already
-    wrote before this call. So for a reference-only entry we re-assert that
-    comment (idempotent) and return without touching the catalog.
+    wrote before this call. So for a reference-only entry `admit_catalog_row`
+    re-asserts that comment (idempotent) and answers False, and we return
+    without touching the catalog.
+
+    The gate used to be spelled here by hand. Since task 443 it is the one
+    shared door in `_tools` — the ask and the discharge fused, so no writer
+    can ask without discharging or discharge without asking.
 
     For a true holding, fall through to the catalog write, carrying over
     top-level fields (title/year/authors/doi) derived from master.
     """
     fields = master_entry.get("fields", {})
-    if not paper_has_holdings(library, citekey):
-        # Reference-only: state lives only as the master.bib comment.
-        state = bib_status.get("state", "none")
-        if state and state != "none":
-            ensure_bib_state_comment(
-                library, citekey,
-                master_entry.get("type", "misc"),
-                fields, state,
-            )
+    if not admit_catalog_row(
+        library, citekey,
+        entry_type=master_entry.get("type", "misc"),
+        fields=fields,
+        bib_state=bib_status.get("state", "none"),
+    ):
         return
     top: dict = {
         "title": _strip_braces(fields.get("title", "")),
@@ -514,7 +515,7 @@ def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
         merged_bib = dict(bib_status)
         merged_bib["fieldChanges"] = prior_changes + list(bib_status.get("fieldChanges", []))
         write_fields = {k: v for k, v in top.items() if v not in (None, "", [])}
-        # This is a TRUE holding (paper_has_holdings passed above), so its catalog
+        # This is a TRUE holding (admit_catalog_row passed above), so its catalog
         # row must carry pdf.present == True — otherwise the merge would mint the row
         # with upsert_catalog_entry's default pdf:{present:False}, the exact stale
         # flag the prune then has to defend against. upsert_catalog_entry deep-merges

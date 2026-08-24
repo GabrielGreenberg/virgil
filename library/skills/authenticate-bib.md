@@ -509,6 +509,21 @@ directory).
    top-level fields, never `indexed`, so it cannot disturb the warnings
    written below.
 
+   **It may write no row at all, and that is the normal case here.** This
+   skill deliberately serves entries with no source document on disk, and
+   under the F#4 holdings model a reference-only entry — cited but not held —
+   gets no catalog row: its auth state lives as the `% bib.state = <state>`
+   comment on its master.bib block, which `build_bib_index` projects into
+   `bib-index.json` and the Library list reads directly. So for such a
+   citekey the helper asks the shared write gate
+   (`_tools.admit_catalog_row`), which writes that comment and answers
+   "no row", and the helper returns having touched `catalog.json` not at
+   all. Nothing is lost and nothing is wrong; it is what makes the `exit 1`
+   branch below REACHABLE (before task 443 this call minted the row the
+   next command would have failed on, so the documented branch could never
+   fire). Say "reference-only — state recorded in master.bib, no catalog
+   row" in the reply rather than reporting a failure.
+
    **Then persist the coherence verdict** — the second half of step 2, landed
    here because this is the last point in the run where the answer is final.
    Re-run the same checker against the master.bib you have now (step 5 may
@@ -563,8 +578,11 @@ directory).
      rather than guessing which branch it was.
 
 8. **Append a notification** via the locked CLI shim. (No need to bump
-   `catalog-version.txt` separately — step 7's
-   `_sync_catalog_entry_from_master` does it for you.)
+   `catalog-version.txt` separately — when step 7 wrote a row,
+   `_sync_catalog_entry_from_master` bumped it for you; when it wrote none
+   — the reference-only case — there is no catalog change to announce, and
+   the master.bib write it made instead schedules the `bib-index.json`
+   rebuild the Library list actually reads for that entry.)
 
    > **`kind` is the frontend's toast enum, NOT the bib.state enum.**
    > The only values the Library UI knows are `"indexed"`,

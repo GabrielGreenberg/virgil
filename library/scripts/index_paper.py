@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
     SOURCE_FORMAT_PRIORITY,
+    admit_catalog_row,
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
@@ -53,6 +54,7 @@ from _tools import (
     lock_catalog,
     read_catalog,
     read_master_bib,
+    resolve_paper_source,
     update_master_bib_entry,
     upsert_catalog_entry,
     write_catalog,
@@ -76,22 +78,6 @@ from fuse_alternate import fuse_pgmarks_into, FuseResult, FUSION_FAILED_HEAD
 # readers don't move.
 FORMAT_PRIORITY = SOURCE_FORMAT_PRIORITY
 SUPPORTED_EXTS = FORMAT_PRIORITY
-
-
-def _resolve_source(library: Path, citekey: str) -> tuple[Path, str]:
-    """Find the source file for `citekey` and return (path, ext).
-
-    Scans `papers/<citekey>/<citekey>.<ext>` in FORMAT_PRIORITY order; first
-    hit wins. Lower-priority sources for the same citekey are left on disk
-    as archives but are not used for indexing.
-    """
-    for ext in FORMAT_PRIORITY:
-        p = library / "papers" / citekey / f"{citekey}.{ext}"
-        if p.exists():
-            return p, ext
-    raise FileNotFoundError(
-        f"No source for {citekey} at papers/{citekey}/{citekey}.{{{','.join(FORMAT_PRIORITY)}}}"
-    )
 
 
 def _alternate_sources(library: Path, citekey: str, primary_ext: str) -> list[str]:
@@ -140,12 +126,35 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
 
 def _sync_catalog_entry_from_master(library: Path, citekey: str,
                                     bib_status: dict) -> None:
-    """Sync catalog.json top-level fields from master.bib so they can't drift."""
+    """Sync catalog.json top-level fields from master.bib so they can't drift.
+
+    F#4 holdings-only gate (task 443). This is `/library/authenticate-bib`
+    step 7, and that skill deliberately serves entries with NO catalog row:
+    `/library/triage-pdf`'s `.bib` fan-out queues one `kind: "authenticate"`
+    per imported entry, so on a 500-entry import this runs 500 times for
+    citekeys that are cited but not held. `upsert_catalog_entry` APPENDS when
+    no row matches, so before task 443 this minted exactly the rows its two
+    sibling writers refuse — freezing a `bib` snapshot in front of the live
+    bib-index projection the frontend reads for a fileless reference, and
+    growing the catalog without bound.
+
+    `admit_catalog_row` is the shared gate: for a reference-only entry it
+    discharges the state to the `% bib.state` comment in master.bib (its
+    home) and answers False, so there is nothing left to do here. For a real
+    holding it answers True and the row is written exactly as before.
+    """
     master = read_master_bib(library / "master.bib")
     entry = master.get(citekey)
     if not entry:
         return
     fields = entry["fields"]
+    if not admit_catalog_row(
+        library, citekey,
+        entry_type=entry.get("type", "misc"),
+        fields=fields,
+        bib_state=(bib_status or {}).get("state", ""),
+    ):
+        return
     authors_str = fields.get("author", "")
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
     year_raw = fields.get("year", "")
@@ -240,7 +249,24 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
 
     log(f"Indexing {citekey} from {library}")
 
-    source_path, source_ext = _resolve_source(library, citekey)
+    # `resolve_paper_source` is THE spelling of "which file is this paper's
+    # source" — the same probe `paper_has_holdings`, and therefore the F#4
+    # write gate `admit_catalog_row`, answers with. Called directly rather
+    # than through a private wrapper: this module used to keep its own copy
+    # of the loop, which disagreed with the SSOT on the one case the SSOT was
+    # widened for (a citekey with diacritics whose folder sits on disk under
+    # the other Unicode normalization — the 1976-Tichy memo class) and
+    # reported "no source" for a paper that is right there.
+    #
+    # Getting past this line ESTABLISHES holdings for `citekey`, which is what
+    # entitles step 7's catalog write below to mint a row.
+    _source = resolve_paper_source(library, citekey)
+    if _source is None:
+        raise FileNotFoundError(
+            f"No source for {citekey} at "
+            f"papers/{citekey}/{citekey}.{{{','.join(FORMAT_PRIORITY)}}}"
+        )
+    source_path, source_ext = _source
     log(f"Source: {source_path.name} (format={source_ext})")
 
     tools = detect()

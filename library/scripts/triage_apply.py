@@ -35,12 +35,12 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    admit_catalog_row,
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
     is_terminal_bib_state,
     lock_catalog,
-    paper_has_holdings,
     read_catalog,
     read_master_bib,
     resolve_bib_state,
@@ -183,6 +183,9 @@ def _upsert_catalog_row_bib_only(
     catalog row. The auth state already lives in the `% bib.state` comment
     in master.bib (written by the `update_master_bib_entry` call in
     `apply_bib_row`), which `build_bib_index` projects into bib-index.json.
+    The gate itself is `_tools.admit_catalog_row` — one shared door since
+    task 443, rather than three writers each spelling `paper_has_holdings`
+    and each discharging the state by hand (one of them forgot to).
 
     The one exception: if a HOLDINGS row already exists for this citekey
     (the `.bib` import names a citekey that's also held on disk), we still
@@ -197,9 +200,17 @@ def _upsert_catalog_row_bib_only(
     if field_changes:
         bib_status_min["fieldChanges"] = field_changes
 
-    if not paper_has_holdings(library, citekey):
-        # Reference-only: only touch the catalog if a row already exists
-        # (a stale pre-F#4 row); otherwise skip — state lives in master.bib.
+    if not admit_catalog_row(
+        library, citekey,
+        entry_type=entry_type, fields=fields, bib_state=bib_state,
+    ):
+        # Reference-only. `admit_catalog_row` has already discharged the state
+        # to the `% bib.state` comment in master.bib — a re-assert of what
+        # `apply_bib_row` wrote a moment ago, and free, because
+        # `update_master_bib_entry` skips a byte-identical write. All that is
+        # left here is the one exception this writer owns: touch the catalog
+        # only if a row already exists (a stale pre-F#4 row, or a real holding
+        # whose source file has since been removed); never mint one.
         with lock_catalog(library):
             catalog = read_catalog(library)
             catalog.setdefault("version", 1)
