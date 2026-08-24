@@ -95,7 +95,6 @@ const mockCtx = {
   ],
   examples: [{ exampleId: "ex-1", title: "Ex", label: "", tag: "" }],
   reportCards: [{ kind: "report", id: "report-1", content: richDoc("report body"), createdAt: "t", links: [] }],
-  aiRequests: [{ id: "ai-1", text: "ai req", createdAt: "t" }],
   anchoredIds: new Set<string>(),
   allEditorCitations: [],
   editorRef: { current: null },

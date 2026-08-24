@@ -18,7 +18,6 @@ import type {
   BibEntry,
   CitationRef,
   FootnoteRef,
-  AiRequest,
 } from "@/lib/types";
 
 /**
@@ -30,6 +29,24 @@ import type {
  *
  * Re-exported to the card spine as `CardFloatCtx` (`src/cards/card-float-ctx`);
  * the registry's per-kind `toFloatable(id, ctx)` builders receive this bag.
+ *
+ * **Every field here is READ by a float, or it does not belong here** (task
+ * 436 — the task-227 dead-context-field law in its cross-tree tense).
+ * Construction is not consumption: five fields (`aiRequests`,
+ * `updateAiRequestText`, `deleteAiRequest`, `updateCutterCommentText`,
+ * `updateRevisionCommentText`) were declared here, populated by `EditorPane`
+ * and read by nothing — and three of them dragged `aiRequestsHook` into the
+ * `popoutsDeps` memo's dependency array, so every AI-request edit rebuilt this
+ * whole bag and re-resolved every open float. Re-add any of them WITH its
+ * first real reader, never ahead of one.
+ *
+ * The census that keeps this drained is
+ * `src/floats/__tests__/card-float-ctx-honesty.test.ts`. It asks about the
+ * READERS (`src/cards/`, `src/floats/`, `src/text-objects/`), not about this
+ * file — `dead-panel-prop-guardrail`'s per-FILE question ("a declared prop
+ * appears once more in its own file") has no useful answer for a bag whose
+ * consumers live in three other trees: every field would flag, dead and live
+ * alike.
  */
 export interface PoppedCardDeps {
   // Entity collections
@@ -52,7 +69,6 @@ export interface PoppedCardDeps {
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
   comments: RevisionCard[];
   reportCards: ReportItem[];
-  aiRequests: AiRequest[];
   examples: ExampleInfo[];
   /** The ids of archive clips whose anchor the task-369 authority RESOLVES —
    *  `anchoredArchiveIds` in `EditorPane`, a fold over `anchorPass.resolve()`.
@@ -123,7 +139,6 @@ export interface PoppedCardDeps {
 
   // Cutter
   updateCutterCommentContent: (id: string, content: JSONContent) => void;
-  updateCutterCommentText: (id: string, text: string) => void;
   setCutterCommentAiRequest: (id: string, value: boolean) => void;
   updateCutterSuggestionField: (
     id: string,
@@ -177,7 +192,6 @@ export interface PoppedCardDeps {
 
   // Revisions panel (mirrors Cutter)
   updateRevisionCommentContent: (id: string, content: JSONContent) => void;
-  updateRevisionCommentText: (id: string, text: string) => void;
   setRevisionCommentAiRequest: (id: string, value: boolean) => void;
   updateRevisionSuggestionField: (
     id: string,
@@ -195,10 +209,6 @@ export interface PoppedCardDeps {
   ) => void;
   convertRevisionCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteRevisionCard: (id: string) => void;
-
-  // AI Requests
-  updateAiRequestText: (id: string, text: string) => void;
-  deleteAiRequest: (id: string) => void;
 }
 
 // The legacy prefix dispatcher (`renderPoppedCard` + `cardKindForPopoutKey` +

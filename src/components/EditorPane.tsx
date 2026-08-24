@@ -4846,6 +4846,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // ephemeral `useReaderViewPrefs()`), so the popout mount below is
   // live in each; the bag is built unconditionally for simpler
   // memoization and to keep `useMemo` deps stable.
+  //
+  // Task 436: `aiRequestsHook` is deliberately NOT a dependency here. It fed
+  // three fields (`aiRequests` / `updateAiRequestText` / `deleteAiRequest`) no
+  // float has ever read, and its identity changes on every AI-request edit —
+  // a checkbox toggle, an `/editor/*` skill's sidecar write landing through
+  // the watcher — which rebuilt this bag, re-resolved every popped key through
+  // `resolveFloatable`, re-rendered every open float, and re-registered the
+  // `virgil-stack-drop` listener (whose deps are `[viewPrefs, popoutsDeps]`).
+  // The LIVE per-footnote flags below come from `footnoteAiRequests` (a
+  // derivation off `footnotesHook.footnoteRefs`, a different sidecar) and
+  // carry their own dep. A future float that genuinely needs the request list
+  // adds the field AND the dep together.
   const popoutsDeps = useMemo<PoppedCardDeps>(
     () => ({
       // Entity collections
@@ -4862,7 +4874,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       allEditorCitations,
       comments: revisionsHook.cards,
       reportCards: reportsHook.cards,
-      aiRequests: aiRequestsHook.requests,
       examples,
       anchoredIds: anchoredArchiveIds,
 
@@ -4928,7 +4939,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
       // Cutter
       updateCutterCommentContent: cutterHook.updateCommentContent,
-      updateCutterCommentText: cutterHook.updateCommentText,
       setCutterCommentAiRequest: cutterHook.setCommentAiRequest,
       updateCutterSuggestionField: cutterHook.updateSuggestionField,
       setCutterSuggestionStatus: cutterHook.setSuggestionStatus,
@@ -4968,22 +4978,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
       // Revisions
       updateRevisionCommentContent: revisionsHook.updateCommentContent,
-      updateRevisionCommentText: revisionsHook.updateCommentText,
       setRevisionCommentAiRequest: revisionsHook.setCommentAiRequest,
       updateRevisionSuggestionField: revisionsHook.updateSuggestionField,
       setRevisionSuggestionStatus: revisionsHook.setSuggestionStatus,
       convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
-
-      // AI Requests
-      updateAiRequestText: aiRequestsHook.updateRequestText,
-      deleteAiRequest: aiRequestsHook.deleteRequest,
     }),
     [
       notesHook, footnoteInfos, footnoteAiRequests, archiveHook, cutterHook, todosHook,
       citationsHook, annotationsHook, bibReviewHook, revisionsHook,
       reportsHook,
-      aiRequestsHook,
       citationPositionMap, allEditorCitations, examples, anchoredArchiveIds,
       selectedNoteId, selectedFootnoteId, selectedArchiveId,
       selectedCutterCardId, selectedReportCardId, selectedTodoId, selectedBibKey,
