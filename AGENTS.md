@@ -4043,6 +4043,83 @@ Four rules it earned:
 
 CI: [block-address.test.ts](src/lib/tiptap/__tests__/block-address.test.ts) pins the resolver rules (including the read-degrades / write-refuses split at the two doors) against a doc that has MOVED since the address was captured — a test against an unchanged document proves nothing here, since the two addressing models agree there by construction. [outline-mutators-address-live-doc.test.tsx](src/components/editor-layout/card-actions/__tests__/outline-mutators-address-live-doc.test.tsx) is the defect leg: the REAL `useEditorOps` handlers against a REAL ProseMirror doc, with the concurrent write applied BETWEEN the capture and the gesture. Measured rather than assumed: neutering rule 1 (resolve by the carried index) fails ten of the two suites' legs, including every reorder and scroll leg whose document moved — the three that survive are the ones testing rule 3 or the own-range guard, which that neuter leaves intact. [focus-region-address.test.ts](src/hooks/__tests__/focus-region-address.test.ts) does the same for the focus band's one entry point — the member with no defect leg at all in the first cut, since `useFocusMode.test.ts` re-implements the action bodies as local helpers and both focus-band-drag suites are snapshot-internal by design. And [outline-address-census.test.ts](src/panels/Outline/__tests__/outline-address-census.test.ts) is the leg with teeth: the resolver was never the part that can misbehave — a PRODUCER that stops carrying the uuid is, and `{ uuid: null, index }` typechecks perfectly while being exactly the pre-285 integer wearing the new type. So `uuid: null` inside the Outline's producers is allowlisted per LINE (not per file — a file-scoped exemption would excuse the next producer added beside it), with a synthetic canary rather than one standing on the lines the allowlist drains.
 
+### The projection half: a filtered view of a list is not an index space into it
+
+Same law, and the case where the gap is not TIME but FILTERING (task 440). Task
+285's Outline renders from a snapshot that can go STALE; the panel strip renders
+from a projection that is never complete. `visiblePanels` is
+`filterPanelKinds(chrome, …)` — narrowed by `chrome.visiblePanelKinds` — so an
+integer counted off the rendered icons is not an integer into
+`prefs.placements`, which is what `movePanel` spliced into.
+
+`READER_CHROME.visiblePanelKinds` is the six reading panels and the shipped LEFT
+placement order opens with `search`, which is not one of them. So the Library
+Reader renders **5 icons over a 6-entry list** and every DOM index k addressed
+model index k+1: drag `outline` into the gap between `citations` and
+`bibliography` and it lands **before** `citations`, one slot early — every drop
+below the first gap wrong by exactly the number of hidden panels above it.
+Nothing throws and the placements list stays well-formed.
+
+**The main app was correct by COINCIDENCE, and the coincidence is the finding.**
+`FULL_CHROME` sets no whitelist, and the one registry kind with no strip (`omni`,
+`defaultStripSide: null`) is dropped from `placements` at load — so the two spaces
+happen to agree, and that agreement was the entire defence. It is one whitelist,
+one per-doc hide or one search filter away from being false anywhere.
+
+> **A gesture over a filtered view commits the IDENTITY of what it landed
+> beside, never a count.** `movePanel(id, side, before?: PanelId | null)` —
+> `before` is the panel the icon lands in front of, `null`/omitted appends — and
+> the splice resolves it against the LIVE `placements` at apply time.
+
+Four rules it earned:
+
+- **Unrepresentable beats reconciled.** The surgical fix — translate the DOM
+  index into a model index at the call site — is correct for today's one
+  whitelist and leaves the integer contract standing for the next filter to
+  rediscover. Taking an id removes the second index space instead of mapping
+  onto it, and it survives ANY future narrowing of the strip with no further
+  thought: the gesture then computes only *which rendered button the cursor is
+  above*, which is the one thing it can actually observe.
+- **This member ships with no grep, and the reason is stated rather than
+  assumed.** Every other door law in this file carries a census because a call
+  site that never asks it type-checks perfectly. Here it does not: `PanelId` is a
+  string union, so an integer at the call site is a COMPILE ERROR, and `movePanel`
+  is the only place a GESTURE writes placement order in either silo — checked,
+  not assumed; the only other order-writer is the load-time merge that appends
+  newly-shipped panels. The compiler is the census.
+- **Resolve-or-append, and it is the right ANSWER as well as the safe rung.** An
+  id no longer on that side — raced out by a peer window, or a visible-but-unplaced
+  tail kind that has no placement row at all — degrades to append, exactly
+  `resolveBlockIndex`'s read-degrades posture. It is also *correct*: the unplaced
+  tail renders after every placed kind, so appending lands the icon precisely
+  where dropping in front of that tail means.
+- **The "which buttons count" rule stays spelled ONCE.** Task 439 moved it into
+  the gesture's one geometry snapshot; the index survives only as indicator
+  geometry and never leaves the module, while `beforeId` is what crosses the
+  boundary. Hover and release read the same slot, so the line the user sees and
+  the slot the drop takes cannot disagree (tasks 258/321/332).
+
+CI: [strip-drop-identity.test.tsx](src/hooks/__tests__/strip-drop-identity.test.tsx)
+drives the REAL `useViewPrefs` engine (ephemeral — the same engine the Reader
+mounts) over the REAL shipped defaults and the REAL Reader whitelist, and SWEEPS
+every gap on both sides rather than pinning one. **No pre-440 fixture could see
+this**: every one drives the FULL placement list, where the projection and the
+model are the same list by construction. Each case ASSERTS its own divergence
+(the strip is shorter, and its first icon is not the model's first entry) so no
+leg can pass by the two lists being trivially equal, and the defect leg
+reimplements the RETIRED integer rule locally — measured, it is wrong at every
+gap below the first, for every icon. The gesture half is in
+[strip-button-drag-teardown.test.tsx](src/components/editor-layout/__tests__/strip-button-drag-teardown.test.tsx),
+where the hover≡release leg derives the offered id from the PAINTED bar rather
+than hard-coding it on both sides. Measured by neutering each half in turn: the
+pre-440 integer commit takes 3 gesture legs, an always-append resolution 5 model
+legs, and the non-regression sweep (no whitelist, both sides, every gap) is
+byte-identical to the retired path either way — which is the point.
+
+**Owed, not claimed:** the preview eyeball, which needs a real Library paper
+open — in the Reader, drag `outline` between `citations` and `bibliography` and
+confirm it lands there.
+
 ## A registry earns its name by being read
 
 > **A table that declares per-kind behaviour is an SSOT only if something READS it. A published export is alive only if something CALLS it — and a re-export is not a caller.**

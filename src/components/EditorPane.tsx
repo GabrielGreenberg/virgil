@@ -471,7 +471,9 @@ export interface EditorPaneViewPrefs {
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
   togglePanel: (id: PanelId) => void;
-  movePanel: (id: PanelId, side: Side, index?: number) => void;
+  /** `before` names the panel the icon lands in front of; `null`/omitted
+   *  appends (task 440 — an identity, never a rendered-strip index). */
+  movePanel: (id: PanelId, side: Side, before?: PanelId | null) => void;
   closePopout: (id: PanelId) => void;
 
   setFloatPosition: (

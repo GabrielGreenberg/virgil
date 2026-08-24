@@ -41,8 +41,9 @@ export interface EditorLayoutState {
 export interface EditorLayoutActions {
   /** Toggle a panel open/closed on its current side. */
   togglePanel: (id: PanelId) => void;
-  /** Move a panel to a side (optionally at a specific index in the strip). */
-  movePanel: (id: PanelId, side: Side, index?: number) => void;
+  /** Move a panel to a side, landing it IN FRONT OF `before` (an identity, not
+   *  an index — task 440); `null`/omitted appends to that side. */
+  movePanel: (id: PanelId, side: Side, before?: PanelId | null) => void;
 }
 
 const EditorLayoutStateCtx = createContext<EditorLayoutState | null>(null);

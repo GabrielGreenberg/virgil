@@ -1240,12 +1240,43 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
-  const movePanel = useCallback((id: PanelId, toSide: Side, toIndex?: number) => {
+  /**
+   * Relocate a panel's strip icon — `before` names the panel it should land
+   * IN FRONT OF, `null`/omitted = append to the end of that side (task 440).
+   *
+   * ## An index computed from a PROJECTION is not an index into the MODEL
+   *
+   * This used to take a `toIndex` counted off the rendered strip, and the two
+   * spaces coincided only while nothing filtered the strip. `visiblePanels` is
+   * `filterPanelKinds(chrome, …)`, so the Library Reader — whose whitelist
+   * drops `search`, index 0 of the LEFT placements — rendered 5 icons over a
+   * 6-entry list and every DOM index k addressed model index k+1: every drop
+   * below the first gap landed one slot early. AGENTS.md → "Addressing the live
+   * document across an async gap" states the rule for the Outline (task 285):
+   * a surface that renders from a projection and writes on a later gesture
+   * names its target by durable IDENTITY, never by position. The strip is the
+   * same shape and never made the migration.
+   *
+   * Taking an id makes the two spaces UNREPRESENTABLE rather than merely
+   * reconciled, and it survives any future narrowing of the strip — a
+   * whitelist, a per-doc hide, a search filter — with no further thought: the
+   * gesture computes only WHICH RENDERED BUTTON the cursor is above, which is
+   * the one thing it can actually observe.
+   *
+   * Resolve-or-append: an id no longer on that side (raced out by a peer
+   * window, or a visible-but-unplaced tail kind that has no placement row at
+   * all) degrades to append — `resolveBlockIndex`'s read-degrades posture,
+   * which is also the right ANSWER here, since the unplaced tail renders after
+   * every placed kind.
+   */
+  const movePanel = useCallback((id: PanelId, toSide: Side, before?: PanelId | null) => {
     update((p) => {
       const filtered = p.placements.filter((pl) => pl.id !== id);
       const sameItems = filtered.filter((pl) => pl.side === toSide);
       const otherItems = filtered.filter((pl) => pl.side !== toSide);
-      const idx = toIndex !== undefined ? Math.min(toIndex, sameItems.length) : sameItems.length;
+      const at =
+        before == null ? -1 : sameItems.findIndex((pl) => pl.id === before);
+      const idx = at === -1 ? sameItems.length : at;
       sameItems.splice(idx, 0, { id, side: toSide });
       let next: ViewPrefs = { ...p, placements: [...otherItems, ...sameItems] };
       // If the panel is currently docked on the OTHER side, relocate its
