@@ -147,7 +147,6 @@ import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
-import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
@@ -3377,10 +3376,6 @@ export default function EditorLayout() {
 
 
   return (
-    <EditorLayoutProvider
-      state={{ prefs }}
-      actions={{ togglePanel, movePanel }}
-    >
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
     <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
     <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated, getRefDisplayText }}>
@@ -3899,6 +3894,5 @@ export default function EditorLayout() {
     </CitationDisplayProvider>
     </AiRequestsProvider>
     </EditorRefProvider>
-    </EditorLayoutProvider>
   );
 }

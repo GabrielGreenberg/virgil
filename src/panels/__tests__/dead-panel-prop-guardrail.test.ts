@@ -25,12 +25,53 @@
  *   • the wiring is vestigial → DELETE the declaration and its pass-throughs.
  * Adding it to the allowlist below is neither, and is only correct for a prop
  * genuinely consumed in a way this grep cannot see (a `{...rest}` spread).
+ *
+ * ---------------------------------------------------------------------------
+ * TASK 441 — the scope was one subdirectory, and the rule had a blind spot the
+ * silo it did not cover was sitting in.
+ *
+ * SCOPE. The censused root was `src/components/editor-layout/panels`, one
+ * subdirectory of a ~45-file silo that `context.tsx` described as the
+ * extraction target for the entire EditorLayout shell. So the silo that grew
+ * an `EditorLayoutProvider` wrapping the whole editor tree with ZERO readers —
+ * its docstring asserting that the extracted submodules read from it, which
+ * they never did — was outside the one census that would have asked. The root
+ * is now the SILO (`src/components/editor-layout`, which subsumes `/panels`),
+ * and its new share of the allowlist is EMPTY, pinned by its own leg.
+ *
+ * `void <prop>;` IS A CONFESSION, NOT AN ALIBI. `StripButton`'s `stripRef` was
+ * declared REQUIRED, destructured, discharged with `void stripRef;` under the
+ * comment "kept to preserve the calling contract after extraction", and its ONE
+ * caller satisfied it with
+ * `null as unknown as React.RefObject<HTMLDivElement | null>` — a required prop
+ * whose only call site must double-cast a `null` into it is not a preserved
+ * contract, it is a dead field with the type error suppressed on top.
+ *
+ * The member rule above could not see it, and the reason is worth stating
+ * because it is the rule's real boundary: that rule asks "does this member
+ * occur a SECOND time in its own file?", and a discharged prop occurs three
+ * times — declaration, destructuring binding, and the `void`. Measured on the
+ * pre-441 tree, widening the root alone flagged NOTHING new. So the discharge
+ * gets its OWN leg below, and it is the honest one to add: `void x;` exists for
+ * exactly one purpose — to stop the compiler complaining that a binding is
+ * never read — which is precisely the complaint this file is a grep for.
+ *
+ * Deliberately NOT widened, and the measurement is why. Making a BINDING not
+ * count as a read (blanking destructuring patterns) and censusing INLINE props
+ * object types alongside the named `*Props` shapes was tried and rejected: it
+ * flagged 39 members, EIGHTEEN of them in `src/panels`, a silo the leg below
+ * pins as drained. Several are `{...rest}` forwards and nested sub-shapes the
+ * grep cannot see, so the honest reading is a broad false-positive surface plus
+ * some real hits — an open-ended sweep, which is a task of its own and not this
+ * one. The discharge leg names the reported shape exactly and drains to EMPTY.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
-const ROOTS = ["src/panels", "src/components/editor-layout/panels"];
+/** The two silos this census covers. `src/components/editor-layout` subsumes
+ *  the former `/panels` entry — see the SCOPE note above. */
+const ROOTS = ["src/panels", "src/components/editor-layout"];
 
 /**
  * `file::Interface::prop` entries this census tolerates.
@@ -116,6 +157,97 @@ function deadPropsIn(file: string): string[] {
   return hits;
 }
 
+/**
+ * Every props SHAPE in a file, as `[name, body]` — both the named
+ * `interface XProps { … }` / `type XProps = { … }` form that `deadPropsIn`
+ * censuses, and the INLINE object type annotating a destructured parameter
+ * (`function C({ a, b }: { a: A; b: B })`), which that regex never saw and
+ * which is the form `StripButton` uses.
+ *
+ * Only the discharge leg reads the inline shapes. Running the MEMBER rule over
+ * them was measured and rejected — see the header's "Deliberately NOT widened".
+ */
+function propsShapes(src: string): Array<[string, string]> {
+  const shapes: Array<[string, string]> = [];
+  const DECL =
+    /(?:interface|type)\s+(\w*Props)\s*(?:<[^>]*>)?\s*(?:extends [^{]+)?=?\s*\{([\s\S]*?)\n\}/g;
+  for (const m of src.matchAll(DECL)) shapes.push([m[1], m[2]]);
+
+  // Inline: a `{` in PARAMETER position (right after `(` or `,`) whose matching
+  // `}` is followed by `:` — i.e. a destructured param with a type annotation.
+  // The `:` is what keeps ordinary object-literal ARGUMENTS out (`f(a, { x })`
+  // closes onto `)`), and the type literal's own `{` opens after `:`, never
+  // after `(`/`,`, so it is never mistaken for a pattern.
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] !== "{") continue;
+    if (!/[(,]\s*$/.test(src.slice(Math.max(0, i - 40), i))) continue;
+    let depth = 0;
+    let j = i;
+    for (; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}" && --depth === 0) break;
+    }
+    if (j >= src.length) continue;
+    let k = j + 1;
+    while (k < src.length && /\s/.test(src[k])) k++;
+    if (src[k] !== ":") continue;
+    k++;
+    while (k < src.length && /\s/.test(src[k])) k++;
+    i = j;
+    if (src[k] !== "{") continue; // a NAMED type — already covered by DECL
+    let d2 = 0;
+    let m2 = k;
+    for (; m2 < src.length; m2++) {
+      if (src[m2] === "{") d2++;
+      else if (src[m2] === "}" && --d2 === 0) break;
+    }
+    const fn = [...src.slice(0, i).matchAll(/(?:function|const)\s+([A-Za-z_$][\w$]*)/g)].pop();
+    shapes.push([`${fn ? fn[1] : "anonymous"}(inline)`, src.slice(k + 1, m2)]);
+  }
+  return shapes;
+}
+
+/** Members declared by any props shape in the file.
+ *
+ *  Separator-based rather than the member rule's `^ {2,}` indent test, because
+ *  an INLINE param type is routinely written on one line — where an indent test
+ *  matches nothing at all. It therefore also collects members of NESTED object
+ *  types, which for this leg is harmless over-collection: the set is only ever
+ *  intersected with the file's `void <name>;` statements. */
+function propMembers(src: string): Set<string> {
+  const out = new Set<string>();
+  for (const [, body] of propsShapes(src)) {
+    for (const pm of body.matchAll(/(?:^|[;{])\s*(?:readonly\s+)?([A-Za-z_$][\w$]*)\??\s*[:(]/gm)) {
+      out.add(pm[1]);
+    }
+  }
+  return out;
+}
+
+/** `file::name` for every `void <name>;` statement discharging a PROPS member.
+ *
+ *  Scoped to props members on purpose: `void x;` is a legitimate and common
+ *  idiom in this repo for the exhaustiveness proof AGENTS.md documents
+ *  (`const unhandled: never = v; void unhandled;`) and for a few deliberate
+ *  unread locals. Measured across `src/` and `library/`, 24 such statements
+ *  exist and 23 are one of those; the ONLY one discharging a declared prop was
+ *  `void stripRef;`. Outlawing the idiom wholesale would be a false claim about
+ *  what is wrong with it.
+ *
+ *  Stated limit: the binding set is per FILE, not per function, so a `void x;`
+ *  in one function where `x` names another component's prop in the same file
+ *  would flag. That is a suspicious shape anyway, and the failure direction is
+ *  a loud false report rather than a silent miss. */
+function dischargedPropsIn(file: string): string[] {
+  const src = stripComments(readFileSync(file, "utf8"));
+  const members = propMembers(src);
+  const hits: string[] = [];
+  for (const m of src.matchAll(/(?:^|[;{}])\s*void\s+([A-Za-z_$][\w$]*)\s*;/gm)) {
+    if (members.has(m[1])) hits.push(`${file}::${m[1]}`);
+  }
+  return hits;
+}
+
 describe("dead-prop guardrail — a declared prop nobody reads is a dead feature", () => {
   it("every censused panel/host prop is consumed in its own file", () => {
     const flagged = ROOTS.flatMap((r) => walk(r)).flatMap(deadPropsIn);
@@ -132,5 +264,57 @@ describe("dead-prop guardrail — a declared prop nobody reads is a dead feature
   it("src/panels is fully drained — its share of the allowlist is empty", () => {
     const inPanels = [...PERMITTED_DEAD_PROPS].filter((e) => e.startsWith("src/panels/"));
     expect(inPanels).toEqual([]);
+  });
+
+  /** Task 441's new scope. The panel HOSTS under it keep their pre-existing
+   *  pinned share (see the allowlist header — those are a per-prop judgement,
+   *  not a sweep); everything ELSE in the silo is drained and stays that way. */
+  it("the editor-layout silo OUTSIDE panels/ is drained — no allowlist share", () => {
+    const inSilo = [...PERMITTED_DEAD_PROPS].filter(
+      (e) =>
+        e.startsWith("src/components/editor-layout/") &&
+        !e.startsWith("src/components/editor-layout/panels/"),
+    );
+    expect(inSilo).toEqual([]);
+  });
+
+  /** THE DISCHARGE LEG (task 441). No allowlist: a prop that has to be voided
+   *  is a prop nobody reads, and the two honest fixes are the same two the
+   *  header names — WIRE it or DELETE it. */
+  it("no props member is discharged with `void` — a confession is not a read", () => {
+    const flagged = ROOTS.flatMap((r) => walk(r)).flatMap(dischargedPropsIn);
+    expect(flagged).toEqual([]);
+  });
+
+  /** CAN-SEE canary for the discharge leg, on a SYNTHETIC fixture rather than
+   *  one of the drained lines — a canary standing on the defect evaporates the
+   *  moment the defect is fixed, and the leg above then passes for no reason.
+   *  Spells BOTH shapes: the named `*Props` interface and the INLINE param type
+   *  that `StripButton` actually used, plus the exhaustiveness idiom that must
+   *  NOT flag. */
+  it("the discharge scanner sees both props shapes, and spares the never-proof", () => {
+    const fixture = [
+      "interface NamedProps {",
+      "  liveOne: string;",
+      "  dischargedOne: boolean;",
+      "}",
+      "export function Named({ liveOne, dischargedOne }: NamedProps) {",
+      "  void dischargedOne;",
+      "  return liveOne;",
+      "}",
+      "export function Inline({ shown, hiddenOne }: { shown: string; hiddenOne: number }) {",
+      "  void hiddenOne;",
+      "  const unhandled: never = shown as never;",
+      "  void unhandled;",
+      "  return shown;",
+      "}",
+    ].join("\n");
+    const src = stripComments(fixture);
+    const members = propMembers(src);
+    expect([...members].sort()).toEqual(["dischargedOne", "hiddenOne", "liveOne", "shown"]);
+    const flagged = [...src.matchAll(/(?:^|[;{}])\s*void\s+([A-Za-z_$][\w$]*)\s*;/gm)]
+      .map((m) => m[1])
+      .filter((n) => members.has(n));
+    expect(flagged.sort()).toEqual(["dischargedOne", "hiddenOne"]);
   });
 });

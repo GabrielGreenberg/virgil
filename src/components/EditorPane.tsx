@@ -7433,7 +7433,6 @@ function IconStrip({
           onClick={() => handleStripClick(p, side)}
           onMove={handleMove}
           side={side}
-          stripRef={null as unknown as React.RefObject<HTMLDivElement | null>}
         />
       ))}
       <div className="mt-auto">
