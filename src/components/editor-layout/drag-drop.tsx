@@ -29,14 +29,16 @@ export function useStripHandlers(deps: {
    *  room, gated by the measured omni gap). */
   openPanelDocked: (id: PanelId, side?: Side, freeSpacePx?: number) => void;
   closePopout: (id: PanelId) => void;
-  movePanel: (id: PanelId, side: Side, index?: number) => void;
+  /** `before` names the panel the icon should land IN FRONT OF (an identity,
+   *  never an index — task 440); `null`/omitted appends to that side. */
+  movePanel: (id: PanelId, side: Side, before?: PanelId | null) => void;
   selections: SelectionsContextValue;
 }) {
   const { prefs, openPanelDocked, closePopout, movePanel, selections } = deps;
 
   const handleMove = useCallback(
-    (draggedId: PanelId, toSide: Side, toIndex?: number) => {
-      movePanel(draggedId, toSide, toIndex);
+    (draggedId: PanelId, toSide: Side, before?: PanelId | null) => {
+      movePanel(draggedId, toSide, before);
     },
     [movePanel],
   );
@@ -111,9 +113,11 @@ export function useStripHandlers(deps: {
 
 /** One button's slot in a strip, as SNAPSHOT at the gesture edge. */
 interface StripSlot {
-  /** Which panel this slot renders. Carried rather than merely counted so a
-   *  drop can name what it lands beside — the seam an index-space fix needs. */
-  panelId: string;
+  /** Which panel this slot renders. The drop's CURRENCY: a drop names the
+   *  panel it lands in front of, never a count (task 440) — an index counted
+   *  off the RENDERED strip is not an index into the placements list, because
+   *  the strip is a filtered projection of it (`chrome.visiblePanelKinds`). */
+  panelId: PanelId;
   /** The indicator's rest edges (viewport px). */
   top: number;
   bottom: number;
@@ -126,9 +130,10 @@ interface StripSideGeometry {
   left: number;
   width: number;
   top: number;
-  /** In the order `movePanel` indexes — i.e. with the dragged icon already
-   *  filtered out on its OWN side, because `movePanel` removes the item before
-   *  it splices. */
+  /** The strip's RENDERED buttons, top→bottom, with the dragged icon already
+   *  filtered out on its OWN side (it is about to be lifted out of the list,
+   *  so it is not a landing target for itself). This is a projection of the
+   *  placements list, never a parallel index space into it — see `StripSlot`. */
   slots: StripSlot[];
 }
 
@@ -167,10 +172,12 @@ function readStripSideGeometry(
   const rect = strip.getBoundingClientRect();
   const slots: StripSlot[] = [];
   for (const el of strip.querySelectorAll<HTMLElement>("[data-panel-id]")) {
-    const id = el.dataset.panelId ?? "";
-    // On the dragged icon's own side, skip it so the index the user is SHOWN
-    // is counted over the same list `movePanel` splices into. Crossing sides,
-    // the dragged button isn't in the target strip at all.
+    const id = (el.dataset.panelId ?? "") as PanelId;
+    // On the dragged icon's own side, skip it: the drop cannot land in front
+    // of the thing being dragged. Crossing sides, the dragged button isn't in
+    // the target strip at all. THE one place this rule is spelled — both the
+    // hover indicator and the release read it through `resolveStripDrop`, so
+    // the line the user sees and the slot the drop takes cannot disagree.
     if (isSameSide && id === draggedId) continue;
     const r = el.getBoundingClientRect();
     slots.push({
@@ -194,20 +201,34 @@ function readStripDragGeometry(
   };
 }
 
+/** A resolved drop: the side, the panel it lands IN FRONT OF (`null` =
+ *  append), and the slot index the INDICATOR paints at. `beforeId` is what
+ *  crosses the gesture boundary; `index` never leaves this module. */
+interface StripDrop {
+  side: Side;
+  /** Indicator geometry only — an offset into `sideGeom.slots`, which is a
+   *  RENDERED projection and therefore not an index `movePanel` may splice at. */
+  index: number;
+  beforeId: PanelId | null;
+  sideGeom: StripSideGeometry | null;
+}
+
 /** Pure arithmetic over the snapshot — the ONE resolution both the hover
  *  indicator and the release commit read. */
 function resolveStripDrop(
   geom: StripDragGeometry,
   clientX: number,
   clientY: number,
-): { side: Side; index: number; sideGeom: StripSideGeometry | null } {
+): StripDrop {
   const side: Side = clientX < geom.centerX ? "left" : "right";
   const sideGeom = geom[side];
-  if (!sideGeom) return { side, index: 0, sideGeom: null };
+  if (!sideGeom) return { side, index: 0, beforeId: null, sideGeom: null };
   for (let i = 0; i < sideGeom.slots.length; i++) {
-    if (clientY < sideGeom.slots[i].mid) return { side, index: i, sideGeom };
+    if (clientY < sideGeom.slots[i].mid) {
+      return { side, index: i, beforeId: sideGeom.slots[i].panelId, sideGeom };
+    }
   }
-  return { side, index: sideGeom.slots.length, sideGeom };
+  return { side, index: sideGeom.slots.length, beforeId: null, sideGeom };
 }
 
 /** Where the indicator bar rests for a resolved drop. */
@@ -229,7 +250,7 @@ export function StripButton({
   panelId: PanelId;
   active: boolean;
   onClick: () => void;
-  onMove: (draggedId: PanelId, toSide: Side, toIndex?: number) => void;
+  onMove: (draggedId: PanelId, toSide: Side, before?: PanelId | null) => void;
   side: Side;
   stripRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -466,7 +487,12 @@ export function StripButton({
       if (!armed) return;
 
       if (wasDragging && drop) {
-        onMove(panelId, drop.side, drop.sideGeom ? drop.index : undefined);
+        // Commit an IDENTITY, not a count (task 440). `beforeId` is read off
+        // the SAME snapshot slot the indicator painted above, so the hover's
+        // target and the release's target are the same reference by
+        // construction — and `movePanel` resolves it against the LIVE
+        // placements, which the rendered strip is only a filtered view of.
+        onMove(panelId, drop.side, drop.beforeId);
         // The drag consumed this press — mark it handled so the browser's
         // trailing click doesn't ALSO toggle the panel (backlog #7). Safe
         // because pointerdown re-arms the guard on the next press.

@@ -27,6 +27,14 @@
 //   - what the hover OFFERS is what the release ACCEPTS, because both read the
 //     same snapshot.
 //
+// Task 440 renegotiates the two legs that pinned an INDEX. The commit's payload
+// is now the IDENTITY of the panel the icon lands in front of (`null` =
+// append), because the strip is a filtered PROJECTION of `prefs.placements` and
+// an index counted off it is not an index into the model — see
+// `src/hooks/__tests__/strip-drop-identity.test.tsx` for the model half. Those
+// two legs asserted the defect as the contract, so their EXPECTATIONS move and
+// their gestures do not.
+//
 // **jsdom defaults `PointerEvent.buttons` to 0**, which the missed-release bail
 // reads as "the release already happened" — so EVERY live pointer event below
 // passes `{ button: 0, buttons: 1 }` explicitly. That is not boilerplate: it is
@@ -297,8 +305,9 @@ describe("StripButton pointer invariants (task 439)", () => {
     fireEvent.pointerUp(btn, held(10, 130));
 
     // slots (the dragged `notes` filtered out) = [todos mid 120, outline mid 160]
-    // → y=130 lands in the gap BEFORE `outline`, i.e. index 1.
-    expect(onMove).toHaveBeenCalledWith("notes", "left", 1);
+    // → y=130 lands in the gap BEFORE `outline`. Renegotiated for task 440: the
+    // commit names that panel rather than counting to it.
+    expect(onMove).toHaveBeenCalledWith("notes", "left", "outline");
     expect(onClick).not.toHaveBeenCalled();
     restore.mockRestore();
   });
@@ -312,15 +321,41 @@ describe("StripButton pointer invariants (task 439)", () => {
     flushFrames();
 
     const ind = document.getElementById("virgil-drop-indicator")!;
-    // Index 0 → the bar rests 2px above `todos` (top 100), and the bar moves by
-    // TRANSFORM: the pre-439 element eased its `top`, a main-thread layout
-    // animation restarted on most frames of the drag.
+    // The bar rests 2px above `todos` (top 100), and it moves by TRANSFORM: the
+    // pre-439 element eased its `top`, a main-thread layout animation restarted
+    // on most frames of the drag.
     // x = strip.left + 4 (the bar is inset inside the strip), y = todos.top - 2.
     expect(ind.style.transform).toBe("translate3d(4px, 98px, 0)");
     expect(ind.style.top).toBe("0px");
 
     fireEvent.pointerUp(btn, held(10, 110));
-    expect(onMove).toHaveBeenCalledWith("notes", "left", 0);
+    // The SAME reference, not the same integer (task 440): the panel whose top
+    // edge the bar is drawn against is the panel the commit names. Derived from
+    // the painted bar rather than hard-coded, so the two cannot re-fork — a
+    // literal on both sides is two tables agreeing by transcription.
+    const barY = Number(/translate3d\(\d+px, (\d+)px/.exec(ind.style.transform)![1]);
+    const offeredId = Object.keys(RECTS).find((id) => RECTS[id].top - 2 === barY)!;
+    expect(offeredId).toBe("todos");
+    expect(onMove).toHaveBeenCalledWith("notes", "left", offeredId);
+    restore.mockRestore();
+  });
+
+  it("a drop past the last icon appends (names no panel)", () => {
+    const restore = stubRects();
+    const { btn, onMove } = renderButton();
+
+    fireEvent.pointerDown(btn, held(10, 60));
+    fireEvent.pointerMove(btn, held(10, 300)); // below every slot's midpoint
+    flushFrames();
+
+    // The bar rests 2px BELOW the last icon — the "append" affordance.
+    const ind = document.getElementById("virgil-drop-indicator")!;
+    expect(ind.style.transform).toBe(`translate3d(4px, ${RECTS.outline.bottom + 2}px, 0)`);
+
+    fireEvent.pointerUp(btn, held(10, 300));
+    // `null`, never `slots.length` — an integer here would be an index into a
+    // list this strip is only a filtered view of.
+    expect(onMove).toHaveBeenCalledWith("notes", "left", null);
     restore.mockRestore();
   });
 });
