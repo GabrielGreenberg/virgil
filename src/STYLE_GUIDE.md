@@ -1480,6 +1480,30 @@ while its tooltip said "Collapse toolbar". Both allowlists are EMPTY: `data-hint
 is not a name, and there is no true statement of the form "this control is
 icon-only and should announce nothing."
 
+**The TEXT-BEARING half of the rule is CI-enforced too** (task 424, leg D of the
+same file): a `<button>` showing a literal word must carry no `aria-label` at
+all — the allowlist is EMPTY for the same reason. The census had been scoped to
+the shape of the last defect, and four sites accumulated behind it: two
+disclosure toggles restating their own "Original text", and a library "Pop out"
+button announcing "Open this paper in a new tab", which a voice-control user
+saying "click pop out" never reaches (WCAG 2.5.3 *Label in Name*). A control that
+genuinely must announce more than it shows takes `aria-labelledby` (pointing at
+its own visible text plus the extra) or a visually-hidden span — both keep the
+visible text IN the name. Leg D asks a LOWER-BOUND question (a literal word, with
+`aria-hidden` and `<svg>` subtrees skipped and every computed expression
+ignored), so it fails toward silence like its siblings; the shapes it cannot see
+— a computed label, and a toggle NAMED for the mode's inverse — are pinned by
+render in
+[accessible-name-agrees-with-visible-control.test.tsx](components/__tests__/accessible-name-agrees-with-visible-control.test.tsx).
+
+**Naming a toggle.** A control with `aria-pressed` announces its state through
+that attribute, so its NAME is a single stable phrase for the MODE, never a
+state-flipped verb — "Blank this gutter, toggle button, pressed", not "Show omni
+cards, pressed", which reads as a control that is already showing. And the name
+is for what pressing it DOES, never for the surface it suppresses. The TOOLTIP
+has no state channel of its own, so it *is* state-dependent — pass it through
+`iconHint`'s `hint` beside the stable `label`, from the one call site.
+
 ### Keyboard shortcuts — `<Kbd>`
 
 `<Kbd keys="Mod+Shift+N" />` renders a platform-aware keycap (`Mod` → ⌘ on Mac,

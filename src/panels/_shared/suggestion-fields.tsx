@@ -583,7 +583,6 @@ export function AppliedRecordBody({
       <button
         type="button"
         aria-expanded={showOriginal}
-        aria-label={showOriginal ? "Hide original text" : "Show original text"}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -693,7 +692,6 @@ export function PendingAiRecordBody({
       <button
         type="button"
         aria-expanded={showOriginal}
-        aria-label={showOriginal ? "Hide original text" : "Show original text"}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

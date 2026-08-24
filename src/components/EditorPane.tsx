@@ -278,7 +278,7 @@ import {
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
-import { IconBlank } from "./editor-layout/panel-icons";
+import { OmniBlankToggle } from "./editor-layout/omni-blank-toggle";
 import {
   OmniFilterMenu,
   type OmniBulkPendingChanges,
@@ -7414,14 +7414,10 @@ function IconStrip({
             <line x1={isLeft ? 9 : 15} y1="4" x2={isLeft ? 9 : 15} y2="20" />
           </svg>
         </button>
-        <button
-          onClick={() => viewPrefs.toggleOmniHideAllCards(side)}
-          className="iconbtn-md iconbtn-toggle"
-          aria-pressed={viewPrefs.getOmniHideAll(side)}
-          {...iconHint({ label: "Omni view" })}
-        >
-          <IconBlank active={viewPrefs.getOmniHideAll(side)} />
-        </button>
+        <OmniBlankToggle
+          hidden={viewPrefs.getOmniHideAll(side)}
+          onToggle={() => viewPrefs.toggleOmniHideAllCards(side)}
+        />
       </div>
       {stripItems.map((p) => (
         <StripButton

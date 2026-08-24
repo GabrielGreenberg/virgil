@@ -149,7 +149,10 @@ describe("pending AI suggestion — minimal Insert-below body (retires the 4-fie
     expect(screen.getByText("Tightened the clause for concision.")).toBeTruthy();
     // Original hidden until disclosed.
     expect(screen.queryByTestId("borrowed")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show original text" }));
+    // The disclosure is named by its own VISIBLE text now (task 424): an
+    // `aria-label` on a text-bearing control REPLACES that text in the
+    // name computation, which is the defect this query used to depend on.
+    fireEvent.click(screen.getByRole("button", { name: "Original text" }));
     expect(screen.getByTestId("borrowed")).toBeTruthy();
   });
 
