@@ -38,10 +38,12 @@ from _tools import (
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
+    is_terminal_bib_state,
     lock_catalog,
     paper_has_holdings,
     read_catalog,
     read_master_bib,
+    resolve_bib_state,
     update_master_bib_entry,
     write_catalog,
     write_paper_bib_entry,
@@ -105,11 +107,15 @@ def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None
         pass
 
 
-def _bib_state_for_citekey(catalog: dict, citekey: str) -> str:
-    for e in catalog.get("entries", []):
-        if citekey_matches(e.get("citekey", ""), citekey):
-            return ((e.get("bib") or {}).get("state")) or "none"
-    return "none"
+def _bib_state_for_citekey(library: Path, citekey: str, catalog: dict) -> str:
+    """The F#4 read, through the one door: master.bib's `% bib.state` comment
+    is the HOME, the catalog row the pre-F#4 fallback.
+
+    Reading the catalog alone (the pre-442 shape) answered "none" for every
+    fileless reference, so the authenticated-winner guard below could not fire
+    and a `.bib` drop silently overwrote the user's authenticated fields and
+    downgraded the state."""
+    return resolve_bib_state(library, citekey, catalog=catalog)
 
 
 def _merge_bib_fields(
@@ -343,7 +349,7 @@ def apply_bib_row(
     proposed_state = (row.get("proposedBibState") or "unverified").strip().lower()
 
     catalog = read_catalog(library)
-    existing_state = _bib_state_for_citekey(catalog, citekey)
+    existing_state = _bib_state_for_citekey(library, citekey, catalog)
 
     # ── Work-identity intake guard (before minting a bib-only row). ────
     # Only meaningful when the incoming citekey is genuinely new — an existing
@@ -374,11 +380,13 @@ def apply_bib_row(
             # relation == "uncertain": mint the row, but flag it for review.
             row.setdefault("_possibleDuplicateOf", match.citekey)
 
-    # ── Authenticated / manuscript winners stay put. ──────────────────
-    if existing_state in ("authenticated", "manuscript"):
+    # ── A SETTLED entry stays put. ────────────────────────────────────
+    # The set is `TERMINAL_BIB_STATES`, not a hand pair: `canonical` is
+    # terminal too, and naming only authenticated/manuscript here let a drop
+    # replace a canonical entry's fields wholesale and stamp it `unverified`.
+    if is_terminal_bib_state(existing_state):
         append_inbox_item(library, {
-            "kind": "triage-bib-ignored-authenticated" if existing_state == "authenticated"
-                    else "triage-bib-ignored-manuscript",
+            "kind": f"triage-bib-ignored-{existing_state}",
             "filename": filename,
             "citekey": citekey,
             "existingState": existing_state,
@@ -392,22 +400,25 @@ def apply_bib_row(
     # ── Otherwise merge (incoming wins on conflict; existing fills the rest). ──
     field_changes: list[dict[str, str]] = []
     merged_fields = incoming_fields
-    if existing_state in ("unverified", "failed", "none"):
-        # Pull the existing entry from master.bib and merge.
-        try:
-            from _bib_parse import read_master_bib
-            existing_master = read_master_bib(library / "master.bib")
-        except Exception:
-            existing_master = {}
-        existing_entry = existing_master.get(citekey)
-        if existing_entry:
-            merged_fields, field_changes = _merge_bib_fields(
-                existing_entry["fields"], incoming_fields,
-            )
-            # Keep the more specific entry type if existing is more specific
-            # (e.g., existing says "incollection" but incoming says "misc").
-            if entry_type == "misc" and existing_entry.get("type"):
-                entry_type = existing_entry["type"]
+    # Unconditional: every state that reaches here is non-terminal, so the
+    # existing fields are always merged in rather than replaced. Gating this on
+    # a hand list of states (the pre-442 `unverified/failed/none`) dropped the
+    # existing fields wholesale for any state the list forgot — `needs-reauth`
+    # was one, and its whole meaning is "these fields are not yet trusted".
+    try:
+        from _bib_parse import read_master_bib
+        existing_master = read_master_bib(library / "master.bib")
+    except Exception:
+        existing_master = {}
+    existing_entry = existing_master.get(citekey)
+    if existing_entry:
+        merged_fields, field_changes = _merge_bib_fields(
+            existing_entry["fields"], incoming_fields,
+        )
+        # Keep the more specific entry type if existing is more specific
+        # (e.g., existing says "incollection" but incoming says "misc").
+        if entry_type == "misc" and existing_entry.get("type"):
+            entry_type = existing_entry["type"]
 
     final_state = "manuscript" if proposed_state == "manuscript" else "unverified"
     update_master_bib_entry(library, citekey, entry_type, merged_fields, bib_state=final_state)

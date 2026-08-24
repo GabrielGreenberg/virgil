@@ -300,9 +300,30 @@ CANONICAL_BIB_STATES: frozenset[str] = frozenset({
 })
 
 
+# The TERMINAL subset — states that mean "this entry is settled; do not
+# overwrite it from a lower-evidence source". Spelled ONCE, because the two
+# readers that gate on it (merge_paper_references' defer branch, triage_apply's
+# .bib-drop guard) had two hand lists that disagreed: the drop guard named only
+# `authenticated`/`manuscript`, so a `canonical` entry's fields were replaced
+# wholesale by a drop and its state stamped back down to `unverified`.
+#
+# `needs-reauth` is deliberately NOT terminal — it means "awaiting a
+# re-authentication pass", i.e. action needed.
+TERMINAL_BIB_STATES: frozenset[str] = frozenset({
+    "authenticated",
+    "manuscript",
+    "canonical",
+})
+
+
 def is_canonical_bib_state(state: str) -> bool:
     """True iff `state` is one of the canonical `% bib.state` values."""
     return state in CANONICAL_BIB_STATES
+
+
+def is_terminal_bib_state(state: str) -> bool:
+    """True iff `state` is settled (see `TERMINAL_BIB_STATES`)."""
+    return state in TERMINAL_BIB_STATES
 
 
 # ── small utilities ───────────────────────────────────────────────────
@@ -1199,7 +1220,7 @@ def _parse_bib_fields(body: str) -> dict[str, str]:
     return out
 
 
-def read_master_bib(path: Path) -> dict[str, dict]:
+def read_master_bib(path: Path, *, text: str | None = None) -> dict[str, dict]:
     """Lightweight bib parser. Returns {citekey: {type, fields, raw}}.
 
     Robust to malformed entries: entries are delimited by their line-anchored
@@ -1213,10 +1234,15 @@ def read_master_bib(path: Path) -> dict[str, dict]:
 
     No lock held — readers see whatever is on disk. Atomic writes
     (`_atomic_write_text`) ensure readers never see a partially-written file.
+
+    `text` lets a caller that has ALREADY read master.bib pass the bytes in,
+    so a caller needing both the entries and their `% bib.state` comments
+    (`master_bib_state_map`) pays ONE read of a ~10 MB file instead of two.
     """
-    if not path.exists():
-        return {}
-    text = path.read_text()
+    if text is None:
+        if not path.exists():
+            return {}
+        text = path.read_text()
     entries: dict[str, dict] = {}
     starts = list(_BIB_ENTRY_START_RE.finditer(text))
     consumed_until = 0  # end offset of the last brace-balanced entry
@@ -1471,6 +1497,87 @@ def paper_has_holdings(library: Path, citekey: str) -> bool:
     the answer is a boolean, so the priority ORDER cannot change it.
     """
     return resolve_paper_source(library, citekey) is not None
+
+
+# ── F#4 READ side: one door, master-first ─────────────────────────────
+#
+# The mirror of `ensure_bib_state_comment` below. F#4 moved a FILELESS
+# reference's auth state out of catalog.json and into master.bib's
+# `% bib.state` comment; the writers and the TypeScript reader migrated and
+# the Python readers did not, so for 85% of the corpus every Python caller
+# asking the catalog got "none" (task 442). Every reader now enters here.
+
+
+def master_bib_state_map(text: str) -> dict[str, str]:
+    """`{NFC citekey: state}` for every `% bib.state` comment in master.bib.
+
+    ONE regex sweep — build it once per master read and thread it into a hot
+    loop via `resolve_bib_state(..., master_states=...)`. `master.bib` is
+    ~10 MB / 24 k entries in the reporting library, so a per-citekey re-read
+    would be the read fix's own regression.
+    """
+    return {
+        normalize_citekey(ck): state
+        for ck, state in iter_master_bib_states(text)
+    }
+
+
+def resolve_bib_state(
+    library: Path,
+    citekey: str,
+    *,
+    master_states: "dict[str, str] | None" = None,
+    master_text: str | None = None,
+    catalog: dict | None = None,
+) -> str:
+    """What is this citekey's bibliography auth state?
+
+    THE F#4 read. Resolution order is load-bearing and is the OPPOSITE of the
+    pre-442 code:
+
+      1. master.bib's `% bib.state = <state>` comment — the HOME. Every
+         current writer stamps it (`update_master_bib_entry`,
+         `ensure_bib_state_comment`), `build_bib_index` projects it into the
+         frontend's `bs` field, and it is the only copy a fileless
+         reference-only entry has.
+      2. A catalog row's `bib.state` — the pre-F#4 FALLBACK. A library that
+         has not run `prune_catalog_present_false` still carries holdings
+         rows whose state may be the only copy, so the catalog stays a
+         fallback rather than being dropped. It loses a disagreement.
+      3. `"none"` when neither speaks.
+
+    Costs: pass `master_states` (a `master_bib_state_map`) inside a loop;
+    otherwise `master_text` for one already-read file; otherwise the master
+    is read from disk. `catalog` is likewise reused when supplied.
+    """
+    key = normalize_citekey(citekey)
+
+    if master_states is None:
+        if master_text is None:
+            master_path = library / "master.bib"
+            master_text = master_path.read_text() if master_path.exists() else ""
+        master_states = master_bib_state_map(master_text)
+    state = master_states.get(key)
+    if state:
+        return state
+
+    if catalog is None:
+        catalog = read_catalog(library)
+    for e in catalog.get("entries", []):
+        if citekey_matches(e.get("citekey", ""), citekey):
+            return catalog_row_bib_state(e) or "none"
+    return "none"
+
+
+def catalog_row_bib_state(row: dict) -> str:
+    """The pre-F#4 FALLBACK read, spelled once: a catalog row's `bib.state`.
+
+    Public only so a caller that already HAS the row (rather than a citekey to
+    look up) can take the fallback arm without re-implementing it — which is
+    what the census exists to prevent. Never the whole answer on its own: ask
+    `resolve_bib_state` unless the master half is already in hand.
+    """
+    return ((row.get("bib") or {}).get("state")) or ""
 
 
 def ensure_bib_state_comment(

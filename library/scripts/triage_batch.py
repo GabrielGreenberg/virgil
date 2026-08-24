@@ -821,16 +821,38 @@ def triage_bib(path: Path, library: Path, catalog: dict) -> list[dict[str, Any]]
         }]
 
     # Build a fast lookup of existing citekeys for collision flags.
-    existing_keys: set[str] = set()
-    for e in catalog.get("entries", []):
-        ck = e.get("citekey")
-        if ck:
-            existing_keys.add(ck)
+    #
+    # The key set is catalog rows UNION master.bib entries, and the state comes
+    # from the F#4 door (`% bib.state` first, catalog row as fallback). Asking
+    # the catalog alone — the pre-442 shape — left every FILELESS reference
+    # unflagged: the reviewer saw a brand-new entry where the library already
+    # held an authenticated one, and the apply step then overwrote it.
+    from _tools import (
+        catalog_row_bib_state,
+        master_bib_state_map,
+        normalize_citekey,
+        read_master_bib,
+    )
+
+    master_path = library / "master.bib"
+    master_text = master_path.read_text() if master_path.exists() else ""
+    master_states = master_bib_state_map(master_text)
+    master_keys = set(read_master_bib(master_path, text=master_text))
+
+    existing_keys: set[str] = set(master_keys)
     existing_states: dict[str, str] = {}
     for e in catalog.get("entries", []):
         ck = e.get("citekey")
         if ck:
-            existing_states[ck] = (e.get("bib") or {}).get("state", "")
+            existing_keys.add(ck)
+            state = catalog_row_bib_state(e)
+            if state:
+                existing_states[ck] = state
+    # master wins a disagreement (the F#4 read order).
+    for ck in existing_keys:
+        state = master_states.get(normalize_citekey(ck))
+        if state:
+            existing_states[ck] = state
 
     rows: list[dict[str, Any]] = []
     for entry in parsed:

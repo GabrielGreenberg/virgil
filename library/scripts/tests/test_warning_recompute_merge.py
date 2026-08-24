@@ -498,11 +498,18 @@ def test_triage_apply_master_membership_is_nfc_insensitive(tmp_path):
 
 
 def test_triage_apply_bib_state_reads_an_nfd_row(tmp_path):
+    # RENEGOTIATED in place (task 442): `_bib_state_for_citekey` now takes the
+    # library and routes through `_tools.resolve_bib_state` — master.bib's
+    # `% bib.state` comment is the auth-state HOME and the catalog row is the
+    # pre-F#4 fallback. What this leg pins is unchanged: the FALLBACK arm is
+    # still NFD-tolerant. (The master arm's own tolerance is pinned by
+    # `test_door_is_normalization_tolerant` in test_bib_state_read_door.py.)
     import triage_apply  # noqa: PLC0415
     nfd = unicodedata.normalize("NFD", "tichý1988")
     nfc = unicodedata.normalize("NFC", "tichý1988")
     catalog = {"entries": [{"citekey": nfd, "bib": {"state": "authenticated"}}]}
-    check(triage_apply._bib_state_for_citekey(catalog, nfc) == "authenticated",
+    (tmp_path / "master.bib").write_text("")
+    check(triage_apply._bib_state_for_citekey(tmp_path, nfc, catalog) == "authenticated",
           "NFD row not matched by the bib-state reader")
 
 
