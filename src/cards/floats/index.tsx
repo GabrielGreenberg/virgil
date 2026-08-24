@@ -327,16 +327,34 @@ function unanchoredFootnoteFloatable(id: string, ctx: CardFloatCtx): Floatable |
 registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   const snippet = ctx.archiveSnippets.find((s) => s.id === id);
   if (!snippet) return null;
-  const orphaned = ctx.anchoredIds && !ctx.anchoredIds.has(snippet.id);
+  // Task 435: the float is the THIRD renderer of this clip's anchor question,
+  // and it reads the SAME resolution the docked card and the margin marker
+  // read — `ctx.anchoredIds`, a fold over the task-369 anchor authority
+  // (`anchorPass.resolve(s).anchored`, EditorPane). It never restates it.
+  //
+  // So `orphaned === true` means the four-rung ladder (live uuid → surviving
+  // `linkedAnchor` mark → RC1 self-heal → text-snapshot relocation) found
+  // NOTHING, which strictly implies `resolveLink` finds nothing, which means
+  // `jumpToCard` iterates the links, resolves none, and returns `false` having
+  // done nothing. A chevron above a body already rendering the orphan state was
+  // a control that could not work — the shape task 136 fixed for `citation` and
+  // task 277 for `footnote`, on the one kind whose other three renderers all
+  // gate correctly.
+  //
+  // Gate BOTH the affordance and the handler (136's own rule) so a keyboard or
+  // programmatic path can't reach the dead call.
+  const anchored = ctx.anchoredIds.has(snippet.id);
   return cardFloatable("archive", id, {
-    canJump: true,
-    jumpToSource: () => ctx.editorRef.current?.jumpToCard(snippet, null),
+    canJump: anchored,
+    jumpToSource: anchored
+      ? () => ctx.editorRef.current?.jumpToCard(snippet, null)
+      : () => {},
     snapshotForStack: (source) => snapshotCard("archive", snippet, source),
     renderBody: () => (
       <ArchiveCard
         snippet={snippet}
         selected={ctx.selectedArchiveId === snippet.id}
-        orphaned={orphaned}
+        orphaned={!anchored}
         onSelect={ctx.setSelectedArchiveId}
         onEdit={ctx.updateArchiveSnippet}
         onUpdateTitle={ctx.updateArchiveSnippetTitle}

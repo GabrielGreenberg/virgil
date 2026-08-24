@@ -45,6 +45,7 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
+import { useReportFloatSourceMissing } from "@/floats/float-source-report";
 import { trackSourceRange, type SourceRange } from "@/lib/float-source-range";
 
 export type { SourceRange };
@@ -101,6 +102,14 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
  * doc. Edits in the float won't propagate; closing the float drops it
  * cleanly. Lives across all three float types so the chrome stays
  * uniform.
+ *
+ * It is ALSO the report (task 435): mounted iff the user is being told the
+ * source is gone, it declares that fact up to the enclosing `FloatWindow`,
+ * which withdraws the jump chevron for as long as the banner stands. Binding
+ * the two to one mount is what makes the header and the body agree
+ * structurally rather than by two call sites staying in step — see
+ * `floats/float-source-report.tsx` for the whole argument. A banner rendered
+ * outside a float resolves no channel and the hook is inert.
  */
 export function SourceMissingBanner({
   kind,
@@ -109,6 +118,7 @@ export function SourceMissingBanner({
   kind: FloatSourceKind;
   onClose: () => void;
 }) {
+  useReportFloatSourceMissing();
   return (
     <div
       role="status"

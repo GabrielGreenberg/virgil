@@ -54,7 +54,14 @@ export interface PoppedCardDeps {
   reportCards: ReportItem[];
   aiRequests: AiRequest[];
   examples: ExampleInfo[];
-  anchoredIds?: Set<string>;
+  /** The ids of archive clips whose anchor the task-369 authority RESOLVES —
+   *  `anchoredArchiveIds` in `EditorPane`, a fold over `anchorPass.resolve()`.
+   *  The archive float derives BOTH its `orphaned` body state and its jump
+   *  affordance from it (task 435). Required, not optional, for the reason
+   *  `unanchoredFootnotes` above states: an optional field makes the derived
+   *  answer silently `undefined` for every host that forgets, which is exactly
+   *  how the float came to paint a live Jump over an orphaned clip. */
+  anchoredIds: Set<string>;
 
   // Selected-id slots
   selectedNoteId: string | null;

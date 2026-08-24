@@ -1,6 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import FloatingPanel, {
   type FloatingPanelHandle,
 } from "@/components/FloatingPanel";
@@ -14,6 +21,7 @@ import {
   collectClippedHeight,
 } from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
+import { FloatSourceReportProvider } from "./float-source-report";
 import { useLiftHost } from "@/text-objects/LiftHost";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { Floatable } from "./types";
@@ -52,6 +60,17 @@ export function FloatWindow({
   // Per-instance chrome title override (e.g. heading level → "Chapter").
   // Generalizes the text-object `setHeaderLabel`.
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
+  // Task 435: the body's report that its source has left the main document —
+  // the ONE fact the chrome's jump affordance and the body's own
+  // "Source … deleted" banner are two drawings of. Held here (not resolved in
+  // the builder) because a text-object float outlives its source and the
+  // source can die on a transaction that never re-renders `FloatHost`, so a
+  // builder-time answer would go stale. Written only by
+  // `SourceMissingBanner`'s mount/unmount, i.e. on the present↔missing EDGE —
+  // never per transaction and never per keystroke.
+  const [sourceMissing, setSourceMissing] = useState(false);
+  const report = useCallback((missing: boolean) => setSourceMissing(missing), []);
+  const sourceReport = useMemo(() => ({ report }), [report]);
   const panelHandleRef = useRef<FloatingPanelHandle>(null);
   // The body-side wrapper (`data-pristine-card-id`) — the measure root for
   // the collapsed-lift grow. In the bareWindow branch it's display:contents
@@ -189,7 +208,9 @@ export function FloatWindow({
           data-pristine-card-id={floatable.id}
           style={{ display: "contents" }}
         >
-          {body}
+          <FloatSourceReportProvider value={sourceReport}>
+            {body}
+          </FloatSourceReportProvider>
         </div>
       ) : (
         <div
@@ -202,7 +223,12 @@ export function FloatWindow({
             titleNode={floatable.chromeSlots?.title}
             trailing={floatable.chromeSlots?.trailing}
             headerTint={floatable.headerTint}
-            canJump={floatable.canJump}
+            // The affordance is DERIVED, never asserted beside a body about to
+            // contradict it (task 435): a float whose body is telling the user
+            // its source was deleted offers no jump to it. `floatable.canJump`
+            // remains the static half — what this KIND can ever offer — and the
+            // live half is the body's own report.
+            canJump={floatable.canJump && !sourceMissing}
             onJump={floatable.jumpToSource}
             // (Re)anchor drop button: gated on the Floatable's static
             // `canDrop` facet (cards derive it from `CARD_REGISTRY[*].droppable`
@@ -220,7 +246,9 @@ export function FloatWindow({
             onClose={() => ctx.close(key)}
           />
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            {body}
+            <FloatSourceReportProvider value={sourceReport}>
+              {body}
+            </FloatSourceReportProvider>
           </div>
         </div>
       )}
