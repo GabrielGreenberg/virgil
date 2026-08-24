@@ -183,7 +183,10 @@ describe("Applied revision-suggestion card — surface parity (omni/float condit
     // Collapsed by default: no rendered original (the stubbed BorrowedMainText).
     expect(screen.queryByTestId("borrowed")).toBeNull();
     // Click the Original-text disclosure to expand.
-    fireEvent.click(screen.getByRole("button", { name: "Show original text" }));
+    // The disclosure is named by its own VISIBLE text now (task 424): an
+    // `aria-label` on a text-bearing control REPLACES that text in the
+    // name computation, which is the defect this query used to depend on.
+    fireEvent.click(screen.getByRole("button", { name: "Original text" }));
     expect(screen.getByTestId("borrowed")).toBeTruthy();
   });
 

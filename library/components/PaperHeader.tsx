@@ -558,7 +558,6 @@ export default function PaperHeader({
                 type="button"
                 onClick={() => dispatchOpenLibrary({ citekey, target: "tab" })}
                 title="Open this paper in a new tab"
-                aria-label="Open this paper in a new tab"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",

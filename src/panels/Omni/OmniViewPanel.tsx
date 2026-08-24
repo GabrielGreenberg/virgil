@@ -395,20 +395,21 @@ export function OmniBinPill({
   tone,
   hintCollapsed,
   hintExpanded,
-  ariaCollapsed,
-  ariaExpanded,
   children,
   ...rest
 }: {
   count: number;
-  /** The pill's text, already carrying the count (e.g. "3 unanchored"). */
+  /** The pill's text, already carrying the count (e.g. "3 unanchored").
+   *  It is also the pill's ACCESSIBLE NAME — the button takes no
+   *  `aria-label` (task 424), because a label REPLACES the subtree in the
+   *  name computation and would drop the count, which is the pill's only
+   *  variable information. The collapse/expand state rides `aria-expanded`
+   *  and the explanation rides `data-hint`; neither belongs in the name. */
   label: string;
   glyph: ReactNode;
   tone: "neutral" | "error";
   hintCollapsed: string;
   hintExpanded: string;
-  ariaCollapsed: string;
-  ariaExpanded: string;
   /** The expanded list's rows. */
   children: ReactNode;
 } & Record<`data-${string}`, string>) {
@@ -422,7 +423,6 @@ export function OmniBinPill({
         className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium"
         data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
-        aria-label={expanded ? ariaExpanded : ariaCollapsed}
         aria-expanded={expanded}
       >
         <span aria-hidden="true">{glyph}</span>
@@ -483,8 +483,6 @@ export function OmniUnanchoredBin({
         glyph={<BadgeOrphaned theme={CARD_THEMES.error} />}
         hintCollapsed="Cards on this side whose anchor was deleted — click to show them; drag one onto a paragraph to re-pin it"
         hintExpanded="Collapse unanchored cards"
-        ariaCollapsed="Show unanchored cards"
-        ariaExpanded="Collapse unanchored cards"
       >
         {orphaned.map((item) => (
           <div key={item.id} className="flex items-start gap-2">
@@ -503,8 +501,6 @@ export function OmniUnanchoredBin({
         glyph={<span className="text-[11px] leading-none text-ink-muted">◌</span>}
         hintCollapsed="Cards parked without an anchor — click to show them; drag one into the editor to place it"
         hintExpanded="Collapse unplaced cards"
-        ariaCollapsed="Show unplaced cards"
-        ariaExpanded="Collapse unplaced cards"
       >
         {free.map((item) => (
           <div key={item.id}>{item.content}</div>
@@ -538,8 +534,6 @@ export function OmniOutsideFocusBin({
       glyph={<span className="text-[11px] leading-none">◎</span>}
       hintCollapsed="These cards are anchored outside your focus band. Switch off focus or extend the band to see them inline."
       hintExpanded="Collapse cards outside the focus band"
-      ariaCollapsed="Show cards outside focus"
-      ariaExpanded="Collapse cards outside focus"
     >
       {items.map((item) => (
         <div key={item.id}>{item.content}</div>
