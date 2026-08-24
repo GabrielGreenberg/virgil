@@ -789,6 +789,65 @@ Contract: [library/scripts/tests/test_bib_auth_cli.py](scripts/tests/test_bib_au
 run under `npx vitest` via
 [bib-auth-cli-python.test.ts](lib/__tests__/bib-auth-cli-python.test.ts).
 
+#### The break half: the command an agent runs is the one BASH reads
+
+Same law, one grammar down (task 445) — and the case where the guard built to
+read these commands used a continuation rule bash does not have.
+
+Eight multi-line commands across four shipped library skills ended their first
+line with a literal `\\` where a bash line continuation `\` belongs. Bash
+reads `\\` as an *escaped backslash*: it passes a literal `\` as an argument
+and the line **ENDS**. So every flag on the continuation line was dropped and
+that line ran as its own command. Seven failed loudly (`--resume-baseline:
+command not found`, exit 127; `unrecognized arguments: \`, exit 2) and their
+documented step simply did not happen. The eighth is the one that matters:
+`repair_pgmarks.py` hand-rolls its argv walk — the same property the flag guard
+above accommodates on purpose — so it swallowed the stray `\` in SILENCE and
+ran **without `--resume-baseline`**, computing its 50% pgmark-deletion
+safeguard against the already-reduced in-place count instead of the baseline.
+That is the exact loophole `deep-index.md`'s own §1 prose says the flag exists
+to close, and its cost is legitimate `\pgmark{N}` anchors deleted from a
+user's `main.tex` on a resume pass.
+
+> **A skill's fenced shell block is source code this repo ships, so the
+> question "where does this command end?" has ONE answer — bash's own: count
+> the trailing backslash run, an ODD run continues the line and an EVEN run
+> ends it. The rule is stated once in
+> [\_shell-fence.ts](lib/__tests__/_shell-fence.ts) and every reader takes it.**
+
+Four rules it earned:
+
+- **The fork is what hid it, and closing the fork is the fix.** The CLI
+  guardrail folded continuations with `line.trimEnd().endsWith("\\")` — true of
+  a line ending in one backslash and equally true of two — so it stitched the
+  eight broken pairs back together and read eight healthy invocations. A guard
+  whose reader disagrees with the runtime it is guarding is worse than no
+  guard: it reports green *about the defect*. Both readers now import
+  `continuesLine`, and the census pins the disagreement on an even-run line —
+  `continuesLine` false where the retired `endsWith` is true — so the loose
+  form cannot be quietly re-derived.
+- **Count on the RAW line.** A backslash followed by a space escapes the
+  SPACE, not the newline, so trailing whitespace after a would-be continuation
+  ends the line too — invisibly, in a file where nothing renders it. Zero sites
+  today, which is exactly why the rule was free to take.
+- **The language filter is opt-IN.** A `latex` fence's `\\` is a line break and
+  a legitimate one; an untagged fence is not asserted to be shell. A
+  language-blind census would indict the doctrine includes it exists to
+  protect, so `SHELL_LANGS` is a five-member set and the sentinel leg proves a
+  `latex` fence is present for it to be declining.
+- **The sites were never the part that could misbehave** — an authoring habit
+  that reproduces is. Every *other* multi-line command in the family spells a
+  correct single `\`, which is what makes this a drift rather than a
+  convention.
+
+CI: [skill-shell-fence-guardrail.test.ts](lib/__tests__/skill-shell-fence-guardrail.test.ts)
+walks every fence in both silos' `skills/*.md` and reports four shapes — an
+escaped continuation, whitespace after one, a continuation on a fence's LAST
+line (the command runs past the closing marker), and an unclosed fence, which
+swallows the rest of the document for this reader and for the agent alike.
+Both allowlists are EMPTY. Measured by neutering the fix: the census names all
+eight pre-445 sites by `file:line`.
+
 ## One-off-script promotion rule
 
 Any one-off Python script written under `/tmp/<paper>/` or inline
