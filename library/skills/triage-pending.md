@@ -145,17 +145,24 @@ directory).
      prompt the user)
    - **variant-copy** + `existingCitekey` → archives under
      `papers/<existingCitekey>/variants/<filename>`, no new bib entry
-   - **bib-only** → upserts the entry into `master.bib` (merging field-by-field
-     when an existing unverified/failed/none row already has the same
-     citekey; ignoring entirely when the existing state is `authenticated`
-     or `manuscript`), creates a minimal `papers/<citekey>/`
+   - **bib-only** → upserts the entry into `master.bib` with its
+     `% bib.state` comment (merging field-by-field over the existing entry
+     whenever that entry's state is non-terminal; ignoring the drop
+     entirely when it is settled — `TERMINAL_BIB_STATES`: `authenticated`,
+     `manuscript`, `canonical`), creates a minimal `papers/<citekey>/`
      (`references.bib` + empty `virgil/` sidecars; no source file, no
-     `main.tex`), inserts a bib-only catalog row (`pdf.present: false`,
-     `indexed.state: "none"`), and queues `kind: "authenticate"` (or
-     skips queueing when `proposedBibState == "manuscript"`). After all
-     rows from one `.bib` file have been applied, the source `.bib` is
-     deleted from `unsorted/` (or parked under `_pending/` if any rows
-     hit a parse error).
+     `main.tex`), mints **no catalog row** for a source-less citekey (that
+     entry is reference-only under the F#4 holdings model; an already-existing
+     row for it is refreshed rather than removed, and a citekey that IS held
+     on disk still gets its real holdings row — the `.bib` bullet in
+     `/library/triage-pdf` states the full outcome), and queues
+     `kind: "authenticate"` (skipped for `proposedBibState == "manuscript"`,
+     and skipped when `.virgil/queue/<citekey>.json` already exists for any
+     kind). After all rows from one `.bib` file have been applied, the source
+     `.bib` is deleted from `unsorted/` — but only when EVERY row came back
+     `bib-imported` or `bib-ignored`; any other status (a `bib-folded`
+     duplicate, a missing citekey, a parse error) parks the whole file under
+     `_pending/`.
    - **otherwise** → appends a stub to `master.bib`, moves the file to
      `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
    - emits a `triaged` / `triage-filename-mismatch` / `triage-bib-imported`

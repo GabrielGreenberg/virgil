@@ -6,7 +6,8 @@ description: |
   on: "triage <filename>", "process the file I just dropped", "name
   this paper", "Virgil, what should we call this PDF". Accepts PDF,
   DOCX, .tex, and .bib drops. For .bib files (multi-entry fan-out),
-  each entry becomes a bib-only catalog row. Light — safe to invoke
+  each entry becomes a bib-only paper folder plus a master.bib entry
+  queued for authentication. Light — safe to invoke
   from a paper session with --library, though the file needs to be in
   the library's unsorted/. Does NOT trigger for already-indexed papers
   (use /deep-index) or batch processing (use /triage-pending). Args:
@@ -75,7 +76,20 @@ Supported source kinds:
 - **`.pdf`** — full PDF/DOCX-style indexing (extraction → `main.tex` with `\pgmark{N}`).
 - **`.docx`** — same flow, structured extraction (no pgmark).
 - **`.tex`** — already LaTeX. Passthrough copy into `papers/<citekey>/main.tex`; queue index. Defaults to `@unpublished` unless a DOI is present.
-- **`.bib`** — multi-entry fan-out. Each entry becomes a **bib-only catalog row** (no source file, `pdf.present=false`, `indexed.state="none"`, `bib.state="unverified"`); the apply step queues `kind: "authenticate"` per entry. The source `.bib` is deleted from `unsorted/` after fan-out (or parked under `_pending/` on parse failure). The library viewer already handles bib-only entries natively (PDF view shows "No PDF on disk", text view stays dormant).
+- **`.bib`** — multi-entry fan-out. **This bullet is the one statement of what a `.bib` entry becomes; everything else in this family points here.** The ordinary outcome (`status: bib-imported`) is three things:
+  1. its block in `master.bib`, carrying `% bib.state = unverified` (`manuscript` when the row proposes it). That comment is the F#4 **home** for the auth state; `build_bib_index` projects it into `bib-index.json` — *at process exit*, so the file is stale for the whole apply run and is not a way to check your own work mid-run.
+  2. a **bib-only paper folder** — `papers/<citekey>/references.bib` + empty `virgil/` sidecars, no source file and no `main.tex`.
+  3. a queued `kind: "authenticate"` — skipped for an explicit `manuscript`, and also skipped when `.virgil/queue/<citekey>.json` already exists for ANY kind (an entry whose citekey is already queued for `index` never gets an authenticate request, and the summary line still says "authenticate already queued").
+
+  **The catalog row.** The write gate is the shared `_tools.admit_catalog_row`, and it asks about the PAPER FOLDER, not about the drop — `paper_has_holdings(papers/<citekey>/<citekey>.{tex,docx,pdf})`:
+  - **No source document on disk** (the normal `.bib` case — a *reference-only* entry, cited but not held): the gate answers **no**, and under F#4 **no row is minted**. Before answering it discharges the state to the `% bib.state` comment and REFRESHES an already-existing row for that citekey without minting one. Such rows are real and common — a pre-F#4 library still carries them (the reporting library: 3 722 rows against 24 082 master entries) and **nothing in the shipped flow prunes them** (`prune_catalog_present_false --apply` has no caller). So do not assume the row is absent either: assume only that a `.bib` import never CREATES one.
+  - **The citekey names a paper that IS held on disk**: the gate answers **yes** and touches nothing; `_upsert_catalog_row_bib_only` then writes a real holdings row — refreshing an existing one in place (preserving `addedAt`/`tags`/`pdf`/`indexed`, appending `fieldChanges`), or appending a new one with `pdf.present: true`.
+
+  **The other three per-entry outcomes**, none of which produces (1)–(3): `bib-ignored` — the existing entry's state is settled (`TERMINAL_BIB_STATES`), so the drop is discarded and master.bib is left byte-unchanged; `bib-folded` — the work-identity guard matched the work under a DIFFERENT citekey, so an alias is recorded in `.virgil/aliases.json` and nothing else is written; `bib-skipped-no-citekey` — the row carried no citekey and nothing is written.
+
+  **The source `.bib`** is deleted from `unsorted/` only when EVERY row came back `bib-imported` or `bib-ignored`; any other status parks the whole file under `_pending/` with a `triage-bib-parse-failed` notification. That includes `bib-folded` and `bib-skipped-no-citekey`, so a file that imported cleanly apart from one duplicate is quarantined under a parse-failure notice.
+
+  **Where the entry appears.** In the library list, as a **synthetic row projected from `bib-index.json`** — but only when the catalog does not already name the citekey: `LibraryView` suppresses the synthetic row for any citekey the catalog holds, so a stale pre-F#4 row SHADOWS the live projection (which is why the gate refreshes it). PDF view shows "No PDF on disk"; text view stays dormant.
 
 > **Where any memo you write goes.** Library memos (notes about this
 > pipeline — retros, indexing-flow ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
@@ -436,8 +450,8 @@ The apply step:
   entry (`TERMINAL_BIB_STATES`: authenticated / manuscript / canonical) is IGNORED
   and left byte-unchanged; anything else merges fields over the existing ones,
   preferring the incoming value on conflict.
-- Upserts into `master.bib` with `% bib.state = unverified`.
+- Upserts into `master.bib` with `% bib.state = unverified` (`manuscript` when the row proposes it) — the F#4 home for the auth state.
 - Creates `papers/<citekey>/references.bib` + empty `virgil/` sidecars (no source file, no `main.tex`).
-- Inserts a bib-only catalog row (`pdf.present: false`, `indexed.state: "none"`, `bib.state: "unverified"`).
+- Mints **no catalog row** for a source-less citekey — that entry is reference-only under the F#4 holdings model, so the library list projects it from `bib-index.json` instead (and an already-existing row for it is refreshed, not removed). A citekey that IS held on disk still gets its real holdings row. Full model: the `.bib` bullet under **Supported source kinds** above.
 - Queues `kind: "authenticate"` for each entry that isn't a manuscript.
-- Deletes the source `.bib` from `unsorted/` after all entries succeed (parks it under `_pending/` on partial parse failure).
+- Deletes the source `.bib` from `unsorted/` only when every row came back `bib-imported` or `bib-ignored`; any other status (including a `bib-folded` duplicate) parks the whole file under `_pending/`.

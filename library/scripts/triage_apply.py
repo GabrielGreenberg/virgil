@@ -176,7 +176,7 @@ def _upsert_catalog_row_bib_only(
     field_changes: list[dict[str, str]] | None = None,
     bib_state: str = "unverified",
 ) -> None:
-    """Update a bib-only catalog row — F#4 holdings-only.
+    """Write the catalog row a `.bib` entry is entitled to — usually none.
 
     A `.bib` import carries no source document, so its entry is
     reference-only: under the F#4 sources-only model it must NOT mint a
@@ -319,7 +319,10 @@ def apply_bib_row(
     """Apply one bib-only triage row.
 
     For .bib imports we don't move a source file; we upsert the bib entry
-    and create/refresh the bib-only catalog row + paper folder skeleton.
+    (with its `% bib.state` comment — the F#4 home for the auth state) and
+    create the paper-folder skeleton. Under F#4 a source-less entry is
+    reference-only and gets NO catalog row: `_upsert_catalog_row_bib_only`
+    only REFRESHES an already-existing holdings row, it never mints one.
     The source .bib file in unsorted/ is removed by the caller after all
     rows from a given file have been applied (or parked on parse failure).
 
@@ -423,7 +426,8 @@ def apply_bib_row(
     _virgil_sidecars(paper_dir)
     write_paper_bib_entry(paper_dir, citekey, entry_type, merged_fields)
 
-    # Catalog row (bib-only).
+    # Catalog row — refresh-only. Mints nothing for a source-less entry
+    # (F#4 holdings gate, `_tools.admit_catalog_row`).
     _upsert_catalog_row_bib_only(
         library, citekey, entry_type, merged_fields,
         field_changes=field_changes,
