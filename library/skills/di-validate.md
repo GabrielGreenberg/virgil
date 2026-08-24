@@ -212,12 +212,20 @@ scanned-OCR book whose markers have all been positionally
 verified), suppress future passes by adding a `…-false-positive:`
 prefix to the corresponding entry in the catalog row's
 `indexed.warnings`. The prefix vocabulary mirrors the finding
-kind:
+kind — **all seven** validator continuity kinds are consumable, so
+this table is the whole vocabulary, not a selection from it
+(`python3 .virgil/scripts/library/suppression_vocabulary.py --json`
+prints it, and CI pins this table against that output):
 
-- `pgmark-range-impossible-false-positive: <why it's correct>`
-- `pgmark-duplicate-false-positive: <why it's correct>`
-- `pgmark-gap-false-positive: <why it's correct>`
-- `pgmark-out-of-order-false-positive: <why it's correct>`
+| Validator kind | Suppression prefix | When to use |
+|---|---|---|
+| `pgmark-range-impossible` | `pgmark-range-impossible-false-positive:` | Journal-offset reprint — the max pgmark exceeds 1.5× the PDF page count because the printed numbering starts partway through a volume. State the span and the PDF page count in the why. |
+| `pgmark-range-suspiciously-wide` | `pgmark-range-suspiciously-wide-false-positive:` | Same offset shape one threshold down (span > 1.3× PDF pages) on a paper whose markers are all positionally verified. Confirm it is an offset and not the silent +N extractor bug this kind exists to catch. |
+| `pgmark-duplicate` | `pgmark-duplicate-false-positive:` | The same printed page number legitimately appears twice *within one section namespace* — e.g. a plate or fold-out repeating the folio. (Across namespaces the validator already reports the benign `pgmark-multi-section` instead.) |
+| `pgmark-multi-section` | `pgmark-multi-section-false-positive:` | Multi-section pagination — front matter / body / index each restart at 1, so a page number appears in more than one namespace. Informational by design; suppress once you have confirmed the restarts are real. |
+| `pgmark-gap` | `pgmark-gap-false-positive:` | A skipped run of printed pages the source genuinely omits (an advert leaf, a plate section the extraction correctly drops, an offset reprint). |
+| `pgmark-out-of-order` | `pgmark-out-of-order-false-positive:` | A descending transition that is correct as printed — a bound-in errata or appendix carrying its own numbering, or a mis-bound original. |
+| `pgmark-low-confidence-flood` | `pgmark-low-confidence-flood-false-positive:` | Scanned-OCR book where >30% of markers carry `[low]` confidence but every one has been positionally verified (run `recover_low_confidence_pgmarks.py --cascade` first). Note the AUDIT's sibling category is `pgmark-low-confidence` — two different findings, two different spellings, both consumable. |
 
 A finding a **fusion** discovered is written on the row under
 `pgmark-fusion-<kind>:` — but suppress it under the BARE
@@ -269,7 +277,15 @@ an earlier version of this table were near-misses
 413 `add_validator_suppression.py` REFUSES a category no reader can
 match and names the one to use instead, so a typo is a message
 rather than a silent no-op. `python3 .virgil/scripts/library/suppression_vocabulary.py`
-lists every consumable category.
+lists every consumable category; `--json` splits it by reader, which
+is what CI pins this table and the validator table above against.
+
+**One declared exclusion.** `error` is a consumable audit category and
+is deliberately absent from the table below: it is not a finding about
+the paper at all but about the audit's own inputs (`main.tex not
+found`). Suppressing it hides a broken pass rather than a heuristic's
+false positive, so fix the input instead. Everything else the audit can
+emit has a row here.
 
 | Audit kind | Suppression prefix | When to use |
 |---|---|---|

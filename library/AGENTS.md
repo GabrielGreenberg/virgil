@@ -848,6 +848,79 @@ swallows the rest of the document for this reader and for the agent alike.
 Both allowlists are EMPTY. Measured by neutering the fix: the census names all
 eight pre-445 sites by `file:line`.
 
+#### The flag half: a documented COMMAND is spelled once, and a required flag is not optional
+
+Same boundary, one question over (task 446). Three sites in the deep-index
+family named `audit_deepindex.py`, and the one that runs every pass — the
+umbrella's §9.5 punch-list call — was the one missing `--exit-on-suppressed`.
+The flag changes ONLY the exit code (`format_punch_list` prints identically
+either way), so a dropped flag is invisible in the output and surfaces as the
+convergence loop iterating forever on findings a prior pass already adjudicated.
+
+> **A command an agent runs is a value two files must agree on, so it is spelled
+> ONCE and the rest link it. Where a flag's absence is a DIFFERENT contract, it
+> is required at every documented invocation — including a prose mention.**
+
+deep-index §9.5 now spells no command and defers to `di-validate.md` §9.5, the
+SSOT it already linked for the check inventory (the shape §9 immediately above
+it uses for the outstanding-work categories). Removing the second spelling is
+the only fix that cannot drift.
+
+The guard rides `skill-script-cli-guardrail.test.ts`, which already scans every
+documented invocation in both silos: `REQUIRED_INVOCATION_FLAGS` declares, per
+script, the flags a caller's contract requires AND the exact number of RUNNABLE
+(`python3 …`) spellings the family may hold. The population is DECLARED rather
+than discovered, with the reason at the site — "is this flag optional for THIS
+caller" is a judgement about the caller, not something a scanner can read off
+the script. A canary keeps an entry naming a script nobody invokes from passing
+vacuously. Measured by neutering: the pre-446 §9.5 fails both legs by
+`file:line`.
+
+### A documented vocabulary is DISCOVERED from its SSOT
+
+> **Where a skill enumerates a vocabulary an operator must type verbatim, the
+> enumeration is pinned against the module that DERIVES it — never maintained
+> by hand. A hand list can only ever be missing a name.**
+
+`<category>-false-positive:` is a catalog line a human types, and since task 413
+[`suppression_vocabulary.py`](scripts/suppression_vocabulary.py) is the one
+module that answers "can any reader match this?", deriving its answer from the
+two emitters (`pgmark_validate.CONTINUITY_FINDING_KINDS`,
+`audit_deepindex.AUDIT_FINDING_CATEGORIES`) and REFUSING anything else at the
+write door. `di-validate.md` enumerated the vocabulary for the operator and had
+fallen **three kinds** behind it (task 447) — including two of the three cases
+its own opening sentence names as paradigm suppressions
+(`pgmark-multi-section`, `pgmark-low-confidence-flood`) and one absent from the
+file entirely (`pgmark-range-suspiciously-wide`). Since 413 refuses an
+unmatchable category, the agent's move is to reach for the nearest LISTED
+prefix — silencing a kind it did not mean to while the real one re-flags every
+pass, which is the convergence churn the convention exists to prevent.
+
+Three rules it earned:
+
+- **Split by READER, not by prefix.** `pgmark-low-confidence-flood` is a
+  VALIDATOR kind and `pgmark-low-confidence` is an AUDIT category. A rule that
+  assigned rows to tables by the shared `pgmark-` prefix puts one of them in
+  the wrong table and passes, so the SSOT publishes the split
+  (`suppression_vocabulary.py --json`) rather than each consumer re-deriving it.
+- **An exclusion is DECLARED with its reason, in both places.** `error` is
+  consumable and deliberately undocumented — it reports the audit's own broken
+  input (`main.tex not found`), so suppressing it hides a broken pass. Without a
+  stated exclusion the guard would have to be an inequality, and an inequality
+  cannot tell "deliberately withheld" from "fell behind again". The skill states
+  it too: the operator reads the table, not the test.
+- **The parser reads BOTH shapes the file has used** — the table and the pre-447
+  bullet list. A table-only parser answers "no rows" on the pre-fix file, which
+  reports the SHAPE rather than the defect; the guard's job is to name the three
+  missing kinds however the vocabulary happens to be rendered.
+
+CI: [suppression-vocabulary-doctrine.test.ts](lib/__tests__/suppression-vocabulary-doctrine.test.ts)
+shells out to the SSOT (the `references-bib-upsert-python` pattern — `npm test`
+is vitest-only, so a Python vocabulary is advisory unless something runs it) and
+pins BOTH tables, the kind↔prefix agreement per row, and the exclusion's
+liveness. Measured by neutering: the pre-447 file fails naming all three missing
+kinds; dropping the declared exclusion fails naming `error`.
+
 ## One-off-script promotion rule
 
 Any one-off Python script written under `/tmp/<paper>/` or inline
