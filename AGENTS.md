@@ -1248,6 +1248,92 @@ Same pass deleted `getParagraphAnchorPositions` — an EXPORTED helper resolving
 
 **Verification, honestly:** this class is FSA-masked (anchor recovery only reproduces under real prod File System Access — the dev preview's uuids round-trip), so the durable proof is the unit contract above and a real-FSA eyeball is *owed*, not claimed.
 
+##### The chrome half: a float is the THIRD renderer, and it never states an answer its own body is about to contradict
+
+Same law, the POPPED-OUT surface (task 435) — and the case where the resolution
+was correct, three of a kind's four renderers read it, and the fourth stated
+`true`.
+
+`FloatChrome` paints the jump chevron on exactly ONE input (`Floatable.canJump`),
+so a float's `canJump` **is** the affordance. Task 136 derived it for `citation`
+(`pos !== null`) and task 277 for `footnote` (the anchored/unanchored fork); the
+same family's other two members were never swept, and they are the two where the
+contradiction is visible on screen:
+
+- **`archive`** — the builder computed `orphaned` from `ctx.anchoredIds` (a fold
+  over the task-369 authority, `anchorPass.resolve(s).anchored`) two lines above,
+  used it for the BODY, and handed `canJump` a literal. `orphaned === true` means
+  the four-rung ladder found nothing, which strictly implies `resolveLink` finds
+  nothing, so `jumpToCard` iterates the links, resolves none, and returns `false`
+  having done nothing. Archive's other three renderers all gate correctly — the
+  docked card on `!orphaned`, the omni card on `row.anchorState`, the margin
+  marker on the authority itself — so the float was the ONE surface out of step.
+  (This is not the residual "The resolution half" records: that names the five
+  builders gating on `anchorUuid` and explicitly EXEMPTS Archive.)
+- **`textobject`** — a text-object float OUTLIVES its source, the body already
+  detects that (`useFloatMainSync` → `sourceMissing`) and already announces it
+  ("Source paragraph deleted — float is disconnected"), and the chrome above the
+  banner kept a live chevron whose handler called `scrollToParagraphId` on a uuid
+  the document no longer has. One 24px strip contradicting itself.
+
+> **A float is the THIRD renderer of a card's anchor question: it READS the same
+> resolution the docked card and the margin marker read, and it never asserts one
+> statically when the body it wraps is about to contradict it.** Where the fact is
+> resolved per FloatHost render it is read in the builder; where it can change on
+> a transaction that never re-renders FloatHost, it travels UP from the body that
+> observes it.
+
+Six rules it earned:
+
+- **Gate the AFFORDANCE and the HANDLER** (136's own rule), so a keyboard or
+  programmatic path cannot reach the dead call.
+- **`anchoredIds` is REQUIRED on the deps bag**, not `anchoredIds?:` — the
+  reason `unanchoredFootnotes` states one field up ("a bag that can omit it would
+  silently reinstate the blank-float case for every host that forgets"). The
+  optional form is precisely what made `orphaned` silently `undefined`.
+- **The channel carries the FACT, never the AFFORDANCE.**
+  [float-source-report.tsx](src/floats/float-source-report.tsx) reports *the
+  source is missing*; `FloatWindow` derives `canJump && !sourceMissing` from it.
+  A `setCanJump` channel would be the body RESTATING the chrome's decision, and
+  the next chrome element depending on the same fact would need a second channel.
+- **The BANNER is the reporter.** `SourceMissingBanner` — mounted iff the user is
+  being told the source is gone — declares the fact for its lifetime, rather than
+  a setter threaded through `FloatBodyContext` → `TextObjectFloatBodyProps` →
+  each of the TEN float bodies. Threading is a per-body obligation, i.e. ten
+  chances to forget and a new body that inherits nothing; binding the report to
+  the banner's mount makes the agreement STRUCTURAL — you cannot paint the banner
+  without withdrawing the chevron, and a body that detects a missing source and
+  tells the user nothing reports nothing, which is correct, because the user is
+  not being told either.
+- **Keystroke sanctity is untouched**: the effect runs on the banner's MOUNT and
+  UNMOUNT — the present↔missing EDGE — never per transaction.
+- **The static half survives.** `Floatable.canJump` still means *what this KIND
+  can ever offer*; the live half is the body's report, and the WINDOW combines
+  them. A kind that offers no jump stays jump-less however its body reports.
+
+CI: [float-jump-agreement.test.tsx](src/floats/__tests__/float-jump-agreement.test.tsx)
+builds the REAL archive `Floatable` through `CARD_REGISTRY` and drives the REAL
+`FloatWindow` over a body running the REAL `useFloatMainSync` against a REAL main
+editor whose paragraph is then deleted — the contract being that the header and
+the banner AGREE, not that either is right alone. **No pre-435 suite could see
+any of this**: every float suite drives the CHROME with a hand-supplied
+`canJump`, so a builder's literal disagreeing with its own body is
+unrepresentable in all of them. The leg with teeth is the CENSUS — the builders
+were never the part that could misbehave, one that resolves an anchor answer and
+then hands `canJump` a literal is, and that type-checks perfectly. Regions are
+discovered per `registerCardFloatable("<kind>"` (allowlist EMPTY), and the split
+being per-BUILDER is itself pinned: a `cardFloatable(`-keyed split puts the
+archive registration inside the FOOTNOTE builder's region, which — measured —
+made the archive leg pass under its own neuter. Measured by neutering each half
+in turn: the archive gate takes 3 legs, the window's derivation 2, the banner's
+report 2.
+
+**Owed, not claimed:** a preview eyeball. The archive half is FSA-masked (real
+anchor death reproduces under prod File System Access), so the durable proof
+there is the unit contract; the text-object half is NOT masked — pop a paragraph
+out, delete it in the main editor, and look at the float's header.
+
+
 #### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
 
 Same lane, and the case where the mechanism was right, the classification was
