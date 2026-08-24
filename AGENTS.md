@@ -441,6 +441,100 @@ CI: the tag, non-cost-reason and discovered-membership legs live in [pane-drag-g
 
 Drag-time coordination is **edge-only** on the app-wide `LayoutGestureBus` (`isLayoutGestureActive`/`onLayoutGestureChange` — fires once on begin, once on end, never per frame; it replaced the retired `virgil:drag-gap-start/end` window events and `library/lib/gutter-drag.ts`). Followers built on those edges: `PaneFreeze` (width-locks a heavyweight pane's content so pdf.js/ProseMirror see exactly ONE resize per gesture) and `parkDuringLayoutGesture` (geometry observers stash-dirty mid-gesture, settle once on the end edge). This is the "gutter drag chops/hangs/ghost-resumes; chrome outline snaps late" class (library-UI refactor 2026-07). CI: [src/lib/\_\_tests\_\_/pane-drag-guardrail.test.ts](src/lib/__tests__/pane-drag-guardrail.test.ts) greps BOTH silos for window-level move listeners paired with drag chrome (a body-cursor write, a resize cursor token, or the shared `.drag-gap`/`.band-grip` handle classes); every hit must be on `PERMITTED_WINDOW_DRAG_GESTURES` with a why-safe justification (a pane divider never qualifies — migrate it to the engine), the retired primitives are pinned dead, and every library-silo `ResizeObserver` must be on `PERMITTED_LIBRARY_RESIZE_OBSERVERS` (the census with CI teeth — kills the unparked-RO and measured-chrome reintroduction paths). Library-silo doctrine: library/AGENTS.md "Perf doctrine".
 
+### The capture half: the census RECOMMENDED the shape it could not examine
+
+Same law, the third widening of one census (task 439) — and the case where the
+guard's own docblock held the offending shape up as a virtue.
+
+`StripButton` ([drag-drop.tsx](src/components/editor-layout/drag-drop.tsx)), the
+panel-rail icon drag, is a bespoke held gesture: `onPointerDown` arms an origin,
+`onPointerMove` crosses a 5px threshold and calls `setPointerCapture`,
+`onPointerUp` commits `movePanel`. It took **none of the four obligations**, for
+as long as it has existed, with every leg of `pane-drag-guardrail` green — and
+the reason is structural rather than an oversight. Task 333 widened that census
+after finding `detectWindowDragGesture` blind to a whole category, and its
+widened rule is still *"every file that installs a **window/document-level move
+listener** is censused"*. That is a MECHANISM. This gesture installs no window
+listener at all; the census's own header even says the element-scoped
+pointer-capture shape is *"exactly what this grep is steering new code toward"*.
+**Task-404's lesson verbatim — discover a census's population by the QUESTION,
+not by the MECHANISM — one census over.**
+
+Three costs, and the first two are correctness:
+
+- **A right-press toggled the panel.** `onPointerUp` fired for ANY button with
+  no start gate, so a right-press reached the click branch and opened/closed
+  the panel beside the context menu the same press opened. Deterministic, zero
+  race. Middle-click likewise.
+- **A swallowed release left the gesture ARMED, and the next HOVER became a
+  phantom drag.** The origin was cleared only by events the BUTTON received, so
+  a press whose release the button never saw (the context menu ate it; the
+  pointer left the button under threshold and released elsewhere; a release over
+  an iframe) left it set. `pointermove` fires on HOVER with no button held, so
+  the user's next pass over the icon crossed the threshold, appended the fixed
+  z-9999 ghost, and called `setPointerCapture` on a pointer with **nothing
+  pressed** — from then on every pointer event in the document retargeted to
+  that strip button, and the next click committed a `movePanel` nobody made.
+  Task 185/333's ghost-tracking class with an extra turn of the screw, because
+  capture makes it document-wide rather than confined to the gesture.
+- **The move path took neither COALESCE nor SNAPSHOT.** Per RAW pointermove it
+  wrote the ghost's `left`/`top` (a layout write per event, where this file's own
+  law says a moving element moves by `translate3d`) and then re-swept the strip:
+  a `paneStrip` resolve, a `querySelectorAll` for its icons, a strip rect and a
+  `getBoundingClientRect()` **per button** — forced-layout reads for geometry
+  that cannot move under a held pointer. The indicator itself was `position:
+  fixed` with `transition: top 0.1s ease`, a main-thread LAYOUT animation
+  restarted on most frames, so the tree was never clean and every rect read in
+  the app paid a forced flush. Task 351's diagnosis item by item, in a gesture
+  351 did not touch.
+
+> **A census over held gestures asks "who owns a pointer the user is HOLDING",
+> and that has TWO element-scoped spellings as well as the window one: a file
+> that takes POINTER CAPTURE, or a single JSX element pairing a press handler
+> with a move/release handler.** Both are censused, both must REFERENCE the
+> invariants module, and the invariants allowlist is the SAME empty list the
+> window census uses — it is the same claim.
+
+Five rules it earned:
+
+- **Do the correctness half and the cost half TOGETHER.** Splitting them leaves
+  this file as the standing counter-example ("the invariants were added and the
+  four obligations were not") that the next bespoke gesture copies.
+- **The bail runs BEFORE the event's coordinate is read**, and through the ONE
+  teardown `cleanupDragArtifacts` already was — which task 141 built and never
+  made reachable from a missed release. That teardown cancels the queued frame
+  too, or a bailed gesture still commits one frame behind itself (task 333).
+- **`armed` is what the start gate EARNS.** Gating `onPointerDown` alone is not
+  enough: `onPointerUp` must perform the click/commit only for a gesture this
+  component actually armed, or a right-press still falls through to `onClick()`.
+- **The snapshot is read through a lazy `geometry()` door by BOTH the hover and
+  the release** — the `readMoveGeometry` shape, and the half `FloatingPanel`'s
+  own adversarial pass earned: a release reading the raw ref while only the
+  hover went through the door is how the two come to answer from different
+  tables. Re-armed off the `LayoutGestureBus` SET channel, subscribed on the
+  threshold edge and dropped in the teardown, so an idle strip pays nothing.
+- **The slot snapshot carries each icon's `panelId`, not just its midpoint.** A
+  drop can then NAME what it lands beside rather than only counting — the seam
+  an index-space fix needs, deliberately left as a seam rather than folded in.
+
+CI: [strip-button-drag-teardown.test.tsx](src/components/editor-layout/__tests__/strip-button-drag-teardown.test.tsx)
+drives the REAL component. **jsdom defaults `PointerEvent.buttons` to 0**, which
+the missed-release bail reads as "the release already happened", so every LIVE
+event in that file now passes `{ button: 0, buttons: 1 }` explicitly — measured,
+all five pre-existing legs fail against the fixed component until the field is
+added, which is itself the proof the invariant is wired (the trap AGENTS.md
+already records for `bespoke-gesture-missed-release.test.tsx`). The leg with
+teeth is the CENSUS — the gesture was never the part that could misbehave, a
+population that cannot see it is. Measured by neutering the fix: the seven new
+behavioural legs all fail on the pre-439 component (the six teardown legs pass
+either way, and are the accepting controls), and the census names
+`drag-drop.tsx`.
+
+**Owed, not claimed:** a real-pointer preview eyeball — jsdom's pointer capture
+is a stub and the context-menu race cannot be reproduced headlessly. Right-click
+a strip icon (menu opens, panel does not toggle); press an icon, drag 3px off it,
+release over the editor, then hover back over the strip (no ghost).
+
 ## Layout-gesture stability
 
 > **A continuous layout gesture — a pane-divider drag, an OS window resize, OR a content drag (drop-mode session) — costs O(1) settles, not O(frames) recomputes.** Every geometry follower either **PARKS** (`parkDuringLayoutGesture`: stash the call, replay exactly once on the gesture's end edge) or **SUPPRESSES** (`useLayoutGestureActive` / `isLayoutGestureActive` / `onLayoutGestureChange`: hide for the gesture, restore on the end edge). Nothing re-solves per frame.

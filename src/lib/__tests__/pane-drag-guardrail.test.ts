@@ -20,8 +20,12 @@
 //      CSS resize cursor token), and assert the flagged set equals
 //      `PERMITTED_WINDOW_DRAG_GESTURES`. The engine directory itself is
 //      excluded (it is the one sanctioned owner of divider gestures — and its
-//      listeners are element-scoped under pointer capture anyway, exactly what
-//      this grep is steering new code toward).
+//      listeners are element-scoped under pointer capture anyway). That
+//      parenthesis used to end "…exactly what this grep is steering new code
+//      toward", and task 439 retired the claim rather than leaving it standing:
+//      the element-scoped shape was steered toward and NOT examined, so
+//      `StripButton` took none of the four obligations for as long as it has
+//      existed with every leg here green. Leg 5 below is that population.
 //   2. RETIRED PRIMITIVES STAY DEAD — the pre-engine gesture plumbing
 //      (library/lib/gutter-drag.ts, src/hooks/useDragGap.ts, the
 //      `virgil:drag-gap-start/end` window CustomEvents) was deleted; assert no
@@ -200,6 +204,32 @@ const PERMITTED_WINDOW_POINTER_LISTENERS: Record<string, string> = {
     "[cost: per move = one squared-distance compare (the gesture half, pre-threshold); the hover tracker resolves the pointed-at block through the geometry service's cached `blocksAtY` bands, RAF-coalesced, with the legacy O(doc) `[data-uuid]` rect sweep surviving only under the `virgil:geom-hover` kill-switch] TWO listeners, and they are different animals. (a) The grab handle's hold-threshold detector — both invariants since task 333, the bail PRE-threshold only for the same reason inline-atom-grab's is (LiftHost owns the gesture after handoff). (b) A permanent `document` mousemove HOVER tracker that resolves which block the handle should point at: not a gesture, registers no release teardown, and therefore outside the invariants leg by construction.",
 };
 
+// ── The ELEMENT-scoped pointer-gesture census (task 439) ────────────────────
+// The blind spot the census above cannot see, and the second time this file
+// has had to be widened out of its own MECHANISM. Task 333 widened the chrome
+// conjunction into "who installs a WINDOW-level move listener at all" — and
+// that is still a mechanism, not the question. A held gesture written with
+// React element handlers plus `setPointerCapture` installs no window listener
+// whatsoever, so it is invisible to every leg above; the docblock at the top of
+// this file even holds that shape up as a virtue ("its listeners are
+// element-scoped under pointer capture anyway, exactly what this grep is
+// steering new code toward"), i.e. the census RECOMMENDED the shape it could
+// not examine. `StripButton` — the panel-rail icon drag — sat there taking
+// NONE of the four obligations for as long as it has existed, with every leg
+// in this file green (task 439). This is task-404's lesson verbatim: discover
+// a census's population by the QUESTION, not by the MECHANISM.
+//
+// The question is "who owns a HELD pointer gesture", and the two element-scoped
+// spellings of that are: a file that takes POINTER CAPTURE (which is the whole
+// point of capture — to keep receiving a pointer the user is holding), or a
+// single JSX element that pairs a press handler with a move/release handler.
+// Same allowlist discipline, same `[cost: …]` tag rule, and the invariants leg
+// below is shared with the window census: it is the same claim.
+const PERMITTED_ELEMENT_POINTER_GESTURES: Record<string, string> = {
+  "src/components/editor-layout/drag-drop.tsx":
+    "[cost: per MOVE event = one absolute-delta compare against the press origin + one scalar write + a scheduling bail, with ZERO DOM reads; per coalesced FRAME = ONE equality-bailed translate3d on the ghost + ONE equality-bailed translate3d (and, only on a side crossing, a width) on the drop indicator, both resolved as pure arithmetic over the snapshot; per gesture EDGE = ONE geometry sweep (the strip resolve + a rect per icon) and ONE `onMove` commit] The strip-icon drag — a panel REORDER, not a pane resize, and the category-defining entry for this census exactly as the scrollbar thumb is for the window one: it installs no window listener at all, so the two legs above are structurally blind to it. Since task 439 it takes both invariants from `lib/pane-resize/pointer-invariants` (`isPrimaryDragStart` gates the pointerdown, so a right-press can no longer fall through `onPointerUp` and toggle the panel beside the context menu the same press opens; `isMissedRelease` ends the gesture through the ONE teardown BEFORE the event's coordinate is read, so a press whose release the button never saw can no longer be resumed by a later HOVER into a phantom drag that takes document-wide pointer capture with nothing pressed) and the other two obligations with them: the strip geometry is SNAPSHOT on the threshold edge behind a lazy `geometry()` door BOTH the hover and the release read (re-armed off the LayoutGestureBus SET channel), and the move path schedules at most one rAF whose teardown cancels it. The eased `top`/`left` on the drop indicator — a main-thread LAYOUT animation restarted on most frames of a drag through a dense strip — is retired for `transform`.",
+};
+
 /** Empty, and that is the statement: a file that owns a pointer gesture takes
  *  the two predicates from the engine's SSOT. An entry here would have to
  *  explain how a gesture survives a release it never observed. */
@@ -253,6 +283,10 @@ const ALLOWLISTS: Record<
   },
   PERMITTED_WINDOW_POINTER_LISTENERS: {
     list: PERMITTED_WINDOW_POINTER_LISTENERS,
+    cost: true,
+  },
+  PERMITTED_ELEMENT_POINTER_GESTURES: {
+    list: PERMITTED_ELEMENT_POINTER_GESTURES,
     cost: true,
   },
   PERMITTED_UNCHROMED_RESIZERS: {
@@ -446,6 +480,41 @@ export function detectPointerReleaseTeardown(source: string): boolean {
 /** Does the file take its predicates from the ONE source? */
 export function referencesPointerInvariants(source: string): boolean {
   return /\bpane-resize\/pointer-invariants\b/.test(stripComments(source));
+}
+
+/** A press handler, and the two handlers that only a HELD pointer produces. */
+const REACT_PRESS = /\bon(?:Pointer|Mouse)Down\s*=/;
+const REACT_HOLD = /\bonPointer(?:Move|Up)\s*=/;
+const POINTER_CAPTURE = /\.setPointerCapture\s*\(/;
+
+/**
+ * An ELEMENT-scoped held gesture (task 439) — the population the window census
+ * above cannot reach. Two spellings, and the fragments are returned so a
+ * failure names which one fired:
+ *
+ *  - the file takes POINTER CAPTURE, whose entire purpose is to keep receiving
+ *    a pointer the user is holding;
+ *  - a single JSX element pairs a press handler with a move/release handler,
+ *    which is a held gesture written the React way.
+ *
+ * Element-scoped rather than file-scoped for the second spelling: a file where
+ * one element has `onPointerDown` and an unrelated one has `onPointerUp` is
+ * two independent handlers, not a gesture, and the JSX scanner reads a tag to
+ * its REAL end so the repo's dominant `onPointerDown={(e) => …}` idiom cannot
+ * truncate it at the arrow.
+ */
+export function findElementPointerGestures(source: string): string[] {
+  const src = stripComments(source);
+  const hits: string[] = [];
+  if (POINTER_CAPTURE.test(src)) hits.push("setPointerCapture(");
+  for (const tag of tagsContaining(src, REACT_PRESS)) {
+    if (REACT_HOLD.test(tag)) hits.push(/^<[\w.-]*/.exec(tag)?.[0] ?? tag);
+  }
+  return hits;
+}
+
+export function detectElementPointerGesture(source: string): boolean {
+  return findElementPointerGestures(source).length > 0;
 }
 
 /**
@@ -1091,6 +1160,95 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     `;
     expect(detectWindowMoveListener(hoverWatcher)).toBe(true);
     expect(detectPointerReleaseTeardown(hoverWatcher)).toBe(false);
+  });
+});
+
+describe("pane-drag guardrail — element-scoped pointer-gesture census (task 439)", () => {
+  const files = walkBothSilos();
+  const gestures = files.filter((f) => detectElementPointerGesture(f.source));
+
+  it("censuses every element-scoped HELD gesture in both silos", () => {
+    // EXTRA file = a gesture written with pointer capture or a press+hold
+    // handler pair landed. Verify it against the four obligations (AGENTS.md
+    // "Pane-drag stability") and list it above with that justification. If it
+    // resizes a pane it does not belong here at all — migrate it onto
+    // `usePaneResizeHandle`, which is the one sanctioned owner and is excluded
+    // from this walk by directory.
+    expect(gestures.map((f) => f.rel).sort()).toEqual(
+      Object.keys(PERMITTED_ELEMENT_POINTER_GESTURES).sort(),
+    );
+  });
+
+  it("every element-scoped gesture takes its pointer invariants from the SSOT", () => {
+    // The leg with teeth, and the same claim the window census's invariants
+    // leg makes — so it shares that list, which is EMPTY and stays that way.
+    // Unlike the window census there is no hover-WATCHER exemption to carve
+    // out: a permanent hover tracker takes no pointer capture and pairs no
+    // press handler with a release, so it is outside this population by
+    // construction rather than by a second predicate.
+    expect(gestures.length).toBeGreaterThanOrEqual(1);
+    const bare = gestures
+      .filter((f) => !referencesPointerInvariants(f.source))
+      .map((f) => f.rel)
+      .sort();
+    expect(bare).toEqual(Object.keys(PERMITTED_INVARIANT_FREE_GESTURES).sort());
+  });
+
+  it("would flag the pre-439 StripButton, and lets a lone press handler through (fixtures)", () => {
+    // (a) The pre-439 shape verbatim: React handlers + pointer capture, no
+    //     window listener anywhere. Both legs above return FALSE for it — that
+    //     is the blind spot, pinned.
+    const preFix = `
+      const onPointerDown = (e) => { pointerStart.current = { x: e.clientX, y: e.clientY }; };
+      const onPointerMove = (e) => {
+        if (!pointerStart.current) return;
+        btnRef.current?.setPointerCapture(e.pointerId);
+      };
+      return (
+        <button
+          ref={btnRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        />
+      );
+    `;
+    expect(detectWindowMoveListener(preFix)).toBe(false);
+    expect(detectWindowDragGesture(preFix)).toBe(false);
+    expect(detectElementPointerGesture(preFix)).toBe(true);
+    expect(referencesPointerInvariants(preFix)).toBe(false);
+    // Both spellings fire independently, so dropping either one still flags it.
+    expect(findElementPointerGestures(preFix)).toEqual(
+      expect.arrayContaining(["setPointerCapture(", "<button"]),
+    );
+
+    // (b) The inline-arrow idiom this repo actually writes — the tag scanner
+    //     must read to the tag's REAL end, not to the first `>` inside the
+    //     arrow body, or the conjunction is invisible.
+    const inlineArrows = `
+      <div
+        onPointerDown={(e) => begin(e)}
+        onPointerUp={(e) => (e.clientY > 0 ? end(e) : null)}
+      />
+    `;
+    expect(detectElementPointerGesture(inlineArrows)).toBe(true);
+
+    // (c) A lone press handler is a CLICK, not a held gesture.
+    expect(detectElementPointerGesture(`<button onPointerDown={toggle} />`)).toBe(false);
+    // …and two unrelated elements each carrying one half are not a gesture
+    //    either — this population is per ELEMENT.
+    expect(
+      detectElementPointerGesture(
+        `<div onPointerDown={a} /><span onPointerUp={b} />`,
+      ),
+    ).toBe(false);
+
+    // (d) Prose naming the shape is not the shape (comments stripped).
+    expect(
+      detectElementPointerGesture(
+        `// never call setPointerCapture( without the invariants`,
+      ),
+    ).toBe(false);
   });
 });
 
