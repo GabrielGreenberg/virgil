@@ -198,8 +198,37 @@ All paths below are relative to the library root.
    .bib.fieldChanges" .virgil/catalog.json`) and include the
    concatenated list in the patch.
 
+   Exit codes — the same three `/library/authenticate-bib` step 7
+   documents, because this skill serves the same entries. Step 3 above
+   already blessed the fileless case (the user may edit a hand-added bib
+   entry with no indexed paper folder), and under the F#4 holdings model
+   such an entry has **no catalog row** — its state lives as the
+   `% bib.state` comment in master.bib. The Library list renders those
+   references as synthetic rows and their **Edit** button queues a bib
+   edit, so this is a live path, not a corner:
+
+   - **exit 1** — no catalog row for this citekey (a reference-only entry:
+     cited but not held, so the F#4 gate never minted one). The master.bib
+     edit in step 2 is the real write and it has already landed; there is
+     nothing to mirror. Note it in the reply — "reference-only, no catalog
+     row to update" — and **continue to steps 5–7**. Do not stop: the
+     queue-entry cleanup lives there, and an aborted run leaves
+     `.virgil/queue/<citekey>-bibedit.json` undrained and re-attempted on
+     every subsequent `/library/index-pending`.
+   - **exit 2** — a refusal, and the write did not happen: an unreadable or
+     malformed patch file. (Its sibling in `/library/authenticate-bib` lists
+     a third cause — a row whose `indexed.warnings` is not a list — which
+     cannot fire here: that check lives inside `update_catalog_entry`'s
+     `--recompute-warning-kind` branch, and step 4 passes no such flag.)
+     Report the message verbatim and continue; it needs a human repair.
+   - **anything else** — treat as exit 2. The write did not happen; say so
+     rather than guessing which branch it was.
+
 5. **Bump `.virgil/catalog-version.txt`** — already done by step 4's
-   script. No additional bump needed.
+   script when it wrote a row. On the `exit 1` (reference-only) path there
+   is no catalog change to announce, and the master.bib write in step 2
+   schedules the `bib-index.json` rebuild the Library list actually reads
+   for that entry. Either way, no additional bump.
 
 6. **Append a notification** via the locked CLI shim:
 
@@ -224,6 +253,9 @@ All paths below are relative to the library root.
 
 One line:
 > `Applied bib edit for <citekey>: <N> field changes.`
+
+For a reference-only entry (step 4 exited 1), say so on the same line:
+> `Applied bib edit for <citekey>: <N> field changes (reference-only — no catalog row).`
 
 If the queue entry was malformed or the citekey was missing, paste the
 relevant traceback / explanation in a fenced block and stop. Don't

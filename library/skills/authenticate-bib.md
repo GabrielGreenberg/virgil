@@ -509,6 +509,37 @@ directory).
    top-level fields, never `indexed`, so it cannot disturb the warnings
    written below.
 
+   **It may write no row at all, and that is the normal case here.** This
+   skill deliberately serves entries with no source document on disk, and
+   under the F#4 holdings model a reference-only entry — cited but not held —
+   gets no catalog row: its auth state lives as the `% bib.state = <state>`
+   comment on its master.bib block, which `build_bib_index` projects into
+   `bib-index.json` and the Library list reads directly. So for such a
+   citekey the helper asks the shared write gate
+   (`_tools.admit_catalog_row`), which writes that comment, refreshes an
+   already-existing row without minting one, and answers "no row". It is
+   what makes the `exit 1` branch below REACHABLE (before task 443 this
+   call minted the row the next command would have failed on, so the
+   documented branch could never fire).
+
+   **What survives, precisely** — do not report this as "nothing is lost".
+   The `% bib.state` comment carries the STATE, which is what the Library
+   list reads for such an entry, and step 5 has already written the
+   authenticated field VALUES into the master.bib block itself. What has
+   no home for a reference-only entry is the `bib_status` bookkeeping
+   around them: `fieldChanges`, `sources`, `doiVerified`, `score` and
+   `note` are not projected into `bib-index.json` and there is no row to
+   put them on. That is the F#4 trade rather than a failure — the durable
+   facts are in master.bib — but say what happened rather than implying
+   the whole `bib_status` was persisted.
+
+   **How you KNOW** which case you are in: the helper prints its own
+   message either way, so that is not the signal. The signal is the
+   coherence shim immediately below — its **exit 1** means "no catalog row
+   for this citekey", i.e. this entry was reference-only. Report it on
+   that basis (the Reply format's coherence line already carries the
+   wording), never as a failure.
+
    **Then persist the coherence verdict** — the second half of step 2, landed
    here because this is the last point in the run where the answer is final.
    Re-run the same checker against the master.bib you have now (step 5 may
@@ -563,8 +594,11 @@ directory).
      rather than guessing which branch it was.
 
 8. **Append a notification** via the locked CLI shim. (No need to bump
-   `catalog-version.txt` separately — step 7's
-   `_sync_catalog_entry_from_master` does it for you.)
+   `catalog-version.txt` separately — when step 7 wrote a row,
+   `_sync_catalog_entry_from_master` bumped it for you; when it wrote none
+   — the reference-only case — there is no catalog change to announce, and
+   the master.bib write it made instead schedules the `bib-index.json`
+   rebuild the Library list actually reads for that entry.)
 
    > **`kind` is the frontend's toast enum, NOT the bib.state enum.**
    > The only values the Library UI knows are `"indexed"`,

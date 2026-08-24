@@ -35,12 +35,12 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    admit_catalog_row,
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
     is_terminal_bib_state,
     lock_catalog,
-    paper_has_holdings,
     read_catalog,
     read_master_bib,
     resolve_bib_state,
@@ -183,6 +183,9 @@ def _upsert_catalog_row_bib_only(
     catalog row. The auth state already lives in the `% bib.state` comment
     in master.bib (written by the `update_master_bib_entry` call in
     `apply_bib_row`), which `build_bib_index` projects into bib-index.json.
+    The gate itself is `_tools.admit_catalog_row` — one shared door since
+    task 443, rather than three writers each spelling `paper_has_holdings`
+    and each discharging the state by hand (one of them forgot to).
 
     The one exception: if a HOLDINGS row already exists for this citekey
     (the `.bib` import names a citekey that's also held on disk), we still
@@ -197,28 +200,20 @@ def _upsert_catalog_row_bib_only(
     if field_changes:
         bib_status_min["fieldChanges"] = field_changes
 
-    if not paper_has_holdings(library, citekey):
-        # Reference-only: only touch the catalog if a row already exists
-        # (a stale pre-F#4 row); otherwise skip — state lives in master.bib.
-        with lock_catalog(library):
-            catalog = read_catalog(library)
-            catalog.setdefault("version", 1)
-            catalog.setdefault("entries", [])
-            for i, e in enumerate(catalog["entries"]):
-                if citekey_matches(e.get("citekey", ""), citekey):
-                    merged_bib = dict(e.get("bib") or {})
-                    merged_bib.update(bib_status_min)
-                    existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
-                    new_changes = bib_status_min.get("fieldChanges") or []
-                    if existing_changes or new_changes:
-                        merged_bib["fieldChanges"] = existing_changes + new_changes
-                    e["bib"] = merged_bib
-                    e["updatedAt"] = _now()
-                    catalog["entries"][i] = e
-                    write_catalog(library, catalog)
-                    return
-            # No existing row → reference-only entry, no catalog row minted.
-            return
+    if not admit_catalog_row(
+        library, citekey,
+        entry_type=entry_type, fields=fields, bib_state=bib_state,
+        bib=bib_status_min,
+    ):
+        # Reference-only, and there is nothing left to do here: the door has
+        # discharged the state to the `% bib.state` comment in master.bib (a
+        # re-assert of what `apply_bib_row` wrote a moment ago, and free —
+        # `update_master_bib_entry` skips a byte-identical write) and has
+        # refreshed an already-existing row without minting one. That
+        # exception used to be hand-written here and nowhere else, which is
+        # how the third writer came to lose it; it is the door's now, so all
+        # three writers keep it.
+        return
 
     title = fields.get("title", "") or ""
     authors_str = fields.get("author", "") or ""
