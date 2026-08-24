@@ -861,6 +861,101 @@ Every catalog entry's `bib.state` is one of six values, set by the auth pipeline
 
 The `manuscript` and `canonical` states distinguish properly-terminal/no-action entries from `failed` lookups that genuinely *should* be in Crossref but aren't. Don't conflate them in summaries.
 
+### The auth-state HOME is master.bib, and every reader asks ONE door
+
+> **A fileless reference's `bib.state` lives in master.bib's `% bib.state`
+> comment (F#4). Every reader asks [`_tools.resolve_bib_state`](scripts/_tools.py)
+> — master's comment FIRST, a legacy catalog row as the FALLBACK — and no
+> reader reads `bib.state` off a catalog row itself.**
+
+Phase F#4 (`485be521`) moved WHERE that state lives: catalog.json carries only
+HOLDINGS rows (`pdf.present=true`), so a reference-only entry — cited but not
+held — gets no catalog row at all and its state is a comment on its master.bib
+block, projected into `bib-index.json` by `build_bib_index`. The migration
+reached the two WRITERS (`merge_paper_references._upsert_catalog_row`,
+`triage_apply._upsert_catalog_row_bib_only`, both gating on
+`paper_has_holdings`) and the TypeScript reader (`LibraryView`, whose comment
+names this exact hazard). **It reached none of the FOUR Python readers**, each
+of which kept asking the catalog — which for a fileless entry can only answer
+*nothing*, i.e. `"none"` (task 442).
+
+Measured on the reporting library, 2026-08-24: 19 910 of 24 082 master entries
+carry a state comment, 19 785 of those are terminal, and **16 747 (84.6%) have
+no catalog row** — so for 85% of the corpus every Python reader answered
+`"none"`. Nothing threw; each reader failed differently:
+
+- **`/library/merge-bibs` + `/library/import-bib`.** The skill's headline rule
+  — *"duplicate of an already-authenticated master entry → defer to master"* —
+  could not fire, so every run took the `_process_dup_unauth` branch instead:
+  a live network authentication per entry, then a whole-block `_write_master`
+  REPLACEMENT of the already-authenticated entry (possibly under a different
+  `@type`, possibly downgrading `authenticated` → `canonical`). Recurs per
+  PAPER, not once per entry.
+- **`/library/triage-pdf` (a `.bib` drop).** The `existing_state in
+  ("authenticated", "manuscript")` guard that protects a settled entry was
+  UNREACHABLE for a fileless one, so the drop took the merge branch —
+  *incoming wins on conflict* — and wrote `bib_state="unverified"` over it.
+  **The user's authenticated fields overwritten and the state downgraded,
+  silently.** This is why the task was `high`.
+- **The triage REVIEW** (`triage_batch.triage_bib`) built `existing_keys` from
+  catalog rows only, so the row carried no `citekey-exists` flag and no
+  `existing entry: bib.state=…` note — the two things `/library/triage-pending`
+  tells the user to review on. No warning at review, silent damage at apply.
+- **`dedup_index.load_library_records`** (found by the census, not the report)
+  fed `bib_state: None` into `work_identity._bib_state_rank`, so the dedup
+  survivor vote scored every authenticated reference-only entry at ZERO.
+
+Five rules it earned:
+
+- **Read order is the OPPOSITE of the pre-442 code, and the fallback stays.**
+  A pre-F#4 library still carries holdings rows whose `bib.state` may be the
+  only copy, so the catalog is a fallback rather than dropped — but a
+  `% bib.state` comment is written by every current writer and is what the
+  frontend already trusts, so master WINS a disagreement.
+- **The door takes a PREBUILT map for a loop.** `master.bib` is ~10 MB / 24 k
+  entries in the reporting library, so `resolve_bib_state(..., master_states=…)`
+  over one `master_bib_state_map(text)` sweep is the hot-loop form; a
+  per-citekey re-read would be the fix's own regression. `read_master_bib` now
+  takes `text=` so a caller needing both the entries and their comments pays
+  ONE read.
+- **The TERMINAL set is spelled once.** `_tools.TERMINAL_BIB_STATES`
+  (authenticated / manuscript / canonical) — because the two gates that read it
+  were two hand lists that DISAGREED: the drop guard was missing `canonical`,
+  so a drop replaced a canonical entry's fields wholesale and stamped it
+  `unverified`. `needs-reauth` is deliberately NOT terminal.
+- **The merge branch is UNCONDITIONAL now, not gated on a state list.** The
+  pre-442 field merge ran only for `unverified`/`failed`/`none`, so any state
+  the list forgot (`needs-reauth`) dropped the existing fields wholesale.
+  Everything that reaches that point is non-terminal, so it always merges.
+- **`_write_master` never downgrades a settled entry** — belt and braces beside
+  the read fix, for the case where that path is reached legitimately (a
+  parallel run settled the entry between the read and the write). The FIELDS
+  still land; only the state holds.
+
+CI: [library/scripts/tests/test_bib_state_read_door.py](scripts/tests/test_bib_state_read_door.py),
+driven under `npx vitest run` by
+[bib-state-read-door-python.test.ts](lib/__tests__/bib-state-read-door-python.test.ts)
+(nothing in CI runs Python directly — the `references.bib` upsert shape). Its
+fixture is the one no pre-442 suite had: a master entry carrying
+`% bib.state = authenticated` and **no catalog row**, which is why the
+divergence was unrepresentable in all of them. Every fileless leg carries a
+HELD control (catalog row present) through the identical harness, so no leg can
+pass by making everything defer. The leg with teeth is the CENSUS — the door
+was never the part that could misbehave, a call site that reads the row is, and
+`(e.get("bib") or {}).get("state")` runs perfectly while answering `"none"`.
+It matches BOTH spellings the readers used (a single expression, and a bound
+local read one to eight lines later — three of the four offenders took the
+second form, invisible to a line-scoped regex), and its allowlist is `_tools.py`
+ALONE: the two scripts that legitimately read a row (`prune_catalog_present_false`,
+the F#4 catalog→master migration, and `backfill_auth`, the same repair
+direction) call the shared `catalog_row_bib_state` helper rather than spelling
+it. Measured on the pre-442 tree the census names all four offenders, and 10 of
+the suite's 25 legs fail.
+
+**Owed, not claimed:** a real-library eyeball. After this, a `--dry-run`
+`/library/merge-bibs` filtered to one paper should report its duplicates as
+`deferred_dup` rather than `would-collective-auth`.
+
 ## Reader inheritance from the main editor
 
 > **Debugging a Reader regression?** Read [READER_INHERITANCE.md](READER_INHERITANCE.md) first. It defines the architectural pattern, the three legitimate fix locations (shared component / `READER_CHROME` / the named `READER_NOOP_HANDLERS` + view-derivations in `reader-view-prefs.ts`), the triage flow, and the vocabulary the user expects you to use. **Do not write Reader-specific render code under `library/components/`** — channel the fix through the shared layer or its declarative knobs. The user typically reports Reader bugs by pointing at that doc; treat it as a hard constraint, not a suggestion.

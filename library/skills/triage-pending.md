@@ -159,8 +159,9 @@ directory).
    - **otherwise** → appends a stub to `master.bib`, moves the file to
      `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
    - emits a `triaged` / `triage-filename-mismatch` / `triage-bib-imported`
-     / `triage-bib-summary` / `triage-bib-ignored-authenticated` notification
-     per row
+     / `triage-bib-summary` / `triage-bib-ignored-<state>` notification
+     per row (the ignored kind names the SETTLED state that won —
+     `authenticated`, `manuscript` or `canonical`; see `TERMINAL_BIB_STATES`)
    - bumps `.virgil/catalog-version.txt` once at the end
 
    Capture the script's per-row output and final summary in your reply.

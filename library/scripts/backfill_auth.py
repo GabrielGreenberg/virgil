@@ -23,7 +23,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import read_catalog, read_master_bib, update_master_bib_entry
+from _tools import (
+    catalog_row_bib_state,
+    read_catalog,
+    read_master_bib,
+    update_master_bib_entry,
+)
 
 
 def _now() -> str:
@@ -129,8 +134,9 @@ def main() -> int:
     catalog_states: dict[str, str] = {}
     for e in catalog.get("entries", []):
         ck = e.get("citekey", "")
-        bib = e.get("bib") or {}
-        state = bib.get("state", "")
+        # This script runs the REPAIR direction (catalog row → master comment),
+        # so it reads the row on purpose — through the shared fallback spelling.
+        state = catalog_row_bib_state(e)
         if ck and state:
             catalog_states[ck] = state
 

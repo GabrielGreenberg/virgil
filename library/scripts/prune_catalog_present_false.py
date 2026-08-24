@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (  # noqa: E402
     CANONICAL_BIB_STATES,
+    catalog_row_bib_state,
     ensure_bib_state_comment,
     lock_catalog,
     paper_has_holdings,
@@ -125,7 +126,7 @@ def plan_and_run(library: Path, *, apply: bool) -> int:
     plan: list[tuple[str, str, str]] = []  # (citekey, state, action)
     for e in present_false:
         citekey = e.get("citekey", "")
-        state = ((e.get("bib") or {}).get("state")) or "none"
+        state = catalog_row_bib_state(e) or "none"
         if not citekey:
             plan.append(("<missing-citekey>", state, "skip (no citekey)"))
             skip_count += 1
@@ -171,7 +172,7 @@ def plan_and_run(library: Path, *, apply: bool) -> int:
     backfilled: set[str] = set()
     for e in present_false:
         citekey = e.get("citekey", "")
-        state = ((e.get("bib") or {}).get("state")) or "none"
+        state = catalog_row_bib_state(e) or "none"
         if not citekey or not state or state == "none":
             continue
         # F4W-1: a held paper is fully excluded — do not back-fill it either.
@@ -203,7 +204,7 @@ def plan_and_run(library: Path, *, apply: bool) -> int:
         e.get("citekey")
         for e in present_false
         if e.get("citekey")
-        and (((e.get("bib") or {}).get("state")) or "none") in CANONICAL_BIB_STATES
+        and (catalog_row_bib_state(e) or "none") in CANONICAL_BIB_STATES
         and not paper_has_holdings(library, e.get("citekey", ""))
     }
     with lock_catalog(library):

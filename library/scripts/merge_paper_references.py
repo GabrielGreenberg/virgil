@@ -44,16 +44,20 @@ sys.path.insert(0, str(THIS_DIR))
 
 from _bib_parse import read_bib_file  # noqa: E402
 from _tools import (  # noqa: E402
+    TERMINAL_BIB_STATES,
     append_inbox_item,
     citekey_matches,
     ensure_bib_state_comment,
     lock_catalog,
+    is_terminal_bib_state,
     lock_master_bib,
     mark_bib_imported,
+    master_bib_state_map,
     normalize_citekey,
     paper_has_holdings,
     read_catalog,
     read_master_bib,
+    resolve_bib_state,
     update_master_bib_entry,
     upsert_catalog_entry,
     write_catalog,
@@ -177,6 +181,8 @@ def find_duplicate(
     catalog_index: dict,
     *,
     work_index=None,
+    library: Path | None = None,
+    master_states: dict[str, str] | None = None,
 ) -> dict | None:
     """Locate a master.bib entry that already represents this work.
 
@@ -198,8 +204,13 @@ def find_duplicate(
     and threaded in — the function no longer re-reads/re-scans master per entry.
     When omitted (legacy callers / tests), it is built from `master` on demand.
 
+    `master_states` is the F#4 auth-state map for the SAME master.bib read
+    (`master_bib_state_map`), threaded in so `_shape` answers from the state's
+    HOME rather than from a catalog row that a fileless entry does not have
+    (task 442). Omitted (legacy callers / tests) it is derived from `library`.
+
     Returns the master entry dict (with extra `citekey` and `bib_state` keys
-    merged in from the catalog) or None. On an `uncertain` hit, records a
+    resolved through `resolve_bib_state`) or None. On an `uncertain` hit, records a
     `manual_review` note against the module-level `_UNCERTAIN_SINK` list if the
     caller registered one (`main()` points it at the run's Report).
     """
@@ -209,16 +220,29 @@ def find_duplicate(
     e_type = entry.get("type", "misc")
     e_ck = entry.get("citekey", "")
 
-    # Build a uniform lookup record per master citekey.
+    states = master_states
+    if states is None:
+        master_path = (library or Path(".")) / "master.bib"
+        states = master_bib_state_map(
+            master_path.read_text() if master_path.exists() else ""
+        )
+
+    # Build a uniform lookup record per master citekey. The auth state comes
+    # from the ONE door (master.bib's `% bib.state` comment first, a legacy
+    # catalog row second) — never from the catalog alone, which cannot answer
+    # for the 85% of the corpus that is fileless.
+    cat_view = {"entries": list(catalog_index.values())}
+
     def _shape(ck: str) -> dict:
         m = master[ck]
-        cat = catalog_index.get(normalize_citekey(ck), {})
-        bib = cat.get("bib") or {}
         return {
             "citekey": ck,
             "type": m["type"],
             "fields": m["fields"],
-            "bib_state": bib.get("state", "none"),
+            "bib_state": resolve_bib_state(
+                library or Path("."), ck,
+                master_states=states, catalog=cat_view,
+            ),
         }
 
     # 1. Exact citekey — keep the cheap authoritative short-circuit.
@@ -378,6 +402,21 @@ def _do_authenticate(library: Path, citekey: str, entry_type: str, fields: dict)
 
 def _write_master(library: Path, citekey: str, entry_type: str,
                   fields: dict, state: str) -> None:
+    """Write the entry, but NEVER downgrade a settled one.
+
+    Belt and braces beside the read fix (task 442): with `bib_state` resolved
+    from its F#4 home, a terminal master entry is deferred to and this path is
+    not reached for it at all. It is reached legitimately when an entry that
+    was terminal a moment ago (a parallel run, a hand edit) is written from a
+    collective auth whose verdict is weaker — and stamping `unverified` over
+    `authenticated` would be exactly the silent downgrade the drop guard in
+    `triage_apply` blocks one path over. The FIELDS still land (they are a
+    merge, never a replacement); only the state holds.
+    """
+    if not is_terminal_bib_state(state):
+        existing = resolve_bib_state(library, citekey)
+        if is_terminal_bib_state(existing):
+            state = existing
     update_master_bib_entry(library, citekey, entry_type, fields, bib_state=state)
 
 
@@ -883,15 +922,26 @@ def main(argv: list[str] | None = None) -> int:
     _UNCERTAIN_SINK = report.manual_review
 
     # Re-read master.bib for each entry so parallel runs see each other's writes.
-    TERMINAL_STATES = ("authenticated", "canonical", "manuscript")
+    # The set is `_tools.TERMINAL_BIB_STATES` — spelled once, so this branch
+    # and `triage_apply`'s drop guard cannot again disagree about which states
+    # are settled (pre-442 the drop guard was missing `canonical`).
+    TERMINAL_STATES = TERMINAL_BIB_STATES
+    master_path = library / "master.bib"
     for entry in paper_entries:
-        master = read_master_bib(library / "master.bib")
+        # ONE read of master.bib per entry, feeding BOTH the entry parse and
+        # the F#4 `% bib.state` map — the state's HOME, without which
+        # `bib_state` reads "none" for every fileless reference and the
+        # "defer to an authenticated master entry" rule above cannot fire.
+        master_text = master_path.read_text() if master_path.exists() else ""
+        master = read_master_bib(master_path, text=master_text)
+        master_states = master_bib_state_map(master_text)
         # Build the WorkIndex once per entry-view of master. master is re-read
         # each iteration (parallel runs may have written), so the index tracks
         # it; within a single find_duplicate call the index is reused across all
         # candidate comparisons (no per-candidate re-scan).
         work_index = build_work_index(master)
-        dup = find_duplicate(entry, master, catalog_index, work_index=work_index)
+        dup = find_duplicate(entry, master, catalog_index, work_index=work_index,
+                             library=library, master_states=master_states)
         if dup is None:
             _process_no_dup(library=library, entry=entry, dry_run=args.dry_run, report=report)
         elif dup["bib_state"] in TERMINAL_STATES:

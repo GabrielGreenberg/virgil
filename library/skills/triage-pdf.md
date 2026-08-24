@@ -429,7 +429,13 @@ python3 scripts/triage_apply.py --input /tmp/bib-triage.jsonl --library .
 
 The apply step:
 
-- For each entry, decides on collision (existing `bib.state == authenticated|manuscript` → ignore; existing unverified/failed/none → merge fields, preferring the incoming value on conflict).
+- For each entry, decides on collision. The existing state is resolved through
+  `_tools.resolve_bib_state` — master.bib's `% bib.state` comment FIRST, a legacy
+  catalog row as the fallback — so a FILELESS reference (cited but not held, and so
+  carrying no catalog row at all under the F#4 holdings model) is seen. A settled
+  entry (`TERMINAL_BIB_STATES`: authenticated / manuscript / canonical) is IGNORED
+  and left byte-unchanged; anything else merges fields over the existing ones,
+  preferring the incoming value on conflict.
 - Upserts into `master.bib` with `% bib.state = unverified`.
 - Creates `papers/<citekey>/references.bib` + empty `virgil/` sidecars (no source file, no `main.tex`).
 - Inserts a bib-only catalog row (`pdf.present: false`, `indexed.state: "none"`, `bib.state: "unverified"`).

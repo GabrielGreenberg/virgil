@@ -69,12 +69,25 @@ def load_library_records(
     added_at``.
     """
     library = Path(library)
+    from _tools import (
+        catalog_row_bib_state as _catalog_state,
+        master_bib_state_map,
+        read_master_bib,
+    )
+
+    master_path = library / "master.bib"
+    master_text = master_path.read_text() if master_path.exists() else ""
     if master is None:
-        from _tools import read_master_bib
-        master = read_master_bib(library / "master.bib")
+        master = read_master_bib(master_path, text=master_text)
     if catalog is None:
         from _tools import read_catalog
         catalog = read_catalog(library)
+    # F#4: a fileless reference's auth state lives in master.bib's
+    # `% bib.state` comment, not in a catalog row it does not have. Reading
+    # the row alone left `bib_state=None` for 85% of the corpus, so
+    # `work_identity._bib_state_rank` scored every authenticated reference-only
+    # entry at 0 and the dedup survivor vote was blind to authentication.
+    master_states = master_bib_state_map(master_text)
 
     cat_by_key: dict[str, dict] = {}
     for row in catalog.get("entries", []):
@@ -84,13 +97,15 @@ def load_library_records(
     folders = set(os.listdir(papers_dir)) if papers_dir.is_dir() else set()
     folders_nfc = {_nfc(f) for f in folders}
 
-    def _meta_from_row(row: dict) -> dict:
+    def _meta_from_row(row: dict, citekey: str | None = None) -> dict:
         idx = row.get("indexed") or {}
-        bib = row.get("bib") or {}
         pdf = row.get("pdf") or {}
-        ck = _nfc(row.get("citekey", ""))
+        ck = _nfc(citekey if citekey is not None else row.get("citekey", ""))
         return {
-            "bib_state": bib.get("state"),
+            # F#4 read order: the master comment wins, the row is the fallback.
+            # `or None` keeps the pre-442 shape for "no state" (the record is
+            # consumed by `work_identity._bib_state_rank`, which coerces).
+            "bib_state": master_states.get(ck) or _catalog_state(row) or None,
             "indexed_state": idx.get("state"),
             "pgmarkCount": idx.get("pgmarkCount", 0) or 0,
             "pageCount": (pdf.get("pageCount", 0) or 0),
@@ -109,8 +124,9 @@ def load_library_records(
             "citekey": ck,
             "type": m.get("type", "misc"),
             "fields": m.get("fields", {}),
-            "meta": _meta_from_row(row) if row else {
-                "bib_state": None, "indexed_state": None, "pgmarkCount": 0,
+            "meta": _meta_from_row(row, ck) if row else {
+                "bib_state": master_states.get(ck_nfc), "indexed_state": None,
+                "pgmarkCount": 0,
                 "pageCount": 0, "has_folder": ck_nfc in folders_nfc,
                 "sha256": None, "added_at": None,
             },
