@@ -3140,9 +3140,16 @@ export function BandDivider({
     id: `band-divider-${side}-${aboveId}-${belowId}`,
     axis: "y",
     getValue: () => {
-      const root = containerRef.current ?? document;
-      const above = root.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${aboveId}"]`);
-      const below = root.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${belowId}"]`);
+      // RELATIVE to the frame this divider lives in — the correct scope for a
+      // per-PANE marker, and the reason it needs no visibility ladder (task
+      // 438). The `?? document` fallback this used to carry was a
+      // document-global resolution of `[data-dock-slot]` wearing the relative
+      // form's clothes: with no frame in hand it would answer with whichever
+      // pane came first, hidden ones included. A divider with no frame has
+      // nothing to trade, so the honest answer is no elements.
+      const root = containerRef.current;
+      const above = root?.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${aboveId}"]`) ?? null;
+      const below = root?.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${belowId}"]`) ?? null;
       elsRef.current = { above, below };
       const aboveH = above?.getBoundingClientRect().height ?? MIN_BAND_PX;
       const belowH = below?.getBoundingClientRect().height ?? MIN_BAND_PX;

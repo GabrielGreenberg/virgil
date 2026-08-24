@@ -12,6 +12,7 @@
  */
 
 import { isFullyVisible, mayReposition } from "@/lib/reposition-policy";
+import { resolvePaneMarker } from "./pane-dom";
 
 /**
  * The single "this section is now current" line, expressed as a fraction of
@@ -55,16 +56,16 @@ export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
  * A `display:none` element has `offsetParent === null`, so we prefer the first
  * rendered match — mirroring the focused→visible precedence of
  * [active-editor-probe.ts](../../lib/active-editor-probe.ts) `pickProbeEditor`.
- * The common single-pane case (≤1 match) short-circuits, which also avoids a
- * false negative if a sole pane is mid-transition.
+ *
+ * Since task 438 that rule has ONE spelling for every per-pane DOM marker
+ * ([pane-dom.ts](pane-dom.ts)); this stays the named door its ~dozen callers
+ * already import. FAIL-OPEN: when no match is rendered, hand back the first
+ * anyway — the pre-existing single-pane short-circuit exists to avoid a false
+ * negative while a sole pane is mid-transition, and `resolvePaneMarker`'s
+ * fail-open miss reproduces it for one match and generalizes it to N.
  */
 export function findRowScroll(): HTMLElement | null {
-  const all = document.querySelectorAll<HTMLElement>("[data-virgil-row-scroll]");
-  if (all.length <= 1) return all[0] ?? null;
-  for (const el of all) {
-    if (el.offsetParent !== null) return el;
-  }
-  return all[0] ?? null;
+  return resolvePaneMarker("[data-virgil-row-scroll]", "fail-open");
 }
 
 /** The scroll container relevant to a given ProseMirror view. Mirror

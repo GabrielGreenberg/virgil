@@ -1607,6 +1607,157 @@ CI: [dropctx-multipane-registry.test.tsx](src/components/drop-mode/__tests__/dro
 
 **Verification, honestly:** this class masks in the dev preview (multi-pane + FSA), so the durable proof is the unit contract above and a real-app eyeball is *owed*, not claimed.
 
+### The DOM half: a per-PANE MARKER is resolved the same way
+
+Same law, other medium (task 438) — and the case where the ladder existed, was
+correct, was cited BY NAME in the comment above the very gate that half-closed
+this, and reached none of the four sites that resolve a per-pane marker in the
+DOM.
+
+A mounted pane stamps five per-PANE markers — `[data-strip-side]` on the tool
+strip, and `[data-panel-column-side]` + `[data-flex-col]` (the same element),
+`[data-stack-frame]` and one `[data-dock-slot="<side>-<index>"]` band anchor per
+docked band from `PanelColumn`. None of those selectors carries a pane
+discriminator: `left-0` exists once per mounted pane with a left band. Seven
+call sites resolved them with a **document-global**
+`querySelector`/`querySelectorAll` and took the FIRST match. `PanelColumn` is
+not gated on `useIsVisible()`, so a hidden pane renders its column, its frame
+and its anchors with every rect zero.
+
+**Why "first in DOM order" looked safe, and where it stopped being safe.**
+`useKeepAliveLRU` promotes the ACTIVE doc to the FRONT of the keep-alive order,
+so among the three authored panes the first match really was the pane the user
+was looking at — which is exactly why this survived. The Library Reader's pane
+is not in that list: `EditorLayout` renders the doc keep-alive block BEFORE the
+paper/library block, so **whenever the user is on the Library pane every doc
+pane is hidden, still mounted, and still first**. The hazard is therefore
+Reader-shaped today and general tomorrow, and the fix is a behaviour TRADE
+rather than a strict improvement — see the visible-edge rule below.
+
+> **A per-PANE DOM marker is resolved through ONE door
+> ([pane-dom.ts](src/components/editor-layout/pane-dom.ts)) reading the rung the
+> editor ladder already names — a hidden pane is exactly what
+> `offsetParent === null` / `offsetHeight === 0` reports, and nothing else in a
+> mounted tree does.**
+
+Four members, and the first two are the ones the user meets:
+
+- **M1 — the Reader's docked panel renders into a HIDDEN subtree.**
+  `FloatingPanel` resolved `left-0` to the hidden doc pane's anchor and portaled
+  its whole pod into a `display:none` subtree. The panel is "open" in prefs, the
+  strip icon lights `aria-pressed`, and nothing appears anywhere. The hidden
+  pane's own `FloatingPanel` had already returned null under the `isVisible`
+  gate — which is *why* the anchor was present and free, and why that gate does
+  not save it: it closes the half where a hidden pane is the PRODUCER, and this
+  is the half where it is the first consumable ANCHOR.
+- **M2 — the Reader can never stack two docked bands.** `measureOmniGap(side)`
+  read a zero-rect hidden column, so BOTH its branches returned 0;
+  `placeInStack`'s `fits = freeSpacePx >= MIN_BAND_PX` was then false for every
+  Reader strip-open and the second panel opened evicted the first, forever, with
+  no room problem at all.
+- **M3 — the dock hit-test snaps to a zero-rect hidden column.** A hidden column
+  reports `left = right = 0`, so its snap corner `(0, TOP_BAR + podGap)` sits
+  nearer the viewport's top-left than any real column's and wins
+  `resolveDockTargetByPanelProximity` outright; `resolveBandTargetIn` then reads
+  its all-zero band rects and answers `index = bands.length` with a zero-size
+  outline. Same shape task 272 recorded for the 0px COLLAPSED column, one cause
+  over — that one was fixed by clearing the collapse sentinel, which does
+  nothing for a hidden pane.
+- **M4 (mild, fails open) — `computeColumnSpawnRect` drops to its hard-coded
+  fallback** because a zero rect misses its `width > 0 && height > 0` guard.
+  Listed because it is the same sweep and it moves with the others, or it
+  becomes the next reader's "the pattern is fine here".
+- **M5 — a divider drag PERSISTS a hidden pane's zero width into the user's
+  prefs.** `syncPanelPrefsToRendered` sweeps `[data-flex-col]` (the SAME element
+  as M2/M3/M4's, under a different attribute name) on every panel/margin
+  drag-start and writes each column's rendered width to `panelWidths[side]` /
+  the zen margins. It iterates in keep-alive LRU order and the LAST write per
+  side wins, so a warm hidden pane could write `0`. Found by the adversarial
+  pass on the fix — and it is the strongest argument that a census keyed on
+  attribute NAMES has to enumerate every name a pane stamps, because this call
+  sat thirty lines from converted code, on the same DOM node, under a comment
+  asserting the exact premise the task retires (*"`[data-flex-col]` is a unique
+  attribute on the active EditorPane's panel columns"*).
+- **M6 — the strip-icon drag hit-tests a hidden pane's strip.**
+  `[data-strip-side]` is stamped once per `EditorPane` and read find-first
+  twice: to POSITION the drop indicator, and to compute the drop INDEX from
+  that strip's own `[data-panel-id]` buttons. A hidden strip gives an indicator
+  at the viewport origin and an index counted off the wrong pane's icons — the
+  hover and the commit answering from different tables, which is the law
+  "Pane-drag stability" already states one subsystem over.
+
+Five rules it earned:
+
+- **The two miss policies are DIFFERENT CLAIMS, so the argument is REQUIRED.** A
+  MEASUREMENT reader (`measureOmniGap`, `computeColumnSpawnRect`,
+  `findRowScroll`) fails OPEN — measuring the wrong column is the pre-438 status
+  quo, while `null` turns a working feature off. A PORTAL TARGET
+  (`FloatingPanel`'s anchor) fails CLOSED — an invisible anchor is strictly
+  worse than the body fallback the caller already has. A defaulted policy would
+  be a decision nobody made.
+- **The set form fails open as a SET.** `paneColumns()` filters to visible and,
+  if that leaves nothing, hands back everything — so a sweep can never turn a
+  gesture off.
+- **The second spelling was retired with it.** `findRowScroll` had implemented
+  this exact rule privately for a FOURTH per-pane marker
+  (`[data-virgil-row-scroll]`), citing `active-editor-probe` in its own
+  docstring. It reads the shared resolver now, keeping its name for its ~dozen
+  callers; its pre-existing `≤1` short-circuit is exactly what fail-open
+  generalizes to N.
+- **A fail-CLOSED resolution must run at a moment when the answer EXISTS, so it
+  is re-taken on the VISIBLE EDGE.** `FloatingPanel`'s effect had deps of
+  `[mode, slotKey]` and its `!isVisible` bail sits AFTER the hooks, so a pane
+  that MOUNTS while hidden — clicking a tab while the PDF viewer is up mounts
+  the new doc pane one commit before `pdfView` flips off — resolved once,
+  found nothing visible, body-portaled, and never ran again. Fail-open hid that
+  (it answered with the LRU-front pane, which was about to become visible);
+  fail-closed exposes it, which is why the two shipped together. The same dep
+  closes a hazard that predates both: a `dockStack` change made in pane A
+  re-keys pane B's slot WHILE B IS HIDDEN, so B resolved A's anchor and kept it
+  across the switch. Skipping while hidden costs nothing — the component
+  returns null there, so there is no portal to keep pointed at anything.
+- **A `?? document` fallback is a document-global resolution wearing the
+  relative form's clothes.** `BandDivider.getValue` had one; with no frame in
+  hand it would answer with whichever pane came first, hidden ones included. A
+  divider with no frame has nothing to trade, so the honest answer is no
+  elements — and the census's EMPTY allowlist is only true because that
+  fallback was retired rather than exempted.
+- **`offsetHeight > 0` is a BACKSTOP, not the primary signal.** `offsetParent`
+  is null for a `position: fixed` element that is perfectly visible, so the rung
+  is the disjunction. A `display:none` subtree fails both.
+- **Scoped by CSS VISIBILITY, not by REACT TREE — stated at the door.** Exact
+  for the shipped topology (at most one visible pane); NOT exact for two
+  simultaneously visible panes (a future split view), where both pass the rung
+  and the first still wins. The context-scoped fix is wider (`FloatingPanel`
+  mounts from several places) and does not help `readDockGeometry`, which is
+  called from a gesture with no pane in hand. Take the filter now; the context
+  is the follow-on if a split view ships.
+
+CI: [pane-dom-multipane.test.tsx](src/components/editor-layout/__tests__/pane-dom-multipane.test.tsx)
+builds TWO panes — the hidden one FIRST, as production renders them — and drives
+each door plus the REAL `FloatingPanel` in docked mode. **No pre-438 suite could
+see any of this**: every panel-column / dock / spawn fixture in the repo builds
+ONE column tree, where "the first match" and "the visible pane's match" are the
+same element by construction. The leg with teeth is the CENSUS
+([pane-dom-census.test.ts](src/components/editor-layout/__tests__/pane-dom-census.test.ts))
+— the door was never the part that could misbehave, a call site that never asks
+it is, and `document.querySelector('[data-dock-slot="left-0"]')` type-checks
+perfectly. Allowlist EMPTY; a relative `closest(…)` / `root.querySelector(…)`
+from an element already inside the pane needs no ladder and stays legal.
+Measured by neutering each half in turn: the pre-438 resolution takes 10
+behavioural legs plus 3 census legs (which name all four original sites);
+reverting the `FloatingPanel` call site alone takes 2; the visible-edge deps 1;
+and the two later members (`[data-flex-col]`, `[data-strip-side]`) 2 behavioural
+plus 3 census. Two of this suite's own first-draft legs were vacuous and are
+recorded rather than quietly fixed: a census that stripped STRING LITERALS
+erased the very selector it greps for (so every leg passed on the pre-fix tree —
+the canary is what caught it), and a "the miss policy is stated" leg read the
+RAW file, where both policy literals appear in the door's own header prose.
+
+**Owed, not claimed:** a real eyeball. The repro needs a granted authored doc
+AND a Library paper open at once, which is the FSA/multi-pane-masked class, so
+the durable proof here is the unit contract.
+
 ## Cross-window store stability
 
 > **A store that caches a `localStorage` snapshot at module (or hook) scope MUST re-hydrate on the native `storage` event — through [src/lib/cross-window-storage.ts](src/lib/cross-window-storage.ts) (`subscribeToStorageKey`), never a hand-rolled listener.**

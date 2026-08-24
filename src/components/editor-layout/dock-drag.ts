@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Side } from "@/hooks/useViewPrefs";
+import { paneColumns } from "./pane-dom";
 
 /**
  * Shared signal: which dock target a drag is currently over, and the
@@ -199,6 +200,16 @@ function readStackFrameRect(
  * footprints. Call this on a gesture EDGE (drag begin, or a real invalidation
  * such as the LayoutGestureBus window-resize edge), never per move: it is
  * `querySelectorAll` + a forced-layout rect read per column and per band.
+ *
+ * Membership comes from `paneColumns()` (task 438), not a document-global
+ * sweep: under multi-pane keep-alive up to four `EditorPane`s are mounted and a
+ * HIDDEN one's column reports `left = right = 0`, so its snap corner
+ * `(0, TOP_BAR + podGap)` sits nearer the viewport's top-left than any real
+ * column's and wins `resolveDockTargetByPanelProximity` outright — after which
+ * `resolveBandTargetIn` reads that column's all-zero band rects and answers
+ * `index = bands.length` with a zero-size outline. Same shape task 272 recorded
+ * for the 0px COLLAPSED column, one cause over: that one was fixed by clearing
+ * the collapse sentinel, which does nothing for a hidden pane.
  */
 export function readDockGeometry(): DockGeometry {
   if (typeof document === "undefined") {
@@ -209,9 +220,7 @@ export function readDockGeometry(): DockGeometry {
       getComputedStyle(document.documentElement).getPropertyValue("--pod-gap"),
     ) || DEFAULT_POD_GAP;
   const columns: DockColumnGeometry[] = [];
-  for (const col of Array.from(
-    document.querySelectorAll<HTMLElement>("[data-panel-column-side]"),
-  )) {
+  for (const col of paneColumns()) {
     const r = col.getBoundingClientRect();
     const side = (col.dataset.panelColumnSide ?? "left") as Side;
     columns.push({

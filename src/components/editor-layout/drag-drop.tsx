@@ -3,6 +3,7 @@ import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 import { scrollEntryIntoView } from "./layout-scroll";
 import { measureOmniGap } from "./panel-column";
+import { paneStrip } from "./pane-dom";
 import type { SelectionsContextValue } from "./contexts/selections";
 import { getPanelSelection } from "./panel-selection";
 
@@ -129,10 +130,11 @@ export function StripButton({
     // Find which strip we're hovering
     const centerX = window.innerWidth / 2;
     const targetSide = clientX < centerX ? "left" : "right";
-    const strips = document.querySelectorAll("[data-strip-side]");
-    const targetStrip = Array.from(strips).find(
-      (el) => (el as HTMLElement).dataset.stripSide === targetSide
-    ) as HTMLElement | undefined;
+    // Task 438 — the strip is a per-PANE marker. A document-global find-first
+    // can answer with a hidden keep-alive pane's strip, whose every rect is
+    // zero: the indicator lands at the viewport origin and the drop index is
+    // counted off the WRONG pane's icons.
+    const targetStrip = paneStrip(targetSide) ?? undefined;
 
     if (!targetStrip) {
       indicatorRef.current?.remove();
@@ -240,10 +242,10 @@ export function StripButton({
       // Determine drop index by finding which button the cursor is nearest
       const targetStripSide = toSide;
       // Find the strip container for the target side
-      const strips = document.querySelectorAll("[data-strip-side]");
-      const targetStrip = Array.from(strips).find(
-        (el) => (el as HTMLElement).dataset.stripSide === targetStripSide
-      ) as HTMLElement | undefined;
+      // Task 438 — per-PANE marker; see `updateDropIndicator` above. The
+      // hover and the commit must read the SAME strip, or the index the user
+      // was shown is not the index that lands.
+      const targetStrip = paneStrip(targetStripSide) ?? undefined;
 
       let toIndex: number | undefined;
       if (targetStrip) {
