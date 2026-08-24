@@ -9,6 +9,7 @@
 
 import { FLOATING_PANEL_VIEWPORT_MARGIN } from "./constants";
 import type { Side } from "@/hooks/useViewPrefs";
+import { paneColumn } from "./pane-dom";
 
 export interface SpawnSize {
   width: number;
@@ -82,6 +83,12 @@ export function computeSpawnPosition(
  * appears exactly where the docked column would have rendered. Measures
  * the live column wrapper (it's still mounted as the omni backdrop). If
  * the wrapper isn't in the DOM yet, falls back to a strip-adjacent rect.
+ *
+ * Resolved through `paneColumn` (task 438). This one already failed SAFE — a
+ * hidden pane's zero rect misses the `width > 0 && height > 0` guard and drops
+ * to the hard-coded fallback — but it is the same sweep as its three siblings
+ * and moves with them, or it becomes the next reader's "the pattern is fine
+ * here".
  */
 const FALLBACK_COLUMN_WIDTH = 320;
 const FALLBACK_TOP_OFFSET = 56;
@@ -90,9 +97,7 @@ const MIN_COLUMN_FLOAT_WIDTH = 280;
 
 export function computeColumnSpawnRect(side: Side): SpawnRect {
   if (typeof document !== "undefined") {
-    const col = document.querySelector(
-      `[data-panel-column-side="${side}"]`,
-    ) as HTMLElement | null;
+    const col = paneColumn(side);
     if (col) {
       const r = col.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) {

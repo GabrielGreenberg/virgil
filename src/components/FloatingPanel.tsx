@@ -33,6 +33,7 @@ import { canCaptureToStack } from "@/floats/stack-capture";
 import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
+import { paneDockSlot } from "@/components/editor-layout/pane-dom";
 
 /**
  * Floating-shell resize clamps — the single source of truth for how small
@@ -310,13 +311,20 @@ function FloatingPanelInner({
 }: FloatingPanelProps, handleRef: React.ForwardedRef<FloatingPanelHandle>) {
   // Keep-alive invariant: a hidden (display:none) kept-alive pane must render NO
   // floating/docked panels. FloatingPanel is the single portal-escape chokepoint
-  // — docked panels portal to a GLOBAL `[data-dock-slot]` (per-pane anchor, but
-  // resolved via a document-wide querySelector), so without this gate every warm
-  // pane's docked panel collapses onto the active pane's slot and stacks (the
-  // multi-outline bug). Returning null when hidden also keeps hidden panes inert
-  // (their panel subtrees never mount), extending the same "hidden is frozen"
-  // invariant the measurement hooks already enforce. Default `true` (no provider)
-  // ⇒ app-level dialogs/floats outside a keep-alive pane render normally.
+  // — docked panels portal to a `[data-dock-slot]` anchor whose key
+  // (`"<side>-<index>"`) carries NO pane discriminator, so without this gate
+  // every warm pane's docked panel collapses onto the active pane's slot and
+  // stacks (the multi-outline bug). Returning null when hidden also keeps hidden
+  // panes inert (their panel subtrees never mount), extending the same "hidden
+  // is frozen" invariant the measurement hooks already enforce. Default `true`
+  // (no provider) ⇒ app-level dialogs/floats outside a keep-alive pane render
+  // normally.
+  //
+  // That closes the half where a hidden pane is the PRODUCER. The half where a
+  // hidden pane is the first CONSUMABLE anchor is closed by `paneDockSlot`
+  // below (task 438) — the hidden pane's own FloatingPanel returned null here,
+  // so its anchor is present and EMPTY, and a document-global lookup portaled
+  // the visible pane's panel straight into it.
   const isVisible = useIsVisible();
   const [pos, setPos] = useState({
     x: initialX,
@@ -1127,6 +1135,21 @@ function FloatingPanelInner({
   );
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
+    // Resolve on the VISIBLE edge, not merely on a `slotKey` change. Two shapes
+    // make that load-bearing rather than tidy, and both predate task 438 —
+    // fail-closed is what turns the second from "resolves the pane that happens
+    // to be first" into "resolves nothing", so it is closed here:
+    //
+    //  (a) a pane can MOUNT while hidden (a tab click while the PDF viewer is
+    //      up mounts the new doc pane one commit before `pdfView` flips off),
+    //      and with deps of `[mode, slotKey]` alone the effect would never run
+    //      again — the panel would body-portal for the life of the mount;
+    //  (b) a `dockStack` change made in pane A re-keys pane B's slot WHILE B IS
+    //      HIDDEN, so B resolved A's anchor and kept it after the switch.
+    //
+    // Skipping while hidden costs nothing: the component returns null below, so
+    // there is no portal to keep pointed at anything.
+    if (!isVisible) return;
     if (mode === "floating") {
       setTarget(document.body);
       return;
@@ -1137,14 +1160,22 @@ function FloatingPanelInner({
     }
     // The slot anchor is rendered by PanelColumn whenever a panel id is
     // assigned to the slot — should always exist by the time we render.
-    const el = document.querySelector<HTMLElement>(`[data-dock-slot="${slotKey}"]`);
+    //
+    // `paneDockSlot` is FAIL-CLOSED (task 438): the slot key is per-pane but
+    // carries no pane discriminator, so `left-0` exists in every mounted pane
+    // with a left band, and the first in DOM order is a hidden doc pane
+    // whenever the Library Reader is the visible one. An anchor inside a
+    // `display:none` subtree is strictly worse than the body fallback below —
+    // the panel would be "open" in prefs with its strip icon lit and nothing
+    // on screen anywhere — so a miss resolves to null and takes the fallback.
+    const el = paneDockSlot(slotKey);
     setTarget(el);
     if (!el) {
       // Fallback — body-portal so the panel is visible somewhere even
       // if the gutter happens to be missing the anchor. Not expected.
       setTarget(document.body);
     }
-  }, [mode, slotKey]);
+  }, [mode, slotKey, isVisible]);
 
   // Hidden kept-alive pane → render nothing (no portal escape, no stacking).
   if (!isVisible) return null;

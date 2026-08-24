@@ -42,6 +42,7 @@ import {
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { DocPipeline } from "./editor-layout/DocPipeline";
+import { paneFlexColumns } from "./editor-layout/pane-dom";
 import {
   DocKeepAliveSlot,
   useDocKeepAliveLRU,
@@ -1104,11 +1105,18 @@ export default function EditorLayout() {
   // Snap all panel/margin prefs to their current rendered widths. Called
   // on drag start so that when the flex switches from "1 100 pref"
   // (shrinkable) to "0 0 pref" (pinned), shrunk panels don't snap back
-  // to pref and jump the editor. Scoped to the document — `[data-flex-col]`
-  // is a unique attribute on the active EditorPane's panel columns.
+  // to pref and jump the editor.
+  //
+  // Task 438 — `[data-flex-col]` is NOT "a unique attribute on the active
+  // EditorPane's panel columns", which is what this comment used to claim:
+  // multi-pane keep-alive mounts up to four panes and every one stamps it, so a
+  // document-global sweep visits the hidden ones too, in LRU order, and the
+  // LAST write per side wins. A hidden pane's rect is all zeros, so a divider
+  // drag in the VISIBLE pane could persist `panelWidths[side] = 0` (or a zen
+  // margin of 0) into the user's prefs on behalf of a pane they cannot see.
+  // `paneFlexColumns()` resolves the visible pane's columns.
   const syncPanelPrefsToRendered = useCallback(() => {
-    const cols = document.querySelectorAll<HTMLElement>('[data-flex-col]');
-    cols.forEach((col) => {
+    paneFlexColumns().forEach((col) => {
       const side = col.getAttribute('data-flex-col') as 'left' | 'right' | null;
       if (side !== 'left' && side !== 'right') return;
       const rendered = col.getBoundingClientRect().width;

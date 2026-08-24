@@ -8,6 +8,7 @@ import {
   bandSlotKey,
 } from "@/hooks/useViewPrefs";
 import { BandDivider } from "../panel-primitives";
+import { paneColumn } from "./pane-dom";
 
 /** One docked band in a column's stack: a panel id plus an optional
  *  resized height (px). Absent height ⇒ content-sized (flex auto). */
@@ -23,12 +24,17 @@ export type BandSpec = { id: PanelId; height?: number };
  * Agents E and S call this at open-time and pass the result as
  * `freeSpacePx` to the viewPrefs openers so the fit check can decide
  * append-vs-evict without re-measuring per render.
+ *
+ * Resolved through `paneColumn` (task 438): a bare document-global lookup
+ * answers with the first column in DOM order, which under multi-pane
+ * keep-alive is a `display:none` doc pane whenever the Library Reader is the
+ * visible one — every rect zero, so BOTH branches below return 0, so
+ * `placeInStack`'s `fits = freeSpacePx >= MIN_BAND_PX` is false for every
+ * Reader strip-open and the second panel you open evicts the first.
  */
 export function measureOmniGap(side: Side): number {
   if (typeof document === "undefined") return 0;
-  const col = document.querySelector<HTMLElement>(
-    `[data-panel-column-side="${side}"]`,
-  );
+  const col = paneColumn(side);
   if (!col) return 0;
   const frame = col.querySelector<HTMLElement>("[data-stack-frame]");
   if (!frame) return 0;
