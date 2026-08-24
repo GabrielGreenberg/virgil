@@ -145,14 +145,16 @@ directory).
      prompt the user)
    - **variant-copy** + `existingCitekey` → archives under
      `papers/<existingCitekey>/variants/<filename>`, no new bib entry
-   - **bib-only** → upserts the entry into `master.bib` (merging field-by-field
-     when an existing unverified/failed/none row already has the same
-     citekey; ignoring entirely when the existing state is `authenticated`
-     or `manuscript`), creates a minimal `papers/<citekey>/`
+   - **bib-only** → upserts the entry into `master.bib` with its
+     `% bib.state` comment (merging field-by-field over the existing entry
+     whenever that entry's state is non-terminal; ignoring the drop
+     entirely when it is settled — `TERMINAL_BIB_STATES`: `authenticated`,
+     `manuscript`, `canonical`), creates a minimal `papers/<citekey>/`
      (`references.bib` + empty `virgil/` sidecars; no source file, no
-     `main.tex`), inserts a bib-only catalog row (`pdf.present: false`,
-     `indexed.state: "none"`), and queues `kind: "authenticate"` (or
-     skips queueing when `proposedBibState == "manuscript"`). After all
+     `main.tex`), mints **no catalog row** (a source-less entry is
+     reference-only under the F#4 holdings model — the `.bib` bullet in
+     `/triage-pdf` states the full outcome), and queues `kind: "authenticate"`
+     (or skips queueing when `proposedBibState == "manuscript"`). After all
      rows from one `.bib` file have been applied, the source `.bib` is
      deleted from `unsorted/` (or parked under `_pending/` if any rows
      hit a parse error).
