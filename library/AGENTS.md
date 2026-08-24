@@ -872,10 +872,11 @@ Phase F#4 (`485be521`) moved WHERE that state lives: catalog.json carries only
 HOLDINGS rows (`pdf.present=true`), so a reference-only entry — cited but not
 held — gets no catalog row at all and its state is a comment on its master.bib
 block, projected into `bib-index.json` by `build_bib_index`. The migration
-reached the two WRITERS (`merge_paper_references._upsert_catalog_row`,
+reached two of the THREE writers (`merge_paper_references._upsert_catalog_row`,
 `triage_apply._upsert_catalog_row_bib_only`, both gating on
-`paper_has_holdings`) and the TypeScript reader (`LibraryView`, whose comment
-names this exact hazard). **It reached none of the FOUR Python readers**, each
+`paper_has_holdings`; the third skipped the gate outright — see **The WRITE
+half** below, which is also where the gate's name moved) and the TypeScript
+reader (`LibraryView`, whose comment names this exact hazard). **It reached none of the FOUR Python readers**, each
 of which kept asking the catalog — which for a fileless entry can only answer
 *nothing*, i.e. `"none"` (task 442).
 
@@ -1025,6 +1026,34 @@ Six rules it earned:
   the writer was **not idempotent at all**: `entry_end` stops at the closing
   `}` while `emit_bib_entry` ends `}\n`, so every rewrite of an unchanged
   entry INSERTED a blank line, forever.
+- **…and making it a WRITER at all exposed an UN-CAPPED brace walk.**
+  `read_master_bib` CAPS its walk at the next entry opener "so one bad entry
+  can't swallow the rest"; `update_master_bib_entry` did not, so on a
+  brace-unbalanced entry it walked to EOF and the splice replaced every
+  FOLLOWING entry with one emitted block — the failure `read_master_bib`'s own
+  docstring records as having once dropped ~82% of a real 34 k-entry library.
+  Pre-443 `_sync_catalog_entry_from_master` never wrote master.bib, so the gate
+  handed that walk a per-`.bib`-entry reacher. Both halves read ONE rule now
+  ([`bib_entry_extent`](scripts/_tools.py)), and the WRITER **refuses**
+  (`BibEntryUnbalanced`) rather than splicing over a guess: a reader may act on
+  a capped guess because it mis-reports one entry, a writer may not because it
+  destroys whatever the guess got wrong. The `references.bib` sibling
+  (`BibSpliceRefused`) makes the same call.
+- **The gate REFRESHES an existing row; it does not merely decline to mint
+  one.** A pre-F#4 library still carries rows for fileless citekeys (the
+  reporting library: 3 722 against 24 082 master entries), and `LibraryView`
+  suppresses its bib-index-backed synthetic row for any citekey the catalog
+  already names — so an un-refreshed row does not sit harmlessly beside the
+  live projection, it SHADOWS it and freezes the state and title the user sees.
+  `triage_apply` had that exception by hand and nowhere else, which is exactly
+  how the third writer would have lost it; it is the door's now, so all three
+  keep it. (`prune_catalog_present_false --apply` is the migration that removes
+  such rows, and nothing in the shipped flow invokes it.)
+- **The `"none"` guard is the WHOLE of the door's no-downgrade claim**, stated
+  at the site rather than implied: a weaker CANONICAL state still lands,
+  because whether re-authentication may downgrade is a question about the auth
+  pipeline and not about this gate. `merge_paper_references._write_master`
+  holds its own guard for the case it owns.
 - **`index_paper` stopped forking the source probe.** Its private
   `_resolve_source` was a copy of `_tools.resolve_paper_source` — the scan
   `paper_has_holdings` is derived from — minus the NFC/NFD lookup the SSOT was
@@ -1072,8 +1101,9 @@ Quoted strings elsewhere are KEPT, because `triage_apply`'s mint is
 `catalog["entries"].append(...)` and the key is the needle. **The allowlist is
 EMPTY** and stays that way: a hit is ASK-it, never list-it. Measured by
 neutering each half in turn: the pre-443 ungated writer takes 5 legs (the
-census among them), a door that asks without discharging 6, the `"none"`
-downgrade guard 1, and each half of the master.bib writer 1.
+census among them), a door that asks without discharging 6, the stale-row
+refresh 2, the `"none"` downgrade guard 1, the writer's shared extent rule 1,
+and each half of the byte-identical skip 1.
 
 **Owed, not claimed:** a real-library eyeball. The queue/drain path needs a
 real library, so the durable proof here is the unit contract; after this, a

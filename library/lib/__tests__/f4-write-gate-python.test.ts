@@ -44,12 +44,26 @@ describe("F#4 catalog-row write gate (Python)", () => {
         }`,
       );
     }
-    // The runner prints "<n>/<n> passed"; make the count assertion explicit so
-    // a suite that silently collects zero tests can't read as a pass.
-    const m = output.match(/(\d+)\/(\d+) passed/);
-    expect(m, `no pass tally in output:\n${output}`).not.toBeNull();
-    const [, passed, total] = m!;
-    expect(Number(total)).toBeGreaterThan(0);
-    expect(passed).toBe(total);
+    // Assert a non-zero pass count explicitly, so a suite that silently
+    // collects ZERO tests cannot read as a pass.
+    //
+    // TWO tallies, because the suite has two runners and which one runs is a
+    // property of the MACHINE, not of the code: its `__main__` uses pytest
+    // when importable and its own standalone runner otherwise. A regex for
+    // only the standalone form ("<n>/<n> passed") is green here purely
+    // because pytest is not installed, and fails on any machine where it is —
+    // with every Python test passing. (`bib-state-read-door-python.test.ts`
+    // still carries the one-form version; same hazard, pinned here.)
+    const both = output.match(/(\d+)\/(\d+) passed/);
+    const pytest = output.match(/(\d+) passed/);
+    if (both) {
+      const [, passed, total] = both;
+      expect(Number(total)).toBeGreaterThan(0);
+      expect(passed).toBe(total);
+    } else {
+      expect(pytest, `no pass tally in output:\n${output}`).not.toBeNull();
+      expect(Number(pytest![1])).toBeGreaterThan(0);
+      expect(output).not.toMatch(/\b\d+ (failed|error)/);
+    }
   });
 });

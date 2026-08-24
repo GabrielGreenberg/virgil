@@ -88,6 +88,31 @@ class DuplicateWorkError(Exception):
         )
 
 
+# ── master.bib writer refusal ─────────────────────────────────────────
+
+
+class BibEntryUnbalanced(Exception):
+    """Raised by `update_master_bib_entry` when the entry it was asked to
+    rewrite has unbalanced braces, so its extent cannot be established.
+
+    `bib_entry_extent` answers such an entry with a CAPPED guess — the next
+    entry opener — which is right for a READER (it mis-reports one entry and
+    contains the damage) and wrong for a WRITER (it splices over whatever the
+    guess got wrong). The sibling refusal `BibSpliceRefused` in `_bib_parse`
+    makes the same call for `references.bib`: losing entries is never the
+    fallback. Report the message verbatim and leave the file for a human.
+    """
+
+    def __init__(self, citekey: str):
+        self.citekey = citekey
+        super().__init__(
+            f"master.bib: the entry for {citekey!r} has unbalanced braces, so "
+            "its extent cannot be established — refusing to rewrite it rather "
+            "than risk splicing over the entries that follow. Repair the "
+            "braces by hand and re-run."
+        )
+
+
 # ── tool detection (original purpose) ─────────────────────────────────
 
 
@@ -606,18 +631,44 @@ def iter_master_bib_slim(text: str):
         yield citekey, entry_type, fields
 
 
+def _bib_index_schema_stamp() -> str:
+    """A signal for "what SHAPE does this build project?".
+
+    The stamp beside it answers "did master.bib change"; this answers "would
+    a rebuild produce different fields for the SAME master.bib". They are
+    different questions and the gate needs both, because the index is a
+    derived cache and the projection is code that ships.
+
+    Without it a schema change is invisible to the gate: F#4 added the `bs`
+    field, and every library whose index had been built BEFORE that kept
+    serving `bs`-less rows forever — `_master_bib_stamp` still matched, so
+    `build_bib_index` returned False without parsing. What healed it was an
+    accident: `update_master_bib_entry` inserted a blank line on every
+    rewrite, so the mtime moved on every re-assert. Task 443 fixed that
+    accident (a no-op write is now skipped), which would have left the
+    schema hole with no healer at all — so it is closed properly here
+    instead. DERIVED from the projection, never hand-versioned: a future
+    field added to `_BIB_INDEX_FIELDS` invalidates every stale index by
+    shipping.
+    """
+    return ",".join(short for _full, short in _BIB_INDEX_FIELDS) + ",bs"
+
+
 def _master_bib_stamp(library: Path) -> str:
-    """A cheap content-change signal for master.bib (mtime_ns:size).
+    """A cheap change signal for the bib index (mtime_ns:size + schema).
 
     Avoids hashing the whole 10MB file on every dirty-flush; mtime+size
-    is sufficient to detect "did master.bib change since the last index".
+    is sufficient to detect "did master.bib change since the last index",
+    and the schema half detects "did the projection change" — see
+    `_bib_index_schema_stamp`.
     """
     p = library / "master.bib"
     try:
         st = p.stat()
-        return f"{st.st_mtime_ns}:{st.st_size}"
+        base = f"{st.st_mtime_ns}:{st.st_size}"
     except FileNotFoundError:
-        return "0:0"
+        base = "0:0"
+    return f"{base}:{_bib_index_schema_stamp()}"
 
 
 def build_bib_index(library: Path, *, force: bool = False) -> bool:
@@ -1257,37 +1308,64 @@ def read_master_bib(path: Path, *, text: str | None = None) -> dict[str, dict]:
             continue
         entry_type = m.group(1).lower()
         citekey = m.group(2).strip()
-        seg_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
         brace = text.find("{", m.start())
-        depth = 1
-        j = brace + 1
-        # Match braces WITHOUT the next-opener cap first, so a value containing a
-        # column-0 `@...{` still balances. If it never balances (malformed), fall
-        # back to the capped end so one bad entry can't swallow the rest.
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        if depth == 0:
+        # ONE extent rule, shared with `update_master_bib_entry` — see
+        # `bib_entry_extent`. Uncapped first (so a value holding a column-0
+        # `@type{...}` still balances), capped at the next opener only when it
+        # never balances (so one bad entry can't swallow the rest).
+        j, balanced = bib_entry_extent(text, m.start())
+        if balanced:
             consumed_until = j
-        else:
-            depth = 1
-            j = brace + 1
-            while j < seg_end and depth > 0:
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                j += 1
         raw = text[m.start():j]
         body_start = text.find(",", brace) + 1
-        body = text[body_start:(j - 1) if depth == 0 else seg_end]
+        body = text[body_start:(j - 1) if balanced else j]
         fields = _parse_bib_fields(body)
         if citekey:
             entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
     return entries
+
+
+def bib_entry_extent(text: str, opener_start: int) -> tuple[int, bool]:
+    """End offset (exclusive) of the entry opening at `opener_start`, + balanced?
+
+    THE spelling of "how far does one master.bib entry reach", read by both
+    halves of the file's round trip — `read_master_bib` and
+    `update_master_bib_entry`. It has to be one rule: the reader was CAPPED and
+    the writer was not, so a brace-unbalanced entry that the reader correctly
+    contained was, at the writer, walked to EOF — and the splice then replaced
+    every following entry with one emitted block. `read_master_bib`'s own
+    docstring records that this failure mode once dropped ~82% of a real
+    34 k-entry library; the writer kept it, and task 443 gave it a new, high-
+    volume reacher by making `/library/authenticate-bib` step 7 a master.bib
+    writer for the first time.
+
+    Two passes, in this order, and the order is load-bearing:
+
+      1. match braces with NO cap, so a value containing a column-0 `@type{...}`
+         (a `note = {@article{x, ...}}`) still balances and the entry keeps its
+         remaining fields;
+      2. only if that never balances, cap at the next entry opener, so ONE bad
+         entry cannot swallow the rest of the file.
+
+    Returns `(end, balanced)`. On the capped path `end` is the next opener (or
+    EOF) and `balanced` is False — a caller that REWRITES must treat that as
+    "do not touch", because the extent is a guess about malformed bytes.
+    """
+    brace = text.find("{", opener_start)
+    if brace == -1:
+        return len(text), False
+    depth = 1
+    j = brace + 1
+    while j < len(text) and depth > 0:
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+        j += 1
+    if depth == 0:
+        return j, True
+    nxt = _BIB_ENTRY_START_RE.search(text, brace + 1)
+    return (nxt.start() if nxt else len(text)), False
 
 
 def emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
@@ -1386,16 +1464,20 @@ def update_master_bib_entry(
                 break
         if m:
             entry_start = m.start()
-            brace_pos = text.index("{", m.start())
-            depth = 1
-            j = brace_pos + 1
-            while j < len(text) and depth > 0:
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                j += 1
-            entry_end = j
+            # ONE extent rule, shared with `read_master_bib` — see
+            # `bib_entry_extent`. This walk used to be UNCAPPED here while the
+            # reader was capped, so a brace-unbalanced entry was walked to EOF
+            # and the splice below replaced every following entry with one
+            # emitted block: silent, unbounded entry loss on a file the reader
+            # reports perfectly.
+            entry_end, balanced = bib_entry_extent(text, m.start())
+            if not balanced:
+                # The extent is a GUESS about malformed bytes. A reader may act
+                # on a guess (it only mis-reports one entry); a writer may not
+                # (it destroys whatever the guess got wrong). Leave the file
+                # exactly as it is — a malformed entry needs a human repair,
+                # and losing its neighbours is never the fallback.
+                raise BibEntryUnbalanced(citekey)
             at_line_start = text.rfind("\n", 0, entry_start)
             if at_line_start == -1:
                 at_line_start = 0
@@ -1454,9 +1536,15 @@ def update_master_bib_entry(
         # resulting text against the whole text read under this same lock.
         #
         # `_mark_bib_index_dirty` stays UNCONDITIONAL — it only schedules a
-        # rebuild at process exit, it is cheap, and a caller that reached
-        # this writer at all may be repairing an index that is stale for some
-        # other reason.
+        # rebuild at process exit and it is cheap. It is deliberately NOT
+        # claimed as a repair path for an index that is stale for some other
+        # reason: `build_bib_index` is stamp-gated, so a skipped write leaves
+        # the stamp matching and the flush is a no-op. Pre-443 the ONLY thing
+        # that healed such an index was the accidental blank-line growth two
+        # branches up, which moved the mtime on every re-assert — an accident,
+        # not a mechanism. The real hole it was papering over (a projection
+        # whose SHAPE changed) is closed at the gate instead, by
+        # `_bib_index_schema_stamp`.
         if text != original_text:
             _atomic_write_text(master_path, text)
     _mark_bib_index_dirty(library)
@@ -1665,6 +1753,8 @@ def admit_catalog_row(
     entry_type: str,
     fields: dict[str, str],
     bib_state: str,
+    bib: "dict | None" = None,
+    top: "dict | None" = None,
 ) -> bool:
     """THE F#4 write gate. Ask BEFORE minting a catalog row.
 
@@ -1674,26 +1764,76 @@ def admit_catalog_row(
     payload requires; this door has touched nothing.
 
     Returns **False** for a reference-only entry (cited but not held), and
-    before returning DISCHARGES the auth state to its home: the
-    `% bib.state = <state>` comment in master.bib, which `build_bib_index`
-    projects into bib-index.json and every reader resolves through
-    `resolve_bib_state`. So a `False` caller has nothing left to do but
-    return — which is the point of fusing the ask and the discharge into one
-    call rather than leaving them as two things to remember.
+    before returning does the TWO things that answer owes:
+
+    1. DISCHARGE the auth state to its home — the `% bib.state = <state>`
+       comment in master.bib, which `build_bib_index` projects into
+       bib-index.json and every reader resolves through `resolve_bib_state`.
+    2. REFRESH an already-existing row, and never mint one. A pre-F#4 library
+       still carries rows for fileless citekeys (the reporting library: 3 722
+       rows against 24 082 master entries), and `LibraryView` suppresses its
+       bib-index-backed synthetic row for any citekey the catalog already
+       names — so a row left un-refreshed does not merely sit there, it
+       SHADOWS the live projection and freezes the state and title the user
+       sees. Leaving it stale is the same defect this door exists to close,
+       arriving from the other side. `prune_catalog_present_false --apply` is
+       the migration that removes such rows, and nothing in the shipped flow
+       invokes it.
+
+    So a `False` caller has nothing left to do but return — which is the point
+    of fusing the ask, the discharge and the refresh into one call rather than
+    leaving them as three things to remember. (`triage_apply` had 2 by hand
+    and not 1; `index_paper` had neither; `merge_paper_references` had 1 and
+    not 2. One door, one rule, three writers.)
+
+    `bib` is the row's `bib` block for the refresh, defaulting to just the
+    state; its `fieldChanges` are APPENDED to whatever the row already holds,
+    so history accumulates across runs exactly as it does on a holdings row.
+    `top` is any top-level fields (title/authors/year/doi) the caller has
+    derived — passed only by a caller that used to write them, because the
+    three writers derive them differently and this door is not entitled to
+    pick one derivation for all of them.
 
     The discharge is a RE-ASSERT in every shipped caller (each one's own
     master.bib write has already stamped the comment), and is idempotent:
-    `update_master_bib_entry` skips the write outright when the emitted block
-    is byte-identical to what is on disk, so asking this on a per-entry hot
-    path costs one read of master.bib, not one rewrite of it.
+    `update_master_bib_entry` skips the write outright when the resulting text
+    is byte-identical to what it read, so asking this on a per-entry hot path
+    costs one read of master.bib, not one rewrite of it.
 
     `bib_state` falsy or `"none"` discharges NOTHING. "I have no state to
     record" must never overwrite a state some earlier run authenticated —
-    `update_master_bib_entry` writes `% bib.state = none` verbatim, so
-    passing it through would be a silent downgrade rather than a no-op.
+    `update_master_bib_entry` writes `% bib.state = none` verbatim, so passing
+    it through would be a silent downgrade rather than a no-op. **That is the
+    whole of the guard, and the wider rule is deliberately NOT here:** a
+    weaker CANONICAL state (an `unverified` over an `authenticated`) still
+    lands, because deciding whether re-authentication may downgrade is a
+    question about the auth pipeline, not about this gate.
+    `merge_paper_references._write_master` holds its own no-downgrade guard
+    for the case it owns.
     """
     if paper_has_holdings(library, citekey):
         return True
     if bib_state and bib_state != "none":
         ensure_bib_state_comment(library, citekey, entry_type, fields, bib_state)
+    patch = dict(bib) if bib else ({"state": bib_state} if bib_state else None)
+    if patch or top:
+        with lock_catalog(library):
+            catalog = read_catalog(library)
+            for i, e in enumerate(catalog.get("entries", [])):
+                if not citekey_matches(e.get("citekey", ""), citekey):
+                    continue
+                if patch:
+                    merged = dict(e.get("bib") or {})
+                    merged.update(patch)
+                    prior = (e.get("bib") or {}).get("fieldChanges") or []
+                    fresh = patch.get("fieldChanges") or []
+                    if prior or fresh:
+                        merged["fieldChanges"] = list(prior) + list(fresh)
+                    e["bib"] = merged
+                for k, v in (top or {}).items():
+                    e[k] = v
+                e["updatedAt"] = _now()
+                catalog["entries"][i] = e
+                write_catalog(library, catalog)
+                break
     return False

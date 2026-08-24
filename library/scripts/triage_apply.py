@@ -203,33 +203,17 @@ def _upsert_catalog_row_bib_only(
     if not admit_catalog_row(
         library, citekey,
         entry_type=entry_type, fields=fields, bib_state=bib_state,
+        bib=bib_status_min,
     ):
-        # Reference-only. `admit_catalog_row` has already discharged the state
-        # to the `% bib.state` comment in master.bib — a re-assert of what
-        # `apply_bib_row` wrote a moment ago, and free, because
-        # `update_master_bib_entry` skips a byte-identical write. All that is
-        # left here is the one exception this writer owns: touch the catalog
-        # only if a row already exists (a stale pre-F#4 row, or a real holding
-        # whose source file has since been removed); never mint one.
-        with lock_catalog(library):
-            catalog = read_catalog(library)
-            catalog.setdefault("version", 1)
-            catalog.setdefault("entries", [])
-            for i, e in enumerate(catalog["entries"]):
-                if citekey_matches(e.get("citekey", ""), citekey):
-                    merged_bib = dict(e.get("bib") or {})
-                    merged_bib.update(bib_status_min)
-                    existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
-                    new_changes = bib_status_min.get("fieldChanges") or []
-                    if existing_changes or new_changes:
-                        merged_bib["fieldChanges"] = existing_changes + new_changes
-                    e["bib"] = merged_bib
-                    e["updatedAt"] = _now()
-                    catalog["entries"][i] = e
-                    write_catalog(library, catalog)
-                    return
-            # No existing row → reference-only entry, no catalog row minted.
-            return
+        # Reference-only, and there is nothing left to do here: the door has
+        # discharged the state to the `% bib.state` comment in master.bib (a
+        # re-assert of what `apply_bib_row` wrote a moment ago, and free —
+        # `update_master_bib_entry` skips a byte-identical write) and has
+        # refreshed an already-existing row without minting one. That
+        # exception used to be hand-written here and nowhere else, which is
+        # how the third writer came to lose it; it is the door's now, so all
+        # three writers keep it.
+        return
 
     title = fields.get("title", "") or ""
     authors_str = fields.get("author", "") or ""

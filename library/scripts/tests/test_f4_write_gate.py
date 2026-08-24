@@ -204,21 +204,69 @@ def test_sync_from_master_still_updates_an_existing_holding_row(tmp_path):
     assert rows[0]["bib"]["state"] == "authenticated"
 
 
-def test_sync_from_master_leaves_a_stale_reference_row_alone(tmp_path):
-    """A pre-F#4 row for a fileless citekey is not this writer's to repair —
-    `prune_catalog_present_false` owns that migration. What matters is that
-    the gate does not MINT; an existing row is still refreshed by the
-    `upsert` path it never reaches, so the row simply does not move."""
+def test_sync_from_master_refreshes_a_stale_reference_row_without_minting(tmp_path):
+    """A pre-F#4 row for a fileless citekey must be REFRESHED, not frozen.
+
+    RENEGOTIATED: the first cut of task 443 asserted the row "simply does not
+    move", on the reasoning that `prune_catalog_present_false` owns the
+    migration that removes it. Both halves of that were wrong. `LibraryView`
+    suppresses its bib-index-backed synthetic row for any citekey the catalog
+    already names, so a stale row does not sit harmlessly beside the live
+    projection — it SHADOWS it, and the user keeps seeing the frozen state and
+    title indefinitely; and nothing in the shipped flow ever invokes the
+    prune. The pre-443 code refreshed such a row (through `upsert_catalog_entry`'s
+    existing-row branch) and `triage_apply` kept the behaviour by hand, so this
+    writer was the one that would have lost it.
+    """
     lib = _init_library(tmp_path)
     _seed_master(lib, "refonly", state="unverified")
     write_catalog(lib, {"version": 1, "entries": [
-        {"citekey": "refonly", "pdf": {"present": False},
-         "indexed": {"state": "none"}, "bib": {"state": "unverified"}},
+        {"citekey": "refonly", "title": "Old Stale Title",
+         "pdf": {"present": False}, "indexed": {"state": "none"},
+         "bib": {"state": "unverified", "fieldChanges": [{"field": "year"}]}},
     ]})
     ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
     rows = _rows(lib)
-    assert len(rows) == 1
+    assert len(rows) == 1, "the gate must never MINT a second row"
+    assert rows[0]["bib"]["state"] == "authenticated"
+    assert rows[0]["title"] == "A Work", "the top-level fields must not freeze"
+    # …and the row's own history accumulates rather than being replaced.
+    assert [c.get("field") for c in rows[0]["bib"]["fieldChanges"]] == ["year"]
+    # The holdings blocks are NOT clobbered by the refresh.
+    assert rows[0]["pdf"] == {"present": False}
+    assert rows[0]["indexed"] == {"state": "none"}
     assert _states(lib).get("refonly") == "authenticated"
+
+
+def test_triage_refreshes_a_stale_reference_row_through_the_same_door(tmp_path):
+    """The exception used to be hand-written in `triage_apply` and nowhere
+    else — which is exactly how the third writer came to lose it. It is the
+    door's now, so all three writers keep it."""
+    lib = _init_library(tmp_path)
+    fields = _seed_master(lib, "refonly", state="unverified")
+    write_catalog(lib, {"version": 1, "entries": [
+        {"citekey": "refonly", "pdf": {"present": False},
+         "indexed": {"state": "none"},
+         "bib": {"state": "none", "fieldChanges": [{"field": "title"}]}},
+    ]})
+    ta._upsert_catalog_row_bib_only(
+        lib, "refonly", "article", fields, bib_state="unverified",
+        field_changes=[{"field": "year"}])
+    rows = _rows(lib)
+    assert len(rows) == 1
+    assert rows[0]["bib"]["state"] == "unverified"
+    assert [c["field"] for c in rows[0]["bib"]["fieldChanges"]] == ["title", "year"]
+
+
+def test_door_refresh_never_mints(tmp_path):
+    """The refresh arm may only touch a row that is already there."""
+    lib = _init_library(tmp_path)
+    fields = _seed_master(lib, "refonly", state="unverified")
+    assert admit_catalog_row(
+        lib, "refonly", entry_type="article", fields=fields,
+        bib_state="authenticated", bib=_bib_status("authenticated"),
+        top={"title": "A Work"}) is False
+    assert _rows(lib) == []
 
 
 # ── the documented `exit 1` branch is reachable again ─────────────────
@@ -266,6 +314,65 @@ def test_master_write_is_skipped_when_the_block_is_byte_identical(tmp_path):
     assert _states(lib).get("refonly") == "authenticated"
 
 
+# ── the writer's extent rule now agrees with the reader's ─────────────
+
+
+def test_writer_refuses_an_unbalanced_entry_instead_of_eating_its_neighbours(tmp_path):
+    """`read_master_bib` CAPS its brace walk at the next entry opener "so one
+    bad entry can't swallow the rest"; `update_master_bib_entry` did not, so
+    it walked to EOF and the splice replaced every FOLLOWING entry with one
+    emitted block. Task 443 made `/library/authenticate-bib` step 7 a
+    master.bib writer for the first time, which gave that a high-volume
+    reacher — once per entry of every `.bib` import."""
+    lib = _init_library(tmp_path)
+    (lib / "master.bib").write_text(
+        "% bib.state = unverified\n"
+        "@article{k1,\n"
+        "  title = {A {half-open note},\n"
+        "  year = {2001}\n"
+        "}\n"
+        "\n"
+        "@book{k2,\n"
+        "  title = {Survivor},\n"
+        "  author = {B}\n"
+        "}\n"
+    )
+    before = (lib / "master.bib").read_text()
+    # The READER reports both — which is the whole point: the file looks fine.
+    from _tools import read_master_bib, BibEntryUnbalanced
+    assert set(read_master_bib(lib / "master.bib")) == {"k1", "k2"}
+    try:
+        ip._sync_catalog_entry_from_master(lib, "k1", _bib_status("authenticated"))
+    except BibEntryUnbalanced as e:
+        assert "k1" in str(e)
+    else:
+        raise AssertionError("the writer must refuse an entry it cannot delimit")
+    assert (lib / "master.bib").read_text() == before, (
+        "a refusal leaves the file exactly as it was")
+    assert "@book{k2," in (lib / "master.bib").read_text()
+
+
+def test_writer_still_rewrites_a_balanced_entry_holding_a_column_zero_at(tmp_path):
+    """CONTROL for the pass ORDER. The uncapped pass must run FIRST, or an
+    entry whose value contains a column-0 `@type{...}` — a `note = {@article{
+    x, ...}}` — is capped at that false opener and loses its later fields."""
+    lib = _init_library(tmp_path)
+    (lib / "master.bib").write_text(
+        "@article{k1,\n"
+        "  note = {see\n"
+        "@article{other, title = {X}}\n"
+        "},\n"
+        "  year = {2001}\n"
+        "}\n"
+    )
+    from _tools import read_master_bib
+    got = read_master_bib(lib / "master.bib")
+    assert "year" in got["k1"]["fields"], "the uncapped pass must run first"
+    update_master_bib_entry(lib, "k1", "article", got["k1"]["fields"],
+                            bib_state="authenticated")
+    assert _states(lib).get("k1") == "authenticated"
+
+
 # ── the source-resolution fork index_paper used to keep ───────────────
 
 
@@ -311,130 +418,238 @@ def test_triage_bib_only_still_mints_no_row(tmp_path):
 #
 # The gate was never the part that could misbehave — a writer that never asks
 # it is, and `upsert_catalog_entry(catalog, citekey, **fields)` runs perfectly
-# while appending a row F#4 refuses. So: every shipped script outside
-# `_tools.py` that can MINT a catalog row must ASK, inside the same
-# declaration, in the one holdings vocabulary.
+# while appending a row F#4 refuses. So: every declaration in a shipped script
+# that can MINT a catalog row must ASK, inside that same declaration, in the
+# one holdings vocabulary.
 #
-# Three accepted spellings, because they are three names for one question:
-#   `admit_catalog_row`   — the door (ask + discharge), what a writer wants;
-#   `paper_has_holdings`  — the bare gate the door is built on;
-#   `resolve_paper_source`— the probe `paper_has_holdings` is derived from. A
-#                           declaration that has resolved a real source has
-#                           given a STRICTLY STRONGER answer than the boolean
-#                           (this is `index_paper`'s main pipeline: it cannot
-#                           reach the catalog write without a file on disk).
+# Two accepted spellings, because they are two names for one question:
+#   `admit_catalog_row`   — the door (ask + discharge + refresh-never-mint);
+#   `paper_has_holdings`  — the bare gate the door is built on.
+# `resolve_paper_source` is deliberately NOT one: it ANSWERS the question but
+# does not gate on it, so a declaration that resolves a source, logs it and
+# mints anyway would be exonerated. `index_paper`'s main pipeline therefore
+# asks the door outright rather than leaning on having resolved a file.
 #
 # The allowlist is EMPTY and stays that way — a hit is ASK-it, never list-it.
 
-_GATE_VOCABULARY = ("admit_catalog_row", "paper_has_holdings",
-                    "resolve_paper_source")
+_GATE_VOCABULARY = ("admit_catalog_row", "paper_has_holdings")
 
 _MINT_ALLOWED: dict[str, str] = {}
 
-# What "mints a catalog row" looks like. Two shapes, because the three
-# writers do not share one:
-#   * `upsert_catalog_entry(` — the shared writer, whose no-match branch
-#     APPENDS (this is the call the third writer made unconditionally); and
-#   * an append onto the CATALOG — `triage_apply` hand-rolls its row and
-#     appends it directly, so a needle that saw only the shared writer would
-#     be blind to the one writer that does not use it.
-# The append needle is anchored on the receiver naming `catalog`, not on the
-# bare word `entries`: five unrelated scripts build lists called `entries`
-# (bib entries, TOC entries, reference entries) and a bare needle indicts
-# every one of them, which is a census answering a different question.
-_MINT_CALL = re.compile(
-    r"""upsert_catalog_entry\s*\(|\bcatalog\b[^\n]*\.append\s*\("""
-)
+# The writers that own the mint, exempt BY NAME rather than by file: `_tools.py`
+# is in the population like everything else, so a NEW `_tools` helper that
+# mints without asking is censused. Excluding the module wholesale — the first
+# cut of this census — would have been invisible twice over, since a caller of
+# such a helper spells no needle either, and relocating a mint into `_tools` is
+# the likeliest next refactor (task 443 itself put the door there).
+_TOOLS_MINT_OWNERS = {
+    "upsert_catalog_entry": "the shared writer whose no-match branch appends; "
+                            "it is what every gated caller mints THROUGH",
+}
 
 
 def _shipped_scripts() -> list[Path]:
-    root = Path(_SCRIPTS)
-    return sorted(p for p in root.glob("*.py") if not p.name.startswith("test_"))
+    """Every shipped `.py` under library/scripts/, RECURSIVELY.
 
-
-def _blank_docstrings(text: str, tree: ast.AST) -> list[str]:
-    """`text`'s lines with every DOCSTRING blanked.
-
-    A docstring is prose, and prose naming the gate must not exonerate the
-    code beneath it — which is not hypothetical: the pre-443
-    `_sync_catalog_entry_from_master` fix was measured by neutering its gate
-    call, and the census kept passing because the docstring left above it
-    still said `admit_catalog_row`. That is the exact "a comment describing a
-    retired mechanism is how the next reader concludes the invariant is held"
-    shape, one level up, in the guard that exists to prevent it.
-
-    String literals elsewhere are deliberately KEPT: `triage_apply` mints its
-    row through `catalog["entries"].append(...)`, whose quoted key is the
-    needle itself.
+    `glob("*.py")` — the first cut — is top-level only, so a script in a
+    subdirectory (there is one today) sat outside a population the doctrine
+    described as "every shipped script".
     """
-    lines = text.splitlines()
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
-                                 ast.AsyncFunctionDef)):
-            continue
-        body = getattr(node, "body", None)
-        if not body:
-            continue
-        first = body[0]
-        if not (isinstance(first, ast.Expr)
-                and isinstance(first.value, ast.Constant)
-                and isinstance(first.value.value, str)):
-            continue
-        for i in range(first.lineno - 1, (first.end_lineno or first.lineno)):
-            if 0 <= i < len(lines):
-                lines[i] = ""
-    return lines
+    root = Path(_SCRIPTS)
+    return sorted(
+        p for p in root.rglob("*.py")
+        if not p.name.startswith("test_") and "/tests/" not in p.as_posix()
+    )
 
 
-def _declaration_ranges(tree: ast.AST) -> list[tuple[str, int, int]]:
-    out = []
+def _import_aliases(tree: ast.AST) -> set[str]:
+    """Local names bound to `upsert_catalog_entry`, alias included.
+
+    A literal-name needle is defeated by `from _tools import
+    upsert_catalog_entry as _upsert`, and aliased imports are an established
+    idiom in this silo (`import work_identity as wi`).
+    """
+    names = {"upsert_catalog_entry"}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            out.append((node.name, node.lineno, node.end_lineno or node.lineno))
-    return out
+        if isinstance(node, ast.ImportFrom):
+            for a in node.names:
+                if a.name == "upsert_catalog_entry" and a.asname:
+                    names.add(a.asname)
+    return names
+
+
+def _is_entries_expr(node: ast.AST) -> bool:
+    """Does this expression denote the catalog's `entries` LIST?
+
+    Three spellings, all live in this codebase:
+      `catalog["entries"]`, `catalog.setdefault("entries", [])`,
+      `catalog.get("entries", [])`.
+    """
+    if (isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value == "entries"):
+        return True
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("setdefault", "get") and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "entries"):
+        return True
+    return False
+
+
+class _MintFinder(ast.NodeVisitor):
+    """Does this statement list MINT a catalog row?
+
+    Read through `ast` with local dataflow, not a regex, because the shapes a
+    writer actually takes are not one line — and because the loose reading
+    ("an append inside a declaration that touches the catalog") is worthless
+    in the other direction: measured, it indicts ten shipped READERS that walk
+    the catalog and append to a report list.
+
+    Four shapes, each a real spelling here or one line from one:
+      1. a call to `upsert_catalog_entry` (or a LOCAL ALIAS of it);
+      2. `.append(...)` onto the entries LIST — the receiver written out
+         (`catalog["entries"].append(row)`, triage_apply's pre-443 shape) OR
+         a local bound from it first (`rows = catalog.setdefault("entries",
+         []); rows.append(row)` — the idiom `upsert_catalog_entry` itself
+         uses, and invisible to any one-line needle);
+      3. an assignment to an `["entries"]` subscript whose RHS ADDS an element
+         — a mint with no `append` in it at all. The "adds" half is
+         load-bearing: the same assignment is how a row is REMOVED
+         (`catalog["entries"] = [e for e in ... if not drop]`), and the two
+         live shipped removers (`dedup._apply_catalog`,
+         `repair_etal_citekeys.apply_merge_duplicate`) would otherwise be
+         indicted for shrinking the catalog. Stated limit: "adds" is read
+         syntactically — a concatenation with a list, or a display holding an
+         element beside a `*spread` — so a mint routed through a helper that
+         returns the grown list reads as a plain rebind and is missed. Shapes
+         1, 2 and 4 remain the ones a real writer takes;
+      4. `write_catalog(..., {..., "entries": ...})` — likewise.
+    """
+
+    def __init__(self, aliases: set[str]):
+        self.aliases = aliases
+        self.mints = False
+        self._entries_locals: set[str] = set()
+
+    def _receiver_is_entries(self, node: ast.AST) -> bool:
+        if _is_entries_expr(node):
+            return True
+        return isinstance(node, ast.Name) and node.id in self._entries_locals
+
+    @staticmethod
+    def _adds_an_element(value: ast.AST) -> bool:
+        if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+            return any(isinstance(s, ast.List) and s.elts
+                       for s in (value.left, value.right))
+        if isinstance(value, ast.List):
+            return (any(isinstance(e, ast.Starred) for e in value.elts)
+                    and any(not isinstance(e, ast.Starred) for e in value.elts))
+        return False
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for tgt in node.targets:
+            if (isinstance(tgt, ast.Subscript)
+                    and isinstance(tgt.slice, ast.Constant)
+                    and tgt.slice.value == "entries"
+                    and self._adds_an_element(node.value)):
+                self.mints = True
+            if isinstance(tgt, ast.Name) and _is_entries_expr(node.value):
+                self._entries_locals.add(tgt.id)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        f = node.func
+        if isinstance(f, ast.Name) and f.id in self.aliases:
+            self.mints = True
+        if isinstance(f, ast.Attribute):
+            if f.attr in self.aliases:
+                self.mints = True
+            if f.attr == "append" and self._receiver_is_entries(f.value):
+                self.mints = True
+        if isinstance(f, ast.Name) and f.id == "write_catalog":
+            for arg in node.args:
+                if isinstance(arg, ast.Dict) and any(
+                    isinstance(k, ast.Constant) and k.value == "entries"
+                    for k in arg.keys
+                ):
+                    self.mints = True
+        self.generic_visit(node)
+
+    def verdict(self) -> bool:
+        return self.mints
+
+
+def _decl_units(tree: ast.Module) -> list[tuple[str, list]]:
+    """(name, own statements) per declaration, plus MODULE scope.
+
+    Module scope is a unit because a mint outside any function — at import
+    time, or inside the `if __name__ == "__main__":` block every shipped
+    script has — is a mint like any other and the first cut never examined it.
+    Statements belonging to a NESTED declaration are excluded from its
+    parent's unit, so a nested function's ask cannot exonerate its parent's
+    mint (and vice versa).
+    """
+    units: list[tuple[str, list]] = []
+    decls = [n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for d in decls:
+        inner = [c for c in ast.walk(d)
+                 if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)) and c is not d]
+        own = [s for s in d.body if s not in inner]
+        units.append((d.name, own))
+    top = [s for s in tree.body
+           if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    if top:
+        units.append(("<module>", top))
+    return units
+
+
+def _asks_gate(nodes: list, source_lines: list[str]) -> bool:
+    """Is a gate spelled as CODE in these statements?
+
+    String literals are blanked for this half: a log line or an error message
+    naming `paper_has_holdings` is prose, and prose must not exonerate. The
+    MINT half keeps literals, because `catalog["entries"]` is a quoted key
+    (the `_source-scan` two-views rule).
+    """
+    for n in nodes:
+        for sub in ast.walk(n):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                continue
+            if isinstance(sub, ast.Name) and sub.id in _GATE_VOCABULARY:
+                return True
+            if isinstance(sub, ast.Attribute) and sub.attr in _GATE_VOCABULARY:
+                return True
+    return False
 
 
 def _ungated_mint_sites(text: str) -> list[str]:
-    """Names of declarations that mint a catalog row without asking the gate.
-
-    Read through `ast`, not a line window: the ask and the mint are routinely
-    thirty lines apart (`merge_paper_references._upsert_catalog_row` asks at
-    the top and writes at the bottom), and a window tight enough to be
-    meaningful would miss every one of them.
-    """
     try:
         tree = ast.parse(text)
     except SyntaxError:
         return []
-    lines = _blank_docstrings(text, ast.parse(text))
-    decls = _declaration_ranges(tree)
+    aliases = _import_aliases(tree)
+    lines = text.splitlines()
     offenders: list[str] = []
-    for name, start, end in decls:
-        body = "\n".join(lines[start - 1:end])
-        # Only the INNERMOST declaration counts, or an outer function would
-        # be indicted for a nested one's mint (and vice versa, exonerated by
-        # a nested one's ask).
-        inner = [
-            (n2, s2, e2) for (n2, s2, e2) in decls
-            if (s2, e2) != (start, end) and s2 >= start and e2 <= end
-        ]
-        for _n2, s2, e2 in inner:
-            body = body.replace("\n".join(lines[s2 - 1:e2]), "")
-        body = "\n".join(
-            "" if ln.strip().startswith("#") else ln for ln in body.splitlines()
-        )
-        if not _MINT_CALL.search(body):
+    for name, nodes in _decl_units(tree):
+        if name in _TOOLS_MINT_OWNERS:
             continue
-        if any(v in body for v in _GATE_VOCABULARY):
+        finder = _MintFinder(aliases)
+        for n in nodes:
+            finder.visit(n)
+        if not finder.verdict():
+            continue
+        if _asks_gate(nodes, lines):
             continue
         offenders.append(name)
-    return offenders
+    return sorted(offenders)
 
 
 def test_census_no_writer_mints_a_catalog_row_without_asking_the_gate():
     offenders: list[str] = []
     for p in _shipped_scripts():
-        if p.name == "_tools.py" or p.name in _MINT_ALLOWED:
+        if p.name in _MINT_ALLOWED:
             continue
         offenders += [f"{p.name}::{n}" for n in _ungated_mint_sites(p.read_text())]
     assert offenders == [], (
@@ -444,75 +659,132 @@ def test_census_no_writer_mints_a_catalog_row_without_asking_the_gate():
 
 
 def test_census_canary_detects_an_ungated_mint():
-    """A census that matches nothing passes for the wrong reason — and this
-    canary stands on SYNTHETIC source, never on a line the fix drained."""
-    ungated_shared = (
+    """A census that matches nothing passes for the wrong reason — and every
+    canary here stands on SYNTHETIC source, never on a line the fix drained.
+
+    The shapes below are the ones an adversarial pass on task 443's FIRST cut
+    slipped past: nine realistic ungated writers, all reported clean.
+    """
+    def one(src): return _ungated_mint_sites(src)
+
+    # 1. the shared writer, one line
+    assert one(
         "def w(library, citekey, fields):\n"
-        "    with lock_catalog(library):\n"
-        "        catalog = read_catalog(library)\n"
-        "        upsert_catalog_entry(catalog, citekey, **fields)\n"
-        "        write_catalog(library, catalog)\n"
-    )
-    assert _ungated_mint_sites(ungated_shared) == ["w"]
-    # the hand-rolled append form (triage_apply's shape)
-    ungated_append = (
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n"
+        "    write_catalog(library, catalog)\n") == ["w"]
+    # 2. an ALIASED import of it
+    assert one(
+        "from _tools import upsert_catalog_entry as _up\n"
+        "def w(library, citekey, fields):\n"
+        "    catalog = read_catalog(library)\n"
+        "    _up(catalog, citekey, **fields)\n") == ["w"]
+    # 3. the hand-rolled append, one line (triage_apply's pre-443 shape)
+    assert one(
         "def w(library, citekey, row):\n"
+        "    catalog = read_catalog(library)\n"
         '    catalog["entries"].append(row)\n'
-    )
-    assert _ungated_mint_sites(ungated_append) == ["w"]
-    # …and an unrelated list called `entries` is NOT a catalog mint
-    unrelated = (
-        "def w(text):\n"
-        "    entries = []\n"
-        "    for block in text.split():\n"
-        "        entries.append(block)\n"
-        "    return entries\n"
-    )
-    assert _ungated_mint_sites(unrelated) == []
-    # each accepted spelling exonerates
-    for verb in _GATE_VOCABULARY:
-        gated = (
-            "def w(library, citekey, fields):\n"
-            f"    if not {verb}(library, citekey):\n"
-            "        return\n"
-            "    upsert_catalog_entry(catalog, citekey, **fields)\n"
-        )
-        assert _ungated_mint_sites(gated) == [], verb
-    # a whole-line comment naming the gate does not exonerate
-    commented = (
-        "def w(library, citekey, fields):\n"
-        "    # admit_catalog_row is asked by the caller, honest\n"
-        "    upsert_catalog_entry(catalog, citekey, **fields)\n"
-    )
-    assert _ungated_mint_sites(commented) == ["w"]
-    # …and neither does a DOCSTRING naming it. This one is not hypothetical:
-    # the pre-443 defect was measured by neutering the gate CALL, and the
-    # census kept passing off the docstring left standing above it.
-    docstringed = (
-        "def w(library, citekey, fields):\n"
-        '    """Sync the row.\n'
-        "\n"
-        "    `admit_catalog_row` is the F#4 gate; a reference-only entry\n"
-        "    mints no row.\n"
-        '    """\n'
-        "    upsert_catalog_entry(catalog, citekey, **fields)\n"
-    )
-    assert _ungated_mint_sites(docstringed) == ["w"]
-    # a MODULE docstring naming it must not exonerate either
-    module_doc = (
-        '"""admit_catalog_row is the gate."""\n'
-        "def w(library, citekey, fields):\n"
-        "    upsert_catalog_entry(catalog, citekey, **fields)\n"
-    )
-    assert _ungated_mint_sites(module_doc) == ["w"]
-    # a nested declaration's ask must not exonerate its parent's mint
-    nested = (
+        "    write_catalog(library, catalog)\n") == ["w"]
+    # 4. …the SAME writer with the list bound to a local first — the idiom
+    #    `upsert_catalog_entry` itself uses, and invisible to a one-line needle
+    assert one(
+        "def w(library, citekey, row):\n"
+        "    catalog = read_catalog(library)\n"
+        '    rows = catalog.setdefault("entries", [])\n'
+        "    rows.append(row)\n"
+        "    write_catalog(library, catalog)\n") == ["w"]
+    # 5. a mint with no `append` at all — assigning the entries list
+    assert one(
+        "def w(library, citekey, row):\n"
+        "    catalog = read_catalog(library)\n"
+        '    catalog["entries"] = list(catalog.get("entries", [])) + [row]\n'
+        "    write_catalog(library, catalog)\n") == ["w"]
+    # 5b. …but the same assignment REMOVING rows is not a mint. Both live
+    #     shipped removers (`dedup`, `repair_etal_citekeys`) take this shape.
+    assert one(
+        "def w(library, drop):\n"
+        "    catalog = read_catalog(library)\n"
+        '    catalog["entries"] = [e for e in catalog.get("entries", []) '
+        'if e["citekey"] not in drop]\n'
+        "    write_catalog(library, catalog)\n") == []
+    # 6. …or handing write_catalog a freshly built dict
+    assert one(
+        "def w(library, rows):\n"
+        '    write_catalog(library, {"version": 1, "entries": rows})\n') == ["w"]
+    # 7. module scope / the __main__ block every shipped script has
+    assert one(
+        "def main(argv):\n"
+        "    return argv\n"
+        'if __name__ == "__main__":\n'
+        "    catalog = read_catalog(LIB)\n"
+        "    upsert_catalog_entry(catalog, CITEKEY, **FIELDS)\n") == ["<module>"]
+    # 8. a nested declaration's ask must not exonerate its parent's mint
+    assert one(
         "def outer(library, citekey, fields):\n"
         "    def inner():\n"
         "        return admit_catalog_row(library, citekey)\n"
-        "    upsert_catalog_entry(catalog, citekey, **fields)\n"
-    )
-    assert _ungated_mint_sites(nested) == ["outer"]
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n") == ["outer"]
+    # 9. a gate word inside a STRING is prose, and prose does not exonerate
+    assert one(
+        "def w(library, citekey, fields):\n"
+        '    raise ValueError("caller must run paper_has_holdings first")\n'
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n") == ["w"]
+    # 10. …nor does a docstring. (Not hypothetical: task 443's own first
+    #     neuter run passed the census off the docstring left standing above
+    #     the removed gate call.)
+    assert one(
+        "def w(library, citekey, fields):\n"
+        '    """`admit_catalog_row` is the F#4 gate."""\n'
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n") == ["w"]
+    # 11. …nor a module docstring
+    assert one(
+        '"""admit_catalog_row is the gate."""\n'
+        "def w(library, citekey, fields):\n"
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n") == ["w"]
+
+    # Each accepted spelling exonerates.
+    for verb in _GATE_VOCABULARY:
+        assert one(
+            "def w(library, citekey, fields):\n"
+            f"    if not {verb}(library, citekey):\n"
+            "        return\n"
+            "    catalog = read_catalog(library)\n"
+            "    upsert_catalog_entry(catalog, citekey, **fields)\n") == [], verb
+    # `resolve_paper_source` does NOT: it answers the question without gating
+    # on the answer, so a declaration that logs it and mints anyway is a
+    # false exoneration.
+    assert one(
+        "def w(library, citekey, fields):\n"
+        "    src = resolve_paper_source(library, citekey)\n"
+        '    log(f"source={src}")\n'
+        "    catalog = read_catalog(library)\n"
+        "    upsert_catalog_entry(catalog, citekey, **fields)\n") == ["w"]
+
+    # FALSE POSITIVES — measured, not assumed. A reader that walks the catalog
+    # and appends to an unrelated list mints nothing; the loose reading of
+    # shape 2 ("an append anywhere in a declaration that touches the catalog")
+    # indicts TEN shipped readers, which is a census answering a different
+    # question. `merge_bibs_postflight` is that live shape.
+    assert one(
+        "def w(library, alerts):\n"
+        "    catalog = read_catalog(library)\n"
+        '    for r in catalog["state_regressions"]:\n'
+        "        alerts.append(r)\n") == []
+    assert one(
+        "def w(text, out):\n"
+        "    for block in text.split():\n"
+        "        out.append(block)\n") == []
+    # …and an append onto a list bound from something that is NOT `entries`
+    # is not a mint either.
+    assert one(
+        "def w(library, out):\n"
+        "    catalog = read_catalog(library)\n"
+        '    rows = catalog.setdefault("warnings", [])\n'
+        "    rows.append(1)\n") == []
 
 
 def test_census_sees_the_four_real_mint_sites():
@@ -520,17 +792,16 @@ def test_census_sees_the_four_real_mint_sites():
     the census vacuously. Pin that all four are still IN the population."""
     found = []
     for p in _shipped_scripts():
-        if p.name == "_tools.py":
-            continue
-        text = p.read_text()
         try:
-            tree = ast.parse(text)
+            tree = ast.parse(p.read_text())
         except SyntaxError:
             continue
-        lines = text.splitlines()
-        for name, start, end in _declaration_ranges(tree):
-            body = "\n".join(lines[start - 1:end])
-            if _MINT_CALL.search(body):
+        aliases = _import_aliases(tree)
+        for name, nodes in _decl_units(tree):
+            finder = _MintFinder(aliases)
+            for n in nodes:
+                finder.visit(n)
+            if finder.verdict():
                 found.append(f"{p.name}::{name}")
     for expected in (
         "index_paper.py::_sync_catalog_entry_from_master",
@@ -539,6 +810,49 @@ def test_census_sees_the_four_real_mint_sites():
         "triage_apply.py::_upsert_catalog_row_bib_only",
     ):
         assert expected in found, (expected, found)
+
+
+def test_census_door_itself_mints_nothing():
+    """`admit_catalog_row` is NOT on the exemption list, and does not need to
+    be: its refresh arm touches only a row that already exists. If it ever
+    starts minting, the census indicts it like any other writer — which is the
+    point of censusing `_tools.py` rather than skipping it."""
+    src = (Path(_SCRIPTS) / "_tools.py").read_text()
+    tree = ast.parse(src)
+    aliases = _import_aliases(tree)
+    hit = [nodes for name, nodes in _decl_units(tree) if name == "admit_catalog_row"]
+    assert hit, "the door is gone"
+    finder = _MintFinder(aliases)
+    for n in hit[0]:
+        finder.visit(n)
+    assert finder.verdict() is False
+    assert "admit_catalog_row" not in _TOOLS_MINT_OWNERS
+
+
+def test_census_population_reaches_subdirectories_and_tools():
+    """Two scope holes the first cut had: a non-recursive glob (so a script in
+    a subdirectory was unpoliced while the doctrine said otherwise), and
+    skipping `_tools.py` wholesale (so a mint RELOCATED there — the likeliest
+    next refactor — was invisible on both sides)."""
+    names = {p.as_posix() for p in _shipped_scripts()}
+    assert any(p.endswith("/_tools.py") for p in names), "_tools.py is censused"
+    assert any(p.count("/scripts/") and p.rsplit("/scripts/", 1)[1].count("/")
+               for p in names), "the population reaches subdirectories"
+
+
+def test_census_tools_exemptions_are_per_name_and_still_own_a_mint():
+    """A stale exemption is a standing licence for the next private mint."""
+    src = (Path(_SCRIPTS) / "_tools.py").read_text()
+    tree = ast.parse(src)
+    aliases = _import_aliases(tree)
+    for owner in _TOOLS_MINT_OWNERS:
+        hit = [nodes for name, nodes in _decl_units(tree) if name == owner]
+        assert hit, f"exempted owner is gone: {owner}"
+        finder = _MintFinder(aliases)
+        for n in hit[0]:
+            finder.visit(n)
+        assert finder.verdict(), (
+            f"{owner} no longer mints — drop its exemption")
 
 
 def test_census_allowlist_is_empty():

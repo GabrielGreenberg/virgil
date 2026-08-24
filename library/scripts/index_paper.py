@@ -139,36 +139,43 @@ def _sync_catalog_entry_from_master(library: Path, citekey: str,
     growing the catalog without bound.
 
     `admit_catalog_row` is the shared gate: for a reference-only entry it
-    discharges the state to the `% bib.state` comment in master.bib (its
-    home) and answers False, so there is nothing left to do here. For a real
-    holding it answers True and the row is written exactly as before.
+    discharges the state to the `% bib.state` comment in master.bib (its home),
+    REFRESHES an already-existing row without minting one (a pre-F#4 leftover
+    shadows the live projection in the Library list, so freezing it is the same
+    defect from the other side), and answers False — so there is nothing left
+    to do here. For a real holding it answers True and the row is written
+    exactly as before.
     """
     master = read_master_bib(library / "master.bib")
     entry = master.get(citekey)
     if not entry:
         return
     fields = entry["fields"]
+    authors_str = fields.get("author", "")
+    authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
+    year_raw = fields.get("year", "")
+    year = int(year_raw) if year_raw.isdigit() else year_raw
+    # ONE derivation, read by both arms — the gate's stale-row refresh and the
+    # holdings write below — so a reference row and a holdings row cannot come
+    # to disagree about what this citekey's title is.
+    top = {
+        "title": fields.get("title", ""),
+        "authors": authors,
+        "year": year,
+        "doi": fields.get("doi") or None,
+    }
     if not admit_catalog_row(
         library, citekey,
         entry_type=entry.get("type", "misc"),
         fields=fields,
         bib_state=(bib_status or {}).get("state", ""),
+        bib=bib_status,
+        top=top,
     ):
         return
-    authors_str = fields.get("author", "")
-    authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
-    year_raw = fields.get("year", "")
-    year = int(year_raw) if year_raw.isdigit() else year_raw
     with lock_catalog(library):
         catalog = read_catalog(library)
-        upsert_catalog_entry(
-            catalog, citekey,
-            title=fields.get("title", ""),
-            authors=authors,
-            year=year,
-            doi=fields.get("doi") or None,
-            bib=bib_status,
-        )
+        upsert_catalog_entry(catalog, citekey, bib=bib_status, **top)
         write_catalog(library, catalog)
 
 
@@ -604,6 +611,22 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         "footnoteCount": sum(1 for b in extracted["blocks"] if b.get("kind") == "footnote"),
         "warnings": pgmark_warnings,
     }
+    # The F#4 write gate, asked here as everywhere else. It answers True by
+    # construction — step 1 resolved a source at exactly the path
+    # `paper_has_holdings` scans — so this is not ceremony but the one case
+    # where that construction can be false: a source removed while a long
+    # marker extraction ran. Minting a holdings row for a file that is gone is
+    # precisely what F#4 refuses, so say so rather than write it.
+    if not admit_catalog_row(
+        library, citekey,
+        entry_type=bib_entry.get("type", "misc"), fields=fields,
+        bib_state=bib_status.get("state", ""),
+    ):
+        raise FileNotFoundError(
+            f"{citekey}: the source document disappeared during indexing "
+            f"(expected papers/{citekey}/{citekey}.{source_ext}) — refusing "
+            "to mint a catalog row for a paper that is no longer held."
+        )
     with lock_catalog(library):
         catalog = read_catalog(library)
         entry = upsert_catalog_entry(

@@ -216,7 +216,10 @@ All paths below are relative to the library root.
      `.virgil/queue/<citekey>-bibedit.json` undrained and re-attempted on
      every subsequent `/library/index-pending`.
    - **exit 2** — a refusal, and the write did not happen: an unreadable or
-     malformed patch file, or a row whose `indexed.warnings` is not a list.
+     malformed patch file. (Its sibling in `/library/authenticate-bib` lists
+     a third cause — a row whose `indexed.warnings` is not a list — which
+     cannot fire here: that check lives inside `update_catalog_entry`'s
+     `--recompute-warning-kind` branch, and step 4 passes no such flag.)
      Report the message verbatim and continue; it needs a human repair.
    - **anything else** — treat as exit 2. The write did not happen; say so
      rather than guessing which branch it was.
