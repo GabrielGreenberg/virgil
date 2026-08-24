@@ -21,6 +21,7 @@ import {
   touchedRanges,
   touchedTextblocks,
 } from "./changed-ranges";
+import { forEachBareCommand } from "./cmd-only-paragraph";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -562,107 +563,43 @@ export const LatexCommandMark = Mark.create({
   addProseMirrorPlugins() {
     const markType = this.type;
 
-    /** Match a full LaTeX command span: \cmd*?[opt]{arg}{arg} — same as the parser. */
-    function matchCommandLength(text: string, start: number): number {
-      let i = start;
-      // \
-      if (i >= text.length || text[i] !== "\\") return 0;
-      i++;
-      // command name: [a-zA-Z]+
-      const nameStart = i;
-      while (i < text.length && /[a-zA-Z]/.test(text[i])) i++;
-      if (i === nameStart) return i - start; // just "\" alone
-      // optional *
-      if (i < text.length && text[i] === "*") i++;
-      // optional [...] args
-      while (i < text.length && text[i] === "[") {
-        const close = text.indexOf("]", i);
-        if (close === -1) break;
-        i = close + 1;
-      }
-      // up to 2 {braced} args — include unclosed braces (user still typing)
-      let braces = 0;
-      while (i < text.length && text[i] === "{" && braces < 2) {
-        let depth = 0;
-        let closed = false;
-        for (let j = i; j < text.length; j++) {
-          if (text[j] === "{") depth++;
-          else if (text[j] === "}") { depth--; if (depth === 0) { i = j + 1; braces++; closed = true; break; } }
-        }
-        if (!closed) { i = text.length; break; } // unclosed — include to end (typing in progress)
-      }
-      return i - start;
-    }
-
     /** Paint `.latex-cmd` inline decos over the bare-text commands in one
      *  text node (skips text already carrying the latexCommand mark, which
-     *  renders its own `.latex-cmd` span). Returns how many decos it added. */
+     *  renders its own `.latex-cmd` span). The scanner is the SAME
+     *  `forEachBareCommand` the `p-cmd-only` stamp counts with
+     *  (`cmd-only-paragraph.ts`), so the grey span and the rhythm class can
+     *  never disagree about what a command run is. */
     function decorateTextNode(
       decos: Decoration[],
       node: any,
       pos: number,
-    ): number {
-      if (!node.isText || !node.text) return 0;
-      if (node.marks.some((m: any) => m.type === markType)) return 0;
-      const text = node.text as string;
-      let added = 0;
-      for (let i = 0; i < text.length; i++) {
-        if (text[i] !== "\\") continue;
-        // Skip \\ (double backslash)
-        if (i > 0 && text[i - 1] === "\\") { i++; continue; }
-        const len = matchCommandLength(text, i);
-        if (len > 0) {
-          decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
-          added++;
-          i += len - 1; // advance past the match
-        }
-      }
-      return added;
+    ): void {
+      if (!node.isText || !node.text) return;
+      if (node.marks.some((m: any) => m.type === markType)) return;
+      forEachBareCommand(node.text as string, (off, len) => {
+        decos.push(Decoration.inline(pos + off, pos + off + len, { class: "latex-cmd" }));
+      });
     }
 
     /**
-     * Every decoration ONE textblock carries. The unit of re-derivation for
-     * both the cold build and the per-transaction rebuild, so the two can never
-     * come to disagree about what a block's decorations are.
+     * Every decoration ONE textblock carries: the inline `.latex-cmd` spans
+     * over its bare-text command runs. The unit of re-derivation for both the
+     * cold build and the per-transaction rebuild, so the two can never come to
+     * disagree about what a block's decorations are.
      *
-     * Paragraphs additionally get the `p-cmd-only` NODE decoration — the
-     * DOM-semantics twin of the retired `p:has(> .latex-cmd:first-child:last-child)`
-     * rhythm selector (perf Wave 0, plan P5.1): exactly ONE element child, and
-     * it is a `.latex-cmd` span. Bare unmarked text renders as text nodes (not
-     * elements); each inline deco, each latexCommand-marked text run, each
-     * other-marked run, and each inline atom renders one element. The aggregate
-     * is paragraph-LOCAL, which is exactly what makes a block-scoped rebuild
-     * sufficient rather than merely cheaper.
+     * The `p-cmd-only` paragraph aggregate is NOT a decoration any more (task
+     * 430): it is stamped by the paragraph NodeView from
+     * `paragraphIsCmdOnly` (`cmd-only-paragraph.ts`). A node decoration over a
+     * whole paragraph lives in the ROOT set's `local` array, so every
+     * `find`/`remove`/`add` below swept O(command-only paragraphs) per
+     * keystroke; with inline spans only, that array is EMPTY and the set
+     * bookkeeping here is bounded by the touched blocks alone.
      */
     function decorateBlock(
       decos: Decoration[],
       node: any,
       pos: number,
     ): void {
-      if (node.type?.name === "paragraph") {
-        let cmdElements = 0;
-        let otherElements = 0;
-        node.forEach((child: any, offset: number) => {
-          if (child.isText) {
-            if (child.marks.some((m: any) => m.type === markType)) {
-              cmdElements++;
-            } else if (child.marks.length > 0) {
-              otherElements++;
-            } else {
-              cmdElements += decorateTextNode(decos, child, pos + 1 + offset);
-            }
-          } else {
-            otherElements++;
-          }
-        });
-        if (cmdElements === 1 && otherElements === 0) {
-          decos.push(
-            Decoration.node(pos, pos + node.nodeSize, { class: "p-cmd-only" }),
-          );
-        }
-        return;
-      }
-      // Any other textblock (heading, codeBlock, …): inline decos only.
       node.forEach((child: any, offset: number) => {
         decorateTextNode(decos, child, pos + 1 + offset);
       });
@@ -689,9 +626,12 @@ export const LatexCommandMark = Mark.create({
      * both halves of that are load-bearing:
      *
      *  • `find(from, to)` is INCLUSIVE at both endpoints, so a neighbour's
-     *    `p-cmd-only` NODE decoration — whose range abuts this block exactly —
-     *    comes back. Removing it without re-adding it would silently un-flag
-     *    the paragraph next door.
+     *    decoration whose range abuts this block exactly comes back (until
+     *    task 430 that was the next paragraph's `p-cmd-only` NODE decoration,
+     *    and removing it without re-adding it silently un-flagged it; today
+     *    nothing this plugin paints abuts a block edge, and the test is kept
+     *    because the rule is about the query, not about what happens to be
+     *    in the set).
      *  • A mapped inline decoration CAN straddle a block boundary: press Enter
      *    inside a command run and the split maps its `from` into the first
      *    paragraph and its `to` into the second, where ProseMirror's `forChild`
@@ -702,13 +642,14 @@ export const LatexCommandMark = Mark.create({
      *    repainted.
      *
      * Cost, stated rather than implied: `find`/`remove`/`add` each sweep the
-     * root's own `local` array and its child index, so this is O(decorated
-     * blocks x touched blocks) in cheap integer comparisons — the same order as
-     * the `oldSet.map(...)` that precedes it on every transaction, and roughly
-     * two orders below the `DecorationSet.create` it replaces, whose `buildTree`
-     * re-scans the ENTIRE decoration array once per top-level child. Taking that
-     * floor to zero means moving `p-cmd-only` off decorations onto a NodeView
-     * class stamp; filed separately.
+     * root's own `local` array and its child index. Since task 430 every
+     * decoration here is an INLINE span, strictly contained in its textblock,
+     * so the root `local` array is EMPTY (pinned in decoration-probe-cost) and
+     * the sweep is the child index — integer comparisons over top-level
+     * blocks, the same order as the `oldSet.map(...)` that precedes it on
+     * every transaction, and roughly two orders below the `DecorationSet.create`
+     * it replaces. The O(command-only paragraphs) `local` sweep that the
+     * `p-cmd-only` node decorations used to cost is gone with them.
      */
     function rebuildBlocks(
       set: DecorationSet,
@@ -754,17 +695,16 @@ export const LatexCommandMark = Mark.create({
       // probe is just another positional step in the shared answer.
       //
       // Every decoration this plugin paints is block-LOCAL (inline spans inside
-      // one textblock; the `p-cmd-only` aggregate over one paragraph's own
-      // children), which is what makes the scoped rebuild sufficient and not
-      // merely cheaper. The correctness the third probe bought is kept whole: a
+      // one textblock — the `p-cmd-only` aggregate over one paragraph's own
+      // children is the paragraph NodeView's stamp since task 430), which is
+      // what makes the scoped rebuild sufficient and not merely cheaper. The correctness the third probe bought is kept whole: a
       // mark step reaches `touchedRanges` through `positionalStepRange`, so an
       // inline deco standing over a run the carrier has just MARKED is dropped
       // in the same dispatch — otherwise it paints a second `.latex-cmd` inside
       // the mark's own span and the nested `font-size: 0.9em` compounds to
-      // 0.81em. It also gains what no probe could see: any OTHER mark landing in
-      // a `p-cmd-only` paragraph (bolding a word beside the command) now clears
-      // the flag, where before all three probes missed the empty step map and
-      // the stale class survived.
+      // 0.81em. (The `p-cmd-only` flag the task-400 text used to describe here
+      // is the paragraph NodeView's since task 430 — it re-derives from the
+      // node on every change to that node, mark steps included.)
       new Plugin({
         key: new PluginKey("latexCmdDecorations"),
         state: {

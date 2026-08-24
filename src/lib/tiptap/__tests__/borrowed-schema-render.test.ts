@@ -3,7 +3,10 @@
 // Render/round-trip test for the borrowed-schema extraction (backlog #11).
 // Mounts a REAL TipTap editor with the exact extension arrays the two card
 // surfaces compose post-refactor (StarterKit(CARD_STARTER_KIT_CONFIG) +
-// Placeholder/TabIndent + buildBorrowedAtomSchema(...)), feeds content
+// Placeholder/TabIndent + buildCardBodySchema("card", ...) — the door every
+// card surface enters; since task 430 it is also what supplies the paragraph
+// node, `CardParagraph`, because `CARD_STARTER_KIT_CONFIG` sets
+// `paragraph: false`), feeds content
 // containing every inline atom + block-atom preview, and asserts:
 //   (1) every atom node type is in the schema (so it is NOT silently stripped
 //       on load — the exact bug class #11 is about);
@@ -39,7 +42,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import {
   TabIndent,
   CARD_STARTER_KIT_CONFIG,
-  buildBorrowedAtomSchema,
+  buildCardBodySchema,
 } from "@/lib/tiptap-extensions";
 
 // The RichTextField extension array (post-refactor): no LabelRef/Footnote.
@@ -48,7 +51,7 @@ function richTextFieldExtensions() {
     StarterKit.configure({ ...CARD_STARTER_KIT_CONFIG }),
     Placeholder.configure({ placeholder: "" }),
     TabIndent,
-    ...buildBorrowedAtomSchema(),
+    ...buildCardBodySchema("card"),
   ];
 }
 
@@ -57,7 +60,7 @@ function richTextFieldExtensions() {
 function borrowedMainTextExtensions() {
   return [
     StarterKit.configure({ ...CARD_STARTER_KIT_CONFIG }),
-    ...buildBorrowedAtomSchema({ includeLabelRefFootnote: true }),
+    ...buildCardBodySchema("card", { includeLabelRefFootnote: true }),
   ];
 }
 

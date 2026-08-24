@@ -161,13 +161,50 @@ describe("latex-command decoration probe cost", () => {
     expect(small.walks).toBe(0);
     expect(large.walks).toBe(0);
     // Nine keys, at most two re-derivations each (the root transaction and the
-    // carrier's appended one), one block apiece, at most two decorations in it
-    // (an inline span, and — while the paragraph still renders exactly one
-    // element child — its `p-cmd-only` node deco).
+    // carrier's appended one), one block apiece, at most two decorations in
+    // it — the typed run's inline span and the fixture's own `\emph{x}` span.
+    // (Until task 430 the block's `p-cmd-only` NODE deco rode beside them;
+    // that aggregate is the paragraph NodeView's stamp now, so the count is
+    // inline spans only.)
     expect(small.derived).toBeLessThanOrEqual(9 * 2 * 2);
     // …and not zero, or the leg would pass on a plugin that stopped painting.
     expect(small.derived).toBeGreaterThan(0);
     expect(small.text).toBe("\\emph{hi}para 0 holds \\emph{x} inline");
+  });
+
+  it("the set's root `local` array is EMPTY at 60 and at 240 paragraphs — the bookkeeping floor is size-independent (task 430)", () => {
+    // Task 400 made the re-DERIVATION per block; what it left was the set
+    // BOOKKEEPING. A `Decoration.node` over a paragraph fails prosemirror's
+    // strict-containment test (`takeSpansForNode`), so every `p-cmd-only`
+    // node deco was filed in the ROOT set's `local` array, and `find` /
+    // `remove` / `add` on every keystroke swept O(command-only paragraphs).
+    // With inline spans only, every decoration is strictly inside its
+    // textblock's child set and the root `local` array holds NOTHING — at
+    // every document size. MEASURED on the pre-430 tree: 60 and 240 entries.
+    const rootLocal = (n: number): number => {
+      editor = new Editor({
+        extensions: [StarterKit, LatexCommandMark],
+        content: Array.from({ length: n }, () => "<p>\\noindent</p>").join(""),
+      });
+      const ed = editor;
+      const sets = ed.state.plugins
+        .map((p) => p.getState(ed.state))
+        .filter((st): st is DecorationSet => st instanceof DecorationSet);
+      expect(sets).toHaveLength(1);
+      // …and the inline spans ARE there, or the leg passes on a dead plugin.
+      // (`inline` is a runtime field prosemirror-view does not publish in its
+      // typings — the same reason the `local` read below casts.)
+      expect(
+        sets[0]!.find().filter((d) => (d as unknown as { inline: boolean }).inline)
+          .length,
+      ).toBe(n);
+      const local = (sets[0] as unknown as { local: unknown[] }).local.length;
+      ed.destroy();
+      editor = null;
+      return local;
+    };
+    expect(rootLocal(60)).toBe(0);
+    expect(rootLocal(240)).toBe(0);
   });
 
   it("a keystroke in a p-cmd-only paragraph re-derives that paragraph only", () => {

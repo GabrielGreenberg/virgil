@@ -1,30 +1,66 @@
 // @vitest-environment jsdom
 /**
- * `p-cmd-only` node decoration — the plugin-painted twin of the retired
+ * `p-cmd-only` — the write-time twin of the retired
  * `p:has(> .latex-cmd:first-child:last-child)` rhythm selector (perf Wave 0,
- * plan P5.1). The latex-command plugin flags a paragraph iff it renders
- * exactly ONE element child and that element is a `.latex-cmd` span — the
- * DOM semantics the old `:has()` selector keyed on. The class feeds the
- * `.tiptap p.p-cmd-only + p.p-cmd-only` run-tightening rule in globals.css
- * (pinned by latex-cmd-paragraph-rhythm.test.ts).
+ * plan P5.1). A paragraph is flagged iff it renders exactly ONE element child
+ * and that element is a `.latex-cmd` span — the DOM semantics the old `:has()`
+ * selector keyed on. The class feeds the `.tiptap p.p-cmd-only + p.p-cmd-only`
+ * run-tightening rule in globals.css (pinned by
+ * latex-cmd-paragraph-rhythm.test.ts).
  *
- * Since task 400 the decoration is re-derived PER TOUCHED BLOCK rather than by
- * rebuilding the whole document, so this aggregate is the thing that has to
- * survive the narrowing: it is paragraph-LOCAL, which is exactly what makes a
- * block-scoped rebuild sufficient. The transition legs below prove all four
- * crossings (0 -> 1, 1 -> 2, 2 -> 1, 1 -> 0) plus the one no probe could see
- * before — a mark step, which carries an EMPTY step map.
+ * Task 400 made the latex-command plugin re-derive PER TOUCHED BLOCK. Task 430
+ * then took the aggregate OFF decorations altogether: a `Decoration.node` over
+ * a paragraph sits in the root set's `local` array, so every keystroke's
+ * `find`/`remove`/`add` still swept O(command-only paragraphs). The class is
+ * now stamped by the paragraph NODEVIEW (`stampCmdOnly`, cmd-only-paragraph.ts)
+ * from the node that changed — the card bodies' `CardParagraph` and the main
+ * editor's titled paragraph read ONE predicate. The transition legs below are
+ * byte-for-byte the task-400 contract (0 -> 1, 1 -> 2, 2 -> 1, 1 -> 0, plus a
+ * mark step), now asserted against the stamp; the harness mounts the card
+ * body's paragraph, because StarterKit's own has no NodeView and stamps
+ * nothing — which is the point, and is pinned below.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+
+// `editor-extensions` (the main paragraph NodeView) reaches `@/lib/storage`.
+vi.mock("@/lib/storage", () => {
+  const STORAGE_FNS = [
+    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
+    "readDocBundle", "writeDocBundle", "readBib", "writeBib",
+    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  const mod: Record<string, unknown> = { isDevStorage: false };
+  for (const name of STORAGE_FNS) mod[name] = vi.fn();
+  return mod;
+});
+
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import { DecorationSet } from "@tiptap/pm/view";
 import { LatexCommandMark } from "@/lib/tiptap/latex-command";
+import {
+  CardParagraph,
+  paragraphIsCmdOnly,
+} from "@/lib/tiptap/cmd-only-paragraph";
+import { createParagraphWithTitle } from "@/lib/editor-extensions";
+import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
 
 let editor: Editor | null = null;
 
-function makeEditor(content: string): Editor {
+function makeEditor(
+  content: string,
+  paragraph: typeof CardParagraph = CardParagraph,
+): Editor {
   editor = new Editor({
-    extensions: [StarterKit, LatexCommandMark],
+    extensions: [StarterKit.configure({ paragraph: false }), paragraph, LatexCommandMark],
     content,
   });
   return editor;
@@ -40,7 +76,7 @@ function paragraphClasses(ed: Editor): string[] {
   return [...ed.view.dom.querySelectorAll("p")].map((p) => p.className);
 }
 
-describe("latex-command p-cmd-only node decoration", () => {
+describe("p-cmd-only NodeView stamp", () => {
   it("flags command-only paragraphs and not prose or mixed paragraphs", () => {
     const ed = makeEditor(
       "<p>\\noindent</p><p>\\bigskip</p><p>plain prose</p><p>prose with \\emph{x} inside</p>",
@@ -89,7 +125,7 @@ const flagged = (ed: Editor, i = 0) =>
 // pinning them is that the NARROWING still does. Measured against the pre-fix
 // tree, exactly one leg in this block fails: the mark step, whose empty
 // StepMap no probe could see.
-describe("p-cmd-only survives a BLOCK-SCOPED rebuild (task 400)", () => {
+describe("p-cmd-only survives a BLOCK-SCOPED rebuild (task 400) — and the move off decorations (task 430)", () => {
   it("0 -> 1: typing a command into plain prose flags the paragraph", () => {
     const ed = makeEditor("<p>plain prose</p>");
     expect(flagged(ed)).toBe(false);
@@ -181,5 +217,97 @@ describe("p-cmd-only survives a BLOCK-SCOPED rebuild (task 400)", () => {
     expect(classes[0]).toContain("p-cmd-only");
     expect(classes[1]).not.toContain("p-cmd-only");
     expect(classes[2]).toContain("p-cmd-only");
+  });
+});
+
+describe("the stamp is a NodeView fact, not a decoration (task 430)", () => {
+  it("the decoration set carries NO node decoration — its root `local` array is empty", () => {
+    // The whole point of the move: a `Decoration.node` over a paragraph cannot
+    // be filed under the paragraph's child set (strict containment), so it
+    // lives in the root `local` array that every `find`/`remove`/`add` sweeps.
+    const ed = makeEditor("<p>\\noindent</p><p>\\bigskip</p><p>prose \\emph{x}</p>");
+    expect(paragraphClasses(ed).filter((c) => c.includes("p-cmd-only"))).toHaveLength(3);
+    const sets = ed.state.plugins
+      .map((p) => p.getState(ed.state))
+      .filter((st): st is DecorationSet => st instanceof DecorationSet);
+    expect(sets.length).toBeGreaterThan(0);
+    for (const set of sets) {
+      expect((set as unknown as { local: unknown[] }).local).toHaveLength(0);
+    }
+    // …while the inline spans are still painted.
+    expect(ed.view.dom.querySelectorAll(".latex-cmd")).toHaveLength(3);
+  });
+
+  it("the main editor's titled paragraph stamps its OUTER dom — where the node decoration used to land", () => {
+    const ed = makeEditor("<p>\\noindent</p><p>plain</p>", createParagraphWithTitle() as never);
+    const wrappers = [...ed.view.dom.querySelectorAll(".par-title-wrapper")];
+    expect(wrappers).toHaveLength(2);
+    expect(wrappers[0]!.classList.contains("p-cmd-only")).toBe(true);
+    expect(wrappers[1]!.classList.contains("p-cmd-only")).toBe(false);
+    typeAt(ed, ed.state.doc.child(0).nodeSize - 1, " and \\bar");
+    expect(wrappers[0]!.classList.contains("p-cmd-only")).toBe(false);
+  });
+
+  it("a surface without the latexCommand mark never stamps", () => {
+    editor = new Editor({
+      extensions: [StarterKit.configure({ paragraph: false }), CardParagraph],
+      content: "<p>\\noindent</p>",
+    });
+    expect(paragraphClasses(editor)[0]).not.toContain("p-cmd-only");
+    expect(paragraphIsCmdOnly(editor.state.doc.firstChild!)).toBe(false);
+  });
+
+  it("StarterKit's bare paragraph stamps nothing — which is why every mark-bearing surface mounts a stamping one", () => {
+    editor = new Editor({ extensions: [StarterKit, LatexCommandMark], content: "<p>\\noindent</p>" });
+    expect(paragraphClasses(editor)[0]).not.toContain("p-cmd-only");
+  });
+});
+
+// ── Census ────────────────────────────────────────────────────────────────
+// The stamp was never the part that could misbehave; a paragraph NodeView that
+// does not call it is, and so is a plugin that brings the node decoration back.
+// Both type-check perfectly.
+const ROOTS = ["src", "library"];
+const SKIP_DIR = /(^|\/)(node_modules|\.next|dist|build|out|coverage)(\/|$)/;
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (SKIP_DIR.test(full)) continue;
+    if (statSync(full).isDirectory()) walk(full, out);
+    else if (/\.tsx?$/.test(full)) out.push(full);
+  }
+  return out;
+}
+const isTest = (f: string) => /__tests__|\.test\.tsx?$/.test(f);
+
+describe("p-cmd-only census (task 430)", () => {
+  const files = ROOTS.flatMap((r) => walk(r)).filter((f) => !isTest(f));
+  // Literals KEPT for the class needle (the drift lives in a quoted class
+  // name); blanked for the symbol needles.
+  const sources = files.map((f) => {
+    const raw = readFileSync(f, "utf8");
+    return { f, code: codeOnly(raw), text: commentsStripped(raw) };
+  });
+
+  it("every paragraph extension that adds a NodeView stamps through `stampCmdOnly`", () => {
+    const owners = sources.filter(
+      ({ code }) => /Paragraph\.extend\(/.test(code) && /addNodeView\(/.test(code),
+    );
+    expect(owners.map((o) => o.f).sort()).toEqual(
+      ["src/lib/editor-extensions.ts", "src/lib/tiptap/cmd-only-paragraph.ts"].sort(),
+    );
+    for (const { f, code } of owners) {
+      expect(code.includes("stampCmdOnly("), `${f} must stamp p-cmd-only`).toBe(true);
+    }
+  });
+
+  it("no production file spells the class by hand, and no decoration plugin files a node deco for it", () => {
+    const spellers = sources
+      .filter(({ text }) => /p-cmd-only/.test(text))
+      .map((o) => o.f);
+    // The leaf declares `CMD_ONLY_CLASS`; CSS reads the class; nothing else.
+    expect(spellers).toEqual(["src/lib/tiptap/cmd-only-paragraph.ts"]);
+    const latexCommand = readFileSync("src/lib/tiptap/latex-command.ts", "utf8");
+    expect(codeOnly(latexCommand)).not.toMatch(/Decoration\.node\(/);
   });
 });
