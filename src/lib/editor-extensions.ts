@@ -86,6 +86,7 @@ import {
   FigureCaption,
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
+import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -176,7 +177,21 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 
         if (skipChrome) {
           const p = document.createElement("p");
-          return { dom: p, contentDOM: p };
+          // The `p-cmd-only` rhythm class is this NodeView's to stamp (task
+          // 430) — derived from the node, never a decoration.
+          stampCmdOnly(p, node);
+          return {
+            dom: p,
+            contentDOM: p,
+            update(updatedNode) {
+              if (updatedNode.type.name !== "paragraph") return false;
+              stampCmdOnly(p, updatedNode);
+              return true;
+            },
+            ignoreMutation(mutation) {
+              return mutation.type === "attributes" && mutation.target === p;
+            },
+          };
         }
 
         const wrapper = document.createElement("div");
@@ -185,6 +200,9 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
         // decoration union is gone). Main surface only; the #49 deferral gate
         // (blockquote/codeBlock-nested body paragraphs) lives inside the stamp.
         if (!isFloat) stampTextObjectAttrs(wrapper, node, parentNode);
+        // `p-cmd-only` lands on the NodeView's outer dom — exactly where the
+        // retired `Decoration.node` over the paragraph put it (task 430).
+        stampCmdOnly(wrapper, node);
         // Belt-and-suspenders with the schema `draggable: false`: the
         // browser must never see this wrapper as a drag source.
         wrapper.draggable = false;
@@ -404,6 +422,9 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
               stampTextObjectAttrs(wrapper, updatedNode, parentNode);
             }
             currentNode = updatedNode;
+            // O(this paragraph): re-derive the cmd-only aggregate from the
+            // node that changed; an unchanged answer writes nothing.
+            stampCmdOnly(wrapper, updatedNode);
             if (
               !titleAnnot.querySelector("input") &&
               ((updatedNode.attrs.parTitle as string | null) !== lastAnnotTitle ||

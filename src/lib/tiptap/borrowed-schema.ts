@@ -93,6 +93,7 @@ import {
   MaketitleMarker,
   TextColor,
 } from "@/lib/tiptap-extensions";
+import { CardParagraph } from "./cmd-only-paragraph";
 
 /**
  * The shared StarterKit config both card surfaces use. Heading / blockquote /
@@ -108,6 +109,9 @@ export const CARD_STARTER_KIT_CONFIG = {
   blockquote: false as const,
   codeBlock: false as const,
   horizontalRule: false as const,
+  // The paragraph is registered by `buildCardBodySchema` as `CardParagraph`
+  // (same node, same attrs, plus the `p-cmd-only` NodeView stamp — task 430).
+  paragraph: false as const,
 };
 
 /**
@@ -115,9 +119,9 @@ export const CARD_STARTER_KIT_CONFIG = {
  * verbatim slice of the MAIN DOCUMENT rather than prose the user typed into the
  * card (today: `archive`; see `bodySchema` on `CardMeta`).
  *
- * StarterKit's defaults already carry the full block vocabulary, so this is
- * deliberately the empty override: heading / blockquote / codeBlock /
- * horizontalRule stay ON. Named rather than inlined so the excerpt/card split is
+ * StarterKit's defaults already carry the full block vocabulary, so this
+ * deliberately overrides nothing but the paragraph swap both scopes share:
+ * heading / blockquote / codeBlock / horizontalRule stay ON. Named rather than inlined so the excerpt/card split is
  * a declared pair in this one SSOT, and so `{@link starterKitConfigForScope}`
  * reads as a total function over the scope union.
  *
@@ -132,7 +136,12 @@ export const CARD_STARTER_KIT_CONFIG = {
  * blank, and the first keystroke in that blank body persisted the empty doc back
  * over the capture. Deleted from the document, unmountable in the card.
  */
-export const EXCERPT_STARTER_KIT_CONFIG = {};
+export const EXCERPT_STARTER_KIT_CONFIG = {
+  // The ONE override shared with the card scope: the paragraph comes from
+  // `buildCardBodySchema` (`CardParagraph`, task 430). Every block kind
+  // stays ON.
+  paragraph: false as const,
+};
 
 /**
  * Which vocabulary a card body mounts. Declared per card kind as
@@ -246,10 +255,16 @@ export function buildCardBodySchema(
   scope: CardBodySchemaScope,
   opts: BorrowedSchemaOptions = {},
 ): AnyExtension[] {
-  if (scope !== "excerpt") return buildBorrowedAtomSchema(opts);
+  // The body's paragraph (`paragraph: false` in BOTH scope configs): a bare
+  // `<p>` NodeView that stamps `p-cmd-only` from the same predicate the main
+  // editor's paragraph uses (task 430). It rides THIS builder — the door every
+  // card surface enters — rather than the atom list, so a surface that mounts
+  // `LatexCommandMark` mounts a paragraph that stamps by construction.
+  if (scope !== "excerpt") return [...buildBorrowedAtomSchema(opts), CardParagraph];
   return [
     ...buildBorrowedAtomSchema({ ...opts, includeLabelRefFootnote: true }),
     ...buildExcerptOnlySchema(),
+    CardParagraph,
   ];
 }
 

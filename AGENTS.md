@@ -218,6 +218,36 @@ in turn: the pre-400 probes take 3 legs (2 cost, 1 the stale flag), a
 wholly-inside removal window 1, and the four transition legs are non-regression
 pins that pass either way — stated at the site rather than counted as defects.
 
+**The bookkeeping floor is CLOSED (task 430).** 400 made the re-derivation
+per-block and left the SET proportional to the paper: a `Decoration.node` over
+a paragraph fails prosemirror's strict-containment filing (`takeSpansForNode`),
+so every `p-cmd-only` node deco lived in the ROOT set's `local` array, and each
+keystroke's `find`/`remove`/`add` swept O(command-only paragraphs) — the very
+alternative `globals.css`'s own comment named (a Wave-0 class stamp). The
+aggregate is a per-paragraph DERIVED fact, so it is stamped at write time by
+the paragraph NODEVIEW from the node that changed
+([cmd-only-paragraph.ts](src/lib/tiptap/cmd-only-paragraph.ts):
+`paragraphIsCmdOnly` / `stampCmdOnly`; the card bodies' `CardParagraph` — both
+scope configs set `paragraph: false` and `buildCardBodySchema` supplies it, so
+every surface that mounts the mark mounts a stamping paragraph by construction
+— and the main editor's titled paragraph, which stamps its OUTER dom, exactly
+where the retired node deco landed). ONE scanner, two readers: the decoration
+plugin's `forEachBareCommand` is the same function the stamp counts with, so
+the grey span and the rhythm class cannot drift. Deliberately NOT a node attr
+written from `appendTransaction` — a derived view signal is never document
+content ("Transient state is never document content"). The stamp is
+idempotence-gated (an unchanged answer touches no attribute — the
+scroll-activity rule) and `ignoreMutation`-guarded so its own class write never
+triggers a DOM re-read. The decoration set carries inline spans ONLY: its root
+`local` array is EMPTY, pinned at 60 and at 240 paragraphs in
+decoration-probe-cost (measured 60/240 entries on the pre-430 tree), and the
+transition/mark-step legs in latex-command-cmd-only are the task-400 contract
+byte-for-byte, re-asserted against the stamp — measured, an un-stamping
+`CardParagraph` fails 9 of them. The census legs pin that every paragraph
+extension adding a NodeView spells `stampCmdOnly`, that no production file
+spells the class by hand (the leaf declares `CMD_ONLY_CLASS`; CSS reads it),
+and that `latex-command.ts` constructs no `Decoration.node` at all.
+
 ### The stylesheet half
 
 Style invalidation is keystroke work too. [src/lib/\_\_tests\_\_/css-invalidation-guardrail.test.ts](src/lib/__tests__/css-invalidation-guardrail.test.ts) (Wave-4 P6) pins globals.css: **zero live `:has()`** (every historical one was a measured invalidation cliff; a new one needs a write-time replacement — class stamp, node decoration, or NodeView data-attr, the four Wave-0 patterns), the universal drop-mode descendant selector stays dead (body-only form inherits identically at none of the 36 ms full-tree cost), every `contain:` rule stays scoped under `body.perf-contain` (**Wave-4 Stage A**: `contain: layout style` on card/omni/panel-list/float containers, flag `virgil:perf-contain` via [src/lib/perf-feature-flags.ts](src/lib/perf-feature-flags.ts), DEFAULT OFF until soak — containment changes containing-block semantics for absolutely-positioned descendants; the targets were verified portal-safe), and `content-visibility` stays out entirely (Stage B was decision-gated on the visible-window trace, which found no per-keystroke style mass for it to win against — [docs/perf/style-invalidation-findings.md](docs/perf/style-invalidation-findings.md)).
