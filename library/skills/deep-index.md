@@ -247,7 +247,7 @@ nothing in it.
 python3 .virgil/scripts/library/normalize_whitespace.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/library/fix_invisibles.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/library/deep_preprocess.py papers/$ARGUMENTS/main.tex
-python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex \\
+python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex \
     --resume-baseline .virgil/baselines/$ARGUMENTS-pre-deepindex.tex
 ```
 

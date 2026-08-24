@@ -361,7 +361,7 @@ pass added or removed markers without updating the catalog; the
 audit needs to see the new total.
 
 ```bash
-python3 .virgil/scripts/library/verify_pgmark_coverage.py $ARGUMENTS \\
+python3 .virgil/scripts/library/verify_pgmark_coverage.py $ARGUMENTS \
     --update-catalog
 ```
 

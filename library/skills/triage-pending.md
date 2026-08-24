@@ -85,7 +85,7 @@ directory).
    re-pay the cost. See 2026-05-16-triage-no-name-pdfs.md.
 
    ```bash
-   python3 .virgil/scripts/library/triage_batch.py \\
+   python3 .virgil/scripts/library/triage_batch.py \
        --marker-rescue --output /tmp/triage.jsonl
    ```
 
@@ -187,7 +187,7 @@ final LLM-rescue pass:
 
 ```bash
 # 1. Stage prompts for rows that need LLM rescue.
-python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \\
+python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \
     /tmp/triage.jsonl --out-dir /tmp/llm-rescue/
 
 # 2. For each /tmp/llm-rescue/prompts/row-NNNN.txt, dispatch a
@@ -196,13 +196,13 @@ python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \\
 #    /tmp/llm-rescue/responses/row-NNNN.json.
 
 # 3. Merge responses back into the JSONL.
-python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \\
-    /tmp/triage.jsonl --responses-dir /tmp/llm-rescue/responses \\
+python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \
+    /tmp/triage.jsonl --responses-dir /tmp/llm-rescue/responses \
     --output /tmp/triage.llm.jsonl
 
 # 4. Backfill years via Crossref for rows where the LLM found
 #    title+author but no year.
-python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \\
+python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \
     /tmp/triage.llm.jsonl --output /tmp/triage.final.jsonl
 ```
 

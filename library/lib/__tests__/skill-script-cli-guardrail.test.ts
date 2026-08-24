@@ -40,6 +40,13 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
+// Bash's own line-continuation rule, stated once. This file used to re-derive
+// it as `endsWith("\\")` — true for a line ending in ONE backslash and equally
+// true for TWO, which bash reads oppositely. Eight shipped commands ended
+// their first line with `\\`; bash dropped every flag on the continuation
+// line while THIS guard, built to police those flags, folded the two lines
+// together and saw a healthy invocation (task 445). See `_shell-fence.ts`.
+import { continuesLine } from "./_shell-fence";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SKILL_DIRS = ["editor/skills", "library/skills"];
@@ -142,8 +149,8 @@ function invocationAt(lines: string[], i: number): Invocation | null {
   // `answer-bib-review.md` writes its flags exactly that way.
   let rest = raw.slice(m.index + m[0].length);
   let j = i + 1;
-  while (rest.trimEnd().endsWith("\\") && j < lines.length) {
-    rest = `${rest.trimEnd().slice(0, -1)} ${lines[j]}`;
+  while (continuesLine(rest) && j < lines.length) {
+    rest = `${rest.slice(0, -1)} ${lines[j]}`;
     j += 1;
   }
   return { script: m[1], rest, strong: strongMatch !== null };

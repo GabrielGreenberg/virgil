@@ -239,7 +239,7 @@ escape the convergence-loop gate.
 NOT hand-Edit `catalog.json` to add the warning — go through:
 
 ```bash
-python3 .virgil/scripts/library/add_validator_suppression.py \\
+python3 .virgil/scripts/library/add_validator_suppression.py \
     $ARGUMENTS <kind> "<concrete why-it's-correct>"
 ```
 
