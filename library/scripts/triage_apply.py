@@ -176,7 +176,7 @@ def _upsert_catalog_row_bib_only(
     field_changes: list[dict[str, str]] | None = None,
     bib_state: str = "unverified",
 ) -> None:
-    """Update a bib-only catalog row — F#4 holdings-only.
+    """Write the catalog row a `.bib` entry is entitled to — usually none.
 
     A `.bib` import carries no source document, so its entry is
     reference-only: under the F#4 sources-only model it must NOT mint a

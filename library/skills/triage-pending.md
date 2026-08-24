@@ -151,13 +151,18 @@ directory).
      entirely when it is settled — `TERMINAL_BIB_STATES`: `authenticated`,
      `manuscript`, `canonical`), creates a minimal `papers/<citekey>/`
      (`references.bib` + empty `virgil/` sidecars; no source file, no
-     `main.tex`), mints **no catalog row** (a source-less entry is
-     reference-only under the F#4 holdings model — the `.bib` bullet in
-     `/triage-pdf` states the full outcome), and queues `kind: "authenticate"`
-     (or skips queueing when `proposedBibState == "manuscript"`). After all
-     rows from one `.bib` file have been applied, the source `.bib` is
-     deleted from `unsorted/` (or parked under `_pending/` if any rows
-     hit a parse error).
+     `main.tex`), mints **no catalog row** for a source-less citekey (that
+     entry is reference-only under the F#4 holdings model; an already-existing
+     row for it is refreshed rather than removed, and a citekey that IS held
+     on disk still gets its real holdings row — the `.bib` bullet in
+     `/library/triage-pdf` states the full outcome), and queues
+     `kind: "authenticate"` (skipped for `proposedBibState == "manuscript"`,
+     and skipped when `.virgil/queue/<citekey>.json` already exists for any
+     kind). After all rows from one `.bib` file have been applied, the source
+     `.bib` is deleted from `unsorted/` — but only when EVERY row came back
+     `bib-imported` or `bib-ignored`; any other status (a `bib-folded`
+     duplicate, a missing citekey, a parse error) parks the whole file under
+     `_pending/`.
    - **otherwise** → appends a stub to `master.bib`, moves the file to
      `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
    - emits a `triaged` / `triage-filename-mismatch` / `triage-bib-imported`
