@@ -35,7 +35,6 @@ describe("StripButton accessible name", () => {
         onClick={vi.fn()}
         onMove={vi.fn()}
         side="left"
-        stripRef={{ current: null }}
       />,
     );
     // Resolves by accessible name — would throw if the button were nameless.
@@ -53,7 +52,6 @@ describe("StripButton accessible name", () => {
         onClick={vi.fn()}
         onMove={vi.fn()}
         side="right"
-        stripRef={{ current: null }}
       />,
     );
     const btn = getByRole("button", { name: panelLabel("footnotes") });

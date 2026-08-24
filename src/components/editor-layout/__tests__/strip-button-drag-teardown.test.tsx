@@ -148,7 +148,6 @@ function stubRects() {
 function renderButton() {
   const onClick = vi.fn();
   const onMove = vi.fn();
-  const stripRef = { current: null };
   const utils = render(
     <div data-strip-side="left">
       <StripButton
@@ -157,7 +156,6 @@ function renderButton() {
         onClick={onClick}
         onMove={onMove}
         side="left"
-        stripRef={stripRef}
       />
       <button data-panel-id="todos" />
       <button data-panel-id="outline" />

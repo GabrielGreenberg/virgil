@@ -245,14 +245,12 @@ export function StripButton({
   onClick,
   onMove,
   side,
-  stripRef,
 }: {
   panelId: PanelId;
   active: boolean;
   onClick: () => void;
   onMove: (draggedId: PanelId, toSide: Side, before?: PanelId | null) => void;
   side: Side;
-  stripRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const renderIcon = PANEL_ICONS[panelId];
   const label = panelLabel(panelId);
@@ -505,10 +503,6 @@ export function StripButton({
     },
     [cleanupDragArtifacts, geometry, onMove, panelId, onClick],
   );
-
-  // `stripRef` is accepted for the caller's DOM attachment conventions but
-  // not used here; kept to preserve the calling contract after extraction.
-  void stripRef;
 
   // Bail-out AFTER all hooks (react-hooks/rules-of-hooks: hook order must be
   // unconditional). Never truthy for a real strip panel today — even `blank`
