@@ -223,10 +223,32 @@
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
   --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
-  /* Filter form of the ambient shadow, for applying via `filter:` so the
-   * shadow hugs composited alpha (e.g. tabs with swoop pseudo-elements,
-   * or the MenuBar pod + tab merged via SVG outline). */
-  --shadow-ambient-filter: drop-shadow(0 2px 6px rgba(0,0,0,0.10)) drop-shadow(0 1px 2px rgba(0,0,0,0.06));
+  /* Lift for a DRAG GHOST — the translucent copy of a grabbed thing that
+   * follows the cursor on the topmost layer. Authored in the `filter:`
+   * form (not `box-shadow`) because both consumers are clones whose
+   * silhouette is composited alpha, and `drop-shadow()` hugs that
+   * silhouette where a box shadow would draw the bounding rect. The
+   * `-filter` suffix marks the form: this value cannot be used in
+   * `box-shadow` and a box shadow cannot be used here.
+   *
+   * The TWO consumers are `.inline-atom-ghost` (globals.css, the grabbed
+   * inline atom) and PanelTabStrip's dragged-tab clone (library/) — one
+   * role, so one value. They shipped as `0 2px 6px` and `0 8px 16px` at
+   * the same alpha, a 3x difference in reach chosen twice by eye (task
+   * 2026-08-25-460). The DEEPER value is the one kept: a dragged copy is
+   * the topmost layer in the app and the one thing that should read
+   * unambiguously as "in your hand", and the inline-atom ghost's
+   * shallower shadow was never tuned against anything (it also carries
+   * `opacity: 0.85`, which already softens it). The alternative — scale
+   * reach with the dragged element's size, so a 20px chip lifts less than
+   * a 150px tab — is a real design position and was declined: elevation
+   * here is a LAYER, not a size.
+   *
+   * NOT the same role as the popout-mode block lift, which is opaque and
+   * reads `--card-shadow-ambient` via `box-shadow` (see
+   * `.lifted-text-overlay[data-lift-mode="popout"]`); pure ghost mode
+   * there carries no shadow at all. */
+  --shadow-drag-ghost-filter: drop-shadow(0 8px 16px rgba(0,0,0,0.25));
 
   /* Page-as-solid-object sizing. Editor column prefers --page-preferred
      and only shrinks toward --page-min when the window is too narrow to
@@ -4165,7 +4187,7 @@ body.perf-contain .static-borrowed-text {
   z-index: 1200;
   pointer-events: none;
   opacity: 0.85;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+  filter: var(--shadow-drag-ghost-filter);
 }
 
 /* Unhandled LaTeX commands — grey monospace.

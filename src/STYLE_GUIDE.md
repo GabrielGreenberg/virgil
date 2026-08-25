@@ -689,7 +689,12 @@ Five states. One implementation each.
   `iconbtn-*` and `.topbarbtn`, which own their own transition.
   Hover **never changes elevation** — no `hover:shadow-*`, no lift. Shadow
   here is a property of the surface tier (pods/cards carry their ambient
-  shadow, floats carry `--shadow-float`), not a response to the cursor;
+  shadow, floats carry `--shadow-float`, and a DRAG GHOST — the translucent
+  copy that follows the cursor on the topmost layer — carries
+  `--shadow-drag-ghost-filter`, authored in the `filter:` form so
+  `drop-shadow()` hugs the clone's composited alpha instead of its bounding
+  rect; a lift is a LAYER, not a size, so a 20px inline atom and a 150px
+  Library tab take the same reach), not a response to the cursor;
   there is not one hover-elevation rule in either silo. Border-color hover
   *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
   `edge-strong`) and the omni-bin pill's. The exception is icon buttons
