@@ -29,6 +29,16 @@
 //   6. census: both bins are call sites of the ONE `OmniBinPill` primitive
 //      (the pill class is spelled exactly once in the file), and the retired
 //      `top: 4` posture is gone from the source.
+//
+// Task 455 added leg 7 — the one number the 421 legs never asked for. 421
+// pinned the slot's STRUCTURE (which frame, which order, which z rung) and
+// left the frame's sticky `top` unread, and that value forked on stack state:
+// `var(--pod-gap)` docked, `64` empty. The 64 was a retired action-toolbar
+// strip's clearance; it placed nothing while the no-stack frame was EMPTY,
+// and 421 made it live by giving the frame a permanent occupant. So on any
+// scrolled document with no band docked, the bins pinned 64px down the
+// gutter — with every leg above green, because none of them reads a pinned
+// offset. Leg 7 reads it, in BOTH stack states, and asserts they agree.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/react";
@@ -180,6 +190,48 @@ describe("PanelColumn — the bin slot lives in the sticky band frame, after the
     expect(slot.closest(".absolute.inset-0")).not.toBeNull();
   });
 
+  it("leg 7: the frame's sticky pin is ONE value in both stack states, and the bins ride it", () => {
+    // The defect this pins: a state-forked offset on a frame whose occupancy
+    // no longer depends on that state. The frame carries the bin slot
+    // ALWAYS, so an empty stack is not an empty frame — a pin that only
+    // agrees with a docked band's pin when a band happens to be docked is
+    // the relic, whatever number it holds.
+    const tops: string[] = [];
+    const slotMargins: string[] = [];
+    for (const stack of [[], [{ id: "notes" as never }]]) {
+      const { container, unmount } = renderColumn(<div data-testid="omni" />, stack as never);
+      const frame = container.querySelector("[data-stack-frame]") as HTMLElement;
+      expect(frame.style.position).toBe("sticky");
+      tops.push(frame.style.top);
+      // The height's `- 64px` twin agreed with the pin and must go with it,
+      // or an unforked pin just moves the dead band to the frame's bottom.
+      expect(frame.style.height).not.toContain("64");
+      const slot = container.querySelector(`[${DATA_OMNI_BIN_SLOT}]`) as HTMLElement;
+      slotMargins.push(slot.style.marginTop);
+      unmount();
+    }
+    // ONE pin, and it is the pod gap — the same distance from the pane top a
+    // docked band's first pixel sits at, and the same value the in-pod
+    // fallback (`data-omni-bin-sticky`) uses, so the two hosts agree.
+    expect(tops[0]).toBe(tops[1]);
+    expect(tops[0]).toBe("var(--pod-gap)");
+    // The slot's own margin is a SEPARATOR from the band above, so it exists
+    // only when there is one: with no stack the bins start at the frame's
+    // top, i.e. exactly at the pin.
+    expect(slotMargins[0]).toBe("0px");
+    expect(slotMargins[1]).toBe("var(--pod-gap)");
+  });
+
+  it("leg 7b: the in-pod fallback pins at the same value the frame does", () => {
+    const { container } = render(
+      <OmniBinStack host="pod">
+        <OmniUnanchoredBin free={[freeNote]} orphaned={[]} />
+      </OmniBinStack>,
+    );
+    const inner = container.querySelector("[data-omni-bin-sticky]") as HTMLElement;
+    expect(inner.style.top).toContain("var(--pod-gap");
+  });
+
   it("leg 3b: the slot element is what the context publishes", () => {
     let seen: HTMLElement | null | undefined;
     function Probe() {
@@ -254,6 +306,19 @@ describe("census — one pill primitive, no document-top posture", () => {
     );
     expect(container.querySelectorAll("button.omni-bin-pill").length).toBe(2);
   });
+  it("leg 6c: the retired 64px toolbar clearance is gone from the column", () => {
+    const col = readFileSync(
+      join(process.cwd(), "src/components/editor-layout/panel-column.tsx"),
+      "utf8",
+    );
+    // Both spellings of the relic: the sticky pin's fork and the height's
+    // `- 64px` twin. Comments are stripped first — this file now EXPLAINS
+    // the retired constant, and a raw grep would indict its own explanation.
+    const code = col.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(/top:\s*[^,;\n]*\b64\b/.test(code)).toBe(false);
+    expect(code).not.toContain("64px");
+  });
+
   it("leg 6b: the retired `absolute; top: 4` stack posture is gone", () => {
     expect(/position:\s*"absolute",\s*top:\s*4\b/.test(src)).toBe(false);
     // And the slot is CONSUMED: a context nobody reads is the dead-SSOT shape.
