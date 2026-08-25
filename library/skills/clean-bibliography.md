@@ -13,6 +13,17 @@ arguments: <citekey>
 
 # Bibliography cleanup
 
+> **Allowable-LaTeX doctrine.** The itemized References entries
+> (`\textbf`/`\textit`), the `\cite{…}` commands this skill emits, and their
+> locators must stick to the vocabulary Virgil renders meaningfully — read
+> [_latex-output.md](_latex-output.md) — the **library appendix** (document
+> structure, expex numbered examples, `\pgmark{N}`, the font-strip rule, the
+> minimal preamble) — which links the cross-silo SSOT
+> [_latex-allowlist.md](_latex-allowlist.md) for the inline vocabulary (marks,
+> math, footnotes, the `\cite…` family, and the tie `~` vs.
+> `\textasciitilde{}` rule). Anything outside those two renders as raw grey
+> monospace in Virgil. Never re-paraphrase either doctrine here — link to it.
+
 ## Bootstrap (run this first)
 
 This skill operates on the user's Virgil Library. Resolve the library
@@ -634,8 +645,9 @@ Constraints:
 - For bare year-only mentions in running prose ("In 2002, Bach argued
   …"), **leave them alone** — the goal is to mark up *citations*, not
   every mention of a year.
-- For the "(Bach 2002, p. 75)" form, emit the locator with a tilde
-  (`p.~75`) so LaTeX renders it as a non-breaking space.
+- For the "(Bach 2002, p. 75)" form, emit the locator per the tie rule in
+  [_latex-allowlist.md](_latex-allowlist.md) — e.g. `p.~75`. That file is the
+  statement of the rule; this is only an example of it.
 
 Every key inside `{…}` must be one that appears in `references.bib`. The
 parser at `src/lib/cite-commands.ts` already understands all seven

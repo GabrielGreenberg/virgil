@@ -28,6 +28,15 @@ Virgil Library:
   library candidates) → write a markdown review note under
   `<docPath>/virgil/notes/` for the user to disambiguate manually.
 
+> **Allowable-LaTeX doctrine.** The citekey rename this skill performs
+> rewrites `\cite…` commands in `document.tex`, and the entry blocks it swaps
+> into `references.bib` carry LaTeX in their field values. Both must stick to
+> the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular keep the `\cite…`
+> family's spelling intact (a rename changes only the KEY inside the braces)
+> and use the tie `~`, never `\textasciitilde{}`, for a non-breaking space;
+> anything outside the allowlist renders as raw grey monospace.
+
 > **Shared doctrine — find-or-surface, never fabricate.** Read
 > [_find-or-surface.md](_find-or-surface.md). The **missing-entries**
 > step above authenticates each new entry through the library pipeline —
