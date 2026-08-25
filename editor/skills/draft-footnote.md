@@ -22,7 +22,7 @@ description: |
 > pen-protected) via [`create_card.py`](../scripts/create_card.py). This skill
 > stays for one release cycle so existing paper folders and muscle memory keep
 > working; new callers should prefer `create-card`. What `draft-footnote` still
-> owns is the footnote-specific **composition** (prose + citation follow-up)
+> owns is the footnote-specific **composition** (prose + the missing-bibkey todo)
 > below — that is chat's job, not the mechanical skill's.
 
 Resolve one AI request whose kind is `footnote`. There are **two shapes**, split
@@ -127,8 +127,8 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    `\textcite{...}`/`\parencite{...}` (biblatex); prepend a fresh
    `\vcid{<uuid>}` before each cite command. Use ` `` ... '' ` for inline
    quotes. **Don't fabricate a `\citet{key}` for a bibkey not in
-   `references.bib`** — draft the prose without it and file a follow-up
-   (step 3). This composition is the part `draft-footnote` keeps; everything
+   `references.bib`** — draft the prose without it and file a missing-bibkey
+   todo card (step 3). This composition is the part `draft-footnote` keeps; everything
    mechanical is delegated in step 3.
 
 3. **Land it via the contract.** Hand the composed body to `create_card.py`,
@@ -144,20 +144,31 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    `.tex` edit and the sidecar writes one all-or-nothing transaction, so there
    is no half-state to clean up.
 
-   **Missing-bibkey follow-up.** If you omitted a citation in step 2, after the
-   footnote lands, file a `citation` follow-up by appending to
-   `ai-requests.json` (no helper script for this — edit the file), carrying the
-   trail back to the footnote so the citation responder can splice the
-   `\citet` deterministically:
-   ```json
-   { "id": "<new-uuid>", "kind": "citation",
-     "text": "Add a bib entry for <author/year>; once in references.bib, splice \\citet{<bibkey>} into footnote <footnoteId> on paragraph <uuid>.",
-     "createdAt": "<ISO now>", "status": "pending",
-     "paragraphIds": ["<uuid>"],
-     "linkedTo": { "panel": "footnotes", "cardId": "<footnoteId>" } }
+   **Missing-bibkey follow-up — file a TODO CARD, never a Task row.** If you
+   omitted a citation in step 2, after the footnote lands, track the hole as a
+   **todo** through the contract's Workflow B (no `requestId`; `--anchor`
+   supplies the paragraph and the contract synthesizes + completes its own
+   Task). Carry the trail back to the footnote so whoever picks it up can
+   splice the `\citet` deterministically:
+   ```bash
+   python3 editor/scripts/create_card.py <docPath> --kind=todo \
+       --anchor <uuid> \
+       --body "Add a bib entry for <author/year>; once in references.bib, splice \citet{<bibkey>} into footnote <footnoteId>."
    ```
    The original footnote Task still closes — the artifact landed; the citation
-   hole is tracked separately. Mention the follow-up in your reply.
+   hole is tracked separately. Mention the todo in your reply.
+
+   **Why a card and not a request.** There is no door that appends a *pending*
+   `ai-requests.json` row ([_ask-shape.md](_ask-shape.md) §4):
+   `apply_response.py`'s subcommand set has none, and `--synthesize-task`
+   stamps the running write's own `status`, so it can only synthesize the Task
+   a write is *draining*. Earlier drafts of this step told you to append the
+   row by hand — a raw write to the one sidecar `apply_response.py` exists to
+   own, unserialized against the app and every other skill, outside the pen,
+   with no version bump and no notification. A todo card is strictly better
+   besides: it is VISIBLE in the Todos panel, and flagging it for AI mints a
+   real bridged `todo` Task that `/editor/review` dispatches to
+   `/editor/find-citation` — which is how the loop actually closes.
 
 4. **Reply.** Per branch:
    - Direct create:
@@ -168,7 +179,7 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
      ```
      Done: revised footnote <cardId> for request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json status/result, notifications, version).
      ```
-   If a follow-up citation request was filed: `Filed follow-up citation request <newRequestId> for missing bibkey <bibkey>.`
+   If a missing-bibkey todo was filed: `Filed todo <todoId> for missing bibkey <bibkey> — flag it for AI to route it to /editor/find-citation.`
    On halt (direct create, no `paragraphIds`): `Halted: request <requestId> has no paragraphIds; needs anchor before drafting.`
    On halt (act-on-existing, footnote gone): `Halted: footnote <cardId> for request <requestId> no longer exists.`
 
@@ -184,7 +195,8 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
   Use the `update` op (branch E), not `create_card.py`.
 - **Find-or-surface, never fabricate** ([_find-or-surface.md](_find-or-surface.md)):
   don't fabricate a `\citet{key}` for a bibkey not in `references.bib` — write
-  the prose without it and file a `citation` follow-up instead (step 3).
+  the prose without it and file a missing-bibkey **todo card** instead
+  (step 3) — never a hand-written `ai-requests.json` row.
 - If `paragraphIds` is empty (direct-create branch only), halt (don't guess an
   anchor from the text). The act-on-existing branch does NOT need `paragraphIds`
   on the request — it resolves the footnote by `cardId` and edits it in place.

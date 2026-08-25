@@ -44,13 +44,22 @@ matters" (write a note). Read the todo and dispatch.
      paragraph") → emit a **suggestion card** in `revisions.json`
      (`author: "ai"`, `status: "pending"`, with `original_text` from
      the anchored paragraph and `suggested_text` your proposal).
-   - **Footnote / citation** → file a follow-up AI request
-     of the appropriate kind via the storage layer, then mark the todo
-     request complete with a note pointing at the new request.
-     (Future: dispatch directly to the relevant subskill from this
-     skill — for now, defer.) A todo asking to *pull a quoted passage*
-     has no dedicated kind — file a **citation** follow-up (to surface
-     the source) or emit a sibling **note/report** carrying the quote.
+   - **Footnote** ("footnote this claim", "add a note on X") → **tier 1**
+     ([_ask-shape.md](_ask-shape.md) §4): the builder is self-sufficient, so
+     compose the footnote prose yourself and land it in one hop —
+     `create_card.py --kind=footnote --accept-task-kind todo --body "…"`.
+     It allocates the `\vfid`, writes `footnotes.json`, splices the `.tex`
+     and drains the todo Task, all atomically. See step 3.
+   - **Citation** ("find a source for this", "cite X here") → **tier 2**:
+     `create_card.py --kind=citation` requires a `--citekey` already present
+     in `references.bib` and hard-refuses a missing one, and you do not hold
+     one — sourcing the work is a different job. **Hand off to
+     [`/editor/find-citation`](find-citation.md) `<docPath> <requestId>`**,
+     which searches, writes the `.bib` entry and the citation card, and
+     drains this same Task. Do not compose a `\citet{}` for a key you have
+     not verified. A todo asking to *pull a quoted passage* has no dedicated
+     kind: hand off to `/editor/find-citation` if the ask is really "where is
+     this from", otherwise emit a sibling **note/report** carrying the quote.
    - **Verification / lookup** ("check this quote against the source",
      "is this attribution right", "what does X actually say") → the answer
      is **findings**, so emit a **report**, not a note:
@@ -108,10 +117,17 @@ matters" (write a note). Read the todo and dispatch.
      `/editor/accept-suggestion`. This is the L3 propose path, *not* legacy
      default-apply.
 
-   - **Footnote / citation → follow-up** and **action you can't
-     take → complete-with-note**: unchanged (step 2) — file the follow-up
-     request, or `apply_response.py <docPath> complete-only <id> --note "<limit>"`;
-     neither creates a card here.
+   - **Footnote → one hop.** The tier-1 call from step 2, verbatim; it drains
+     the todo Task itself, so there is nothing else to land:
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=footnote \
+         --accept-task-kind todo --body "<composed footnote prose>"
+     ```
+   - **Citation → handoff.** Nothing lands here: `/editor/find-citation`
+     drains the Task. Say in your reply which skill you handed to.
+   - **Action you can't take → complete-with-note:** unchanged (step 2) —
+     `apply_response.py <docPath> complete-only <id> --note "<limit>"`;
+     it creates no card.
 
 4. **Finalize the source todo by the returned outcome** — don't mark a proposal
    done:
@@ -141,9 +157,13 @@ matters" (write a note). Read the todo and dispatch.
      ```
      Drafted note <newId> as a proposal for todo <cardId>, request <requestId> — awaiting review (todo left open). Output: notes.json (+ ai-requests.json status, todos.json aiRequest cleared, notifications, version).
      ```
-   - Follow-up filed (footnote/citation):
+   - Footnote path (tier 1, one hop):
      ```
-     Done: filed follow-up <kind> request <newRequestId> for todo <cardId>. Output: ai-requests.json (+ todos.json aiRequest cleared, notifications, version).
+     Done: drafted footnote <footnoteId> for todo <cardId>, request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json, todos.json aiRequest cleared, notifications, version).
+     ```
+   - Citation path (tier 2, handed off):
+     ```
+     Handed off request <requestId> (todo <cardId>) to /editor/find-citation — a citation needs a sourced bib entry, which that skill owns; it drains this Task.
      ```
    - Limit-explanation:
      ```
@@ -158,6 +178,12 @@ matters" (write a note). Read the todo and dispatch.
   `note` answer a `todo` Task.
 - Don't fabricate completed todos. If the todo's intent is unclear,
   mark complete with a note rather than guessing.
+- **Never edit `ai-requests.json` with a file-editing tool.** There is no door
+  that files a *pending* follow-up Task (see [_ask-shape.md](_ask-shape.md) §4),
+  and a raw write bypasses the pen, the version bump and the notification that
+  `apply_response.py` owns. Work you cannot finish in this run is a **todo
+  card** (Workflow B: `create_card.py <docPath> --kind=todo --anchor <uuid>
+  --body "…"`), which the user can see and flag for AI later.
 - Suggestion cards land via the contract's `complete-task --propose` path with
   `status: "pending"`, the Task left awaiting review — the user always reviews,
   and the `.tex` changes only when they accept (`/editor/accept-suggestion`).

@@ -57,12 +57,16 @@ they never asked for and must now dismiss.
 **4. Re-route rather than compress — and never emit both.** A re-routed
 answer replaces the panel's default output; it does not accompany it.
 Emitting a suggestion *and* a report "to be safe" is the compression
-failure with an extra card attached. The mechanism is asymmetric, because
-only some kinds have a builder:
+failure with an extra card attached.
 
-- **Toward a carded kind** (`note`, `report`, `todo`, `footnote`,
-  `citation`, `report-request`) — declare the Task kind you are draining
-  and let the contract do the write:
+**The mechanism is a function of what the target kind's builder NEEDS —
+not of whether one exists.** That is the axis, and getting it wrong
+documents a call that dies. Three tiers:
+
+- **Tier 1 — a SELF-SUFFICIENT builder** (`note`, `report`, `todo`,
+  `footnote`, `report-request`): everything it needs is something you are
+  holding. Declare the Task kind you are draining and let the contract do
+  the write:
   ```bash
   python3 editor/scripts/create_card.py <docPath> <requestId> \
       --kind=report --accept-task-kind suggestion \
@@ -72,10 +76,46 @@ only some kinds have a builder:
   `WORKFLOW_A_KINDS`), so any Task kind may be drained by any carded
   answer. It is the same door `answer-todo-request` uses to answer a
   `todo` Task with a `note`.
-- **Toward a `suggestion`** — there is no `create_card.py` builder for
-  one. Hand off to [`/editor/draft-suggestion`](draft-suggestion.md),
-  which owns the L3 propose path (`apply_response.py complete-task
-  --propose`).
+- **Tier 2 — a builder with a PREREQUISITE YOU DO NOT HOLD** (`citation`):
+  `create_card.py --kind=citation` requires `--citekey`, and hard-refuses
+  a key that is not already in `references.bib`
+  (`_require_bib_keys` — *"don't fabricate a cite for a missing entry"*).
+  Sourcing the work and adding the entry is a different job, so hand off
+  to [`/editor/find-citation`](find-citation.md), which searches
+  Crossref / OpenAlex / Semantic Scholar / arXiv, writes the `.bib` entry
+  and the citation card in one atomic op. **Do not call
+  `--kind=citation` to answer "find me a source for this"** — you have no
+  citekey, and the call dies.
+- **Tier 3 — NO builder** (`suggestion`): hand off to
+  [`/editor/draft-suggestion`](draft-suggestion.md), which owns the L3
+  propose path (`apply_response.py complete-task --propose`).
+
+Tiers 2 and 3 differ in their reason and agree in their shape: a handoff.
+State the reason, not just the destination — a future kind that gains a
+prerequisite-gated builder belongs in tier 2, and one that gains a
+self-sufficient one moves to tier 1.
+
+**A follow-up you cannot file NOW is a `todo` CARD, never a hand-written
+Task row.** There is no door that appends a *pending* `ai-requests.json`
+request: `apply_response.py`'s subcommand set has none, and
+`--synthesize-task` stamps the running write's own `status`, so it can
+only synthesize the Task a write is *draining*. So when work remains that
+you cannot do in this run — a bibkey you could not resolve, a source that
+needs finding — file it as a **todo card** through Workflow B (no
+`requestId`; `--anchor` supplies the paragraph, the contract synthesizes
+and completes its own Task):
+```bash
+python3 editor/scripts/create_card.py <docPath> --kind=todo \
+    --anchor <paragraph-uuid> --body "<what still needs doing, and why>"
+```
+It lands atomically under the pen, it is VISIBLE to the user in the Todos
+panel rather than buried in a sidecar they never open, and flagging it
+for AI later mints a real bridged `todo` Task that `/editor/review`
+dispatches — which is how the loop closes. **Never edit
+`ai-requests.json` with a file-editing tool.** That sidecar has one
+authority (`apply_response.py`, atomic + version-bumped + under the pen);
+a raw write is unserialized against both the app and every other skill,
+and it is precisely the failure the contract exists to prevent.
 
 Say what you did in the `Done:` line — name the kind you emitted **and**
 the kind the panel implied, so the redirect is visible rather than
