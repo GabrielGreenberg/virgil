@@ -52,10 +52,13 @@
 // here.
 //
 // `_`-prefixed files are excluded by construction rather than by
-// allowlist: an include is transcluded into a skill that carries its own
-// link and cannot be invoked standalone, so it has no "the agent never
-// sees the doctrine" failure mode. (Same rule as
-// `latex-allowlist-doctrine.test.ts`.)
+// allowlist. NOT because they are transcluded — nothing is (task 461):
+// an include is not a slash command in either mirror, so it is only ever
+// read by an agent that followed a link out of a skill, and that skill is
+// already held to its own pointer by the coverage leg. So an include has
+// no "invoked standalone, the agent never sees the doctrine" failure
+// mode. (Same rule, same reason, as `latex-allowlist-doctrine.test.ts`;
+// that the links resolve is `skill-include-links.test.ts`.)
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";

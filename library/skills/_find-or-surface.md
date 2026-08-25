@@ -152,8 +152,9 @@ failure path the skill provides, rather than inventing content:
   unresolved cite and file a missing-bibkey **todo card** (Workflow B:
   `create_card.py <docPath> --kind=todo --anchor <uuid> --body "…"`);
   never emit a `\citet{key}` for a missing key, and never append a
-  pending row to `ai-requests.json` by hand — there is no such door
-  ([_ask-shape.md](_ask-shape.md) §4).
+  pending row to `ai-requests.json` by hand — `apply_response.py` exposes
+  no subcommand that appends a *pending* request, and `--synthesize-task`
+  stamps the running write's own status, so there is no such door.
 
 The specific op / status vocabulary is the skill's; the principle —
 **find it for real, or surface that you couldn't** — is this file's.

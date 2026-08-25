@@ -90,8 +90,12 @@ const SCRIPT_MIRRORS: ScriptMirror[] = [
 ];
 
 // Skills are the top-level `*.md` in editor/skills/, minus the `_`-prefixed
-// includes (e.g. `_dev-loop-principle.md`), which are transcluded by the drift
-// guard in dev-loop-principle.test.ts rather than shipped as commands.
+// includes (e.g. `_dev-loop-principle.md`). Those ship in the bundle like any
+// other file — nothing transcludes anything (task 461) — but the leading
+// underscore keeps them out of the COMMAND mirror, so they are not skills.
+// `_dev-loop-principle.md` is the one include a skill inlines rather than
+// links, and `dev-loop-principle.test.ts` is what holds that inlined copy to
+// this file's bytes.
 function skillNames(): string[] {
   return readdirSync(SKILLS_DIR)
     .filter((f) => f.endsWith(".md") && !f.startsWith("_"))

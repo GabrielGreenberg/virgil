@@ -1,7 +1,24 @@
 <!-- Shared doctrine for the deep-index subskill family.
-     Transcluded by every subskill via `@_doctrine.md`.
-     Do not surface this file as a slash command — the build script
-     filters leading-underscore files out of the command mirror. -->
+
+     SSOT: this file is the single source of truth for the family's
+     autonomous-execution, persistence and metadata contracts. It is
+     reached by LINK, never transcluded — no builder implements any
+     include syntax; the bundle simply ships this file beside the skills
+     (`library/build/build-skill-bundle.mjs`, "every `*.md` under
+     `library/skills/` ships"), which is what makes
+     `[_doctrine.md](_doctrine.md)` resolve on a user's library. Do not
+     paraphrase this doctrine back into a skill; link to it.
+
+     Obliged to carry that link: `deep-index.md` and every skill that
+     declares "Subskill of /deep-index" in its frontmatter — the whole
+     family §0 speaks for. A pointer guard
+     (`library/lib/__tests__/skill-include-links.test.ts`) derives that
+     population from the declarations themselves and fails a member that
+     drops its link; the same file asserts that every relative link in
+     either silo's `skills/` resolves locally.
+
+     Not a slash command — the leading underscore filters it out of the
+     command mirror in both build scripts. -->
 
 ## §0 Autonomous execution (load-bearing)
 
