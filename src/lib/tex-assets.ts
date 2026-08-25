@@ -65,6 +65,14 @@ export interface ProvisionableEngine {
   seedCache(cacheKey: string, fileid: string, src: Uint8Array | ArrayBuffer): void;
   dumpNewCache(): Promise<TexCacheDumpEntry[]>;
   setOffline(value: boolean): void;
+  /**
+   * Task 454 — the STREAMING durability channel. Optional on this interface
+   * (never on the shipped engine) so a re-vendored worker without the patch,
+   * or a test fake, degrades to the end-of-compile `dumpNewCache` batch.
+   */
+  onAsset?(cb: (entry: TexCacheDumpEntry) => void): void;
+  /** Task 454 — the streaming PROGRESS channel; see `onAsset`. */
+  onFetchProgress?(cb: (name: string) => void): void;
 }
 
 const cacheKeyToStoreKey = (cacheKey: string): string => KEY_PREFIX + cacheKey;
@@ -149,6 +157,15 @@ export async function provisionEngine(engine: ProvisionableEngine): Promise<void
     console.warn("[tex-assets] provisionEngine seeding failed (falling back to mirror):", err);
   }
 
+  // Task 454 — arm the STREAMING write-through before the first compile, so a
+  // compile that times out keeps every package it downloaded. Idempotent (the
+  // engine installs its message listener once) and best-effort.
+  try {
+    attachAssetStream(engine);
+  } catch (err) {
+    console.warn("[tex-assets] could not attach the asset stream:", err);
+  }
+
   // Push connectivity into the worker so uncached lookups fail fast offline.
   try {
     const online =
@@ -157,6 +174,70 @@ export async function provisionEngine(engine: ProvisionableEngine): Promise<void
   } catch {
     // no navigator (SSR/tests) — leave the worker in its default online mode.
   }
+}
+
+/**
+ * TASK 454 — STREAMING WRITE-THROUGH.
+ *
+ * `captureNewAssets` below is a request/response round trip, so it can only run
+ * when the worker is IDLE. A compile that TIMES OUT leaves the worker blocked
+ * inside its synchronous pass forever, and the recovery then `closeWorker()`s
+ * it — destroying an in-memory kpse cache holding every package that compile
+ * downloaded. So a cold compile too slow to finish in one budget re-fetched
+ * from zero on every retry and could NEVER converge.
+ *
+ * Streaming makes each download durable the instant it lands: the worker posts
+ * the bytes as it caches them (see `swiftlatexpdftex.js` -> `__virgilStreamAsset`),
+ * and this sink writes them through immediately. A timed-out compile therefore
+ * keeps 100% of what it fetched, and the next attempt is that much shorter.
+ *
+ * Best-effort at every step — a cache write must never disturb a compile.
+ */
+export function attachAssetStream(engine: ProvisionableEngine): void {
+  if (typeof engine.onAsset !== "function") return;
+  engine.onAsset((entry) => {
+    void persistAsset(entry).catch((err) => {
+      console.warn("[tex-assets] streamed write-through failed:", err);
+    });
+  });
+}
+
+/**
+ * Write ONE asset through to the persistent cache. Shared by the streaming sink
+ * and the end-of-compile batch, so an asset arriving on both channels is
+ * written once (dedup by cacheKey + byte hash) and the size cap is honoured
+ * identically on both.
+ *
+ * Returns true when bytes were written.
+ */
+async function persistAsset(entry: TexCacheDumpEntry): Promise<boolean> {
+  if (!entry?.cacheKey || !entry.bytes) return false;
+  const bytes = new Uint8Array(entry.bytes);
+  const storeKey = cacheKeyToStoreKey(entry.cacheKey);
+  const prev = (await get(storeKey, store)) as TexAssetRecord | undefined;
+  const hash = hashBytes(bytes);
+  if (prev && prev.hash === hash) return false;
+
+  if (!prev) {
+    // Only a NEW key can grow the cache, so only a new key pays the size scan.
+    const runningSize = await currentCacheSize();
+    if (runningSize + bytes.byteLength > CACHE_SIZE_CAP_BYTES) {
+      console.warn(
+        `[tex-assets] cache size cap (${CACHE_SIZE_CAP_BYTES} bytes) reached; dropped ${entry.cacheKey} (${bytes.byteLength}B)`,
+      );
+      return false;
+    }
+  }
+
+  const rec: TexAssetRecord = {
+    cacheKey: entry.cacheKey,
+    fileid: entry.fileid,
+    bytes,
+    hash,
+    fetchedAt: Date.now(),
+  };
+  await enqueueWrite("tex-asset", () => set(storeKey, rec, store));
+  return true;
 }
 
 /** Current total bytes of the persisted cache (for the size cap). */
@@ -188,51 +269,12 @@ export async function captureNewAssets(engine: ProvisionableEngine): Promise<voi
   }
   if (!entries || entries.length === 0) return;
 
-  // Which cacheKeys are already persisted (skip re-writing identical bytes).
-  const existing = new Set(
-    (await persistedStoreKeys()).map(storeKeyToCacheKey),
-  );
-
-  let runningSize = await currentCacheSize();
-  const dropped: string[] = [];
-
   for (const entry of entries) {
-    if (!entry?.cacheKey || !entry.bytes) continue;
-    const bytes = new Uint8Array(entry.bytes);
-
-    if (existing.has(entry.cacheKey)) {
-      // Already stored — dedup by hash. If bytes changed (re-vendor), fall
-      // through and overwrite; otherwise skip.
-      const prev = (await get(cacheKeyToStoreKey(entry.cacheKey), store)) as
-        | TexAssetRecord
-        | undefined;
-      if (prev && prev.hash === hashBytes(bytes)) continue;
+    try {
+      await persistAsset(entry);
+    } catch (err) {
+      console.warn("[tex-assets] write-through failed:", entry?.cacheKey, err);
     }
-
-    if (runningSize + bytes.byteLength > CACHE_SIZE_CAP_BYTES) {
-      dropped.push(`${entry.cacheKey} (${bytes.byteLength}B)`);
-      continue;
-    }
-
-    const rec: TexAssetRecord = {
-      cacheKey: entry.cacheKey,
-      fileid: entry.fileid,
-      bytes,
-      hash: hashBytes(bytes),
-      fetchedAt: Date.now(),
-    };
-    // Serial write-through, keyed so concurrent compiles never race the store.
-    await enqueueWrite("tex-asset", () =>
-      set(cacheKeyToStoreKey(entry.cacheKey), rec, store),
-    );
-    existing.add(entry.cacheKey);
-    runningSize += bytes.byteLength;
-  }
-
-  if (dropped.length > 0) {
-    console.warn(
-      `[tex-assets] cache size cap (${CACHE_SIZE_CAP_BYTES} bytes) reached; dropped ${dropped.length} asset(s): ${dropped.join(", ")}`,
-    );
   }
 }
 

@@ -77,6 +77,10 @@ var CompileResult = /** @class */ (function () {
         this.log = 'No log';
         // PATCHED (virgil): packages the worker could not resolve while offline.
         this.offlineMisses = [];
+        // PATCHED (virgil, task 454): packages whose DOWNLOAD failed (mirror
+        // 5xx / rate-limit / network), as {name, reason}. Distinct from
+        // offlineMisses: those were never attempted, these were and failed.
+        this.downloadFailures = [];
     }
     return CompileResult;
 }());
@@ -85,6 +89,10 @@ var PdfTeXEngine = /** @class */ (function () {
     function PdfTeXEngine() {
         this.latexWorker = undefined;
         this.latexWorkerStatus = EngineStatus.Init;
+        // PATCHED (virgil, task 454): streaming durability + progress sinks.
+        this.assetCallback = undefined;
+        this.fetchProgressCallback = undefined;
+        this.streamChannelInstalled = false;
     }
     PdfTeXEngine.prototype.loadEngine = function () {
         return __awaiter(this, void 0, void 0, function () {
@@ -128,6 +136,10 @@ var PdfTeXEngine = /** @class */ (function () {
                         };
                         this.latexWorker.onerror = function (_) {
                         };
+                        // PATCHED (virgil, task 454): install the persistent
+                        // streaming channel. See the comment above this file's
+                        // `onAsset` / `onFetchProgress` setters.
+                        this.installStreamChannel();
                         return [2 /*return*/];
                 }
             });
@@ -174,6 +186,8 @@ var PdfTeXEngine = /** @class */ (function () {
                                     // CompileService can report "package X unavailable offline".
                                     // Must survive re-vendoring the worker.
                                     nice_report.offlineMisses = data['offlineMisses'] || [];
+                                    // PATCHED (virgil, task 454).
+                                    nice_report.downloadFailures = data['downloadFailures'] || [];
                                     resolve(nice_report);
                                 };
                                 // PATCHED (virgil): capture `reject` (executor param above was `_`)
@@ -307,10 +321,27 @@ var PdfTeXEngine = /** @class */ (function () {
                 resolve([]);
                 return;
             }
+            // PATCHED (virgil, task 454): bound the wait. This is a
+            // request/response round trip, and a worker blocked inside a
+            // synchronous compile pass cannot process the request AT ALL — so
+            // an unbounded await here wedges its caller forever on exactly the
+            // path (a hang) where someone is most likely to reach for it.
+            // Durability rides the STREAMING channel instead; this batch is the
+            // belt-and-braces drain for a worker that is idle.
+            var settled = false;
+            var timer = setTimeout(function () {
+                if (settled) return;
+                settled = true;
+                _this.latexWorker && (_this.latexWorker.onmessage = function (_) { });
+                resolve([]);
+            }, 5000);
             _this.latexWorker.onmessage = function (ev) {
                 var data = ev['data'];
                 if (data['cmd'] !== 'dumpnewcache')
                     return;
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
                 _this.latexWorker.onmessage = function (_) { };
                 resolve(data['entries'] || []);
             };
@@ -325,11 +356,85 @@ var PdfTeXEngine = /** @class */ (function () {
             this.latexWorker.postMessage({ 'cmd': 'setoffline', 'value': !!value });
         }
     };
+    // PATCHED (virgil, task 454): STREAMING DURABILITY + PROGRESS CHANNEL.
+    //
+    // `onAsset(cb)` is called with {cacheKey, fileid, bytes} the instant the
+    // worker finishes downloading a TeX asset — NOT at the end of the compile.
+    // `onFetchProgress(cb)` is called with the asset's name when a download
+    // STARTS. Both ride an addEventListener('message') listener installed once
+    // at boot, which the per-call `onmessage` swaps cannot clobber.
+    //
+    // Why this exists: `dumpNewCache()` is a request/response round trip, so it
+    // can only run when the worker is IDLE. A compile that times out leaves the
+    // worker blocked forever and `closeWorker()` then destroys its in-memory
+    // texlive200_cache — so every byte that compile downloaded was thrown away
+    // and the next attempt restarted from an empty cache. A cold compile too
+    // slow to finish in one budget could therefore never converge. Streaming
+    // makes each download durable the moment it lands.
+    //
+    // Must survive re-vendoring the worker.
+    PdfTeXEngine.prototype.installStreamChannel = function () {
+        var _this = this;
+        if (this.latexWorker === undefined || this.streamChannelInstalled) {
+            return;
+        }
+        this.streamChannelInstalled = true;
+        this.latexWorker.addEventListener('message', function (ev) {
+            var data = ev['data'];
+            if (!data) {
+                return;
+            }
+            if (data['cmd'] === 'assetfetched') {
+                if (_this.assetCallback) {
+                    try {
+                        _this.assetCallback({
+                            cacheKey: data['cacheKey'],
+                            fileid: data['fileid'],
+                            bytes: data['bytes'],
+                        });
+                    }
+                    catch (err) { /* a durability sink must never break a compile */ }
+                }
+            }
+            else if (data['cmd'] === 'kpsefetch') {
+                if (_this.fetchProgressCallback) {
+                    try {
+                        _this.fetchProgressCallback(data['name']);
+                    }
+                    catch (err) { /* a progress sink must never break a compile */ }
+                }
+            }
+        });
+    };
+    PdfTeXEngine.prototype.onAsset = function (cb) {
+        this.assetCallback = cb;
+        this.installStreamChannel();
+    };
+    PdfTeXEngine.prototype.onFetchProgress = function (cb) {
+        this.fetchProgressCallback = cb;
+        this.installStreamChannel();
+    };
     PdfTeXEngine.prototype.closeWorker = function () {
         if (this.latexWorker !== undefined) {
             this.latexWorker.postMessage({ 'cmd': 'grace' });
             this.latexWorker = undefined;
         }
+        // PATCHED (virgil, task 454): drop the PROGRESS sink and KEEP the
+        // DURABILITY sink, deliberately.
+        //
+        // `closeWorker` does not `terminate()` — it posts 'grace' and drops our
+        // reference, so a worker blocked mid-compile keeps running as an ORPHAN
+        // (still issuing its synchronous package fetches) until that compile
+        // unwinds and it processes the message. Its listener holds this engine
+        // alive, so those late downloads still reach the asset sink and are
+        // still worth persisting: they are exactly the packages the next
+        // attempt would otherwise re-fetch.
+        //
+        // The progress sink is per-ATTEMPT bookkeeping, so it MUST be dropped —
+        // an orphan's fetches counted against the next attempt would make a
+        // dead hang look productive and keep the continuation loop going.
+        this.fetchProgressCallback = undefined;
+        this.streamChannelInstalled = false;
     };
     return PdfTeXEngine;
 }());

@@ -50,6 +50,20 @@ export interface CompileResult {
    * ahead of P1.
    */
   offlineMisses?: string[];
+  /**
+   * Packages whose DOWNLOAD was attempted and failed (mirror 5xx / rate limit /
+   * network error / per-file timeout). Distinct from `offlineMisses`, which
+   * names packages never attempted. Task 454.
+   */
+  downloadFailures?: { name: string; reason: string }[];
+  /**
+   * How many attempts this compile took. > 1 means an earlier attempt exceeded
+   * its budget while still downloading packages and was CONTINUED against the
+   * now-warmer cache rather than dead-ended (task 454).
+   */
+  attempts?: number;
+  /** Packages downloaded from the mirror across every attempt. */
+  assetsFetched?: number;
 }
 
 export interface CompileInput {
@@ -59,4 +73,11 @@ export interface CompileInput {
   mainTexFilename: string;
   /** Optional abort signal so a caller can cancel a pending compile. */
   signal?: AbortSignal;
+  /**
+   * The document this compile belongs to. REQUIRED rather than optional: the
+   * service is a module singleton shared by every mounted `EditorPane`, so a
+   * progress record with no owner would be rendered by whichever pane read it
+   * (AGENTS.md, "Per-doc services under multi-pane keep-alive"). Task 454.
+   */
+  docId: string;
 }

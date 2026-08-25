@@ -239,6 +239,7 @@ const EMPTY_LATEX_ERRORS_L: LatexError[] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
+import { CompilePaneStatus } from "@/components/CompilePaneStatus";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { asBibFamily, type BibFamilyConflict } from "@/lib/bib-family";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
@@ -3634,12 +3635,11 @@ export default function EditorLayout() {
               title="Compiled PDF"
             />
           ) : (
-            <div className="flex flex-1 items-center justify-center">
-              <div className="text-center text-white/70 p-8">
-                <p className="text-lg mb-2">No compiled PDF</p>
-                <p className="text-sm">Click Compile to generate a PDF.</p>
-              </div>
-            </div>
+            /* Task 454: never a bare dark surface. `CompilePaneStatus` reads the
+               compile progress record for this doc and renders the live phase,
+               the last failure, or the honest "nothing yet" prompt — three
+               states that "there is no pdfBlobUrl" cannot tell apart. */
+            <CompilePaneStatus docId={currentDocId} />
           )}
           {paneState?.pdfStale && paneState?.pdfBlobUrl && (
             <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
