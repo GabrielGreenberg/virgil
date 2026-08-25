@@ -7,10 +7,13 @@ the `_doctrine.md` §0 Automatic decisions section for the contract.
 
 Policy (post-2026-05 rewrite):
 
-- **`metadata-lock: true` on the catalog row** is the **only**
+- **`metadataLock: true` on the catalog row** is the **only**
   refusal condition. The caller signals `DEEP_INDEX_STALLED` and
   appends a `deep-index-blocked` notification (same channel as the
-  three-iteration validator abort).
+  three-iteration validator abort). `metadataLock` (camelCase) is the
+  exact catalog key this script reads; `metadata-lock` is the kebab
+  *reason token* the STALLED banner prints, and the two are not
+  interchangeable. See `_doctrine.md` §4 for the set-it recipe.
 - **All other previously-deferred cases proceed automatically** with
   the file-is-source-of-truth default: notes.json asserts
   chapter-level identity → file still wins (override logged);
@@ -207,8 +210,23 @@ def _read_paper_notes(library: Path, citekey: str) -> str:
         return ""
 
 
+# The catalog key an operator hand-sets to pin a paper's metadata. ONE
+# spelling: camelCase, like every other catalog field. The kebab
+# `metadata-lock` is the STALLED *reason token*, never this key — the two
+# were forked for months and the docs taught the one nothing reads
+# (task 449). `library/lib/catalog.ts::CatalogEntry` declares it so the
+# app round-trips it; `_doctrine.md` §4 carries the patch recipe.
+METADATA_LOCK_KEY = "metadataLock"
+
+# Emitted verbatim as the `deep-index-blocked` notification reason. The
+# doctrine sites quote this string, and a guard pins the quotes against it.
+METADATA_LOCK_BLOCK_REASON = (
+    f"{METADATA_LOCK_KEY}: true on catalog row; pass blocked"
+)
+
+
 def _has_metadata_lock(catalog_row: dict | None) -> bool:
-    return bool(catalog_row and catalog_row.get("metadataLock"))
+    return bool(catalog_row and catalog_row.get(METADATA_LOCK_KEY))
 
 
 def _notes_assert_chapter_identity(notes_text: str) -> bool:
@@ -222,7 +240,9 @@ def _notes_assert_chapter_identity(notes_text: str) -> bool:
         for s in (
             "chapter only", "chapter-level identity",
             "do not update bib", "do not promote",
-            "metadata-lock",
+            # Phrase match, not the catalog key — accept either spelling
+            # (`.lower()` above already folds `metadataLock`).
+            "metadata-lock", "metadatalock",
         )
     )
 
@@ -281,7 +301,10 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             "reason": (
                 f"detect_metadata_mismatch returned kind={kind!r}; "
                 "policy only fires on 'file-is-book-bib-is-chapter'. "
-                "Run with --force to override."
+                "Other kinds are recorded as a `metadata-mismatch` "
+                "catalog warning (di-preflight.md §0.2); a genuine "
+                "chapter->book promotion this gate missed is hand-run "
+                "per di-clean-prose.md §3a."
             ),
         }
 
@@ -298,15 +321,24 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             ),
         }
 
-    # The only block: explicit metadata-lock on the catalog row.
-    # Caller maps this to DEEP_INDEX_STALLED + a deep-index-blocked
-    # notification. See _doctrine.md §0.
+    # The only block: an explicit metadata lock on the catalog row.
+    # Caller maps this to DEEP_INDEX_STALLED (reason token
+    # `metadata-lock`) + a deep-index-blocked notification.
+    # See _doctrine.md §4.
+    #
+    # ORDERING IS DELIBERATE: the lock is checked AFTER the kind and
+    # page-count gates, not before. The pin blocks a metadata rewrite;
+    # where those gates already refuse, there is no rewrite to block, and
+    # hoisting the check would stall the deep-index pass of every locked
+    # paper — including one with no metadata conflict at all. It is still
+    # ahead of every read and every write, so a locked row never reaches
+    # the cover page.
     catalog_row = _read_catalog_row(library, citekey)
     if _has_metadata_lock(catalog_row):
         return {
             "applied": False,
             "blocked": True,
-            "reason": "metadata-lock: true on catalog row; pass blocked",
+            "reason": METADATA_LOCK_BLOCK_REASON,
         }
 
     # notes.json asserting chapter-level identity used to block; under

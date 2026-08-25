@@ -24,7 +24,11 @@ human-readable banner:
 - `DEEP_INDEX_NARROW_RESIDUAL` — only narrow out-of-scope items
   remain (the three categories in §Scope doctrine).
 - `DEEP_INDEX_STALLED` — pathological-loop guard fired, OR
-  three-iteration validator abort, OR `metadata-lock: true` block.
+  three-iteration validator abort, OR metadata-lock block
+  (`metadataLock: true` on the catalog row, §4), OR a Step 0 preflight
+  block. Four reasons, printed as one of the tokens
+  `pathological-loop | validator-abort | metadata-lock |
+  extraction-empty-body` (deep-index.md §Output format).
 
 Anything else (a different banner, a question, a no-keyword exit)
 is a protocol violation. `/loop` callers grep for these keywords.
@@ -46,13 +50,42 @@ by default:
 - **`notes.json` asserts chapter-level identity but file content
   diverges** → file wins; update metadata; log the override.
 
-**4. The only block-the-pass exception is `metadata-lock: true`.**
-If the catalog row carries `metadata-lock: true`, the user has
+**4. The only block-the-pass exception is the metadata lock.**
+If the catalog row carries **`metadataLock: true`**, the user has
 explicitly pinned the metadata. Do not touch `master.bib` or the
 catalog `title`. Emit `DEEP_INDEX_STALLED` with a notification of
 `kind: "deep-index-blocked"` and reason
-`metadata-lock: true on catalog row; pass blocked`. This is the
+`metadataLock: true on catalog row; pass blocked`. This is the
 same exit channel as the three-iteration validator abort.
+
+**One spelling, two words.** The **catalog key** is `metadataLock`
+(camelCase, like every other catalog field) — that is what
+`apply_metadata_mismatch_policy.py` reads and what
+`library/lib/catalog.ts::CatalogEntry` declares. The kebab
+`metadata-lock` is the **STALLED reason token** printed in the banner,
+alongside `pathological-loop` / `validator-abort` /
+`extraction-empty-body`. Writing the kebab spelling as the catalog
+**key** sets a key nothing reads, and the pass proceeds unblocked.
+
+**Setting it (hand-set; there is no UI yet).** Use the sanctioned
+catalog write path, never a direct `Write` — the shim takes the
+`lock_catalog` lock and bumps `catalog-version.txt` so the frontend
+picks the row up:
+
+```bash
+cat > /tmp/$ARGUMENTS-metadata-lock.json <<'EOF'
+{ "metadataLock": true }
+EOF
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-metadata-lock.json
+rm /tmp/$ARGUMENTS-metadata-lock.json
+```
+
+The patch is a deep merge, so the rest of the row survives. Clearing
+the pin is the same command with `false`. To confirm the lock is live
+before committing to it, run
+`apply_metadata_mismatch_policy.py <citekey> --dry-run` — a locked row
+reports the block instead of a `would_set` payload.
 
 **5. Outstanding-work categories are exactly three.** Allowed
 values: `source-missing`, `figure-reconstruction`,
@@ -215,9 +248,10 @@ until one of the three terminal states (§0) is reached:
 - the outstanding list is empty (→ `DEEP_INDEX_RESOLVED`), or
 - only narrow-out-of-scope items remain
   (→ `DEEP_INDEX_NARROW_RESIDUAL`), or
-- the pathological-loop guard fires, the three-iteration validator
-  abort fires, or `metadata-lock: true` blocks the pass
-  (→ `DEEP_INDEX_STALLED`).
+- any of the four §0 stall reasons fires (→ `DEEP_INDEX_STALLED`).
+  They are enumerated once, in §0 — do not restate them here; a second
+  enumeration is a second thing to keep in step, and this one had
+  already fallen a reason behind.
 
 Items the agent expects to address in a follow-up pass should be
 tagged `[in-progress]` and carried forward by the loop — not
