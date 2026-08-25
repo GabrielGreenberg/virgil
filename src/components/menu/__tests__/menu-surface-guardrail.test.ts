@@ -41,6 +41,24 @@
 //   3. MECHANISM — the CSS the census presupposes: `.menu-surface` states all
 //      four axes, each from its own `--menu-*` token, and each token is defined.
 //
+// ── Legs 4 and 5: the population hole (task 459) ────────────────────────────
+// Legs 1-3 discover their population from a MECHANISM — a `<MenuProvider>` /
+// `<AnchoredMenu>` mount — and a floating command surface can be one without
+// using it. Four were: `SlashCommandPopup` (anchored to a caret rect),
+// `NodeEditPopover` (took the positioning primitive and not the surface), and
+// two rules that author their chrome entirely in `globals.css`. So:
+//
+//   4. SHARED POPULATION — every hand-rolled anchored MENU the sibling census
+//      finds (`handRolledMenus()` in `./_menu-census.ts`) must paint from the
+//      `--menu-*` tier, whatever it is anchored to. One population, two
+//      questions: the anchored census asks who POSITIONS by hand, this asks who
+//      PAINTS by hand, and a menu on the first list is no longer exempt from
+//      the second. Task-404's rule: discover a census's population by the
+//      QUESTION, not by the MECHANISM.
+//   5. STYLESHEET — the residual leg 1's own note below declines. A CSS rule
+//      that paints all four surface axes IS a surface; each must read `--menu-*`
+//      or be allowlisted with a reason.
+//
 // Stated limits, rather than implied. The census reads the OPEN TAG, so chrome
 // composed into a variable and passed by name (`containerClassName={cls}`) is
 // caught only when the variable's own value is a chrome literal in the same file
@@ -56,6 +74,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { commentsStripped, elementsNamed, cssRuleBodies, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
+import { handRolledMenus } from "./_menu-census";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../../.."); // src/
@@ -75,6 +94,53 @@ const PERMITTED_UNSURFACED_MENUS: Record<string, string> = {
   "src/components/LabelRefPopover.tsx":
     "IDENTITY, not drift. `.label-ref-popover` is a 2px `--amber-highlight-edge` border plus a matching amber halo, which binds the popover to the amber `\\ref` highlight in the text it points at — the same token, so a ref recolour moves both together. Its radius is `--radius-md` (the CONTROL tier) rather than the menu tier for the same reason: it reads as an inline editing affordance over the text, not as a dropdown off a trigger. Giving it the menu surface would break a deliberate binding; the census's job is to make that a stated decision instead of a seventh accident.",
 };
+
+/**
+ * CSS rules that paint all four surface axes and are NOT menus, keyed by
+ * selector (task 459, leg 5).
+ *
+ * Same bar as the mount allowlist above: an entry says why the look is that
+ * surface's IDENTITY, not the drift the shared tier exists to end. The set may
+ * only SHRINK.
+ */
+const PERMITTED_NON_MENU_CSS_SURFACES: Record<string, string> = {
+  ".menu-surface":
+    "IT IS THE TIER. The rule the other four axes are defined for — leg 3 above asserts each of its declarations reads its own `--menu-*` token, which is a stronger statement than this leg makes, so exempting it here is not a hole: it is the leg that would fail first.",
+  ".lifted-text-overlay":
+    "NOT A MENU — the drag GHOST of lifted text (AGENTS.md \"The tag half\"). It is the moving preview of a document block, so its surface must read as a lifted PAGE rather than as a dropdown: a menu-tier retone would make a dragged paragraph look like a popup, and its elevation is deliberately the lift shadow rather than the menu halo. Its header parity with the float chrome is pinned separately by `lift-ghost-header-parity`.",
+  ".label-ref-popover":
+    "IDENTITY, not drift — the CSS half of the one entry on `PERMITTED_UNSURFACED_MENUS` above, and the same reason: a 2px `--amber-highlight-edge` border plus a matching amber halo binds the popover to the amber `\\ref` highlight in the text it points at, so a ref recolour moves both together. Its INNER dropdown list is a different surface and took the menu tier in task 459; this outer shell is the deliberate binding.",
+};
+
+/** Parse `css` into rules that paint ALL FOUR surface axes.
+ *
+ *  Exported shape rather than a regex at the call site so the swallow
+ *  self-check can drive the same function over a synthetic fixture — a
+ *  detector proved on the production tree the allowlist exists to drain proves
+ *  nothing once the tree is drained. */
+function parseFourAxisRules(css: string): Array<{ selector: string; body: string }> {
+  const out: Array<{ selector: string; body: string }> = [];
+  const RULE = /([^{}]+)\{([^{}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = RULE.exec(css))) {
+    // The last line of the prelude: a comma-separated group or an at-rule
+    // preamble would otherwise report a selector nobody can key an entry on.
+    const selector = m[1].trim().split("\n").pop()!.trim();
+    const body = m[2];
+    const hasBg = /(?:^|[;{\s])background(?:-color)?\s*:/.test(body);
+    const hasBorder =
+      /(?:^|[;\s])border\s*:/.test(body) ||
+      /border-(?:top|right|bottom|left)?-?(?:width|color)\s*:/.test(body);
+    const hasRadius = /border-radius\s*:/.test(body);
+    const hasShadow = /box-shadow\s*:/.test(body);
+    if (hasBg && hasBorder && hasRadius && hasShadow) out.push({ selector, body });
+  }
+  return out;
+}
+
+function fourAxisSurfaceRules(): Array<{ selector: string; body: string }> {
+  return parseFourAxisRules(cssCommentsStripped(readFileSync(GLOBALS_CSS, "utf8")));
+}
 
 /** The four chrome axes, in every dialect this repo writes them.
  *
@@ -325,6 +391,129 @@ describe("menu surface — the primitive owns the container chrome", () => {
       );
       expect(inRules).not.toMatch(new RegExp(`^\\s*${token}\\s*:`, "m"));
     }
+  });
+
+  // ── LEG 4: the shared population ───────────────────────────────────────
+  it("every hand-rolled anchored MENU paints from the --menu-* tier", () => {
+    // The leg with teeth, and the one the pre-459 census structurally could not
+    // have: its population came from a `<MenuProvider>` mount, so a menu that
+    // hand-rolled BOTH its placement and its chrome was answered on the first
+    // axis by the sibling census and unowned on the second by everything.
+    // Three sat there for a release — `FontPicker` (`shadow-lg` +
+    // `--edge-subtle`), `StatusClusterImpl` (two surfaces, `shadow-md`), and
+    // `MyPapersPod` (the pod tokens NAMED directly, which STYLE_GUIDE "Menus"
+    // forbids) — plus `SlashCommandPopup`, which no census saw at all.
+    //
+    // Compliance is EITHER spelling of the same tier: the shared class, or the
+    // four tokens read directly (the Library-silo pod writes inline styles and
+    // has no class to stamp). Anything else is a vocabulary of its own.
+    const offenders: string[] = [];
+    for (const { key, block } of handRolledMenus()) {
+      if (PERMITTED_UNSURFACED_MENUS[key.split("::")[0]]) continue;
+      const flat = block.replace(/\s*\n\s*/g, " ");
+      const stamped = /\bmenu-surface\b/.test(flat);
+      const tokened = /var\(--menu-(?:bg|border|radius|shadow)\)/.test(flat);
+      if (stamped || tokened) continue;
+      offenders.push(key);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("leg 4's population is the sibling census's, not a second idea of a menu", () => {
+    // Guards the ordering the whole task rests on: `handRolledMenus()` is the
+    // anchored census MINUS the entries whose own justification classifies them
+    // away as non-menus. If that classification is deleted or the population is
+    // narrowed back to `<MenuProvider>` mounts, this leg names it rather than
+    // letting leg 4 pass on an empty set.
+    const keys = handRolledMenus().map((h) => h.key);
+    expect(keys).toContain("src/components/SlashCommandPopup.tsx::SlashCommandPopup");
+    expect(keys).toContain("src/components/FontPicker.tsx::FontPicker");
+    // …and the non-menus really are excluded, or leg 4 would be demanding menu
+    // chrome from a pane divider.
+    expect(keys).not.toContain("src/components/editor-layout/split-with-code.tsx::SplitWithCode");
+    expect(keys).not.toContain("src/components/FloatingPanel.tsx::FloatingPanelInner");
+  });
+
+  // ── LEG 5: the stylesheet ──────────────────────────────────────────────
+  it("every four-axis surface rule in globals.css reads --menu-* or is allowlisted", () => {
+    // The residual leg 1's note declines and this closes: a surface whose
+    // chrome lives entirely in a CSS class leaves nothing in the TSX to grep.
+    // `.math-popover` / `.figure-popover` / `.label-ref-popover-dropdown` were
+    // exactly that, and `.footnote-editor-popup` was a FOURTH spelling with no
+    // consumer at all — which is worse than tidy-up, because a dead rule is the
+    // vocabulary the next author copies (the `.figure-popover` comment said in
+    // as many words that it was copied from `.math-popover`).
+    //
+    // The detector is the SHAPE of a surface, not a name: a rule that states
+    // background AND border AND radius AND shadow is painting one. Measured on
+    // the pre-459 tree that is SEVEN rules repo-wide, which is what makes an
+    // allowlist a guard here rather than a filing cabinet — a looser detector
+    // (any shadowed rule) would sweep in every card, pod and tooltip and prove
+    // nothing about menus.
+    const offenders: string[] = [];
+    for (const { selector, body } of fourAxisSurfaceRules()) {
+      if (PERMITTED_NON_MENU_CSS_SURFACES[selector]) continue;
+      if (/var\(--menu-(?:bg|border|radius|shadow)\)/.test(body)) continue;
+      offenders.push(selector);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlisted CSS surface still exists and still states a reason", () => {
+    const live = new Set(fourAxisSurfaceRules().map((r) => r.selector));
+    for (const [sel, why] of Object.entries(PERMITTED_NON_MENU_CSS_SURFACES)) {
+      expect(live.has(sel), `${sel} is no longer a four-axis surface — drop its entry`).toBe(true);
+      expect(why.length, `${sel} needs a real justification`).toBeGreaterThan(60);
+    }
+  });
+
+  it("the retired .footnote-editor-* family is gone from the stylesheet", () => {
+    // Deleted rather than re-toned, per the dead-SSOT rule: the name does not
+    // stay behind. Its input siblings went with it — they had no consumer
+    // either, and half a dead family is an invitation to revive the other half.
+    const css = readFileSync(GLOBALS_CSS, "utf8");
+    expect(css).not.toMatch(/\.footnote-editor-/);
+  });
+
+  it("leg 5 flags .math-popover exactly as it shipped (defect fixture)", () => {
+    // Verbatim the rule task 459 retoned — the shape that took the POSITIONING
+    // primitive and not the SURFACE, so `anchored-menu-guardrail` read the
+    // component compliant while its chrome lived in a CSS class no census
+    // opened. `--panel-bg`, `--border`, a literal `0 4px 16px` elevation, and
+    // `--pod-radius` NAMED directly, which STYLE_GUIDE "Menus" forbids: a menu
+    // reaches that value through `--menu-radius`.
+    const shipped = `
+      .math-popover {
+        background: var(--panel-bg, #ffffff);
+        border: 1px solid var(--border, #d9d3c8);
+        border-radius: var(--pod-radius);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        padding: 0.5rem;
+      }
+    `;
+    const rules = parseFourAxisRules(shipped);
+    expect(rules.map((r) => r.selector)).toEqual([".math-popover"]);
+    expect(rules[0].body).not.toMatch(/var\(--menu-(?:bg|border|radius|shadow)\)/);
+    // …and the retoned form the same detector reads as compliant, so the leg
+    // cannot pass by flagging everything.
+    const retoned = shipped.replace(/background:[^;]*;/, "background: var(--menu-bg);")
+      .replace(/border:[^;]*;/, "border: var(--menu-border);")
+      .replace(/border-radius:[^;]*;/, "border-radius: var(--menu-radius);")
+      .replace(/box-shadow:[^;]*;/, "box-shadow: var(--menu-shadow);");
+    expect(parseFourAxisRules(retoned)[0].body).toMatch(/var\(--menu-bg\)/);
+  });
+
+  it("the stylesheet detector sees a four-axis surface and not a three-axis one", () => {
+    // Synthetic, both directions. The accepting control matters as much as the
+    // flagging one: a detector that fired on any shadowed rule would indict the
+    // cards and pods, and the allowlist would become the filing cabinet this
+    // repo's own rule forbids.
+    const fixture = `
+      .fake-popover { background: #fff; border: 1px solid #ccc; border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+      .fake-card { background: #fff; border-radius: var(--radius-sm); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    `;
+    const found = parseFourAxisRules(fixture).map((r) => r.selector);
+    expect(found).toEqual([".fake-popover"]);
   });
 
   it("the census can see a chrome-writing mount (swallow self-check)", () => {

@@ -1836,6 +1836,48 @@ CSS-anchored follow-ups (the Fonts-dialog combobox, the library pod's add menu,
 and the Help menu's hover sub-menu) — each with a stated reason it is a
 different job from swapping the shell.
 
+**A menu is a menu whatever it is ANCHORED to, and whatever paints it** (task
+459). Both censuses discovered their population from a MECHANISM — the anchored
+one from a rect read or a CSS edge offset, the surface one from a
+`<MenuProvider>` mount — and a floating command surface can be one without using
+either. Four were, each in its own chrome vocabulary. The **slash popup** is
+anchored to a CARET rect (`view.coordsAtPos`), so it was invisible to both, and
+shipped bare `rounded` = **4px** where every other menu is 8, `--edge-subtle`
+where menus use the pod grey, and Tailwind's stock `shadow-md` where they use the
+pod halo — a seventh vocabulary, on the surface a user opens most often.
+`NodeEditPopover` took the POSITIONING primitive and not the SURFACE, so the
+anchored census read it compliant while `.math-popover` / `.figure-popover`
+painted `--panel-bg` plus a literal `0 4px 16px`; `.label-ref-popover-dropdown`
+and the dead `.footnote-editor-popup` author their chrome entirely in
+`globals.css`, where there is nothing in the TSX to grep at all.
+
+Three things follow, and they are the shape of the rule rather than three fixes:
+
+- **One population, two questions.** The population, the three surface signals
+  and the per-entry CLASSIFICATION live once, in
+  [_menu-census.ts](components/menu/__tests__/_menu-census.ts); the anchored
+  census asks who POSITIONS by hand and the surface census asks who PAINTS by
+  hand, of the same list. A menu whose PLACEMENT is a stated holdout is no longer
+  exempt from the SURFACE question — `FontPicker`, the Help menu and its
+  Commands sub-menu, the library pod's add menu, and both Library-silo kebabs had
+  each sat on the placement allowlist for a release with their chrome censused by
+  nothing.
+- **`.menu-surface` IS the shadow.** The anchored census's SHADOWED signal was a
+  proxy for "this paints a surface", and it broke exactly when the surface was
+  done RIGHT: adopting the shared class leaves no shadow in the TSX, so the whole
+  declaration fell out and its hand-rolled placement went unowned *as a reward*
+  for fixing its chrome. The class counts as a shadow.
+- **A CSS rule that paints all four axes IS a surface.** The stylesheet leg the
+  anchored census's own note declined: seven rules repo-wide state background +
+  border + radius + shadow, and each must read `--menu-*` or be allowlisted with
+  a reason. A looser detector (any shadowed rule) would sweep in every card and
+  pod, and the allowlist would become the filing cabinet this doctrine forbids.
+
+Nothing on either allowlist may be there because "it looked like that before".
+The one surface whose look is genuinely its IDENTITY is `LabelRefPopover`'s outer
+shell — and its inner option LIST is a different surface, which took the menu
+tier: an exemption covers the shape it justifies, not the file it lives in.
+
 #### A command surface RENDERS its verdict — greyed, never hidden
 
 Every surface that offers an action asks the registry row's `applies()` and

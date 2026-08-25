@@ -176,10 +176,16 @@ export default function RowMenu({
               right: pos.right,
               ...("top" in pos ? { top: pos.top } : { bottom: pos.bottom }),
               minWidth,
-              background: "var(--surface)",
-              border: "1px solid var(--border-light)",
-              borderRadius: "var(--radius-md)",
-              boxShadow: "var(--pod-shadow)",
+              // MENU tier (task 459). Its PLACEMENT is a stated follow-up on
+              // `PERMITTED_HAND_ROLLED_ANCHORED_SURFACES`; a holdout on that
+              // axis is not an exemption on this one. It had a fourth
+              // vocabulary — `--surface` + `--border-light` + the CONTROL
+              // radius (4px, against every menu's 8) + the pod shadow named
+              // directly — which is the drift the shared tier ends.
+              background: "var(--menu-bg)",
+              border: "var(--menu-border)",
+              borderRadius: "var(--menu-radius)",
+              boxShadow: "var(--menu-shadow)",
               padding: "4px 0",
               zIndex: 200,
             }}
