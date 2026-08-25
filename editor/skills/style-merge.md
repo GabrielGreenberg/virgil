@@ -172,19 +172,27 @@ Skip everything else.
      "merging…" banner on any terminal status.)
 
    The merged preamble has braces + backslashes, so write the op to a
-   file and pass it with `@` (`mkdir -p` the `.virgil/` dir first — a fresh
-   paper folder may not have it yet):
+   **scratch** file and pass it with `@`:
    ```bash
-   mkdir -p "<docPath>/.virgil"
-   cat > "<docPath>/.virgil/style-merge-op.json" <<'JSON'
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "texEdit": { "mode": "region-replace",
                   "replacement": "<merged preamble, ending in \\begin{document}\\n\\n>" },
      "settingsEdit": { "set": { "styleId": "<payload.targetStyleId>" } },
      "summary": "Style merge: <payload.targetStyleName> (carried <N> pkgs, <M> macros)" }
    JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-only "@<docPath>/.virgil/style-merge-op.json" --result auto-applied
+   python3 editor/scripts/apply_response.py <docPath> complete-only "@$op" --result auto-applied; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
+   The op file is **scratch** — it must **not** land in `<docPath>`, which is
+   the user's (often sync-backed) paper folder where every write is sync
+   traffic (tasks 363/415). `apply_response.py`'s `@` reader resolves any
+   absolute path, so scratch belongs in `$TMPDIR`; a fixed in-folder name also
+   races a concurrent run on the same paper. `mktemp` for a unique name, and
+   `rm` it on **both** paths.
+
    (`replacement` is the merged blob from step 5, as a JSON string —
    escape `\` as `\\`, newlines as `\n`. The contract finds the `.tex`
    itself.)
