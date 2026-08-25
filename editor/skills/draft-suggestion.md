@@ -78,7 +78,7 @@ this skill.
    and its home is a report:
    ```bash
    python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-       --accept-task-kind suggestion --author ai \
+       --accept-task-kind suggestion --anchor <uuid> --author ai \
        --title "<short title>" --body "<findings>"
    ```
    That one call drains the `suggestion` Task, so do **not** also emit a

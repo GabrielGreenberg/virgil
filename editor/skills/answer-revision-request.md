@@ -73,7 +73,7 @@ source request in place.
      which is where findings belong:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --accept-task-kind suggestion --author ai \
+         --accept-task-kind suggestion --anchor <uuid> --author ai \
          --title "<short title>" --body "<findings>"
      ```
      Emit the report *instead of* a suggestion, not alongside one.

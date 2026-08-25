@@ -74,8 +74,8 @@ two paths:
      page cites:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --accept-task-kind note --accept-task-kind highlight --author ai \
-         --title "<short title>" --body "<findings>"
+         --accept-task-kind note --accept-task-kind highlight --anchor <uuid> \
+         --author ai --title "<short title>" --body "<findings>"
      ```
      Declare the Task's **own** kind — this skill drains `note` *and*
      `highlight` (a flagged passage, routed here by `/editor/review`), and the

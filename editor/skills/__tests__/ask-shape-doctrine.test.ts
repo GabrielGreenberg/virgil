@@ -20,14 +20,18 @@
 // for the reverse direction only, and `draft-suggestion` — the one that shipped
 // the bug — asked nothing at all.
 
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 
-// editor/skills/__tests__/ → repo root is three levels up.
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8");
+import {
+  REVIEW,
+  readRepo as read,
+  repoRoot,
+  reviewRoutes,
+  routeForPair,
+  routingManifest,
+} from "./_review-routes";
 
 // These files are hard-wrapped prose that future edits will re-wrap freely, so
 // every PHRASE assertion runs against a whitespace-collapsed copy. A regex that
@@ -39,26 +43,131 @@ const SSOT = "editor/skills/_ask-shape.md";
 const SSOT_FOS = "editor/skills/_find-or-surface.md";
 const POINTER = "[_ask-shape.md](_ask-shape.md)";
 
-// Every responder that resolves a free-text AI request — i.e. every skill whose
-// input is a comment box the user can type anything into. The mirror image of
-// the doctrine's own scope. A new prose-panel responder added here without a
-// pointer fails; one added to the skill set and NOT listed here is the hole this
-// list cannot see (same stated limit as the find-or-surface REFERENCING_SKILLS).
-const REFERENCING_SKILLS = [
-  "editor/skills/draft-suggestion.md",
-  "editor/skills/answer-revision-request.md",
-  "editor/skills/answer-cutter-comment.md",
-  "editor/skills/answer-note-request.md",
-  "editor/skills/answer-todo-request.md",
-  "editor/skills/answer-report-request.md",
-];
+// ---------------------------------------------------------------------------
+// THE POPULATION IS DISCOVERED (task 453).
+//
+// Until then `REFERENCING_SKILLS` was a hand-written six-entry array above a
+// comment stating its own limit — "one added to the skill set and NOT listed
+// here is the hole this list cannot see" — and it was already missing a name:
+// `draft-footnote`, whose documented second shape is a per-card AI-request
+// flag on an EXISTING footnote, i.e. the same heterogeneous free-text comment
+// box every other responder guards. A hand list can only ever be missing a
+// name (task 448's statement of the same rule, one doctrine over).
+//
+// The criterion, in two hops from the frozen routing manifest:
+//
+//   1. `ai_request_routing.json` declares every CARD KIND that mints an
+//      ai-request from a per-card flag, and the wire `(kind, linkPanel)` it
+//      bridges to. A card flag IS a free-text comment box on an existing card,
+//      so every wire kind in that manifest carries a heterogeneous ask.
+//   2. `/editor/review`'s step-3 table maps `(kind, panel)` → responder, using
+//      its own "most specific route first" rule; `dispatch-coverage.test.ts`
+//      pins that table against the same manifest, so the hop cannot drift.
+//
+// So: the responder that answers any manifest pair, PLUS the kind-only
+// fallback for those same wire kinds (the UNBRIDGED, AIWindow-composed row —
+// which is the case `draft-suggestion` owns, and the one that shipped the bug
+// the doctrine was written for). Both halves are needed: the first alone loses
+// `draft-suggestion`, the second alone loses nothing today but would the
+// moment a wire kind gained an exact-route-only panel.
+//
+// What the criterion deliberately does NOT catch is stated (and CHECKED) in
+// `EXCLUDED_NON_FLAG_TARGETS` below, so a dispatch target can never be
+// silently missing from both.
+//
+// There is deliberately NO "caught but exempt from the pointer" allowlist. A
+// member of this population is a free-text responder BY CONSTRUCTION — the
+// criterion says so — so there is no true statement of the form "this skill
+// resolves a heterogeneous ask and need not answer the shape question." A hit
+// is LINK-it, never list-it (448's strongest form).
+//
+// STATED LIMIT, and the one this task measured: the POINTER leg is satisfied
+// by any occurrence of the link, including an incidental citation about a
+// DIFFERENT rule. `draft-footnote` acquired one in task 451 (a §4 aside about
+// the todo-card door) and so PASSED that leg on the pre-453 tree while asking
+// no shape question at all. The leg with teeth is therefore the RE-ROUTE one
+// below — a concrete, operable door — which is what actually failed for it.
+// ---------------------------------------------------------------------------
 
-// The responders that can actually re-route INTO a carded kind. answer-report-
-// request is excluded: its re-route target is a `suggestion`, which has no
-// create_card.py builder and hands off to /editor/draft-suggestion instead.
-const RE_ROUTING_SKILLS = REFERENCING_SKILLS.filter(
-  (s) => !s.endsWith("answer-report-request.md"),
+const manifest = routingManifest();
+const routes = reviewRoutes();
+
+/** Wire kinds a per-card flag can produce — i.e. the ones with a free-text box. */
+const FLAG_WIRE_KINDS = new Set(
+  Object.values(manifest.routing).map((r) => r.kind),
 );
+
+/** Hop 2: the responders those kinds reach, bridged and unbridged alike. */
+const REFERENCING_SKILLS = [
+  ...new Set([
+    // The route that answers each manifest (kind, panel) pair.
+    ...Object.values(manifest.routing).map(
+      (r) => routeForPair(routes, r.kind, r.linkPanel)?.file,
+    ),
+    // …and the kind-only fallback for the same wire kinds (the unbridged row).
+    ...routes.filter((r) => r.panel === null && FLAG_WIRE_KINDS.has(r.kind)).map((r) => r.file),
+  ]),
+]
+  .filter((f): f is string => typeof f === "string")
+  .sort();
+
+/** Dispatch targets the criterion deliberately does NOT catch, and WHY.
+ *
+ *  EXACT SET, and each entry's CLAIM is machine-checked below: the skill must
+ *  still be a dispatch target, and the kind(s) it is routed for must still be
+ *  ABSENT from the routing manifest — i.e. no per-card flag mints a free-text
+ *  comment box on an existing card of that kind. A kind that GAINS a manifest
+ *  row fails this list rather than passing silently, which is the moment the
+ *  exclusion has to be re-litigated instead of re-discovered. */
+const EXCLUDED_NON_FLAG_TARGETS: Record<string, string> = {
+  "editor/skills/answer-bib-review.md":
+    "keyed on a `bibKey` with a structured `type` (`fields` | `notes`), not a " +
+    "free-text box — there is no ask to mis-shape. Its rows come from " +
+    "`bib-review-requests.json`, which has no card flag and no manifest row.",
+  "editor/skills/style-merge.md":
+    "a `style-merge` Task carries no ask at all — the request IS the operation " +
+    "(rebase this preamble onto that style). No card flag, no manifest row.",
+  "editor/skills/find-citation.md":
+    "free-text, but single-shape BY CONSTRUCTION: `citation` has no manifest " +
+    "row, so the only way to file one is the AIWindow's citation affordance, " +
+    "whose ask *is* \"find me a source\". The never-fabricate half of the same " +
+    "question is already governed by `_find-or-surface.md`, which it carries. " +
+    "The marginal member — considered and left out, not missed. If `citation` " +
+    "ever gains a per-card flag (a comment box on an existing citation card), " +
+    "the leg below fails and this decision is reopened.",
+};
+
+/** The responders that can actually re-route INTO a carded kind.
+ *
+ *  EXACT-SET exemption with a stated reason, so an entry that has stopped
+ *  excusing anything fails rather than standing as a licence. */
+const PERMITTED_NO_REROUTE_DOOR: Record<string, string> = {
+  "editor/skills/answer-report-request.md":
+    "its re-route target is a `suggestion` — doctrine tier 3, NO create_card.py " +
+    "builder — so its door is a handoff to /editor/draft-suggestion, not a " +
+    "`--accept-task-kind` flag.",
+};
+
+const RE_ROUTING_SKILLS = REFERENCING_SKILLS.filter(
+  (s) => !(s in PERMITTED_NO_REROUTE_DOOR),
+);
+
+/** Responders that can receive a `virtual:<panel>:<cardId>` id.
+ *
+ *  `list_requests.py` mints one for every manifest panel whose card carries an
+ *  unbridged `aiRequest` flag, and routes it by `(kind, panel)` — so this is
+ *  exactly the set of skills a manifest pair resolves to. A virtual row has NO
+ *  `ai-requests.json` Task, so `create_card.py` cannot read an anchor off it
+ *  and DIES without `--anchor`. Derived, never hand-listed: `draft-suggestion`
+ *  falls out by construction (it is only ever the kind-only fallback, and a
+ *  virtual row always carries a panel). */
+const VIRTUAL_CAPABLE_SKILLS = [
+  ...new Set(
+    Object.values(manifest.routing)
+      .map((r) => routeForPair(routes, r.kind, r.linkPanel)?.file)
+      .filter((f): f is string => typeof f === "string"),
+  ),
+].sort();
 
 describe("ask-shape doctrine (SSOT + referencing responders)", () => {
   it("SSOT states the rule in its load-bearing form", () => {
@@ -133,6 +242,57 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
     expect(doc).toMatch(/Never edit `ai-requests\.json` with a file-editing tool/i);
   });
 
+  // The can-see canary. Every leg below is satisfied vacuously by a derivation
+  // that resolves to nothing, and this one is anchored on members the criterion
+  // cannot lose: `answer-note-request` (the `note` fallback), the two panel
+  // owners of the split `suggestion` kind, and `draft-footnote` — the name the
+  // hand list was missing, and the whole reason the population is derived.
+  it("derives a non-trivial population from the umbrella's own routing", () => {
+    expect(REFERENCING_SKILLS.length).toBeGreaterThanOrEqual(6);
+    expect(REFERENCING_SKILLS).toContain("editor/skills/answer-note-request.md");
+    expect(REFERENCING_SKILLS).toContain("editor/skills/answer-cutter-comment.md");
+    expect(REFERENCING_SKILLS).toContain("editor/skills/answer-revision-request.md");
+    expect(REFERENCING_SKILLS).toContain("editor/skills/draft-suggestion.md");
+    expect(REFERENCING_SKILLS).toContain("editor/skills/draft-footnote.md");
+  });
+
+  // Every dispatch target is classified: caught by the criterion (and so held
+  // to the pointer), or stated in EXCLUDED_NON_FLAG_TARGETS with a reason. A
+  // NEW route added to `/editor/review` lands in neither by default and fails
+  // here, so a responder can never be silently missing from both — which is
+  // exactly how `draft-footnote` sat outside the hand list.
+  it("classifies every dispatch target — caught, or excluded with a reason", () => {
+    const targets = [...new Set(routes.map((r) => r.file))].sort();
+    const uncaught = targets.filter((f) => !REFERENCING_SKILLS.includes(f));
+    expect(
+      uncaught.sort(),
+      "a dispatch target the ask-shape criterion does not catch must be listed " +
+        "in EXCLUDED_NON_FLAG_TARGETS with the reason it carries no free-text ask",
+    ).toEqual(Object.keys(EXCLUDED_NON_FLAG_TARGETS).sort());
+  });
+
+  // …and the exclusions are an EXACT SET whose CLAIM is checked, not just
+  // asserted: the skill is still a dispatch target, and every kind it is routed
+  // for is still ABSENT from the routing manifest. An entry whose kind gains a
+  // per-card flag (a free-text comment box on an existing card of that kind)
+  // fails here rather than quietly staying excluded.
+  it.each(Object.keys(EXCLUDED_NON_FLAG_TARGETS))(
+    "%s is excluded for a claim that still holds",
+    (file) => {
+      const mine = routes.filter((r) => r.file === file);
+      expect(mine.length, `${file} is no longer a dispatch target`).toBeGreaterThan(0);
+      const flagged = mine.map((r) => r.kind).filter((k) => FLAG_WIRE_KINDS.has(k));
+      expect(
+        flagged,
+        `${file} is routed for a kind that NOW has a routing-manifest row, so a ` +
+          `per-card flag can mint a free-text ask for it. The exclusion reason ` +
+          `("${EXCLUDED_NON_FLAG_TARGETS[file]}") no longer holds — either the ` +
+          `skill joins the population and gains the pointer, or the reason is rewritten.`,
+      ).toEqual([]);
+      expect(EXCLUDED_NON_FLAG_TARGETS[file].length).toBeGreaterThan(40);
+    },
+  );
+
   it.each(REFERENCING_SKILLS)("%s points at the doctrine", (skill) => {
     expect(read(skill)).toContain(POINTER);
   });
@@ -140,6 +300,75 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
   it.each(RE_ROUTING_SKILLS)("%s names the re-route mechanism, not just the rule", (skill) => {
     // A responder told "re-route" with no operable door compresses anyway.
     expect(read(skill)).toContain("--accept-task-kind");
+  });
+
+  it("the no-re-route-door exemption still excuses something", () => {
+    // EXACT SET: an entry that has gained the door, or stopped being a
+    // responder, fails rather than standing as a licence for the next skill
+    // under that name.
+    for (const [file, reason] of Object.entries(PERMITTED_NO_REROUTE_DOOR)) {
+      expect(REFERENCING_SKILLS, `${file} is no longer in the population`).toContain(file);
+      expect(read(file), `${file} now spells --accept-task-kind — retire its exemption`)
+        .not.toContain("--accept-task-kind");
+      expect(reason.length).toBeGreaterThan(40);
+    }
+  });
+
+  // The re-route call must survive the id it will actually be handed.
+  //
+  // `list_requests.py` mints `virtual:<panel>:<cardId>` for any card whose
+  // `aiRequest` flag never bridged into `ai-requests.json` — a pre-bridge
+  // paper, or a bridge write that failed. That row has NO Task, so
+  // `create_card.py`'s `_resolve_context` takes its virtual branch and
+  // `die()`s outright unless `--anchor <uuid>` is supplied. Every one of these
+  // responders can be handed one (they are the routes the manifest's own pairs
+  // resolve to), and every one of them documented the re-route WITHOUT the
+  // flag — a documented call that dies, which is the failure `_ask-shape.md`
+  // §4 exists to prevent, on the very door it prescribes.
+  //
+  // The fix is one call shape, not a branch: the row always carries
+  // `paragraphIds`, and for a REAL id `--anchor` is byte-identical to the
+  // fallback `create_card.py` would have applied (`pids[0]`). So the rule is
+  // "always pass it", and a conditional is one more thing to get wrong.
+  const VIRTUAL_REROUTERS = RE_ROUTING_SKILLS.filter((s) =>
+    VIRTUAL_CAPABLE_SKILLS.includes(s),
+  );
+
+  it("finds the re-routing responders that can receive a virtual id", () => {
+    // Canary + the structural claim: `draft-suggestion` is virtual-free by
+    // construction (it is only ever the kind-only fallback, and a virtual row
+    // always carries a panel), so it must NOT be in this set.
+    expect(VIRTUAL_REROUTERS.length).toBeGreaterThanOrEqual(4);
+    expect(VIRTUAL_REROUTERS).toContain("editor/skills/draft-footnote.md");
+    expect(VIRTUAL_REROUTERS).not.toContain("editor/skills/draft-suggestion.md");
+  });
+
+  it.each(VIRTUAL_REROUTERS)("%s's report re-route survives a virtual id", (skill) => {
+    const src = read(skill);
+    // Every fenced `create_card.py … --kind=report` block in the file must
+    // carry `--anchor`. Scoped to the fence so an `--anchor` somewhere else in
+    // the file (a todo-card door, a sibling-card landing) cannot vouch for it.
+    const fences = [...src.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const reroutes = fences.filter(
+      (f) => /create_card\.py/.test(f) && /--kind=report\b/.test(f),
+    );
+    expect(reroutes.length, `${skill} documents no --kind=report re-route`).toBeGreaterThan(0);
+    const naked = reroutes.filter((f) => !/--anchor\b/.test(f));
+    expect(
+      naked,
+      `${skill}: a --kind=report re-route with no --anchor. Handed a ` +
+        `virtual:<panel>:<cardId> id — which this responder can be — ` +
+        `create_card.py dies with "--anchor <uuid> is required for a virtual ` +
+        `(card-flag) request id". Pass the row's paragraphIds[0] every time.`,
+    ).toEqual([]);
+  });
+
+  it("the doctrine states the virtual-id rule once, at the door it prescribes", () => {
+    // Stated in the SSOT rather than five times in prose: the responders carry
+    // the FLAG in their concrete call, the doctrine carries the REASON.
+    const doc = flat(SSOT);
+    expect(doc).toMatch(/virtual:/);
+    expect(doc).toMatch(/--anchor/);
   });
 
   it.each(REFERENCING_SKILLS)(
