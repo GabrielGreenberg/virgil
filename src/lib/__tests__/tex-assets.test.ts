@@ -213,6 +213,12 @@ describe("captureNewAssets", () => {
 });
 
 describe("size cap", () => {
+  // The cap is 64MB, so crossing it HONESTLY means allocating, copying and
+  // hashing ~80MB — measured at ~2.0s on a fast dev Mac, i.e. a 2.5x margin
+  // against vitest's 5s default. A shared CI runner eats that margin
+  // routinely (it did, on the v0.1.99 release gate), so the budget is stated
+  // rather than left to the machine. Not a hang: shrinking it instead would
+  // mean making MAX_TOTAL_BYTES injectable purely for the test's benefit.
   it("drops + logs assets past the total-size cap", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = new FakeEngine();
@@ -231,7 +237,7 @@ describe("size cap", () => {
     const warnMsg = warn.mock.calls.map((c) => String(c[0])).join("\n");
     expect(warnMsg).toMatch(/size cap/i);
     expect(warnMsg).toMatch(/big-b/);
-  });
+  }, 30_000);
 });
 
 describe("dev tools", () => {
