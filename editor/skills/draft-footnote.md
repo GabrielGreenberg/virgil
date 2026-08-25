@@ -38,7 +38,7 @@ card:
 
 - **Direct create** (no `linkedTo`, or `linkedTo` not pointing at footnotes) —
   the AIWindow-composed "add a footnote here" path. Produces both a `FootnoteRef`
-  in `footnotes.json` and an inline `\vfid{<id>}\footnote{...}` command in
+  in `footnotes.json` and an inline `\vfid{…}\footnote{...}` command in
   `document.tex` at the `paragraphIds` anchor.
 - **Act on an existing footnote** (`linkedTo.panel == "footnotes"`, or a
   `virtual:footnotes:<cardId>` id) — the user toggled the per-card AI-request
@@ -194,7 +194,11 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    FAMILY wrong is not a style slip — the other family's commands are
    undefined, and this body is spliced straight into `document.tex` by
    `create_card.py`, so a wrong guess is a non-compiling paper with no card to
-   review first. Prepend a fresh `\vcid{<uuid>}` before each cite command. Use ` `` ... '' ` for inline
+   review first. Compose the cite **bare** — no `\vcid{…}` marker.
+   Marker ids are ALLOCATED, never invented
+   ([_latex-allowlist.md](_latex-allowlist.md) § What NOT to emit): a bare
+   cite is minted a collision-free id on the next parse, exactly as a
+   hand-typed one is. Use ` `` ... '' ` for inline
    quotes. **Don't fabricate a `\citet{key}` for a bibkey not in
    `references.bib`** — draft the prose without it and file a missing-bibkey
    todo card (step 3). This composition is the part `draft-footnote` keeps; everything

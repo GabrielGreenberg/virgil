@@ -193,6 +193,29 @@ parser matches them by table, not by a fixed command name.)
   the plain word. A card/citation *preview* may still display "LaTeX" — a
   projection is a view and never writes back — which is not licence to emit
   the command into a document.
+- **No `\v*id{…}` identity markers** — `\vfid`, `\vcid`, `\vexid`, `\vxid`,
+  `\vlid`/`\vlidend`, `\vbid`. Those ids are **allocated, never invented**.
+  `create_card.py`'s allocator (`_gen_marker_id`) mints a 4-hex id checked
+  collision-free against BOTH the sidecar ids and the markers already in the
+  `.tex` — and that is the only collision check there is. A body you compose is
+  spliced into the document verbatim, so a hand-written marker skips it
+  entirely, and two atoms answering to one id is the identity-collision class
+  (`AGENTS.md`: "exactly one live presence may answer to a given uuid (or
+  inline-atom id)") — the second cite gets no panel row and the id is ambiguous
+  for anchoring. Omitting the marker is not a degradation, it is the **normal
+  path**: a bare `\citet{key}` (or `\footnote{…}`) is minted a fresh
+  collision-free id on the next parse — `pendingCitationId.take(i) ||
+  generateShortId()` in `src/lib/latex-parser.ts`, and the same in the
+  card/footnote fork — exactly as a hand-typed one is.
+  When you REWRITE existing text, carry any marker already in it through
+  **verbatim, with its id**: a rewrite that drops or re-mints one detaches the
+  atom from its card.
+  *Scope.* This is the rule for a document Virgil is EDITING, where the
+  allocator owns the id space. The **library** extraction pipeline is the other
+  case: it authors `main.tex` from scratch, has no allocator to ask, and mints
+  its own full-v4 `\vexid` ids idempotently (`di-examples.md` — an example
+  already carrying one is left untouched), so there the marker IS the
+  pipeline's to write.
 - No commands outside the inventory above (they render as raw grey
   monospace). If you genuinely need one, that is a signal to extend the
   Virgil renderer + this list, not to smuggle the command into a document.
