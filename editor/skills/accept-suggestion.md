@@ -11,8 +11,11 @@ description: |
   originating Task (result=accepted), all in ONE atomic pen-protected
   commit. Handles revision-suggestion AND cutter-suggestion. Does NOT
   trigger for drafting a new suggestion (use /editor/draft-suggestion),
-  dismissing one (use /editor/reject-suggestion), or editing a card's
-  fields (use /editor/edit-card). Args: <docPath> <cardId>.
+  dismissing one (use /editor/reject-suggestion), or editing a suggestion's
+  OTHER fields — its suggested_text / user_text / explanation (use
+  /editor/edit-card). The `status` transition is NOT one of those: it is this
+  skill's, and edit-card refuses it by name, because flipping the field alone
+  leaves the paper byte-unchanged and the Task open. Args: <docPath> <cardId>.
 ---
 
 # /editor/accept-suggestion $ARGUMENTS
@@ -94,6 +97,14 @@ transaction — never hand-assemble a `texEdit` here.
   suggestion missing `original_text`/`suggested_text`/anchor; a proposal whose
   `original_text` no longer matches the `.tex` (stale). The op refuses these
   with a clear reason rather than splice blindly.
+
+> **This skill OWNS the `status` transition.** `edit-card` refuses
+> `--field status=…` on a suggestion by name (`apply_response.OP_OWNED_FIELDS`),
+> because flipping the field alone does step 5 of this op and nothing else: the
+> panel reads *accepted* while the paper is byte-unchanged and the Task stays
+> open. Route a status change here, never through
+> [`edit-card`](edit-card.md) — which owns the suggestion's *other* fields
+> (`suggested_text` / `user_text` / `explanation` / `instructions`).
 
 ## Reply
 
