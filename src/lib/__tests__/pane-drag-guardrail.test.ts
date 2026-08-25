@@ -264,6 +264,24 @@ const PERMITTED_INVARIANT_FREE_GESTURES: Record<string, string> = {};
  *  it. */
 const PERMITTED_REDERIVED_INVARIANTS: Record<string, string> = {};
 
+// ── The re-derived-key-claim allowlist (task 471) ────────────────────────────
+// EMPTY, same posture as its two siblings above: a hit is IMPORT-it.
+//
+// `claimGestureKey` is the THIRD rule in `pointer-invariants.ts`, and it earned
+// its place the way the first two did — by being absent. The engine cancelled a
+// divider drag from a `window` CAPTURE Escape listener and claimed nothing, so
+// ONE press also reached `useMarginEdit`'s `window` BUBBLE cancel (which drops
+// every margin the user has dragged and not yet Saved) and `system-dialog`'s
+// `document` CAPTURE handler (which deliberately ignores `defaultPrevented`, so
+// only stopPropagation reaches it — which is why the claim is the PAIR).
+//
+// The rule is one line, which is exactly why it must not be copied: the value
+// is in the docblock beside it — WHY a gesture outranks every other key owner,
+// and the stated limit that it claims PROPAGATION and not the target, so a
+// same-target same-phase listener still runs and `stopImmediatePropagation()`
+// is deliberately NOT used.
+const PERMITTED_REDERIVED_KEY_CLAIMS: Record<string, string> = {};
+
 // ── The allowlist registry + the [cost: …] tag rule (task 334) ───────────────
 // `keystroke-subscriber-guardrail` has enforced a `[cost: …]` prefix on every
 // justification in every one of its allowlists since Wave-4 P6; this file
@@ -335,6 +353,11 @@ const ALLOWLISTS: Record<
     list: PERMITTED_REDERIVED_INVARIANTS,
     cost: false,
     why: "answers the same SAFETY question from the no-twins side; empty likewise",
+  },
+  PERMITTED_REDERIVED_KEY_CLAIMS: {
+    list: PERMITTED_REDERIVED_KEY_CLAIMS,
+    cost: false,
+    why: "answers a KEY-OWNERSHIP question (why a gesture-owning file spells its own preventDefault+stopPropagation pair instead of claimGestureKey); empty likewise — a hit is IMPORT-it, and a keydown handler has no per-frame cost to state",
   },
 };
 
@@ -677,6 +700,64 @@ export function findRederivedInvariants(source: string): string[] {
       /\bbuttons\s*&\s*1|\bbuttons\s*===?\s*0|\bbutton\s*!==?\s*0|\bbutton\s*===?\s*0/g,
     ),
   ].map((m) => m[0]);
+}
+
+/**
+ * A RE-DERIVED KEY CLAIM (task 471): a `preventDefault()` + `stopPropagation()`
+ * pair inside a GESTURE-SCOPED key handler, written out instead of taken from
+ * `claimGestureKey`.
+ *
+ * Scoped to handlers registered with `window`/`document.addEventListener("keydown"|
+ * "keyup", <name>)`, resolved to `<name>`'s declaration and brace-matched — NOT
+ * to every `preventDefault` in a file the pointer censuses happen to name. Both
+ * looser shapes were tried and both were wrong on this tree, measured:
+ *
+ *   - a bare proximity window over the whole file indicted four gesture files
+ *     and `useMarginEdit`, on `preventDefault`s sitting near an unrelated
+ *     `stopPropagation` in a DRAG handler;
+ *   - adding "…and a `.key` comparison nearby" still indicted `Marginalia` and
+ *     `panel-primitives`, whose hits are real key claims on a leaf `<button>`
+ *     (`onKeyDown={…}` in JSX, the marginalia marker's Delete/Backspace and the
+ *     card delete key). Those are COMPONENT key handlers, not gesture-scoped
+ *     ones — a button that owns its own key press is not the rule this states,
+ *     and `card-delete-key-door.test.ts` is where that question lives.
+ *
+ * The pair is the needle, and requiring BOTH is what keeps it an EMPTY set: a
+ * lone `preventDefault()` is ordinary (`useMarginEdit`'s MODE-level Escape is
+ * one, and a mode is deliberately not a claimant), while the pair means "this
+ * press is mine and stops here" — the claim the SSOT publishes with its
+ * rationale and its stated limit attached.
+ *
+ * Stated limit: only the `addEventListener` form with a NAMED handler is
+ * resolved; an inline arrow registration would be invisible. No gesture in
+ * either silo writes one today (they all need the reference back for teardown),
+ * which is exactly why the form is the right key.
+ */
+export function findRederivedKeyClaims(source: string): string[] {
+  const src = stripComments(source);
+  const hits: string[] = [];
+  const seen = new Set<string>();
+  const reg = /(?:window|document)\.addEventListener\(\s*["']key(?:down|up)["']\s*,\s*(\w+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = reg.exec(src))) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const decl = new RegExp(
+      `\\b(?:const|let|var|function)?\\s*${name}\\s*=?\\s*(?:function\\s*)?\\(`,
+    ).exec(src);
+    if (!decl) continue;
+    const params = balancedFrom(src, decl.index + decl[0].length - 1);
+    if (!params) continue;
+    const braceAt = src.indexOf("{", decl.index + decl[0].length - 1 + params.length);
+    if (braceAt === -1) continue;
+    const body = balancedFrom(src, braceAt);
+    if (!body) continue;
+    if (/\.preventDefault\s*\(/.test(body) && /\.stopPropagation\s*\(/.test(body)) {
+      hits.push(`${name}: ${body.replace(/\s+/g, " ").slice(0, 120)}`);
+    }
+  }
+  return hits;
 }
 
 /** The receiver + event alternation BOTH censuses key on (see the class
@@ -1337,6 +1418,98 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
       .map((f) => f.rel)
       .sort();
     expect(bare).toEqual(Object.keys(PERMITTED_INVARIANT_FREE_GESTURES).sort());
+  });
+
+  it("no gesture-owning file RE-DERIVES the key claim (task 471)", () => {
+    // The third invariant's census. POPULATION, stated precisely because it is
+    // the load-bearing choice: every file a sibling census has already
+    // identified as owning a held pointer gesture — the window-listener one
+    // above, plus the element-scoped (pointer-capture / press+release-on-one-
+    // tag) one below. Sweeping BOTH silos wholesale would be the wrong
+    // population, not a stricter one: a menu, a dialog and a text field all
+    // legitimately claim keys and have nothing to do with this rule, so the
+    // set would never be empty and the leg would carry no signal at all.
+    //
+    // The engine directory is excluded by the walker, which is correct — it is
+    // where the claim is CALLED, and its own suite pins the behaviour.
+    const gestureOwners = files.filter(
+      (f) => detectWindowMoveListener(f.source) || detectElementPointerGesture(f.source),
+    );
+    // Anchor: if both detectors stopped matching, this leg would go vacuously
+    // green while every gesture drifted.
+    expect(gestureOwners.length).toBeGreaterThanOrEqual(10);
+    const offenders = gestureOwners
+      .map((f) => ({ rel: f.rel, hits: findRederivedKeyClaims(f.source) }))
+      .filter((f) => f.hits.length > 0);
+    expect(
+      Object.fromEntries(offenders.map((o) => [o.rel, o.hits])),
+      "import claimGestureKey from @/lib/pane-resize/pointer-invariants instead — its docblock carries the rationale AND the stated limit",
+    ).toEqual(
+      Object.fromEntries(
+        Object.keys(PERMITTED_REDERIVED_KEY_CLAIMS).map((k) => [k, expect.any(Array)]),
+      ),
+    );
+  });
+
+  it("the key-claim census can see a hand-written claim, and lets a lone preventDefault through (fixtures)", () => {
+    // A leg whose verdict is an EMPTY set is worth what its detector is worth.
+    const handWritten = `
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish("cancel");
+      };
+      window.addEventListener("keydown", onKeyDown, true);`;
+    expect(findRederivedKeyClaims(handWritten)).toHaveLength(1);
+
+    // `useMarginEdit`'s own MODE-level Escape: a lone preventDefault, and not
+    // a gesture handler at all. It must NOT be indicted — a mode is not the
+    // innermost transient thing on screen, and claiming there would be wrong.
+    const lonePreventDefault = `
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          cancel();
+        }
+      };
+      window.addEventListener("keydown", onKey);`;
+    expect(findRederivedKeyClaims(lonePreventDefault)).toEqual([]);
+
+    // And a file with the pair but NO key handler at all (a pointer handler
+    // stopping a click) is a different question and is not this one.
+    const pointerPair = `
+      const onMouseDown = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+      };`;
+    expect(findRederivedKeyClaims(pointerPair)).toEqual([]);
+
+    // Nor is a POINTER handler's pair that merely SITS in a file which also
+    // registers a key listener elsewhere — the shape that made the first cut
+    // of this needle indict four real gesture files.
+    const pointerPairInAKeyFile = `
+      const onDragStart = (e: DragEvent) => { e.stopPropagation(); e.preventDefault(); };
+      const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Enter") activate(); };
+      window.addEventListener("keydown", onKeyDown);`;
+    expect(findRederivedKeyClaims(pointerPairInAKeyFile)).toEqual([]);
+
+    // Nor is a COMPONENT key handler on a leaf control — the shape that made
+    // the SECOND cut indict `Marginalia` and `panel-primitives`. A button that
+    // owns its own Delete/Backspace is answering for itself, not standing in
+    // front of every other Escape owner in the app; that question lives in
+    // `card-delete-key-door.test.ts`.
+    const componentKeyHandler = `
+      <button
+        onKeyDown={(e) => {
+          if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }
+        }}
+      />`;
+    expect(findRederivedKeyClaims(componentKeyHandler)).toEqual([]);
   });
 
   it("no production file RE-DERIVES an invariant the SSOT publishes", () => {
