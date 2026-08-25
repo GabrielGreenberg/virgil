@@ -20,6 +20,12 @@
 //   5. primary-button-up mid-move ((buttons & 1) === 0, incl. a chorded
 //      second button still down) = missed release: ends with the last live
 //      value, NOT the stray event's coordinate (the ghost-resume class).
+//   6a. Escape is CLAIMED by the live gesture (preventDefault +
+//      stopPropagation via `claimGestureKey`): a drag is the innermost
+//      transient thing on screen, so one press ends exactly one thing. Before
+//      task 471 the same press also reached margin-edit's window-BUBBLE
+//      cancel (discarding every unsaved margin) and the dialog stack's
+//      document-CAPTURE handler.
 //   6. Escape restores the drag-start value and ends WITHOUT commit —
 //      through spec.restore() when provided (store-truth re-sync), else
 //      apply(startValue). Since task 470 that is one of TWO no-net-change
@@ -180,6 +186,15 @@ const up = (el: HTMLElement, init: PointerEventInit = {}) =>
   el.dispatchEvent(pe("pointerup", { buttons: 0, ...init }));
 const escape = () =>
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+/** A press dispatched from INSIDE the document, so the propagation path is the
+ *  real one: window capture → document capture → target → document bubble →
+ *  window bubble. `escape()` above targets `window` itself, whose path is just
+ *  [window] — enough to reach the engine's own listener, and structurally
+ *  unable to reach a `document` listener at all, which is exactly what the
+ *  key-claim legs need to observe (task 471). */
+const keyFromDocument = (key: string) =>
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -564,6 +579,87 @@ describe("usePaneResizeHandle — Escape cancel", () => {
     expect(h.applied()).toEqual([]); // no stray apply, no redundant restore
     expect(h.committed()).toEqual([]);
     expect(isLayoutGestureActive()).toBe(false);
+  });
+
+  it("CLAIMS the press: a live gesture is the innermost thing on screen, so no other Escape owner fires from it (task 471)", () => {
+    // The defect leg. The engine's Escape listener is `window` + CAPTURE and
+    // used to neither preventDefault nor stopPropagation, so ONE press
+    // cancelled the drag AND ran every other Escape owner in the app. The two
+    // stand-ins below are the two real ones, at their real receiver+phase:
+    //
+    //   - `useMarginEdit`'s cancel — `window`, BUBBLE. Its `cancel()` drops
+    //     `liveMargins`, i.e. every guide dragged this session and not yet
+    //     Saved, and closes margin-edit mode under the user. Not a race: a
+    //     window-capture listener always precedes a window-bubble one for the
+    //     same event, so this fired on EVERY such press.
+    //   - the modal/dialog stack — `document`, CAPTURE, and it deliberately
+    //     ignores `defaultPrevented` ("a modal always has a way out"), so
+    //     `preventDefault()` alone would not have stopped it. Only
+    //     stopPropagation does — which is why the claim is the pair.
+    const marginEditCancel = vi.fn();
+    const dialogStackClose = vi.fn();
+    window.addEventListener("keydown", marginEditCancel);
+    document.addEventListener("keydown", dialogStackClose, true);
+    try {
+      const h = makeHarness();
+      pointerDown(h.props(), h.el);
+      move(h.el, 150);
+      flushRaf();
+
+      keyFromDocument("Escape");
+
+      expect(h.applied()).toEqual([250, 200]); // the drag DID cancel…
+      expect(h.committed()).toEqual([]);
+      expect(marginEditCancel).not.toHaveBeenCalled(); // …and nothing else ran
+      expect(dialogStackClose).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", marginEditCancel);
+      document.removeEventListener("keydown", dialogStackClose, true);
+    }
+  });
+
+  it("claims ONLY while a gesture is live: with none in flight both other owners still get the press", () => {
+    // The accepting control. Without it the leg above passes just as happily
+    // on an engine that silences Escape app-wide — which would be a far worse
+    // bug than the one being fixed (margin-edit's own Cancel, every dialog's
+    // way out).
+    const marginEditCancel = vi.fn();
+    const dialogStackClose = vi.fn();
+    window.addEventListener("keydown", marginEditCancel);
+    document.addEventListener("keydown", dialogStackClose, true);
+    try {
+      makeHarness(); // mounted, but no pointerdown
+      keyFromDocument("Escape");
+      expect(marginEditCancel).toHaveBeenCalledTimes(1);
+      expect(dialogStackClose).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("keydown", marginEditCancel);
+      document.removeEventListener("keydown", dialogStackClose, true);
+    }
+  });
+
+  it("claims ONLY Escape: another key during a live gesture reaches both owners untouched", () => {
+    // The second accepting control — the claim is scoped to the key the
+    // gesture actually answers, so typing during a drag is unaffected (and
+    // `input-modality`'s window-capture typing tracker, which AGENTS.md says
+    // must never be silenced, still sees it).
+    const marginEditCancel = vi.fn();
+    const dialogStackClose = vi.fn();
+    window.addEventListener("keydown", marginEditCancel);
+    document.addEventListener("keydown", dialogStackClose, true);
+    try {
+      const h = makeHarness();
+      pointerDown(h.props(), h.el);
+      keyFromDocument("a");
+
+      expect(marginEditCancel).toHaveBeenCalledTimes(1);
+      expect(dialogStackClose).toHaveBeenCalledTimes(1);
+      expect(isLayoutGestureActive()).toBe(true); // and the drag is untouched
+      up(h.el);
+    } finally {
+      window.removeEventListener("keydown", marginEditCancel);
+      document.removeEventListener("keydown", dialogStackClose, true);
+    }
   });
 
   it("Escape with no drag in flight is inert", () => {

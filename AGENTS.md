@@ -618,6 +618,91 @@ localStorage). Narrow the window until the Library list track visibly clamps,
 click the list divider once without moving, widen the window, and confirm the
 list returns to its stored width.
 
+### The key half: a live gesture CLAIMS the keys it answers
+
+Same engine, the KEYBOARD (task 471) — and the case where the rule was already
+written down one level *below* and the gesture was the one owner that never
+took it.
+
+The engine cancels a live divider drag on Escape from a `window` **capture**
+listener, and it neither `preventDefault`ed nor `stopPropagation`ed. Capture
+phase makes it run FIRST; it does not make it run ALONE. So one press ran every
+other Escape owner in the app, and the two that cost real work are:
+
+- **`useMarginEdit`** — a `window` **bubble** listener whose `cancel()` drops
+  `liveMargins`, which is where all four guides' drag results live until the
+  user presses Save. Cancelling a panel-gutter drag while margin-edit mode was
+  on therefore discarded **the whole margin-edit session** and closed the mode
+  under the user. Not a race: a window-capture listener always precedes a
+  window-bubble one for the same event, so this happened on every such press —
+  and margin-edit is precisely the mode in which a user is also nudging panel
+  widths.
+- **The dialog stack** — `document` **capture**, which is upstream of window
+  bubble, and whose Escape branch *deliberately* ignores `defaultPrevented`
+  ("a modal always has a way out", "The cue half"). So a scrimless draggable
+  window closed from the same press: Preferences, and the bug reporter with a
+  half-typed report in it. That one is why the claim must be the PAIR —
+  `preventDefault()` alone does not reach it.
+
+> **A live pointer gesture is the INNERMOST transient thing on screen — more
+> transient than any dialog, menu or mode left open behind it — so one press
+> ends exactly one thing.** `claimGestureKey` (the third rule in
+> [pointer-invariants.ts](src/lib/pane-resize/pointer-invariants.ts), beside
+> `isPrimaryDragStart` and `isMissedRelease`) is that claim, and a bespoke
+> gesture imports it rather than re-deriving it.
+
+Four rules it earned:
+
+- **Virgil already stated this one level down and for a less transient thing.**
+  Task 389 built `dialog-stack.ts` so that only the TOP dialog answers a key.
+  A gesture outranks every dialog on screen and was the only Escape owner that
+  did not say so.
+- **It claims PROPAGATION, not the target — stated at the site so nobody
+  rediscovers it as a bug.** `stopPropagation()` does not stop a listener
+  already registered on the SAME target in the SAME phase, so an open menu's
+  `window`+capture handlers (`useMenuDismiss`, `useMenuKeyboard`) still run.
+  Accepted: a menu is dismissed by the divider's own `pointerdown` long before
+  Escape, and `stopImmediatePropagation()` — the only thing that would reach
+  them — would also silence unrelated same-target listeners the app depends on
+  (`input-modality`'s typing tracker is exactly the shape this file says must
+  never be silenced).
+- **The gate stays in the SSOT rather than in the consumers.** The surgical
+  alternative was to gate `useMarginEdit`'s Escape on `isLayoutGestureActive()`
+  — which closes the one reported pair, leaves the dialog-stack pair open, and
+  puts knowledge of the gesture bus inside a hook that has no other business
+  with it. That is re-forking the rule into the consumers, which is the inverse
+  of what the engine exists for.
+- **A mode is not a claimant.** `useMarginEdit`'s own Escape keeps its lone
+  `preventDefault()` and is deliberately NOT converted: margin-edit is a MODE,
+  not the innermost transient thing on screen, and the census's fixtures pin
+  that distinction so a later sweep does not "unify" them.
+
+CI: three legs in
+[use-pane-resize-handle.test.tsx](src/lib/pane-resize/__tests__/use-pane-resize-handle.test.tsx)
+drive a live gesture with the two real owners registered at their real
+receiver+phase (`window`/bubble and `document`/capture) and dispatch ONE press
+**from inside the document**, because a press dispatched at `window` has a
+propagation path of just `[window]` and can never reach a `document` listener —
+i.e. the obvious harness makes the leg unfalsifiable. The two accepting controls
+are load-bearing: with no gesture live BOTH owners must still fire (an engine
+that silenced Escape app-wide would be a worse bug than the one being fixed),
+and a non-Escape key during a live gesture must reach both. The census in
+[pane-drag-guardrail.test.ts](src/lib/__tests__/pane-drag-guardrail.test.ts)
+(`PERMITTED_REDERIVED_KEY_CLAIMS`, EMPTY) resolves each
+`window`/`document.addEventListener("keydown", <name>)` handler by NAME and
+brace-matches its body — two looser needles were tried and both were wrong on
+this tree, measured, and the second one is the interesting one: it indicted
+`Marginalia` and `panel-primitives`, whose hits are real key claims on a leaf
+`<button>`. A component key handler is answering for ITSELF, not standing in
+front of every other owner in the app, and its question lives in
+`card-delete-key-door.test.ts`. Measured by neutering: the engine claim takes 1
+behavioural leg, and a hand-written claim planted on a real gesture file takes
+the census.
+
+**Owed, not claimed:** the preview eyeball. Not FSA-masked. Enter margin-edit,
+drag two guides, grab a panel gutter, press Escape — the guides must still be
+where you dragged them and the mode must still be open.
+
 ## Layout-gesture stability
 
 > **A continuous layout gesture — a pane-divider drag, an OS window resize, OR a content drag (drop-mode session) — costs O(1) settles, not O(frames) recomputes.** Every geometry follower either **PARKS** (`parkDuringLayoutGesture`: stash the call, replay exactly once on the gesture's end edge) or **SUPPRESSES** (`useLayoutGestureActive` / `isLayoutGestureActive` / `onLayoutGestureChange`: hide for the gesture, restore on the end edge). Nothing re-solves per frame.

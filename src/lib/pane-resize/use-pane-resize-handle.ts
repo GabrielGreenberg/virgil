@@ -16,7 +16,11 @@
 //     coordinate (no ghost movement). The bit test — not `buttons === 0` —
 //     because releasing the drag button while another is chorded fires only
 //     a pointermove with an updated mask, never a pointerup.
-//   - Escape restores the drag-start value and ends WITHOUT committing.
+//   - Escape restores the drag-start value and ends WITHOUT committing, and
+//     the gesture CLAIMS that press (`claimGestureKey`): a live drag is the
+//     innermost transient thing on screen, so one press ends exactly one
+//     thing. Unclaimed, the same Escape also reached margin-edit's cancel
+//     (discarding every unsaved margin) and the dialog stack (task 471).
 //   - a captured handle REMOVED from the DOM mid-gesture (a conditionally
 //     rendered handle whose branch flips while the owner stays mounted) fires
 //     lostpointercapture at the DOCUMENT, not the detached element — so
@@ -50,7 +54,7 @@ import { mountDragShield, unmountDragShield } from "./drag-shield";
 // The start gate and the missed-release failsafe are shared with the bespoke
 // gestures the engine's shape doesn't fit (the Outline FocusBand's snap-to-row
 // selection) — one definition, one rationale (task 185).
-import { isMissedRelease, isPrimaryDragStart } from "./pointer-invariants";
+import { claimGestureKey, isMissedRelease, isPrimaryDragStart } from "./pointer-invariants";
 
 export interface PaneResizeSpec {
   /** Stable, unique gesture id — carried on the bus info + probe data attrs. */
@@ -316,8 +320,18 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     // non-focusable) handle, so Escape is observed window-level — attached on
     // the start edge, removed on every end path, never per-frame. Capture
     // phase so an open popup's own Escape handling can't shadow the drag.
+    //
+    // …and the gesture CLAIMS the press (task 471). Capture-phase-first is
+    // only half of "the innermost thing answers the key": without the claim
+    // the same press kept travelling to every other Escape owner, so
+    // cancelling a gutter drag while margin-edit mode was on also discarded
+    // every unsaved margin the user had dragged. The claim is the shared
+    // invariant, not a local preventDefault pair — its docblock carries the
+    // full rationale and the stated limit.
     const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") finish("cancel");
+      if (ev.key !== "Escape") return;
+      claimGestureKey(ev);
+      finish("cancel");
     };
 
     // Capture already succeeded above — attach the element-scoped listeners
