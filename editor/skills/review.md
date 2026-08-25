@@ -60,7 +60,22 @@ with `/loop /editor/review`.
    the user sees how much you're about to do.
 
 3. **Triage and dispatch.** Process in this order so cheap, isolated
-   work lands first:
+   work lands first.
+
+   **A route is keyed on the PAIR `(kind, linkedTo.panel)`, not on `kind`
+   alone.** `editor/scripts/ai_request_routing.json` — the frozen projection
+   of `CARD_REGISTRY[kind].aiRequest`, and the same manifest
+   `list_requests.py` drains against — maps **two different card kinds onto
+   one wire `kind`** and separates them by `linkPanel`:
+   `cutter-comment → {kind: "suggestion", linkPanel: "cutter"}` and
+   `revision-comment → {kind: "suggestion", linkPanel: "revisions"}`. Every
+   row `list_requests.py` emits already carries that discriminator
+   (`linkedTo.panel` — from the bridged request's own `linkedTo`, or from the
+   manifest for a `virtual:` card-flag row), so **read it**. Routing a
+   `suggestion` on its kind alone answers a Cutter comment into
+   `revisions.json`: a card in a panel the user was not working in, the Cutter
+   thread left empty, and the Task marked answered. Match the most specific
+   route first — a `(kind, panel)` row beats the kind-only fallback below it.
 
    1. `kind: "bib-review"` → `/editor/answer-bib-review <docPath> <bibKey>`
    2. `kind: "style-merge"` → `/editor/style-merge <docPath>`  *(handles
@@ -74,11 +89,30 @@ with `/loop /editor/review`.
       body of its own, so the note responder handles it — the anchor +
       selectedText carry the context)*
    8. `kind: "todo"` → `/editor/answer-todo-request <docPath> <id>`
-   9. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`
+   9. `kind: "suggestion"` + `panel: "cutter"` →
+      `/editor/answer-cutter-comment <docPath> <id>`
+      *(the Cutter comment's owner — it builds a `CutterSuggestionCard` into
+      `"panel": "cutter"`, so the answer lands in the thread the user wrote in)*
+   10. `kind: "suggestion"` + `panel: "revisions"` →
+       `/editor/answer-revision-request <docPath> <id>`
+       *(the Revisions comment's owner — its three-way shape can answer with a
+       suggestion, a report, or a sibling comment; `draft-suggestion` only ever
+       emits the first)*
+   11. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`
+       *(the fallback, and the case `draft-suggestion` genuinely owns: an
+       **unbridged** suggestion Task — no `linkedTo` at all, so there is no
+       source card and no panel thread to answer into)*
 
    For card-flag virtual requests (`id` starts with `virtual:`), the
    subskill receives the virtual id; `apply_response.py` knows to clear
    the source flag without touching `ai-requests.json`.
+
+   This table is pinned against the manifest by
+   `editor/skills/__tests__/dispatch-coverage.test.ts`: every
+   `(kind, linkPanel)` pair `ai_request_routing.json` declares must have a
+   route here, a wire kind with more than one panel may not be routed by kind
+   alone, and no route may name a skill file that does not exist. Add a
+   flag-bearing kind to `CARD_REGISTRY` and this list must grow with it.
 
    Run each subskill **as a subagent** so the umbrella's context stays
    bounded. Pass through the request's full row from the JSONL as
