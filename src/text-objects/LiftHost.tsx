@@ -57,6 +57,11 @@ import {
 } from "@/components/drop-mode/controller";
 import { removeTransientAnchor } from "@/links/links";
 import { resolveDomForUuid } from "@/lib/marginalia-blocks";
+import {
+  isOverStackIcon,
+  setStackDropTarget,
+} from "@/lib/stack/stack-drop-target";
+import { canCaptureToStack } from "@/floats/stack-capture";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
@@ -272,10 +277,36 @@ export function useLiftHost(): LiftHostApi | null {
 
 interface Props {
   editorRef: RefObject<Editor | null>;
+  /**
+   * The host's stack-capture terminal — the SAME door the `virgil-stack-drop`
+   * window listener enters (`EditorPane`'s `captureKeyToStack`:
+   * `captureFloatToStack` → `addStackItem(item, bibCtx)` → open the strip).
+   * Returns the REPORT: `true` when an item actually landed on the Stack,
+   * `false` on every refusal (a kind the Stack can't carry, a source the
+   * snapshot can't resolve).
+   *
+   * A PROP rather than a window event, and that is the point of the split:
+   * `FloatingPanel` is a low-level shell mounted far from `EditorPane` with no
+   * context path, so its capture has to travel as a global event and cannot be
+   * told whether it landed. `LiftHost` is mounted BY `EditorPane`, so the
+   * report comes back — which is what lets a refused capture fall through to
+   * the popout terminal instead of eating the gesture ("the report is the
+   * permission", AGENTS.md → "The return half").
+   *
+   * Both entry points share ONE terminal, so a lift and a float drag can never
+   * disagree about what a capture does. What each producer does NOT share is
+   * how it retires its own source surface: the float closes its popout, a lift
+   * simply tears down its overlay.
+   *
+   * Optional because a `LiftHost` mounted without one (an isolated test, a
+   * host that carries no Stack) must still lift — it just offers no ring and
+   * no capture terminal, exactly as before task 456.
+   */
+  onCaptureToStack?: (cardKey: string) => boolean;
   children: ReactNode;
 }
 
-export function LiftHost({ editorRef, children }: Props) {
+export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
   // Lifted-overlay gesture state. Non-null while a lift drag is in flight;
   // null otherwise. All 16 graspable kinds drive this — L4a made the lift
   // gesture unconditional (no more per-kind staging).
@@ -319,6 +350,11 @@ export function LiftHost({ editorRef, children }: Props) {
     viewToggleClsRef.current = viewToggleClasses(chrome.menuBar);
   }, [chrome.menuBar]);
 
+  // The stack-capture terminal, mirrored the same way — read once at release,
+  // never per move, so `beginLift` keeps its single stable identity.
+  const captureToStackRef = useRef(onCaptureToStack);
+  captureToStackRef.current = onCaptureToStack;
+
   const beginLift = useCallback(
     ({ ref, cardKey, origin, terminalPolicy }: LiftOptions) => {
       const editor = editorRef.current;
@@ -326,6 +362,30 @@ export function LiftHost({ editorRef, children }: Props) {
       // Guard: a single gesture at a time. `inFlightRef` is the in-flight
       // marker; bail if a gesture is already running.
       if (inFlightRef.current) return;
+
+      // ── The Stack terminal's capability, resolved ONCE (task 456) ──────
+      // "What the hover OFFERS is what the commit ACCEPTS" (tasks 258/321/332).
+      // Both halves below — the illuminated ring in `onMove` and the capture in
+      // `onUp` — read THIS ONE value plus THIS ONE geometry predicate
+      // (`isOverStackIcon`), so they cannot answer from two tables. It is a
+      // registry read whose answer cannot change mid-gesture, which is why it
+      // is resolved here and never per mousemove — the same rule
+      // `canCaptureToStack`'s own header states for the float drag, and the
+      // same reason `resolveSessionPlacements` runs once per drop session.
+      //
+      // Scoped to the "grab" policy, stated rather than assumed: a `"float"`
+      // lift is driven from a float that is ALREADY open, and that surface has
+      // its own Stack terminal — dragging its HEADER onto the icon (task 332),
+      // which CONSUMES the float. Giving its drop-button ghost a second
+      // terminal with copy semantics would put two answers to "what does
+      // releasing this float on the Stack do?" in front of the user; that is a
+      // product question, not a wiring gap. With `canStack` false the float
+      // policy lights no ring and takes no capture branch, so it is
+      // byte-identical to its pre-456 self.
+      const canStack =
+        terminalPolicy === "grab" &&
+        captureToStackRef.current != null &&
+        canCaptureToStack(cardKey);
 
       // Live overlay state mirrored as a local closure variable so the
       // mousemove handler can mutate cursor / mode without a state-read
@@ -569,6 +629,14 @@ export function LiftHost({ editorRef, children }: Props) {
         }
         liveCursorX = mv.clientX;
         liveCursorY = mv.clientY;
+        // The Stack ring (task 456) — the OFFER half. `isOverStackIcon` is
+        // pure arithmetic over the icon's published viewport rect (no DOM
+        // read), and `setStackDropTarget` is equality-bailed at module scope,
+        // so a whole drag that never crosses the icon costs ZERO writes and a
+        // crossing costs exactly one — which is what the content-drag cost law
+        // asks of a per-move signal. The predicate is the SAME one the release
+        // reads, so the ring lights exactly where the release captures.
+        setStackDropTarget(canStack && isOverStackIcon(mv.clientX, mv.clientY));
         const inContent = cacheRef.current.containsContentZone(
           mv.clientX,
           mv.clientY,
@@ -632,6 +700,46 @@ export function LiftHost({ editorRef, children }: Props) {
           upEv.clientX,
           upEv.clientY,
         );
+
+        // ── The Stack terminal (task 456) — the ACCEPT half ────────────────
+        // Read FIRST, ahead of both the ghost-commit and the popout branches,
+        // and from the same `canStack` + `isOverStackIcon` pair the ring read.
+        // The ordering IS the hover≡commit guarantee: wherever the ring was
+        // lit, releasing captures — even in the (narrow-window) geometry where
+        // the icon overlaps the content zone and a content-first read would
+        // instead commit a doc move the user was never offered.
+        //
+        // COPY semantics, deliberately: the document is untouched, matching
+        // float capture (a captured text-object float leaves the doc text in
+        // place) and stack-pull's paste-as-new. If cut-to-stack is wanted, the
+        // flip is one call at this site.
+        if (canStack && isOverStackIcon(upEv.clientX, upEv.clientY)) {
+          // THE REPORT IS THE PERMISSION. `false` means nothing landed on the
+          // Stack — a source deleted mid-gesture, an id the doc no longer
+          // knows — so we do NOT consume the gesture as a capture: fall
+          // through to the popout/move terminals below and leave the user
+          // holding what they grabbed, rather than eating it silently (the
+          // rule task 332 earned on the float path).
+          if (captureToStackRef.current?.(liveKey) === true) {
+            // The session was started at threshold cross; its terminal action
+            // is a capture, not a doc move, so it cancels — same as the popout
+            // branch. `cleanup()` would do this defensively anyway; doing it
+            // here keeps the three terminals symmetric.
+            cancelDropSession();
+            // L3f-2: strip the transient (cardless, invisible) anchor minted
+            // for a plain selection grab — the capture read the marked range
+            // and the mark has no further job. GUARDED, so a grab that reused
+            // a REAL annotation's range never deletes that note. Same call the
+            // move and float terminals make.
+            if (liveRef.kind === "linkedRange") {
+              removeTransientAnchor(editor, liveRef.id);
+            }
+            liveOverlay = null;
+            setOverlay(null);
+            cleanup();
+            return;
+          }
+        }
 
         if (terminalPolicy === "float") {
           // Ghost-ONLY policy (Chip 2): never spawns a float. Over content →
@@ -749,6 +857,14 @@ export function LiftHost({ editorRef, children }: Props) {
         document.documentElement.removeEventListener("mouseleave", onDocLeave);
         if (motionRaf) cancelAnimationFrame(motionRaf);
         motionRaf = 0;
+        // Task 456: the Stack ring is cleared HERE — the ONE end path every
+        // ending funnels through (capture, popout, move-commit, doc-leave,
+        // Escape, and the missed-release bail, which returns without ever
+        // reaching `onUp`). Clearing it per terminal instead would leave the
+        // ring lit after a swallowed mouseup, offering a capture no gesture is
+        // left to accept. Equality-bailed at module scope, so this is a no-op
+        // for every gesture that never crossed the icon.
+        setStackDropTarget(false);
         // Release the single-gesture guard so the next lift can start.
         inFlightRef.current = false;
         // Defensive: if the gesture aborted mid-overlay without committing
