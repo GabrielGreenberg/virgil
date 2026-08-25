@@ -250,11 +250,10 @@ card so the user can drag it into the document.
    `complete` / result `direct-created` (the two-field vocabulary).
 
    Because the entry carries LaTeX braces/backslashes, write the op to a
-   temp file and pass it with `@` (robust JSON quoting). `mkdir -p` the
-   `.virgil/` dir first — a fresh paper folder may not have it yet:
+   **scratch** file and pass it with `@` (robust JSON quoting):
    ```bash
-   mkdir -p "<docPath>/.virgil"
-   cat > "<docPath>/.virgil/find-citation-op.json" <<'JSON'
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "citations",
      "card": { ...the CitationRef (unanchored: true)... },
@@ -262,8 +261,17 @@ card so the user can drag it into the document.
      "summary": "Added <citekey> to bibliography",
      "clearSourceFlag": true }
    JSON
-   python3 editor/scripts/apply_response.py <docPath> complete-task "@<docPath>/.virgil/find-citation-op.json"
+   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
+   The op file is **scratch** — it must **not** land in `<docPath>`, which is
+   the user's (often sync-backed) paper folder where every write is sync
+   traffic (tasks 363/415). `apply_response.py`'s `@` reader resolves any
+   absolute path, so scratch belongs in `$TMPDIR`; a fixed in-folder name also
+   races a concurrent run on the same paper. `mktemp` for a unique name, and
+   `rm` it on **both** paths.
+
    (`entry` is the BibTeX block from step 4, as a JSON string — escape `\`
    as `\\` and newlines as `\n`. Inline `'<op-json>'` works too if you
    quote carefully.) Do **not** touch `references.bib` with the Edit tool;
