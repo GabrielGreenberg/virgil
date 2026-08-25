@@ -37,56 +37,25 @@
 // dispatcher sent the Task somewhere else. The last leg below pins the umbrella
 // against that third, independent statement of the same rule.
 
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 
-// editor/skills/__tests__/ → repo root is three levels up.
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8");
+// The dispatch-table parser is SHARED with `ask-shape-doctrine.test.ts`, which
+// derives its population from the same table (task 453). Two copies of that
+// regex would be the fork this repo legislates against everywhere else.
+import {
+  MANIFEST,
+  REVIEW,
+  parseReviewRoutes,
+  readRepo as read,
+  repoRoot,
+  routingManifest,
+} from "./_review-routes";
 
-const REVIEW = "editor/skills/review.md";
-const MANIFEST = "editor/scripts/ai_request_routing.json";
+const manifest = routingManifest();
 
-const manifest = JSON.parse(read(MANIFEST)) as {
-  routing: Record<string, { kind: string; linkPanel: string }>;
-};
-
-/** A parsed route from the umbrella's step-3 dispatch list. */
-interface Route {
-  kind: string;
-  /** null ⇒ the kind-only fallback (matches any panel, and the unbridged row). */
-  panel: string | null;
-  /** The skill file the route names, repo-relative. */
-  file: string;
-}
-
-// A route line looks like one of
-//   `kind: "todo"` → `/editor/answer-todo-request <docPath> <id>`
-//   `kind: "suggestion"` + `panel: "cutter"` →
-//      `/editor/answer-cutter-comment <docPath> <id>`
-// The arrow may end the line (the skill wraps onto the next one), so parse the
-// two halves independently rather than requiring them on one physical line —
-// this prose is hard-wrapped and future edits will re-wrap it freely.
-function parseRoutes(md: string): Route[] {
-  // Collapse only NEWLINES (not all whitespace) so a wrapped route still reads
-  // as one logical line while list items stay separated by their leading digit.
-  const flat = md.replace(/\n\s*/g, " ");
-  const re =
-    /`kind:\s*"([a-z-]+)"`(?:\s*\+\s*`panel:\s*"([a-z-]+)"`)?\s*→\s*`\/editor\/([a-z-]+)/g;
-  const out: Route[] = [];
-  for (const m of flat.matchAll(re)) {
-    out.push({
-      kind: m[1],
-      panel: m[2] ?? null,
-      file: `editor/skills/${m[3]}.md`,
-    });
-  }
-  return out;
-}
-
-const routes = parseRoutes(read(REVIEW));
+const routes = parseReviewRoutes(read(REVIEW));
 
 /** The wire kinds the manifest declares, and every panel each is produced from. */
 const panelsByKind = new Map<string, Set<string>>();

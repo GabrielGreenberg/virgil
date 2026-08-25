@@ -56,7 +56,7 @@ the user can accept (which queues the textual replacement).
    report instead:
    ```bash
    python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-       --accept-task-kind suggestion --author ai \
+       --accept-task-kind suggestion --anchor <uuid> --author ai \
        --title "<short title>" --body "<findings>"
    ```
    That call drains the Task; emit the report *instead of* a cut, and name

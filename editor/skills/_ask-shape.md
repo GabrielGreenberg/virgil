@@ -69,13 +69,27 @@ documents a call that dies. Three tiers:
   the write:
   ```bash
   python3 editor/scripts/create_card.py <docPath> <requestId> \
-      --kind=report --accept-task-kind suggestion \
+      --kind=report --accept-task-kind suggestion --anchor <uuid> \
       --author ai --title "<short title>" --body "<findings>"
   ```
   `--accept-task-kind` is general (a set union over the default 1:1
   `WORKFLOW_A_KINDS`), so any Task kind may be drained by any carded
   answer. It is the same door `answer-todo-request` uses to answer a
   `todo` Task with a `note`.
+
+  **Always pass `--anchor`, and take it from the row's
+  `paragraphIds[0]`.** A per-card flag that never bridged into
+  `ai-requests.json` — a pre-bridge paper, or a bridge write that failed
+  — reaches you as `virtual:<panel>:<cardId>`, and that row has **no
+  Task** for `create_card.py` to read an anchor off: its virtual branch
+  refuses outright with *"--anchor \<uuid\> is required for a virtual
+  (card-flag) request id"*. So a re-route documented without the flag is
+  a call that dies on precisely the ids a responder gets handed most
+  often. For a REAL id the flag is a no-op — `create_card.py` would have
+  applied `paragraphIds[0]` itself — so this is **one call shape, not a
+  branch**, which is one less thing to get wrong. If the row carries no
+  `paragraphIds` at all, HALT and say so; do not guess an anchor from the
+  request text.
 - **Tier 2 — a builder with a PREREQUISITE YOU DO NOT HOLD** (`citation`):
   `create_card.py --kind=citation` requires `--citekey`, and hard-refuses
   a key that is not already in `references.bib`

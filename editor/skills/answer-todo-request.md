@@ -65,7 +65,7 @@ matters" (write a note). Read the todo and dispatch.
      is **findings**, so emit a **report**, not a note:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --accept-task-kind todo --author ai \
+         --accept-task-kind todo --anchor <uuid> --author ai \
          --title "<short title>" --body "<findings>"
      ```
    - **Analysis / explanation** ("why does this matter", "how does
