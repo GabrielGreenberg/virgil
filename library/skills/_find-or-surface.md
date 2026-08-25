@@ -18,14 +18,25 @@
 
 Sourcing skills — anything that adds, verifies, or cites a real work
 (`find-citation`, `authenticate-bib`, `answer-bib-review`,
-`draft-footnote`, `sync-bib-to-library`, `import-bib`, `merge-bibs`,
-`clean-bibliography`) — share one rule. It is stated **here once** and
-referenced, never re-paraphrased, so it cannot drift skill to skill.
-This set is the mirror image of the drift-guard test's
-`REFERENCING_SKILLS`
-(`library/lib/__tests__/find-or-surface-doctrine.test.ts`): a skill added
-here that drops its pointer, or a new sourcing skill added to the set,
-fails CI until it links back.
+`index-paper`, `merge-bibs`, `clean-bibliography` and their siblings) —
+share one rule. It is stated **here once** and referenced, never
+re-paraphrased, so it cannot drift skill to skill.
+
+That parenthesis is **illustrative, not a census.** The drift guard
+(`library/lib/__tests__/find-or-surface-doctrine.test.ts`) DISCOVERS its
+population from this file's own operative content, in two hops, so the
+two can never be kept in step by hand and fall out of step in practice:
+
+1. every skill that spells a database from the step-3
+   `source-databases` inventory below — it is reaching an
+   authoritative source directly, which is the doctrine's whole subject;
+2. every skill whose failure path §4 prescribes **by name** — a skill the
+   doctrine tells what to do is a skill the doctrine governs.
+
+A skill either links back or sits on the guard's exact-set exemption list
+with a stated reason. **Its stated limit, which is why the parenthesis
+above survives as a cross-check: a skill that sources without naming a
+database and without a §4 bullet is the hole this criterion cannot see.**
 
 **1. Never fabricate.** A source, a bibliographic field, a DOI/ISBN, or a
 `\cite`/`\citet`/`\textcite` command is real evidence about the world. Do
@@ -34,8 +45,10 @@ not invent one. Concretely, never:
 - mint a citation for a work you could not locate in an authoritative
   source;
 - fill a bib field (`doi`, `author`, `title`, `year`, `journal`,
-  `publisher`, …) from guess, from a landing-page URL, or from the
-  model's own recollection;
+  `publisher`, …) from guess, from a URL alone, or from the model's own
+  recollection. (Reading the publisher's or repository's **own record**
+  at that URL is sourcing and is fine — inferring a field from the
+  *shape* of the link is not.);
 - emit a `\citet{key}` for a `key` that is not in `references.bib`;
 - pass off a low-confidence match as authenticated.
 
@@ -87,10 +100,28 @@ includes the interpreter-less forms written here.
 
 **3. Then external authoritative sources.** If the Library has no match,
 search Crossref → OpenAlex → Semantic Scholar → arXiv (and
-OpenLibrary / Google Books / Internet Archive for books) — in that order
-of preference. Each skill's own acceptance bar (DOI-verified,
+OpenLibrary / Google Books / Internet Archive / WorldCat for books) — in
+that order of preference. Each skill's own acceptance bar (DOI-verified,
 multi-source agreement thresholds, the pre-digital route) governs what
-counts as "found"; the doctrine does not relax it.
+counts as "found"; the doctrine does not relax it — a per-skill tier
+ladder is what the doctrine EXPECTS a member to have, never evidence the
+skill sits outside it.
+
+The same set, machine-readable, is the guard's hop-1 needle set. A
+database added here widens the census automatically; a skill that starts
+naming one is covered by shipping.
+
+```source-databases
+# one name per line; `#` starts a comment. Order = preference order.
+Crossref            # articles / preprints
+OpenAlex
+Semantic Scholar
+arXiv
+OpenLibrary         # books
+Google Books
+WorldCat
+Internet Archive
+```
 
 **4. If still not found, surface the gap — never fake it.** Take the
 failure path the skill provides, rather than inventing content:
@@ -102,6 +133,21 @@ failure path the skill provides, rather than inventing content:
   not "authenticate" a guess.
 - **`answer-bib-review`** → leave the unverifiable field as-is and name it
   in the reply as still-unverified.
+- **`import-bib`** / **`sync-bib-to-library`** (delegating skills) → the
+  authentication you delegate still belongs to you at YOUR decision
+  points. A delegated verdict of `unverified` / `failed`, or a library
+  match you cannot tell apart from its neighbours, is folded in as
+  *flagged*, never resolved by picking one: passing off a low-confidence
+  match as authoritative is §1's fourth bullet with an extra hop in front
+  of it.
+- **`index-paper`** → its tier ladder IS its acceptance bar; a field it
+  cannot corroborate stays empty, and a value inferred from the document
+  itself is surfaced in the entry's `note` (`[inferred from source]`)
+  rather than passed off as sourced.
+- **`ai-requests`** (`bib` scope) → a user note asking you to fill a
+  field is a request, not a licence: fill it from a real source or reply
+  that you could not, and never let "the note is the spec" become "the
+  note is the evidence."
 - **`draft-footnote`** and prose skills → write the prose without the
   unresolved cite and file a missing-bibkey **todo card** (Workflow B:
   `create_card.py <docPath> --kind=todo --anchor <uuid> --body "…"`);

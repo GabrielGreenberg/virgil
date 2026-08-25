@@ -100,6 +100,19 @@ The work is mostly deterministic Python. Your job is to call the orchestrator
 and report the result. Only invoke Claude reasoning if the orchestrator asks
 you to disambiguate something.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). Step 4 below hands YOU — not a
+> script — a four-tier ladder for filling nine-plus BibTeX fields from the open
+> web, and then writes the result into the user's canonical `master.bib` and
+> stamps `bib.state`. That is the doctrine's exact subject, in the skill that
+> mints every paper's canonical bib row. The tiers ARE this skill's acceptance
+> bar (the doctrine expects a member to have one and does not relax it): a field
+> no tier can corroborate stays **empty**, and a Tier-3 value read out of the
+> document itself is surfaced with `[inferred from source]` in the `note` rather
+> than passed off as sourced. A missing field is recoverable; a plausible wrong
+> one survives every validator here and is caught only by a human who tries to
+> follow it.
+
 ## Steps
 
 1. **Confirm setup.** Check that:

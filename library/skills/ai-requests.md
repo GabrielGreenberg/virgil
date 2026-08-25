@@ -55,6 +55,14 @@ directory).
 > Paper-specific analyses or reports → `papers/<citekey>/notes/<slug>.md`.
 > Never drop a markdown file at the library root.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). The `bib` scope below is the
+> only instruction in either silo that tells you to fill bibliographic fields
+> straight from a user's free-text note — and it deliberately opts OUT of
+> `/authenticate-bib`'s tier ladder, so the acceptance bar it would have
+> inherited has to come from here instead. **The note is the SPEC, never the
+> EVIDENCE.**
+
 ## What counts as an AI request
 
 A queue entry is an AI request when **any** of these is true:
@@ -111,12 +119,21 @@ A queue entry is an AI request when **any** of these is true:
    Then act:
 
    - **`bib` scope (`kind=authenticate` with note):** handle the note
-     directly. The note is the spec. If it asks you to verify a field,
-     verify it (web search / Crossref / OpenAlex as appropriate). If it
-     asks you to fill missing fields, fill them. Stage the result via
-     `/apply-bib-edit <citekey>` (or write a `bib-edit` queue entry).
-     Do **not** fall through to the standard `/authenticate-bib`
-     three-tier search unless the note specifically asks for it.
+     directly. The note is the spec — it says WHICH fields to work on;
+     it is never the EVIDENCE for what goes in them
+     ([_find-or-surface.md](_find-or-surface.md)). If it asks you to
+     verify a field, verify it (Library `master.bib` first, then web
+     search / Crossref / OpenAlex as appropriate). If it asks you to
+     fill missing fields, fill each one **from a real source you
+     actually located** — and where you could not, leave it empty and
+     say so in your reply, naming the field and what you searched. A
+     field the user asked for and you could not source is a surfaced
+     gap, which is the success mode; a plausible value from
+     recollection is the failure mode, and it will outlive every check
+     in this pipeline. Stage the result via `/apply-bib-edit <citekey>`
+     (or write a `bib-edit` queue entry). Do **not** fall through to
+     the standard `/authenticate-bib` three-tier search unless the note
+     specifically asks for it — that narrows the SEARCH, never the bar.
 
    - **`paper` scope (`kind=paper-review`):** the note is about the
      paper text in `papers/<citekey>/main.tex`. Read the file, find the
