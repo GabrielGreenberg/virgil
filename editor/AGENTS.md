@@ -140,7 +140,15 @@ editor/
 │   ├── bib_match_library.py    classify paper bib entries vs the library
 │   ├── rename_citekey.py       pure citekey-rename rewriters (rewrite_tex /
 │   │                           rewrite_citations_json) — shared with the
-│   │                           apply_response renameCitekey op; no standalone write
+│   │                           apply_response renameCitekey op; no standalone write.
+│   │                           Its vocabulary is cite_commands.py, not a private list
+│   ├── bib_family.py           THE bib-family door (task 464): which family does
+│   │                           this doc use? stored bibPackage > live preamble
+│   │                           load > live cite usage > natbib. Every cite-emitting
+│   │                           path asks it; nothing re-derives it
+│   ├── cite_commands.py        the cite-command VOCABULARY + family buckets —
+│   │                           ported twin of src/lib/cite-commands.ts (pinned by
+│   │                           the bib-family-authority parity leg)
 │   ├── reflect.py              dev-loop memo writer (chip 17): gated on
 │   │                           VIRGIL_DEV; reads the Task result, derives the
 │   │                           tier, writes editor/dev/memos/ (no paper write)

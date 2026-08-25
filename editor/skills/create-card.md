@@ -86,8 +86,13 @@ full reasoning.
 - `--ai-request` — set a `report-request`'s `aiRequest` flag (default off).
 - `--citekey "k1[,k2…]"` — bib key(s) for `citation` (must already be in
   `references.bib`).
-- `--cite-command <name>` — cite command for `citation`, e.g. `citet` / `citep`
-  (default `citet`).
+- `--cite-command <name>` — cite command for `citation`, e.g. `citet` / `citep`.
+  **Omit it and the default comes from the DOCUMENT's bib family**
+  (`bib_family.py`: stored `bibPackage` > live preamble load > live cite usage
+  > natbib) — `citet` under natbib, `textcite` under biblatex. An explicit
+  value still wins; one that is family-incompatible lands with a `warnings`
+  entry on the result json rather than being rewritten (the app's locked
+  "warn, never rewrite" decision for this question).
 - `--label "<l>"` / `--item "<row>"` — `\label{}` / a `\pex` row for `example`
   (`--item` is repeatable → a `\pex`/`\a` list; otherwise `--body` → a single `\ex`).
 - `--margin left|right` — **deprecated, ignored** (accepted so a stale bundle

@@ -204,7 +204,7 @@ card so the user can drag it into the document.
 5. **Build the CitationRef** (`CitationRef`, `src/lib/types.ts`):
    ```json
    { "id": "<new-uuid>",
-     "command": "\\citet{<citekey>}",
+     "command": "\\<the family's command>{<citekey>}",
      "keys": ["<citekey>"],
      "createdAt": "<ISO now>",
      "unanchored": true
@@ -213,16 +213,35 @@ card so the user can drag it into the document.
    Set `unanchored: true` — the user drags the card to anchor it; the
    editor strips the flag on drop.
 
-   Cite-command selection:
-   - **biblatex doc** (detect via `\usepackage{biblatex}`): use
-     `\textcite{...}`.
-   - **natbib doc**: default to `\citet{...}`. If the request names an
-     existing citekey, grep `document.tex` for `\cite*{<that-key>}`
-     and match the cite-command of its first in-prose occurrence
-     (so a collision-suffix entry like `grafton1997a` inherits the
-     style used for `grafton1997`). If the request names a section,
-     match the dominant style in that section's prose. The user can
-     re-style on drag.
+   Cite-command selection — **ask the door, never scan for the package
+   yourself** ([_latex-allowlist.md](_latex-allowlist.md) § Citations):
+
+   ```bash
+   python3 editor/scripts/bib_family.py <docPath>
+   # → {"family":"biblatex","source":"stored","textual":"textcite", …}
+   ```
+
+   Take `textual` as the default command (`\citet` under natbib,
+   `\textcite` under biblatex). This step USED to carry its own
+   `\usepackage{biblatex}` needle and fall through to `\citet` on every
+   miss — and that needle missed 4 of the 6 real biblatex spellings
+   (`\usepackage[backend=biber]{biblatex}`, `\RequirePackage{biblatex}`,
+   `\usepackage{biblatex-chicago}`, `\usepackage{amsmath,biblatex}`), read a
+   commented-out load as live, and never consulted the stored `bibPackage`
+   the user may have set by hand.
+
+   Then refine the VOICE **within that family** from the document itself:
+   - If the request names an existing citekey, grep the `.tex` for
+     `\cite*{<that-key>}` and match the cite-command of its first in-prose
+     occurrence (so a collision-suffix entry like `grafton1997a` inherits the
+     style used for `grafton1997`).
+   - If the request names a section, match the dominant style in that
+     section's prose.
+   - A matched command from a DIFFERENT family than the door reports is the
+     document disagreeing with itself — keep the door's family and pick the
+     matching voice in it (textual ↔ textual, parenthetical ↔ parenthetical).
+
+   The user can re-style on drag.
 
 6. **Apply — the citation card and the `.bib` entry land together, atomically.**
    One `complete-task` op carries *both* the `CitationRef` card and the

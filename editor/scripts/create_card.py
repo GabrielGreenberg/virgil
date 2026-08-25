@@ -53,10 +53,15 @@ import re
 import secrets
 import sys
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import apply_response as AR
+from bib_family import (
+    cite_command_for,
+    classify_cite_family,
+    resolve_bib_family,
+)
 from _common import (
     die,
     find_bib_file,
@@ -205,6 +210,7 @@ class KindBuild:
     summary: str         # one-line toast / synthesized-Task text
     comment_label: str   # noun used in the L2 sibling comment
     detail: str          # body snippet shown in the L2 sibling comment
+    warnings: list[str] = field(default_factory=list)  # surfaced on the result json
 
 
 def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
@@ -233,7 +239,30 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     if not keys:
         die("--citekey <key[,key2…]> is required for --kind=citation")
     _require_bib_keys(doc, keys)
-    cmd = (a.cite_command or "citet").lstrip("\\")
+
+    # The document's bib family is not this script's to choose. Ask the ONE
+    # door (bib_family.py: stored `bibPackage` > live preamble load > live cite
+    # usage > natbib) and take that family's TEXTUAL command as the default.
+    # This used to be the literal `"citet"` — natbib-only, and UNDEFINED under
+    # biblatex, so on a biblatex paper this line spliced a non-compiling command
+    # straight into the user's `.tex` (task 464).
+    family = resolve_bib_family(doc)
+    warnings: list[str] = []
+    if a.cite_command:
+        cmd = a.cite_command.lstrip("\\")
+        # An explicit --cite-command still WINS. A family-incompatible one is
+        # WARNED, never rewritten — the app's locked decision for this exact
+        # question (`reconcileBibFamily`: warn, never rewrite), so a caller who
+        # means it can still say it.
+        pinned = classify_cite_family(cmd)
+        if pinned and pinned != family:
+            warnings.append(
+                f"\\{cmd} is {pinned}-only but this document resolves to {family}"
+                f" — it will not compile here unless the preamble changes."
+                f" ({family} textual: \\{cite_command_for(family)})"
+            )
+    else:
+        cmd = cite_command_for(family, "textual")
     command = "\\" + cmd + "{" + ",".join(keys) + "}"
     cid = _gen_marker_id(doc, "vcid", _sidecar_ids(doc, "citations.json", "citations"))
     return KindBuild(
@@ -245,6 +274,7 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
         summary=f"Added citation {command}",
         comment_label="citation",
         detail=command,
+        warnings=warnings,
     )
 
 
@@ -562,6 +592,8 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
     result["cardId"] = build.result_id
     result[build.id_key] = build.result_id
     result["subcommand"] = sub
+    if build.warnings:
+        result["warnings"] = build.warnings
     return result
 
 
@@ -672,7 +704,7 @@ def main(argv: list[str]) -> int:
                    help="set the report-request's aiRequest flag (default off)")
     # citation
     p.add_argument("--citekey", help="bib key(s), comma-separated (citation)")
-    p.add_argument("--cite-command", dest="cite_command", help="cite command name, e.g. citet/citep (default citet)")
+    p.add_argument("--cite-command", dest="cite_command", help="cite command name, e.g. citet/citep; DEFAULTS from the document's bib family (bib_family.py) — citet under natbib, textcite under biblatex")
     # example
     p.add_argument("--label", help="\\label{} for an example block")
     p.add_argument("--item", action="append", help="an example row (repeatable → \\pex/\\a list)")
