@@ -40,11 +40,19 @@
 // inviting direct invocation. Invoked standalone, an agent that never reads
 // a link never sees the doctrine.
 //
-// `_`-prefixed files are excluded by construction rather than by allowlist:
-// an include is transcluded into a skill that carries its own link and
-// cannot be invoked standalone at all, so it has no "the agent never sees
-// the doctrine" failure mode. The one include that is itself a doctrine
-// (`_latex-output.md`, the library appendix) gets its own leg below.
+// `_`-prefixed files are excluded by construction rather than by allowlist,
+// and the TRUE reason is not transclusion — nothing transcludes anything;
+// every include is reached by an ordinary markdown link (task 461 retired
+// that myth from the two include headers that asserted it). The reason is
+// reachability: an include is not a slash command in either silo's mirror,
+// so it is only ever read by an agent that FOLLOWED a link out of a skill
+// — and the skill it came from is already held to carrying a doctrine
+// pointer by the coverage leg below. So an include has no "invoked
+// standalone, the agent never sees the doctrine" failure mode. (That the
+// links themselves resolve is a separate obligation, asserted by
+// `skill-include-links.test.ts`.) The one include that is itself a
+// doctrine (`_latex-output.md`, the library appendix) gets its own leg
+// below.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";

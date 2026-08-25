@@ -1,8 +1,25 @@
-<!-- LaTeX-output constraints for the deep-index subskill family.
-     Transcluded by deep-index.md (and any subskill that needs to
-     reference the allowed command vocabulary).
-     Do not surface this file as a slash command — the build script
-     filters leading-underscore files out of the command mirror. -->
+<!-- LaTeX-output constraints for the deep-index subskill family — the
+     library APPENDIX to the cross-silo `_latex-allowlist.md` doctrine.
+
+     SSOT: this file owns the extraction-only vocabulary below (the
+     ```latex-appendix``` block); the shared vocabulary it extends lives
+     in `_latex-allowlist.md`, which it links rather than restates. It is
+     reached by LINK, never transcluded — no builder implements any
+     include syntax; the bundle simply ships this file beside the skills,
+     which is what makes `[_latex-output.md](_latex-output.md)` resolve on
+     a user's library. Do not paraphrase this vocabulary back into a
+     skill; link to it.
+
+     Obliged to carry a link to one of the two: every `.tex`-writing skill
+     in either silo, a population DISCOVERED from the doctrines' own
+     command inventories by
+     `library/lib/__tests__/latex-allowlist-doctrine.test.ts`, which
+     accepts either `_latex-allowlist.md` or this appendix. That link
+     resolving locally is asserted by
+     `library/lib/__tests__/skill-include-links.test.ts`.
+
+     Not a slash command — the leading underscore filters it out of the
+     command mirror in both build scripts. -->
 
 ## LaTeX output constraints
 
