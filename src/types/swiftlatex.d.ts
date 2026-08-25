@@ -11,6 +11,26 @@ export interface TexCacheDumpEntry {
   bytes: ArrayBuffer;
 }
 
+/**
+ * One TeX asset streamed out of the worker the INSTANT it finished
+ * downloading (task 454), rather than at the end of the compile. Same shape as
+ * a `dumpNewCache` entry — the two feed the same write-through sink, which
+ * dedups by cacheKey + byte hash, so an asset arriving on both channels is
+ * written once.
+ */
+export type TexAssetStreamEntry = TexCacheDumpEntry;
+
+/**
+ * A package DOWNLOAD that was attempted and failed (mirror 5xx, rate limit,
+ * network error, per-file timeout). Distinct from an `offlineMisses` entry,
+ * which was never attempted because the worker was offline or the mirror
+ * circuit breaker had already tripped.
+ */
+export interface TexDownloadFailure {
+  name: string;
+  reason: string;
+}
+
 declare global {
   interface PdfTeXCompileResult {
     pdf?: Uint8Array;
@@ -22,6 +42,11 @@ declare global {
      * the wrapper's compileLaTeX; empty when the compile ran online.
      */
     offlineMisses?: string[];
+    /**
+     * PATCHED (virgil, task 454): packages whose download was ATTEMPTED and
+     * failed. `offlineMisses` names packages never attempted; these were.
+     */
+    downloadFailures?: import("./swiftlatex").TexDownloadFailure[];
   }
 
   class PdfTeXEngine {
@@ -50,6 +75,21 @@ declare global {
      * synchronous cross-origin XHR.
      */
     setOffline(value: boolean): void;
+    /**
+     * PATCHED (virgil, task 454): register a sink called with each TeX asset
+     * the worker downloads, the INSTANT it lands — not at the end of the
+     * compile. This is what makes a timed-out compile's downloads durable:
+     * `dumpNewCache` is a request/response round trip and cannot run while the
+     * worker is blocked inside a synchronous compile, so a compile that times
+     * out would otherwise discard every byte it fetched.
+     */
+    onAsset(cb: (entry: import("./swiftlatex").TexAssetStreamEntry) => void): void;
+    /**
+     * PATCHED (virgil, task 454): register a sink called with an asset's name
+     * when its download STARTS. The compile's only live progress signal — the
+     * worker is otherwise silent for the whole of a synchronous compile.
+     */
+    onFetchProgress(cb: (name: string) => void): void;
   }
 
   interface Window {

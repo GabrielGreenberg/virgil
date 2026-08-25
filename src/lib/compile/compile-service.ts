@@ -48,6 +48,13 @@ import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-fil
 import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { detectBibtexFailure } from "@/lib/compile/bibtex-log";
 import { detectPassPlan } from "@/lib/compile/reference-resolution";
+import {
+  beginCompile,
+  finishCompile,
+  noteAssetFetch,
+  notePass,
+  notePhase,
+} from "@/lib/compile/compile-progress";
 import type {
   BibtexStatus,
   CompileInput,
@@ -61,6 +68,31 @@ import type {
 // budget for snappy recovery. Module constants so they're easy to tune.
 const COLD_TIMEOUT_MS = 180_000;
 const WARM_TIMEOUT_MS = 60_000;
+
+/**
+ * TASK 454 — CONTINUATION AFTER A PRODUCTIVE TIMEOUT.
+ *
+ * A first compile of a paper that uses tikz/pgf (or forest, which loads the
+ * same family) pulls several HUNDRED files from the mirror over SERIAL
+ * synchronous XHR. That can exceed even the generous COLD budget — and before
+ * task 454 exceeding it was fatal in the strongest sense: every downloaded byte
+ * lived only in the worker's in-memory kpse cache, `recover()` destroyed the
+ * worker, and the next attempt restarted from zero. The compile could never
+ * converge, however many times the user clicked.
+ *
+ * Two changes make convergence structural. Downloads are now DURABLE the moment
+ * they land (`attachAssetStream`), so every attempt is strictly shorter than
+ * the last; and a timeout that DOWNLOADED SOMETHING is continued here rather
+ * than reported as a dead end. Bounded twice — by attempt count and by a total
+ * wall-clock budget — because "keep going while it looks productive" with no
+ * ceiling is a hang wearing a retry's clothes.
+ *
+ * A timeout that fetched NOTHING is a real hang (a crashed worker, a stuck
+ * pass) and is reported immediately: continuing it would just spend the whole
+ * budget re-hanging.
+ */
+const MAX_COLD_ATTEMPTS = 4;
+const TOTAL_COMPILE_BUDGET_MS = 10 * 60_000;
 
 // File extensions whose bytes are TEXT we may want to inject requirements into
 // or decode for detection. Everything else (images, PDFs) is fed as raw bytes.
@@ -122,6 +154,13 @@ class CompileService {
   private booted = false;
   /** Single in-flight compile, so concurrent triggers serialize. */
   private inFlight: Promise<CompileResult> | null = null;
+  /**
+   * Packages the worker downloaded during the CURRENT attempt. Bumped by the
+   * engine's streaming progress channel; read by the continuation loop to tell
+   * a productive timeout (keep going — every byte is cached now) from a real
+   * hang (stop and say so). Task 454.
+   */
+  private assetsThisAttempt = 0;
 
   /**
    * Compile the given paper files. Serializes against any in-flight compile.
@@ -131,21 +170,73 @@ class CompileService {
     // can't collide with a live worker. We chain (not reject) so a second
     // Compile click queues behind the first.
     const run = (this.inFlight ?? Promise.resolve()).then(
-      () => this.runCompile(input),
-      () => this.runCompile(input),
+      () => this.runWithContinuation(input),
+      () => this.runWithContinuation(input),
     );
     // Track only the settle, never expose the internal chain.
     this.inFlight = run.catch(() => undefined) as Promise<CompileResult>;
     return run;
   }
 
+  /**
+   * The attempt loop (task 454). A timeout that DOWNLOADED packages is
+   * continued against the now-warmer persistent cache; anything else is
+   * returned as-is. See `MAX_COLD_ATTEMPTS` above for why this is bounded twice.
+   */
+  private async runWithContinuation(input: CompileInput): Promise<CompileResult> {
+    const startedAt = Date.now();
+    let attempt = 1;
+    let totalFetched = 0;
+
+    for (;;) {
+      this.assetsThisAttempt = 0;
+      beginCompile(input.docId, {
+        attempt,
+        startedAt,
+        assetsFetched: totalFetched,
+      });
+
+      const result = await this.runCompile(input);
+      const fetchedThisAttempt = this.assetsThisAttempt;
+      totalFetched += fetchedThisAttempt;
+
+      const productiveTimeout =
+        result.status === "timeout" && fetchedThisAttempt > 0;
+      const budgetLeft = Date.now() - startedAt < TOTAL_COMPILE_BUDGET_MS;
+      const attemptsLeft = attempt < MAX_COLD_ATTEMPTS;
+      const aborted = input.signal?.aborted === true;
+
+      if (productiveTimeout && budgetLeft && attemptsLeft && !aborted) {
+        console.info(
+          `[compile] attempt ${attempt} timed out after downloading ${fetchedThisAttempt} package(s); ` +
+            `they are cached now — continuing with a fresh budget.`,
+        );
+        attempt += 1;
+        continue;
+      }
+
+      const finished: CompileResult = {
+        ...result,
+        attempts: attempt,
+        assetsFetched: totalFetched,
+      };
+      finishCompile(
+        input.docId,
+        finished.status === "ok" ? "ok" : finished.status,
+        outcomeMessage(finished),
+      );
+      return finished;
+    }
+  }
+
   private async runCompile(input: CompileInput): Promise<CompileResult> {
-    const { files, mainTexFilename, signal } = input;
+    const { files, mainTexFilename, signal, docId } = input;
     if (signal?.aborted) return this.abortedResult();
 
     // 1. Boot / reuse the engine (health-checked, reset-on-failure).
     let engine: PdfTeXEngine;
     const wasBooted = this.booted;
+    if (!wasBooted) notePhase(docId, "booting");
     try {
       engine = await this.ensureEngine();
     } catch (err) {
@@ -162,6 +253,22 @@ class CompileService {
     }
 
     if (signal?.aborted) return this.abortedResult();
+
+    // Task 454 — the compile's only live signal. The worker is blocked inside a
+    // synchronous pass for the whole compile, so nothing but its own per-fetch
+    // postMessage can tell the main thread that anything is happening. Wired
+    // per attempt because the docId is per compile; the engine is a singleton
+    // and compiles are serialized, so at most one sink is ever live.
+    try {
+      engine.onFetchProgress?.((name) => {
+        this.assetsThisAttempt += 1;
+        noteAssetFetch(docId, name);
+      });
+    } catch {
+      // never fail a compile on the progress channel
+    }
+
+    notePhase(docId, "preparing");
 
     // 2. Prepare files: decode text (fatal), apply requirements to the main
     //    .tex in-memory, rewrite biblatex backend, feed raw bytes for the rest.
@@ -205,7 +312,10 @@ class CompileService {
     // "package X unavailable offline" LatexError.
     const offlineMisses = new Set<string>();
 
+    const downloadFailures: { name: string; reason: string }[] = [];
+
     for (let pass = 1; pass <= passPlan.passes; pass++) {
+      notePass(docId, pass, passPlan.passes);
       if (signal?.aborted) {
         // Keep any good PDF we already have.
         if (lastGood) break;
@@ -237,6 +347,12 @@ class CompileService {
           ranPasses,
           bibtexStatus: "absent",
           diagnostics: [],
+          // Task 454: whatever the worker downloaded before it timed out is
+          // already persisted (the streaming channel wrote each asset through
+          // as it landed), so the continuation loop can tell a PRODUCTIVE
+          // timeout from a hang. `dumpNewCache` cannot help here — the worker
+          // is still blocked inside its pass and will never answer it.
+          assetsFetched: this.assetsThisAttempt,
         };
       }
 
@@ -248,6 +364,12 @@ class CompileService {
 
       // P1: accumulate any offline package misses the worker reported.
       for (const miss of result.offlineMisses ?? []) offlineMisses.add(miss);
+      // Task 454: packages whose download was ATTEMPTED and failed. Distinct
+      // from an offline miss — the mirror was reachable enough to answer, and
+      // answered badly (5xx / rate limit / stall). Surfaced so an unreachable
+      // mirror produces a NAMED failure instead of a compile that silently
+      // renders without half its packages.
+      for (const f of result.downloadFailures ?? []) downloadFailures.push(f);
 
       // P1: write-through the assets the worker fetched this pass to the
       // persistent IndexedDB cache (offline-after-first-online-fetch). Only NEW
@@ -270,6 +392,7 @@ class CompileService {
     // 6. Assemble the result.
     const bibtexStatus: BibtexStatus = detectBibtexFailure(lastLog);
     const misses = offlineMisses.size > 0 ? [...offlineMisses] : undefined;
+    const failures = downloadFailures.length > 0 ? downloadFailures : undefined;
 
     if (lastGood) {
       // A PDF exists (status 0 for the fallback's purposes — never synthesize an
@@ -280,7 +403,8 @@ class CompileService {
         : parseTexLog(lastLog, 0).filter((d) => d.severity !== "error");
       // An offline miss makes even a produced PDF degraded (a package the doc
       // asked for was unavailable, so the output may be missing content).
-      const degraded = hardFailure || bibtexStatus === "failed" || !!misses;
+      const degraded =
+        hardFailure || bibtexStatus === "failed" || !!misses || !!failures;
       return {
         status: degraded ? "degraded" : "ok",
         pdf: lastGood.pdf,
@@ -289,6 +413,7 @@ class CompileService {
         bibtexStatus,
         diagnostics,
         offlineMisses: misses,
+        downloadFailures: failures,
       };
     }
 
@@ -302,6 +427,7 @@ class CompileService {
       bibtexStatus,
       diagnostics: parseTexLog(lastLog, lastPassStatus || 1),
       offlineMisses: misses,
+      downloadFailures: failures,
     };
   }
 
@@ -442,6 +568,40 @@ class CompileService {
       bibtexStatus: "absent",
       diagnostics: [],
     };
+  }
+}
+
+/**
+ * A one-line, user-facing account of a non-ok outcome, for the progress record
+ * the PDF pane renders. The compile's failure has to reach a PIXEL — task 392's
+ * rule, one subsystem over: a gate that stops working says so.
+ */
+function outcomeMessage(result: CompileResult): string | null {
+  const failures = result.downloadFailures ?? [];
+  switch (result.status) {
+    case "ok":
+      return null;
+    case "degraded":
+      if (failures.length > 0) {
+        return `${failures.length === 1 ? "A package" : `${failures.length} packages`} could not be downloaded — some content may be missing.`;
+      }
+      if ((result.offlineMisses?.length ?? 0) > 0) {
+        return "Some packages were unavailable offline — some content may be missing.";
+      }
+      if (result.bibtexStatus === "failed") {
+        return "The bibliography step failed — citations may show as [?].";
+      }
+      return "A later compile pass failed — cross-references or the ToC may be stale.";
+    case "timeout":
+      return (result.assetsFetched ?? 0) > 0
+        ? `Still downloading LaTeX packages (${result.assetsFetched} so far). They are cached now — press Compile again to continue.`
+        : "The compile took too long and was stopped. The engine has been reset — try again.";
+    case "boot-failed":
+      return "The LaTeX engine could not start. Check your network connection and try again.";
+    default:
+      return failures.length > 0
+        ? `${failures.length === 1 ? "A package" : `${failures.length} packages`} could not be downloaded, and the compile failed. See the Errors panel.`
+        : "The compile failed. See the Errors panel for details.";
   }
 }
 

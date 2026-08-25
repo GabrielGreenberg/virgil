@@ -14,6 +14,7 @@ import {
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { compileService } from "@/lib/compile/compile-service";
+import { finishCompile } from "@/lib/compile/compile-progress";
 import type { CompileResult } from "@/lib/compile/compile-types";
 import type { CompileStatus } from "@/lib/compile/compile-types";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
@@ -120,14 +121,23 @@ export function useLatexCompile(
             const mismatch = detectDocumentClassMismatch(mainTexText);
             if (mismatch) {
               const resolution = await onDocumentClassMismatch(mismatch);
-              if (resolution.kind === "cancel") return;
+              if (resolution.kind === "cancel") {
+                finishCompile(docId, "error", "Compile cancelled.");
+                return;
+              }
               if (resolution.kind === "switch") {
                 const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
-                if (!handle) return;
+                if (!handle) {
+                  finishCompile(docId, "error", "No document handle — compile stopped.");
+                  return;
+                }
                 try {
                   await writeTex(handle, rewritten);
                 } catch (err) {
-                  if (isStalePipelineError(err)) return;
+                  if (isStalePipelineError(err)) {
+                    finishCompile(docId, "error", "The document was closed — compile stopped.");
+                    return;
+                  }
                   throw err;
                 }
                 await flushDoc(docId);
@@ -153,6 +163,7 @@ export function useLatexCompile(
       const result = await compileService.compile({
         files,
         mainTexFilename: texFilename,
+        docId,
       });
 
       setLastLog(result.log ?? "");
@@ -162,7 +173,10 @@ export function useLatexCompile(
         result.status === "ok" || result.status === "degraded" ? 0 : 1;
       setLastStatus(numericStatus);
 
-      const offlineErrors = offlineMissErrors(result, salt);
+      const offlineErrors = [
+        ...offlineMissErrors(result, salt),
+        ...downloadFailureErrors(result, salt),
+      ];
 
       if ((result.status === "ok" || result.status === "degraded") && result.pdf) {
         // A PDF exists. Surface any warning-level diagnostics (degraded keeps
@@ -228,10 +242,20 @@ export function useLatexCompile(
       console.error(
         `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
       );
-      const { title, message } = failureMessage(result.status, result.log);
+      const { title, message } = failureMessage(
+        result.status,
+        result.log,
+        result.assetsFetched ?? 0,
+      );
       void systemDialog.alert({ title, message, tone: "danger" });
     } catch (err) {
       console.error("[compile] error:", err);
+      // Task 454: the progress channel must reach a terminal state on EVERY
+      // path out of this function, or the PDF pane says "Compiling…" forever
+      // for a compile that has already ended. The service publishes its own
+      // outcome for every result it returns; this is the throw path it cannot
+      // see (a storage read that failed, a stale-pipeline abort).
+      finishCompile(docId, "error", err instanceof Error ? err.message : String(err));
       void systemDialog.alert({
         title: "Compile failed",
         message: err instanceof Error ? err.message : String(err),
@@ -302,18 +326,59 @@ function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
   return errors;
 }
 
+/**
+ * Turn the compile result's `downloadFailures` into `LatexError` entries so a
+ * mirror that answered badly is NAMED rather than silently leaving the document
+ * short of half its packages (task 454). Distinct from an offline miss: these
+ * were attempted and the network answered.
+ */
+function downloadFailureErrors(result: CompileResult, salt: string): LatexError[] {
+  const failures = result.downloadFailures;
+  if (!failures || failures.length === 0) return [];
+  const seen = new Set<string>();
+  const errors: LatexError[] = [];
+  let ordinal = 0;
+  for (const f of failures) {
+    const pkg = f.name.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
+    if (seen.has(pkg)) continue;
+    seen.add(pkg);
+    const message = `Could not download package ${pkg}`;
+    errors.push({
+      id: makeErrorId({ source: "compile", line: 0, message, ordinal: ordinal++, salt }),
+      source: "compile",
+      severity: "error",
+      line: 0,
+      message,
+      detail:
+        `The TeX package mirror did not return this file (${f.reason}). Check your network connection and compile again — packages already downloaded are cached, so a retry resumes where this one stopped.`,
+      ruleId: "package-download-failed",
+    });
+  }
+  return errors;
+}
+
 /** Map a non-PDF CompileResult status to a user-facing alert. */
 function failureMessage(
   status: CompileStatus,
   _log: string,
+  assetsFetched = 0,
 ): { title: string; message: string } {
   switch (status) {
     case "timeout":
-      return {
-        title: "Compile timed out",
-        message:
-          "The compile took too long and was stopped. The engine has been reset — try compiling again.",
-      };
+      // Task 454: a timeout that DOWNLOADED packages is not a dead end — every
+      // one of them is cached now, so the next attempt resumes from there. Say
+      // that, rather than implying the work was thrown away (which is exactly
+      // what used to happen).
+      return assetsFetched > 0
+        ? {
+            title: "Still downloading LaTeX packages",
+            message: `This paper needs packages that aren't cached yet — ${assetsFetched} downloaded so far, and they're saved. Press Compile again to carry on from here.`,
+          }
+        : {
+            title: "Compile timed out",
+            message:
+              "The compile took too long and was stopped. The engine has been reset — try compiling again.",
+          };
     case "boot-failed":
       return {
         title: "Compile engine failed to start",

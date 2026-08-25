@@ -118,7 +118,7 @@ describe("CompileService — happy path", () => {
   it("returns status ok with the PDF for a clean single-pass doc", async () => {
     passQueue = [{ kind: "ok", log: "Output written on main.pdf", pdf: enc("PDF") }];
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("ok");
     expect(result.pdf).toBeDefined();
     expect(result.ranPasses).toBe(1);
@@ -132,7 +132,7 @@ describe("CompileService — happy path", () => {
     const svc = new CompileService();
     const result = await svc.compile({
       files: texFile("See \\ref{x}. \\label{x}"),
-      mainTexFilename: "main.tex",
+      mainTexFilename: "main.tex", docId: "doc-test",
     });
     expect(result.status).toBe("ok");
     expect(result.ranPasses).toBe(2);
@@ -145,7 +145,7 @@ describe("CompileService — P1 offline-asset wiring", () => {
   it("pushes connectivity into the worker (setOffline) before compiling", async () => {
     passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
     const svc = new CompileService();
-    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(setOfflineSpy).toHaveBeenCalledTimes(1);
     // navigator is undefined in the node test env → treated as online.
     expect(setOfflineSpy).toHaveBeenCalledWith(false);
@@ -154,7 +154,7 @@ describe("CompileService — P1 offline-asset wiring", () => {
   it("drains new assets (captureNewAssets) after a successful pass", async () => {
     passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
     const svc = new CompileService();
-    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(captureNewAssetsSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -163,7 +163,7 @@ describe("CompileService — P1 offline-asset wiring", () => {
       { kind: "ok", log: "", pdf: enc("PDF"), offlineMisses: ["tikz.sty", "tikz.sty", "pgf.sty"] },
     ];
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.pdf).toBeDefined();
     expect(result.status).toBe("degraded");
     expect(result.offlineMisses).toBeDefined();
@@ -174,7 +174,7 @@ describe("CompileService — P1 offline-asset wiring", () => {
   it("leaves offlineMisses undefined on a clean online compile", async () => {
     passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("ok");
     expect(result.offlineMisses).toBeUndefined();
   });
@@ -186,7 +186,7 @@ describe("CompileService — self-sufficiency (in-memory requirement injection)"
     const svc = new CompileService();
     await svc.compile({
       files: texFile("\\begin{xlist}\n\\a x\n\\end{xlist}"),
-      mainTexFilename: "main.tex",
+      mainTexFilename: "main.tex", docId: "doc-test",
     });
     const main = writtenFiles.find((f) => f.path === "main.tex");
     expect(main).toBeDefined();
@@ -201,7 +201,7 @@ describe("CompileService — self-sufficiency (in-memory requirement injection)"
     const svc = new CompileService();
     const files = texFile("\\begin{xlist}\n\\a x\n\\end{xlist}");
     const before = new TextDecoder().decode(files[0].bytes);
-    await svc.compile({ files, mainTexFilename: "main.tex" });
+    await svc.compile({ files, mainTexFilename: "main.tex", docId: "doc-test" });
     expect(new TextDecoder().decode(files[0].bytes)).toBe(before);
     expect(before).not.toContain("\\usepackage{expex}");
   });
@@ -216,7 +216,7 @@ describe("CompileService — degraded (last-good retention)", () => {
     const svc = new CompileService();
     const result = await svc.compile({
       files: texFile("See \\ref{x}."),
-      mainTexFilename: "main.tex",
+      mainTexFilename: "main.tex", docId: "doc-test",
     });
     expect(result.status).toBe("degraded");
     expect(new TextDecoder().decode(result.pdf!)).toBe("GOOD");
@@ -225,7 +225,7 @@ describe("CompileService — degraded (last-good retention)", () => {
   it("returns failed when the FIRST pass fails with no prior PDF", async () => {
     passQueue = [{ kind: "fail", log: "! Undefined control sequence" }];
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("\\bogus"), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("\\bogus"), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("failed");
     expect(result.pdf).toBeUndefined();
     expect(result.diagnostics?.length ?? 0).toBeGreaterThan(0);
@@ -245,7 +245,7 @@ describe("CompileService — bibtex status", () => {
     const svc = new CompileService();
     const result = await svc.compile({
       files: texFile("\\usepackage{natbib}\n\\citep{x}\n\\bibliography{refs}"),
-      mainTexFilename: "main.tex",
+      mainTexFilename: "main.tex", docId: "doc-test",
     });
     expect(result.bibtexStatus).toBe("failed");
     expect(result.status).toBe("degraded");
@@ -258,7 +258,7 @@ describe("CompileService — timeout + recovery", () => {
     vi.useFakeTimers();
     passQueue = [{ kind: "hang" }];
     const svc = new CompileService();
-    const promise = svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const promise = svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     // Advance past the COLD timeout budget.
     await vi.advanceTimersByTimeAsync(200_000);
     const result = await promise;
@@ -270,13 +270,13 @@ describe("CompileService — timeout + recovery", () => {
     vi.useFakeTimers();
     passQueue = [{ kind: "hang" }];
     const svc = new CompileService();
-    const first = svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const first = svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     await vi.advanceTimersByTimeAsync(200_000);
     expect((await first).status).toBe("timeout");
 
     vi.useRealTimers();
     passQueue = [{ kind: "ok", log: "", pdf: enc("OK") }];
-    const second = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const second = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(second.status).toBe("ok");
     expect(second.pdf).toBeDefined();
   });
@@ -286,7 +286,7 @@ describe("CompileService — worker-error rejection", () => {
   it("recovers (not stuck) when the compile promise rejects", async () => {
     passQueue = [{ kind: "reject", error: new Error("worker died") }];
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("timeout");
     expect(resetSpy).toHaveBeenCalled();
   });
@@ -296,7 +296,7 @@ describe("CompileService — boot failure", () => {
   it("returns boot-failed and resets when the engine can't boot", async () => {
     bootShouldFail = true;
     const svc = new CompileService();
-    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex" });
+    const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("boot-failed");
     expect(resetSpy).toHaveBeenCalled();
     expect(result.log).toContain("boot boom");
