@@ -117,7 +117,7 @@ synthetic requests covering at minimum:
 - **Missing context** — no `paragraphIds`, or `paragraphIds` referencing a UUID not in the .tex.
 - **Mode B (selection)** — `selectedText` set to a substring of the anchored paragraph.
 - **Underspecified ask** — terse request text that forces a judgment call.
-- **Cross-skill edge** — e.g. footnote requesting a missing citation (should file a follow-up `kind: citation` request, not fabricate); answer-note-request that the markdown classifies as wanting a doc edit (should produce a suggestion, not a note).
+- **Cross-skill edge** — e.g. footnote requesting a missing citation (should file a missing-bibkey **todo card** through Workflow B, not fabricate a `\citet` and not hand-append an `ai-requests.json` row — see [_ask-shape.md](_ask-shape.md) §4); answer-note-request that the markdown classifies as wanting a doc edit (should produce a suggestion, not a note).
 
 For umbrella `review`: the test cases should each pre-load the
 sandbox with a different mix of open requests (e.g. one with all

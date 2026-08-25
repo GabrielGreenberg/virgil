@@ -20,7 +20,7 @@
 // for the reverse direction only, and `draft-suggestion` — the one that shipped
 // the bug — asked nothing at all.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
@@ -36,6 +36,7 @@ const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8");
 const flat = (rel: string) => read(rel).replace(/\s+/g, " ");
 
 const SSOT = "editor/skills/_ask-shape.md";
+const SSOT_FOS = "editor/skills/_find-or-surface.md";
 const POINTER = "[_ask-shape.md](_ask-shape.md)";
 
 // Every responder that resolves a free-text AI request — i.e. every skill whose
@@ -89,8 +90,47 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
     // dies. Pin both halves.
     const doc = flat(SSOT);
     expect(doc).toContain("--accept-task-kind");
-    expect(doc).toMatch(/no `create_card\.py` builder for one/i);
+    expect(doc).toMatch(/no builder|no `create_card\.py` builder for one/i);
     expect(doc).toMatch(/draft-suggestion/);
+  });
+
+  it("states the axis as what the builder NEEDS, not whether one exists", () => {
+    // The pre-451 rule was two-valued (has a builder / has none), which is why
+    // `citation` — a builder with a PREREQUISITE — was filed under the wrong
+    // half. Three tiers, and the axis named.
+    const doc = flat(SSOT);
+    expect(doc).toMatch(/function of what the target kind's builder NEEDS/i);
+    expect(doc).toMatch(/Tier 1 — a SELF-SUFFICIENT builder/i);
+    expect(doc).toMatch(/Tier 2 — a builder with a PREREQUISITE YOU DO NOT HOLD/i);
+    expect(doc).toMatch(/Tier 3 — NO builder/i);
+  });
+
+  it("SSOT does NOT name `citation` as a one-hop create_card re-route (tier 2)", () => {
+    // `create_card.py --kind=citation` requires --citekey and hard-refuses a
+    // key absent from references.bib (`_require_bib_keys`). A responder
+    // re-routing "find me a source" holds no citekey, so the documented call
+    // DIES. This leg fails on the pre-451 SSOT, whose tier-1 list read
+    // "(`note`, `report`, `todo`, `footnote`, `citation`, `report-request`)".
+    const doc = flat(SSOT);
+    const tier1 = /Tier 1 — a SELF-SUFFICIENT builder\*\*\s*\(([^)]*)\)/.exec(doc);
+    expect(tier1, "tier-1 kind list not found in the SSOT").toBeTruthy();
+    expect(tier1![1]).not.toMatch(/citation/);
+    // …and it must send the ask to the sourcing specialist instead, with the
+    // REASON stated (a destination with no reason goes stale silently).
+    expect(doc).toMatch(/find-citation/);
+    expect(doc).toMatch(/references\.bib/);
+  });
+
+  it("SSOT names the todo-card door for a follow-up, and forbids the hand-edit", () => {
+    // There is no door that appends a PENDING ai-requests.json row:
+    // apply_response.py's subcommand set has none, and --synthesize-task
+    // stamps the running write's own status. Skills used to be told to edit
+    // the file. Pin the replacement AND the prohibition.
+    const doc = flat(SSOT);
+    expect(doc).toMatch(/is a `todo` CARD, never a hand-written Task row/i);
+    expect(doc).toMatch(/--kind=todo/);
+    expect(doc).toMatch(/--anchor/);
+    expect(doc).toMatch(/Never edit `ai-requests\.json` with a file-editing tool/i);
   });
 
   it.each(REFERENCING_SKILLS)("%s points at the doctrine", (skill) => {
@@ -113,6 +153,77 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
       expect(doc).not.toMatch(/determining axis is.{0,80}`?\.tex`? mutation/i);
     },
   );
+
+  it("no skill instructs a bare write to `ai-requests.json` — the census", () => {
+    // The leg with teeth. The doctrine was never the part that could
+    // misbehave; a skill telling an agent to append a row by hand is — and it
+    // reads perfectly. `draft-footnote` said so in as many words ("no helper
+    // script for this — edit the file") and `_find-or-surface` + the todo
+    // responder each deferred to the same non-existent door.
+    //
+    // Population DISCOVERED from the skills directory, so a new skill is
+    // covered by shipping. Allowlist EMPTY — a hit is ROUTE-it-through-the-
+    // contract, never an entry here.
+    const dir = join(repoRoot, "editor/skills");
+    const skills = readdirSync(dir).filter((f) => f.endsWith(".md"));
+    expect(skills.length).toBeGreaterThan(15); // canary: the sweep found files
+    const offenders: string[] = [];
+    for (const f of skills) {
+      const doc = flat(`editor/skills/${f}`);
+      // The shape: an instruction to APPEND/EDIT/WRITE the file directly.
+      if (
+        /(append(ing)?|edit(ing)?|writ(e|ing)|add(ing)?)[^.]{0,60}`?ai-requests\.json`?/i.test(doc) &&
+        // …unless the sentence is the PROHIBITION itself, or names the door.
+        !/never (edit|append)|no such door|no door|apply_response\.py owns/i.test(doc)
+      ) {
+        offenders.push(f);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no skill defers to a non-existent follow-up-request door — the M1 census", () => {
+    // The pre-451 shape: `answer-todo-request` told an agent to "file a
+    // follow-up AI request … via the storage layer, then mark the todo request
+    // complete", and `_find-or-surface` §4 named the same door for
+    // `draft-footnote`. NO such door exists: `apply_response.py`'s subcommand
+    // set creates no request, and `--synthesize-task` stamps the running
+    // write's own status, so it can only synthesize the Task a write is
+    // DRAINING. A skill that names a door with no mechanism sends the agent to
+    // improvise — which for this sidecar means a raw write outside the pen.
+    //
+    // Population DISCOVERED; allowlist EMPTY. The needle is the deferral SHAPE
+    // ("file/create a follow-up … request"), not the word "follow-up" — the
+    // replacement text legitimately says "missing-bibkey follow-up" about a
+    // TODO CARD, and indicting that would make the honest fix unwritable.
+    const dir = join(repoRoot, "editor/skills");
+    const skills = readdirSync(dir).filter((f) => f.endsWith(".md"));
+    expect(skills.length).toBeGreaterThan(15); // canary
+    const offenders = skills.filter((f) =>
+      /(fil(e|ing)|creat(e|ing)|append(ing)?)[^.]{0,80}follow-up[^.]{0,40}(AI )?request/i.test(
+        flat(`editor/skills/${f}`),
+      ),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("the todo responder routes footnote/citation to real mechanisms", () => {
+    // Tier 1 for footnote (self-sufficient builder, one hop) and tier 2 for
+    // citation (a handoff — `--kind=citation` requires a --citekey already in
+    // references.bib and hard-refuses a missing one). Both must be NAMED, or
+    // the branch is back to deferring to nothing.
+    const doc = flat("editor/skills/answer-todo-request.md");
+    expect(doc).toMatch(/--kind=footnote/);
+    expect(doc).toMatch(/find-citation/);
+    // …and it must say WHY the citation half is a handoff rather than a hop.
+    expect(doc).toMatch(/references\.bib/);
+  });
+
+  it("`_find-or-surface` §4 names the todo-card door for draft-footnote", () => {
+    const doc = flat(SSOT_FOS);
+    expect(doc).toMatch(/--kind=todo/);
+    expect(doc).not.toMatch(/fil(e|ing) a `?citation`? follow-up request/i);
+  });
 
   it("the two responders that ask a shape question can reach a report", () => {
     // The specific capability the binary axis foreclosed. Named skills rather
