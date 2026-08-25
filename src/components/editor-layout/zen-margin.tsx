@@ -92,13 +92,10 @@ export function ZenMargin({
       const col = colRef.current;
       if (col) col.style.flex = `0 0 ${px}px`;
     },
+    // A zero-move end never reaches here — the engine calls restore()
+    // instead (task 470): no pref write, and the DOM re-syncs from the store
+    // in case applies happened.
     commit: (px) => {
-      // Zero-move end (plain click / drag returned to start): don't write
-      // prefs; re-sync the DOM from the store in case applies happened.
-      if (px === startRef.current) {
-        restoreFlex();
-        return;
-      }
       onMarginPrefChange(px);
     },
     restore: restoreFlex,

@@ -96,18 +96,15 @@ export function SplitEditorPanes({
       if (topRef.current) topRef.current.style.flex = `${r} 1 0`;
       if (bottomRef.current) bottomRef.current.style.flex = `${1 - r} 1 0`;
     },
+    // A zero-move end never reaches here — the engine calls restore()
+    // instead (task 470). That the engine compares EXACT px against the
+    // getValue() snapshot is what makes this safe for a ratio-valued
+    // divider: a ratio round-trip ((r·h)/h) is not IEEE-exact for ~10% of
+    // stored (ratio, height) pairs, so a ratio-equality guard would fire a
+    // spurious pref write per plain click.
     commit: (px) => {
       const h = startRef.current.h;
       if (h <= 0) return;
-      // Zero-move end (plain click): keep the old no-write behavior and
-      // re-sync the DOM from the prop in case applies happened. Exact px
-      // compare against the getValue() snapshot — a ratio round-trip
-      // ((r·h)/h) is not IEEE-exact for ~10% of stored (ratio, height)
-      // pairs and would fire a spurious pref write per plain click.
-      if (px === startRef.current.startPx) {
-        restoreFlex();
-        return;
-      }
       onRatioChange(px / h);
     },
     restore: restoreFlex,

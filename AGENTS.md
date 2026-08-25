@@ -535,6 +535,89 @@ is a stub and the context-menu race cannot be reproduced headlessly. Right-click
 a strip icon (menu opens, panel does not toggle); press an icon, drag 3px off it,
 release over the editor, then hover back over the strip (no ghost).
 
+### The commit half: a rule stated at 7 of 10 call sites is not an SSOT
+
+Same engine, the VALUE half of task 189's own headline (task 470) — 189 pulled
+the a11y semantics into the engine and left the COMMIT POLICY scattered.
+
+The engine called `commit()` on **every** completed gesture, a plain click on a
+6-10px divider included, and its own suite pinned that as the contract ("a click
+with zero movement still commits the start value exactly once"). Every editor
+consumer then hand-wrote the identical four-line guard against it — the SAME
+predicate (the engine px against that handle's own `getValue()` snapshot) and
+the SAME remedy (the function it already passes as `restore`) — and the editor
+adoption suite states the guard as a LAW in its own header. **Six handles
+implemented it; four did not**, and three of those four are exactly the ones
+whose `getValue()` returns a value the code's own comments say can be SMALLER
+than what is stored: `LibraryView`'s nav / list / papers dividers read the
+RESOLVED track (`offsetWidth` / `offsetHeight`) against a `clamp()`ed grid
+template. So one accidental click on a Library divider on a narrow window wrote
+the CLAMPED size into `view-session-store` permanently — widening the window no
+longer restored the width, nothing threw, and the user could not tell the click
+had done anything. That is the invariant `library-grid-template.ts` opens by
+declaring ("the stored value is never rewritten by a mere viewport change"), and
+it is Gabriel's own seed symptom from task 457 ("grabbing and then dropping in
+the same place — should not change anything") reproduced on the divider family.
+Measured against the shipped constants, the list track clamps at any grid
+narrower than 792px on the defaults — a laptop, not an edge case.
+
+> **A gesture that produced no NET change has nothing to persist: the engine
+> calls `restore()` and commits ZERO times. The engine holds both halves the
+> rule needs — `startValue` and `spec.restore` — so the rule is its own, not
+> ten consumers'.**
+
+Five rules it earned:
+
+- **`restore()`, never `apply(startValue)`.** A wander-and-return has already
+  OVERWRITTEN the style with the snapshot px, which for a `clamp()`ed track is a
+  RENDERING of a larger stored value, and mid-drag React may have rendered a
+  different flex string than the resting one (`zen-margin` spells this out).
+  Only the consumer can re-sync from the source of truth — which is exactly what
+  all six retired copies did, so the change is byte-identical for them.
+- **The comparison is EXACT px against the `getValue()` snapshot**, and that is
+  what keeps the ratio-valued dividers safe: a ratio round-trip
+  ((r·track)/track) is not IEEE-exact for ~10% of stored (ratio, track) pairs,
+  so a ratio-equality guard would fire a spurious pref write per plain click.
+  The engine deliberately does NOT also skip a commit that merely ROUNDS to the
+  same persisted integer — it speaks px and knows nothing about a consumer's
+  rounding; integer-idempotence belongs inside that consumer's own `commit`.
+- **A consumer with no `restore` gets nothing called**, which is strictly better
+  than the redundant identical-widths store write `LeftList` used to make.
+- **The engine's own suite pinned the DEFECT as the contract**, and is
+  renegotiated in place with the reason at the site — as are the four other legs
+  that used a zero-move release merely as a witness that a gesture had ENDED.
+  Each drives a real move now: with the rule in place, `committed()` after a
+  bare click is `[]` whether or not the gesture ever started, so those legs were
+  about to become unfalsifiable.
+- **The census is the leg with teeth** — the engine was never the part that
+  could misbehave, a consumer that re-forks the guard is, and a re-forked guard
+  type-checks perfectly and is invisible to every behavioural test of the
+  engine (it would simply run BEFORE the engine's branch, as dead code, until
+  someone "simplified" the engine).
+
+CI: the zero-move census in
+[pane-drag-guardrail.test.ts](src/lib/__tests__/pane-drag-guardrail.test.ts)
+resolves every handle's `commit:` body by BALANCING delimiters rather than by
+regex — an expression body (`setLayout({ navWidth: Math.round(px) })`) carries
+both braces and commas, so a `[^,}]*` cut truncates it and the guard goes blind
+on exactly the three sites the defect lived at — and asks per HANDLE, the
+granularity the chrome census already earned (`LibraryView` holds three,
+`panel-column` two). Allowlist EMPTY; a hit is DELETE-it.
+[library-divider-zero-move.test.tsx](library/components/__tests__/library-divider-zero-move.test.tsx)
+is the defect leg, and **no pre-470 suite could represent it**: the engine's own
+harness commits an unrelated number, so "the committed value is a clamped
+rendering of a larger stored one" is unrepresentable there, and
+`pane-resize-adoption.test.tsx` — which states the law in its own header — never
+touches the Library silo, which is why three unguarded handles shipped green.
+Measured by neutering the engine's branch with the six consumer guards already
+gone: **11 legs fail**, five of them the editor adoption suite's own zero-move
+legs, unchanged — they pass because of the engine now, which is the point.
+
+**Owed, not claimed:** the preview eyeball. Not FSA-masked (pure pointer +
+localStorage). Narrow the window until the Library list track visibly clamps,
+click the list divider once without moving, widen the window, and confirm the
+list returns to its stored width.
+
 ## Layout-gesture stability
 
 > **A continuous layout gesture — a pane-divider drag, an OS window resize, OR a content drag (drop-mode session) — costs O(1) settles, not O(frames) recomputes.** Every geometry follower either **PARKS** (`parkDuringLayoutGesture`: stash the call, replay exactly once on the gesture's end edge) or **SUPPRESSES** (`useLayoutGestureActive` / `isLayoutGestureActive` / `onLayoutGestureChange`: hide for the gesture, restore on the end edge). Nothing re-solves per frame.

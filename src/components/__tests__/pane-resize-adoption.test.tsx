@@ -15,9 +15,17 @@
 //   - Escape ends without committing and re-syncs the DOM from the source
 //     of truth;
 //   - a zero-move gesture (plain click) commits nothing — the old 3px
-//     deadzone's contract, now enforced at the commit edge. For the
-//     ratio-valued dividers the guard compares the engine px against the
-//     exact getValue() snapshot: a ratio round-trip ((r·track)/track) is
+//     deadzone's contract, enforced since task 470 by the ENGINE rather than
+//     by each of these five consumers hand-writing the identical four-line
+//     branch. The legs below are UNCHANGED and still pass, which is the
+//     point: they now pass because the engine refuses to call commit() for a
+//     gesture with zero NET change and calls the consumer's own restore()
+//     instead. (The rule had to move: it was written at 6 of 10 handles and
+//     absent at the 3 `LibraryView` ones, whose commits persist a CSS-CLAMPED
+//     rendered size — see `library/components/__tests__/library-divider-zero-move.test.tsx`
+//     and the zero-move census in `pane-drag-guardrail.test.ts`.) That the
+//     engine compares EXACT px against the getValue() snapshot is what keeps
+//     the ratio-valued dividers safe: a ratio round-trip ((r·track)/track) is
 //     not IEEE-exact for ~10% of stored (ratio, track) pairs, so the
 //     awkward-pair cases below FAIL on ratio-equality guards;
 //   - gesture-edge side effects (syncBeforeDrag / isResizing) ride the

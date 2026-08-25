@@ -23,6 +23,16 @@
 // bounds are container-relative calc()s, a width persisted on a wide monitor
 // is clamped reactively on a narrow one and re-expands when the window grows
 // — the stored value is never rewritten by a mere viewport change.
+//
+// That last sentence is a claim about the WRITE path as much as about this
+// template, and it was false until task 470: these dividers' `getValue()`s read
+// the RESOLVED track (`offsetWidth`), and their `commit()`s persisted it
+// unguarded — so one accidental click on a divider (a gesture that moved
+// nothing) wrote the clamped size into the store and the re-expand was gone for
+// good. The pane-resize ENGINE now refuses to commit a gesture with zero net
+// change, which is what keeps the invariant above true. Do not "restore" a
+// local zero-move guard here: the census in
+// `src/lib/__tests__/pane-drag-guardrail.test.ts` fails one.
 
 /** Width of every resizer gutter track (and the papers-pod splitter). */
 export const LIB_GRID_GUTTER = 6;

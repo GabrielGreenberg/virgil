@@ -26,7 +26,16 @@
 //   - geometry applies imperatively (CSS var / style write) RAF-coalesced
 //     behind an equality bail — at most one `apply()` per frame, zero React
 //     state per frame; any pending frame is flushed before commit.
-//   - `commit()` runs EXACTLY once per completed gesture, on the end edge.
+//   - `commit()` runs EXACTLY once per completed gesture that CHANGED the
+//     value, on the end edge. A gesture whose value never left its
+//     `getValue()` snapshot — a plain click on the 6-10px gutter, or a drag
+//     that wandered and came back to its exact start — has nothing to
+//     persist, so the engine calls `restore()` instead and commits ZERO
+//     times (task 470). That rule used to be hand-written at 7 of 10
+//     consumers and absent at the 3 Library ones, where the committed value
+//     is a CSS-CLAMPED rendered size: a click there wrote the clamped px
+//     over the user's stored width, permanently. The engine holds both
+//     halves (`startValue` and `spec.restore`), so it owns the rule.
 //   - begin/end edges publish on the app-wide pane-drag bus; the end edge and
 //     all chrome teardown run on EVERY end variant (finally-style).
 
@@ -58,7 +67,11 @@ export interface PaneResizeSpec {
    *  bailed — never call React state from here. */
   apply(px: number): void;
   /** Persistence (store/localStorage). Called exactly once per completed
-   *  gesture with the final applied value — never per frame. */
+   *  gesture with the final applied value — never per frame, and NEVER for a
+   *  gesture whose value never left the getValue() snapshot (that end takes
+   *  restore() instead; see the header). So a consumer must not re-implement
+   *  a zero-move guard here — the census in `pane-drag-guardrail.test.ts`
+   *  fails one that does. */
   commit(px: number): void;
   /** Escape-cancel geometry restore. Default: re-`apply()` the getValue()
    *  snapshot — correct when getValue() returns the source-of-truth value.
@@ -67,7 +80,11 @@ export interface PaneResizeSpec {
    *  the clamped px imperatively and diverge DOM from store until the next
    *  commit (React diffs style against previous props, not the DOM — it
    *  never rewrites the var while the store value is unchanged). Implement
-   *  restore() to re-sync the DOM from the source of truth instead. */
+   *  restore() to re-sync the DOM from the source of truth instead.
+   *
+   *  Runs on TWO end paths, both of which have nothing to persist and may
+   *  have left an imperative write behind: Escape-cancel, and a completed
+   *  gesture with zero net change. */
   restore?(): void;
   /** Pointer-delta sign → value sign (default 1; -1 for handles whose value
    *  grows when the pointer moves toward the axis origin). */
@@ -220,7 +237,25 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
             rafId = null;
           }
           applyPending();
-          specRef.current.commit(lastApplied);
+          if (lastApplied === startValue) {
+            // Zero NET change — nothing to persist. Committing here is what
+            // wrote a CSS-clamped rendered size over a user's stored one on
+            // a plain click (task 470), and what seven consumers each
+            // hand-wrote the identical four-line guard against.
+            //
+            // restore(), not apply(startValue): a wander-and-return has
+            // already OVERWRITTEN the style with the snapshot px, which may
+            // be a clamped rendering of a larger stored value, and mid-drag
+            // React may have rendered a different flex string than the
+            // resting one — only the consumer can re-sync from the source of
+            // truth. Unconditional (not gated on "did an apply run") for the
+            // same reason the cancel path is: the consumers that take this
+            // branch today already run restore() on every zero-move click,
+            // so this is byte-identical to their private guards.
+            specRef.current.restore?.();
+          } else {
+            specRef.current.commit(lastApplied);
+          }
         } else if (mode === "cancel") {
           cancelPending();
           const restore = specRef.current.restore;

@@ -3173,14 +3173,11 @@ export function BandDivider({
       if (above) above.style.flex = `0 0 ${px}px`;
       if (below) below.style.flex = `0 0 ${startRef.current.sum - px}px`;
     },
+    // A zero-move end (plain click, or a drag returned to its start) never
+    // reaches here — the engine calls restore() instead (task 470), which is
+    // exactly the restoreStartFlex() this used to hand-write, so
+    // content-sized bands are still never pinned to a pixel height.
     commit: (px) => {
-      // Zero-move end (a plain click, or a drag returned to its start):
-      // don't pin content-sized bands to pixel heights — restore the
-      // rendered flex strings instead of persisting.
-      if (px === startRef.current.above) {
-        restoreStartFlex();
-        return;
-      }
       onTradeHeight(aboveId, px, belowId, startRef.current.sum - px);
     },
     restore: restoreStartFlex,
