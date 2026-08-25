@@ -16,6 +16,17 @@ description: |
 
 # /index-paper $ARGUMENTS
 
+> **Allowable-LaTeX doctrine.** The `main.tex` this skill emits (and any
+> heading, title or `\pgmark{N}` anchor you hand-correct in it) must stick to
+> the vocabulary Virgil renders meaningfully — read
+> [_latex-output.md](_latex-output.md) — the **library appendix** (document
+> structure, expex numbered examples, `\pgmark{N}`, the font-strip rule, the
+> minimal preamble) — which links the cross-silo SSOT
+> [_latex-allowlist.md](_latex-allowlist.md) for the inline vocabulary (marks,
+> math, footnotes, the `\cite…` family, and the tie `~` vs.
+> `\textasciitilde{}` rule). Anything outside those two renders as raw grey
+> monospace in Virgil. Never re-paraphrase either doctrine here — link to it.
+
 ## Args
 
 - `<citekey>` — the paper to index (its source sits at

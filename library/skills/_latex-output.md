@@ -19,6 +19,29 @@ outside this list.
 > font-strip rule, the minimal preamble, `\pgmark{N}`). Do not re-paraphrase
 > the shared vocabulary here — link to it.
 
+### Appendix inventory
+
+The machine-readable list of the commands **this appendix** adds on top of the
+shared allowlist. It exists so a guard can DISCOVER which skills compose
+LaTeX rather than being handed a list of names: the drift guard
+(`library/lib/__tests__/latex-allowlist-doctrine.test.ts`) unions this block
+with the shared doctrine's own `latex-allowlist` inventory block and treats
+any skill whose body spells one of them as a `.tex` writer that must link
+back here. Keep it in step with the prose below — a command documented here
+but absent from the block is a needle the guard cannot see.
+
+```latex-appendix
+# document structure
+\documentclass \title \author \date \maketitle
+\section \subsection \subsubsection
+\pgmark \item
+# expex numbered examples
+\vexid \ex \pex \xe \a \label
+\begingl \endgl \gla \glb \glc \glft \glpreamble
+# preamble
+\usepackage \providecommand
+```
+
 ### Document structure
 
 - `\documentclass{article}`, `\title`, `\author`, `\date`, `\maketitle`

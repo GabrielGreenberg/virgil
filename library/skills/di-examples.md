@@ -13,6 +13,17 @@ arguments: <citekey>
 
 # Examples & user notes
 
+> **Allowable-LaTeX doctrine.** The expex examples (`\ex`/`\pex`/`\begingl`)
+> and math this skill composes must stick to the vocabulary Virgil renders
+> meaningfully — read
+> [_latex-output.md](_latex-output.md) — the **library appendix** (document
+> structure, expex numbered examples, `\pgmark{N}`, the font-strip rule, the
+> minimal preamble) — which links the cross-silo SSOT
+> [_latex-allowlist.md](_latex-allowlist.md) for the inline vocabulary (marks,
+> math, footnotes, the `\cite…` family, and the tie `~` vs.
+> `\textasciitilde{}` rule). Anything outside those two renders as raw grey
+> monospace in Virgil. Never re-paraphrase either doctrine here — link to it.
+
 ## Bootstrap (run this first)
 
 This skill operates on the user's Virgil Library. Resolve the library
