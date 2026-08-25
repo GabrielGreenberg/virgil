@@ -456,6 +456,19 @@ onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 | `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
 | `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
 
+**The BARE `rounded` spelling is `--radius-sm` (4px)** — the same tier as
+`rounded-sm`, so the two are interchangeable and neither is wrong. Prefer
+`rounded-sm` in new code (it names its tier); the bare form is left alive
+because ~200 sites spell it and re-spelling them all buys no pixel. What is
+NOT optional is that the tier be *owned*: `@theme` MERGES into Tailwind's
+default theme, so a rung the block does not restate keeps a vendor value the
+app never chose, invisibly (task 2026-08-25-458). Hence `--radius` is mapped,
+and the tiers the app has no token for (`--radius-2xl/3xl/4xl`) are cleared
+with `initial` — **`rounded-2xl` and friends do not exist here.** Reaching for
+one means giving that tier a token first; the coverage leg in
+`src/__tests__/radius-scale.test.ts` fails the build otherwise, since Tailwind
+itself just silently emits nothing.
+
 **Allowed to stay literal** (the guard permits these): hairline insertion &
 drop-indicator bars (`1px`), perfect circles / dots / avatars (`50%`), and
 intentional flattening resets (`0`). A capsule computed from the element's own
