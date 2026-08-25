@@ -225,6 +225,117 @@ describe("ask-shape doctrine (SSOT + referencing responders)", () => {
     expect(doc).not.toMatch(/fil(e|ing) a `?citation`? follow-up request/i);
   });
 
+  // ---------------------------------------------------------------------------
+  // Branch-letter consistency — the leg that catches a HALF-renumbered file.
+  //
+  // The ask-shape doctrine invites new branches into these classify steps, and
+  // inserting one means RE-LETTERING every reference to the branches below it.
+  // `6e9c3ecf` inserted the report branch into `answer-revision-request.md`
+  // step 2 as (b), pushed the sibling-card branch from (b) to (c), and
+  // renumbered NOTHING ELSE — so steps 4/5/6 kept saying "path (b)" about the
+  // sibling, and the file used one letter for two different branches. A reader
+  // that classifies as (b) report and follows the file in order is then handed
+  // the sibling card's schema and landing, and the likely outcome is a DOUBLED
+  // answer — report AND sibling card — which `_ask-shape.md` §4 forbids in as
+  // many words ("never emit both"). Meanwhile (c) had no landing, no schema and
+  // no reply template anywhere in the file.
+  //
+  // This is a RENDERED-PROSE defect: the responder is dispatched as a fresh
+  // subagent whose whole world is this one file (`review.md`: "Run each subskill
+  // as a subagent"), so no behavioural test anywhere can see it. Hence a leg.
+  //
+  // The invariant is EQUALITY, and both directions have teeth:
+  //   · a letter referenced but never introduced = the reader is sent to a
+  //     branch that does not exist;
+  //   · a letter introduced but never referenced = a branch the reader can
+  //     CHOOSE and then find no landing for. That is the direction the pre-fix
+  //     file failed on ({a,b,c} introduced, {a,b} referenced), and the direction
+  //     `answer-note-request.md` failed on too — its report branch had no reply
+  //     template — so the fix closed the same hole in both.
+  //
+  // Population DISCOVERED from the files' own source: any skill whose prose
+  // introduces branches as bold `- **(x)**` list leads. A new responder that
+  // adopts the shape is covered by shipping. Deliberately NOT every file that
+  // contains a letter in parens: `find-citation.md`'s `(a)/(b)/(c)` is an
+  // inline enumeration inside one sentence, and `sync-bib-to-library.md`'s
+  // `a./b./c.` are procedure STEPS, not classify branches. Both would be false
+  // accusations, and a guard that indicts correct files is a guard that gets
+  // allowlisted away.
+  const BRANCH_INTRO = /^[ \t]*[-*][ \t]+\*\*\(([a-z])\)\*\*/gm;
+
+  // A downstream reference, in the two forms the family actually writes:
+  //   `path (b)` · `Path (c)/(d)` · `paths (c)/(d)` · `path a` (Idempotency).
+  // The bare-letter form REQUIRES the letter to be a standalone token — without
+  // the lookahead, "this path needs nothing" reads as a reference to branch (n).
+  // Measured: that exact sentence appeared in this task's own first draft.
+  const LETTER = String.raw`(?:\([a-z]\)|[a-z](?![A-Za-z]))`;
+  const PATH_REF = new RegExp(
+    String.raw`\bpaths?\b[ \t]*(${LETTER}(?:[ \t]*\/[ \t]*${LETTER})*)`,
+    "gi",
+  );
+  // …plus a bare `(x)` parenthetical anywhere in the tail, for a downstream
+  // cross-reference that omits the word "path". Counted ONLY for a letter the
+  // classify step actually introduced, which makes this needle one-directional
+  // by construction: it can soften the ORPHANED verdict and can never invent a
+  // DANGLING one. That is the right asymmetry — a false FAIL on a correct file
+  // is what gets a guard allowlisted away — and it is also what keeps English
+  // out of the census: `paragraph(s)` is not a reference to a branch (s), and
+  // without the filter it is a dangling letter in both files. Measured on the
+  // pre-fix tree this softens nothing: the bare-paren set and the path-context
+  // set are identical in both files.
+  const BARE_REF = /\(([a-z])\)/g;
+
+  const lettersIn = (chunk: string) =>
+    (chunk.match(/[a-z]/gi) ?? []).map((c) => c.toLowerCase());
+
+  const branchSkills = readdirSync(join(repoRoot, "editor/skills"))
+    .filter((f) => f.endsWith(".md"))
+    .filter((f) => BRANCH_INTRO.test(read(`editor/skills/${f}`)));
+
+  it("the branch-letter census finds the responders that letter their branches", () => {
+    // Canary: a needle that matched nothing would make every leg below vacuous.
+    expect(branchSkills.length).toBeGreaterThan(0);
+    expect(branchSkills).toContain("answer-revision-request.md");
+    expect(branchSkills).toContain("answer-note-request.md");
+  });
+
+  it.each(branchSkills)(
+    "%s references exactly the branch letters its classify step introduces",
+    (file) => {
+      const src = read(`editor/skills/${file}`);
+      const intros = [...src.matchAll(new RegExp(BRANCH_INTRO.source, "gm"))];
+      const introduced = new Set(intros.map((m) => m[1]));
+
+      // Everything after the LAST branch marker is "downstream" — the landing,
+      // the schemas, the reply templates, the idempotency guard. A letter
+      // cross-referenced from inside the classify step itself ("route to (c)")
+      // is not a landing and deliberately does not count.
+      const last = intros[intros.length - 1];
+      const tail = src.slice(last.index! + last[0].length);
+
+      const referenced = new Set<string>();
+      for (const m of tail.matchAll(PATH_REF)) {
+        for (const L of lettersIn(m[1])) referenced.add(L);
+      }
+      for (const m of tail.matchAll(BARE_REF)) {
+        if (introduced.has(m[1])) referenced.add(m[1]);
+      }
+
+      const sorted = (s: Set<string>) => [...s].sort();
+      const orphaned = sorted(introduced).filter((L) => !referenced.has(L));
+      const dangling = sorted(referenced).filter((L) => !introduced.has(L));
+
+      expect(
+        { orphaned, dangling },
+        `${file}: introduced ${sorted(introduced).join(",")} / referenced ` +
+          `${sorted(referenced).join(",")}. An ORPHANED letter is a branch the ` +
+          `reader can choose and then find no landing for; a DANGLING one sends ` +
+          `the reader to a branch that does not exist. Re-lettering a classify ` +
+          `step means re-lettering every reference below it.`,
+      ).toEqual({ orphaned: [], dangling: [] });
+    },
+  );
+
   it("the two responders that ask a shape question can reach a report", () => {
     // The specific capability the binary axis foreclosed. Named skills rather
     // than swept, because these two are where the fork actually lived.

@@ -159,6 +159,11 @@ two paths:
    default-apply; it never edits the `.tex`.
 
 5. **Reply.** One line, per path:
+   - Path (b) — report (step 2's `create_card.py` already landed the card and
+     flipped the Task, so this branch needs nothing from step 4):
+     ```
+     Done: drafted report <newId> for <note|highlight> request <requestId>. Output: reports.json (+ ai-requests.json status/result, notifications, version).
+     ```
    - Path (c)/(d) — note created:
      ```
      Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status/result, notifications, version).
