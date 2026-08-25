@@ -62,10 +62,17 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
    `{found:false}` → stop (wrong id). Note the `panel`/`cardKind`.
 
 2. **Build the `update` op-json and run it.** Translate `--body`/`--field` into
-   `body` + a `set` object:
+   `body` + a `set` object. The op carries FREE TEXT (`body`, and any prose
+   field value), so it goes through an `@` scratch file — see
+   [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> update \
-     '{"cardId":"<cardId>","body":"<new body>","set":{"title":"<t>"}}'
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
+   {"cardId":"<cardId>","body":"<new body>","set":{"title":"<t>"}}
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> update "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
    Body only, or fields only, are both fine — but at least one is required (an
    empty update is refused). It prints `{ok, version, op:"update", cardId,

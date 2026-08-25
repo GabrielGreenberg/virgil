@@ -151,16 +151,29 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
    footnote in place — this updates `footnotes.json` `content` AND the `.tex`
    `\footnote{}` body in one atomic, pen-protected transaction, and never spawns
    a duplicate:
+   The op carries FREE TEXT (the footnote body), so it goes through an `@`
+   scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> update \
-     '{"cardId":"<cardId>","body":"<revised footnote body>"}'
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
+   {"cardId":"<cardId>","body":"<revised footnote body>"}
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> update "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
    Then complete the originating Task + clear the source flag (so the panel
    checkbox un-toggles and the request leaves the inbox). For a **real** request
-   id, route the completion through the contract:
+   id, route the completion through the contract — `summary` is composed prose,
+   so this op takes the file form too:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> complete-task \
-     '{"requestId":"<requestId>","summary":"Revised footnote <cardId>","clearSourceFlag":true}'
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
+   {"requestId":"<requestId>","summary":"Revised footnote <cardId>","clearSourceFlag":true}
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
    For a `virtual:footnotes:<cardId>` id (no Task row), there is nothing to
    complete in `ai-requests.json`; instead clear the footnote's `aiRequest` flag

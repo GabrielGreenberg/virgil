@@ -142,34 +142,38 @@ source request in place.
    fields — those are the originating framing. The bridge clears
    `aiRequest` via `clearSourceFlag: true`.
 
-5. **Land it via the contract** *(paths (a)/(c))* — the subcommand depends
-   on the path:
-
-   - **Path (a) — suggestion → L3 propose.** A suggestion is a *proposal*:
-     `complete-task --propose` lands the card and leaves the Task **awaiting
-     review** (`status: in-progress`), the `.tex` untouched until the user
-     accepts via `/editor/accept-suggestion`.
-     ```bash
-     python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
-     ```
-   - **Path (c) — sibling request → terminal create.** A request is not a
-     proposal (nothing to accept), so it lands as a **direct create**:
-     `complete-task` completes the Task now (`status: complete`,
-     `result: direct-created`).
-     ```bash
-     python3 editor/scripts/apply_response.py <docPath> complete-task '<op-json>'
-     ```
-
-   Both take the same op shape (only the subcommand differs); both move off the
-   legacy default-apply path:
-   ```json
+5. **Land it via the contract** *(paths (a)/(c))*. Both paths take the same op
+   shape — only the subcommand differs — and both move off the legacy
+   default-apply path. The op carries FREE TEXT (the whole card, including
+   `original_text`, a span lifted verbatim from the user's `.tex`), so it goes
+   through an `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule
+   and why:
+   ```bash
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "revisions",
      "card": { ...the new card... },
      "summary": "Replied to revision request <cardId>",
      "clearSourceFlag": true
    }
+   JSON
+
+   # Path (a) — suggestion → L3 propose. A suggestion is a *proposal*:
+   # --propose lands the card and leaves the Task AWAITING REVIEW
+   # (status: in-progress), the .tex untouched until the user accepts via
+   # /editor/accept-suggestion.
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
+
+   # Path (c) — sibling request → terminal create. A request is not a proposal
+   # (nothing to accept), so it lands as a DIRECT CREATE: complete-task
+   # completes the Task now (status: complete, result: direct-created).
+   python3 editor/scripts/apply_response.py <docPath> complete-task "@$op"; rc=$?
+
+   rm -f "$op"
+   exit "$rc"
    ```
+   Run **one** of the two calls, then the `rm`/`exit` pair.
    `clearSourceFlag: true` flips the source request's `aiRequest` to `false`.
 
 6. **Reply.** On success:

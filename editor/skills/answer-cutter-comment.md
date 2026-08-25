@@ -121,16 +121,22 @@ the user can accept (which queues the textual replacement).
    untouched until the user accepts via `/editor/accept-suggestion`. (Legacy
    default-apply completed the Task at once and gave the proposal no L3
    lifecycle; the propose path is what makes it accept-consumable.)
+   The op carries FREE TEXT (the card — including `original_text`, a span
+   lifted verbatim from the user's `.tex`), so it goes through an `@` scratch
+   file — see [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
-   ```
-   ```json
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "cutter",
      "card": { ...the suggestion card... },
      "summary": "Drafted a cut suggestion: <first 60 chars of suggested_text>",
      "clearSourceFlag": true
    }
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
    `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`;
    the textual replacement rides `/editor/accept-suggestion`, not this draft.

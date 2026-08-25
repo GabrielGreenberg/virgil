@@ -108,9 +108,19 @@ matters" (write a note). Read the todo and dispatch.
      `aiOriginRequestId: <requestId>` when not `virtual:`-prefixed; see
      [`/editor/draft-suggestion`](draft-suggestion.md)), then land it via the
      contract's **propose** path:
+     The op carries FREE TEXT (the whole card, including `original_text`, a
+     span lifted verbatim from the user's `.tex`), so it goes through an `@`
+     scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
      ```bash
-     python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
-     # op: { requestId, panel:"revisions", card:{…}, summary, clearSourceFlag:true }
+     op=$(mktemp -t virgil-op)
+     cat > "$op" <<'JSON'
+     { "requestId": "<requestId>", "panel": "revisions",
+       "card": { ...the suggestion... },
+       "summary": "<first 60 chars>", "clearSourceFlag": true }
+     JSON
+     python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
+     rm -f "$op"
+     exit "$rc"
      ```
      The card lands and the todo's Task is left **awaiting review** (`status:
      in-progress`), the `.tex` untouched until the user accepts via
