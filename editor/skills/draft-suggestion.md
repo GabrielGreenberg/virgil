@@ -150,16 +150,23 @@ this skill.
    `.tex` untouched until the user accepts. (Legacy default-apply marked the
    Task `complete` at once and gave the proposal no L3 lifecycle; the propose
    path is what makes it consumable by `/editor/accept-suggestion`.)
+   The op carries FREE TEXT (the whole card — `original_text` is a span lifted
+   verbatim from the user's `.tex`, and `suggested_text`/`explanation` are
+   prose you composed), so it goes through an `@` scratch file — see
+   [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
-   ```
-   ```json
+   op=$(mktemp -t virgil-op)
+   cat > "$op" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "revisions",
      "card": { ...the suggestion... },
      "summary": "Drafted a suggestion: <first 60 chars of explanation>",
      "clearSourceFlag": true
    }
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose "@$op"; rc=$?
+   rm -f "$op"
+   exit "$rc"
    ```
    The op shape is identical to a direct create — only the subcommand differs.
    The contract appends the card, points the Task's `resultId` at it, and

@@ -249,8 +249,9 @@ card so the user can drag it into the document.
    can no longer leave one without the other. Status flips to
    `complete` / result `direct-created` (the two-field vocabulary).
 
-   Because the entry carries LaTeX braces/backslashes, write the op to a
-   **scratch** file and pass it with `@` (robust JSON quoting):
+   The op carries FREE TEXT (the card, and a BibTeX `entry` full of braces and
+   backslashes), so it goes through an `@` scratch file — see
+   [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
    op=$(mktemp -t virgil-op)
    cat > "$op" <<'JSON'
@@ -265,16 +266,9 @@ card so the user can drag it into the document.
    rm -f "$op"
    exit "$rc"
    ```
-   The op file is **scratch** — it must **not** land in `<docPath>`, which is
-   the user's (often sync-backed) paper folder where every write is sync
-   traffic (tasks 363/415). `apply_response.py`'s `@` reader resolves any
-   absolute path, so scratch belongs in `$TMPDIR`; a fixed in-folder name also
-   races a concurrent run on the same paper. `mktemp` for a unique name, and
-   `rm` it on **both** paths.
-
    (`entry` is the BibTeX block from step 4, as a JSON string — escape `\`
-   as `\\` and newlines as `\n`. Inline `'<op-json>'` works too if you
-   quote carefully.) Do **not** touch `references.bib` with the Edit tool;
+   as `\\` and newlines as `\n`; the heredoc protects you from the *shell*,
+   not from JSON.) Do **not** touch `references.bib` with the Edit tool;
    `apply_response.py` is the only writeback path.
 
    `clearSourceFlag: true` is the contract's default and every

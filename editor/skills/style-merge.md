@@ -171,8 +171,9 @@ Skip everything else.
      `auto-applied`. (Don't delete it; the frontend clears its
      "merging…" banner on any terminal status.)
 
-   The merged preamble has braces + backslashes, so write the op to a
-   **scratch** file and pass it with `@`:
+   The op carries FREE TEXT (a merged preamble full of braces and
+   backslashes), so it goes through an `@` scratch file — see
+   [`_op-json.md`](_op-json.md) for the rule and why:
    ```bash
    op=$(mktemp -t virgil-op)
    cat > "$op" <<'JSON'
@@ -186,16 +187,9 @@ Skip everything else.
    rm -f "$op"
    exit "$rc"
    ```
-   The op file is **scratch** — it must **not** land in `<docPath>`, which is
-   the user's (often sync-backed) paper folder where every write is sync
-   traffic (tasks 363/415). `apply_response.py`'s `@` reader resolves any
-   absolute path, so scratch belongs in `$TMPDIR`; a fixed in-folder name also
-   races a concurrent run on the same paper. `mktemp` for a unique name, and
-   `rm` it on **both** paths.
-
    (`replacement` is the merged blob from step 5, as a JSON string —
-   escape `\` as `\\`, newlines as `\n`. The contract finds the `.tex`
-   itself.)
+   escape `\` as `\\`, newlines as `\n`; the heredoc protects you from the
+   *shell*, not from JSON. The contract finds the `.tex` itself.)
 
 8. **Print a summary** for each request: counts of carried-over
    packages / macros / settings, and a one-line diff of the resulting

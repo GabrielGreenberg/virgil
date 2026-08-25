@@ -117,12 +117,20 @@ Three modes:
      - *Add or correct specific fields* — the common case (add a DOI, fix a
        page range). `bibEdit` **set-fields** edits only those fields and
        preserves the rest of the entry verbatim (the user's BibTeX intent):
+       The op carries FREE TEXT (BibTeX field values), so it goes through an
+       `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and
+       why:
        ```bash
-       python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
-         "requestId": "<bibKey>", "bibReviewType": "fields",
+       op=$(mktemp -t virgil-op)
+       cat > "$op" <<'JSON'
+       { "requestId": "<bibKey>", "bibReviewType": "fields",
          "bibEdit": { "mode": "set-fields", "citekey": "<bibKey>",
                       "fields": { "doi": "10.…", "pages": "215--232" } },
-         "summary": "Verified <bibKey>; added DOI" }' --result auto-applied
+         "summary": "Verified <bibKey>; added DOI" }
+       JSON
+       python3 "$scripts_editor/apply_response.py" <docPath> complete-only "@$op" --result auto-applied; rc=$?
+       rm -f "$op"
+       exit "$rc"
        ```
      - *The `@type` itself is wrong* (e.g. `@article` masking a book, when
        title and metadata diverge) — compose the corrected full entry:
@@ -130,15 +138,23 @@ Three modes:
        belong (e.g. `journal`/`volume`/`number` when moving
        `@article` → `@book`), preserve the citekey verbatim — and use
        `bibEdit` **replace**:
+       The `entry` is a BibTeX block full of braces and backslashes, so this
+       op goes through an `@` scratch file — see [`_op-json.md`](_op-json.md)
+       for the rule and why:
        ```bash
-       python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
-         "requestId": "<bibKey>", "bibReviewType": "fields",
+       op=$(mktemp -t virgil-op)
+       cat > "$op" <<'JSON'
+       { "requestId": "<bibKey>", "bibReviewType": "fields",
          "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
                       "entry": "@book{<bibKey>, … }" },
-         "summary": "Reshaped <bibKey> @article → @book" }' --result auto-applied
+         "summary": "Reshaped <bibKey> @article → @book" }
+       JSON
+       python3 "$scripts_editor/apply_response.py" <docPath> complete-only "@$op" --result auto-applied; rc=$?
+       rm -f "$op"
+       exit "$rc"
        ```
-     Escape the entry's `\` as `\\` / newlines as `\n` in the JSON string,
-     or write the op to a file and pass `@<file>`.
+     The `entry` is a JSON string, so escape its `\` as `\\` and its newlines
+     as `\n` — the heredoc protects you from the *shell*, not from JSON.
    - If the user asked to "Add DOI" but no DOI is registered for the
      work (common for pre-2000 trade books, many humanities titles):
      declare this explicitly in the reply rather than leaving the
@@ -159,11 +175,18 @@ Three modes:
      `annotations.<bibKey>` (the `AnnotationsState` = `{ [bibKey]: string }`
      the Bibliography panel renders) and flips the `notes` bib-review row,
      atomically. Never hand-edit `annotations.json`:
+     The op carries FREE TEXT (your annotation), so it goes through an `@`
+     scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
      ```bash
-     python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
-       "requestId": "<bibKey>", "bibReviewType": "notes",
+     op=$(mktemp -t virgil-op)
+     cat > "$op" <<'JSON'
+     { "requestId": "<bibKey>", "bibReviewType": "notes",
        "annotationEdit": { "bibKey": "<bibKey>", "text": "<your annotation>" },
-       "summary": "Annotated <bibKey>" }' --result auto-applied
+       "summary": "Annotated <bibKey>" }
+     JSON
+     python3 "$scripts_editor/apply_response.py" <docPath> complete-only "@$op" --result auto-applied; rc=$?
+     rm -f "$op"
+     exit "$rc"
      ```
 
 3a. **For `--library-sync <libraryCitekey>`:**
@@ -206,16 +229,23 @@ Three modes:
      — library-sync isn't bib-review-driven), so the contract also writes the
      notification + version bump. Never hand-edit the `.bib`, the `.tex`, or
      `citations.json`:
+     The `entry` is a BibTeX block full of braces, so this op goes through an
+     `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:
      ```bash
-     python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
-       "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
+     op=$(mktemp -t virgil-op)
+     cat > "$op" <<'JSON'
+     { "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
                     "entry": "<library entry text>" },
        "renameCitekey": { "oldKey": "<bibKey>", "newKey": "<libraryCitekey>" },
        "summary": "library-sync <bibKey> -> <libraryCitekey>",
-       "clearSourceFlag": false }'
+       "clearSourceFlag": false }
+     JSON
+     python3 "$scripts_editor/apply_response.py" <docPath> complete-only "@$op"; rc=$?
+     rm -f "$op"
+     exit "$rc"
      ```
-     (Use a `@<file>` op — the entry has braces. The contract resolves
-     `references.bib`, `document.tex`, and `citations.json` itself.)
+     (The contract resolves `references.bib`, `document.tex`, and
+     `citations.json` itself.)
      `clearSourceFlag: false` is the **one sanctioned exception** in this skill
      set, and it is exempt by SHAPE rather than by preference: this is a
      `complete-only` *writes-only* op carrying no `requestId`, so there is no
