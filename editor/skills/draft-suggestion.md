@@ -3,12 +3,14 @@ description: |
   Propose a revision to a paragraph in a Virgil paper. Triggers on:
   "Virgil, suggest a rewrite here", "propose an edit to this passage",
   "draft a revision of this paragraph", "tighten this for me", or when
-  there's a pending `kind: suggestion` request in the paper's
-  AI-request inbox. Creates a revision-suggestion card with author=ai
+  there's a pending **unbridged** `kind: suggestion` request in the
+  paper's AI-request inbox (one with no `linkedTo` — no source card,
+  no panel thread). Creates a revision-suggestion card with author=ai
   for the user to accept or reject — does NOT edit the document
-  directly. Use answer-revision-request instead for responding to a
-  revision-thread request, or answer-note-request for adding a note.
-  Args: <docPath> <requestId>.
+  directly. Does NOT trigger for a suggestion Task bridged from a
+  panel comment: `linkedTo.panel == "cutter"` is answer-cutter-comment's
+  and `== "revisions"` is answer-revision-request's. Use
+  answer-note-request for adding a note. Args: <docPath> <requestId>.
 ---
 
 # /editor/draft-suggestion $ARGUMENTS
@@ -26,9 +28,9 @@ this skill.
 > family and inline marks it lists; anything outside it renders as raw grey
 > monospace.
 
-> **Ask-shape doctrine.** A `suggestion` request means the user commented in
-> the revisions or cutter panel — it does **not** guarantee they want
-> replacement text. Before composing, read
+> **Ask-shape doctrine.** A `suggestion` request means the user asked for a
+> textual revision — it does **not** guarantee they want replacement text.
+> Before composing, read
 > [_ask-shape.md](_ask-shape.md) and check that a rewrite is what this ask
 > actually calls for. A verification question ("can you check this quote",
 > "is this right") wants **findings**, and findings do not fit in a
@@ -41,12 +43,33 @@ this skill.
 
 ## Procedure
 
-1. **Load.** Request from `ai-requests.json`. Paragraph context
+1. **Check ownership FIRST — before loading anything else.** Read the
+   request's `linkedTo`. One wire `kind` (`suggestion`) has two bridged
+   producers, and each has its own owner:
+
+   | `linkedTo.panel` | owner | why |
+   |---|---|---|
+   | `"cutter"` | `/editor/answer-cutter-comment <docPath> <requestId>` | builds a `CutterSuggestionCard` into `"panel": "cutter"` |
+   | `"revisions"` | `/editor/answer-revision-request <docPath> <requestId>` | three-way shape (suggestion / report / sibling comment) |
+   | absent | **this skill** | unbridged: no source card, no thread |
+
+   If `linkedTo.panel` names an owner, **stop and hand off** — say so and
+   invoke that skill instead. Do **not** proceed: this skill's op is
+   unconditionally `"panel": "revisions"` (step 6), so continuing would write
+   a Cutter comment's answer into `revisions.json` — a card in a panel the
+   user was not working in, the Cutter thread left empty, and the Task marked
+   answered. `panel` selects the SIDECAR FILE
+   (`txn.append_card(panel, card)`), so this is a different store, not a
+   cosmetic label. `/editor/review` routes on the pair, so a correctly
+   dispatched run never reaches this gate; it is here for a direct
+   invocation, which is the only route left that can get it wrong.
+
+2. **Load.** Request from `ai-requests.json`. Paragraph context
    (neighbors=2) for whatever paragraph(s) the request anchors to. If
    `selectedText` is set on the request, that's the precise target;
    otherwise the whole anchored paragraph is the target.
 
-2. **Check the ask-shape** ([_ask-shape.md](_ask-shape.md)) — before you
+3. **Check the ask-shape** ([_ask-shape.md](_ask-shape.md)) — before you
    write a word of replacement text. Read the request's `text` and ask what
    the honest answer *is*, not what it is about. A command to change the prose
    ("tighten this", "rewrite the opening") is this skill's job; proceed. A
@@ -63,7 +86,7 @@ this skill.
    visible. On a genuine coin-flip the panel wins: draft the suggestion and
    put the answer in its `explanation`.
 
-3. **Compose.**
+4. **Compose.**
    - `original_text`: copy verbatim from the .tex (selected slice for
      Mode B, full paragraph for Mode A). Include `\vcid{...}`,
      `\vfid{...}`, and inline LaTeX verbatim — don't invent fresh
@@ -78,7 +101,7 @@ this skill.
    - `explanation`: one or two sentences on what changed and why.
    - `user_text`: empty (the user fills this when refining).
 
-4. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
+5. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
    `src/lib/types.ts`):
    ```json
    { "kind": "suggestion",
@@ -121,7 +144,7 @@ this skill.
    real `ai-requests.json` id; omit it for a `virtual:`-prefixed one (there's
    no Task to point back at).
 
-5. **Land the proposal** via the contract's **L3 propose** path. A suggestion
+6. **Land the proposal** via the contract's **L3 propose** path. A suggestion
    is a *proposal*, not an applied edit — `complete-task --propose` lands the
    card and leaves the Task **awaiting review** (`status: in-progress`), the
    `.tex` untouched until the user accepts. (Legacy default-apply marked the
@@ -135,14 +158,27 @@ this skill.
      "panel": "revisions",
      "card": { ...the suggestion... },
      "summary": "Drafted a suggestion: <first 60 chars of explanation>",
-     "clearSourceFlag": false
+     "clearSourceFlag": true
    }
    ```
    The op shape is identical to a direct create — only the subcommand differs.
    The contract appends the card, points the Task's `resultId` at it, and
    leaves the Task `in-progress`; it splices **nothing** into the `.tex`.
 
-6. **Reply.**
+   `clearSourceFlag: true` is the contract's **default**, and the three
+   responders that can answer a `suggestion` Task all pass it
+   (`answer-cutter-comment`, `answer-revision-request`, here). Lowering the
+   source card's `aiRequest` flag *is* what "the AI answered this card" means,
+   and every linked-completion path — L1/L2/direct **and** the L3 propose draft
+   — lowers it; that is what closes the unbridged-card-flag recycling leg
+   (`apply_response.py`, the `clearSourceFlag` block). The only sanctioned
+   opt-out is `create_card.py`'s examples block, a virtual id with no distinct
+   source card. On this skill's own scope (an *unbridged* Task, step 1) the
+   flag resolves to nothing and the write is a no-op — but a bare `false` here
+   read as a fourth answer to a question the contract had already settled, and
+   left a bridged source comment wearing a pending-AI flag it no longer had.
+
+7. **Reply.**
    ```
    Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
    ```

@@ -216,6 +216,12 @@ Three modes:
      ```
      (Use a `@<file>` op — the entry has braces. The contract resolves
      `references.bib`, `document.tex`, and `citations.json` itself.)
+     `clearSourceFlag: false` is the **one sanctioned exception** in this skill
+     set, and it is exempt by SHAPE rather than by preference: this is a
+     `complete-only` *writes-only* op carrying no `requestId`, so there is no
+     Task and no `linkedTo` — the contract's flag block never runs, whatever
+     the value. Every op that DOES carry a `requestId` passes `true`, which is
+     the contract's default (`apply_response.py`, the `clearSourceFlag` block).
      - **If `<bibKey> == <libraryCitekey>`** (same key, just refreshing the
        entry body), OMIT `renameCitekey` entirely — there is nothing to rename;
        the `bibEdit` replace alone is the whole op.

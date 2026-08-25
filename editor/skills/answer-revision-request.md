@@ -38,6 +38,14 @@ source request in place.
 - `<requestId>` — usually `virtual:revisions:<cardId>`, or a real
   `ai-requests.json` id with `linkedTo.panel == "revisions"`.
 
+> **This skill is the OWNER of `(kind: "suggestion", panel: "revisions")`.**
+> `/editor/review` routes on that pair — the wire `kind` alone is ambiguous,
+> because `ai_request_routing.json` maps both `revision-comment` and
+> `cutter-comment` onto `suggestion` and separates them by `linkPanel`. The
+> sibling half is `/editor/answer-cutter-comment` (`panel: "cutter"`);
+> `/editor/draft-suggestion` owns only the **unbridged** case, and it can emit
+> a suggestion only — never the report or sibling-comment shapes below.
+
 ## Procedure
 
 1. **Load.** Source request from `<docPath>/virgil/revisions.json`

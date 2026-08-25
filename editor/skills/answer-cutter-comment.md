@@ -32,6 +32,16 @@ the user can accept (which queues the textual replacement).
   bridge, or a real `ai-requests.json` id with `linkedTo.panel ==
   "cutter"`.
 
+> **This skill is the OWNER of `(kind: "suggestion", panel: "cutter")`.**
+> `/editor/review` routes on that pair — the wire `kind` alone is ambiguous,
+> because `ai_request_routing.json` maps both `cutter-comment` and
+> `revision-comment` onto `suggestion` and separates them by `linkPanel`.
+> The sibling half is `/editor/answer-revision-request`
+> (`panel: "revisions"`); `/editor/draft-suggestion` owns only the
+> **unbridged** case, and its op writes `"panel": "revisions"`
+> unconditionally — so a cutter request answered there lands in the wrong
+> sidecar.
+
 ## Procedure
 
 1. **Load.** Source comment from `cutter.json` via `linkedTo.cardId`.

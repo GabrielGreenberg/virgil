@@ -241,7 +241,7 @@ card so the user can drag it into the document.
      "card": { ...the CitationRef (unanchored: true)... },
      "bibEdit": { "mode": "append", "entry": "@article{<citekey>, ... }" },
      "summary": "Added <citekey> to bibliography",
-     "clearSourceFlag": false }
+     "clearSourceFlag": true }
    JSON
    python3 editor/scripts/apply_response.py <docPath> complete-task "@<docPath>/.virgil/find-citation-op.json"
    ```
@@ -249,6 +249,14 @@ card so the user can drag it into the document.
    as `\\` and newlines as `\n`. Inline `'<op-json>'` works too if you
    quote carefully.) Do **not** touch `references.bib` with the Edit tool;
    `apply_response.py` is the only writeback path.
+
+   `clearSourceFlag: true` is the contract's default and every
+   linked-completion path passes it. A `citation` Task is unbridged today (no
+   `CARD_REGISTRY` kind routes to it in `ai_request_routing.json`), so the
+   flag resolves to nothing here — but "inert by accident" is not a reason to
+   state a different answer from the contract: the moment a bridged Task
+   reaches this skill (a todo asking for a citation), a `false` would leave
+   the source card wearing a pending-AI flag it no longer has.
 
 7. **Reply.**
    ```
