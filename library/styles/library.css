@@ -19,11 +19,17 @@
 
   /* Paper-render highlight backgrounds. Some have analogs in Virgil
      (--latex-comment-bg, --footnote-bg, --citation-bg) — we redeclare
-     for explicitness so library.css can be reasoned about in isolation. */
-  --math-bg: #f0eeeb;
+     for explicitness so library.css can be reasoned about in isolation.
+     Only what the paper-render ruleset READS lives here: task
+     2026-08-25-460's reverse census found `--math-bg` and
+     `--citation-border` at zero readers and deleted them. The second was
+     also a NEAR MISS for globals.css's live, preference-driven
+     `--citation-border-color` — a `var(--citation-border)` written by
+     anyone reasoning about this file "in isolation" would have silently
+     taken a frozen #e0d5a8 instead of the user's colour. Redeclare for
+     explicitness, yes; redeclare AHEAD of a consumer, no. */
   --pgmark-bg: #f5f0ea;
   --pgmark-color: #856a1c;
-  --citation-border: #e0d5a8;
 }
 
 

@@ -142,7 +142,7 @@ golds).
 
 ## 9. Active-tab "swoop" creates visual noise
 
-> **Status — SUPERSEDED (verified 2026-08-09).** The pseudo-element swoop + filter chain is gone (tombstone at `globals.css:4437`; `--shadow-ambient-filter` now has zero consumers, and no `TabBar` exists). It was not flattened — it was rebuilt as the CI-pinned `FolderTabChrome` geometry SSOT (`folder-tab-geometry.ts:69`). See `src/STYLE_GUIDE.md` → *Folder tabs*.
+> **Status — SUPERSEDED (verified 2026-08-09; token DELETED 2026-08-25).** The pseudo-element swoop + filter chain is gone (tombstone at `globals.css:4437`; no `TabBar` exists). It was not flattened — it was rebuilt as the CI-pinned `FolderTabChrome` geometry SSOT (`folder-tab-geometry.ts:69`). See `src/STYLE_GUIDE.md` → *Folder tabs*. `--shadow-ambient-filter` — named below as the chain's shadow — sat at zero consumers for five more weeks and was **deleted** by task 2026-08-25-460; it no longer exists, so the paragraph below is a historical record, not a pointer. A future composited-alpha shadow mints its own token with its first consumer.
 
 The `<TabBar>` active-tab swoop pseudo-element is cute but visually
 loud and uses a complex SVG-outline + filter-shadow chain

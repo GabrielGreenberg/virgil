@@ -314,6 +314,214 @@ describe("the phantom font vocabulary is dead", () => {
   });
 });
 
+// ── The REVERSE question: does a declared token have a READER? ─────────────
+
+/**
+ * ORPHAN TOKENS (task 2026-08-25-460).
+ *
+ * Everything above asks the FORWARD question — *does every `var(--x)` name a
+ * token something defines?* That leg is silent about a token that is defined
+ * and read by nothing, which is the other half of the same drift and fails in
+ * a way no render can show: `--shadow-ambient-filter` shipped with a comment
+ * naming two use cases (swoop tabs, the MenuBar pod), ZERO readers, and
+ * NEITHER mechanism ever built — so the next reader who wanted a
+ * composited-alpha shadow found a token that said it was for exactly that and
+ * no example of it working, and wrote their own literal instead. Two of them
+ * did (`.inline-atom-ghost` and the Library tab ghost, at `0 2px 6px` and
+ * `0 8px 16px` for one role). A dead token is not inert: it is an invitation
+ * to a fork.
+ *
+ * `inert-preference-controls.test.ts` asks this same question and is the right
+ * shape — but its population is `PREF_TO_CSS` / `DERIVED_CSS`, i.e. PREFERENCE
+ * tokens. A hand-declared `:root` design token was in no census in either
+ * direction. This leg is that population.
+ *
+ * ── The population: declarations OUTSIDE `@theme` ─────────────────────────
+ *
+ * A `@theme` entry is the Tailwind MAPPING channel — its reader is a generated
+ * `bg-*` / `rounded-*` utility class, not a `var()`, and asking a `var()`
+ * question of it reports ~24 false orphans (task 458's three `--radius-*:
+ * initial` clears among them). So `@theme` blocks are blanked before the
+ * declarations are read. Their right-hand sides are still SCANNED for reads,
+ * because `--color-surface: var(--surface)` genuinely reads `--surface`.
+ *
+ * ── Reader channels, deliberately generous ────────────────────────────────
+ *
+ * Same posture the definition channels above state: a census of this shape
+ * must never accuse healthy code, so where a missed reader form and a false
+ * accusation trade off, this leans toward the hole.
+ *
+ *  1. `var(--x)` anywhere in either stylesheet or any component.
+ *  2. A quoted `"--x"` in TS — `setProperty`, `getPropertyValue`, an inline
+ *     style key, a `cssVar:` registry row. (A pref-registry row is a WRITE,
+ *     not a read; it counts anyway, because the stylesheet rule that consumes
+ *     it may legitimately live behind a `var()` this scan cannot attribute.)
+ *  3. A runtime-BUILT read registers a PREFIX: `` `var(--pill-${tone}-bg)` ``
+ *     in `StatusPill.tsx` is the live instance, and it alone exonerates SEVEN
+ *     tokens. Without this channel the leg's first measurement accused every
+ *     one of them — which is exactly the failure mode the generosity is for.
+ */
+
+/** Blank `@theme … { … }` blocks, brace-balanced, preserving line count. */
+function blankThemeBlocks(css: string): string {
+  const spans: Array<[number, number]> = [];
+  const re = /@theme[^{]*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css))) {
+    let depth = 1;
+    let k = m.index + m[0].length;
+    while (k < css.length && depth > 0) {
+      if (css[k] === "{") depth++;
+      else if (css[k] === "}") depth--;
+      k++;
+    }
+    spans.push([m.index, k]);
+  }
+  let out = css;
+  for (const [a, b] of spans)
+    out = out.slice(0, a) + out.slice(a, b).replace(/[^\n]/g, " ") + out.slice(b);
+  return out;
+}
+
+/** token → first `file:line` that declares it, `@theme` blocks excluded. */
+const DECLARED_TOKENS = new Map<string, string>();
+for (const f of STYLESHEETS) {
+  blankThemeBlocks(stripCssComments(read(f)))
+    .split("\n")
+    .forEach((lineText, i) => {
+      for (const m of lineText.matchAll(/(--[A-Za-z][\w-]*)\s*:/g))
+        if (!DECLARED_TOKENS.has(m[1])) DECLARED_TOKENS.set(m[1], `${f}:${i + 1}`);
+    });
+}
+
+const readTokens = new Set<string>();
+const readPrefixes = new Set<string>();
+for (const [, text] of SOURCES) {
+  for (const m of text.matchAll(/var\(\s*(--[\w-]+)/g)) readTokens.add(m[1]);
+  for (const m of text.matchAll(/["'`](--[\w-]+)["'`]/g)) readTokens.add(m[1]);
+  for (const m of text.matchAll(/var\(\s*(--[\w-]+)\$\{/g)) readPrefixes.add(m[1]);
+  for (const m of text.matchAll(/[`"'](--[\w-]+)\$\{/g)) readPrefixes.add(m[1]);
+}
+const isReadSomewhere = (token: string): boolean =>
+  readTokens.has(token) || [...readPrefixes].some((p) => token.startsWith(p));
+
+/**
+ * Declared tokens with no reader, each with the reason it is still open.
+ * SHRINK-ONLY: a NEW orphan fails the exact-set check. WIRE it, DELETE it, or
+ * — if neither is this task's call — record it here with a reason a reader can
+ * check against the code. "Unclear" is not a reason; that is the filing
+ * cabinet this list exists not to become.
+ */
+const PERMITTED_ORPHAN_TOKENS: Readonly<Record<string, string>> = {
+  // DOCUMENTATION-SHAPED ALIAS. Locked to --topbar-bg and pinned as such by
+  // token-contract.test.ts's LOCKED_ALIASES — but the PWA/browser chrome color
+  // is written in EditorLayout.tsx (`meta[name="theme-color"]`) from the PREF
+  // value through applyTransforms, never from this var. So the alias states a
+  // tracking relationship the code implements somewhere else, and the guard
+  // pins the statement rather than the mechanism. Resolving it is a choice
+  // between deleting the token (and its LOCKED_ALIASES row) and making the
+  // meta write read the computed var — a behaviour change on the installed-PWA
+  // chrome path, which reproduces in no preview. A suite is not a consumer.
+  "--theme-color":
+    "aliased + pinned by token-contract, but the meta tag is written from the PREF in EditorLayout, not from this var",
+
+  // The one unread member of the four-token window-inset SSOT, whose stated
+  // model is that EVERY OS-reserved edge flows through these vars (-top,
+  // -left, -right are all live). env(safe-area-inset-bottom) only becomes
+  // non-zero once layout.tsx sets viewport-fit=cover AND something anchors to
+  // the bottom edge; nothing does. Deleting it falsifies the SSOT's own
+  // completeness claim; wiring it needs a bottom-anchored surface to exist.
+  "--window-inset-bottom":
+    "the unread rung of the window-inset SSOT; no bottom-anchored chrome exists yet, and the model's claim is that every edge has a var",
+
+  // A PAGE-WIDTH mechanism whose live implementation is JS. EditorLayout's
+  // `useState(880)` re-spells --page-preferred's value as a literal at another
+  // depth, and 640 / 1400 appear nowhere in TS at all — the same "one role,
+  // spelled twice, chosen by eye" disease task 460 fixed on the drag-ghost
+  // axis, on the width axis. --page-preferred additionally sits INSIDE the
+  // machine-managed PROMOTE-DEFAULTS block while being no preference at all
+  // (no usePreferences field, no PREF_TO_CSS row), so the promoter carries a
+  // line nothing reads. Whether the editor basis should read the token is a
+  // layout decision, not a cleanup.
+  "--page-preferred": "page-width mechanism moved to JS (EditorLayout `useState(880)`); token left behind",
+  "--page-min": "page-width mechanism moved to JS; 640 appears in no component",
+  "--page-max": "page-width mechanism moved to JS; 1400 appears in no component",
+
+  // Sibling of the LIVE --panel-min (read by panel-column.tsx). The band-height
+  // floor that would consume this is MIN_BAND_PX = 140 in view-prefs-dock.ts —
+  // a different value at a different depth. Same disease as the --page-* trio.
+  "--panel-min-h":
+    "the height twin of the live --panel-min; the real floor is MIN_BAND_PX=140 in view-prefs-dock.ts",
+
+  // A RUNG OF A SCALE, which is a different thing from a dead alias. The
+  // --footnote-50/100/200/300/500 tint scale (task 175) exists so a reader
+  // reaching for a red tint finds a tier rather than inventing a literal;
+  // 50/100/200/500 are all consumed and 300 is the one nobody has needed yet.
+  // Deleting the middle rung to satisfy a census would put a gap exactly where
+  // the next person reaches — the scale's completeness IS its value.
+  "--footnote-300": "an unused rung of the deliberate --footnote-* tint scale; a scale is a vocabulary, not an alias",
+};
+
+describe("every declared token has a reader", () => {
+  it("the set of orphan tokens is exactly the recorded one", () => {
+    const orphans = [...DECLARED_TOKENS.keys()].filter((t) => !isReadSomewhere(t)).sort();
+    expect(
+      orphans,
+      "A token declared in a stylesheet and read by nothing is an invitation " +
+        "to a fork: the next person who wants that role finds a name that " +
+        "claims it, no example of it working, and writes a literal instead " +
+        "(that is exactly how the drag-ghost lift came to be spelled twice). " +
+        "WIRE it, DELETE it, or record it above with a checkable reason. " +
+        "This list may only shrink.",
+    ).toEqual(Object.keys(PERMITTED_ORPHAN_TOKENS).sort());
+  });
+
+  it("every recorded orphan states a reason", () => {
+    // Same caveat the decorative-phantom twin states: a length floor pins the
+    // SHAPE of the obligation, never its honesty. Read each reason against the
+    // code before trusting it.
+    for (const [token, why] of Object.entries(PERMITTED_ORPHAN_TOKENS))
+      expect(why.length, `${token} needs a stated reason, not an empty string`).toBeGreaterThan(30);
+  });
+
+  it("the drag-ghost lift is one token read by both ghosts", () => {
+    // The token this leg was written for. Two consumers, one value, and no
+    // `drop-shadow(` literal left anywhere: the ONLY spelling of the function
+    // in either silo is the declaration itself.
+    const GHOST = "--shadow-drag-ghost-filter";
+    expect(DECLARED_TOKENS.has(GHOST), `${GHOST} must be declared`).toBe(true);
+    const readers = SOURCES.filter(([, text]) => text.includes(`var(${GHOST})`)).map(([f]) => f);
+    expect(readers.sort()).toEqual([
+      "library/components/panel-tabs/PanelTabStrip.tsx",
+      "src/app/globals.css",
+    ]);
+    const literals: string[] = [];
+    for (const [file, text] of SOURCES)
+      text.split("\n").forEach((lineText, i) => {
+        if (/drop-shadow\(/.test(lineText) && !lineText.includes(GHOST))
+          literals.push(`${file}:${i + 1} — ${lineText.trim().slice(0, 80)}`);
+      });
+    expect(
+      literals,
+      "A `filter:` elevation is the drag-ghost tier or it is a new role that " +
+        "mints its own token with its first consumer — never a hand-written " +
+        "drop-shadow() (task 2026-08-25-460).",
+    ).toEqual([]);
+  });
+
+  it("--shadow-ambient-filter stays retired", () => {
+    // Deleted by task 460 after five weeks and 93 commits at zero readers,
+    // with both use cases named in its own comment unbuilt. It would come back
+    // the same way it arrived: minted ahead of a consumer.
+    const hits: string[] = [];
+    for (const [file, text] of SOURCES)
+      text.split("\n").forEach((lineText, i) => {
+        if (lineText.includes("--shadow-ambient-filter")) hits.push(`${file}:${i + 1}`);
+      });
+    expect(hits, "mint a filter-form token with its first consumer, not ahead of one").toEqual([]);
+  });
+});
+
 // ── Self-checks: a silent census passes every assertion above ──────────────
 
 describe("the census can see", () => {
@@ -341,6 +549,38 @@ describe("the census can see", () => {
     expect(isDefined("--font-mono")).toBe(true); // channel 2: next/font
     expect(isDefined("--surface")).toBe(true); // channel 1: globals.css
     expect(isDefined("--link-anchor-accent-note")).toBe(true); // channel 3: prefix
+  });
+
+  it("the reverse census can see, and does not accuse healthy code", () => {
+    // Population sanity: real, and NOT polluted by the Tailwind mapping
+    // channel — `--color-surface` is declared ONLY inside `@theme inline`, so
+    // a census that failed to blank those blocks would carry it (and ~23
+    // siblings) as false orphans.
+    expect(DECLARED_TOKENS.size).toBeGreaterThan(150);
+    expect(DECLARED_TOKENS.has("--surface")).toBe(true);
+    expect(DECLARED_TOKENS.has("--color-surface")).toBe(false);
+    expect(DECLARED_TOKENS.has("--radius-2xl")).toBe(false);
+
+    // A planted token nothing reads is caught; a real read exonerates.
+    expect(isReadSomewhere("--definitely-not-a-token-xyz")).toBe(false);
+    expect(isReadSomewhere("--surface")).toBe(true);
+
+    // Channel 3 is the one that matters, and it is load-bearing rather than
+    // theoretical: StatusPill.tsx builds `var(--pill-${tone}-bg)` at runtime,
+    // and these SEVEN tokens are read through nothing else. The leg's own
+    // first measurement accused every one of them.
+    for (const t of [
+      "--pill-green-bg",
+      "--pill-green-fg",
+      "--pill-amber-bg",
+      "--pill-amber-fg",
+      "--pill-gray-bg",
+      "--pill-gray-fg",
+      "--pill-blue-bg",
+    ]) {
+      expect(DECLARED_TOKENS.has(t), `${t} should be in the population`).toBe(true);
+      expect(isReadSomewhere(t), `${t} is read through the runtime-built prefix`).toBe(true);
+    }
   });
 
   it("the comment stripper did not swallow the stylesheets", () => {
