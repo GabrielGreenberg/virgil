@@ -139,7 +139,15 @@ export function SlashCommandPopup({
 
   return createPortal(
     <div
-      className="slash-command-popup bg-surface border border-edge-subtle rounded shadow-md py-1"
+      // `.menu-surface` is the MENU tier (task 295) — bg + border + radius +
+      // shadow off `--menu-*`, in one class, so this popup cannot author a
+      // vocabulary of its own. It mounts no `<MenuProvider>` (its open state and
+      // its caret placement are the slash plugin's), which is precisely why the
+      // surface census could not see it and why it shipped bare `rounded` (4px)
+      // where every other menu is 8px, `--edge-subtle` where the menus use the
+      // pod grey, and Tailwind's stock `shadow-md` where they use the pod halo.
+      // Task 459. Everything else here is LAYOUT, which is still the caller's.
+      className="slash-command-popup menu-surface py-1"
       style={{
         position: "fixed",
         left,

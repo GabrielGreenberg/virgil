@@ -71,7 +71,14 @@ export default function FontPicker({
       </button>
       {open && !pinned && (
         <div
-          className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-edge-subtle bg-surface shadow-lg overflow-hidden"
+          // MENU tier via `.menu-surface` (task 459). Its POSITIONING is still
+          // hand-rolled — `anchored-menu-guardrail` names it as a holdout, and
+          // the migration is a combobox job rather than a shell swap — but a
+          // holdout on one axis is not an exemption on the other, and its
+          // surface (`--edge-subtle` + Tailwind's stock `shadow-lg`) was
+          // censused by nothing at all until the surface census inherited this
+          // census's population.
+          className="absolute z-50 left-0 right-0 mt-1 menu-surface overflow-hidden"
           style={{ maxHeight: 360 }}
         >
           <div className="p-2 border-b border-edge-subtle">

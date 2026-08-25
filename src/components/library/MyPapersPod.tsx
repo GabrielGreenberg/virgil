@@ -214,7 +214,7 @@ export default function MyPapersPod({
               left: 6,
               right: 6,
               marginTop: 2,
-              background: "var(--pod-editor, var(--surface))",
+              background: "var(--menu-bg)",
               // A FLOATING MENU, not a library page edge — so it wears the
               // app-wide menu border like every other dropdown
               // (TabPlusMenu / HeadingTypeMenu / DragHandleMenu …). Task 048's
@@ -228,9 +228,16 @@ export default function MyPapersPod({
               // stated library-edge intent was dead code and this menu has
               // always rendered in --border-light (task 324: a comment that
               // asserts a render that cannot happen).
-              border: "var(--pod-border)",
-              boxShadow: "var(--pod-shadow)",
-              borderRadius: "var(--pod-radius, 8px)",
+              // …and it reaches those values through the MENU tier rather than
+              // by naming the pod's (task 459). The four `--menu-*` tokens
+              // ALIAS the pod's deliberately, so this is byte-identical today
+              // — the point is that a future "menus sit deeper than the pod"
+              // decision is one line in `:root` and cannot be silently opted
+              // out of here. STYLE_GUIDE "Menus": a menu reaches the radius
+              // through `--menu-radius`, never by naming `--pod-radius`.
+              border: "var(--menu-border)",
+              boxShadow: "var(--menu-shadow)",
+              borderRadius: "var(--menu-radius)",
               padding: "6px 0",
               zIndex: 50,
             }}

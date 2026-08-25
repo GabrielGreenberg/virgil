@@ -507,7 +507,11 @@ function StatusClusterImpl(props: StatusClusterProps) {
         {helperMenuOpen && !topbarRightCollapsed && typeof document !== "undefined" && createPortal(
           <div
             ref={helperPositionRef}
-            className="bg-surface border border-edge-subtle rounded-lg shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
+            // MENU tier (task 459). The Help menu and its Commands sub-menu
+            // below are two floating command surfaces in one declaration, and
+            // both hand-authored `--edge-subtle` + `shadow-md`; the surface is
+            // `.menu-surface`'s now, whatever either one is anchored to.
+            className="menu-surface text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
             style={{ ...helperPositionStyle, zIndex: OPEN_CHROME_MENU_Z }}
             onClick={(e) => e.stopPropagation()}
             onMouseLeave={() => setCommandsPopoutOpen(false)}
@@ -527,7 +531,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
               </svg>
               {commandsPopoutOpen && (
                 <div
-                  className="absolute left-full top-0 ml-1 bg-surface border border-edge-subtle rounded-lg shadow-md text-xs text-ink-body py-1 min-w-[160px]"
+                  className="absolute left-full top-0 ml-1 menu-surface text-xs text-ink-body py-1 min-w-[160px]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {VIRGIL_COMMAND_NAMES.map((name) => (

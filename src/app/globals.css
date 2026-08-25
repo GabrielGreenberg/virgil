@@ -2775,12 +2775,24 @@ textarea,
   font-size: 0.9em;
 }
 
-/* Math edit popover — modeled on .label-ref-popover. */
+/* The node-edit popover surface (its old comment read "modeled on
+ * .label-ref-popover", which stopped being true when that popover kept its
+ * amber IDENTITY chrome and this one moved to the menu tier).
+ *
+ * It reaches the MENU tier (task 459): it is a floating command
+ * surface by every test the doctrine states — `position:fixed`
+ * from `useFloatingMenuPosition`, `OPEN_CHROME_MENU_Z`, dismissal on
+ * click-outside — and it took the POSITIONING primitive without the SURFACE, so
+ * `anchored-menu-guardrail` read it compliant while nothing at all asked about
+ * its chrome. It had drifted to `--panel-bg` + `--border` + a literal
+ * `0 4px 16px` elevation, and named `--pod-radius` directly, which
+ * STYLE_GUIDE "Menus" forbids in as many words: menus reach that value through
+ * `--menu-radius`, never by naming it. */
 .math-popover {
-  background: var(--panel-bg, #ffffff);
-  border: 1px solid var(--border, #d9d3c8);
-  border-radius: var(--pod-radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: var(--menu-bg);
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  box-shadow: var(--menu-shadow);
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
@@ -3334,12 +3346,15 @@ textarea,
   cursor: not-allowed;
 }
 
-/* Figure tex-mode popover — same styling family as .math-popover. */
+/* Figure tex-mode popover — the MENU tier, like its `.math-popover` sibling
+ * (task 459). Its own comment used to read "same styling family as
+ * .math-popover", which is how one hand-authored vocabulary becomes two sites;
+ * both read `--menu-*` now, so the family is a token rather than a copy. */
 .figure-popover {
-  background: var(--panel-bg, #ffffff);
-  border: 1px solid var(--border, #d9d3c8);
-  border-radius: var(--pod-radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: var(--menu-bg);
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  box-shadow: var(--menu-shadow);
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
@@ -3897,32 +3912,6 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   background: var(--footnote-50); /* was #fff5f5 — see .footnote-card-drop-target */
 }
 
-/* Footnote edit popup */
-.footnote-editor-popup {
-  background: white;
-  border: 1px solid var(--border);
-  border-radius: var(--pod-radius);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  padding: 0.5rem;
-  width: 300px;
-}
-
-.footnote-editor-input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.5em 0.6em;
-  font-size: 0.85rem;
-  font-family: var(--font-serif-override, var(--font-serif)), Georgia, serif;
-  color: var(--editor-text-color, #2a2a2a);
-  resize: vertical;
-  outline: none;
-}
-
-.footnote-editor-input:focus {
-  border-color: var(--footnote-color, #b45757);
-}
-
 /* An INLINE `%` comment tail (task 347) — the mid-line sibling of the
    `.latex-comment` block below. It reads as a comment rather than as prose,
    which is the whole point: before 347 a mid-line `%` was shown as ordinary
@@ -4419,16 +4408,23 @@ body.perf-contain .static-borrowed-text {
   box-shadow: 0 0 0 2px rgba(124, 94, 60, 0.15);
 }
 
-/* Dropdown */
+/* Dropdown — the MENU tier (task 459).
+ *
+ * `LabelRefPopover` is the one entry on `PERMITTED_UNSURFACED_MENUS`, and its
+ * stated reason is the amber edge + halo that binds the POPOVER to the `\ref`
+ * highlight in the text. That reason says nothing about the option LIST inside
+ * it, which is an ordinary dropdown off a filter input and is the surface a
+ * user reads rows from — so it takes the menu tier rather than a third
+ * elevation literal and the 4px control radius. */
 .label-ref-popover-dropdown {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #e5e2dd);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--menu-bg);
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  box-shadow: var(--menu-shadow);
   max-height: 180px;
   overflow-y: auto;
   z-index: 1001;
