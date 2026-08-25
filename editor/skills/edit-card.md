@@ -40,7 +40,7 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
   `note`/`footnote` → `content` (JSONContent); `todo` → `text`;
   `report`/`report-request`/`comment`/`cutter-comment` → `content` **and** the
   plain-text `text` mirror. For a **footnote** it also rewrites the
-  `\vfid{<id>}\footnote{…}` body in the `.tex`, in the same transaction.
+  `\vfid{…}\footnote{…}` body in the `.tex`, in the same transaction.
 - `--field <k>=<v>` — set a named field (repeatable). Generic: e.g.
   `--field title="New title"`, `--field done=true`, `--field author=ai`,
   `--field highlightColor=yellow`, `--field suggested_text="…"`. Values are
