@@ -148,16 +148,18 @@ For reprint / republication: keep the existing bib but add a
 `note` field documenting the reprint source, then proceed — a
 single-field fields file, so `--merge-existing` is required here too.
 
-**The only exception — `metadata-lock: true`.** If the catalog row
-carries `metadata-lock: true`, the user has explicitly pinned the
-metadata. Do **not** touch `master.bib` or the catalog `title`.
-Signal the orchestrator to emit `DEEP_INDEX_STALLED` (see
-`_doctrine.md` §0) and append a notification with
+**The only exception — the metadata lock.** If the catalog row
+carries **`metadataLock: true`** (camelCase — that is the catalog key;
+`metadata-lock` is only the STALLED *reason token*), the user has
+explicitly pinned the metadata. Do **not** touch `master.bib` or the
+catalog `title`. Signal the orchestrator to emit `DEEP_INDEX_STALLED`
+(see `_doctrine.md` §4) and append a notification with
 `kind: "deep-index-blocked"` and reason
-`metadata-lock: true on catalog row; pass blocked`. This is the
+`metadataLock: true on catalog row; pass blocked`. This is the
 same exit channel as the three-iteration validator abort. Do not
 emit it as an outstanding-work item — it's a terminal-state
-block.
+block. The pin is hand-set; `_doctrine.md` §4 carries the
+`update_catalog_entry.py` recipe.
 
 **Multi-article PDF detection.** If `detect_genre.py` (preflight)
 classified the source as `multi-article-pdf`, run:

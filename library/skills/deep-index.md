@@ -29,7 +29,8 @@ banner (§Output format):
 - `DEEP_INDEX_NARROW_RESIDUAL` — only narrow out-of-scope items remain
   (`source-missing` | `figure-reconstruction` | `validator-false-positive`).
 - `DEEP_INDEX_STALLED` — pathological-loop guard fired, OR three-iteration
-  validator abort, OR `metadata-lock: true` block, OR a Step 0 preflight
+  validator abort, OR a metadata-lock block (`metadataLock: true` on the
+  catalog row — [_doctrine.md](_doctrine.md) §4), OR a Step 0 preflight
   block (`extraction-empty-body`).
 
 The last reason is not new behavior — the empty-body hard-stop has always
@@ -740,8 +741,8 @@ DEEP_INDEX_NARROW_RESIDUAL
 ```
 
 **Stalled** (pathological-loop guard fired, OR three-iteration
-validator abort, OR `metadata-lock: true` block, OR Step 0 reported
-`PREFLIGHT_BLOCKED`):
+validator abort, OR a metadata-lock block (`metadataLock: true` on the
+catalog row), OR Step 0 reported `PREFLIGHT_BLOCKED`):
 
 ```
 ⚠ Deep indexing stalled: $ARGUMENTS

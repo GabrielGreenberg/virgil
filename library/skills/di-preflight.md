@@ -175,6 +175,18 @@ Applies the four-condition auto-resolution policy (see
 updates the catalog, sets `bib.state = needs-reauth`, updates the
 in-file `\title{...}`.
 
+**The metadata lock blocks this step, and only this step's script
+enforces it.** If the catalog row carries `metadataLock: true`
+([_doctrine.md](_doctrine.md) §4), `apply_metadata_mismatch_policy.py`
+writes nothing and returns
+`{"blocked": true, "reason": "metadataLock: true on catalog row; pass
+blocked"}` — from BOTH the `--dry-run` and the commit invocation, before
+it reads the cover page. That is not a preflight failure to route: stop
+the pass, emit `DEEP_INDEX_STALLED` with reason token `metadata-lock`,
+and append the `deep-index-blocked` notification per §4. Do not
+hand-apply the twin in [di-clean-prose.md](di-clean-prose.md) §3a
+instead — the lock binds the operator as well as the script.
+
 For other non-`none` kinds (`title-only-missing`,
 `author-only-missing`, `both-missing`), record an outstanding-work item
 on the catalog entry via `update_catalog_entry.py`. The array lives at

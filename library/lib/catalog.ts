@@ -118,6 +118,26 @@ export interface CatalogEntry {
   originalFilename?: string;
   isScanned?: boolean;
   tags?: string[];
+  /**
+   * Operator pin: when true, the deep-index family must not rewrite this
+   * paper's `master.bib` fields or the catalog `title`. It is the ONLY
+   * block-the-pass condition in the whole convergence loop — the pipeline
+   * emits `DEEP_INDEX_STALLED` with reason token `metadata-lock` instead
+   * of applying the file-is-source-of-truth default
+   * (`library/skills/_doctrine.md` §4).
+   *
+   * Hand-set today via `update_catalog_entry.py --patch-file` (the recipe
+   * is in §4); there is no UI for it yet. Declared here so the field is
+   * part of the app's model of a row rather than an undeclared key the
+   * frontend is merely incapable of destroying — the app never rewrites
+   * catalog entries, but a reader that wants to surface the pin needs a
+   * name to read. Written by the operator and by Python only; the
+   * frontend reads and never writes the catalog.
+   *
+   * Consumed by `library/scripts/apply_metadata_mismatch_policy.py`
+   * (`METADATA_LOCK_KEY`), which is the SSOT for the spelling.
+   */
+  metadataLock?: boolean;
 }
 
 export interface Catalog {
