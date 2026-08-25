@@ -79,6 +79,16 @@ full reasoning.
   (a **cross-kind answer** — e.g. a `note` answering a `todo` Task, as
   `/editor/answer-todo-request` does). Repeatable. Without it, the Task's kind
   must match the card kind.
+- `--synthesize` — force Task synthesis **even when a `<requestId>` is
+  present**. You almost never need it: with no requestId the chat path
+  synthesizes automatically (`create_card.py`'s `_resolve_context` — no
+  request ⇒ synthesize), which is why the Workflow-B command below carries no
+  such flag. It is the one way to synthesize a fresh Task over a
+  `virtual:<panel>:<cardId>` id rather than treating it as a card-flag reply,
+  and it requires `--anchor` like any synthesized create.
+- `--task-text "<text>"` — the user's ask, recorded on the **synthesized**
+  Task (Workflow B). Inert on Workflow A, where the Task already carries the
+  user's text.
 - `--body "<text>"` — the card body, **already composed** by you/chat.
 - `--title "<t>"` — title for `note` / `report`.
 - `--notes "<t>"` — secondary notes field for `todo`.
