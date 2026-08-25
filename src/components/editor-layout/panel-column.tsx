@@ -159,14 +159,10 @@ function BottomEdgeHandle({
       const band = bandRef.current;
       if (band) band.style.flex = `0 0 ${px}px`;
     },
+    // A zero-move end never reaches here — the engine calls restore()
+    // instead (task 470), so a content-sized band is still never pinned to a
+    // pixel height by a plain click.
     commit: (px) => {
-      // Zero-move end (a plain click, or a drag returned to its start):
-      // don't pin a content-sized band to a pixel height — restore the
-      // rendered flex string instead of persisting.
-      if (px === startRef.current.h) {
-        restoreStartFlex();
-        return;
-      }
       onResize(bottomId, px);
     },
     restore: restoreStartFlex,
@@ -371,14 +367,10 @@ export function PanelColumn({
       const col = colRef.current;
       if (col) col.style.flex = `0 0 ${px}px`;
     },
+    // A zero-move end never reaches here — the engine calls restore()
+    // instead (task 470), which keeps the old deadzone's no-write behavior
+    // and re-syncs the DOM from the store in case applies happened.
     commit: (px) => {
-      // Zero-move end (plain click / drag returned to start): keep the old
-      // deadzone behavior of not writing prefs, and re-sync the DOM from
-      // the store in case applies happened.
-      if (px === startRef.current) {
-        restoreFlex();
-        return;
-      }
       onPanelPrefChange(px);
     },
     restore: restoreFlex,

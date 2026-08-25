@@ -219,17 +219,20 @@ export function SplitWithCode({
       const track = Math.max(dragRef.current.w - GAP_WIDTH_PX, 0);
       if (track > 0) setLiveRatio(px / track);
     },
+    // A zero-move end never reaches here — the engine calls restore()
+    // instead (task 470), and restore() is the same setLiveRatio(null) this
+    // branch opens with, so a plain click still drops the live ratio and
+    // writes no pref. The engine's EXACT px compare against the getValue()
+    // snapshot is what makes that safe here: a ratio round-trip
+    // ((r·track)/track) is not IEEE-exact for ~10% of stored (ratio, width)
+    // pairs, so a ratio-equality guard would fire a spurious pref write per
+    // plain click.
     commit: (px) => {
       const track = Math.max(dragRef.current.w - GAP_WIDTH_PX, 0);
       // Both state writes batch into one render: the committed prefs ratio
       // arrives as the `ratio` prop in the same pass that drops liveRatio.
       setLiveRatio(null);
-      // Zero-move end (plain click): keep the old no-write behavior. Exact
-      // px compare against the getValue() snapshot — the engine commits the
-      // untouched start value on a zero-move, whereas a ratio round-trip
-      // ((r·track)/track) is not IEEE-exact for ~10% of stored (ratio, width)
-      // pairs and would fire a spurious pref write per plain click.
-      if (track > 0 && px !== dragRef.current.startPx) onRatioChange(px / track);
+      if (track > 0) onRatioChange(px / track);
     },
     restore: () => setLiveRatio(null),
   });

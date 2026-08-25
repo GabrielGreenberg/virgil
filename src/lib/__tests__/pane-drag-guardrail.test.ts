@@ -132,6 +132,28 @@ const PERMITTED_UNCHROMED_RESIZERS: Record<string, string> = {
     "List-COLUMN boundary in the header row's own grid track, not a pane divider: the shared pill is 28px growing to 44px on drag and the header row is content-height (~24-28px), so `band-grip` would overflow and clip. Wears `.list-col-resizer` (library.css) — a full-track bar on the gutter family's OWN tokens (transparent → --edge-hover on :hover → --drag-highlight on the engine's .dragging class), CSS-driven, no JS hover. Adopting `band-grip` here would first require making the shared pill length-aware (clamp its long axis to the strip's extent), which is a change to chrome shared by the other nine sites and its own task.",
 };
 
+// ── The zero-move-guard allowlist (task 470) ─────────────────────────────────
+// EMPTY, and it stays that way: a hit is DELETE-it.
+//
+// "A completed gesture that changed nothing commits nothing" is the engine's
+// rule, not a consumer's. It was hand-written at six of ten `commit()`s — the
+// SAME predicate (the engine px against that handle's own getValue() snapshot)
+// and the SAME remedy (the function the handle already passes as `restore`) —
+// and absent at the three `LibraryView` handles and `LeftList`. The three
+// Library ones commit a CSS-CLAMPED rendered size, so one accidental click on
+// the nav / list / papers divider on a narrow window wrote that clamped width
+// into `view-session-store` permanently, forfeiting the grid template's own
+// declared re-expand-on-window-grow guarantee. A rule stated identically at
+// most call sites and absent at the rest is not an SSOT.
+//
+// The engine holds both halves it needs (`startValue`, `spec.restore`), so it
+// owns the rule now — and this leg is what keeps it owned: the engine was
+// never the part that could misbehave, a consumer that re-forks the guard is,
+// and a re-forked guard type-checks perfectly and is invisible to every
+// behavioural test of the engine (it would simply run BEFORE the engine's own
+// branch and be dead code — until someone "simplified" the engine).
+const PERMITTED_ZERO_MOVE_GUARDS: Record<string, string> = {};
+
 // ── The announced-separator allowlist (task 189) ─────────────────────────────
 // Empty, and that is the statement: Virgil does not yet commit to keyboard /
 // screen-reader operation of its dividers (STYLE_GUIDE "Resize gutters" —
@@ -294,6 +316,11 @@ const ALLOWLISTS: Record<
     cost: false,
     why: "answers a LOOK question (why this handle wears different chrome), not a cost one — its gestures all run on the engine, whose per-frame cost is the engine's to state",
   },
+  PERMITTED_ZERO_MOVE_GUARDS: {
+    list: PERMITTED_ZERO_MOVE_GUARDS,
+    cost: false,
+    why: "answers a COMMIT-POLICY question (why this consumer re-derives a rule the engine owns); empty and staying that way — a hit is DELETE-it, and its gestures all run on the engine, whose per-frame cost is the engine's to state",
+  },
   PERMITTED_ANNOUNCED_SEPARATORS: {
     list: PERMITTED_ANNOUNCED_SEPARATORS,
     cost: false,
@@ -396,6 +423,121 @@ export function engineHandleSites(source: string): HandleSite[] {
       chromed: tags.length > 0 && tags.every((t) => /\bband-grip\b/.test(t)),
     };
   });
+}
+
+/** One engine handle's `commit:` property, resolved to its parameter name and
+ *  its whole body — expression-bodied (`commit: (px) => setLayout(…)`) and
+ *  block-bodied (`commit: (px) => { … }`) alike, since the repo uses both. */
+export interface CommitSite {
+  /** The `const <varName> = usePaneResizeHandle({…})` binding. */
+  varName: string;
+  /** The commit callback's single parameter, as written (`px`, `delta`). */
+  param: string;
+  /** Everything after the `=>`, brace/paren-balanced. */
+  body: string;
+}
+
+/**
+ * Every engine handle's commit body in a file, PER SITE — the same per-handle
+ * granularity the chrome census earned, and for the same reason: `LibraryView`
+ * holds three handles and `panel-column` two, so a per-FILE answer would let
+ * one drifting commit be exempted by a well-behaved sibling.
+ *
+ * Scanned by balancing delimiters rather than by regex: an expression body
+ * (`setLayout({ navWidth: Math.round(px) })`) contains both braces and commas,
+ * so a `[^,]*` or `[^}]*` cut truncates it mid-argument and the guard goes
+ * blind on exactly the three sites the defect lived at.
+ */
+export function engineCommitSites(source: string): CommitSite[] {
+  const src = stripComments(source);
+  const out: CommitSite[] = [];
+  const call = /\b(?:const|let)\s+(\w+)\s*=\s*usePaneResizeHandle\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = call.exec(src))) {
+    const varName = m[1];
+    const spec = balancedFrom(src, m.index + m[0].length - 1); // at the "("
+    if (!spec) continue;
+    const commit = /\bcommit\s*:\s*\(\s*(\w+)\s*\)\s*=>\s*/.exec(spec);
+    if (!commit) continue;
+    const bodyStart = commit.index + commit[0].length;
+    const body =
+      spec[bodyStart] === "{"
+        ? (balancedFrom(spec, bodyStart) ?? "")
+        : expressionUntilComma(spec, bodyStart);
+    out.push({ varName, param: commit[1], body });
+  }
+  return out;
+}
+
+/** The delimiter-balanced slice starting AT an opening `(`/`{`/`[`, inclusive
+ *  of both ends. Null when it never closes (a truncated scan is the unsafe
+ *  direction for a census whose verdict is an EMPTY set — say so instead). */
+function balancedFrom(src: string, open: number): string | null {
+  const pairs: Record<string, string> = { "(": ")", "{": "}", "[": "]" };
+  const stack: string[] = [];
+  for (let i = open; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(src, i);
+      continue;
+    }
+    if (pairs[c]) stack.push(pairs[c]);
+    else if (c === stack[stack.length - 1]) {
+      stack.pop();
+      if (stack.length === 0) return src.slice(open, i + 1);
+    }
+  }
+  return null;
+}
+
+/** An arrow's EXPRESSION body: everything up to the comma (or the object's
+ *  closing brace) at depth 0. */
+function expressionUntilComma(src: string, start: number): string {
+  let depth = 0;
+  for (let i = start; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(src, i);
+      continue;
+    }
+    if (c === "(" || c === "{" || c === "[") depth += 1;
+    else if (c === ")" || c === "]") depth -= 1;
+    else if (c === "}") {
+      if (depth === 0) return src.slice(start, i);
+      depth -= 1;
+    } else if (c === "," && depth === 0) return src.slice(start, i);
+  }
+  return src.slice(start);
+}
+
+/** Index of the string literal's closing quote (template substitutions are
+ *  irrelevant here — nothing this census reads lives inside one). */
+function skipString(src: string, open: number): number {
+  const quote = src[open];
+  for (let i = open + 1; i < src.length; i += 1) {
+    if (src[i] === "\\") {
+      i += 1;
+      continue;
+    }
+    if (src[i] === quote) return i;
+  }
+  return src.length;
+}
+
+/**
+ * Does this commit body compare its OWN parameter for equality — i.e. re-derive
+ * the engine's zero-move rule (task 470)?
+ *
+ * The needle is the comparison, not the remedy: every one of the six retired
+ * copies was `if (px === <snapshot>) { restore(); return; }` or its `!==`
+ * inverse, and a future fork could spell the remedy any way at all while the
+ * predicate stays the same shape. Deliberately narrow to the commit's own
+ * parameter: a commit comparing two OTHER values is answering a different
+ * question and is not this rule.
+ */
+export function rederivesZeroMoveGuard(site: CommitSite): boolean {
+  const p = site.param.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:\\b${p}\\s*[!=]==)|(?:[!=]==\\s*\\b${p}\\b)`).test(site.body);
 }
 
 /**
@@ -948,6 +1090,123 @@ describe("pane-drag guardrail — engine-consumer chrome census (task 189)", () 
       const el = <div {...handle} />;
     `;
     expect(engineHandleSites(queryOnly)[0].chromed).toBe(false);
+  });
+});
+
+describe("pane-drag guardrail — zero-move commit census (task 470)", () => {
+  const files = walkBothSilos();
+  const sites = files
+    .filter((f) => detectEngineConsumer(f.source))
+    .flatMap((f) =>
+      engineCommitSites(f.source).map((c) => ({ ...c, rel: f.rel, key: `${f.rel}#${c.varName}` })),
+    );
+
+  it("resolves every engine handle's commit body (the census can see)", () => {
+    // Ten handles today; every one declares a commit (the spec requires it),
+    // so a shortfall means the scanner stopped matching and every other leg
+    // here went vacuous. An empty body is the same failure by another route:
+    // the delimiter walk hit EOF without closing.
+    expect(sites.length).toBeGreaterThanOrEqual(10);
+    for (const c of sites) {
+      expect(c.body.trim().length, `${c.key}: commit body did not resolve`).toBeGreaterThan(0);
+    }
+  });
+
+  it("no consumer re-derives the zero-move rule inside its own commit()", () => {
+    // EXTRA key here = a handle that compares the committed px against a start
+    // snapshot. Delete the branch: the engine already refuses to call commit()
+    // for a gesture with zero NET change and calls `restore()` instead, which
+    // is byte-for-byte what all six retired copies did. Re-forking it is how
+    // three Library handles came to be the only ones WITHOUT it.
+    const forked = sites.filter(rederivesZeroMoveGuard).map((c) => c.key).sort();
+    expect(forked).toEqual(Object.keys(PERMITTED_ZERO_MOVE_GUARDS).sort());
+  });
+
+  it("the census can actually see a re-forked guard (canary, both body shapes)", () => {
+    // A leg whose verdict is an EMPTY set is worth exactly what its detector is
+    // worth. Synthetic fixtures, not a live line — a canary must not stand on
+    // the defect it guards (there is none left to stand on).
+    const blockBodied = `
+      const handle = usePaneResizeHandle({
+        id: "x",
+        axis: "x",
+        getValue: () => rendered(),
+        apply: (px) => write(px),
+        commit: (px) => {
+          if (px === startRef.current) { restoreFlex(); return; }
+          persist(px);
+        },
+        restore: restoreFlex,
+      });`;
+    const expressionBodied = `
+      const handle = usePaneResizeHandle({
+        id: "y",
+        axis: "y",
+        getValue: () => rendered(),
+        apply: (px) => write(px),
+        commit: (px) => (px !== startRef.current ? persist({ h: Math.round(px) }) : undefined),
+      });`;
+    for (const src of [blockBodied, expressionBodied]) {
+      const [site] = engineCommitSites(src);
+      expect(site).toBeDefined();
+      expect(rederivesZeroMoveGuard(site)).toBe(true);
+    }
+
+    // …and does NOT fire on a clean commit whose body merely CONTAINS a
+    // comparison of other values, nor on one whose expression body carries
+    // braces and commas (the three LibraryView commits' real shape — a
+    // `[^,}]*` cut would truncate them and go blind).
+    const clean = `
+      const handle = usePaneResizeHandle({
+        id: "z",
+        axis: "x",
+        getValue: () => rendered(),
+        apply: (px) => write(px),
+        commit: (px) => setLayout({ navWidth: Math.round(px) }),
+        restore: () => resync(),
+      });`;
+    const [cleanSite] = engineCommitSites(clean);
+    expect(cleanSite.body).toContain("Math.round(px)");
+    expect(rederivesZeroMoveGuard(cleanSite)).toBe(false);
+
+    const guardless = `
+      const handle = usePaneResizeHandle({
+        id: "w",
+        axis: "y",
+        getValue: () => 0,
+        apply: (d) => write(d),
+        commit: (delta) => {
+          if (mode === "wide") onCommitWidths(widthsFor(delta));
+          else onCommitWidths(narrowWidthsFor(delta));
+        },
+      });`;
+    const [guardlessSite] = engineCommitSites(guardless);
+    expect(rederivesZeroMoveGuard(guardlessSite)).toBe(false);
+  });
+
+  it("the three LibraryView handles commit the store UNGUARDED — the engine is the only thing standing between a click and a clamped write", () => {
+    // The damage case, pinned at the source. These getValue()s return RENDERED
+    // track sizes that the grid template's clamp() can render SMALLER than the
+    // stored value; their commits are bare `setLayout(...)`. That is CORRECT
+    // now and was the defect before — the difference is entirely the engine's
+    // rule, so this leg exists to make a future "let's guard it locally again"
+    // a conversation rather than a quiet re-fork, and to make sure the pair it
+    // depends on (unguarded commit + a real restore) stays whole.
+    const lib = sites.filter((c) => c.rel === "library/components/LibraryView.tsx");
+    expect(lib.map((c) => c.varName).sort()).toEqual([
+      "listResizeHandle",
+      "navResizeHandle",
+      "papersResizeHandle",
+    ]);
+    for (const c of lib) {
+      expect(rederivesZeroMoveGuard(c), `${c.key} re-forked the guard`).toBe(false);
+      expect(c.body, `${c.key} no longer commits the store`).toMatch(/setLayout\s*\(/);
+    }
+    // restore() is the other half: without it the engine's zero-move branch
+    // does nothing and the imperative var keeps the clamped px it was dragged
+    // to. Read off the file, since it is a sibling property of the commits.
+    const source = files.find((f) => f.rel === "library/components/LibraryView.tsx")!.source;
+    expect(stripComments(source).match(/\brestore\s*:/g) ?? []).toHaveLength(3);
   });
 });
 

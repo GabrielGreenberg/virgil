@@ -207,16 +207,27 @@ export default function LibraryView({
   // One shared ref is safe: the engine allows a single pane gesture app-wide,
   // and every gesture re-snapshots it at start.
   //
-  // restore() (Escape cancel): these getValue()s return RENDERED track sizes
-  // (offsetWidth/offsetHeight), which the grid template's clamp() can render
-  // SMALLER than the stored value on a narrow window. The engine's default
-  // cancel would pin that clamped px into the imperative var — and React
-  // never rewrites it while the store is unchanged (style diffs against
-  // previous props, not the DOM) — permanently forfeiting the template's
-  // re-expand-on-window-grow guarantee (library-grid-template.ts). So cancel
-  // re-syncs the DOM from the STORE value instead. The closures read the
-  // pre-drag store values: no commit happens mid-gesture, so they can't be
-  // stale.
+  // restore() — taken on BOTH no-net-change ends, Escape-cancel and a
+  // completed gesture that never left its start value (task 470): these
+  // getValue()s return RENDERED track sizes (offsetWidth/offsetHeight), which
+  // the grid template's clamp() can render SMALLER than the stored value on a
+  // narrow window. The engine's default cancel would pin that clamped px into
+  // the imperative var — and React never rewrites it while the store is
+  // unchanged (style diffs against previous props, not the DOM) — permanently
+  // forfeiting the template's re-expand-on-window-grow guarantee
+  // (library-grid-template.ts). So both ends re-sync the DOM from the STORE
+  // value instead. The closures read the pre-drag store values: no commit
+  // happens mid-gesture, so they can't be stale.
+  //
+  // The zero-move half is what these three handles were MISSING until the
+  // engine took the rule: their commits are unconditional `setLayout(...)` of
+  // the CLAMPED rendered size, so before task 470 one accidental click on the
+  // nav / list / papers divider on a narrow window wrote that clamped size
+  // into the store permanently — the exact invariant the grid-template SSOT
+  // opens by declaring ("the stored value is never rewritten by a mere
+  // viewport change"). They deliberately hand-write no guard of their own: the
+  // engine owns it, and the census in `pane-drag-guardrail.test.ts` fails any
+  // consumer that re-forks it.
   const dragMaxRef = useRef(Number.POSITIVE_INFINITY);
 
   const navResizeHandle = usePaneResizeHandle({
