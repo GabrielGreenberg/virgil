@@ -181,9 +181,20 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
 
 2. **Compose the body.** Draft the footnote as plain LaTeX text, ~80 words or
    less, matching the doc's apparatus tone (read other entries in
-   `footnotes.json`). Cite via `\citet{...}`/`\citep{...}` (natbib) or
-   `\textcite{...}`/`\parencite{...}` (biblatex); prepend a fresh
-   `\vcid{<uuid>}` before each cite command. Use ` `` ... '' ` for inline
+   `footnotes.json`). To cite, **ask the door for the document's family** —
+   never guess, and never scan the preamble yourself
+   ([_latex-allowlist.md](_latex-allowlist.md) § Citations):
+
+   ```bash
+   python3 editor/scripts/bib_family.py <docPath>
+   ```
+
+   Then pick the VOICE within that family: `\citet{...}`/`\citep{...}` under
+   natbib, `\textcite{...}`/`\parencite{...}` under biblatex. Getting the
+   FAMILY wrong is not a style slip — the other family's commands are
+   undefined, and this body is spliced straight into `document.tex` by
+   `create_card.py`, so a wrong guess is a non-compiling paper with no card to
+   review first. Prepend a fresh `\vcid{<uuid>}` before each cite command. Use ` `` ... '' ` for inline
    quotes. **Don't fabricate a `\citet{key}` for a bibkey not in
    `references.bib`** — draft the prose without it and file a missing-bibkey
    todo card (step 3). This composition is the part `draft-footnote` keeps; everything

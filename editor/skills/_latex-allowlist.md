@@ -95,8 +95,46 @@ plain `~` (see the doctrine above), never `\textasciitilde{}`.
   `\cites`, `\textcites`, `\parencites`, `\autocites`, `\footcites`,
   `\smartcites`.
 
-Prefer `\cite{…}` for a plain parenthetical and `\citet{…}` for a textual
-("Smith (2008) argues …") citation.
+**The document's FAMILY is not yours to choose; the VOICE is.** natbib and
+biblatex are mutually exclusive, and each family's own commands are UNDEFINED
+under the other — a `\citet` written into a biblatex paper is not a style
+mismatch, it is "Undefined control sequence" and the paper stops compiling.
+Virgil does not heal it (a preamble that hard-loads the other family raises a
+save-time conflict warning; co-loading both is itself fatal).
+
+So before you compose a cite command, ASK — never guess, never scan for
+`\usepackage{biblatex}` yourself:
+
+```bash
+python3 editor/scripts/bib_family.py <docPath>
+# → {"family":"natbib","source":"stored","textual":"citet","parenthetical":"citep"}
+```
+
+That door is the silo's ONE authority. Its ladder is the app's, in the app's
+order: the **stored per-doc choice** (`virgil/citations.json` → `bibPackage`,
+set by the user in the Citations panel) outranks everything; below it, the LIVE
+preamble's `\usepackage`/`\RequirePackage` load (options, `\RequirePackage`,
+comma-lists and wrapper packages like `biblatex-chicago` all count, and a
+commented-out load does not); below that, the live cite-command usage; and
+finally natbib, Virgil's baseline.
+
+Within the family the door reports, pick the VOICE:
+
+| voice | natbib | biblatex |
+|---|---|---|
+| textual — "Smith (2008) argues …" | `\citet{…}` | `\textcite{…}` |
+| parenthetical — "… (Smith 2008)" | `\citep{…}` | `\parencite{…}` |
+
+Bare `\cite{…}` is kernel-neutral and safe in either family, but it renders
+whatever the loaded package makes of it — prefer the voice commands above.
+
+*Scope.* This is the rule for a document Virgil is EDITING — someone else's
+paper, whose family is a fact to be read. The **library** extraction pipeline
+is the other case: it authors `main.tex` and its preamble from scratch
+(`library/scripts/tex_emit.py`), loads no bib package, and normalizes every
+extracted citation to natbib — so there the family is its own closed decision
+and the door does not apply. `bib_family.py` ships in the editor bundle
+(`.virgil/scripts/editor/bib_family.py` inside a synced paper folder).
 
 ### Cross-references
 

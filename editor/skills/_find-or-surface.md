@@ -40,7 +40,9 @@ database and without a §4 bullet is the hole this criterion cannot see.**
 
 **1. Never fabricate.** A source, a bibliographic field, a DOI/ISBN, or a
 `\cite`/`\citet`/`\textcite` command is real evidence about the world. Do
-not invent one. Concretely, never:
+not invent one. (WHICH of those command spellings a document takes is a
+separate question with its own authority — ask `bib_family.py`, never guess;
+[_latex-allowlist.md](_latex-allowlist.md) § Citations.) Concretely, never:
 
 - mint a citation for a work you could not locate in an authoritative
   source;
@@ -49,7 +51,7 @@ not invent one. Concretely, never:
   recollection. (Reading the publisher's or repository's **own record**
   at that URL is sourcing and is fine — inferring a field from the
   *shape* of the link is not.);
-- emit a `\citet{key}` for a `key` that is not in `references.bib`;
+- emit a `\cite*{key}` for a `key` that is not in `references.bib`;
 - pass off a low-confidence match as authenticated.
 
 A fabricated citation is worse than a missing one: it looks correct,
@@ -151,7 +153,7 @@ failure path the skill provides, rather than inventing content:
 - **`draft-footnote`** and prose skills → write the prose without the
   unresolved cite and file a missing-bibkey **todo card** (Workflow B:
   `create_card.py <docPath> --kind=todo --anchor <uuid> --body "…"`);
-  never emit a `\citet{key}` for a missing key, and never append a
+  never emit a `\cite*{key}` for a missing key, and never append a
   pending row to `ai-requests.json` by hand — `apply_response.py` exposes
   no subcommand that appends a *pending* request, and `--synthesize-task`
   stamps the running write's own status, so there is no such door.

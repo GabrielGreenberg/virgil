@@ -56,7 +56,7 @@ matters" (write a note). Read the todo and dispatch.
      one — sourcing the work is a different job. **Hand off to
      [`/editor/find-citation`](find-citation.md) `<docPath> <requestId>`**,
      which searches, writes the `.bib` entry and the citation card, and
-     drains this same Task. Do not compose a `\citet{}` for a key you have
+     drains this same Task. Do not compose a `\cite*{}` for a key you have
      not verified. A todo asking to *pull a quoted passage* has no dedicated
      kind: hand off to `/editor/find-citation` if the ask is really "where is
      this from", otherwise emit a sibling **note/report** carrying the quote.

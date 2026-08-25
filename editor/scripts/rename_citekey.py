@@ -4,7 +4,8 @@ r"""Pure citekey-rename rewriters, shared with the apply_response contract.
 Two side-effect-free transforms that rewrite a citekey across a paper's editable
 surfaces:
 
-  * `rewrite_tex(text, old, new)`            — every natbib `\cite*{...}` command
+  * `rewrite_tex(text, old, new)`            — every `\cite*{...}` command, in
+                                               BOTH families (see the note below)
   * `rewrite_citations_json(data, old, new)` — `citations.json` cards (the `keys`
                                                arrays + the `command` text)
 
@@ -28,41 +29,25 @@ itself generalized from this module's original single-file `os.replace` writer.)
 
 Idempotent by construction: if `<old>` doesn't appear, the rewriters return the
 input unchanged with a 0 count, so the contract treats an absent key as a no-op.
+
+VOCABULARY (task 464). These rewriters used to carry a hand-typed
+`NATBIB_COMMANDS` list naming no biblatex command at all — so on a biblatex
+paper `renameCitekey` rewrote nothing while the SAME atomic op swapped the
+`.bib` entry out from under it. Measured on the pre-464 list: of
+`\textcite{k} \parencite[p.~4]{k} \autocites{k}{other} \citet{k}`, exactly ONE
+was rewritten and three were left pointing at a key that no longer exists — a
+silent dangling-citation, on `answer-bib-review --library-sync`'s shipping path.
+The vocabulary now comes from `cite_commands.py`, the silo's ported twin of
+`src/lib/cite-commands.ts`, so the rename reaches every command the app can
+represent and a registry addition on either side is a CI failure rather than a
+drift.
 """
 
 from __future__ import annotations
 
 import re
 
-
-# Every natbib citation command we expect to encounter, lowercase and
-# capitalized variants. The body is `\<cmd>[...]?[...]?{<csv-of-keys>}`.
-NATBIB_COMMANDS = [
-    "cite",
-    "citet",
-    "citep",
-    "citealt",
-    "citealp",
-    "citeauthor",
-    "citeyear",
-    "citeyearpar",
-    "citenum",
-    "Citet",
-    "Citep",
-    "Citealt",
-    "Citealp",
-    "Citeauthor",
-]
-
-
-def _cite_pattern() -> re.Pattern[str]:
-    cmd_alt = "|".join(re.escape(c) for c in NATBIB_COMMANDS)
-    # \<cmd>  (optional [..])(optional [..])  {<keys>}
-    return re.compile(
-        r"\\(" + cmd_alt + r")"           # 1: command
-        r"((?:\[[^\]]*\]){0,2})"          # 2: optional bracket args
-        r"\{([^{}]*)\}"                    # 3: keys (no nested braces)
-    )
+from cite_commands import CITE_ARG_GROUP_RE, CITE_COMMAND_RE, cite_match_parts
 
 
 def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
@@ -84,25 +69,47 @@ def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
     return ", ".join(out), changed
 
 
+def _rewrite_arg_run(arg_run: str, old: str, new: str) -> tuple[str, bool]:
+    r"""Rewrite every key group inside a matched command's WHOLE argument run.
+
+    A singular command's run is one `[pre][post]{keys}` group; a biblatex
+    multi-cite (`\autocites{a}[p.~4]{b}`) carries several, and every one of them
+    is a key group. Rewriting only the first — which is what a singular-shaped
+    pattern does — is a SILENT PARTIAL: the op reports a change and leaves the
+    later keys pointing at the retired citekey.
+    """
+    changed = False
+
+    def _one(m: re.Match[str]) -> str:
+        nonlocal changed
+        brackets, keys_blob = m.group(1), m.group(2)
+        rewritten, hit = _rewrite_keys(keys_blob, old, new)
+        if not hit:
+            return m.group(0)
+        changed = True
+        return f"{brackets}{{{rewritten}}}"
+
+    return CITE_ARG_GROUP_RE.sub(_one, arg_run), changed
+
+
 def rewrite_tex(text: str, old: str, new: str) -> tuple[str, int]:
     r"""Rewrite every `\cite*{...,<old>,...}` in `text` to use `<new>`.
 
     Returns (new_text, n_commands_changed). A command is counted once
     even if it has multiple keys in the list.
     """
-    pat = _cite_pattern()
     n = 0
 
     def _sub(m: re.Match[str]) -> str:
         nonlocal n
-        cmd, brackets, keys_blob = m.group(1), m.group(2), m.group(3)
-        rewritten, changed = _rewrite_keys(keys_blob, old, new)
+        cmd, star, arg_run = cite_match_parts(m)
+        rewritten, changed = _rewrite_arg_run(arg_run, old, new)
         if changed:
             n += 1
-            return f"\\{cmd}{brackets}{{{rewritten}}}"
+            return f"\\{cmd}{star}{rewritten}"
         return m.group(0)
 
-    return pat.sub(_sub, text), n
+    return CITE_COMMAND_RE.sub(_sub, text), n
 
 
 def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
@@ -111,7 +118,6 @@ def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
     if not isinstance(items, list):
         return data, 0
     n = 0
-    cmd_pat = _cite_pattern()
     for card in items:
         if not isinstance(card, dict):
             continue
@@ -124,7 +130,7 @@ def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
                 changed_here = True
         cmd = card.get("command")
         if isinstance(cmd, str):
-            rewritten = cmd_pat.sub(
+            rewritten = CITE_COMMAND_RE.sub(
                 lambda m: _sub_command(m, old, new), cmd
             )
             if rewritten != cmd:
@@ -136,8 +142,8 @@ def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
 
 
 def _sub_command(m: re.Match[str], old: str, new: str) -> str:
-    cmd, brackets, keys_blob = m.group(1), m.group(2), m.group(3)
-    rewritten, changed = _rewrite_keys(keys_blob, old, new)
+    cmd, star, arg_run = cite_match_parts(m)
+    rewritten, changed = _rewrite_arg_run(arg_run, old, new)
     if not changed:
         return m.group(0)
-    return f"\\{cmd}{brackets}{{{rewritten}}}"
+    return f"\\{cmd}{star}{rewritten}"
