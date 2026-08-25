@@ -85,9 +85,13 @@ source request in place.
    conversational tone of any other revision cards anchored to the
    same paragraph. Keep it under ~200 words.
 
-4. **Build the result card.**
+4. **Build the result card** *(paths (a)/(c) only)*. Path (b) — the report —
+   is already landed by its own `create_card.py` call in step 2, which builds
+   the card, flips the Task and clears the source flag in one atomic write.
+   It needs nothing from steps 4 and 5; go straight to the path-(b) reply in
+   step 6.
 
-   For path (b) — sibling RevisionRequestCard
+   For path (c) — sibling RevisionRequestCard
    (`RevisionRequestCard`, `src/lib/types.ts`):
    ```json
    { "kind": "comment",
@@ -114,7 +118,7 @@ source request in place.
      }]
    }
    ```
-   **The link anchor (both paths):** copy the source request's first-link
+   **The link anchor (paths (a) and (c)):** copy the source request's first-link
    `anchor` object **verbatim** — it is already in the canonical on-disk
    `LinkAnchor` shape (`type: "textObject"` + `textObjectIds`,
    plus `textRange` if the request is Mode B; SSOT
@@ -138,7 +142,8 @@ source request in place.
    fields — those are the originating framing. The bridge clears
    `aiRequest` via `clearSourceFlag: true`.
 
-5. **Land it via the contract** — the subcommand depends on the path:
+5. **Land it via the contract** *(paths (a)/(c))* — the subcommand depends
+   on the path:
 
    - **Path (a) — suggestion → L3 propose.** A suggestion is a *proposal*:
      `complete-task --propose` lands the card and leaves the Task **awaiting
@@ -147,7 +152,7 @@ source request in place.
      ```bash
      python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
      ```
-   - **Path (b) — sibling request → terminal create.** A request is not a
+   - **Path (c) — sibling request → terminal create.** A request is not a
      proposal (nothing to accept), so it lands as a **direct create**:
      `complete-task` completes the Task now (`status: complete`,
      `result: direct-created`).
@@ -172,7 +177,11 @@ source request in place.
      ```
      Done: drafted revision suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
      ```
-   - Path (b) — sibling request (created):
+   - Path (b) — report (created by step 2's `create_card.py`):
+     ```
+     Done: drafted report <newId> for revision request <requestId>. Output: reports.json (+ ai-requests.json status/result, notifications, version).
+     ```
+   - Path (c) — sibling request (created):
      ```
      Done: replied to revision <cardId> for request <requestId>. Output: revisions.json (+ ai-requests.json status=complete, notifications, version).
      ```
@@ -181,7 +190,8 @@ source request in place.
 
 If a sibling reply card with `aiOriginRequestId == <requestId>` already exists
 (path a — the proposal carries that back-pointer) **or** the request is already
-`status: "complete"` (path b — the reply card completed the Task), skip with:
+`status: "complete"` (paths (b)/(c) — the landed card completed the Task),
+skip with:
 ```
 Skipped <requestId> (already answered).
 ```
