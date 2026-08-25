@@ -218,16 +218,15 @@ function BottomEdgeHandle({
  *   B. an absolute pass-through layer so empty gaps click through to omni.
  *   C. a sticky stack frame holding the band anchors (top→bottom) with a
  *      BandDivider between consecutive bands; the bottom band also carries
- *      a bottom-edge resize handle.
+ *      a bottom-edge resize handle. Its LAST flex child is the omni BIN
+ *      SLOT (task 421), so the frame has an occupant whether or not
+ *      anything is docked — which is why its pin and its height are ONE
+ *      geometry (`frameTop` / `frameH`), not a stack-state fork.
  *
  * Each band anchor is empty — `<FloatingPanel mode="docked">` portals its
  * panel content into the anchor via its `data-dock-slot` key, visually
  * covering omni (which stays mounted underneath). When `stack` is empty
  * the column is omni-only with no z-lift (the Reader's case).
- *
- * Docked bands extend up over the action-toolbar strip whenever the stack
- * is non-empty: the strip is hidden so the column's content starts at
- * row-top with `var(--pod-gap)` padding.
  */
 export function PanelColumn({
   side,
@@ -422,22 +421,38 @@ export function PanelColumn({
     [gestureId],
   );
 
-  // The stack lifts over the action-toolbar strip whenever any band is
-  // docked. Empty stack ⇒ omni-only column, toolbar stays, no z-lift.
+  // A band is docked in this column ⇒ the frame carries opaque pods and
+  // lifts over the omni desktop (z 30). Empty stack ⇒ omni-only column, no
+  // z-lift — but the frame is NOT empty even then: since task 421 it always
+  // carries the omni BIN SLOT as its last flex child.
   const hasStack = stack.length > 0;
-  const extendsOverToolbar = hasStack;
   // "This side has visible content" = a docked band OR the omni-view is
   // showing ≥1 card. The Reader's narrow-pane collapse rule keys off this so
   // an omni-only column (notes/footnotes/citations cards, no docked band)
   // stays open; a truly empty side still collapses to give the page room.
   const hasContent = hasStack || !!omniHasCards;
 
-  // The sticky stack-frame height — the visible dock window. Exposed
-  // column-wide as `--dock-slot-frame-h` so docked panels (and omni cards)
-  // can cap an expanded body at this bound and engage internal scrolling.
-  const frameH = extendsOverToolbar
-    ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-    : 'calc(100dvh - 32px - 64px - var(--pod-gap))';
+  // The sticky stack-frame WINDOW — one geometry, whatever is docked.
+  //
+  // It used to fork on stack state: pinned at `var(--pod-gap)` with a docked
+  // band and at `64` without one, the height's `- 64px` twin agreeing with
+  // it. That 64 was the action-toolbar strip's clearance — a strip that has
+  // not been rendered at the top of this column since the band layout landed
+  // (`51e00929`), and the offset survived because the no-stack frame was
+  // EMPTY, so it placed nothing and could not be seen. Task 421 gave the
+  // frame a permanent occupant (the bin slot), which made the relic live:
+  // the "N unanchored" / "N unplaced" pills pinned 64px down the gutter on
+  // any scrolled document (task 455).
+  //
+  // So the fork is DELETED rather than re-tuned. The frame's occupancy no
+  // longer depends on the stack — bands when stacked, bins always — so its
+  // pin and its height must not either, and the in-pod fallback
+  // (`OmniBinStack host="pod"`, `top: var(--pod-gap)`) already reads this
+  // way. `frameH` is exposed column-wide as `--dock-slot-frame-h` so docked
+  // panels (and omni cards) can cap an expanded body at this bound and
+  // engage internal scrolling.
+  const frameTop = 'var(--pod-gap)';
+  const frameH = 'calc(100dvh - 32px - 2 * var(--pod-gap))';
 
   return (
     <div
@@ -468,11 +483,13 @@ export function PanelColumn({
         // (omni-view cards, docked-panel cards) can cap an expanded body
         // at the visible dock height.
         ['--dock-slot-frame-h' as string]: frameH,
-        // When a band is docked, give the column its top var(--pod-gap)
-        // padding directly (the toolbar normally owned that space — it's
-        // hidden in this state). Otherwise leave padding-top: 0 so the
-        // toolbar's sticky positioning controls the top band.
-        paddingTop: collapsed ? 0 : (extendsOverToolbar ? 'var(--pod-gap)' : 0),
+        // Layer A (the omni desktop, normal flow) gets a top gap only when a
+        // band is docked, so its first card clears the pod above it. With no
+        // band the cascade starts at the column's own top — the frame above
+        // it takes no flow space, so nothing would fill an inset here. This
+        // is about Layer A's FLOW, not the frame's pin: the frame is sticky
+        // and measures `frameTop` from the scrollport, not from this box.
+        paddingTop: collapsed ? 0 : (hasStack ? 'var(--pod-gap)' : 0),
         paddingBottom: collapsed ? 0 : 'var(--pod-gap)',
         paddingLeft: collapsed ? 0 : 4,
         paddingRight: collapsed ? 0 : 4,
@@ -513,7 +530,7 @@ export function PanelColumn({
               data-stack-frame={side}
               style={{
                 position: 'sticky',
-                top: hasStack ? 'var(--pod-gap)' : 64,
+                top: frameTop,
                 height: frameH,
                 // visible (not hidden) so docked pods' ambient shadow
                 // (--card-shadow-ambient) isn't clipped at the frame edge — the
@@ -561,7 +578,11 @@ export function PanelColumn({
                   flexDirection: 'column',
                   paddingLeft: 8,
                   paddingRight: 8,
-                  marginTop: hasStack ? 'var(--pod-gap)' : 4,
+                  // A SEPARATOR from the band above, not a top offset — so
+                  // it exists only when there IS a band above. With none, the
+                  // bins sit at the frame's own top (`frameTop`), which is
+                  // exactly where a docked band's first pixel would be.
+                  marginTop: hasStack ? 'var(--pod-gap)' : 0,
                 }}
               />
             </div>
