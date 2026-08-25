@@ -218,6 +218,13 @@ SUBCOMMANDS = {
 # that's out of scope for the sidecar-level mutation ops — they refuse + flag.
 ATOM_BEARING_PANELS = {"footnotes", "citations"}
 
+# The proposal family: a card carrying `original_text` / `suggested_text` / an
+# anchor, whose accept/reject transition is a .tex splice + a Task completion
+# (cmd_accept / cmd_reject, below). Declared here rather than beside those
+# handlers because BOTH policy tables read it: accept/reject are kind-gated
+# rather than panel-gated, and OP_OWNED_FIELDS qualifies `status` by it.
+SUGGESTION_KINDS = {"revision-suggestion", "cutter-suggestion"}
+
 # Card-hosting sidecars that are NOT writeback targets (WRITEBACK_EXEMPT_PANELS in
 # tools/check-coherence.mjs) but ARE stores a card id resolves into. Declared here,
 # beside PANEL_TO_SIDECAR, so the panel UNIVERSE is one table: the applicability
@@ -411,6 +418,250 @@ def _guard_panel(op_name: str, hit, kind: str) -> None:
     die(msg.replace("$kind", str(kind))
            .replace("$panel", str(hit.panel))
            .replace("$cardId", str(card_id)))
+
+
+# --- Field ownership: the ONE table that answers "may I write this FIELD?" ----
+#
+# MUTATION_PANEL_POLICY above answers "may <op> write a card living in <panel>?"
+# — the STORE question (task 156). This is its mirror, one granularity in, and
+# the granularity matters because `update`'s `set` is deliberately generic: it
+# writes ANY key with ANY value, which is the op's intended feature for an
+# ordinary field (`title`, `done`, `highlightColor`, `suggested_text`) and a
+# silent bypass for a field whose transition another door OWNS.
+#
+# The reported shape (task 2026-08-25-467): `update {"set":{"status":"accepted"}}`
+# on a suggestion flips the card to `accepted` and does NOTHING else — where
+# `cmd_accept` splices `original_text` → `suggested_text` into the .tex under
+# replace-span's stale-guard AND completes the originating Task. The panel reads
+# *accepted*, the user's paper is byte-unchanged, the Task stays open, exit 0. And
+# it was TAUGHT: `edit-card.md`'s Applicability named `status` as an editable
+# suggestion field while `accept-suggestion.md` routed field edits back to
+# edit-card — two routing copies composing into a loop that lands on the unsafe
+# door.
+#
+# Shape: a DENY-list, derived. An allow-list over fields would have to enumerate
+# every legitimate field of every card kind and would refuse the next field
+# somebody adds to a card type — turning a generic op into a maintenance surface.
+# A deny-list is normally the weaker shape; here it is DERIVABLE, because what
+# makes a field reserved is precisely that another door owns its transition, and
+# the doors are a closed, declared set. So the reserved set is a projection of
+# MUTATION_OPS (plus two declared non-op owners), not a hand list: a new op
+# inherits the refusal by declaring the field it owns.
+#
+# `kinds=` is load-bearing and is the lesson 156 itself earned: the naive blanket
+# refusal breaks a legitimate feature. `status` on a card that is NOT a suggestion
+# is not the accept/reject transition and stays writable — exactly as `footnotes`
+# had to stay on `update`'s allow-list where the tempting
+# `panel in ATOM_BEARING_PANELS` one-liner would have broken footnote body editing.
+#
+# The messages ARE the agent-facing contract (an agent reading the refusal must be
+# ROUTED, not merely stopped), so each names its route and `$field` / `$kind` /
+# `$panel` / `$cardId` are substituted at refusal time — plain replacement, not
+# `.format`, so a message may carry LaTeX braces. Four invariants are asserted at
+# import time, below MUTATION_OPS: every declared `ops` name is a real op (a
+# renamed op cannot leave a refusal pointing at a door that no longer exists),
+# every non-op owner is declared, every message actually spells its `route`, and
+# no two rows claim the same field for overlapping kinds. The behavioural half is
+# pinned in editor/scripts/tests/test_field_policy_slice.py; the markdown half —
+# no skill may TEACH a reserved field as editable — in
+# editor/skills/__tests__/field-ownership.test.ts.
+class _FieldOwnership(NamedTuple):
+    fields: frozenset      # the field names this door owns
+    why: str               # the refusal message (the contract text)
+    route: str             # the exact door an agent should use instead
+    ops: frozenset         # MUTATION_OPS members that own it (empty ⇒ a non-op door)
+    skills: tuple          # editor/skills/<name>.md files that own it, for the census
+    kinds: frozenset | None = None   # None ⇒ every kind
+
+
+# Owners with no mutation op of their own. Declared (not merely spelled) so a
+# typo'd pseudo-owner fails on import exactly as a renamed op does.
+_NON_OP_FIELD_OWNERS = {"_create", "_app"}
+
+OP_OWNED_FIELDS: dict[str, _FieldOwnership] = {
+    # accept / reject — the suggestion status transition. `applied` / `stale` are
+    # the APP's half of the same union and are refused here for the same reason
+    # plus a sharper one: `applied` is the state that makes `appliedChange` live
+    # (isAppliedPending = kind suggestion AND status applied AND appliedChange),
+    # so writing the status raw either fabricates a Keep/Revert affordance over a
+    # range that was never spliced, or strips one that was — AGENTS.md "The
+    # lifecycle half" (task 238): "unreviewed AI text left in the document,
+    # unrevertable, never warned."
+    "accept": _FieldOwnership(
+        fields=frozenset({"status"}),
+        kinds=frozenset(SUGGESTION_KINDS),
+        ops=frozenset({"accept", "reject"}),
+        skills=("accept-suggestion", "reject-suggestion"),
+        route="apply_response.py <doc> accept '{\"cardId\":\"$cardId\"}'",
+        why=("update refuses $field on a $kind ($cardId): a proposal's status transition "
+             "is the accept/reject op's, not a field edit. `accept` splices original_text "
+             "→ user_text||suggested_text into the .tex through replace-span (whose "
+             "stale-guard refuses a drifted paragraph) and completes the originating Task; "
+             "`reject` completes it with result=rejected, .tex untouched. Setting the field "
+             "alone flips the panel while the paper stays byte-unchanged and the Task stays "
+             "open. Run $route (/editor/accept-suggestion), or the `reject` op "
+             "(/editor/reject-suggestion). `applied`/`stale` are the browser's own pending-"
+             "change states and are not writable from the contract at all."),
+    ),
+    # move — the anchor. cmd_move validates the new uuid against the .tex, refuses
+    # an atom-bearing card (the anchor follows the Atom) and refuses a Mode-B
+    # linkedRange (which needs a new mark in the .tex, not a sidecar edit). A raw
+    # `set` rewrites the same array with none of that.
+    "move": _FieldOwnership(
+        fields=frozenset({"links"}),
+        ops=frozenset({"move"}),
+        skills=("move-card",),
+        route="apply_response.py <doc> move '{\"cardId\":\"$cardId\",\"newAnchor\":\"<uuid>\"}'",
+        why=("update refuses $field on a $kind ($cardId): `links` IS the card's anchor, and "
+             "re-anchoring is the move op's — it validates the target uuid against the .tex, "
+             "refuses an atom-bearing card (the paragraph anchor follows the Atom) and refuses "
+             "a Mode-B linkedRange (which needs a new linkedAnchor mark in the document). A raw "
+             "set writes an unvalidated anchor that resolves to nothing. Run $route "
+             "(/editor/move-card)."),
+    ),
+    # archive / restore — the origin record. `update` refuses the archive panel
+    # outright today (MUTATION_PANEL_POLICY), so this row is unreachable through
+    # the shipped op; it is declared anyway so a future widening of update's
+    # allow-list inherits the refusal instead of rediscovering the reason.
+    "archive": _FieldOwnership(
+        fields=frozenset({"originalPanel", "originalCard"}),
+        ops=frozenset({"archive", "restore"}),
+        skills=("archive-card", "restore-card"),
+        route="apply_response.py <doc> archive '{\"cardId\":\"$cardId\"}'",
+        why=("update refuses $field on $cardId: the origin record is written by the archive "
+             "op and READ VERBATIM by restore to put the card back where it came from. "
+             "Aiming it by hand aims a restore anywhere. Run $route (/editor/archive-card) "
+             "and /editor/restore-card."),
+    ),
+    # _create — the create contract (create_card.py, plus _mutation_commit's
+    # requestId resolve for the back-pointer). `id` is the sharpest: a footnote's
+    # sidecar id IS its \vfid marker id in the .tex, and `footnotes` is
+    # deliberately on update's allow-list (a footnote BODY edit is the op's
+    # intended feature), so this is the one reserved field reachable on an
+    # atom-bearing card. `aiOriginRequestId` is the card→Task back-pointer that
+    # `accept`/`reject` read to decide WHICH Task they complete, so a raw rewrite
+    # silently completes somebody else's.
+    #
+    # `aiRequest` is deliberately NOT reserved, and the reason is the 156 lesson
+    # restated: a blanket refusal here would break a SHIPPED, TAUGHT feature.
+    # `draft-footnote.md`'s virtual-request branch clears a footnote's flag with
+    # exactly `update {"set":{"aiRequest":false}}` (there is no ai-requests.json
+    # row to complete for a `virtual:` id), and the raised direction is a
+    # first-class state too — the unbridged-card-flag fallback exists precisely to
+    # surface a flagged card with no Task row, which is what the user's own panel
+    # checkbox produces. Both directions are legitimate; nothing owns the
+    # transition, so nothing reserves it.
+    "_create": _FieldOwnership(
+        fields=frozenset({"id", "aiOriginRequestId"}),
+        ops=frozenset(),
+        skills=("create-card",),
+        route="editor/scripts/create_card.py",
+        why=("update refuses $field on a $kind ($cardId): it is the create contract's, not a "
+             "field edit. A card's `id` is its identity — for a footnote or a citation it IS "
+             "the \\v*id marker id in the .tex, so rewriting it orphans the atom — and "
+             "`aiOriginRequestId` is the card→Task back-pointer `accept`/`reject` read to "
+             "decide which Task they complete, so a raw rewrite completes the wrong one. Both "
+             "are written once, by $route. To resolve a Task use the op's own `requestId`."),
+    ),
+    # _app — state the BROWSER owns. `appliedChange` describes a live blue range
+    # in the user's .tex (anchorId / anchorUuid / originalText / replacement) and
+    # is written only by the app's pending-change apply path; nothing in this
+    # contract can create the range it names.
+    "_app": _FieldOwnership(
+        fields=frozenset({"appliedChange"}),
+        kinds=frozenset(SUGGESTION_KINDS),
+        ops=frozenset(),
+        skills=("accept-suggestion",),
+        route="the editor's own Keep / Revert affordance",
+        why=("update refuses $field on a $kind ($cardId): it describes a LIVE blue pending-"
+             "change range in the .tex (anchorId, anchorUuid, originalText, replacement) and "
+             "is written only by the browser's apply path. Writing it from the contract "
+             "fabricates a Keep/Revert affordance over a range that was never spliced. "
+             "Resolve a pending change with $route; to land a proposal, use the `accept` op "
+             "(/editor/accept-suggestion)."),
+    ),
+}
+
+# The reserved vocabulary, flattened — what the skill-markdown census reads.
+RESERVED_FIELDS = frozenset().union(*(o.fields for o in OP_OWNED_FIELDS.values()))
+
+
+# Boot assertions on the field-ownership SSOT — the mirror of the panel table's,
+# one granularity in. A refusal message is the agent-facing contract, so a message
+# that points at a renamed door, or a row nobody can attribute, fails on IMPORT
+# rather than shipping as bad routing advice. Declared here (beside the table it
+# governs) and CALLED below MUTATION_OPS, which it reads.
+def _assert_field_ownership(table: "dict[str, _FieldOwnership]") -> None:
+    """The field table's import-time invariants, as a callable so a contract test can
+    drive them with a deliberately broken table — the panel twin's are inline and
+    therefore have no leg of their own."""
+    for _owner, _own in table.items():
+        _dangling = _own.ops - set(MUTATION_OPS)
+        if _dangling:
+            raise RuntimeError(
+                f"OP_OWNED_FIELDS[{_owner!r}] names non-op(s) {sorted(_dangling)}: a reserved field "
+                f"must point at a door that exists, or the refusal routes an agent nowhere "
+                f"— task 2026-08-25-467"
+            )
+        if not _own.ops and _owner not in _NON_OP_FIELD_OWNERS:
+            raise RuntimeError(
+                f"OP_OWNED_FIELDS[{_owner!r}] declares no owning mutation op and is not in "
+                f"_NON_OP_FIELD_OWNERS: name the op that owns the transition, or declare the "
+                f"non-op door explicitly — task 2026-08-25-467"
+            )
+        if not _own.fields:
+            raise RuntimeError(f"OP_OWNED_FIELDS[{_owner!r}] reserves no field")
+        if "$route" not in _own.why or not _own.route:
+            raise RuntimeError(
+                f"OP_OWNED_FIELDS[{_owner!r}]'s message does not spell its $route: the refusal "
+                f"must ROUTE an agent, not merely stop one — task 2026-08-25-467"
+            )
+        if "$field" not in _own.why:
+            raise RuntimeError(
+                f"OP_OWNED_FIELDS[{_owner!r}]'s message does not name the offending $field"
+            )
+        if not _own.skills:
+            raise RuntimeError(
+                f"OP_OWNED_FIELDS[{_owner!r}] names no owning skill — the markdown census reads "
+                f"this column to decide whether a mention of a reserved field is ROUTING copy "
+                f"or a second teaching of the unsafe door"
+            )
+    _owned_pairs = list(table.items())
+    for _i, (_a_name, _a) in enumerate(_owned_pairs):
+        for _b_name, _b in _owned_pairs[_i + 1:]:
+            _shared = _a.fields & _b.fields
+            _kinds_overlap = (_a.kinds is None or _b.kinds is None
+                              or bool(_a.kinds & _b.kinds))
+            if _shared and _kinds_overlap:
+                raise RuntimeError(
+                    f"OP_OWNED_FIELDS[{_a_name!r}] and [{_b_name!r}] both claim {sorted(_shared)} "
+                    f"for overlapping kinds: which refusal message an agent sees would be "
+                    f"arbitrary — task 2026-08-25-467"
+                )
+
+
+def _guard_fields(op_name: str, hit, kind: str, sets: dict) -> None:
+    """Refuse a generic `set` that writes a field another door OWNS.
+    The ONE door for "may <op> write field <f> on a <kind>?" — asked by every op
+    that takes a caller-supplied field map (today: update). A row whose `ops`
+    contains the asking op is skipped: the owner is allowed to write what it owns."""
+    if not sets:
+        return
+    card_id = hit.card.get("id") if isinstance(hit.card, dict) else None
+    for owner, own in OP_OWNED_FIELDS.items():
+        if op_name in own.ops:
+            continue
+        if own.kinds is not None and kind not in own.kinds:
+            continue
+        offending = sorted(own.fields & set(sets))
+        if not offending:
+            continue
+        route = own.route.replace("$cardId", str(card_id))
+        die(own.why.replace("$route", route)
+                   .replace("$field", ", ".join(f"`{f}`" for f in offending))
+                   .replace("$kind", str(kind))
+                   .replace("$panel", str(hit.panel))
+                   .replace("$cardId", str(card_id)))
 
 
 def parse_op_json(arg: str) -> dict:
@@ -1498,6 +1749,7 @@ def cmd_update(doc: Path, op: dict) -> dict:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
     _guard_panel("update", hit, kind)
+    _guard_fields("update", hit, kind, sets)
 
     txn = _Txn(doc)
     card = txn.card_ref(hit.filename, hit.list_key, card_id)
@@ -1768,7 +2020,8 @@ def cmd_link(doc: Path, op: dict) -> dict:
 # carries the same triad inherits accept/reject for free — "apply a reviewed
 # proposal" is now a generic contract capability, not per-kind splice code.
 
-SUGGESTION_KINDS = {"revision-suggestion", "cutter-suggestion"}
+# SUGGESTION_KINDS is declared up beside ATOM_BEARING_PANELS — the field-ownership
+# table (OP_OWNED_FIELDS) needs it, and that table sits beside its panel twin.
 
 
 def _suggestion_anchor_uuid(card: dict) -> str | None:
@@ -1937,6 +2190,11 @@ for _op, _pol in MUTATION_PANEL_POLICY.items():
     _unknown = (_pol.allow | set(_pol.refuse)) - _ALL_PANELS
     if _unknown:
         raise RuntimeError(f"MUTATION_PANEL_POLICY[{_op!r}] names unknown panel(s) {sorted(_unknown)}")
+
+# The field twin (task 2026-08-25-467) — a callable rather than an inline block so a
+# contract test can drive it with a deliberately broken table. It reads MUTATION_OPS,
+# so it is CALLED here, below that dict, and declared beside the table it governs.
+_assert_field_ownership(OP_OWNED_FIELDS)
 
 
 # ---------------------------------------------------------------------------

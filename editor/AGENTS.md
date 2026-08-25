@@ -467,6 +467,82 @@ skill — call `get_para_context.py`.
 > bundle rewrites `editor/scripts/` **and** `library/scripts/` to their
 > `.virgil/scripts/<silo>/` locations, so write the repo-relative form.
 
+## Applicability: the TWO tables every mutation op asks
+
+> **"May I write this?" is two questions, and each has ONE table.**
+> `apply_response.MUTATION_PANEL_POLICY` answers **which STORE** (task 156) — an
+> allow-list, exhaustive over the card-store universe, so a panel nobody
+> classified is refused. `apply_response.OP_OWNED_FIELDS` answers **which FIELD**
+> (task 467) — a deny-list, DERIVED from the ops, so a field is reserved
+> precisely because another door owns its transition. Neither is prose a skill is
+> trusted to honor: the markdown mirrors what the table says, and a census fails
+> the build when it stops matching.
+
+The two failure modes are the same shape one granularity apart, and both were
+live:
+
+- **STORE (156).** `cmd_update` guarded `archive`/`examples`, forgot `citations`,
+  so `update {"set":{"command":"citep"}}` rewrote `citations.json` alone while the
+  `.tex \vcid\cite{}` marker and the `references.bib` entry stayed put — the
+  exact three-way desync `edit-card.md` promised the op prevents, for a year, with
+  no test pinning `cmd_update`'s refusal set at all.
+- **FIELD (467).** `cmd_update`'s `set` loop is `for k, v in sets.items():
+  card[k] = v` — arbitrary key, arbitrary value — so
+  `update {"set":{"status":"accepted"}}` on a suggestion did step 5 of `cmd_accept`
+  and nothing else: no `.tex` splice, no stale-guard, no Task completion. The panel
+  reads *accepted*, the paper is byte-unchanged, the Task stays open, exit 0. And
+  it was TAUGHT — `edit-card.md` named `status` among the suggestion family's
+  editable `--field`s while `accept-suggestion.md` routed field edits back to
+  `edit-card`, two routing copies composing into a loop that lands on the unsafe
+  door, with no card-CRUD skill referencing accept/reject at all.
+
+Five rules the field half earned:
+
+- **Derive the deny-list; never hand-list it.** An allow-list over fields would
+  have to enumerate every legitimate field of every card kind and would refuse the
+  next field somebody adds — a generic op turned into a maintenance surface. A
+  deny-list is normally the weaker shape and here it is a PROJECTION of
+  `MUTATION_OPS`: a new op inherits the refusal by declaring what it owns.
+- **`kinds=` is load-bearing**, and it is the 156 lesson restated: the naive
+  blanket refusal breaks a legitimate feature. `status` on a card that is not a
+  suggestion is not the accept/reject transition and stays writable — exactly as
+  `footnotes` had to stay on `update`'s panel allow-list, where the tempting
+  `panel in ATOM_BEARING_PANELS` one-liner would have broken footnote body editing.
+- **…and the same rule kept `aiRequest` OUT of the reserved set.** The task's own
+  design proposed reserving it; measurement refused. `draft-footnote.md`'s
+  virtual-request branch clears a footnote's flag with exactly
+  `update {"set":{"aiRequest":false}}` (a `virtual:` id has no `ai-requests.json`
+  row to complete), and the raised direction is first-class too — the
+  unbridged-card-flag fallback exists to surface a flagged card with no Task row,
+  which is what the user's own panel checkbox produces. Both directions are
+  legitimate, nothing owns the transition, so nothing reserves it. **Verify a
+  phenomenon is general before generalizing the fix.**
+- **The refusal ROUTES.** A message that stops an agent without naming the door
+  that can do the job sends it back to the loop. Every row carries the exact
+  command and the owning skill, and the import-time assertion fails a row whose
+  message does not spell its own route — so a renamed op cannot leave a refusal
+  pointing at a door that no longer exists.
+- **The census is the leg with teeth.** The table was never the part that could
+  misbehave; a skill that keeps teaching the unsafe door is, and the code fix alone
+  would have left `edit-card.md` naming `status` as editable for the next agent to
+  read. The rule is not "never mention a reserved field" — routing copy MUST
+  mention it — it is that a mention inside the field-editing vocabulary
+  (`--field`, `"set":`) has to NAME the owning door. Scoped per markdown SEGMENT
+  (a bullet plus its continuation lines), because the one violation in the tree sat
+  two lines below its own `--field` marker and a line-scoped needle was blind to it.
+
+CI: [`test_panel_policy_slice.py`](scripts/tests/test_panel_policy_slice.py),
+[`test_field_policy_slice.py`](scripts/tests/test_field_policy_slice.py) (the
+taught leg, the latent legs, the accepting controls, the table's own invariants —
+including a leg for the import-time assertion, which its panel twin lacks because
+that one is inline), and
+[`field-ownership.test.ts`](skills/__tests__/field-ownership.test.ts) (the
+markdown census + the Python half, run from vitest since nothing else in CI runs
+Python). Measured by neutering each half in turn: dropping the guard call takes 48
+python legs plus 2 census legs, dropping `kinds=` 3, reserving `aiRequest` 4,
+restoring the pre-467 `edit-card.md` teaching 1, and restoring the unqualified
+`accept-suggestion.md` pointer 1.
+
 ## Future work (intentionally deferred)
 
 - **End-user folder sync — landed.** The build now emits

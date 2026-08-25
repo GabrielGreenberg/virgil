@@ -11,7 +11,10 @@ description: |
   pen-protected commit. Handles revision-suggestion AND cutter-suggestion.
   Does NOT trigger for applying a suggestion (use /editor/accept-suggestion),
   drafting one (use /editor/draft-suggestion), or archiving an arbitrary
-  card (use /editor/archive-card). Args: <docPath> <cardId>.
+  card (use /editor/archive-card). Editing a suggestion's OTHER fields
+  (suggested_text / user_text / explanation) is /editor/edit-card's — but the
+  `status` transition is NOT: it is this skill's, and edit-card refuses it by
+  name. Args: <docPath> <cardId>.
 ---
 
 # /editor/reject-suggestion $ARGUMENTS
@@ -62,6 +65,14 @@ proposal is purely a card-lifecycle transition.
   `cutter-suggestion` (in `cutter.json`), `status: pending`.
 - **Refused** — any non-suggestion kind; a proposal already `accepted` (already
   spliced — undo in the editor). Re-rejecting a `rejected` card is a no-op.
+
+> **This skill OWNS the `status` transition** (with
+> [`accept-suggestion`](accept-suggestion.md)). `edit-card` refuses
+> `--field status=…` on a suggestion by name
+> (`apply_response.OP_OWNED_FIELDS`): flipping the field alone leaves the
+> originating Task open, so the request never leaves the inbox. Route a status
+> change here; [`edit-card`](edit-card.md) owns the suggestion's *other* fields
+> (`suggested_text` / `user_text` / `explanation` / `instructions`).
 
 ## Reply
 
