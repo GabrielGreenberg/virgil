@@ -8001,12 +8001,18 @@ legs, the progress channel 4, and the pre-454 one-message pane 4.
 **Residuals, stated.** The pgf/tikz family is still NOT in the vendored offline
 bundle (`public/swiftlatex/texbundle/` — 82 entries, every package the dev doc
 needs except that one), so a first compile of any paper using it still streams
-60–100 files. Vendoring the family would end the wait rather than making it
-survivable, and it is a real decision with a size: the pgf tree is several MB
-against a 10 MB `.fmt` and ~1.5 MB of packages today, it would land in the
-service worker's precache, and it is one package among many a paper might want.
-That is a product call, deliberately left to Gabriel rather than made under a
-bug fix. And the per-file XHR timeout's effectiveness is unverified — the
+60–100 files. Vendoring it would END the wait rather than making it survivable,
+and it is **sized**: measured against the shipped mirror, the 60-file core
+closure (pgf + pgfkeys + pgfmath + pgfsys + pgfcore + the two auto-loaded tikz
+libraries, plus `forest.sty` at 350 KB) is **1.50 MB**, against a 10 MB `.fmt`
+and ~1.5 MB of packages today — so it roughly doubles the package half and adds
+~13 % to the engine payload, and it lands in the service worker's precache.
+Two reasons it is a routed DECISION rather than a fix made here: the closure is
+an ESTIMATE (the real set comes from a live-compile capture, which a worktree
+cannot run, so a wrong guess ships bundle bytes nobody asks for — it fails open,
+never wrong, just wasted), and pgf is one package family among many a paper
+might want, so "vendor what this doc needs" is a policy question about the
+offline story rather than a bug. Left to Gabriel. And the per-file XHR timeout's effectiveness is unverified — the
 vendored file's own patch comment records that a synchronous cross-origin XHR
 *ignores* its timeout, which is an empirical claim someone hit and wrote down,
 and which a worktree cannot re-check.
