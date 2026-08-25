@@ -5002,14 +5002,51 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
+  // ── THE stack-capture terminal — one door, N producers (task 456) ────────
+  // Everything a capture DOES lives here, once: the capability + resolve +
+  // serialize door (`captureFloatToStack`, task 332), the bib-carrying add
+  // door (`addStackItem`, task 235), and opening the strip so the new item is
+  // visible. Returns the REPORT — `true` iff an item actually landed.
+  //
+  // Two producers enter it, and they had drifted into being one producer with
+  // a comment about the other. The `virgil-stack-drop` window listener below
+  // is the FLOAT drag (`FloatingPanel` is a low-level shell far from this
+  // component, so its capture has to travel as a global event). `LiftHost` —
+  // mounted BY this component — is the CONTENT LIFT: dragging a paragraph /
+  // heading / list item / selection straight out of the document onto the
+  // icon, which had no terminal at all, so the icon darkened on hover and the
+  // release popped the text out as a float (Gabriel, 2026-08-25). It takes the
+  // same function as a prop, which is also what gives it the report the window
+  // event cannot carry.
+  //
+  // What each producer does NOT share is how it retires its own source
+  // surface: the float closes its popout, a lift tears down its overlay. That
+  // stays at the call sites.
+  //
+  // Some builders (footnote, and every text-object kind) do a one-shot doc
+  // read here on the drop gesture, but the capture is a pure closure over the
+  // resolved record — never keystroke-proportional.
+  const captureKeyToStack = useCallback(
+    (cardKey: string): boolean => {
+      const item = captureFloatToStack(cardKey, popoutsDeps, {
+        docId: stackSourceRef.current.docId,
+      });
+      if (!item) return false;
+      // The bib carry is resolved at the ADD door for every payload family
+      // alike (task 235) — a card, a text slice, a paragraph, a heading.
+      addStackItem(item, stackBibCtxRef.current);
+      setStackOpen(true);
+      return true;
+    },
+    [popoutsDeps],
+  );
+
   // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
-  // clientY } when a popped-out float is released over the StackIcon.
-  // `captureFloatToStack` is the ONE capture door (task 332): it asks the same
-  // `canCaptureToStack` table the drag's ring read, resolves the `Floatable`
-  // through the SAME `resolveFloatable` `FloatHost` renders from — this handler
-  // used to carry its own mirror of that dispatch — and asks it to serialize.
-  // Declared here (after `popoutsDeps`) so it can hand that bag to the resolver
-  // without a TDZ on the dep array.
+  // clientY } when a popped-out float is released over the StackIcon — the
+  // FLOAT producer of the shared terminal above. (It travels as a window event
+  // because `FloatingPanel` is a low-level shell with no context path to this
+  // component; the content lift, which IS mounted here, takes the terminal as
+  // a prop and gets its report back.)
   //
   // THE REPORT IS THE PERMISSION: the float closes only on a snapshot that
   // actually landed. It used to close unconditionally, under the comment "the
@@ -5040,31 +5077,23 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
       const cardKey = detail.cardKey;
-      // One door for both float domains. Some builders (footnote, and every
-      // text-object kind) do a one-shot doc read here on the drop gesture, but
-      // the capture is a pure closure over the resolved record — never
-      // keystroke-proportional.
-      const item = captureFloatToStack(cardKey, popoutsDeps, {
-        docId: stackSourceRef.current.docId,
-      });
       // Nothing captured → leave the user holding their float, and leave the
       // Stack strip closed. The drag can no longer OFFER a capture this branch
       // would refuse, so what reaches here is a resolution failure (a deleted
       // source, an id the doc no longer knows) — the one case worth surfacing
       // rather than swallowing.
-      if (!item) return;
-      // The bib carry is resolved at the ADD door for every payload family
-      // alike (task 235) — a card, a text slice, a paragraph, a heading.
-      addStackItem(item, stackBibCtxRef.current);
+      if (!captureKeyToStack(cardKey)) return;
+      // Retiring the SOURCE SURFACE is the producer's own half, which is why
+      // it stays here and not in the shared terminal: a float drag consumes
+      // the popout it was holding, where a content lift (task 456) simply
+      // tears down its overlay.
       viewPrefs?.closeCardPopout(cardKey);
-      // Open the strip so the new item is visible.
-      setStackOpen(true);
     };
     window.addEventListener("virgil-stack-drop", onDrop as EventListener);
     return () => {
       window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
     };
-  }, [viewPrefs, popoutsDeps]);
+  }, [viewPrefs, captureKeyToStack]);
 
   // ── Bubble per-doc state up to the shell ────────────────────────
   // Step 7.1 (Path A): emit a synthesized `PaneState` so EditorLayout's
@@ -5680,7 +5709,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             single `<LiftedTextOverlay>` (moved out of the grab handle) and
             installs NO per-keystroke subscriber — its overlay state mutates
             only during an active gesture. */}
-        <LiftHost editorRef={editorInstanceRef}>
+        <LiftHost
+          editorRef={editorInstanceRef}
+          onCaptureToStack={captureKeyToStack}
+        >
           {/* Body-portaled outlines for dock-target / card-lift drag
               affordances. Both read state from module-level singletons
               (useDockDragTarget / useCardLiftTarget) — Reader has no

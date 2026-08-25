@@ -18,7 +18,10 @@ import { MIME_TEXT_INSERT } from "@/lib/marginalia";
 import type { Editor } from "@tiptap/react";
 import { addStackItem } from "@/hooks/useStack";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
-import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import {
+  parkDuringLayoutGesture,
+  useLayoutGestureActive,
+} from "@/lib/pane-resize";
 import { LAYOUT_SITE_STACK_ICON } from "@/lib/layout-gesture-probe";
 
 export interface StackIconProps {
@@ -38,6 +41,11 @@ export interface StackIconProps {
   bibCtx: StackBibCtx;
 }
 
+/** Module-constant so `useLayoutGestureActive`'s snapshot memo keys on one
+ *  stable value (it keys on the joined KINDS, so a fresh literal per render is
+ *  merely wasteful rather than wrong — this makes it neither). */
+const CONTENT_GESTURE = ["content"] as const;
+
 const ICON_DIAMETER = 56;
 export const STACK_INSET_LEFT = 12;
 export const STACK_INSET_BOTTOM = 12;
@@ -52,6 +60,21 @@ export function StackIcon({
   const [html5Hover, setHtml5Hover] = useState(false);
   const [hover, setHover] = useState(false);
   const stackTarget = useStackDropTarget();
+  // Task 456 — WHAT THE HOVER OFFERS IS WHAT THE COMMIT ACCEPTS, applied to
+  // this icon's own chrome. The lift overlay is `pointer-events: none` (the
+  // content-drag click-through law), so during a content drag the button still
+  // receives `mouseenter` and painted its ordinary hover darken — which reads
+  // as a drop affordance and was, for the lift gesture, the ONLY signal the
+  // icon gave (Gabriel: "It darkens on mouse over, but when you let go, the
+  // text dragged just pops out"). Wiring the lift's real ring is half the fix;
+  // the other half is that during a content drag the DARKEN stops speaking, so
+  // a drag whose payload the Stack cannot take offers nothing at all.
+  //
+  // Edge-only: the bus publishes begin/end edges, never per frame, so a whole
+  // drag costs two renders of a 56px button. Kind-filtered to `content` —
+  // a pane-divider drag or an OS window resize moves nothing over this icon,
+  // and suppressing hover for them would be a decision nobody made.
+  const contentDragActive = useLayoutGestureActive(CONTENT_GESTURE);
   const ref = useRef<HTMLButtonElement | null>(null);
 
   // Publish the icon's viewport rect for the FloatingPanel hit-test.
@@ -157,7 +180,7 @@ export function StackIcon({
     ? "var(--accent-light, #f5f0ea)"
     : open
       ? "var(--pod-dark, #eae6df)"
-      : hover
+      : hover && !contentDragActive
         ? "var(--pod-toolbar, #f5f3ef)"
         : "var(--surface, #ffffff)";
   const borderColor = illuminated ? "var(--accent-blue, #2563eb)" : ringColor;

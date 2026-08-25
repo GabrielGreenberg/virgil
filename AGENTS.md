@@ -3229,6 +3229,108 @@ commit was not. The refusal legs assert the record is never even RESOLVED (the k
 `toFloatable` must go uncalled), since the null alone passes with the capability check deleted —
 the two-tables shape restored with CI green.
 
+##### The third producer: a terminal is owed to the GESTURE, not to the producer that first needed it
+
+Same icon, the producer 332 did not reach (task 456) — and the case where the
+Stack had three capture producers in design and two in code, with the missing
+one wearing an accidental affordance that made it read as supported.
+
+Gabriel: *"Dropping items on the stack is still not working. It darkens on
+mouse over, but when you let go, the text dragged just pops out (as if you were
+dragging to anywhere else outside the page)."* Grab a paragraph / heading /
+list item / selection with the in-document grab handle, drag it onto the icon,
+release: the text becomes a popped-out float sitting over the icon and nothing
+lands on the Stack. `LiftHost.onUp` had exactly TWO terminals — ghost mode →
+`commitDropSession()` (a doc move), popout mode → `popOutAtRect(…)` — and never
+asked `isOverStackIcon`; `onMove` never called `setStackDropTarget`. A comment
+in `StackIcon.tsx` recorded it as a deferred phase (*"Phase E and beyond may
+emit MIME_TEXTOBJECT from TextObjectGrabHandle … we'll wire the consumer here
+then"*), which is how the gap outlived the two tasks that drained its siblings.
+
+**It darkened anyway, and that is the finding rather than a detail.** The lift
+overlay is `pointer-events: none` (the content-drag click-through law), so the
+button underneath kept receiving `mouseenter` and painted its ordinary hover
+background. The hover OFFERED and the commit REFUSED — the false-affordance
+class 258/321/332 each closed — surviving here because the offer was an
+**accident of plain hover styling** rather than a deliberate ring. No census
+could see it: every guard in this cluster asks about a ring, a capability or a
+door, and none asks what a button's REST chrome says while something is being
+dragged over it.
+
+> **A capture TERMINAL belongs to the gesture family, not to the producer that
+> first needed one: every producer enters ONE terminal, and the terminal
+> REPORTS.** And an icon that is a drop target owes the same two-sidedness its
+> ring does — during a content drag its ordinary hover chrome says nothing, so
+> the only signal it gives is the true one.
+
+Six rules it earned:
+
+- **The terminal moved OUT of the window listener** into
+  `EditorPane.captureKeyToStack` — the capability+resolve+serialize door
+  (`captureFloatToStack`, 332), the bib-carrying add door (`addStackItem`,
+  235), open the strip — and BOTH producers enter it. What each producer does
+  NOT share is how it retires its own source surface: the float closes its
+  popout, a lift tears down its overlay. That line is why the close stayed at
+  the call site.
+- **The lift gets a PROP where the float gets a window event, and the
+  difference is the REPORT.** `FloatingPanel` is a low-level shell mounted far
+  from `EditorPane` with no context path, so its capture has to travel as a
+  global `virgil-stack-drop` event and cannot be told whether it landed.
+  `LiftHost` is mounted BY `EditorPane`, so `onCaptureToStack` hands the report
+  back — which is exactly what lets a REFUSED capture (a source deleted
+  mid-gesture) fall through to the popout terminal instead of eating the
+  gesture. Fire-and-forget would have forced the pre-332 shape back.
+- **ONE capability, ONE geometry predicate, read by both halves.**
+  `canCaptureToStack(cardKey)` is resolved ONCE at gesture start (a registry
+  read whose answer cannot change mid-gesture — the rule `stack-capture.ts`'s
+  own header states, and `resolveSessionPlacements`' reason); the ring in
+  `onMove` and the branch in `onUp` then differ only by which event's
+  coordinate they pass to `isOverStackIcon`.
+- **The stack branch is read FIRST, ahead of both existing terminals, and the
+  ORDERING is the hover≡commit guarantee.** Wherever the ring was lit, releasing
+  captures — including the narrow-window geometry where the icon overlaps the
+  content zone and a content-first read would instead commit a doc move the
+  user was never offered.
+- **The ring clears in `cleanup()` — the ONE end path every ending funnels
+  through** (capture, popout, move-commit, doc-leave, Escape, and the
+  missed-release bail, which returns without ever reaching `onUp`). Cleared per
+  terminal instead, a swallowed mouseup leaves the ring lit with no gesture left
+  to accept it.
+- **Scoped to the `"grab"` policy, stated rather than assumed.** A `"float"`
+  lift is driven from a float that is ALREADY open, and that surface has its own
+  Stack terminal — dragging its HEADER onto the icon, which CONSUMES the float.
+  Giving its drop-button ghost a second terminal with COPY semantics would put
+  two answers to "what does releasing this float on the Stack do?" in front of
+  the user; that is a product question, not a wiring gap.
+- **Capture is a COPY**, matching float capture (a captured text-object float
+  leaves the doc text in place) and stack-pull's paste-as-new. Cut-to-stack is
+  one call at the site if Gabriel wants it.
+
+CI: [lift-stack-capture.test.tsx](src/text-objects/__tests__/lift-stack-capture.test.tsx)
+drives the REAL `beginLift` gesture (threshold → move over the icon's published
+rect → mouseup) for a paragraph lift and a `linkedRange` selection lift, with
+the two CONTROLS that keep it honest — a release away from the icon still pops
+out, a release over content still commits the move. **No pre-456 suite could see
+any of this**: `stack-capture-affordance` drives the REAL `FloatingPanel`
+gesture and is blind to the lift by construction, and every lift suite in the
+repo drives a gesture with **no icon rect published at all**, where
+`isOverStackIcon` is false everywhere and the terminal is unrepresentable. The
+leg with teeth is the CENSUS in `stack-capture-affordance` — the terminal was
+never the part that could misbehave, a second private capture site inside
+`LiftHost` is, and it would type-check, ask no capability, carry no bib and
+report to nobody: `LiftHost` may spell none of `captureFloatToStack` /
+`snapshotForStack` / `snapshotTextObject` / `addStackItem`, and the prop must be
+handed the shared terminal. Its two pre-456 legs are RENEGOTIATED in place with
+the reason at the site (they pinned the handler ITSELF as the one capture site,
+true only while the float drag was the only producer with a terminal). Measured
+by neutering each half in turn: the `onUp` terminal takes 3 legs, the ring 2,
+the `cleanup()` clear 2, the hover suppression 1, and dropping the prop 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live pointer
+gesture, a localStorage stack), so the check is cheap and real — lift a
+paragraph onto the icon, watch the ring light, release, and see the strip open
+with the item; release elsewhere and the popout is unchanged.
+
 
 #### The vocabulary half: an exemption is scoped to the shape it justifies
 

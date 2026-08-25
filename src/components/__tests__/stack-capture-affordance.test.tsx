@@ -24,6 +24,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
+import { commentsStripped } from "@/lib/__tests__/_source-scan";
 import { resolve } from "node:path";
 import { render, fireEvent, cleanup, act } from "@testing-library/react";
 import FloatingPanel from "@/components/FloatingPanel";
@@ -182,6 +183,17 @@ describe("the host closes the float only on a capture that landed", () => {
    * `cards/__tests__/float-snapshot.test.ts`) but the call site that closed the
    * float without reading its report. So read the source of that one handler
    * and require the guard to precede the close.
+   *
+   * RENEGOTIATED by task 456, with the reason here. The pre-456 form required
+   * the HANDLER ITSELF to spell `captureFloatToStack(` + `if (!item) return;`,
+   * which pinned this as the ONE capture site — true when the float drag was
+   * the only producer with a terminal, and exactly what a second producer had
+   * to break. The content lift (dragging a paragraph / heading / list item /
+   * selection out of the document onto the icon) now enters the SAME terminal,
+   * so the door moved one function out: `EditorPane.captureKeyToStack`. The
+   * invariant is unchanged and is asserted in the two halves it now has —
+   * the terminal goes through the capture door and reports, and the handler
+   * closes the float only on that report.
    */
   const src = readFileSync(
     resolve(__dirname, "../EditorPane.tsx"),
@@ -197,11 +209,63 @@ describe("the host closes the float only on a capture that landed", () => {
     expect(bodyStart).toBeGreaterThan(0);
     const body = src.slice(bodyStart, start);
 
-    const capture = body.indexOf("captureFloatToStack(");
-    const guard = body.indexOf("if (!item) return;");
+    const guard = body.indexOf("if (!captureKeyToStack(cardKey)) return;");
     const close = body.indexOf("closeCardPopout(");
-    expect(capture, "the handler must go through the ONE capture door").toBeGreaterThan(-1);
-    expect(guard, "an empty capture must return before anything else").toBeGreaterThan(capture);
+    expect(guard, "the handler must enter the ONE stack terminal").toBeGreaterThan(-1);
     expect(close, "the float is closed on the report, never before it").toBeGreaterThan(guard);
+    expect(
+      body.indexOf("captureFloatToStack("),
+      "and it must not re-derive the capture itself",
+    ).toBe(-1);
+  });
+
+  it("the shared terminal is the capture door, and it reports", () => {
+    const at = src.indexOf("const captureKeyToStack = useCallback(");
+    expect(at, "the shared stack terminal moved — re-aim this census").toBeGreaterThan(0);
+    const body = src.slice(at, src.indexOf("[popoutsDeps],", at));
+
+    const capture = body.indexOf("captureFloatToStack(");
+    const refuse = body.indexOf("if (!item) return false;");
+    const add = body.indexOf("addStackItem(");
+    expect(capture, "the terminal goes through the ONE capture door").toBeGreaterThan(-1);
+    expect(refuse, "an empty capture returns the refusal before anything else")
+      .toBeGreaterThan(capture);
+    // The bib carry is the add door's obligation (task 235) and nothing may
+    // reach the Stack around it.
+    expect(add, "and a capture that landed enters the ONE add door").toBeGreaterThan(refuse);
+    expect(body.includes("return true;"), "…and reports that it landed").toBe(true);
+  });
+
+  it("the content lift enters that SAME terminal (task 456)", () => {
+    // The leg with teeth for task 456. The terminal was never the part that
+    // could misbehave — a second, private capture site inside `LiftHost` is,
+    // and it would type-check perfectly, ask no capability, carry no bib and
+    // report to nobody. So: exactly one production consumer of the prop, and
+    // it is handed the shared terminal.
+    expect(
+      src.includes("onCaptureToStack={captureKeyToStack}"),
+      "LiftHost must be handed the shared stack terminal",
+    ).toBe(true);
+
+    // Comments stripped: the prop's own docstring NAMES the shared terminal's
+    // door and its bib obligation, which is exactly the prose a bare grep
+    // would indict.
+    const host = commentsStripped(
+      readFileSync(resolve(__dirname, "../../text-objects/LiftHost.tsx"), "utf8"),
+    );
+    // No private door: the lift may not resolve, serialize or add on its own.
+    for (const needle of [
+      "captureFloatToStack",
+      "snapshotForStack",
+      "snapshotTextObject",
+      "addStackItem",
+    ]) {
+      expect(host.includes(needle), `LiftHost must not spell \`${needle}\``).toBe(false);
+    }
+    // What it DOES own is the two-sided contract: one capability read, one
+    // geometry predicate, read by both the ring and the release.
+    expect(host.includes("canCaptureToStack(cardKey)")).toBe(true);
+    expect(host.includes("isOverStackIcon(mv.clientX, mv.clientY)")).toBe(true);
+    expect(host.includes("isOverStackIcon(upEv.clientX, upEv.clientY)")).toBe(true);
   });
 });
