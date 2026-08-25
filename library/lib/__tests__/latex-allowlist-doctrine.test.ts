@@ -75,6 +75,11 @@ const PERMITTED_NON_TEX_SKILLS: Record<string, string> = {
     "rewrites `links[*].anchor.textObjectIds`, never the document text (it " +
     "says so outright and DEFERS atom-bearing cards); its `\\footnote`/`\\cite` " +
     "are prose naming the atom it refuses to move.",
+  "editor/skills/iterate-virgil-editor.md":
+    "a DEVELOPER meta-skill: it runs other skills against a sandboxed copy " +
+    "of the sample paper and edits skill markdown — it never composes a " +
+    "paper's `.tex`. Its single `\\citet` is prose naming the fabrication a " +
+    "cross-skill test case must NOT produce (task 451 added the sentence).",
   "library/skills/authenticate-bib.md":
     "reads a `\\section{}` heading to seed a title guess; the field values it " +
     "writes reach `master.bib` verbatim from the auth helper — the skill " +

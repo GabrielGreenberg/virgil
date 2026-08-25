@@ -103,8 +103,11 @@ failure path the skill provides, rather than inventing content:
 - **`answer-bib-review`** → leave the unverifiable field as-is and name it
   in the reply as still-unverified.
 - **`draft-footnote`** and prose skills → write the prose without the
-  unresolved cite and file a `citation` follow-up request; never emit a
-  `\citet{key}` for a missing key.
+  unresolved cite and file a missing-bibkey **todo card** (Workflow B:
+  `create_card.py <docPath> --kind=todo --anchor <uuid> --body "…"`);
+  never emit a `\citet{key}` for a missing key, and never append a
+  pending row to `ai-requests.json` by hand — there is no such door
+  ([_ask-shape.md](_ask-shape.md) §4).
 
 The specific op / status vocabulary is the skill's; the principle —
 **find it for real, or surface that you couldn't** — is this file's.
