@@ -1,4 +1,4 @@
-<!-- last-verified: 94852c26 2026-08-24 -->
+<!-- last-verified: 41d988c2 2026-08-25 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: editor/scripts -->
 

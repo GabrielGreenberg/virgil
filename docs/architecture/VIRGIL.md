@@ -1,4 +1,4 @@
-<!-- last-verified: 94852c26 2026-08-24 -->
+<!-- last-verified: 41d988c2 2026-08-25 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -259,7 +259,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 
 ### LaTeX round-trip
 
-Virgil does not compile LaTeX. It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are enumerated in [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary) and [UUID marker emission](#uuid-marker-emission) below (and the manifest docs they forward-point to).
+Virgil's rendering does not compile LaTeX (the optional in-browser pdfTeX compile — [src/lib/compile/](../../src/lib/compile/) — is a separate feature the editor never reads). It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are enumerated in [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary) and [UUID marker emission](#uuid-marker-emission) below (and the manifest docs they forward-point to).
 
 ### The keystroke-sanctity invariant
 
@@ -339,7 +339,7 @@ The exhaustive per-marker emit/parse points and the auto-vs-authored table are i
 ## LaTeX round-trip vocabulary
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/tiptap -->
 
-Virgil does not compile LaTeX. `parseLatex()` ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) reads `.tex` → editor model; `serializeToLatex()` ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) writes it back, preserving the raw source. The honest current-state vocabulary:
+Virgil's rendering does not compile LaTeX. `parseLatex()` ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) reads `.tex` → editor model; `serializeToLatex()` ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) writes it back, preserving the raw source. The honest current-state vocabulary:
 
 - **Block constructs modeled:** the sectioning commands (`\part`…`\subparagraph`, levels 0–6, SSOT [src/lib/heading-types.ts](../../src/lib/heading-types.ts)), `\title`/`\author`/`\date`/`\maketitle`, display math `\[…\]`, the expex example family (`\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`) — plus its **linguex dialect** (`\ex.`, blank-line terminated), carried as a per-example `dialect` attr and serialized back in the syntax it arrived in, since the two packages are mutually incompatible and a real paper loads both (task 355) —, `\includegraphics`, `\hrulefill`, a whole-line `%` comment (the `latexComment` node), and the environments `verbatim`, `quote`, `itemize`, `enumerate`, `figure`/`figure*`, `forest` — the last claimed WHOLE (task 383: the env verbatim in a `source` attr, so the drawn syntax tree is a derivation that cannot subtract from it, and its leading `[` is the TREE rather than an option). A list item's optional `\item[label]` is **captured** on the node (`itemLabel`, raw and opaque) rather than read and thrown away (task 340).
 - **Inline constructs modeled:** `$…$` math; the marks `\textbf`/`\emph`/`\textit`/`\underline`/`\texttt`/`\textcolor[HTML]{…}`; `\footnote`/`\thanks`; the natbib + biblatex citation family (SSOT [src/lib/cite-commands.ts](../../src/lib/cite-commands.ts)); `\ref`/`\getref`/`\getfullref`; `\ldots`/`\LaTeX`/`\TeX`; the typographic glyph family — accents/special-letters (`\'e`→é, `\v{s}`, `\c{c}`, `\ss`, `\o`, …) and en/em dashes (`--`→–, `---`→—) — round-tripped **bidirectionally** to composed Unicode via the typography table (SSOT [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts)), excluding code/verbatim/math/`latexCommand` spans; escaped specials; `\\`. A `~` **tie** is modeled as the character it means — U+00A0, not a mark — so `Fig.~1` and `Section~\ref{…}` survive a save (task 349 M5); the two spellings are distinct code points in the document model, and a typed ASCII `~` still emits `\textasciitilde{}`.
