@@ -693,24 +693,47 @@ body[data-zen-mode="on"] {
 }
 
 /* ── Radius scale → Tailwind namespace ────────────────────────────
-   Overrides Tailwind v4's default radius scale so the `rounded-*`
-   utilities are backed by the app's token scale (the real values live
-   in the unlayered `:root` above; Tailwind emits these into
+   Maps the app's token scale onto the `rounded-*` utilities (the real
+   values live in the unlayered `:root` above; Tailwind emits these into
    `@layer theme`, and unlayered always wins the cascade — so the
    self-references below resolve to the :root values, never to a
    circular-invalid value). `--radius-lg`/`--radius-xl` alias the
    canonical --pod-radius/--panel-radius (kept as the tier SSOT,
    print-mode overridden). Only intentional visual shift vs Tailwind
    defaults: rounded-xl 12→14 (modals join the panel tier).
-   rounded-full stays Tailwind's built-in (fully round); --radius-pill
-   mirrors it for inline consumers + emits a `rounded-pill` utility. */
+   rounded-full / rounded-none stay Tailwind's built-ins (they are
+   `staticValues`, not theme keys, so nothing here can reach them);
+   --radius-pill mirrors `full` for inline consumers + emits a
+   `rounded-pill` utility.
+
+   `@theme` MERGES into Tailwind's default theme — `initial` is v4's
+   only way to REMOVE a key — so a rung this block does not restate is
+   a vendor default the app never chose, invisible to every radius
+   guard (task 2026-08-25-458). Two consequences, both stated here:
+
+     • `--radius` is the BARE `rounded` utility's key, and bare
+       `rounded` is the most-used spelling in the tree. It is mapped
+       onto `--radius-sm`, the tier it already rendered at (Tailwind's
+       default `--radius` is 0.25rem = 4px = --radius-sm), so the
+       mapping is byte-neutral on screen and the 200-odd corners now
+       take their value from a tier the app owns.
+     • `--radius-2xl/3xl/4xl` are tiers the app does NOT own, so they
+       are CLEARED rather than left vendor-valued. `rounded-2xl` then
+       emits nothing at all, and the coverage leg in
+       src/__tests__/radius-scale.test.ts fails the build for spelling
+       it — which is the enforcement, since Tailwind itself is silent
+       about an unknown value. Want that tier? Give it a token first. */
 @theme inline {
+  --radius: var(--radius-sm);
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--pod-radius);
   --radius-xl: var(--panel-radius);
   --radius-pill: var(--radius-pill);
+  --radius-2xl: initial;
+  --radius-3xl: initial;
+  --radius-4xl: initial;
 }
 
 /* ── Hover utilities ──────────────────────────────────────────────
