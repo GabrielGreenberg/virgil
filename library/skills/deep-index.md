@@ -448,10 +448,13 @@ Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and the
 top-level `updatedAt` are preserved automatically — the patch script
 deep-merges nested objects and only the keys you include get replaced.
 
-**Warnings recompute — nine kinds, and step 5 owns FIVE of them.**
-The `warnings` array is append-only across passes EXCEPT for nine
-kinds, which are recomputed by whoever produced them. They split by
-producer:
+**Warnings recompute — step 5 owns FIVE of them.**
+The `warnings` array is append-only across passes EXCEPT for the kinds
+below, which are recomputed by whoever produced them. They split by
+producer. (The census carries no total: a number restating a list is a
+second thing to keep in step, and it is the half that went stale — this
+table said "nine kinds" while ten shipped, task 463. The five IS
+load-bearing, because it is what this step's own bash block declares.)
 
 ```
 step-5-owned                  subskill-owned              outside this pass
@@ -460,19 +463,29 @@ step-5-owned                  subskill-owned              outside this pass
 footnote-recovery-needed:     missing-bib-entry:          bib-coherence:
 examples-not-converted:       ambiguous-citation:
 pgmark-duplicate:             numeric-citation-style:
-pgmark-gap:
+pgmark-gap:                   metadata-mismatch:
 pgmark-out-of-order:
 ```
 
-The three on the right belong to `/library/clean-bibliography`, which
-**persists them itself** at the end of §3g — because
-`synthesize_canonical_entries.py`, later in that same subskill, gates
-entirely on reading `missing-bib-entry:` back out of the catalog. Step 5
-runs after the whole §3 dispatch, so owning them here made synthesis a
-guaranteed no-op on every first pass (task 323). **Do not carry them in
-this patch and do not declare them below** — this write no longer sees
-them, and declaring a kind you did not recompute deletes another step's
-findings.
+The four in the middle belong to the subskills that **persist them
+themselves**: `/library/clean-bibliography` writes the first three at the
+end of §3g — because `synthesize_canonical_entries.py`, later in that
+same subskill, gates entirely on reading `missing-bib-entry:` back out of
+the catalog — and `/library/di-preflight` (Step 0 of this pass) writes
+`metadata-mismatch:` at its Step 0.2, recomputing it per preflight so a
+resolved mismatch stops being flagged. Step 5 runs after the whole §3
+dispatch, so owning any of them here made synthesis a guaranteed no-op on
+every first pass (task 323). **Do not carry them in this patch and do not
+declare them below** — this write no longer sees them, and declaring a
+kind you did not recompute deletes another step's findings. For
+`metadata-mismatch:` that is a Step-0 title/author divergence deleted with
+the pass still reporting clean (task 463).
+
+This table is CHECKED against every skill's own `--recompute-warning-kind`
+invocation by
+[warning-kind-census.test.ts](../lib/__tests__/warning-kind-census.test.ts),
+which also holds it to [_doctrine.md](_doctrine.md)'s copy — the two must
+agree, and now something says so in CI rather than only in prose.
 
 The five on the left have no same-run consumer (nothing reads
 `footnote-recovery-needed:` / `examples-not-converted:` /

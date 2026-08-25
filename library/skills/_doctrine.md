@@ -324,16 +324,28 @@ single example gets a fresh UUID; existing canonical examples are
 left untouched.
 
 For catalog warnings specifically: the `indexed.warnings` array is
-recomputed per pass for nine kinds, and they split by **producer** —
-the same split `deep-index.md` §5 states; the two must agree:
+recomputed per pass for the kinds enumerated below, and they split by
+**producer** — the same split `deep-index.md` §5 states; the two must
+agree. **Neither census carries a COUNT**: a number restating a list is a
+second thing to keep in step, and it is the half that went stale (this
+census said "nine" while ten kinds shipped — task 463). The census is
+CHECKED against the skills' own `--recompute-warning-kind` invocations by
+[warning-kind-census.test.ts](../lib/__tests__/warning-kind-census.test.ts),
+so a kind that starts being produced is named here or CI fails.
 
-- **Subskill-owned**, persisted by `/library/clean-bibliography` itself
-  at the end of its §3g: `missing-bib-entry:`, `ambiguous-citation:`,
-  `numeric-citation-style:`. They are written at source because that
-  subskill's own next step (`synthesize_canonical_entries.py`) reads
-  `missing-bib-entry:` back out of the catalog seconds later — deferring
-  the write to step 5, which runs after the whole §3 dispatch, made
-  synthesis a guaranteed no-op on every first pass (task 323).
+- **Subskill-owned**, persisted by the producing subskill itself:
+  `missing-bib-entry:`, `ambiguous-citation:`, `numeric-citation-style:`
+  (`/library/clean-bibliography`, end of its §3g) and
+  `metadata-mismatch:` (`/library/di-preflight`, its Step 0.2). They are
+  written at source because the producing subskill's own later step reads
+  the line back out of the catalog — `synthesize_canonical_entries.py`
+  gates entirely on reading `missing-bib-entry:` back seconds later, and
+  the preflight re-reads its own mismatch verdict — so deferring the write
+  to step 5, which runs after the whole §3 dispatch, made synthesis a
+  guaranteed no-op on every first pass (task 323). **No step-5 patch may
+  declare any of these four**: declaring a kind you did not recompute
+  deletes the producer's findings, and for `metadata-mismatch:` that is a
+  Step-0 title/author divergence lost with the pass still looking clean.
 - **Step-5-owned**, deferred to `deep-index.md` §5 by
   `/library/recover-footnotes` and `/library/di-examples`:
   `footnote-recovery-needed:`, `examples-not-converted:`,
