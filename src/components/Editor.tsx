@@ -38,6 +38,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { restoreExcerptAtCaret } from "@/lib/tiptap/restore-excerpt";
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
@@ -1734,11 +1735,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           // A saved/live scroll offset is being restored by the pane's
           // scroll-restoration owner; the cursor must NOT pull the viewport.
           // Place the selection and take focus WITHOUT the default deferred
-          // focus-scroll (`scrollIntoView: false`) — otherwise the focus-scroll
-          // races the offset restore and the doc lands on the cursor paragraph
-          // instead of where the user was last looking.
+          // focus-scroll — otherwise the focus-scroll races the offset restore
+          // and the doc lands on the cursor paragraph instead of where the user
+          // was last looking. Task 486 moved the hand-spelled
+          // `focus(null, { scrollIntoView: false })` onto the shared door.
           editor.commands.setTextSelection(endPos);
-          editor.commands.focus(null, { scrollIntoView: false });
+          refocusEditor(editor);
         }
       } catch {
         /* position out of range — silently skip */

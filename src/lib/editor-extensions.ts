@@ -27,6 +27,7 @@ import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
+import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
 import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
@@ -1185,7 +1186,12 @@ export function createHeadingWithLabel(
             target.view.dispatch(tr);
             // Focus the editor the NodeView lives in (the float in float
             // mode, main in main mode) — keeps the user in the popout.
-            nodeEditor.commands.focus();
+            // Task 486: through the refocus DOOR, never a bare `focus()`. This
+            // edit happened AT A NODE resolved by uuid; the caret is wherever
+            // the user last left it, so the default deferred `scrollIntoView`
+            // would drag the document to a stale caret the instant the label
+            // commits — the reported scroll jump.
+            refocusEditor(nodeEditor);
           };
 
           input.addEventListener("keydown", (ev) => {

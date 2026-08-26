@@ -78,6 +78,7 @@ import {
   parkDuringLayoutGesture,
 } from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
+import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import type { SectionPathEntry } from "@/panels/Outline";
 import {
@@ -631,7 +632,13 @@ export function useReaderView(
         idx++;
       });
       if (foundPos == null) return;
-      editor.commands.focus();
+      // Task 486: refocus through the DOOR, so the ONE scroll this handler
+      // performs is the explicit one below. A bare `focus()` schedules its own
+      // deferred `scrollIntoView` on the next frame — which, by then, targets
+      // the heading too, so it does not land the reader anywhere WRONG; it
+      // simply races the smooth scroll and cancels it with an instant jump.
+      // An at-a-node jump states its scroll once, explicitly.
+      refocusEditor(editor);
       editor.commands.setTextSelection(foundPos);
       const { view } = editor;
       const dom = view.nodeDOM(foundPos) as HTMLElement | null;
