@@ -120,10 +120,9 @@ const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = 
   syncPanelPrefsToRendered: () => {},
   setZenLeftMargin: () => {},
   setZenRightMargin: () => {},
-  // Reader writes are intentionally scoped to note annotations; per-card
-  // archive view + the atom-archive warning never change in a read-only doc.
+  // Reader writes are intentionally scoped to note annotations; the per-card
+  // archive view never changes in a read-only doc.
   setCardArchiveView: () => {},
-  setSuppressArchiveAtomWarning: () => {},
 };
 
 /**

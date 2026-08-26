@@ -626,6 +626,10 @@ export async function commitDropSession(): Promise<void> {
       message: decision.message,
       confirmLabel: decision.confirmLabel,
       cancelLabel: decision.cancelLabel,
+      // A suppressed confirm resolves `true` inside the door with no dialog
+      // mounted; the gesture then lands through this SAME `finishApply`, so
+      // suppression skips the QUESTION and never the spec.
+      suppressId: decision.suppressId,
     });
     if (ok) {
       finishApply(s.spec, placement, s.cardKey, ctx);

@@ -67,8 +67,6 @@ function provider(view: CardArchiveView): CardArchiveViewApi {
   return {
     getView: () => view,
     setView: () => {},
-    suppressAtomWarning: false,
-    setSuppressAtomWarning: () => {},
   };
 }
 

@@ -230,7 +230,7 @@ import { useFootnoteOrphanBridges } from "./editor-layout/event-bridges/footnote
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
-import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
+import { useConfirmDialog } from "./ConfirmDialog";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -521,7 +521,6 @@ export interface EditorPaneViewPrefs {
     panel: PanelId,
     mode: import("@/hooks/useViewPrefs").CardArchiveView,
   ) => void;
-  setSuppressArchiveAtomWarning: (v: boolean) => void;
   /** The registry-driven view-pref setter (task 274). The Bibliography panel's
    *  "Cited only / Full" filter is a `kind: "enum"` registry pref, so it is
    *  written as `setViewPref("bibFilter", v)` — there is no per-pref setter to
@@ -5389,15 +5388,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         viewPrefs?.prefs.cardArchiveView[panel as PanelId] ?? "active",
       setView: (panel, mode) =>
         viewPrefs?.setCardArchiveView(panel as PanelId, mode),
-      suppressAtomWarning: viewPrefs?.prefs.suppressArchiveAtomWarning ?? false,
-      setSuppressAtomWarning: (v) => viewPrefs?.setSuppressArchiveAtomWarning(v),
     }),
-    [
-      viewPrefs?.prefs.cardArchiveView,
-      viewPrefs?.prefs.suppressArchiveAtomWarning,
-      viewPrefs?.setCardArchiveView,
-      viewPrefs?.setSuppressArchiveAtomWarning,
-    ],
+    [viewPrefs?.prefs.cardArchiveView, viewPrefs?.setCardArchiveView],
   );
 
   // ── Per-card archive actions ────────────────────────────────────────
@@ -5537,15 +5529,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
-  // Pending atom-archive confirm ({kind,id} while the dialog is open).
-  const [archiveConfirm, setArchiveConfirm] = useState<{
-    kind: CardKind;
-    id: string;
-  } | null>(null);
-  const [archiveDontAsk, setArchiveDontAsk] = useState(false);
+  // The atom-archive confirm. Suppressible through the ONE door (task 492):
+  // `suppressId` renders the "Don't show this again" checkbox, persists the
+  // answer only on Confirm, and resolves a suppressed confirm `true` with no
+  // dialog mounted at all — which is why this is the imperative
+  // `useConfirmDialog` and no longer a controlled `<ConfirmDialog>` with a
+  // hand-authored checkbox, a hand-written `if (suppressed) …` gate and its own
+  // `ViewPrefs` field. Those three copies of one idea are what the door
+  // retires.
+  const {
+    confirm: confirmArchiveAtom,
+    dialog: confirmArchiveAtomDialog,
+  } = useConfirmDialog();
 
   const archiveCard = useCallback(
-    (kind: CardKind, id: string) => {
+    async (kind: CardKind, id: string) => {
       const currentlyArchived = archivedIdsRef.current.has(id);
       if (archiveRemovesAtom(kind)) {
         if (currentlyArchived) {
@@ -5554,12 +5552,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           setArchivedForKind(kind, id, false);
           return;
         }
-        if (viewPrefs?.prefs.suppressArchiveAtomWarning) {
-          spliceAndArchiveAtom(kind, id);
-          return;
-        }
-        setArchiveDontAsk(false);
-        setArchiveConfirm({ kind, id });
+        const ok = await confirmArchiveAtom({
+          title: kind === "footnote" ? "Archive footnote?" : "Archive citation?",
+          message: `Archiving this ${kind} removes its marker from your document. The card moves to this panel's archive — you can unarchive it later, but the marker won't be restored automatically.`,
+          confirmLabel: "Archive",
+          suppressId: "archive-atom-marker",
+        });
+        if (ok) spliceAndArchiveAtom(kind, id);
         return;
       }
       // Non-atom kinds: a pure flag toggle (no doc mutation, no confirm).
@@ -5573,7 +5572,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setArchivedForKind,
       clearAiRequestForKind,
       spliceAndArchiveAtom,
-      viewPrefs?.prefs.suppressArchiveAtomWarning,
+      confirmArchiveAtom,
     ],
   );
 
@@ -5669,42 +5668,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         <CardArchiveViewProvider value={cardArchiveViewApi}>
         <CardArchiveActionsProvider value={cardArchiveActions}>
         <CardRestoreActionsProvider value={cardRestoreActions}>
-        {archiveConfirm && (
-          <ConfirmDialog
-            open
-            title={
-              archiveConfirm.kind === "footnote"
-                ? "Archive footnote?"
-                : "Archive citation?"
-            }
-            message={
-              <div className="flex flex-col gap-2">
-                <span>
-                  Archiving this {archiveConfirm.kind} removes its marker from
-                  your document. The card moves to this panel&apos;s archive —
-                  you can unarchive it later, but the marker won&apos;t be
-                  restored automatically.
-                </span>
-                <label className="flex items-center gap-2 text-ink-muted cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={archiveDontAsk}
-                    onChange={(e) => setArchiveDontAsk(e.target.checked)}
-                  />
-                  Don&apos;t ask again
-                </label>
-              </div>
-            }
-            confirmLabel="Archive"
-            onConfirm={() => {
-              if (archiveDontAsk)
-                viewPrefs?.setSuppressArchiveAtomWarning(true);
-              spliceAndArchiveAtom(archiveConfirm.kind, archiveConfirm.id);
-              setArchiveConfirm(null);
-            }}
-            onCancel={() => setArchiveConfirm(null)}
-          />
-        )}
         <PoppedCardsContext.Provider value={poppedCardsValue}>
         {/* LiftHost — shared owner of the lifted-overlay ghost gesture. Mounted
             here, inside PoppedCardsContext.Provider (and under
@@ -7269,6 +7232,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           {confirmDragHandleActionDialog}
           {notifyDragHandleActionDialog}
           {confirmMorphDialog}
+          {confirmArchiveAtomDialog}
         </LiftHost>
         </PoppedCardsContext.Provider>
         </CardRestoreActionsProvider>

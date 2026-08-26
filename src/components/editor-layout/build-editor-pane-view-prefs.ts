@@ -87,11 +87,10 @@ export interface EditorMutationHandlers {
   setZenLeftMargin: (px: number) => void;
   setZenRightMargin: (px: number) => void;
 
-  // Per-card archive view + atom-archive-warning suppression. Real `vp`
-  // setters exist, but they're editor-mutation-shaped (they change how cards
-  // are surfaced / written), so the Reader scopes them to no-ops.
+  // Per-card archive view. A real `vp` setter exists, but it is
+  // editor-mutation-shaped (it changes how cards are surfaced / written), so
+  // the Reader scopes it to a no-op.
   setCardArchiveView: EditorPaneViewPrefs["setCardArchiveView"];
-  setSuppressArchiveAtomWarning: (v: boolean) => void;
 }
 
 /**
@@ -236,7 +235,6 @@ export function buildEditorPaneViewPrefs(
 
     // ── Card archive view + bib filter ──────────────────────────────
     setCardArchiveView: editorHandlers.setCardArchiveView,
-    setSuppressArchiveAtomWarning: editorHandlers.setSuppressArchiveAtomWarning,
     // The one registry-driven pref writer this bundle carries (task 274) — the
     // Bibliography filter is written as `setViewPref("bibFilter", v)`.
     setViewPref: vp.setViewPref,

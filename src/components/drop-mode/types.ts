@@ -30,6 +30,7 @@ import type { PullSeed } from "@/lib/stack/pull-seed";
 import type { InlineDropPayload } from "./inline-host";
 import type { BlockDropPayload } from "./block-payload";
 import type { DropSourceRange } from "./self-drop";
+import type { SuppressibleConfirmId } from "@/components/confirm-suppression";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -112,6 +113,10 @@ export type DropDecision =
       message: ReactNode;
       confirmLabel?: string;
       cancelLabel?: string;
+      /** Offer "Don't show this again", and skip the dialog entirely once the
+       *  user has. The capability is the confirm DOOR's
+       *  (`components/confirm-suppression.ts`); a spec only DECLARES the id. */
+      suppressId?: SuppressibleConfirmId;
     };
 
 /**
@@ -189,12 +194,16 @@ export interface DropCtx {
    * a commit that ALSO minted coalesces to one write (no double-flush). Absent
    * means the doc isn't wired for commit-flush (Reader mode) → silently no-op. */
   requestAnchorFlush?: (paragraphId: string) => void;
-  /** Imperative confirm — opens the modal and awaits the user's choice. */
+  /** Imperative confirm — opens the modal and awaits the user's choice.
+   *  A `suppressId` makes the confirm suppressible: the dialog grows a "Don't
+   *  show this again" checkbox and, once ticked-and-confirmed, later calls
+   *  resolve `true` with no dialog at all. */
   confirm: (opts: {
     title?: string;
     message: ReactNode;
     confirmLabel?: string;
     cancelLabel?: string;
+    suppressId?: SuppressibleConfirmId;
   }) => Promise<boolean>;
   /** Per-kind hook APIs. Each spec needs its own; absent means the
    *  feature isn't wired in this doc (silently no-op). One sub-bag

@@ -1503,11 +1503,13 @@ the two real checkboxes were 14-unit, `--muted-light`-edged, and hand-authored
 twice from five raw hex literals (task 2026-08-02-287). A spec that describes
 nothing is the "stated invariant with no consumer" failure, one document over.
 
-The exceptions are the three **native** `<input type="checkbox">` — the archive
-confirm dialog's "Don't ask again", and the Library's PDF-drop intro and
-"Cited only" filter. All three are browser controls inside a dialog or a filter
-row, unstyled by choice (the Library pair sets only `cursor`), and none is a
-glyph. If one ever wants the app's look it takes `CheckSquare`, not its own SVG.
+The exceptions are the three **native** `<input type="checkbox">` — the confirm
+door's "Don't show this again" (one checkbox now, rendered by `ConfirmDialog`
+for every suppressible confirm; it used to be hand-authored inside the archive
+dialog's own `message`), and the Library's PDF-drop intro and "Cited only"
+filter. All three are browser controls inside a dialog or a filter row,
+unstyled by choice (the Library pair sets only `cursor`), and none is a glyph.
+If one ever wants the app's look it takes `CheckSquare`, not its own SVG.
 
 Converging the two `--checkbox-*` tokens onto the toggle family
 (`--control-selected-tint` is 3/0/4 away from the fill in RGB;
@@ -1666,6 +1668,30 @@ The destructive action stays fully keyboard-reachable (Tab, then Enter), which
 is the right cost for a deliberate destructive choice. `ConfirmDialog` derives
 this for every caller via `confirmDialogCuedDefault()`; a hand-built
 `SystemDialogFooter` must place `autoFocus` accordingly.
+
+**A confirm may be SUPPRESSIBLE — and which ones may be is a rule, not a
+per-caller choice** (task 492). A confirm that guards a *deliberate* and
+*reversible* gesture is pure friction once read: the re-anchor prompt raised at
+the end of a full margin-card drag, the "archiving removes this footnote's
+marker" notice. Those declare `suppressId` on the IMPERATIVE door
+(`useConfirmDialog().confirm({ … , suppressId })`), which renders one shared
+"Don't show this again" checkbox, persists the answer in
+`components/confirm-suppression.ts`, and — the half only the door can do —
+resolves a suppressed confirm `true` with **no dialog mounted at all**. Three
+consequences. A **`tone="danger"` confirm may never be suppressible**: RED means
+the action destroys content without a net, and a remembered "yes" to a
+destruction is the armed-default trap task 386 took off the keyboard, arriving
+through persistence instead — the door refuses it, renders no checkbox, and
+`console.error`s in dev. A suppression is minted **only by the choice it
+suppresses**, so ticking the box and pressing Cancel persists nothing. And it is
+never a one-way door: Preferences grows a *Restore hidden confirmations (N)* row
+whenever anything is suppressed, and nothing at all when it isn't. A CONTROLLED
+`<ConfirmDialog>` may not carry `suppressId` — it cannot short-circuit, so the
+checkbox would be a control that appears to work and doesn't. One accepted
+consequence: while the checkbox itself holds focus `Enter` does nothing (the
+row below — a focused checkbox answers to SPACE), so the flow is Space, then
+Tab to the answer; Enter from anywhere else in the dialog still presses the
+cue, which is the ordinary case because nothing focuses the box.
 
 **Enter presses the cued default; Escape closes. Neither depends on where focus
 sits** (task 389). The cue is a VISIBLE promise — the button renders as the

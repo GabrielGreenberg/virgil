@@ -115,8 +115,6 @@ function api(view: CardArchiveView, setView: Mock | (() => void) = vi.fn()): Car
   return {
     getView: () => view,
     setView,
-    suppressAtomWarning: false,
-    setSuppressAtomWarning: () => {},
   };
 }
 

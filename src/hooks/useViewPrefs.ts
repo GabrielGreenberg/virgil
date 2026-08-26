@@ -34,6 +34,10 @@ import {
 import { applyPanelRenames, PANEL_RENAMES } from "./rename-panel-id";
 import { dockedSideOf } from "./view-prefs-derived";
 import {
+  confirmSuppressionsUntouched,
+  suppressConfirm,
+} from "@/components/confirm-suppression";
+import {
   MAX_STACK,
   MIN_BAND_PX,
   closeAllPanels as closeAllPanelsIn,
@@ -225,9 +229,6 @@ export interface ViewPrefs extends RegistryPrefs {
    *  draft window stays on active). Wholly distinct from the text-object Archive
    *  PANEL. */
   cardArchiveView: Partial<Record<PanelId, "active" | "archived" | "all">>;
-  /** When true, suppress the "archiving removes the footnote/citation from your
-   *  text" confirm (the user ticked "don't ask again"). Per-window. */
-  suppressArchiveAtomWarning: boolean;
 }
 
 /** The three card-archive view modes. */
@@ -257,8 +258,21 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
  *    persisted pref no pane read — and one click painted a permanent phantom
  *    mirror indicator on the Outline that survived reloads. Retired in task
  *    115; the machinery is parked (unmounted) in `split-editor-panes.tsx`.
+ *  - `suppressArchiveAtomWarning`: the atom-archive confirm's "don't ask
+ *    again", one of THREE hand-rolled copies of one idea in one caller (a
+ *    field here, a hand-authored checkbox inside the dialog's `message`, a
+ *    hand-written gate at the call site). Task 492 moved the capability onto
+ *    the confirm DOOR (`components/confirm-suppression.ts`), where a confirm
+ *    opts in with one `suppressId` field — and where the answer is GLOBAL,
+ *    which is also a repair: this key was per-WINDOW, so the tick had to be
+ *    made again in every window. Carried across once by the fold in
+ *    `loadPrefs` below.
  */
-const RETIRED_PREF_KEYS = ["editorSplit", "editorSplitRatio"] as const;
+const RETIRED_PREF_KEYS = [
+  "editorSplit",
+  "editorSplitRatio",
+  "suppressArchiveAtomWarning",
+] as const;
 
 const DEFAULT_PREFS: ViewPrefs = {
   // Registry defaults FIRST so the 8 promoted decoration/highlight fields
@@ -273,12 +287,10 @@ const DEFAULT_PREFS: ViewPrefs = {
     | "bibFilter"
     | "printOptions"
     | "cardArchiveView"
-    | "suppressArchiveAtomWarning"
     | "appliedPrefMigrations"
   >),
   printOptions: DEFAULT_PRINT_OPTIONS,
   cardArchiveView: {},
-  suppressArchiveAtomWarning: false,
   // Not shipped in the JSON: a fresh profile has applied nothing, and baking a
   // migration id into the defaults would mark it done for every new user.
   appliedPrefMigrations: [],
@@ -813,6 +825,19 @@ export function loadPrefs(): ViewPrefs {
     // forever, invisible to the type system, and ready to be read back with a
     // stale value by anything that reuses the name. Scrubbing here drops it
     // from the blob on the first write after upgrade.
+    // A retirement must not silently DROP the user's answer. The atom-archive
+    // "don't ask again" moved to the confirm-suppression door (task 492), so
+    // carry a stored `true` across before the key is scrubbed. Gated on the new
+    // store having never been written, which makes the fold at-most-once by
+    // construction with no second bookkeeping field: the moment the user ticks
+    // or restores anything the key exists, so a later reload can never
+    // resurrect a suppression they have just cleared.
+    if (
+      (parsed as Record<string, unknown>).suppressArchiveAtomWarning === true &&
+      confirmSuppressionsUntouched()
+    ) {
+      suppressConfirm("archive-atom-marker");
+    }
     for (const k of RETIRED_PREF_KEYS) {
       delete (parsed as Record<string, unknown>)[k];
     }
@@ -1460,11 +1485,6 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
-  /** Persist the "don't ask again" choice for the atom-archive confirm. */
-  const setSuppressArchiveAtomWarning = useCallback((v: boolean) => {
-    update((p) => ({ ...p, suppressArchiveAtomWarning: v }));
-  }, [update]);
-
   /**
    * Close a panel — works for either a docked or a floating panel.
    * Preserves panelModes[id] and floatPositions[id] so re-opening
@@ -1697,7 +1717,6 @@ export function useViewPrefs(opts?: {
     resetOmniSide,
     toggleOmniHideAllCards,
     setCardArchiveView,
-    setSuppressArchiveAtomWarning,
     togglePopout,
     closePopout,
     openPanel,
