@@ -810,7 +810,6 @@ export function ActionsMenuPanel({
             setTimeout(0) tick before the auto-register lands). */}
         {colorPopoverAnchor && (
           <SelectionColorPopover
-            editor={editor}
             anchorRect={colorPopoverAnchor}
             palette={palette}
             onApply={applyColor}

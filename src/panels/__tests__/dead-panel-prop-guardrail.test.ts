@@ -64,14 +64,51 @@
  * grep cannot see, so the honest reading is a broad false-positive surface plus
  * some real hits — an open-ended sweep, which is a task of its own and not this
  * one. The discharge leg names the reported shape exactly and drains to EMPTY.
+ *
+ * ---------------------------------------------------------------------------
+ * TASK 479 — a census can only see the files its ROOT includes, and the panel
+ * CHROME that every panel in the silo mounts was in neither root.
+ *
+ * SCOPE, again. The roots were `src/panels` + `src/components/editor-layout`.
+ * The two files that HOST every panel — `src/components/panel-primitives.tsx`
+ * (`PanelHeader` / `PanelCard` / `EditableCard` / `ItemMenu`) and
+ * `src/components/EditorPane.tsx` — are in neither, and that is not
+ * hypothetical coverage: TASK 182's entire finding was dead props in
+ * `panel-primitives.tsx` (`PanelPopout` returning null with zero call sites,
+ * `PanelChromeValue.isPoppedOut`/`.side` supplied and read by nobody), found BY
+ * HAND, by an audit, because no census could see them. The root is now
+ * `src/components` (which subsumes `editor-layout`), and its share of the
+ * allowlist OUTSIDE `editor-layout/panels/` is EMPTY, pinned by its own leg.
+ *
+ * Widening named two live hits, both DELETED rather than allowlisted:
+ * `EditorPaneProps.onActivate` (passed only to the ALREADY-active pane, whose
+ * handler just re-promoted that pane in the keep-alive LRU — a near no-op even
+ * if it had been wired) and `SelectionColorPopover`'s REQUIRED `editor` prop
+ * (its own test's comment already said "the component never touches it").
+ *
+ * A TYPE-ONLY MODULE IS THE `.d.ts` CLASS WEARING A DIFFERENT EXTENSION. The
+ * walk has always skipped `.d.ts` on the stated ground that a module
+ * re-declaring a shape FOR CONSUMPTION ELSEWHERE would flag every member of its
+ * own `*Props` with no honest fix available but an allowlist entry. That
+ * exclusion was written as a FILE EXTENSION and its reason is a PROPERTY, so a
+ * `.ts` type SSOT (`src/components/menu/types.ts`, whose header says in as many
+ * words "this module is the type SSOT every primitive piece imports") tripped
+ * five members the moment the root reached it. The exclusion is now stated as
+ * the property it always meant: a module that exports types and NO values has
+ * no component of its own to do the consuming, so the member rule — "occurs a
+ * SECOND time in its OWN file" — is not a claim it can answer. Allowlisting the
+ * five members individually is what this file's own header calls the wrong
+ * answer; excluding the FILE by the property that makes the question
+ * inapplicable is the same move the `.d.ts` skip already made.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
-/** The two silos this census covers. `src/components/editor-layout` subsumes
- *  the former `/panels` entry — see the SCOPE note above. */
-const ROOTS = ["src/panels", "src/components/editor-layout"];
+/** The two silos this census covers. `src/components` subsumes the former
+ *  `editor-layout` entry, which itself subsumed `/panels` — see the two SCOPE
+ *  notes above. */
+const ROOTS = ["src/panels", "src/components"];
 
 /**
  * `file::Interface::prop` entries this census tolerates.
@@ -110,6 +147,30 @@ const PERMITTED_DEAD_PROPS = new Set<string>([
   "src/components/editor-layout/panels/cutter-host.tsx::CutterHostProps::panelSide",
 ]);
 
+/**
+ * A module that exports TYPES and no VALUES — the property the `.d.ts` skip
+ * below was always a proxy for (task 479).
+ *
+ * The member rule asks whether a declared prop occurs a SECOND time in its OWN
+ * file. That question presupposes the file has a component to do the consuming.
+ * A shape module has none — it declares the contract for importers — so every
+ * one of its members flags with no honest fix available but an allowlist entry,
+ * which this guard's header calls the wrong answer. Skipping the FILE by the
+ * property that makes the question inapplicable is the same move the extension
+ * test already made, stated as the reason rather than as one spelling of it.
+ *
+ * Fails toward CENSUSING: a file with any non-type export (including
+ * `export default`, `export function`, and a re-export clause) is scanned. Read
+ * off comment-stripped source, so `// export const …` in prose can't excuse a
+ * real component file.
+ */
+function isTypeOnlyModule(src: string): boolean {
+  const stripped = stripComments(src);
+  const hasTypeExport = /^\s*export\s+(?:type|interface)\b/m.test(stripped);
+  const hasValueExport = /^\s*export\s+(?!type\b|interface\b)/m.test(stripped);
+  return hasTypeExport && !hasValueExport;
+}
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === "__tests__" || name === "node_modules") continue;
@@ -120,6 +181,8 @@ function walk(dir: string, out: string[] = []): string[] {
     // with no honest fix available but an allowlist entry — which this guard's
     // header says is the wrong answer.
     else if (/\.tsx?$/.test(name) && !/\.(d\.ts|stories\.tsx?|test\.tsx?)$/.test(name)) {
+      // …and neither can a `.ts` type SSOT, for exactly the same reason.
+      if (isTypeOnlyModule(readFileSync(p, "utf8"))) continue;
       out.push(p);
     }
   }
@@ -276,6 +339,43 @@ describe("dead-prop guardrail — a declared prop nobody reads is a dead feature
         !e.startsWith("src/components/editor-layout/panels/"),
     );
     expect(inSilo).toEqual([]);
+  });
+
+  /** Task 479's new scope. `src/components` OUTSIDE the editor-layout silo has
+   *  no allowlist share and must not grow one — the same shape task 441's leg
+   *  above has, one root out. The two live hits widening found
+   *  (`EditorPaneProps.onActivate`, `SelectionColorPopover Props.editor`) were
+   *  DELETED rather than listed. */
+  it("src/components OUTSIDE editor-layout is drained — no allowlist share", () => {
+    const inChrome = [...PERMITTED_DEAD_PROPS].filter(
+      (e) =>
+        e.startsWith("src/components/") &&
+        !e.startsWith("src/components/editor-layout/"),
+    );
+    expect(inChrome).toEqual([]);
+  });
+
+  /** The `.d.ts` exclusion, restated as the PROPERTY it always meant (task
+   *  479). A `.ts` type SSOT is the same class, and the two live examples under
+   *  the censused roots — `src/components/menu/types.ts` (whose `MenuItemProps`
+   *  tripped five members the moment the root reached it) and
+   *  `src/panels/_shared/types.ts` — must both be skipped as FILES rather than
+   *  drained member by member. The accepting control is the other direction: a
+   *  module with a value export is scanned however many types it also exports,
+   *  so the exclusion cannot quietly swallow a real component file. */
+  it("a type-only module is skipped by the walk, and a value-exporting one is not", () => {
+    const walked = new Set(ROOTS.flatMap((r) => walk(r)));
+    expect(walked.has("src/components/menu/types.ts")).toBe(false);
+    expect(walked.has("src/panels/_shared/types.ts")).toBe(false);
+    // Controls: real component files stay censused.
+    expect(walked.has("src/components/EditorPane.tsx")).toBe(true);
+    expect(walked.has("src/components/panel-primitives.tsx")).toBe(true);
+
+    expect(isTypeOnlyModule("export type A = 1;\nexport interface B { x: A }\n")).toBe(true);
+    expect(isTypeOnlyModule("export type A = 1;\nexport const b = 2;\n")).toBe(false);
+    expect(isTypeOnlyModule("export interface P { x: 1 }\nexport default function C() {}\n")).toBe(false);
+    // A comment naming a value export must not save a shape module from the skip.
+    expect(isTypeOnlyModule("// export const shim = 1;\nexport interface P { x: 1 }\n")).toBe(true);
   });
 
   /** THE DISCHARGE LEG (task 441). No allowlist: a prop that has to be voided

@@ -68,8 +68,12 @@ export interface CardListPanelProps<T> {
   // ── Pass-through Panel slots ──
   // NOTE: no `count`. The header badge is DERIVED from the rendered set (see
   // `shownCount` below), so a card panel structurally cannot hand the header a
-  // number unrelated to what it renders. `count` remains on `PanelProps` for
-  // the non-card panels that render `<Panel>` directly.
+  // number unrelated to what it renders. `count`/`countLabel` remain on
+  // `PanelProps` because THIS component passes them through — measured (task
+  // 479), the three panels that render `<Panel>` directly (WordCount, Search,
+  // Outline) pass neither, so `CardListPanel` is their only producer. Read that
+  // as a pass-through contract, not as a slot a panel is expected to fill: a
+  // panel that wants a badge derives it here.
   title?: string;
   onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a small dropdown of choices
