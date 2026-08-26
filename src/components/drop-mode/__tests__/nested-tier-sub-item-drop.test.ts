@@ -214,7 +214,7 @@ describe("nested xlist tier — preconditions on the REAL schema", () => {
     const chosen = chooseInsertCandidate(
       filterInsertCandidates(
         editor,
-        resolveInsertCandidates(editor, i2.pos, 0),
+        resolveInsertCandidates(editor, i2.pos, i2.pos, 0),
         ["exampleItem"],
         // The source is a popped-out sub-item from another document in this
         // harness — no in-document range to be self against (task 480).

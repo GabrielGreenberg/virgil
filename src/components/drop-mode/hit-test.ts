@@ -154,7 +154,13 @@ export function hitTest(
     const chosen = chooseInsertCandidate(
       filterInsertCandidates(
         editor,
-        resolveInsertCandidates(editor, block.blockPos, y, blockRect),
+        resolveInsertCandidates(
+          editor,
+          block.blockPos,
+          posResult.pos,
+          y,
+          blockRect,
+        ),
         blockPayload,
         sourceRange,
       ),
