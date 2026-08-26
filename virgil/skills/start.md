@@ -81,18 +81,86 @@ namespaces.
 ### Step 2 — Intent classification
 
 Read the user's most recent message. Pick the highest-fit category and
-dispatch:
+dispatch.
+
+#### Task routes: where the id comes from, and what to do when there is none
+
+Rows marked **(Task)** below dispatch an `/editor/*` specialist that acts on
+a **request in the paper's AI-request inbox** — a Task the *user* minted by
+flagging a card or a paragraph for AI in the app. Every one of them validates
+that id in its own step 0 and **refuses** an unknown or wrong-kind one, so the
+id is not optional and it is not yours to invent.
+
+**Helper-script paths, once.** The recipes below name a helper as
+`<editor-scripts>/<name>.py`. Resolve that prefix the same way Step 1 resolved
+`library_path.py`: end-user flow `<docPath>/.virgil/scripts/editor/`, dev flow
+(running inside the Virgil repo) `editor/scripts/`.
+
+Answer this before you dispatch a **(Task)** row:
+
+1. **Is there already a Task for this ask?** One door lists all three inboxes
+   (`ai-requests.json`, `bib-review-requests.json`, and un-bridged card flags):
+
+   ```bash
+   python3 <editor-scripts>/list_requests.py <docPath>
+   ```
+
+   If exactly one open row matches what the user just asked for, pass its `id`
+   and dispatch. If several match, or the user asked for a pass over the whole
+   inbox rather than one thing, dispatch `/editor/review <docPath>` instead —
+   draining the inbox is its job, not the front door's.
+
+2. **If there is none, do NOT create one, and do NOT make an id up.** There is
+   no door that appends a *pending* `ai-requests.json` row, and that sidecar
+   must never be edited with a file-editing tool: it has one authority
+   (`apply_response.py` — atomic, version-bumped, under the editing pen). The
+   rule is the editor silo's, stated once and **not paraphrased here** — read
+   it at [`_ask-shape.md`](../../editor/skills/_ask-shape.md) (in a synced
+   paper folder, the same file is `.claude/commands/editor/_ask-shape.md`).
+
+3. **Land it through the chat-initiated door instead (Workflow B).** Compose
+   the artifact in chat — composition is chat's job — and hand it to
+   `/editor/create-card`, which synthesizes *and completes* its own Task, so no
+   pre-existing request is needed:
+
+   ```
+   /editor/create-card <docPath> --kind=<kind> --anchor <paragraph-uuid> --body "<what you composed>"
+   ```
+
+   **Resolving `<paragraph-uuid>`.** Workflow B anchors on a paragraph's
+   `%!v:` uuid, and the front door has no cursor. Get one — never guess, and
+   never pass an anchor you have not confirmed (`create_card.py` refuses an
+   unknown uuid outright, and a *wrong* one anchors the artifact to the wrong
+   prose silently):
+
+   - the user quoted or named a passage → find it in the `.tex` and read the
+     `%!v:<uuid>` marker on that paragraph, then confirm you resolved the
+     paragraph you meant by echoing it back:
+     `python3 <editor-scripts>/get_para_context.py <docPath> <uuid>`;
+   - the ask is about a paragraph that already carries cards →
+     `python3 <editor-scripts>/cards_for_paragraph.py <docPath> <uuid>`;
+   - otherwise **ask one short question** ("which paragraph — quote a few
+     words of it?") and re-classify.
+
+4. **If `create-card` refuses the kind**, the job belongs to a Task-bound
+   specialist and there is still nothing to invent. That happens when the kind
+   has no chat-initiated builder, or has a prerequisite you do not hold (a
+   `citation` whose citekey is not in `references.bib` yet — sourcing it is
+   `/editor/find-citation`'s job, and that skill is Task-bound). Say so plainly
+   and give the user the one action that mints a real Task: flag the paragraph
+   or the card for AI in Virgil, then ask again — or run
+   `/editor/review <docPath>` once it is flagged.
 
 | User says (or sounds like) | Branch |
 |---|---|
 | "introduce me" / "how does this work" / "what can you do" / "I'm new" / "Virgil?" with no other content | **Onboarding** (Step 3) |
 | "review my doc/paper" / "look at my open requests" / "drain my inbox" / "Virgil, take a pass" | Dispatch `/editor/review <docPath>` as a subagent |
 | "fix my bibliography" / "tidy my references" / "sync my refs to the library" | Dispatch `/editor/sync-bib-to-library <docPath>` as a subagent (start with `--dry-run` if the user hasn't confirmed they want writes) |
-| "add a footnote" / "draft a footnote here" | Dispatch `/editor/draft-footnote <docPath> <requestId>` (find or create the request) |
-| "find/add a citation" / "look up the source for this claim" | Dispatch `/editor/find-citation <docPath> <requestId>` |
-| "answer this note" / "address this todo" / "respond to my comment" | Dispatch the appropriate `/editor/answer-*` skill |
-| "draft a suggestion" / "propose an edit here" | Dispatch `/editor/draft-suggestion <docPath> <requestId>` |
-| "answer this bib review" / "verify this bib entry" | Dispatch `/editor/answer-bib-review <docPath> <bibKey>` |
+| "add a footnote" / "draft a footnote here" | **(Task)** `/editor/draft-footnote <docPath> <id>` — no Task: compose + `/editor/create-card --kind=footnote` |
+| "find/add a citation" / "look up the source for this claim" | **(Task)** `/editor/find-citation <docPath> <id>` — no Task: Step 2 rule 4 (sourcing is Task-bound) |
+| "answer this note" / "address this todo" / "respond to my comment" | **(Task)** the matching `/editor/answer-*` skill, `<docPath> <id>` — no Task: compose + `/editor/create-card --kind=note\|todo\|report` |
+| "draft a suggestion" / "propose an edit here" | **(Task)** `/editor/draft-suggestion <docPath> <id>` — no Task: Step 2 rule 4 (the suggestion family has no chat-initiated builder) |
+| "answer this bib review" / "verify this bib entry" | **(Task)** `/editor/answer-bib-review <docPath> <bibKey>` — the `bibKey` is a row of `bib-review-requests.json`, listed by the same `list_requests.py` |
 | "merge my preamble style" / "apply my style customizations" | Dispatch `/editor/style-merge <docPath>` |
 | "authenticate <citekey>" / "verify this source" / "look up <author, year>" in the catalog | Dispatch `/library/authenticate-bib <citekey>` (light, runs in any mode where library_path resolves) |
 | "apply the bib edit for <citekey>" | Dispatch `/library/apply-bib-edit <citekey>` (light) |
@@ -194,7 +262,9 @@ Done: oriented user. Output: state-summary.
   what bounds context.
 - Does **not** mutate sidecars on its own; specialists handle their own
   writeback via `editor/scripts/apply_response.py` or the library's
-  flock-protected shims.
+  flock-protected shims. In particular it never appends, edits, or fabricates
+  a row (or an id) in `virgil/ai-requests.json` — there is no door for that,
+  and Step 2 says what to do instead.
 - Does **not** silently run heavy library operations in light-ops mode.
   Always surface the mount-or-queue choice.
 - Does **not** retry failed specialists. If a dispatch fails, surface
