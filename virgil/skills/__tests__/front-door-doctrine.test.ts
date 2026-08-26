@@ -446,8 +446,8 @@ describe("front door — the descriptions are the vocabulary, not a hand list", 
       `start.md's Step-4 trigger condition enumerates library skills by name. ` +
         `That is the hand list this leg exists to keep retired: a heavy op ` +
         `that ships without being typed here is dispatched inline in ` +
-        `light-ops, which is how merge-bibs — a library-wide write — was ` +
-        `reachable from a paper session.\n\n${trigger}`,
+        `a paper session, which is how merge-bibs — a library-wide write — ` +
+        `was reachable from one.\n\n${trigger}`,
     ).toEqual([]);
   });
 });

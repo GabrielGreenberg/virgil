@@ -25,13 +25,18 @@ through.
 CLI:
 
   python3 library_path.py --get
+  python3 library_path.py --mode
   python3 library_path.py --set <abs-path>
 
 `--get` prints the resolved absolute path or exits non-zero with an
 instruction.
+`--mode` prints the SESSION MODE (see `resolve_mode`) on line 1 and, when
+a library resolved, its absolute path on line 2. It always exits 0 — a
+mode is an answer, not an error, and "no library" is one of the three.
 `--set` validates and persists to the central config file.
 
-Library callers import `resolve_library(explicit=None)`.
+Library callers import `resolve_library(explicit=None)`; the front door
+imports/executes `resolve_mode(explicit=None, cwd=None)`.
 """
 
 from __future__ import annotations
@@ -149,6 +154,67 @@ def resolve_library(explicit: Optional[str] = None) -> Path:
     raise LibraryNotFound(msg)
 
 
+# The three session modes, and the ONE place the vocabulary is stated. Both
+# columns are causally what they claim, which is the whole point of the
+# helper existing at all:
+#
+#   • "is a library configured?"  →  resolve_library() succeeds or raises.
+#   • "is this session IN it?"    →  cwd is the library root or under it.
+#
+# The second question is the exact condition every HEAVY library skill
+# declares about itself ("must run from inside the library folder"), so the
+# front door's mount-or-queue gate reads a fact the skills already state
+# rather than a proxy for one.
+#
+# It replaces a heuristic that could not work: the front door used to ask
+# whether the library root held `.claude/commands/library/`, and read a `yes`
+# as "the library is mounted as a sibling project in this workspace". That
+# directory is written by the PWA's own per-folder skill sync — one unfiltered
+# loop that writes `.claude/commands/<silo>/` and `.virgil/scripts/<silo>/`
+# together, into EVERY managed folder including paper folders — and
+# `_looks_like_library` above requires `.virgil/scripts/`. So a library root
+# that resolves has always been synced, and has always had the directory:
+# the two questions shared one cause, the middle row was unreachable, and the
+# presence it measured was caused by the PWA rather than by anything Claude
+# Code has mounted.
+LIBRARY_MODES = ("no-library", "in-library", "paper-session")
+
+
+def resolve_mode(
+    explicit: Optional[str] = None, cwd: Optional[str] = None
+) -> tuple[str, Optional[Path]]:
+    """Return ``(mode, library_root)`` for the session running this call.
+
+    ``mode`` is one of :data:`LIBRARY_MODES`:
+
+      ``no-library``     nothing in the resolution chain points at a library.
+      ``in-library``     a library resolved AND ``cwd`` is that root or under
+                         it — this session IS the library session, so heavy
+                         library ops run here.
+      ``paper-session``  a library resolved and ``cwd`` is elsewhere (a paper
+                         folder, or the Virgil source repo). Light library
+                         skills still run inline; a heavy one is a long,
+                         library-wide job the user should be offered a choice
+                         about.
+
+    ``library_root`` is ``None`` exactly when the mode is ``no-library``.
+    Never raises: a mode is an answer, and "not set up" is one of them.
+    """
+    try:
+        root = resolve_library(explicit)
+    except LibraryNotFound:
+        return ("no-library", None)
+    try:
+        here = (Path(cwd) if cwd is not None else Path.cwd()).resolve()
+    except OSError:
+        # An unreadable cwd cannot be inside the library; fail toward the
+        # branch that ASKS rather than the one that dispatches silently.
+        return ("paper-session", root)
+    if here == root or root in here.parents:
+        return ("in-library", root)
+    return ("paper-session", root)
+
+
 def set_library_path(path: str) -> Path:
     """Validate ``path`` and persist it to ``CONFIG_FILE``.
 
@@ -173,9 +239,28 @@ def _main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--get", action="store_true", help="resolve and print the library path")
+    group.add_argument(
+        "--mode",
+        action="store_true",
+        # The vocabulary is READ from its one declaration rather than retyped
+        # here: `--help` is a real consumer, and a mode list nothing reads is
+        # a list that drifts from what resolve_mode can return.
+        help=(
+            "print the session mode — one of "
+            + " / ".join(LIBRARY_MODES)
+            + " — on line 1, and the library path on line 2 when one resolved"
+        ),
+    )
     group.add_argument("--set", metavar="PATH", help="validate and persist a library path")
-    ap.add_argument("--library", help="explicit library path (for --get only)")
+    ap.add_argument("--library", help="explicit library path (for --get / --mode only)")
     args = ap.parse_args(argv)
+
+    if args.mode:
+        mode, root = resolve_mode(args.library)
+        print(mode)
+        if root is not None:
+            print(str(root))
+        return 0
 
     if args.set:
         try:
