@@ -207,6 +207,9 @@ function makeHarness(editor: Editor): Harness {
     editorRef: { current: { getEditor: () => editor } as never },
     cardCreation,
     cardLifecycle,
+    // task 491: the capture-retarget door. Inert here — no card
+    // collections are wired, so the sweep finds nothing to move.
+    anchorRetarget: { retarget: () => 0 },
     confirm: async () => true,
     notify,
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,

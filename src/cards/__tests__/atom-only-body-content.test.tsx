@@ -323,8 +323,12 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
     const confirm = vi.fn(async () => answer);
     const handlers: MarginItemHandlers = {
       findCard: () => card,
+      // The capture-retarget half of the bundle (task 491) — unused by the
+      // delete path under test, present because the bundle is one door.
+      cards: [card],
       contentKind: "note",
       unanchor: vi.fn(),
+      reanchor: vi.fn(),
       delete: del,
     };
     return { del, confirm, handlers };

@@ -44,6 +44,9 @@ function suggestion(author: "human" | "ai"): CardWithLinks {
 function handlers(card: CardWithLinks, del: MarginItemHandlers["delete"]): MarginItemHandlers {
   return {
     findCard: () => card,
+    // The capture-retarget half of the bundle (task 491) — unused here.
+    cards: [card],
+    reanchor: vi.fn(),
     // The real resolver both cut and revision markers install.
     contentKind: (c) =>
       (c as { kind?: string }).kind === "suggestion"

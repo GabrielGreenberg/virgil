@@ -272,4 +272,45 @@ describe("task 393 — census: one door, and nothing re-derives it", () => {
       );
     }
   });
+
+  it("…and every capture site RE-HOMES the anchors it displaces (task 491)", () => {
+    // Same DISCOVERED population, one more obligation. A capture SETS TEXT
+    // ASIDE, so every Mode-A paragraph anchor it consumes moves to the
+    // surviving neighbour rather than orphaning — Gabriel: "they should just
+    // stack up on the preceeding paragraph."
+    //
+    // The door was never the part that could misbehave; a capture site that
+    // deletes an anchored block and never asks is, and it type-checks
+    // perfectly. Allowlist EMPTY — a hit is WIRE-it.
+    const captureSites = files.filter((rel) =>
+      /createArchiveSnippet\s*\(\s*\{/.test(codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"))),
+    );
+    expect(captureSites.length).toBeGreaterThan(0);
+    for (const rel of captureSites) {
+      const src = codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"));
+      expect(src, `${rel} must resolve the surviving neighbour`).toMatch(
+        /\bresolveDisplacedAnchorTarget\s*\(/,
+      );
+      expect(src, `${rel} must retarget the displaced anchors`).toMatch(
+        /\banchorRetarget\.retarget\s*\(/,
+      );
+      // ONE neighbour per gesture: the fresh snippet and the cards it displaced
+      // must not be resolved twice, or they land on different paragraphs and
+      // "stack up" is false.
+      const resolves = src.match(/\bresolveDisplacedAnchorTarget\s*\(/g) ?? [];
+      expect(resolves.length, `${rel} resolves the neighbour more than once`).toBe(1);
+    }
+  });
+
+  it("nothing outside the retarget module re-derives the sweep (task 491)", () => {
+    // `retargetDisplacedAnchors` is reached through the pane's stable
+    // `AnchorRetargetApi`; a second caller would hold a live handler bundle and
+    // decide for itself which cards move.
+    const hits = files
+      .filter((rel) => rel !== "src/cards/retarget-anchors.ts")
+      .filter((rel) =>
+        /\bretargetDisplacedAnchors\s*\(/.test(codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"))),
+      );
+    expect(hits).toEqual([]);
+  });
 });

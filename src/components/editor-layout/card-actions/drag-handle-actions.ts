@@ -34,12 +34,17 @@ import {
   cleanupAndComputeDeleteRange,
   expandCascadeRange,
 } from "@/text-objects/delete-range";
-import { findPreviousAnchorableBlock } from "@/text-objects/anchor-resolution";
+import {
+  collectRemovedAnchorUuids,
+  resolveDisplacedAnchorTarget,
+} from "@/text-objects/anchor-resolution";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
+import type { AnchorRetargetApi } from "@/cards/retarget-anchors";
 import {
+  captureParagraphSnapshot,
   createLinkedAnchor,
   paragraphUuidAt,
   updateLinkedAnchorCard,
@@ -89,6 +94,22 @@ export interface DragHandleActionsDeps {
    *  atoms / linkedAnchor marks living in the captured passage. The
    *  walkers never branch on kind — they look up via this API. */
   cardLifecycle: CardLifecycleApi;
+  /**
+   * Re-home the margin context a destructive CAPTURE displaces (task 491).
+   *
+   * Gabriel: *"when you archive a passage that has an archive card, you loose
+   * the original archive card. they should just stack up on the preceeding
+   * paragraph."* An archive SETS TEXT ASIDE rather than destroying it, so every
+   * Mode-A paragraph-anchored card whose anchor the capture consumes moves to
+   * the surviving neighbour — the same paragraph the fresh snippet lands on,
+   * which is what makes them stack.
+   *
+   * REQUIRED, not optional: a bag that can omit it silently reinstates the
+   * loss for every host that forgets. A host with nothing to retarget supplies
+   * a bundle whose collections are empty, which is a no-op — an ANSWER, not an
+   * omission.
+   */
+  anchorRetarget: AnchorRetargetApi;
   /** In-app confirm dialog. Used to surface destructive-action warnings:
    *  • Heading × Duplicate (wide-scope whole-section copy)
    *  • Any kind × {Archive, Delete} that returns a `confirmDestructive`
@@ -126,6 +147,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     editorRef,
     cardCreation,
     cardLifecycle,
+    anchorRetarget,
     confirm,
     notify,
     prefs,
@@ -661,29 +683,66 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             break;
           }
           const richContent = capture.content;
+          // ── ONE NEIGHBOUR, ONE GESTURE (task 491) ──────────────────────
+          // An archive SETS THE TEXT ASIDE; it does not destroy it. So the
+          // margin context the capture displaces has somewhere to be, and
+          // Gabriel's ruling is that it is the surviving neighbour: *"they
+          // should just stack up on the preceeding paragraph."*
+          //
+          // Resolved ONCE, here, and read by BOTH halves of the gesture — the
+          // fresh snippet's own anchor and every Mode-A card the capture
+          // displaced. Two resolutions would put them on two paragraphs, which
+          // is precisely NOT stacking. `resolveDisplacedAnchorTarget` is also
+          // the honest form of what B2 (below) always meant: it asks whether
+          // the range's own host block SURVIVES rather than approximating that
+          // with `ref.kind !== "selection"`, and it falls FORWARD when the
+          // capture starts at the document's first block (where the previous
+          // rung has no answer and everything used to orphan).
+          //
+          // Mode-B (`linkedAnchor`) anchors deliberately do NOT move: a Mode-B
+          // anchor names the TEXT RANGE, which is exactly what left. Those stay
+          // on the `cleanupLinksInRange` path Delete shares — see
+          // `src/cards/retarget-anchors.ts` and task 393's equality leg.
+          //
+          // Runs BEFORE the delete: the deferred `virgil-textobject-orphaned`
+          // sweep fires off that transaction and strips any link still naming a
+          // vanished uuid, so retargeting first makes the two agree by
+          // construction rather than by racing.
+          const displacedUuids = collectRemovedAnchorUuids(
+            ed.state.doc,
+            extended.from,
+            extended.to,
+          );
+          const neighbour = resolveDisplacedAnchorTarget(
+            ed.state.doc,
+            extended.from,
+            extended.to,
+            displacedUuids,
+          );
+          anchorRetarget.retarget({
+            removed: displacedUuids,
+            target: neighbour,
+            // Self-healing on reload, exactly as the drop-mode re-anchor
+            // gesture's fresh links are.
+            snapshot: neighbour
+              ? captureParagraphSnapshot(ed, neighbour.uuid)
+              : null,
+          });
           // B2 (post-refactor followup): resolve the snippet's anchor
           // BEFORE deletion. The pre-delete `paragraphId` is the source
           // block's own uuid — for a whole-paragraph archive that uuid
           // is about to vanish in the same transaction, and the
           // TextObjectOrphanGuard would immediately strip the freshly-
-          // created link. Instead, walk to the nearest TextObject above
-          // `extended.from` (cascade-extended, so a collapsing list
-          // looks above the LIST, not the now-orphan items) and
-          // anchor the snippet to THAT survivor.
+          // created link. The neighbour resolved above is that survivor.
           //
           // For selection-ref Archive (a sub-range inside a paragraph),
-          // the source paragraph survives, so we keep its uuid as the
-          // anchor — `findPreviousAnchorableBlock` is only the right
-          // call when the whole anchoring entity is being deleted.
+          // the source paragraph survives and the ref already carries its
+          // uuid, so we keep it — byte-identical to pre-491.
           let snippetParagraphId: string = paragraphId;
           let snippetTargetKind: TextObjectKind = targetKind;
           if (ref.kind !== "selection") {
-            const reanchor = findPreviousAnchorableBlock(
-              ed.state.doc,
-              extended.from,
-            );
-            snippetParagraphId = reanchor?.uuid ?? "";
-            snippetTargetKind = reanchor?.kind ?? targetKind;
+            snippetParagraphId = neighbour?.uuid ?? "";
+            snippetTargetKind = neighbour?.kind ?? targetKind;
           }
           // F2: same stale-range hazard as Delete — cleanup may strip an
           // inline atom inside the range and shrink the block, so re-derive
@@ -793,6 +852,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       editorRef,
       cardCreation,
       cardLifecycle,
+      anchorRetarget,
       confirm,
       notify,
       ensureOmniActiveForPanel,

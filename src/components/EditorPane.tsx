@@ -237,6 +237,7 @@ import {
   type MarginItemHandlers,
   type MarginItemKind,
 } from "@/cards/delete-margin-item";
+import { useAnchorRetargetApi } from "@/cards/retarget-anchors";
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
@@ -2770,18 +2771,26 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         reports: reportsHook,
       }),
     [
-      notesHook.notes, notesHook.removeNoteTextObjectId, notesHook.deleteNote,
-      archiveHook.snippets, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
-      cutterHook.cards, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
-      todosHook.items, todosHook.removeParagraphId, todosHook.deleteItem,
-      revisionsHook.cards, revisionsHook.removeCardParagraphId, revisionsHook.deleteCard,
-      reportsHook.cards, reportsHook.removeCardParagraphId, reportsHook.deleteCard,
+      notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.deleteNote,
+      archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
+      cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
+      todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.deleteItem,
+      revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId, revisionsHook.deleteCard,
+      reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId, reportsHook.deleteCard,
       // The hook objects themselves change identity on every render; using
       // their individual fields above keeps this memo stable across renders
       // that don't actually change card state.
       // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional, see above
     ],
   );
+
+  // Task 491 — the capture-retarget door, over the SAME per-kind bundle the
+  // margin's delete path reads (so "which hook owns this kind" is answered
+  // once). Identity-stable: `marginItemHandlers` re-memoizes on every sidecar
+  // edit, and threading that identity into the drag-handle dispatcher's
+  // `useCallback` deps would churn `dispatch` — and every consumer memo behind
+  // it — on every card change.
+  const anchorRetarget = useAnchorRetargetApi(marginItemHandlers);
 
   const handleMarginItemDelete = useCallback(
     (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
@@ -3857,6 +3866,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     editorRef: innerRef,
     cardCreation,
     cardLifecycle,
+    anchorRetarget,
     confirm: confirmDragHandleAction,
     notify: dragHandleNotify,
     prefs: viewPrefs?.prefs ?? readerPrefs,
