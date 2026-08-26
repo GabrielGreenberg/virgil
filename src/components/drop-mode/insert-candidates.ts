@@ -35,6 +35,22 @@
  *  - **F3 — a refused position still painted an inviting bar** and said nothing
  *    on release (`AGENTS.md`, "The feedback half" / "The proxy half").
  *
+ * …and a fifth, which 416 left standing because its own harness could not
+ * represent it (task 481 — audit 457, Gabriel's seed symptom 2, *"weird gaps
+ * behind elements that don't correctly map the mouse position"*):
+ *
+ *  - **F5 — a nesting-transition GAP BAND mis-maps to the container.** The
+ *    floor is a CONTAINMENT walk, so a boundary between two `listItem`s belongs
+ *    to no item and resolves to the LIST, and a boundary between an item's head
+ *    line and its nested list resolves to the ITEM. The ladder then walks
+ *    OUTWARD only, so at those pixels there was exactly ONE candidate — the
+ *    container's own boundary — placed by the container's SUBTREE-inclusive
+ *    midpoint, i.e. nowhere near the gap the cursor was in. Every "put it
+ *    between these two things" pixel in a nested list, at every X. The synthetic
+ *    layout in `list-drop-matrix.test.ts` had no inter-child pixels at all, so
+ *    the whole band was unrepresentable there — which is how it survived 416
+ *    with 540 cells green.
+ *
  * So the answer is the set, resolved once per frame in three steps that each
  * do one thing:
  *
@@ -43,7 +59,11 @@
  *     level. This SUBSUMES `resolveSubItemPeerBlock`: a peer-item boundary is
  *     simply the candidate whose container is the list, reached for EVERY
  *     payload rather than only for a same-kind sub-item drag (which is what F4
- *     — the peer resolver's `node.type.name === sourceKind` gate — was).
+ *     — the peer resolver's `node.type.name === sourceKind` gate — was). Since
+ *     task 481 the walk also has a rung BELOW the floor
+ *     ({@link resolveSubFloorBoundary}): a NESTING-TRANSITION gap resolves to
+ *     the CONTAINER that owns those pixels, so walking outward from it skipped
+ *     the boundary the gap line actually is. F5, below.
  *  2. **FILTER** ({@link filterInsertCandidates}) — keep only the LEGAL
  *     landings, which is two questions. The CONTAINER one runs rungs 1 and 2 of
  *     the SSOT ladder `fitNodeInContainer` (`@/text-objects/drop-adapters`): the
@@ -135,20 +155,33 @@ export interface InsertCandidate {
 export function resolveInsertCandidates(
   editor: Editor,
   floorPos: number,
+  rawPos: number,
   cursorY: number,
   floorRect?: DOMRect,
 ): InsertCandidate[] {
   const doc = editor.state.doc;
   if (floorPos < 0 || floorPos > doc.content.size) return [];
   const out: InsertCandidate[] = [];
-  let $ref = doc.resolve(floorPos);
+  // The SUB-FLOOR rung (task 481) — the boundary between the floor's OWN block
+  // children, which is the only rung that can coincide with a nesting-transition
+  // gap band. `null` when there is nothing below the floor to offer, which is
+  // every case the pre-481 ladder covered, so the walk below is unchanged there.
+  const subFloor = resolveSubFloorBoundary(editor, floorPos, rawPos, cursorY);
+  let $ref = doc.resolve(subFloor ?? floorPos);
   // Bounded by the doc's own depth; the loop always terminates at depth 0.
   for (;;) {
     const container = $ref.parent;
-    const index = $ref.index();
+    let index = $ref.index();
+    // At a container's TRAILING boundary there is no child AT `index`, so the
+    // reference is the child BEFORE it — the row the gap line sits under. Only
+    // the sub-floor rung can start there (an outward step always resolves to a
+    // position before an existing node), and without this the whole ladder used
+    // to break out on the first iteration and offer nothing at all.
+    const trailing = index >= container.childCount;
+    if (trailing) index -= 1;
     const refNode = container.maybeChild(index);
     if (!refNode) break;
-    const refPos = $ref.pos;
+    const refPos = trailing ? $ref.pos - refNode.nodeSize : $ref.pos;
     const dom = editor.view.nodeDOM(refPos);
     if (dom instanceof HTMLElement) {
       const rect =
@@ -157,8 +190,13 @@ export function resolveInsertCandidates(
           : dom.getBoundingClientRect();
       // F1 — the MIDPOINT, for every payload and at every level. The pre-416
       // top-edge threshold meant "insert before" only fired in the hairline
-      // above a block, so a list read as a stack of after-targets.
-      const insertBefore = cursorY < rect.top + rect.height / 2;
+      // above a block, so a list read as a stack of after-targets. At a
+      // TRAILING boundary the answer is already known — the gap line is under
+      // the last row — and asking the midpoint again could only disagree with
+      // the position `posAtCoords` actually reported.
+      const insertBefore = trailing
+        ? false
+        : cursorY < rect.top + rect.height / 2;
       out.push({
         refPos,
         refNode,
@@ -175,6 +213,110 @@ export function resolveInsertCandidates(
     $ref = doc.resolve($ref.before($ref.depth));
   }
   return out;
+}
+
+/**
+ * The SUB-FLOOR rung — the boundary between the FLOOR's own block children
+ * (task 481), returned as the document position the ladder should start from,
+ * or `null` when the floor has nothing below it to offer.
+ *
+ * > **A gap band's candidates come from the rows FLANKING the gap, not from the
+ * > container that owns the pixels.**
+ *
+ * The ladder walks OUTWARD from `resolveAnchorableBlock`'s floor, and at a
+ * nesting-transition gap that floor is the CONTAINER — `resolveAnchorableNode`
+ * is a CONTAINMENT walk, so a boundary between two `listItem`s is contained by
+ * no item and resolves to the LIST, and a boundary between a `listItem`'s head
+ * paragraph and its nested list resolves to the ITEM. Walking outward from
+ * there, the boundary the user is aiming at is not in the set at all: the whole
+ * list's outer edges were the only offer, at whatever Y the container's
+ * SUBTREE-inclusive midpoint put them. Those are exactly the "put it between
+ * these two things" pixels, and they were the ones with no honest answer.
+ *
+ * Two readings, one rule — *which child boundary is the cursor asking for?*
+ *
+ *  - **GAP** (`$raw.depth === dFloor`): `posAtCoords` already answered. The
+ *    cursor is directly inside the floor, between two of its children, and the
+ *    index it resolved IS the boundary. Zero rect reads, and the offered
+ *    boundary coincides with the visual gap line by construction rather than by
+ *    a midpoint that might disagree with it.
+ *  - **IN-TEXT** (`$raw.depth > dFloor`): the cursor is inside child `j`, so
+ *    the boundary is `j` or `j+1` by THAT child's own midpoint — the head row's
+ *    band rather than the container's subtree box, which is what made the lower
+ *    half of a nested item's head row still read "above the whole item". ONE
+ *    rect read, of the child the ladder is about to read anyway.
+ *
+ * **An IN-TEXT cursor is offered INTERIOR boundaries only, and that is task
+ * 416's own decision preserved rather than an exemption.** The floor's leading
+ * and trailing boundaries ARE the floor's own edges: same gap line, and for the
+ * commonest shape by far — a `listItem` whose only child is its paragraph, a
+ * `blockquote` with one paragraph, an `exampleItem` — the same bar, since
+ * `resolveContentEdges` descends a container to exactly that first child. So
+ * they are already offered one rung out, where 416 put them ("into this item as
+ * content is not a candidate, and the default is byte-identical to the level
+ * the pre-416 rule chose"). Offering them here would win the `rect.left` tie in
+ * {@link chooseInsertCandidate} (which resolves to the deeper level) and
+ * silently change the default landing of every list and quote drag to "inside
+ * the item", from a bar the user cannot tell apart from the one they were
+ * already being shown.
+ *
+ * A cursor in a genuine GAP has no such twin: the outward rung there paints the
+ * container's own edge with the container's own span, which is a visibly
+ * different bar at a different indent — "a new item at the end of this list"
+ * versus "a new block after the list". Both are real, both are reachable, and X
+ * chooses between them exactly as it does at every other level.
+ *
+ * COST: `null` (the pre-481 answer) for every floor that is a textblock, an
+ * atom, or a block the cursor does not sit inside — so the common case pays one
+ * `resolve` and nothing else. The GAP reading pays no DOM read at all; the
+ * IN-TEXT reading pays ONE `getBoundingClientRect`, of a child the ladder then
+ * reads again on its first iteration. Still O(depth) overall.
+ */
+function resolveSubFloorBoundary(
+  editor: Editor,
+  floorPos: number,
+  rawPos: number,
+  cursorY: number,
+): number | null {
+  const doc = editor.state.doc;
+  if (rawPos < 0 || rawPos > doc.content.size) return null;
+  // A node's own depth is one below the depth of the position before it.
+  const dFloor = doc.resolve(floorPos).depth + 1;
+  const $raw = doc.resolve(rawPos);
+  // The floor must actually CONTAIN the cursor. It does not when
+  // `resolveAnchorableBlock` took its top-level-gap fallback and picked the
+  // nearest block by Y-distance — there is no child boundary to speak of there,
+  // and the doc-level boundary the ladder already starts from is the answer.
+  if ($raw.depth < dFloor) return null;
+  if ($raw.before(dFloor) !== floorPos) return null;
+  const floorNode = $raw.node(dFloor);
+  // A textblock's children are inline; an atom has none. Neither has a child
+  // boundary a block can land at.
+  if (floorNode.isTextblock || floorNode.childCount === 0) return null;
+  if (floorNode.firstChild?.isInline) return null;
+
+  let index: number;
+  if ($raw.depth === dFloor) {
+    // GAP — `posAtCoords` resolved a boundary between the floor's children.
+    index = $raw.index(dFloor);
+  } else {
+    // IN-TEXT — inside child `j`; its own midpoint picks the side.
+    // The interior-only rule, asked BEFORE the rect read rather than after it:
+    // a container with ONE child has no interior boundary at all, whichever
+    // side the midpoint lands on. That is the commonest floor there is (a
+    // `listItem` holding just its paragraph, a one-paragraph `blockquote`, an
+    // `exampleItem`), so the rung costs it no DOM measurement whatsoever.
+    if (floorNode.childCount === 1) return null;
+    const j = $raw.index(dFloor);
+    const childPos = $raw.posAtIndex(j, dFloor);
+    const dom = editor.view.nodeDOM(childPos);
+    if (!(dom instanceof HTMLElement)) return null;
+    const rect = dom.getBoundingClientRect();
+    index = cursorY < rect.top + rect.height / 2 ? j : j + 1;
+    // INTERIOR only — see the rule above.
+    if (index <= 0 || index >= floorNode.childCount) return null;
+  }
+  return $raw.posAtIndex(index, dFloor);
 }
 
 /**

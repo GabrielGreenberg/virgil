@@ -3758,6 +3758,116 @@ of. Calibrating the X axis to the handle band is the deeper fix for *which level
 the grab point means* and needs live geometry to size; the dead zone is what
 makes the un-calibrated band harmless at the one X where it always bit.
 
+
+##### The band half: the CONTAINER owns the gap's pixels, and the gap is not its boundary
+
+Same ladder, the pixels BETWEEN the rows (task 481) — and the case where 416's
+own harness could not represent the geometry, so a fifth defect sat inside the
+fix for the other four with 540 cells green.
+
+Audit 457, Gabriel's seed symptom 2: *"weird gaps behind elements that don't
+correctly map the mouse position."* Reproduced live against a 3-level ordered
+list at a fixed X inside the content, every band mis-mapped:
+
+| what the cursor is in | what was offered |
+|---|---|
+| the band between an item's HEAD LINE and its nested list | a full row UP — "above the parent item" |
+| the LOWER half of that same head row | still "above the parent item" |
+| the band below a nested list, before the next item | past the next item's whole row |
+| the band below the last item | the WHOLE-LIST bottom at top level |
+| inside an ordinary single-row item | CORRECT — the controls pass |
+
+One mechanism, and both halves of it are in the ladder's opening move.
+`resolveAnchorableBlock` is a CONTAINMENT walk, so a boundary between two
+`listItem`s is contained by no item and resolves to the LIST, and a boundary
+between an item's head paragraph and its nested list resolves to the ITEM. The
+ladder then walks OUTWARD only. So at exactly the "put it between these two
+things" pixels there was ONE candidate — the container's own boundary — placed
+by that container's SUBTREE-inclusive midpoint, which for an item carrying a
+130px nested list is nowhere near the gap the cursor is in. No X could rescue
+the level, which is why the audit's first reading ("paragraphs can never enter
+lists") looked true and was not: the wrap vocabulary accepts
+paragraph→`listItem` and `list-drop-matrix`'s own INV5 pins in-list paragraph
+landings. The live symptom was entirely this.
+
+> **A gap band's candidates come from the rows FLANKING the gap, not from the
+> container that owns the pixels.** The ladder gains a rung BELOW the floor —
+> the boundary between the floor's own block children — and it has two readings
+> of one question: in a GAP, `posAtCoords` already answered and its index IS the
+> boundary; IN TEXT, the boundary is decided by the cursor's own child's
+> midpoint, the head ROW's band rather than the container's subtree box.
+
+Six rules it earned:
+
+- **The GAP reading costs no DOM read at all**, and that is what makes the
+  offered boundary coincide with the visual gap line *by construction*: it takes
+  the position the browser's own hit-test reported rather than re-deriving one
+  from a midpoint that might disagree with it.
+- **An IN-TEXT cursor is offered INTERIOR boundaries only, and that is task
+  416's own decision preserved rather than an exemption.** The floor's leading
+  and trailing boundaries ARE the floor's own edges — same gap line, and for the
+  commonest shape by far (a `listItem` whose only child is its paragraph, a
+  one-paragraph `blockquote`, an `exampleItem`) the same BAR, since
+  `resolveContentEdges` descends a container to exactly that first child. They
+  are already offered one rung out, where 416 put them. Offering them here would
+  win the `rect.left` tie in `chooseInsertCandidate` (which resolves to the
+  deeper level) and silently change the default landing of every list and quote
+  drag to "inside the item" — from a bar the user cannot tell apart from the one
+  they were already being shown. Measured: dropping the restraint fails 6 legs,
+  two of them 416's own.
+- **A cursor in a genuine GAP has no such twin, so its edge boundaries stay.**
+  The outward rung there paints the container's own edge with the container's
+  own span — a visibly different bar at a different indent ("a new item at the
+  end of this list" versus "a new block after the list"), and X chooses between
+  them exactly as it does at every other level. That asymmetry is why the
+  tempting single structural rule ("interior only, always") is wrong: it closes
+  the reported head-row case and re-loses the trailing band.
+- **The interior-only rule is asked BEFORE the rect read**, from the child
+  COUNT: a container with one child has no interior boundary whichever side the
+  midpoint lands on. The rung therefore costs the commonest floor there is
+  nothing — no forced layout per move for an answer already known.
+- **The TRAILING boundary's reference row is the child BEFORE the gap.** A
+  container's last boundary has no child AT its index, and the ladder's loop
+  used to `break` there — so without that case the whole ladder returned nothing
+  at the one band the audit's fourth row is about. Only the sub-floor rung can
+  start there; an outward step always resolves to a position before an existing
+  node.
+- **The floor must actually CONTAIN the cursor.** `resolveAnchorableBlock`'s
+  top-level-gap fallback picks the nearest block by Y-DISTANCE, which can be a
+  block the cursor is nowhere inside; there is no child boundary to speak of
+  there, and the doc-level boundary the ladder already starts from is the answer.
+
+CI: [list-drop-matrix.test.ts](src/components/drop-mode/__tests__/list-drop-matrix.test.ts).
+**No pre-481 cell could see any of this**, and the reason is the harness rather
+than the cells: its synthetic layout stacked children GAPLESS (`BLOCK_GAP`
+existed only between top-level blocks) and every cell sampled Y at a fraction of
+a text ROW's own height, so a child-boundary probe was unrepresentable — 540
+cells green over the whole class. The layout now carries the one band a list
+really has (`.tiptap li > ul/ol { margin: 0.3em 0 }`; `li` itself is
+`margin: 0 !important`, so plain rows stack gaplessly and there is no band
+between them), laid out on BOTH sides of a nested list — which is what puts the
+two sides in DIFFERENT containers, since the bottom margin collapses through the
+item's zero bottom edge into the LIST's box. A premise leg checks that geometry
+exists before any leg asserts a mapping over it. Measured by neutering each half
+in turn: the pre-481 ladder start takes 5 legs (each naming the container it
+wrongly offered — `bulletList` for the two head-row bands, `doc` for the two
+below-nested ones), the interior-only restraint 6, and the pre-read fast path 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real — hover-drag an item through
+all four transition gaps of the dev doc's 3-level list and watch the bar track
+the gap under the cursor.
+
+**Residual, stated.** The rung descends ONE level, from the floor into its own
+children, and stops. A gap line that several containers' boundaries coincide at
+(the end of a nested list is also the end of its item, and of that item's list,
+and so on inward) offers the floor's reading and the outward chain, not the
+deeper ones — the conservative direction this file's own fit residual already
+takes, a missing affordance rather than a false one. And the geometric twin the
+interior-only rule is a structural proxy for is stated rather than computed: two
+candidates whose bars are pixel-identical are one offer, and the proxy is exact
+for every shape in the schema today.
+
 #### The other gesture: the Stack capture never asked the facet built to answer it
 
 Same law, outside drop-mode entirely (task 332) — and the case where the SSOT existed, was

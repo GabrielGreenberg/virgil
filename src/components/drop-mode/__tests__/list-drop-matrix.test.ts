@@ -100,6 +100,22 @@ const LINE_H = 20;
 const INDENT = 32;
 /** Vertical gap between top-level blocks — the hairline the pre-416 rule needs. */
 const BLOCK_GAP = 10;
+/**
+ * The NESTING-TRANSITION band (task 481) — `.tiptap li > ul/ol { margin: 0.3em 0 }`
+ * (`globals.css`), the only inter-child pixels a list actually has (`li` itself
+ * is `margin: 0 !important`, so items stack gaplessly and there is no band
+ * between two plain rows).
+ *
+ * It is laid out on BOTH sides of a nested list and the two sides land in
+ * DIFFERENT containers, which is the whole reason the class has two readings:
+ * the top margin sits inside the item's content box, so a cursor there resolves
+ * to the ITEM; the bottom margin collapses through the item's zero bottom edge
+ * and sits in the LIST's box, so a cursor there resolves to the LIST. Pre-481
+ * the layout had neither band — children stacked gaplessly and every cell
+ * sampled Y at a fraction of a text row's own height — so a child-boundary
+ * probe was unrepresentable and 540 cells stayed green over it.
+ */
+const CHILD_GAP = 6;
 
 interface Box {
   top: number;
@@ -113,6 +129,8 @@ const INDENTING = new Set(["bulletList", "orderedList", "exampleItemList"]);
 
 interface LayoutEntry {
   pos: number;
+  /** Tree depth — 1 for a top-level block. Picks the DEEPEST container at a Y. */
+  depth: number;
   node: PMNode;
   box: Box;
   el: HTMLElement;
@@ -128,14 +146,20 @@ class Layout {
   constructor(doc: PMNode) {
     let y = 0;
     doc.forEach((child, offset) => {
-      const h = this.place(child, offset, COL_LEFT, y);
+      const h = this.place(child, offset, COL_LEFT, y, 1);
       const entry = this.byPos.get(offset);
       if (entry) this.topLevel.push(entry);
       y += h + BLOCK_GAP;
     });
   }
 
-  private place(node: PMNode, pos: number, left: number, top: number): number {
+  private place(
+    node: PMNode,
+    pos: number,
+    left: number,
+    top: number,
+    depth: number,
+  ): number {
     const el = document.createElement("div");
     el.setAttribute("data-node-type", node.type.name);
     if (node.attrs?.uuid) el.setAttribute("data-uuid", String(node.attrs.uuid));
@@ -145,7 +169,7 @@ class Layout {
       width: COL_WIDTH - (left - COL_LEFT),
       height: 0,
     };
-    this.byPos.set(pos, { pos, node, box, el });
+    this.byPos.set(pos, { pos, depth, node, box, el });
 
     if (node.isTextblock || node.isLeaf) {
       box.height = LINE_H;
@@ -154,7 +178,20 @@ class Layout {
       const childLeft = INDENTING.has(node.type.name) ? left + INDENT : left;
       let y = top;
       node.forEach((child, offset) => {
-        y += this.place(child, pos + 1 + offset, childLeft, y);
+        // A nested list's TOP margin — inside the item, above the list.
+        if (node.type.name === "listItem" && INDENTING.has(child.type.name)) {
+          y += CHILD_GAP;
+        }
+        y += this.place(child, pos + 1 + offset, childLeft, y, depth + 1);
+        // …and its BOTTOM margin, which collapses out of the item (`li` has no
+        // padding or border) and lands in the LIST's own box, after the item.
+        if (
+          INDENTING.has(node.type.name) &&
+          child.lastChild &&
+          INDENTING.has(child.lastChild.type.name)
+        ) {
+          y += CHILD_GAP;
+        }
       });
       box.height = Math.max(y - top, LINE_H);
     }
@@ -171,8 +208,12 @@ class Layout {
   }
 }
 
+/** Per-element rect reads, so a cost leg can name WHICH box was measured. */
+const RECT_READS = new WeakMap<HTMLElement, number>();
+
 function stubRect(el: HTMLElement, box: Box) {
-  el.getBoundingClientRect = () =>
+  el.getBoundingClientRect = () => (
+    RECT_READS.set(el, (RECT_READS.get(el) ?? 0) + 1),
     ({
       top: box.top,
       bottom: box.top + box.height,
@@ -183,7 +224,8 @@ function stubRect(el: HTMLElement, box: Box) {
       x: box.left,
       y: box.top,
       toJSON() {},
-    }) as DOMRect;
+    }) as DOMRect
+  );
   el.getClientRects = () =>
     [el.getBoundingClientRect()] as unknown as DOMRectList;
 }
@@ -246,10 +288,17 @@ function makeHarness(doc: PMNode): Harness {
 
 /**
  * The layout's own hit-test. A `top` inside a row resolves INSIDE that
- * textblock (offset chosen from `left`); a `top` in a top-level gap resolves to
- * the boundary between the two blocks, at depth 0 — the shape the real
- * `posAtCoords` produces there, and the one `resolveAnchorableBlock`'s gap
- * fallback exists for.
+ * textblock (offset chosen from `left`); a `top` inside a CONTAINER's box but
+ * in none of its rows resolves to the child boundary the gap band is (task
+ * 481); a `top` in a top-level gap resolves to the boundary between the two
+ * blocks, at depth 0 — the shape the real `posAtCoords` produces there, and the
+ * one `resolveAnchorableBlock`'s gap fallback exists for.
+ *
+ * The middle branch is what the pre-481 harness had no geometry for. Real
+ * `posAtCoords` reaches it through `elementFromPoint` (a margin band belongs to
+ * the nearest ancestor whose content box holds it) and then picks the child
+ * boundary by Y; the DEEPEST container is the one whose element that hit-test
+ * returns.
  */
 function posAtCoords(
   layout: Layout,
@@ -265,6 +314,22 @@ function posAtCoords(
       const inner = Math.round(frac * row.node.content.size);
       return { pos: row.pos + 1 + inner, inside: row.pos };
     }
+  }
+  let host: LayoutEntry | null = null;
+  for (const e of layout.byPos.values()) {
+    if (e.node.isTextblock || e.node.isLeaf) continue;
+    if (top < e.box.top || top > e.box.top + e.box.height) continue;
+    if (!host || e.depth > host.depth) host = e;
+  }
+  if (host) {
+    let index = 0;
+    host.node.forEach((child, offset) => {
+      const ce = layout.byPos.get(host!.pos + 1 + offset);
+      if (ce && ce.box.top + ce.box.height <= top) index += 1;
+    });
+    let pos = host.pos + 1;
+    for (let i = 0; i < index; i += 1) pos += host.node.child(i).nodeSize;
+    return { pos, inside: host.pos };
   }
   let boundary = 0;
   for (const tl of layout.topLevel) {
@@ -986,6 +1051,226 @@ describe("the source's own row and its adjacent gap band (task 480)", () => {
         expect(cell.selfDrop, `pOutro gap ${side} @${x}`).toBe(false);
         expect(cell.changed).toBe(false);
         expect(cell.uuidsConserved).toBe(true);
+      }
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The NESTING-TRANSITION GAP BANDS (task 481)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Audit 457, Gabriel's seed symptom 2: *"weird gaps behind elements that don't
+// correctly map the mouse position."* These are the "put it between these two
+// things" pixels, and pre-481 EVERY one of them mis-mapped: the floor is a
+// CONTAINMENT walk, so a gap band resolves to the CONTAINER that owns those
+// pixels, the ladder walks OUTWARD only, and the container's boundary is then
+// placed by its SUBTREE-inclusive midpoint — a full row up, or a whole row
+// down, or the outer list's edge, depending on which band you were in.
+//
+// **No pre-481 cell could see any of it.** The synthetic layout stacked
+// children GAPLESS (`BLOCK_GAP` existed only between top-level blocks) and every
+// cell sampled Y at a fraction of a text ROW's own height, so a child-boundary
+// probe was unrepresentable — which is how the class survived 416's own 540
+// cells. The layout above now carries the one band a list really has
+// (`.tiptap li > ul/ol { margin: 0.3em 0 }`), on both sides of a nested list and
+// therefore in two different containers.
+
+/** Where a hover LANDS, in the terms these legs are about. */
+function offerAt(h: Harness, cardKey: string, x: number, y: number) {
+  const placement = hoverOnly(h, cardKey, x, y);
+  if (!placement || placement.kind !== "between-blocks") return null;
+  return {
+    insertPos: placement.insertPos,
+    container: h.doc().resolve(placement.insertPos).parent.type.name,
+    barY: placement.rect.y + 1,
+  };
+}
+
+/** The position immediately before the node carrying `uuid`. */
+function startOf(h: Harness, uuid: string): number {
+  return rangeOf(h.doc(), uuid)!.from;
+}
+
+describe("nesting-transition gap bands map to the gap's OWN boundary (task 481)", () => {
+  const SRC_KEY = keyFor("paragraph", "SRC");
+  const DEEP_X = COL_LEFT + 300;
+
+  /** A fresh harness over the shared fixture plus a loose paragraph source. */
+  function h(): Harness {
+    return makeHarness(fixture(para("moved", "SRC")));
+  }
+
+  it("the layout HAS the band the class lives in — the premise, checked", () => {
+    // A leg asserting a mapping is worth nothing if the geometry it maps is not
+    // there. `li2` opens with its own text row and closes with `ul2`, so there
+    // are pixels between them; and `ul2`'s collapsed bottom margin puts a
+    // second band between `li2` and `li3`, in a DIFFERENT container.
+    const harness = h();
+    const head = harness.layout.find("li2-p").box;
+    const nested = harness.layout.find("ul2").box;
+    expect(nested.top - (head.top + head.height)).toBe(CHILD_GAP);
+    const li2 = harness.layout.find("li2").box;
+    const li3 = harness.layout.find("li3").box;
+    expect(li3.top - (li2.top + li2.height)).toBe(CHILD_GAP);
+  });
+
+  it("the band between an item's HEAD LINE and its nested list", () => {
+    // MEASURED on the pre-481 tree: the floor is `li2` (the boundary between an
+    // item's children is contained by no child), the ladder walks outward from
+    // it, and the ONLY candidate is `li2`'s own boundary — placed by the
+    // midpoint of `li2`'s 3-row box, so the bar paints a full row UP, at the
+    // item's top edge, "above the parent item".
+    const harness = h();
+    const head = harness.layout.find("li2-p").box;
+    const y = head.top + head.height + CHILD_GAP / 2;
+    const offer = offerAt(harness, SRC_KEY, DEEP_X, y);
+    expect(offer).not.toBeNull();
+    expect(offer!.container).toBe("listItem");
+    expect(offer!.insertPos).toBe(startOf(harness, "ul2"));
+    // …and the bar is IN the band, not a row away from it.
+    expect(offer!.barY).toBeGreaterThanOrEqual(head.top + head.height);
+    expect(offer!.barY).toBeLessThanOrEqual(head.top + head.height + CHILD_GAP);
+  });
+
+  it("the band BELOW a nested list, which belongs to the outer LIST", () => {
+    // The other side of the same margin. It collapses out of the item, so the
+    // container is `ul1` and the boundary is the next ITEM's — "above the row
+    // below", which pre-481 was unreachable from this band at any X.
+    const harness = h();
+    const li2 = harness.layout.find("li2").box;
+    const y = li2.top + li2.height + CHILD_GAP / 2;
+    const offer = offerAt(harness, SRC_KEY, DEEP_X, y);
+    expect(offer).not.toBeNull();
+    expect(offer!.container).toBe("bulletList");
+    expect(offer!.insertPos).toBe(startOf(harness, "li3"));
+    expect(offer!.barY).toBeGreaterThanOrEqual(li2.top + li2.height);
+    expect(offer!.barY).toBeLessThanOrEqual(li2.top + li2.height + CHILD_GAP);
+  });
+
+  it("the LOWER half of a nested item's head ROW offers 'after the head'", () => {
+    // The in-text half of the same defect: `li2`'s box is three rows tall, so
+    // EVERY fraction of its head row sits above the box's midpoint and the only
+    // answer was "above the parent item". The boundary the row's own midpoint
+    // governs is `li2`'s INTERIOR one.
+    const harness = h();
+    const head = harness.layout.find("li2-p").box;
+    const offer = offerAt(harness, SRC_KEY, DEEP_X, head.top + head.height * 0.9);
+    expect(offer).not.toBeNull();
+    expect(offer!.container).toBe("listItem");
+    expect(offer!.insertPos).toBe(startOf(harness, "ul2"));
+  });
+
+  it("the UPPER half of that row is UNCHANGED — 'before the item'", () => {
+    // The control, and the rule rather than an exemption: `li2`'s LEADING
+    // boundary IS the item's own, one rung out, where task 416 put it.
+    const harness = h();
+    const head = harness.layout.find("li2-p").box;
+    const offer = offerAt(harness, SRC_KEY, DEEP_X, head.top + head.height * 0.1);
+    expect(offer).not.toBeNull();
+    expect(offer!.container).toBe("bulletList");
+    expect(offer!.insertPos).toBe(startOf(harness, "li2"));
+  });
+
+  it("a SINGLE-child item is byte-identical to task 416 at every fraction", () => {
+    // The other control, and the one that keeps the rule from being "descend
+    // always": `li1`'s only child is its paragraph, so both of its boundaries
+    // are the item's own AND paint the same bar (`resolveContentEdges` descends
+    // a container to exactly that child). Offering them would win the
+    // `rect.left` tie in `chooseInsertCandidate` and silently change the default
+    // landing of every ordinary list drag to "inside the item".
+    for (const frac of FRACTIONS) {
+      const harness = h();
+      const row = harness.layout.find("li1-p").box;
+      const offer = offerAt(harness, SRC_KEY, DEEP_X, row.top + row.height * frac);
+      expect(offer, `li1 @${frac}`).not.toBeNull();
+      expect(offer!.container, `li1 @${frac}`).toBe("bulletList");
+      expect(offer!.insertPos, `li1 @${frac}`).toBe(
+        frac < 0.5
+          ? startOf(harness, "li1")
+          : startOf(harness, "li1") + rangeOf(harness.doc(), "li1")!.node.nodeSize,
+      );
+    }
+  });
+
+  it("X still walks the level OUTWARD from a gap band", () => {
+    // The band is not a level of its own: the same rungs are there, and moving
+    // left still reaches the outer ones. Left of every box, the shallowest.
+    const harness = h();
+    const li2 = harness.layout.find("li2").box;
+    const y = li2.top + li2.height + CHILD_GAP / 2;
+    const deep = offerAt(harness, SRC_KEY, DEEP_X, y);
+    const far = offerAt(harness, SRC_KEY, COL_LEFT - 40, y);
+    expect(deep!.container).toBe("bulletList");
+    expect(far!.container).toBe("doc");
+  });
+
+  it("the TRAILING band of a list offers a new ITEM, not only a new block", () => {
+    // The audit's fourth row: below the last item of a nested list, whose
+    // collapsed bottom margin is the LIST's own trailing band. MEASURED pre-481:
+    // `doc` — the sole candidate was the whole list's bottom at top level, the
+    // audit's "level candidates never offered". The ladder's TRAILING-boundary
+    // rung is what reaches it, and it is the one rung whose reference row is the
+    // child BEFORE the gap rather than the child at it; without that case the
+    // ladder used to break out on its first iteration (`maybeChild(childCount)`
+    // is null) and offer nothing at all.
+    const doc = docOf(
+      para("intro", "tIntro"),
+      bullets("tul", [
+        item("solo", "tli", [bullets("tul2", [item("deep", "tli-a")])]),
+      ]),
+      para("outro", "tOutro"),
+      para("moved", "TSRC"),
+    );
+    const harness = makeHarness(doc);
+    const li = harness.layout.find("tli").box;
+    const y = li.top + li.height + CHILD_GAP / 2;
+    const offer = offerAt(harness, keyFor("paragraph", "TSRC"), DEEP_X, y);
+    expect(offer).not.toBeNull();
+    expect(offer!.container).toBe("bulletList");
+    // …AFTER the only item, inside the list — a new sibling item.
+    const r = rangeOf(harness.doc(), "tli")!;
+    expect(offer!.insertPos).toBe(r.to);
+  });
+
+  it("the rung costs an ORDINARY row nothing — it measures no child box", () => {
+    // The rung runs on the frame-coalesced hit-test, so its cost is the cost of
+    // every drag over every list. On the commonest floor there is — an item
+    // whose only child is its paragraph — the interior-only rule answers from
+    // the child COUNT, before any DOM read, so that paragraph's box is never
+    // measured. A version that read the rect first and discarded it would be a
+    // forced layout per move for an answer it already had.
+    const harness = h();
+    const row = harness.layout.find("li1-p");
+    const before = RECT_READS.get(row.el) ?? 0;
+    offerAt(harness, SRC_KEY, DEEP_X, row.box.top + row.box.height * 0.9);
+    expect(RECT_READS.get(row.el) ?? 0).toBe(before);
+    // …and on a floor that DOES have an interior boundary, exactly one child
+    // box is measured: the one the cursor sits in.
+    const head = harness.layout.find("li2-p");
+    const headBefore = RECT_READS.get(head.el) ?? 0;
+    offerAt(harness, SRC_KEY, DEEP_X, head.box.top + head.box.height * 0.9);
+    expect(RECT_READS.get(head.el)! - headBefore).toBe(1);
+  });
+
+  it("every gap-band offer is a landing the COMMIT accepts (INV1, in the band)", () => {
+    // The affordance law, asked of the pixels that had no honest answer before:
+    // a bar that paints in a gap band must be a drop that changes the document.
+    const bands: Array<[string, (l: Layout) => number]> = [
+      ["head/nested", (l) => l.find("li2-p").box.top + l.find("li2-p").box.height + CHILD_GAP / 2],
+      ["below-nested", (l) => l.find("li2").box.top + l.find("li2").box.height + CHILD_GAP / 2],
+    ];
+    for (const src of SOURCES) {
+      for (const [name, at] of bands) {
+        for (const x of X_POSITIONS) {
+          const harness = makeHarness(fixture(src.node()));
+          const cell = drop(harness, keyFor(src.name, src.uuid), x, at(harness.layout), src.uuid);
+          if (!cell.bar) continue;
+          expect(
+            cell.changed && cell.uuidsConserved,
+            `${src.name} @${name} x=${x} → ${cell.verdict}`,
+          ).toBe(true);
+        }
       }
     }
   });

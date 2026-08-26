@@ -406,10 +406,27 @@ describe("census — every door asks the SSOT, and nothing re-derives it", () =>
 
   it("the hit-test threads it into the candidate FILTER", () => {
     const s = read("components/drop-mode/hit-test.ts");
-    const call = s.slice(
-      s.indexOf("filterInsertCandidates("),
-      s.indexOf("filterInsertCandidates(") + 220,
-    );
+    // The call is resolved by BALANCING its parentheses, not by a fixed-width
+    // window (task 470's rule about a `commit:` body, one census over). The
+    // pre-481 form of this leg sliced 220 characters and went blind the moment
+    // the nested `resolveInsertCandidates(` call grew an argument — indicting a
+    // call site that threads the range perfectly well, which is a guard whose
+    // failure mode is noise rather than signal.
+    const start = s.indexOf("filterInsertCandidates(");
+    expect(start).toBeGreaterThan(-1);
+    let depth = 0;
+    let end = start;
+    for (let i = s.indexOf("(", start); i < s.length; i += 1) {
+      if (s[i] === "(") depth += 1;
+      else if (s[i] === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    const call = s.slice(start, end);
     expect(call).toContain("blockPayload");
     expect(call).toContain("sourceRange");
   });
