@@ -99,7 +99,6 @@ const HANDLERS = {
   setZenLeftMargin: stableFn,
   setZenRightMargin: stableFn,
   setCardArchiveView: stableFn,
-  setSuppressArchiveAtomWarning: stableFn,
 } as unknown as EditorMutationHandlers;
 
 const VIEW = {

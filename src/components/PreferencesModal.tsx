@@ -9,6 +9,11 @@ import { Input, Select } from "./field-primitives";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 import { iconHint } from "@/components/Hint";
+import {
+  SUPPRESSIBLE_CONFIRM_LABELS,
+  restoreAllConfirms,
+  useSuppressedConfirms,
+} from "./confirm-suppression";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -189,6 +194,33 @@ function PreferencesHeader({ onClose }: { onClose: () => void }) {
 
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
+/* ── Restore hidden confirmations ─────────────────────────────────────────────
+ *
+ * The way BACK from every "Don't show this again" tick, so suppression is never
+ * a one-way door (task 492). Renders NOTHING when nothing is suppressed rather
+ * than a disabled control that does nothing — the false-affordance rule this
+ * codebase applies to the unanchored-cards chip and every other count-gated
+ * affordance. It lives in the modal CHROME and not in `PREFERENCES_TREE`
+ * because the tree's leaves are `EditorPreferences` keys that each move a pixel
+ * through a CSS variable (the `inert-preference-controls` census); this is an
+ * action, not a value.
+ */
+function RestoreHiddenConfirmations() {
+  const suppressed = useSuppressedConfirms();
+  if (suppressed.length === 0) return null;
+  return (
+    <button
+      onClick={restoreAllConfirms}
+      title={suppressed
+        .map((id) => SUPPRESSIBLE_CONFIRM_LABELS[id])
+        .join("\n")}
+      className="text-xs text-ink-muted hover:text-ink-body transition-colors"
+    >
+      Restore hidden confirmations ({suppressed.length})
+    </button>
+  );
+}
+
 export default function PreferencesModal({
   prefs,
   transforms,
@@ -272,10 +304,11 @@ export default function PreferencesModal({
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3 border-t border-[var(--border)] flex justify-end">
+      <div className="px-5 py-3 border-t border-[var(--border)] flex items-center gap-3">
+        <RestoreHiddenConfirmations />
         <button
           onClick={onReset}
-          className="text-xs text-ink-muted hover:text-ink-body transition-colors"
+          className="ml-auto text-xs text-ink-muted hover:text-ink-body transition-colors"
         >
           Reset to defaults
         </button>

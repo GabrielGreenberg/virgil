@@ -150,8 +150,6 @@ describe("ItemMenu rows — registration + keyboard (task 477)", () => {
         value={{
           getView: () => "active",
           setView,
-          suppressAtomWarning: false,
-          setSuppressAtomWarning: () => {},
         }}
       >
         <ItemMenu align="left">

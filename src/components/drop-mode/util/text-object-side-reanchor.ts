@@ -49,6 +49,15 @@ export function textObjectSideReanchorSpec(
         title: `Re-anchor this ${opts.kindLabel}?`,
         message: `This ${opts.kindLabel} is currently anchored to a different paragraph. Re-anchor to this paragraph instead?`,
         confirmLabel: "Re-anchor",
+        // SUPPRESSIBLE. The gesture that raises this dialog is a full drag onto
+        // a specific paragraph's margin — the most deliberate thing the user can
+        // do — and the outcome is reversible (drag it back). Once read, the
+        // question is pure friction, so the confirm DOOR offers "Don't show
+        // this again" and remembers the answer
+        // (`components/confirm-suppression.ts`). Declaring the id is the whole
+        // of the spec's part: the checkbox, the persistence and the
+        // short-circuit are the door's.
+        suppressId: "reanchor-margin-item",
       };
     },
     applyDrop(placement, cardKey, ctx) {

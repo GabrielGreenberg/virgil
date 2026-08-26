@@ -24,17 +24,11 @@ export interface CardArchiveViewApi {
   /** The archive view mode for a panel. Defaults to "active". */
   getView: (panel: PanelKind) => CardArchiveView;
   setView: (panel: PanelKind, mode: CardArchiveView) => void;
-  /** Whether the "archiving removes the footnote/citation from your text"
-   *  confirm is suppressed (the user ticked "don't ask again"). */
-  suppressAtomWarning: boolean;
-  setSuppressAtomWarning: (v: boolean) => void;
 }
 
 const DEFAULT: CardArchiveViewApi = {
   getView: () => "active",
   setView: () => {},
-  suppressAtomWarning: false,
-  setSuppressAtomWarning: () => {},
 };
 
 const CardArchiveViewContext = createContext<CardArchiveViewApi>(DEFAULT);

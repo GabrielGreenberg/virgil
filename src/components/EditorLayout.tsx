@@ -652,7 +652,6 @@ export default function EditorLayout() {
     resetOmniSide,
     toggleOmniHideAllCards,
     setCardArchiveView,
-    setSuppressArchiveAtomWarning,
   } = viewPrefsResult;
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -2605,7 +2604,6 @@ export default function EditorLayout() {
     setZenLeftMargin,
     setZenRightMargin,
     setCardArchiveView,
-    setSuppressArchiveAtomWarning,
   }), [
     handleScrollToHeading,
     handleReorderBlocks,
@@ -2625,7 +2623,6 @@ export default function EditorLayout() {
     setZenLeftMargin,
     setZenRightMargin,
     setCardArchiveView,
-    setSuppressArchiveAtomWarning,
   ]);
 
   // The EditorLayout-computed view derivations (section paths, focus state,
