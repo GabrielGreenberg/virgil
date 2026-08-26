@@ -121,4 +121,43 @@ describe("RevisionRequestCard selection excerpt (task 200)", () => {
       screen.getByText(/The quick brown fox jumped over the lazy dog\./),
     ).toBeTruthy();
   });
+
+  // ── task 488 ────────────────────────────────────────────────────────────
+  // Gabriel: *"the original is rendered as plain text without formatting —
+  // should be more like an archive card."* The excerpt now goes through the
+  // shared `captured-passage` door, so it reads as the paper does. These legs
+  // drive the REAL static borrowed surface (only `BorrowedMainText` is stubbed
+  // above), which is the whole point: a leg that stubbed the renderer would be
+  // blind to exactly the thing that was wrong.
+  it("renders the RICH capture with its marks (the capture rung)", () => {
+    renderCard(
+      makeCard({
+        selectedText: "plain stressed",
+        selectedContent: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "plain " },
+                { type: "text", marks: [{ type: "italic" }], text: "stressed" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const em = document.querySelector(".captured-passage em");
+    expect(em?.textContent).toBe("stressed");
+  });
+
+  it("parses the BYTES when there is no rich capture (every pre-488 card)", () => {
+    renderCard(makeCard({ selectedText: "an \\emph{emphasised} word" }));
+    const em = document.querySelector(".captured-passage em");
+    expect(em?.textContent).toBe("emphasised");
+    // …and the command itself is not shown as source — the reported defect.
+    expect(
+      document.querySelector(".captured-passage")?.textContent,
+    ).not.toContain("emph{");
+  });
 });

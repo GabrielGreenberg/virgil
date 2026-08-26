@@ -602,6 +602,34 @@ cards keep the one-line summary. The empty-body placeholder is the single
 `CardEmptyText` component (one `text-ink-faint italic` style), not a
 hand-rolled span.
 
+### A CAPTURED PASSAGE is main text (task 488)
+
+A card that QUOTES a span of the paper — a revision/cutter comment's
+"Original" excerpt, a suggestion card's read-only `original_text`, the
+Original-text foldout on an applied or pending-AI record — renders that
+passage through ONE door,
+`CapturedPassage` (`src/panels/_shared/captured-passage.tsx`), and it takes
+the **`"borrowed"` (Source Serif · 15px) treatment on every surface**,
+whatever the host panel's own `bodyClass` says. Gabriel's rule, verbatim:
+*"should be more like an archive card."*
+
+Two consequences worth knowing before you style one:
+
+- The passage inherits the **ink of the block that hosts it** — the door
+  deliberately drops `color` from the panel body style, and
+  `.captured-passage .rtf-content { color: inherit }` hands it back. That is
+  what preserves the red "Original" / green "Suggested" cue the
+  suggestion-field vocabulary assigns; write the colour on the HOST block's
+  class, never on the passage.
+- It is a **quote inside a card, not a body**, so the same rule drops the
+  2.5rem min-height and the vertical padding `.rtf-content` reserves for a
+  caret.
+
+The collapsed one-liner uses the door's own `capturedPassageOneLine`, so the
+cue and the expanded excerpt cannot disagree. EDITABLE fields stay plain
+textareas over the raw bytes — the apply path splices bytes, so the string
+must stay authoritative wherever the user can type.
+
 ### The card kind-chevron (morph) — A9
 
 A polymorphic panel (one panel hosting a kind PAIR — Notes

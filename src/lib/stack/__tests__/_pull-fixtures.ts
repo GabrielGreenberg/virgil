@@ -131,6 +131,12 @@ export const POPULATED_SNAPSHOT_DATA: {
     content: RICH_BODY,
     aiRequest: true,
     selectedText: "text selected in the SOURCE doc",
+    selectedContent: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "text selected in the SOURCE doc" }] },
+      ],
+    },
     links: [SOURCE_LINK],
   },
   "revision-suggestion": {
@@ -154,6 +160,12 @@ export const POPULATED_SNAPSHOT_DATA: {
       appliedAt: "2020-01-02T00:00:00.000Z",
     },
     selectedText: "text selected in the SOURCE doc",
+    selectedContent: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "text selected in the SOURCE doc" }] },
+      ],
+    },
     links: [SOURCE_LINK],
   },
   "cutter-comment": {
@@ -165,6 +177,12 @@ export const POPULATED_SNAPSHOT_DATA: {
     content: RICH_BODY,
     aiRequest: true,
     selectedText: "text selected in the SOURCE doc",
+    selectedContent: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "text selected in the SOURCE doc" }] },
+      ],
+    },
     links: [SOURCE_LINK],
   },
   "cutter-suggestion": {
@@ -188,6 +206,12 @@ export const POPULATED_SNAPSHOT_DATA: {
       appliedAt: "2020-01-02T00:00:00.000Z",
     },
     selectedText: "text selected in the SOURCE doc",
+    selectedContent: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "text selected in the SOURCE doc" }] },
+      ],
+    },
     links: [SOURCE_LINK],
   },
 };

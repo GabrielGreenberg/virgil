@@ -74,6 +74,7 @@ export function RevisionRequestCard({
   // compressed cue, falling back to the rich-text body summary.
   const { excerptBlock, compressedExcerpt } = useExcerptCue({
     selectedText: card.selectedText,
+    selectedContent: card.selectedContent,
     kindHint: anchorSummary?.kind ?? null,
   });
   const compressedSummary = compressed

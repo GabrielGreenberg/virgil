@@ -73,6 +73,10 @@ function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestion
     instructions: "",
     status: "pending",
     selectedText: c.selectedText,
+    // The rich capture travels with the string it is the twin of (task 488) —
+    // a morph is not a re-capture, and dropping it would silently demote the
+    // card's "Original" to the flattened line.
+    selectedContent: c.selectedContent,
     links: c.links,
   };
 }
@@ -93,6 +97,7 @@ function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequest
     content: richFromParagraphs(parts),
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
+    selectedContent: s.selectedContent,
     links: s.links,
   };
 }
@@ -121,6 +126,10 @@ function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
     instructions: "",
     status: "pending",
     selectedText: c.selectedText,
+    // The rich capture travels with the string it is the twin of (task 488) —
+    // a morph is not a re-capture, and dropping it would silently demote the
+    // card's "Original" to the flattened line.
+    selectedContent: c.selectedContent,
     links: c.links,
   };
 }
@@ -139,6 +148,7 @@ function cutterSuggestionToComment(s: CutterSuggestionCard): CutterCommentCard {
     content: richFromParagraphs(parts),
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
+    selectedContent: s.selectedContent,
     links: s.links,
   };
 }

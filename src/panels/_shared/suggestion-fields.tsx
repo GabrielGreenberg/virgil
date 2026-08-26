@@ -15,14 +15,16 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Chevron } from "@/components/panel-primitives";
-import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
 import { usePreviewDir } from "@/links/pending-preview-store";
-import { richLatexToJson } from "@/lib/footnote-content";
+import {
+  CapturedPassage,
+  capturedPassageOneLine,
+} from "@/panels/_shared/captured-passage";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { CardKind } from "@/panels/_shared/types";
@@ -272,41 +274,59 @@ export function FieldTitleRow({
  * Both are `undefined` when there is no `selectedText`, so a card can fall
  * back to its body-derived summary. This is the single source of truth so the
  * two hand-forked comment cards can't diverge again.
+ *
+ * Since task 488 BOTH halves render through the `captured-passage` door: the
+ * expanded excerpt as read-only borrowed main text (so italics, math and
+ * citations read as they do in the paper — Gabriel's "should be more like an
+ * archive card"), the collapsed cue through the door's one-line projection of
+ * the SAME resolution, so the two can never disagree about what the passage
+ * says. The copy button still copies the raw bytes.
  */
 export function useExcerptCue({
   selectedText,
+  selectedContent,
   kindHint,
   label = "Original",
 }: {
   selectedText?: string | null;
+  /** The rich capture taken at anchor time (task 488). Preferred over the
+   *  flattened string when present; absent on every pre-488 card. */
+  selectedContent?: unknown;
   kindHint?: string | null;
   label?: string;
 }): { excerptBlock: ReactNode | undefined; compressedExcerpt: ReactNode | undefined } {
   const [folded, setFolded] = useState(false);
-  if (!selectedText) {
+  // A captured passage is MAIN TEXT wherever it is shown, so it takes the
+  // main-text (footnote/serif) typography on every surface — the same
+  // treatment the archive card body gets.
+  const bodyStyle = usePanelBodyStyle("footnote");
+  if (!selectedText && !selectedContent) {
     return { excerptBlock: undefined, compressedExcerpt: undefined };
   }
+  const src = { latex: selectedText ?? "", content: selectedContent };
   const excerptBlock = (
     <div className="mb-2">
       <FieldTitleRow
         label={label}
         kindHint={kindHint ?? null}
-        text={selectedText}
+        text={selectedText ?? ""}
         showCopy={true}
         showWordCount={true}
         folded={folded}
         onToggleFold={() => setFolded((f) => !f)}
       />
       {!folded && (
-        <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
-          {selectedText}
-        </div>
+        <CapturedPassage
+          {...src}
+          bodyStyle={bodyStyle}
+          className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-red-700 break-words"
+        />
       )}
     </div>
   );
   const compressedExcerpt = (
     <span className="text-red-700/80 italic">
-      &quot;{selectedText.replace(/\s+/g, " ").trim()}&quot;
+      &quot;{capturedPassageOneLine(src)}&quot;
     </span>
   );
   return { excerptBlock, compressedExcerpt };
@@ -314,10 +334,19 @@ export function useExcerptCue({
 
 /** A single labelled suggestion field (title row + textarea). `panelKey`
  *  selects the per-panel body typography ("cut" or "revision"); everything
- *  else is shared. */
+ *  else is shared.
+ *
+ *  READ-ONLY `original_text` (task 488) is not a textarea: it is a CAPTURED
+ *  PASSAGE — a quote of the paper — so it renders through the shared door as
+ *  borrowed main text, keeping the field vocabulary's red chrome. Every
+ *  EDITABLE field stays a textarea over the raw bytes: the apply path splices
+ *  `user_text || suggested_text` as BYTES, so the string must remain the
+ *  authoritative currency wherever the user can type. The rich form is
+ *  display-only and is never written back. */
 export function FieldBlock({
   field,
   value,
+  content,
   onChange,
   readOnly,
   kindHint,
@@ -325,6 +354,9 @@ export function FieldBlock({
 }: {
   field: SuggestionField;
   value: string;
+  /** The rich capture behind `original_text`, when the card has one (task
+   *  488). Ignored for every other field and for the editable path. */
+  content?: unknown;
   onChange: (v: string) => void;
   readOnly?: boolean;
   kindHint?: string | null;
@@ -334,11 +366,15 @@ export function FieldBlock({
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
   const [folded, setFolded] = useState(false);
   const bodyStyle = usePanelBodyStyle(panelKey);
+  // A captured passage takes MAIN-TEXT typography wherever it appears (the
+  // archive-card treatment), not the panel body face the editable fields use.
+  const passageStyle = usePanelBodyStyle("footnote");
   const textareaStyle: React.CSSProperties = FIELDS_WITH_COLOR_CUE.has(field)
     ? { fontFamily: bodyStyle.fontFamily, fontSize: bodyStyle.fontSize }
     : bodyStyle;
 
   const isSubstantive = FIELDS_WITH_WORD_COUNT.has(field);
+  const asPassage = readOnly && field === "original_text";
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <FieldTitleRow
@@ -350,7 +386,19 @@ export function FieldBlock({
         folded={folded}
         onToggleFold={() => setFolded((f) => !f)}
       />
-      {!folded && (
+      {!folded && asPassage && (
+        <CapturedPassage
+          latex={value}
+          content={content}
+          bodyStyle={passageStyle}
+          // The SAME class string the textarea wears, so the read-only and
+          // editable renderings of one field cannot drift on chrome. The
+          // textarea-only members (`placeholder:*`, `focus:*`, `resize-none`)
+          // are inert on a div.
+          className={FIELD_TEXTAREA_CLASS[field]}
+        />
+      )}
+      {!folded && !asPassage && (
         <textarea
           ref={taRef}
           value={value}
@@ -473,7 +521,7 @@ function PreviewSegment({
  *       ALWAYS visible when present (omitted when empty).
  *    3. an "Original text" label + chevron disclosure (collapsed by default).
  *    4. only when expanded — the original paragraph rendered as bare read-only
- *       main-text (`richLatexToJson` → `BorrowedMainText`).
+ *       main-text through the shared `captured-passage` door (task 488).
  *
  *  Every action routes through the `PendingChangeController` context (not
  *  per-mount callbacks), so the SAME card works on every surface — omni/float no
@@ -486,11 +534,15 @@ function PreviewSegment({
 export function AppliedRecordBody({
   id,
   originalText,
+  originalContent,
   explanation,
   family,
 }: {
   id: string;
   originalText: string;
+  /** The rich capture behind the original, when the card has one (task 488) —
+   *  preferred over re-parsing the bytes. */
+  originalContent?: unknown;
   /** The card's `explanation` — "what Claude did and why". Rendered always-on
    *  above the Original foldout; omitted when empty/whitespace. */
   explanation?: string;
@@ -594,12 +646,11 @@ export function AppliedRecordBody({
       </button>
       {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
       {showOriginal && (
-        <BorrowedMainText
-          value={richLatexToJson(originalText)}
-          instanceKey={`applied-original:${id}`}
-          variant="footnote"
-          className="break-words"
+        <CapturedPassage
+          latex={originalText}
+          content={originalContent}
           bodyStyle={bodyStyle}
+          className="break-words"
         />
       )}
     </div>
@@ -624,12 +675,16 @@ export function AppliedRecordBody({
 export function PendingAiRecordBody({
   id,
   originalText,
+  originalContent,
   suggestedText,
   explanation,
   family,
 }: {
   id: string;
   originalText: string;
+  /** The rich capture behind the original, when the card has one (task 488) —
+   *  preferred over re-parsing the bytes. */
+  originalContent?: unknown;
   /** The card's `suggested_text` — what Insert-below drops as a new paragraph.
    *  Blank (a delete/empty cut) → the action is replaced by a quiet notice. */
   suggestedText: string;
@@ -703,12 +758,11 @@ export function PendingAiRecordBody({
       </button>
       {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
       {showOriginal && (
-        <BorrowedMainText
-          value={richLatexToJson(originalText)}
-          instanceKey={`pending-ai-original:${id}`}
-          variant="footnote"
-          className="break-words"
+        <CapturedPassage
+          latex={originalText}
+          content={originalContent}
           bodyStyle={bodyStyle}
+          className="break-words"
         />
       )}
     </div>

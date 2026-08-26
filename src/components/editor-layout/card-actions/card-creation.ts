@@ -44,7 +44,20 @@ import type {
  * entirely by the pristine manager's global pointerdown watcher.
  */
 
-export type AnchorRef = { anchorId: string; anchorText: string };
+/** A minted Mode-B range anchor, as the card creators consume it.
+ *
+ *  `anchorText` is the RELOCATION currency (`doc.textBetween`) — plain doc
+ *  text, because that is what a Mode-B anchor is re-found by on reload.
+ *  `anchorContent` is the RICH twin (task 488): the same span as a real
+ *  document slice, so the "Original" surfaces can render the passage with its
+ *  marks and inline atoms instead of the flattened line `textBetween` yields.
+ *  Optional — a producer that has no slice to take simply omits it and the
+ *  display door falls back to parsing the string. */
+export type AnchorRef = {
+  anchorId: string;
+  anchorText: string;
+  anchorContent?: unknown;
+};
 
 export interface CardCreationDeps {
   editorRef: RefObject<EditorHandle | null>;

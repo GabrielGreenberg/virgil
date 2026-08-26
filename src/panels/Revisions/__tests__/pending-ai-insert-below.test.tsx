@@ -33,14 +33,20 @@ vi.mock("@/lib/storage", () => {
   return Object.fromEntries(names.map((n) => [n, noop]));
 });
 
-// The read-only original renders through BorrowedMainText, which mounts a real
-// TipTap editor. Stub it: its presence/absence is the "original shown vs hidden
-// behind the chevron" signal.
+// The card body renders through EditableCard → RichTextField, which mounts a
+// real TipTap editor. Stub it.
 vi.mock("@/components/RichTextField", () => ({
   default: () => <div data-testid="rtf" />,
 }));
-vi.mock("@/components/BorrowedMainText", () => ({
-  BorrowedMainText: () => <div data-testid="borrowed" />,
+// RENEGOTIATED (task 488): the Original foldout no longer mounts a read-only
+// TipTap editor. It renders through the shared `captured-passage` door, whose
+// surface is the STATIC borrowed tier — nothing here is editable, so an editor
+// bought nothing and cost a mount. Stub the static surface instead; its
+// presence/absence is still the "original shown vs hidden behind the chevron"
+// signal this leg is about. What the door actually RENDERS is pinned where the
+// door lives (captured-passage.test.tsx), against the real surface.
+vi.mock("@/components/StaticBorrowedText", () => ({
+  StaticBorrowedText: () => <div data-testid="borrowed" />,
   default: () => <div data-testid="borrowed" />,
 }));
 

@@ -36,7 +36,7 @@
  *   paste-as-new. The factory mints these; the source's are meaningless here,
  *   and a spread-through `kind` from a blob written by another build would file
  *   the record under the wrong shape.
- * - **Per-doc bindings** (`links`, `selectedText`, `unanchored`) — they address
+ * - **Per-doc bindings** (`links`, `selectedText`/`selectedContent`, `unanchored`) — they address
  *   text in the SOURCE document. The pull decides its own anchor from the
  *   placement it landed on; a carried link would point at a paragraph uuid this
  *   doc has never seen.
@@ -129,6 +129,7 @@ export const NON_TRAVELLING_FIELDS: {
     "archived",
     "aiRequest",
     "selectedText",
+    "selectedContent",
   ],
   "revision-suggestion": [
     "kind",
@@ -137,6 +138,7 @@ export const NON_TRAVELLING_FIELDS: {
     "links",
     "archived",
     "selectedText",
+    "selectedContent",
     "status",
     "appliedChange",
   ],
@@ -148,6 +150,7 @@ export const NON_TRAVELLING_FIELDS: {
     "archived",
     "aiRequest",
     "selectedText",
+    "selectedContent",
   ],
   "cutter-suggestion": [
     "kind",
@@ -156,6 +159,7 @@ export const NON_TRAVELLING_FIELDS: {
     "links",
     "archived",
     "selectedText",
+    "selectedContent",
     "status",
     "appliedChange",
   ],
