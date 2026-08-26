@@ -43,7 +43,6 @@
  */
 
 import { useLayoutEffect, useRef } from "react";
-import type { Editor } from "@tiptap/react";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -62,7 +61,6 @@ const COLOR_POPOVER_PLACEMENTS: FloatingMenuPlacement[] = [
 ];
 
 interface Props {
-  editor: Editor;
   /** Bounding rect of the Color button that triggered the popover. */
   anchorRect: DOMRect;
   palette: string[];

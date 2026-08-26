@@ -2870,10 +2870,6 @@ export default function EditorLayout() {
     if (codeView) switchToVisualView();
     else switchToCodeView();
   }, [codeView, switchToVisualView, switchToCodeView]);
-  const handleEditorPaneActivate = useCallback(() => {
-    if (currentDocId) activateDocPane(currentDocId);
-  }, [currentDocId, activateDocPane]);
-
   // Phase 5c: stable handler so the inline `() => setAiWindowOpen(false)` lambda
   // doesn't give every pane a fresh `onAiWindowClose` prop each render (which
   // would defeat `React.memo(EditorPane)`). Passed only to the active pane.
@@ -3477,9 +3473,6 @@ export default function EditorLayout() {
                           chrome={FULL_CHROME}
                           onUpdate={isActive ? handleUpdate : undefined}
                           onEditorReady={getOnEditorReady(slotDocId)}
-                          onActivate={
-                            isActive ? handleEditorPaneActivate : undefined
-                          }
                           onPaneStateChange={getOnPaneStateChange(slotDocId)}
                           pdfView={isActive && pdfView}
                           onTogglePdfView={isActive ? togglePdfView : undefined}

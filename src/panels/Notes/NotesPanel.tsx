@@ -11,10 +11,12 @@ import {
   ItemMenu,
   PANEL,
   useCycle,
+  useListNavKeys,
 } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -78,13 +80,22 @@ export default function NotesPanel({
     },
     [onSelectNote, onJumpToCard],
   );
-  const { idx, setIdx } = useCycle(sortedCards, onActivateCard);
+  // The keyboard cycle iterates the SAME set CardListPanel renders. Archived
+  // cards filter out of the Active view; feed the cycle the archive-filtered
+  // list (via the shared hook, same accessor CardListPanel gets) so ArrowUp/Down
+  // never steps onto an archived, off-screen card — the Footnotes/Citations
+  // contract.
+  const getNoteArchived = useCallback((c: NoteCardItem) => !!c.archived, []);
+  const visibleCards = useArchiveVisibleItems("notes", sortedCards, getNoteArchived);
+  const { idx, next, prev, setIdx } = useCycle(visibleCards, onActivateCard);
 
   useEffect(() => {
     if (!selectedNoteId) return;
-    const i = sortedCards.findIndex((c) => c.id === selectedNoteId);
+    const i = visibleCards.findIndex((c) => c.id === selectedNoteId);
     if (i >= 0 && i !== idx) setIdx(i);
-  }, [selectedNoteId, sortedCards, idx, setIdx]);
+  }, [selectedNoteId, visibleCards, idx, setIdx]);
+
+  const handleNavKeys = useListNavKeys(visibleCards.length, next, prev);
 
   // "+" dropdown: lets the user explicitly pick which kind to create.
   const onAddOptions = useMemo(
@@ -112,9 +123,11 @@ export default function NotesPanel({
       }
       items={sortedCards}
       getId={(c) => c.id}
-      getArchived={(c) => !!c.archived}
+      getArchived={getNoteArchived}
       selectedId={selectedNoteId}
       onSelect={onSelectNote}
+      onKeyDown={handleNavKeys}
+      scrollTabIndex={0}
       emptyState={
         <div className={PANEL.empty}>
           No notes or highlights yet. Select text and click the highlighter

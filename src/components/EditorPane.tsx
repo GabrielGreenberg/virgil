@@ -809,8 +809,6 @@ export interface EditorPaneProps {
    */
   onEditorReady?: (editor: Editor) => void;
 
-  /** Tab integration — main app passes; Library Reader omits. */
-  onActivate?: () => void;
 
   /**
    * Bubbles per-doc state needed by the Virgil bar. EditorPane fires

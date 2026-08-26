@@ -35,10 +35,6 @@ class ResizeObserverStub {
 const RECT = new DOMRect(100, 100, 30, 24);
 const PALETTE = ["#e11d48", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#111827", "#6b7280"];
 
-// A minimal Editor stub — the component never touches it (apply/clear/pick are
-// all delegated to the parent's callbacks).
-const editorStub = {} as unknown as Parameters<typeof SelectionColorPopover>[0]["editor"];
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -75,7 +71,6 @@ function renderPopover(
 ) {
   return render(
     <SelectionColorPopover
-      editor={editorStub}
       anchorRect={RECT}
       palette={PALETTE}
       onApply={() => {}}
