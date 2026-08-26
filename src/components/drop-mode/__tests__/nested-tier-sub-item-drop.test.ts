@@ -216,6 +216,9 @@ describe("nested xlist tier — preconditions on the REAL schema", () => {
         editor,
         resolveInsertCandidates(editor, i2.pos, 0),
         ["exampleItem"],
+        // The source is a popped-out sub-item from another document in this
+        // harness — no in-document range to be self against (task 480).
+        null,
       ),
       10_000,
     );

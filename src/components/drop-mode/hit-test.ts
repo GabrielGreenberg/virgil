@@ -38,6 +38,7 @@ import { findEditorAtPoint } from "./target-registry";
 import { winningPlacementKind } from "./placement-policy";
 import { inlineCursorHostsPayload, type InlineDropPayload } from "./inline-host";
 import type { BlockDropPayload } from "./block-payload";
+import type { DropSourceRange } from "./self-drop";
 import {
   chooseInsertCandidate,
   filterInsertCandidates,
@@ -51,7 +52,9 @@ import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
  * under the cursor for the given spec).
  *
  * `sourceCardKey` is the cardKey of the popped-out item being dropped.
- * Used to reject self-drops (target editor belongs to the source card).
+ * Used to reject a drop back into the source card's OWN body editor
+ * ({@link targetIsSourceCardBody}) — the EDITOR-identity self-drop, which is a
+ * different question from the POSITION-identity one `self-drop.ts` answers.
  *
  * `inlinePayload` is the SESSION's answer to the OTHER once-per-gesture question
  * (task 414): the schema node names this drop would splice at an inline caret,
@@ -66,6 +69,13 @@ import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
  * or `spec.allowedPlacements`. Passed in rather than read off the spec here so
  * a per-payload policy is resolved once per gesture, not once per move; an
  * EMPTY list is meaningful and yields no placement anywhere.
+ *
+ * `sourceRange` is the THIRD once-per-gesture resolution (task 480): where this
+ * session's payload currently lives, so the candidate filter can drop the
+ * source's OWN gap and no bar is painted at a landing the commit refuses. It
+ * walks the document, so it is resolved at `beginDropSession` and never here.
+ * `null` is the ANSWER "this payload does not live in a document" — a card
+ * pull, a Stack thumbnail — and keeps every candidate.
  */
 export function hitTest(
   x: number,
@@ -76,12 +86,13 @@ export function hitTest(
   mainEditor: Editor | null,
   inlinePayload: InlineDropPayload,
   blockPayload: BlockDropPayload,
+  sourceRange: DropSourceRange | null,
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
   if (!editor.isEditable) return null;
   if (spec.targetScope === "main-only" && editor !== mainEditor) return null;
-  if (isSelfDrop(editor, sourceCardKey)) return null;
+  if (targetIsSourceCardBody(editor, sourceCardKey)) return null;
 
   let posResult: { pos: number; inside: number } | null;
   try {
@@ -145,6 +156,7 @@ export function hitTest(
         editor,
         resolveInsertCandidates(editor, block.blockPos, y, blockRect),
         blockPayload,
+        sourceRange,
       ),
       x,
     );
@@ -859,14 +871,19 @@ function makeInlineCursorPlacement(
 
 /**
  * Reject drops back into the editor that is the source of the dragged
- * card. e.g. if the popped-out item is a paragraph, its float contains a
+ * card — the EDITOR-identity self-drop. (The POSITION-identity one — "this
+ * landing is the source's own gap" — is `self-drop.ts`'s, asked per candidate.)
+ * e.g. if the popped-out item is a paragraph, its float contains a
  * mini-editor displaying that very paragraph — drop targets inside that
  * mini-editor would be confusing.
  *
  * Detection: the target editor's DOM is inside a FloatingPanel that
  * carries a `data-pristine-card-id` matching the cardKey's id.
  */
-function isSelfDrop(targetEditor: Editor, sourceCardKey: string): boolean {
+function targetIsSourceCardBody(
+  targetEditor: Editor,
+  sourceCardKey: string,
+): boolean {
   // Colon-safe: extract the bare id via the shared parser. The float grammar
   // (`float:<domain>:<kind>:<id>`) and the legacy grammars all carry interior
   // colons — hand-slicing the first colon yields `card:<kind>:<id>` and never

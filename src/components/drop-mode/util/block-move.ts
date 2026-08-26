@@ -25,9 +25,11 @@
  */
 
 import { Node as PMNode } from "@tiptap/pm/model";
+import type { Editor } from "@tiptap/react";
 import type { DropPlan, DropSpec, Placement } from "../types";
 import { fitNodesAtInsert } from "../specs/drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { isSelfDrop } from "../self-drop";
 import { insertNodesAdvancing, selectInsertedSpan } from "./mapped-insert";
 import { parseAnyKey } from "@/floats/float-key";
 
@@ -42,6 +44,15 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
     /** The payload is exactly one block of this factory's node kind (task 416)
      *  — a static answer, so it needs neither the key nor the ctx. */
     blockPayloadFor: () => [opts.nodeName],
+    /** Where the payload lives NOW (task 480) — see `self-drop.ts`. Resolved
+     *  once per session; the candidate filter reads it so the source's own gap
+     *  is never offered, and `planDrop` reads the same rule below. */
+    sourceRangeFor: (cardKey, ctx) => {
+      const editor = ctx.mainEditor;
+      if (!editor) return null;
+      const src = findSource(opts, editor, cardKey);
+      return src ? { editor, from: src.from, to: src.to } : null;
+    },
     targetScope: "any-editor",
     postDrop: "close",
     /**
@@ -55,7 +66,18 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       if (placement.kind !== "between-blocks") return null;
       const src = locateSource(opts, placement, cardKey);
       if (!src) return null;
-      if (placement.insertPos >= src.from && placement.insertPos <= src.to) {
+      // THE SELF-DROP RULE (task 480), the same predicate the candidate filter
+      // and the text-object spec read — one level of gap was the pre-480 test,
+      // and a block's own gap line is also every ancestor's it is first or last
+      // in (a paragraph alone in a blockquote, an example alone in an item).
+      if (
+        isSelfDrop(
+          placement.editor,
+          { editor: placement.editor, from: src.from, to: src.to },
+          placement.insertPos,
+          src.node,
+        )
+      ) {
         return null;
       }
       const { editor, insertPos } = placement;
@@ -99,10 +121,17 @@ function locateSource(
   placement: Placement,
   cardKey: string,
 ): SourceInfo | null {
+  return findSource(opts, placement.editor, cardKey);
+}
+
+function findSource(
+  opts: BlockMoveOptions,
+  editor: Editor,
+  cardKey: string,
+): SourceInfo | null {
   // Colon-safe id (e.g. `float:card:example:<uuid>` → `<uuid>`).
   const uuid = parseAnyKey(cardKey)?.id;
   if (!uuid) return null;
-  const editor = placement.editor;
   let found: SourceInfo | null = null;
   editor.state.doc.descendants((node, pos) => {
     if (found) return false;

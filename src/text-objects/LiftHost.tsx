@@ -249,8 +249,25 @@ export interface LiftOptions {
   cardKey: string;
   /** Cursor position at the moment the lift begins (viewport coords). For
    *  the grab handle this is the mousemove coords at threshold-cross; for a
-   *  button-initiated float lift it's the button-press point. */
+   *  button-initiated float lift it's the button-press point. The overlay's
+   *  base box is frozen at this point, so it is the CURSOR's origin and not
+   *  necessarily the user's. */
   origin: { x: number; y: number };
+  /**
+   * Where the user actually GRABBED — the mousedown point (viewport coords),
+   * which the drop session's origin dead-zone measures from (task 480).
+   *
+   * Distinct from {@link origin} because a threshold-crossing producer only
+   * learns it has a drag at the FIRST sample past the threshold, and with a
+   * fast pointer that sample can be far from the press. Measuring "did the
+   * pointer come home?" from the crossing point would then answer about a point
+   * the user never chose.
+   *
+   * Omitted where the lift BEGINS at the press — a button-initiated float lift
+   * has no threshold to cross, so its two origins are the same point. That is a
+   * stated identity, not a default nobody picked.
+   */
+  grabOrigin?: { x: number; y: number };
   /** Terminal behavior — see {@link LiftTerminalPolicy}. */
   terminalPolicy: LiftTerminalPolicy;
 }
@@ -356,7 +373,7 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
   captureToStackRef.current = onCaptureToStack;
 
   const beginLift = useCallback(
-    ({ ref, cardKey, origin, terminalPolicy }: LiftOptions) => {
+    ({ ref, cardKey, origin, grabOrigin, terminalPolicy }: LiftOptions) => {
       const editor = editorRef.current;
       if (!editor) return;
       // Guard: a single gesture at a time. `inFlightRef` is the in-flight
@@ -538,7 +555,9 @@ export function LiftHost({ editorRef, onCaptureToStack, children }: Props) {
       // resolves to null and the Indicator hides automatically.
       beginDropSession({
         cardKey,
-        origin,
+        // The PRESS point, not the threshold-cross point — see
+        // `LiftOptions.grabOrigin`.
+        origin: grabOrigin ?? origin,
         inPlace: true,
         externalCommit: true,
         // Exact pane hint: this lift fired from THIS editor, so the session

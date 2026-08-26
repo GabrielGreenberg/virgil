@@ -29,6 +29,7 @@ import type {
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import type { InlineDropPayload } from "./inline-host";
 import type { BlockDropPayload } from "./block-payload";
+import type { DropSourceRange } from "./self-drop";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -479,6 +480,24 @@ export interface DropSpec {
    */
   blockPayloadFor?: (cardKey: string, ctx: DropCtx) => BlockDropPayload;
   /**
+   * Where THIS dragged key's payload currently LIVES in the document, as a
+   * whole-node range (task 480) — the input to the SELF-DROP rule in
+   * `self-drop.ts`, read by the candidate filter (so the source's own gap is
+   * never OFFERED) and by this spec's own `planDrop` (so it is never accepted).
+   *
+   * Declared only by a spec whose payload IS the node(s) whose boundary the gap
+   * is. That scoping is the rule, not an omission: for a text SLICE the gap one
+   * open token above the range is a REAL landing (a new paragraph), so
+   * `text-range-move` keeps the narrow inside-the-range test and says so at its
+   * own site. A spec with no source in the target document — a card pull, a
+   * Stack thumbnail — has nothing to declare.
+   *
+   * Resolved ONCE per session by `resolveSessionSourceRange`, at
+   * `beginDropSession`, exactly as {@link blockPayloadFor} is: it walks the
+   * document, and the answer cannot change under a hold gesture.
+   */
+  sourceRangeFor?: (cardKey: string, ctx: DropCtx) => DropSourceRange | null;
+  /**
    * Whether this kind may drop into card-body editors or only the main
    * editor. Attachment cards (note, todo, etc.) anchor to paragraph
    * UUIDs in the main document — re-anchoring them to a paragraph
@@ -589,7 +608,22 @@ export interface DropSession {
    *  hit-test reads it to filter the candidate ladder and to decide whether the
    *  ladder may be offered over a block's text (task 416). */
   blockPayload: BlockDropPayload;
-  /** Where the user mousedowned, used by ESC / leave logic. */
+  /** Where THIS session's payload lives in the document — `spec.sourceRangeFor`'s
+   *  answer for this cardKey, else null. Resolved once at session start
+   *  alongside {@link blockPayload}; the hit-test reads it so the source's OWN
+   *  gap is never offered a bar, and the spec's `planDrop` reads the same rule
+   *  so the two cannot disagree (task 480). */
+  sourceRange: DropSourceRange | null;
+  /**
+   * Where the user GRABBED — the press point, in viewport coords.
+   *
+   * Read by the origin dead-zone in the controller's move pass: a pointer that
+   * is still (or again) within `ORIGIN_DEAD_ZONE_PX` of it is not a drag, so no
+   * placement is offered and the release cancels (task 480). Before that this
+   * field was written by every producer and read by NOTHING — the dead-facet
+   * shape `AGENTS.md` calls WIRE-it-or-DELETE-it, with a docstring ("used by
+   * ESC / leave logic") describing a consumer that never existed.
+   */
   origin: { x: number; y: number };
   /** Current placement under the cursor, or null when not over a valid
    *  target. The Indicator subscribes to this and re-renders. */

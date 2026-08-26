@@ -60,6 +60,11 @@ import { registerDropTarget } from "../target-registry";
 import { lookupSpec } from "../registry";
 import { TEXT_ONLY_PAYLOAD } from "../inline-host";
 import { NO_BLOCK_PAYLOAD, resolveSessionBlockPayload } from "../block-payload";
+import {
+  type DropSourceRange,
+  isSelfDrop,
+  resolveSessionSourceRange,
+} from "../self-drop";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -360,17 +365,47 @@ function pathOf(d: PMNode, uuid: string): string[] | null {
 }
 
 /** The source block's own range in `d`, or null. */
-function rangeOf(d: PMNode, uuid: string): { from: number; to: number } | null {
-  let out: { from: number; to: number } | null = null;
+function rangeOf(
+  d: PMNode,
+  uuid: string,
+): { from: number; to: number; node: PMNode } | null {
+  let out: { from: number; to: number; node: PMNode } | null = null;
   d.descendants((n, pos) => {
     if (out) return false;
     if (n.attrs?.uuid === uuid) {
-      out = { from: pos, to: pos + n.nodeSize };
+      out = { from: pos, to: pos + n.nodeSize, node: n };
       return false;
     }
     return true;
   });
   return out;
+}
+
+/**
+ * The session's source range, resolved ONCE per (harness, cardKey) — exactly
+ * where `beginDropSession` takes it, and deliberately NOT per hover. It walks
+ * the document, so resolving it inside the per-move pass would be the
+ * keystroke-sanctity class one gesture over; the per-FRAME cost leg below pins
+ * that the move path itself still walks nothing.
+ */
+const sessionRanges = new WeakMap<
+  Harness,
+  Map<string, DropSourceRange | null>
+>();
+function sessionSourceRange(h: Harness, cardKey: string): DropSourceRange | null {
+  let byKey = sessionRanges.get(h);
+  if (!byKey) {
+    byKey = new Map();
+    sessionRanges.set(h, byKey);
+  }
+  if (!byKey.has(cardKey)) {
+    const spec = lookupSpec(cardKey);
+    byKey.set(
+      cardKey,
+      spec ? resolveSessionSourceRange(spec, cardKey, h.ctx) : null,
+    );
+  }
+  return byKey.get(cardKey) ?? null;
 }
 
 function hoverOnly(
@@ -393,6 +428,11 @@ function hoverOnly(
     h.editor,
     TEXT_ONLY_PAYLOAD,
     payloadOverride ?? resolveSessionBlockPayload(spec, cardKey, h.ctx),
+    // The SOURCE RANGE (task 480), through the same door the controller uses,
+    // and resolved once per session rather than per move. It is what lets the
+    // filter drop the source's OWN gap, so this suite can finally represent the
+    // cell it could not before: the source's own row.
+    sessionSourceRange(h, cardKey),
   );
 }
 
@@ -421,6 +461,24 @@ function drop(
       verdict: "no-target",
     };
   }
+  const insertPosNow = (
+    placement as Extract<Placement, { kind: "between-blocks" }>
+  ).insertPos;
+  const srcRange = rangeOf(before, sourceUuid);
+  // MIRRORS the production rule rather than restating a narrower one
+  // (task 480), and asked BEFORE the commit, against the document the offer was
+  // made over. Pre-480 this was `insertPos` inside the source's own
+  // `[from, to]` — the same one-level test `planDrop` carried — so a landing one
+  // ancestor token from the source's own boundary scored "correct" and the
+  // audit's own headline cell was unrepresentable here.
+  const selfDrop =
+    srcRange !== null &&
+    isSelfDrop(
+      h.editor,
+      { editor: h.editor, from: srcRange.from, to: srcRange.to },
+      insertPosNow,
+      srcRange.node,
+    );
   const plan = spec.planDrop?.(placement, cardKey, h.ctx);
   if (plan) plan.commit();
   const after = h.doc();
@@ -430,16 +488,10 @@ function drop(
   const dupes = afterUuids.length !== new Set(afterUuids).size;
   const lost = beforeUuids.filter((id) => !afterUuids.includes(id));
   const uuidsConserved = !dupes && lost.length === 0;
-  const insertPos = (
-    placement as Extract<Placement, { kind: "between-blocks" }>
-  ).insertPos;
-  const srcRange = rangeOf(before, sourceUuid);
+  const insertPos = insertPosNow;
   return {
     bar: true,
-    selfDrop:
-      srcRange !== null &&
-      insertPos >= srcRange.from &&
-      insertPos <= srcRange.to,
+    selfDrop,
     insertPos,
     containerType: before.resolve(insertPos).parent.type.name,
     changed,
@@ -626,16 +678,31 @@ describe("the audit — every source × target × geometry", () => {
     // matched only the hairline BETWEEN top-level blocks. The gaps themselves
     // are the leg below, and they are unchanged.
     expect(before.every((r) => !r.cell.bar)).toBe(true);
-    // …and the ladder answers every one of the 540.
-    expect(rows.every((r) => r.cell.bar)).toBe(true);
+    // …and the ladder answers every one of the 540 EXCEPT the source's own gap
+    // (task 480). RENEGOTIATED in place: the sources are appended after
+    // `pOutro`, so the hairline "after pOutro" IS the source's own boundary —
+    // one open token away for the `listItem` source, whose single-item list is
+    // the block that boundary belongs to. Every cell that now paints nothing is
+    // one of those, and it is the point of the fix rather than a gap in it.
+    expect(
+      rows
+        .filter((r) => !r.cell.bar)
+        .map((r) => r.target)
+        .filter((t) => t !== "pOutro"),
+    ).toEqual([]);
+    expect(rows.some((r) => !r.cell.bar)).toBe(true);
     // The one payload that DID get something over a list pre-416 was a
     // `listItem`, through the R3 `resolveSubItemPeerBlock` resolver — which
     // this baseline cannot show, because 416 retires that resolver into the
     // ladder. Its behaviour is what INV3's `listItem` rows preserve.
+    // RENEGOTIATED from 135 (task 480): the nine cells this loses are the
+    // `pOutro` rows below its own midpoint, where "after pOutro" IS the
+    // boundary of the single-item list the dragged `listItem` lives in — the
+    // source's own gap line, one open token out, which the filter now refuses.
     expect(
       rows.filter((r) => r.source === "listItem" && r.cell.verdict === "correct")
         .length,
-    ).toBe(135);
+    ).toBe(126);
   });
 
   it("the top-level GAPS are unchanged — the pre-416 rule's own world", () => {
@@ -669,14 +736,22 @@ describe("the audit — every source × target × geometry", () => {
     ).toEqual([]);
   });
 
-  it("the SELF-DROP is the one no-op that still paints — and it is honest", () => {
-    // Stated rather than implied: a bar over the source's own position paints
-    // and changes nothing. Closing it would need the hit-test to know the
-    // source's RANGE, which is a spec-level fact (`planDrop`'s own guard); it
-    // is recorded here so the count in `## Findings` is not mistaken for F3.
+  it("the SELF-DROP is never OFFERED at all (task 480)", () => {
+    // RENEGOTIATED in place, with the reason at the site. This leg used to read
+    // "the SELF-DROP is the one no-op that still paints — and it is honest",
+    // and argued that closing it "would need the hit-test to know the source's
+    // RANGE, which is a spec-level fact". That was the defect pinned as the
+    // contract: the hit-test now DOES know the range (`spec.sourceRangeFor`,
+    // resolved once per session exactly as the block payload is), the candidate
+    // filter drops the source's own gap, and no bar paints there. What made it
+    // more than cosmetics is that the "honest no-op" was only honest at ONE
+    // level: one ancestor token further out, the same visual gap line ran
+    // `listItemDropAdapter`'s `wrap` branch and MINTED a fresh list around the
+    // item, extracting it from its own.
     const selfies = rows.filter((r) => r.cell.selfDrop);
-    expect(selfies.length).toBeGreaterThan(0);
-    expect(selfies.every((r) => !r.cell.changed)).toBe(true);
+    expect(
+      selfies.map((r) => `${r.source}@${r.target}:${r.frac}:${r.x}`),
+    ).toEqual([]);
   });
 
   it("INV2 — no cell duplicates or loses a uuid (task 320)", () => {
@@ -753,6 +828,166 @@ describe("the audit — every source × target × geometry", () => {
         .map((r) => JSON.stringify(r.cell.landedIn)),
     );
     expect(paths.size).toBeGreaterThan(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The SOURCE's OWN row — the cell this suite could not represent
+// ─────────────────────────────────────────────────────────────────────
+//
+// `TARGET_ROWS` above never includes the source's own row, and pre-480 the
+// `selfDrop` classifier mirrored `planDrop`'s own one-level test — so "release
+// where you grabbed" was unrepresentable here TWICE OVER, and a landing one
+// ancestor token from the source's boundary scored `correct`. It is the band
+// every gesture starts in: the grab handle sits in the MARGIN, left of every
+// candidate box, so `chooseInsertCandidate`'s fall-through hands a list-item
+// drag the shallowest level from the first frame.
+//
+// These sources are IN the shared fixture, so the sweep can ask about an item's
+// position among its siblings — first, middle, last, at two nesting levels —
+// which is the axis the whole rule turns on.
+
+const OWN_ROW_SOURCES = [
+  { name: "li1", note: "FIRST item of a 3-item top-level list" },
+  { name: "li2", note: "MIDDLE item, itself containing a nested list" },
+  { name: "li3", note: "LAST item of a top-level list" },
+  { name: "li2a", note: "FIRST item of a nested list" },
+  { name: "li2b", note: "LAST item of a nested list" },
+  { name: "pOutro", note: "a top-level paragraph" },
+] as const;
+
+describe("the source's own row and its adjacent gap band (task 480)", () => {
+  /** Every geometry over a source's OWN row, for one source. */
+  function ownRowRows(uuid: string, kind: "listItem" | "paragraph"): Row[] {
+    const out: Row[] = [];
+    for (const frac of FRACTIONS) {
+      for (const x of X_POSITIONS) {
+        const h = makeHarness(fixture());
+        const entry = h.layout.find(uuid);
+        // The source's own FIRST text row — for `li2` that is its own
+        // paragraph, above the nested list it contains.
+        const box = entry.node.isTextblock
+          ? entry.box
+          : h.layout.rows.find(
+              (r) =>
+                r.box.top >= entry.box.top &&
+                r.box.top < entry.box.top + entry.box.height,
+            )!.box;
+        const y = box.top + box.height * frac;
+        out.push({
+          source: uuid,
+          target: uuid,
+          frac,
+          x,
+          cell: drop(h, keyFor(kind, uuid), x, y, uuid),
+        });
+      }
+    }
+    return out;
+  }
+
+  const all = OWN_ROW_SOURCES.flatMap((src) =>
+    ownRowRows(src.name, src.name.startsWith("li") ? "listItem" : "paragraph"),
+  );
+
+  it("no cell offers the source's OWN gap — at ANY X, margin through deep-in-text", () => {
+    // The defect leg. Pre-480 the filter knew nothing about the source, so the
+    // ancestor-boundary candidates were all offered and `listItemDropAdapter`
+    // answered `wrap` at every one — minting a fresh-uuid list around the item
+    // and EXTRACTING it from the list it was already in.
+    expect(
+      all
+        .filter((r) => r.cell.selfDrop)
+        .map((r) => `${r.source}:${r.frac}:${r.x}`),
+    ).toEqual([]);
+  });
+
+  it("when EVERY rung is the same gap line, the row offers NOTHING anywhere", () => {
+    // Where every rung of the ladder is the same visual gap line, the honest
+    // answer is no bar at all — not a bar that silently does nothing (pre-416)
+    // and not one that extracts the item (pre-480).
+    //
+    // `li2a` / `li2b` are deliberately NOT in this list, and the reason is the
+    // rule rather than an exemption: they are first/last of the NESTED list,
+    // but that list is not its parent item's only child (`li2` opens with its
+    // own paragraph), so `li2`'s boundaries have real content between them and
+    // the item — genuine outdents, which must stay offered. The leg below
+    // states their half.
+    for (const uuid of ["li1", "li3", "pOutro"]) {
+      const rows_ = all.filter((r) => r.source === uuid);
+      expect(
+        rows_.filter((r) => r.cell.bar).map((r) => `${uuid}:${r.frac}:${r.x}`),
+        `${uuid} painted a bar over its own row`,
+      ).toEqual([]);
+    }
+  });
+
+  it("a NESTED first/last item loses its inner-list gap and keeps its outer levels", () => {
+    // The precise statement of the rule for `li2a` / `li2b`: the boundary of
+    // the list they are first/last in is the same gap line and is refused (the
+    // selfDrop leg above proves that for every cell), while `li2`'s own
+    // boundaries are real landings and still paint.
+    for (const uuid of ["li2a", "li2b"]) {
+      const rows_ = all.filter((r) => r.source === uuid);
+      expect(rows_.some((r) => r.cell.bar), `${uuid} offered nothing`).toBe(true);
+      expect(rows_.every((r) => r.cell.uuidsConserved)).toBe(true);
+    }
+  });
+
+  it("a MIDDLE item still reaches its real outdents — the rule refuses the GAP, not the level", () => {
+    // `li2` has a real item on each side, so the boundaries of `ul1` are
+    // genuine landings and must stay offered. This is what keeps the fix from
+    // being "turn the margin band off": the model rule is about the GAP, and
+    // the gesture rule (the origin dead zone, `self-drop.ts`) is what answers
+    // "the pointer never left the grab point".
+    const rows_ = all.filter((r) => r.source === "li2");
+    expect(rows_.some((r) => r.cell.bar)).toBe(true);
+    expect(rows_.every((r) => r.cell.uuidsConserved)).toBe(true);
+  });
+
+  it("THE REPORTED SYMPTOM — the item is never EXTRACTED into a minted wrapper", () => {
+    // Stated as the user sees it (audit 457, Gabriel's seed symptom 3): grab a
+    // bullet item, wiggle, release at the grab point, and the item was lifted
+    // out of its own list into a brand-new single-item list — visually
+    // identical (same indent, same line), silently renumbered for an ordered
+    // list, and carrying a freshly minted uuid.
+    for (const uuid of ["li1", "li3", "pOutro"]) {
+      for (const r of all.filter((x) => x.source === uuid)) {
+        expect(r.cell.changed, `${uuid}:${r.frac}:${r.x} changed the doc`).toBe(
+          false,
+        );
+        // …and nothing was offered to release onto in the first place, so the
+        // byte-identity above is honest rather than a silent refusal.
+        expect(r.cell.bar, `${uuid}:${r.frac}:${r.x} painted a bar`).toBe(false);
+        expect(r.cell.uuidsConserved).toBe(true);
+      }
+    }
+  });
+
+  it("no refused gesture MINTS a wrapper uuid", () => {
+    for (const r of all) {
+      expect(r.cell.uuidsConserved, `${r.source}:${r.frac}:${r.x}`).toBe(true);
+      if (!r.cell.bar) expect(r.cell.changed).toBe(false);
+    }
+  });
+
+  it("the adjacent GAP BAND above and below a top-level source is refused too", () => {
+    // The hairline gaps either side of `pOutro` are its own boundaries, and the
+    // top-level gap path reaches them for every X.
+    for (const x of X_POSITIONS) {
+      for (const side of [-1, 1] as const) {
+        const h = makeHarness(fixture());
+        const e = h.layout.find("pOutro");
+        const y =
+          side < 0
+            ? e.box.top - BLOCK_GAP / 2
+            : e.box.top + e.box.height + BLOCK_GAP / 2;
+        const cell = drop(h, keyFor("paragraph", "pOutro"), x, y, "pOutro");
+        expect(cell.selfDrop, `pOutro gap ${side} @${x}`).toBe(false);
+        expect(cell.changed).toBe(false);
+        expect(cell.uuidsConserved).toBe(true);
+      }
+    }
   });
 });
 
@@ -952,6 +1187,10 @@ describe("the ladder's per-FRAME cost", () => {
     // gesture over: the pass runs once per frame for the whole drag.
     const h = makeHarness(fixture(para("moved", "SRC")));
     const doc = h.doc();
+    // The session-scoped resolutions happen at `beginDropSession`, not per
+    // move — take them here, BEFORE the counter, exactly as the controller
+    // does. What this leg measures is the per-FRAME path.
+    sessionSourceRange(h, keyFor("paragraph", "SRC"));
     let walks = 0;
     // Count on the PROTOTYPE, so any node the ladder reaches is seen.
     const proto = Object.getPrototypeOf(doc) as {

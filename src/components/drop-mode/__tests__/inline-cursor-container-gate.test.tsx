@@ -88,6 +88,7 @@ import {
 import { insertLanded } from "../schema-adopt";
 import { registerDropTarget } from "../target-registry";
 import { resolveSessionBlockPayload } from "../block-payload";
+import { resolveSessionSourceRange } from "../self-drop";
 import { resolveSessionInlinePayload } from "../inline-host";
 import { resolveSessionPlacements } from "../placement-policy";
 import { inTextAtomGrabSpec } from "../specs/in-text-atom-grab";
@@ -295,6 +296,8 @@ function hit(editor: Editor, spec: DropSpec, key: string): Placement | null {
     // controller uses. Stated rather than defaulted, for the reason the inline
     // one is: a default is a decision nobody made.
     resolveSessionBlockPayload(spec, key, ctx),
+    // The SOURCE RANGE (task 480), same door, same reason.
+    resolveSessionSourceRange(spec, key, ctx),
   );
 }
 

@@ -36,6 +36,7 @@ import {
   NO_BLOCK_PAYLOAD,
   resolveSessionBlockPayload,
 } from "./block-payload";
+import { resolveSessionSourceRange, withinOriginDeadZone } from "./self-drop";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
@@ -299,6 +300,11 @@ export function beginDropSession(opts: {
     blockPayload: placements.includes("between-blocks")
       ? resolveSessionBlockPayload(spec, opts.cardKey, ctx)
       : NO_BLOCK_PAYLOAD,
+    // Where the payload lives right now (task 480), on the same edge and for
+    // the same reason: it walks the document, and nothing edits the document
+    // under a hold gesture, so the answer is a per-SESSION fact. The candidate
+    // filter reads it so the source's OWN gap is never offered a bar.
+    sourceRange: resolveSessionSourceRange(spec, opts.cardKey, ctx),
     origin: opts.origin,
     placement: null,
     inPlace,
@@ -475,6 +481,28 @@ function cancelMovePass() {
 function runMovePass() {
   cancelMovePass();
   if (!session) return;
+  // THE ORIGIN DEAD ZONE (task 480) — the content-drag half of task 470's
+  // divider rule, owned ONCE by this terminal rather than restated per spec.
+  // A pointer still (or again) within `ORIGIN_DEAD_ZONE_PX` of the point the
+  // drag was GRABBED at is not a drag: Gabriel's *"grabbing and then dropping
+  // in the same place … should not change anything."* It is applied to the
+  // AFFORDANCE — no placement, so the indicator hides and the crosshair
+  // returns as the pointer comes home, and `commitDropSession` cancels on a
+  // null placement — which is what keeps hover ≡ commit (tasks 258/321/332)
+  // rather than painting an inviting bar the release then refuses.
+  //
+  // The model rule in `self-drop.ts` cannot reach this case and no model rule
+  // could: the grab handle sits in the MARGIN, left of every candidate box, so
+  // `chooseInsertCandidate`'s fall-through hands a list-item drag the
+  // SHALLOWEST level from the moment it starts — for a middle item that is a
+  // genuine outdent to top level, with real content between it and the source.
+  // What is wrong there is the gesture, not the landing.
+  if (
+    withinOriginDeadZone(session.origin, lastPointerX, lastPointerY)
+  ) {
+    updatePlacement(null);
+    return;
+  }
   const placement = hitTest(
     lastPointerX,
     lastPointerY,
@@ -484,6 +512,7 @@ function runMovePass() {
     session.ctx.mainEditor,
     session.inlinePayload,
     session.blockPayload,
+    session.sourceRange,
   );
   updatePlacement(placement);
 }
