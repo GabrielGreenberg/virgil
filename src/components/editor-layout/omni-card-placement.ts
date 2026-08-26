@@ -23,8 +23,11 @@
  * own bug wearing the fix's clothes. Writing nothing leaves the deck exactly
  * as the user is looking at it, which is the whole ask.
  *
- * `holdOmniCard` is the deliberate exception and the reason the two doors are
- * spelled separately: there the pin IS the point.
+ * `holdOmniCard` is the deliberate exception to the NECESSITY question and the
+ * reason the two doors are spelled separately: there the pin IS the point. It
+ * is NOT an exception to "a refused hold writes nothing" — see `holdIsNeeded`
+ * (task 490), which is what stops an ordinary click freezing a displacement the
+ * user never asked for.
  *
  * Coordinates: a gesture speaks in SCREEN Y, the necessity rule is asked in
  * POD-RELATIVE Y (against the pod that hosts the absolute wrappers, with the
@@ -96,6 +99,56 @@ function resolveFrom(
   };
 }
 
+/**
+ * Is a HOLD needed at all, and is what it would hold a thing the deck itself
+ * produced? (task 490 — the two rules that stop a freeze becoming a permanent
+ * placement nobody asked for.)
+ *
+ * > **A hold asserts nothing of its own: it re-states what the cascade already
+ * > computed. So a hold that would change nothing writes nothing — the rule its
+ * > sibling door already follows — and a hold never stores an offset the
+ * > cascade's own rule could not have produced.**
+ *
+ *  1. **No pin standing on this side ⇒ nothing can move ⇒ write nothing.**
+ *     `resolveCascade`'s forward pass sets row *i*'s top from its PREDECESSORS
+ *     alone (`max(natural_i, prev.top + prev.height + MIN_GAP)`), so a card's
+ *     top is INDEPENDENT of its own height; and the backward (up-pulling) pass
+ *     — the only thing that can make a card's top depend on its own height —
+ *     runs ONLY when a pin exists, and is the IDENTITY unless the pin moved its
+ *     card ABOVE the forward answer. So on a pin-free side the height change
+ *     this click is about to cause cannot move the pressed card by a pixel, and
+ *     the freeze held nothing.
+ *
+ *     What it COST is the whole of Gabriel's second report. The offset a hold
+ *     stores is the DISPLACEMENT THE CASCADE PRODUCED at press time — how far
+ *     the crowd above pushed this card off its anchor — and nothing ever clears
+ *     a pin (`omni-pin-store`: "Nothing else clears one"). So the moment the
+ *     crowd changes (the card above collapses, its stale height heals, a
+ *     passage is archived away) the deck's own answer moves and the pinned card
+ *     does not: it stays displaced by an amount the deck no longer requires.
+ *     Pressed while the deck was full of EXPANDED cards, it is thereafter
+ *     "displacing to the same extent as it would be when open", permanently —
+ *     the report, word for word. A hold is a freeze through a transient, not a
+ *     placement; and where there is no transient there is nothing to freeze.
+ *  2. **A hold never stores an offset ABOVE the anchor.** A hold's whole
+ *     content is "the deck put me here", and the deck's own rule never puts a
+ *     card above its anchor. A negative offset is therefore another card's pin
+ *     showing through — a transient the user caused for a DIFFERENT card — and
+ *     freezing it makes this card permanently contradict its own margin marker,
+ *     which is precisely the decoupling task 362 exists to retire, arriving
+ *     through the offset instead of through the coordinate.
+ *
+ * Rule 1 is deliberately conservative rather than exact: the backward pass can
+ * only reach cards ABOVE the pinned one, so a press on a card BELOW it is also
+ * a no-op. Asking that would mean resolving the pinned card's wrapper and its
+ * natural top at gesture time; asking "is a pin standing?" costs one map read
+ * and errs toward today's behaviour, which is the safe direction for a freeze.
+ */
+function holdIsNeeded(r: Resolved, desiredPodTop: number): boolean {
+  if (!omniPinStore.get(r.side)) return false;
+  return desiredPodTop - r.naturalTop >= 0;
+}
+
 /** `target` is either the EXACT wrapper (a caller holding the element it was
  *  clicked on) or a key to look up. The distinction matters under multi-pane
  *  keep-alive: N panes are mounted at once and `document.querySelector`
@@ -154,6 +207,8 @@ function publish(
         band,
       });
       if (verdict === "hold") return; // refused: write nothing, move nothing
+    } else if (!holdIsNeeded(r, desiredPodTop)) {
+      return; // nothing to hold: write nothing, move nothing
     }
     // Absolute → ANCHOR-RELATIVE, here and nowhere else (task 362). The
     // necessity question above is a SCREEN question (is the card visible,
@@ -182,13 +237,18 @@ export function requestOmniCardPlacement(
 /**
  * Freeze the omni card for `cardKey` at its current top.
  *
- * Same door, opposite intent — and the ONE caller for which publishing a pin
- * IS the point: the wrapper's mousedown-capture calls this before a click can
- * toggle collapse/expand, so the card's top survives its own height change.
- * It asks no necessity question, because there is no move to sanction; what
- * it costs is the one thing a refused placement deliberately avoids, namely
- * releasing whatever card was pinned before. That trade is pre-328 behaviour
- * and is what makes the freeze work at all.
+ * Same door, opposite intent: the wrapper's mousedown-capture calls this before
+ * a click can toggle collapse/expand, so the card's top survives a height
+ * change that could otherwise move it. It asks no NECESSITY question (there is
+ * no move to sanction) but it does ask `holdIsNeeded` — read that comment for
+ * the two rules, which exist because a hold that writes when nothing could have
+ * moved is not a freeze: it releases whatever card was pinned before, lifts
+ * every card above this one off its anchor, and (nothing ever clearing a pin)
+ * makes both permanent.
+ *
+ * When a hold IS needed, the cost is the same one a refused placement
+ * deliberately avoids — releasing the previously pinned card. That trade is
+ * pre-328 behaviour and is what makes the freeze work at all.
  *
  * Takes the WRAPPER, not a key: this caller is holding the element the user
  * pressed, and looking it up again by key would be strictly worse under

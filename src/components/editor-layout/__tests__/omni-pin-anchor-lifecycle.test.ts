@@ -302,8 +302,20 @@ describe("the offset is the gesture's durable half", () => {
     // fires on mousedown so the card's top survives its own collapse/expand
     // height change. Its offset is the distance the cascade had already
     // pushed the card from its anchor — and that rides later edits too.
+    //
+    // RENEGOTIATED (task 490) — this leg used to run with an EMPTY store,
+    // which pinned "a hold ALWAYS writes" as the contract. On a pin-free side
+    // nothing can move the pressed card (`resolveCascade`'s forward pass is
+    // height-independent; the backward pass is pin-gated), so that write held
+    // nothing and instead froze the crowd's CURRENT displacement forever —
+    // Gabriel's "archive cards are displacing to the same extent as they would
+    // be when open". The freeze is asserted where it is real: with a pin
+    // standing, which is the only state in which the card's own top depends on
+    // its own height. See `holdIsNeeded` in `omni-card-placement.ts`.
+    omniPinStore.requestPin("right", "float:card:note:other", 30);
     const wrapper = scene(760, 600);
     holdOmniCard(wrapper);
+    expect(omniPinStore.get("right")!.cardId).toBe(KEY);
     expect(omniPinStore.get("right")!.offset).toBe(160);
     expect(cardY(600, { id: KEY, offset: 160 })).toBe(760);
     // …and one edit later, still 160 below wherever the anchor now is.
