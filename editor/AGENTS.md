@@ -436,6 +436,23 @@ Either call the script (`python3 editor/scripts/library_path.py
 --get`) or `from library_path import resolve_library` and let the same
 helper handle it.
 
+The same script also answers the SESSION MODE — `--mode` /
+`resolve_mode()` — printing one of `no-library` / `in-library` /
+`paper-session` (line 1) plus the resolved root (line 2), and always
+exiting 0, because "not set up" is an answer rather than an error.
+`in-library` means this session's cwd IS the library root or under it,
+which is the exact condition every *heavy* library skill declares about
+itself ("must run from inside the library folder"). The front door
+(`virgil/skills/start.md`) gates its mount-or-queue branch on it.
+**Don't re-derive that comparison in a skill either** — until task 475
+the front door asked whether the library root held
+`.claude/commands/library/` and read a `yes` as "the library is mounted
+as a project here". It cannot mean that: the PWA's per-folder sync
+writes `.claude/commands/<silo>/` and `.virgil/scripts/<silo>/` in one
+unfiltered pass into every managed folder, and the resolver already
+requires the second — so the two questions shared one cause, the middle
+mode was unreachable, and with it the whole mount-or-queue branch.
+
 ## Helper script boundary
 
 Use a Python script when the operation:

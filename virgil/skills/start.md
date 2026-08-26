@@ -35,44 +35,70 @@ namespaces.
   Rungs 1-2 are `/editor/review`'s; rung 3 is the front door's own —
   review *errors* when it cannot resolve a doc, and a front door asks.
 
+  Rung 3 is also where a doc can honestly be **absent**: a `/library/*`
+  skill takes a citekey rather than a docPath, and the library session's
+  own cwd is the library root, which has no `virgil/` subdir. See Step 1.
+
 ## Procedure
 
 ### Step 1 — State check (always, first action)
 
 1. **Resolve doc context.** If an explicit arg was given, use it; else
-   check whether `cwd` has a `virgil/` subdir; else surface the missing
-   context and ask the user which paper folder they're working in. Stop
-   if no doc context can be resolved.
+   check whether `cwd` has a `virgil/` subdir. If neither resolves, do
+   **not** stop yet — carry on to 2 and decide once the mode is known:
 
-2. **Resolve library mount status.** Find `library_path.py`:
-   - End-user flow: synced at `<docPath>/.virgil/scripts/editor/library_path.py`.
+   - mode `in-library` → proceed with **no** doc context. This session's
+     cwd is the library root, which has no `virgil/` subdir by design, and
+     a `/library/*` ask takes a citekey rather than a docPath. Say where
+     you are (Step 1.3) and route. Only an *editor* ask needs a paper —
+     ask for one then, when it is actually missing.
+   - any other mode → surface the missing context, ask the user which
+     paper folder they're working in, and stop.
+
+2. **Resolve the library mode.** Find `library_path.py`:
+   - End-user flow: synced at `<folder>/.virgil/scripts/editor/library_path.py`,
+     where `<folder>` is the resolved `<docPath>` or, when there is none, the
+     cwd. Every Virgil-managed folder carries the editor bundle — the library
+     root included — so a library session finds it under its own `.virgil/`.
    - Dev flow (running inside the Virgil repo): `editor/scripts/library_path.py`.
 
-   Run `python3 <library_path.py> --get`. Interpret:
+   Run `python3 <library_path.py> --mode`. It prints the mode on line 1
+   and, when a library resolved, its absolute path on line 2 — and it
+   always exits 0, because "no library" is an answer rather than an error.
 
-   | library_path resolves? | library root has `.claude/commands/library/`? | Mode |
+   | Mode | Means | Library skills |
    |---|---|---|
-   | yes | yes | **full-ops** — library is mounted as a sibling project in this Cowork/Claude Code workspace; library skills can be dispatched inline. |
-   | yes | no | **light-ops** — library is configured but not mounted in this project; only single-citekey light library skills are safe to run inline. |
-   | no | — | **no-library** — no library set up; the user needs to pick one in Virgil's Library tab before any library work. |
+   | **no-library** | nothing in the resolution chain points at a library | none — the user picks a folder in Virgil's Library tab first |
+   | **in-library** | a library resolved AND this session's cwd is that root (or under it) | all of them, inline — this *is* the library session |
+   | **paper-session** | a library resolved and cwd is elsewhere (a paper folder, or the Virgil source repo) | light ones inline; a **heavy** one takes Step 4 |
 
-   The `.claude/commands/library/` heuristic is load-bearing: the
-   library's skill bundle is only synced into that directory when the
-   Virgil PWA has opened the library as a workspace. If the user has
-   the library folder as a parallel project in Cowork/Claude Code, the
-   PWA has already synced; if they don't, it hasn't.
+   Both questions the mode asks are causally what they claim, and that is
+   the point. "Is a library configured?" is what `resolve_library` answers.
+   "Is this session in it?" is the exact condition every heavy library skill
+   declares about *itself* — "must run from inside the library folder" — so
+   the gate reads a fact the skills already state rather than a proxy for one.
+
+   Do **not** reintroduce a `.claude/commands/library/` probe. The front door
+   used to read that directory's presence at the library root as "the library
+   is mounted as a sibling project here", and it cannot mean that: the PWA's
+   per-folder skill sync writes `.claude/commands/<silo>/` and
+   `.virgil/scripts/<silo>/` in one unfiltered pass, into **every** managed
+   folder (paper folders included), while `library_path.py` only accepts a
+   root that already has `.virgil/scripts/`. So the two columns shared one
+   cause, the middle row was unreachable, and the presence measured was caused
+   by the PWA rather than by anything Claude Code has mounted.
 
 3. **Surface a one-line state summary** to the user before dispatching.
    Example:
 
    ```
-   You're in samples/annotation-history. Library: full-ops (mounted at /Users/gabriel/Virgil-Library).
+   You're in /Users/gabriel/Virgil-Library. Library: in-library — this is the library session, so everything runs here.
    ```
 
    Or:
 
    ```
-   You're in samples/annotation-history. Library: light-ops (configured at /Users/gabriel/Virgil-Library but not mounted in this Cowork project).
+   You're in samples/annotation-history. Library: paper-session (library at /Users/gabriel/Virgil-Library). Heavy library ops will ask first.
    ```
 
    Or:
@@ -102,8 +128,8 @@ itself rather than a list kept here:
 1. **Developer-only skills are not user routes.** A description that opens
    `Developer-only` is for a Virgil maintainer working on the skill set
    itself. Do not offer one to an end user.
-2. **A heavy library op takes Step 4** when the mode is not full-ops — see
-   Step 4, which reads the skill's own weight declaration.
+2. **A heavy library op takes Step 4** when the mode is not `in-library` —
+   see Step 4, which reads the skill's own weight declaration.
 3. **A specialist is Task-bound** when its own `Args:` line declares a
    *required* — unbracketed — `<requestId>` or `<bibKey>`. Then the id
    contract immediately below applies. A **bracketed** `[<requestId>]` is the
@@ -210,7 +236,7 @@ Virgil has three surfaces:
   • slash commands — /editor/* and /library/* for direct invocation.
 Say "Virgil, …" any time and I'll route you.
 
-Right now you're in <docPath>. Your library is <full-ops | light-ops | not set up>.
+Right now you're in <docPath>. Your library is <in-library | paper-session | not set up>.
 
 What do you want to do?
 ```
@@ -224,7 +250,7 @@ If the user follows up with a concrete request, jump to Step 2.
 ### Step 4 — Heavy-library branch (mount-or-queue)
 
 Triggered when the matched library skill's **own description declares it a
-`Heavy operation`**, AND the current mode is **not** full-ops.
+`Heavy operation`**, AND the current mode is **not** `in-library`.
 
 That declaration is the gate — there is no list here to keep in step with the
 skill set, and there was: the previous hand list had already lost
@@ -240,13 +266,20 @@ front door has always done with one — but that is a gap in the declaration, no
 a licence. If the ask is plainly a whole-library or multi-paper write, treat it
 as heavy whatever its description omits.
 
+What this branch is *not*: a capability check. Every library skill's own
+Bootstrap resolves the library root and `cd`s into it, so a heavy op dispatched
+from a paper folder does work. What it costs is where the work HAPPENS — a long,
+multi-subagent job runs in the session the user is writing in, and the library
+session they may already have (`/loop /library/index-pending`) never sees it.
+So the choice is the user's to make, not the front door's to make for them.
+
 Print a 3-line explanation tailored to the mode:
 
-- **light-ops**:
+- **paper-session**:
   ```
-  <op> needs the library folder mounted as a sibling project in this Cowork/Claude Code workspace.
-  Fastest path: open <resolved-library-path> as another project here, then ask me again.
-  Alternative: I can queue this for your library session to pick up — useful if you have `/loop /library/index-pending` running there.
+  <op> is a heavy library operation — it wants to run from inside the library folder, not from this paper session.
+  Fastest path: open <resolved-library-path> as another project in this Cowork/Claude Code workspace, then ask me again.
+  Alternative: I can queue it for your library session to pick up — useful if you have `/loop /library/index-pending` running there.
   ```
 
 - **no-library**:
@@ -257,29 +290,57 @@ Print a 3-line explanation tailored to the mode:
 
 Then ask:
 
-> Mount the library now, queue this for later, or skip?
+> Mount the library, queue this for later, run it here anyway, or skip?
 
 Branches:
 
 - **Mount** → confirm and stop. The user takes manual action; on their
   next turn, run Step 1 fresh.
-- **Queue** (only available in light-ops):
-  - For `/library/deep-index <citekey>`: write a queue entry to
-    `<library-root>/.virgil/queue/<citekey>-deepindex.json` with the
-    shape the library's queue drainer expects. Acquire the appropriate
-    flock if mutating shared state (deep-index queue entries don't
-    touch `master.bib` or `catalog.json`, so a direct atomic file
-    write via Python `tempfile` + `os.replace` is fine; if uncertain,
-    shell out to a library helper).
+- **Queue** (only for `/library/deep-index <citekey>`, and only in
+  `paper-session` — a queue entry needs a library to write into, and
+  deep-index is the only heavy op the queue represents; the others *are*
+  drainers or are library-wide with no citekey to key on):
+
+  Write `<library-root>/.virgil/queue/<citekey>-deepindex.json`. A direct
+  atomic write via Python `tempfile` + `os.replace` is fine — a deep-index
+  entry touches neither `master.bib` nor `catalog.json`, so there is no
+  flock to take.
+
+  **State the whole entry; the app reads every field.** The shape is
+  `library/lib/queue.ts` (`QueueEntry`) — check it there if you are unsure,
+  and mirror what `queueDeepIndex` in `library/lib/bib-edit.ts` writes:
+
+  ```json
+  {
+    "kind": "deepIndex",
+    "status": "requested",
+    "citekey": "<citekey>",
+    "requestedAt": "<ISO-8601 UTC, e.g. 2026-08-25T18:24:00.000Z>",
+    "attempts": 0
+  }
+  ```
+
+  `status: "requested"` is **not** optional and is the field a hand-written
+  entry loses first. `library/lib/queue-state-store.ts` skips any entry whose
+  status is not `"requested"`, so without it the Library UI shows no queued
+  badge; `cancelDeepIndex` in `library/lib/bib-edit.ts` requires the same
+  value, so without it the user cannot cancel the request you just told them
+  you made. The drainer keys on `kind` alone, so the entry would still run —
+  invisible and unstoppable, which is the worst of both. (An optional `note`
+  string may carry the user's own words; nothing else belongs in the file.)
+
   - Report:
     ```
     Queued <op> for <citekey> at <library-root>/.virgil/queue/.
     Your library session (or the next `/loop /library/index-pending` tick) will pick this up.
     ```
+- **Run here anyway** → dispatch the specialist inline as a subagent, having
+  said what it costs. The choice was surfaced; that is the invariant, not a
+  refusal.
 - **Skip** → confirm and stop.
 
-In **full-ops** mode, skip Step 4 entirely — heavy library ops can be
-dispatched inline as subagents.
+In **in-library** mode, skip Step 4 entirely — this session already *is* the
+library session, so every heavy op dispatches inline as a subagent.
 
 ## Done convention
 
@@ -304,8 +365,10 @@ Done: oriented user. Output: state-summary.
   flock-protected shims. In particular it never appends, edits, or fabricates
   a row (or an id) in `virgil/ai-requests.json` — there is no door for that,
   and Step 2 says what to do instead.
-- Does **not** silently run heavy library operations in light-ops mode.
-  Always surface the mount-or-queue choice.
+- Does **not** silently run a heavy library operation from a paper session.
+  Whenever the mode is not `in-library`, Step 4 surfaces the choice first —
+  mount, queue, run here anyway, or skip. Running it *after* the user picks
+  is not silence; skipping the question is.
 - Does **not** retry failed specialists. If a dispatch fails, surface
   the error and stop.
 - Does **not** keep its own list of what the skills do. Each skill's
