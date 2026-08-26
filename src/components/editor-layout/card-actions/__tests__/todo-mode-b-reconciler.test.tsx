@@ -244,6 +244,9 @@ function useStack(editor: Editor) {
     editorRef: { current: { getEditor: () => editor } as never },
     cardCreation: cardCreationWithStubs,
     cardLifecycle: { get: () => undefined } as unknown as DragHandleActionsDeps["cardLifecycle"],
+    // task 491: the capture-retarget door. Inert here — no card
+    // collections are wired, so the sweep finds nothing to move.
+    anchorRetarget: { retarget: () => 0 },
     confirm: async () => true,
     notify: () => {},
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,

@@ -44,6 +44,7 @@ import {
   type CardContentKind,
 } from "@/cards/has-content";
 import type { MarkerType } from "@/cards/types";
+import type { TextObjectKind } from "@/text-objects/types";
 
 /** Margin marker kinds that map to deletable cards — `MarkerType` minus the
  *  non-card `"error"` marker (errors aren't cards; their marker dismisses the
@@ -59,12 +60,35 @@ export type MarginItemKind = Exclude<MarkerType, "error">;
 export interface MarginItemHandlers<TCard extends CardWithLinks = CardWithLinks> {
   /** Look up the card by id within this kind's collection. */
   findCard: (cardId: string) => TCard | undefined;
+  /**
+   * This kind's whole collection.
+   *
+   * The delete path asks by ID; the capture-retarget sweep
+   * ({@link import("./retarget-anchors").retargetDisplacedAnchors}) asks the
+   * COLLECTION — *which cards name a uuid this capture is about to remove?* A
+   * Mode-A anchor lives on the card, not in the document, so it cannot be
+   * found by walking the removed slice. One bundle, both directions, so the
+   * two questions can never be answered from two tables.
+   */
+  cards: ReadonlyArray<TCard>;
   /** Card-content-kind for the has-content predicate. For kinds whose
    *  marker covers multiple card kinds (e.g. cut → comment + suggestion),
    *  pass a resolver that picks the right CardContentKind given the card. */
   contentKind: CardContentKind | ((card: TCard) => CardContentKind);
   /** Remove one paragraph link from the card (the "unanchor" path). */
   unanchor: (cardId: string, paragraphId: string) => void;
+  /**
+   * Anchor the card to `paragraphId` — the inverse of {@link unanchor}, and
+   * the half a capture-retarget needs. `paragraphSnapshot` is the target's
+   * normalized text, so the fresh Mode-A link is self-healing on reload
+   * exactly as the drop-mode re-anchor gesture's is.
+   */
+  reanchor: (
+    cardId: string,
+    paragraphId: string,
+    targetKind?: TextObjectKind,
+    paragraphSnapshot?: string | null,
+  ) => void;
   /** Hard-delete the card from its hook's state. Returns `false` when the
    *  delete DECLINED — the lifecycle executor's SETTLE prompt can be cancelled
    *  for a card that owns a live in-document splice (task 238), and a cancel
@@ -147,33 +171,48 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
 // map into `deleteMarginItem({ handlers: handlers[kind], ... })`.
 // ---------------------------------------------------------------------------
 
+/** Every hook's add-paragraph-link door has the same shape; naming it once
+ *  keeps the six dep structs honest about it. */
+type AddParagraphLink = (
+  id: string,
+  paragraphId: string,
+  targetKind?: TextObjectKind,
+  paragraphSnapshot?: string | null,
+) => void;
+
 interface NotesDep {
   notes: ReadonlyArray<CardWithLinks>;
+  addNoteTextObjectId: AddParagraphLink;
   removeNoteTextObjectId: (id: string, paragraphId: string) => void;
   deleteNote: (id: string) => void;
 }
 interface ArchiveDep {
   snippets: ReadonlyArray<CardWithLinks>;
+  addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
   deleteSnippet: (id: string) => void;
 }
 interface CutterDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
+  addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
   deleteCard: (id: string) => void;
 }
 interface TodosDep {
   items: ReadonlyArray<CardWithLinks>;
+  addParagraphId: AddParagraphLink;
   removeParagraphId: (id: string, paragraphId: string) => void;
   deleteItem: (id: string) => void;
 }
 interface RevisionsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "comment" | "suggestion" }>;
+  addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
   deleteCard: (id: string) => void;
 }
 interface ReportsDep {
   cards: ReadonlyArray<CardWithLinks & { kind: "report" | "report-request" }>;
+  addCardParagraphId: AddParagraphLink;
   removeCardParagraphId: (id: string, paragraphId: string) => void;
   deleteCard: (id: string) => void;
 }
@@ -193,47 +232,59 @@ export function buildMarginItemHandlers(
   return {
     note: {
       findCard: (id) => deps.notes.notes.find((n) => n.id === id),
+      cards: deps.notes.notes,
       contentKind: "note",
       unanchor: deps.notes.removeNoteTextObjectId,
+      reanchor: deps.notes.addNoteTextObjectId,
       delete: deps.notes.deleteNote,
     },
     archive: {
       findCard: (id) => deps.archive.snippets.find((s) => s.id === id),
+      cards: deps.archive.snippets,
       contentKind: "archive",
       unanchor: deps.archive.removeParagraphId,
+      reanchor: deps.archive.addParagraphId,
       delete: deps.archive.deleteSnippet,
     },
     cut: {
       findCard: (id) => deps.cutter.cards.find((c) => c.id === id),
+      cards: deps.cutter.cards,
       contentKind: (card) =>
         (card as { kind?: string }).kind === "suggestion"
           ? "cutter-suggestion"
           : "cutter-comment",
       unanchor: deps.cutter.removeCardParagraphId,
+      reanchor: deps.cutter.addCardParagraphId,
       delete: deps.cutter.deleteCard,
     },
     todo: {
       findCard: (id) => deps.todos.items.find((t) => t.id === id),
+      cards: deps.todos.items,
       contentKind: "todo",
       unanchor: deps.todos.removeParagraphId,
+      reanchor: deps.todos.addParagraphId,
       delete: deps.todos.deleteItem,
     },
     revision: {
       findCard: (id) => deps.revisions.cards.find((r) => r.id === id),
+      cards: deps.revisions.cards,
       contentKind: (card) =>
         (card as { kind?: string }).kind === "suggestion"
           ? "revision-suggestion"
           : "revision-comment",
       unanchor: deps.revisions.removeCardParagraphId,
+      reanchor: deps.revisions.addCardParagraphId,
       delete: deps.revisions.deleteCard,
     },
     report: {
       findCard: (id) => deps.reports.cards.find((r) => r.id === id),
+      cards: deps.reports.cards,
       contentKind: (card) =>
         (card as { kind?: string }).kind === "report-request"
           ? "report-request"
           : "report",
       unanchor: deps.reports.removeCardParagraphId,
+      reanchor: deps.reports.addCardParagraphId,
       delete: deps.reports.deleteCard,
     },
   };

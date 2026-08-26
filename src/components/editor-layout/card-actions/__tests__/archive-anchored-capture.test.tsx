@@ -228,6 +228,9 @@ function makeHarness(editor: Editor) {
         delete: (id: string) => lifecycleCalls.push(`${kind}:${id}`),
       }),
     } as unknown as DragHandleActionsDeps["cardLifecycle"],
+    // task 491: the capture-retarget door. Inert here — no card
+    // collections are wired, so the sweep finds nothing to move.
+    anchorRetarget: { retarget: () => 0 },
     confirm: async () => true,
     notify,
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,
@@ -333,12 +336,21 @@ describe("task 393 — an anchored passage archives", () => {
     expect(canMountInCardBody(reloaded, "excerpt").ok).toBe(true);
   });
 
-  it("orphans the anchored card exactly as a plain Delete of the same range would", async () => {
+  it("orphans the MODE-B anchored card exactly as a plain Delete would", async () => {
     // A DECISION, not an accident: archiving text that carries another card's
     // Mode-B anchor puts that card on the normal orphan path (its kind's
     // `lifecycle.delete`, which for an anchored card is the orphan-strip /
     // re-pin route) — the same path Delete takes over the same range. Asserted
     // as an EQUALITY between the two actions so neither can drift alone.
+    //
+    // SCOPED, since task 491: this equality is about **Mode-B** anchors, and it
+    // stands. A Mode-B anchor names the TEXT RANGE, and the range is exactly
+    // what left — so an archive has no more to offer it than a delete does, and
+    // both route through `cleanupLinksInRange`, which the two actions share.
+    // The **Mode-A** half is now asymmetric on purpose (an archive SETS TEXT
+    // ASIDE, so a paragraph anchor it consumes re-homes onto the surviving
+    // neighbour where a delete still orphans) — pinned side by side in
+    // `archive-retarget-displaced-anchors.test.tsx`.
     const archived = mountDoc(anchoredSectionDoc());
     const a = makeHarness(archived);
     await a.dispatch("archive", HEADING_REF);

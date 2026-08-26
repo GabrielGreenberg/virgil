@@ -50,8 +50,11 @@ function handlers(
 ): MarginItemHandlers {
   return {
     findCard: () => card(),
+    // The capture-retarget half of the bundle (task 491) — unused here.
+    cards: [card()],
     contentKind: "revision-suggestion",
     unanchor: vi.fn(),
+    reanchor: vi.fn(),
     delete: del,
   };
 }

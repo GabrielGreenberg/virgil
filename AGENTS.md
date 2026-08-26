@@ -2701,6 +2701,106 @@ real-paper flow (anchor behaviour reproduces under prod File System Access), so
 the durable proof here is the unit contract; Gabriel's exact passage is the
 fixture.
 
+### The displacement half: a capture SETS TEXT ASIDE, so the margin context it displaces RE-HOMES
+
+Same door, the cards the capture did not capture (task 491) — and the case where
+the pre-existing behaviour was a DECIDED contract, pinned as an equality, and
+overruled by the user it was decided for.
+
+Gabriel, from a real paper: *"when you archive a passage that has an archive
+card, you loose the original archive card. they should just stack up on the
+preceeding paragraph."* Task 393 had pinned the opposite explicitly — archiving
+text that carries another card's anchor puts that card on the normal ORPHAN
+path, **asserted as an EQUALITY with a plain Delete over the same range**. Post
+task 410 the orphan is not literally lost (it reaches the pod header's
+"N unanchored" chip), but it leaves the margin, which is what the user
+experiences as loss.
+
+> **A DELETE removes the context, so a card that pointed at it has nowhere to
+> be. An ARCHIVE sets the text ASIDE — the passage still exists, one panel over
+> — so the margin context has somewhere to be: the surviving neighbour, which is
+> exactly where the fresh snippet lands. One neighbour, resolved ONCE per
+> gesture, read by BOTH halves — that is what "stack up" means.**
+
+[resolveDisplacedAnchorTarget](src/text-objects/anchor-resolution.ts) resolves
+the neighbour; [retargetDisplacedAnchors](src/cards/retarget-anchors.ts) moves
+the anchors. Seven rules they earned:
+
+- **The scope is drawn at the ANCHOR MODE, and the 393 equality survives on the
+  half it was actually about.** Every **Mode-A paragraph-anchored** card
+  re-homes, because its anchor is a paragraph IDENTITY the neighbour can carry.
+  A **Mode-B (`linkedAnchor`)** anchor names the TEXT RANGE, and the range is
+  precisely what left — so those keep the pre-491 path
+  (`cleanupLinksInRange` → the kind's `lifecycle.delete`), which the archive and
+  delete branches SHARE, so widening here would silently change what Delete
+  does. Task 393's leg is renegotiated in place, scoped to Mode-B with the reason
+  at the site, and the Mode-A asymmetry is pinned beside it.
+- **A Mode-A anchor lives on the CARD, so the sweep asks the COLLECTION.**
+  Nothing in the removed slice marks it, so it cannot be found by walking the doc
+  the way `cleanupLinksInRange` finds atoms and marks. The question has to be
+  asked from the other side — *which cards name a uuid this capture is about to
+  remove?* — which is why `MarginItemHandlers` now carries its kind's whole
+  collection alongside the by-id lookup the delete path uses. ONE bundle, both
+  directions, built by the one builder every consumer already shares, so a new
+  margin-bearing kind inherits the obligation as a COMPILE ERROR rather than by
+  someone remembering.
+- **The neighbour is resolved ONCE and read by both halves.** Two resolutions
+  would put the snippet and the cards it displaced on two paragraphs, which is
+  precisely NOT stacking — and the census asks for exactly one
+  `resolveDisplacedAnchorTarget` call per capture site for that reason.
+- **The resolver is the honest form of what B2 always MEANT.** The snippet's own
+  anchor used `findPreviousAnchorableBlock` gated on `ref.kind !== "selection"`
+  — an approximation of *"is the whole anchoring entity being deleted?"*, which
+  its own comment states and which is FALSE for a `linkedRange` ref, whose host
+  paragraph survives. The resolver asks the real question: rung 1 keeps a
+  partially-captured HOST block (a sub-range capture leaves its own paragraph
+  standing, and that is where the context belongs), rung 2 is the nearest
+  surviving block ABOVE, rung 3 falls FORWARD.
+- **Rung 3 is not symmetry for its own sake.** A capture that starts at the
+  document's FIRST block has nothing above it, so rung 2 answers `null` — and
+  pre-491 that meant the fresh snippet anchored to `""` (born unanchored) and
+  every displaced card orphaned. Falling forward keeps the class whole.
+- **Rung 1 is asked only where `from` sits INSIDE a textblock.** At a block
+  boundary the enclosing node is the doc, or a list wrapper the user never
+  pointed at, and answering with it would put the displaced cards somewhere the
+  snippet is not — the stacking failure wearing a fix's clothes.
+- **The sweep runs BEFORE the delete is dispatched.** Not for position reasons
+  (these are sidecar writes) but because the deferred
+  `virgil-textobject-orphaned` sweep fires off that transaction and strips any
+  link still naming a vanished uuid. Retarget first and the sweep finds nothing
+  to strip, by construction rather than by racing it. It also sits INSIDE the
+  never-destroy guard's success branch, so a REFUSED capture moves no anchor for
+  a passage still in the document.
+- **A multi-anchor card moves only the CONSUMED pids**, and gains the neighbour
+  only if it is not already anchored there — repeated adjacent archives converge
+  on one survivor, and a second identical link would paint a duplicate marker.
+
+CI: [archive-retarget-displaced-anchors.test.tsx](src/components/editor-layout/card-actions/__tests__/archive-retarget-displaced-anchors.test.tsx)
+drives the REAL `useDragHandleActions` hook over the REAL main-editor extension
+stack and the REAL `links.ts` mutators. **No pre-491 suite could see any of
+this**: every archive fixture in the repo either has no other card in the
+captured range at all, or (task 393's) carries a Mode-B mark whose fate is
+decided by `cleanupLinksInRange` rather than by any anchor question — a Mode-A
+card anchored INSIDE the captured range is unrepresentable in all of them. The
+leg with teeth is the CENSUS, and it rides the DISCOVERED capture-site
+population `card-body-capture.test.ts` already builds: every site that mints an
+archive snippet must resolve the neighbour exactly once and retarget through the
+door, and nothing outside `retarget-anchors.ts` may re-derive the sweep.
+Allowlist EMPTY. Measured by neutering the retarget call: 6 behavioural legs
+fail, and the delete-still-orphans leg passes either way — which is the point.
+
+**Owed, not claimed:** a real-FSA eyeball. Archive anchors are the FSA-masked
+class, so the durable proof here is the unit contract — archive two adjacent
+passages that each carry a card, and both markers stack on the surviving
+neighbour.
+
+**Residual, stated.** `cleanupLinksInRange` still DELETES a footnote / citation
+card whose atom sits inside the captured range, and a Mode-B card whose mark
+does, exactly as it did before. That is shared with Delete and is a product
+question (should an archive carry its footnotes into the clip?) rather than an
+anchor one, so it is recorded here rather than changed under a fix about
+paragraph anchors.
+
 ### The rebuild half: a per-kind capability is DERIVED, never hand-enumerated
 
 Same law, other direction (task 233). Re-anchoring an **unanchored** card rebuilds its inline atom from scratch, so everything the atom can't regenerate must be read back from the card — and the read has to be a *derived obligation*, not a field someone remembers to add. `footnoteDropSpec.createAtom` built its atom with a hard-coded EMPTY body because the `DropCtx` sub-bag its citation twin got (`commandFor`) was never mirrored for footnotes. Re-placing an archived footnote therefore planted an empty atom, and since `getFootnotes()` re-derives BOTH the panel and the serialized `\footnote{}` from that node, the user's text was destroyed in the document. Nothing failed: the spec was registered, the dispatch worked, the node was well-formed. **A "registered and reachable" spec proves nothing about whether it can reach what it needs.**
