@@ -6090,6 +6090,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
+                archivedIds={archivedIds}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -7180,6 +7181,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
+                archivedIds={archivedIds}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -7341,6 +7343,10 @@ interface PaneRailProps {
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
+  /** Task 476: the cross-panel ARCHIVED SSOT, threaded to `OmniHost` so the omni
+   *  gutter filters its assembled items against the SAME set the margin markers
+   *  and the unanchored chip read — three renderers of one card, one resolution. */
+  archivedIds: ReadonlySet<string>;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -7518,6 +7524,7 @@ function PaneRail({
   revisionsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
+  archivedIds,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -7586,6 +7593,7 @@ function PaneRail({
         <OmniHost
           side={side}
           omniDimResting={viewPrefs.prefs.omniDimResting}
+          archivedIds={archivedIds}
           footnotes={footnoteInfos}
           orphanedFootnotes={viewPrefs.orphanedFootnotes}
           handleEditFootnote={onEditFootnote}

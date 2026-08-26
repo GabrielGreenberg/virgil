@@ -116,7 +116,6 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
   // Archives view + the omni-host `active()` filter) — filtered in the builder so
   // the contract test can exercise the archived-excluded case directly.
   for (const ref of a.unanchoredFootnotes ?? []) {
-    if (ref.archived) continue;
     const isSelected = a.selectedFootnoteId === ref.id;
     const id = popKey("footnotes", ref.id);
     items.push({
