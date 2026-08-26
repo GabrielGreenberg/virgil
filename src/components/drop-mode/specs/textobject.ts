@@ -52,7 +52,7 @@ import {
 } from "./drop-context";
 import { plannedDropSpec } from "../planned-spec";
 import { isSelfDrop } from "../self-drop";
-import { insertNodesAdvancing, selectInsertedSpan } from "../util/mapped-insert";
+import { insertNodesAdvancing, placeCaretAtLanding } from "../util/mapped-insert";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = plannedDropSpec({
@@ -226,7 +226,7 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
       { mapThrough: placement.insertPos },
       toInsert,
     );
-    selectInsertedSpan(tr, span);
+    placeCaretAtLanding(tr, span);
     return {
       commit: () => {
         targetEditor.view.dispatch(tr);

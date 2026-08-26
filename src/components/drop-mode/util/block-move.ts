@@ -30,7 +30,7 @@ import type { DropPlan, DropSpec, Placement } from "../types";
 import { fitNodesAtInsert } from "../specs/drop-context";
 import { plannedDropSpec } from "../planned-spec";
 import { isSelfDrop } from "../self-drop";
-import { insertNodesAdvancing, selectInsertedSpan } from "./mapped-insert";
+import { insertNodesAdvancing, placeCaretAtLanding } from "./mapped-insert";
 import { parseAnyKey } from "@/floats/float-key";
 
 export interface BlockMoveOptions {
@@ -99,7 +99,7 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       // to be spliced INSIDE the preceding block, which the fitter then closes
       // — tearing one node into two that both keep its uuid.
       const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, fit.nodes);
-      selectInsertedSpan(tr, span);
+      placeCaretAtLanding(tr, span);
       return {
         commit: () => {
           editor.view.dispatch(tr);

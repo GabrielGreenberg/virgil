@@ -4053,6 +4053,114 @@ The cost is the worst outcome this whole section legislates against, and it is s
 
 **Reachability, stated honestly rather than implied.** Narrow today, and a reason to price it below "urgent" rather than to leave it: the target must be a REGISTERED drop-target editor other than the main one (only `RichTextField` card bodies register — `BorrowedMainText` does not), expanded and editable; it must be hit-testable during a drop session, and `globals.css` makes every `[data-floating-panel="true"]` subtree `pointer-events: none` while one is active, so the reachable surface is the omni column; and the body must contain a node DECLARING a `uuid` attr, since `hitTest` bails when `resolveAnchorableBlock` returns null and card-body `paragraph`/`heading` carry none. A note with display math, or an archived excerpt holding a figure, is enough. The same two lines are also a **latent trap** — anything that registers a second drop-target editor, or gives card bodies uuid'd paragraphs, widens this to every card body at once.
 
+#### The sequence half: a gesture's EXIT STATE is the next gesture's INPUT
+
+Same gesture, the second time you perform it (task 482) — and the case where
+every piece behaved as designed and the *composition* of two of them was
+nobody's job.
+
+A between-blocks block move ended with `selectInsertedSpan`, "so the user sees
+where the payload landed": a non-empty TextSelection over the moved block's own
+content. The grab-handle resolver gives a live non-empty TextSelection ABSOLUTE
+priority over the hovered block, so the one handle at that row became a
+SelectionRef — the block's own handle GONE, replaced within ~6px of where it
+was. A SelectionRef lift hydrates a transient `linkedRange`, which
+`lookupSpec` routes to `textRangeMoveDropSpec`, whose placements include
+`inline-cursor`. So over text the inline caret wins, and that branch splices the
+run MID-WORD into the target and deliberately sheds no shell.
+
+Measured live on a flat 4-item bullet list, deterministic: drag Beta below
+Delta (a clean reorder, uuid conserved), then grab "Beta" again at the same
+visual spot and release it 6px into Gamma's first text line — the natural "put
+it back on that row" aim. Beta's TEXT lands inside Gamma's word
+(`Gamm⟨Beta flat bullet two.⟩a flat bullet three…`) and Beta's `listItem`
+survives as an EMPTY husk still carrying its uuid: an invisible blank bullet
+that every anchored card and marker now points at, two undo steps to recover.
+**From the baseline state the identical gesture at the identical pixel is a
+clean no-op.**
+
+> **A gesture's exit state is read by the NEXT gesture as user intent, so it is
+> stated in the vocabulary of what MOVED — and "here is what landed" is a VIEW
+> signal, not document state the next gesture should consume** (the transient-
+> state law, task 120, arriving in the selection instead of in a mark).
+> Beside it, the RESOLVER's own rule: **a text lift is a PARTIAL range.** A
+> selection covering exactly one textblock's whole content is a statement about
+> that BLOCK, whoever made it.
+
+Two halves, and each closes the reported repro on its own — deliberately, since
+the commit is only ONE producer of a whole-block selection:
+
+- **The exit state.** `selectInsertedSpan` → [`placeCaretAtLanding`](src/components/drop-mode/util/mapped-insert.ts):
+  a collapsed caret at the start of what landed. Every caller of
+  `insertNodesAdvancing` splices whole NODES, so a selection over its span was a
+  statement about blocks made in the vocabulary of text. The resolver's rule 1
+  requires `from !== to`, so it cannot fire at all.
+- **The resolver.** [`resolveSelectionGrab`](src/text-objects/selection-payload.ts)
+  — `wholeBlockSelection` first, `SelectionRef` only for a genuinely partial or
+  multi-block range. It covers the other producers: a triple-click, a `Cmd+A`
+  inside one block, a text-range move that landed as exactly one new block.
+
+Six rules they earned:
+
+- **A `NodeSelection` on the landed node was the obvious "what moved" answer and
+  is WRONG here, for a reason worth writing down**: prosemirror-view's base
+  stylesheet is not loaded in this app, so `.ProseMirror-selectednode` is
+  unstyled for every kind but `latex-comment`/`expex-block` — a node selection
+  would be visually INVISIBLE *and* would add `ProseMirror-hideselection`, i.e.
+  strictly worse feedback than a blinking caret. `texBlock`/`forestBlock` also
+  declare `selectable: false`, so it could not have been uniform anyway. If the
+  "here is what landed" flash is wanted back it belongs in a DECORATION with its
+  own clear, never in the selection.
+- **The contrast is the rule, not an exception.** `text-range-move`'s
+  inline-cursor branch keeps its own `selectInserted` text selection: what
+  landed there IS text inside an existing block, so a text selection states it
+  truthfully — and the next drag at that pixel is then a text drag, which is
+  what moved.
+- **The owner is the uuid-bearing ancestor, never the textblock itself.** A
+  `listItem`'s inner paragraph carries no uuid (`DEFERRING_PARENTS`), so the
+  walk that both ladders already ran is what answers — `selectionOwner`, written
+  twice before this and read from one place now.
+- **The two ladders stay DIFFERENT, and that is stated at both sites.** The grab
+  handle resolves a DRAG PAYLOAD; `active-text-object-context`'s
+  `resolveFromSelection` resolves an ANCHOR TARGET for the menus. Whether a
+  triple-click over a whole paragraph should mint a Mode-B `linkedRange` or a
+  Mode-A paragraph anchor is a product question with no reported symptom, so
+  only their shared ancestor walk was unified.
+- **`from === to`, not `sel.empty`.** Identical on a real `Selection` (`empty` is
+  a getter over exactly that comparison) and the spelling both ladders already
+  used — which is what a hand-built fixture can satisfy. Measured: switching to
+  `sel.empty` crashed three suites whose stub selections are plain objects.
+- **The predicate is offset-EXACT at both ends**, so a one-character-short
+  selection is still a text lift. A "close enough" rule would silently convert
+  deliberate near-whole-block text drags into block moves.
+
+CI: [drag-sequence-payload.test.tsx](src/components/drop-mode/__tests__/drag-sequence-payload.test.tsx)
+drives TWO REAL commits back to back through the REAL spec against a REAL
+schema, with an editor stub whose `dispatch` APPLIES — **no pre-482 suite drove
+two gestures in a row**, because every drop-mode fixture builds one pristine
+state, plans one drop and reads the transaction it *would* have dispatched, so
+the sequence class is unrepresentable in all of them. Its defect leg
+reimplements the RETIRED exit rule locally rather than re-parameterising the
+live one, and the component legs read `data-grab-owner-kind` off the REAL
+handle. Measured by neutering each half in turn: the retired exit rule takes 4
+legs, the whole-block rule 3, and the six control legs (a partial selection, a
+two-block selection, a caret, a node selection, both offset ends) pass either
+way and say so.
+
+**Residual, stated rather than implied.** Pulling an item to top level MINTS a
+`bulletList` around it (content `listItem+`); moving it back cuts that list's
+sole child, so ProseMirror keeps an empty `listItem` residue — a visible empty
+bullet in a container nothing else occupies. It is NOT the reported class (the
+residue carries no uuid, so nothing points at it) and closing it is task 320's
+SHED question one level up, where `AGENTS.md` is already explicit that "the
+schema permits it" is not "it was residue" — a container-level shed has to
+answer for `alignedGlossRow`, `heading` and `titleField` first. Pinned as its
+own stated leg rather than left to be rediscovered.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real — the dev doc's list torture
+fixture, the exact two-move repro.
+
 ### The identity half: a move conserves identity, a split mints it
 
 Same gesture, one axis in (task 320). A between-blocks / inline-cursor **text-range** move builds its payload from `doc.slice(from, to)`, so every block child arrives carrying the SOURCE block's `uuid` — and the cut is TEXT-bounded (`findLinkedAnchorRange` returns text positions), so `tr.delete(from, to)` can never *remove* its first block: it opens it and joins what follows into it. Net, before this: **two live blocks answering to one uuid** (the moved copy and the residue), plus a blank paragraph sitting where the text used to be. A uuid is the anchor identity every card/sidecar resolves against (`resolveTextRangeByAnchorId`, the marginalia/panel derivations, `assignUuids` on save), so a card anchored to the source could resolve to the MOVED text and the next save's dedup had to pick a winner.

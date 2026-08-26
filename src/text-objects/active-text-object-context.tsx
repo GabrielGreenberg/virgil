@@ -21,6 +21,7 @@ import type {
   TextObjectKind,
   TextObjectRef,
 } from "./types";
+import { selectionOwnerId } from "./selection-payload";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 
@@ -75,24 +76,16 @@ function refsEqual(a: ActiveTextObjectRef, b: ActiveTextObjectRef): boolean {
 function resolveFromSelection(editor: Editor): ActiveTextObjectRef {
   const sel = editor.state.selection;
   if (sel.from !== sel.to && !(sel instanceof NodeSelection)) {
-    const $from = editor.state.doc.resolve(sel.from);
-    for (let d = $from.depth; d >= 0; d--) {
-      const node = $from.node(d);
-      if (
-        !isTextObjectKind(node.type.name) ||
-        node.type.name === "linkedRange"
-      ) {
-        continue;
-      }
-      const uuid = node.attrs?.uuid as string | null;
-      if (uuid) {
-        return {
-          kind: "selection",
-          from: sel.from,
-          to: sel.to,
-          paragraphId: uuid,
-        };
-      }
+    // The ancestor walk is `selectionOwnerId` (task 482) — the SAME one the grab
+    // handle's ladder reads, where it was written a second time. What this
+    // ladder deliberately does NOT ask is the grab handle's whole-block
+    // question: this resolves an ANCHOR TARGET, not a drag payload, and whether
+    // a triple-click over a whole paragraph should mint a Mode-B `linkedRange`
+    // or a Mode-A paragraph anchor is a product question with no reported
+    // symptom. Stated at `./selection-payload`.
+    const paragraphId = selectionOwnerId(editor.state.doc, sel.from);
+    if (paragraphId) {
+      return { kind: "selection", from: sel.from, to: sel.to, paragraphId };
     }
   }
   if (sel instanceof NodeSelection) {

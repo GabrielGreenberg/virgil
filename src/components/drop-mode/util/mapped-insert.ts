@@ -127,11 +127,56 @@ export function insertNodesAdvancing(
 }
 
 /**
- * Select the inserted block(s) — just inside the outer block boundaries, so the
- * user sees where the payload landed.
+ * Place a COLLAPSED caret at the start of what landed.
  *
- * Guarded: a boundary that cannot host a text selection leaves the document's
- * own selection alone. That try/catch is not decoration — since task 321 these
+ * > **A move's exit state is read by the NEXT gesture as user intent, so it is
+ * > stated in the vocabulary of what MOVED — and a whole-node splice never
+ * > leaves a content-spanning TextSelection behind.**
+ *
+ * This used to select the landed span (`span.start + 1` … `span.end - 1`) "so
+ * the user sees where the payload landed", and that was a *view* signal written
+ * into the one piece of editor state every other gesture consults — the
+ * transient-state law one file over (`AGENTS.md`, "Transient state is never
+ * document content"). The cost was a payload flip at the SAME PIXEL (task 482):
+ *
+ *   1. a between-blocks block move ends here, leaving a non-empty TextSelection
+ *      over the moved block's own content;
+ *   2. the grab-handle resolver gives a live non-empty TextSelection absolute
+ *      priority over the hovered block (`resolveActiveRefs` rule 1), so the one
+ *      handle at that row is a SelectionRef and the BLOCK's handle is GONE —
+ *      replaced within ~6px of where it was;
+ *   3. lifting it hydrates a transient `linkedRange` and routes to
+ *      `textRangeMoveDropSpec`, whose placements include `inline-cursor`, so a
+ *      release over another block's text takes the INLINE branch;
+ *   4. that branch splices the text MID-WORD and (deliberately, :192-199) sheds
+ *      no shell, so the source `listItem` survives as an EMPTY husk still
+ *      carrying its uuid — every card and marker anchored to it now points at an
+ *      invisible blank bullet, and undo needs two steps.
+ *
+ * Every piece behaved as designed. What was wrong is that **the second drag in a
+ * sequence had different semantics from the first**, decided by an exit state
+ * the user never chose. A caret cannot be mistaken for a text-lift gesture (the
+ * resolver's rule 1 requires `from !== to`), so the moved block's own handle is
+ * back at that pixel and sequences compose.
+ *
+ * Deliberately NOT a `NodeSelection` on the landed node, although rule 2 of that
+ * same resolver would then answer with the block: prosemirror-view's base
+ * stylesheet is not loaded here, so `.ProseMirror-selectednode` is unstyled for
+ * every kind but `latex-comment`/`expex-block` — a node selection would be
+ * visually INVISIBLE *and* would add `ProseMirror-hideselection`, which is
+ * strictly worse feedback than a blinking caret. `texBlock`/`forestBlock` also
+ * declare `selectable: false`, so it could not have been uniform anyway. If the
+ * "here is what landed" flash is wanted back it belongs in a DECORATION with its
+ * own clear (task 120), not in the selection.
+ *
+ * The inline-cursor branch of `text-range-move` keeps its own `selectInserted`
+ * text selection, and that contrast is the rule rather than an exception: what
+ * landed there IS text inside an existing block, so a text selection states it
+ * truthfully. Everything routed through `insertNodesAdvancing` landed whole
+ * NODES.
+ *
+ * Guarded: a boundary that cannot host a text position leaves the document's own
+ * selection alone. That try/catch is not decoration — since task 321 these
  * transactions are built inside `planDrop`, which `classifyDrop` calls BARE
  * inside the controller's `async commitDropSession`; an escaped throw there
  * becomes a rejected promise that never reaches `endDropSession()`, leaking the
@@ -139,16 +184,18 @@ export function insertNodesAdvancing(
  * past mouseup. Two of the three call sites this replaced had the guard and one
  * did not.
  */
-export function selectInsertedSpan(tr: Transaction, span: InsertedSpan): void {
+export function placeCaretAtLanding(tr: Transaction, span: InsertedSpan): void {
   try {
-    const selStart = span.start + 1;
-    const selEnd = span.end - 1;
-    if (selEnd > selStart) {
-      tr.setSelection(
-        TextSelection.between(tr.doc.resolve(selStart), tr.doc.resolve(selEnd)),
-      );
-    }
+    // `between($at, $at)` is the TOTAL form: where the landing point is already
+    // inline content it is a plain collapsed caret, and where it is not (an atom
+    // pod, a container's own boundary) it searches TEXT-ONLY for the nearest
+    // real text position rather than throwing or minting a node selection. The
+    // one shape it cannot answer is a document with no text position anywhere,
+    // where it degrades to `Selection.near` — which has no uuid-bearing ancestor
+    // to resolve against, so it cannot produce a SelectionRef either.
+    const $at = tr.doc.resolve(Math.min(span.start + 1, tr.doc.content.size));
+    tr.setSelection(TextSelection.between($at, $at));
   } catch {
-    /* boundary can't host a selection — leave the doc's selection */
+    /* boundary can't host a caret — leave the doc's selection */
   }
 }
