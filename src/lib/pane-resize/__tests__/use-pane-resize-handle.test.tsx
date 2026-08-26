@@ -64,8 +64,12 @@ import {
   type PaneResizeHandleProps,
 } from "../use-pane-resize-handle";
 import {
+  beginContentGesture,
+  endContentGesture,
+  hasActiveLayoutGesture,
   isLayoutGestureActive,
   onLayoutGestureChange,
+  __emitWindowResizeForTest,
   __resetLayoutGestureBusForTest,
   type LayoutGestureInfo,
 } from "../layout-gesture-bus";
@@ -307,6 +311,64 @@ describe("usePaneResizeHandle — start gates", () => {
     expect(setPointerCapture).not.toHaveBeenCalled();
   });
 
+  // ── the exclusion SCOPE (task 472) ───────────────────────────────────────
+  // The gate refuses only the kinds that contend for the engine's singletons
+  // (the drag shield + the saved body cursor/user-select), which are pane-only.
+  // Pre-472 it asked the kind-BLIND `isLayoutGestureActive()`, so both legs
+  // below failed: a press was silently swallowed inside the window publisher's
+  // 150 ms trailing-idle tail, and one wedged content gesture would have
+  // disabled every divider in the app.
+
+  it("starts during a WINDOW gesture — a reflow moves no divider and mounts no shield (fails on the pre-472 kind-blind gate)", () => {
+    // Drive the REAL window publisher: two events inside RESIZE_BURST_MS is
+    // what makes it a gesture rather than a one-shot.
+    __emitWindowResizeForTest();
+    __emitWindowResizeForTest();
+    expect(hasActiveLayoutGesture(["window"])).toBe(true);
+
+    const h = makeHarness();
+    pointerDown(h.props(), h.el);
+
+    expect(hasActiveLayoutGesture(["pane"])).toBe(true);
+    expect(isDragShieldMounted()).toBe(true);
+    expect(h.el.classList.contains("dragging")).toBe(true);
+    expect(setPointerCapture).toHaveBeenCalledTimes(1);
+
+    // …and it is a real gesture, not merely an admitted press.
+    move(h.el, 150);
+    flushRaf();
+    up(h.el);
+    expect(h.committed()).toEqual([250]);
+    expect(hasActiveLayoutGesture(["pane"])).toBe(false);
+  });
+
+  it("starts during a CONTENT gesture — a drop-mode session moves no divider (fails on the pre-472 kind-blind gate)", () => {
+    beginContentGesture("block-lift-1");
+    expect(hasActiveLayoutGesture(["content"])).toBe(true);
+
+    const h = makeHarness();
+    pointerDown(h.props(), h.el);
+
+    expect(hasActiveLayoutGesture(["pane"])).toBe(true);
+    expect(setPointerCapture).toHaveBeenCalledTimes(1);
+
+    move(h.el, 150);
+    flushRaf();
+    up(h.el);
+    expect(h.committed()).toEqual([250]);
+
+    // The content gesture is untouched by the divider's own end edge — the two
+    // are independent members of the bus set.
+    expect(hasActiveLayoutGesture(["content"])).toBe(true);
+    endContentGesture();
+    expect(isLayoutGestureActive()).toBe(false);
+  });
+
+  // NON-REGRESSION PIN, and it says so: this passes either way. The engine is
+  // single-flight by design — `mountDragShield`'s LIFETIME is a singleton, so a
+  // second divider drag ending first would unmount the shield and restore the
+  // body styles out from under the one still in flight — and `["pane"]` is
+  // exactly the scope that keeps refusing it.
   it("refuses a second gesture while one is already in flight", () => {
     const edges = vi.fn();
     onLayoutGestureChange(edges);

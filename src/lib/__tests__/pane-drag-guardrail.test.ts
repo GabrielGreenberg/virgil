@@ -1688,6 +1688,105 @@ describe("pane-drag guardrail — element-scoped pointer-gesture census (task 43
 // The sibling `keystroke-subscriber-guardrail` has enforced this on its own
 // allowlists since Wave-4 P6. See the registry above for why the membership
 // half is discovered from source rather than listed.
+describe("pane-drag guardrail — start-gate SCOPE (task 472)", () => {
+  // The bus has two kinds of reader and they want OPPOSITE scopes.
+  //
+  //   A FOLLOWER (park / suppress — the geometry observers, the text-anchored
+  //   overlays, PaneFreeze) asks a KIND-BLIND question: a gesture of ANY kind
+  //   can move content under it, so `isLayoutGestureActive()` is right there,
+  //   and most of the app's readers are followers.
+  //
+  //   An OWNER asks a mutual-EXCLUSION question, and its scope is exactly the
+  //   kinds that contend for the singletons a second gesture would clobber.
+  //   The engine is the only owner in the repo, its singletons are the drag
+  //   shield plus the saved body cursor/user-select, and both are pane-only —
+  //   so its scope is `["pane"]`.
+  //
+  // Reading the follower's predicate at the owner's gate is what task 472
+  // fixed: a divider press inside the window publisher's 150 ms trailing-idle
+  // tail was silently swallowed (grab a divider straight after dragging the OS
+  // window edge and the first press did nothing), and one wedged drop-mode
+  // session would have disabled every divider in the app until a reload.
+  //
+  // POPULATION, stated because it is the load-bearing choice: the ENGINE FILE,
+  // not a two-silo sweep. The engine is the only exclusion gate that exists —
+  // no bespoke gesture reads the bus to decide whether it may START — and a
+  // wholesale sweep would be the WRONG population rather than a stricter one:
+  // the bare `if (isLayoutGestureActive()) return;` form is also how a
+  // follower suppresses, and five production files legitimately spell it, so
+  // the set would never be empty and the leg would carry no signal at all.
+  // The walker excludes `ENGINE_DIR` by directory, so this reads the file.
+  const engineRel = "src/lib/pane-resize/use-pane-resize-handle.ts";
+  const engine = readFileSync(path.resolve(ENGINE_DIR, "use-pane-resize-handle.ts"), "utf8");
+  const engineCode = stripComments(engine);
+
+  it("the engine's start gate reads a KIND-SCOPED predicate, and the file never spells the kind-blind one", () => {
+    expect(engineCode, `${engineRel}: the start gate must name its kinds`).toMatch(
+      /if\s*\(\s*hasActiveLayoutGesture\(\s*EXCLUSION_KINDS\s*\)\s*\)\s*return;/,
+    );
+    // Not merely "the scoped call exists somewhere" — the blind one must be
+    // GONE, or a later edit can put it back beside the scoped call and every
+    // other leg here stays green.
+    expect(engineCode).not.toMatch(/\bisLayoutGestureActive\b/);
+  });
+
+  it("the exclusion set is `pane` only — a window reflow and a content drag move no divider and mount no shield", () => {
+    const decl = /const\s+EXCLUSION_KINDS\s*:\s*readonly\s+LayoutGestureKind\[\]\s*=\s*\[([^\]]*)\];/.exec(
+      engineCode,
+    );
+    expect(decl, `${engineRel}: EXCLUSION_KINDS did not resolve`).not.toBeNull();
+    const kinds = decl![1]
+      .split(",")
+      .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean);
+    // `["pane", "window"]` is the sanctioned fallback if a reviewer decides a
+    // divider drag DURING a live OS reflow is worth refusing — it still closes
+    // the unbounded half (a wedged content gesture locking out every divider).
+    // `content` never belongs here: that is the failure mode, not a guard.
+    expect(kinds).not.toContain("content");
+    expect(kinds).toContain("pane");
+  });
+
+  it("the rationale lives at the constant, not at the call site (so the next reader cannot 'fix' the scope back)", () => {
+    // The gate is one line and its reason is four paragraphs; a scope with no
+    // stated WHY is exactly how the pre-472 comment came to say PANE while the
+    // predicate said ANY. Pin that the rationale names the singletons it turns
+    // on — the drag shield — and the two consequences it retired.
+    const idx = engine.indexOf("const EXCLUSION_KINDS");
+    expect(idx).toBeGreaterThan(0);
+    const rationale = engine.slice(Math.max(0, idx - 2200), idx);
+    expect(rationale).toMatch(/drag-shield|drag shield/);
+    expect(rationale).toMatch(/RESIZE_IDLE_MS|150\s*ms/);
+    expect(rationale).toMatch(/SET channel/); // why this is not the edge-listener rule
+  });
+
+  it("the census can actually see a kind-blind gate, and lets a follower's suppress through (fixtures)", () => {
+    // A leg whose verdict is a NEGATIVE match is worth exactly what its needle
+    // is worth. Synthetic fixtures, not a live line — a canary must not stand
+    // on the defect it guards (there is none left to stand on).
+    const preFix = stripComments(`
+      // One pane gesture app-wide at a time.
+      if (isLayoutGestureActive()) return;
+    `);
+    expect(preFix).toMatch(/\bisLayoutGestureActive\b/);
+    expect(preFix).not.toMatch(
+      /if\s*\(\s*hasActiveLayoutGesture\(\s*EXCLUSION_KINDS\s*\)\s*\)\s*return;/,
+    );
+
+    // …and the shape this leg must NOT indict: a FOLLOWER suppressing on any
+    // layout gesture. It lives outside the engine file, so the population above
+    // never sees it — pinned here so the reason is written down rather than
+    // rediscovered as a false positive.
+    const follower = stripComments(`
+      const reposition = () => {
+        if (isLayoutGestureActive()) return; // text-anchored overlay: hide, don't chase
+        place();
+      };
+    `);
+    expect(follower).toMatch(/\bisLayoutGestureActive\b/);
+  });
+});
+
 describe("pane-drag guardrail — cost-class tags (task 334)", () => {
   const ownSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
 

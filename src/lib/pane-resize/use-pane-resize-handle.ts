@@ -47,14 +47,42 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   beginLayoutGesture,
   endLayoutGesture,
-  isLayoutGestureActive,
+  hasActiveLayoutGesture,
   type LayoutGestureInfo,
+  type LayoutGestureKind,
 } from "./layout-gesture-bus";
 import { mountDragShield, unmountDragShield } from "./drag-shield";
 // The start gate and the missed-release failsafe are shared with the bespoke
 // gestures the engine's shape doesn't fit (the Outline FocusBand's snap-to-row
 // selection) — one definition, one rationale (task 185).
 import { claimGestureKey, isMissedRelease, isPrimaryDragStart } from "./pointer-invariants";
+
+// The kinds a divider press must yield to, and the ONE place the reason is
+// stated. The bus has two kinds of reader and they want opposite scopes:
+//
+//   FOLLOWERS (park / suppress — the geometry observers, the text-anchored
+//   overlays, PaneFreeze) ask a KIND-BLIND question, because a gesture of ANY
+//   kind can move content under them, so `isLayoutGestureActive()` is right
+//   there.
+//
+//   The OWNER — this gate — asks a mutual-EXCLUSION question, and its scope is
+//   exactly the kinds that contend for the singletons a second gesture would
+//   clobber. Those are engine-owned and pane-only: the drag shield plus the
+//   saved body cursor / user-select (`drag-shield.ts`), whose LIFETIME is a
+//   singleton — a second divider drag ending first would unmount the shield
+//   and restore the body styles out from under the one still in flight.
+//
+// A window reflow and a content drag move no divider and mount no shield, so
+// refusing on them bought nothing and cost two things: a press inside the
+// window publisher's 150 ms trailing-idle tail (`RESIZE_IDLE_MS`) was silently
+// swallowed — grab a divider straight after dragging the OS window edge and
+// the first press did nothing — and one wedged drop-mode session would have
+// disabled every divider in the app until a reload (task 472).
+//
+// A POINT-IN-TIME read, not an edge subscription, so the bus's "kind-sensitive
+// consumers use the SET channel" rule does not apply — that rule is about an
+// `info.kind` filter inside an outermost-EDGE listener, which this is not.
+const EXCLUSION_KINDS: readonly LayoutGestureKind[] = ["pane"];
 
 export interface PaneResizeSpec {
   /** Stable, unique gesture id — carried on the bus info + probe data attrs. */
@@ -169,8 +197,9 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     // Primary button, primary pointer only — a right-click must not start a
     // gesture whose end edge the context menu then eats.
     if (!isPrimaryDragStart(e)) return;
-    // One pane gesture app-wide at a time.
-    if (isLayoutGestureActive()) return;
+    // One PANE gesture app-wide at a time. The scope is `["pane"]` on
+    // purpose — see EXCLUSION_KINDS.
+    if (hasActiveLayoutGesture(EXCLUSION_KINDS)) return;
     const el = e.currentTarget;
     if (!el) return;
 
