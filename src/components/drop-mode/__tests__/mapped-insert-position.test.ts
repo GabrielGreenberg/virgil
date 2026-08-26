@@ -62,7 +62,7 @@ import { blockMoveSpec } from "../util/block-move";
 import {
   insertNodesAdvancing,
   resolveInsertPos,
-  selectInsertedSpan,
+  placeCaretAtLanding,
 } from "../util/mapped-insert";
 import type { DropCtx, Placement } from "../types";
 
@@ -288,17 +288,20 @@ describe("mapped-insert — the shared splice door", () => {
     expect(tr.doc.child(2).attrs.uuid).toBe("n2");
   });
 
-  it("selecting a span that cannot host a selection is a no-op, never a throw", () => {
+  it("a landing point that cannot host a caret is a no-op, never a throw", () => {
     // Since task 321 these transactions are built inside `planDrop`, and
     // `classifyDrop` is called BARE inside the controller's async
     // `commitDropSession` — an escaped throw there becomes a rejected promise
     // that never reaches `endDropSession()`, leaking the window listeners, the
     // body attr and the lift overlay past mouseup. `block-move` was the one of
     // the three call sites whose selection helper had no guard.
+    //
+    // Renamed at task 482: this used to SELECT the landed span, which the grab
+    // handle then read as a live text-lift gesture (see the module header).
     const d = schema.nodeFromJSON({ type: "doc", content: [para("a", "alpha")] });
     const tr = EditorState.create({ schema, doc: d }).tr;
     expect(() =>
-      selectInsertedSpan(tr, { start: 0, end: d.content.size + 5_000 }),
+      placeCaretAtLanding(tr, { start: 0, end: d.content.size + 5_000 }),
     ).not.toThrow();
   });
 });

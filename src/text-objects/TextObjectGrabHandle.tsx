@@ -87,6 +87,7 @@ import {
   textObjectPopoutKey,
 } from "./text-object-registry";
 import { isTopRowOf, resolveBlockFrame } from "./block-frame";
+import { resolveSelectionGrab } from "./selection-payload";
 import { resolveHandleLane, resolveHandleMarkerLeft } from "./handle-layout";
 import { useLiftHost } from "./LiftHost";
 import type {
@@ -886,38 +887,35 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
      * Resolve the refs (each paired with its pre-resolved block DOM, so
      * placement never walks the doc) the schedule should render handles for.
      * Order (first match wins, except for hover which returns multiple):
-     *   1. Non-empty TextSelection → [SelectionRef] (el null — resolved by
-     *      the PM ancestor walk in computePlacement)
+     *   1a. A selection covering ONE textblock's whole content → that block's
+     *      [TextObjectRef + nodeDOM] (task 482 — a text lift is a PARTIAL range)
+     *   1b. Any other non-empty TextSelection → [SelectionRef] (el null —
+     *      resolved by the PM ancestor walk in computePlacement)
      *   2. NodeSelection on TextObject → [TextObjectRef + nodeDOM]
      *   3. Mouse hover over editor → [innermost..outermost + scanned el]
      *   4. Nothing → []
      */
     const resolveActiveRefs = (editor: Editor): ResolvedRef[] => {
       const sel = editor.state.selection;
-      // 1. Non-empty TextSelection — text-lift gesture.
-      if (sel.from !== sel.to && !(sel instanceof NodeSelection)) {
-        const $from = editor.state.doc.resolve(sel.from);
-        let paragraphId: string | null = null;
-        for (let d = $from.depth; d >= 0; d--) {
-          const node = $from.node(d);
-          if (!isTextObjectKind(node.type.name) || node.type.name === "linkedRange") continue;
-          const uuid = node.attrs?.uuid as string | null;
-          if (uuid) {
-            paragraphId = uuid;
-            break;
-          }
-        }
-        if (paragraphId) {
-          return [{
-            ref: {
-              kind: "selection",
-              from: sel.from,
-              to: sel.to,
-              paragraphId,
-            },
-            el: null,
-          }];
-        }
+      // 1. Non-empty TextSelection — but ONLY a PARTIAL range is a text lift
+      // (task 482). A selection that covers exactly one textblock's whole
+      // content is a statement about that BLOCK, and dragging it as a text slice
+      // is destructive by construction: `text-range-move`'s inline-cursor branch
+      // splices the run mid-word into the target and deliberately sheds no
+      // shell, so the source survives as an EMPTY uuid-bearing husk that every
+      // anchored card and marker still points at. The rule — and why the MENU
+      // ladder deliberately keeps its own pre-482 answer — is stated once in
+      // `./selection-payload`; only the DOM resolution belongs here.
+      const grab = resolveSelectionGrab(sel, editor.state.doc);
+      if (grab?.payload === "block") {
+        const nodeDom = editor.view.nodeDOM(grab.pos);
+        return [{
+          ref: grab.ref,
+          el: nodeDom instanceof HTMLElement ? nodeDom : null,
+        }];
+      }
+      if (grab?.payload === "range") {
+        return [{ ref: grab.ref, el: null }];
       }
       // 2. NodeSelection on a TextObject (atom blocks chiefly).
       if (sel instanceof NodeSelection) {

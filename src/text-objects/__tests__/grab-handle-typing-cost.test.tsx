@@ -167,15 +167,25 @@ function fakeEditor(): Editor {
   // — enough for the SELECTION branch (branch 1) to resolve a containing text
   // object and for `resolveSelectionChromeAnchor` to read its anchor.
   const itemNode = { type: { name: "listItem" }, attrs: { uuid: "li1" } };
-  const resolved = {
+  // A real `ResolvedPos` always carries `parent` / `parentOffset` / `sameParent`
+  // — the whole-block predicate (task 482) reads them to tell a PARTIAL text
+  // lift from a selection that covers one block outright. The paragraph here is
+  // 20 wide and the fixture's selection is 4-9, i.e. genuinely partial, so this
+  // suite's selection branch still resolves a SelectionRef.
+  const paragraph = { isTextblock: true, content: { size: 20 } };
+  const resolved = (pos: number) => ({
+    pos,
     depth: 1,
+    parent: paragraph,
+    parentOffset: pos - 3,
+    sameParent: () => true,
     node: (d: number) => (d === 1 ? itemNode : { type: { name: "doc" }, attrs: {} }),
     before: () => 0,
-  };
+  });
   return {
     isDestroyed: false,
     isEditable: true,
-    state: { selection: { from: 5, to: 5 }, doc: { resolve: () => resolved } },
+    state: { selection: { from: 5, to: 5 }, doc: { resolve: (p: number) => resolved(p) } },
     view: {
       dom: editorEl,
       coordsAtPos: () => ({ top: 305, bottom: 320, left: 262, right: 263 }),

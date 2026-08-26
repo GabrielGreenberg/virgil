@@ -82,7 +82,7 @@ import { adoptSliceIntoSchema, insertLanded } from "../schema-adopt";
 import {
   insertNodesAdvancing,
   resolveInsertPos,
-  selectInsertedSpan,
+  placeCaretAtLanding,
 } from "../util/mapped-insert";
 import { plannedDropSpec } from "../planned-spec";
 import {
@@ -373,7 +373,7 @@ function planRangeBetweenBlocks(
     // it shed the residue, so `shed.protect` is in the transaction's current
     // coordinates. Mapping it again would double-count the delete.
     const span = insertNodesAdvancing(tr, { liveAt: start }, owned);
-    selectInsertedSpan(tr, span);
+    placeCaretAtLanding(tr, span);
     return {
       commit: () => {
         targetEditor.view.dispatch(tr);
@@ -405,7 +405,7 @@ function planRangeBetweenBlocks(
   if (!insertLanded(insertTr, owned.reduce((s, n) => s + n.nodeSize, 0))) {
     return null;
   }
-  selectInsertedSpan(insertTr, span);
+  placeCaretAtLanding(insertTr, span);
   return {
     commit: () => {
       targetEditor.view.dispatch(insertTr);
