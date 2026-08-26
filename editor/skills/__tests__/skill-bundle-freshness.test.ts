@@ -22,6 +22,17 @@
 // artifacts it legitimately does not have. Present-but-drifted fails loudly
 // with the rebuild command.
 //
+// SILO POPULATION (task 473). The skill half of this guard was editor-only
+// while three silos ship command markdown — and the one it did not cover,
+// `virgil/skills/`, is the USER-FACING FRONT DOOR, whose four mirrored copies
+// are what every "Virgil, …" turn actually reads. It had no guard of any kind.
+// `virgil` joins here rather than in a second file, because a second
+// implementation of "a mirror must match its SSOT" is the fork this repo
+// legislates against everywhere else. `library`'s COMMAND mirror is still
+// uncovered and deliberately not folded in: its bundle ships a different file
+// set (skills + `_`-includes + `CLAUDE.md`) under its own builder, so it is a
+// wider question than this task, and its SCRIPTS are already covered below.
+//
 // LOUD vs ADVISORY (task 374). A staleness signal is only worth failing on if
 // the remedy the message names can clear it. `out/skill-bundle/…` is the Next
 // static export: nothing short of a full `npm run build` regenerates it, and
@@ -46,7 +57,7 @@ import { commandsDirFor, scriptsDirFor } from "../../../library/lib/skill-bundle
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const read = (abs: string) => readFileSync(abs, "utf8");
 
-const SKILLS_DIR = join(repoRoot, "editor", "skills");
+const skillsDirFor = (silo: SkillSilo) => join(repoRoot, silo, "skills");
 const REBUILD = "npm run build:skill-bundles";
 
 // The in-repo Virgil-managed folder: the dev-storage library workspace, whose
@@ -55,9 +66,13 @@ const REBUILD = "npm run build:skill-bundles";
 // `build:skill-bundles` this guard names — so the remedy actually clears it.
 const MANAGED_FOLDER = "library-data";
 
+type SkillSilo = "editor" | "virgil";
+
 type Mirror = {
-  /** repo-relative directory mirroring `editor/skills/*.md` by basename. */
+  /** repo-relative directory mirroring `<silo>/skills/*.md` by basename. */
   dir: string;
+  /** Which SSOT directory this mirror copies. */
+  silo: SkillSilo;
   /** Bytes pass through `rewriteScriptPathsForPaper` (paper-shaped mirrors). */
   rewritten: boolean;
   /** Stale here FAILS. Advisory mirrors (see header) report and skip. */
@@ -67,10 +82,20 @@ type Mirror = {
 const MIRRORS: Mirror[] = [
   // The repo's own dev mirror — unrewritten, because a maintainer runs
   // `/editor:<skill>` with the repo root as cwd.
-  { dir: commandsDirFor("editor"), rewritten: false, loud: true },
-  { dir: join(MANAGED_FOLDER, commandsDirFor("editor")), rewritten: true, loud: true },
-  { dir: "public/skill-bundle/editor/claude-commands", rewritten: true, loud: true },
-  { dir: "out/skill-bundle/editor/claude-commands", rewritten: true, loud: false },
+  { dir: commandsDirFor("editor"), silo: "editor", rewritten: false, loud: true },
+  { dir: join(MANAGED_FOLDER, commandsDirFor("editor")), silo: "editor", rewritten: true, loud: true },
+  { dir: "public/skill-bundle/editor/claude-commands", silo: "editor", rewritten: true, loud: true },
+  { dir: "out/skill-bundle/editor/claude-commands", silo: "editor", rewritten: true, loud: false },
+  // The FRONT DOOR. `build-virgil-bundle.mjs` copies bytes verbatim — it
+  // applies no path rewrite — so every virgil mirror is `rewritten: false`,
+  // including the paper-shaped ones. That is exactly why `start.md` names its
+  // helper scripts through a resolved `<editor-scripts>/` prefix rather than a
+  // literal `editor/scripts/…` path (task 473): with no rewrite, a literal one
+  // would be wrong in every synced folder.
+  { dir: commandsDirFor("virgil"), silo: "virgil", rewritten: false, loud: true },
+  { dir: join(MANAGED_FOLDER, commandsDirFor("virgil")), silo: "virgil", rewritten: false, loud: true },
+  { dir: "public/skill-bundle/virgil/claude-commands", silo: "virgil", rewritten: false, loud: true },
+  { dir: "out/skill-bundle/virgil/claude-commands", silo: "virgil", rewritten: false, loud: false },
 ];
 
 // The other half of the same class, and the one no guard watched: helper
@@ -96,8 +121,8 @@ const SCRIPT_MIRRORS: ScriptMirror[] = [
 // `_dev-loop-principle.md` is the one include a skill inlines rather than
 // links, and `dev-loop-principle.test.ts` is what holds that inlined copy to
 // this file's bytes.
-function skillNames(): string[] {
-  return readdirSync(SKILLS_DIR)
+function skillNames(silo: SkillSilo): string[] {
+  return readdirSync(skillsDirFor(silo))
     .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
     .sort();
 }
@@ -135,7 +160,10 @@ function staleIn(
 
 describe("skill bundle freshness (SSOT → built copies)", () => {
   it("finds skills to guard", () => {
-    expect(skillNames().length).toBeGreaterThan(0);
+    expect(skillNames("editor").length).toBeGreaterThan(0);
+    // The canary for the widened population: a virgil silo that resolved to an
+    // empty list would make every front-door freshness row pass vacuously.
+    expect(skillNames("virgil")).toContain("start.md");
     expect(scriptNames("editor").length).toBeGreaterThan(0);
     expect(scriptNames("library").length).toBeGreaterThan(0);
   });
@@ -143,12 +171,12 @@ describe("skill bundle freshness (SSOT → built copies)", () => {
   // Explicit loop rather than `it.each`: an advisory row needs the test
   // CONTEXT to skip at runtime, and `each` spreads the case into the argument
   // slot the context would occupy.
-  for (const { dir, rewritten, loud } of MIRRORS) {
+  for (const { dir, silo, rewritten, loud } of MIRRORS) {
   it(`${dir} carries no stale skill copies`, (ctx) => {
     const stale = staleIn(
       dir,
-      skillNames(),
-      (name) => join(SKILLS_DIR, name),
+      skillNames(silo),
+      (name) => join(skillsDirFor(silo), name),
       (ssot) => (rewritten ? rewriteScriptPathsForPaper(ssot) : ssot),
     );
     if (stale === null) return;
