@@ -154,6 +154,16 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     // Self-drop: releasing inside the source range leaves the text where it
     // was (no move). Both placements carry a doc position — the inline caret
     // (`pos`) or the block gap (`insertPos`).
+    //
+    // DELIBERATELY the NARROW test, and this spec declares no `sourceRangeFor`
+    // (task 480). The self-GAP rule its two block-move siblings now share —
+    // "separated from the source's boundary by ancestor tokens only" —
+    // presupposes that the payload IS the node whose boundary the gap is. A
+    // text SLICE is not: moving the first three words of a paragraph into the
+    // gap immediately above it MATERIALIZES a new paragraph, which is a real
+    // change even though that gap is one open token from the range's `from`.
+    // Widening the rule here would be a false refusal of the commonest
+    // outdent-a-fragment gesture there is.
     const dropPos =
       placement.kind === "inline-cursor" ? placement.pos : placement.insertPos;
     if (placement.editor === src.editor && dropPos >= src.from && dropPos <= src.to) {

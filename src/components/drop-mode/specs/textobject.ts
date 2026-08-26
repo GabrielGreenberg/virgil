@@ -51,6 +51,7 @@ import {
   fitNodesAtInsert,
 } from "./drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { isSelfDrop } from "../self-drop";
 import { insertNodesAdvancing, selectInsertedSpan } from "../util/mapped-insert";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
@@ -69,6 +70,19 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
     const ref = parseTextObjectPopoutKey(cardKey);
     return ref ? [ref.kind] : [];
   },
+  /**
+   * Where the payload lives NOW (task 480) — the input to the self-drop rule,
+   * resolved once per session so the candidate filter can drop the source's own
+   * gap. Same resolution `planDrop` uses, against the session's own document.
+   */
+  sourceRangeFor: (cardKey, ctx) => {
+    const editor = ctx.mainEditor;
+    if (!editor) return null;
+    const ref = parseTextObjectPopoutKey(cardKey);
+    if (!ref) return null;
+    const move = resolveMoveSource(editor.state.doc, ref.kind, ref.id);
+    return move ? { editor, from: move.from, to: move.to } : null;
+  },
   targetScope: "any-editor",
   postDrop: "close",
   /**
@@ -84,10 +98,25 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
     if (placement.kind !== "between-blocks") return null;
     const src = locate(placement, cardKey);
     if (!src) return null;
-    // No-op if the drop position is inside the source's own range.
+    // THE SELF-DROP RULE (task 480) — the same predicate the candidate filter
+    // reads, so the hover and the commit cannot answer from two tables. It used
+    // to be `insertPos` inside the source's own `[from, to]`, which is ONE level
+    // of a gap that exists at several: a `listItem`'s own visual gap line is
+    // also its LIST's boundary, and its list's item's, all the way out — every
+    // one of them separated from the item's own boundary by nothing but
+    // ancestor tokens. `listItemDropAdapter` answered `wrap` at each, so
+    // releasing an item on its own grab point MINTED a fresh-uuid list and
+    // EXTRACTED the item out of the list it was already in.
     if (
-      placement.insertPos >= src.move.from &&
-      placement.insertPos <= src.move.to
+      isSelfDrop(
+        placement.editor,
+        { editor: placement.editor, from: src.move.from, to: src.move.to },
+        placement.insertPos,
+        // The payload the fit rung judges — the first collected node, the same
+        // one `canDropDirect` below is computed from (a heading collects its
+        // whole section; its own type is what every level stands for).
+        src.move.nodes[0] ?? null,
+      )
     ) {
       return null;
     }

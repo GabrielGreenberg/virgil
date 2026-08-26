@@ -196,6 +196,9 @@ function ladder(
       editor,
       resolveInsertCandidates(editor, floorPos, cursorY),
       payload,
+      // This ladder harness drives the FIT question only; the identity question
+      // (task 480) has its own suite and its own sources.
+      null,
     ),
     cursorX,
   );

@@ -824,6 +824,10 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         ref,
         cardKey,
         origin: { x: mv.clientX, y: mv.clientY },
+        // The drop session's dead zone measures from where the user GRABBED,
+        // which is the mousedown — not this threshold-crossing sample, which
+        // with a fast pointer can be far from it (task 480).
+        grabOrigin: { x: startX, y: startY },
         terminalPolicy: "grab",
       });
     };

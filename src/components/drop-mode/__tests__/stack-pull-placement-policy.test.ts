@@ -197,6 +197,9 @@ function hit(editor: Editor, y: number): Placement | null {
     // paragraph/heading pulls declare one and the card/text pulls declare
     // EMPTY, which is exactly what keeps a card's paragraph-side reach intact.
     stackPullBlockPayloadFor(KEY),
+    // A Stack pull has no source in the target document, so it declares no
+    // source range (task 480) — the ANSWER, not a default.
+    null,
   );
 }
 

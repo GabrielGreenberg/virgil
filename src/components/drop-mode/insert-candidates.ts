@@ -44,15 +44,20 @@
  *     simply the candidate whose container is the list, reached for EVERY
  *     payload rather than only for a same-kind sub-item drag (which is what F4
  *     — the peer resolver's `node.type.name === sourceKind` gate — was).
- *  2. **FILTER** ({@link filterInsertCandidates}) — keep only the candidates
- *     whose container can hold the payload, through rungs 1 and 2 of the SSOT
- *     ladder `fitNodeInContainer` (`@/text-objects/drop-adapters`): the parent
- *     accepts the bare node, or a wrapper in `buildWrap`'s vocabulary is both
- *     valid there and able to hold it. That is pure schema arithmetic and
- *     O(depth) — it is **not** `planDrop`, which builds transactions and is what
- *     made task 321 call this a product decision. Reusing the ladder rather than
- *     re-deriving it is the whole point: the hover then answers from the SAME
- *     table the commit reads, which is the law tasks 258 / 321 / 332 state.
+ *  2. **FILTER** ({@link filterInsertCandidates}) — keep only the LEGAL
+ *     landings, which is two questions. The CONTAINER one runs rungs 1 and 2 of
+ *     the SSOT ladder `fitNodeInContainer` (`@/text-objects/drop-adapters`): the
+ *     parent accepts the bare node, or a wrapper in `buildWrap`'s vocabulary is
+ *     both valid there and able to hold it. The IDENTITY one (task 480) drops a
+ *     candidate that is the source's OWN gap, through `self-drop.ts` — because
+ *     a `listItem`'s own gap line is also its list's boundary, and its list's
+ *     item's, and each of those was a landing that MINTED a wrapper list and
+ *     extracted the item from its own list. Both are pure arithmetic and
+ *     O(depth) — neither is `planDrop`, which builds transactions and is what
+ *     made task 321 call this a product decision. Reusing both ladders rather
+ *     than re-deriving them is the whole point: the hover then answers from the
+ *     SAME tables the commit reads, which is the law tasks 258 / 321 / 332
+ *     state.
  *  3. **CHOOSE** ({@link chooseInsertCandidate}) — Y picks the boundary, at each
  *     candidate's own MIDPOINT (F1, uniformly); X picks the LEVEL among the
  *     survivors, shallowest as the cursor moves left, exactly as the bar's width
@@ -83,6 +88,7 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { fitNodeInContainer } from "@/text-objects/drop-adapters";
 import type { BlockDropPayload } from "./block-payload";
+import { type DropSourceRange, isSelfDrop } from "./self-drop";
 
 /**
  * One legal place a between-blocks payload could land, at one ancestor level.
@@ -172,21 +178,35 @@ export function resolveInsertCandidates(
 }
 
 /**
- * Keep the candidates whose container can actually hold the payload.
+ * Keep the candidates that are LEGAL LANDINGS for this session — two rungs,
+ * asking two different questions.
  *
- * An EMPTY payload keeps everything: that is the answer for a session with no
- * block-shaped payload to judge (a card re-anchor, a plain-text slice), and it
- * leaves those gestures byte-identical to the pre-416 tree. A name the target
- * schema does not declare is SKIPPED rather than refused — that is the
- * VOCABULARY question (`schema-adopt.ts`, task 328), and answering it here would
- * be a second table for one question.
+ * 1. **CONTAINER** — can this container hold the payload? An EMPTY payload
+ *    keeps everything: that is the answer for a session with no block-shaped
+ *    payload to judge (a card re-anchor, a plain-text slice), and it leaves
+ *    those gestures byte-identical to the pre-416 tree. A name the target
+ *    schema does not declare is SKIPPED rather than refused — that is the
+ *    VOCABULARY question (`schema-adopt.ts`, task 328), and answering it here
+ *    would be a second table for one question.
+ * 2. **IDENTITY** — is this the source's OWN gap (task 480)? A `listItem`'s own
+ *    visual gap line is also its list's boundary, and its list's item's, all the
+ *    way out; each of those used to be a landing, and `listItemDropAdapter`
+ *    answered `wrap` at every one of them — minting a fresh-uuid list and
+ *    EXTRACTING the item from its own list. The rule is `self-drop.ts`'s, the
+ *    same one this session's `planDrop` reads, so the hover and the commit
+ *    cannot answer from two tables (tasks 258 / 321 / 332). A session with no
+ *    in-document source (`null`) keeps every candidate.
+ *
+ * `sourceRange` is REQUIRED rather than defaulted: `null` is the ANSWER "this
+ * session's payload does not live in a document", which is a claim only the
+ * caller can make.
  */
 export function filterInsertCandidates(
   editor: Editor,
   candidates: ReadonlyArray<InsertCandidate>,
   payload: BlockDropPayload,
+  sourceRange: DropSourceRange | null,
 ): InsertCandidate[] {
-  if (payload.length === 0) return [...candidates];
   const { schema } = editor.state;
   const probes: PMNode[] = [];
   for (const name of payload) {
@@ -199,14 +219,29 @@ export function filterInsertCandidates(
     const probe = type.createAndFill();
     if (probe) probes.push(probe);
   }
-  if (probes.length === 0) return [...candidates];
-  return candidates.filter((cand) =>
-    probes.every(
+  return candidates.filter((cand) => {
+    // IDENTITY, rung a — releasing ON the source is nothing whatever the
+    // payload is, so it is asked with no probe and needs none.
+    if (isSelfDrop(editor, sourceRange, cand.insertPos, null)) return false;
+    if (probes.length === 0) return true;
+    // IDENTITY, rung b — the source's own gap LINE, which is a no-op only where
+    // the landing would fabricate the container the source is already in. Asked
+    // per probe and refused if ANY says so, mirroring the CONTAINER rung below,
+    // which keeps a candidate only when EVERY probe fits.
+    if (
+      probes.some((probe) =>
+        isSelfDrop(editor, sourceRange, cand.insertPos, probe),
+      )
+    ) {
+      return false;
+    }
+    // CONTAINER.
+    return probes.every(
       (probe) =>
         fitNodeInContainer(cand.container, cand.index, probe, schema).kind !==
         "reject",
-    ),
-  );
+    );
+  });
 }
 
 /**
@@ -245,6 +280,9 @@ export function candidateFits(
   editor: Editor,
   cand: InsertCandidate,
   payload: BlockDropPayload,
+  sourceRange: DropSourceRange | null,
 ): boolean {
-  return filterInsertCandidates(editor, [cand], payload).length === 1;
+  return (
+    filterInsertCandidates(editor, [cand], payload, sourceRange).length === 1
+  );
 }

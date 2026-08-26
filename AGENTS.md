@@ -3635,6 +3635,129 @@ gesture, no disk), so the check is cheap and real — drag a paragraph into the
 middle of a bullet list, drag a bullet out to top level and back, and drag a
 bullet over a nested list at three cursor X positions.
 
+##### The identity half: a landing that RENDERS IDENTICALLY is not a landing
+
+Same ladder, the cell it could not represent (task 480) — and the case where
+three specs carried the same guard, all three tested the same too-narrow thing,
+and the suite's own classifier mirrored the narrow version, so the defect was
+unrepresentable twice over.
+
+Gabriel's seed symptom, reproduced live: *"grabbing and then dropping in the
+same place — because you decided you didn't want to — should not change
+anything."* Grab a bullet item's handle, wiggle ≤10 px, release at the grab
+point, and the item was **EXTRACTED** out of its own list into a brand-new
+single-item list with a freshly minted uuid. For a `bulletList` the corruption
+is pixel-invisible; for an `orderedList` the numbering visibly restarts
+(`c.` → `a.`).
+
+Two mechanisms, and neither can reach the other's case:
+
+- **the LEVEL band.** The grab handle sits in the MARGIN, LEFT of every
+  candidate box, so `chooseInsertCandidate`'s fall-through hands the drag the
+  SHALLOWEST level from the moment it starts — i.e. the band every gesture
+  BEGINS in means "extract me to top level". (Pre-416 that same release hit the
+  retired `resolveSubItemPeerBlock`, whose peer boundary WAS the item's own, so
+  this is a 416 regression for the one X band no gesture can avoid.)
+- **the GUARD.** `planDrop`'s self-drop test was `insertPos` inside the
+  payload's own `[from, to]` — ONE level of a gap that exists at several. A
+  `listItem`'s own visual gap line is also its LIST's boundary, and that list's
+  item's, all the way out; every one of those is separated from the item's own
+  boundary by nothing but ancestor tokens, so the guard missed, the adapter
+  answered `wrap`, and `buildWrap` minted the list.
+
+> **A landing is a NO-OP when it leaves the payload where the reader already
+> sees it — which is two separate claims, because a gesture has two separate
+> ways of going nowhere.** The MODEL rule: the insert position is the source's
+> own GAP LINE (nothing but ancestor open/close tokens between it and the
+> source's boundary) **and** the fit says `wrap`. The GESTURE rule: the pointer
+> never left the point it was GRABBED at. Both are applied to the AFFORDANCE, so
+> the bar is never painted at a landing the release refuses (tasks 258/321/332).
+
+`src/components/drop-mode/self-drop.ts` is the SSOT for both. Seven rules they
+earned:
+
+- **The gap-line test is ARITHMETIC, and the arithmetic is exact rather than a
+  heuristic.** Every unit step changes `$pos.depth` by at most ±1, so a span of
+  N positions whose depth RISES by exactly N can only be N open tokens, and one
+  whose depth FALLS by exactly N can only be N close tokens. Nothing else fits —
+  and if every step is an open token, the nodes opened are BY CONSTRUCTION the
+  ancestor chain containing the source, so there is no separate "are these MY
+  ancestors?" question to get wrong.
+- **The gap line ALONE is too strong, and the shipped `exampleItem` outdent is
+  the proof.** Dragging the last item of a nested example list onto its parent
+  item's boundary is the same gap line and is a real, tested, useful move. What
+  separates it from the corruption is what the landing has to BUILD: where the
+  container accepts the node DIRECTLY the item joins a different, existing
+  container and visibly dedents; where nothing accepts it bare, the wrap rung
+  FABRICATES the source's own parent KIND at the source's own indent, so the
+  page renders identically while the list identity changes and the numbering
+  restarts. **Same gap line AND `wrap`** — measured, the gap line alone fails
+  that control. (The fit's verdict KIND is independent of the wrap vocabulary's
+  ORDER, so this asks the same question `planDrop`'s own fit will, with no
+  `prefer` to keep in step.)
+- **WHOLE NODES only, and the scoping is load-bearing.** The rule presupposes
+  the payload IS the node whose boundary the gap is. A text SLICE is not:
+  moving the first three words of a paragraph into the gap immediately above it
+  MATERIALIZES a new paragraph, which is a real change even though that gap is
+  one open token from the range's `from`. So `text-range-move` declares no
+  `sourceRangeFor`, keeps the narrow inside-the-range test, and says why at its
+  own site — a false refusal of the commonest outdent-a-fragment gesture would
+  be worse than the bug.
+- **The MODEL rule cannot reach the reported headline, and no model rule
+  could.** A MIDDLE item's list boundary has a real sibling between it and the
+  source, so it is a genuine outdent. What is wrong there is the GESTURE, not
+  the landing — which is why the dead zone is not a UX nicety bolted on but the
+  second half of the law, owned ONCE by the content-drag terminal (the shape
+  task 470 chose for the DIVIDER family) rather than restated per spec.
+- **The dead zone is measured from the PRESS point, so it is plumbed.** A
+  threshold-crossing producer only learns it has a drag at the first sample past
+  the threshold, and with a fast pointer that sample can be far from the press —
+  so `LiftOptions.grabOrigin` carries the mousedown and `beginDropSession`'s
+  `origin` becomes it. Radius 10 px, sized from the producers' own thresholds
+  (5 px grab handle, 8 px inline-atom grab): a gesture back inside the radius
+  that STARTED it is, by its own producer's definition, no longer a drag.
+- **…and it finally gives `DropSession.origin` a READER.** The field was written
+  by every producer, documented as "used by ESC / leave logic", and read by
+  NOTHING since the controller shipped — the dead-facet shape ("The field half"),
+  WIRE-it-or-DELETE-it.
+- **The source range is resolved ONCE per session** (`spec.sourceRangeFor`, the
+  twin of `blockPayloadFor`), because it walks the document and nothing edits the
+  document under a hold gesture. It carries its EDITOR, so a position in another
+  document says nothing about this one.
+
+CI: [self-drop-origin.test.ts](src/components/drop-mode/__tests__/self-drop-origin.test.ts)
+(the arithmetic over the REAL schema, the wrap conjunction with its DIRECT
+control, the dead zone through the REAL controller, and the census) plus a new
+source's-own-row sweep in
+[list-drop-matrix.test.ts](src/components/drop-mode/__tests__/list-drop-matrix.test.ts).
+**That suite could not represent this**: its `TARGET_ROWS` never included the
+source's own row, and its `selfDrop` classifier mirrored the same one-level test
+`planDrop` carried — so "release at the grab point" was unrepresentable and a
+near-self ancestor-boundary landing scored `correct`. Its leg *"the SELF-DROP is
+the one no-op that still paints — and it is honest"*, which argued that closing
+this "would need the hit-test to know the source's RANGE", is RENEGOTIATED in
+place with the reason at the site: the hit-test knows it now. The leg with teeth
+is the CENSUS — the predicate was never the part that could misbehave, a
+controller that threads `null` where the session's range belongs is, and that
+type-checks perfectly. Measured by neutering each half in turn: the pre-480
+own-range rule takes 4 legs, the dead zone 3, the wrap conjunction 2 (one of them
+the shipped nested-tier outdent control), a `null` threaded from the controller 1,
+and a spec that drops its declaration 1.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real — the dev doc's "List Torture"
+section: grab `Beta` and `Nested numbered C`, wiggle, release at the grab point,
+and nothing may change; then drag each deliberately to another gap and confirm
+it still moves.
+
+**Residual, stated.** The LEVEL band itself is untouched: the grab handle for a
+level-N item still sits at an X the candidate ladder reads as level N−1 (or, for
+a top-level list, left of every box and so "shallowest"), because the handle band
+lies OUTSIDE the editor column that the ladder's thresholds are the left edges
+of. Calibrating the X axis to the handle band is the deeper fix for *which level
+the grab point means* and needs live geometry to size; the dead zone is what
+makes the un-calibrated band harmless at the one X where it always bit.
+
 #### The other gesture: the Stack capture never asked the facet built to answer it
 
 Same law, outside drop-mode entirely (task 332) — and the case where the SSOT existed, was
