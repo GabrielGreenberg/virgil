@@ -1155,6 +1155,33 @@ bare *"No items yet"* fails it: it names the absence and teaches nothing. A
 found."*) — nothing is missing, and the way forward is the query the user
 already has.
 
+**A panel's `emptyState` is its GENUINELY-empty copy, and nothing else.** An
+archivable card panel is looked at through a per-panel *View Active / View
+Archives / View All* filter, and a filter is what usually empties the body —
+so the empty state answers that too, from ONE place, and no panel authors a
+second string. `CardListPanel` holds both sets (the raw `items` and the
+`visibleItems` the filter left), so it picks: with something filtered out it
+renders the shared view-aware state
+([`ArchiveViewEmptyState`](panels/_shared/ArchiveViewEmptyState.tsx), chosen by
+the pure `resolveArchiveEmptyReason` in `card-archive-view.tsx`), and otherwise
+the panel's own sentence. A ninth archivable panel inherits this by shipping.
+
+Two rules that copy obeys, because they are what made the pre-478 sentence
+wrong rather than merely terse. It **names the VIEW, not the panel** — *"Nothing
+archived yet. Switch to View Active in the ⋮ menu."*, with the hidden count
+beside it, because *"No tasks yet"* over twelve live cards reads as loss. And it
+**never instructs an action the current view would hide**: the way forward is
+the way OUT of the view. The same rule reaches the mechanism, not just the
+prose — pressing "+" in the Archives view leaves that view, so the created card
+is not born invisible.
+
+The mode is **persistent chrome, not a checkmark in an open menu.** While a card
+panel is under a non-default view its header carries the view's name beside the
+count (`.panel-header-view` — *"NOTES ARCHIVES 0"*), and that label
+un-suppresses a ZERO count: with a filter on, 0 is the fact, and hiding it is
+exactly what made an archives-view header identical to an empty panel's. The
+default view's header is unchanged. Task 478.
+
 Every clause above is pinned by
 [src/__tests__/panel-empty-state-contract.test.ts](__tests__/panel-empty-state-contract.test.ts):
 the class string, the no-second-speller census (both silos), the routing, the
