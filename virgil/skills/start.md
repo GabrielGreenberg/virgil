@@ -250,9 +250,13 @@ If the user follows up with a concrete request, jump to Step 2.
 ### Step 4 — Heavy-library branch (mount-or-queue)
 
 Triggered when the matched library skill's **own description declares it a
-`Heavy operation`**, AND the current mode is **not** `in-library`.
+`Heavy operation`** — the phrase, in any capitalisation — AND the current mode
+is **not** `in-library`.
 
-That declaration is the gate — there is no list here to keep in step with the
+That declaration is the gate — the phrase, not its casing: the one skill this
+Step's Queue branch is written for spells it `HEAVY operation`, and a
+case-sensitive read of the gate would drop it to the light default and dispatch
+it inline from a paper session. There is no list here to keep in step with the
 skill set, and there was: the previous hand list had already lost
 `/library/merge-bibs`, which folds *every* paper's `references.bib` into
 `master.bib` library-wide. A heavy skill says so in its own `description:`
@@ -288,14 +292,23 @@ Print a 3-line explanation tailored to the mode:
   (default: ~/Virgil-Library). Once it's set up, ask me again.
   ```
 
-Then ask:
+Then ask — and ask only what the mode can honour, because an option nothing
+can carry out is the same false affordance this Step was rescued from:
 
-> Mount the library, queue this for later, run it here anyway, or skip?
+- **paper-session** → *Mount the library, queue this for later, run it here
+  anyway, or skip?*
+- **no-library** → *Skip for now?* Mount has nothing to mount, Queue has
+  nowhere to write, and Run-here-anyway would dispatch a skill whose own
+  Bootstrap resolves the library root and is told to stop when it cannot.
 
 Branches:
 
-- **Mount** → confirm and stop. The user takes manual action; on their
-  next turn, run Step 1 fresh.
+- **Mount** → confirm and stop. Say where the answer will show up: the mode
+  is a fact about **this session's working folder**, so opening the library
+  as another project gives you a *new* session to ask in — this one keeps
+  answering `paper-session`. (`cd`-ing this session into the library root
+  flips it in place; opening a second project does not.) Either way, the next
+  turn runs Step 1 fresh.
 - **Queue** (only for `/library/deep-index <citekey>`, and only in
   `paper-session` — a queue entry needs a library to write into, and
   deep-index is the only heavy op the queue represents; the others *are*

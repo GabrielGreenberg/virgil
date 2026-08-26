@@ -51,6 +51,7 @@ import {
   writeFileSync,
   rmSync,
   readFileSync,
+  readdirSync,
   realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,6 +68,15 @@ const start = () => readFileSync(START_MD, "utf8");
 /** Hard-wrapped prose re-wraps freely — every PHRASE assertion runs against a
  *  whitespace-collapsed copy, for the reason `front-door-doctrine` gives. */
 const startFlat = () => start().replace(/\s+/g, " ");
+
+/** Step 1, whole — the section where the mode is decided. */
+function stepOne(): string {
+  const body = start();
+  const at = body.indexOf("### Step 1");
+  expect(at, "start.md has no Step 1").toBeGreaterThan(-1);
+  const end = body.indexOf("### Step 2", at);
+  return body.slice(at, end === -1 ? undefined : end);
+}
 
 let box: string;
 /** A directory that LOOKS like a library to `_looks_like_library`. */
@@ -176,20 +186,34 @@ describe("start.md and the resolver agree about the vocabulary", () => {
   it("start.md runs --mode, not --get, for the mode question", () => {
     // `--get` cannot answer this: it prints a path and exits 2 when there is
     // none, so a front door built on it has to infer the mode from an error.
+    // Asserted over the Step 1 SLICE and by the two things that matter (the
+    // script and the flag) rather than by one placeholder spelling, so
+    // dropping the `<…>` brackets does not fail the leg for a reason
+    // unrelated to the rule it guards.
+    const s1 = stepOne().replace(/\s+/g, " ");
     expect(
-      startFlat().includes("library_path.py> --mode"),
+      s1.includes("library_path.py") && s1.includes("--mode"),
       "start.md's Step 1 does not run `library_path.py --mode`, the one door " +
         "that answers the mode question.",
     ).toBe(true);
   });
 
-  it("names every mode the resolver can emit", () => {
-    const body = start();
-    const missing = emitted().filter((m) => !body.includes(m));
+  it("names every mode the resolver can emit, IN THE MODE TABLE", () => {
+    // Scoped to the table rather than the whole file, and the scoping is the
+    // leg. Measured: a bare whole-file `includes` is satisfied by the Step 3
+    // onboarding template and the Step 4 branch labels, so deleting the ENTIRE
+    // Step 1 mode table — the only place that says what each mode MEANS and
+    // which library skills it permits — leaves every leg green. The table is
+    // the operative statement; a mode with no row is a state with no rule.
+    const rows = new Set(
+      [...stepOne().matchAll(/^\s*\|\s*\*\*([a-z][a-z-]*)\*\*\s*\|/gm)].map((m) => m[1]),
+    );
+    expect(rows.size, "start.md's Step 1 has no mode table").toBeGreaterThan(0);
+    const missing = emitted().filter((m) => !rows.has(m));
     expect(
       missing,
-      `start.md names no branch for ${missing.join(", ")} — a state the ` +
-        `resolver can return and the prompt has no behaviour for.`,
+      `start.md's Step 1 mode table has no row for ${missing.join(", ")} — a ` +
+        `state the resolver can return and the prompt states no rule for.`,
     ).toEqual([]);
   });
 
@@ -198,10 +222,18 @@ describe("start.md and the resolver agree about the vocabulary", () => {
     // unreachable and NOTHING said so. A mode word in the prompt that the
     // resolver cannot produce is a dead branch by definition.
     const known = new Set(emitted());
+    // BOTH spellings, and that is the leg. `start.md` states its mode words
+    // two ways — **bold** in the table and the onboarding line, `backticked`
+    // at every OPERATIVE gate (Step 1's routing rung, Step 2 rule 2, Step 4's
+    // trigger, the Queue scope, the skip-Step-4 line). Measured on a scratch
+    // copy: with a bold-only extractor, rewriting Step 2 rule 2 to
+    // "when the mode is not `full-ops`" — a dead gate, i.e. the pre-475 defect
+    // verbatim — passed 15/15. The delimiter must wrap the WHOLE token, so a
+    // longer backticked span like `.claude/commands/library/` cannot match.
     const named = new Set(
-      [...start().matchAll(/\*\*([a-z][a-z-]*(?:-ops|-library|-session))\*\*/g)].map(
-        (m) => m[1],
-      ),
+      [...start().matchAll(/(?:\*\*|`)([a-z]+(?:-[a-z]+)+)(?:\*\*|`)/g)]
+        .map((m) => m[1])
+        .filter((n) => /-(?:ops|library|session)$/.test(n)),
     );
     // Canary: an extractor that matched nothing would make this pass vacuously.
     expect(named.size, "start.md bolds no mode name at all").toBeGreaterThan(0);
@@ -232,29 +264,38 @@ describe("start.md and the resolver agree about the vocabulary", () => {
         `unreachable:\n\n${docRung}`,
     ).toBe(true);
     expect(
-      /do \*\*not\*\* stop yet|not stop yet/.test(docRung),
-      `Step 1's doc-context rung still stops before the mode is known, so ` +
-        `the mode cannot decide whether a paper folder is required.`,
+      !/\bStop if no doc context can be resolved\b/.test(docRung),
+      `Step 1's doc-context rung still stops unconditionally before the mode ` +
+        `is known, so the mode cannot decide whether a paper folder is ` +
+        `required — and \`in-library\` is exactly the mode that has none.`,
     ).toBe(true);
   });
 
   it("does not reintroduce the retired `.claude/commands/library/` probe", () => {
-    // A prose census, and it is scoped to the SHAPE of the retired question
-    // rather than to the directory name: `start.md` legitimately explains why
-    // that directory means nothing, so a bare name grep would indict the fix.
-    const flat = startFlat();
-    const probes = [
-      "library root has `.claude/commands/library/`",
-      "check whether the library root",
-      "if the library root contains `.claude`",
-    ].filter((p) => flat.includes(p));
+    // SCOPED BY PARAGRAPH, not by phrase. `start.md` legitimately explains
+    // why that directory means nothing, so a bare name grep would indict the
+    // fix — but a list of exact phrasings only ever catches the wording that
+    // happened to ship. Measured: against three literals, inserting
+    // "Then look at the library root for a `.claude/commands/library/`
+    // directory: if it is there the library is mounted here and every library
+    // skill runs inline." into Step 1 passed 15/15.
+    //
+    // The mode is decided in Step 1 and nowhere else, so the rule is simply
+    // that the directory may not be MENTIONED there outside the paragraph
+    // that retires it. Brittle in one stated direction: rewording that
+    // paragraph's opening fails LOUDLY (a false red), never vacuously.
+    const RETIREMENT = "Do **not** reintroduce";
+    const offenders = stepOne()
+      .split(/\n\s*\n/)
+      .filter((para) => para.includes(".claude/commands") && !para.includes(RETIREMENT));
     expect(
-      probes,
-      `start.md decides the mode from a \`.claude/commands/\` probe again ` +
-        `(${probes.join(", ")}). That directory is written by the PWA's ` +
-        `per-folder sync into EVERY managed folder, in the same unfiltered ` +
-        `pass that writes \`.virgil/scripts/\` — the thing library_path.py ` +
-        `already requires. The two questions share one cause.`,
+      offenders.map((p) => p.replace(/\s+/g, " ").slice(0, 120)),
+      `start.md's Step 1 — where the mode is decided — mentions ` +
+        `\`.claude/commands\` outside the paragraph that retires it. That ` +
+        `directory is written by the PWA's per-folder sync into EVERY managed ` +
+        `folder, in the same unfiltered pass that writes \`.virgil/scripts/\` ` +
+        `— the thing library_path.py already requires. The two questions ` +
+        `share one cause, which is what made the middle mode unreachable.`,
     ).toEqual([]);
   });
 });
@@ -269,16 +310,21 @@ describe("Step 4 is reachable, and its Queue branch states the entry", () => {
     return body.slice(at, end === -1 ? undefined : end);
   }
 
+  /** Step 4's TRIGGER CONDITION — the first paragraph AFTER the heading.
+   *  Scoped to the condition rather than the section: the Queue branch below
+   *  legitimately names modes and skills of its own. */
+  function stepFourTrigger(): string {
+    const s4 = stepFour();
+    const bodyStart = s4.indexOf("\n\n") + 2;
+    const rel = s4.slice(bodyStart).indexOf("\n\n");
+    return s4.slice(bodyStart, rel === -1 ? undefined : bodyStart + rel);
+  }
+
   it("its trigger names a mode the resolver can emit", () => {
     // The gate reads "the mode is not X". If X is a mode nothing returns, the
     // gate is always true or always false and the branch is dead either way —
     // which is what `not full-ops` was.
-    const s4 = stepFour();
-    // The first PARAGRAPH after the heading — the condition itself, not the
-    // whole section (whose Queue branch legitimately names modes of its own).
-    const bodyStart = s4.indexOf("\n\n") + 2;
-    const rel = s4.slice(bodyStart).indexOf("\n\n");
-    const trigger = s4.slice(bodyStart, rel === -1 ? undefined : bodyStart + rel);
+    const trigger = stepFourTrigger();
     const named = [
       ...trigger.matchAll(/`(no-library|in-library|paper-session)`/g),
     ].map((m) => m[1]);
@@ -292,6 +338,38 @@ describe("Step 4 is reachable, and its Queue branch states the entry", () => {
       mode(paper, { libraryRoot: lib })[0],
     ]);
     for (const m of named) expect(emitted.has(m), `${m} is not an emitted mode`).toBe(true);
+  });
+
+  it("the trigger's phrase criterion covers the CASINGS actually shipped", () => {
+    // The gate is a phrase a skill writes about itself, and the skills do not
+    // agree on its casing: five say `Heavy operation` and `deep-index` — the
+    // one skill this Step's whole Queue branch exists for — says `HEAVY
+    // operation`. `front-door-doctrine`'s derivation has always been
+    // case-insensitive; the PROMPT stated one literal, so a model reading it
+    // strictly would drop the one op that matters to the light default and
+    // dispatch it inline from a paper session. The leg fires only when the
+    // shipped casings genuinely differ, so it is a measurement rather than a
+    // wording pin: normalise the skills and it stops asking.
+    const dir = join(repoRoot, "library", "skills");
+    const casings = new Set<string>();
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".md") || f.startsWith("_")) continue;
+      const fm = readFileSync(join(dir, f), "utf8").match(/^---\n([\s\S]*?)\n---/);
+      if (!fm) continue;
+      for (const m of fm[1].replace(/\s+/g, " ").matchAll(/(\w+ operation)/gi)) {
+        if (/^heavy operation$/i.test(m[1])) casings.add(m[1]);
+      }
+    }
+    // Canary: a derivation that found nothing would make this pass vacuously.
+    expect(casings.size, "no library skill declares a heavy operation").toBeGreaterThan(0);
+    if (casings.size === 1) return;
+    const trigger = stepFourTrigger();
+    expect(
+      /capitalisation|capitalization|case/i.test(trigger),
+      `library skills declare the heavy phrase in ${casings.size} casings ` +
+        `(${[...casings].join(", ")}) and Step 4's trigger states one literal ` +
+        `with no note that casing does not matter:\n\n${trigger}`,
+    ).toBe(true);
   });
 
   it("the Queue branch states `status: \"requested\"`", () => {
