@@ -85,10 +85,19 @@ export const FULL_CHROME: EditorChromeConfig = {
 
 /**
  * Reader preset: read-only main text, MenuBar edit items hidden, the
- * six reading-affordance panels are visible.
+ * reading-affordance panels are visible.
  * Mirrors the user's explicit list (outline / footnotes / examples /
- * citations / bibliography / notes). Note cards stay editable so users
- * can write inside them.
+ * citations / bibliography / notes) plus `search` (task 485 — a find-in-
+ * document panel is a reading affordance if anything is, and the Search
+ * panel writes nothing: it navigates and paints a TRANSIENT decoration).
+ * Note cards stay editable so users can write inside them.
+ *
+ * A whitelist is a claim about what a HOST offers, so it is also what the
+ * Search panel's SCOPE set derives from — `scopesForVisiblePanels`. Every
+ * scope but `mainText` jumps to a panel, and a jump into a panel this host
+ * hides docks a band the rail elides: a dead click. So the reader's search
+ * offers main text / footnotes / notes / citations / bibliography and does
+ * not offer todos / archive / cuts / reports / revisions.
  */
 export const READER_CHROME: EditorChromeConfig = {
   showMenuBarEditItems: false,
@@ -96,6 +105,7 @@ export const READER_CHROME: EditorChromeConfig = {
   showParagraphFloatTitleEdit: false,
   visiblePanelKinds: [
     "outline",
+    "search",
     "footnotes",
     "examples",
     "citations",

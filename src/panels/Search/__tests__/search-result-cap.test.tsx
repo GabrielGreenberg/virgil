@@ -41,6 +41,7 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
+import { SCOPE_ORDER } from "@/lib/search-sources";
 import SearchPanel, {
   INITIAL_SEARCH_STATE,
   MAX_RENDERED_RESULTS,
@@ -120,6 +121,7 @@ function Harness() {
       comments={[]}
       bibEntries={[]}
       onOpenItem={vi.fn()}
+      availableScopes={SCOPE_ORDER}
       state={state}
       onStateChange={setState}
     />

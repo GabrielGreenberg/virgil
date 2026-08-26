@@ -201,6 +201,39 @@ export const SCOPE_ORDER: SearchScope[] = [
   "bibliography",
 ];
 
+/**
+ * Which scopes a HOST may offer, DERIVED from that host's visible-panel
+ * whitelist (`EditorChromeConfig.visiblePanelKinds`).
+ *
+ * Every scope but `mainText` ends its jump in a PANEL — `navigateToResult`
+ * calls `onOpenItem(SCOPE_PANEL[scope], itemId)`, which docks that panel into
+ * the live `dockStack`. A host that hides the panel (the Library Reader hides
+ * todos / archive / cutter / reports / revisions) still HAS the sidecar hooks
+ * mounted, so the hits are real — but the rail filters the docked band out and
+ * the click surfaces nothing: the false-affordance class ("what the hover
+ * OFFERS is what the commit ACCEPTS"). So the offer follows the whitelist, in
+ * ONE derivation rather than a per-host scope list that has to stay in step.
+ *
+ * `mainText` has no panel (`SCOPE_PANEL` is partial) and is therefore always
+ * available — it navigates the document itself. `undefined` (no whitelist =
+ * the main app's FULL_CHROME) means every scope, which keeps the main editor
+ * byte-identical.
+ *
+ * Takes the WHITELIST rather than the chrome object so this leaf keeps its
+ * import-free relationship to `components/editor-layout/chrome-config` (the
+ * placement rule `latex-markers.ts` / `node-attr-sets.ts` earned).
+ */
+export function scopesForVisiblePanels(
+  visiblePanelKinds: readonly PanelKind[] | undefined,
+): SearchScope[] {
+  if (!visiblePanelKinds) return [...SCOPE_ORDER];
+  const visible = new Set<PanelKind>(visiblePanelKinds);
+  return SCOPE_ORDER.filter((scope) => {
+    const panel = SCOPE_PANEL[scope];
+    return panel === undefined || visible.has(panel);
+  });
+}
+
 /** Compile the user query into a RegExp or return null on bad patterns. */
 export function compileQuery(
   query: string,

@@ -1,7 +1,8 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 import SearchPanel, { type SearchPanelState } from "@/panels/Search";
+import { scopesForVisiblePanels } from "@/lib/search-sources";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { useNotes } from "@/hooks/useNotes";
 import type { useCutter } from "@/hooks/useCutter";
@@ -12,6 +13,7 @@ import type { ArchivedSnippet, OrphanedFootnote, ReportItem } from "@/lib/types"
 import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useEditorChrome } from "../chrome-context";
 
 type NotesHook = ReturnType<typeof useNotes>;
 type CutterHook = ReturnType<typeof useCutter>;
@@ -40,6 +42,17 @@ export interface SearchHostProps {
 export function SearchHost(p: SearchHostProps) {
   const { editorInstance } = useEditorRefContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
+  // Task 485 — the HOST resolves "which scopes may this surface offer?" and
+  // the panel renders what it is given. Every scope but `mainText` jumps into
+  // a PANEL, so the answer is DERIVED from the same whitelist the strip
+  // renders from: a host that hides `todo` must not offer a todo hit whose
+  // click docks a band its rail elides. `undefined` (FULL_CHROME) → all
+  // scopes, so the main editor is untouched.
+  const chrome = useEditorChrome();
+  const availableScopes = useMemo(
+    () => scopesForVisiblePanels(chrome.visiblePanelKinds),
+    [chrome.visiblePanelKinds],
+  );
   return (
     <SearchPanel
       editor={editorInstance}
@@ -57,6 +70,7 @@ export function SearchHost(p: SearchHostProps) {
       comments={p.comments}
       bibEntries={p.bibEntries}
       onOpenItem={p.openItemInPanel}
+      availableScopes={availableScopes}
       state={p.searchState}
       onStateChange={p.setSearchState}
     />

@@ -23,9 +23,14 @@ describe("READER_CHROME — pinned read-only preset", () => {
     expect(READER_CHROME.showParagraphFloatTitleEdit).toBe(false);
   });
 
-  it("exposes exactly the six reading-affordance panels (order pinned)", () => {
+  it("exposes exactly the reading-affordance panels (order pinned)", () => {
+    // Task 485 added `search` — Gabriel asked for it by name, and a
+    // find-in-document panel is a reading affordance if anything is. The list
+    // stays an EXACT-set pin so any further widening is a conscious,
+    // test-breaking diff (the reason this suite exists).
     expect(READER_CHROME.visiblePanelKinds).toEqual([
       "outline",
+      "search",
       "footnotes",
       "examples",
       "citations",

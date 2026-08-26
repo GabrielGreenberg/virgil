@@ -9,9 +9,16 @@
  * The target docks on its placed/registry side (mirroring `resolveSide` in
  * `useViewPrefs`). When the search panel is itself docked on that SAME side it
  * is touched FIRST so the target's dock-open evicts the least-recently-used
- * band rather than search — the user is actively reading results from it. In
- * the Library Reader the search panel is never docked, so
- * `dockedSideOf(prefs,"search")` is null and only the target docks.
+ * band rather than search — the user is actively reading results from it.
+ *
+ * (Pre-485 this comment ended "in the Library Reader the search panel is never
+ * docked, so `dockedSideOf(prefs,"search")` is null and only the target
+ * docks." That is no longer true — `READER_CHROME` whitelists `search` — and
+ * nothing here had to change for it: the rule reads the LIVE `dockStack`, so
+ * the reader now takes the same both-docked branch the main app does. The
+ * sentence is corrected rather than deleted because a comment describing a
+ * premise the code no longer has is how the next reader concludes a branch is
+ * unreachable.)
  *
  * Returned as an ordered list of `(id, side)` docks for the caller to apply via
  * `openPanelDocked`, so the side math stays unit-testable without rendering the
