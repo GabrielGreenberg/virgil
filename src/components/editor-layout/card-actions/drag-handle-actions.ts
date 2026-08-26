@@ -423,7 +423,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           });
           if (!record) break;
           const card = cardCreation.createHighlight({
-            anchor: { anchorId: record.anchorId, anchorText: record.text },
+            anchor: {
+              anchorId: record.anchorId,
+              anchorText: record.text,
+              anchorContent: record.content,
+            },
             paragraphId,
             mode: "omni",
           });
@@ -1114,7 +1118,14 @@ function outerRangeFor(
 function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
   const record = createLinkedAnchor(ed, kind);
   if (!record) return undefined;
-  return { anchorId: record.anchorId, anchorText: record.text };
+  // `anchorContent` (task 488) is the RICH twin of `record.text` — carry it, or
+  // every card minted here shows its captured passage as the flattened line
+  // `doc.textBetween` produced.
+  return {
+    anchorId: record.anchorId,
+    anchorText: record.text,
+    anchorContent: record.content,
+  };
 }
 
 /**

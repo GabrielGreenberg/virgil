@@ -74,6 +74,11 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     selectedText:
       r.selectedText ??
       (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+    // Carried through unchanged (task 488). There is no snapshot fallback and
+    // there must not be one: the link's `textSnapshot` is the PLAIN relocation
+    // string, so synthesising a rich body from it would put a second, lossier
+    // answer where the door's own parse rung already gives the right one.
+    ...(r.selectedContent ? { selectedContent: r.selectedContent } : {}),
     links,
   };
 }
@@ -108,6 +113,11 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     selectedText:
       r.selectedText ??
       (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+    // Carried through unchanged (task 488). There is no snapshot fallback and
+    // there must not be one: the link's `textSnapshot` is the PLAIN relocation
+    // string, so synthesising a rich body from it would put a second, lossier
+    // answer where the door's own parse rung already gives the right one.
+    ...(r.selectedContent ? { selectedContent: r.selectedContent } : {}),
     links,
   };
 }
@@ -216,7 +226,7 @@ export function useCutter(
     (
       paragraphId: string | null,
       content?: JSONContent,
-      anchor?: { anchorId: string; anchorText: string },
+      anchor?: { anchorId: string; anchorText: string; anchorContent?: unknown },
       targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
       let card: CutterCommentCard = {
@@ -232,6 +242,9 @@ export function useCutter(
         // `ai-requests.json` entry.
         aiRequest: true,
         selectedText: anchor?.anchorText,
+        // The RICH twin of the captured span (task 488): what the "Original"
+        // surfaces render. `anchorText` stays the plain relocation currency.
+        selectedContent: anchor?.anchorContent,
         links: [],
       };
       if (paragraphId) card = addTextObjectLink(card, "cutter-comment", paragraphId, targetKind);
@@ -259,7 +272,7 @@ export function useCutter(
     (
       paragraphId: string | null,
       originalText?: string,
-      anchor?: { anchorId: string; anchorText: string },
+      anchor?: { anchorId: string; anchorText: string; anchorContent?: unknown },
     ) => {
       let card: CutterSuggestionCard = {
         kind: "suggestion",
@@ -273,6 +286,9 @@ export function useCutter(
         instructions: "",
         status: "pending",
         selectedText: anchor?.anchorText,
+        // The RICH twin of the captured span (task 488) — display-only; the
+        // `original_text` string stays the currency the apply path splices.
+        selectedContent: anchor?.anchorContent,
         links: [],
       };
       if (paragraphId)

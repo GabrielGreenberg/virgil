@@ -3950,6 +3950,21 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   color: var(--muted-light);
 }
 
+/* A CAPTURED PASSAGE (task 488) — the one door every surface that quotes a
+   span of the paper renders through (`panels/_shared/captured-passage.tsx`).
+   It borrows the main-text vocabulary via `StaticBorrowedText`, so it inherits
+   `.rtf-content`'s EDITOR-BODY metrics: a 2.5rem min-height and vertical
+   padding a body reserves for its caret. An excerpt is a QUOTE inside a card,
+   not a body, so both are dropped — and the ink is handed back to the block
+   that hosts it, which is what preserves the red "Original" cue the
+   suggestion-field vocabulary assigns (the door drops `color` from the panel
+   body style for exactly this reason). */
+.captured-passage .rtf-content {
+  min-height: 0;
+  padding: 0;
+  color: inherit;
+}
+
 /* Drop highlight on the wrapper */
 .rtf-drop-target {
   outline: 2px dashed var(--footnote-color, #b45757);

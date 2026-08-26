@@ -84,6 +84,14 @@ export interface RevisionRequestCard {
   aiRequest: boolean;
   /** Mode B captured text (undefined for paragraph-only / unanchored). */
   selectedText?: string;
+  /** The RICH capture of the same passage, taken at anchor time (task 488).
+   *  `selectedText` is `doc.textBetween`, which drops every mark and every
+   *  inline ATOM, so no render-time parse can recover a citation or a `$x$`
+   *  the user selected — this is what the "Original" surfaces render. Absent
+   *  on every pre-488 card and on skill-authored records, where the door falls
+   *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
+   *  apply path splices and the copy button copies. */
+  selectedContent?: unknown;
   links: Link[];
 }
 
@@ -118,6 +126,14 @@ export interface RevisionSuggestionCard {
     appliedAt: string; // ISO timestamp
   };
   selectedText?: string;
+  /** The RICH capture of the same passage, taken at anchor time (task 488).
+   *  `selectedText` is `doc.textBetween`, which drops every mark and every
+   *  inline ATOM, so no render-time parse can recover a citation or a `$x$`
+   *  the user selected — this is what the "Original" surfaces render. Absent
+   *  on every pre-488 card and on skill-authored records, where the door falls
+   *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
+   *  apply path splices and the copy button copies. */
+  selectedContent?: unknown;
   links: Link[];
 }
 
@@ -579,6 +595,14 @@ export interface CutterCommentCard {
   aiRequest: boolean;
   /** Mode B captured text (undefined for paragraph-only / unanchored). */
   selectedText?: string;
+  /** The RICH capture of the same passage, taken at anchor time (task 488).
+   *  `selectedText` is `doc.textBetween`, which drops every mark and every
+   *  inline ATOM, so no render-time parse can recover a citation or a `$x$`
+   *  the user selected — this is what the "Original" surfaces render. Absent
+   *  on every pre-488 card and on skill-authored records, where the door falls
+   *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
+   *  apply path splices and the copy button copies. */
+  selectedContent?: unknown;
   links: Link[];
 }
 
@@ -625,6 +649,14 @@ export interface CutterSuggestionCard {
     appliedAt: string; // ISO timestamp
   };
   selectedText?: string;
+  /** The RICH capture of the same passage, taken at anchor time (task 488).
+   *  `selectedText` is `doc.textBetween`, which drops every mark and every
+   *  inline ATOM, so no render-time parse can recover a citation or a `$x$`
+   *  the user selected — this is what the "Original" surfaces render. Absent
+   *  on every pre-488 card and on skill-authored records, where the door falls
+   *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
+   *  apply path splices and the copy button copies. */
+  selectedContent?: unknown;
   links: Link[];
 }
 

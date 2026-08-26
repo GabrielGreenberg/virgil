@@ -32,6 +32,11 @@ import {
   SuggestionTrailing,
   type SuggestionField,
 } from "@/panels/_shared/suggestion-fields";
+// The collapsed cue's ORIGINAL half reads the same door the expanded excerpt
+// does, so the two cannot disagree about what the passage says.
+// `suggested_text` deliberately stays raw: it is EDITABLE currency the user is
+// composing, and its cue must show exactly the bytes they typed.
+import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 
 // Re-exported for backward compatibility — these now live in the shared
@@ -196,6 +201,11 @@ export function CutterSuggestionCard({
         <AppliedRecordBody
           id={card.id}
           originalText={card.appliedChange?.originalText ?? card.original_text}
+          // The rich capture (task 488) describes `original_text`, so it is
+          // only the right companion when that is what is being shown — an
+          // APPLIED card's original is the pre-splice paragraph, real `.tex`
+          // the door's parse rung reads.
+          originalContent={card.appliedChange ? undefined : card.selectedContent}
           explanation={card.explanation}
           cardKind="cutter-suggestion"
           panelKey="cut"
@@ -211,7 +221,7 @@ export function CutterSuggestionCard({
             {card.suggested_text ? (
               <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
             ) : card.original_text ? (
-              <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
+              <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{capturedPassageOneLine({ latex: card.original_text, content: card.selectedContent })}</span></span>
             ) : (
               <CardEmptyText label="empty suggestion" />
             )}
@@ -223,6 +233,7 @@ export function CutterSuggestionCard({
         <PendingAiRecordBody
           id={card.id}
           originalText={card.original_text}
+          originalContent={card.selectedContent}
           suggestedText={card.suggested_text}
           explanation={card.explanation}
           family="cutter-suggestion"
@@ -242,6 +253,9 @@ export function CutterSuggestionCard({
             key={field}
             field={field}
             value={card[field]}
+            // The rich capture behind `original_text` (task 488); the door
+            // ignores it for every other field and for the editable path.
+            content={field === "original_text" ? card.selectedContent : undefined}
             onChange={(v) => onUpdateField(card.id, field, v)}
             readOnly={READONLY_HUMAN_FIELDS.has(field)}
             kindHint={field === "original_text" ? anchorKind : null}

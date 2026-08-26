@@ -23,8 +23,9 @@
  * `links[]` yet.)
  */
 
-import type { Editor } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { captureSliceContent } from "@/lib/tiptap/slice-capture";
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
@@ -634,6 +635,19 @@ export interface LinkedAnchorRecord {
   anchorId: string;
   paragraphId: string;
   text: string;
+  /** The RICH capture of the same span (task 488), when the producer took one.
+   *
+   *  `text` is `doc.textBetween`, which is the RELOCATION currency — the
+   *  `textSnapshot` a Mode-B anchor is re-found by — so it must stay plain doc
+   *  text and cannot carry formatting. But it is ALSO what the revision /
+   *  cutter cards store as their "Original", and there it is lossy in a way no
+   *  render-time parse can undo: `textBetween` drops every mark AND every
+   *  inline ATOM (a citation, a `$x$`, a `\ref` selected inside the span
+   *  contribute nothing at all). So the capture ALSO takes the real slice,
+   *  through the archive path's own door, and the display surfaces prefer it.
+   *  Absent when the producer has no slice to take (the snapshot-relocation
+   *  path) or the destination schema refuses it. */
+  content?: JSONContent;
   createdAt: string;
 }
 
@@ -698,6 +712,20 @@ export function createLinkedAnchor(
   if (sel.to <= sel.from) return null;
   const anchorId = generateEntityId();
   const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
+  // Task 488: the RICH twin, taken BEFORE the mark is applied, through the
+  // shared slice-capture leaf the archive door reads too. `normalizeRichContent`
+  // inside it strips `linkedAnchor` (a DOC_ONLY_MARK), so a span already
+  // carrying another card's anchor captures cleanly.
+  //
+  // Deliberately NOT `prepareCardBodyCapture`: that door exists to prove a
+  // DESTRUCTIVE capture's destination can hold the payload, and nothing is
+  // being deleted here — a passage the render surface cannot represent already
+  // falls back to plain text through `StaticBorrowedText`'s own refusal. Asking
+  // it would also drag the resolved card-body schema, and so the whole
+  // extension stack, into the import graph of a module every card surface pulls.
+  const capturedContent = captureSliceContent(
+    editor.state.doc.slice(sel.from, sel.to),
+  );
   const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
   const cardKind = legacyKindToCardKindString(kind);
   const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
@@ -719,6 +747,7 @@ export function createLinkedAnchor(
     anchorId,
     paragraphId,
     text,
+    content: capturedContent,
     createdAt: new Date().toISOString(),
   };
 }

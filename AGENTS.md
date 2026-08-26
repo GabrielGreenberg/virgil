@@ -7190,6 +7190,110 @@ one-time diff.
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked — open the Library
 list with an accented-surname entry.
 
+##### The passage half: a CAPTURE that flattens is a loss no RENDERER can undo
+
+Same door, the QUOTE a card keeps of the paper (task 488) — and the case where
+the fix has to be in two places because the phenomenon is in two places.
+
+Gabriel, from a real paper: *"when you make an AI request for revision, the
+original is rendered as plain text without formatting — should be more like an
+archive card."* The "Original" a revision / cutter card shows had FOUR
+renderers and THREE answers: `useExcerptCue` and the read-only `original_text`
+field painted the raw STRING in a `whitespace-pre-wrap` block (so a
+skill-authored original — real `.tex` — showed `\emph{...}` / `$x$` /
+`\cite{k}` as SOURCE), the two pending-change foldouts each HAND-SPELLED
+`richLatexToJson(...)` → `BorrowedMainText`, and the collapsed cues showed
+`text.replace(/\s+/g, " ")`.
+
+**And the render fork was only half of it.** A Mode-B anchor's capture is
+`doc.textBetween(from, to, " ")`, which drops every MARK and — because
+ProseMirror's default `leafText` is empty — every inline ATOM outright: a
+citation, a `$x$` or a `\ref` inside the selection contributes NOTHING to that
+string. So for the case Gabriel actually reported the formatting was gone
+BEFORE any surface saw it, and a render-time parse recovers exactly nothing.
+The catcher's recommended surgical fix (project at display time) would have
+fixed the skill-authored originals and left the reported one flattened.
+
+> **A captured passage has ONE door
+> ([captured-passage.tsx](src/panels/_shared/captured-passage.tsx)) with a
+> two-rung ladder — the RICH capture taken at anchor time, else the BYTES
+> parsed at display time — and it is rendered as borrowed main text on every
+> surface, because a captured passage IS main text.** The string stays the
+> currency: the apply path splices `user_text || suggested_text` as BYTES, the
+> copy button copies bytes, and nothing the door produces is written back.
+
+Seven rules it earned:
+
+- **The capture is a SECOND field, not a change to the first.** `anchorText` is
+  the RELOCATION currency — the `textSnapshot` a Mode-B anchor is re-found by
+  on reload (`reapply-mode-b-anchors`) — so it must stay plain doc text.
+  Re-spelling it as `.tex` bytes would have unified the currency and broken
+  anchor recovery, which is why `LinkedAnchorRecord.content` /
+  `AnchorRef.anchorContent` / `card.selectedContent` sit BESIDE the string
+  rather than replacing it. Optional at every rung, so there is no migration:
+  every pre-488 card takes the parse rung.
+- **The display capture does NOT enter `prepareCardBodyCapture`, and the reason
+  is the import graph as much as the semantics.** That door exists to prove a
+  DESTRUCTIVE capture's destination can hold the payload; nothing is deleted
+  here, and a passage the render surface cannot represent already falls back to
+  plain text through `StaticBorrowedText`'s own refusal contract. Asking it
+  would also drag the resolved card-body schema — and so the whole extension
+  stack — into `links.ts`, a module every card surface pulls in (measured: it
+  broke eleven suites with `Cannot find module '@/lib/storage-fsa'`). So the
+  slice→JSON conversion moved to a LEAF
+  ([slice-capture.ts](src/lib/tiptap/slice-capture.ts)) that both doors read,
+  which is what keeps the payload the destructive door VALIDATES byte-identical
+  to the one the display capture takes.
+- **STATIC, not `BorrowedMainText`.** Nothing here is editable, so an editor
+  buys nothing and costs a mount (the card-presence-tier doctrine). Converting
+  the two pending-change foldouts onto the door RETIRES two live editors as
+  well as unifying the answer — `BorrowedMainText` stays right for a card's OWN
+  body (`ExampleCard`), which is the one scoped exemption on the census.
+- **The one-line cue reads the SAME resolution.** A collapsed card projects the
+  door's own JSON through `richJsonToPlainText`, so the cue and the expanded
+  excerpt cannot disagree about what the passage says. `suggested_text`
+  deliberately stays raw and says so at the site: it is EDITABLE currency the
+  user is composing, and its cue must show the bytes they typed.
+- **The door drops `color` from the panel body style.** `.rtf-content-footnote`
+  sets a hard ink, so a passage that wrote its own colour would win over the red
+  "Original" cue the field vocabulary assigns; the CSS rule hands the ink back
+  (`color: inherit`) and drops the 2.5rem min-height and padding
+  `.rtf-content` reserves for a caret. An excerpt is a QUOTE inside a card, not
+  a body.
+- **The parse is MEMOIZED on `(latex, content)`.** The rung mints a fresh object
+  per call and `StaticBorrowedText` memoizes its HTML on `value` IDENTITY, so
+  without it the passage re-parses and re-serializes on every render of the host
+  card. O(passage), never O(doc), and off the keystroke path either way — but a
+  card re-renders for plenty of reasons that have nothing to do with it.
+- **The rich twin travels with the string it is the twin of.** The morphs carry
+  it (a morph is not a re-capture), the sidecar migrate carries it through
+  UNCHANGED with no snapshot fallback (the link's `textSnapshot` is the plain
+  relocation string — synthesising a body from it would put a second, lossier
+  answer where the parse rung already gives the right one), and `pull-seed`
+  lists it as a per-doc BINDING beside `selectedText`.
+
+CI: [captured-passage.test.tsx](src/panels/_shared/__tests__/captured-passage.test.tsx)
+drives the REAL `createLinkedAnchor` over a fixture carrying an inline ATOM
+beside marked text — the atom is what makes the capture leg falsifiable, since
+`textBetween` cannot represent it at all — plus the ladder, the REAL render
+surface, and the CENSUS. The two rich-render legs live in the renegotiated
+[RevisionRequestCard-excerpt.test.tsx](src/panels/Revisions/__tests__/RevisionRequestCard-excerpt.test.tsx),
+which stubs only `BorrowedMainText`, so the passage renders for real. **No
+pre-488 suite could see any of this**: that suite asserted the excerpt string
+was PRESENT (which the flat block satisfied perfectly) and every pending-change
+suite `vi.mock`s the rendering surface away — what was never asked is whether
+the passage arrives with its marks and atoms at all. The leg with teeth is the
+CENSUS (no panel file parses a captured passage itself, renders one through a
+live editor surface, or spells the borrowed static surface outside the door; the
+capture is taken at the ONE anchor minter; the slice→JSON conversion has ONE
+implementation). Measured by neutering each half in turn: dropping the capture
+takes 2 legs, a ladder that ignores it 3, the pre-488 plain excerpt block 2, and
+a re-forked parse in a panel 1.
+
+**Owed, not claimed:** a real-FSA eyeball. Anchor capture is the FSA-masked
+class, so the durable proof here is the unit contract — select a passage with
+italics and a citation, make an AI revision request, and open the card.
+
 #### The composition half: a CARRIER says how a run's bytes are made, not what wraps them
 
 Same round trip, one question up (task 377) — and the case where the carrier

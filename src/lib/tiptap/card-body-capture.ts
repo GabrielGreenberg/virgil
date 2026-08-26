@@ -35,9 +35,10 @@
  * Cheap: one JSON walk plus one `Schema.nodeFromJSON` over the captured slice
  * (edit-sized, not doc-sized), on a discrete user action — never a keystroke.
  */
-import { Slice } from "@tiptap/pm/model";
+import type { Slice } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { captureSliceContent, isSlice } from "@/lib/tiptap/slice-capture";
 import { unsupportedConstructs } from "@/lib/tiptap/schema-mount";
 import {
   canMountInCardBody,
@@ -63,46 +64,6 @@ export type CardBodyCapture =
     };
 
 /**
- * A ProseMirror `Slice` as a schema-valid `doc` JSON, suitable for booting a
- * fresh TipTap editor (the archive snippet's mini-editor).
- *
- * Why this is non-trivial: a slice from `doc.slice(from, to)` carries
- * `openStart` / `openEnd` — the boundaries cut THROUGH ancestor nodes. For a
- * selection inside a paragraph the content Fragment holds INLINE children (text
- * + inline marks), not a paragraph; for a multi-paragraph selection with
- * partial ends it is MIXED. A card body's `doc.content` is `block+`, so bare
- * inline children at doc level throw `contentMatchAt on a node with invalid
- * content` when the body mounts.
- *
- * Algorithm: walk the top-level children; inline runs accumulate into a buffer,
- * each block child flushes that buffer into a paragraph and emits itself, with
- * a final flush at the end. Handles every shape —
- *   - all-inline (single-paragraph sub-range): one paragraph wrapping all;
- *   - all-block (full-paragraph selection): blocks pass through unwrapped;
- *   - mixed: inline runs at the boundaries become paragraphs flanking the
- *     middle blocks.
- */
-function sliceToDocJson(slice: Slice): JSONContent {
-  const docContent: JSONContent[] = [];
-  let openInline: JSONContent[] = [];
-  const flushInline = () => {
-    if (openInline.length === 0) return;
-    docContent.push({ type: "paragraph", content: openInline });
-    openInline = [];
-  };
-  slice.content.forEach((child) => {
-    if (child.isBlock) {
-      flushInline();
-      docContent.push(child.toJSON() as JSONContent);
-    } else {
-      openInline.push(child.toJSON() as JSONContent);
-    }
-  });
-  flushInline();
-  return { type: "doc", content: docContent };
-}
-
-/**
  * Derive the payload a card body at `scope` would store from `source`, and
  * prove the destination can hold it.
  *
@@ -115,11 +76,14 @@ export function prepareCardBodyCapture(
   source: Slice | unknown,
   scope: CardBodySchemaScope,
 ): CardBodyCapture {
-  const raw = source instanceof Slice ? sliceToDocJson(source) : source;
   // The SAME normalize the write performs (`useArchive.updateSnippet` →
   // `normalizeRichContent`), run BEFORE the check rather than after it. This
-  // line is the whole of task 393: what is judged is what is stored.
-  const content = normalizeRichContent(raw);
+  // line is the whole of task 393: what is judged is what is stored. The slice
+  // arm reads the shared leaf (task 488), so the payload this door VALIDATES is
+  // byte-identical to the one the display capture beside a Mode-B anchor takes.
+  const content = isSlice(source)
+    ? captureSliceContent(source)
+    : normalizeRichContent(source);
   // ONE probe, still: `canMountInCardBody` stays the authority on whether the
   // destination can hold this (it asks the schema itself). The schema is
   // re-read below only to NAME the gap, and only on the failure path.
