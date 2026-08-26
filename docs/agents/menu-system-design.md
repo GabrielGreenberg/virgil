@@ -341,6 +341,33 @@ collision-free across nested menus.
 
 ## 4. Per-menu migration table (all 12)
 
+> **The table's thirteenth row was never written, and that is how its rows sat
+> keyboard-DEAD for a release cycle (task 477).** `ItemMenu` — the ⋮ in every
+> panel header AND on every card — folded onto the primitive in task 180 and
+> onto `AnchoredMenu` in 143, and appears in this table nowhere: only its SHELL
+> was ever scheduled. Its children stayed hand-written `<button>`s
+> (`MenuDelete`, `MenuArchive`, `CardViewModeMenuItems`' three View rows,
+> Bibliography's two filter rows and its export command, Citations' package and
+> style groups), so every one of those menus opened a `role="menu"` container
+> with **zero `menuitem`s** while `useMenuKeyboard`'s window-CAPTURE listener
+> consumed Enter / Space / every arrow on their behalf and activated nothing.
+> Most of them also bound `onMouseDown` only, so they were never
+> keyboard-activatable even before the swallow.
+>
+> Migrated in task 477 onto `MenuActionRow` (commands, with a `danger` tone) and
+> `MenuToggleRow` (the `menuitemradio` spelling for the three mutually-exclusive
+> sets). Three primitive changes fell out of it, each stated where it lives:
+> `MenuProvider.closeOnActivate` (the MENU-layer twin of
+> `AnchoredMenu.closeOnInsideClick`, because the keyboard controller runs a row
+> by calling its handler directly and produces no click to bubble),
+> `AnchoredMenu`'s own `getActiveDescendantHost` (its trigger — no anchored menu
+> passed one, so arrow-nav moved a highlight assistive tech was never told
+> about), and `useMenuKeyboard` consuming Enter/Space only when something
+> actually RAN, so a future unregistered menu degrades to Tab+Enter instead of
+> to silence. CI: `menu/__tests__/menu-row-registration-census.test.ts` (the
+> census, allowlist EMPTY) and
+> `components/__tests__/item-menu-row-keyboard.test.tsx`.
+
 | Menu | File | Fit | How it migrates |
 |---|---|---|---|
 | **DragHandleMenu** (grab) | `DragHandleMenu.tsx` | **clean** | `layout="list"`, `role="menu"`, portal. `<MenuItemsFromRegistry rows={cardActionRows("grab")}>`; `disabled` from `row.applies()`. **Gains arrows** (none today). Letter fast-path + Backspace/Delete→delete preserved via the letter map. Drops its own keydown/mousedown/position effects. |

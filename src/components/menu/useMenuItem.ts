@@ -43,6 +43,15 @@ export interface UseMenuItemOptions {
   /** ARIA role override for checkbox/option rows (defaults from the menu role). */
   role?: MenuItemProps["role"];
   /**
+   * Opt OUT of the provider's close-on-activate policy (task 477). A row the
+   * user commonly flips in a RUN — an independent checkbox — must survive its
+   * own activation; a command row must not. Inert in a menu that does not close
+   * on activation at all. Same name and same meaning as `MenuToggleRow`'s
+   * prop, which forwards it here (and keeps its DOM `stopPropagation` for the
+   * mouse half).
+   */
+  keepMenuOpen?: boolean;
+  /**
    * Live VISUAL index (the row's position in the rendered list). Pass this from
    * a list whose rows REORDER without remounting — a fuzzy-ranked combobox whose
    * React `key` survives a re-rank — so nav follows what the user sees. The
@@ -65,15 +74,34 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     run,
     role: roleOverride,
     order,
+    keepMenuOpen = false,
   } = opts;
-  const { registry, role: menuRole } = useMenuContext();
+  const { registry, role: menuRole, onItemActivated } = useMenuContext();
 
   // Keep the latest `run` in a ref so re-registering on every render isn't
   // needed just because the closure identity changed; the registry calls the
   // live handler.
   const runRef = useRef(run);
   runRef.current = run;
-  const stableRun = useCallback(() => runRef.current(), []);
+  // …and the same for the two values `stableRun` reads AFTER the handler. They
+  // live in refs rather than in `stableRun`'s dep list so the identity stays
+  // stable: the registry's `register` effect keys on it, and a changing
+  // identity would unregister/re-register the node on every render, which
+  // transiently clears `active` and drops the roving highlight.
+  const activatedRef = useRef(onItemActivated);
+  activatedRef.current = onItemActivated;
+  const keepOpenRef = useRef(keepMenuOpen);
+  keepOpenRef.current = keepMenuOpen;
+  const idRef = useRef(id);
+  idRef.current = id;
+  // The ONE activation path. Both doors reach it — the keyboard controller via
+  // `registry.activate()` (which calls the registered handler directly, with no
+  // DOM event) and the item's own `onClick` below — so the provider's
+  // close-on-activate policy cannot apply to one and not the other.
+  const stableRun = useCallback(() => {
+    runRef.current();
+    if (!keepOpenRef.current) activatedRef.current?.(idRef.current);
+  }, []);
 
   // Register / update on the nav-relevant fields. The registry de-dupes
   // no-op updates (only bumps its version when something nav-structural
@@ -137,14 +165,17 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
           e.preventDefault?.();
           return;
         }
-        runRef.current();
+        // `stableRun`, not `runRef.current()` — the close-on-activate policy is
+        // stated once, inside it, and the mouse must not take a path that skips
+        // it (task 477).
+        stableRun();
       },
       onMouseEnter: () => {
         if (!disabled) registry.setActive(id);
       },
       ref: setRef,
     };
-  }, [roleOverride, menuRole, registry, id, disabled, active, setRef]);
+  }, [roleOverride, menuRole, registry, id, disabled, active, setRef, stableRun]);
 
   return { active, disabled, getItemProps };
 }

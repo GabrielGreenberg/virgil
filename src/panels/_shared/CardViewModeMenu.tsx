@@ -6,9 +6,25 @@
  * shared `CardArchiveViewContext` (provided by EditorPane from the single
  * `useViewPrefs` instance), so it stays in lockstep with the `CardListPanel`
  * filter for the same panel. Distinct from the text-object Archive PANEL.
+ *
+ * ── ROW MIGRATION (task 477) ──
+ * These were three bare `<button onMouseDown={preventDefault; setView}>`s: not
+ * registered, so the enclosing provider's registry was empty and the shared
+ * keyboard controller consumed Enter/Space/every arrow at window capture and
+ * activated nothing. They are `MenuToggleRow`s now, in the `menuitemradio`
+ * spelling — picking one un-picks the others, which is what distinguishes this
+ * set from an independent checkbox — so arrow-nav crosses them, Enter picks the
+ * active one, and `aria-checked` says which is current.
+ *
+ * The visual moves once, deliberately: the checkmark was a leading glyph in a
+ * `w-3` gutter and is now the accent ✓ in the row primitive's reserved trailing
+ * column, which is what every other checked row in the app draws. Behaviour is
+ * unchanged — picking a mode still dismisses the kebab, because the row does
+ * NOT pass `keepMenuOpen` (the three are one decision, not a run of toggles).
  */
 
 import { MenuSeparator } from "@/components/menu/MenuChrome";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { useCardArchiveView, type CardArchiveView } from "./card-archive-view";
 import type { PanelKind } from "./types";
 
@@ -24,44 +40,16 @@ export function CardViewModeMenuItems({ kind }: { kind: PanelKind }) {
   return (
     <>
       <MenuSeparator />
-      {OPTIONS.map((o) => {
-        const selected = current === o.mode;
-        return (
-          <button
-            key={o.mode}
-            // mousedown (not click) so the option lands before ItemMenu's
-            // click-outside dismissal fires — matches MenuDelete.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setView(kind, o.mode);
-            }}
-            className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${
-              selected
-                ? "text-ink-body font-medium"
-                : "text-ink-muted hover:bg-surface-muted-strong"
-            }`}
-            aria-pressed={selected}
-          >
-            <span className="w-3 inline-flex justify-center">
-              {selected ? (
-                <svg
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : null}
-            </span>
-            {o.label}
-          </button>
-        );
-      })}
+      {OPTIONS.map((o) => (
+        <MenuToggleRow
+          key={o.mode}
+          id={`view-${o.mode}`}
+          role="menuitemradio"
+          label={o.label}
+          checked={current === o.mode}
+          onToggle={() => setView(kind, o.mode)}
+        />
+      ))}
     </>
   );
 }

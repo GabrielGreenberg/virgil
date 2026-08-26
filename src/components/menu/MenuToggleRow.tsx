@@ -41,12 +41,26 @@ export interface MenuToggleRowProps {
   /** Indent depth (0 = top level, 1 = group child, 2 = nested child). */
   indent?: 0 | 1 | 2;
   /**
-   * Stop the activating click from bubbling out of the row. Set inside
-   * `ItemMenu`, whose children wrapper closes the menu on any bubbled click —
-   * without this, a five-toggle menu would close after every single toggle.
-   * Inert in menus that don't close on inside clicks (MenuBar's ViewMenu).
+   * Keep the menu open across this row's activation. Set inside `ItemMenu`,
+   * whose children wrapper closes the menu on any bubbled click — without this,
+   * a five-toggle menu would close after every single toggle. Inert in menus
+   * that don't close on activation (MenuBar's ViewMenu).
+   *
+   * It covers BOTH activation paths since task 477: the DOM `stopPropagation`
+   * below for the mouse, and `useMenuItem`'s own opt-out for the keyboard
+   * controller, which runs a row by calling its handler directly and so never
+   * produces a click to stop.
    */
   keepMenuOpen?: boolean;
+  /**
+   * ARIA fork for a MUTUALLY-EXCLUSIVE set (task 477): `menuitemradio` where
+   * picking one un-picks the others (a card panel's View Active / Archives /
+   * All, Bibliography's Cited-only / Full, Citations' package and style), and
+   * the default `menuitemcheckbox` for an independent toggle. Both carry
+   * `aria-checked`; only the ROLE tells a screen-reader user whether the row's
+   * siblings move with it.
+   */
+  role?: "menuitemcheckbox" | "menuitemradio";
   onToggle: () => void;
 }
 
@@ -57,13 +71,15 @@ export function MenuToggleRow({
   leading,
   indent = 0,
   keepMenuOpen = false,
+  role = "menuitemcheckbox",
   onToggle,
 }: MenuToggleRowProps) {
   const { active, getItemProps } = useMenuItem({
     id,
     region: "list",
-    role: "menuitemcheckbox",
+    role,
     run: onToggle,
+    keepMenuOpen,
   });
   const itemProps = getItemProps();
   const pad = indent === 2 ? "pl-9 pr-3" : indent === 1 ? "pl-6 pr-3" : "px-3";

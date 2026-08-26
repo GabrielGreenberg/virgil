@@ -93,8 +93,18 @@ export interface MenuRegistryHandle {
   setActive(id: string): void;
   /** The currently active node id, or null. */
   activeId(): string | null;
-  /** Run the active node's handler (no-op if disabled / none). */
-  activate(): void;
+  /**
+   * Run the active node's handler. Returns whether anything actually RAN —
+   * false when there is no active node, or when it is disabled / a widget.
+   *
+   * The boolean is load-bearing rather than informational (task 477): the
+   * window-capture controller decides whether to CONSUME Enter/Space from this
+   * answer, so a menu with nothing to activate lets the key reach the focused
+   * control instead of swallowing it. Predicting the answer from
+   * `activeId() !== null` would be a second statement of the disabled/widget
+   * rule the registry already owns — ask the mechanism.
+   */
+  activate(): boolean;
 }
 
 /** Escape-dismissal config (§3.2). */

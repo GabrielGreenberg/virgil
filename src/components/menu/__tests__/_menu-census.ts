@@ -372,3 +372,211 @@ export function isNotAnAnchoredMenu(key: string): boolean {
 export function handRolledMenus(): Array<{ key: string; block: string }> {
   return censusBothSilos().filter((h) => !isNotAnAnchoredMenu(h.key));
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// The ROW population (task 477) — a THIRD question about the same subsystem.
+//
+// The two censuses above ask *who POSITIONS a floating menu by hand?* and *who
+// PAINTS one by hand?*, and both discover their population from DECLARATIONS.
+// This one asks *who puts an ACTIVATABLE ROW inside a menu the shared keyboard
+// controller is driving?* — a question about the JSX a shell is handed as
+// CHILDREN, which no declaration-scoped walk can see: `ItemMenu`'s rows are
+// authored in eleven panel files and in three shared components, none of which
+// mounts a provider itself.
+//
+// Why it matters, stated as the mechanism rather than as a preference: a
+// window-source provider installs a window-CAPTURE keydown while it is open and
+// consumes Enter / Space / every arrow, so a row the registry never saw is not
+// merely un-navigable — the controller SUPPRESSES the key the focused control
+// needed. An empty registry is strictly worse than no controller at all. A
+// COMBOBOX provider (`keyboardSource: "input"`) installs no window listener, so
+// a stray control in one degrades to Tab+Enter; it is excluded BY MECHANISM
+// here rather than by allowlist.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** The three shells whose children are a menu body. */
+const ROW_SHELLS = ["ItemMenu", "AnchoredMenu", "MenuProvider"] as const;
+
+/** A declaration that PARTICIPATES in the registry vouches for its own subtree:
+ *  a `<button>` inside a registered row's markup is that row's chrome, not a
+ *  second unregistered row. Stated as a residual rather than implied — a real
+ *  second row nested inside a registered one would be invisible here, which is
+ *  the compound-row case and a different question. */
+const ROW_PARTICIPATES =
+  /\buseMenuItem\b|\bgetItemProps\b|\bMenuActionRow\b|\bMenuToggleRow\b|\bMenuItemsFromRegistry\b/;
+
+/** The row shapes a user can ACTIVATE. `<input>` is deliberately absent: a
+ *  native form control inside a menu is a focus ISLAND (the `region: "widget"`
+ *  model) — `PanelTextSizeRow`'s number stepper is reachable by Tab and is not
+ *  a command the roving cursor should step onto. */
+const BARE_ROW = /<(button|label)(?=[\s>])/g;
+
+/** Tags whose recursion would leave the menu body: the primitive's own pieces
+ *  and non-interactive chrome. */
+const ROW_SKIP = new Set([
+  "MenuSeparator",
+  "MenuSectionLabel",
+  "MenuActionRow",
+  "MenuToggleRow",
+  "MenuItemsFromRegistry",
+  "MenuGrid",
+  "MenuList",
+  "AnchoredMenu",
+  "MenuProvider",
+  "ItemMenu",
+  "Fragment",
+]);
+
+/** The CHILDREN region of every `<Shell …> … </Shell>` in `source`, plus the
+ *  shell's own open tag (so the caller can read `keyboardSource` / `role`).
+ *  Brace-aware, so a multi-line `trigger={() => (…)}` prop is skipped rather
+ *  than mistaken for the body. */
+export function menuBodyRegions(
+  source: string,
+): Array<{ shell: string; openTag: string; body: string }> {
+  const out: Array<{ shell: string; openTag: string; body: string }> = [];
+  for (const shell of ROW_SHELLS) {
+    const openRe = new RegExp(`<${shell}(?=[\\s>])`, "g");
+    let m: RegExpExecArray | null;
+    while ((m = openRe.exec(source))) {
+      let i = m.index + m[0].length;
+      let inStr: string | null = null;
+      let brace = 0;
+      let selfClosing = false;
+      for (; i < source.length; i++) {
+        const c = source[i];
+        if (inStr) {
+          if (c === inStr && source[i - 1] !== "\\") inStr = null;
+          continue;
+        }
+        if (c === '"' || c === "'" || c === "`") {
+          inStr = c;
+          continue;
+        }
+        if (c === "{") brace++;
+        else if (c === "}") brace--;
+        else if (brace === 0 && c === "/" && source[i + 1] === ">") {
+          selfClosing = true;
+          i += 2;
+          break;
+        } else if (brace === 0 && c === ">") {
+          i += 1;
+          break;
+        }
+      }
+      if (selfClosing) continue;
+      const openTag = source.slice(m.index, i);
+      const bodyStart = i;
+      const closeTag = `</${shell}>`;
+      const nestedOpen = new RegExp(`<${shell}(?=[\\s>])`, "g");
+      let depth = 1;
+      let j = bodyStart;
+      while (j < source.length) {
+        const nextClose = source.indexOf(closeTag, j);
+        if (nextClose === -1) break;
+        nestedOpen.lastIndex = j;
+        const nm = nestedOpen.exec(source);
+        if (nm && nm.index < nextClose) {
+          depth++;
+          j = nm.index + 1;
+          continue;
+        }
+        depth--;
+        if (depth === 0) {
+          out.push({ shell, openTag, body: source.slice(bodyStart, nextClose) });
+          j = nextClose + closeTag.length;
+          break;
+        }
+        j = nextClose + closeTag.length;
+      }
+    }
+  }
+  return out;
+}
+
+/** True for a shell whose provider installs the window-capture keyboard
+ *  controller — i.e. one whose rows a missing registration leaves DEAD rather
+ *  than merely un-navigable. `ItemMenu` / `AnchoredMenu` are always this. */
+export function isWindowSourceShell(openTag: string): boolean {
+  if (/keyboardSource=\{?["']input["']/.test(openTag)) return false;
+  if (/role=\{?["']listbox["']/.test(openTag)) return false;
+  return true;
+}
+
+export interface BareRowHit {
+  /** `<file><Shell> > <Component> > …` — the path the recursion took. */
+  where: string;
+  /** The offending open tag, whitespace-flattened. */
+  tag: string;
+}
+
+/**
+ * Every bare `<button>` / `<label>` reachable as a ROW of a window-source menu
+ * body in either silo.
+ *
+ * The reach is a bounded transitive closure over component tags found in the
+ * body, resolved by NAME across both silos — because the rows are authored in
+ * separate components (`MenuDelete`, `CardViewModeMenuItems`, `MarkerButton`)
+ * and a body-only scan would see `<CardViewModeMenuItems />` and stop. Depth 2
+ * covers every shipped shape (body → row component → its own child); a
+ * participating declaration ends the walk, since it vouches for its subtree.
+ */
+export function censusBareMenuRows(): BareRowHit[] {
+  const files: Array<{ rel: string; src: string }> = [];
+  for (const [prefix, root] of [
+    ["src", SRC],
+    ["library", LIBRARY],
+  ] as const) {
+    for (const file of walkSource(root)) {
+      files.push({
+        rel: `${prefix}/${path.relative(root, file).split(path.sep).join("/")}`,
+        src: stripComments(readFileSync(file, "utf8")),
+      });
+    }
+  }
+
+  // name → declaration blocks, so the walk can follow a row component.
+  const byName = new Map<string, string[]>();
+  for (const { src } of files) {
+    for (const { name, block } of splitDeclarations(src)) {
+      const list = byName.get(name);
+      if (list) list.push(block);
+      else byName.set(name, [block]);
+    }
+  }
+
+  const hits: BareRowHit[] = [];
+  const seen = new Set<string>();
+  const visit = (where: string, block: string, depth: number): void => {
+    if (ROW_PARTICIPATES.test(block)) return;
+    for (const t of block.matchAll(BARE_ROW)) {
+      const end = block.indexOf(">", t.index);
+      hits.push({
+        where,
+        tag: block.slice(t.index, end + 1).replace(/\s+/g, " "),
+      });
+    }
+    if (depth <= 0) return;
+    for (const c of new Set(
+      [...block.matchAll(/<([A-Z][A-Za-z0-9_]*)/g)].map((mm) => mm[1]),
+    )) {
+      if (ROW_SKIP.has(c)) continue;
+      const decls = byName.get(c);
+      if (!decls) continue;
+      for (const [i, d] of decls.entries()) {
+        const key = `${c}#${i}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        visit(`${where} > ${c}`, d, depth - 1);
+      }
+    }
+  };
+
+  for (const { rel, src } of files) {
+    for (const r of menuBodyRegions(src)) {
+      if (!isWindowSourceShell(r.openTag)) continue;
+      visit(`${rel}<${r.shell}>`, r.body, 2);
+    }
+  }
+  return hits;
+}
