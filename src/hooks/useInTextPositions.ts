@@ -72,10 +72,35 @@ const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
  * Height a card contributes to the cascade, given its freshly-read height this
  * pass (`measured`, present only when the card is inside the ±NEAR_ZONE_PX
  * measurement band) and its last real height RETAINED across the viewport gate
- * (`retained`). A card's rendered height is scroll-invariant, so a height read
- * once — while in-zone — stays truthful after the card scrolls out of the band.
+ * (`retained`).
  *
- * The retained real height therefore ALWAYS beats `DEFAULT_ENTRY_HEIGHT`: the
+ * WHY THE RETAINED VALUE IS TRUSTWORTHY (task 490 — read this before changing
+ * the fallback order). The original justification was "a card's rendered height
+ * is scroll-invariant, so a height read once stays truthful after the card
+ * scrolls out of the band". That is true of SCROLL and false of everything
+ * else: a card COLLAPSES, EXPANDS, swaps presence tier, or finishes laying out
+ * a late font / KaTeX span / image — all of which change its height, none of
+ * which is a scroll. The gate that decides whether to re-read is asked of the
+ * ANCHOR's viewport Y (`inViewport`, below) and of the anchor's document POSITION
+ * (the `deferredItems` band route), never of the CARD — and the cascade is
+ * precisely the mechanism that makes those two differ. So a card that shrank
+ * while its anchor was out of band kept its OLD, TALLER height, which the
+ * cascade then reserved: Gabriel's "archive cards are displacing to the same
+ * extent as they would be when open", verbatim. The same hole is SYMMETRIC — a
+ * card that GREW out of band keeps a too-SMALL height and the next card packs
+ * on top of it, which is the task-043 overlap this cache exists to prevent,
+ * arriving from the other side.
+ *
+ * What makes it trustworthy now is not an invariant about scrolling but a
+ * WRITER: the per-card ResizeObserver (see `noteObservedHeights` below) records
+ * every height CHANGE as it happens, at every scroll position, from the
+ * post-layout number the observer already carries. The near-zone gate exists to
+ * avoid a FORCED layout read; an RO entry is not one, so there is nothing to
+ * gate. The pass's own `getBoundingClientRect` read stays as the SEED for a card
+ * the observer has not delivered yet (first paint, a wrapper that mounted this
+ * commit) and as the corroboration for in-zone cards.
+ *
+ * The retained real height ALWAYS beats `DEFAULT_ENTRY_HEIGHT`: the
  * near-zone gate substitutes the 60px placeholder for out-of-zone cards, and a
  * 120–200px card packed into a 60px slot makes the cascade pile the NEXT card
  * on top of it — the "render overlapped, then de-overlap ~500ms later" jump
@@ -433,14 +458,21 @@ export function useInTextPositions(
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
-  // Last REAL (in-zone getBoundingClientRect) card height per id, RETAINED
-  // across the ±NEAR_ZONE_PX viewport gate. A card's rendered height is
-  // scroll-invariant, so once read it stays truthful after scrolling out — so
-  // the next out-of-zone pass reuses it instead of the 60px placeholder that
+  // Last REAL card height per id, RETAINED across the ±NEAR_ZONE_PX viewport
+  // gate so an out-of-zone pass reuses it instead of the 60px placeholder that
   // would pack the following card on top of it (the overlap-then-snap of task
   // 043). Card-side twin of task 041's `parked` (useMarginaliaRegistry.ts),
-  // consumed via `retainedEntryHeight`. Cleared only on genuine disable/empty
-  // (alongside `naturalRef`); pruned to the live item set each measure.
+  // consumed via `retainedEntryHeight`.
+  //
+  // TWO writers, and the second is the AUTHORITY (task 490): the measure pass's
+  // in-zone `getBoundingClientRect` SEEDS it, and the per-card ResizeObserver
+  // (`noteObservedHeights`) keeps it CURRENT — because a height change is an
+  // EVENT, and the observer is the thing that sees every one of them wherever
+  // the card is. See `retainedEntryHeight`'s header for the hole that left:
+  // a card that collapsed while its anchor was out of band kept its expanded
+  // height forever, and the cascade reserved it.
+  // Cleared only on genuine disable/empty (alongside `naturalRef`); pruned to
+  // the live item set each measure.
   const realHeightRef = useRef<Map<string, number>>(new Map());
   // Ids whose committed naturalTop is an APPROXIMATION (out-of-zone item,
   // wave-2b C5) rather than an exact coordsAtPos read. Rebuilt per measure
@@ -500,6 +532,50 @@ export function useInTextPositions(
     if (!canMeasureNow()) return;
     convergeRef.current?.request();
   }, [canMeasureNow]);
+
+  /**
+   * Record what the per-card ResizeObserver just SAW (task 490).
+   *
+   * > **A retained measurement is invalidated by the EVENT that changes it,
+   * > never by a proxy for the card's visibility.** The observer already fires
+   * > on every height change, for every rendered card, wherever it sits; its
+   * > entry already carries the new size, POST-layout, so reading it forces
+   * > nothing. The near-zone gate exists to skip a FORCED layout read — there
+   * > is no forced read here, so there is nothing to gate.
+   *
+   * Two rules the write earns:
+   *
+   *  - **A ZERO or non-finite size is not a measurement.** A `display:none`
+   *    keep-alive pane reports 0×0 for every element, and a wrapper that has
+   *    not painted yet reports 0 — writing either would corrupt the cache into
+   *    exactly the "packed contiguously from the top" shape the hidden-pane
+   *    bail in `measure()` exists to prevent. Skipping keeps the last good
+   *    value, which is the retain-across-a-hide contract.
+   *  - **BORDER box, to match the seed.** The measure pass writes
+   *    `getBoundingClientRect().height` (a border box); `contentRect` is the
+   *    CONTENT box. They coincide for the wrapper the omni renders (no padding,
+   *    no border) — but two writers of one cache must not speak two boxes, so
+   *    `borderBoxSize` is preferred and `contentRect` is the fallback for an
+   *    implementation that does not publish it.
+   *
+   * The id is recovered from the SAME attribute the effect observes by, so this
+   * is exact for the string form of `entry` (every production caller). A caller
+   * that passes a selector FUNCTION cannot be inverted, so it keeps the
+   * pre-490 behaviour — stated rather than silently approximated.
+   */
+  const noteObservedHeights = useCallback(
+    (entries: ReadonlyArray<ResizeObserverEntry>) => {
+      if (typeof entry !== "string") return;
+      for (const e of entries) {
+        const id = (e.target as HTMLElement).getAttribute(entry);
+        if (!id) continue;
+        const h = e.borderBoxSize?.[0]?.blockSize ?? e.contentRect?.height;
+        if (typeof h !== "number" || !Number.isFinite(h) || h <= 0) continue;
+        realHeightRef.current.set(id, h);
+      }
+    },
+    [entry],
+  );
 
   // Is the user typing into a card body inside THIS pod? Per-keystroke
   // sub-pixel height jitter (different glyph widths) would otherwise tick
@@ -1195,7 +1271,17 @@ export function useInTextPositions(
     // single pass gets wrong. The hidden / suppression / typing gates all live
     // in the controller's measure closure now, so these are bare requests; the
     // controller coalesces a resize storm to one pending pass.
-    const onResize = () => {
+    const onResize = (entries: ResizeObserverEntry[]) => {
+      // BOOKKEEPING FIRST, ALWAYS — then the (gated) measurement. This is the
+      // geometry service's own rule, one lane over (AGENTS.md "The scroll
+      // half": *defer the MEASUREMENT, never the BOOKKEEPING*). Every gate
+      // below `requestSettle` (hidden pane, the re-show suppression window,
+      // typing in a card body, the degeneracy guard, the convergence budget)
+      // can make this pass commit nothing; none of them is a reason to forget
+      // WHAT THE OBSERVER JUST SAW. Recording here is what makes the retained
+      // height a live fact rather than a memory of the last time the ANCHOR
+      // happened to be on screen (task 490).
+      noteObservedHeights(entries);
       requestSettle();
     };
     const onFocusOut = () => {
@@ -1212,7 +1298,7 @@ export function useInTextPositions(
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabledProp, entry, requestSettle]);
+  }, [measureVersion, enabledProp, entry, requestSettle, noteObservedHeights]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that
   // re-runs — no DOM reads, no layout flush, no second commit.

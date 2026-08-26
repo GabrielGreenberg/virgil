@@ -1763,6 +1763,114 @@ the `.tex`* or *is referenced by a citation card* is a product call, and an
 over-inclusive `cited.bib` is harmless to LaTeX.
 
 
+#### The height half: a retained measurement is invalidated by the EVENT that changes it
+
+Same lane, the OTHER number the cascade consumes (task 490) — and the case
+where a cache's justification was written down, was true of ONE of its inputs,
+and was read as a licence to have no invalidation at all.
+
+Gabriel, from a real paper, in two reports nine minutes apart: *"This archive
+card should be lined up with its margin item"* and *"archive cards are
+displacing to the same extent as they would be when open."* The second is the
+mechanism, and it is arithmetically exact.
+
+**The height half.** `realHeightRef` retains a card's last real height across the
+±`NEAR_ZONE_PX` viewport gate (task 043), justified by *"a card's rendered height
+is scroll-invariant, so a height read once stays truthful after the card scrolls
+out."* That is true of SCROLL and false of everything else a card does: it
+COLLAPSES, EXPANDS, swaps presence tier, or finishes laying out a late font /
+KaTeX span / image. Its only writer was the measure pass's own
+`getBoundingClientRect`, and that read is gated TWICE — the pos-band route
+(`deferredItems`) and the `inViewport` px gate — **both asked of the ANCHOR**,
+never of the card, while the cascade is precisely the mechanism that makes those
+two differ. So a card that shrank while its anchor was out of band kept its
+OLD, TALLER height and `resolveCascade` went on reserving it. The hole is
+SYMMETRIC: a card that GREW out of band keeps a too-SMALL height and the next
+card packs on top of it — the task-043 overlap this cache exists to prevent,
+arriving from the other side.
+
+**The pin half.** `holdOmniCard` fires on EVERY non-control mousedown on an omni
+card, SKIPS the necessity rule its sibling door asks (`if (desired !== "hold")`),
+and stores `cascadedTop − naturalTop` — the displacement the CROWD gave the card
+at press time. Nothing ever clears a pin (`omni-pin-store`: "Nothing else clears
+one"). So the moment the crowd changes — the card above collapses, its stale
+height heals, a passage is archived away — the deck's own answer moves and the
+pinned card does not: it stays displaced by an amount the deck no longer
+requires. Pressed while the deck was full of EXPANDED cards, it is thereafter
+"displacing to the same extent as it would be when open", permanently.
+
+> **A retained measurement is invalidated by the EVENT that changes it, never by
+> a proxy for the card's visibility — so the per-card ResizeObserver is the
+> height AUTHORITY, not merely a trigger. And a HOLD is a freeze through a
+> transient: where there is no transient there is nothing to freeze, and it
+> writes NOTHING.**
+
+Six rules they earned:
+
+- **The observer already knows.** It fires on every height change, for every
+  rendered card, wherever it sits, and its entry carries the new size
+  POST-layout — so recording it forces no layout and needs no gate. The
+  near-zone gate exists to skip a FORCED read; there is no forced read here.
+  `noteObservedHeights` is therefore a REDUCTION in work, not an addition: the
+  pass's rect read stays only as the SEED for a card the observer has not
+  delivered yet.
+- **BOOKKEEPING FIRST, ALWAYS.** The RO records before it calls `requestSettle`,
+  because every gate below that door (hidden pane, the re-show suppression
+  window, typing in a card body, the degeneracy guard, the convergence budget)
+  can make the pass commit nothing — and none of them is a reason to forget what
+  the observer just SAW. The geometry service's own rule, one lane over
+  ("The scroll half": *defer the MEASUREMENT, never the BOOKKEEPING*).
+- **A ZERO is not a measurement.** A `display:none` keep-alive pane reports 0×0
+  for everything and an unpainted wrapper reports 0; writing either packs the
+  whole deck contiguously from the top, which is the shape `measure()`'s own
+  hidden bail exists to prevent. Skipping keeps the last good value — which IS
+  the retain-across-a-hide contract.
+- **BORDER box, to match the seed.** The pass writes
+  `getBoundingClientRect().height`; `contentRect` is the CONTENT box. They
+  coincide for the wrapper the omni renders — but two writers of one cache must
+  not speak two boxes, so `borderBoxSize` is preferred with `contentRect` as the
+  fallback.
+- **A hold on a pin-free side writes NOTHING**, and that is provable rather than
+  cautious: `resolveCascade`'s forward pass sets row *i*'s top from its
+  PREDECESSORS alone, so a card's top is independent of its own height, and the
+  backward (up-pulling) pass — the only thing that can make it depend on it —
+  runs ONLY when a pin exists and is the IDENTITY unless the pin moved its card
+  above the forward answer.
+- **A hold never stores an offset ABOVE the anchor.** A hold's whole content is
+  "the deck put me here", and the deck's own rule never puts a card above its
+  anchor; a negative offset is another card's pin showing through, and freezing
+  it makes this card permanently contradict its own margin marker — task 362's
+  decoupling arriving through the offset instead of through the coordinate.
+
+CI: [useInTextPositions-height-authority.test.tsx](src/hooks/__tests__/useInTextPositions-height-authority.test.tsx)
+drives the REAL hook with a DELIVERING ResizeObserver over a card whose anchor
+is scrolled INTO the band (the only way the pre-490 code could seed the cache)
+and then away. **No pre-490 suite could see any of this**:
+`useInTextPositions-retained-height` is pure and pins only the SHRINK-PROTECTION
+direction ("never re-collapse to the 60px placeholder"), where a card that got
+SHORTER out of band is unrepresentable; and **no suite in the repo ever
+DELIVERED a per-card ResizeObserver entry** — `settle-convergence` installs a
+deliberate NO-OP stub — so the one trigger a collapse actually has was untested
+end to end. The door legs live in
+[gutter-stability-doors.test.ts](src/components/editor-layout/__tests__/gutter-stability-doors.test.ts),
+whose pre-490 freeze leg (an EMPTY store, asserting a hold always writes) is
+RENEGOTIATED in place with the reason at the site, as is its twin in
+`omni-pin-anchor-lifecycle`. Measured by neutering each half in turn: the pre-490
+one-writer cache takes 2 legs, the zero guard 1, the pin-free hold rule 1, and
+the above-the-anchor refusal 1.
+
+**Owed, not claimed:** the real-paper eyeball. Both halves are FSA-masked for
+Gabriel's own document (archive anchors and a card-dense deck), so the durable
+proof here is the unit contract — collapse an archive card whose anchor has
+scrolled well off screen, then scroll back and watch the deck below it close up.
+
+**Residual, stated.** A card whose `entry` selector is a FUNCTION rather than an
+attribute name cannot be inverted from an observed element, so it keeps the
+pre-490 behaviour; the only production caller passes the string form. And the
+hold's pin-free rule is deliberately CONSERVATIVE — the backward pass can only
+reach cards ABOVE the pinned one, so a press on a card BELOW it is also a no-op,
+and asking that would mean resolving the pinned card's wrapper at gesture time.
+
 #### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
 
 Same lane, and the case where the mechanism was right, the classification was

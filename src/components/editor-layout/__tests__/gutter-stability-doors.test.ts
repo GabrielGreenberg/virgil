@@ -188,7 +188,7 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     expect(omniPinStore.get("right")!.offset).toBe(42 - 1400);
   });
 
-  it("holdOmniCard pins the current top — the collapse/expand freeze still works", () => {
+  it("holdOmniCard pins the current top WHEN A PIN IS STANDING — the freeze still works", () => {
     // Takes the wrapper the user pressed, never a key: under multi-pane
     // keep-alive a `document.querySelector` by key can answer with a
     // `display:none` warm pane's twin, whose rects all read zero.
@@ -196,9 +196,65 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // Deliberately a PACKED card: the cascade has pushed it 80px below its
     // anchor, so "freeze me where I am" is 80, not 0 — a scene where natural
     // and current coincided would pass with the conversion deleted.
+    //
+    // RENEGOTIATED (task 490) — this leg used to run with an EMPTY store and
+    // assert that a hold always writes. That is the shape Gabriel reported: on
+    // a pin-free side nothing can move the pressed card (the forward pass is
+    // height-independent; the backward pass is pin-gated), so the write held
+    // nothing and instead lifted every card ABOVE it off its anchor, forever.
+    // The freeze is asserted where it is real — with a pin standing.
+    omniPinStore.requestPin("right", "float:card:note:other", 30);
     const { wrapper } = scene(KEY, 300, 120, 220);
     holdOmniCard(wrapper);
+    expect(omniPinStore.get("right")!.cardId).toBe(KEY);
     expect(omniPinStore.get("right")!.offset).toBe(80);
+  });
+
+  it("holdOmniCard writes NOTHING on a pin-free side — a hold that holds nothing (task 490)", () => {
+    // The defect leg. With no pin standing, `resolveCascade` runs forward-only,
+    // so the pressed card's top does not depend on its own height and the click
+    // cannot move it — the freeze held nothing. What the pre-490 write DID do
+    // is make the crowd's CURRENT displacement permanent, because nothing ever
+    // clears a pin.
+    const { wrapper } = scene(KEY, 300, 120, 220);
+    holdOmniCard(wrapper);
+    expect(omniPinStore.get("right")).toBeNull();
+
+    // …and the accepting control, which is Gabriel's second report as
+    // arithmetic. The pressed card sits 80px below its anchor because the card
+    // ABOVE it is expanded. Collapse that card and the deck's own answer walks
+    // back to the anchor — but the pin does not, so the card stays displaced by
+    // a crowd that is no longer there ("displacing to the same extent as they
+    // would be when open").
+    const items = [
+      { id: "a", pos: 1 },
+      { id: KEY, pos: 2 },
+    ];
+    const afterNeighbourCollapsed = new Map<string, NaturalEntry>([
+      ["a", { naturalTop: 100, height: 60 }],
+      [KEY, { naturalTop: 220, height: 120 }],
+    ]);
+    const unpinned = resolveCascade(afterNeighbourCollapsed, items, null);
+    const withStaleHold = resolveCascade(afterNeighbourCollapsed, items, {
+      id: KEY,
+      offset: 80,
+    });
+    expect(unpinned.get(KEY)).toBe(220); // back on its anchor
+    expect(withStaleHold.get(KEY)).toBe(300); // …still 80px below it, forever
+  });
+
+  it("holdOmniCard refuses an offset ABOVE the anchor — the ratchet's second turn (task 490)", () => {
+    // Once ANY pin stands, the backward pass can lift a card above its own
+    // anchor. Pressing THAT card used to freeze the negative displacement as a
+    // durable pin: the card then contradicts its own margin marker forever,
+    // which is task 362's decoupling arriving through the offset instead of
+    // through the coordinate. A hold may only hold what the deck's own rule
+    // could have produced, and the forward pass never puts a card above its
+    // anchor.
+    omniPinStore.requestPin("right", "float:card:note:other", 30);
+    const { wrapper } = scene(KEY, 220, 120, 300); // lifted 80px ABOVE its anchor
+    holdOmniCard(wrapper);
+    expect(omniPinStore.get("right")!.cardId).toBe("float:card:note:other");
   });
 
   it.each([
