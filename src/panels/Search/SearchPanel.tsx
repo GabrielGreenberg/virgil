@@ -97,6 +97,16 @@ interface SearchPanelProps {
   comments: RevisionCard[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
+  /**
+   * Which scopes this HOST may offer — `scopesForVisiblePanels(chrome
+   * .visiblePanelKinds)`, resolved by `SearchHost`. REQUIRED, never defaulted:
+   * the two answers ("everything" vs "the reader's five") are different claims
+   * about the surrounding surface, and a defaulted one is a decision nobody
+   * made. A scope outside this set is neither OFFERED (no chip, no dropdown
+   * row) nor SEARCHED (the dispatch loop reads the intersection), so a hit can
+   * never be produced whose jump docks a band this host's rail elides.
+   */
+  availableScopes: SearchScope[];
   state: SearchPanelState;
   onStateChange: React.Dispatch<React.SetStateAction<SearchPanelState>>;
 }
@@ -583,6 +593,7 @@ function SearchPanel({
   comments,
   bibEntries,
   onOpenItem,
+  availableScopes,
   state,
   onStateChange,
 }: SearchPanelProps) {
@@ -590,6 +601,28 @@ function SearchPanel({
   const enabledScopes = useMemo(
     () => new Set(state.enabledScopes),
     [state.enabledScopes],
+  );
+  // Task 485 — the host's OFFER, and the three things derived from it. The
+  // chip rows render the intersection (so no unavailable scope is offered),
+  // and `effectiveScopes` is what the search actually runs (so a persisted
+  // `enabledScopes` carrying a scope this host hides — the state survives
+  // panel close/reopen, and the same blob is shared with a host that DID
+  // offer it — searches nothing rather than minting a dead-click hit).
+  const availableSet = useMemo(
+    () => new Set(availableScopes),
+    [availableScopes],
+  );
+  const primaryScopes = useMemo(
+    () => PRIMARY_SCOPES.filter((s) => availableSet.has(s)),
+    [availableSet],
+  );
+  const dropdownScopes = useMemo(
+    () => DROPDOWN_SCOPES.filter((s) => availableSet.has(s)),
+    [availableSet],
+  );
+  const effectiveScopes = useMemo(
+    () => state.enabledScopes.filter((s) => availableSet.has(s)),
+    [state.enabledScopes, availableSet],
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -670,9 +703,12 @@ function SearchPanel({
       query,
       caseSensitive,
       wholeWord,
-      scopes: state.enabledScopes,
+      // The INTERSECTION, not the raw toggle set — see `effectiveScopes`. It
+      // is memoized, so the deferred tuple stays identity-stable and task
+      // 119's "the input never waits on the search" split is preserved.
+      scopes: effectiveScopes,
     }),
-    [query, caseSensitive, wholeWord, state.enabledScopes],
+    [query, caseSensitive, wholeWord, effectiveScopes],
   );
   const deferred = useDeferredValue(searchInputs);
   const searchPending = deferred !== searchInputs;
@@ -917,7 +953,7 @@ function SearchPanel({
       </div>
 
       <div className="px-3 pb-2 pt-2 flex flex-wrap items-center gap-1 border-b border-[var(--border)]">
-        {PRIMARY_SCOPES.map((s) => (
+        {primaryScopes.map((s) => (
           <ScopeChip
             key={s}
             scope={s}
@@ -925,11 +961,13 @@ function SearchPanel({
             onToggle={() => toggleScope(s)}
           />
         ))}
-        <MoreScopesDropdown
-          scopes={DROPDOWN_SCOPES}
-          enabledScopes={enabledScopes}
-          onToggle={toggleScope}
-        />
+        {dropdownScopes.length > 0 && (
+          <MoreScopesDropdown
+            scopes={dropdownScopes}
+            enabledScopes={enabledScopes}
+            onToggle={toggleScope}
+          />
+        )}
       </div>
     </>
   );

@@ -11,11 +11,20 @@
 // take that count and `splice` it into every placement on the side; the two
 // spaces coincided only while nothing filtered the strip.
 //
-// `READER_CHROME.visiblePanelKinds` is the six reading panels, and the shipped
-// LEFT placement order opens with `search`, which is NOT in that whitelist. So
-// the Library Reader renders 5 icons over a 6-entry list and every DOM index k
+// `READER_CHROME.visiblePanelKinds` was the six reading panels, and the shipped
+// LEFT placement order opens with `search`, which was NOT in that whitelist. So
+// the Library Reader rendered 5 icons over a 6-entry list and every DOM index k
 // addressed model index k+1: EVERY drop below the first gap landed one slot
 // early, in the direction the user did not aim.
+//
+// TASK 485 whitelisted `search` INTO the Reader, so the shipped Reader's LEFT
+// strip now renders every left placement and is no longer a filtered projection
+// at all. The property under test is about ANY filtered projection — a
+// whitelist, a per-doc hide, a search filter — so the left case keeps the
+// PRE-485 Reader list as a synthetic divergent whitelist rather than being
+// deleted with the one host that happened to exhibit it. Each case still
+// ASSERTS its own divergence, so a fixture that stopped diverging fails loudly
+// instead of passing vacuously.
 //
 // Every pre-440 `movePanel` fixture drives the FULL placement list — the main
 // app's `FULL_CHROME` passes no whitelist — where the projection and the model
@@ -123,10 +132,19 @@ function movePanelByRenderedIndex(
 
 const READER_WHITELIST: PanelKind[] = [...READER_CHROME.visiblePanelKinds!];
 
+/** The PRE-485 Reader list — the shipped whitelist minus `search`, which task
+ *  485 added. `search` sits at LEFT index 0 in the shipped placements, so
+ *  hiding it is exactly the shape that made every DOM index off-by-one: the
+ *  historical fixture, kept because the RULE is about any filtered projection
+ *  and not about one host's membership list. */
+const LEFT_FILTERED_WHITELIST: PanelKind[] = READER_WHITELIST.filter(
+  (k) => k !== "search",
+);
+
 /** The two sides, each with a whitelist that genuinely DIVERGES from the model.
  *
- *  LEFT is the shipped Reader case verbatim (`search`, left index 0, is not a
- *  reading panel). The Reader's whitelist leaves only ONE panel on the RIGHT,
+ *  LEFT is the pre-485 Reader case verbatim (`search`, left index 0, was not a
+ *  reading panel then). The Reader's whitelist leaves only ONE panel on the RIGHT,
  *  which has no gaps to sweep — so the right case uses the Reader's six plus
  *  two more right-side kinds, which hides `wordcount` (right index 0) above
  *  them. That is the same shape, not a different rule: any whitelist, per-doc
@@ -134,7 +152,7 @@ const READER_WHITELIST: PanelKind[] = [...READER_CHROME.visiblePanelKinds!];
  *  stop speaking in indices. Each case ASSERTS its own divergence below rather
  *  than assuming it. */
 const CASES = [
-  { side: "left" as const, whitelist: READER_WHITELIST },
+  { side: "left" as const, whitelist: LEFT_FILTERED_WHITELIST },
   {
     side: "right" as const,
     whitelist: [...READER_WHITELIST, "todo", "cutter"] as PanelKind[],
@@ -210,10 +228,10 @@ describe("movePanel resolves a drop by IDENTITY, not by rendered index", () => {
     });
   }
 
-  it("DEFECT: the retired rendered-index rule lands every Reader drop one slot early", () => {
+  it("DEFECT: the retired rendered-index rule lands every filtered drop one slot early", () => {
     const { vp } = mountPrefs();
     const base = vp().prefs.placements as Placement[];
-    const strip = renderedStrip(base, "left", READER_WHITELIST);
+    const strip = renderedStrip(base, "left", LEFT_FILTERED_WHITELIST);
 
     // The task's worked example first, spelled out: drop `outline` into the
     // gap between `citations` and `bibliography`.
@@ -228,7 +246,7 @@ describe("movePanel resolves a drop by IDENTITY, not by rendered index", () => {
     const retiredStrip = renderedStrip(
       movePanelByRenderedIndex(base, "outline", "left", gap),
       "left",
-      READER_WHITELIST,
+      LEFT_FILTERED_WHITELIST,
     );
     expect(retiredStrip).not.toEqual(expected);
     // One slot early, by exactly the number of hidden panels above the gap
@@ -244,7 +262,7 @@ describe("movePanel resolves a drop by IDENTITY, not by rendered index", () => {
         const got = renderedStrip(
           movePanelByRenderedIndex(base, dragged as PanelId, "left", g),
           "left",
-          READER_WHITELIST,
+          LEFT_FILTERED_WHITELIST,
         );
         expect(got.indexOf(dragged)).toBe(g - 1);
         checked++;
@@ -256,9 +274,9 @@ describe("movePanel resolves a drop by IDENTITY, not by rendered index", () => {
     act(() => {
       vp().movePanel("outline", "left", targets[gap] as PanelId);
     });
-    expect(renderedStrip(vp().prefs.placements as Placement[], "left", READER_WHITELIST)).toEqual(
-      expected,
-    );
+    expect(
+      renderedStrip(vp().prefs.placements as Placement[], "left", LEFT_FILTERED_WHITELIST),
+    ).toEqual(expected);
   });
 
   it("NON-REGRESSION: with no whitelist the identity path is byte-identical to the retired index path", () => {
