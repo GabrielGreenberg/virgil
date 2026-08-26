@@ -1,4 +1,4 @@
-<!-- last-verified: 41d988c2 2026-08-25 -->
+<!-- last-verified: 2af498fb 2026-08-26 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -97,6 +97,13 @@ that matters to a skill running in the folder — **the synced helper scripts**:
 
 These land via the skill-sync engine (below). A skill calls the Python helpers
 here; it does not reach into the repo's `editor/scripts/`.
+
+**The sync is unfiltered and folder-blind:** every Virgil-managed folder gets
+`.claude/commands/<silo>/` and `.virgil/scripts/<silo>/` for **all** silos —
+paper folders included, and the library root included. So the presence of a
+`.claude/commands/library/` directory says only that the PWA synced this folder;
+it does **not** mean a library is mounted here. A skill asking "where am I?"
+must ask `library_path.py --mode`, never a directory probe (task 475).
 
 ## The .claude/ folder
 
