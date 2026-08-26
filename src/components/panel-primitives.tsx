@@ -2958,6 +2958,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
 export function PanelHeader({
   title,
   count,
+  countLabel,
   onAdd,
   onAddOptions,
   leading,
@@ -2966,6 +2967,12 @@ export function PanelHeader({
 }: {
   title: string;
   count?: number;
+  /** Names a non-default VIEW the panel is under ("ARCHIVES" / "ALL"), rendered
+   *  just before the count. Its presence also un-suppresses a ZERO count: with a
+   *  filter on, "0" is the fact the user needs, and hiding it is what made an
+   *  archives-view-with-nothing-archived header identical to an empty panel's
+   *  (task 478). */
+  countLabel?: string;
   /** Receives the trigger button's bounding rect so the host can pop the
    *  new card as a float anchored to the "+" button. */
   onAdd?: (anchorRect?: DOMRect) => void;
@@ -2995,7 +3002,12 @@ export function PanelHeader({
       <h3 className={`panel-header-title text-[11px] font-semibold uppercase tracking-wider leading-none${leading ? " -ml-1" : ""}`}>
         {title}
       </h3>
-      {count != null && count > 0 && (
+      {countLabel != null && (
+        <span className="panel-header-view text-[11px] font-semibold uppercase tracking-wider leading-none ml-1">
+          {countLabel}
+        </span>
+      )}
+      {count != null && (count > 0 || countLabel != null) && (
         <span className="panel-header-count text-[11px] font-semibold uppercase tracking-wider leading-none ml-1">
           {count}
         </span>

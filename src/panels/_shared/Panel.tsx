@@ -26,6 +26,12 @@ export interface PanelProps {
   title?: string;
   /** Optional count badge in the header. */
   count?: number;
+  /** A short uppercase label rendered BESIDE the count, naming a non-default
+   *  view the panel is currently under ("ARCHIVES" / "ALL"). When present the
+   *  count renders even at ZERO — with a filter on, "0" is the fact, and a
+   *  suppressed badge makes the header identical to a genuinely empty panel's
+   *  (task 478). Omit in the default view: the header is then unchanged. */
+  countLabel?: string;
   onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a dropdown of choices. Used by
    *  panels hosting more than one card kind. Overrides `onAdd`.
@@ -66,6 +72,7 @@ export function Panel({
   kind,
   title,
   count,
+  countLabel,
   onAdd,
   onAddOptions,
   headerLeading,
@@ -98,6 +105,7 @@ export function Panel({
         <PanelHeader
           title={resolvedTitle}
           count={count}
+          countLabel={countLabel}
           onAdd={onAdd}
           onAddOptions={onAddOptions}
           leading={headerLeading}

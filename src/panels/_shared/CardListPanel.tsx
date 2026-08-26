@@ -10,14 +10,20 @@
  * calls `onSelect(null)` so panels don't have to wire that themselves.
  */
 
-import { Fragment, useCallback, useEffect, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   CardDisplayProvider,
   DOCKED_COMPRESSED_LINES,
 } from "@/components/editor-layout/contexts/card-display";
 import { Panel } from "./Panel";
 import type { PanelKind } from "./types";
-import { useArchiveVisibleItems } from "./card-archive-view";
+import {
+  archiveViewBadgeLabel,
+  resolveArchiveEmptyReason,
+  useArchiveVisibleItems,
+  useCardArchiveView,
+} from "./card-archive-view";
+import { ArchiveViewEmptyState } from "./ArchiveViewEmptyState";
 
 export interface CardListPanelProps<T> {
   kind: PanelKind;
@@ -45,7 +51,14 @@ export interface CardListPanelProps<T> {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 
-  /** Optional empty-state. Rendered when items is empty. */
+  /** The panel's GENUINELY-empty state — the one case only the panel can
+   *  author, because only it knows how its cards are made ("Select text and use
+   *  the toolbar to create one"). Rendered when nothing is filtered out.
+   *
+   *  A panel supplies this and NOTHING else: when the archive view is what
+   *  emptied the list, `CardListPanel` renders the shared view-aware state
+   *  instead (task 478), so a ninth archivable panel inherits that by shipping
+   *  and there is no second string per panel to keep in step. */
   emptyState?: ReactNode;
 
   /** Optional content rendered inside the list scroll body, after the
@@ -101,6 +114,9 @@ export function CardListPanel<T>({
   scrollTabIndex,
 }: CardListPanelProps<T>) {
   const handleEmptyClick = useCallback(() => onSelect(null), [onSelect]);
+  const { getView, setView } = useCardArchiveView();
+  const view = getView(kind);
+  const archivable = getArchived != null;
 
   // Archive view: filter the list by the panel's current mode (active /
   // archived / all). When `getArchived` is omitted the panel has no archivable
@@ -130,7 +146,51 @@ export function CardListPanel<T>({
     if (!visibleItems.some((it) => getId(it) === selectedId)) onSelect(null);
   }, [getArchived, selectedId, visibleItems, getId, onSelect]);
 
-  const showEmpty = visibleItems.length === 0 && emptyState != null;
+  // Which empty state? The rule is one pure function in `card-archive-view`,
+  // read here because this is the one place that holds BOTH sets — the raw
+  // `items` and the `visibleItems` the filter left. A view-aware reason wins;
+  // `panel-empty` falls through to the panel's own authored copy.
+  const emptyReason = resolveArchiveEmptyReason({
+    view,
+    archivable,
+    rawCount: items.length,
+    visibleCount: visibleItems.length,
+  });
+  const viewEmpty =
+    emptyReason && emptyReason.kind !== "panel-empty" ? emptyReason : null;
+  const showEmpty =
+    visibleItems.length === 0 && (viewEmpty != null || emptyState != null);
+
+  // Creating a card always produces an ACTIVE one, so the Archives view would
+  // hide it the instant it existed — pressing "+" there read as a broken button.
+  // The affordance and its outcome must agree (the law the drop path already
+  // states: what the hover OFFERS is what the commit ACCEPTS), so a create
+  // leaves the Archives view rather than landing somewhere the user cannot see.
+  // "All" needs no redirect: it shows the new card already.
+  const leaveArchivesView = useCallback(() => {
+    if (archivable && view === "archived") setView(kind, "active");
+  }, [archivable, view, setView, kind]);
+  const handleAdd = useMemo(
+    () =>
+      onAdd
+        ? (rect?: DOMRect) => {
+            leaveArchivesView();
+            onAdd(rect);
+          }
+        : undefined,
+    [onAdd, leaveArchivesView],
+  );
+  const handleAddOptions = useMemo(
+    () =>
+      onAddOptions?.map((o) => ({
+        ...o,
+        onClick: (rect?: DOMRect) => {
+          leaveArchivesView();
+          o.onClick(rect);
+        },
+      })),
+    [onAddOptions, leaveArchivesView],
+  );
 
   return (
     // Docked card panels DECLARE their compressed-line count (R8) rather than
@@ -141,8 +201,9 @@ export function CardListPanel<T>({
       kind={kind}
       title={title}
       count={shownCount}
-      onAdd={onAdd}
-      onAddOptions={onAddOptions}
+      countLabel={archivable ? archiveViewBadgeLabel(view) : undefined}
+      onAdd={handleAdd}
+      onAddOptions={handleAddOptions}
       headerLeading={headerLeading}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
@@ -159,7 +220,7 @@ export function CardListPanel<T>({
         // block (BIB-F1-01). Render `listTrailing` alongside the empty-state so
         // a pending request isn't dropped when the card list is empty.
         <>
-          {emptyState}
+          {viewEmpty ? <ArchiveViewEmptyState reason={viewEmpty} /> : emptyState}
           {listTrailing}
         </>
       ) : (
