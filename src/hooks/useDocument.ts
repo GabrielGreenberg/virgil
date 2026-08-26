@@ -19,7 +19,7 @@ import {
   unregisterPendingFlusher,
 } from "@/lib/multi-window/pending-saves";
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
-import { shouldPauseAutosave } from "@/lib/autosave-pause";
+import { autosavePauseReason } from "@/lib/autosave-pause";
 import {
   clearUnsavedWork,
   getUnsavedWork,
@@ -91,7 +91,7 @@ export function useDocument() {
   // useDocument instances (1 active + warm). The provider watches only the
   // ACTIVE doc, so a warm doc must see a null watcher — else its background
   // autosave would pause on the ACTIVE doc's external-conflict state
-  // (`shouldPauseAutosave(null)` is false, so null = "never pause"). Only the
+  // (a null watcher never contributes a `conflict` pause). Only the
   // doc whose id matches the provider's `activeDocId` honors the pause guard.
   const isActiveDoc = diskWatcherCtx?.activeDocId === docId;
   const watcher = isActiveDoc ? (diskWatcherCtx?.watcher ?? null) : null;
@@ -536,11 +536,14 @@ export function useDocument() {
       // Dismiss → hasUnresolvedChange() returns false and the next fire writes
       // normally). KEYSTROKE SANCTITY: this check runs at debounce-fire (off the
       // hot path), never per keystroke; it is a single O(1) store read.
-      if (shouldPauseAutosave(watcherRef.current)) {
+      const paused = autosavePauseReason(watcherRef.current, docId);
+      if (paused) {
         // Task 391: the pause is correct AND it means the user's work is
         // memory-only from here. Say so on the channel — that is what arms the
         // mirror and what stops a reload door opening quietly on top of it.
-        noteSaveBlocked(docId, "conflict");
+        // Task 489: the REASON comes from the door that decided to pause, so a
+        // cowork hold can no longer be reported as a conflict.
+        noteSaveBlocked(docId, paused);
         debouncedSaveRef.current();
         return;
       }
@@ -592,8 +595,9 @@ export function useDocument() {
     // armed) so the minted UUID is retried after the user resolves the change,
     // and the dirty flag stays true (severity stays 'conflict'). This is a
     // discrete commit path, not the keystroke path — O(1) store read.
-    if (shouldPauseAutosave(watcherRef.current)) {
-      noteSaveBlocked(docId, "conflict");
+    const paused = autosavePauseReason(watcherRef.current, docId);
+    if (paused) {
+      noteSaveBlocked(docId, paused);
       debouncedSave();
       return;
     }
@@ -641,8 +645,9 @@ export function useDocument() {
   // that path clears the stash (refetch + the delimiters-changed event).
   const saveWithDelimiters = useCallback(
     (delimiters: { preamble: string; postamble: string }) => {
-      if (shouldPauseAutosave(watcherRef.current)) {
-        noteSaveBlocked(docId, "conflict");
+      const paused = autosavePauseReason(watcherRef.current, docId);
+      if (paused) {
+        noteSaveBlocked(docId, paused);
         pendingDelimitersRef.current = delimiters;
         debouncedSave();
         return;
@@ -815,7 +820,7 @@ export function useDocument() {
    *
    * Three things make this different from every other save path here, and all
    * three are the decision rather than a shortcut. It does not consult
-   * `shouldPauseAutosave`: the clobber guard exists to stop an AUTOMATIC write
+   * `autosavePauseReason`: the clobber guard exists to stop an AUTOMATIC write
    * from overwriting an external change, and this write is the user answering
    * that exact question (the resolution has also already re-baselined the
    * watcher, so the guard is down by the time this runs). It passes
@@ -930,9 +935,10 @@ export function useDocument() {
    *   the wrong answer to a user asking for their work to be saved.
    */
   const saveNowRequested = useCallback(async (): Promise<SaveAttemptOutcome> => {
-    if (shouldPauseAutosave(watcherRef.current)) {
-      noteSaveBlocked(docId, "conflict");
-      return { landed: false, reason: "conflict" };
+    const paused = autosavePauseReason(watcherRef.current, docId);
+    if (paused) {
+      noteSaveBlocked(docId, paused);
+      return { landed: false, reason: paused };
     }
     if (saveTimerRef.current !== null) {
       clearTimeout(saveTimerRef.current);

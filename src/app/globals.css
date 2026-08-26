@@ -5668,3 +5668,31 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
      works the moment A9 stamps the marker (no-op until then). */
   [data-print-appendix] [data-card-chrome] { display: none; }
 }
+
+/* ── Cowork pen — the "Virgil is editing this paper…" badge (task 489) ──
+ *
+ * The one badge in the topbar that reports something happening RIGHT NOW
+ * rather than something that has happened, so its glyph breathes: that
+ * animation IS the "loud indicator" half of the request, against a
+ * firm-but-calm amber ground (STYLE_GUIDE → "the destructive / alarm family":
+ * a state that is merely unexpected is a WARNING, never the alarm ramp).
+ *
+ * Opacity only — composite-only, no layout, no paint invalidation of anything
+ * around it — and OPTED IN under `prefers-reduced-motion: no-preference`, the
+ * shape this file already uses for `.omni-entry-slide` and the scrollbar-thumb
+ * fade: the absent rule is simply a still glyph, which cannot be forgotten. */
+@keyframes cowork-pen-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cowork-pen-pulse {
+    animation: cowork-pen-breathe 1.6s ease-in-out infinite;
+  }
+}

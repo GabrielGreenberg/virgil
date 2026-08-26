@@ -53,6 +53,11 @@ export type UnsavedBlockReason =
   /** A 350-D/357 preservation gate refused: the model represents the file
    *  less completely than the file does. */
   | "preservation"
+  /** Task 489 — an `/editor/*` cowork skill holds this paper's pen: it is
+   *  mid-commit against the same folder, so an automatic write would race it.
+   *  Transient by construction (the hold is one atomic commit, and the pen
+   *  self-expires), so it clears itself rather than opening a flow. */
+  | "cowork"
   /** The write attempt threw — FSA permission lost, a lock error, a quota
    *  failure, a superseded pipeline. */
   | "error";

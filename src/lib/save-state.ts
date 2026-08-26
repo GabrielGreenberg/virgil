@@ -151,7 +151,7 @@ export interface BlockDescription {
 }
 
 /** The reason vocabulary. Exhaustive over `UnsavedBlockReason` by the switch's
- *  `never` arm, so a fourth reason cannot ship without stating its words. */
+ *  `never` arm, so a new reason cannot ship without stating its words. */
 export function describeBlockReason(
   reason: UnsavedBlockReason,
 ): BlockDescription {
@@ -173,6 +173,20 @@ export function describeBlockReason(
           "holds less than the file on disk does. Answer that notice to decide.",
         flow: "preservation",
         action: "Review…",
+      };
+    case "cowork":
+      return {
+        short: "Virgil is editing this paper",
+        sentence:
+          "A Virgil cowork skill is writing to this paper's folder, so saving " +
+          "is paused and the text is read-only until it finishes. This " +
+          "normally takes a moment and clears itself.",
+        // No flow: there is nothing for the user to answer. The hold is one
+        // atomic commit and the pen self-expires, so the way out is to wait —
+        // and "Try again" is the honest button for a state whose resolution IS
+        // a next attempt (the same shape `error` takes, for the same reason).
+        flow: null,
+        action: "Try again",
       };
     case "error":
       return {

@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { SoftwareUpdateBanner } from "@/components/SoftwareUpdateBanner";
+import CoworkPenBadge from "@/components/CoworkPenBadge";
 import { MirrorRecoveryBadge } from "@/components/MirrorRecoveryBadge";
 import { SaveStateBadge } from "@/components/SaveStateBadge";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
@@ -258,6 +259,15 @@ function StatusClusterImpl(props: StatusClusterProps) {
           the 2026-08-19 data loss, so it no longer reloads while any open
           paper's work is still in memory. */}
       <SoftwareUpdateBanner />
+      {/* Cowork pen (task 489). An `/editor/*` skill holds this paper's pen —
+          it is committing to the same folder — so the main text is read-only
+          and the autosave is paused. Self-gates (renders null with no hold)
+          and sits BEFORE the topbarRightCollapsed gate with the four
+          data-integrity badges: a notice that explains why the editor has
+          stopped accepting your typing must not be hideable by a layout
+          preference. Amber rather than red — nothing here is destructive or
+          even wrong, and it clears itself (STYLE_GUIDE → the alarm family). */}
+      <CoworkPenBadge docId={currentDocId} />
       {/* Preservation notice (task 357 hole 4). A gate refused a write because
           it would have dropped content this document was loaded with, so Virgil
           is not saving this paper. Self-gates (renders null with no standing
