@@ -5,8 +5,8 @@ description: |
   apply the (possibly edited) decisions in a single transaction.
   Triggers on: "triage everything in unsorted", "process my pending
   uploads", "name all the papers I dropped", "Virgil, batch-triage
-  the inbox", "drain the unsorted folder". Heavy — must run from
-  inside the library folder. Pass `auto` to skip the review step.
+  the inbox", "drain the unsorted folder". Heavy operation — must run
+  from inside the library folder. Pass `auto` to skip the review step.
   Does NOT trigger for single files (use /triage-pdf). Args: optional
   `auto`.
 ---

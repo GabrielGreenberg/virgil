@@ -27,10 +27,13 @@ namespaces.
 ## Args
 
 - `<docPath>` *(optional)* — absolute or repo-relative path to the
-  document folder. Same resolution as `/editor/review`:
+  document folder. Resolve in order:
   1. Explicit arg.
   2. `cwd` if it has a `virgil/` subdir.
-  3. Otherwise prompt the user to pick.
+  3. Otherwise **prompt** the user to pick one.
+
+  Rungs 1-2 are `/editor/review`'s; rung 3 is the front door's own —
+  review *errors* when it cannot resolve a doc, and a front door asks.
 
 ## Procedure
 
@@ -80,23 +83,51 @@ namespaces.
 
 ### Step 2 — Intent classification
 
-Read the user's most recent message. Pick the highest-fit category and
-dispatch.
+**The skills' own descriptions ARE the routing vocabulary.** Every `editor:*`
+and `library:*` skill declares, in its `description:` frontmatter, the phrases
+it triggers on (`Triggers on: …`) and the asks it explicitly does *not* take
+(`Does NOT trigger for …`). The harness surfaces all of them in the skill
+listing you can already read. So read the user's most recent message, match it
+against those declared triggers, and dispatch the best fit **as a subagent**.
+
+That is the whole vocabulary, and it is deliberately not repeated here. A
+hand-typed copy of it can only fall behind the skill set — and did, for months,
+opening a loop it could not close (it routed "draft a suggestion" and knew
+nothing about accepting or rejecting one). Read from the descriptions and a
+skill is routable the moment it ships.
+
+Four rules shape the match, and each reads a declaration the skill makes about
+itself rather than a list kept here:
+
+1. **Developer-only skills are not user routes.** A description that opens
+   `Developer-only` is for a Virgil maintainer working on the skill set
+   itself. Do not offer one to an end user.
+2. **A heavy library op takes Step 4** when the mode is not full-ops — see
+   Step 4, which reads the skill's own weight declaration.
+3. **A specialist is Task-bound** when its own `Args:` line declares a
+   *required* — unbracketed — `<requestId>` or `<bibKey>`. Then the id
+   contract immediately below applies. A **bracketed** `[<requestId>]` is the
+   skill declaring the id optional: `/editor/create-card` is that door, and it
+   is the answer to "there is no Task".
+4. **When two skills both fit, prefer the narrower one**, and read the loser's
+   `Does NOT trigger for …` line — the descriptions disambiguate each other by
+   design (`/editor/edit-card` refuses a suggestion's `status`;
+   `/editor/accept-suggestion` owns it).
 
 #### Task routes: where the id comes from, and what to do when there is none
 
-Rows marked **(Task)** below dispatch an `/editor/*` specialist that acts on
-a **request in the paper's AI-request inbox** — a Task the *user* minted by
-flagging a card or a paragraph for AI in the app. Every one of them validates
-that id in its own step 0 and **refuses** an unknown or wrong-kind one, so the
-id is not optional and it is not yours to invent.
+A **Task-bound** specialist (rule 3 above) acts on a **request in the paper's
+AI-request inbox** — a Task the *user* minted by flagging a card or a paragraph
+for AI in the app. Every one of them validates that id in its own step 0 and
+**refuses** an unknown or wrong-kind one, so the id is not optional and it is
+not yours to invent.
 
 **Helper-script paths, once.** The recipes below name a helper as
 `<editor-scripts>/<name>.py`. Resolve that prefix the same way Step 1 resolved
 `library_path.py`: end-user flow `<docPath>/.virgil/scripts/editor/`, dev flow
 (running inside the Virgil repo) `editor/scripts/`.
 
-Answer this before you dispatch a **(Task)** row:
+Answer this before you dispatch a Task-bound specialist:
 
 1. **Is there already a Task for this ask?** One door lists all three inboxes
    (`ai-requests.json`, `bib-review-requests.json`, and un-bridged card flags):
@@ -151,22 +182,18 @@ Answer this before you dispatch a **(Task)** row:
    or the card for AI in Virgil, then ask again — or run
    `/editor/review <docPath>` once it is flagged.
 
-| User says (or sounds like) | Branch |
+The table below is **not** the route list. It records only the handful of
+asks that carry something no description can say: a front-door branch with no
+skill behind it, a default flag the front door must supply, or a rule about
+which of several matching skills wins. If an ask matches a skill's declared
+triggers and no row here says otherwise, dispatch that skill.
+
+| Ask shape | What the skill's own description cannot say |
 |---|---|
-| "introduce me" / "how does this work" / "what can you do" / "I'm new" / "Virgil?" with no other content | **Onboarding** (Step 3) |
-| "review my doc/paper" / "look at my open requests" / "drain my inbox" / "Virgil, take a pass" | Dispatch `/editor/review <docPath>` as a subagent |
-| "fix my bibliography" / "tidy my references" / "sync my refs to the library" | Dispatch `/editor/sync-bib-to-library <docPath>` as a subagent (start with `--dry-run` if the user hasn't confirmed they want writes) |
-| "add a footnote" / "draft a footnote here" | **(Task)** `/editor/draft-footnote <docPath> <id>` — no Task: compose + `/editor/create-card --kind=footnote` |
-| "find/add a citation" / "look up the source for this claim" | **(Task)** `/editor/find-citation <docPath> <id>` — no Task: Step 2 rule 4 (sourcing is Task-bound) |
-| "answer this note" / "address this todo" / "respond to my comment" | **(Task)** the matching `/editor/answer-*` skill, `<docPath> <id>` — no Task: compose + `/editor/create-card --kind=note\|todo\|report` |
-| "draft a suggestion" / "propose an edit here" | **(Task)** `/editor/draft-suggestion <docPath> <id>` — no Task: Step 2 rule 4 (the suggestion family has no chat-initiated builder) |
-| "answer this bib review" / "verify this bib entry" | **(Task)** `/editor/answer-bib-review <docPath> <bibKey>` — the `bibKey` is a row of `bib-review-requests.json`, listed by the same `list_requests.py` |
-| "merge my preamble style" / "apply my style customizations" | Dispatch `/editor/style-merge <docPath>` |
-| "authenticate <citekey>" / "verify this source" / "look up <author, year>" in the catalog | Dispatch `/library/authenticate-bib <citekey>` (light, runs in any mode where library_path resolves) |
-| "apply the bib edit for <citekey>" | Dispatch `/library/apply-bib-edit <citekey>` (light) |
-| "index this PDF" / "process this paper" | If a citekey already exists, dispatch `/library/index-paper <citekey>`; else dispatch `/library/triage-pdf <filename>` (both light) |
-| "deep-index <citekey>" / "do a deep index pass" / "deep research <topic>" / "drain my library queue" / "triage everything in unsorted" / "process all pending" | **Heavy-library branch** (Step 4) — does NOT dispatch inline in light-ops mode |
-| Anything else | Ask one short clarifying question, then re-classify |
+| "introduce me" / "how does this work" / "what can you do" / "I'm new" / "Virgil?" with no other content | **Onboarding** (Step 3) — a front-door branch, with no skill behind it |
+| a pass over the *whole* inbox, **or** several open Tasks match one ask | Dispatch `/editor/review <docPath>`. The front door does not choose between Tasks — draining the inbox is review's job |
+| a bibliography sync the user has not confirmed they want written | Dispatch `/editor/sync-bib-to-library <docPath>` with `--dry-run` first |
+| an ask that matches no skill's declared triggers | Ask one short clarifying question, then re-classify. Do **not** invent a skill name — if nothing in the listing fits, nothing fits |
 
 For each dispatch, mirror the `/editor/review`
 pattern: dispatch the specialist as a **subagent** so the front-door's
@@ -196,10 +223,22 @@ If the user follows up with a concrete request, jump to Step 2.
 
 ### Step 4 — Heavy-library branch (mount-or-queue)
 
-Triggered when the user wants `/library/deep-index`,
-`/library/triage-pending`, `/library/index-pending`,
-`/library/ai-requests`, `/library/iterate-skill`, or any future heavy
-library operation, AND the current mode is **not** full-ops.
+Triggered when the matched library skill's **own description declares it a
+`Heavy operation`**, AND the current mode is **not** full-ops.
+
+That declaration is the gate — there is no list here to keep in step with the
+skill set, and there was: the previous hand list had already lost
+`/library/merge-bibs`, which folds *every* paper's `references.bib` into
+`master.bib` library-wide. A heavy skill says so in its own `description:`
+frontmatter, beside the reason ("must run from inside the library folder",
+"spawns multiple per-paper subagents"); a light one says `Light — safe to
+invoke from a paper session with --library` and dispatches inline in any mode
+where `library_path` resolves.
+
+A skill that declares **neither** is treated as light, because that is what the
+front door has always done with one — but that is a gap in the declaration, not
+a licence. If the ask is plainly a whole-library or multi-paper write, treat it
+as heavy whatever its description omits.
 
 Print a 3-line explanation tailored to the mode:
 
@@ -269,6 +308,11 @@ Done: oriented user. Output: state-summary.
   Always surface the mount-or-queue choice.
 - Does **not** retry failed specialists. If a dispatch fails, surface
   the error and stop.
+- Does **not** keep its own list of what the skills do. Each skill's
+  `description:` is the one place its triggers, its weight and its argument
+  contract are stated; the table in Step 2 records only what a description
+  structurally cannot. Adding a row that restates a skill's triggers puts the
+  front door back one commit behind the skill set.
 
 ## Pairing with /loop
 

@@ -8,8 +8,8 @@ description: |
   skill (index-paper / deep-index / authenticate-bib, or one of the
   deep-index subskills) on each citekey via a fresh subagent, reads
   the subagent's critique memo, edits the skill markdown to fix
-  flagged ambiguities, and loops. Heavy — runs from inside the library
-  folder. Does NOT trigger for end-user requests like "process this
+  flagged ambiguities, and loops. Heavy operation — runs from inside the
+  library folder. Does NOT trigger for end-user requests like "process this
   paper" — that's /index-paper or /deep-index. Args: <skill-name>
   <citekey1> [citekey2] ...
 ---
