@@ -146,6 +146,24 @@ Two rules the family carries:
   surface must call a paused conflict the same thing, or the user reads three
   descriptions of one event and concludes they are three problems.
 
+- **The COWORK pen is the ladder's one "happening right now" state** (task 489;
+  `CoworkPenBadge`, beside the four data-integrity badges and before the
+  `topbarRightCollapsed` gate). While an `/editor/*` skill holds this paper's
+  pen the main text is read-only and the autosave is paused, so the badge is
+  what makes both legible — "Virgil is editing this paper…". It takes the WARM
+  family (`--amber-100` ground, `--amber-500` edge and icon) and not the alarm
+  ramp, because nothing here is destructive or even wrong: a skill the user
+  asked for is doing what they asked, and the state clears itself. What makes
+  it LOUD is that it is present at all, that it names the cause in the user's
+  own words, and that its glyph BREATHES — an opacity-only keyframe
+  (`.cowork-pen-pulse`, opted in under `prefers-reduced-motion: no-preference`,
+  the shape `.omni-entry-slide` already uses). It is the only badge in the bar
+  that animates, and that is the distinction it is carrying: every other one
+  reports something that has already happened. It offers no dismiss, for the
+  reason the preservation notice gives — a dismiss would hide the explanation
+  while the read-only posture stood — and needs none, because it disappears on
+  its own.
+
 - **Two rungs ALIAS the rust scale rather than restating its hex.** That is the
   point, not an optimization. The historical migration record
   (`docs/virgil-design-system/10-audit.md` §8, no longer the spec) complains

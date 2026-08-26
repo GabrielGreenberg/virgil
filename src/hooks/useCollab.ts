@@ -25,7 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { readSidecar, writeSidecar } from "@/lib/storage";
+import { readSidecar, readTextFile, writeSidecar } from "@/lib/storage";
 import {
   beginDocPipeline,
   getActiveHandle,
@@ -53,6 +53,13 @@ import {
 // wire-READ side (`@/lib/collab`) deliberately stays `string` — disk data is
 // untyped.
 import type { PanelThemeKey } from "@/lib/panel-theme";
+import {
+  COWORK_PEN_CONTEXT_PATH,
+  clearCoworkPen,
+  noteCoworkPen,
+  resolveCoworkPen,
+  type CoworkPenState,
+} from "@/lib/cowork-pen";
 
 export interface CollabState {
   /** True when the sidecar's `enabled` flag is set on disk. */
@@ -63,8 +70,12 @@ export interface CollabState {
   sidecar: CollabSidecar;
   /** Derived pen state (free / active / idle / stale). */
   pen: DerivedPen;
-  /** True if collab is disabled OR I currently hold the pen. */
+  /** True if the main text may be edited: nothing else holds this paper's
+   *  pen, and (when collaborator mode is on) the pen is mine. */
   canEditMainText: boolean;
+  /** Task 489 — a cowork skill holds this paper's pen right now, so the
+   *  document is read-only and its autosave is paused. `null` otherwise. */
+  coworkPen: CoworkPenState | null;
   /** Have I currently claimed the pen? */
   iHavePen: boolean;
   /** When holder is partner: their color (for chrome accents). */
@@ -126,6 +137,7 @@ export const COLLAB_INERT: CollabHook = {
   sidecar: EMPTY_COLLAB_SIDECAR,
   pen: { status: "free", holder: null, idleSec: null, staleSec: null, requestedBy: [] },
   canEditMainText: true,
+  coworkPen: null,
   iHavePen: false,
   partnerColor: null,
   setIdentity: () => {},
@@ -150,6 +162,12 @@ export function useCollab(docId: string | null): CollabHook {
     loadIdentity(),
   );
   const [sidecar, setSidecar] = useState<CollabSidecar>(EMPTY_COLLAB_SIDECAR);
+  // Task 489 — the cowork pen. Derived on the SAME 5s clock the sidecar poll
+  // already runs on, because it is the same question about the same paper:
+  // who holds this document's pen? Held as state (not just published to the
+  // store) because `canEditMainText` — the thing that must flip — is derived
+  // here, and a store read during render would not re-render this hook.
+  const [coworkPen, setCoworkPen] = useState<CoworkPenState | null>(null);
   const [tick, setTick] = useState(0); // re-derives idle/stale labels
 
   const sidecarRef = useRef(sidecar);
@@ -223,10 +241,39 @@ export function useCollab(docId: string | null): CollabHook {
   useEffect(() => {
     if (!docId) {
       setSidecar(EMPTY_COLLAB_SIDECAR);
+      setCoworkPen(null);
       return;
     }
     let cancelled = false;
     let lastSerialized = "";
+    let lastPenKey = "";
+    /** The cowork rung (task 489). Reads BOTH on-disk records and resolves
+     *  them through the ONE ladder, then publishes the answer to the store the
+     *  autosave gate and the topbar banner read. Re-resolving from the raw
+     *  record on every tick is what makes expiry free: a crashed skill's
+     *  record stops being believed at its ceiling with no separate sweep. */
+    const loadCoworkPen = async (collabPen: CollabSidecar["pen"] | null) => {
+      let penContext: unknown = null;
+      try {
+        const raw = await readTextFile(docId, COWORK_PEN_CONTEXT_PATH);
+        if (raw) penContext = JSON.parse(raw);
+      } catch {
+        // Absent, unparseable, or a permission loss. Fail toward RELEASING —
+        // see the module header: a document wedged read-only is worse than a
+        // brief window in which the disk-side gates alone stand.
+      }
+      if (cancelled) return;
+      const next = resolveCoworkPen({ penContext, collabPen });
+      // Identity-stable: an unchanged answer must not re-render the whole
+      // EditorPane → paneState → EditorLayout cascade every 5 seconds.
+      const key = next
+        ? `${next.source}:${next.holder}:${next.since}:${next.expiresAt}`
+        : "";
+      noteCoworkPen(docId, next);
+      if (key === lastPenKey) return;
+      lastPenKey = key;
+      setCoworkPen(next);
+    };
     const load = async () => {
       try {
         const fresh = await readSidecar<CollabSidecar>(
@@ -234,6 +281,7 @@ export function useCollab(docId: string | null): CollabHook {
           COLLAB_SIDECAR_FILE,
           EMPTY_COLLAB_SIDECAR,
         );
+        void loadCoworkPen(fresh.pen ?? null);
         if (!cancelled) {
           // Merge: keep our own focus heartbeat if we wrote it more recently.
           const merged = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
@@ -251,6 +299,7 @@ export function useCollab(docId: string | null): CollabHook {
         }
       } catch {
         /* file may not exist yet */
+        void loadCoworkPen(null);
       }
     };
     load();
@@ -258,6 +307,10 @@ export function useCollab(docId: string | null): CollabHook {
     return () => {
       cancelled = true;
       clearInterval(interval);
+      // Nothing is polling this doc any more, so a retained answer could only
+      // go stale — and a stale "Virgil is editing" would wedge the pause for a
+      // doc whose pane is gone.
+      clearCoworkPen(docId);
     };
   }, [docId]);
 
@@ -615,7 +668,15 @@ export function useCollab(docId: string | null): CollabHook {
     );
   }, [sidecar.pen.holder, sidecar.participants, me]);
 
-  const canEditMainText = !sidecar.enabled || iHavePen;
+  // Task 489 — a cowork skill holding the pen makes the main text read-only
+  // REGARDLESS of collaborator mode. That is the whole of the reported gap:
+  // the pre-489 gate bit only when the USER had turned collab on, so on an
+  // ordinary solo paper the skill's pen meant nothing to the UI and the user
+  // could type (and autosave) straight over a commit in flight. Nothing here
+  // is a second pen vocabulary — `coworkPen` is the ONE ladder's answer, and
+  // when collab IS on the sidecar rung and `iHavePen` agree with it by
+  // construction (an AI holder is not me).
+  const canEditMainText = coworkPen === null && (!sidecar.enabled || iHavePen);
 
   const getCardClaim = useCallback(
     (panelKind: PanelThemeKey, cardId: string) => {
@@ -641,6 +702,7 @@ export function useCollab(docId: string | null): CollabHook {
       sidecar,
       pen,
       canEditMainText,
+      coworkPen,
       iHavePen,
       partnerColor,
       setIdentity,
@@ -664,6 +726,7 @@ export function useCollab(docId: string | null): CollabHook {
       identity,
       pen,
       canEditMainText,
+      coworkPen,
       iHavePen,
       partnerColor,
       setIdentity,

@@ -8944,6 +8944,129 @@ drives the REAL provider → REAL `createSidecarWatcher` → REAL
 re-hydrates on the next poll with no hand-dispatched event, and a removal
 empties the panel. Measured by neutering the provider's `start()`: 2 legs fail.
 
+### The other-writer half: the AI is a PEN-HOLDER, and the app honours the pen
+
+Same path, the writer the lock cannot reach (task 489). Gabriel: *"When Virgil
+is editing from cowork, can it flip a switch that makes the doc read only (with
+some loud indicator to show what is hapenning?). i feel like this might help
+with conlifcted copies too — i think they may be creeping in when cowork
+edits."*
+
+The mechanism existed and the app could see half of it. `/editor/*` skills have
+committed **under the pen** since the apply_response chip shipped —
+`_common.commit_under_pen` is acquire → atomic write → release — and that
+acquire writes the pen in TWO places: `.virgil/pen-context.json` **always**
+(holder `"claude"`, carrying an `expires_at` ≈ +30 s so a crashed skill cannot
+wedge the lock), and `virgil/collab.json`'s `pen` **only if that file already
+exists** (holder `"Claude"`, `enabled` flipped true for the duration). The app
+read only the second, and only while `sidecar.enabled` — i.e. only on a paper
+the user had already turned collaborator mode on for. On the ordinary SOLO
+paper the skill's pen meant nothing to the UI at all: the user kept typing while
+the skill spliced the `.tex`, and the 1500 ms autosave then raced the skill's
+write. Two writers, one folder, a sync daemon watching — which is the
+conflicted-copy seed the 363/415 cluster narrowed from the Virgil side and could
+not close from the cowork side.
+
+> **"Who holds this document's pen right now?" is ONE question with ONE answer,
+> resolved by [cowork-pen.ts](src/lib/cowork-pen.ts) from every record that can
+> carry it.** The two on-disk records are two RUNGS of one ladder, not two
+> facts: the pen-context record (always written, self-expiring) first, the
+> collab sidecar's pen second. Every consumer — the read-only gate
+> (`canEditMainText`), the autosave pause, the topbar banner, the save-state
+> reason — reads the answer there.
+
+Seven rules it earned:
+
+- **No new file, and no skill-side change at all.** The obvious alternative was
+  to make `acquire_pen` CREATE `collab.json` on a solo paper, so the one record
+  the app already polled would always carry the answer. Declined for the reason
+  this whole report is about: that is a file created and then rewritten in the
+  user's synced folder on EVERY commit — new write traffic in exactly the folder
+  whose write traffic tasks 363 and 415 spent two passes reducing. Reading a
+  record the skill already writes unconditionally costs nothing, and it is the
+  record that carries the TTL.
+- **Fail toward RELEASING.** Every unreadable, unparseable, foreign-holder or
+  over-aged record resolves to "no pen held", and a far-future `expires_at`
+  (clock skew, a hand-edited file, a future skill with a longer TTL) is CLAMPED
+  to the app's own `COWORK_PEN_MAX_AGE_MS`. The asymmetry is the opposite of the
+  preservation gate's and is deliberate: a document wedged read-only behind a
+  banner nobody can dismiss is worse than a brief window in which the user could
+  have typed over a commit, because that commit is atomic and sub-second and the
+  disk-side gates (the doc lock, the byte-equality gate, the clobber guard)
+  still stand behind it.
+- **The AI's staleness window is SHORT, and that is derived rather than
+  borrowed.** `COLLAB_TIMINGS.penStaleMs` is 5 minutes because a HUMAN holder
+  heartbeats and can be asked to hand over; the AI never heartbeats — its whole
+  hold is one atomic commit — so its `lastHeartbeat` is frozen at the acquire
+  and a 5-minute window would leave a crashed skill holding the paper for five
+  minutes. 60 s: double the skill's own 30 s TTL, so honest clock skew cannot
+  release a live pen.
+- **ONE pause door, and it returns the REASON.** Pre-489 every call site asked
+  `shouldPauseAutosave(watcher)` and hard-coded `noteSaveBlocked(docId,
+  "conflict")` on the next line — four copies of one mapping, and the shape in
+  which a second pause SOURCE gets a wrong voice on the save-state channel.
+  `autosavePauseReason(watcher, docId)` answers `"cowork" | "conflict" | null`
+  and the caller quotes it. **`cowork` outranks `conflict` while the pen is
+  held**, and the ordering is the honest one rather than a preference: the two
+  routinely coincide (a skill's own write IS the kind of external change the
+  watcher detects), and while the pen is held the transient, self-clearing
+  statement is the truer thing to say — the standing conflict is still there to
+  say once it releases.
+- **The cowork rung is keyed on `docId`, so it reaches a WARM pane.** The
+  watcher is null for every doc but the ACTIVE one (multi-doc keep-alive), so a
+  skill committing against a background paper had no way to pause that paper's
+  autosave through the conflict rung at all.
+- **The banner is a WARNING, not an alarm, and it BREATHES.** Nothing here is
+  destructive or even wrong (STYLE_GUIDE → "the destructive / alarm family": a
+  merely unexpected state takes the warm family), so it is amber; what makes it
+  loud is that it is present, that it names the cause, and that it is the only
+  badge in the bar reporting something happening RIGHT NOW rather than something
+  that has happened. It sits BEFORE the `topbarRightCollapsed` gate with the
+  four data-integrity badges — a notice explaining why the editor stopped
+  accepting your typing must not be hideable by a layout preference — and offers
+  no dismiss, because a dismiss would hide the explanation while the read-only
+  posture stood.
+- **Poll latency is STATED rather than engineered around.** The signal rides
+  `useCollab`'s existing 5 s clock, so a fast commit can begin and end between
+  two polls and the UI never notices. Accepted: the window this closes is not
+  the sub-second commit, it is the SESSION — a skill drafts, splices, drafts
+  again, and a user typing through it never learns that anything else is holding
+  the file.
+
+CI: [cowork-pen.test.ts](src/lib/__tests__/cowork-pen.test.ts) (both rungs, the
+ladder, the store's idempotence, the save-state reason, the CENSUS, and the
+PARITY leg against `editor/scripts/_common.py` — Python cannot import the TS
+vocabulary, so a rename on either side is otherwise silent: the skill keeps
+taking a pen the app stops recognising and the document stops going read-only
+with nothing failing anywhere), [cowork-pen-wiring.test.tsx](src/hooks/__tests__/cowork-pen-wiring.test.tsx)
+(the REAL `useCollab` + REAL `useDocument` over a fake disk — the half no test of
+the authority can see) and [cowork-pen-badge.test.tsx](src/components/__tests__/cowork-pen-badge.test.tsx)
+(WHICH WORDS reach the user, a render fact). **No pre-489 suite could see any of
+this**: there is no `useCollab` suite in the repo at all,
+`autosave-pause.test.ts` drove the watcher alone (a boolean with no document in
+it, so a per-document pause source is unrepresentable in it), and the save-state
+suites sweep `UnsavedBlockReason` — a union `"cowork"` was not a member of. The
+leg with teeth is the CENSUS: the ladder was never the part that could
+misbehave, a consumer that re-derives "is the AI editing?" from a hand-spelled
+holder string is (`pen.holder === "Claude"` type-checks perfectly), and so is a
+write door that hard-codes its own pause reason. Allowlists EMPTY. Measured by
+neutering each half in turn: the pre-489 collab-only gate takes 3 legs (2
+wiring + the census), the hard-coded `"conflict"` mapping 3 (2 wiring + the
+census), and a badge moved inside the collapse gate 1.
+
+**Owed, not claimed:** the real end-to-end eyeball — run an `/editor/*` skill
+against a real paper with the doc open and watch the banner appear, typing get
+refused, the save badge name the reason, and everything release. That is the
+FSA-masked class twice over (real File System Access AND a real out-of-process
+skill), so the durable proof here is the unit contracts.
+
+**Residual, stated.** The pen is held for the COMMIT, not for the skill's
+thinking phase, so a long drafting session shows nothing until the write lands.
+Widening that means the skill holding the pen across its whole run — a
+skill-side design change with its own crash-recovery question (a 30 s TTL is
+right for a sub-second hold and wrong for a five-minute one), routed rather than
+made here.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),
