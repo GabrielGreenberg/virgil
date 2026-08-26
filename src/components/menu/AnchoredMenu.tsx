@@ -36,8 +36,11 @@
  * Closing stays the CALLER's business, as it is for `<MenuToggleRow>`: a filter
  * menu wants to survive a run of toggles, an action menu wants to close on pick.
  * `children` may be a render prop receiving `{ close, anchorRect }` for the
- * explicit case; `closeOnInsideClick` covers the opaque-children case
- * (`ItemMenu`, whose arbitrary button children can't call `close` themselves).
+ * explicit case; `closeOnInsideClick` covers the case where the rows are
+ * children this component cannot reach (`ItemMenu`, whose body is authored in
+ * eleven panel files) — since task 477 it forwards to the provider's
+ * `closeOnActivate`, so the keyboard path closes too rather than only the
+ * bubbled click.
  */
 
 import {
@@ -175,19 +178,19 @@ export interface AnchoredMenuProps {
    *  a background / border / shadow / radius here. */
   menuClassName?: string;
   /**
-   * Close on ANY click that bubbles out of the menu body. For menus whose rows
-   * are opaque children this component can't reach (`ItemMenu`). Rows that must
-   * survive repeated activation stop propagation themselves
-   * (`MenuToggleRow keepMenuOpen`). Default false — prefer the `children`
-   * render prop's explicit `close`.
+   * Close on ANY click that bubbles out of the menu body, AND on any registered
+   * row's activation. For menus whose rows are children this component can't
+   * reach (`ItemMenu`). Rows that must survive repeated activation opt out with
+   * `keepMenuOpen`. Default false — prefer the `children` render prop's
+   * explicit `close`.
    *
-   * Known limit, inherited from the primitive rather than introduced here: this
-   * is a DOM click handler, and the keyboard controller activates a REGISTERED
-   * row by calling its `run()` directly (no DOM event), so Enter/Space on such a
-   * row runs the action without closing. `ItemMenu`'s children are opaque
-   * buttons that register nothing, so nothing reaches that path today — but a
-   * row that must close on keyboard activation should call `close()` itself
-   * rather than rely on this flag.
+   * The keyboard half is covered since task 477: this flag ALSO sets the
+   * provider's `closeOnActivate`, so a REGISTERED row activated with Enter (the
+   * controller calls its handler directly — no DOM event, nothing to bubble)
+   * dismisses the menu exactly as a click on it does. A row that must survive
+   * repeated activation opts out with `keepMenuOpen`, which now suppresses both
+   * halves. The DOM wrapper stays because it also covers a click landing on the
+   * body's own padding, which no row can see.
    */
   closeOnInsideClick?: boolean;
   /** Clamp the menu's height to the space available + scroll. Default true. */
@@ -222,6 +225,14 @@ export function AnchoredMenu({
   // render, so a trigger that attached after it would be exempted from
   // click-outside one commit late. State re-renders when the element attaches.
   const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
+  // The activedescendant HOST (task 477). Rows are `tabIndex: -1` and never
+  // receive `.focus()` (the house roving model), so the element that keeps DOM
+  // focus while the menu is open is the trigger this shell owns — and until
+  // now no `AnchoredMenu` passed one at all, which meant arrow-nav moved a
+  // visible highlight that assistive tech was never told about. Owned here
+  // rather than per consumer for the reason the whole shell exists: the eight
+  // consumers would each have to re-derive it, and seven would forget.
+  const activeDescendantHost = useCallback(() => triggerEl, [triggerEl]);
   // Unique per instance so two momentarily-coexisting menus don't collide in
   // the cross-backend registry table (`publishRegistry`).
   const menuId = useId();
@@ -313,7 +324,9 @@ export function AnchoredMenu({
           // click-outside — else the toggle click closes it via mousedown and
           // the click re-opens it (task 094).
           excludeRefs={[triggerEl]}
+          getActiveDescendantHost={activeDescendantHost}
           onClose={close}
+          closeOnActivate={closeOnInsideClick}
           ariaLabel={ariaLabel}
           containerStyle={containerStyle}
           containerClassName={`${MENU_BODY_PAD_CLASS}${menuClassName ? ` ${menuClassName}` : ""}`}

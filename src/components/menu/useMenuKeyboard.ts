@@ -151,8 +151,21 @@ export function useMenuKeyboard(
     const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
 
     if (plain && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
-      reg.activate();
-      return true;
+      // Consume ONLY if something actually ran (task 477). This is the
+      // defence-in-depth half of that task: `consume()` used to answer true
+      // whatever the registry held, and `preventDefault()` + `stopPropagation()`
+      // below then SUPPRESSED the very click the focused control needed — so a
+      // menu whose rows nobody registered was not merely un-navigable, it was
+      // strictly WORSE than having no controller at all (a Tab'd row's Enter did
+      // nothing at all). A menu with nothing to activate now lets the key reach
+      // whatever has focus, which for a registered menu is unreachable (a live
+      // active row always runs) and for an unregistered one degrades to
+      // Tab+Enter instead of to silence.
+      //
+      // Deliberately Enter/Space ONLY: an arrow that falls through moves the
+      // EDITOR CARET behind an open menu, which is a real side effect, where a
+      // consumed arrow in a menu with no rows is an inert swallow.
+      return reg.activate();
     }
 
     const dir = NAV_KEYS[e.key];

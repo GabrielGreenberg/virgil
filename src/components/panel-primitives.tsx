@@ -3273,9 +3273,12 @@ export function ItemMenu({
     // own is the very plumbing the three remaining hand-rolled dropdowns each
     // re-derived (and each dropped a different guard from). `closeOnInsideClick`
     // preserves this menu's "any click inside dismisses" semantics + the
-    // stopPropagation fence against the card header, which its opaque, arbitrary
-    // button children can't express themselves. Chrome kept byte-identical
-    // apart from the added `maxHeight` clamp.
+    // stopPropagation fence against the card header, which rows authored in
+    // eleven other files can't express themselves — and, since task 477, the
+    // provider's `closeOnActivate`, so a row picked with ENTER dismisses too
+    // (the keyboard controller runs a row by calling its handler directly and
+    // produces no click to bubble). Chrome kept byte-identical apart from the
+    // added `maxHeight` clamp.
     <AnchoredMenu
       ariaLabel="Options"
       align={align === "left" ? "start" : "end"}
@@ -3377,22 +3380,38 @@ export function useCycle<T>(
   return { idx, setIdx, next, prev };
 }
 
-/** Standard menu item for delete actions inside ItemMenu. */
+/**
+ * Standard menu item for delete actions inside ItemMenu.
+ *
+ * ── ROW MIGRATION (task 477) ──
+ * Was a bare `<button onMouseDown={preventDefault; onClick}>`: unregistered, so
+ * the enclosing provider's registry was EMPTY and `useMenuKeyboard`'s
+ * window-CAPTURE listener consumed Enter/Space/every arrow and activated
+ * nothing — a `role="menu"` with zero `menuitem`s, at the most-used menu surface
+ * in the app. And the mousedown+preventDefault pattern (which existed to land
+ * the action before the old hand-rolled click-outside dismissal) meant it was
+ * never keyboard-activatable even before the swallow: two independent
+ * mechanisms producing the same dead end, which is why neither read as a
+ * missing feature.
+ *
+ * `MenuActionRow` registers via `useMenuItem`, so it carries `role="menuitem"`,
+ * joins arrow-nav, and activates on Enter/Space. The mousedown trick is
+ * vestigial: `MenuProvider`'s container fences mousedown, and `useMenuDismiss`
+ * listens for mousedown OUTSIDE the container, so a plain `onClick` inside it
+ * cannot be beaten by a dismissal. Closing is now the MENU's job
+ * (`AnchoredMenu closeOnInsideClick` → `MenuProvider closeOnActivate`), which is
+ * what makes the keyboard path close too.
+ */
 export function MenuDelete({ onClick, label }: { onClick: () => void; label?: string }) {
   return (
-    <button
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft transition-colors"
-    >
-      {label ?? "Delete"}
-    </button>
+    <MenuActionRow id="delete" tone="danger" label={label ?? "Delete"} onSelect={onClick} />
   );
 }
 
 /** Three-dot menu item that archives (or unarchives) the card — the set-aside
  *  sibling of `MenuDelete`, used by cards whose delete lives in the header menu
  *  rather than the bottom-right trash overlay. Neutral tone (archive is
- *  reversible, unlike delete). */
+ *  reversible, unlike delete). Registered since task 477 — see `MenuDelete`. */
 export function MenuArchive({
   onClick,
   isArchived = false,
@@ -3403,12 +3422,11 @@ export function MenuArchive({
   label?: string;
 }) {
   return (
-    <button
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted-strong transition-colors"
-    >
-      {label ?? (isArchived ? "Unarchive" : "Archive")}
-    </button>
+    <MenuActionRow
+      id="archive"
+      label={label ?? (isArchived ? "Unarchive" : "Archive")}
+      onSelect={onClick}
+    />
   );
 }
 

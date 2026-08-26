@@ -1778,11 +1778,39 @@ this primitive** — it's a
 thin shell that keeps its `align` + `children` API and the auto-injected
 `PanelTextSizeRow` row, but delegates portal / positioning / dismiss / z / Escape
 to `MenuProvider` (retiring its old `fixed z-[9999]` portal + hand-rolled
-mousedown closer). Its arbitrary button children render opaquely (they keep their
-`onMouseDown`+`preventDefault` fire-before-close pattern; a wrapping
-`onClick`→close preserves the old "any click inside dismisses" semantics + the
-stopPropagation fence against the card header). Opaque children still work without
-per-item registration — wrap them in `useMenuItem` when a menu wants roving nav.
+mousedown closer). A wrapping `onClick`→close preserves the old "any click inside
+dismisses" semantics + the stopPropagation fence against the card header.
+
+**Every ROW inside a menu is REGISTERED — there is no "opaque children" tier.**
+This sentence used to end *"opaque children still work without per-item
+registration — wrap them in `useMenuItem` when a menu wants roving nav"*, and
+that was false in the one direction that costs: an unregistered row does not
+merely miss arrow-nav, it is **keyboard-DEAD**. The enclosing provider installs a
+window-CAPTURE keydown while it is open and consumes Enter / Space / every arrow
+whether or not the registry holds anything, so an empty registry is strictly
+worse than no controller at all — the key the focused row needed is
+`preventDefault()`ed on its behalf and nothing runs (task 477; it shipped that
+way on every panel header ⋮ and every card ⋮ for a release cycle). Reach for
+`<MenuActionRow>` (a command; `tone="danger"` for a destructive one, `leading`
+for a glyph), `<MenuToggleRow>` (a checkbox, or `role="menuitemradio"` for a
+mutually-exclusive set), or `useMenuItem` + `getItemProps()` on whatever the row
+already renders. Both row primitives share one metric — `px-3 py-1.5 text-xs` —
+so a menu holding both kinds reads as one list. A native form control inside a
+menu is the exception and stays a focus ISLAND (`region: "widget"`: skipped by
+roving, reachable by Tab) — `PanelTextSizeRow`'s stepper, `SelectionColorPopover`'s
+`<input type="color">`. CI: `menu-row-registration-census.test.ts`, allowlist
+EMPTY.
+
+**`onMouseDown`+`preventDefault` is NOT how a menu row fires.** It was there to
+land the action before the retired hand-rolled click-outside closer, and it is
+what made those rows unreachable from the keyboard on top of the swallow:
+`MenuProvider`'s container already fences mousedown, and `useMenuDismiss` listens
+for a mousedown OUTSIDE the container, so a plain `onClick` inside one cannot be
+beaten by a dismissal. Closing is the MENU's job — `AnchoredMenu
+closeOnInsideClick` forwards to `MenuProvider closeOnActivate`, which is what
+makes the KEYBOARD path close too (the controller activates a row by calling its
+handler directly, so there is no click to bubble). A row that must survive
+repeated activation passes `keepMenuOpen`, which suppresses both halves.
 
 The sticky-bar topbar kebabs (`ExternalChangeBadge`, `CollabStatusPill`) are the
 reference wiring for the body-portal case — see the **Top bar** portal rule below.
@@ -1798,14 +1826,20 @@ every panel-header kebab now goes through `ItemMenu align="left"`.
 
 **Checkbox/toggle rows use `<MenuToggleRow>`** (`src/components/menu/`) — one
 row implementation for MenuBar's ViewMenu and every panel kebab: label left,
-accent ✓ right, `role="menuitemcheckbox"` + `aria-checked`, registered via
-`useMenuItem` so arrow-nav and the roving highlight come for free. Closing stays
-the caller's business (MenuBar's Display rows close from inside their own
-`onToggle`); pass `keepMenuOpen` inside `ItemMenu`, whose children wrapper
-otherwise closes the menu on any bubbled click — a run of independent toggles
-should not dismiss the menu after each one. A row that needs a decorative glyph
-before its label (Search's per-scope colour dot) passes `leading`; state stays
-on `aria-checked`, so the extra node is `aria-hidden` decoration.
+accent ✓ right, `aria-checked`, registered via `useMenuItem` so arrow-nav and
+the roving highlight come for free. Its ROLE is a fork rather than a constant:
+`menuitemcheckbox` (the default) for an independent toggle, `menuitemradio` for
+a mutually-exclusive set where picking one un-picks the others — the three
+View Active / Archives / All rows, Bibliography's Cited-only / Full pair,
+Citations' package and style groups. Both spellings carry `aria-checked`; only
+the role tells a screen-reader user whether the row's siblings move with it.
+Closing stays the caller's business (MenuBar's Display rows close from inside
+their own `onToggle`); pass `keepMenuOpen` inside `ItemMenu`, which otherwise
+dismisses on activation — a run of independent toggles should not close the menu
+after each one, where a radio set is one decision and should. A row that needs a
+decorative glyph before its label (Search's per-scope colour dot) passes
+`leading`; state stays on `aria-checked`, so the extra node is `aria-hidden`
+decoration.
 
 **A trigger button that opens a menu is `<AnchoredMenu>`** (`src/components/menu/`),
 not a `useState` + `getBoundingClientRect` of your own. `MenuProvider` owns the

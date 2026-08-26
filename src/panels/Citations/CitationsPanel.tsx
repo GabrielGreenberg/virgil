@@ -16,6 +16,7 @@ import PanelThemePicker from "@/components/PanelThemePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -358,33 +359,34 @@ function CitationsPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="citation" label="Citation color" />
           </div>
+          {/* Row migration (task 477): both groups were bare `<button>`s, so this
+              kebab's registry was empty and the shared keyboard controller
+              swallowed Enter/Space/every arrow and activated nothing. Each group
+              is a mutually-exclusive set — a document has ONE bib package and
+              ONE citation style — so both take the `menuitemradio` spelling. */}
           <MenuSeparator />
           <MenuSectionLabel>Package</MenuSectionLabel>
           {BIB_PACKAGES.map((p) => (
-            <button
+            <MenuToggleRow
               key={p.value}
-              onClick={() => requestBibPackage(p.value)}
-              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            >
-              <span>{p.label}</span>
-              <span className="text-[var(--accent)]">
-                {bibPackage === p.value ? "\u2713" : ""}
-              </span>
-            </button>
+              id={`package-${p.value}`}
+              role="menuitemradio"
+              label={p.label}
+              checked={bibPackage === p.value}
+              onToggle={() => requestBibPackage(p.value)}
+            />
           ))}
           <MenuSeparator />
           <MenuSectionLabel>Style</MenuSectionLabel>
           {STYLES.map((s) => (
-            <button
+            <MenuToggleRow
               key={s.value}
-              onClick={() => onSetStyle(s.value)}
-              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            >
-              <span>{s.label}</span>
-              <span className="text-[var(--accent)]">
-                {citationStyle === s.value ? "\u2713" : ""}
-              </span>
-            </button>
+              id={`style-${s.value}`}
+              role="menuitemradio"
+              label={s.label}
+              checked={citationStyle === s.value}
+              onToggle={() => onSetStyle(s.value)}
+            />
           ))}
           <CardViewModeMenuItems kind="citations" />
         </ItemMenu>

@@ -37,6 +37,27 @@ export interface MenuContextValue {
   /** Stable id of the provider's listbox container (the input's `aria-controls`
    *  target). `${menuId}-listbox`. Present only when `role === "listbox"`. */
   listboxId?: string;
+  /**
+   * Called by `useMenuItem` after a registered row's `run()` — from EITHER
+   * activation path (the DOM click and the keyboard controller's
+   * `registry.activate()`), and only for a row that did not opt out with
+   * `keepMenuOpen` (task 477).
+   *
+   * This is the MENU-layer statement of the policy `AnchoredMenu`'s
+   * `closeOnInsideClick` states at the DOM layer, and the two are not
+   * interchangeable: `closeOnInsideClick` is an `onClick` handler on a wrapper
+   * div, and the keyboard controller activates a row by calling its `run()`
+   * DIRECTLY — no DOM event, nothing to bubble. So a registered row activated
+   * with Enter ran its action and left the menu open, which `AnchoredMenu`'s
+   * own docstring recorded as a known limit while `ItemMenu`'s rows were
+   * unregistered and could not reach that path at all. Registering them is
+   * exactly what makes the limit reachable, so the policy moves to the layer
+   * both paths share.
+   *
+   * Undefined on a provider that does not close on activation (MenuBar's
+   * ViewMenu, whose rows close from inside their own `onToggle`).
+   */
+  onItemActivated?: (id: string) => void;
 }
 
 export const MenuContext = createContext<MenuContextValue | null>(null);

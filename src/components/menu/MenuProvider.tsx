@@ -110,6 +110,18 @@ export interface MenuProviderProps {
   keyboardSource?: "window" | "input";
   /** Close callback. */
   onClose: () => void;
+  /**
+   * Activating a REGISTERED row dismisses this menu (task 477). The MENU-layer
+   * twin of `AnchoredMenu`'s `closeOnInsideClick`, which forwards it: that flag
+   * is a DOM `onClick` on a wrapper div, and the keyboard controller runs a row
+   * by calling its handler directly, so the two paths need one shared statement
+   * or Enter runs the action and leaves the menu open. A row that must survive
+   * repeated activation opts out with `useMenuItem`'s `keepMenuOpen`.
+   *
+   * Default false — a menu whose rows close from inside their own handler
+   * (MenuBar's ViewMenu) states it there and must not be closed twice.
+   */
+  closeOnActivate?: boolean;
   /** ARIA label for the container. */
   ariaLabel?: string;
   /**
@@ -175,6 +187,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     getActiveDescendantHost,
     keyboardSource = "window",
     onClose,
+    closeOnActivate = false,
     ariaLabel,
     surface = "menu",
     containerStyle,
@@ -358,9 +371,18 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   // menu leaves the container id unset.
   const listboxId = role === "listbox" ? `${id}-listbox` : undefined;
 
+  // The close-on-activate policy, published to every registered row through the
+  // one context both activation paths read (task 477). `undefined` when the
+  // menu does not close on activation, so a row pays nothing for the policy it
+  // does not have.
+  const onItemActivated = useMemo(
+    () => (closeOnActivate ? () => onClose() : undefined),
+    [closeOnActivate, onClose],
+  );
+
   const ctxValue = useMemo<MenuContextValue>(
-    () => ({ registry, role, registerExclude, handleKeyDown, listboxId }),
-    [registry, role, registerExclude, handleKeyDown, listboxId],
+    () => ({ registry, role, registerExclude, handleKeyDown, listboxId, onItemActivated }),
+    [registry, role, registerExclude, handleKeyDown, listboxId, onItemActivated],
   );
 
   if (typeof document === "undefined") return null;

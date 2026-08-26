@@ -7,6 +7,8 @@ import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
@@ -617,6 +619,15 @@ function BibliographyPanel({
     handleSelectBibKey(localEntry.key);
   }, [conflictDecision, onRequestReview, handleSelectBibKey]);
 
+  // Row migration (task 477): the two filter rows and the export command were
+  // bare `<button>`s, so this kebab's registry was EMPTY and the shared
+  // keyboard controller swallowed Enter/Space/every arrow at window capture and
+  // activated nothing. The filters are a mutually-exclusive PAIR, so they take
+  // the `menuitemradio` spelling; the export is a `MenuActionRow`, whose
+  // `disabled` renders a real disabled `<button>` (inert to click, skipped by
+  // nav) rather than a live control with a `cursor-not-allowed` class and no
+  // handler. All three still dismiss the kebab on pick — none passes
+  // `keepMenuOpen` — which is what they did before through the bubbled click.
   const headerLeading = (
     <ItemMenu align="left">
       <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -624,41 +635,34 @@ function BibliographyPanel({
       </div>
       <MenuSeparator />
       <MenuSectionLabel>Display</MenuSectionLabel>
-      <button
-        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-        onClick={() => setFilter("cited")}
-      >
-        <span>Cited entries only</span>
-        <span className="text-[var(--accent)]">
-          {filter === "cited" ? "✓" : ""}
-        </span>
-      </button>
-      <button
-        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-        onClick={() => setFilter("all")}
-      >
-        <span>Full bibliography</span>
-        <span className="text-[var(--accent)]">
-          {filter === "all" ? "✓" : ""}
-        </span>
-      </button>
+      <MenuToggleRow
+        id="filter-cited"
+        role="menuitemradio"
+        label="Cited entries only"
+        checked={filter === "cited"}
+        onToggle={() => setFilter("cited")}
+      />
+      <MenuToggleRow
+        id="filter-all"
+        role="menuitemradio"
+        label="Full bibliography"
+        checked={filter === "all"}
+        onToggle={() => setFilter("all")}
+      />
       <MenuSeparator />
-      <button
-        className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-          citedKeys.size > 0
-            ? "text-ink-body hover-on-light"
-            : "text-ink-faint cursor-not-allowed"
-        }`}
-        onClick={citedKeys.size > 0 ? handleExportCited : undefined}
-        data-hint="Export cited"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-        Export cited.bib
-      </button>
+      <MenuActionRow
+        id="export-cited"
+        label="Export cited.bib"
+        disabled={citedKeys.size === 0}
+        leading={
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        }
+        onSelect={handleExportCited}
+      />
     </ItemMenu>
   );
 

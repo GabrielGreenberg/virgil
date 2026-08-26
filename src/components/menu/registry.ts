@@ -239,19 +239,21 @@ export class MenuRegistry implements MenuRegistryHandle {
     }
   }
 
-  activate(): void {
-    if (this.active === null) return;
-    const rec = this.records.get(this.active);
-    if (!rec || rec.disabled || rec.region === "widget") return;
-    rec.run();
+  /** Run the active node. Returns whether anything RAN — see the contract on
+   *  `MenuRegistryHandle.activate`; the window controller consumes Enter/Space
+   *  only on a true. */
+  activate(): boolean {
+    if (this.active === null) return false;
+    return this.activateById(this.active);
   }
 
   /** Activate a node by id directly (the letter fast-path / a click). No-op
-   *  if missing / disabled. */
-  activateById(id: string): void {
+   *  (and `false`) if missing / disabled / a widget. */
+  activateById(id: string): boolean {
     const rec = this.records.get(id);
-    if (!rec || rec.disabled || rec.region === "widget") return;
+    if (!rec || rec.disabled || rec.region === "widget") return false;
     rec.run();
+    return true;
   }
 
   // ── subscription (for the React view + controller) ──────────────────────────

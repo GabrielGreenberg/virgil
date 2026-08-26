@@ -359,7 +359,14 @@ describe("census — the model has ONE home", () => {
     const rel = join("src", "panels", "Citations", "CitationsPanel.tsx");
     const code = commentsStripped(readFileSync(join(REPO_ROOT, rel), "utf8"));
     expect(code).toContain("citeNotesDroppedByPackage(");
-    expect(code).toContain("onClick={() => requestBibPackage(p.value)}");
+    // The needle is the CALL, not the prop that carries it (renegotiated in
+    // task 477): the package rows were bare `<button onClick=…>`s the menu
+    // registry never saw, and are `<MenuToggleRow role="menuitemradio"
+    // onToggle=…>` now. What this leg is about is that the rows route through
+    // the GATE rather than writing directly — which the `onSetBibPackage` count
+    // below is the other half of — and pinning the prop NAME made it a fact
+    // about the markup instead.
+    expect(code).toContain("requestBibPackage(p.value)");
     expect(code).toContain('tone="danger"');
     // Exactly THREE writer calls, and every one of them is inside the gate or
     // the confirm it opens: the same-package re-confirm (which cannot lose
