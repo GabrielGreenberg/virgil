@@ -14,3 +14,8 @@ export {
   omniCategoriesOnSide,
   hiddenFromLegacySides,
 } from "./omni-categories";
+export {
+  filterArchivedOmniItems,
+  omniItemIsArchived,
+  omniItemCardRef,
+} from "./omni-archived";

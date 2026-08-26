@@ -20,6 +20,7 @@ import OmniViewPanel, {
   type OmniBulkPendingChanges,
 } from "@/panels/Omni";
 import { appliedPendingSide } from "@/panels/Omni/omni-categories";
+import { filterArchivedOmniItems } from "@/panels/Omni/omni-archived";
 import { buildCitationOmniItems } from "@/panels/Citations";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes";
 import { buildNoteOmniItems } from "@/panels/Notes";
@@ -82,7 +83,8 @@ export interface OmniHostProps {
   /** Task 077: atomless footnote refs (archive-born `FootnoteRef`), plus the
    *  ref-delete handler (removes only the sidecar ref — no atom to splice). Edit
    *  reuses `handleEditFootnote` (the docked panel wires the same handler). The
-   *  builder filters archived refs out, so this may carry the full ref list. */
+   *  assembled-array archived filter (task 476) drops archived refs, so this may
+   *  carry the full ref list. */
   unanchoredFootnotes: FootnoteRef[];
   onDeleteUnanchoredFootnote: (id: string) => void;
   /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
@@ -201,6 +203,15 @@ export interface OmniHostProps {
    *  hiding the Revisions/Cutter categories cannot remove it. Absent / count 0
    *  → no header (flag-OFF never produces applied cards). */
   bulkPendingChanges?: OmniBulkPendingChanges;
+  /** The cross-panel ARCHIVED SSOT (`EditorPane.archivedIds`) — the same set the
+   *  margin markers and the unanchored chip already read. Task 476: the omni
+   *  filters its ASSEMBLED items against it once (`filterArchivedOmniItems`),
+   *  so the three renderers of one card agree by construction instead of by
+   *  three implementations staying in step, and no builder can opt out of the
+   *  rule by omission. REQUIRED, not optional: a bag that could omit it would
+   *  silently reinstate the "archived citation lives in the unplaced bin
+   *  forever" case for every host that forgets. */
+  archivedIds: ReadonlySet<string>;
 }
 
 export function OmniHost(p: OmniHostProps) {
@@ -449,18 +460,18 @@ export function OmniHost(p: OmniHostProps) {
   // matters now that OmniHost is mounted persistently per side.
   const items: OmniItem[] = useMemo(() => {
     // Archived cards never appear in OmniView — they live only under their home
-    // panel's View Archives/All. Each card carries its own `archived` flag, so
-    // this is a local filter (no archived-id set needed). The docked panels
-    // still receive the FULL arrays (CardListPanel filters by view mode).
-    const active = <T extends { archived?: boolean }>(arr: readonly T[]): T[] =>
-      arr.filter((c) => !c.archived);
-    const activeNotes = active(p.notesCards);
-    const activeArchive = active(p.sortedArchiveSnippets);
-    const activeTodos = active(p.todoItems);
-    const activeRevisions = active(p.revisionCards);
-    const activeCutter = active(p.cutterCards);
-    const activeReports = active(p.reportCards);
-    return [
+    // panel's View Archives/All. Task 476: the rule is applied ONCE, to the
+    // ASSEMBLED array (`filterArchivedOmniItems` over the cross-panel
+    // `archivedIds` SSOT the margin markers and the unanchored chip already
+    // read), rather than per builder. Before that it was re-derived twice and
+    // incompletely — a local `active()` helper covering six of the ten families
+    // and a private `if (ref.archived) continue;` inside the footnote builder,
+    // with citations covered by NEITHER — so an archived citation rendered in
+    // the "N unplaced" bin forever while the chip beside it counted zero. A
+    // per-builder obligation can be skipped by omission; a filter over the
+    // assembled array cannot. The docked panels still receive the FULL arrays
+    // (CardListPanel filters by view mode).
+    return filterArchivedOmniItems([
     ...buildFootnoteOmniItems({
       footnotes: p.footnotes,
       orphanedFootnotes: p.orphanedFootnotes,
@@ -505,7 +516,7 @@ export function OmniHost(p: OmniHostProps) {
       updateBibKeyAndType: p.updateBibKeyAndType,
     }),
     ...buildNoteOmniItems({
-      cards: activeNotes,
+      cards: p.notesCards,
       selectedNoteId,
       setSelectedNoteId: setNoteInOmni,
       jumpToCard,
@@ -521,7 +532,7 @@ export function OmniHost(p: OmniHostProps) {
       onCitationCreated,
     }),
     ...buildArchiveOmniItems({
-      archiveSnippets: activeArchive,
+      archiveSnippets: p.sortedArchiveSnippets,
       selectedArchiveId,
       setSelectedArchiveId: setArchiveInOmni,
       jumpToCard,
@@ -534,7 +545,7 @@ export function OmniHost(p: OmniHostProps) {
       onCitationCreated,
     }),
     ...buildTodoOmniItems({
-      todoItems: activeTodos,
+      todoItems: p.todoItems,
       selectedTodoId,
       setSelectedTodoId: setTodoInOmni,
       jumpToCard,
@@ -552,7 +563,7 @@ export function OmniHost(p: OmniHostProps) {
       onJump: scrollToExample,
     }),
     ...buildRevisionOmniItems({
-      cards: activeRevisions,
+      cards: p.revisionCards,
       selectedId: selectedCommentId,
       setSelectedId: setRevisionInOmni,
       jumpToCard,
@@ -582,7 +593,7 @@ export function OmniHost(p: OmniHostProps) {
       onToggleExpanded: p.toggleErrorExpanded,
     }),
     ...buildCutterOmniItems({
-      cards: activeCutter,
+      cards: p.cutterCards,
       selectedId: selectedCutterCardId,
       setSelectedId: setCutterInOmni,
       jumpToCard,
@@ -597,7 +608,7 @@ export function OmniHost(p: OmniHostProps) {
       deleteCard: p.deleteCutterCard,
     }),
     ...buildReportsOmniItems({
-      cards: activeReports,
+      cards: p.reportCards,
       selectedId: selectedReportCardId,
       setSelectedId: setReportInOmni,
       jumpToCard,
@@ -612,7 +623,7 @@ export function OmniHost(p: OmniHostProps) {
       getCitationDisplayText,
       onCitationCreated,
     }),
-  ];
+  ], p.archivedIds);
   }, [
     // Data arrays
     p.footnotes, p.orphanedFootnotes, p.unanchoredFootnotes,
@@ -625,6 +636,7 @@ export function OmniHost(p: OmniHostProps) {
     p.latexErrors, p.paragraphByErrorId, p.errorSnippets, p.dismissedErrorIds,
     p.cutterCards,
     p.reportCards,
+    p.archivedIds,
     // Selection ids
     selectedFootnoteId, selectedCitationId,
     selectedNoteId, selectedArchiveId, selectedTodoId, selectedExampleId,

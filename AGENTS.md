@@ -1678,6 +1678,91 @@ gesture, no disk), so the check is cheap and real — lift a paragraph out slowl
 and watch the header label at the moment of release.
 
 
+###### The archived half: the fact was `archived`, and the omni was the renderer that never read it
+
+Same law, a different FACT (task 476) — and the case where the SSOT's own doc
+comment named the surface that never received it.
+
+An archived card lives only under its home panel's View Archives/All, and that
+fact has three renderers in one window. Two read `EditorPane.archivedIds` (the
+docked list through `getArchived`, the margin markers and the task-410
+unanchored chip through the set itself). The OMNI never received it: the rule
+was re-derived twice and incompletely — a local `active()` helper in
+`omni-host` applied to six of the ten families, a private
+`if (ref.archived) continue;` inside the footnote builder, and **citations
+covered by NEITHER**. So archiving a citation spliced its `\cite` out of the
+`.tex`, hid it from the panel and the margin, and left it rendering in the omni
+"N unplaced" bin FOREVER, with the chip beside it counting zero for the same
+card and the count growing with every citation the user ever archived. The set's
+own comment had always said it drives "the in-document exclusion (margin
+markers, highlights) **+ OmniView**".
+
+> **A per-item rule with N producers is applied to the ASSEMBLED array, once, at
+> the ONE place the items become a list — never as a per-producer obligation.**
+> A producer can skip an obligation by OMISSION and nothing anywhere notices; a
+> filter over the assembled array covers the eleventh producer by existing.
+
+[src/panels/Omni/omni-archived.ts](src/panels/Omni/omni-archived.ts) is the rule
+(`filterArchivedOmniItems` / `omniItemIsArchived` / `omniItemCardRef`), read
+once in `omni-host`'s `items` memo. Five rules it earned:
+
+- **The vocabulary is the ID the builders already publish.** Every
+  `OmniItem.id` is `cardPopKey(kind, id)` (`float:card:<kind>:<id>`), optionally
+  `@N`-suffixed for a multi-anchor row, so the filter parses `(kind, id)` back
+  out through `parseFloatKey` — colon-safe, since a card id can carry interior
+  colons — and needs no new field and no per-builder change. The alternative (a
+  REQUIRED `cardId` on `OmniItem`, a compile error for a builder that forgets)
+  is this repo's usual shape and was declined here for a stated reason: it makes
+  the rule a per-builder obligation again, which is the class being closed.
+- **Reading the SAME set is what makes the surfaces agree BY CONSTRUCTION.**
+  `archivedIds` is kind-blind (raw card ids across every panel — exactly what the
+  margin tests `m.entityId` against), so the omni asks the identical question
+  rather than a parallel one that has to stay in step. The `isArchivable(kind)`
+  gate adds no discrimination against that set; it is a cheap statement of SCOPE,
+  so a non-archivable kind (`example`, `error`) whose entity id somehow collided
+  could never be dropped by this rule.
+- **The prop is REQUIRED on `OmniHostProps`**, not optional — the reason
+  `unanchoredFootnotes` states one field up: a bag that can omit it silently
+  reinstates the defect for every host that forgets.
+- **Retiring `active()` costs O(archived) cheap object allocations per items
+  rebuild, and that is stated rather than rounded away.** Archived cards now
+  reach the builders and are dropped after; `resolveCardRows` is an O(1) map
+  lookup and `content` is a `createElement` (never a mount), and the memo
+  rebuilds only when a sidecar collection or a selection id changes — off the
+  keystroke path. The structural guarantee is worth the allocations; keeping the
+  pre-filter as an "optimisation" would be the two-implementations shape again.
+- **Identity-stable when nothing is archived** (the common case), so downstream
+  memos stay cached.
+
+CI: [omni-archived-rule.test.ts](src/panels/Omni/__tests__/omni-archived-rule.test.ts)
+sweeps every kind `isArchivable` declares (single-anchor AND `@N` rows, each with
+its accepting control), drives the REAL citation / footnote / note builders, and
+pins the two non-regressions (an ACTIVE unanchored citation still surfaces —
+task 056/079; archived-then-UNarchived returns). The leg with teeth is the
+CENSUS: the rule was never the part that could misbehave, an eleventh builder
+re-deriving its own `archived` gate is, and a host that assembles items and never
+asks is — so no `omni.tsx` may spell `archived` at all, the builder population is
+DISCOVERED from the host's own import list, and the host must call the door
+exactly ONCE against `p.archivedIds`. The task-077 leg in
+`anchor-state-classify-contract.test.ts` is RENEGOTIATED in place with the reason
+at the site: it asserted the BUILDER dropped the archived ref, which pinned the
+per-builder derivation as the contract. Measured by neutering each half in turn:
+a pass-through filter takes 28 legs, a re-forked footnote gate 3, a host that
+stops asking 1, and a restored `active()` helper 1.
+
+**Owed, not claimed:** the preview eyeball. The derivation is pure and NOT
+FSA-masked, but the visible symptom needs a real doc — archive a citation and
+watch the "N unplaced" pill and the unanchored chip agree.
+
+**Related, checked and deliberately NOT folded in.** `citedKeys`
+([BibliographyPanel.tsx](src/panels/Bibliography/BibliographyPanel.tsx)) iterates
+ALL citations including archived, so an archived citation still marks its bib
+entry "cited", survives the *Cited entries only* filter and lands in the exported
+`cited.bib`. Real, same root — but whether "cited" means *has a live `\cite` in
+the `.tex`* or *is referenced by a citation card* is a product call, and an
+over-inclusive `cited.bib` is harmless to LaTeX.
+
+
 #### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
 
 Same lane, and the case where the mechanism was right, the classification was

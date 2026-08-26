@@ -52,6 +52,7 @@ import { buildRevisionOmniItems } from "@/panels/Revisions/omni";
 import { buildReportsOmniItems } from "@/panels/Reports/omni";
 import { buildCitationOmniItems } from "@/panels/Citations/omni";
 import { buildExampleOmniItems } from "@/panels/Examples/omni";
+import { filterArchivedOmniItems } from "@/panels/Omni/omni-archived";
 
 /** A Mode-A paragraph anchor link to one uuid. */
 function paraLink(uuid: string): Link {
@@ -146,7 +147,7 @@ describe("omni builder anchorState classification", () => {
     expect(orphaned.pos).toBeNull();
   });
 
-  it("Footnotes: live → anchored; orphaned → orphaned; active unanchored ref → present FREE/null; archived ref → absent", () => {
+  it("Footnotes: live → anchored; orphaned → orphaned; active unanchored ref → present FREE/null; archived ref → CLASSIFIED (the shared rule drops it)", () => {
     const items = buildFootnoteOmniItems({
       footnotes: [
         {
@@ -166,7 +167,9 @@ describe("omni builder anchorState classification", () => {
       // Task 077: the third card kind — atomless archive-born `FootnoteRef`s.
       // An unarchive leaves an ACTIVE unanchored ref (`archived:false,
       // unanchored:true`); an archived ref stays out of Omni (docked
-      // Archives-view only).
+      // Archives-view only) — but since task 476 that exclusion is the
+      // ASSEMBLED-array rule's, not this builder's (see the renegotiated
+      // assertion below).
       unanchoredFootnotes: [
         {
           id: "fn-unanchored",
@@ -213,8 +216,23 @@ describe("omni builder anchorState classification", () => {
     expect(unanchored).toBeDefined();
     expect(unanchored.pos).toBeNull();
     expect(unanchored.anchorState).toBe("free");
-    // Archived ref: dropped from Omni (parity with the docked Archives view).
-    expect(items.find((i) => i.id.endsWith("fn-archived"))).toBeUndefined();
+    // Archived ref — RENEGOTIATED (task 476), with the reason at the site.
+    // This leg used to assert the BUILDER dropped it, which pinned the defect
+    // as the contract: the rule was re-derived per builder, so citations —
+    // covered by no copy of it — rendered archived cards in the omni unplaced
+    // bin forever. The exclusion is now stated ONCE and applied to the
+    // assembled array (`filterArchivedOmniItems`, omni-host), so the builder
+    // legitimately emits the row and the shared rule removes it. Pinned here
+    // as CLASSIFIED-then-dropped so a future re-fork of the per-builder gate
+    // is visible; the end-to-end contract lives in omni-archived-rule.test.ts.
+    const archivedRow = items.find((i) => i.id.endsWith("fn-archived"))!;
+    expect(archivedRow).toBeDefined();
+    expect(archivedRow.anchorState).toBe("free");
+    expect(
+      filterArchivedOmniItems(items, new Set(["fn-archived"])).find((i) =>
+        i.id.endsWith("fn-archived"),
+      ),
+    ).toBeUndefined();
   });
 
   it("Errors: no source paragraph → free; resolved → anchored; unresolved paragraph → orphaned", () => {
