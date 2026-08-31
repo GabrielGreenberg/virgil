@@ -9,6 +9,7 @@ import { READER_CHROME } from "@/components/editor-layout/chrome-config";
 import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { useReaderView } from "@/components/editor-layout/reader-view-prefs";
+import { readerHostKind } from "@/components/editor-layout/reader-host";
 import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
 import { readTextFile } from "@library/lib/library-storage";
 import { parseLatex } from "@/lib/latex-parser";
@@ -235,16 +236,20 @@ function PaperReader({
   // mutate the same store (F#16). The editor is threaded in for the Outline
   // panel's click-to-scroll + the menu's divider-level walk; the editor handle
   // ref + scroll element drive the menu's paragraph back/forward recorder.
-  // Gutter default: the inline Library reader opens with panel columns FOLDED IN
-  // (a clean reading view); the popped-out Virgil-bar tab (scope `outer:…`)
-  // opens with them OUT, like a doc. Session-only — the rail still lets the user
-  // expand them.
-  const isOuterTab = scope.startsWith("outer:");
+  // Opening layout: the reader HOST decides it (task 434). The inline Library
+  // reader and a torn-out *Library* tab open with panel columns FOLDED IN (a
+  // clean reading view); a paper POPPED OUT into its own Virgil-bar tab opens
+  // like an editing session — Outline + Notes docked, omni view on, gutters
+  // out. The host is named once (`readerHostKind`) rather than re-derived by
+  // prefix here, so a torn-out Library tab is no longer conflated with a
+  // popped-out paper. Session-only — the rail still lets the user change all
+  // of it.
+  const readerHost = readerHostKind(scope);
   const { viewPrefs: readerViewPrefs, menuBar: readerMenuBar } = useReaderView(
     editor,
     editorRef,
     scrollEl,
-    !isOuterTab,
+    readerHost,
   );
 
   // ── Reader scroll save/restore (per (scope, panel, paper:<citekey>)) ──

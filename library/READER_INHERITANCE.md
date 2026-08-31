@@ -15,16 +15,17 @@ What differs between the two is *only*:
 1. **`chrome` config** — [src/components/editor-layout/chrome-config.ts](src/components/editor-layout/chrome-config.ts). Two values: `FULL_CHROME` (Editor) and `READER_CHROME` (Reader). Boolean flags + whitelists that suppress affordances the Reader doesn't want (e.g., `showFormattingToolbar: false`, `editableCardKinds: ["note"]`, `visiblePanelKinds: [...]`).
 2. **`viewPrefs` bundle** — BOTH surfaces run the SAME `useViewPrefs()` engine and assemble the bundle through the SAME `buildEditorPaneViewPrefs(...)` builder ([src/components/editor-layout/build-editor-pane-view-prefs.ts](src/components/editor-layout/build-editor-pane-view-prefs.ts)). The Editor uses the persisted mode; the Reader runs `useReaderViewPrefs()` ([src/components/editor-layout/reader-view-prefs.ts](src/components/editor-layout/reader-view-prefs.ts)), which is the same engine in `"ephemeral"` mode — real, fully-functional view-state that lives in memory only (it never touches the user's persisted editor layout). So the panel rail, strip buttons, the panel↔text divider, dock stacking, card popouts, margins, omni toggles, and Outline click-to-scroll are all LIVE in the Reader (session-only). The ONLY delta is a single NAMED, type-checked `EditorMutationHandlers` set (`READER_NOOP_HANDLERS` in `reader-view-prefs.ts`): because the doc is read-only, most are no-ops — but `onScrollToHeading` (Outline click-to-scroll) is REAL.
 3. **`menuBar` bundle** — Editor passes a full menuBar bundle. Reader passes nothing, so the docked MenuBar and detached toolbars stay dormant. (This is the one piece of editor chrome that's genuinely absent in the Reader.)
+4. **Reader HOST PROFILE** — [src/components/editor-layout/reader-host.ts](src/components/editor-layout/reader-host.ts). Still the same `<EditorPane>` and the same ephemeral engine; what a profile decides is only the **opening layout** of that engine (a one-shot seed, session-only, and the user can change all of it from the rail afterwards). Three hosts: `inline` (the reader inside the Library tab), `outer-library` (a torn-out *Library* tab) and `popped-paper` (a paper popped out into its own Virgil-bar tab). The first two open quiet — gutters folded in, nothing docked; the third opens like an editing session (Outline + Notes docked, omni view on, gutters out — Gabriel, 2026-08-31). The host is derived ONCE from the view-session scope by `readerHostKind(scope)`, and the scope itself is minted by the same module (`paperReaderScope` / `libraryReaderScope`) so the parse and the mint cannot disagree. A profile names PANELS, never sides — each lands on its own live strip side via `@/lib/panel-side` — and the insertion runs through the dock engine's `placeInStack`, never a hand-written `dockStack` literal.
 
-That's the entire delta. **There is no "Reader-specific render path"** inside `library/components/`. `PaperRender.tsx` is a thin mount: it parses LaTeX → JSON, then `<EditorPane editable={false} chrome={READER_CHROME} viewPrefs={readerViewPrefs} />`.
+That's the entire delta (1-3 are what the Reader *is*; 4 only decides where its session starts). **There is no "Reader-specific render path"** inside `library/components/`. `PaperRender.tsx` is a thin mount: it parses LaTeX → JSON, then `<EditorPane editable={false} chrome={READER_CHROME} viewPrefs={readerViewPrefs} />`.
 
 **The invariant:** view-state is shared and real (ephemeral in the Reader); only the named `EditorMutationHandlers` set is stubbed, and it's type-checked — a missing handler is a **compile error**, not a silent dead control.
 
 If a feature works in Editor, the rendering code already exists and is already imported by Reader. A bug means one of three things has gone wrong — see below.
 
-## The three legitimate places a fix can live
+## The four legitimate places a fix can live
 
-When triaging a Reader bug, the fix lives in exactly one of these three layers. Find which one and stay there.
+When triaging a Reader bug, the fix lives in exactly one of these four layers. Find which one and stay there.
 
 ### 1. The shared layer (most fixes belong here)
 
@@ -45,6 +46,12 @@ Anti-pattern: hard-coding a Reader-only conditional inside `EditorPane.tsx` like
 Most view-state already works in the Reader by construction — it runs the real `useViewPrefs` engine, so there's no per-field shim to wire. This layer is for the narrow remainder: the named `EditorMutationHandlers` (`READER_NOOP_HANDLERS`) and the Reader's `EditorPaneViewDerivations`. If a feature is broken because a Reader handler is a no-op that should be real (the way `onScrollToHeading` is real), promote it from `READER_NOOP_HANDLERS` to a live callback (threading in the editor if it needs one, the way `onScrollToHeading` does). The Reader's view-state itself is session-only (ephemeral) and doesn't persist across reloads; that's intentional.
 
 Anti-pattern: re-introducing a stateful hand-rolled shim that re-implements `useViewPrefs`, forcing the Editor's persistence layer onto the Reader, or duplicating the `useViewPrefs` engine.
+
+### 4. `reader-host.ts` (which layout a reader OPENS with)
+
+Only for "the reader should *start* with X" — panels docked, gutters out, omni view on. Add a row (or a field) to `READER_HOST_PROFILES` and let `applyReaderHostProfile` compile it onto the ephemeral seed. Nothing here changes what the Reader *can* do; every knob it seeds is one the user can flip from the rail a second later.
+
+Anti-pattern: threading another positional boolean into `useReaderView`, re-deriving the host with `scope.startsWith("outer:")` at a new site (a census fails that build), or spelling a `dockStack` / `panelMRU` literal instead of going through `placeInStack`.
 
 ## Triage flow
 

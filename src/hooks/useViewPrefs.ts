@@ -951,30 +951,44 @@ function seedEphemeralPrefs(): ViewPrefs {
   }
 }
 
+/** The `initialSeed` no-op. A module constant so the ephemeral branch keeps ONE
+ *  identity when a host declares no transform. */
+function identitySeed(seed: ViewPrefs): ViewPrefs {
+  return seed;
+}
+
 export function useViewPrefs(opts?: {
   persistence?: ViewPrefsPersistence;
-  /** EPHEMERAL-ONLY seed overrides applied ONCE at init (on top of
-   *  `seedEphemeralPrefs()`). Lets a host set session-only starting state a
-   *  reader wants — e.g. the Library inline reader seeds `collapsedLeft/Right:
-   *  true` so the panel columns start folded in. Ignored in `global` mode (the
-   *  persisted blob owns the state there). Read once by the useState initializer,
-   *  so later changes to this object are inert. */
-  initialOverrides?: Partial<ViewPrefs>;
+  /** EPHEMERAL-ONLY seed TRANSFORM applied ONCE at init, on top of
+   *  `seedEphemeralPrefs()`. Lets a host declare its session-only opening
+   *  layout — the Library reader passes `applyReaderHostProfile`, which folds
+   *  its per-host profile in. Ignored in `global` mode (the persisted blob owns
+   *  the state there). Read once by the useState initializer, so later changes
+   *  to this function are inert.
+   *
+   *  A TRANSFORM rather than a `Partial<ViewPrefs>` override bag (task 434): a
+   *  host's opening layout can include DOCKED PANELS, and every insertion into
+   *  a dock stack must run through `placeInStack` — the engine that owns the
+   *  sentinel clear, the cap + LRU eviction and the MRU coupling (task 273).
+   *  An override bag cannot: it never sees the seed it is merged onto, so a
+   *  host would have to spell `dockStack:` by hand and silently drop all three.
+   *  A transform hands the seed over and lets the engines compile it. */
+  initialSeed?: (seed: ViewPrefs) => ViewPrefs;
 }) {
   // `"global"` is the default; passing no arg is byte-identical to the prior
   // behavior. `"ephemeral"` gates off the three persistence touch-points
   // (initial load, cross-window subscribe, and `persist`) below.
   const ephemeral = opts?.persistence === "ephemeral";
-  const initialOverrides = opts?.initialOverrides;
+  const initialSeed = opts?.initialSeed;
   const [prefs, setPrefs] = useState<ViewPrefs>(() =>
     // Ephemeral seeds from DEFAULT_PREFS, but folds in the user's existing
     // global page geometry / placements read ONCE at init (a pleasant
     // starting point — same page width / margins / strip order as the editor)
-    // without subscribing to later changes, PLUS any `initialOverrides`. Global
-    // mode starts from DEFAULT_PREFS and hydrates from localStorage in the load
-    // effect below.
+    // without subscribing to later changes, THEN through the host's
+    // `initialSeed` transform. Global mode starts from DEFAULT_PREFS and
+    // hydrates from localStorage in the load effect below.
     ephemeral
-      ? { ...seedEphemeralPrefs(), ...(initialOverrides ?? {}) }
+      ? (initialSeed ?? identitySeed)(seedEphemeralPrefs())
       : DEFAULT_PREFS,
   );
   const initialized = useRef(false);

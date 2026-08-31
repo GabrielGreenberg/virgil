@@ -8,6 +8,7 @@ import LibraryFolderPicker from "@library/components/LibraryFolderPicker";
 import LibraryPermissionGate from "@library/components/LibraryPermissionGate";
 import PaperFileBody from "@library/components/PaperFileBody";
 import type { BibEntry } from "@library/lib/types";
+import { paperReaderScope } from "@/components/editor-layout/reader-host";
 
 interface Props {
   /** Citekey backing this outer tab. */
@@ -78,8 +79,10 @@ function ReadyView({
         }}
         // Standalone outer paper tab — no LibraryView panel context. Give
         // it its own isolated view-session scope so its reader scroll
-        // persists independently of any inline-Library paper view.
-        scope={`outer:paper:${citekey}`}
+        // persists independently of any inline-Library paper view. Minted
+        // through the scope grammar SSOT so `readerHostKind` reads back the
+        // `popped-paper` host (and its opening layout) by construction.
+        scope={paperReaderScope(citekey)}
         panel="left"
       />
     </div>
