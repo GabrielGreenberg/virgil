@@ -410,7 +410,9 @@ describe("no danger-family read carries a hex fallback", () => {
  *    relatives (`bg-danger-soft` + `border-red-200` + `text-red-700` is a
  *    DESIGNED look). Repainting them needs two rungs this family does not have
  *    — a light border and a dark body ink — and a visual decision per card
- *    surface, which is a product call, not a sweep.
+ *    surface, which is a product call, not a sweep. (The library status chips
+ *    used to sit here too; task 500 retired them onto the shared status-pill
+ *    tone family instead — see the note in the list below.)
  *  - The decimal site is one file's CodeMirror theme object, whose accent is
  *    equally decimal (`rgba(124, 94, 60, …)` IS `--accent`). Tokenizing the
  *    code-view theme is that file's own unit of work. (The Outline position
@@ -424,10 +426,18 @@ describe("no danger-family read carries a hex fallback", () => {
 const PINNED_STOCK_RED_SITES: readonly string[] = [
   // `rose` is in the needle, not just `red`: Tailwind's rose ramp lands at hue
   // ~350 — inside the hue window the hex leg uses — so a rose utility IS this
-  // family wearing another palette's name. Both sites are the same
-  // `bg-rose-50 border-rose-200 text-rose-700` library status chip.
-  "src/components/library/library-entry-status.tsx",
-  "src/components/library/provenance-chips.tsx",
+  // family wearing another palette's name.
+  //
+  // The two library status-chip sites that sat here — `library-entry-status`
+  // and `provenance-chips` — are GONE since task 500, and the way they went is
+  // the interesting part. They were not repainted onto this family: the
+  // bib-auth axis they were colouring had THREE hand-written tables across two
+  // silos, so the fix was one tone resolution
+  // (`src/lib/library/status-tone.ts`) that both silos read, painting from the
+  // `--pill-<tone>-{bg,fg,edge}` triple. `failed` reaches this family's ROLE
+  // through `--pill-red-*` rather than through a `rose` utility, and the dead
+  // third table went with it. This list may only SHRINK; that is what shrinking
+  // looks like.
   "src/components/DocPermissionGate.tsx",
   "src/components/PreferencesModal.tsx",
   // NOT field-primitives.tsx: its only `border-red-300` is inside the doc

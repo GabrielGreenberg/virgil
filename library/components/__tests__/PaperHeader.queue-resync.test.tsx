@@ -50,7 +50,15 @@ vi.mock("@/components/library/bib-entry-chrome", () => ({
 }));
 vi.mock("../PagePicker", () => ({ default: () => <div /> }));
 vi.mock("../BibCard", () => ({ ExpandedFields: () => <div /> }));
-vi.mock("@/hooks/useLibrary", () => ({ mapTier: () => "none" }));
+// PaperHeader no longer imports the `useLibrary` hook module at all — task 500
+// moved `mapTier` into the import-free `status-tone` leaf (as `indexStateTier`)
+// and retired the alias once this was its last caller, which is the whole point
+// of the move: a leaf pill component should not have to drag React,
+// `catalog-store`, `library-folder`, `useMasterBib` and `useDiskLibraries` in
+// for a pure six-case switch. The mock is kept because the module still sits on
+// OTHER transitive import paths from this tree and stubbing it keeps this suite
+// light; the stub's shape is now irrelevant to the tier the header renders.
+vi.mock("@/hooks/useLibrary", () => ({}));
 
 const HANDLE = {} as unknown as FileSystemDirectoryHandle;
 
