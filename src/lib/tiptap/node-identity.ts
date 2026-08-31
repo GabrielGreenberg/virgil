@@ -40,6 +40,17 @@
  * from its own words. So the MECHANISM states identity (here) and the NET
  * catches what no mechanism declared.
  *
+ * SCOPED, since task 499. That blindness is a fact about a delete-HERE /
+ * insert-THERE pair in two SEPARATE steps, where nothing links them — which is
+ * the shape every gesture in THIS module produces. It is not a fact about every
+ * step: a `ReplaceAroundStep` links the two by construction (its gap is content
+ * preserved and merely re-PARENTED, its prefix is the container tokens stripped
+ * off the front of it), so for the re-parenting family the net STATES the
+ * identity itself rather than waiting for a mechanism to declare one. That is
+ * why Shift-Tab, the Backspace lift branch, toggle-list-off/on, blockquote-off
+ * and bullet ⇄ numbered need no `inheritBlockUuid` call of their own: see
+ * `block-uuid-backfill.ts`'s "RE-PARENTING CONSERVES IDENTITY" header.
+ *
  * COST: O(destination doc) per gesture, on a human-paced drop — never on a
  * keystroke.
  */

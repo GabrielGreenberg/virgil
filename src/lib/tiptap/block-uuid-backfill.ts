@@ -74,6 +74,11 @@ import { generateShortId } from "@/lib/uuid";
 // declared. Same division of labour as the container fit: the caller decides,
 // the guard refuses to let a mistake through.
 //
+// SCOPED by "RE-PARENTING CONSERVES IDENTITY" below (task 499): that blindness
+// is a fact about a delete-HERE / insert-THERE pair in two SEPARATE steps,
+// where nothing links them. A `ReplaceAroundStep` links them in ONE, so for the
+// re-parenting family this net states the identity itself.
+//
 // COORDINATES ARE PER-STEP (task 320)
 // Step `si`'s positions live in `trk.docs[si]`, and reach the final doc through
 // `trk.mapping.slice(si)` — its own map and the ones after it. Reading every
