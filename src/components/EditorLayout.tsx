@@ -231,6 +231,9 @@ const EMPTY_CUTTER: PaneState["cutterCards"] = [];
 const EMPTY_TODOS: PaneState["todoItems"] = [];
 const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
 const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
+// Stable empty for the archived-anchor sweep's `paneState?.X ?? …` read — a
+// fresh `new Set()` per render would re-fire the sweep effect every render.
+const EMPTY_ARCHIVED_ANCHORS: PaneState["archivedAnchorIds"] = new Set<string>();
 // Stable empties for the shell's diagnostics fallbacks (read from paneState in
 // the code-view Errors sidebar + badge; the pane owns the real state now).
 const EMPTY_ERR_SET: Set<string> = new Set();
@@ -1286,6 +1289,12 @@ export default function EditorLayout() {
     activeLinkId: activeAnchorId,
     hoveredLinkId: hoveredAnchorId,
     visibleHighlightKinds,
+    // An archived card draws no anchor chrome (task 497). Read from the ACTIVE
+    // pane's bubbled PaneState — the ONE authority's DOM-keyed projection,
+    // never a second derivation here (the shell holds no `archived` fact of its
+    // own). Inert empty set until the pane bubbles, which is also correct: with
+    // no pane there are no spans to sweep.
+    archivedAnchorIds: paneState?.archivedAnchorIds ?? EMPTY_ARCHIVED_ANCHORS,
   });
 
   // ── LabelRef popover state ──

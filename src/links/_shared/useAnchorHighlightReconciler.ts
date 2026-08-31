@@ -261,6 +261,23 @@ export interface UseAnchorHighlightReconcilerArgs {
    * map rather than an empty literal.
    */
   panelSides: PanelSideMap;
+  /**
+   * Card ids the cross-panel ARCHIVED SSOT says are archived
+   * (`archivedCardIds`, `src/links/_shared/archived-anchor-chrome.ts`).
+   *
+   * An archived card draws no anchor chrome, so its hover / selection never
+   * reaches the DOCUMENT: no Mode-A paragraph rail, no Mode-B text wash. It
+   * still highlights in its own PANEL list — that is where an archived card
+   * lives, and the two are collected separately below precisely so this gate
+   * can apply to one and not the other.
+   *
+   * REQUIRED, for the same reason `panelSides` is: an optional prop with an
+   * empty-set default would let a future refactor drop the one line that
+   * passes it and silently restore the pre-497 behaviour — an archived card
+   * hovered from the Archives view painting a 22-60% wash into the prose —
+   * with no type error and no test failure.
+   */
+  archivedCardIds: ReadonlySet<string>;
 }
 
 /** Walk the editor's footnote + citation nodes into a live atom-id set, for the
@@ -292,6 +309,7 @@ export function useAnchorHighlightReconciler({
   store,
   atomRevision,
   panelSides,
+  archivedCardIds,
 }: UseAnchorHighlightReconcilerArgs): void {
   const selected = useStoreSelection(store);
   const hover = useStoreHover(store);
@@ -394,6 +412,11 @@ export function useAnchorHighlightReconciler({
       intoRange: Map<HTMLElement, AnchorHighlightAttrs>,
     ): void => {
       if (!editorReady) return;
+      // ARCHIVED cards paint NO in-document chrome (task 497). The gate sits
+      // here rather than at the two call sites so it covers Mode-A rails and
+      // Mode-B washes in one place — and deliberately NOT in `collectCardKey`,
+      // because the card's own row in the Archives list must still highlight.
+      if (archivedCardIds.has(ref.id)) return;
       const links = linksForRef(ref, stableCollections);
       for (const link of links) {
         const resolved = resolveLink(editor, link);
@@ -570,7 +593,10 @@ export function useAnchorHighlightReconciler({
     // on the same commit. Its identity changes only on a dock/reorder (a
     // `useMemo` over the placement list upstream), so this adds no per-keystroke
     // and no per-render work.
-  }, [editor, selected, hover, stableCollections, panelSides]);
+    // `archivedCardIds` is a dep so archiving (or restoring) the card that is
+    // currently hovered/selected re-runs the sweep on the same commit — the
+    // in-document chrome must vanish with the card, not on the next hover.
+  }, [editor, selected, hover, stableCollections, panelSides, archivedCardIds]);
 }
 
 /** A resolved in-editor NODE/ATOM target before the selected/hovered attr bag

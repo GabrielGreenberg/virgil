@@ -3705,6 +3705,32 @@ textarea,
   background: color-mix(in oklab, var(--link-anchor-color) 22%, transparent);
 }
 
+/* ARCHIVED anchor chrome — an archived card draws none (task 497). Stamped by
+ * `useLinkHighlight`'s archived sweep from the ONE authority
+ * (`src/links/_shared/archived-anchor-chrome.ts`); the `linkedAnchor` MARK is
+ * untouched in the document, because it is the durable anchor a restore needs
+ * ("Transient state is never document content" — hiding is an attribute, never
+ * an unsetMark).
+ *
+ * Same shape as the transient-handle rule far above: zero the colour var and
+ * every `color-mix(… var(--link-anchor-color) …)` background collapses to
+ * transparent, which covers the per-kind 18% wash, the hover/active washes and
+ * the Mode-B hover/selection wash in one line.
+ *
+ * `background: none !important` is REQUIRED, not stylistic: the persistent tint
+ * band (`.linked-anchor[data-tint-color]`) carries an `!important` of its own
+ * and paints from `--tint-color`, not `--link-anchor-color` — so nothing but a
+ * later `!important` at equal specificity turns it off. That band is an
+ * archived HIGHLIGHT card's entire in-text identity (`highlight` has
+ * `markerType: null`), so without this line archiving one removed nothing
+ * visible whatsoever. Hence also the POSITION: this rule must stay AFTER every
+ * other `.linked-anchor` background rule in this file. */
+.linked-anchor[data-anchor-archived="true"] {
+  --link-anchor-color: transparent;
+  background: none !important;
+  box-shadow: none;
+}
+
 /* Mode A paragraph anchors — a kind-colored vertical line on the same
  * side as the margin marker (data-margin-side="left|right"), with NO
  * background wash. Left side uses a pseudo-element so the bar is

@@ -1991,6 +1991,96 @@ entry "cited", survives the *Cited entries only* filter and lands in the exporte
 the `.tex`* or *is referenced by a citation card* is a product call, and an
 over-inclusive `cited.bib` is harmless to LaTeX.
 
+###### The chrome half: the SSOT's own comment named the surface that never read it
+
+Same fact, the renderer 476 could not reach (task 497) — and the case where the
+authority's doc comment listed a consumer that had never been written.
+
+Gabriel, from a real paper: *"When a note is associated highlighting, and the
+note is archived, the highlighting should disappear. (the highlighting should be
+structurally linked to the presence of the note)"*. `EditorPane.archivedIds` had
+five consumers — margin markers, the re-pin chip, the omni filter (476), the
+archive glyph and the jump re-check — and **none of them was the in-document
+Mode-B span layer**, though the set's own comment claimed it drove "the
+in-document exclusion (margin markers, **highlights**)". 476's class, one word
+over.
+
+A note's `linkedAnchor` mark renders through three UNCONDITIONAL CSS paths keyed
+on statically-rendered attributes, so archiving — correctly a pure sidecar flag
+toggle, with the mark deliberately kept alive as the anchor a restore needs —
+removed nothing from the prose: the per-kind 18% wash (gated only on the GLOBAL
+highlight prefs), the `!important` tint band (gated on **nothing at all**, and an
+archived *highlight* card's entire in-text identity, since `highlight` has
+`markerType: null`), and the hover / selection washes an archived card still
+painted when touched from the Archives view.
+
+> **The mark's persistence is right; the CHROME's persistence is the bug.** An
+> archived card draws no anchor chrome — marker, band, rail, omni row, hover or
+> selection wash — and the rule is stated ONCE in
+> [archived-anchor-chrome.ts](src/links/_shared/archived-anchor-chrome.ts) as
+> TWO PROJECTIONS of one predicate over ONE collection list, because the surfaces
+> are keyed differently: `archivedCardIds` for everything keyed by card id, and
+> `archivedAnchorIds` for the DOM-keyed span sweep.
+
+Six rules it earned:
+
+- **The two keys are not interchangeable, and that is the whole reason the
+  authority publishes both.** On reload `applyLinkedAnchors` deliberately
+  re-stamps with an EMPTY `linkCard`, so a restored span reads
+  `data-link-card="note:"` — kind token present, **card id absent**. A sweep
+  keyed on the card id parsed back out of the DOM works in-session and silently
+  dies after every reload; `data-link-id` (the anchorId) is the stable key, so
+  the archived CARD set is PROJECTED into an archived ANCHOR set rather than
+  recovered from the span.
+- **Hiding is an ATTRIBUTE, never an `unsetMark`** ("Transient state is never
+  document content"). One `data-anchor-archived` stamp and one CSS rule; the
+  document is byte-identical in both directions, pinned as its own leg.
+- **`background: none !important` is REQUIRED, and so is the rule's POSITION.**
+  The tint band carries an `!important` of its own and paints from `--tint-color`
+  rather than `--link-anchor-color`, so nothing but a later `!important` at equal
+  specificity turns it off — which makes "after every other `.linked-anchor`
+  background rule" a load-bearing fact about the file, censused rather than
+  assumed.
+- **The in-editor gate sits in `collectTargets` and deliberately NOT in
+  `collectCardKey`** — the reconciler collects the two separately precisely so an
+  archived card can stop painting into the DOCUMENT while its own row in the
+  Archives list still highlights. That is what closes M5 rather than leaving it a
+  stated follow-up.
+- **Both props are REQUIRED**, for `panelSides`' reason: an optional prop with an
+  empty-set default lets a future refactor drop the one line that passes it and
+  silently restore the pre-497 behaviour, with no type error and no test failure.
+- **The sweep re-runs on the DocStructureBus, and the two redraw shapes were
+  MEASURED rather than reasoned about.** A structure-PRESERVING `setContent`
+  leaves the span element in place (PM matches and reuses the `MarkViewDesc`), so
+  the stamp rides through unaided and the bus correctly stays silent; a
+  structure-CHANGING one builds fresh DOM, and that is exactly what
+  `onAnyChange` reports. The channel is `emitCount`-gated, so typing fires it
+  zero times. Residual, stated: a MARK-ATTRS re-stamp recreates the span without
+  waking the bus — but every such re-stamp is driven by a card record change,
+  which mints a fresh set upstream and re-fires the effect through its own deps.
+
+CI: [archived-anchor-chrome.test.tsx](src/links/_shared/__tests__/archived-anchor-chrome.test.tsx)
+drives the REAL `useLinkHighlight` and the REAL `useAnchorHighlightReconciler`
+against a REAL main-stack editor whose paragraph carries TWO `linkedAnchor` marks
+— one archived, one active — because a leg with a single span passes on an
+implementation that turns EVERY span off. Its fixture stamps `linkCard: "note:"`,
+which IS the post-reload shape, so a card-id-keyed fix cannot pass. **No pre-497
+suite could see any of this**: `useLinkHighlight` had NO suite at all and
+`data-show-hl-` was asserted nowhere, so the whole sweep it owns was unpinned;
+and every reconciler fixture in the repo is UNARCHIVED, so a card whose chrome
+must not paint is unrepresentable in all of them. The leg with teeth is the
+CENSUS — the authority was never the part that could misbehave, a surface that
+draws anchor chrome without asking it is, and `archivedIds.has(...)` re-derived
+in EditorLayout would type-check perfectly. Measured by neutering each half in
+turn: the pre-497 absent sweep takes 4 legs, the reconciler gate 2, the bus
+re-stamp 1, the CSS rule's position 1, and a layout that re-derives instead of
+reading `PaneState` 1.
+
+**Owed, not claimed:** a real-FSA eyeball. Mode-B anchors and sidecars are the
+FSA-masked class, so the durable proof here is the unit contract — archive a note
+with a highlight, watch the wash vanish; unarchive, watch it return; reload and
+re-check both.
+
 
 #### The height half: a retained measurement is invalidated by the EVENT that changes it
 

@@ -99,6 +99,10 @@ import {
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import {
+  archivedAnchorIds,
+  archivedCardIds,
+} from "@/links/_shared/archived-anchor-chrome";
+import {
   useLinkedAnchorReconciler,
   reapOrphanLinkedAnchors,
 } from "@/links/_shared/useLinkedAnchorReconciler";
@@ -749,6 +753,18 @@ export interface PaneState {
   // DocPipeline) and must hand the pane's save machinery to the bridge's
   // `persistDelimiters` callback.
   saveWithDelimiters: (d: { preamble: string; postamble: string }) => void;
+  /**
+   * Mode-B `linkedAnchor` anchor ids owned by an ARCHIVED card — the ONE
+   * authority's DOM-keyed projection (`archivedAnchorIds`,
+   * `src/links/_shared/archived-anchor-chrome.ts`).
+   *
+   * Bubbled rather than re-derived because the sweep that consumes it
+   * (`useLinkHighlight`) is mounted in EditorLayout, which holds no card
+   * collections of its own beyond the slices below — and a second derivation
+   * there is precisely the mistake task 476 was about. Recomputes only when a
+   * sidecar collection changes, so it adds no per-keystroke bubble.
+   */
+  archivedAnchorIds: ReadonlySet<string>;
 }
 
 export interface EditorPaneProps {
@@ -2910,38 +2926,62 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // population"); a plain keystroke mints no uuid / adds no block, so nothing
   // here recomputes (keystroke sanctity is structural, not vigilance-based).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // Set of archived card ids across every panel. Drives the in-document
-  // exclusion (margin markers, highlights) + OmniView, and is read by the
-  // per-card archive actions context through `archivedIdsRef` (stable identity,
-  // so a card-body keystroke never broadly re-renders all cards). Recomputes
-  // only when a sidecar collection changes (an archive toggle / add / delete),
-  // never on a plain keystroke.
-  const archivedIds = useMemo(() => {
-    const s = new Set<string>();
-    const add = (arr: ReadonlyArray<{ id: string; archived?: boolean }>) => {
-      for (const c of arr) if (c.archived) s.add(c.id);
-    };
-    add(notesHook.cards);
-    add(todosHook.items);
-    add(reportsHook.cards);
-    add(revisionsHook.cards);
-    add(cutterHook.cards);
-    add(footnotesHook.footnoteRefs);
-    add(citationsHook.citations);
-    add(archiveHook.snippets);
-    return s;
-  }, [
-    notesHook.cards,
-    todosHook.items,
-    reportsHook.cards,
-    revisionsHook.cards,
-    cutterHook.cards,
-    footnotesHook.footnoteRefs,
-    citationsHook.citations,
-    archiveHook.snippets,
-  ]);
+  // The archivable collections, in ONE list — the two archived projections
+  // below both walk it, so they can never disagree about which cards are
+  // archived (only about which key names them). See
+  // `src/links/_shared/archived-anchor-chrome.ts`.
+  const archivableCollections = useMemo(
+    () => [
+      notesHook.cards,
+      todosHook.items,
+      reportsHook.cards,
+      revisionsHook.cards,
+      cutterHook.cards,
+      footnotesHook.footnoteRefs,
+      citationsHook.citations,
+      archiveHook.snippets,
+    ],
+    [
+      notesHook.cards,
+      todosHook.items,
+      reportsHook.cards,
+      revisionsHook.cards,
+      cutterHook.cards,
+      footnotesHook.footnoteRefs,
+      citationsHook.citations,
+      archiveHook.snippets,
+    ],
+  );
+
+  // Set of archived card ids across every panel — the cross-panel ARCHIVED
+  // SSOT. Read by the CARD-KEYED surfaces: the margin markers, the re-pin chip
+  // (`unanchoredMarkers`), the OmniView filter (`filterArchivedOmniItems`), the
+  // archive glyph, the jump re-check, the anchor-highlight reconciler's
+  // in-document gate, and the per-card archive actions context through
+  // `archivedIdsRef` (stable identity, so a card-body keystroke never broadly
+  // re-renders all cards). Recomputes only when a sidecar collection changes
+  // (an archive toggle / add / delete), never on a plain keystroke.
+  //
+  // The IN-TEXT chrome is keyed differently and gets its own projection right
+  // below — a reload-restored `.linked-anchor` span carries no card id at all,
+  // so it cannot be reached from this set. (Before task 497 this comment
+  // claimed the set drove "highlights" and no such consumer existed.)
+  const archivedIds = useMemo(
+    () => archivedCardIds(archivableCollections),
+    [archivableCollections],
+  );
   const archivedIdsRef = useRef(archivedIds);
   archivedIdsRef.current = archivedIds;
+
+  // The SAME rule over the SAME collections, projected onto the Mode-B
+  // `linkedAnchor` anchor ids those archived cards own — the DOM-stable key
+  // `useLinkHighlight` sweeps `data-anchor-archived` onto. Bubbled through
+  // `PaneState` because the sweep is mounted in EditorLayout; deriving it a
+  // second time there is exactly the mistake task 476 was about.
+  const archivedAnchorIdSet = useMemo(
+    () => archivedAnchorIds(archivableCollections),
+    [archivableCollections],
+  );
 
   // BUG #55: per-footnote AI-request flags, sourced from the footnotes.json
   // sidecar (FootnoteInfo is .tex-derived and carries no flag). Pure derivation
@@ -5186,6 +5226,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       paragraphByErrorId,
       jumpToErrorVisual,
       setSourceText,
+      archivedAnchorIds: archivedAnchorIdSet,
     });
   }, [
     onPaneStateChange,
@@ -5233,6 +5274,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     paragraphByErrorId,
     jumpToErrorVisual,
     setSourceText,
+    archivedAnchorIdSet,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────
@@ -5255,6 +5297,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // dangling-ref prune re-runs when an inline atom is added/removed — the
     // inline kinds never change `collections` (they aren't in it). T2 §3b.2.
     atomRevision: rev.footnotes + rev.citations,
+    // An archived card draws no IN-DOCUMENT chrome (task 497) — its own row in
+    // the Archives list still highlights. Same set the margin markers, the
+    // re-pin chip and the omni filter read.
+    archivedCardIds: archivedIds,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
