@@ -4,7 +4,7 @@ import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2,
 import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject } from "react";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
-import { reparentedUuids } from "@/lib/tiptap/block-uuid-backfill";
+import { dissolvedByReparent } from "@/lib/tiptap/block-uuid-backfill";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
 import { linkKindSelector } from "@/links/link-dom-contract";
 
@@ -465,21 +465,27 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // paragraph here keeps margin cards consistent).
           const anchorVanished = diff.removedAnchors.length > 0;
 
-          // EXCEPTION 3 (task 499) — an identity that is not LOST needs no
-          // resurrection. A container-changing gesture (Shift-Tab out of a
-          // list, Backspace at an item's start, toggle-list-off, blockquote-off,
-          // bullet ⇄ numbered) DISSOLVES the container and hands its uuid to the
-          // block that succeeded it, in the same transaction
-          // (`block-uuid-backfill`'s re-parent transfer). Resurrecting there
-          // does not preserve anything — it puts an EMPTY paragraph carrying the
-          // uuid above the user's own lifted text, and the net, seeing the id
-          // live again, mints a stranger for the text. Verbatim the reported
-          // bug. This is the sibling of EXCEPTION 2: there the resurrection
-          // reproduced the removal (a silent veto of the gesture), here it
-          // fights a successor that already exists. The predicate is read from
-          // the transactions' own steps, so it gives the same answer whichever
-          // of the two plugins the appendTransaction chain runs first.
-          const conserved = reparentedUuids(transactions);
+          // EXCEPTION 3 (task 499) — a container that DISSOLVED cannot be
+          // preserved by putting an empty paragraph where it was. A
+          // container-changing gesture (Shift-Tab out of a list, Backspace at
+          // an item's start, toggle-list-off, blockquote-off, bullet ⇄
+          // numbered) strips the container's own opening token off content that
+          // survives; resurrecting there does not preserve anything — it puts
+          // an EMPTY paragraph carrying the uuid above the user's own lifted
+          // text, and the net, seeing the id live again, mints a stranger for
+          // the text beside it. Verbatim the reported bug. The sibling of
+          // EXCEPTION 2: there the resurrection reproduced the removal (a
+          // silent veto of the gesture), here it contradicts it.
+          //
+          // The predicate asks about DISSOLUTION, not about the re-parent
+          // TRANSFER, and that is deliberate — see its own docstring. A
+          // transfer can only take ONE level (a last-item lift dissolves the
+          // `listItem` AND the `bulletList`), and a planned transfer can be
+          // dropped at its landing site; a guard keyed on either would husk the
+          // difference. Read from the transactions' own steps, so it answers
+          // the same whichever of the two plugins the appendTransaction chain
+          // runs first.
+          const dissolved = dissolvedByReparent(transactions);
 
           const paraType = newState.schema.nodes.paragraph;
           if (!paraType) return null;
@@ -494,7 +500,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // paragraph has no text for a `linkedAnchor` mark to sit on, so the
             // inline-anchor justification is vacuous for exactly this shape.
             if (resurrectionWouldBeANoOp(oldState.doc, b, paraType)) continue;
-            if (conserved.has(b.uuid)) continue; // EXCEPTION 3 — it has a successor
+            if (dissolved.has(b.uuid)) continue; // EXCEPTION 3 — its container dissolved
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;
