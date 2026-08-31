@@ -422,6 +422,45 @@ describe("499 — every container-changing surface conserves, not just Shift-Tab
   });
 });
 
+// ── B2. undo/redo — a transfer must survive being taken back ────────────────
+
+describe("499 — undo restores the exact pre-gesture identity, redo the conserved one", () => {
+  it("Shift-Tab → undo → redo leaves no duplicate at any point", () => {
+    // The backfill's own writes are `addToHistory: false`, so undo restores the
+    // STRUCTURE without taking the transfer back: the inverted step re-wraps a
+    // paragraph that by then carries the item's id inside a restored item that
+    // carries it too. The deferred paragraph is invisible to the duplicate rule
+    // (it is never a candidate), so the container-owns-it clear is what keeps
+    // the invariant. Found by driving undo, not by inspection.
+    const ed = mount([LIST("L1", ITEM("i1", P(null, "A")), ITEM("i2", P(null, "B")))]);
+    caret(ed, "B");
+    press(ed, "Tab", { shiftKey: true });
+    expect(idsByPath(ed)["1"], outline(ed)).toBe("i2");
+    expect(new Set(liveUuids(ed)).size).toBe(liveUuids(ed).length);
+
+    ed.commands.undo();
+    // Back exactly where we started — the item holds i2 and its body paragraph
+    // holds nothing.
+    expect(idsByPath(ed)["0.1"], outline(ed)).toBe("i2");
+    expect(idsByPath(ed)["0.1.0"], outline(ed)).toBeUndefined();
+    expect(new Set(liveUuids(ed)).size, outline(ed)).toBe(liveUuids(ed).length);
+
+    ed.commands.redo();
+    expect(idsByPath(ed)["1"], outline(ed)).toBe("i2");
+    expect(new Set(liveUuids(ed)).size).toBe(liveUuids(ed).length);
+  });
+
+  it("toggle-list-ON → undo restores the paragraph's own identity", () => {
+    const ed = mount([P("P1", "Hello")]);
+    caret(ed, "Hello");
+    ed.chain().toggleBulletList().run();
+    expect(idsByPath(ed)["0.0"], outline(ed)).toBe("P1");
+    ed.commands.undo();
+    expect(idsByPath(ed)["0"], outline(ed)).toBe("P1");
+    expect(ed.state.doc.child(0).type.name).toBe("paragraph");
+  });
+});
+
 // ── C. the controls — what must NOT be conserved ─────────────────────────────
 
 describe("499 — the controls: a SPLIT still mints, and a re-parent that keeps its object takes nothing", () => {

@@ -4511,6 +4511,16 @@ Seven rules they earned:
   batch re-created, a mapped position that drifted — each falls back to the fresh
   mint that shipped before. A missed transfer is the status quo; a wrong one is a
   duplicate.
+- **UNDO takes the structure back and not the transfer, so the invariant needs
+  one more line — found by driving undo, not by inspection.** The net's own
+  writes are `addToHistory: false`, so the inverted lift step re-wraps a
+  paragraph that by then carries the item's id inside a restored item that
+  carries it too — and a deferred inner paragraph is never a candidate, so the
+  duplicate rule cannot see it. *A container and its OWN deferred body paragraph
+  can never both answer to one id*, and the container is the text object, so the
+  paragraph is cleared. A container holding a DIFFERENT id keeps it and the
+  paragraph keeps its unreachable one: nothing bare is there to hand it to, the
+  serializer will strip it anyway, and clearing would destroy it a save early.
 - **Keystroke sanctity is untouched**: the direction-1 pass sits BEHIND the
   `candidates.length === 0` fast path and bails per step on `instanceof
   ReplaceAroundStep`, which plain typing never produces; direction 2 is a
@@ -4545,7 +4555,14 @@ reason), and no file outside the rule may spell the bypass meta, re-derive the
 rule, or read a step gap itself. Measured by neutering each half in turn: the
 pre-499 mint-only net takes **12** legs, direction 2 **3**, the guard's
 EXCEPTION 3 **9**, the retype type-change gate **1**, the liveness gate **1**,
-and a second reader of a step gap the census.
+the container-owns-it clear **1**, moving the pass in front of the keystroke
+fast path **1**, and a second reader of a step gap the census. One of this
+suite's own first-draft legs was VACUOUS and is recorded rather than quietly
+fixed: it counted TipTap's `transaction` event as a per-keystroke cost signal,
+and that event fires once per DISPATCH, not once per APPENDED transaction —
+measured, it passed with a backfill forced on every keystroke. The count lives
+where `state.applyTransaction` returns it; what this suite pins is the pass's
+PLACEMENT behind the fast path.
 
 **Residuals, stated rather than implied.** A MULTI-item lift merges the items
 into one before lifting (`liftOutOfList`'s own `tr.delete(pos-1, pos+1)`

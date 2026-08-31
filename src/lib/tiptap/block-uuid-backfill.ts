@@ -410,6 +410,8 @@ function planBackfill(
   const seenPos = new Set<number>();
   // Re-parent transfers, in FINAL-doc coordinates (task 499).
   const transfers: Array<ReparentTransfer> = [];
+  // Deferred inner paragraphs holding their OWN container's id — see the walk.
+  const duplicateClears = new Set<number>();
 
   for (let k = 0; k < transactions.length; k++) {
     const trk = transactions[k];
@@ -468,19 +470,40 @@ function planBackfill(
         if (isDeferredInnerParagraph(node, parent)) {
           // …and if it still CARRIES one, that identity is already unreachable
           // (`anchorableUuidAt` skips it, `assignUuids` strips it on the next
-          // save). Direction 2 of the law: hand it to the container that just
-          // took over as the text object, when that container is bare. The
-          // O(depth) resolve runs only on this rare shape — a paragraph is
-          // deferred AND uuid-bearing only just after something wrapped it.
+          // save). The O(depth) resolve runs only on this rare shape — a
+          // paragraph is deferred AND uuid-bearing only just after something
+          // wrapped it, or after an UNDO put it back inside the container it
+          // was lifted out of.
           if (typeof inserted === "string" && inserted) {
             const $p = newDoc.resolve(pos);
-            if ($p.depth > 0 && !ownUuid($p.parent) && isAnchorableNode($p.parent.type)) {
-              transfers.push({
-                kind: "defer",
-                receiverPos: $p.before(),
-                uuid: inserted,
-                clearPos: pos,
-              });
+            const container = $p.depth > 0 ? $p.parent : null;
+            if (container && isAnchorableNode(container.type)) {
+              if (!ownUuid(container)) {
+                // Direction 2 of the law: hand it to the container that just
+                // took over as the text object.
+                transfers.push({
+                  kind: "defer",
+                  receiverPos: $p.before(),
+                  uuid: inserted,
+                  clearPos: pos,
+                });
+              } else if (ownUuid(container) === inserted) {
+                // A container and its OWN deferred body paragraph can never
+                // both legitimately answer to one id, and the container is the
+                // text object. Reached by UNDOING a lift: the inverted step
+                // re-wraps the paragraph — which by then carries the item's
+                // transferred id — inside a restored item that carries it too,
+                // and the backfill's own writes are `addToHistory: false` so
+                // they are not undone with it. The deferred paragraph is
+                // invisible to the duplicate rule (it is never a candidate), so
+                // without this the duplicate simply stands until the next save
+                // strips it.
+                duplicateClears.add(pos);
+              }
+              // A container with a DIFFERENT id of its own keeps it and the
+              // paragraph keeps its unreachable one: nothing bare is there to
+              // hand it to, the id is no worse off than the serializer will
+              // leave it, and clearing would destroy it a save early.
             }
           }
           return;
@@ -557,6 +580,10 @@ function planBackfill(
   candidates.sort((a, b) => a.pos - b.pos);
 
   const fixes: BackfillFix[] = [];
+  for (const pos of duplicateClears) {
+    const dup = newDoc.nodeAt(pos);
+    if (dup) fixes.push({ pos, attrs: { ...dup.attrs, uuid: null } });
+  }
   for (const { pos, node } of candidates) {
     const u = node.attrs?.uuid;
     const hasId = typeof u === "string" && u.length > 0;
