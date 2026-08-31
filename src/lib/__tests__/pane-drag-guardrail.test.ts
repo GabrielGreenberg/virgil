@@ -282,6 +282,27 @@ const PERMITTED_REDERIVED_INVARIANTS: Record<string, string> = {};
 // is deliberately NOT used.
 const PERMITTED_REDERIVED_KEY_CLAIMS: Record<string, string> = {};
 
+// ── The POSITIVE half of the key-claim law (task 504) ───────────────────────
+// `PERMITTED_REDERIVED_KEY_CLAIMS` above is a NEGATIVE census: it asks whether
+// a gesture that DOES claim spells the claim by hand. It is structurally blind
+// to the failure that actually shipped twice — a gesture-scoped key handler
+// that claims NOTHING AT ALL, which spells no banned form and reads as
+// ordinary code. The engine sat that way until task 471 and the drop-mode
+// controller until task 504, and neither leg in this file could see either.
+//
+// So this list answers the question that would have caught both: a keydown
+// handler whose lifetime IS the pointer gesture's — registered with the move
+// listeners and torn down on the same end path — must call `claimGestureKey`.
+// A gesture is the innermost transient thing on screen; one press ends exactly
+// one thing.
+//
+// EMPTY, and staying that way: a hit is CLAIM-it. There is no true statement
+// of the form "this gesture-scoped key handler must let the press travel on"
+// — a handler that genuinely wants the key shared is not gesture-scoped, and a
+// MODE-level handler (`useMarginEdit`'s Escape) is excluded by construction
+// rather than by allowlist, because its listener does not die with a gesture.
+const PERMITTED_UNCLAIMED_GESTURE_KEYS: Record<string, string> = {};
+
 // ── The allowlist registry + the [cost: …] tag rule (task 334) ───────────────
 // `keystroke-subscriber-guardrail` has enforced a `[cost: …]` prefix on every
 // justification in every one of its allowlists since Wave-4 P6; this file
@@ -358,6 +379,11 @@ const ALLOWLISTS: Record<
     list: PERMITTED_REDERIVED_KEY_CLAIMS,
     cost: false,
     why: "answers a KEY-OWNERSHIP question (why a gesture-owning file spells its own preventDefault+stopPropagation pair instead of claimGestureKey); empty likewise — a hit is IMPORT-it, and a keydown handler has no per-frame cost to state",
+  },
+  PERMITTED_UNCLAIMED_GESTURE_KEYS: {
+    list: PERMITTED_UNCLAIMED_GESTURE_KEYS,
+    cost: false,
+    why: "answers the SAME key-ownership question from the positive side (why a gesture-scoped key handler answers a press without claiming it); empty and staying that way — a hit is CLAIM-it, and a gesture-scoped keydown fires once per press, never per frame",
   },
 };
 
@@ -743,21 +769,145 @@ export function findRederivedKeyClaims(source: string): string[] {
     const name = m[1];
     if (seen.has(name)) continue;
     seen.add(name);
-    const decl = new RegExp(
-      `\\b(?:const|let|var|function)?\\s*${name}\\s*=?\\s*(?:function\\s*)?\\(`,
-    ).exec(src);
-    if (!decl) continue;
-    const params = balancedFrom(src, decl.index + decl[0].length - 1);
-    if (!params) continue;
-    const braceAt = src.indexOf("{", decl.index + decl[0].length - 1 + params.length);
-    if (braceAt === -1) continue;
-    const body = balancedFrom(src, braceAt);
+    // Shared with the POSITIVE census below, so the two can never disagree
+    // about which text is "the handler".
+    const body = resolveHandlerBody(src, name);
     if (!body) continue;
     if (/\.preventDefault\s*\(/.test(body) && /\.stopPropagation\s*\(/.test(body)) {
       hits.push(`${name}: ${body.replace(/\s+/g, " ").slice(0, 120)}`);
     }
   }
   return hits;
+}
+
+/**
+ * The TEARDOWN of a listener only a HELD pointer produces. Deliberately
+ * receiver-agnostic — the engine's are element-scoped under pointer capture
+ * (`el.removeEventListener("pointermove", …)`) while the drop-mode
+ * controller's are on `window` — because the question is "does this end path
+ * end a pointer gesture?", not "where was the gesture listening?".
+ */
+const POINTER_LISTENER_TEARDOWN =
+  /\.removeEventListener\(\s*["'](?:pointermove|mousemove|touchmove|pointerup|mouseup|touchend|pointercancel|lostpointercapture)["']/;
+
+/**
+ * The `{…}` blocks ENCLOSING `index`, innermost first. Scanned FORWARD with
+ * the file's own string-skipper, never backwards by counting braces: a brace
+ * inside a string literal would silently reshape every region, and literals
+ * are KEPT here (as everywhere in this file).
+ */
+function enclosingBlocks(src: string, index: number): Array<{ open: number; text: string }> {
+  const stack: number[] = [];
+  const out: Array<{ open: number; text: string }> = [];
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(src, i);
+      continue;
+    }
+    if (c === "{") stack.push(i);
+    else if (c === "}") {
+      const open = stack.pop();
+      if (open !== undefined && open < index && i > index) {
+        out.push({ open, text: src.slice(open, i + 1) });
+      }
+    }
+  }
+  return out.sort((a, b) => b.open - a.open);
+}
+
+/** Is this `{` a FUNCTION body — i.e. the outward walk's stopping line? A
+ *  block preceded by `=>`, a parameter list, or the `function` keyword is
+ *  where one declaration ends and its caller begins. */
+function isFunctionBody(src: string, open: number): boolean {
+  return /(?:=>|\)|\bfunction\b\s*\w*)\s*$/.test(src.slice(0, open));
+}
+
+/** The brace-matched body of a named handler declaration, or null. Shared by
+ *  both key censuses so they can never disagree about which text is "the
+ *  handler". */
+function resolveHandlerBody(src: string, name: string): string | null {
+  const decl = new RegExp(
+    `\\b(?:const|let|var|function)?\\s*${name}\\s*=?\\s*(?:function\\s*)?\\(`,
+  ).exec(src);
+  if (!decl) return null;
+  const params = balancedFrom(src, decl.index + decl[0].length - 1);
+  if (!params) return null;
+  const braceAt = src.indexOf("{", decl.index + decl[0].length - 1 + params.length);
+  if (braceAt === -1) return null;
+  return balancedFrom(src, braceAt);
+}
+
+/**
+ * A GESTURE-SCOPED key handler (task 504) — the population the POSITIVE half
+ * of the key-claim law asks about.
+ *
+ * The discovered property, and it is the whole of the leg's precision: the
+ * handler's `removeEventListener("keydown"|"keyup", …)` sits in the SAME
+ * region as the teardown of a pointer MOVE/RELEASE listener. That is what
+ * "this key handler's lifetime IS the gesture's" means in source — it was
+ * installed with the move listeners and it dies on the one end path they die
+ * on, so it can only ever answer a press made DURING a held drag.
+ *
+ * The region is resolved by walking OUTWARD from the removal through its
+ * enclosing blocks and stopping at the first FUNCTION body, so:
+ *
+ *   - the engine's `finally { … }` (a control-statement block whose siblings
+ *     are the element-scoped pointer removals) is caught at level 1;
+ *   - the controller's `removeListeners()` body, where the removals are bare
+ *     single-statement `if`s, is caught at level 1;
+ *   - `useMarginEdit`'s MODE-level Escape is EXCLUDED BY CONSTRUCTION rather
+ *     than by allowlist: its listener is removed by a `useEffect` cleanup with
+ *     no pointer teardown anywhere in that callback, and the walk stops at
+ *     that callback's own body. A mode is not the innermost transient thing on
+ *     screen, and claiming there would be wrong (471's own stated rule).
+ *
+ * Stated limit: the outward walk stops at a function boundary, so a removal
+ * hidden inside a NESTED function (a helper called from the end path) is not
+ * attributed to it — the same reach limit every census in this file states
+ * about its own regions.
+ */
+export function findGestureScopedKeyHandlers(source: string): string[] {
+  const src = stripComments(source);
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const reg =
+    /(?:window|document)(?:\.body|\.documentElement)?\.removeEventListener\(\s*["']key(?:down|up)["']\s*,\s*(\w+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = reg.exec(src))) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    for (const block of enclosingBlocks(src, m.index)) {
+      if (POINTER_LISTENER_TEARDOWN.test(block.text)) {
+        seen.add(name);
+        names.push(name);
+        break;
+      }
+      if (isFunctionBody(src, block.open)) break;
+    }
+  }
+  return names;
+}
+
+/**
+ * ...and the ones that answer a press without CLAIMING it. Returns the
+ * offending handler names so a failure says which.
+ *
+ * A handler that early-returns on every key it does not own still counts as
+ * answering: what the rule asks is that the branch which ACTS on a press
+ * claims it, and every gesture-scoped handler in either silo acts by ending
+ * the gesture. `claimGestureKey` is spelled by NAME rather than by its
+ * expansion, because taking it from the SSOT is the point — the hand-written
+ * pair is the OTHER census's hit, one line up.
+ */
+export function findUnclaimedGestureKeys(source: string): string[] {
+  const src = stripComments(source);
+  return findGestureScopedKeyHandlers(src).filter((name) => {
+    const body = resolveHandlerBody(src, name);
+    // An unresolvable declaration fails CLOSED: a census whose verdict is an
+    // EMPTY set must not exonerate what it could not read.
+    return body === null || !/\bclaimGestureKey\s*\(/.test(body);
+  });
 }
 
 /** The receiver + event alternation BOTH censuses key on (see the class
@@ -781,7 +931,7 @@ export function detectWindowDragGesture(source: string): boolean {
   return windowLevelMove && dragChrome;
 }
 
-function walkSource(dir: string): string[] {
+function walkSource(dir: string, includeEngine = false): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
@@ -790,8 +940,8 @@ function walkSource(dir: string): string[] {
       // Skip test + fixture trees so the guard never scans itself, and the
       // engine directory — the one sanctioned gesture owner.
       if (entry === "__tests__" || entry === "__fixtures__") continue;
-      if (full === ENGINE_DIR) continue;
-      out.push(...walkSource(full));
+      if (full === ENGINE_DIR && !includeEngine) continue;
+      out.push(...walkSource(full, includeEngine));
     } else if (/\.(ts|tsx)$/.test(entry)) {
       out.push(full);
     }
@@ -799,14 +949,21 @@ function walkSource(dir: string): string[] {
   return out;
 }
 
-/** Both silos, keyed repo-relative ("src/…" / "library/…"). */
-function walkBothSilos(): Array<{ rel: string; source: string }> {
+/** Both silos, keyed repo-relative ("src/…" / "library/…").
+ *
+ *  `includeEngine` is OFF for every census that asks whether a gesture belongs
+ *  on the engine — there, the engine is the answer, not a suspect. The
+ *  POSITIVE key-claim census (task 504) turns it ON, and that is the whole
+ *  reason the parameter exists: the engine is a MEMBER of that population, was
+ *  the class's FIRST offender, and a leg that could not see it would have
+ *  caught only the second one. */
+function walkBothSilos(includeEngine = false): Array<{ rel: string; source: string }> {
   const files: Array<{ rel: string; source: string }> = [];
   for (const [prefix, root] of [
     ["src", SRC],
     ["library", LIBRARY],
   ] as const) {
-    for (const f of walkSource(root)) {
+    for (const f of walkSource(root, includeEngine)) {
       files.push({
         rel: `${prefix}/${path.relative(root, f).split(path.sep).join("/")}`,
         source: readFileSync(f, "utf8"),
@@ -1510,6 +1667,139 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
         }}
       />`;
     expect(findRederivedKeyClaims(componentKeyHandler)).toEqual([]);
+  });
+
+  it("every GESTURE-SCOPED key handler CLAIMS its press (task 504)", () => {
+    // The POSITIVE half, and the leg that would have caught BOTH members of
+    // this class. The census one leg up asks whether a gesture that claims
+    // spells the claim by hand; it is structurally blind to a gesture that
+    // claims NOTHING — which is what shipped in the engine until task 471 and
+    // in the drop-mode controller until task 504, both of them reading as
+    // ordinary code and spelling no banned form.
+    //
+    // POPULATION includes the ENGINE, unlike every other census in this file.
+    // There the engine is the answer and is rightly excluded; here it is a
+    // MEMBER — the class's first offender — and a leg that could not see it
+    // would only ever have caught the second one.
+    const files504 = walkBothSilos(true);
+    const scoped = files504
+      .map((f) => ({ rel: f.rel, names: findGestureScopedKeyHandlers(f.source) }))
+      .filter((f) => f.names.length > 0);
+    // Anchor: the population is small BY CONSTRUCTION (a key handler whose
+    // lifetime is a pointer gesture's is a rare shape), so a detector that
+    // stopped matching would leave this leg vacuously green rather than
+    // obviously broken. Both known members must always be in it.
+    expect(scoped.map((f) => f.rel).sort()).toEqual([
+      "src/components/drop-mode/controller.ts",
+      "src/lib/pane-resize/use-pane-resize-handle.ts",
+    ]);
+    const unclaimed = files504
+      .map((f) => ({ rel: f.rel, names: findUnclaimedGestureKeys(f.source) }))
+      .filter((f) => f.names.length > 0);
+    expect(
+      Object.fromEntries(unclaimed.map((o) => [o.rel, o.names])),
+      "a live pointer gesture is the INNERMOST transient thing on screen — one press ends exactly one thing. Call claimGestureKey(e) from @/lib/pane-resize/pointer-invariants, and register/remove the listener at window CAPTURE (a bubble-phase claim reaches nothing: document-capture owners have already run, and a same-target bubble listener registered first is unreachable by stopPropagation)",
+    ).toEqual(
+      Object.fromEntries(
+        Object.keys(PERMITTED_UNCLAIMED_GESTURE_KEYS).map((k) => [k, expect.any(Array)]),
+      ),
+    );
+  });
+
+  it("the gesture-scope census separates a gesture handler from a MODE handler (fixtures)", () => {
+    // A leg whose verdict is an EMPTY set is worth what its detector is worth
+    // — and this one's precision is entirely in WHICH handlers it collects.
+
+    // The shipped controller shape: the keydown dies on the same end path the
+    // move/up listeners die on, and the removals are bare single-statement
+    // `if`s, so the region is the enclosing function body.
+    const gestureShape = `
+      function removeListeners() {
+        if (onMove) window.removeEventListener("mousemove", onMove);
+        if (onUp) window.removeEventListener("mouseup", onUp);
+        if (onKey) window.removeEventListener("keydown", onKey, true);
+      }
+      onKey = (e: KeyboardEvent) => {
+        if (e.key !== "Escape") return;
+        cancelDropSession();
+      };`;
+    expect(findGestureScopedKeyHandlers(gestureShape)).toEqual(["onKey"]);
+    expect(findUnclaimedGestureKeys(gestureShape)).toEqual(["onKey"]);
+
+    // ...and the same shape once it claims.
+    const claimed = gestureShape.replace(
+      "cancelDropSession();",
+      "claimGestureKey(e);\n        cancelDropSession();",
+    );
+    expect(findGestureScopedKeyHandlers(claimed)).toEqual(["onKey"]);
+    expect(findUnclaimedGestureKeys(claimed)).toEqual([]);
+
+    // The engine shape: the removals share a `finally` block, which is a
+    // control-statement block rather than a function body — so the outward
+    // walk must find them at level 1.
+    const finallyShape = `
+      const finish = (mode: string) => {
+        try { commit(); } finally {
+          el.removeEventListener("pointermove", onMove);
+          window.removeEventListener("keydown", onKeyDown, true);
+        }
+      };
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key !== "Escape") return;
+        claimGestureKey(ev);
+        finish("cancel");
+      };`;
+    expect(findGestureScopedKeyHandlers(finallyShape)).toEqual(["onKeyDown"]);
+    expect(findUnclaimedGestureKeys(finallyShape)).toEqual([]);
+
+    // ...and the PRE-471 engine, which is what this leg exists to have caught:
+    // the same gesture-scoped handler, answering the press and claiming
+    // nothing. It spells no banned form, so the negative census one leg up
+    // reads it as clean.
+    const pre471 = finallyShape.replace("claimGestureKey(ev);\n", "");
+    expect(findRederivedKeyClaims(pre471)).toEqual([]);
+    expect(findUnclaimedGestureKeys(pre471)).toEqual(["onKeyDown"]);
+
+    // `useMarginEdit`'s MODE-level Escape — the exclusion that has to hold BY
+    // CONSTRUCTION, since a mode is deliberately not a claimant (471). Its
+    // cleanup carries no pointer teardown, and the outward walk stops at the
+    // effect callback's own body rather than escaping into a component that
+    // may well own a drag elsewhere.
+    const modeShape = `
+      useEffect(() => {
+        if (!marginEditMode) return;
+        const onKey = (e: KeyboardEvent) => {
+          if (e.key === "Escape") { e.preventDefault(); cancel(); }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+      }, [marginEditMode, cancel]);
+      const onPointerDown = () => {
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };`;
+    expect(findGestureScopedKeyHandlers(modeShape)).toEqual([]);
+
+    // A handler the census cannot READ fails CLOSED — a census whose verdict
+    // is an empty set must never exonerate what it could not resolve. That
+    // covers a member-expression registration too (read as its object name,
+    // which resolves to no handler declaration and is therefore reported):
+    const memberExpression = `
+      function removeListeners() {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("keydown", handlers.onKeyDown, true);
+      }`;
+    expect(findUnclaimedGestureKeys(memberExpression)).toEqual(["handlers"]);
+    const unresolvableNamed = `
+      function removeListeners() {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("keydown", mystery, true);
+      }`;
+    expect(findUnclaimedGestureKeys(unresolvableNamed)).toEqual(["mystery"]);
   });
 
   it("no production file RE-DERIVES an invariant the SSOT publishes", () => {

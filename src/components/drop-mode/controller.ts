@@ -48,7 +48,7 @@ import {
   beginContentGesture,
   endContentGesture,
 } from "@/lib/pane-resize/layout-gesture-bus";
-import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
+import { claimGestureKey, isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
 import { feedAutoScroll, stopAutoScroll } from "./auto-scroll";
 import {
   armMoveGeometry,
@@ -407,7 +407,32 @@ function installListeners(opts: { attachMouseUp: boolean }) {
     feedAutoScroll(readMoveGeometry().scroll, e.clientY, reHitTestAtPointer);
   };
   onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") cancelDropSession();
+    if (e.key !== "Escape") return;
+    // The gesture CLAIMS the press (task 504 — task 471's rule, member 2). A
+    // content drag is the innermost transient thing on screen, so ONE press
+    // ends exactly ONE thing: without the claim the same Escape also ran
+    // `useMarginEdit`'s cancel (discarding every guide dragged this session
+    // and not yet Saved) and the dialog stack's `document`-capture handler,
+    // which deliberately ignores `defaultPrevented` — closing a scrimless
+    // Preferences window or the bug reporter with a half-typed report in it.
+    //
+    // The PHASE is half the fix and is not interchangeable with the claim.
+    // Registered at BUBBLE — the LAST phase — a claim added in place stops
+    // essentially nothing: `document` capture has already run, and
+    // `useMarginEdit` is a window+bubble listener registered FIRST, which
+    // `stopPropagation` cannot reach (and `stopImmediatePropagation` is ruled
+    // out by the SSOT's own stated limit re: `input-modality`). So this is
+    // window CAPTURE, like the engine's, with the matching capture-phase
+    // removal in `removeListeners` — a capture listener is NOT removed by a
+    // bubble-phase removal, and that leak would outlive the gesture.
+    //
+    // Safe to claim because the listener is strictly gesture-scoped:
+    // `removeListeners()` is the ONE end path every session ending funnels
+    // through, and `commitDropSession` calls it BEFORE awaiting any confirm
+    // dialog — so this handler is already gone by the time a dialog can want
+    // the key.
+    claimGestureKey(e);
+    cancelDropSession();
   };
   onLeave = (e: MouseEvent) => {
     // Only react to leaving the document, not crossing into a child.
@@ -425,7 +450,7 @@ function installListeners(opts: { attachMouseUp: boolean }) {
     };
     window.addEventListener("mouseup", onUp);
   }
-  window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", onKey, true);
   document.documentElement.addEventListener("mouseleave", onLeave);
   document.documentElement.addEventListener("mouseenter", onEnter);
 }
@@ -439,7 +464,8 @@ function removeListeners() {
   disarmMoveGeometry();
   if (onMove) window.removeEventListener("mousemove", onMove);
   if (onUp) window.removeEventListener("mouseup", onUp);
-  if (onKey) window.removeEventListener("keydown", onKey);
+  // Capture-phase removal must MATCH the capture-phase registration above.
+  if (onKey) window.removeEventListener("keydown", onKey, true);
   if (onLeave) document.documentElement.removeEventListener("mouseleave", onLeave);
   if (onEnter) document.documentElement.removeEventListener("mouseenter", onEnter);
   onMove = onUp = onKey = onLeave = onEnter = null;
