@@ -31,7 +31,7 @@ import { FONT_STACKS } from "@/lib/panel-typography";
 // card carries the same `data-link-card` token its in-editor marker does, and
 // `parseLinkCardKey` consumers have to keep agreeing with both.
 import { linkCardKey } from "@/links/link-dom-contract";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import BibEntryCard from "@/components/BibEntryCard";
@@ -256,7 +256,7 @@ export function CitationCard({
   onDelete,
   isDraft = false,
 }: CitationCardProps) {
-  const theme = useCardTheme("citation");
+  const theme = useCardKindTheme("citation");
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);

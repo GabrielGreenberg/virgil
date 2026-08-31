@@ -21,6 +21,7 @@ import {
   collectClippedHeight,
 } from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
+import { useFloatAccent } from "./use-float-accent";
 import { FloatSourceReportProvider } from "./float-source-report";
 import { useLiftHost } from "@/text-objects/LiftHost";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -52,6 +53,13 @@ export function FloatWindow({
   windowKey: string;
 }) {
   const ctx = usePoppedCards();
+  // Task 493: the float is the FIFTH renderer of a card kind's accent, and it
+  // was the only one that did not subscribe. Resolved here, live, from the
+  // panel-colour store — so a colour picked in the panel's picker re-tints this
+  // float's header strip and its window ring in the same commit as the docked
+  // card. Called unconditionally (hooks must be); a text-object float declares
+  // no theme key and gets the neutral pair.
+  const accent = useFloatAccent(floatable.themeKey);
   // Chip 2: the shared lifted-overlay ghost host. Called UNCONDITIONALLY
   // (hooks must be — `useLiftHost` is `useContext`, returns null when no
   // `LiftHost` is mounted, e.g. an isolated test/Reader). Only consumed below
@@ -195,7 +203,7 @@ export function FloatWindow({
       initialHeight={initialHeight}
       zIndex={ctx.floatZIndex?.(key) ?? cardFloatZ(indexHint)}
       surface={floatable.surface}
-      accentTint={floatable.accentTint}
+      accentTint={accent.accentTint}
       onChange={(pos) => ctx.setFloatPosition(key, pos)}
       onFocus={() => ctx.recordFocus?.(key)}
     >
@@ -222,7 +230,7 @@ export function FloatWindow({
             title={titleOverride ?? floatable.title}
             titleNode={floatable.chromeSlots?.title}
             trailing={floatable.chromeSlots?.trailing}
-            headerTint={floatable.headerTint}
+            headerTint={accent.headerTint}
             // The affordance is DERIVED, never asserted beside a body about to
             // contradict it (task 435): a float whose body is telling the user
             // its source was deleted offers no jump to it. `floatable.canJump`

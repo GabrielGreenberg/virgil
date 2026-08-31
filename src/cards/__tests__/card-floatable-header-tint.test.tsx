@@ -1,18 +1,28 @@
 // @vitest-environment jsdom
 //
 // Chip-D residue pin (test-hardening): the registry→Floatable→FloatChrome
-// header-tint chain. `cardFloatable` (src/cards/floats/index.tsx) sets
-// `Floatable.headerTint` from the kind's theme `headerDefault` — the same
-// solid hex the DOCKED card header paints — so a popped card keeps the
-// kind-tinted strip (pop-out continuity #20). The FloatChrome half (paint
-// the tint / neutral fallback) is pinned in FloatChrome.test.tsx; THIS file
-// pins the producer half against the REAL registered builders:
+// accent chain. `cardFloatable` (src/cards/floats/index.tsx) declares
+// `Floatable.themeKey` from `CARD_REGISTRY[kind].themeKey`, and `FloatWindow`
+// resolves the header strip + window ring from it LIVE — so a popped card keeps
+// the kind-tinted strip (pop-out continuity #20) AND follows a colour the user
+// picks afterwards. The FloatChrome half (paint the tint / neutral fallback) is
+// pinned in FloatChrome.test.tsx; the LIVE half in
+// `src/floats/__tests__/float-accent-follows-override.test.tsx`. THIS file pins
+// the producer half against the REAL registered builders:
 //
-//   1. A card floatable's headerTint === CARD_THEMES[themeKey].headerDefault
+//   1. A card floatable declares the kind's registry themeKey, and resolving
+//      it through the shared accent path yields the theme's headerDefault
 //      (checked for note + todo).
-//   2. A text-object floatable carries NO headerTint (neutral strip).
+//   2. A text-object floatable declares NO themeKey (neutral strip).
 //   3. Bonus chip-D/WS7 residue: the note float's kind-chevron title slot is
 //      gated exactly like the docked card (Mode-B yes, Mode-A no).
+//
+// RENEGOTIATED (task 493): legs 1-2 asserted a RESOLVED `headerTint` hex baked
+// onto the `Floatable`. That is exactly the value that could not follow a live
+// override — a `Floatable` is resolved once per float-map rebuild — so the hex
+// left the contract and the KEY took its place. The contract these legs state is
+// unchanged (a note float paints the note theme's headerDefault); what moved is
+// WHERE the colour is resolved, which is the fix.
 
 import { describe, it, expect, vi } from "vitest";
 
@@ -42,6 +52,7 @@ import "@/cards/floats";
 import "@/text-objects/floats";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_THEMES } from "@/components/panel-primitives";
+import { resolveFloatAccent } from "@/floats/use-float-accent";
 import { textObjectFloatable } from "@/text-objects/text-object-floatable";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import type { UserNote, TodoItem, CitationRef } from "@/lib/types";
@@ -114,29 +125,34 @@ function ctxWith(partial: Partial<CardFloatCtx>): CardFloatCtx {
   } as unknown as CardFloatCtx;
 }
 
-describe("cardFloatable headerTint (registry → Floatable, chip-D chain)", () => {
-  it("note float: headerTint is the note theme's headerDefault", () => {
+describe("cardFloatable themeKey (registry → Floatable, chip-D chain)", () => {
+  it("note float: the declared themeKey resolves to the note theme's headerDefault", () => {
     const f = CARD_REGISTRY.note.toFloatable(
       "n1",
       ctxWith({ notes: [note([modeBLink()])] }),
     );
     expect(f).not.toBeNull();
     expect(CARD_REGISTRY.note.themeKey).toBe("note");
-    expect(f!.headerTint).toBe(CARD_THEMES.note.headerDefault);
+    expect(f!.themeKey).toBe("note");
+    const accent = resolveFloatAccent(f!.themeKey);
+    expect(accent.headerTint).toBe(CARD_THEMES.note.headerDefault);
     // Sanity: a solid pre-mixed hex, not an rgba/var.
-    expect(f!.headerTint).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(accent.headerTint).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  it("todo float: headerTint follows the kind's themeKey (todo)", () => {
+  it("todo float: the declared themeKey follows the kind's registry themeKey (todo)", () => {
     const f = CARD_REGISTRY.todo.toFloatable("t1", ctxWith({ todoItems: [todo] }));
     expect(f).not.toBeNull();
     expect(CARD_REGISTRY.todo.themeKey).toBe("todo");
-    expect(f!.headerTint).toBe(CARD_THEMES.todo.headerDefault);
+    expect(f!.themeKey).toBe("todo");
+    expect(resolveFloatAccent(f!.themeKey).headerTint).toBe(
+      CARD_THEMES.todo.headerDefault,
+    );
     // The two kinds genuinely differ — the tint is per-kind, not global.
     expect(CARD_THEMES.todo.headerDefault).not.toBe(CARD_THEMES.note.headerDefault);
   });
 
-  it("text-object floatable: NO headerTint (FloatChrome's neutral fallback)", () => {
+  it("text-object floatable: NO themeKey (FloatChrome's neutral fallback)", () => {
     const f = textObjectFloatable(
       { kind: "paragraph", id: "p1" },
       { current: null },
@@ -145,7 +161,9 @@ describe("cardFloatable headerTint (registry → Floatable, chip-D chain)", () =
     // import above — the builder must return a real Floatable…
     expect(f).not.toBeNull();
     // …that never writes the field at all (neutral FloatChrome strip).
-    expect("headerTint" in f!).toBe(false);
+    expect("themeKey" in f!).toBe(false);
+    // …and the shared accent resolver answers neutral for it.
+    expect(resolveFloatAccent(undefined)).toEqual({});
   });
 });
 

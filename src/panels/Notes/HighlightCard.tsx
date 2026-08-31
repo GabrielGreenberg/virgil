@@ -11,7 +11,7 @@ import {
   useCardDeleteKey,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import {
   getLinkedTextObjectIds,
   getTextAnchor,
@@ -50,7 +50,7 @@ export function HighlightCard({
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const theme = useCardTheme("highlight");
+  const theme = useCardKindTheme("highlight");
   const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);

@@ -339,7 +339,15 @@ describe("accent-bypass guardrail — the frozen colour tables are defaults-only
 
   it("the two repaired surfaces derive through the hooks", () => {
     const todo = readFileSync(path.join(SRC, "panels/Todo/TodoRow.tsx"), "utf8");
-    expect(todo).toMatch(/useCardTheme\("todo"\)/);
+    // RENEGOTIATED (task 493): this asserted the literal `useCardTheme("todo")`.
+    // The CONTRACT is unchanged — TodoRow derives its accent through the
+    // version-subscribed hook rather than the frozen `CARD_THEMES` fold — but
+    // the THEME KEY moved off the call site: a card's accent binding is
+    // `CARD_REGISTRY[kind].themeKey`, and `useCardKindTheme(kind)` is the one
+    // door that reads it. Pinning the old literal would now forbid the shared
+    // derivation. (`float-accent-follows-override.test.tsx` censuses the
+    // literal form out of every card component.)
+    expect(todo).toMatch(/useCardKindTheme\("todo"\)/);
     expect(runtimeText(todo)).not.toMatch(/\bCARD_THEMES\b/);
 
     const search = readFileSync(path.join(SRC, "panels/Search/SearchPanel.tsx"), "utf8");

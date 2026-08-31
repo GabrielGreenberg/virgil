@@ -13,7 +13,7 @@ import {
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { popKey, cardTypeLabel } from "@/panels/panel-registry";
@@ -89,7 +89,7 @@ export function TodoRow({
   // live — the same source the todo margin marker and the popped-out float
   // already read. Never bind `CARD_THEMES.todo` at module scope: that table is
   // a one-time fold over the SHIPPED defaults and is override-blind forever.
-  const theme = useCardTheme("todo");
+  const theme = useCardKindTheme("todo");
   const todoBodyStyle = usePanelBodyStyle("todo");
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
 

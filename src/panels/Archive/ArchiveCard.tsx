@@ -8,7 +8,7 @@ import {
 } from "@/components/panel-primitives";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
@@ -48,7 +48,7 @@ export function ArchiveCard({
 }) {
   const isAnchored = !orphaned;
   const cardStore = useCardStore();
-  const theme = useCardTheme("archive");
+  const theme = useCardKindTheme("archive");
   const popped = usePoppedCards();
   const cardKey = popKey("archive", snippet.id);
   const handleEditContent = (json: JSONContent) => {

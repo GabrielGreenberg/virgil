@@ -10,7 +10,7 @@ import {
   makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -77,7 +77,7 @@ export function NoteCard({
   // we still compute it for the existing data-orphaned attribute callers.
   const _isOrphaned = getLinkedTextObjectIds(note).length === 0;
   void _isOrphaned;
-  const theme = useCardTheme("note");
+  const theme = useCardKindTheme("note");
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed

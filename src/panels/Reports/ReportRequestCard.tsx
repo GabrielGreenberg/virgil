@@ -9,7 +9,7 @@ import {
   makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -62,7 +62,7 @@ export function ReportRequestCard({
   const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
-  const theme = useCardTheme("report");
+  const theme = useCardKindTheme("report-request");
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed

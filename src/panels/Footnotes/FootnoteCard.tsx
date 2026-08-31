@@ -13,7 +13,7 @@ import {
 } from "@/components/panel-primitives";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
@@ -102,7 +102,7 @@ export function FootnoteCard({
     [onEdit],
   );
   const cardStore = useCardStore();
-  const theme = useCardTheme("footnote");
+  const theme = useCardKindTheme("footnote");
   const popped = usePoppedCards();
   const cardKey = popKey("footnotes", fn.footnoteId);
   const onToggleFromCtx = onTogglePopout
@@ -231,7 +231,7 @@ export function OrphanedFootnoteCard({
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
-  const theme = useCardTheme("footnote");
+  const theme = useCardKindTheme("footnote");
   const compressedLines = useCompressedLines();
   // Backlog #12: orphans get a REAL expansion axis (the global store — the
   // footnoteId is stable and the `footnote` kind already has a slot), instead
@@ -335,7 +335,7 @@ export function UnanchoredFootnoteCard({
     [onEdit],
   );
   const content = normalizeRichContent(fn.content);
-  const theme = useCardTheme("footnote");
+  const theme = useCardKindTheme("footnote");
   const compressedLines = useCompressedLines();
   const ac = useAnchoredCard({ kind: "footnote", id: fn.id });
   const isHaloed = ac.selected || isSelected;

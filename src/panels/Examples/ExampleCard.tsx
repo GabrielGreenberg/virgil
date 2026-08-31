@@ -20,7 +20,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
@@ -418,7 +418,7 @@ export function ExampleCard({
   isPoppedOut,
   extraDataAttrs,
 }: ExampleCardProps) {
-  const theme = useCardTheme("example");
+  const theme = useCardKindTheme("example");
   const bodyStyle = usePanelBodyStyle("example");
   const popped = usePoppedCards();
   const cardKey = popKey("examples", example.exampleId);
