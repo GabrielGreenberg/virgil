@@ -25,8 +25,15 @@ export function useCardTheme(key: PanelThemeKey): CardTheme {
   return themeFromAccent(getPanelColor(key));
 }
 
-/** Subscribe to the global theme-override version counter. */
-function useThemeVersion(): number {
+/** Subscribe to the global theme-override version counter.
+ *
+ *  Exported (task 493) for the ONE consumer that cannot name its key at hook
+ *  time: a float's theme key is optional on the `Floatable` contract (text-object
+ *  floats carry none), and a hook may not be called conditionally — so
+ *  `floats/use-float-accent.ts` subscribes unconditionally here and resolves the
+ *  accent afterwards. Every consumer that HAS a key should take one of the keyed
+ *  hooks below instead; they are this one plus a derivation. */
+export function useThemeVersion(): number {
   return useSyncExternalStore(
     subscribePanelColors,
     getPanelColorVersion,

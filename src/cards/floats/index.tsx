@@ -49,7 +49,6 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
-import { getPanelColor, themeFromAccent } from "@/lib/panel-theme";
 import { snapshotCard } from "@/lib/stack/snapshot";
 import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
@@ -114,17 +113,14 @@ function cardFloatable(
     // white card surface, 1px ambient border (NOT the beige panel pod) —
     // same shell text-object floats use.
     surface: "card",
-    // …and the kind-tinted header strip the docked card has. Resolved via
-    // the non-hook theme path (override-aware): the same accent →
-    // headerDefault derivation `useCardTheme` performs.
-    headerTint: themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))
-      .headerDefault,
-    // …and the raw kind accent for the popped-card WINDOW ring (bug #34) —
-    // same override-aware theme path; FloatWindow stamps it as
-    // `--link-anchor-color` on the FloatingPanel root so the `:has()`
-    // window-ring rules resolve the kind color.
-    accentTint: themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))
-      .accent,
+    // …and the kind-tinted header strip the docked card has, plus the raw
+    // kind accent the popped-card WINDOW ring resolves (bug #34). Declared as
+    // the KEY, never a resolved colour: `FloatWindow` reads the panel-colour
+    // store LIVE through `useFloatAccent`, so a colour picked in this panel's
+    // picker re-tints an OPEN float in the same commit as the docked card
+    // (task 493). A `Floatable` is resolved once per float-map rebuild, so a
+    // baked hex here is a value that can only go stale.
+    themeKey: CARD_REGISTRY[kind].themeKey,
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,

@@ -26,8 +26,6 @@ import {
   capturedPassageOneLine,
 } from "@/panels/_shared/captured-passage";
 import type { PanelBodyKey } from "@/lib/panel-typography";
-import type { PanelThemeKey } from "@/lib/panel-theme";
-import type { CardKind } from "@/panels/_shared/types";
 
 // The field vocabulary itself (the union, the grid order, the read-only set)
 // is pure data and lives in its own leaf so non-UI code — notably the content
@@ -529,8 +527,14 @@ function PreviewSegment({
  *  it's off, the controls render disabled (defensive). The active preview segment
  *  reflects `usePreviewDir(id)` (a transient store, never persisted). `panelKey`
  *  picks the per-panel body typography; `family` tags every action so the
- *  controller tokens the right in-text mark. (`cardKind`/`themeKey` remain in the
- *  prop type for call-site compatibility but the bare renderer needs neither.) */
+ *  controller tokens the right in-text mark.
+ *
+ *  `cardKind` / `panelKey` / `themeKey` were declared here and destructured by
+ *  nothing — three facets with no reader (task 493, the WIRE-it-or-DELETE-it
+ *  rule). Two of them restated a fact `CARD_REGISTRY[kind].themeKey` already
+ *  owns, at the two call sites, as literals. Deleted rather than left standing:
+ *  a prop the type still has is a prop a future renderer reads, and this one
+ *  would have read a second copy of the accent binding. */
 export function AppliedRecordBody({
   id,
   originalText,
@@ -546,9 +550,6 @@ export function AppliedRecordBody({
   /** The card's `explanation` — "what Claude did and why". Rendered always-on
    *  above the Original foldout; omitted when empty/whitespace. */
   explanation?: string;
-  cardKind: CardKind;
-  panelKey: PanelBodyKey;
-  themeKey: PanelThemeKey;
   family: PendingChangeFamily;
 }) {
   const controller = usePendingChangeController();

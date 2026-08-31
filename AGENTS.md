@@ -5398,6 +5398,107 @@ prefs work in the dev preview), so the check is cheap and real — Reports on th
 right rail by default, its markers and rail on the right, its omni cards in the
 right column, and dragging ANY panel's strip icon across moving its cards with it.
 
+#### The subscription half: every RENDERER of a live value subscribes
+
+Same law, the half 205 and 381 both PRESUPPOSE (task 493) — and the case where
+the read was live, the derivation was right, the comment said "override-aware",
+and the subscription did not exist.
+
+A card kind's accent is painted by FIVE renderers. Four re-derive the moment the
+user picks a colour in a panel's picker: the docked card (`useCardTheme` →
+`useSyncExternalStore`), the margin marker, the in-text anchor (an effect keyed
+on `getPanelColorVersion`), and the highlight band (pure CSS off the anchor
+accent var). The fifth — a popped-out card float — did not. `cardFloatable`
+computed `headerTint` / `accentTint` with
+`themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))` and BAKED the
+hexes onto the `Floatable`, and nothing in
+`FloatHost → FloatWindow → FloatChrome → FloatingPanel` subscribed to the store.
+`EditorPane` is `memo()`'d with no prop derived from panel colours, so a swatch
+click caused **no render anywhere in that subtree**: the open float kept the old
+header strip and the old window ring while everything else re-tinted — two
+colours for one card in one window. It self-healed on the next unrelated
+`EditorPane` render (a keystroke, a selection change), which is why it read as
+intermittent rather than broken.
+
+**This corrects a claim task 175 made and never verified.** 175's write-up listed
+the float among the surfaces that already followed; its verification step was a
+preview eyeball owed and never run, which is why the false claim survived.
+
+> **A value that is a live function of app state is resolved at READ time from
+> one authority (205) — and every RENDERER of it SUBSCRIBES. A live READ with no
+> subscription is not a consumer; it is a value frozen at whatever moment its
+> holder was last built.** So the colour leaves the value object entirely: a
+> `Floatable` declares `themeKey` and the WINDOW resolves the paint.
+
+Six rules it earned:
+
+- **The fix is a RESHAPE, not a hook call.** Adding `useThemeVersion()` to
+  `FloatWindow` closes M1 and M2 in two lines and leaves the hex on the
+  `Floatable`, where the next reader takes it as a resolved value again. A
+  `Floatable` is a DESCRIPTION of what to render, re-derived once per float-map
+  rebuild; a colour that can change under it does not belong frozen inside one.
+  What crosses the contract is the KEY — a fact about the float that cannot go
+  stale.
+- **The chrome stays card-blind.** `FloatChrome` receives a resolved tint, never
+  a kind, exactly as its own comment requires; `PanelThemeKey` is a generic
+  theme-registry name, not card vocabulary, so `src/floats/` naming one crosses
+  no ontology.
+- **The subscription is UNCONDITIONAL and the key is OPTIONAL**, which is why
+  `useThemeVersion` is exported rather than the keyed `useCardTheme` being
+  reused: a text-object float declares no key, a hook may not be conditional, and
+  the cost of the neutral case is one version-counter compare.
+- **The pure derivation is exported for the TEST and censused OUT of
+  production.** `resolveFloatAccent` exists so the producer contract ("a note
+  float's declared key resolves to the note theme's `headerDefault`") can be
+  stated without the suite restating the accent → theme derivation — which is the
+  fork this task closes. A production caller of it would be the pre-493 defect
+  under a new name, so the census pins its readers to the hook alone.
+- **M3 — the two halves of one identity read from ONE table.** `cardFloatable`
+  DERIVED its theme key while every docked card RESTATED it as a literal
+  (`useCardTheme("note")`, … — 15 sites). They agree today, so this was latent
+  drift rather than a live defect: re-theme a kind in `CARD_REGISTRY` and the
+  float follows while the docked card does not. `useCardKindTheme(kind)`
+  ([src/cards/use-card-kind-theme.ts](src/cards/use-card-kind-theme.ts)) is the
+  one door; the KIND literal stays at the call site (a `NoteCard` IS the note
+  kind, and there is no second table there), and the THEME KEY leaves it.
+- **Do NOT solve this by re-rendering `EditorPane` on a colour change.** That
+  re-renders the whole pane — editor included — on every swatch click, for a 24px
+  header strip.
+
+The same pass deleted three DEAD props on `AppliedRecordBody`
+(`cardKind` / `panelKey` / `themeKey`), declared and destructured by nothing, two
+of which restated the accent binding as literals at their two call sites — the
+task-227 WIRE-it-or-DELETE-it rule, and two fewer copies of the fact M3 unifies.
+
+CI: [float-accent-follows-override.test.tsx](src/floats/__tests__/float-accent-follows-override.test.tsx)
+renders the REAL chain (`FloatHost` → real `FloatWindow` → real `FloatChrome` →
+real `FloatingPanel`) for a real note card inside `PoppedCardsContext`, reads the
+painted `backgroundColor` off **`document.body`** — the panel PORTALS, so RTL's
+`container` is empty and a leg reading it passes vacuously — then does the ONE
+thing that happens (`act(() => setPanelColor("note", …))`) and asserts BOTH the
+header strip and the float root's `--link-anchor-color` moved. Two controls keep
+it honest: a docked `useCardKindTheme` reader re-renders and repaints in the same
+harness, and an override on ANOTHER kind leaves this float alone. **No pre-493
+suite could see any of this**: `card-floatable-header-tint` asks the BUILDER for
+its hex (which was always live — rebuilding the floatable after an override
+yields the new colour), and every chrome suite hands `FloatChrome` a
+hand-supplied tint, so a RENDERED float failing to follow a store change is
+unrepresentable in all of them. Its legs 1-2 are RENEGOTIATED in place with the
+reason at the site, as is `card-theme-override-guardrail`'s task-175
+`useCardTheme("todo")` pin — both stated the retired shape, and the contract each
+asserts is unchanged. The leg with teeth is the CENSUS: the hook was never the
+part that could misbehave, a chain that stops asking it is — so
+`resolveFloatAccent` has exactly one production reader, the `Floatable` contract
+carries a key and neither retired hex field, no float-chain file spells
+`getPanelColor`/`themeFromAccent`, and no card component hands ANY panel-theme
+hook a literal key. Measured by neutering each half in turn: dropping the
+subscription takes 3 legs, and a docked card reverted to a literal 1.
+
+**Owed, not claimed:** the preview eyeball, and it is exactly the check 175 never
+got. NOT FSA-masked (localStorage + CSS + React state), so the unit contract is
+durable proof and the eyeball is cheap: pop a todo out, set Todo → Purple, and
+watch the float's header strip and window ring move with the docked card.
+
 #### The seed half: a DETECTED answer never overwrites a DECLARED one
 
 Same law read in reverse (task 344). Above, a live answer was frozen into a record; here a

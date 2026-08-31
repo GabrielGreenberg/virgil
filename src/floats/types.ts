@@ -17,6 +17,7 @@
  */
 import type { ReactNode } from "react";
 import type { StackItem } from "@/lib/stack/types";
+import type { PanelThemeKey } from "@/lib/panel-theme";
 
 export type FloatDomain = "card" | "textobject";
 
@@ -78,20 +79,21 @@ export interface Floatable {
   /** Visual shell treatment. */
   surface: FloatSurface;
 
-  /** Optional header-strip background for `FloatChrome` — pop-out
-   *  continuity (#20): card floats set this to their kind's
-   *  `theme.headerDefault` so the float header matches the docked card
-   *  header. Absent → the neutral `--surface-muted-strong` strip
-   *  (text-object floats keep it). */
-  headerTint?: string;
-
-  /** Optional kind accent (`theme.accent`) for the WINDOW selection/hover
-   *  ring (bug #34). The inner PanelCard stamps `--link-anchor-color` on
-   *  ITS root, but that var doesn't inherit UP to the `:has()` host, so
-   *  `FloatWindow` re-stamps this on the FloatingPanel root to bring the
-   *  accent into scope for the popped-card window-ring rules in globals.css.
-   *  Card floats set it; text-object floats omit it (neutral ring fallback). */
-  accentTint?: string;
+  /** Optional PANEL-THEME KEY this float takes its accent from — pop-out
+   *  continuity (#20) + the popped-card WINDOW ring (bug #34). Card floats
+   *  set it from `CARD_REGISTRY[kind].themeKey`; text-object floats omit it
+   *  (neutral `--surface-muted-strong` strip, neutral ring).
+   *
+   *  A KEY, never a resolved colour (task 493). A kind's accent is a live
+   *  function of the panel-colour store, and a `Floatable` is a DESCRIPTION
+   *  of what to render, resolved once when the float map re-derives — so a
+   *  baked `headerTint` went stale the moment the user picked a new colour
+   *  in that panel's picker, leaving the open float on the old header strip
+   *  and the old window ring while the docked card, the margin marker, the
+   *  in-text anchor and the highlight band all re-tinted. `FloatWindow`
+   *  resolves the pair LIVE through `useFloatAccent` and hands `FloatChrome`
+   *  a resolved tint, so the chrome stays card-blind. */
+  themeKey?: PanelThemeKey;
 
   /** The specialized content — **headerless**: `FloatChrome` (owned by
    *  `FloatWindow`) renders the grip/title/trailing/jump/close skeleton above

@@ -12,7 +12,7 @@ import {
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -87,7 +87,7 @@ export function RevisionSuggestionCard({
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const theme = useCardTheme("revision");
+  const theme = useCardKindTheme("revision-suggestion");
   const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
@@ -191,9 +191,6 @@ export function RevisionSuggestionCard({
           id={card.id}
           originalText={card.appliedChange?.originalText ?? card.original_text}
           explanation={card.explanation}
-          cardKind="revision-suggestion"
-          panelKey="revision"
-          themeKey="revision"
           family="revision-suggestion"
         />
       ) : isStale ? (

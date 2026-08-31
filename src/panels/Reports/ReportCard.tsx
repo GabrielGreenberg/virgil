@@ -5,7 +5,7 @@ import type { JSONContent, Editor } from "@tiptap/react";
 import type { ReportCard as ReportCardData } from "@/lib/types";
 import { EditableCard, makeCompressedSummary } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -63,7 +63,7 @@ export function ReportCard({
   const isSelected = ac.selected || selected;
   const _isOrphaned = getLinkedTextObjectIds(report).length === 0;
   void _isOrphaned;
-  const theme = useCardTheme("report");
+  const theme = useCardKindTheme("report");
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed

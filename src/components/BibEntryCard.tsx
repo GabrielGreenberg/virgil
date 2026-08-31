@@ -5,7 +5,7 @@ import type { BibEntry } from "@/lib/types";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { Input } from "./field-primitives";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -293,7 +293,7 @@ export default function BibEntryCard({
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
-  const theme = useCardTheme("bib");
+  const theme = useCardKindTheme("bib");
   const bibBodyStyle = usePanelBodyStyle("bib");
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);

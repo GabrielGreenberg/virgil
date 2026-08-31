@@ -11,7 +11,7 @@ import {
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -100,7 +100,7 @@ export function CutterSuggestionCard({
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const theme = useCardTheme("cut");
+  const theme = useCardKindTheme("cutter-suggestion");
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   // Pending-changes (flag-ON) status branches. Flag OFF → all false (status
@@ -207,9 +207,6 @@ export function CutterSuggestionCard({
           // the door's parse rung reads.
           originalContent={card.appliedChange ? undefined : card.selectedContent}
           explanation={card.explanation}
-          cardKind="cutter-suggestion"
-          panelKey="cut"
-          themeKey="cut"
           family="cutter-suggestion"
         />
       ) : isStale ? (

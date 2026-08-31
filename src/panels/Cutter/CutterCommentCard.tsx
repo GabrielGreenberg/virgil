@@ -9,7 +9,7 @@ import {
   makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import {
   getAnchorSummary,
   getLinkedTextObjectIds,
@@ -53,7 +53,7 @@ export function CutterCommentCard({
   editor?: Editor | null;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const theme = useCardTheme("cut");
+  const theme = useCardKindTheme("cutter-comment");
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
