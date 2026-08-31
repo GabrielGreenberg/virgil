@@ -48,6 +48,12 @@ interface PdfEventBus {
   off: (name: string, handler: (...args: unknown[]) => void) => void;
 }
 
+/** Minimal shape of the pdf.js sidebar we reach for in `applyViewerDefaults`. */
+interface PdfSidebar {
+  /** No-op when already closed (`viewer.mjs` PDFSidebar.close early-returns). */
+  close: () => void;
+}
+
 /** Minimal shape of the bits of pdf.js's PDFViewerApplication we drive. */
 interface PdfViewerApplication {
   initializedPromise?: Promise<void>;
@@ -57,6 +63,94 @@ interface PdfViewerApplication {
   /** Current 1-based page; getter + setter (set to navigate). */
   page?: number;
   eventBus?: PdfEventBus;
+  /** Built during `initialize()`, so non-null once `initializedPromise` settles. */
+  pdfSidebar?: PdfSidebar | null;
+}
+
+/** Minimal shape of the vendored viewer's AppOptions surface. `viewer.mjs`
+ *  exposes it to its embedder as `window.PDFViewerApplicationOptions = AppOptions`. */
+interface PdfViewerApplicationOptions {
+  set: (name: string, value: unknown) => void;
+}
+
+/** The iframe's contentWindow, as far as this wrapper is entitled to know it. */
+export type PdfViewerWindow = Window & {
+  PDFViewerApplication?: PdfViewerApplication;
+  PDFViewerApplicationOptions?: PdfViewerApplicationOptions;
+};
+
+/** pdf.js `SidebarView.NONE`. Named rather than spelled `0` at the call site,
+ *  because `0` and the option's own stock default `-1` (`SidebarView.UNKNOWN`)
+ *  are the whole distinction this door turns on. */
+const SIDEBAR_VIEW_NONE = 0;
+
+/**
+ * **Virgil's own defaults for the vendored pdf.js viewer, stated ONCE and
+ * applied PER OPEN.** The vendored tree carries exactly two hand-authored
+ * artifacts (`public/pdfjs/VIRGIL_VENDOR_NOTE.md`) and no patch census, so a
+ * third vendored patch would be silently dropped by the next re-vendor with
+ * every test green — which is why every Virgil-side preference about how that
+ * viewer BEHAVES belongs here, on the wrapper's own open path, rather than in
+ * the dist. This is the named place: the next such default is added to this
+ * function, not to a fourth path.
+ *
+ * Today it states one thing — **the sidebar (outline/thumbnails) opens CLOSED.**
+ * pdf.js resolves "sidebar view on load" in three tiers (`viewer.mjs` ~:13946),
+ * and its stock `sidebarViewOnLoad` default of `-1` (UNKNOWN) is precisely what
+ * unlocks the other two:
+ *
+ *   1. `AppOptions.get("sidebarViewOnLoad")` — stock `-1`;
+ *   2. a per-fingerprint `localStorage["pdfjs.history"]` restore — sticky
+ *      forever once the user opened the sidebar on that document once;
+ *   3. the PDF's own `/PageMode` — academic-publisher scans (JSTOR, Springer,
+ *      Acrobat re-saves) routinely carry `/PageMode /UseOutlines`, which
+ *      force-opens the outline on every fresh open.
+ *
+ * Setting the option to `SidebarView.NONE` short-circuits tiers 2 and 3 by
+ * their OWN conditions — both are gated on the option still reading UNKNOWN —
+ * so no vendored behaviour is bypassed, only un-defaulted. The page/zoom/scroll
+ * half of that same stored-history restore is untouched: it is read outside the
+ * `sidebarView === UNKNOWN` guard.
+ *
+ * The `close()` is the second half and is NOT redundant. `PdfView` keeps ONE
+ * warm iframe across paper switches, and nothing in pdf.js ever closes an open
+ * sidebar on a re-open: `reset()` switches to THUMBS without `forceOpen`, and
+ * `setInitialView(NONE)` early-returns. So a sidebar opened on paper A would
+ * otherwise stay open on B, C, D… for the life of the tab. The option stops the
+ * OPEN; `close()` retires an open one.
+ *
+ * The two halves are guarded SEPARATELY, on purpose: they answer different
+ * paths (a fresh open vs. a carried-over one), so a vendored surface that has
+ * been renamed under one of them must not take the other down with it.
+ *
+ * Called after `initializedPromise` settles — which is what makes it safe:
+ * `initialize()` awaits the preference read before resolving (`viewer.mjs`
+ * ~:13227 before ~:13256), so nothing clobbers the option afterwards, and
+ * `pdfSidebar` is built by then. And it is read at document-open time, so a
+ * per-open set covers every warm switch.
+ *
+ * **Deliberate product cost:** a user who opens the outline and then switches
+ * papers loses it. That is the reported ask ("closed by default"), and it is a
+ * choice — the toggle button still works, so this is a DEFAULT, not a lockout.
+ *
+ * **Deliberately NOT forced:** `scrollModeOnLoad` / `spreadModeOnLoad`, which
+ * ride the same stored-history and `/PageLayout` tiers. Nothing reports them,
+ * and unlike the sidebar they restore a per-document reading mode the user set
+ * from the toolbar on purpose — matching a fix to the true scope of the
+ * phenomenon rather than to the broadest blast radius.
+ */
+export function applyViewerDefaults(win: PdfViewerWindow | null | undefined): void {
+  try {
+    win?.PDFViewerApplicationOptions?.set("sidebarViewOnLoad", SIDEBAR_VIEW_NONE);
+  } catch {
+    // A re-vendor that renamed/removed the option: the `close()` below still
+    // covers the warm-iframe carryover, so fall through rather than bail.
+  }
+  try {
+    win?.PDFViewerApplication?.pdfSidebar?.close();
+  } catch {
+    // Torn-down viewer mid-switch — the next open re-applies.
+  }
 }
 
 /**
@@ -137,14 +231,17 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
     let cancelled = false;
 
     const openInViewer = async () => {
-      const win = iframe.contentWindow as
-        | (Window & { PDFViewerApplication?: PdfViewerApplication })
-        | null;
+      const win = iframe.contentWindow as PdfViewerWindow | null;
       const app = win?.PDFViewerApplication;
       if (!app) return; // viewer script not ready yet; the onLoad handler retries
       try {
         await app.initializedPromise;
         if (cancelled) return;
+        // Virgil's own viewer defaults, per open — see applyViewerDefaults.
+        // AFTER init (the option can no longer be clobbered by the preference
+        // read, and pdfSidebar exists) and BEFORE open (the option is read
+        // while the document opens, and the close must precede the re-open).
+        applyViewerDefaults(win);
         await app.open(pdfOpenArgs(url, citekey));
       } catch {
         // Swallow: a cancelled/replaced open (rapid paper switches) or a
@@ -203,9 +300,7 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
     const onPageChanging = () => emit();
 
     const subscribe = async () => {
-      const win = iframe.contentWindow as
-        | (Window & { PDFViewerApplication?: PdfViewerApplication })
-        | null;
+      const win = iframe.contentWindow as PdfViewerWindow | null;
       const a = win?.PDFViewerApplication;
       if (!a) return; // viewer script not ready; the load handler retries
       try {
