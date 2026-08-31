@@ -4426,6 +4426,165 @@ Four rules, mirroring the capture side's:
 
 **Two doors, one queue** — the persistence half, and the reason the bug had a second life. `usePersistentState` exposes `update()` (coalesced through a 300 ms debounce) and `persist()` (write now), and only the first owned the queue: an immediate write could be OUTLIVED by an older scheduled payload, which flushed afterwards and **resurrected on disk** what had just been removed, with in-memory state and the sidecar permanently disagreeing until the next edit. That is a PRIMITIVE hazard rather than one caller's slip — it is inherent to two write doors where one owns the queue — so `persist()` now cancels the pending timer and drops the stale payload, once, for every caller, and stamps the loader-stomp flag *after* the two guards that can make the write not happen (stamping it for a suppressed or dropped write would hide the sidecar for the whole session). Scope, stated honestly: the sidecar hooks with their own bespoke `persist` (`useFootnotes`, `useExamples`, `useAiRequests`, `useBibReview`, `useStack`, `useEditorUIState`) do **not** go through this door; among this hook's consumers only `useSuggestions.clearSuggestions` still calls it directly. Prefer `update()` regardless; `persist()` is for a read-then-write that needs the computed value back synchronously, and it cancels rather than merges, so its payload must already reflect any `update()` issued before it. Contracts: [archive-restore-contract.test.tsx](src/hooks/__tests__/archive-restore-contract.test.tsx), [restore-excerpt.test.ts](src/lib/tiptap/__tests__/restore-excerpt.test.ts), [card-restore-affordance.test.tsx](src/components/__tests__/card-restore-affordance.test.tsx).
 
+#### The re-parenting half: the NET may state what the STEP already said
+
+Same law, the gesture that produces it most (task 499) — and the case where the
+law was written down, was correct, and had ONE consumer.
+
+`node-identity.ts` says *a move conserves identity, a split mints it*, and its
+only production reader is the drop-mode text-range move. **No keyboard or menu
+structural gesture declared anything.** Shift-Tab is upstream TipTap's
+`liftListItem`, reaching the editor unmediated (`tab-indent.ts` deliberately
+leaves Shift-Tab alone; task 427's wrapper gate covers only the parents'
+`Mod-Shift` chords), so on a lift the `listItem`'s uuid — the text object every
+card / todo / report / marginalia marker / sidecar entry was keyed on — simply
+LEFT the document. Measured through the real stack, on the shape Gabriel
+reported twice:
+
+```
+bulletList#L1 > (i1 "A") (i2 "B")     ← the list, minus its last item
+paragraph#i3("")                       ← the resurrection guard's EMPTY husk
+paragraph#70f2("C")                    ← the user's text, a stranger
+```
+
+Three mechanisms compounding, none of which throws: the ITEM's identity leaves,
+`BlockUuidBackfill` — which could only MINT — gives the lifted paragraph a fresh
+id, `TextObjectOrphanGuard` fires and the hooks permanently strip `links[]`, and
+for a margin-anchored item `MarginaliaAnchorGuard` puts the old uuid back on an
+empty paragraph above the text (task 367's `resurrectionWouldBeANoOp` stand-down
+does not apply — what vanished was content-bearing). Verbatim the report: *"that
+text is not properly placed as a text-object."*
+
+> **A NET may state an identity where the STEP already said it.** The blindness
+> `node-identity.ts` names — *a net can only tell that two blocks collide, not
+> which one the user meant to keep* — is about a delete-HERE / insert-THERE pair
+> in two SEPARATE steps, where nothing links them. A `ReplaceAroundStep` links
+> them BY CONSTRUCTION: its GAP is content preserved and merely re-PARENTED, and
+> its prefix `[from, gapFrom)` is the container tokens stripped off the front of
+> it. So the net asks ONE question — **what happened to the gap content's
+> PARENT?** — and answers it without guessing.
+
+Two directions, each read where it is visible
+([block-uuid-backfill.ts](src/lib/tiptap/block-uuid-backfill.ts)):
+
+- **A container that DISSOLVED hands its identity to its successor** — step-shaped
+  (`planReparentTransfer`). *stripped + a FRESH parent inserted* ⇒ **RETYPE**
+  (bullet ⇄ numbered: the same list, differently rendered); *stripped + no new
+  parent* ⇒ **UNWRAP** (Shift-Tab, the Backspace lift branch, toggle-list-off,
+  blockquote-off): the promoted content's FIRST block inherits; *neither* ⇒
+  nothing (a mid-container split-lift — the container survives as the head half).
+- **A block that STOPPED BEING A TEXT OBJECT hands its identity up** —
+  result-shaped, so it needs no step at all: a `paragraph` that is now a DEFERRED
+  inner paragraph still carrying a uuid has an identity nothing can reach
+  (`anchorableUuidAt` skips it, `assignUuids` strips it on the next save), so if
+  its container is BARE the container takes the id and the block is cleared.
+
+Seven rules they earned:
+
+- **Read the STRUCTURE, not the gesture, and one rule covers every surface** —
+  the Shift-Tab keymap, the Backspace lift branch, the lightning grid, the slash
+  command, the `Mod-Shift` chords, a card-body toolbar and anything added later
+  — because the net sees the TRANSACTION. That is also why direction 2 is
+  result-shaped rather than step-shaped: `wrapInList` over two paragraphs wraps
+  the first in its `ReplaceAroundStep` and mints the SECOND item with a plain
+  `tr.split`, which carries no gap to read. A step-shaped wrap rule conserves one
+  of the two; the result-shaped one conserves both, with the same line.
+- **The retype arm requires a TYPE CHANGE, and that gate is load-bearing.**
+  `tr.setNodeMarkup` is itself a `ReplaceAroundStep` of exactly the retype shape
+  (`gapFrom = from + 1`, `insert = 1`), so without it every in-place attribute
+  write reads as a re-parenting — and a deliberate write of `uuid: null` is
+  silently undone by handing the old id straight back. A same-type in-place write
+  is the caller's own statement about that node.
+- **A PRESERVATION GUARD MAY NOT RESURRECT AN IDENTITY THAT IS NOT LOST**, and
+  that is the half the fix does not work without. `MarginaliaAnchorGuard` gains
+  EXCEPTION 3 (`reparentedUuids`), the sibling of task 367's EXCEPTION 2: there
+  the resurrection reproduced the removal (a silent veto of the gesture), here it
+  fights a successor that already exists — and *wins*, because the net then sees
+  the id live and mints the stranger beside the husk. Both halves are needed:
+  measured, the transfer alone fixes only the un-anchored case, which is the case
+  the reported one is not.
+- **…so the predicate is computed from the transactions' OWN steps**, never from
+  either plugin's output, and both read the same door. That is what makes it
+  independent of where each sits in ProseMirror's `appendTransaction` chain.
+- **Every verification FAILS OPEN.** A receiver that is not a bare anchorable
+  node, a donor that no longer holds the id, a freed uuid something else in the
+  batch re-created, a mapped position that drifted — each falls back to the fresh
+  mint that shipped before. A missed transfer is the status quo; a wrong one is a
+  duplicate.
+- **UNDO takes the structure back and not the transfer, so the invariant needs
+  one more line — found by driving undo, not by inspection.** The net's own
+  writes are `addToHistory: false`, so the inverted lift step re-wraps a
+  paragraph that by then carries the item's id inside a restored item that
+  carries it too — and a deferred inner paragraph is never a candidate, so the
+  duplicate rule cannot see it. *A container and its OWN deferred body paragraph
+  can never both answer to one id*, and the container is the text object, so the
+  paragraph is cleared. A container holding a DIFFERENT id keeps it and the
+  paragraph keeps its unreachable one: nothing bare is there to hand it to, the
+  serializer will strip it anyway, and clearing would destroy it a save early.
+- **Keystroke sanctity is untouched**: the direction-1 pass sits BEHIND the
+  `candidates.length === 0` fast path and bails per step on `instanceof
+  ReplaceAroundStep`, which plain typing never produces; direction 2 is a
+  two-condition test inside a walk the plugin already does, with its O(depth)
+  `resolve` reached only by a paragraph that is deferred AND uuid-bearing — a
+  shape that exists only just after something wrapped it.
+- **The bonus member came out of the same rule.** `toggleList` bullet ⇄ numbered
+  re-types the container in place, and pre-499 the new `orderedList` got a
+  stranger's id while every card anchored to the list orphaned. Nobody reported
+  it; it fell out of asking the question properly.
+
+CI: [reparent-identity-conservation.test.ts](src/lib/tiptap/__tests__/reparent-identity-conservation.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack through `handleKeyDown`
+and the shipped command chain — a direct `tr` dispatch cannot see which command
+a keymap chooses (task 418's lesson) — over Shift-Tab × {only, first, middle,
+last, multi-block item, multi-item selection} plus every other surface, keying
+identity by STRUCTURAL PATH (task 348: a steal reads as two changed paths, a
+re-mint as one) and asserting the husk and the orphan EVENT as well as the id.
+**No pre-499 suite could see any of this**: `block-uuid-backfill.test.ts` covers
+the lift through a synthetic two-node blockquote schema and *asserted a fresh id
+as the contract* (renegotiated in place there, with the reason at the site);
+`listItem` appears in it once, in a comment; and nothing anywhere drove a real
+Shift-Tab. The controls are half the contract — `sinkListItem` (Tab) takes
+nothing because its gap's first block is a `listItem` and never deferred, a
+blockquote around a HEADING leaves the heading anchorable in its own right, a
+mid-container split-lift leaves the head half holding the id, and an Enter split
+still mints. The leg with teeth is the CENSUS: the population of re-parenting
+commands is DISCOVERED from production source as an EXACT SET against what this
+suite drives (a member nobody drives is a step shape nobody checked the net
+against; a member no file calls any more makes the first leg pass for the wrong
+reason), and no file outside the rule may spell the bypass meta, re-derive the
+rule, or read a step gap itself. Measured by neutering each half in turn: the
+pre-499 mint-only net takes **12** legs, direction 2 **3**, the guard's
+EXCEPTION 3 **9**, the retype type-change gate **1**, the liveness gate **1**,
+the container-owns-it clear **9** (1 named leg + the uniqueness sweep), moving
+the pass in front of the keystroke fast path **1**, and a second reader of a
+step gap the census. The sweep is the leg that speaks for the shapes no named
+case looks at: 7 document shapes × 6 gestures × {gesture, undo, redo}, asserting
+only the invariant the plugin has always owed — no two live nodes answering to
+one uuid. One of this
+suite's own first-draft legs was VACUOUS and is recorded rather than quietly
+fixed: it counted TipTap's `transaction` event as a per-keystroke cost signal,
+and that event fires once per DISPATCH, not once per APPENDED transaction —
+measured, it passed with a backfill forced on every keystroke. The count lives
+where `state.applyTransaction` returns it; what this suite pins is the pass's
+PLACEMENT behind the fast path.
+
+**Residuals, stated rather than implied.** A MULTI-item lift merges the items
+into one before lifting (`liftOutOfList`'s own `tr.delete(pos-1, pos+1)`
+preamble), so only the FIRST item's identity is still available when the lift
+runs: the first lifted block conserves and the rest mint — the honest
+composition of a join (N text objects became one) and a split (one became N),
+pinned as its own leg. A block dropped INTO a container that ALREADY has an
+identity is absorbed by it, because nothing bare is there to hand the id to. And
+the outer container of a whole-list lift (`bulletList` around a sole `listItem`)
+loses its id to the innermost one — one text object where there were two, and
+the innermost is the one whose content became the paragraph.
+
+**Owed, not claimed:** a real-FSA eyeball. The orphan/husk half is the
+FSA-masked class (real anchor death reproduces under prod File System Access),
+so the durable proof here is the unit contract — anchor a note to a list item,
+Shift-Tab it out, and confirm the marker follows the text with no empty line and
+no unanchored chip.
+
 ### The schema half: a TYPE contract is blind to the ATTRS the type carries
 
 Same law, the SCHEMA the excerpt body mounts (task 402, DATA LOSS) — and the

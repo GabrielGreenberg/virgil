@@ -263,7 +263,18 @@ describe("BlockUuidBackfill", () => {
   // toggle-list-off, toggle-blockquote-off and Backspace-at-list-start left the
   // lifted block with a NULL uuid — no `data-uuid`, no grab handle, unreachable
   // as a card/marginalia anchor: verbatim the bug this plugin exists to fix.
-  it("mints for a block LIFTED out of a container (ReplaceAroundStep gap)", () => {
+  // RENEGOTIATED IN PLACE (task 499). This leg was written for the task-320
+  // half — "read the range from the StepMap and the lifted block gets NO id at
+  // all" — and pinned a FRESH id as the contract, which was the best the net
+  // could do while it only ever MINTED. It is the wrong contract: what left the
+  // document was the container's identity, and a fresh id on the lifted block
+  // is exactly the stranger the reported bug is about (the card follows the
+  // dead uuid, the orphan guard strips its links, the resurrection guard leaves
+  // an empty husk above the user's own text). The 320 property this leg exists
+  // for — the gap is walked at all, so the lifted block is anchorable — is
+  // unchanged and still asserted: a non-null id lands either way, and neutering
+  // the per-step span still fails this leg.
+  it("CONSERVES the container's uuid for a block LIFTED out of it (ReplaceAroundStep gap)", () => {
     const state = quoteState(
       quoteDoc(blockquote(qPara(null, "inner")), qPara("zzzz", "after")),
     );
@@ -279,9 +290,65 @@ describe("BlockUuidBackfill", () => {
     const uuids = quoteBlockUuids(out.doc);
     expect(out.doc.firstChild?.type.name).toBe("paragraph"); // it really lifted
     expect(uuids).toHaveLength(2);
-    // The lifted paragraph is now anchorable, so it MUST carry an id.
-    expect(uuids[0]).toMatch(/^[0-9a-f]{4}$/);
+    // The lifted paragraph is anchorable — and it is the SUCCESSOR of the
+    // blockquote the lift dissolved, so it carries that blockquote's identity
+    // rather than a stranger's.
+    expect(uuids[0]).toBe("Q1");
     expect(uuids[1]).toBe("zzzz");
+  });
+
+  // ── the re-parent transfer's two quiet guards (task 499) ─────────────────
+  // Both are one-line conditions inside `planReparentTransfer` whose absence
+  // changes nothing about any gesture in the app, so neither is visible to the
+  // behavioural sweep in `reparent-identity-conservation.test.ts`. An invariant
+  // with no leg is a habit.
+
+  it("a deliberate attribute write is NOT read as a re-parenting", () => {
+    // `tr.setNodeMarkup` IS a `ReplaceAroundStep` of exactly the RETYPE shape
+    // (`gapFrom = from + 1`, `insert = 1`), so without the type-change gate the
+    // transfer would hand a uuid straight back to the node whose attrs the
+    // caller has just written — silently undoing a deliberate clear.
+    const state = makeState(doc(paragraph("aaaa", "Body")));
+    const tr = state.tr.setNodeMarkup(0, undefined, {
+      ...state.doc.firstChild!.attrs,
+      uuid: null,
+    });
+    const { state: next } = state.applyTransaction(tr);
+    // The clear stands; the net then mints a FRESH id (its ordinary job for a
+    // bare anchorable block), never the one the caller removed.
+    const [only] = blockUuids(next.doc);
+    expect(only).toMatch(/^[0-9a-f]{4}$/);
+    expect(only).not.toBe("aaaa");
+  });
+
+  it("a freed identity that something else in the batch RE-CREATED is not handed on", () => {
+    // The liveness gate. Lift the quoted paragraph out (freeing `Q1`) and, in
+    // the SAME transaction, insert another blockquote still carrying `Q1`.
+    // `Q1` is not free, so the lifted paragraph must mint rather than collide.
+    const state = quoteState(
+      quoteDoc(blockquote(qPara(null, "inner")), qPara("zzzz", "after")),
+    );
+    const sel = TextSelection.create(state.doc, 3);
+    const lifted = state.apply(state.tr.setSelection(sel));
+    let out: EditorState = lifted;
+    lift(lifted, (tr) => {
+      tr.insert(tr.doc.content.size, blockquote(qPara(null, "clone")));
+      out = lifted.apply(tr);
+    });
+
+    const all: Array<string | null> = [];
+    out.doc.descendants((n) => {
+      if (n.type.name === "paragraph" || n.type.name === "blockquote") {
+        all.push((n.attrs.uuid as string | null) ?? null);
+      }
+      return true;
+    });
+    // Exactly one live `Q1` — the re-created blockquote — and the lifted
+    // paragraph carries a fresh id instead of a duplicate.
+    expect(all.filter((u) => u === "Q1")).toHaveLength(1);
+    expect(out.doc.firstChild?.type.name).toBe("paragraph");
+    expect(out.doc.firstChild?.attrs.uuid).toMatch(/^[0-9a-f]{4}$/);
+    expect(out.doc.firstChild?.attrs.uuid).not.toBe("Q1");
   });
 
   it("fills every block of a multi-block paste (all null uuids → all unique)", () => {
