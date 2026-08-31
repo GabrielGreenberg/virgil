@@ -117,7 +117,8 @@ const STYLESHEETS = ["src/app/globals.css", "library/styles/library.css"] as con
  * before this exclusion, leg C could not either. With them excluded, a new
  * Fonts-dialog pref that reaches no token is caught as an ORPHAN by leg C.
  *
- * Verified to be a pure tightening when it landed: excluding all five changes
+ * Verified to be a pure tightening when it landed: excluding all five (task 495
+ * retired one of them with the preference-mode picker, leaving four) changes
  * the inert set by nothing (every real font pref reaches pixels through its
  * own `--font-*` token or a derived one), so it adds no false accusation.
  */

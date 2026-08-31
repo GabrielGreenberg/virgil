@@ -117,6 +117,97 @@ export function strip(
  *  count a name merely MENTIONED in prose or in a string literal. */
 export const codeOnly = (src: string) => strip(src, false);
 
+/**
+ * The 1-based lines on which a quoted string OPENED and hit a newline before
+ * its closing quote — i.e. every line {@link strip} may have swallowed.
+ *
+ * The scanner's own header states the failure mode and names the remedy: a
+ * quoted string terminates at a newline, so a stray quote — an apostrophe in
+ * JSX text, a quote inside a regex literal, the one construct `strip` does not
+ * model — corrupts at most its own line, "and each caller's own swallow
+ * self-check is what would catch it". This is that check, given ONE
+ * implementation rather than one per caller, for exactly the reason `strip`
+ * itself has one.
+ *
+ * A census whose rule is "does this name occur a SECOND time?" needs it more
+ * than a `toContain`-shaped one does: a swallowed line can eat a binding's only
+ * use, and the failure then reports a dead import that is not dead, with no
+ * diagnostic attached. Empty means the census's view of the file is the whole
+ * file.
+ *
+ * Deliberately reports LINES rather than a boolean, so a hit names the place.
+ */
+export function swallowedLines(src: string): number[] {
+  const out: number[] = [];
+  let i = 0;
+  let line = 1;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === "\n") {
+      line++;
+      i++;
+      continue;
+    }
+    if (c === "/" && d === "/") {
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && d === "*") {
+      i += 2;
+      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) {
+        if (src[i] === "\n") line++;
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const quote = c;
+      const opened = line;
+      i++;
+      while (i < n && src[i] !== quote && src[i] !== "\n") {
+        if (src[i] === "\\") i++;
+        i++;
+      }
+      // Closed properly → step past the quote. Hit EOL (or EOF) → swallowed.
+      if (i < n && src[i] === quote) i++;
+      else out.push(opened);
+      continue;
+    }
+    if (c === "`") {
+      i++;
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (src[i] === "\n") line++;
+        if (src[i] === "$" && src[i + 1] === "{") {
+          depth++;
+          i += 2;
+          continue;
+        }
+        if (depth > 0 && src[i] === "}") {
+          depth--;
+          i++;
+          continue;
+        }
+        if (depth === 0 && src[i] === "`") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    i++;
+  }
+  return out;
+}
+
 /** Comments blanked, literals intact — for a needle whose match lives inside
  *  the quotes. */
 export const commentsStripped = (src: string) => strip(src, true);

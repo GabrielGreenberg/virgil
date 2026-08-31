@@ -1806,7 +1806,7 @@ that matches the surface, don't reinvent the shell:
 | --- | --- | --- | --- |
 | modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
 | draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
-| anchored popover at a point (preference-mode picker) | `"anchored"` | no | `MODAL_SCRIM_Z` |
+| anchored popover at a point (**no consumer** — see below) | `"anchored"` | no | `MODAL_SCRIM_Z` |
 | context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
 | caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
 | resting margin trigger (bolt, pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
@@ -1817,8 +1817,13 @@ that matches the surface, don't reinvent the shell:
   `ignoreOutsideSelector` so clicking the topbar trigger doesn't close-then-reopen.
 - **`variant="anchored"`** — scrimless popover pinned at a viewport point via
   `at={{x,y}}` (or `anchorRef`), measured and clamped inside the viewport before
-  it paints. Pass `outsideClickGuard` to keep a modifier gesture from dismissing
-  (e.g. ctrl+click-to-retarget).
+  it paints. Pass `outsideClickGuard` to keep a modifier gesture from dismissing.
+  **It has NO production consumer.** Its only one was the preference-mode picker,
+  which task 495 deleted as a whole dead feature; the variant, `at` and
+  `outsideClickGuard` survive as an untaken capability of the shell, pinned by a
+  suite — and a suite is not a consumer. Recorded here rather than left reading
+  as in-use, which is the very class 495 is about: reach for it and you are the
+  first caller, so weigh WIRE-it-or-DELETE-it before you assume it ships.
 - `FloatingPanel`-hosted tool windows (Fonts) keep their resizable shell but should
   derive header/surface chrome from `SYSTEM_DIALOG_TOKENS`, not bespoke literals.
 

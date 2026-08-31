@@ -56,6 +56,16 @@
  *                   header strip with {@link useSystemDialogDrag}); DRAGGABLE_DIALOG_Z.
  *   - "anchored"  — scrimless popover pinned at a viewport point (`at`) or near
  *                   `anchorRef`, clamped to the viewport; MODAL_SCRIM_Z.
+ *                   NO PRODUCTION CONSUMER since task 495 deleted its only one
+ *                   (the preference-mode picker). Retained as a primitive
+ *                   capability, and said out loud rather than left to read as
+ *                   in-use: whether an unused variant of a shared shell earns
+ *                   its keep is a decision about the dialog system, not one a
+ *                   deletion elsewhere gets to make. Its `at` prop and the
+ *                   `outsideClickGuard` below have no caller for the same
+ *                   reason. WIRE it or DELETE it — do not quietly assume it
+ *                   ships. (Pinned by system-dialog-variants.test.tsx, and a
+ *                   suite is not a consumer.)
  * The scrimless variants close on outside mousedown (skip via `ignoreOutsideSelector`
  * for the trigger button, or `outsideClickGuard` for a modifier gesture).
  */
@@ -175,7 +185,8 @@ export interface SystemDialogProps {
    *  CSS selector (e.g. the trigger button that toggles the dialog open). */
   ignoreOutsideSelector?: string;
   /** Scrimless variants: return true to suppress outside-click-close for this
-   *  event (e.g. ctrl+click-to-retarget in the preference picker). */
+   *  event (a modifier gesture that should re-target rather than dismiss).
+   *  NO PRODUCTION CALLER since task 495 — see the "anchored" note above. */
   outsideClickGuard?: (e: MouseEvent) => boolean;
   /** DOM id of the title element — set aria-labelledby. */
   labelledBy?: string;

@@ -3,14 +3,17 @@
  * renders it.
  *
  * Task 495's defect in one line: `EditorLayout.tsx` imported
- * `PreferenceModePicker` and never rendered it. The picker was the ONLY
- * consumer of `usePreferenceMode`'s `on`/`toggle`, so the mode could never be
- * turned on; the four `body[data-pref-mode="on"]` CSS rules were therefore
- * unreachable; and six components went on stamping `data-prefs=` for a walker
- * that never mounted. ~500 lines of a whole feature, dead for four months —
- * while `usePreferenceMode.ts`'s architecture docstring opened with
- * "1. Host (EditorLayout) renders <PreferenceModePicker /> unconditionally"
- * and went on to teach the next agent how to EXTEND it.
+ * `PreferenceModePicker` and never rendered it. That picker was the only place
+ * `usePreferenceMode`'s `on` was read, and its `toggle` had NO reader anywhere
+ * — `EditorLayout` destructured both and used neither — so the mode could never
+ * be turned on, the two `body[data-pref-mode="on"]` rulesets (four selectors)
+ * were unreachable, and four components went on stamping `data-prefs=` for a
+ * walker that never mounted. ~480 lines of a whole feature, dead for four
+ * months — while `PreferenceModePicker.tsx`'s own Lifecycle contract opened
+ * with "1. Host (EditorLayout) renders <PreferenceModePicker /> unconditionally"
+ * and `usePreferenceMode.ts`'s threading map put a "[top-bar button]" under
+ * `EditorLayout.tsx` that "renders the toggle button; uses isOn & toggle()".
+ * Both false; the second file went on to teach the next agent how to EXTEND it.
  *
  * Nothing failed. `tsconfig.json` sets no `noUnusedLocals`, so the compiler is
  * silent by configuration; `npm run lint` reported 89 warnings on that one file,
@@ -67,21 +70,39 @@
  * it would need this file to resolve the specifier and read the other module,
  * which is a compiler's job, not a grep's.
  *
+ * Two more stated reaches, both measured EMPTY on this tree rather than argued:
+ * a NAMESPACE import (`import * as Panels from "./panels"`) introduces no
+ * PascalCase specifier and is not collected — there are zero of them in the 281
+ * production `.tsx` files; and the name test's character class omits `_`, so
+ * `Playfair_Display` / `Source_Serif_4` / `Geist_Mono` (`next/font/google`, in
+ * `layout.tsx`) are skipped. All three are fonts rather than components, so the
+ * exclusion is right by accident and not by the rule — which is why it is
+ * written down here instead of left to be rediscovered.
+ *
  * ---------------------------------------------------------------------------
  * WHAT DRAINING IT COST, recorded because the number is the finding
  *
- * On the pre-495 tree this census named SEVENTEEN bindings, sixteen of them in
- * `EditorLayout.tsx` alone — `VirgilEditor`, `FloatingPanel`, `DockOutline`,
- * `CardLiftOutline`, `OmniFilterMenu`, `ExamplesPanel` and all ten panel
- * `*Host`s: residue of the extraction that moved every one of them into
- * `EditorPane` / the `editor-layout/` submodules. Each was verified to render
- * elsewhere before deletion. That pile IS the mechanism the finding names — the
- * signal that would have caught the seventeenth was buried under sixteen.
+ * On the pre-495 tree this census named EIGHTEEN bindings, and every one of them
+ * was in `EditorLayout.tsx` — no other production `.tsx` in either silo had a
+ * hit. Seventeen besides the picker: `VirgilEditor`, `FloatingPanel`,
+ * `DockOutline`, `CardLiftOutline`, `OmniFilterMenu`, `ExamplesPanel`, `Side`
+ * and all ten panel `*Host`s, residue of the extraction that moved every one of
+ * them into `EditorPane` / the `editor-layout/` submodules. Each was verified to
+ * render elsewhere, and each module verified to still be loaded through
+ * `EditorPane`, before deletion. That pile IS the mechanism the finding names —
+ * the signal that would have caught the eighteenth was buried under seventeen.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { relative } from "path";
-import { codeOnly, trackedFiles, REPO_ROOT } from "@/lib/__tests__/_source-scan";
+import {
+  codeOnly,
+  commentsStripped,
+  cssCommentsStripped,
+  swallowedLines,
+  trackedFiles,
+  REPO_ROOT,
+} from "@/lib/__tests__/_source-scan";
 
 /**
  * `file::Binding` entries this census tolerates.
@@ -163,74 +184,135 @@ describe("dead-component guardrail — an import is a claim that the file render
 
   /** The population must be non-trivial, or the leg above passes vacuously —
    *  a `trackedFiles` root that stopped resolving would report zero files and
-   *  zero hits, which is indistinguishable from a clean tree. */
-  it("the population is real", () => {
-    const files = productionTsx();
-    expect(files.length).toBeGreaterThan(100);
-    expect(files.some((f) => f.endsWith("/src/components/EditorLayout.tsx"))).toBe(true);
-    expect(files.some((f) => /\/library\//.test(f))).toBe(true);
+   *  zero hits, which is indistinguishable from a clean tree.
+   *
+   *  PER SILO, not a total: the two roots collapse independently, and a total
+   *  floor cannot see one of them go. Nor may the library pin be a path
+   *  SUBSTRING test — `/library/` matches every path in a checkout that happens
+   *  to live under a directory of that name, so it would answer true with the
+   *  silo empty. Both are anchored on the repo-relative path instead. */
+  it("the population is real, per silo", () => {
+    const rel = productionTsx().map((f) => relative(REPO_ROOT, f));
+    const inSrc = rel.filter((f) => f.startsWith("src/"));
+    const inLibrary = rel.filter((f) => f.startsWith("library/"));
+    expect(inSrc.length).toBeGreaterThan(100);
+    expect(inLibrary.length).toBeGreaterThan(10);
+    expect(rel).toContain("src/components/EditorLayout.tsx");
+    // …and the population must actually COLLECT something, or the use-count
+    // rule is being asked of nothing.
+    const bindings = productionTsx().flatMap((f) =>
+      importedComponentBindings(codeOnly(readFileSync(f, "utf8"))),
+    );
+    expect(bindings.length).toBeGreaterThan(300);
   });
 
-  /** CAN-SEE canary, on a SYNTHETIC fixture rather than one of the lines this
-   *  task drained — a canary standing on the defect evaporates the moment the
-   *  defect is fixed, and the leg above then passes for no reason.
+  /** SWALLOW SELF-CHECK — the convention `_source-scan.ts`'s own header asks
+   *  every caller for, and this census needs it more than most: measured over
+   *  the real population, 61% of collected bindings sit at exactly TWO
+   *  occurrences (the import plus one use), so ONE swallowed line is a spurious
+   *  failure with no diagnostic attached.
    *
-   *  Spells every shape that must and must not flag: the DEFAULT import the
-   *  reported defect used, a named one, an aliased one, a `type` specifier, a
-   *  whole `import type` statement, a SCREAMING_SNAKE constant, and — the one
-   *  that caught the reported shape's own disguise — a component named only in
-   *  the comment sitting above its import. */
-  it("the scanner sees a dead default import, and spares types, constants and prose", () => {
-    const fixture = [
-      '// DeadDefault is the picker; see its architecture guide for how to extend.',
-      'import DeadDefault from "./DeadDefault";',
-      'import LiveDefault from "./LiveDefault";',
-      'import { DeadNamed, LiveNamed } from "./pair";',
-      'import { Origin as DeadAlias, Other as LiveAlias } from "./aliases";',
-      'import { type SideKind, LiveThird } from "./mixed";',
-      'import type { PurelyAType } from "./types";',
-      'import { FLOATING_PANEL_WIDTH } from "./constants";',
-      'export function C() {',
-      '  const label = "DeadDefault DeadNamed DeadAlias";',
-      '  return <div title={label}><LiveDefault /><LiveNamed /><LiveAlias /><LiveThird /></div>;',
-      '}',
-    ].join("\n");
-    const src = codeOnly(fixture);
-    const flagged = [...new Set(importedComponentBindings(src))].filter(
-      (n) => (src.match(new RegExp(`\\b${n}\\b`, "g"))?.length ?? 0) <= 1,
-    );
-    expect(flagged.sort()).toEqual(["DeadAlias", "DeadDefault", "DeadNamed"]);
-    // …and the two shapes that are deliberately NOT this census's question.
-    expect(importedComponentBindings(src)).not.toContain("PurelyAType");
-    expect(importedComponentBindings(src)).not.toContain("SideKind");
-    expect(importedComponentBindings(src)).not.toContain("FLOATING_PANEL_WIDTH");
+   *  The scanner models a quoted string as newline-terminated, so a stray quote
+   *  — an apostrophe in JSX text, a quote inside a regex literal, the one
+   *  construct it does not model — corrupts at most its own line. That is
+   *  exactly enough to eat a component's only use. Today `react/no-unescaped-
+   *  entities` forces `&apos;` and the tree is clean, but nothing this census
+   *  owns holds that.
+   *
+   *  The obvious form of this leg has NO TEETH and was measured to have none: a
+   *  swallow eats to end of LINE, so counting surviving `import` lines (or
+   *  file lines) sees nothing — planting a real JSX apostrophe leaves both
+   *  intact. `swallowedLines` asks the scanner's own question instead.
+   */
+  it("the stripper swallows nothing across the population", () => {
+    const offenders: string[] = [];
+    for (const abs of productionTsx()) {
+      const lines = swallowedLines(readFileSync(abs, "utf8"));
+      if (lines.length) offenders.push(`${relative(REPO_ROOT, abs)}:${lines.join(",")}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  /** CAN-SEE canary for the swallow check, on synthetic fixtures — including
+   *  the two shapes that would actually reach this repo (a raw apostrophe in
+   *  JSX text; a quote inside a regex literal) and, as accepting controls, the
+   *  escaped-quote and multi-line-template forms that must NOT report. */
+  it("the swallow detector sees a lost line, and spares the legal shapes", () => {
+    expect(swallowedLines(`const el = <p>It's here <Badge /></p>;`)).toEqual([1]);
+    expect(swallowedLines(`s.replace(/['"]/g, ""); const el = <Badge />;`)).toEqual([1]);
+    expect(swallowedLines(`const a = 1;\nconst b = "it's fine";\nconst c = <Badge />;`)).toEqual([]);
+    expect(swallowedLines(`const s = 'a\\'b';`)).toEqual([]);
+    expect(swallowedLines("const t = `line one\nline two`;\nconst c = 2;")).toEqual([]);
+    // A comment may hold anything at all.
+    expect(swallowedLines("// it's fine\n/* and it's\n   fine here too */\nconst x = 1;")).toEqual([]);
+    // …and the line NUMBER is the diagnostic, so it must be right.
+    expect(swallowedLines(`const a = 1;\nconst b = 2;\nconst el = <p>It's here</p>;`)).toEqual([3]);
   });
 
   /** The retired feature stays retired. Task 495 deleted the picker, its hook,
-   *  the four unreachable CSS rules, the `--pref-mode-accent` token they read,
-   *  and the six `data-prefs` stamps that fed the walker — including the
-   *  `data-panel-theme` attribute, which was consumer-ONLY (read by the picker
-   *  and the CSS, produced by nothing, while `panel-primitives` promised a
-   *  producer that never existed). A future re-introduction has to reach a
-   *  RENDERED consumer, which the census above is what enforces. */
+   *  the two unreachable CSS rulesets, the `--pref-mode-accent` token they read,
+   *  the four `data-prefs` stamps that fed the walker (and the `dataPrefs` prop
+   *  that carried one of them), the `data-bar-h` twin of the same dead
+   *  integration, and the two exports whose only caller was the picker
+   *  (`findLeafByKey`, and `useLoadPanelColors` — whose zero consumers were the
+   *  same class one file over). `data-panel-theme` went with them: it was
+   *  consumer-ONLY, read by the picker and the CSS, produced by nothing, while
+   *  `panel-primitives` promised a producer that never existed.
+   *
+   *  COMMENTS ARE STRIPPED, deliberately. This repo's convention is to
+   *  renegotiate a retired claim IN PLACE with the reason at the site, and a
+   *  raw-source needle would make writing that sentence a test failure —
+   *  outlawing the very prose the fix is made of. What the leg forbids is a
+   *  live CODE mention. Literals are KEPT, because `data-prefs="…"` and
+   *  `"@/hooks/usePreferenceMode"` are how a re-introduction would actually be
+   *  spelled.
+   *
+   *  Stated reach: `data-prefs` and `data-panel-theme` are generic names inside
+   *  a LIVE family (`data-panel-id`, `data-panel-side`, … all ship), so a future
+   *  attribute of those exact names trips this leg. That is the right direction
+   *  for a retirement pin — a loud question beats a silent re-introduction — and
+   *  the answer at that point is to rename or to retire the pin on purpose. */
   it("preference mode is gone from both silos — no half-alive third state", () => {
-    const sources = [
-      ...trackedFiles("src", /\.(tsx?|css)$/),
-      ...trackedFiles("library", /\.(tsx?|css)$/),
-    ].filter((p) => !/__tests__/.test(p));
     const needles = [
       "usePreferenceMode",
       "PreferenceModePicker",
       "data-pref-mode",
       "data-prefs",
+      "dataPrefs",
       "data-panel-theme",
+      "data-bar-h",
       "pref-mode-accent",
+      "findLeafByKey",
+      "useLoadPanelColors",
     ];
     const hits: string[] = [];
-    for (const abs of sources) {
-      const raw = readFileSync(abs, "utf8");
-      for (const n of needles) if (raw.includes(n)) hits.push(`${relative(REPO_ROOT, abs)}::${n}`);
+    const scan = (root: string, ext: RegExp, strip: (s: string) => string) => {
+      for (const abs of trackedFiles(root, ext)) {
+        if (/__tests__/.test(abs)) continue;
+        const src = strip(readFileSync(abs, "utf8"));
+        for (const n of needles) {
+          if (src.includes(n)) hits.push(`${relative(REPO_ROOT, abs)}::${n}`);
+        }
+      }
+    };
+    for (const root of ["src", "library"]) {
+      scan(root, /\.tsx?$/, commentsStripped);
+      scan(root, /\.css$/, cssCommentsStripped);
     }
     expect(hits).toEqual([]);
+  });
+
+  /** CAN-SEE canary for the retirement leg. Synthetic, for the reason the other
+   *  canary states — and it also pins the comment/code asymmetry the leg rests
+   *  on, which is the half a `toEqual([])` can never demonstrate. */
+  it("the retirement leg reads CODE, not the prose that records the retirement", () => {
+    const live = commentsStripped('const el = <div data-prefs="surfaceColor" />;');
+    expect(live).toContain("data-prefs");
+    const prose = commentsStripped("// Retired in 495: EditorLayout rendered <PreferenceModePicker />.\nconst x = 1;");
+    expect(prose).not.toContain("PreferenceModePicker");
+    expect(prose).toContain("const x = 1;");
+    const cssProse = cssCommentsStripped("/* the old body[data-pref-mode=\"on\"] rule */\n.a { color: red; }");
+    expect(cssProse).not.toContain("data-pref-mode");
+    expect(cssProse).toContain("color: red");
   });
 });

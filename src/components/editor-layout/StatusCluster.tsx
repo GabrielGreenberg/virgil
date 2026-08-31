@@ -107,7 +107,7 @@ export type StatusClusterProps = {
   onEditIdentity: () => void;
   onDisableCollab: () => void;
 
-  // Zen + preference-mode toggles.
+  // Zen toggle.
   onToggleZen: () => void;
   preferencesOpen: boolean;
   setPreferencesOpen: Dispatch<SetStateAction<boolean>>;

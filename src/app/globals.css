@@ -594,7 +594,6 @@
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
 
-
   /* Library-wide editing fonts. Pinned to the Virgil editor display fonts
      so every indexed paper renders in one consistent face regardless of
      what the source PDF/DOCX used. Indexed .tex files carry no font info;
