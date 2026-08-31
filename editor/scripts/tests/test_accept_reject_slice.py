@@ -30,6 +30,11 @@ SAMPLE = ROOT / "samples/annotation-history"
 SCRIPTS = ROOT / "editor/scripts"
 APPLY = str(SCRIPTS / "apply_response.py")
 
+# Released-ness is ONE predicate (task 496): the release REWRITES the pen
+# record (`holder: null`) instead of deleting it, so a delete-blocked mount
+# cannot roll the collab restore back and report exit 2 on a landed write.
+from _pen_state import pen_released  # noqa: E402
+
 PASS, FAIL = 0, 0
 
 
@@ -81,7 +86,7 @@ def version(doc):
 
 
 def pen_gone(doc):
-    return not (doc / ".virgil/pen-context.json").exists()
+    return pen_released(doc)
 
 
 def out_of(r):

@@ -55,7 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import CANONICAL_BIB_STATES, citekey_matches  # noqa: E402
+from _tools import CANONICAL_BIB_STATES, citekey_matches, unlink_tolerant  # noqa: E402
 
 # The auth state this policy moves an entry into once it rewrites the bib
 # fields from the on-disk file. Validated against the canonical set
@@ -408,9 +408,9 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             check=True,
         )
     except subprocess.CalledProcessError as e:
-        os.unlink(fields_file)
+        unlink_tolerant(fields_file, what="temp fields file")
         return {"error": f"update_master_bib_entry failed: {e}", "applied": False}
-    os.unlink(fields_file)
+    unlink_tolerant(fields_file, what="temp fields file")
 
     # Update catalog row.
     patch = {"title": title, "bib": {"state": POLICY_BIB_STATE}}
@@ -428,9 +428,9 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             check=True,
         )
     except subprocess.CalledProcessError as e:
-        os.unlink(patch_file)
+        unlink_tolerant(patch_file, what="temp patch file")
         return {"error": f"update_catalog_entry failed: {e}", "applied": False}
-    os.unlink(patch_file)
+    unlink_tolerant(patch_file, what="temp patch file")
 
     # Update \title{...} in main.tex.
     tex = tex_path.read_text(encoding="utf-8")

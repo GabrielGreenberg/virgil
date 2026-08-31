@@ -22,6 +22,11 @@ CREATE = str(SCRIPTS / "create_card.py")
 APPLY = str(SCRIPTS / "apply_response.py")
 LIST = str(SCRIPTS / "list_requests.py")
 
+# Released-ness is ONE predicate (task 496): the release REWRITES the pen
+# record (`holder: null`) instead of deleting it, so a delete-blocked mount
+# cannot roll the collab restore back and report exit 2 on a landed write.
+from _pen_state import pen_released  # noqa: E402
+
 PASS, FAIL = 0, 0
 def check(cond, label):
     global PASS, FAIL
@@ -94,7 +99,7 @@ check(len(load(sb, "notes.json")["cards"]) == ORIG_NOTES, "no sibling comment fo
 notifs = load(sb, "notifications.json")["items"]
 check(len(notifs) == 1 and notifs[0]["kind"] == "ai-request-complete", "one ai-request-complete notification")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version.txt bumped to 1")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen-context.json gone (pen released)")
+check(pen_released(sb), "pen-context.json gone (pen released)")
 collab = load(sb, "collab.json")
 check(collab["enabled"] is False and collab["pen"]["holder"] is None, "collab.json restored (off, free pen)")
 
@@ -174,7 +179,7 @@ check(r.returncode != 0, "create_card exited non-zero on injected failure")
 after = snapshot(sb)
 check(before == after, "every target file is byte-identical (full rollback, nothing partial landed)")
 check(before["version.txt"] is None and not (sb / "virgil/version.txt").exists(), "version.txt was NOT created (rolled back)")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen released even though the write failed")
+check(pen_released(sb), "pen released even though the write failed")
 check(load(sb, "collab.json")["enabled"] is False, "collab.json restored after the failed write")
 
 # ---------------------------------------------------------------- legacy un-migrated path
@@ -199,7 +204,7 @@ check(creq.get("resultId") == "ctest9", "legacy: resultId set")
 check("result" not in creq, "legacy: NO outcome enum stamped (preserves old behavior)")
 check(len(load(sb, "notes.json")["cards"]) == ORIG_NOTES, "legacy: no spurious comment (notes count unchanged)")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "legacy: version bumped")
-check(not (sb / ".virgil/pen-context.json").exists(), "legacy: pen released")
+check(pen_released(sb), "legacy: pen released")
 
 # ---------------------------------------------------------------- list_requests back-compat
 print("\n=== back-compat: list_requests filters open vs terminal ===")

@@ -744,6 +744,12 @@ def main() -> int:
             continue
         if stats["failed"] == 0:
             try:
+                # unlink-exempt: this site has a STRONGER policy than the
+                # shared helper's stderr warning (task 496) — a refused delete
+                # of a fully-applied source .bib is reported to the library's
+                # own inbox, where an operator will see it. Routing it through
+                # `unlink_tolerant` would downgrade that to a warning nobody
+                # reads.
                 src.unlink()
             except Exception as e:
                 append_inbox_item(library, {
