@@ -676,7 +676,7 @@ export default function BibEntryCard({
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); addAction.onAdd(); }}
-              className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
+              className="text-[10px] text-positive-ink hover:text-positive-strong hover:bg-positive-soft px-1.5 py-0.5 rounded"
             >
               Add
             </button>

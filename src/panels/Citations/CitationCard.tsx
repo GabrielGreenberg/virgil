@@ -1430,7 +1430,7 @@ function CitationKeyRow({
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="text-emerald-600"
+                className="text-positive-ink"
               >
                 <polyline points="20 6 9 17 4 12" />
               </svg>

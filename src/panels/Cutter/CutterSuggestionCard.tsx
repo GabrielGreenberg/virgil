@@ -216,6 +216,16 @@ export function CutterSuggestionCard({
         <div className="px-3 pt-1.5 pb-1.5">
           <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
             {card.suggested_text ? (
+              /* affirmative-green-exempt: a DIFF legend, not an affirmative
+              control — `text-emerald-700/90` (added / suggested) reads only
+              against the `text-red-700/70` (removed / original) two lines
+              below, and its red twin is likewise pinned rather than
+              repainted (`destructive-red-tokens.test.ts` →
+              PINNED_STOCK_RED_SITES). Converting one half onto the
+              `--positive` role family would say "accept" where the surface
+              means "this is the added text", and would leave the pair
+              speaking two vocabularies. Repainting BOTH halves is a colour
+              decision about the compressed diff dialect, not this sweep. */
               <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
             ) : card.original_text ? (
               <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{capturedPassageOneLine({ latex: card.original_text, content: card.selectedContent })}</span></span>
