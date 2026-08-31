@@ -1,47 +1,31 @@
 "use client";
 
 /**
- * Provenance chips — small status pills indicating where a citekey lives
- * (local bib, central master.bib, custom libraries) and the bib-state of
- * the library entry. Used by:
+ * Provenance chips — small status pills indicating WHERE a citekey lives:
+ * the paper's own references.bib, the central master.bib, or a custom
+ * library. Used by the BibliographyPanel cards, the bib-entry picker and the
+ * LibraryEntryMenu rows.
  *
- *   - BibliographyPanel cards: full set, including bib-state.
- *   - LibraryEntryMenu rows: memberships only (the menu surfaces
- *     verified/unverified through its own right-side pill instead).
+ * MEMBERSHIP ONLY. This file used to carry a fourth `bib-state` chip kind with
+ * its own 7-branch colour table — one of FOUR renderers of the bib-auth axis,
+ * and the dead one: its only producer (`provenanceFor`) had no production
+ * caller, and its only consumer (`LibraryMembershipChips`) filtered the kind
+ * out, so the whole arm was unreachable while looking the most complete of the
+ * four. Task 500 deleted it. The bib-auth state is rendered by
+ * `library-entry-status.tsx` (the Bibliography panel), `StatusPill.tsx` (the
+ * Library list) and `BibEntryPickerMenu.tsx`'s `VerifiedPill` (the picker
+ * row), all three reading the one tone table in `@/lib/library/status-tone`.
+ * Do not re-add a bib-state chip here — wire whatever needs it to that
+ * resolution instead.
  */
 
-import type { LibraryBibState } from "@/lib/library/library-types";
 import type { LibraryMembership } from "@/hooks/useLibrary";
 
 export type ProvenanceChip =
   | { kind: "local" }
   | { kind: "central" }
-  | { kind: "custom"; id: string; label: string }
-  | { kind: "bib-state"; state: LibraryBibState };
+  | { kind: "custom"; id: string; label: string };
 
-export function provenanceFor(
-  _citekey: string,
-  scope: "local" | "library",
-  info: {
-    inLocal: boolean;
-    inCentral: boolean;
-    customLibraries: LibraryMembership[] | undefined;
-    bibState: LibraryBibState | undefined;
-  },
-): ProvenanceChip[] {
-  const chips: ProvenanceChip[] = [];
-  if (info.inLocal && scope !== "local") chips.push({ kind: "local" });
-  if (info.inCentral && scope !== "library") chips.push({ kind: "central" });
-  for (const m of info.customLibraries ?? []) {
-    chips.push({ kind: "custom", id: m.id, label: m.label });
-  }
-  if (info.bibState && info.bibState !== "none") {
-    chips.push({ kind: "bib-state", state: info.bibState });
-  }
-  return chips;
-}
-
-/** Membership-only variant — drops the bib-state chip. */
 export function membershipChipsFor(info: {
   inLocal: boolean;
   inCentral: boolean;
@@ -56,7 +40,12 @@ export function membershipChipsFor(info: {
   return chips;
 }
 
-export function provenanceChipKey(chip: ProvenanceChip): string {
+/** Internal — the three below are the RENDERER's pieces, reached only through
+ *  {@link LibraryMembershipChips}. Un-exported in task 500 for the reason that
+ *  task's own deletion rests on: an exported piece is an invitation to build a
+ *  second chip strip out of it, which is how the retired `bib-state` arm came
+ *  to have a producer nobody called. Publish whole operations. */
+function provenanceChipKey(chip: ProvenanceChip): string {
   switch (chip.kind) {
     case "local":
       return "local";
@@ -64,12 +53,10 @@ export function provenanceChipKey(chip: ProvenanceChip): string {
       return "central";
     case "custom":
       return `custom:${chip.id}`;
-    case "bib-state":
-      return `bib:${chip.state}`;
   }
 }
 
-export function provenanceChipStyle(
+function provenanceChipStyle(
   chip: ProvenanceChip,
 ): { text: string; tooltip: string; className: string } {
   switch (chip.kind) {
@@ -91,62 +78,10 @@ export function provenanceChipStyle(
         tooltip: `Member of custom library "${chip.label}"`,
         className: "text-violet-700 bg-violet-50 border border-violet-200",
       };
-    case "bib-state":
-      switch (chip.state) {
-        case "authenticated":
-          return {
-            text: "auth",
-            tooltip:
-              "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)",
-            className:
-              "text-emerald-700 bg-emerald-50 border border-emerald-200",
-          };
-        case "unverified":
-          return {
-            text: "unverified",
-            tooltip:
-              "Library entry partially matched a source — fields are best-effort",
-            className: "text-amber-700 bg-amber-50 border border-amber-200",
-          };
-        case "failed":
-          return {
-            text: "unverified",
-            tooltip:
-              "Library entry couldn't be authenticated against external sources",
-            className: "text-rose-700 bg-rose-50 border border-rose-200",
-          };
-        case "manuscript":
-          return {
-            text: "manuscript",
-            tooltip:
-              "Unpublished or forthcoming work — no external source applies",
-            className: "text-sky-700 bg-sky-50 border border-sky-200",
-          };
-        case "canonical":
-          return {
-            text: "canonical",
-            tooltip:
-              "Pre-digital classic — no DOI/ISBN registry will ever index it",
-            className: "text-indigo-700 bg-indigo-50 border border-indigo-200",
-          };
-        case "needs-reauth":
-          return {
-            text: "needs re-auth",
-            tooltip:
-              "Metadata rewritten from the file — run /library/authenticate-bib to re-verify",
-            className: "text-amber-700 bg-amber-50 border border-amber-200",
-          };
-        default:
-          return {
-            text: chip.state,
-            tooltip: chip.state,
-            className: "text-ink-muted bg-surface border border-edge-subtle",
-          };
-      }
   }
 }
 
-export function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
+function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
   return (
     <div className="flex items-center gap-1 shrink-0">
       {chips.map((c) => {
@@ -165,13 +100,15 @@ export function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
   );
 }
 
-/** Membership-only chip strip — used in the LibraryEntryMenu's expansion. */
+/** Membership-only chip strip — used in the LibraryEntryMenu's expansion.
+ *  Renders nothing rather than an empty strip when the entry belongs nowhere.
+ *  (Pre-500 this also filtered out a `bib-state` kind its input could not
+ *  contain; the kind is gone, and so is the filter.) */
 export function LibraryMembershipChips({
   chips,
 }: {
   chips: ProvenanceChip[];
 }) {
-  const filtered = chips.filter((c) => c.kind !== "bib-state");
-  if (filtered.length === 0) return null;
-  return <ProvenanceChips chips={filtered} />;
+  if (chips.length === 0) return null;
+  return <ProvenanceChips chips={chips} />;
 }

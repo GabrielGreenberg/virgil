@@ -193,6 +193,72 @@ decimal pair is one CodeMirror theme object whose accent is equally decimal
 (`rgba(124, 94, 60, …)` IS `--accent`) plus an Outline wash already scoped by
 its own queued task. Each is a visual decision per surface, not a sweep.
 
+### The status-pill tone family (library entry state)
+
+Five tones, three rungs each — `--pill-{green,amber,red,gray,blue}-{bg,fg,edge}`
+(declared in `library/styles/library.css`, which `globals.css` imports, so they
+are live app-wide despite the filename). They paint the two status axes a
+library entry carries: its **bib-auth state** and its **processing tier**.
+
+**The tone is not the renderer's decision.** Both axes resolve through one table
+in [`src/lib/library/status-tone.ts`](lib/library/status-tone.ts)
+(`bibStateTone` / `indexTierTone`), and every surface reads it — the Library
+list's `StatusPill`s, the paper-side Bibliography panel's status chips, and the
+bib-entry picker's per-row pill. The rule is not tidiness: those surfaces
+describe the SAME catalog row a tab or a click apart, so a per-surface palette
+is not theming, it is three answers to one question. Before task 500 there were
+four hand-written tables across two silos and they disagreed, most damagingly
+about `failed` — the panel collapsed it into the `unverified` branch and
+printed **"Unverified"**, and the picker painted it amber and labelled it
+"unverified" alongside `manuscript`, `canonical` and `needs-reauth`. So
+*"nobody has tried"* and *"we tried and it FAILED"* looked identical on both
+surfaces a user reads while writing. Three of the four tables were the filed
+finding; **the picker was found by the census**, which is the argument for
+having one rather than a sentence.
+
+What a surface DOES own is its label dialect: the list is glyph-dense
+(`✓ bib` / `! bib`), the card is a sentence (`✓ Authenticated` /
+`! Auth failed`). What it may not own is a colour.
+
+Two per-state decisions worth stating, because both look like drifts and are
+not:
+
+- **`manuscript` and `canonical` share BLUE**, and `deep-indexed` shares GREEN
+  with `indexed`. Neither pair is a difference the reader has to ACT on — a
+  manuscript and a pre-digital classic are both "no registry will ever have
+  this"; a deep index is not a different status from an index, it is a better
+  one. The distinction lives in the LABEL, which costs no attention. A second
+  green is a colour someone has to learn to read.
+- **`failed` is the one alarm on either axis.** `unverified` and `needs-reauth`
+  are cautions (nothing is known to be wrong), `none` is an absence, and only
+  `failed` says an attempt was made and did not work. It takes `--pill-red-*`,
+  which is this family's rung of the destructive/alarm ROLE without wearing the
+  `rose` palette the chips used to reach for.
+
+The `edge` rung is DECLARED per tone rather than derived with a `color-mix`:
+this codebase prefers a named role over a computed one, and five hexes beside
+their siblings are reviewable where a blend is not. The Library-list PILL
+renders borderless and reads `bg`/`fg` only; both CHIP surfaces — the
+Bibliography panel's and the picker's — are bordered and read all three.
+
+**Every `fg` clears WCAG AA (4.5:1) on its own `bg`, and two rungs had to move
+to get there** — amber `#856a1c` → `#7f651b` (4.48 → 4.83) and gray `#75716a` →
+`#6c6862` (4.01 → 4.57). A hue-preserving shift of a few percent, and it is
+this section's own rule read back at itself: the moment the family stopped
+being one surface's palette it acquired the obligation its shared use imposes
+(10px chips on the paper side beside the list's 11px pills). The gray had been
+under AA on the Library list for as long as the family had existed; the CI leg
+is what found it, not anyone's reading — which is the argument for having the
+leg rather than the sentence.
+
+CI: [`bib-state-tone.test.tsx`](components/library/__tests__/bib-state-tone.test.tsx)
+sweeps every state through the REAL components on BOTH surfaces and asserts they
+paint the same tone, plus a census with an EMPTY allowlist — no production file
+outside the leaf may carry a per-state table that yields a colour (a Tailwind
+palette utility, a literal `--pill-<tone>-` token, or a quoted tone name, which
+is a colour one indirection away and is exactly the shape the retired `bibTone`
+had).
+
 ### Which tokens have a Tailwind utility
 
 A token minted in `:root` does **not** get a Tailwind utility for free. Only

@@ -23,7 +23,7 @@ import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
 import { dispatchOpenLibrary } from "@/components/library/open-library-entry";
 import { CopyIcon } from "@/components/icons/CopyIcon";
 import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
-import { mapTier } from "@/hooks/useLibrary";
+import { indexStateTier } from "@/lib/library/status-tone";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
@@ -399,7 +399,7 @@ export default function PaperHeader({
               year={yearText || undefined}
               title={titleText || undefined}
               apaHtml={apaHtml}
-              indexTier={mapTier(entry.indexed.state)}
+              indexTier={indexStateTier(entry.indexed.state)}
               bibState={entry.bib.state}
               inLibrary={!!citekey}
               membershipChips={[]}

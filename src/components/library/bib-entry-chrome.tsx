@@ -48,7 +48,7 @@ export interface BibEntryChromeProps {
    *  PaperHeader trusts it today (rendered via dangerouslySetInnerHTML into a
    *  `.library-bib-formatted` block). */
   apaHtml?: string;
-  /** Processing tier (from `mapTier(entry.indexed.state)`). */
+  /** Processing tier (from `indexStateTier(entry.indexed.state)`). */
   indexTier?: LibraryIndexTier;
   /** Bib-auth state (= `entry.bib.state`). */
   bibState?: LibraryBibState;

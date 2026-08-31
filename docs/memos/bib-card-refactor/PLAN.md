@@ -2,6 +2,16 @@
 
 Manager session, 2026-06-21. Worktree flow. Central principle: deep/unified, capture related phenomena.
 
+> **Historical record, PARTLY SUPERSEDED (task 500, 2026-08-31).** Its "Reuse"
+> bullet below decided to *mirror the meaning* of `StatusPill`'s
+> `indexedLabel` / `indexedTone` vocabulary while rendering in "the paper-side
+> chip style" — i.e. a second colour table. That is exactly what task 500
+> retired: the bib-auth state and the processing tier now resolve ONE tone in
+> `src/lib/library/status-tone.ts`, which every surface reads, and the paper
+> side paints from the same `--pill-<tone>-{bg,fg,edge}` tokens. The LABEL
+> dialects this memo introduced survive; the palette does not. See
+> `src/STYLE_GUIDE.md` → *The status-pill tone family*.
+
 ## The four asks
 
 1. **Stacking layout** — bib cards collapse at narrow width (screenshot: title vertical-truncates one char/line while the `CENTRAL | ICONICITY LIBRARY | AUTH` chip row hogs the horizontal space). Restack into **3 layers: text → libraries → status ("other")**.

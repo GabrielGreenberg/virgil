@@ -52,7 +52,11 @@ import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import type { BibEntry } from "@/lib/types";
 import { searchBibFuzzy } from "@/lib/bib-searcher";
 import { bibFieldDisplay, formatAuthorsTruncated } from "@/lib/bib-parser";
-import type { LibraryIndexItem } from "@/lib/library/library-types";
+import type {
+  LibraryBibState,
+  LibraryIndexItem,
+} from "@/lib/library/library-types";
+import { bibStateTone } from "@/lib/library/status-tone";
 import { LibraryMembershipChips } from "@/components/library/provenance-chips";
 import { MenuProvider } from "@/components/menu/MenuProvider";
 import { useMenuItem } from "@/components/menu/useMenuItem";
@@ -585,7 +589,6 @@ function BibEntryPickerRow({
   const authors = formatAuthorsTruncated(bibFieldDisplay(entry, "author") || "", 3);
   const year = bibFieldDisplay(entry, "year") || bibFieldDisplay(entry, "date") || "";
   const title = bibFieldDisplay(entry, "title") || "";
-  const verified = libraryItem?.bibState === "authenticated";
   const showVerifiedPill = libraryItem !== undefined;
 
   // The row registers as a listbox option — the roving cursor crosses it and
@@ -674,7 +677,7 @@ function BibEntryPickerRow({
             </svg>
           </button>
           {showVerifiedPill && (
-            <VerifiedPill verified={verified} bibState={libraryItem?.bibState} />
+            <VerifiedPill bibState={libraryItem?.bibState} />
           )}
           <AddButton state={state} onClick={onPickClick} />
         </div>
@@ -687,34 +690,81 @@ function BibEntryPickerRow({
   );
 }
 
-function VerifiedPill({
-  verified,
-  bibState,
-}: {
-  verified: boolean;
-  bibState: string | undefined;
-}) {
-  const tooltip = verified
-    ? "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)"
-    : bibState === "manuscript"
-      ? "Manuscript / forthcoming — no external source applies"
-      : bibState === "canonical"
-        ? "Pre-digital classic — no DOI/ISBN registry will ever index it"
-        : bibState === "failed"
-          ? "Library entry couldn't be authenticated against external sources"
-          : bibState === "unverified"
-            ? "Library entry partially matched a source — fields are best-effort"
-            : "Library entry has not been authenticated";
-  const cls = verified
-    ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
-    : "text-amber-700 bg-amber-50 border border-amber-200";
+/**
+ * The picker's bib-auth dialect: the 9px lowercase "location tag" register the
+ * membership chips beside it wear. It carries its own words and NOT its own
+ * colour — the tone comes from `@/lib/library/status-tone`, the one table the
+ * Library list's pills and the Bibliography panel's status chips read (task
+ * 500).
+ *
+ * This surface was the FOURTH renderer of the axis, and its census found it
+ * rather than the audit: its colour was a two-way `verified ? emerald : amber`
+ * and its label a two-way `authenticated / unverified`, so `manuscript`,
+ * `canonical`, `needs-reauth` and — the reported defect, one surface over —
+ * `failed` all printed the word **"unverified"** in amber. `needs-reauth` had
+ * no tooltip branch at all and fell through to "has not been authenticated",
+ * which is the one thing it is not.
+ *
+ * An exhaustive record, so a fall-through can never make two states one again
+ * and a new union member is a compile error here.
+ */
+const PICKER_BIB_COPY: Readonly<
+  Record<LibraryBibState, { text: string; tooltip: string }>
+> = {
+  // `none` gets its OWN word. Pre-500 it shared "unverified" with the state of
+  // that name, which was survivable only while both painted the same amber;
+  // under the shared tone table `none` is GRAY and `unverified` is AMBER, so
+  // one word in two colours would be the reported defect wearing a fix's
+  // clothes. The Bibliography panel dodges it by rendering nothing for `none`;
+  // this surface cannot, because its pill's whole job is to say something
+  // about every library-backed row.
+  none: {
+    text: "not authenticated",
+    tooltip: "Library entry has not been authenticated",
+  },
+  unverified: {
+    text: "unverified",
+    tooltip: "Library entry partially matched a source — fields are best-effort",
+  },
+  authenticated: {
+    text: "authenticated",
+    tooltip:
+      "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)",
+  },
+  manuscript: {
+    text: "manuscript",
+    tooltip: "Manuscript / forthcoming — no external source applies",
+  },
+  canonical: {
+    text: "canonical",
+    tooltip: "Pre-digital classic — no DOI/ISBN registry will ever index it",
+  },
+  failed: {
+    text: "auth failed",
+    tooltip: "Library entry couldn't be authenticated against external sources",
+  },
+  "needs-reauth": {
+    text: "needs re-auth",
+    tooltip:
+      "Metadata rewritten from the file — run /library/authenticate-bib to re-verify",
+  },
+};
+
+function VerifiedPill({ bibState }: { bibState: LibraryBibState | undefined }) {
+  const state = bibState ?? "none";
+  const { text, tooltip } = PICKER_BIB_COPY[state] ?? PICKER_BIB_COPY.none;
   return (
     <span
-      className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${cls}`}
+      className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap border"
+      style={{
+        color: `var(--pill-${bibStateTone(state)}-fg)`,
+        backgroundColor: `var(--pill-${bibStateTone(state)}-bg)`,
+        borderColor: `var(--pill-${bibStateTone(state)}-edge)`,
+      }}
       data-hint={tooltip}
       aria-label={tooltip}
     >
-      {verified ? "authenticated" : "unverified"}
+      {text}
     </span>
   );
 }

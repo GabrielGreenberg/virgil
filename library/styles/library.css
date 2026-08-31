@@ -4,18 +4,41 @@
    (pill colors, paper-render ruleset) are load-bearing here. */
 
 :root {
-  /* Status pills (StatusPill component). Virgil's globals.css doesn't
-     define these. */
+  /* Status-pill TONE family. Named "library" only by where they were first
+     needed: globals.css imports this file, so the triples are live app-wide,
+     and since task 500 BOTH silos read them — the Library list's StatusPill
+     and the paper-side Bibliography panel's status chips resolve one tone
+     through `src/lib/library/status-tone.ts` and paint from these. Virgil's
+     globals.css does not define them; do not fork a second family there.
+
+     Three rungs per tone. `bg`/`fg` are the pill (borderless); `edge` is the
+     bordered CHIP the paper side renders — DECLARED rather than computed with
+     a `color-mix`, because this codebase prefers a named role over a derived
+     one and five hexes beside their siblings are reviewable where a blend is
+     not. Each edge sits ~30% of the way from its `bg` toward its `fg`.
+
+     Every `fg` on its own `bg` clears WCAG AA for small text (4.5:1), pinned
+     by `bib-state-tone.test.tsx`. Two rungs were nudged DARKER in task 500 to
+     get there — amber #856a1c → #7f651b (4.48 → 4.83) and gray #75716a →
+     #6c6862 (4.01 → 4.57) — a hue-preserving shift of a few percent, made
+     because the family stopped being one surface's palette: it now paints
+     10px chips on the paper side as well as the list's 11px pills, and a
+     shared role has to meet the obligation its shared use imposes. */
   --pill-green-bg: #e7f0e3;
   --pill-green-fg: #3f6b2c;
+  --pill-green-edge: #c6d9bd;
   --pill-amber-bg: #f6efd9;
-  --pill-amber-fg: #856a1c;
+  --pill-amber-fg: #7f651b;
+  --pill-amber-edge: #e2d3a2;
   --pill-red-bg: #f5dada;
   --pill-red-fg: #8a3030;
+  --pill-red-edge: #e2b6b6;
   --pill-gray-bg: #ece9e3;
-  --pill-gray-fg: #75716a;
+  --pill-gray-fg: #6c6862;
+  --pill-gray-edge: #d5d1c9;
   --pill-blue-bg: #dde8f5;
   --pill-blue-fg: #2c5282;
+  --pill-blue-edge: #b4cae3;
 
   /* Paper-render highlight backgrounds. Some have analogs in Virgil
      (--latex-comment-bg, --footnote-bg, --citation-bg) — we redeclare

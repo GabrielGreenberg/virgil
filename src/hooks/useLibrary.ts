@@ -20,9 +20,9 @@ import type { BibEntry } from "@/lib/types";
 import { mintBibUid } from "@/lib/bib-uid";
 import type {
   LibraryIndexItem,
-  LibraryIndexTier,
   LibraryItemStatus,
 } from "@/lib/library/library-types";
+import { indexStateTier } from "@/lib/library/status-tone";
 
 function mapStatus(s: IndexedState): LibraryItemStatus {
   switch (s) {
@@ -37,30 +37,6 @@ function mapStatus(s: IndexedState): LibraryItemStatus {
     case "queued":
     default:
       return "pending";
-  }
-}
-
-/** Catalog `indexed.state` → the paper-side Bib only / Indexed / Deep-indexed
- *  tier. Keeps the indexed-vs-deepIndexed distinction that `mapStatus`
- *  collapses, so cards can surface a readable processing tier.
- *
- *  Exported so library chrome (PaperHeader → BibEntryChrome's status row)
- *  can derive the same processing-tier chip from a `CatalogEntry`'s
- *  `indexed.state` without duplicating the mapping (F#11). */
-export function mapTier(s: IndexedState): LibraryIndexTier {
-  switch (s) {
-    case "deepIndexed":
-      return "deep-indexed";
-    case "indexed":
-      return "indexed";
-    case "queued":
-    case "running":
-      return "processing";
-    case "failed":
-      return "failed";
-    case "none":
-    default:
-      return "bib-only";
   }
 }
 
@@ -79,7 +55,7 @@ function entryToItem(e: CatalogEntry): LibraryIndexItem | null {
     pageCount: e.pdf.pageCount,
     updatedAt: e.updatedAt,
     bibState: e.bib?.state,
-    indexTier: mapTier(e.indexed.state),
+    indexTier: indexStateTier(e.indexed.state),
   };
 }
 

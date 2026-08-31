@@ -3,8 +3,19 @@
 import type { IndexedState, BibAuthState } from "@library/lib/catalog";
 import { FACETS, STATUS_SUBGRID, type StatusFacet } from "@library/lib/list-columns";
 import { FONT_MONO } from "@/lib/font-stacks";
+import {
+  bibStateTone,
+  indexStateTier,
+  indexTierTone,
+  type Tone,
+} from "@/lib/library/status-tone";
 
-type Tone = "green" | "amber" | "red" | "gray" | "blue";
+// COLOUR is not this file's decision (task 500). Both status axes resolve
+// their tone through `@/lib/library/status-tone` — the one table the paper
+// side's Bibliography-panel chips read too, because the two surfaces describe
+// the SAME catalog row one tab apart. What this file owns is its four LABEL
+// dialects (glyph / short / full-phrase / tooltip), which are genuinely
+// per-surface; what it may not own is a private palette.
 
 interface PillProps {
   label: string;
@@ -41,15 +52,6 @@ export function PdfPill({ present, compact = false }: { present: boolean; compac
     ? <Pill label={compact ? "✓" : "✓ pdf"} tone="green" title="PDF on disk" />
     : <Pill label={compact ? "—" : "— pdf"} tone="gray" title="No PDF on disk" />;
 }
-
-const indexedTone: Record<IndexedState, Tone> = {
-  none: "gray",
-  queued: "amber",
-  running: "amber",
-  indexed: "green",
-  deepIndexed: "green",
-  failed: "red",
-};
 
 const indexedLabel: Record<IndexedState, string> = {
   none: "— idx",
@@ -93,18 +95,14 @@ export function IndexedPill({
   long?: boolean;
 }) {
   const label = long ? indexedLong[state] : compact ? indexedGlyph[state] : indexedLabel[state];
-  return <Pill label={label} tone={indexedTone[state]} title={`Indexed: ${state}`} />;
+  return (
+    <Pill
+      label={label}
+      tone={indexTierTone(indexStateTier(state))}
+      title={`Indexed: ${state}`}
+    />
+  );
 }
-
-const bibTone: Record<BibAuthState, Tone> = {
-  none: "gray",
-  unverified: "amber",
-  authenticated: "green",
-  manuscript: "blue",
-  canonical: "blue",
-  failed: "red",
-  "needs-reauth": "amber",
-};
 
 const bibLabel: Record<BibAuthState, string> = {
   none: "— bib",
@@ -162,7 +160,7 @@ export function BibPill({
   long?: boolean;
 }) {
   const label = long ? bibLong[state] : compact ? bibGlyph[state] : bibLabel[state];
-  return <Pill label={label} tone={bibTone[state]} title={bibTitle[state]} />;
+  return <Pill label={label} tone={bibStateTone(state)} title={bibTitle[state]} />;
 }
 
 /** Blue "imported" pill — shown in the paper-header pill group when this
@@ -324,8 +322,11 @@ export function StatusDots({
         tone={pdfPresent ? "green" : "gray"}
         title={`pdf: ${pdfPresent ? "present" : "missing"}`}
       />
-      <Dot tone={indexedTone[indexed]} title={`indexed: ${indexed}`} />
-      <Dot tone={bibTone[bib]} title={`bib: ${bib}`} />
+      <Dot
+        tone={indexTierTone(indexStateTier(indexed))}
+        title={`indexed: ${indexed}`}
+      />
+      <Dot tone={bibStateTone(bib)} title={`bib: ${bib}`} />
     </span>
   );
 }

@@ -1004,9 +1004,11 @@ function BibliographyPanel({
         // Library meta, stacked under the title as two layers:
         //   layer 2 — membership chips (local / central / custom libraries),
         //   layer 3 — verification + processing-tier status + open link.
-        // Scope-aware like the old `provenanceFor`: hide the chip that matches
-        // the current search scope (a local result doesn't need a "local"
-        // chip; a library result doesn't need a "central" one).
+        // Scope-aware: hide the chip that matches the current search scope (a
+        // local result doesn't need a "local" chip; a library result doesn't
+        // need a "central" one). This used to name `provenanceFor`, a helper
+        // with no production caller that task 500 deleted along with its dead
+        // bib-state colour table — the naming is what made it read as live.
         const libItem = libraryByCitekey.get(entry.key);
         const membershipChips = membershipChipsFor({
           inLocal: localEntryByKey.has(entry.key) && searchScope !== "local",
