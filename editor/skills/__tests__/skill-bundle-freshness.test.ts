@@ -17,11 +17,6 @@
 // the empty self-memo the guard existed to prevent — including the run that
 // diagnosed this. The fix had landed and could not be seen.
 //
-// Shape of the guard: a built copy that EXISTS must match its SSOT. An absent
-// one skips, so a fresh clone (or CI that never builds) is never failed for
-// artifacts it legitimately does not have. Present-but-drifted fails loudly
-// with the rebuild command.
-//
 // SILO POPULATION (task 473). The skill half of this guard was editor-only
 // while three silos ship command markdown — and the one it did not cover,
 // `virgil/skills/`, is the USER-FACING FRONT DOOR, whose four mirrored copies
@@ -39,11 +34,58 @@
 // that build regenerates it WHOLESALE — so between releases it says nothing
 // about whether the SSOT edit is live anywhere a run can read it. It reports
 // and skips. Every mirror a run actually reads stays LOUD.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// THREE STATES, NOT TWO — a guard that CANNOT SEE its subject must say so
+// (task 505).
+//
+// Every one of the fourteen guarded directories below is GITIGNORED — `/out/`,
+// `.claude/`, `/public/skill-bundle/`, `/library-data/.claude/`, and the two
+// `/library-data/.virgil/scripts/` dirs. So `git worktree add` materializes NONE
+// of them, and the pre-505 guard read that absence as compliance: it returned
+// early and the row counted as a green pass. Measured on this tree: **15 passed
+// / 0 skipped in a worktree where 14 of the 15 legs could see nothing at all.**
+//
+// That is exactly how task 496's fix came to be dead in what a skill run
+// executes. 496 edited the SSOT scripts (`editor/scripts/_common.py`,
+// `library/scripts/_tools.py`) and never regenerated the bundles; the worker's
+// worktree run reported 10142 passed while `main` was red on 4 of these legs,
+// over identical content. The person who could see the failure was the one who
+// had not made the change.
+//
+//   A verdict has THREE states, never two: FRESH, STALE, and CANNOT-SEE.
+//   Absence is not compliance — it is the absence of evidence, and the guard
+//   reports it as a loud SKIP naming the directory and the remedy.
+//
+// It must not go the other way. Hard-failing on absence would red every
+// worktree run of the full suite, for every task in the repo — worse than the
+// disease. So CANNOT-SEE is a skip, and the obligation it names is a WORKER
+// one: a task whose diff touches `editor/scripts/**`, `library/scripts/**` or
+// `*/skills/**` owes `npm run build:skill-bundles` on the PRIMARY checkout
+// after land-and-clean, plus this suite green there (`WORKER.md` →
+// "Land-and-clean", `PROFILE.md` → "Worktree recipe").
+//
+// The same blindness ran one level down: a mirror that EXISTS but does not
+// carry an SSOT file at all was skipped per-file with a bare `continue`. A new
+// skill or helper that has never been built is precisely the staleness this
+// guard exists to catch, and it passed silently. `missing` is now reported
+// beside `stale` — measured zero on this tree when it landed, because every
+// row's name list is derived from the same filter its builder ships by.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import type { TestContext } from "vitest";
 // The build's own path-rewrite helper — the SSOT of the transform the paper
 // bundle applies (`editor/scripts/` → `.virgil/scripts/editor/`). Importing it
 // does not run the build: the module main-guards on `process.argv[1]`.
@@ -138,25 +180,118 @@ function scriptNames(silo: "editor" | "library"): string[] {
     .sort();
 }
 
-/** Compare a mirror directory against its SSOT, returning the stale basenames.
- *  `null` means the whole mirror is absent — nothing to guard. */
-function staleIn(
-  dir: string,
+// ── The three-state verdict ──────────────────────────────────────────────────
+
+/** What this checkout could establish about one mirror directory.
+ *
+ *  `unseen` is the state the pre-505 guard could not express: the directory is
+ *  not here, so nothing was compared. It is NOT `{ missing: [], stale: [] }` —
+ *  conflating the two is the whole defect, because that shape is what a
+ *  perfectly fresh mirror also reports. */
+export type MirrorVerdict =
+  | { kind: "unseen" }
+  | { kind: "seen"; missing: string[]; stale: string[] };
+
+/** Resolve one mirror against its SSOT. Absolute paths in, so the pin legs
+ *  below can point it at a temp fixture instead of the repo. */
+export function resolveMirror(
+  mirrorDirAbs: string,
   names: string[],
-  ssotFor: (name: string) => string,
+  ssotAbsFor: (name: string) => string,
   expectedFor: (ssot: string) => string,
-): string[] | null {
-  const mirrorDir = join(repoRoot, dir);
-  if (!existsSync(mirrorDir)) return null;
+): MirrorVerdict {
+  if (!existsSync(mirrorDirAbs)) return { kind: "unseen" };
+  const missing: string[] = [];
   const stale: string[] = [];
   for (const name of names) {
-    const built = join(mirrorDir, name);
-    // This mirror does not carry this file (or has not built it yet).
-    if (!existsSync(built)) continue;
-    if (read(built) !== expectedFor(read(ssotFor(name)))) stale.push(name);
+    const built = join(mirrorDirAbs, name);
+    // Never built here. The pre-505 guard `continue`d past this — the same
+    // absence-is-compliance reading, one level down.
+    if (!existsSync(built)) {
+      missing.push(name);
+      continue;
+    }
+    if (read(built) !== expectedFor(read(ssotAbsFor(name)))) stale.push(name);
   }
-  return stale;
+  return { kind: "seen", missing, stale };
 }
+
+const CANNOT_SEE = (dir: string) =>
+  `CANNOT SEE ${dir} — this checkout does not have it, so freshness here is ` +
+  `UNVERIFIED, not verified-clean. Every guarded directory is gitignored, so a ` +
+  `\`git worktree add\` materializes none of them. Run this suite on the PRIMARY ` +
+  `checkout after landing — and \`${REBUILD}\` there first if the diff touched ` +
+  `editor/scripts/**, library/scripts/**, or */skills/**.`;
+
+/** One drift entry per out-of-date file, saying WHY it is out of date. */
+function driftOf(v: Extract<MirrorVerdict, { kind: "seen" }>): string[] {
+  return [
+    ...v.missing.map((n) => `${n} (never built here)`),
+    ...v.stale.map((n) => `${n} (drifted from SSOT)`),
+  ];
+}
+
+type Row = {
+  dir: string;
+  /** What this row guards, for the failure message. */
+  subject: string;
+  /** What a run does with these bytes, for the failure message. */
+  consequence: string;
+  loud: boolean;
+  verdict: MirrorVerdict;
+};
+
+/** The shared reporter. THREE outcomes, and the caller does not choose:
+ *  unseen → loud skip; drifted → advisory skip or red; clean → green. */
+export function reportMirror(ctx: TestContext, row: Row): void {
+  if (row.verdict.kind === "unseen") {
+    ctx.skip(CANNOT_SEE(row.dir));
+    return;
+  }
+  const drift = driftOf(row.verdict);
+  if (drift.length > 0 && !row.loud) {
+    ctx.skip(
+      `Advisory mirror ${row.dir} is out of date (${drift.join(", ")}) — regenerated ` +
+        `wholesale by \`npm run build\`, so between releases it is not a staleness signal.`,
+    );
+    return;
+  }
+  expect(
+    drift,
+    `Out-of-date ${row.subject} in ${row.dir}: ${drift.join(", ")}.\n` +
+      `${row.consequence}, so the SSOT edit is NOT live.\n` +
+      `Regenerate with: ${REBUILD}`,
+  ).toEqual([]);
+}
+
+// Verdicts are resolved ONCE, at collection, so the summary row below can name
+// exactly the set the per-row legs skipped on rather than re-deriving it.
+const ROWS: Row[] = [
+  ...MIRRORS.map(({ dir, silo, rewritten, loud }): Row => ({
+    dir,
+    subject: "built skill copies",
+    consequence: "These are what a run actually reads",
+    loud,
+    verdict: resolveMirror(
+      join(repoRoot, dir),
+      skillNames(silo),
+      (name) => join(skillsDirFor(silo), name),
+      (ssot) => (rewritten ? rewriteScriptPathsForPaper(ssot) : ssot),
+    ),
+  })),
+  ...SCRIPT_MIRRORS.map(({ dir, silo, loud }): Row => ({
+    dir,
+    subject: "helper scripts",
+    consequence: "These are what a skill run actually EXECUTES",
+    loud,
+    verdict: resolveMirror(
+      join(repoRoot, dir),
+      scriptNames(silo),
+      (name) => join(repoRoot, silo, "scripts", name),
+      (ssot) => ssot,
+    ),
+  })),
+];
 
 describe("skill bundle freshness (SSOT → built copies)", () => {
   it("finds skills to guard", () => {
@@ -168,48 +303,144 @@ describe("skill bundle freshness (SSOT → built copies)", () => {
     expect(scriptNames("library").length).toBeGreaterThan(0);
   });
 
-  // Explicit loop rather than `it.each`: an advisory row needs the test
-  // CONTEXT to skip at runtime, and `each` spreads the case into the argument
-  // slot the context would occupy.
-  for (const { dir, silo, rewritten, loud } of MIRRORS) {
-  it(`${dir} carries no stale skill copies`, (ctx) => {
-    const stale = staleIn(
-      dir,
-      skillNames(silo),
-      (name) => join(skillsDirFor(silo), name),
-      (ssot) => (rewritten ? rewriteScriptPathsForPaper(ssot) : ssot),
-    );
-    if (stale === null) return;
-    if (stale.length > 0 && !loud) {
-      ctx.skip(`Advisory mirror ${dir} is stale (${stale.join(", ")}) — regenerated wholesale by \`npm run build\`, so between releases it is not a staleness signal.`);
+  // The single line a worker reads off the summary. It can only SKIP or pass —
+  // failing here would red every worktree run of the whole suite, which is
+  // worse than the disease it reports.
+  it("this checkout can SEE every guarded mirror", (ctx) => {
+    const unseen = ROWS.filter((r) => r.verdict.kind === "unseen").map((r) => r.dir);
+    if (unseen.length > 0) {
+      ctx.skip(
+        `FRESHNESS UNVERIFIED for ${unseen.length} of ${ROWS.length} guarded mirrors — ` +
+          `absent from this checkout: ${unseen.join(", ")}. ` +
+          `The rows below that skip were not checked; they did not pass. ` +
+          `Re-run on the PRIMARY checkout (see WORKER.md → Land-and-clean).`,
+      );
+      return;
     }
-    expect(
-      stale,
-      `Stale built skill copies in ${dir}: ${stale.join(", ")}.\n` +
-        `These are what a run actually reads, so the SSOT edit is NOT live.\n` +
-        `Regenerate with: ${REBUILD}`,
-    ).toEqual([]);
+    expect(unseen).toEqual([]);
   });
+
+  // Explicit loop rather than `it.each`: an advisory (or unseen) row needs the
+  // test CONTEXT to skip at runtime, and `each` spreads the case into the
+  // argument slot the context would occupy.
+  for (const row of ROWS) {
+    it(`${row.dir} carries no out-of-date ${row.subject}`, (ctx) => {
+      reportMirror(ctx, row);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The leg with teeth: the CANNOT-SEE state itself.
+//
+// The guard above was never the part that could misbehave — a state that reads
+// absence as compliance is, and it type-checks and runs green forever. So the
+// resolver and the reporter are driven against a temp fixture through all four
+// shapes (absent / fresh / drifted / never-built), in both the loud and the
+// advisory posture. Neutering the resolver's `unseen` arm back to
+// `{ kind: "seen", missing: [], stale: [] }` fails these, where it fails
+// nothing at all in the suite above.
+
+describe("a guard that cannot see its subject says so", () => {
+  /** What the fake context throws, so a SKIP is distinguishable from a RED. */
+  class Skipped extends Error {}
+  const fakeCtx = () =>
+    ({
+      skip: (note?: string) => {
+        throw new Skipped(note ?? "");
+      },
+    }) as unknown as TestContext;
+
+  /** Run the reporter and classify the outcome the way vitest would. */
+  function outcomeOf(row: Row): { kind: "green" } | { kind: "skip" | "red"; message: string } {
+    try {
+      reportMirror(fakeCtx(), row);
+      return { kind: "green" };
+    } catch (e) {
+      if (e instanceof Skipped) return { kind: "skip", message: e.message };
+      return { kind: "red", message: (e as Error).message };
+    }
   }
 
-  for (const { dir, silo, loud } of SCRIPT_MIRRORS) {
-  it(`${dir} carries no stale helper scripts`, (ctx) => {
-    const stale = staleIn(
-      dir,
-      scriptNames(silo),
-      (name) => join(repoRoot, silo, "scripts", name),
-      (ssot) => ssot,
-    );
-    if (stale === null) return;
-    if (stale.length > 0 && !loud) {
-      ctx.skip(`Advisory mirror ${dir} is stale (${stale.join(", ")}) — regenerated wholesale by \`npm run build\`.`);
-    }
-    expect(
-      stale,
-      `Stale helper scripts in ${dir}: ${stale.join(", ")}.\n` +
-        `These are what a skill run actually EXECUTES, so the SSOT edit is NOT live.\n` +
-        `Regenerate with: ${REBUILD}`,
-    ).toEqual([]);
+  const SSOT = "one\ntwo\n";
+  let root = "";
+  const ssotDir = () => join(root, "ssot");
+  const mirrorDir = () => join(root, "mirror");
+  const resolveFixture = () =>
+    resolveMirror(mirrorDir(), ["a.md"], (n) => join(ssotDir(), n), (s) => s);
+  const rowFor = (verdict: MirrorVerdict, loud: boolean): Row => ({
+    dir: "mirror",
+    subject: "built skill copies",
+    consequence: "These are what a run actually reads",
+    loud,
+    verdict,
   });
-  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "freshness-cannot-see-"));
+    mkdirSync(ssotDir(), { recursive: true });
+    writeFileSync(join(ssotDir(), "a.md"), SSOT);
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("ABSENT directory → unseen, and the reporter SKIPS with the remedy (never a green pass)", () => {
+    const verdict = resolveFixture();
+    expect(verdict).toEqual({ kind: "unseen" });
+    const out = outcomeOf(rowFor(verdict, true));
+    expect(out.kind).toBe("skip");
+    expect((out as { message: string }).message).toContain("CANNOT SEE mirror");
+    expect((out as { message: string }).message).toContain(REBUILD);
+  });
+
+  it("an ADVISORY row is skipped for absence too — unverified is unverified whatever the posture", () => {
+    expect(outcomeOf(rowFor(resolveFixture(), false)).kind).toBe("skip");
+  });
+
+  it("PRESENT and matching → seen-clean, and the reporter is GREEN", () => {
+    mkdirSync(mirrorDir(), { recursive: true });
+    writeFileSync(join(mirrorDir(), "a.md"), SSOT);
+    const verdict = resolveFixture();
+    expect(verdict).toEqual({ kind: "seen", missing: [], stale: [] });
+    expect(outcomeOf(rowFor(verdict, true)).kind).toBe("green");
+  });
+
+  it("PRESENT and drifted → seen-stale, and a LOUD row is RED naming the rebuild", () => {
+    mkdirSync(mirrorDir(), { recursive: true });
+    writeFileSync(join(mirrorDir(), "a.md"), "one\nTWO\n");
+    const verdict = resolveFixture();
+    expect(verdict).toEqual({ kind: "seen", missing: [], stale: ["a.md"] });
+    const out = outcomeOf(rowFor(verdict, true));
+    expect(out.kind).toBe("red");
+    expect((out as { message: string }).message).toContain("a.md (drifted from SSOT)");
+    expect((out as { message: string }).message).toContain(REBUILD);
+  });
+
+  it("PRESENT and drifted, ADVISORY → skipped, not red (task 374's posture is unchanged)", () => {
+    mkdirSync(mirrorDir(), { recursive: true });
+    writeFileSync(join(mirrorDir(), "a.md"), "one\nTWO\n");
+    const out = outcomeOf(rowFor(resolveFixture(), false));
+    expect(out.kind).toBe("skip");
+    expect((out as { message: string }).message).toContain("Advisory mirror mirror");
+  });
+
+  it("PRESENT but the file was NEVER BUILT → seen-missing, and a LOUD row is RED (the pre-505 `continue` passed)", () => {
+    mkdirSync(mirrorDir(), { recursive: true });
+    const verdict = resolveFixture();
+    expect(verdict).toEqual({ kind: "seen", missing: ["a.md"], stale: [] });
+    const out = outcomeOf(rowFor(verdict, true));
+    expect(out.kind).toBe("red");
+    expect((out as { message: string }).message).toContain("a.md (never built here)");
+  });
+
+  it("the two absences are DIFFERENT verdicts — an unseen mirror is not an empty-drift one", () => {
+    const absent = resolveFixture();
+    mkdirSync(mirrorDir(), { recursive: true });
+    writeFileSync(join(mirrorDir(), "a.md"), SSOT);
+    const clean = resolveFixture();
+    // Both would be "no drift" under the pre-505 shape; only one is evidence.
+    expect(absent).not.toEqual(clean);
+    expect(outcomeOf(rowFor(absent, true)).kind).not.toBe(outcomeOf(rowFor(clean, true)).kind);
+  });
 });
