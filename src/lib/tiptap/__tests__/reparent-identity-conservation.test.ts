@@ -547,6 +547,52 @@ describe("499 — the controls: a SPLIT still mints, and a re-parent that keeps 
   });
 });
 
+// ── C2. the property sweep — uniqueness holds over the whole gesture family ──
+
+describe("499 — every gesture in the family leaves a UNIQUE identity set", () => {
+  // The one invariant this plugin has always owed, swept over the family rather
+  // than pinned per case: no shape may end with two live nodes answering to one
+  // uuid. A transfer that fired where it should not shows up here even when no
+  // named leg happens to look at that node.
+  const SHAPES: Array<{ name: string; build: () => Editor; at: string }> = [
+    { name: "flat list", at: "B", build: () => mount([LIST("L1", ITEM("i1", P(null, "A")), ITEM("i2", P(null, "B")))]) },
+    { name: "single-item list", at: "A", build: () => mount([LIST("L1", ITEM("i1", P(null, "A"))), P("z", "z")]) },
+    { name: "nested list", at: "B", build: () => mount([LIST("L1", ITEM("i1", P(null, "A"), LIST("L2", ITEM("i2", P(null, "B")))))]) },
+    { name: "multi-block item", at: "B2", build: () => mount([LIST("L1", ITEM("i1", P(null, "B"), P(null, "B2")))]) },
+    { name: "blockquote", at: "one", build: () => mount([QUOTE("Q1", P(null, "one"), P(null, "two"))]) },
+    { name: "quote in a list item", at: "q", build: () => mount([LIST("L1", ITEM("i1", P(null, "A"), QUOTE("Q1", P(null, "q"))))]) },
+    { name: "plain prose", at: "A", build: () => mount([P("P1", "A"), P("P2", "B")]) },
+  ];
+  const GESTURES: Array<{ name: string; run: (ed: Editor) => void }> = [
+    { name: "Shift-Tab", run: (ed) => void press(ed, "Tab", { shiftKey: true }) },
+    { name: "Tab", run: (ed) => void press(ed, "Tab") },
+    { name: "Backspace", run: (ed) => void press(ed, "Backspace") },
+    { name: "bullet toggle", run: (ed) => void ed.chain().toggleBulletList().run() },
+    { name: "numbered toggle", run: (ed) => void ed.chain().toggleOrderedList().run() },
+    { name: "blockquote toggle", run: (ed) => void ed.chain().toggleBlockquote().run() },
+  ];
+
+  for (const shape of SHAPES) {
+    for (const g of GESTURES) {
+      it(`${g.name} on the ${shape.name}: ids stay unique, and undo/redo keep them so`, () => {
+        const ed = shape.build();
+        caret(ed, shape.at);
+        const unique = (when: string) => {
+          const all = liveUuids(ed);
+          expect(new Set(all).size, `${when}\n${outline(ed)}`).toBe(all.length);
+        };
+        unique("before");
+        g.run(ed);
+        unique("after the gesture");
+        ed.commands.undo();
+        unique("after undo");
+        ed.commands.redo();
+        unique("after redo");
+      });
+    }
+  }
+});
+
 // ── D. the census: the population is DISCOVERED, and every member is swept ───
 //
 // The rule was never the part that could misbehave — a re-parenting surface

@@ -4555,8 +4555,12 @@ reason), and no file outside the rule may spell the bypass meta, re-derive the
 rule, or read a step gap itself. Measured by neutering each half in turn: the
 pre-499 mint-only net takes **12** legs, direction 2 **3**, the guard's
 EXCEPTION 3 **9**, the retype type-change gate **1**, the liveness gate **1**,
-the container-owns-it clear **1**, moving the pass in front of the keystroke
-fast path **1**, and a second reader of a step gap the census. One of this
+the container-owns-it clear **9** (1 named leg + the uniqueness sweep), moving
+the pass in front of the keystroke fast path **1**, and a second reader of a
+step gap the census. The sweep is the leg that speaks for the shapes no named
+case looks at: 7 document shapes × 6 gestures × {gesture, undo, redo}, asserting
+only the invariant the plugin has always owed — no two live nodes answering to
+one uuid. One of this
 suite's own first-draft legs was VACUOUS and is recorded rather than quietly
 fixed: it counted TipTap's `transaction` event as a per-keystroke cost signal,
 and that event fires once per DISPATCH, not once per APPENDED transaction —
