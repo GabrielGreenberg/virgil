@@ -167,8 +167,10 @@ editor/
 │                               parser/guard — the named door onto the shared ones
 ├── build/
 │   ├── build-editor-bundle.mjs  emits the paper bundle + mirrors skills/ →
-│   │                            .claude/commands/editor/ (see below)
-│   └── __tests__/               guardrail for the paper-path rewrite
+│   │                            .claude/commands/editor/ (see below). WHAT
+│   │                            ships and the bytes it ships with come from
+│   │                            library/build/bundle-sources.mjs (task 506)
+│   └── __tests__/               guardrail for the paper-path rewrites
 └── AGENTS.md                   ← this file
 ```
 
@@ -225,10 +227,34 @@ rewrites `editor/scripts/` → `.virgil/scripts/editor/` **once, at the bundle
 boundary**, for the paper bundle's command markdowns only (the dev mirror is
 written from unrewritten source). So skills stay natural — write the
 repo-relative form and it is paper-correct for free (`rewriteScriptPathsForPaper`
-in the builder; idempotent; pinned by `build/__tests__/`). A skill that already
-carries its own dual-path resolver (`answer-bib-review`, `sync-bib-to-library`)
-still works: the rewrite touches only the `editor/scripts/` path prefix, leaving
-the no-slash `editor/scripts` fallback candidate in those loops intact.
+in `library/build/bundle-sources.mjs`; idempotent; pinned by `build/__tests__/`).
+A skill that already carries its own dual-path resolver (`answer-bib-review`,
+`sync-bib-to-library`) still works: the rewrite touches only the
+`editor/scripts/` path prefix, leaving the no-slash `editor/scripts` fallback
+candidate in those loops intact.
+
+**Markdown LINKS take the same treatment, derived rather than prefixed** (task
+506). A relative link resolves where the AUTHOR sits and not where the READER
+is — in the repo `editor/skills/` and `editor/scripts/` are siblings, on disk
+`.claude/commands/editor/` and `.virgil/scripts/editor/` are two directories
+apart — so `rewriteMarkdownLinksForDisk` re-spells every relative link whose
+target SHIPS as the target's shipped path relative to the linking file's own
+shipped path, both halves read out of the ONE `shippedPathMap`. Measured
+pre-506: 25 links spelled `../scripts/<helper>.py` and 13 spelled
+`../../docs/workspace/<doc>.md` were dead in every paper folder. So a skill
+writes the natural repo-relative link and it is paper-correct for free too; the
+one rule a skill still owes is that a link's target must SHIP (a pointer at
+`editor/dev/README.md` or a `__tests__/` file is a step an agent on a paper
+folder cannot take — name the file in prose instead), which
+`library/lib/__tests__/skill-include-links.test.ts` enforces with an EMPTY
+allowlist.
+
+**Repo-only skills.** `dream`, `reflect` and `iterate-virgil-editor` open their
+`description` with `Developer-only`, which is the property
+`virgil/skills/start.md` rule 1 already routes on — so the builders read the
+SAME declaration and do not ship them, turning that rule from advisory into
+structural. They are still mirrored into `.claude/commands/editor/`, which is
+where `/editor:dream` is read from.
 
 **Underscore includes.** A leading-underscore skill file (e.g.
 `_find-or-surface.md`) is a shared *include* other skills reference via

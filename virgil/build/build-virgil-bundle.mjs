@@ -32,10 +32,18 @@
 // concatenation of file contents becomes the bundle version.
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandsDirFor } from "../../library/lib/skill-bundle-layout.mjs";
+// What ships, where it lands, and the bytes it ships with — the ONE answer,
+// read by every builder and by both guards (task 506).
+import {
+  commandMirrorNames,
+  shippedBytes,
+  shippedPathMap,
+  shippedSources,
+} from "../../library/build/bundle-sources.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
@@ -45,20 +53,6 @@ const bundleDir = join(repoRoot, "public", "skill-bundle", "virgil");
 // and a synced folder can never disagree about where a command lands.
 const claudeCommandsDir = join(repoRoot, commandsDirFor("virgil"));
 
-async function listFilesIn(dir, predicate) {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    if (err && err.code === "ENOENT") return [];
-    throw err;
-  }
-  return entries
-    .filter((e) => e.isFile() && predicate(e.name))
-    .map((e) => e.name)
-    .sort();
-}
-
 async function fileExists(p) {
   try {
     await stat(p);
@@ -66,28 +60,6 @@ async function fileExists(p) {
   } catch {
     return false;
   }
-}
-
-async function buildSources() {
-  const skillNames = await listFilesIn(
-    join(repoRoot, "virgil", "skills"),
-    (n) => n.endsWith(".md") && !n.startsWith("_"),
-  );
-  const scriptNames = await listFilesIn(
-    join(repoRoot, "virgil", "scripts"),
-    (n) => n.endsWith(".py"),
-  );
-
-  return [
-    ...skillNames.map((name) => ({
-      repoPath: `virgil/skills/${name}`,
-      bundlePath: `claude-commands/${name}`,
-    })),
-    ...scriptNames.map((name) => ({
-      repoPath: `virgil/scripts/${name}`,
-      bundlePath: `scripts/${name}`,
-    })),
-  ];
 }
 
 async function mirrorSkillsIntoClaudeCommands(skillNames) {
@@ -105,17 +77,25 @@ async function main() {
   await rm(bundleDir, { recursive: true, force: true });
   await mkdir(bundleDir, { recursive: true });
 
-  const sources = await buildSources();
+  const sources = await shippedSources(repoRoot, "virgil");
+  const map = await shippedPathMap(repoRoot);
   const filesForManifest = [];
+  const sourceDigests = {};
   const hash = createHash("sha256");
-  const skillNames = [];
 
   for (const src of sources) {
     const absSource = join(repoRoot, src.repoPath);
     if (!(await fileExists(absSource))) {
       throw new Error(`Virgil bundle source missing: ${src.repoPath}`);
     }
-    const content = await readFile(absSource);
+    const raw = await readFile(absSource);
+    // Markdown ships with every relative link re-spelled for the synced
+    // layout; helper scripts ship verbatim. The front door spells its helper
+    // INVOCATIONS through a resolved prefix rather than a literal repo path
+    // (task 473), so it takes no prose-prefix rewrite.
+    const content = src.repoPath.endsWith(".md")
+      ? Buffer.from(shippedBytes(src.repoPath, raw.toString("utf8"), map), "utf8")
+      : raw;
     const dest = join(bundleDir, src.bundlePath);
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, content);
@@ -126,16 +106,20 @@ async function main() {
     hash.update("\0");
 
     filesForManifest.push(src.bundlePath);
-    if (src.bundlePath.startsWith("claude-commands/")) {
-      skillNames.push(src.bundlePath.slice("claude-commands/".length));
-    }
+    // What this shipped copy was BUILT FROM — see build-editor-bundle.mjs.
+    sourceDigests[src.bundlePath] = {
+      repoPath: src.repoPath,
+      sha256: createHash("sha256").update(raw).digest("hex"),
+    };
   }
 
+  const skillNames = await commandMirrorNames(repoRoot, "virgil");
   const version = hash.digest("hex").slice(0, 12);
   const manifest = {
     version,
     generatedAt: new Date().toISOString(),
     files: filesForManifest,
+    sourceDigests,
   };
   await writeFile(
     join(bundleDir, "bundle-manifest.json"),

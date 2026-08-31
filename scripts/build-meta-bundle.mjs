@@ -33,9 +33,17 @@
 // signal for free.
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// What ships, where it lands, and the bytes it ships with — the ONE answer,
+// read by every builder and by both guards (task 506).
+import {
+  manifestFileNames,
+  MANIFEST_SRC_DIR,
+  shippedBytes,
+  shippedPathMap,
+} from "../library/build/bundle-sources.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -45,7 +53,6 @@ const bundleRoot = join(repoRoot, "public", "skill-bundle");
 // here via loadSubManifest. The `manifest` source is built by this file.
 const SUBSYSTEMS = ["library", "editor", "virgil"];
 const MANIFEST_NAME = "manifest";
-const MANIFEST_SRC_DIR = join(repoRoot, "docs", "workspace");
 
 async function loadSubManifest(name) {
   const path = join(bundleRoot, name, "bundle-manifest.json");
@@ -69,42 +76,43 @@ async function buildManifestSource() {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
-  let entries;
-  try {
-    entries = await readdir(MANIFEST_SRC_DIR, { withFileTypes: true });
-  } catch (err) {
-    throw new Error(
-      `[meta-bundle] manifest source dir missing at ${relative(repoRoot, MANIFEST_SRC_DIR)} — ${err.message}`,
-    );
-  }
-  // `_`-prefixed files are includes, not shipped (matches the skill builders).
-  const names = entries
-    .filter((e) => e.isFile() && e.name.endsWith(".md") && !e.name.startsWith("_"))
-    .map((e) => e.name)
-    .sort();
+  // Which docs ship is `bundle-sources.mjs`'s answer, not a second filter here.
+  const names = await manifestFileNames(repoRoot);
   if (names.length === 0) {
     throw new Error(
-      `[meta-bundle] no manifest docs found in ${relative(repoRoot, MANIFEST_SRC_DIR)}`,
+      `[meta-bundle] no manifest docs found in ${MANIFEST_SRC_DIR}`,
     );
   }
+  const map = await shippedPathMap(repoRoot);
 
   const files = [];
+  const sourceDigests = {};
   const hash = createHash("sha256");
   for (const name of names) {
-    const content = await readFile(join(MANIFEST_SRC_DIR, name));
+    const repoPath = `${MANIFEST_SRC_DIR}/${name}`;
+    const raw = await readFile(join(repoRoot, repoPath));
+    // The manifest docs are read from `.claude/virgil/` in a managed folder,
+    // where their sibling links still resolve and their pointers into the
+    // skill set do not — unless re-spelled. Same rewrite every other shipped
+    // markdown takes (task 506).
+    const content = Buffer.from(shippedBytes(repoPath, raw.toString("utf8"), map), "utf8");
     await writeFile(join(outDir, name), content);
     hash.update(name);
     hash.update("\0");
     hash.update(content);
     hash.update("\0");
     files.push(name);
+    sourceDigests[name] = {
+      repoPath,
+      sha256: createHash("sha256").update(raw).digest("hex"),
+    };
   }
   const version = hash.digest("hex").slice(0, 12);
   // Parity sub-manifest (the meta uses the returned values; this is for
   // debuggability and to mirror the other sources' on-disk shape).
   await writeFile(
     join(outDir, "bundle-manifest.json"),
-    JSON.stringify({ version, generatedAt: new Date().toISOString(), files }, null, 2) + "\n",
+    JSON.stringify({ version, generatedAt: new Date().toISOString(), files, sourceDigests }, null, 2) + "\n",
   );
   return { name: MANIFEST_NAME, version, files };
 }

@@ -90,7 +90,7 @@ editor skills inline.** The contract is:
   body in this skill; that's the editor skill set's job.
 
 The editor-side skills (`/editor/answer-*` and `/editor/draft-*`,
-documented in [editor/AGENTS.md](../../editor/AGENTS.md)) drain
+documented in `editor/AGENTS.md` in the Virgil repo) drain
 the queue when explicitly invoked by the user against the paper
 folder.
 

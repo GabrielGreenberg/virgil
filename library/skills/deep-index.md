@@ -482,9 +482,9 @@ kind you did not recompute deletes another step's findings. For
 the pass still reporting clean (task 463).
 
 This table is CHECKED against every skill's own `--recompute-warning-kind`
-invocation by
-[warning-kind-census.test.ts](../lib/__tests__/warning-kind-census.test.ts),
-which also holds it to [_doctrine.md](_doctrine.md)'s copy — the two must
+invocation by `library/lib/__tests__/warning-kind-census.test.ts` in the
+Virgil repo (a repo-only guard — it is not part of what ships to a library
+folder), which also holds it to [_doctrine.md](_doctrine.md)'s copy — the two must
 agree, and now something says so in CI rather than only in prose.
 
 The five on the left have no same-run consumer (nothing reads
