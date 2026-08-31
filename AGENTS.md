@@ -4495,22 +4495,38 @@ Seven rules they earned:
   write reads as a re-parenting — and a deliberate write of `uuid: null` is
   silently undone by handing the old id straight back. A same-type in-place write
   is the caller's own statement about that node.
-- **A PRESERVATION GUARD MAY NOT RESURRECT AN IDENTITY THAT IS NOT LOST**, and
+- **A PRESERVATION GUARD MAY NOT RESURRECT A CONTAINER THAT DISSOLVED**, and
   that is the half the fix does not work without. `MarginaliaAnchorGuard` gains
-  EXCEPTION 3 (`reparentedUuids`), the sibling of task 367's EXCEPTION 2: there
-  the resurrection reproduced the removal (a silent veto of the gesture), here it
-  fights a successor that already exists — and *wins*, because the net then sees
-  the id live and mints the stranger beside the husk. Both halves are needed:
-  measured, the transfer alone fixes only the un-anchored case, which is the case
-  the reported one is not.
-- **…so the predicate is computed from the transactions' OWN steps**, never from
-  either plugin's output, and both read the same door. That is what makes it
-  independent of where each sits in ProseMirror's `appendTransaction` chain.
-- **Every verification FAILS OPEN.** A receiver that is not a bare anchorable
-  node, a donor that no longer holds the id, a freed uuid something else in the
-  batch re-created, a mapped position that drifted — each falls back to the fresh
-  mint that shipped before. A missed transfer is the status quo; a wrong one is a
-  duplicate.
+  EXCEPTION 3 (`dissolvedByReparent`), the sibling of task 367's EXCEPTION 2:
+  there the resurrection reproduced the removal (a silent veto of the gesture),
+  here it contradicts it — and *wins*, because the net then sees the id live and
+  mints the stranger beside the husk. Both halves are needed: measured, the
+  transfer alone fixes only the un-anchored case, which is the case the reported
+  one is not.
+- **The guard's question is deliberately WEAKER than the transfer's, and that is
+  what makes the two consistent BY CONSTRUCTION rather than by agreement.** The
+  first cut keyed the stand-down on a planned TRANSFER and was wrong twice, both
+  measured (review-caught): a last-item lift dissolves the `listItem` **and** the
+  `bulletList`, and one node holds one id — so the list still husked, right above
+  the user's lifted text, which is the reported symptom surviving the fix; and a
+  transfer whose receiver turns out to be a deferred inner paragraph is PLANNED
+  and then dropped at the landing site, so the guard stood down for a transfer
+  that never landed. Asking only *did this identity's container dissolve?*
+  removes both, because it needs no agreement with the net at all. What a
+  declined resurrection costs is stated at the door: the card moves to the pod
+  header's "N unanchored" chip (task 410) — the designed home for an anchor-less
+  card, and strictly better than an empty line wearing its identity.
+- **…and the predicate is computed from the transactions' OWN steps**, never from
+  either plugin's output. That is what makes it independent of where each sits in
+  ProseMirror's `appendTransaction` chain.
+- **Every verification of the MINT half FAILS OPEN** — a receiver that is not a
+  bare anchorable node, a donor that no longer holds the id, a freed uuid
+  something else in the batch re-created, a mapped position that drifted: each
+  falls back to the fresh mint that shipped before. A missed transfer is the
+  status quo; a wrong one is a duplicate. Scoped to the mint half deliberately,
+  because the GUARD half is not a fallback to pre-499 behaviour and saying so
+  would overstate it: a dissolved container is not resurrected at all, and its
+  card orphans to the chip.
 - **UNDO takes the structure back and not the transfer, so the invariant needs
   one more line — found by driving undo, not by inspection.** The net's own
   writes are `addToHistory: false`, so the inverted lift step re-wraps a
@@ -4527,10 +4543,16 @@ Seven rules they earned:
   two-condition test inside a walk the plugin already does, with its O(depth)
   `resolve` reached only by a paragraph that is deferred AND uuid-bearing — a
   shape that exists only just after something wrapped it.
-- **The bonus member came out of the same rule.** `toggleList` bullet ⇄ numbered
-  re-types the container in place, and pre-499 the new `orderedList` got a
-  stranger's id while every card anchored to the list orphaned. Nobody reported
-  it; it fell out of asking the question properly.
+- **Two bonus members came out of the same rule**, neither reported. `toggleList`
+  bullet ⇄ numbered re-types the container in place, and pre-499 the new
+  `orderedList` got a stranger's id while every card anchored to the list
+  orphaned. And `setBlockType` — the Heading action and the heading-strip demote
+  chip — mints a BARE node of a different type around the same content, which is
+  the retype shape exactly, so paragraph ⇄ heading now keeps the block's id.
+  That second one is *declared* rather than left to be rediscovered: the
+  enumerated gestures above are all lists and quotes, and TipTap's own
+  `toggleHeading` / `toggleCodeBlock` PRESERVE attrs, so nothing in the list
+  vocabulary pointed at that path (review-caught).
 
 CI: [reparent-identity-conservation.test.ts](src/lib/tiptap/__tests__/reparent-identity-conservation.test.ts)
 drives the REAL `buildEditorExtensions("main")` stack through `handleKeyDown`
@@ -4555,9 +4577,10 @@ reason), and no file outside the rule may spell the bypass meta, re-derive the
 rule, or read a step gap itself. Measured by neutering each half in turn: the
 pre-499 mint-only net takes **12** legs, direction 2 **3**, the guard's
 EXCEPTION 3 **9**, the retype type-change gate **1**, the liveness gate **1**,
-the container-owns-it clear **9** (1 named leg + the uniqueness sweep), moving
-the pass in front of the keystroke fast path **1**, and a second reader of a
-step gap the census. The sweep is the leg that speaks for the shapes no named
+the container-owns-it clear **9** (1 named leg + the uniqueness sweep), keying
+the guard on the planned TRANSFER instead of on DISSOLUTION **3**, moving the
+pass in front of the keystroke fast path **1**, and a second file spelling the
+bypass meta **2**. The sweep is the leg that speaks for the shapes no named
 case looks at: 7 document shapes × 6 gestures × {gesture, undo, redo}, asserting
 only the invariant the plugin has always owed — no two live nodes answering to
 one uuid. One of this
@@ -4573,11 +4596,17 @@ into one before lifting (`liftOutOfList`'s own `tr.delete(pos-1, pos+1)`
 preamble), so only the FIRST item's identity is still available when the lift
 runs: the first lifted block conserves and the rest mint — the honest
 composition of a join (N text objects became one) and a split (one became N),
-pinned as its own leg. A block dropped INTO a container that ALREADY has an
-identity is absorbed by it, because nothing bare is there to hand the id to. And
-the outer container of a whole-list lift (`bulletList` around a sole `listItem`)
-loses its id to the innermost one — one text object where there were two, and
-the innermost is the one whose content became the paragraph.
+pinned as its own leg. Those joined-away items still HUSK if they were
+margin-anchored, and that is the guard's general JOIN behaviour rather than
+anything this task introduced: measured on a plain two-paragraph
+Backspace-join, with no list, lift or transfer involved at all. It wants the
+same treatment one law over and is filed separately; it is pinned here as a
+control so the boundary of this fix is a stated fact. A block dropped INTO a
+container that ALREADY has an identity is absorbed by it, because nothing bare
+is there to hand the id to. And the outer container of a whole-list lift
+(`bulletList` around a sole `listItem`) hands its id to nobody — the innermost
+container is the one whose content became the paragraph — so its card orphans
+to the chip rather than husking.
 
 **Owed, not claimed:** a real-FSA eyeball. The orphan/husk half is the
 FSA-masked class (real anchor death reproduces under prod File System Access),

@@ -132,7 +132,11 @@ import { generateShortId } from "@/lib/uuid";
 // cover every surface — the Shift-Tab keymap, the Backspace lift branch, the
 // lightning grid, the slash command, the `Mod-Shift` chords, a card-body
 // toolbar and anything added later — because the net sees the transaction, not
-// the command.
+// the command. Two surfaces beyond the list/quote family it reaches for exactly
+// that reason, and DECLARED here rather than left to be rediscovered: the
+// Heading action and the heading-strip demote chip both go through
+// `tr.setBlockType`, which mints a BARE node of a different type around the
+// same content, so paragraph ⇄ heading is a RETYPE and keeps the block's id.
 //
 // WHY THE NET MAY ANSWER THIS AT ALL. `node-identity.ts` states that a net "can
 // only tell that two blocks collide, not which one the user meant to keep", and
@@ -306,14 +310,50 @@ export function planReparentTransfer(
 }
 
 /**
- * Walk every step in `transactions` that could re-parent content, and hand each
- * planned transfer to `visit` along with the coordinates needed to map it into
- * the final document. The ONE place that decides which steps the rule is asked
- * of, so the net and the resurrection guard cannot come to disagree about it.
+ * Every anchorable ANCESTOR of the gap whose own opening token lay in the
+ * removed prefix `[from, gapFrom)` — the containers this step DISSOLVED.
+ *
+ * A `liftListItem` strips TWO levels when the item was the list's last: the
+ * `listItem` and the `bulletList` around it. The transfer can hand on only the
+ * innermost (one node holds one id), so this is deliberately the WIDER reading:
+ * the guard needs to know that an identity's container is GONE, which is true
+ * of every level, not only of the one that found a successor.
+ *
+ * An ancestor walk rather than a range scan, because "is this an ancestor of
+ * the gap?" is exactly the question — a complete node lying entirely inside the
+ * prefix is not one, and would be a different fact. O(depth).
  */
-function forEachReparentPlan(
+function dissolvedAncestorUuids(step: ReplaceAroundStep, preDoc: PMNode): string[] {
+  if (step.gapFrom > preDoc.content.size) return [];
+  const out: string[] = [];
+  const $gap = preDoc.resolve(step.gapFrom);
+  for (let depth = $gap.depth; depth > 0; depth--) {
+    const pos = $gap.before(depth);
+    if (pos < step.from) break; // and every outer level is further left still
+    if (pos >= step.gapFrom) continue;
+    const node = $gap.node(depth);
+    if (!isAnchorableNode(node.type)) continue;
+    const uuid = ownUuid(node);
+    if (uuid) out.push(uuid);
+  }
+  return out;
+}
+
+/**
+ * Walk every step in `transactions` that could re-parent content. The ONE place
+ * that decides which steps the two readings below are asked of, so the net and
+ * the resurrection guard cannot come to disagree about the POPULATION.
+ */
+function forEachReparentStep(
   transactions: readonly Transaction[],
-  visit: (plan: ReparentTransfer, tx: Transaction, txIndex: number, stepIndex: number) => void,
+  visit: (
+    step: ReplaceAroundStep,
+    preDoc: PMNode,
+    postDoc: PMNode,
+    tx: Transaction,
+    txIndex: number,
+    stepIndex: number,
+  ) => void,
 ): void {
   for (let k = 0; k < transactions.length; k++) {
     const trk = transactions[k];
@@ -325,39 +365,47 @@ function forEachReparentPlan(
     for (let si = 0; si < trk.steps.length; si++) {
       const step = trk.steps[si];
       if (!(step instanceof ReplaceAroundStep)) continue;
-      const plan = planReparentTransfer(
-        step,
-        trk.docs[si] ?? trk.before,
-        trk.docs[si + 1] ?? trk.doc,
-      );
-      if (plan) visit(plan, trk, k, si);
+      visit(step, trk.docs[si] ?? trk.before, trk.docs[si + 1] ?? trk.doc, trk, k, si);
     }
   }
 }
 
 /**
- * Every block identity this batch hands to a SUCCESSOR because the container
- * that owned it dissolved — direction 1 of the law in the module header.
+ * Every block identity this batch DISSOLVED by re-parenting — the container's
+ * own opening token was stripped off the front of content that survived, so
+ * that node is gone whether or not a successor was available to take its id.
  *
  * Read by `MarginaliaAnchorGuard`, whose whole job is to put a vanished
- * anchored block's uuid back and which must NOT do so for an identity that is
- * not lost. It is the sibling of task 367's `resurrectionWouldBeANoOp`
- * stand-down: there the resurrection reproduced the removal (a silent veto of
- * the user's own gesture), here it would fight a transfer for an id that
- * already has a live successor — leaving the reported husk above the user's
- * text and forcing this net to mint the stranger beside it.
+ * anchored block's uuid back, and which must NOT do so here. It is the sibling
+ * of task 367's `resurrectionWouldBeANoOp` stand-down: there the resurrection
+ * reproduced the removal (a silent veto of the user's own gesture), here it
+ * puts an EMPTY paragraph carrying the id above the user's own lifted text —
+ * which is the reported bug, and which also makes this net mint a stranger for
+ * the text beside it.
+ *
+ * **The question is deliberately WEAKER than the transfer's**, and that is what
+ * makes the two answers consistent BY CONSTRUCTION rather than by agreement. A
+ * guard that stood down only where a transfer was PLANNED could stand down for
+ * one that never LANDS (a receiver that is a deferred inner paragraph is never
+ * a mint candidate, so its transfer is dropped at the landing site) — and it
+ * would still husk every dissolved ancestor that had no successor to hand its
+ * id to. Both were measured; neither is possible once the guard asks only
+ * "did this identity's container dissolve?".
+ *
+ * What a declined resurrection COSTS, stated: the card keyed on that container
+ * becomes unanchored and moves to the pod header's "N unanchored" chip (task
+ * 410) — the designed home for an anchor-less card, and strictly better than an
+ * empty line in the document wearing its identity.
  *
  * Computed from the transactions' OWN steps, so it is independent of plugin
- * order: the guard and the backfill get the same answer whichever runs first.
- * O(re-parenting steps × depth); a plain keystroke produces none.
+ * order. O(re-parenting steps × depth); a plain keystroke produces none.
  */
-export function reparentedUuids(
+export function dissolvedByReparent(
   transactions: readonly Transaction[],
 ): ReadonlySet<string> {
   const out = new Set<string>();
-  forEachReparentPlan(transactions, (plan) => {
-    // `defer` removes no block, so it can never trigger a resurrection.
-    if (plan.kind !== "defer") out.add(plan.uuid);
+  forEachReparentStep(transactions, (step, preDoc) => {
+    for (const uuid of dissolvedAncestorUuids(step, preDoc)) out.add(uuid);
   });
   return out;
 }
@@ -516,7 +564,12 @@ function planBackfill(
   }
 
   // Keystroke fast path: nothing structural was inserted → no doc-sized read.
-  if (candidates.length === 0) return [];
+  // `duplicateClears` is in the test too, not because a plain keystroke can
+  // produce one (it cannot — it is populated only by the inserted-range walk)
+  // but because a batch that creates the duplicate and inserts nothing MINTABLE
+  // would otherwise leave it standing. Both empty is the typing path, and it
+  // still returns before any doc-sized read (review-caught latent trap).
+  if (candidates.length === 0 && duplicateClears.size === 0) return [];
 
   // ── direction 1: a container that DISSOLVED hands its id to its successor ──
   // One pass over the re-parenting steps, through the shared door, so the net
@@ -524,7 +577,9 @@ function planBackfill(
   // re-parent content and only it carries the gap that says WHICH content
   // survived; a plain keystroke produces none, so this costs nothing on the
   // typing path.
-  forEachReparentPlan(transactions, (plan, trk, k, si) => {
+  forEachReparentStep(transactions, (step, preDoc, postDoc, trk, k, si) => {
+    const plan = planReparentTransfer(step, preDoc, postDoc);
+    if (!plan) return;
     // Post-step → final-doc coordinates, through the maps AFTER this step and
     // every later transaction's. A node START moves with the content after it,
     // hence assoc 1. A mapping that lands somewhere unexpected simply fails to
