@@ -458,13 +458,28 @@ describe("499 — the controls: a SPLIT still mints, and a re-parent that keeps 
     expect(ids["1"]).not.toBe("P1");
   });
 
-  it("plain typing costs the net nothing (no transfer work on the keystroke path)", () => {
-    const ed = mount([P("P1", "Hello")]);
-    ed.commands.setTextSelection(6);
+  it("plain typing moves no identity, with a list in the document", () => {
+    // The behavioural half. The COST half is not observable from here —
+    // TipTap's `transaction` event fires once per DISPATCH, not once per
+    // APPENDED transaction, so counting it cannot tell a keystroke that
+    // triggered a backfill from one that did not (measured: a leg that counted
+    // it passed with a forced backfill on every keystroke). The appended-
+    // transaction count is measured where `state.applyTransaction` returns it —
+    // `block-uuid-backfill.test.ts`'s "does NO work on a structurally-null
+    // keystroke" — and the pass's PLACEMENT behind the fast path is pinned by
+    // the census below.
+    const ed = mount([LIST("L1", ITEM("i1", P(null, "A"))), P("P2", "Hello")]);
+    ed.commands.setTextSelection(ed.state.doc.content.size - 1);
     const before = idsByPath(ed);
-    ed.commands.insertContent(" world");
+    for (const ch of " world") {
+      const { from, to } = ed.state.selection;
+      const handled = ed.view.someProp("handleTextInput", (f) =>
+        (f as (...a: unknown[]) => boolean)(ed.view, from, to, ch),
+      );
+      if (!handled) ed.commands.insertContent(ch);
+    }
     expect(idsByPath(ed)).toEqual(before);
-    expect(ed.state.doc.firstChild?.textContent).toBe("Hello world");
+    expect(ed.state.doc.textContent).toContain("Hello world");
   });
 });
 
@@ -573,6 +588,25 @@ describe("499 CENSUS: every re-parenting command family is swept", () => {
     for (const cmd of Object.keys(SWEPT_COMMANDS)) {
       expect(called.has(cmd), `${cmd} is swept but no production file calls it`).toBe(true);
     }
+  });
+
+  it("the direction-1 pass sits BEHIND the keystroke fast path", () => {
+    // Keystroke sanctity, pinned structurally because it is not observable from
+    // a mounted editor (see the typing leg above). `forEachReparentPlan` walks
+    // every step of every transaction, which is O(1) per keystroke but not
+    // ZERO; the early return is what makes a structurally-null edit cost
+    // nothing at all, and it has to come first.
+    const src = readFileSync(
+      join(ROOT, "src/lib/tiptap/block-uuid-backfill.ts"),
+      "utf8",
+    );
+    const fastPath = src.indexOf("if (candidates.length === 0) return [];");
+    // The CALL inside `planBackfill`, not `reparentedUuids`'s own (which is
+    // defined above it and takes the same door).
+    const pass = src.indexOf("forEachReparentPlan(transactions, (plan, trk, k, si)");
+    expect(fastPath, "the keystroke fast path is gone").toBeGreaterThan(-1);
+    expect(pass, "the direction-1 pass is gone").toBeGreaterThan(-1);
+    expect(pass, "the transfer pass runs BEFORE the fast path").toBeGreaterThan(fastPath);
   });
 
   it("the transfer rule has ONE implementation and ONE bypass key", () => {
