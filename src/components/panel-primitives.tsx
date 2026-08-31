@@ -1530,12 +1530,6 @@ export function EditableCard({
     <PanelCard
       ref={cardRef}
       {...dataAttrs}
-      // Preference-mode annotation: the card's outer surface and border
-      // come from the generic --surface / --border tokens, so a ctrl+click
-      // on the card background edits every card in every panel. Per-panel
-      // header colours are managed by panel-theme.ts / PanelThemePicker —
-      // the header <div> below gets its own `data-panel-theme` annotation.
-      data-prefs="surfaceColor,borderColor"
       theme={theme}
       selected={selected}
       isPoppedOut={isPoppedOut}

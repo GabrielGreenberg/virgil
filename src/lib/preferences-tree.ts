@@ -48,32 +48,6 @@ function isLeaf(node: PrefNode): node is PrefLeaf {
 }
 export { isLeaf };
 
-/**
- * Walk PREFERENCES_TREE and return the first leaf matching `key`, or
- * undefined. Used by PreferenceModePicker to turn a `data-prefs` attribute
- * key into its leaf metadata (label, description, control type). Keys are
- * unique across the tree, so "first match" is unambiguous.
- *
- * Declared here (rather than in the picker) so the tree remains the single
- * source of truth for what's editable.
- */
-export function findLeafByKey(
-  key: keyof EditorPreferences,
-): PrefLeaf | undefined {
-  const walk = (nodes: PrefNode[]): PrefLeaf | undefined => {
-    for (const n of nodes) {
-      if (isLeaf(n)) {
-        if (n.key === key) return n;
-      } else {
-        const found = walk(n.children);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
-  return walk(PREFERENCES_TREE);
-}
-
 // ─── Font Options ─────────────────────────────────────────────────────────────
 
 const SERIF_FONTS = ["Source Serif 4", "Georgia", "Playfair Display", "Libre Baskerville", "Lora", "Merriweather", "EB Garamond", "Crimson Text"];

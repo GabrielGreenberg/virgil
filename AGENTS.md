@@ -5971,6 +5971,166 @@ CI: [action-context-honesty.test.ts](src/lib/actions/__tests__/action-context-ho
 
 Flagged, not fixed, and invisible to this guard by construction: `ActionContext.dispatch` has three production reads, and **every one is gated behind `ctx.ref.kind !== "cursor"`** while its sole supplier (the bridge) always synthesizes a `CursorRef` — so no `ctx.dispatch?.()` can fire from that path. The census asks whether a read EXISTS, never whether it can EXECUTE; that is a different guard.
 
+### The component half: an IMPORT is a claim that the file renders it
+
+Same law, one medium over (task 495) — and the case where the dead export was a
+whole FEATURE, its architecture doc opened by asserting the render that did not
+happen, and the only instrument that could have seen it was drowned in its own
+noise.
+
+"Preference mode" is the ctrl+click-a-token-to-edit-it feature: turn the mode
+on, `<body>` gains `data-pref-mode="on"`, every element carrying `data-prefs` /
+`data-panel-theme` lights up, and ctrl+clicking one opens a picker for the
+tokens it names. **None of it was reachable.** `EditorLayout` imported
+`PreferenceModePicker` and never rendered it — and that picker was the only
+place `usePreferenceMode`'s `on` was ever read, while its `toggle` had NO reader
+anywhere (`EditorLayout` destructured both and used neither). So no button, menu
+row or shortcut could flip the mode, the hook's body-attribute effect could only
+ever REMOVE the attribute, the two rulesets gated on it (four selectors) were
+unreachable, and four components went on stamping `data-prefs=` for a walker
+that never mounted. `data-panel-theme` was consumer-ONLY — read by the picker
+and by those rules, produced by nothing, while `panel-primitives` promised "the
+header `<div>` below gets its own `data-panel-theme` annotation".
+
+**And the docs asserted the opposite**, which is the load-bearing half.
+`PreferenceModePicker.tsx`'s own Lifecycle contract opened with *"1. Host
+(EditorLayout) renders `<PreferenceModePicker />` unconditionally"*, and
+`usePreferenceMode.ts`'s threading map put a *"[top-bar button]"* under
+`EditorLayout.tsx` that *"renders the toggle button; uses isOn & toggle()"* —
+two files, two false claims, and the second went on to give a step-by-step guide
+to EXTENDING the feature, so the next agent asked to make something
+ctrl-clickable would have followed it and shipped a stamping site into a void.
+The class this file names repeatedly ("a comment describing a retired mechanism
+is how the next reader concludes the invariant is held"; task 395's "the prose
+outlived the mechanism"), with the guide attached.
+
+It was **superseded, not abandoned mid-build**: the render site was removed in
+the same commit that introduced `SmartPreferences`, which IS mounted, DOES read
+`usePanelColor`, and covers the same tokens through a modal. So the picker's job
+was being done by a live surface and what remained was its corpse — which is why
+the answer is DELETE (task 202's rule: *WIRE-it-or-DELETE-it, and a dead SSOT is
+worse than none*) rather than a re-wire.
+
+> **A component IMPORT is a claim that this file renders it.** A PascalCase
+> value binding imported into a production module and never mentioned again is
+> either a feature that does not render or a stale trace of one that moved —
+> the same lie either way, and invisible: `tsconfig.json` sets no
+> `noUnusedLocals`, so the compiler is silent BY CONFIGURATION.
+
+Six rules it earned:
+
+- **The census asks the BINDING, not the file.** The obvious form — *does a
+  `<Name` tag exist somewhere in the repo?* — is VACUOUS on this very defect:
+  `PreferenceModePicker` is a real component whose module really is imported, so
+  a question keyed on the FILE passes while the binding is dead.
+- **"Used a second time AT ALL", not "appears in JSX".** A JSX-only needle flags
+  every legitimate non-JSX use of a component value (`React.createElement(Foo)`,
+  a `Foo` handed to a registry, a `typeof Foo`), trading an EMPTY allowlist for
+  a list of exemptions. The permissive form still catches the reported shape,
+  because a dead import is dead in every spelling. Stated reach, the other
+  direction: a binding MENTIONED but not actually rendered satisfies it — the
+  same limit the dead-PROP sibling states about a prop destructured and dropped.
+- **SCREAMING_SNAKE is out of scope, and that is what keeps the allowlist
+  empty.** A constant is not a claim about rendering, it is eslint's question,
+  and including it would put ~10 pre-existing hits into a list this census needs
+  empty to be worth anything. A component name is PascalCase — at least one
+  lowercase letter — which is the test React itself uses. That cannot separate a
+  component from a PascalCase TYPE imported without the `type` keyword, and the
+  census found one on its first run (`Side`, unused, deleted with the rest):
+  recorded rather than narrowed, since the over-collection costs nothing while
+  the allowlist is empty and narrowing it is a compiler's job.
+- **M5 is DELETE and NOT "wire it", and the reason is the interesting one.**
+  `useLoadPanelColors` was an exported hook with zero consumers whose docstring
+  said "Load overrides on first client mount" — and moving the override load
+  into its effect would REINTRODUCE the defaults-then-override flash that audit
+  tick 33 refuted on the strength of the current shape: `loadPanelColors()` is
+  read **synchronously in `EditorLayout`'s render body**, so the very first
+  paint already carries the user's override. It is the tidier-looking
+  implementation that would be WRONG, which is precisely why leaving it exported
+  was a trap.
+- **The half-alive third state is worse than either resolution.** Restoring the
+  feature was a live option and the state was wrong under EVERY answer, so the
+  docs half could have landed regardless — but with a live successor there is no
+  capability to lose, and a feature reachable only by editing source is not
+  reachable.
+- **`findLeafByKey` went with it.** Alive only for the picker, in a module
+  (`preferences-tree.ts`) that stays because five other consumers do read it —
+  the file survives, the export does not.
+
+**The noise IS the finding.** The census named EIGHTEEN bindings on the pre-495
+tree and every one of them was in `EditorLayout.tsx` — no other production
+`.tsx` in either silo had a hit. Seventeen besides the picker: `VirgilEditor`,
+`FloatingPanel`, `DockOutline`, `CardLiftOutline`, `OmniFilterMenu`,
+`ExamplesPanel`, `Side` and all ten panel `*Host`s, every one residue of the
+extraction that moved it into `EditorPane` or an `editor-layout/` submodule.
+`npm run lint` reported 89 warnings on that one file (69 after this), so an
+unused import was ambient noise rather than a signal: the warning that would
+have caught the eighteenth was buried under seventeen.
+
+**Deleting an import can remove a module LOAD, so each one was checked for an
+import-time side effect** — and one had a real one. `Editor.tsx` opens with a
+bare `import "@/text-objects/floats";`, a registration barrel whose body runs
+eleven `registerFloatBody` calls; `VirgilEditor`'s import statement SURVIVES the
+edit but now binds only the `EditorHandle` interface, and under `isolatedModules`
+a type-only-used binding is ELIDED, so `EditorLayout` genuinely stops loading it.
+Safe because `EditorPane` value-imports the same module and `EditorLayout`
+statically imports `EditorPane` — but the surviving statement is a false comfort,
+and the ordering shift it causes is only harmless because every read of that
+registry is render-time (`text-object-floatable.tsx`), never a module-scope
+const, which is the invariant `stack-capture.ts` already records ("an affordance
+must not depend on import order").
+
+CI: [dead-component-import-guardrail.test.ts](src/__tests__/dead-component-import-guardrail.test.ts)
+— the sibling of [dead-panel-prop-guardrail.test.ts](src/panels/__tests__/dead-panel-prop-guardrail.test.ts),
+which asks the same question one level in (a declared PROP nobody reads).
+Population DISCOVERED from what the repo ships (`trackedFiles`, both silos,
+production `.tsx`) and pinned PER SILO — the two roots collapse independently,
+and a library pin written as a path SUBSTRING answers true in any checkout that
+happens to live under a directory called `library`. Allowlist EMPTY, with a
+SYNTHETIC can-see canary spelling every shape that must and must not flag —
+including a component named only in the comment above its own import, which is
+exactly the disguise the reported defect wore. Beside it a retirement leg pins
+ten needles dead in both silos, reading COMMENT-STRIPPED source on purpose: this
+repo's convention is to renegotiate a retired claim in place with the reason at
+the site, and a raw-source needle would make writing that sentence a test
+failure — outlawing the very prose the fix is made of.
+
+**And it carries the swallow self-check `_source-scan.ts`'s own header asks
+every caller for**, because this census needs it more than a `toContain`-shaped
+one does: 61% of its collected bindings sit at exactly TWO occurrences (the
+import plus one use), so ONE swallowed line is a spurious failure with no
+diagnostic. The obvious form of that check has no teeth and was MEASURED to have
+none — a swallow eats to end of LINE, so counting surviving `import` lines sees
+nothing, and planting a real JSX apostrophe leaves them all intact. So the
+question is asked of the scanner itself: `swallowedLines` (exported from
+`_source-scan.ts`, one implementation rather than one per caller, for the reason
+`strip` has one) reports every line on which a quoted string opened and met a
+newline. Measured by planting `Loading… it's almost ready` in a real component:
+the leg fails and names `LoadingScreen.tsx:8`.
+
+Measured by neutering back to the pre-495 tree: both legs fail, naming all 18
+dead imports and every retired file; re-adding the `dataPrefs` prop alone fails
+the retirement leg.
+
+**Residual, stated rather than swept: the deletion ORPHANED a capability of a
+shared primitive.** `PreferenceModePicker` was the only production consumer of
+`SystemDialog`'s `variant="anchored"` — and of the `at={{x,y}}` and
+`outsideClickGuard` props that serve it — so all three now have zero callers,
+pinned only by `system-dialog-variants.test.tsx`, and a suite is not a consumer.
+Neither census can see it: this one asks about IMPORTS, and the dead-PROP sibling
+asks whether a prop is read in its OWN declaring file, which `outsideClickGuard`
+is. Deleting an unused VARIANT of a shell every dialog in the app mounts is a
+decision about the dialog system rather than a consequence of retiring a picker,
+so what landed here is the half that is unarguable: the false prose. Both the
+component's docstring and `STYLE_GUIDE.md` now SAY the variant has no consumer
+and name WIRE-it-or-DELETE-it, instead of citing the deleted picker as its worked
+example. A capability honestly labelled untaken is not the half-alive third state
+— a capability whose docs still name a deleted exemplar is.
+
+**Owed, not claimed:** nothing. This is pure module wiring plus CSS — not
+FSA-masked, and the deletion is type-checked. The one visible change is a
+`cursor: help` and a hover outline that could never appear.
+
 ### The vocabulary half: a token two layers must agree on is spelled ONCE
 
 Same law, fourth tense (task 255) — and the one where deleting the dead declaration would have been the *smaller* half of the truth.

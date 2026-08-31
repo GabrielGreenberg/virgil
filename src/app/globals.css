@@ -594,11 +594,6 @@
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
 
-  /* Preference mode — the accent colour used for the hover outline and the
-     "edit this" hint. Kept separate from --accent so the two roles can
-     diverge later if needed. Default: same as --drag-highlight. */
-  --pref-mode-accent: var(--drag-highlight);
-
   /* Library-wide editing fonts. Pinned to the Virgil editor display fonts
      so every indexed paper renders in one consistent face regardless of
      what the source PDF/DOCX used. Indexed .tex files carry no font info;
@@ -5201,40 +5196,6 @@ html {
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
   outline: none;
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   Preference mode
-   ──────────────────────────────────────────────────────────────────────
-   When the global preference-mode toggle is on, <body> carries
-   `data-pref-mode="on"` (applied by the usePreferenceMode hook). These
-   rules fire only while that attribute is set, so they're inert when
-   preference mode is off.
-
-   What's here:
-     - A help cursor on any element that advertises `data-prefs` or
-       `data-panel-theme`, so users can discover what's editable.
-     - A 2px outline on hover of those elements, same reason.
-
-   Extending this:
-     - New annotation attribute? Extend the selector list below.
-     - Different outline style (colour / width)? Change --pref-mode-accent
-       in :root or adjust the rule directly.
-     - Want the hover outline to only appear when ctrl is held? That has
-       to happen in JS (PreferenceModePicker.tsx) — CSS can't observe
-       modifier keys.
-   ══════════════════════════════════════════════════════════════════════ */
-
-body[data-pref-mode="on"] [data-prefs],
-body[data-pref-mode="on"] [data-panel-theme] {
-  cursor: help;
-}
-
-body[data-pref-mode="on"] [data-prefs]:hover,
-body[data-pref-mode="on"] [data-panel-theme]:hover {
-  outline: 2px solid var(--pref-mode-accent);
-  outline-offset: 1px;
-  border-radius: var(--radius-xs);
 }
 
 /* ══════════════════════════════════════════════════════════════════════

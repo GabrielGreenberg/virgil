@@ -7448,7 +7448,6 @@ function IconStrip({
   return (
     <div
       data-strip-side={side}
-      data-prefs="backgroundColor"
       className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-20 self-start"
     >
       {/* View-controls pod: collapse/expand, blank. The split toggle is

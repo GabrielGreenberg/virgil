@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   type PanelThemeKey,
   type DerivedCardPalette,
@@ -13,7 +13,6 @@ import {
   getPanelColor,
   getPanelColorVersion,
   isPanelColorOverridden,
-  loadPanelColors,
   subscribePanelColors,
 } from "@/lib/panel-theme";
 
@@ -39,13 +38,6 @@ export function useThemeVersion(): number {
     getPanelColorVersion,
     () => 0,
   );
-}
-
-/** Load overrides on first client mount. */
-export function useLoadPanelColors() {
-  useEffect(() => {
-    loadPanelColors();
-  }, []);
 }
 
 /** Current base hex for a panel (override or default). Re-renders on change. */

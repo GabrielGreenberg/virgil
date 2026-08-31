@@ -107,7 +107,7 @@ export type StatusClusterProps = {
   onEditIdentity: () => void;
   onDisableCollab: () => void;
 
-  // Zen + preference-mode toggles.
+  // Zen toggle.
   onToggleZen: () => void;
   preferencesOpen: boolean;
   setPreferencesOpen: Dispatch<SetStateAction<boolean>>;
@@ -450,10 +450,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
         Zen
       </button>
       {!zenModeOn && (<>
-      {/* ── Preference Mode toggle ─────────────────────────────────
-          Flips the global preference-mode state. When on, every DOM element
-          with `data-prefs="<pref-key>"` becomes ctrl+clickable and opens a
-          picker showing just those preference entries. */}
       {collabIconBtn}
       {/* ── Bug-report drop (dev tool) ─────────────────────────────
           Per-machine opt-in via localStorage `virgil:bug-report`. Opens the

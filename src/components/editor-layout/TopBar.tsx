@@ -21,7 +21,6 @@ export type TopBarProps = {
  * actually changes.
  *
  * INVARIANTS preserved verbatim from the inline original:
- *   - `data-prefs` / `data-bar-h` attributes (color-picker integration).
  *   - The `virgil-bar` class + zen-mode background/border gating.
  *   - The tab strip's `ref` + drag/drop handlers (threaded via tabStrip props).
  *
@@ -39,18 +38,12 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
   });
   return (
     <div
-      // Preference-mode: the VIRGIL top bar. topbarBackground is locked to the
-      // PWA/browser theme-color, so changing it updates both the in-app bar and
-      // the browser chrome. The bar's min-height + window-inset padding now
-      // live in the `.virgil-bar` rule (globals.css) so it can grow to fill the
-      // OS-reserved title-bar strip under Window Controls Overlay; the floor is
+      // The VIRGIL top bar. Its min-height + window-inset padding live in the
+      // `.virgil-bar` rule (globals.css) so it can grow to fill the OS-reserved
+      // title-bar strip under Window Controls Overlay; the floor is
       // --bar-base-h (32px). In zen mode the bar's background and bottom border
       // drop out so it visually melts into the canvas, but the height stays so
       // the Zen toggle keeps the same Y position in both modes.
-      // data-bar-h mirrors the base-height FLOOR (32) for the color-picker
-      // integration; the live box can be taller under WCO.
-      data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-      data-bar-h="32"
       // items-END, not items-center: the whole bar row shares ONE seam (bottom)
       // anchor so the tabs, the "+", and the StatusCluster icons all track the
       // bar's bottom edge at ANY bar height. Under WCO the `.virgil-bar` grows

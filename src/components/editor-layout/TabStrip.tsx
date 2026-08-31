@@ -186,7 +186,6 @@ function TabStripImpl(props: TabStripProps) {
           >
             <DocumentFolderTab
               fill="var(--library-bg)"
-              dataPrefs="libraryBg,topbarBorder"
               title="Library"
               onClick={() => {}}
             >
@@ -243,7 +242,6 @@ function TabStripImpl(props: TabStripProps) {
           >
             <DocumentFolderTab
               fill="var(--background)"
-              dataPrefs="background,topbarBorder"
               title={citekey}
               onClick={() => {}}
             >
@@ -362,7 +360,6 @@ function TabStripImpl(props: TabStripProps) {
           >
             <DocumentFolderTab
               fill="var(--library-bg)"
-              dataPrefs="libraryBg,topbarBorder"
               title={label}
               onClick={() => {}}
             >
@@ -445,7 +442,6 @@ function TabStripImpl(props: TabStripProps) {
         >
           <DocumentFolderTab
             fill="var(--main-tab-bg)"
-            dataPrefs="backgroundColor,topbarBorder"
             title={displayName}
             onClick={() => {
               if (isEditing) return;

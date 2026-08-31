@@ -14,9 +14,9 @@
  * (leftMargin / rightMargin), independent of the panel column widths, so
  * a narrow reading margin doesn't force narrow panels when Zen is off.
  *
- * Architecture mirrors usePreferenceMode.ts — module-scoped state, pub/sub
- * via useSyncExternalStore, localStorage persistence, and a body attribute
- * mirror (`data-zen-mode="on"`).
+ * Architecture: module-scoped state, pub/sub via useSyncExternalStore,
+ * localStorage persistence, and a body attribute mirror
+ * (`data-zen-mode="on"`). `useWindowChrome.ts` mirrors the same shape.
  *
  * Storage key: "virgil-zen-mode" — JSON: { on: boolean, leftMargin: number, rightMargin: number }.
  * Legacy boolean values are migrated on load.
