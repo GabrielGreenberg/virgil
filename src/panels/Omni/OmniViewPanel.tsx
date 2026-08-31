@@ -570,7 +570,7 @@ function NavArrow({
         e.stopPropagation();
         onClick();
       }}
-      className="inline-flex h-5 w-5 items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors disabled:opacity-30 disabled:pointer-events-none focus-ring"
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light disabled:opacity-30 disabled:pointer-events-none focus-ring"
     >
       <svg
         width="11"

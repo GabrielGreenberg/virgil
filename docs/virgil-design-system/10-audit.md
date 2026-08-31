@@ -37,7 +37,30 @@ to pass a theme. Replace the four themed siblings with a single helper
 
 ## 2. Hover backgrounds spelled six ways
 
-> **Status — LANDED (verified 2026-08-09).** `.hover-on-light` / `.hover-on-dark` ship at `src/app/globals.css:530-567`, 86 uses across 38 files. Zero raw `hover:bg-stone-*` remain; 2 `hover:bg-amber-*` survive as a deliberate status tint in `BibEntryCard.tsx`. No CI guard.
+> **Status — LANDED (verified 2026-08-09; the VALUE axis only — RENEGOTIATED
+> 2026-08-31, task 502).** `.hover-on-light` / `.hover-on-dark` ship in
+> `src/app/globals.css` ("Hover utilities"). The 2026-08-09 verdict rested on
+> *"zero raw `hover:bg-stone-*` remain"* — still true, and it measures the wrong
+> axis. That sweep converged the **values** onto tokens and never converged the
+> **role**, so 29 controls went on hand-rolling a neutral hover at three
+> different greys through four spellings — 15 of them painting `--edge-subtle`,
+> a declared BORDER token, as a surface fill, and 21 of the 29 snapping where
+> their neighbours faded. Underneath it the utility itself was the reason: it
+> is UNLAYERED, so its `transition` shorthand owned each element's whole
+> transition and silently disabled the site's own `transition-colors` /
+> `transition-opacity` — which is why hand-rolling composed and the SSOT did
+> not, and why 23 controls that DID take the utility flashed their ink while
+> fading their fill. Task 502 gave the utility a property list that is a strict
+> superset of `transition-colors` + `opacity` at one 120ms ease-out, swept all
+> 29 sites onto it (the four top-bar badges onto `.hover-on-dark`, which their
+> resting bg always called for), and added the CI guard this line said was
+> missing: `src/__tests__/color-token-consumers.test.ts` → "the neutral hover
+> has ONE spelling per resting bg". Three lines remain hand-rolled, each with a
+> `hover-on-light-exempt:` reason at the site. 2 `hover:bg-amber-*` survive as a
+> deliberate status tint in `BibEntryCard.tsx`.
+>
+> **The generalizable half:** a LANDED verdict measured on one axis is how the
+> other axis stays un-swept with nobody looking. State the axis in the verdict.
 
 `hover:bg-stone-50/50`, `hover:bg-stone-100`, `hover:bg-stone-100/70`,
 `hover:bg-stone-200/50`, `hover:bg-amber-50`, plus inline-styled hovers

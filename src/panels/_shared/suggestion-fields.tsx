@@ -501,7 +501,7 @@ function PreviewSegment({
       className={`px-2 h-6 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
         active
           ? "bg-accent-light text-accent"
-          : "bg-transparent text-ink-subtle hover:bg-surface-muted-strong hover:text-ink-body"
+          : "bg-transparent text-ink-subtle hover-on-light hover:text-ink-body"
       }`}
     >
       {label}

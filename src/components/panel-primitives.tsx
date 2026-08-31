@@ -398,6 +398,14 @@ const CARD_BASE =
 // shadow + gap (panel look), not a hard edge. Hover keeps the retint/brighten
 // (a neutral edge-strengthen + muted bg); the COLORED hover/select outline is
 // separate (globals.css, gated behind the `card-outline-chrome` pref).
+//
+// hover-on-light-exempt: a CARD-scale WASH, not a control hover (task 502).
+// `.hover-on-light` is calibrated for a ~20px control; the same 5% grey across
+// a whole card reads as a selection, which is a different state. So this rests
+// one step FAINTER on purpose (`surface-muted/50` ≈ #fcfcfc) and pairs with the
+// border retint that carries the actual affordance. It aligns to the neutral
+// family — same hue ramp, half the strength — and is the one surface in the
+// app whose hover is deliberately weaker than the SSOT.
 const CARD_DEFAULT =
   "bg-surface border-edge-subtle hover:border-edge-strong hover:bg-surface-muted/50";
 
@@ -838,7 +846,7 @@ function CardKindOption({
       aria-checked={isCurrent}
       className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 transition-colors ${
         isCurrent ? "text-ink-body font-medium" : "text-[var(--muted)]"
-      } ${active ? "bg-surface-muted-strong" : "hover:bg-surface-muted-strong"}`}
+      } ${active ? "bg-surface-muted-strong" : "hover-on-light"}`}
     >
       {cardTypeLabel(opt)}
     </button>
@@ -1908,6 +1916,14 @@ export type ButtonSize = "sm" | "md" | "lg";
 const BUTTON_BASE =
   "inline-flex items-center justify-center rounded-md font-medium transition-all duration-150 disabled:opacity-40 disabled:pointer-events-none active:translate-y-[0.5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong";
 
+// hover-on-light-exempt: BUTTON_BASE above owns `transition-all duration-150`,
+// which is BROADER than `.hover-on-light`'s property list (it also carries the
+// `active:translate-y` nudge and `hover:brightness-95`). Because that utility
+// is UNLAYERED it would REPLACE `transition-all`, so `secondary` and `ghost`
+// keep a hand-rolled `hover:bg-*` — already on the SSOT's own token
+// (`--surface-muted-strong`), differing only in taking the component's 150ms
+// rather than the utility's 120ms. This is the one shape the census allows
+// (task 502); see the law in globals.css → "Hover utilities".
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary:
     "bg-btn-primary text-white hover:brightness-95",
@@ -2257,7 +2273,7 @@ export function CardTrashButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
       {...iconHint({ label: title, hint: "Delete", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2293,7 +2309,7 @@ export function CardArchiveButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 right-7 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      className="iconbtn-sm absolute bottom-1.5 right-7 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
       {...iconHint({ label: isArchived ? "Unarchive" : "Archive", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2334,7 +2350,7 @@ export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) 
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100"
       {...iconHint({ label: "Restore to document", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

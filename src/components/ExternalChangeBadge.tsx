@@ -509,7 +509,7 @@ function ExternalChangeBadge() {
         ref={kebabRef}
         type="button"
         onClick={toggleMenu}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle focus-ring"
+        className="w-5 h-5 inline-flex items-center justify-center rounded hover-on-dark text-ink-subtle focus-ring"
         {...iconHint({ label: "External change options" })}
         aria-haspopup="menu"
         aria-expanded={menuOpen}

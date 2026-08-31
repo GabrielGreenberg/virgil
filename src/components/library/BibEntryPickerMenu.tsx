@@ -656,7 +656,7 @@ function BibEntryPickerRow({
               e.stopPropagation();
               onToggleExpand();
             }}
-            className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle focus-ring"
+            className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light focus-ring"
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
             <svg
@@ -900,7 +900,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           e.stopPropagation();
           onCopy();
         }}
-        className="text-ink-muted hover:text-ink-body p-0.5 rounded hover:bg-edge-subtle focus-ring"
+        className="text-ink-muted hover:text-ink-body p-0.5 rounded hover-on-light focus-ring"
         {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
       >
         {copied ? (
