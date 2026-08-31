@@ -35,6 +35,14 @@
 // `handleKeyDown` or the shipped command chain — a direct `tr` dispatch cannot
 // see which command a keymap chooses (task 418's lesson) — and keys identity by
 // STRUCTURAL PATH, so a STEAL reads as two changed paths and a RE-MINT as one.
+//
+// The CONTROLS are half the contract: `sinkListItem` (Tab) takes nothing, a
+// blockquote around a HEADING leaves the heading anchorable in its own right, a
+// mid-container split-lift leaves the head half holding the id, and an Enter
+// split still mints. And the uniqueness SWEEP (part C2) is the leg that speaks
+// for the shapes no named case looks at — it is what caught the undo duplicate
+// after the fact, and it is why the container-owns-it clear is measured at 9
+// failing legs rather than 1.
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", () => {
