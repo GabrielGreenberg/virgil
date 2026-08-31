@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   type PanelThemeKey,
   type DerivedCardPalette,
@@ -13,7 +13,6 @@ import {
   getPanelColor,
   getPanelColorVersion,
   isPanelColorOverridden,
-  loadPanelColors,
   subscribePanelColors,
 } from "@/lib/panel-theme";
 

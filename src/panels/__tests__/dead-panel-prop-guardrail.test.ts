@@ -16,6 +16,12 @@
  * say "you must pass something", only source inspection can say "somebody has
  * to read it."
  *
+ * Its SIBLING one level out is
+ * [dead-component-import-guardrail](../../__tests__/dead-component-import-guardrail.test.ts)
+ * (task 495), which asks the same question of an IMPORT rather than a prop: an
+ * imported component nobody renders is a feature that does not exist. Same two
+ * honest fixes, same reason a type cannot see it.
+ *
  * THE RULE: every property declared in a `*Props` interface under the censused
  * roots must appear at least once MORE in its own file (destructured, read off
  * a `p.`, or forwarded). A declaration that appears exactly once is dead.

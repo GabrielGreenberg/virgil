@@ -146,7 +146,6 @@ Each inline element has a stroke / fill / border triple.
 --mark-border:           #c8960e
 --drag-highlight:        #3b82f6      drop indicator
 --ring-drag-target:      #fcd34d      drop-target ring (amber)
---pref-mode-accent:      var(--drag-highlight)  edit-mode outline
 ```
 
 ## Destructive
