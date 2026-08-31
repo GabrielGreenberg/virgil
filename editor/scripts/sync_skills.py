@@ -134,6 +134,12 @@ def sync(folder: Path, source: BundleSource, *, check_only: bool = False) -> int
         if rel is None:
             continue
         try:
+            # unlink-exempt: this is the bundle BOOTSTRAP and is deliberately
+            # import-free — it must not depend on `_common.py`, which is one of
+            # the files it is in the middle of replacing. Hand-tolerant instead
+            # (task 496); a refused delete leaves a superseded skill file behind
+            # and the sync carries on, per this script's own "a sync hiccup must
+            # never block a cowork session" contract.
             (folder / rel).unlink()
             removed.append(old_entry)
         except OSError:

@@ -27,6 +27,11 @@ APPLY = str(SCRIPTS / "apply_response.py")
 # PANEL_KIND_MAP). This is what report-request→report remap protects.
 AI_REQUEST_KINDS = {"footnote", "note", "highlight", "citation", "todo", "suggestion", "report", "style-merge"}
 
+# Released-ness is ONE predicate (task 496): the release REWRITES the pen
+# record (`holder: null`) instead of deleting it, so a delete-blocked mount
+# cannot roll the collab restore back and report exit 2 on a landed write.
+from _pen_state import pen_released  # noqa: E402
+
 PASS, FAIL = 0, 0
 
 
@@ -231,7 +236,7 @@ ar = load(sb, "ai-requests.json")["requests"]
 check(len(ar) == ORIG_REQS, "NO Task synthesized (example lifecycle 'none')")
 check(not any(str(x.get("id", "")).startswith("virtual:") for x in ar), "no virtual id leaked into ai-requests.json")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen released")
+check(pen_released(sb), "pen released")
 
 
 # ---------------------------------------------------------------- example multi \pex
@@ -279,7 +284,7 @@ r = run(CREATE, str(sb), CIT_REQ, "--kind=citation", "--citekey", KEY, env={"VIR
 check(r.returncode != 0, "create_card exited non-zero on injected failure")
 check(before == snapshot(sb), "every target file byte-identical (full rollback)")
 check(not (sb / "virgil/version.txt").exists(), "version.txt NOT created (rolled back)")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen released even though the write failed")
+check(pen_released(sb), "pen released even though the write failed")
 
 
 # ---------------------------------------------------------------- back-compat: every carded kind synthesizes a valid AiRequestKind

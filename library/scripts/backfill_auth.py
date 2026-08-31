@@ -27,6 +27,7 @@ from _tools import (
     catalog_row_bib_state,
     read_catalog,
     read_master_bib,
+    unlink_tolerant,
     update_master_bib_entry,
 )
 
@@ -76,7 +77,8 @@ def _rotate_stale_done(qdir: Path, citekey: str) -> str:
     try:
         done.rename(rotated)
     except OSError:
-        done.unlink(missing_ok=True)
+        # A fallback that can itself raise is not a fallback (496).
+        unlink_tolerant(done, what="superseded .done")
     return old_kind
 
 

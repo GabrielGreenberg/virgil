@@ -9300,6 +9300,131 @@ skill-side design change with its own crash-recovery question (a 30 s TTL is
 right for a sub-second hold and wrong for a five-minute one), routed rather than
 made here.
 
+#### The release half: a teardown that needs a capability the transport may not grant
+
+Same pen, the other edge (task 496) — and the case where the app-side posture
+was written down (*"fail toward RELEASING"*, `cowork-pen.ts`) and the skill-side
+teardown did the opposite: it required a DELETE.
+
+`release_pen` ended every skill commit by removing `.virgil/pen-context.json`,
+and it did so through `atomic_write`'s write-set, whose `content is None` arm
+was a bare `os.remove`. A cloud (Dropbox) mount refuses `unlink` on a file it
+will happily let you REWRITE — the reported machine — and the raise then
+cascaded three ways, only the last of which the report could see:
+
+- **The collab restore was ROLLED BACK.** The release's own restore of
+  `collab.json` had already committed when the delete threw, so `atomic_write`'s
+  rollback rewrote it to the ACQUIRE-time state: `enabled: true`, pen held by
+  Claude. Past the app's 60 s pen-context ceiling `canEditMainText` is still
+  false, because rung 2 reads `sidecar.enabled` — **the paper is wedged
+  read-only**, recoverable only through the 5-minute take-the-pen affordance.
+  And the next `acquire_pen` snapshots the poisoned state as its own
+  `prior_pen` / `prior_collab_enabled`, so even a later SUCCESSFUL release
+  restores a locked collab: sticky across runs.
+- **A durable write reported failure.** The exception escaped
+  `commit_under_pen`'s unguarded `finally` and was caught only at the CLI top
+  (`die` → exit 2), so the result JSON was never printed although the whole
+  write-set — `.tex`, sidecars, version bump — was already on disk. The calling
+  skill reads that as a failed writeback: **a double-apply retry hazard on a
+  write that already landed.**
+- **The stale pen file was the CHEAP third.** It self-expires in ≤60 s app-side
+  and `acquire_pen` never reads it. That harmless third is what the report saw.
+
+> **A DELETE is the one filesystem capability a transport may not grant, and
+> every delete in these two silos is CLEANUP — a `.tmp` sibling, a retired lock,
+> a superseded `.done`, a spent temp file. So a refusal is a TIDINESS failure,
+> never a correctness one, and no delete may raise out of the operation it
+> cleans up for. And a release RELEASES BY REWRITE: a `holder: null` record,
+> not an absent file.**
+
+Two halves — `unlink_tolerant` / `rmtree_tolerant`
+([_common.py](editor/scripts/_common.py), mirrored in
+[_tools.py](library/scripts/_tools.py)), and the released record. Seven rules
+they earned:
+
+- **Release by REWRITE is strictly better than delete-then-TTL, not merely
+  safer.** `coworkPenFromContext` bails on a non-cowork holder BEFORE any clock
+  arithmetic, so a `holder: null` record reads as released **instantly** — where
+  a delete leaves the 60 s window in which a released pen still reads as live.
+  The safety property comes free with a UX improvement.
+- **…and it costs the sync daemon nothing**, which is what made it available at
+  all. A delete is already one filesystem event; an ~80-byte rewrite of a
+  `.virgil/` file is one too (the write-traffic doctrine, tasks 363/415). This is
+  precisely the trade task 489 DECLINED for `collab.json` — fabricating that file
+  on a solo paper would have been NEW traffic in the folder whose traffic those
+  two passes spent themselves reducing.
+- **The two halves are independently sufficient for the reported symptom, and
+  both ship anyway.** The rewrite removes the delete, so nothing can throw after
+  the collab restore commits; the tolerant unlink swallows a refusal one layer
+  down. Keeping only one leaves the other's class live — (1) alone leaves the
+  exit-code hazard for every OTHER release-time IO error, and the `finally` wrap
+  alone leaves the rollback latch, since the raise fires INSIDE `atomic_write`
+  and undoes the restore before any caller can see it.
+- **…which is exactly why the wrap needs its OWN leg.** With both halves in
+  place the wrap has nothing observable to do, so it is deletable in silence —
+  the shape "The tag half" records one subsystem over. The leg makes
+  `release_pen` itself raise (`ENOSPC` on the collab restore) and requires the
+  commit to return normally with its result printed.
+- **The warning goes to STDERR.** Stdout carries the writeback-contract JSON,
+  and a warning there would corrupt the very contract this protects.
+- **A released record carries NOTHING from the acquire.** Its `prior_*` snapshot
+  has just been spent; keeping it would let a later release re-restore a collab
+  state the user has since changed. Releasing an already-released record is a
+  no-op — no second filesystem event.
+- **`_mark_done`'s unlink is tidiness, and saying so is what makes tolerating it
+  correct.** The `.done` sibling WRITE is what retires a queue entry
+  (`_list_pending` skips a queue file whose same-kind `.done` exists), so a
+  refused unlink leaves an inert file behind rather than the infinite re-drain a
+  glance at the site suggests. Stated at the site, because the tolerant answer
+  is only right given that fact.
+
+**The helper is MIRRORED, not shared, and that is a constraint rather than a
+preference:** the two script trees ship as independent skill bundles synced into
+a paper folder and a library folder, so neither may import the other. What holds
+them together is a byte-identity PARITY leg over a marker-delimited block — the
+instrument the preservation measure and the marker census already use for code
+they cannot reach.
+
+**Two exemptions, each scoped to the shape it justifies** (task 204's rule) and
+each carrying an in-place `unlink-exempt:` marker: `sync_skills.py` is the bundle
+BOOTSTRAP and is deliberately import-free — it must not depend on `_common.py`,
+which is one of the files it is replacing; and `triage_apply.py`'s source-`.bib`
+disposition has a STRONGER policy than the helper's warning, reporting a refusal
+to the library's own inbox, which routing it through the helper would downgrade.
+The census verifies an exempt site is genuinely hand-tolerant (a `try` whose
+`except` does not re-raise), so the marker cannot become a standing licence.
+
+CI: [test_unlink_tolerant.py](editor/scripts/tests/test_unlink_tolerant.py) and
+its [library twin](library/scripts/tests/test_unlink_tolerant.py), each wrapped
+by a vitest leg so `npm test` has teeth on them (nothing in CI runs the library's
+python at all). **No pre-496 suite could see any of this**: every pen fixture in
+the repo asserts released-ness as *the file is GONE*, in nine places across six
+suites, so a delete that FAILS is unrepresentable in all of them — and four of
+those legs were pinning the defect as the contract. They are renegotiated in
+place with the reason at the site, onto ONE predicate
+([_pen_state.py](editor/scripts/tests/_pen_state.py): absent OR `holder: null`),
+which a census then keeps from being re-forked. The leg with teeth is the CENSUS:
+the helper was never the part that could misbehave, a delete site that never asks
+it is, and it runs perfectly until the day the mount says no — so every raw
+delete verb in either silo is inside the helper or carries a marker, allowlist
+otherwise EMPTY. Measured by neutering each half in turn: the pre-496 delete
+release takes 7 editor legs plus `test_pen_atomic` plus a `cowork-pen` parity
+leg, the unguarded `finally` 2 plus a parity leg, the raw `os.remove` in
+`atomic_write`'s content-None arm 4, a drifted mirror block 1, a new raw delete
+site 1 per silo, and `_mark_done`'s raw unlink 2.
+
+**Owed, not claimed:** a real cowork-session run on the reporting machine — one
+skill commit there should exit 0 with a result JSON and no pen warning left
+behind. The trigger environment (a cloud workspace's Dropbox mount) cannot be
+reproduced locally; the monkeypatched `PermissionError` is the delete-blocked
+mount in miniature and is the durable proof.
+
+**Residual, stated.** The pen record now PERSISTS between commits rather than
+appearing and vanishing, so a paper folder carries one small `.virgil/`
+file it did not before. Inert by construction — the app's ladder reads
+`holder: null` as no hold, `acquire_pen` overwrites it unconditionally, and
+nothing else reads it.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),

@@ -27,6 +27,8 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _tools import unlink_tolerant  # noqa: E402
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 LOCK_TTL_SECONDS = 60 * 60  # ignore stale locks older than 1h
@@ -111,7 +113,8 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
             try:
                 done_sibling.rename(rotated)
             except OSError:
-                done_sibling.unlink(missing_ok=True)
+                # A fallback that can itself raise is not a fallback (496).
+                unlink_tolerant(done_sibling, what="superseded .done")
             skip_counts["rotated-done"] = skip_counts.get("rotated-done", 0) + 1
         # Skip if .lock sibling is fresh.
         lock_sibling = p.with_suffix(".lock")
@@ -153,13 +156,20 @@ def _bump_attempts(entry_path: Path, error: str) -> int:
 
 
 def _mark_done(entry_path: Path) -> None:
-    """Replace queue file with `.done` sibling."""
+    """Replace queue file with `.done` sibling.
+
+    The `.done` WRITE is what retires the entry — `_list_pending` skips a
+    queue file whose same-kind `.done` sibling exists — so the unlink is
+    tidiness, and a mount that refuses it must not raise out of a drain that
+    has already completed the work (task 496). Left behind, the entry file is
+    inert: the `.done` sibling keeps it out of the next pass.
+    """
     done = entry_path.with_suffix(".done")
     try:
         done.write_text(entry_path.read_text())
     except Exception:
         done.write_text("")
-    entry_path.unlink(missing_ok=True)
+    unlink_tolerant(entry_path, what="retired queue entry")
 
 
 def _classify_entry(library: Path, citekey: str) -> tuple[str, str]:
@@ -249,7 +259,10 @@ def _process_one(entry: dict, library: Path) -> dict:
         return {"citekey": citekey, "kind": kind, "status": "failed",
                 "symbol": "X", "summary": "timeout (10m)"}
     finally:
-        lock.unlink(missing_ok=True)
+        # A finally-positioned delete must never replace the entry's own
+        # result with an OSError (task 496); the lock is stale-timeout'd
+        # anyway (`_is_lock_stale`), so a leftover self-clears.
+        unlink_tolerant(lock, what="queue lock")
 
 
 def main() -> int:

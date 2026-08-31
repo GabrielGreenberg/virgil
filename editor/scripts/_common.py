@@ -22,11 +22,66 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+# --- BEGIN MIRRORED: refused-delete policy (task 496) ----------------------
+# A DELETE is the one filesystem capability a transport may not grant: a cloud
+# mount (the reported Dropbox one) refuses `unlink` on a file it will happily
+# let you REWRITE. And every delete in this silo is CLEANUP — a `.tmp` sibling,
+# a retired lock, a superseded `.done`, a temp file handed to a subprocess — so
+# a refusal is a TIDINESS failure, never a correctness one.
+#
+# The law: **no delete may raise out of the operation it cleans up for**, and
+# it is ONE helper rather than per-site care, because per-site care is exactly
+# what shipped — the pen release's bare `os.remove` turned a landed write into
+# exit 2 AND rolled the collab restore back to Claude-held, wedging the paper
+# read-only until the record aged out.
+#
+# The warning goes to STDERR: stdout carries the writeback-contract JSON.
+#
+# This block is MIRRORED byte-for-byte in the other silo; the parity leg in
+# editor/scripts/tests/test_unlink_tolerant.py pins the two together, because
+# the two script trees ship as independent bundles and cannot import each
+# other. Edit one, edit both.
+def unlink_tolerant(path, *, what: str = "file") -> bool:
+    """Delete `path` if it is there. True iff it is gone afterwards.
+
+    Never raises. A mount that refuses deletion gets one stderr warning and
+    the caller carries on with whatever it was doing.
+    """
+    p = Path(path)
+    try:
+        p.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        print(
+            f"warning: could not delete {what} {p}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def rmtree_tolerant(path, *, what: str = "directory") -> bool:
+    """`shutil.rmtree` twin of `unlink_tolerant`. Never raises."""
+    p = Path(path)
+    if not p.exists():
+        return True
+    try:
+        shutil.rmtree(p)
+        return True
+    except OSError as e:
+        print(
+            f"warning: could not delete {what} {p}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+        return False
+# --- END MIRRORED ----------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +238,15 @@ def atomic_write(
       - content is `None`   → that file is deleted if present.
 
     Stages every content-write to a same-directory `.tmp` sibling first, then
-    commits (os.replace / os.remove) tracking what landed; on any failure it
-    restores every committed file from its pre-commit snapshot and re-raises.
+    commits (os.replace / a tolerant delete) tracking what landed; on any
+    failure it restores every committed file from its pre-commit snapshot and
+    re-raises.
+
+    Every DELETE here — the `content is None` arm, the rollback's undo of a
+    file that had no prior, and both `.tmp` cleanups — goes through
+    `unlink_tolerant`, so a mount that refuses deletion cannot convert a
+    landed write-set into a raise (task 496). A refused delete leaves a stale
+    file behind and warns on stderr; it never rolls the commit back.
 
     `fault_injectable` gates the test-only fault hook. Pen/infra writes pass
     `False` so the atomicity test can target a subcommand's main write-set
@@ -208,7 +270,7 @@ def atomic_write(
             temps[p] = tmp
     except Exception:
         for tmp in temps.values():
-            tmp.unlink(missing_ok=True)
+            unlink_tolerant(tmp, what="staged temp")
         raise
 
     # 2. Commit: swap temps in / delete removals, tracking each for rollback.
@@ -216,8 +278,10 @@ def atomic_write(
     try:
         for p, content in norm:
             if content is None:
-                if p.exists():
-                    os.remove(p)
+                # A refused delete is NOT a failed commit: this arm is only
+                # ever cleanup (task 496), so it warns and moves on rather
+                # than dropping into the rollback below.
+                unlink_tolerant(p)
             else:
                 os.replace(temps[p], p)
             committed.append(p)
@@ -232,14 +296,13 @@ def atomic_write(
             prior = priors.get(p)
             try:
                 if prior is None:
-                    if p.exists():
-                        os.remove(p)
+                    unlink_tolerant(p, what="rolled-back file")
                 else:
                     p.write_text(prior, encoding="utf-8")
             except OSError:
                 pass
         for tmp in temps.values():
-            tmp.unlink(missing_ok=True)
+            unlink_tolerant(tmp, what="staged temp")
         raise
 
 
@@ -783,10 +846,33 @@ def acquire_pen(doc: Path, *, ttl: int = PEN_TTL_SECONDS) -> dict:
 
 def release_pen(doc: Path) -> None:
     """Release the pen. Restores collab.json's prior enabled/pen state (if we
-    touched it) and deletes .virgil/pen-context.json. Idempotent: a no-op if no
-    pen-context.json is present."""
+    touched it) and REWRITES .virgil/pen-context.json as a released record.
+    Idempotent: a no-op if no pen-context.json is present, and a no-op on a
+    record that already says released.
+
+    **Release by REWRITE, not by delete (task 496).** The obvious release is
+    to remove the lock file, and that is what shipped — a bare `os.remove`
+    inside `atomic_write`'s write-set. On a mount that refuses deletion (the
+    reported cloud/Dropbox one) the raise fired AFTER the collab restore had
+    already committed, so `atomic_write`'s rollback put collab.json back to
+    the ACQUIRE-time state: `enabled: true`, pen held by Claude. The paper was
+    then wedged read-only long past the app's 60 s pen-context ceiling, and the
+    next acquire snapshotted the poisoned state as its own `prior_*` — sticky
+    across runs.
+
+    A `holder: null` record is read as RELEASED **instantly** by the app
+    (`coworkPenFromContext` bails on a non-cowork holder, src/lib/cowork-pen.ts),
+    which is strictly better than delete-then-TTL: no 60 s window in which a
+    crashed-looking hold still reads as live. And it costs the sync daemon
+    nothing extra — a delete is already one filesystem event, an ~80-byte
+    rewrite of a `.virgil/` file is one too (write-traffic doctrine, 363/415).
+    """
     ctx = read_json(pen_context_path(doc), default=None)
     if not isinstance(ctx, dict):
+        return
+    if ctx.get("holder") is None:
+        # Already released: the restore below has run, and re-writing the
+        # released record would be a filesystem event that says nothing.
         return
 
     writes: list[tuple[Path, str | None]] = []
@@ -801,19 +887,42 @@ def release_pen(doc: Path) -> None:
             restored["pen"] = prior_pen if isinstance(prior_pen, dict) else dict(FREE_PEN)
             writes.append((collab_file, json_dumps(restored)))
 
-    writes.append((pen_context_path(doc), None))  # delete the lock record
+    # The released record carries NOTHING from the acquire: its `prior_*`
+    # snapshot has just been spent, and keeping it would let a later release
+    # re-restore a state the user has since changed.
+    released = {"holder": None, "released_at": _iso_at(0)}
+    writes.append((pen_context_path(doc), json_dumps(released)))
     atomic_write(writes, fault_injectable=False)
 
 
 def commit_under_pen(doc: Path, writes: list[tuple[Path, str | None]]) -> None:
     """Run an atomic multi-file write while holding the pen. Acquire → commit →
     release; the release runs in a finally so a failed/rolled-back write still
-    frees the pen and restores collab state."""
+    frees the pen and restores collab state.
+
+    **A release-time IO error may not replace the commit's outcome (task 496).**
+    The write-set is already on disk by the time the finally runs, so a raise
+    from `release_pen` would escape to the CLI top, be converted to `die()`, and
+    report exit 2 with no result JSON printed — a landed write reported as a
+    failure, i.e. a double-apply retry hazard. The rewrite-not-delete release
+    above removes the one delete that could realistically raise here; this wrap
+    is the general net, for every other IO failure a release can hit.
+
+    A failure of the WRITE itself still propagates: the guard is around the
+    release only, so `atomic_write`'s exception leaves the finally normally.
+    """
     acquire_pen(doc)
     try:
         atomic_write(writes)
     finally:
-        release_pen(doc)
+        try:
+            release_pen(doc)
+        except Exception as e:  # noqa: BLE001 — never poison a landed commit
+            print(
+                f"warning: pen release failed for {doc}: "
+                f"{type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
 
 
 # ---------------------------------------------------------------------------

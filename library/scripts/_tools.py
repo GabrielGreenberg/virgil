@@ -52,10 +52,65 @@ import json
 import os
 import re
 import shutil
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+# --- BEGIN MIRRORED: refused-delete policy (task 496) ----------------------
+# A DELETE is the one filesystem capability a transport may not grant: a cloud
+# mount (the reported Dropbox one) refuses `unlink` on a file it will happily
+# let you REWRITE. And every delete in this silo is CLEANUP — a `.tmp` sibling,
+# a retired lock, a superseded `.done`, a temp file handed to a subprocess — so
+# a refusal is a TIDINESS failure, never a correctness one.
+#
+# The law: **no delete may raise out of the operation it cleans up for**, and
+# it is ONE helper rather than per-site care, because per-site care is exactly
+# what shipped — the pen release's bare `os.remove` turned a landed write into
+# exit 2 AND rolled the collab restore back to Claude-held, wedging the paper
+# read-only until the record aged out.
+#
+# The warning goes to STDERR: stdout carries the writeback-contract JSON.
+#
+# This block is MIRRORED byte-for-byte in the other silo; the parity leg in
+# editor/scripts/tests/test_unlink_tolerant.py pins the two together, because
+# the two script trees ship as independent bundles and cannot import each
+# other. Edit one, edit both.
+def unlink_tolerant(path, *, what: str = "file") -> bool:
+    """Delete `path` if it is there. True iff it is gone afterwards.
+
+    Never raises. A mount that refuses deletion gets one stderr warning and
+    the caller carries on with whatever it was doing.
+    """
+    p = Path(path)
+    try:
+        p.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        print(
+            f"warning: could not delete {what} {p}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def rmtree_tolerant(path, *, what: str = "directory") -> bool:
+    """`shutil.rmtree` twin of `unlink_tolerant`. Never raises."""
+    p = Path(path)
+    if not p.exists():
+        return True
+    try:
+        shutil.rmtree(p)
+        return True
+    except OSError as e:
+        print(
+            f"warning: could not delete {what} {p}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+        return False
+# --- END MIRRORED ----------------------------------------------------------
 
 
 # ── work-identity guard error ─────────────────────────────────────────

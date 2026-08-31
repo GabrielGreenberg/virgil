@@ -130,7 +130,7 @@ notification + version-bump* transaction under the editing pen:
 create-card --kind=<k>  →  create_card.py  →  apply_response.py <subcommand>
                                                ├─ acquire the editing pen (collab.json + pen-context.json, TTL ≈ +30s)
                                                ├─ atomic N-file write (card + .tex splice + .bib/settings/annotation + ai-requests + notification + version.txt) — all-or-nothing
-                                               └─ release the pen (restore prior collab state)
+                                               └─ release the pen (restore prior collab state; rewrite pen-context as `holder: null`, never delete — task 496)
 ```
 
 Subcommand by the Task's `safetyLevel`:

@@ -109,6 +109,29 @@ describe("rung 1 · .virgil/pen-context.json", () => {
     ).toBeNull();
   });
 
+  // THE RELEASED RECORD (task 496). `release_pen` no longer DELETES the file —
+  // on a mount that refuses deletion the raise rolled a committed collab
+  // restore back to Claude-held and reported exit 2 on a landed write — so it
+  // rewrites it with `holder: null`. This rung must read that as released
+  // INSTANTLY, which it does because the holder gate runs before any clock
+  // arithmetic: strictly better than delete-then-TTL, which leaves a 60 s
+  // window in which a released pen still reads as live.
+  it("reads a RELEASED record (holder: null) as no hold at all", () => {
+    expect(
+      coworkPenFromContext(
+        { holder: null, released_at: new Date(T0).toISOString() },
+        T0 + 1,
+      ),
+    ).toBeNull();
+    // …and it is released for good, not merely not-yet-expired.
+    expect(
+      coworkPenFromContext(
+        { holder: null, released_at: new Date(T0).toISOString() },
+        T0 - 60_000,
+      ),
+    ).toBeNull();
+  });
+
   // FAIL TOWARD RELEASING. A far-future expiry (clock skew, a hand-edited file,
   // a future skill that lengthens its own TTL) must not be able to hold the
   // document hostage: the app's ceiling wins.
@@ -407,5 +430,30 @@ describe("parity · editor/scripts/_common.py", () => {
     expect(py).toContain('"holder": PEN_CONTEXT_HOLDER');
     expect(py).toContain('"acquired_at": now_s');
     expect(py).toContain('"expires_at": expires_s');
+  });
+
+  // The RELEASE half of the same seam (task 496). The skill releases by
+  // REWRITING the record with `holder: null` rather than deleting it, and the
+  // rung above reads exactly that as released. If the skill ever went back to
+  // a delete-and-hope, this leg is what says so — the behavioural rung would
+  // stay green (an absent file is also "no hold"), while the delete is what
+  // rolls the collab restore back and wedges the paper.
+  it("the release REWRITES a released record rather than deleting it", () => {
+    const body = py.slice(
+      py.indexOf("def release_pen"),
+      py.indexOf("def commit_under_pen"),
+    );
+    expect(body).toContain('"holder": None');
+    expect(body).toContain("json_dumps(released)");
+    // No `content is None` (delete) entry in the release's write-set.
+    expect(body).not.toContain("), None)");
+  });
+
+  // A release-time IO error must not replace a LANDED commit's outcome.
+  it("commit_under_pen guards its release", () => {
+    const body = py.slice(py.indexOf("def commit_under_pen"));
+    const finallyBlock = body.slice(body.indexOf("finally:"), body.indexOf("finally:") + 400);
+    expect(finallyBlock).toMatch(/try:\s*\n\s*release_pen\(doc\)/);
+    expect(finallyBlock).toContain("except Exception");
   });
 });

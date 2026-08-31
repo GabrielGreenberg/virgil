@@ -5,6 +5,8 @@ Run from anywhere:  python3 editor/scripts/tests/test_pen_atomic.py
 import sys, os, json, tempfile, shutil
 from pathlib import Path
 
+from _pen_state import pen_released
+
 # editor/scripts is one level up from tests/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _common as C
@@ -61,9 +63,22 @@ assert collab_now["pen"]["lastHeartbeat"] is not None
 assert len(collab_now["participants"]) == 2, "participants preserved"
 print("pen acquire OK")
 
-# --- pen release restores collab + deletes pen-context ---
+# --- pen release restores collab + REWRITES pen-context as released ---
+#
+# RENEGOTIATED (task 496). This leg used to read `assert not pcp.exists()` —
+# it pinned the DEFECT as the contract. The release deleted the record through
+# `atomic_write`'s bare `os.remove`, and on a mount that refuses deletion (the
+# reported cloud/Dropbox one) the raise fired AFTER the collab restore had
+# committed: the rollback put collab.json back to acquire-time (enabled: true,
+# Claude-held) and wedged the paper read-only, while the exception escaped
+# `commit_under_pen`'s finally and reported exit 2 on an already-landed write.
+# The release is a rewrite now, and released-ness is `pen_released` — absent OR
+# `holder: null`, which the app's ladder reads as free INSTANTLY rather than
+# after the 60 s TTL a delete-then-expire leaves open.
 C.release_pen(d)
-assert not pcp.exists(), "pen-context not deleted"
+assert pen_released(d), "pen not released"
+assert pcp.exists(), "the record is REWRITTEN, not deleted"
+assert json.loads(pcp.read_text())["holder"] is None, "released record names no holder"
 collab_after = json.loads((d / "virgil" / "collab.json").read_text())
 assert collab_after["enabled"] is False, "collab must be restored to off"
 assert collab_after["pen"]["holder"] is None, collab_after["pen"]
@@ -77,14 +92,14 @@ C.acquire_pen(d2)
 assert C.pen_context_path(d2).exists()
 assert not (d2 / "virgil" / "collab.json").exists(), "must NOT fabricate collab.json"
 C.release_pen(d2)
-assert not C.pen_context_path(d2).exists()
+assert pen_released(d2)  # renegotiated with the leg above (task 496)
 print("pen no-collab OK")
 
 # --- commit_under_pen happy: write lands, pen released, collab restored ---
 e = d / "virgil" / "e.json"
 C.commit_under_pen(d, [(e, C.json_dumps({"e": 1}))])
 assert json.loads(e.read_text()) == {"e": 1}
-assert not C.pen_context_path(d).exists(), "pen released after commit"
+assert pen_released(d), "pen released after commit"  # 496: released ≠ deleted
 assert json.loads((d / "virgil" / "collab.json").read_text())["enabled"] is False
 print("commit_under_pen OK")
 
@@ -99,7 +114,7 @@ except RuntimeError:
 del os.environ["VIRGIL_TEST_FAIL_AFTER_WRITES"]
 assert json.loads(e.read_text()) == {"e": 1}, "e must roll back"
 assert not f.exists(), "f must not exist"
-assert not C.pen_context_path(d).exists(), "pen released even on failure"
+assert pen_released(d), "pen released even on failure"  # 496: released ≠ deleted
 assert json.loads((d / "virgil" / "collab.json").read_text())["enabled"] is False, "collab restored even on failure"
 print("commit_under_pen rollback OK")
 

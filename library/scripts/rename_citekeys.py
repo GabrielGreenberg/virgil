@@ -17,6 +17,7 @@ from pathlib import Path
 THIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(THIS_DIR))
 import _tools
+from _tools import rmtree_tolerant
 
 
 def _forms(k):
@@ -194,7 +195,7 @@ def selftest():
     al = json.loads((tmp / ".virgil" / "aliases.json").read_text())
     assert al.get("woods2002shape", {}).get("survivor") == "murray2002shape", "old->new alias missing"
     assert "murray2002shape" not in al, "stale new->old alias remains"
-    shutil.rmtree(tmp)
+    rmtree_tolerant(tmp, what="selftest scratch dir")
     print("SELFTEST PASS: master+folder+pdf+catalog+aliases all renamed consistently")
 
 

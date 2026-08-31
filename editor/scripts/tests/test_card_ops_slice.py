@@ -26,6 +26,11 @@ APPLY = str(SCRIPTS / "apply_response.py")
 CREATE = str(SCRIPTS / "create_card.py")
 CBID = str(SCRIPTS / "card_by_id.py")
 
+# Released-ness is ONE predicate (task 496): the release REWRITES the pen
+# record (`holder: null`) instead of deleting it, so a delete-blocked mount
+# cannot roll the collab restore back and report exit 2 on a landed write.
+from _pen_state import pen_released  # noqa: E402
+
 PASS, FAIL = 0, 0
 
 
@@ -146,7 +151,7 @@ n = by_id(sb, "notes.json", "cards", NOTE)
 check(text_of_content(n) == "McKenzie widens Genette's paratext.", "note content body replaced")
 check(n.get("title") == "Sociology of texts", "note named field (title) set")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen released")
+check(pen_released(sb), "pen released")
 notif = load(sb, "notifications.json")["items"][-1]
 check(notif["kind"] == "ai-request-complete" and NOTE in notif["summary"], "audit notification appended")
 
@@ -351,7 +356,7 @@ r = op(sb, "archive", {"cardId": NOTE}, env={"VIRGIL_TEST_FAIL_AFTER_WRITES": "2
 check(r.returncode != 0, "archive exited non-zero on injected failure")
 check(before_snap == snapshot(sb), "every target file byte-identical (full rollback of the cross-sidecar move)")
 check(not (sb / "virgil/version.txt").exists(), "version.txt NOT created (rolled back)")
-check(not (sb / ".virgil/pen-context.json").exists(), "pen released even though the write failed")
+check(pen_released(sb), "pen released even though the write failed")
 
 print("\n=== atomicity: injected failure rolls a link back (both sidecars) ===")
 sb = sandbox()

@@ -55,6 +55,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _tools import rmtree_tolerant  # noqa: E402
+
 
 # Snapshot retention — keep the last N pre-merge snapshots.
 RETAIN_SNAPSHOTS = 5
@@ -257,11 +261,10 @@ def _prune_old_snapshots(library: Path) -> int:
     )
     pruned = 0
     for p in snaps[RETAIN_SNAPSHOTS:]:
-        try:
-            shutil.rmtree(p)
+        # Retention pruning is tidiness: one refused delete must not stop the
+        # sweep or the merge it precedes (task 496).
+        if rmtree_tolerant(p, what="merge-bibs snapshot"):
             pruned += 1
-        except OSError:
-            pass
     return pruned
 
 
