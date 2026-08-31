@@ -31,7 +31,10 @@
  *     trigger flips up, and one that outgrows the viewport scrolls rather than
  *     rendering rows nobody can reach;
  *   - the trigger is registered in `excludeRefs`, so its click is a real toggle
- *     (the task-094 regression, pinned by `header-add-dropdown-toggle.test.tsx`).
+ *     (the task-094 regression, pinned by `header-add-dropdown-toggle.test.tsx`);
+ *   - it supplies the trigger's FOCUS INDICATOR (task 507) — the trigger is the
+ *     element that keeps DOM focus for the whole interaction, and five of the
+ *     eight consumers spelled none. See `TRIGGER_FOCUS_RING_CLASS` below.
  *
  * Closing stays the CALLER's business, as it is for `<MenuToggleRow>`: a filter
  * menu wants to survive a run of toggles, an action menu wants to close on pick.
@@ -114,6 +117,57 @@ export const ANCHORED_MENU_PLACEMENTS: Record<
  *  class string is how the MenuBar dropdowns came to carry a hand-copy. */
 const MENU_BODY_PAD_CLASS = "py-1";
 
+/**
+ * The app's focus indicator, supplied by the SHELL to the button it owns
+ * (task 507).
+ *
+ * The menu's whole keyboard model rests on this button: rows are
+ * `tabIndex: -1` and nothing ever calls `.focus()` on one (the house roving
+ * model), so **the trigger is the element that keeps DOM focus while the menu
+ * is open** — it is what hosts `aria-activedescendant` (task 477, one field
+ * up). A trigger with no visible focus indicator is therefore not a cosmetic
+ * gap: it is the ONE element a keyboard user is standing on for the whole
+ * interaction, unmarked.
+ *
+ * Stated here rather than at each call site for the reason the whole shell
+ * exists, and with the same evidence: five of the eight consumers spelled no
+ * indicator at all, and the icon-button census could not see them —
+ * `literalClassName` returns null for `className={triggerClassName}`, so leg C
+ * skipped every one. So this joins `aria-haspopup` / `aria-expanded` / the
+ * drag isolation / the activedescendant host as something the component that
+ * knows the keyboard model states ONCE (the task-386 `CardTitleRegistry`,
+ * task-389 dialog-shell pattern).
+ *
+ * Composition, not a second ring: `.focus-ring:focus-visible` and every
+ * `.iconbtn-*:focus-visible` share ONE declaration block in `globals.css`, so
+ * the three triggers that already carry `iconbtn-sm` / `iconbtn-md` gain a
+ * second SELECTOR for one declaration — one indicator, whatever the class
+ * order. Pinned in `icon-button-a11y-guardrail` ("the shell's indicator
+ * COMPOSES with an `iconbtn-*`").
+ *
+ * What a caller may no longer do, and what the census reads: the class is
+ * UNLAYERED, so it OWNS `box-shadow` on the trigger while focused. A
+ * `ring-*` in `triggerClassName` (Tailwind implements it AS `box-shadow`)
+ * paints nothing there, and an inline `boxShadow` in `triggerStyle` beats the
+ * sheet and leaves the trigger with NO indicator at all — strictly worse than
+ * never taking the class. A REST-state shadow is fine and yields to the ring
+ * while focused, which is the correct precedence (STYLE_GUIDE "Interaction" →
+ * Focus).
+ */
+const TRIGGER_FOCUS_RING_CLASS = "focus-ring";
+
+/** `triggerClassName` with the shell's indicator appended, unless the caller
+ *  declared it owns one. Exported for the suite that pins the append. */
+export function anchoredTriggerClassName(
+  triggerClassName: string | undefined,
+  ownsFocusIndicator: boolean,
+): string | undefined {
+  if (ownsFocusIndicator) return triggerClassName;
+  return triggerClassName
+    ? `${triggerClassName} ${TRIGGER_FOCUS_RING_CLASS}`
+    : TRIGGER_FOCUS_RING_CLASS;
+}
+
 export interface AnchoredMenuRenderProps {
   /** Close the menu (and drop the anchor). */
   close: () => void;
@@ -160,8 +214,23 @@ export interface AnchoredMenuProps {
    *  that flips, an accent tint). The button element itself — and its ARIA — is
    *  owned by this component. */
   trigger: (open: boolean) => ReactNode;
-  /** Trigger button className. */
+  /** Trigger button className. The shell APPENDS its focus indicator to
+   *  whatever it is given — see `triggerOwnsFocusIndicator`. */
   triggerClassName?: string;
+  /**
+   * Opt OUT of the shell-supplied focus indicator, for a trigger that
+   * composes its own (task 507). Never a silent skip: a caller that sets this
+   * must carry `.focus-ring` / `iconbtn-*` / `.topbarbtn` in its own
+   * `triggerClassName`, and `icon-button-a11y-guardrail` names it if it does
+   * not.
+   *
+   * There is no consumer today. It exists because the alternative — a shell
+   * that appends unconditionally — leaves a trigger whose indicator genuinely
+   * cannot be a `box-shadow` (an INLINE elevation, which beats the sheet
+   * outright: the `StackIcon` shape) with a class that deletes the UA outline
+   * and supplies nothing.
+   */
+  triggerOwnsFocusIndicator?: boolean;
   /** Trigger button inline style. The shell OWNS the button element, so a
    *  trigger whose appearance is data-driven (the panel-color swatch, whose fill
    *  IS the current theme colour) has no other way to express it. */
@@ -208,6 +277,7 @@ export function AnchoredMenu({
   gap = 4,
   trigger,
   triggerClassName,
+  triggerOwnsFocusIndicator = false,
   triggerStyle,
   triggerHint,
   triggerAriaLabel,
@@ -293,7 +363,10 @@ export function AnchoredMenu({
           e.stopPropagation();
           e.preventDefault();
         }}
-        className={triggerClassName}
+        className={anchoredTriggerClassName(
+          triggerClassName,
+          triggerOwnsFocusIndicator,
+        )}
         style={triggerStyle}
         data-hint={triggerHint}
         aria-label={triggerAriaLabel ?? ariaLabel}

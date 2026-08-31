@@ -917,6 +917,25 @@ Five states. One implementation each.
   raw Tailwind palette value. CI reads this rule:
   `icon-button-a11y-guardrail.test.ts` → "a focus indicator has ONE mechanism"
   (allowlist: EMPTY, both legs).
+- **A component that OWNS a focusable element supplies its focus indicator.**
+  Where a shell renders the `<button>` itself and takes only its `className`
+  from a prop, the ring is the SHELL's obligation, stated once beside the ARIA
+  and the drag isolation it already owns — not eight callers' to remember.
+  `<AnchoredMenu>` appends `focus-ring` to whatever `triggerClassName` it is
+  handed (task 507): its trigger is the element that KEEPS DOM focus while the
+  menu is open (rows are `tabIndex: -1`, so the trigger hosts
+  `aria-activedescendant`), and five of its eight consumers spelled no
+  indicator at all. `<Button>` does the same for its own `className`. A caller
+  that genuinely composes its own — the inline-`box-shadow` shape, which no
+  stylesheet ring can override — declares `triggerOwnsFocusIndicator` and keeps
+  the UA outline; never a silent skip. The consequence for callers: a
+  shell-owned trigger may NOT carry a `ring-*` or an inline `boxShadow`, since
+  the appended class owns `box-shadow` there (the bullet above). Its decorative
+  hover affordance takes another PROPERTY — `border-color` is the free one
+  (`edge-hover` → `edge-strong`, the same shift the bordered-pill hover rule
+  uses); `outline` is NOT, because the focus rule sets `outline: none`. CI:
+  `icon-button-a11y-guardrail.test.ts` → "the shell that OWNS a trigger
+  supplies its focus indicator" (allowlists: EMPTY).
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 

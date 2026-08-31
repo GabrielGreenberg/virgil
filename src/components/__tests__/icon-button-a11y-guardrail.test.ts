@@ -111,6 +111,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   commentsStripped,
+  cssCommentsStripped,
   elementsNamed,
   strip,
   tagEnd,
@@ -577,13 +578,22 @@ describe("the visible-text classifier (self-check)", () => {
  *    already carry none, and leg C of the census above says the ring question
  *    "doesn't apply" to a row that is not a tab stop.
  *  - **`PanelThemePicker`'s TRIGGER is not a member.** The filing said the
- *    anchored-menu trigger "also gives `.focus-ring`". It does not:
- *    `AnchoredMenu` renders its trigger with `className={triggerClassName}`
- *    and appends nothing, so `hover:ring-2 hover:ring-edge-subtle` there is a
- *    decorative ring on an element with no focus indicator — the sanctioned
+ *    anchored-menu trigger "also gives `.focus-ring`". It did not:
+ *    `AnchoredMenu` rendered its trigger with `className={triggerClassName}`
+ *    and appended nothing, so `hover:ring-2 hover:ring-edge-subtle` there was
+ *    a decorative ring on an element with no focus indicator — the sanctioned
  *    shape. (Its `shadow-inner` neighbour composes rather than collides:
  *    Tailwind v4 folds `--tw-shadow` and `--tw-ring-shadow` into one
  *    `box-shadow`. Only an UNLAYERED rule, or an INLINE style, replaces it.)
+ *
+ *    RENEGOTIATED by task 507, with the reason at the site. That reading was
+ *    right about the tree it was measured on and it recorded the DEFECT as the
+ *    contract: the trigger is the element that KEEPS DOM focus while the menu
+ *    is open (rows are `tabIndex: -1`; task 477 puts `aria-activedescendant`
+ *    on it), and five of the eight consumers gave it no indicator at all. So
+ *    the shell supplies one now — which makes that trigger a member after all,
+ *    and its `hover:ring-2` a real collision. The hover affordance moved to
+ *    `border-color`; the block below is what keeps the next one from arriving.
  *
  * ── What this census can and cannot see ──────────────────────────────
  *
@@ -601,8 +611,10 @@ describe("the visible-text classifier (self-check)", () => {
  *    a function call, a prop, an object member. It fails toward silence.
  *  - **Cross-FILE flow is invisible.** A parent that appends `focus-ring` to a
  *    child's `className` prop is two files; only the halves each file can see
- *    are joined. (No such pair exists today: the population leg is an exact
- *    file set, so a new ring anywhere has to be acknowledged.)
+ *    are joined. Since task 507 exactly one such pair EXISTS and it is
+ *    deliberate — `AnchoredMenu` appends the indicator to every
+ *    `triggerClassName` it is handed — so the block at the end of this file
+ *    censuses that flow directly rather than leaving it to this limit.
  *  - **A ring reached as an inline `style` is a different mechanism** and is
  *    not censused here. Inline beats the sheet outright — the caveat
  *    `PERMITTED_UNRINGED_ICON_BUTTONS` above already records for `StackIcon`.
@@ -781,8 +793,12 @@ describe("a focus indicator has ONE mechanism", () => {
     // vacuously. Floors anchored well under today's counts.
     expect(CLASS_VALUES.length).toBeGreaterThan(1500);
     expect(CLASS_VALUES.some((v) => v.file.startsWith("library/"))).toBe(true);
-    // …and it must still be able to SEE a ring at all.
-    expect(RINGED.length).toBeGreaterThanOrEqual(3);
+    // …and it must still be able to SEE a ring at all. The floor moved 3 → 2
+    // in task 507, when the picker TRIGGER's decorative hover ring left the
+    // tree (the shell supplies that trigger's focus indicator now, which owns
+    // `box-shadow` there). The exact-set leg below is what actually pins the
+    // survivors; this is only the scanner's own can-see canary.
+    expect(RINGED.length).toBeGreaterThanOrEqual(2);
   });
 
   it("no element declares a ring utility AND the focus indicator", () => {
@@ -808,7 +824,10 @@ describe("a focus indicator has ONE mechanism", () => {
     // trip it, and so a `ring-*` appearing in a new file is an acknowledged
     // decision rather than a silent one.
     expect([...new Set(RINGED.map((v) => v.file))].sort()).toEqual([
-      // The picker trigger's decorative hover ring, and the selected swatch.
+      // The selected swatch's ring. (The picker TRIGGER's decorative hover ring
+      // was the file's other member until task 507 gave that trigger the
+      // shell's focus indicator, which owns `box-shadow` there; the hover
+      // affordance moved to `border-color`.)
       "src/components/PanelThemePicker.tsx",
       // The bib-merge drop-target halo on a card root that carries no focus
       // indicator (a card wrapper strips its ring — themed selection IS the
@@ -905,5 +924,225 @@ describe("a focus indicator has ONE mechanism", () => {
     expect(RING_UTILITY.test("px-2 focus-ring")).toBe(false);
     expect(FOCUS_INDICATOR.test("focus-visible:ring-2")).toBe(false);
     expect(RAW_PALETTE_RING.test("ring-edge-strong ring-drag-target")).toBe(false);
+  });
+});
+
+/* ── The SHELL supplies its trigger's indicator (task 2026-08-31-507) ── */
+
+/**
+ * > A component that OWNS a focusable element supplies that element's focus
+ * > indicator. `AnchoredMenu` renders the trigger `<button>` itself, so the
+ * > ring is its obligation — not the eight callers' — and a caller that
+ * > composes its own says so with `triggerOwnsFocusIndicator`.
+ *
+ * The menu's whole keyboard model rests on that button. Rows are `tabIndex:
+ * -1` and nothing ever calls `.focus()` on one (the house roving model), so
+ * **the trigger keeps DOM focus for the entire interaction** and hosts
+ * `aria-activedescendant` (task 477). A trigger with no visible indicator is
+ * therefore not a cosmetic gap: it is the one element a keyboard user is
+ * standing on, unmarked, while they arrow through a menu.
+ *
+ * Five of the eight consumers spelled no indicator at all — `PanelThemePicker`,
+ * `SearchPanel`, `OmniViewPanel`, `UnanchoredCardsChip`, `panel-primitives`'
+ * card-kind dropdown — and **leg C above could not see any of them**: its
+ * `literalClassName` returns `null` for `className={triggerClassName}`, which
+ * is what the shell writes, so every one was skipped rather than flagged. The
+ * fix makes that blind spot MOOT rather than fixing the scanner: no caller has
+ * to spell the ring, so there is nothing for leg C to miss.
+ *
+ * What the append CREATES, and what this block therefore has to ask. The class
+ * is UNLAYERED, so it OWNS `box-shadow` on the trigger while focused (the law
+ * one block up). Before the shell appended it, a `ring-*` in a
+ * `triggerClassName` was the SANCTIONED shape — a decorative ring on an element
+ * with no focus indicator — and `PanelThemePicker`'s `hover:ring-2` was exactly
+ * that. Now it is a collision, and one no leg above can see: the two halves
+ * live in two files, which is the cross-FILE limit this file's own header
+ * records. So the four legs below ask it directly, of the population that has
+ * the shape.
+ */
+
+/** Every `<AnchoredMenu …>` opening tag in both silos' production `.tsx`. */
+interface MenuSite {
+  file: string;
+  line: number;
+  tag: string;
+}
+
+function anchoredMenuSites(): MenuSite[] {
+  const out: MenuSite[] = [];
+  const files = [
+    ...trackedFiles("src", /\.tsx$/),
+    ...trackedFiles("library", /\.tsx$/),
+  ].filter((p) => !p.includes("__tests__"));
+  for (const abs of files) {
+    const rel = path.relative(ROOT, abs);
+    const raw = fs.readFileSync(abs, "utf8");
+    // Comments blanked, string literals KEPT — every needle below lives inside
+    // a quoted class list or a prop name, so `codeOnly` would erase the very
+    // thing being censused (the trap `_source-scan`'s own header records).
+    const src = strip(raw, true, true);
+    for (const hit of elementsNamed(src, "AnchoredMenu")) {
+      out.push({
+        file: rel,
+        line: src.slice(0, hit.index).split("\n").length,
+        tag: hit.tag,
+      });
+    }
+  }
+  return out;
+}
+
+/** The RAW source of `name={…}` / `name="…"` inside a tag, or null. */
+function propValue(tag: string, name: string): string | null {
+  const m = new RegExp(`(?<![\\w-])${name}\\s*=\\s*`).exec(tag);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  const q = tag[at];
+  if (q === '"' || q === "'") {
+    const close = tag.indexOf(q, at + 1);
+    return close > 0 ? tag.slice(at + 1, close) : null;
+  }
+  if (q === "{") {
+    const end = balancedEnd(tag, at, "{", "}");
+    return end > 0 ? tag.slice(at + 1, end - 1) : null;
+  }
+  return null;
+}
+
+/** A trigger that declares it composes its own indicator. */
+const optsOut = (tag: string) =>
+  /(?<![\w-])triggerOwnsFocusIndicator(?!\s*=\s*\{\s*false\s*\})/.test(tag);
+
+const MENU_SITES = anchoredMenuSites();
+const menuAt = (s: MenuSite) => `${s.file}:${s.line}`;
+
+const SHELL = "src/components/menu/AnchoredMenu.tsx";
+
+describe("the shell that OWNS a trigger supplies its focus indicator", () => {
+  it("sees a population worth censusing (self-check)", () => {
+    // A scanner that stopped matching `<AnchoredMenu` would make every leg
+    // below pass vacuously. Floor anchored under today's eight.
+    expect(MENU_SITES.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(MENU_SITES.map((s) => s.file)).size).toBeGreaterThanOrEqual(4);
+  });
+
+  it("the shell APPENDS it, so no caller has to spell one", () => {
+    // The half leg C structurally cannot see. Read from the shell's own
+    // source: this is what makes the census's blind spot moot rather than
+    // merely tolerated.
+    const src = strip(fs.readFileSync(path.join(ROOT, SHELL), "utf8"), true, true);
+    // The indicator is a named constant, so the class cannot be re-spelled.
+    expect(src).toMatch(/TRIGGER_FOCUS_RING_CLASS\s*=\s*"focus-ring"/);
+    // …resolved by ONE function, which the button's className calls.
+    expect(src).toMatch(/function anchoredTriggerClassName\(/);
+    expect(src).toMatch(/className=\{anchoredTriggerClassName\(/);
+    // …and the resolver honours the opt-out rather than appending blindly.
+    expect(src).toMatch(/if \(ownsFocusIndicator\) return triggerClassName;/);
+  });
+
+  it("the indicator COMPOSES with an iconbtn-* rather than double-painting", () => {
+    // Three of the eight triggers already carry `iconbtn-sm` / `iconbtn-md`, so
+    // the append gives them BOTH class names. That is ONE indicator because the
+    // two selectors share ONE declaration block in `globals.css` — a fact about
+    // the stylesheet that no jsdom render can observe, so it is pinned here.
+    const css = cssCommentsStripped(
+      fs.readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8"),
+    );
+    const at = css.indexOf(".focus-ring:focus-visible");
+    expect(at).toBeGreaterThan(0);
+    const open = css.indexOf("{", at);
+    const close = css.indexOf("}", open);
+    const selectors = css.slice(at, open);
+    const body = css.slice(open + 1, close);
+    for (const size of ["xs", "sm", "md", "lg"]) {
+      expect(selectors).toContain(`.iconbtn-${size}:focus-visible`);
+    }
+    // ONE box-shadow declaration for all five selectors — not five rings.
+    expect(body.match(/box-shadow\s*:/g) ?? []).toHaveLength(1);
+    expect(body).toContain("var(--focus-ring-shadow)");
+  });
+
+  it("no trigger className carries a ring utility", () => {
+    // The collision the append creates, and the one no other leg can see: the
+    // ring lives in the CALLER's file and the indicator in the shell's. A
+    // `ring-*` here paints NOTHING while the trigger is focused — which for a
+    // `hover:ring-*` means the affordance dies exactly when a keyboard user is
+    // pointing at it. Allowlist EMPTY: the remedy is another PROPERTY
+    // (border-color is free; `outline` is not, since the same rule sets
+    // `outline: none`), which is what `PanelThemePicker` took.
+    const ringed = MENU_SITES.filter((s) => {
+      const cls = propValue(s.tag, "triggerClassName");
+      return cls !== null && RING_UTILITY.test(cls);
+    }).map(menuAt);
+    expect(ringed).toEqual([]);
+  });
+
+  it("no triggerStyle declares an inline boxShadow", () => {
+    // The same law through the other mechanism, failing the OPPOSITE way: an
+    // inline declaration beats the sheet, so the shell's `outline: none` lands
+    // and its box-shadow cannot — a keyboard-reachable trigger with NO
+    // indicator at all, which is strictly worse than never appending. A trigger
+    // whose elevation is genuinely inline declares
+    // `triggerOwnsFocusIndicator` and keeps the UA outline (the `StackIcon`
+    // reasoning, one component over).
+    const inline = MENU_SITES.filter((s) => {
+      if (optsOut(s.tag)) return false;
+      const style = propValue(s.tag, "triggerStyle");
+      return style !== null && /(?<![\w$.])boxShadow\s*:/.test(style);
+    }).map(menuAt);
+    expect(inline).toEqual([]);
+  });
+
+  it("an opted-out trigger carries its OWN indicator — never a silent skip", () => {
+    // No consumer opts out today, so this is a BOUNDS pin rather than a defect
+    // leg, and it says so. The canary below is what keeps it from being
+    // unfalsifiable.
+    const bare = MENU_SITES.filter((s) => {
+      if (!optsOut(s.tag)) return false;
+      const cls = propValue(s.tag, "triggerClassName");
+      return cls === null || !FOCUS_INDICATOR.test(cls);
+    }).map(menuAt);
+    expect(bare).toEqual([]);
+  });
+
+  it("CAN SEE both shapes, on a synthetic fixture (canary)", () => {
+    // A census that reports zero must be shown to report non-zero, or "clean"
+    // and "blind" look identical. Synthetic rather than standing on a live
+    // line: an allowlist this file drains would take the canary with it.
+    const fixture = [
+      "export function A() {",
+      "  return (",
+      "    <AnchoredMenu",
+      "      ariaLabel=\"x\"",
+      '      triggerClassName="w-5 h-5 hover:ring-2 hover:ring-edge-subtle"',
+      "      triggerStyle={{ boxShadow: \"0 1px 2px rgba(0,0,0,.2)\" }}",
+      "      trigger={() => null}",
+      "    >",
+      "      {null}",
+      "    </AnchoredMenu>",
+      "  );",
+      "}",
+      "export function B() {",
+      "  return (",
+      "    <AnchoredMenu ariaLabel=\"y\" triggerOwnsFocusIndicator triggerClassName=\"px-2\" trigger={() => null}>",
+      "      {null}",
+      "    </AnchoredMenu>",
+      "  );",
+      "}",
+    ].join("\n");
+    const src = strip(fixture, true, true);
+    const hits = elementsNamed(src, "AnchoredMenu");
+    expect(hits).toHaveLength(2);
+
+    const a = hits[0].tag;
+    expect(RING_UTILITY.test(propValue(a, "triggerClassName")!)).toBe(true);
+    expect(/(?<![\w$.])boxShadow\s*:/.test(propValue(a, "triggerStyle")!)).toBe(true);
+    expect(optsOut(a)).toBe(false);
+
+    const b = hits[1].tag;
+    // The bare (valueless) prop form is the one a caller writes, and an
+    // opted-out trigger with no indicator of its own is what leg 6 names.
+    expect(optsOut(b)).toBe(true);
+    expect(FOCUS_INDICATOR.test(propValue(b, "triggerClassName")!)).toBe(false);
   });
 });
