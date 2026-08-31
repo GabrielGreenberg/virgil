@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
-import VirgilEditor, { EditorHandle } from "./Editor";
+import { EditorHandle } from "./Editor";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
@@ -109,15 +109,11 @@ import {
   type OmniCategory,
   deriveCategorySides,
   omniCategoriesForSide,
-  OmniFilterMenu,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, Side, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
+import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { entityToAnchorId } from "@/links/_shared/entity-hover";
 import { Button } from "./panel-primitives";
-import FloatingPanel from "./FloatingPanel";
-import { DockOutline } from "./editor-layout/DockOutline";
-import { CardLiftOutline } from "./CardLiftOutline";
 import {
   FLOATING_PANEL_WIDTH,
   FLOATING_PANEL_HEIGHT,
@@ -160,25 +156,10 @@ import {
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
-import { OutlineHost } from "./editor-layout/panels/outline-host";
-import { CutterHost } from "./editor-layout/panels/cutter-host";
-import { TodoHost } from "./editor-layout/panels/todo-host";
-import { ArchiveHost } from "./editor-layout/panels/archive-host";
-import { BibliographyHost } from "./editor-layout/panels/bibliography-host";
-import { NotesHost } from "./editor-layout/panels/notes-host";
-import { FootnotesHost } from "./editor-layout/panels/footnotes-host";
-import { RevisionsHost } from "./editor-layout/panels/revisions-host";
-import { CitationsHost } from "./editor-layout/panels/citations-host";
-import { OmniHost } from "./editor-layout/panels/omni-host";
-import ExamplesPanel from "@/panels/Examples";
 import { usePreferences } from "@/hooks/usePreferences";
-// Preference mode — ctrl+click picker for live token editing. See
-// usePreferenceMode.ts for the full architecture / extension guide.
-import { usePreferenceMode } from "@/hooks/usePreferenceMode";
 import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
-import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
@@ -1081,9 +1062,6 @@ export default function EditorLayout() {
     setCommandsPopoutOpen(false);
   }, []);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
-  // Preference mode toggle. `on` drives the top-bar button styling and gates
-  // the ctrl+click picker. Read-only here — the button itself calls toggle().
-  const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
   const helperMode = useHelperMode();
   // Window chrome geometry (WCO title-bar / display mode). Consumed once here
   // so the <html data-display-mode> mirror + geometry listeners stay live for
@@ -3404,9 +3382,8 @@ export default function EditorLayout() {
           Extracted into the memoized <TopBar> (with its memoized <TabStrip>
           and <StatusCluster> children) so background paneState ticks no
           longer re-execute the whole bar JSX tree. All invariants
-          (data-prefs/data-bar-h attrs, zen gating, the tab strip ref +
-          drag/drop, the MenuBar docking sentinel) live inside those
-          components verbatim. */}
+          (zen gating, the tab strip ref + drag/drop, the MenuBar docking
+          sentinel) live inside those components verbatim. */}
       <TopBar
         zenModeOn={zenModeOn}
         tabStrip={tabStripProps}

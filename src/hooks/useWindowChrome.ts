@@ -24,8 +24,8 @@
  *     layout.tsx seeds the same attribute before first paint (flash-free);
  *     this hook keeps it live and, under debug, forces WCO.
  *
- * Architecture mirrors useZenMode.ts / usePreferenceMode.ts — module-scoped
- * state, pub/sub via useSyncExternalStore, a <body> attribute mirror.
+ * Architecture mirrors useZenMode.ts — module-scoped state, pub/sub via
+ * useSyncExternalStore, a <body> attribute mirror.
  *
  * KEYSTROKE SANCTITY: this is a WINDOW-level / wall-clock service, NOT an
  * `editor.on(...)` subscriber — it does O(1) work per real geometry/display

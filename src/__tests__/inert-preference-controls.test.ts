@@ -132,7 +132,6 @@ const DECLARATION_FILES = new Set([
   "src/components/PreferencesModal.tsx",
   "src/components/PreferenceTree.tsx",
   "src/components/SmartPreferences.tsx",
-  "src/components/PreferenceModePicker.tsx",
 ]);
 
 const SKIP_DIRS = new Set([

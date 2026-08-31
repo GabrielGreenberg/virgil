@@ -25,8 +25,6 @@ type Props = {
   onClick?: () => void;
   /** Tooltip / aria label (e.g., the doc folder name). */
   title?: string;
-  /** Forwarded for color-picker integration. */
-  dataPrefs?: string;
   /** Tab content (icon, label, close button). Width is layout-owned. */
   children: ReactNode;
 };
@@ -43,10 +41,9 @@ type Props = {
  * the topbar's border-b by 1px (negative margin) so the active tab merges
  * into the canvas below.
  */
-function DocumentFolderTabImpl({ fill, onClick, title, dataPrefs, children }: Props) {
+function DocumentFolderTabImpl({ fill, onClick, title, children }: Props) {
   return (
     <div
-      data-prefs={dataPrefs}
       className="relative flex shrink-0 cursor-default self-end"
       style={{
         height: V.svgH,

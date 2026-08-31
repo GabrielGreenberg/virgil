@@ -144,8 +144,8 @@ describe("borderSelected is one affordance strength, not one lightness coordinat
 /* ── The domain leg ──────────────────────────────────────────────────
  *
  * The census above is 27 hexes; the ACCENT DOMAIN is every value the color
- * picker's `<input type="color">` can emit (`PreferenceModePicker` →
- * `setPanelColor`, which accepts any `#rrggbb`). A guard that only measures the
+ * picker's `<input type="color">` can emit (`SmartPreferences` /
+ * `PanelThemePicker` → `setPanelColor`, which accepts any `#rrggbb`). A guard that only measures the
  * shipped table cannot tell this fix from the bug it replaced: substituting the
  * literal bug shape — `accentInk = (h) => withLightness(h, 0.25)`, a bare
  * hue-blind lightness coordinate — clears every assertion above, because on

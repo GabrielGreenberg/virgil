@@ -41,13 +41,6 @@ export function useThemeVersion(): number {
   );
 }
 
-/** Load overrides on first client mount. */
-export function useLoadPanelColors() {
-  useEffect(() => {
-    loadPanelColors();
-  }, []);
-}
-
 /** Current base hex for a panel (override or default). Re-renders on change. */
 export function usePanelColor(key: PanelThemeKey): string {
   useThemeVersion();
