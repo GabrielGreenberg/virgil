@@ -800,6 +800,72 @@ the census.
 drag two guides, grab a panel gutter, press Escape — the guides must still be
 where you dragged them and the mode must still be open.
 
+#### The second member: the same disease in the gesture people actually use
+
+Same rule, the CONTENT drag (task 504) — and the case where 471 stated the
+class, fixed one member, and recorded the other as out of scope. The drop-mode
+controller is the single chokepoint every pointer-driven content drag routes
+through (block lift, text-object drag, inline-atom grab, card-anchor drag,
+stack pull), and its Escape was UNCLAIMED — so cancelling a drag discarded
+every margin guide dragged this session and closed a scrimless Preferences or
+bug-report window, exactly as 471 describes, on a gesture far more common than
+a divider drag.
+
+Three rules it earned:
+
+- **The PHASE is half the fix, and the claim alone buys nothing here.** The
+  engine's listener is `window` + CAPTURE, so a claim added there reaches
+  everything downstream. This one was `window` + BUBBLE — the LAST phase —
+  where `document` capture (the dialog stack) has already run and
+  `useMarginEdit` is a same-target same-phase listener registered FIRST, which
+  `stopPropagation` cannot reach (and `stopImmediatePropagation` is ruled out
+  by the SSOT's own stated limit). Measured: a bubble-phase claim fails the
+  defect leg exactly as the unfixed controller does.
+- **A capture listener is NOT removed by a bubble-phase removal**, so the
+  teardown moves with the registration or the claim outlives the gesture —
+  installed app-wide for the rest of the session, cancelling a session that no
+  longer exists and stopping every other owner from seeing the press. Measured:
+  a mismatched removal takes 2 legs, one of them the "no session live" control.
+- **Claiming is safe because the listener is strictly gesture-scoped**, and
+  both halves of that were checked at source rather than assumed:
+  `removeListeners()` is the ONE end path every session ending funnels through,
+  and `commitDropSession` calls it BEFORE awaiting any confirm dialog — so the
+  handler is already gone by the time a dialog can want the key.
+
+**The real deepening is the POSITIVE census leg**, and it is the leg that would
+have caught BOTH members. `PERMITTED_REDERIVED_KEY_CLAIMS` is a NEGATIVE
+question — does a gesture that DOES claim spell the claim by hand? — and is
+structurally blind to a gesture that claims NOTHING, which spells no banned
+form and reads as ordinary code. `PERMITTED_UNCLAIMED_GESTURE_KEYS` (EMPTY, a
+hit is CLAIM-it) asks the other half, over a DISCOVERED population: a keydown
+handler whose `removeEventListener` sits in the same region as the teardown of
+a pointer MOVE/RELEASE listener — i.e. one whose lifetime IS the gesture's. The
+region is resolved by walking OUTWARD from the removal and stopping at the
+first FUNCTION body, which is what makes the exclusions structural rather than
+allowlisted: the engine's `finally` block and the controller's
+`removeListeners()` body are both caught at level 1, while `useMarginEdit`'s
+MODE-level Escape — removed by a `useEffect` cleanup with no pointer teardown —
+is excluded BY CONSTRUCTION, since a mode is deliberately not a claimant. Its
+population **includes the ENGINE directory**, unlike every other census in this
+file: there the engine is the answer and is rightly excluded, here it is a
+MEMBER and the class's first offender, so a leg that could not see it would
+only ever have caught the second one. An unresolvable handler fails CLOSED.
+
+CI: [drag-escape-claim.test.ts](src/components/drop-mode/__tests__/drag-escape-claim.test.ts)
+drives the REAL controller through a live session with the two real owners
+registered at their real receiver+phase and ONE press dispatched **from inside
+the document** (471's recorded harness trap — a press dispatched at `window` has
+a propagation path of just `[window]` and can never reach a `document`
+listener, which is exactly the observation a phase fix needs). Its two accepting
+controls are the same two 471 earned. Measured by neutering each half in turn:
+the pre-504 handler takes 1 behavioural leg plus the census, a bubble-phase
+claim 1, and a mismatched capture removal 2.
+
+**Owed, not claimed:** the preview eyeball, and it is cheap and real (NOT
+FSA-masked): margin-edit on with two guides dragged and Preferences open, start
+dragging a block, press Escape — the drag cancels, the guides stay, the mode
+stays open, Preferences stays open.
+
 ## Layout-gesture stability
 
 > **A continuous layout gesture — a pane-divider drag, an OS window resize, OR a content drag (drop-mode session) — costs O(1) settles, not O(frames) recomputes.** Every geometry follower either **PARKS** (`parkDuringLayoutGesture`: stash the call, replay exactly once on the gesture's end edge) or **SUPPRESSES** (`useLayoutGestureActive` / `isLayoutGestureActive` / `onLayoutGestureChange`: hide for the gesture, restore on the end edge). Nothing re-solves per frame.
