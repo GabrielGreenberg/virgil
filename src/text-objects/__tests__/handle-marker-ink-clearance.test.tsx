@@ -76,6 +76,11 @@ const MARGIN_INSET = 22;
 const FLOOR = EDITOR_LEFT - MARGIN_INSET;
 const GAP_EM = 0.625; // --margin-handle-gap
 const TRACK_EM = 1.25; // --margin-track-width
+/** `.tiptap ul/ol { padding-left }` — the shipped marker band, pinned against
+ *  globals.css by its own leg below. Task 487 widened it 2em → 2.5em: a
+ *  container's handle now occupies the marker column of the level ABOVE it, so
+ *  the band has to hold the ITEM's handle whole. */
+const BAND_EM = 2.5;
 const ROW_TOP = 300;
 const ROW_BOTTOM = 340;
 
@@ -332,7 +337,7 @@ describe("a handle never paints on the row's marker ink", () => {
   // Two font sizes: the band is em and the floor / gap-min / handle width are
   // px, which is exactly why the report reads as intermittent.
   for (const fontSizePx of [19, 28]) {
-    const bandPx = fontSizePx * 2; // `.tiptap ul { padding-left: 2em }`
+    const bandPx = fontSizePx * BAND_EM; // `.tiptap ul { padding-left: 2.5em }`
     const gapPx = fontSizePx * GAP_EM;
     const minClearance = gapPx * INK_CLEARANCE_FACTOR;
 
@@ -460,29 +465,192 @@ describe("a handle never paints on the row's marker ink", () => {
     // with). The point of the leg is the BAR: a bare "doesn't intersect"
     // assertion passes on the pre-fix position, which is why the contract is
     // stated as a clearance.
+    //
+    // RENEGOTIATED (task 487) in ONE respect: the boundary the 0.25px is
+    // measured against is named explicitly as the BAND MIDDLE, which is what
+    // `inkLeft` resolved to in 2026-08. Since 487 the ink is the MEASURED glyph
+    // (see the marker-geometry legs below), so re-reading the historical number
+    // off today's `inkLeft` would be comparing two different boundaries. The
+    // live half still asks today's question of today's ink.
     const fontSizePx = 19;
-    const { list, items } = buildList("ul", fontSizePx * 1.5, fontSizePx);
-    const ink = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + fontSizePx * 1.5, 0).inkLeft;
+    const bandPx = fontSizePx * 1.5;
+    const liLeft = EDITOR_LEFT + bandPx;
+    const { list, items } = buildList("ul", bandPx, fontSizePx);
+    const ink = resolveMarkerGeometry(items[0], "listItem", liLeft, 0).inkLeft;
     const painted = hover([
       { uuid: "li1", el: items[0] },
       { uuid: "list1", el: list },
     ]);
     const li = painted.find((p) => p.uuid === "li1")!;
     const preFixPush = FLOOR + 24; // what the unbounded separation produced
-    expect(clearance(preFixPush, ink)).toBeLessThan(1);
+    const bandMiddle = liLeft - bandPx / 2; // the 382-era boundary
+    expect(clearance(preFixPush, bandMiddle)).toBeLessThan(1);
     expect(clearance(li.left, ink)).toBeGreaterThanOrEqual(
       fontSizePx * GAP_EM * INK_CLEARANCE_FACTOR,
     );
   });
 });
 
+// ---------------------------------------------------------------------------
+// Tasks 483 + 487 — the two top-row handles are two CONTROLS.
+//
+// 483 measured the pre-487 tree live: on a top-level list's top row the LIST
+// handle rendered at x 514.5-526.5 and the ITEM handle at 522.25-534.25 — a
+// 4.25px overlap, with the LIST winning the z-order across the shared band, so
+// a press in the left of the item's box grabbed the list. 487 is Gabriel's
+// ruling about the same geometry, and it replaces "push them apart by a
+// constant" with a STRUCTURE: each handle sits in the marker column of its own
+// level, so two levels are two columns.
+//
+// The contract is stated in two tiers, because they have different guarantors:
+//
+//   • DISJOINT (≥ HANDLE_WIDTH between left edges) is the GUARANTEE. It is what
+//     makes the press unambiguous — `applyHitCaps` gives each handle a halo
+//     half the distance to its neighbour, so once the boxes are disjoint every
+//     point in a box is inside that handle's own halo and no other's.
+//   • FLUSH UNDER THE BULLET ABOVE is the RULING, and it holds wherever the
+//     row has room; a wide `12.` counter eats the room and the outboard pass
+//     trades the alignment for the guarantee (asserted separately, so a
+//     failure says which of the two gave way).
+// ---------------------------------------------------------------------------
+describe("tasks 483/487 — two columns, two controls", () => {
+  /** Every probe a press could land on: each handle's centre and 2px inside
+   *  each edge of its box. Returns the owner each probe resolves to, or null
+   *  where it lands in no box / in two. */
+  function probeOwners(painted: Array<{ uuid: string; left: number }>) {
+    const probes: Array<{ x: number; want: string }> = [];
+    for (const p of painted) {
+      probes.push({ x: p.left + 2, want: p.uuid });
+      probes.push({ x: p.left + HANDLE_WIDTH / 2, want: p.uuid });
+      probes.push({ x: p.left + HANDLE_WIDTH - 2, want: p.uuid });
+    }
+    return probes.map(({ x, want }) => {
+      const hits = painted.filter(
+        (p) => x >= p.left && x <= p.left + HANDLE_WIDTH,
+      );
+      return { x, want, got: hits.length === 1 ? hits[0].uuid : null };
+    });
+  }
+
+  for (const fontSizePx of [19, 28]) {
+    const bandPx = fontSizePx * BAND_EM;
+
+    for (const tag of ["ul", "ol"] as const) {
+      it(`top-level ${tag} @${fontSizePx}px: the top row's two handles are disjoint boxes`, () => {
+        // 12 items, so the ordered list's widest marker is the two-digit `12.`
+        // — the case whose ink eats most of the band.
+        const { list, items } = buildList(tag, bandPx, fontSizePx, 12);
+        const painted = hover([
+          { uuid: "li1", el: items[0] },
+          { uuid: "list1", el: list },
+        ]);
+        expect(painted).toHaveLength(2);
+        const [outer, inner] = [...painted].sort((a, b) => a.left - b.left);
+        expect(
+          inner.left - outer.left,
+          `the two handles overlap (${outer.uuid} ${outer.left}, ${inner.uuid} ${inner.left})`,
+        ).toBeGreaterThanOrEqual(HANDLE_WIDTH);
+        for (const probe of probeOwners(painted)) {
+          expect(
+            probe.got,
+            `a press at x=${probe.x} does not resolve to ${probe.want}`,
+          ).toBe(probe.want);
+        }
+      });
+    }
+
+    for (const depth of [2, 3]) {
+      it(`nested bullet list level ${depth} @${fontSizePx}px: the container is FLUSH under the parent bullet`, () => {
+        // Gabriel's ruling, as the one number that states it: the container
+        // handle's RIGHT edge lands on the level-above's content edge — the x
+        // its bullet ends at, one row up. Under the retired rule the container
+        // stepped an arbitrary `--margin-track-width` off its ITEM's band
+        // middle, which is neither under that bullet nor a fixed distance from
+        // it.
+        const { chain, list, liLeft } = buildNestedList(depth, bandPx, fontSizePx);
+        const parentContentLeft = liLeft - bandPx;
+        const painted = hover(chain);
+        const ul = painted.find((p) => p.uuid === list.getAttribute("data-uuid"))!;
+        expect(
+          ul.left + HANDLE_WIDTH,
+          "the container handle is not right-justified under the parent bullet",
+        ).toBe(parentContentLeft);
+        // …and its item is still a disjoint control beside it.
+        const li = painted.find((p) => p.uuid !== ul.uuid)!;
+        expect(li.left - ul.left).toBeGreaterThanOrEqual(HANDLE_WIDTH);
+      });
+    }
+
+    it(`nested ORDERED list @${fontSizePx}px: a wide counter trades alignment for the guarantee`, () => {
+      // The one shape where the ruling cannot hold: a two-digit counter's ink
+      // reaches so far into the band that the ITEM's handle, capped against it,
+      // lands ON the column the container occupies. The inboard push has no
+      // lane left to give, so the OUTBOARD pass moves the container further
+      // into the free margin — the boxes separate, and the container is no
+      // longer flush. Neutering that pass leaves them overlapping.
+      const chain: Array<{ uuid: string; el: HTMLElement }> = [];
+      const outer = document.createElement("ol");
+      outer.setAttribute("data-uuid", "olOuter");
+      outer.setAttribute("data-text-object-kind", "orderedList");
+      outer.style.paddingLeft = `${bandPx}px`;
+      outer.style.fontSize = `${fontSizePx}px`;
+      outer.style.listStyleType = "decimal";
+      outer.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
+      const outerLi = document.createElement("li");
+      outerLi.setAttribute("data-uuid", "olLiOuter");
+      outerLi.setAttribute("data-text-object-kind", "listItem");
+      outerLi.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT + bandPx);
+      outer.appendChild(outerLi);
+      editorEl.appendChild(outer);
+      const innerLeft = EDITOR_LEFT + bandPx;
+      const inner = document.createElement("ol");
+      inner.setAttribute("data-uuid", "olInner");
+      inner.setAttribute("data-text-object-kind", "orderedList");
+      inner.style.paddingLeft = `${bandPx}px`;
+      inner.style.fontSize = `${fontSizePx}px`;
+      inner.style.listStyleType = "decimal";
+      inner.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, innerLeft);
+      const liLeft = innerLeft + bandPx;
+      for (let i = 0; i < 12; i++) {
+        const li = document.createElement("li");
+        li.setAttribute("data-uuid", `olLi${i + 1}`);
+        li.setAttribute("data-text-object-kind", "listItem");
+        li.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, liLeft);
+        const para = document.createElement("p");
+        para.textContent = `row ${i + 1}`;
+        para.style.fontSize = `${fontSizePx}px`;
+        para.style.setProperty("--margin-handle-gap", `${GAP_EM}em`);
+        para.style.setProperty("--margin-track-width", `${TRACK_EM}em`);
+        para.getBoundingClientRect = () => rect(ROW_TOP + 2, ROW_BOTTOM - 2, liLeft);
+        li.appendChild(para);
+        inner.appendChild(li);
+        if (i === 0) chain.push({ uuid: "olLi1", el: li });
+      }
+      outerLi.appendChild(inner);
+      chain.push({ uuid: "olInner", el: inner });
+      const painted = hover(chain);
+      expect(painted).toHaveLength(2);
+      const [ul, li] = [...painted].sort((a, b) => a.left - b.left);
+      expect(
+        li.left - ul.left,
+        `a nested two-digit counter left the handles overlapping (${ul.left}, ${li.left})`,
+      ).toBeGreaterThanOrEqual(HANDLE_WIDTH);
+      for (const probe of probeOwners(painted)) {
+        expect(probe.got, `a press at x=${probe.x} is ambiguous`).toBe(probe.want);
+      }
+    });
+  }
+});
+
 describe("the shipped marker band", () => {
-  it("`.tiptap ul/ol` is 2em — the width every geometry leg above assumes", () => {
-    // The other half of task 382, and the half no component test can see: at
-    // the 1.5em this shipped with, the everyday top-level list cannot hold both
-    // the 24px separation and a clear bullet, so the cap fired on the common
-    // case instead of being the rare-case net. Reverting the band would leave
-    // every geometry leg above passing against a width the app no longer has.
+  it(`\`.tiptap ul/ol\` is ${BAND_EM}em — the width every geometry leg above assumes`, () => {
+    // RENEGOTIATED (task 487). This leg pinned 2em, the width task 382 widened
+    // to from 1.5em. Gabriel's placement ruling widens it again — a container's
+    // handle occupies the marker column of the level ABOVE it, so the band has
+    // to hold the ITEM's handle whole rather than merely leave room for a push.
+    // The half no component test can see is the same: reverting the band would
+    // leave every geometry leg above passing against a width the app no longer
+    // has.
     const here = dirname(fileURLToPath(import.meta.url));
     // src/text-objects/__tests__ → src/app/globals.css
     const css = readFileSync(join(here, "../..", "app/globals.css"), "utf8");
@@ -493,8 +661,30 @@ describe("the shipped marker band", () => {
     for (const [sel, re] of RULES) {
       const m = re.exec(css);
       expect(m, `no em padding-left found for ${sel}`).not.toBeNull();
-      expect(parseFloat(m![1]), `${sel} marker band`).toBeGreaterThanOrEqual(2);
+      expect(parseFloat(m![1]), `${sel} marker band`).toBeGreaterThanOrEqual(BAND_EM);
     }
+  });
+
+  it("…and it satisfies the FITS inequality the ruling rests on", () => {
+    // The band must hold one row's geometry: the marker's own ink, its trailing
+    // space, the uniform handle gap, the 12px handle box, and a seam. Below
+    // that the ITEM handle spills out of its band into the column the CONTAINER
+    // handle occupies — which is exactly the ~4px overlap task 483 measured on
+    // the pre-487 2em band at the shipped 15.2px prose font (measured here from
+    // the same per-character model the geometry legs run against).
+    const PROSE_FONT_PX = 15.2; // --editor-font-size, the shipped default
+    const bulletInk = modelTextWidth("•", PROSE_FONT_PX);
+    const need =
+      bulletInk +
+      PROSE_FONT_PX * FIXTURE_TRAIL_EM +
+      PROSE_FONT_PX * GAP_EM +
+      HANDLE_WIDTH;
+    expect(
+      BAND_EM * PROSE_FONT_PX,
+      `the ${BAND_EM}em band does not hold one row's handle geometry`,
+    ).toBeGreaterThan(need);
+    // …and the retired 2em band does NOT — the defect, stated as a number.
+    expect(2 * PROSE_FONT_PX).toBeLessThan(need);
   });
 });
 
@@ -505,25 +695,46 @@ describe("resolveMarkerGeometry — the anchor and the ink boundary", () => {
     expect(g.inkLeft).toBe(g.markerLeft);
   });
 
-  it("a bullet keeps the band-middle anchor: the measurement doesn't loosen it", () => {
+  it("a bullet's MEASURED glyph is both its anchor and its ink", () => {
+    // RENEGOTIATED (task 487). This leg read "a bullet keeps the band-middle
+    // anchor: the measurement doesn't loosen it", pinning `markerLeft` at
+    // `li.left − padding/2`. The band middle was always a STAND-IN for a glyph
+    // the `::marker` pseudo gives no rect for, and its justification ("the
+    // glyph stays in the band's right half") is a fact about a 2em band, not
+    // about the marker: at the 2.5em the ruling requires it drifts steadily
+    // further left of the bullet, detaching the item's handle from the very
+    // thing it labels. Where the string CAN be measured, the measurement is the
+    // answer for both fields — and it is still conservative (it subtracts a
+    // trailing-space allowance).
     const { items } = buildList("ul", 38, 19);
     const g = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + 38, 0);
-    expect(g.markerLeft).toBe(EDITOR_LEFT + 38 - 19); // band middle
-    expect(g.inkLeft).toBe(g.markerLeft); // a `•` fits in the right half
+    expect(g.markerLeft).toBe(fixtureGlyphLeft(EDITOR_LEFT + 38, "•", 19));
+    expect(g.inkLeft).toBe(g.markerLeft);
+    // …and it reads RIGHT of the retired band middle, which is the whole point:
+    // the handle hugs the bullet instead of hovering in the empty band.
+    expect(g.markerLeft).toBeGreaterThan(EDITOR_LEFT + 38 - 19);
   });
 
-  it("a wide `12.` TIGHTENS the boundary past the band middle", () => {
+  it("a wide `12.` reads further left than a bullet — one number, measured", () => {
+    // RENEGOTIATED (task 487): the old leg asserted the anchor stayed at the
+    // band middle while the INK tightened past it. Anchor and ink are one
+    // number now, so what it says is that the wide counter moves BOTH.
     const { items } = buildList("ol", 38, 19, 12);
     const g = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + 38, 0);
-    expect(g.markerLeft).toBe(EDITOR_LEFT + 38 - 19);
-    expect(g.inkLeft).toBeLessThan(g.markerLeft);
+    expect(g.markerLeft).toBe(g.inkLeft);
+    expect(g.inkLeft).toBe(fixtureGlyphLeft(EDITOR_LEFT + 38, "12.", 19));
+    expect(g.inkLeft).toBeLessThan(EDITOR_LEFT + 38 - 19); // past the band middle
   });
 
   it("`list-style-type: none` puts the ink at the item's own content edge", () => {
+    // RENEGOTIATED (task 487) to match this leg's own TITLE: pre-487 the `min`
+    // against the band middle overrode the "nothing renders in the band"
+    // answer, so the assertion said band middle while the name said content
+    // edge. With the measurement answering alone, the two agree.
     const { items, list } = buildList("ul", 38, 19);
     list.style.listStyleType = "none";
     const g = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + 38, 0);
-    expect(g.inkLeft).toBe(EDITOR_LEFT + 38 - 19); // the band middle still bounds it
+    expect(g.inkLeft).toBe(EDITOR_LEFT + 38);
   });
 
   it("an un-modeled counter style assumes the WHOLE band is ink", () => {
@@ -538,8 +749,28 @@ describe("resolveMarkerGeometry — the anchor and the ink boundary", () => {
     const item = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + 38, 0);
     const container = resolveMarkerGeometry(list, "orderedList", EDITOR_LEFT + 38, 24);
     expect(container.inkLeft).toBe(item.inkLeft);
-    // …while its ANCHOR steps one track-width further out.
-    expect(container.markerLeft).toBe(item.markerLeft - 24);
+    // RENEGOTIATED (task 487). The old second half read "…while its ANCHOR
+    // steps one track-width further out" — the retired rule. A container has no
+    // marker of its own, so it OCCUPIES the marker column of the level above
+    // instead of stepping an arbitrary token off its item's. This fixture's
+    // list is TOP-LEVEL (nothing above it carries a marker column), so there is
+    // no column to occupy and it falls back to the ordinary gutter slot: its
+    // own content edge, exactly as a paragraph's handle does.
+    expect(container.columnRight).toBeNull();
+    expect(container.markerLeft).toBe(EDITOR_LEFT);
+  });
+
+  it("a NESTED container occupies the marker column of the level above", () => {
+    // Gabriel's ruling (task 487), as geometry: the container's handle is
+    // right-justified to the level-above's content edge — which for a
+    // block-level list IS the list's own left — so it lands directly under the
+    // parent row's bullet.
+    const { list, item, liLeft } = buildNestedList(2, 38, 19);
+    const g = resolveMarkerGeometry(list, "bulletList", liLeft, 24);
+    expect(g.columnRight).toBe(liLeft - 38); // the parent li's content edge
+    expect(g.inkLeft).toBe(
+      resolveMarkerGeometry(item, "listItem", liLeft, 0).inkLeft,
+    );
   });
 
   it("no canvas ⇒ no opinion: the band-middle heuristic answers alone", () => {
@@ -552,7 +783,12 @@ describe("resolveMarkerGeometry — the anchor and the ink boundary", () => {
 });
 
 describe("resolveHandleLane — the three bounds and their precedence", () => {
-  const base = { gapPx: 12, editorColumnLeft: EDITOR_LEFT, baselineInset: MARGIN_INSET };
+  const base = {
+    gapPx: 12,
+    editorColumnLeft: EDITOR_LEFT,
+    baselineInset: MARGIN_INSET,
+    columnRight: null,
+  };
 
   it("the anchor answers when it is inside the lane", () => {
     const lane = resolveHandleLane({ ...base, markerLeft: 400, inkLeft: 400 });
@@ -575,5 +811,23 @@ describe("resolveHandleLane — the three bounds and their precedence", () => {
   it("maxLeft leaves exactly the stated clearance before the ink", () => {
     const lane = resolveHandleLane({ ...base, markerLeft: 400, inkLeft: 400 });
     expect(lane.maxLeft + HANDLE_WIDTH).toBe(400 - 12 * INK_CLEARANCE_FACTOR);
+  });
+
+  it("a COLUMN anchor is FLUSH RIGHT — no gap, that is what 'under the bullet' means", () => {
+    // Task 487: the two readings of the anchor. A block with a marker hugs it
+    // one gap out; a container OCCUPIES the empty column above, right-justified
+    // to its inner edge. The gap is what separates a handle from ink, and there
+    // is no ink in that column on this row.
+    const lane = resolveHandleLane({ ...base, markerLeft: 400, inkLeft: 400, columnRight: 360 });
+    expect(lane.left).toBe(360 - HANDLE_WIDTH);
+    // …and `markerLeft` is ignored entirely when a column is declared, so the
+    // two readings can never be blended into a third.
+    const other = resolveHandleLane({ ...base, markerLeft: 999, inkLeft: 400, columnRight: 360 });
+    expect(other.left).toBe(lane.left);
+  });
+
+  it("minLeft is the floor — the room the OUTBOARD pass may take", () => {
+    const lane = resolveHandleLane({ ...base, markerLeft: 400, inkLeft: 400 });
+    expect(lane.minLeft).toBe(FLOOR);
   });
 });

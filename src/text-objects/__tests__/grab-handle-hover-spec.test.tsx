@@ -74,6 +74,7 @@ vi.mock("@/lib/marginalia-blocks", () => ({ resolveDomForUuid: () => null }));
 
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
 import { notePointerInput } from "@/lib/input-modality";
+import { HANDLE_WIDTH } from "@/text-objects/handle-layout";
 
 function rect(top: number, bottom: number, left = 200, right = 700): DOMRect {
   return { top, bottom, left, right, width: right - left, height: bottom - top,
@@ -240,12 +241,38 @@ describe("Gabriel's spec, as a contract", () => {
   });
 
   it("the container handle stays OUT of the margin lane", () => {
-    // The separation pushes the INNER handle inboard precisely because the
-    // outer one is already on `editorColumnLeft - marginInset` and must not be
-    // taken further out. Row 1 since 425 — the only row the list handle shows.
+    // RENEGOTIATED (task 487) in BOTH of its halves.
+    //
+    // Its premise was the pre-487 anchor: "the separation pushes the INNER
+    // handle inboard precisely because the outer one is already on
+    // `editorColumnLeft - marginInset` and must not be taken further out."
+    // Under Gabriel's placement ruling a container no longer steps an arbitrary
+    // `--margin-track-width` off its item's band and so no longer normally
+    // clamps at the floor — it takes the marker column of the level above (or,
+    // with no such column, the ordinary gutter slot). The floor is still the
+    // bound; the outer handle simply is not usually sitting on it, which is
+    // exactly the room task 487's OUTBOARD pass spends.
+    //
+    // Its ARITHMETIC was also wrong, and passed by coincidence: `OWNERS().left`
+    // is read off `style.left`, i.e. PORTAL space, while `200 - 22` is the
+    // floor in VIEWPORT space. On the pre-487 tree the container landed at
+    // portal 178 exactly (band middle 260 − track 20 − gap 10 − width 12 = 218
+    // viewport, − the portal origin's 40), so a bound that was 40px too strict
+    // was satisfied by equality. The floor is converted here, once, from the
+    // same two numbers the fixture declares.
     hoverRow(0);
-    const list = OWNERS().find((o) => o.uuid === "ul1")!;
-    expect(list.left).toBeGreaterThanOrEqual(200 - 22);
+    const owners = OWNERS();
+    const list = owners.find((o) => o.uuid === "ul1")!;
+    const item = owners.find((o) => o.uuid === "li1")!;
+    const floorPortal = 200 - 22 - PORTAL_ORIGIN.left; // editorLeft − inset
+    expect(
+      list.left,
+      "the container handle was taken outboard of the narrow-viewport floor",
+    ).toBeGreaterThanOrEqual(floorPortal);
+    // …and the thing the floor exists to protect on this row: the two handles
+    // are still two DISJOINT boxes (task 483 — the guarantee under 353's 24px
+    // target), so no press in either box is ambiguous.
+    expect(item.left - list.left).toBeGreaterThanOrEqual(HANDLE_WIDTH);
   });
 });
 

@@ -38,6 +38,7 @@ function handleLeft(
     markerLeft: resolveHandleMarkerLeft(frame, refKind),
     gapPx: GAP_PX,
     editorColumnLeft: EDITOR_COLUMN_LEFT,
+    columnRight: null,
     baselineInset: BASELINE_INSET,
     // Task 382: the ink boundary. These legs are about the X ANCHOR, so every
     // frame here declares its own marker as the ink — the pre-382 geometry,
@@ -59,6 +60,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       markerLeft: frame.markerLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
+      columnRight: null,
       baselineInset: BASELINE_INSET,
       inkLeft: frame.markerLeft,
     }));
@@ -67,6 +69,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       markerLeft: frame.contentLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
+      columnRight: null,
       baselineInset: BASELINE_INSET,
       inkLeft: frame.contentLeft,
     });
@@ -88,6 +91,7 @@ describe("selection handle takes the text-object handle's gutter slot (#092)", (
       markerLeft: frame.contentLeft,
       gapPx: GAP_PX,
       editorColumnLeft: EDITOR_COLUMN_LEFT,
+      columnRight: null,
       baselineInset: BASELINE_INSET,
       inkLeft: frame.contentLeft,
     }));

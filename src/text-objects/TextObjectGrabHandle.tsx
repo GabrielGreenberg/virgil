@@ -88,7 +88,7 @@ import {
 } from "./text-object-registry";
 import { isTopRowOf, resolveBlockFrame } from "./block-frame";
 import { resolveSelectionGrab } from "./selection-payload";
-import { resolveHandleLane, resolveHandleMarkerLeft } from "./handle-layout";
+import { HANDLE_WIDTH, resolveHandleLane, resolveHandleMarkerLeft } from "./handle-layout";
 import { useLiftHost } from "./LiftHost";
 import type {
   SelectionRef,
@@ -147,6 +147,13 @@ interface Placement {
    * must not cost a re-render).
    */
   maxLeft: number;
+  /**
+   * Task 487: the furthest-LEFT `left` this handle may take — its lane's
+   * outboard bound (the narrow-viewport floor), from `resolveHandleLane`. The
+   * separation's OUTBOARD pass pushes within it. Not rendered, so — like
+   * {@link maxLeft} — deliberately absent from {@link placementsEqual}.
+   */
+  minLeft: number;
 }
 
 /**
@@ -217,22 +224,55 @@ const SAME_ROW_EPS = 16;
 const MIN_SAME_ROW_GAP_PX = 24;
 
 /**
+ * The GUARANTEE under the target (task 487): the least left-edge distance at
+ * which two same-row handles are DISJOINT boxes with a visible seam between
+ * them. Handles are {@link HANDLE_WIDTH}=12 wide, so this is the width plus a
+ * seam — where {@link MIN_SAME_ROW_GAP_PX} is what the row aims for, this is
+ * what it must not fall below, and the outboard pass below exists to hold it.
+ *
+ * Task 483 measured the pre-487 tree at **7.75px** on a top-level list's top
+ * row: the two boxes overlapped by 4.25px, the LIST won the z-order across the
+ * shared band, and a press in the left of the ITEM's box grabbed the list. A
+ * separation that can only push INBOARD cannot fix that — the inner handle is
+ * pinned by its own ink cap — which is why the rule now has a second pass.
+ */
+const MIN_DISJOINT_GAP_PX = HANDLE_WIDTH + 6;
+
+/**
  * Task 353: keep same-row handles far enough apart to read as separate
- * controls, by pushing each INNER handle inboard.
+ * controls. TWO passes, and the second is task 487's.
  *
- * Bounded inboard by each placement's own lane (`maxLeft`, task 382) — the
- * pre-382 push had no upper bound at all and walked a top-level list's ITEM
- * handle onto the bullet glyph, which is the one thing margin chrome may never
- * do. The cap outranks the gap.
+ * **Inboard (353/382).** Each INNER handle is pushed toward
+ * {@link MIN_SAME_ROW_GAP_PX} inboard of the one before it, bounded by that
+ * placement's own lane (`maxLeft`) — the pre-382 push had no upper bound at all
+ * and walked a top-level list's ITEM handle onto the bullet glyph, which is the
+ * one thing margin chrome may never do. The cap outranks the gap.
  *
- * Why inboard rather than outboard, which is what "stack the container further
- * out" would suggest: the outermost handle is already sitting ON the floor.
- * `computeHandleLeftEdge` clamps at `editorColumnLeft − marginInset`, and a
- * container's marker is left of its item's, so the container's proposed left
- * is normally BELOW the floor and gets clamped there — measured, the list
- * handle lands exactly on it. There is no room further out, and taking some
- * would push into the margin lane the lane-regime predicate governs. So the
- * outermost position is fixed and the inner ones give way.
+ * **Outboard (487).** Where the inboard push runs out of lane and the pair is
+ * still closer than {@link MIN_DISJOINT_GAP_PX}, the OUTER handle gives way
+ * instead, moving further into the margin — bounded by its lane's `minLeft`
+ * (the narrow-viewport floor). This is what makes non-overlap a PROPERTY rather
+ * than a hope: an inner handle can be pinned against its ink, but nothing on
+ * this row lies left of the row's own marker, so the margin outboard of the
+ * outer handle is free by construction.
+ *
+ * Its predecessor's stated reason for pushing inboard ONLY — "the outermost
+ * handle is already sitting ON the floor" — was a fact about the pre-487
+ * anchor, where a container stepped `--margin-track-width` off its item's band
+ * middle and normally clamped at the floor. Under task 487 the container sits
+ * in the marker column of the level above, which is nowhere near the floor, so
+ * the room the old comment says does not exist is exactly where the outboard
+ * pass now goes. Runs right-to-left, so a push that moves handle *i−1* is
+ * itself checked against *i−2* on the next step.
+ *
+ * The floor still outranks it — the same precedence the lane states, for the
+ * same reason (an unreachable handle is worse than a tight one), so a row with
+ * no margin left to spend keeps the overlap rather than pushing a handle
+ * off-screen. That is the documented degraded state, and under the shipped
+ * geometry it is not reachable: the 425 set rule caps a row at two handles, and
+ * the band the ruling widened (globals.css `.tiptap ul/ol`) holds an inner
+ * handle whole, so the outer one is never asked for more room than the margin
+ * between its column and the floor.
  *
  * Runs AFTER every placement is computed (a single compute cannot see its
  * siblings) and BEFORE {@link applyHitCaps}, so the halo caps are derived from
@@ -251,12 +291,12 @@ function applySameRowSeparation(placements: Placement[]): void {
   }
   for (const row of rows) {
     if (row.length < 2) continue;
-    // Outermost (smallest left) keeps its floored slot; each next one is
-    // pushed to at least MIN_SAME_ROW_GAP_PX inboard of the one before it —
-    // but never past its own lane's `maxLeft` (task 382), so a push can't walk
-    // a handle onto the bullet the row's anchor exists to clear. When the two
-    // conflict the CAP wins: sub-24 spacing reads as a blob, and a blob over
-    // the user's own text reads as a bug.
+    // Outermost (smallest left) keeps its slot; each next one is pushed to at
+    // least MIN_SAME_ROW_GAP_PX inboard of the one before it — but never past
+    // its own lane's `maxLeft` (task 382), so a push can't walk a handle onto
+    // the bullet the row's anchor exists to clear. When the two conflict the
+    // CAP wins: sub-24 spacing reads as a blob, and a blob over the user's own
+    // text reads as a bug.
     row.sort((a, b) => a.left - b.left);
     for (let i = 1; i < row.length; i++) {
       const wanted = row[i - 1].left + MIN_SAME_ROW_GAP_PX;
@@ -267,6 +307,17 @@ function applySameRowSeparation(placements: Placement[]): void {
         // dragged further out by the separation pass.
         row[i].left = Math.max(row[i].left, Math.min(wanted, row[i].maxLeft));
       }
+    }
+    // …and where the inner handle had no lane left to give, the OUTER one
+    // gives way into the free margin (task 487). Right-to-left so a moved
+    // handle is re-checked against ITS outer neighbour.
+    for (let i = row.length - 1; i > 0; i--) {
+      const shortfall = MIN_DISJOINT_GAP_PX - (row[i].left - row[i - 1].left);
+      if (shortfall <= 0) continue;
+      row[i - 1].left = Math.max(
+        row[i - 1].minLeft,
+        row[i - 1].left - shortfall,
+      );
     }
   }
 }
@@ -582,6 +633,7 @@ function computePlacement(
     editorColumnLeft,
     baselineInset: cache.marginInset,
     inkLeft: frame.inkLeft,
+    columnRight: frame.columnRight,
   });
   const left = lane.left;
 
@@ -636,6 +688,7 @@ function computePlacement(
     ref,
     hitCapPx: null,
     maxLeft: portal.x + (lane.maxLeft - left),
+    minLeft: portal.x + (lane.minLeft - left),
   };
 }
 

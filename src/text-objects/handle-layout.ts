@@ -24,6 +24,19 @@
  * the bullet — chrome over the user's document — and a wide `10.` marker
  * collided with the natural position even before any push.
  *
+ * Task 487 gives the rule its second reading — Gabriel's placement ruling. The
+ * one above says a handle HUGS the marker it labels, which is right for every
+ * block that HAS one and vacuous for a markerless CONTAINER: a `<ul>` renders
+ * no glyph on its own row, so "one gap left of nothing" was a step of an
+ * arbitrary `--margin-track-width` off its first item's anchor, and on a
+ * top-level list that step landed the two handles ~8px apart — one ~20px blob
+ * where a press on the left of the item's box grabbed the LIST (task 483). The
+ * ruling: a container OCCUPIES the marker column of the level above it, the
+ * column its list hangs from, right-justified — so it sits directly under the
+ * parent row's bullet and the two handles are in two different columns. Which
+ * reading applies is decided ONCE, in `block-frame.ts`
+ * (`BlockFrame.columnRight`), never at a call site.
+ *
  * The VERTICAL axis lives in block-frame.ts (`opticalCenterY`, chip 1).
  */
 
@@ -92,10 +105,16 @@ export interface HandleLayoutInput {
    *  about the user's document, and a caller that hasn't resolved it must say
    *  so by passing its `markerLeft` rather than have a fallback chosen for it. */
   inkLeft: number;
+  /** The block's `BlockFrame.columnRight` (task 487) — the inner edge of the
+   *  MARKER COLUMN this handle occupies, or `null` when it hugs its marker.
+   *  Required for the same reason `inkLeft` is: "does this handle occupy a
+   *  column or hug a glyph?" is a placement DECISION, and a caller that hasn't
+   *  resolved it must say `null` rather than have an answer chosen for it. */
+  columnRight: number | null;
 }
 
-/** A handle's resolved horizontal lane: where it sits, and the furthest right
- *  anything may move it (see {@link resolveHandleLane}). */
+/** A handle's resolved horizontal lane: where it sits, and the two bounds
+ *  nothing may move it past (see {@link resolveHandleLane}). */
 export interface HandleLane {
   /** The handle's left edge (CSS px) at rest. */
   left: number;
@@ -103,14 +122,27 @@ export interface HandleLane {
    *  crossing the row's ink. Consumed by the same-row separation, which may
    *  push a handle inboard only within its own lane. */
   maxLeft: number;
+  /** The furthest-LEFT left-edge this handle may take — the narrow-viewport
+   *  floor. Consumed by the same-row separation's OUTBOARD pass (task 487),
+   *  which pushes an OUTER handle further into the margin when the inner one
+   *  has run out of lane. Nothing on this row lies left of the row's own
+   *  marker, so the margin between here and the floor is free. */
+  minLeft: number;
 }
 
 /**
- * Resolve a handle's horizontal LANE: its resting left edge and the inboard
- * bound nothing may push it past.
+ * Resolve a handle's horizontal LANE: its resting left edge and the two bounds
+ * nothing may push it past.
  *
  * Three bounds, and their precedence is the whole rule:
- *   1. the ANCHOR (`markerLeft − gapPx − HANDLE_WIDTH`) — where it wants to be;
+ *   1. the ANCHOR — where it wants to be. TWO readings, and which one applies
+ *      is decided once, in `block-frame.ts` (task 487): a block with a marker
+ *      of its own HUGS it (`markerLeft − gapPx − HANDLE_WIDTH`), while a
+ *      markerless CONTAINER OCCUPIES the marker column of the level above,
+ *      right-justified to its inner edge (`columnRight − HANDLE_WIDTH`) — so
+ *      it lands directly under that level's bullet, a row up. Two levels then
+ *      sit in two different columns, which is what makes their non-overlap
+ *      structural instead of a separation constant;
  *   2. the INK CAP (`inkLeft − gapPx·{@link INK_CLEARANCE_FACTOR} −
  *      HANDLE_WIDTH`) — the furthest right it may ever be, so chrome never
  *      paints on the document. It binds the resting position too, not just a
@@ -123,12 +155,17 @@ export interface HandleLane {
  *      the floor means the row has no clear margin at all.
  */
 export function resolveHandleLane(input: HandleLayoutInput): HandleLane {
-  const anchor = input.markerLeft - input.gapPx - HANDLE_WIDTH;
+  const anchorRight = input.columnRight ?? input.markerLeft - input.gapPx;
+  const anchor = anchorRight - HANDLE_WIDTH;
   const floor = input.editorColumnLeft - input.baselineInset;
   const cap =
     input.inkLeft - input.gapPx * INK_CLEARANCE_FACTOR - HANDLE_WIDTH;
   const maxLeft = Math.max(cap, floor);
-  return { left: Math.max(Math.min(anchor, maxLeft), floor), maxLeft };
+  return {
+    left: Math.max(Math.min(anchor, maxLeft), floor),
+    maxLeft,
+    minLeft: floor,
+  };
 }
 
 /**

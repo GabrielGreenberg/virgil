@@ -1532,6 +1532,138 @@ each shipped green and looked wrong. Add a nested list to the dev doc, hover
 each row in a real Chrome tab: two handles on a top row, one everywhere else,
 none on a bullet.
 
+###### The column half: a CONTAINER has no marker to hug, so it OCCUPIES one
+
+Same gutter, the horizontal axis the last three passes each argued about and
+none renegotiated (tasks 483 + 487) — and the case where a placement rule was
+right for every block that HAS a marker and VACUOUS for the one kind that does
+not.
+
+`markerLeft − gapPx − HANDLE_WIDTH` is a hug: it puts a handle one uniform gap
+left of the glyph it labels. A markerless CONTAINER renders no glyph on its own
+row, so there was nothing to hug and the rule degraded to a STEP — an arbitrary
+`--margin-track-width` off its first item's anchor. Measured live against `main`
+on a top-level bullet list's top row (task 483, the audit that found it): the
+LIST handle at x 514.5–526.5 and the ITEM handle at 522.25–534.25, a **4.25px
+overlap**, with the list winning the z-order across the shared band — so the two
+pills read as one ~20px blob and a press in the left of the ITEM's box grabbed
+the LIST. With task 480 unfixed that mis-grabbed payload then extracted the item
+out of its own list. And the geometry is not width-dependent: both positions are
+column-relative constants for a top-level list, so it reproduced at every window
+size, on the commonest list shape there is, while task 425's suite claimed "two
+handles fit at every depth with room to spare" — true of ITS fixtures.
+
+Gabriel ruled on it directly rather than accepting a separation bump: *"In
+bullets, the outer grab handle should justify right under the the bullet point
+above. this does require making the depth of the bullet indents slightly
+deeper."*
+
+> **A block with a marker of its own HUGS it. A markerless container OCCUPIES
+> the marker column of the level ABOVE it — the column its structure hangs
+> from, whose glyph sits a row up and which is therefore EMPTY on this row —
+> right-justified to that column's inner edge.** Which of the two readings
+> applies is decided ONCE, in `block-frame.ts` (`BlockFrame.columnRight`: a
+> column, or `null` for "hug your own marker"), never at a call site.
+
+Seven rules it earned:
+
+- **Non-overlap stops being a target and becomes a PROPERTY.** Two levels sit
+  in two different marker columns, so their handles are disjoint by
+  construction. That is why the ruling beats the surgical answer (raise
+  `MIN_SAME_ROW_GAP_PX`): a separation constant is a number someone has to keep
+  larger than a width, where two columns cannot coincide.
+- **…and it reads as a breadcrumb**, which is the affordance half of the same
+  fact: travelling out through the gutter, each handle sits under the bullet of
+  the level that owns it.
+- **The ITEM anchor had to move WITH it, and that is the non-obvious half.**
+  A list `<li>` anchored at the MIDDLE of its measured `padding-left` band — a
+  stand-in for a rect the `::marker` pseudo does not give — and the stand-in's
+  whole justification ("the glyph stays in the band's right half") is a fact
+  about a 2em band, not about the marker. Deepen the band and the middle drifts
+  steadily further LEFT of the bullet: the item's handle detaches from the very
+  thing it labels and drifts toward the column the container now occupies. So
+  where the marker string CAN be measured (`text-metrics.ts`, never a hardcoded
+  glyph width) the measurement is the answer for the ANCHOR as well as the INK,
+  and the band middle survives only as the fallback for builds that cannot
+  measure. Anchor and ink being one number also retires the `min` that used to
+  reconcile them.
+- **The band is part of the geometry, so widening it is the ruling's price and
+  is stated as an inequality rather than a taste.** `.tiptap ul/ol` goes 2em →
+  2.5em, and the band must hold one row's worth of geometry whole —
+  `band > markerInk + 0.25em trail + --margin-handle-gap + 12px`, the surplus
+  being the seam. For a `•` at the shipped 15.2px prose font the right-hand side
+  is ≈30.6px against a 2em band of 30.4px: **2em does not fit at all**, and the
+  deficit IS the 4.25px overlap 483 measured. 2.5em leaves ~7px. Pinned as its
+  own leg, so a future "tidy the indents" is a failing test rather than a
+  regression.
+- **The separation gets a SECOND pass, and its predecessor's stated reason for
+  having only one was a fact about the retired anchor.** 353 pushed INNER
+  handles inboard and explained itself: *"the outermost handle is already
+  sitting ON the floor … there is no room further out."* True while a container
+  stepped a track-width off its item's band middle and normally clamped at the
+  floor; false under the ruling, where it sits in a column nowhere near the
+  floor. So where the inboard push has run out of lane (an inner handle pinned
+  against its own ink) and the pair is still closer than `HANDLE_WIDTH + 6`, the
+  OUTER handle gives way into the margin instead, bounded by the lane's new
+  `minLeft` (the floor). Nothing on a row lies left of that row's own marker, so
+  that margin is free BY CONSTRUCTION — which is what turns the guarantee from a
+  hope into an argument. Right-to-left, so a moved handle is re-checked against
+  its own outer neighbour; the floor still outranks it, and the resulting
+  overlap is the documented degraded state (unreachable under the shipped band
+  and 425's two-handle cap).
+- **Membership in "lends a column" is the STRONGER question, and `exampleItem`
+  is the instructive non-member.** The test is not *does this kind have a
+  marker* but *does the structure nested under it hang from that marker's
+  column* — same column, empty on this row. A nested `<ul>` is a block child of
+  its `<li>`, so it fills the item's content box and its own border-box left IS
+  the x the parent's bullet band ends at. An expex item's marker is a GRID cell
+  with a 0.8em gap and then a BODY column, so a structure inside it begins right
+  of the marker, not under it; right-justifying there would land the handle in
+  the gap between marker and text. It is unreachable besides — `exampleItem`'s
+  content model admits no list (task 427) — and it is named in the code as a
+  non-member precisely so the next reader does not "complete" the set.
+- **A container with no column above it is not a special case, it is the OTHER
+  reading.** A top-level list, or one inside a blockquote, has nothing to
+  occupy, so it takes the ordinary markerless slot — its own content edge, the
+  same slot every paragraph handle takes — and lines up with them in the gutter.
+
+CI: the new legs in
+[handle-marker-ink-clearance.test.tsx](src/text-objects/__tests__/handle-marker-ink-clearance.test.tsx)
+state the contract in TWO tiers, because they have different guarantors. DISJOINT
+(≥ `HANDLE_WIDTH` between left edges) is the GUARANTEE — and it is asserted as
+PRESS TARGETING, not as a distance: each handle's centre and 2px inside each edge
+of its box must resolve to exactly one owner, which is what 483 measured with
+`elementsFromPoint` and what a bare distance assertion cannot see. FLUSH UNDER
+THE BULLET ABOVE is the RULING, asserted as the one number that states it (the
+container handle's RIGHT edge lands on the level-above's content edge), and it
+holds wherever the row has room; a nested two-digit `12.` counter eats the room
+and the outboard pass trades the alignment for the guarantee — asserted
+separately, so a failure says which of the two gave way. Both are swept at two
+font sizes and over `ul` and `ol`, since the band is em and the floor, gap-min
+and handle width are px, which is exactly why the report reads as intermittent.
+The retired rules are RENEGOTIATED in place with the reason at the site rather
+than deleted — the band-middle anchor legs, the `min`-tightening leg, the
+`markerLeft − trackWidth` container leg, the 2em band pin, and (in
+`grab-handle-hover-spec`) "the container handle stays OUT of the margin lane",
+whose bound was ALSO 40px too strict for a coincidental reason worth recording:
+it read `style.left` (PORTAL space) against a VIEWPORT-space floor and passed by
+exact equality on the pre-487 numbers.
+
+Measured by neutering each half in turn: the column rule takes **5** legs (the
+four FLUSH sweeps and the geometry leg), the measured item anchor **8**, the
+outboard separation pass **1** (the nested `12.` case at 19px — its 28px twin is
+a passing control, since the band scales with the font and the wide counter
+still fits there), and reverting the band to 2em **1**. The pre-487
+`grab-handle-hover-spec` margin-lane leg fails on the fixed tree for the
+coordinate-space reason above, which is what forced its renegotiation.
+
+**Owed, not claimed:** the preview eyeball, REQUIRED — three handle passes in a
+row have now shipped green and looked wrong, and this one moves every list in
+every document. Not FSA-masked. Nested list in the dev doc: hover each row and
+compare against Gabriel's mock-up
+(`virgil-tasks/attachments/2026-08-25-487-shot-1.png`) — each handle under its
+own level's bullet, two visually distinct pills on a top row, none on a glyph.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.
