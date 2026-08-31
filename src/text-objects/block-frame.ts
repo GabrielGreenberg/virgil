@@ -135,14 +135,33 @@ export interface BlockFrame {
    *     em-scaling and reliably between its left edge and the `<li>` content.
    *     Where that assumption doesn't hold (a wide `10.`), {@link inkLeft}
    *     carries the tighter MEASURED boundary; this anchor is unchanged.
-   *   • bulletList / orderedList (markerless container) → one TRACK-WIDTH
-   *     left of the first grabbable child's markerLeft, so a container handle
-   *     stacks a uniform step left of its first item's handle (`⠿⠿ • text`).
+   *   • listItem → the MEASURED left edge of its marker string (task 487; the
+   *     band middle survives only as the fallback where nothing can measure).
+   *   • bulletList / orderedList (markerless container) → its own border-box
+   *     left, which is the content edge of the level above it. Consumed only
+   *     when {@link columnRight} is `null` (a top-level list, or one inside a
+   *     markerless container): the list then reads as an ordinary markerless
+   *     block and takes the same gutter slot every paragraph takes.
    *   • everything else (no marker) → `contentLeft`.
    * An affordance's left edge = `markerLeft − gapPx − <its own width>`, so its
    * RIGHT edge sits one uniform {@link gapPx} left of the marker.
    */
   markerLeft: number;
+  /**
+   * Task 487 — the inner (right) edge of the MARKER COLUMN this block's handle
+   * OCCUPIES, or `null` when the handle hugs a marker instead.
+   *
+   * A block with a marker of its own has a FULL column on its row — the glyph
+   * is in it — so its handle steps outboard and hugs it ({@link markerLeft}).
+   * A markerless CONTAINER has no glyph on this row at all: its own marker
+   * column is the one belonging to the level above, whose glyph sits a row up,
+   * so the column is empty here and the handle can sit IN it, right-justified
+   * to this edge. That is Gabriel's ruling — "the outer grab handle should
+   * justify right under the bullet point above" — and it is what makes
+   * non-overlap STRUCTURAL rather than a separation constant: two levels sit in
+   * two different columns.
+   */
+  columnRight: number | null;
   /**
    * The left edge of the row's leftmost DOCUMENT INK — the boundary no margin
    * affordance may cross (task 382). {@link markerLeft} is the anchor an
@@ -375,6 +394,9 @@ export interface MarkerGeometry {
   markerLeft: number;
   /** See {@link BlockFrame.inkLeft} — the boundary it may never cross. */
   inkLeft: number;
+  /** See {@link BlockFrame.columnRight} — the inner edge of the marker COLUMN
+   *  this block's handle occupies, or `null` when it hugs a marker instead. */
+  columnRight: number | null;
 }
 
 /**
@@ -403,7 +425,9 @@ function markerElementGeometry(
   const m = el.querySelector(selector);
   const left =
     m instanceof HTMLElement ? m.getBoundingClientRect().left : fallbackLeft;
-  return { markerLeft: left, inkLeft: left };
+  // A block with its OWN marker HUGS it (no column to occupy — the column is
+  // full of the very glyph this handle labels).
+  return { markerLeft: left, inkLeft: left, columnRight: null };
 }
 
 /** The glyph a `disc`/`circle`/`square` marker renders. Measured (never a
@@ -412,10 +436,12 @@ const BULLET_PROBE = "•";
 
 /**
  * Allowance (em) for the gap a `::marker` box leaves between its glyph's right
- * edge and the item's content edge — the counter suffix's trailing space. Only
- * makes the MEASURED bound more conservative; it is never the sole basis for a
- * placement, because {@link listBandGeometry} takes the further-left of this
- * bound and the band-middle heuristic.
+ * edge and the item's content edge — the counter suffix's trailing space. It
+ * only ever moves the measurement FURTHER LEFT, so it is a conservative
+ * allowance in both of the roles {@link listBandGeometry} now gives that
+ * measurement: as the row's `inkLeft` (a boundary nothing may cross) and — since
+ * task 487 — as the item's ANCHOR, where it keeps the handle's gap measured from
+ * the glyph's own left rather than from the space after it.
  */
 const MARKER_TRAIL_EM = 0.25;
 
@@ -475,19 +501,27 @@ function measuredMarkerInkLeft(
 
 /**
  * The marker-band geometry for a list row, given the list element and the
- * item's measured left edge.
+ * item's measured left edge. The ANCHOR and the INK are ONE number here: the
+ * left edge of where the row's marker string actually starts.
  *
- * ANCHOR — the MIDDLE of the measured `padding-left` band (`li.left −
- * padding-left / 2`): em-scaling (the padding is authored in em), never a
- * hardcoded glyph width, and reliably between the band's left edge and the
- * `<li>` content, because the `::marker` pseudo isn't rect-able.
+ * **Task 487 renegotiated the anchor.** It used to be the MIDDLE of the
+ * measured `padding-left` band — a stand-in for a glyph the `::marker` pseudo
+ * gives no rect for, and one whose whole justification ("the glyph stays in the
+ * band's right half") is a fact about a 2em band rather than about the marker.
+ * Gabriel's placement ruling deepens the band, and at a deeper band that
+ * stand-in drifts steadily further LEFT of the bullet it is standing in for: the
+ * item handle would detach from its own marker and drift toward the column the
+ * container's handle now occupies. So where the marker string CAN be measured
+ * ({@link measuredMarkerInkLeft} — canvas, never a hardcoded glyph width), the
+ * measurement is the answer for both fields; the band middle survives as the
+ * FALLBACK for the builds that can't measure (SSR / a jsdom stub).
  *
- * INK — the same band middle, TIGHTENED by the measured marker string when that
- * reads further left. The band-middle anchor encodes an assumption ("the glyph
- * stays in the band's right half") that is true for a `•` and false for a wide
- * `10.`; the measurement is what closes that gap, and `min` is what keeps it a
- * one-way tightening — a measurement may never license a handle further inboard
- * than the heuristic already allowed.
+ * The measurement is conservative in its own right — it subtracts a
+ * {@link MARKER_TRAIL_EM} allowance, and answers "the whole band" for a counter
+ * style this build does not model — so reading it as the ink is a tightening of
+ * the estimate, not a loosening of the guard: `inkLeft` still says where the
+ * leftmost ink on this row is, and the lane's cap still keeps every handle's
+ * box clear of it.
  *
  * ONE `getComputedStyle` for the list (padding, counter style and font all read
  * from it) — the same single read this had before task 382, so the hover
@@ -496,12 +530,54 @@ function measuredMarkerInkLeft(
 function listBandGeometry(list: HTMLElement, liLeft: number): MarkerGeometry {
   const cs = getComputedStyle(list);
   const padLeft = parseFloat(cs.paddingLeft) || 0;
-  const anchor = liLeft - padLeft / 2;
+  const bandMiddle = liLeft - padLeft / 2;
   const measured = measuredMarkerInkLeft(list, cs, liLeft, padLeft);
-  return {
-    markerLeft: anchor,
-    inkLeft: measured === null ? anchor : Math.min(anchor, measured),
-  };
+  const ink = measured ?? bandMiddle;
+  // A list ITEM's own marker column is FULL on this row — its bullet is in it —
+  // so its handle hugs the glyph rather than occupying the column.
+  return { markerLeft: ink, inkLeft: ink, columnRight: null };
+}
+
+/**
+ * Kinds whose own row carries a MARKER COLUMN — a band left of their content
+ * where their marker glyph renders, and which is therefore EMPTY on every row
+ * of the structure hanging beneath them. A container nested inside one of these
+ * puts its handle in that column (task 487); a container nested inside anything
+ * else (a blockquote, the document itself) has no column above it to occupy and
+ * falls back to the ordinary gutter slot, so it lines up with the paragraph
+ * handles in the same gutter rather than hugging the text column.
+ *
+ * The membership test is not "does this kind have a marker" but the stronger
+ * "does the structure nested UNDER it hang from that marker's column" — the
+ * column has to be the same one, and empty on this row. `listItem` is the only
+ * kind in this schema that passes: a nested list is a block child of the item,
+ * so it fills the item's content box and its own border-box left IS the x the
+ * item's bullet band ends at.
+ *
+ * `exampleItem` is deliberately NOT a member, and stating why is the point —
+ * it has a marker and still lends no column. Its marker is a GRID cell
+ * (`.expex-item-row`: a marker column, a 0.8em gap, then the body), so a
+ * structure nested inside it begins at the BODY column, right of the marker,
+ * not under it; right-justifying a handle there would land it in the gap
+ * between the marker and the text rather than under the marker. And it is
+ * unreachable besides: `exampleItem`'s content model admits no list, so a
+ * container can never be its child (task 427).
+ */
+const MARKER_COLUMN_HOST_KINDS = new Set<string>(["listItem"]);
+
+/**
+ * The nearest uuid-bearing ancestor of `el`, iff its kind carries a marker
+ * column (see {@link MARKER_COLUMN_HOST_KINDS}). O(depth) — one `closest()`,
+ * and only on the container branch, which contributes at most one placement per
+ * hover.
+ */
+function parentMarkerColumnHost(el: HTMLElement): HTMLElement | null {
+  const host = el.parentElement?.closest<HTMLElement>(
+    "[data-uuid][data-text-object-kind]",
+  );
+  if (!host) return null;
+  const kind = host.getAttribute("data-text-object-kind");
+  return kind && MARKER_COLUMN_HOST_KINDS.has(kind) ? host : null;
 }
 
 /**
@@ -540,34 +616,44 @@ export function resolveMarkerGeometry(
     case "listItem": {
       const list = el.closest("ul, ol");
       if (!(list instanceof HTMLElement)) {
-        return { markerLeft: contentLeft, inkLeft: contentLeft };
+        return { markerLeft: contentLeft, inkLeft: contentLeft, columnRight: null };
       }
       return listBandGeometry(list, el.getBoundingClientRect().left);
     }
     case "bulletList":
     case "orderedList": {
-      // Markerless container — no own marker glyph. Step one track-width left
-      // of the first grabbable child's marker so the container handle stacks a
-      // uniform gap left of its first item's handle (`⠿⠿ • text`). Its INK
-      // boundary is that item's bullet: they share the row, so they share the
-      // line neither may cross.
+      // Markerless container — it has no marker glyph of its OWN on this row,
+      // and task 487 is the ruling about what it does instead: it OCCUPIES the
+      // marker column of the level ABOVE it — the column its list hangs from.
+      //
+      // That column's inner edge is the level-above's content edge, and for a
+      // block-level list that IS the list's own border-box left: a nested
+      // `<ul>` fills its parent `<li>`'s content box, so `listLeft` is exactly
+      // the x the parent's own bullet ends at, one row up. Right-justified
+      // there, the container's handle sits directly UNDER that bullet, which is
+      // Gabriel's rule verbatim ("the outer grab handle should justify right
+      // under the bullet point above") and reads as a structural breadcrumb.
+      //
+      // Its INK boundary is its first item's marker: they share the row, so
+      // they share the line neither may cross.
+      const listLeft = el.getBoundingClientRect().left;
       const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
-      if (!child) {
-        return {
-          markerLeft: contentLeft - trackWidthPx,
-          inkLeft: contentLeft,
-        };
-      }
       // `el` IS the list, so the band resolves with no `closest()` walk and ONE
       // rect read for the child (task 336 — the pre-fix line read it twice).
-      const band = listBandGeometry(el, child.getBoundingClientRect().left);
+      const inkLeft = child
+        ? listBandGeometry(el, child.getBoundingClientRect().left).inkLeft
+        : contentLeft;
       return {
-        markerLeft: band.markerLeft - trackWidthPx,
-        inkLeft: band.inkLeft,
+        // Used only when there is no column to occupy (below): the list then
+        // reads as an ordinary markerless block whose content edge is its own
+        // left, so its handle takes the same gutter slot every paragraph takes.
+        markerLeft: listLeft,
+        inkLeft,
+        columnRight: parentMarkerColumnHost(el) ? listLeft : null,
       };
     }
     default:
-      return { markerLeft: contentLeft, inkLeft: contentLeft };
+      return { markerLeft: contentLeft, inkLeft: contentLeft, columnRight: null };
   }
 }
 
@@ -672,7 +758,7 @@ export function resolveBlockFrame(
     "--margin-track-width",
     DEFAULT_TRACK_WIDTH_PX,
   );
-  const { markerLeft, inkLeft } = resolveMarkerGeometry(
+  const { markerLeft, inkLeft, columnRight } = resolveMarkerGeometry(
     el,
     el.getAttribute("data-text-object-kind"),
     contentLeft,
@@ -689,6 +775,7 @@ export function resolveBlockFrame(
     contentWidth,
     contentRight,
     markerLeft,
+    columnRight,
     inkLeft,
     gapPx,
   };

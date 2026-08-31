@@ -2170,9 +2170,12 @@ consumer reads the same source:
   [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) against
   that block's font (`gapPx`), so every prose block shares one value and a
   larger heading font widens it proportionally.
-- `--margin-track-width` (default `1.25em`) — the step a **markerless
-  container** (`bulletList` / `orderedList`) takes left of its first item's
-  handle, so container + item stack with uniform spacing.
+- `--margin-track-width` (default `1.25em`) — the marker-column fallback step
+  for a kind whose marker chrome could not be measured (see "Marker-left
+  fallback invariant" below). It was also, until task 487, the step a
+  **markerless container** took left of its first item's handle; a container is
+  now placed by the COLUMN rule below instead, so this variable no longer
+  governs any resting position.
 - `--margin-handle-hit-pad` (default `calc(var(--editor-font-size) * 1.8)`,
   ≈ 1.8em) — the width of a grab handle's **hit/hover halo** (the
   `.text-object-grab-handle::before`): a wide, centered pad around the 12px
@@ -2192,21 +2195,62 @@ measured, never a guessed glyph width, per kind:
 
 - **exampleBlock** → its `(n)` number (`.expex-number`) left edge.
 - **exampleItem** → its `a./b.` marker (`.expex-item-marker`) left edge.
-- **listItem** → the bullet band: the middle of the parent list's measured
-  `padding-left` indent (`li.left − padding-left / 2`). The `::marker`
-  pseudo isn't rect-able, so we anchor to the measured band (em-scaling),
-  never a hardcoded bullet width.
-- **bulletList / orderedList** (markerless container) → one
-  `--margin-track-width` left of the first grabbable child's `markerLeft`.
+- **listItem** → the MEASURED left edge of the list's widest marker string
+  (`text-metrics.ts` `measureTextWidth`, never a hardcoded bullet width),
+  less a `0.25em` trailing-space allowance. The `::marker` pseudo isn't
+  rect-able, so the string is measured rather than probed; where this build
+  can't measure (SSR, a jsdom stub) the band MIDDLE (`li.left −
+  padding-left / 2`) is the fallback. Anchor and ink are ONE number here
+  (task 487 — see the COLUMN rule below for why the band middle stopped
+  working as an anchor).
+- **bulletList / orderedList** (markerless container) → **not an anchor at
+  all**: a container OCCUPIES a marker column rather than hugging a marker.
+  See the COLUMN rule immediately below. Where there is no column above it to
+  occupy (a top-level list, or one inside a blockquote), it falls back to the
+  ordinary markerless slot — its own content edge, the same slot a paragraph
+  takes.
 - **paragraph / heading / blockquote / codeBlock / titleField / framed
   atoms** (no marker) → the text `contentLeft`. (A text **selection** also
   anchors to `contentLeft` — it labels text, not a marker.)
 
 The result: `⠿ (2) ⠿ a.` (example container left of the number, item left of
-its marker) and `⠿⠿ • text` (both list handles left of the bullet, uniform
-spacing) — same gap everywhere, and because markers are MEASURED + the gap is
+its marker) — same gap everywhere, and because markers are MEASURED + the gap is
 em-based, a wide `(100)` marker or a font-size change can't break it. Floored
 at `editorColumnLeft − var(--margin-col-handle-inset)` for narrow viewports.
+
+**A container OCCUPIES its level's marker column (task 487, Gabriel's ruling:
+"the outer grab handle should justify right under the bullet point above").**
+The hug rule above is right for every block that HAS a marker and vacuous for a
+markerless CONTAINER — a `<ul>` renders no glyph on its own row, so "one gap left
+of nothing" was a step of an arbitrary token off its first item's anchor. On a
+top-level list that step landed the two handles ~8px apart: one ~20px blob where
+a press on the left of the item's box grabbed the LIST (task 483, measured live).
+
+So a container's handle is **right-justified to the inner edge of the marker
+column of the level ABOVE it** — the column its list hangs from, whose glyph sits
+a row up and which is therefore empty on this row. For a nested list that edge is
+the list's own border-box left (a nested `<ul>` fills its parent `<li>`'s content
+box), so the handle lands directly under the parent row's bullet and the gutter
+reads outward-in as a structural breadcrumb. A container with no such column
+above it (a top-level list, one inside a blockquote) has nothing to occupy and
+takes the ordinary markerless slot instead.
+
+Two consequences worth stating, because they are the point rather than side
+effects:
+
+- **Non-overlap becomes STRUCTURAL.** Two levels sit in two different columns,
+  so the two top-row handles are disjoint boxes by construction rather than by a
+  separation constant. `block-frame.ts` decides which of the two anchor readings
+  applies (`BlockFrame.columnRight`: a column to occupy, or `null` for "hug your
+  own marker"), ONCE — never at a call site.
+- **The list ITEM anchor had to become the measured glyph.** The band middle was
+  always a stand-in for a rect the `::marker` pseudo doesn't give, and its
+  justification ("the glyph stays in the band's right half") is a fact about a
+  2em band, not about the marker: at the deeper band the ruling requires, the
+  stand-in drifts steadily further left of the bullet and the item's handle
+  detaches from the very thing it labels — toward the column the container now
+  occupies. Where the string can be measured, the measurement is the answer for
+  the anchor and the ink alike.
 
 **The LANE, and the one thing chrome may never do (task 382).** The anchor
 above says where a handle *wants* to be; it is not the only bound. Each handle
@@ -2222,23 +2266,44 @@ resolves a lane, `[floor … cap]`:
   worse than a tight one.
 
 **Chrome never paints on the ink it labels.** Any pass that *moves* a handle
-(today: the same-row separation, which pushes inner handles inboard so two
-nested handles read as two controls) moves it **within the lane** — the cap
-outranks the spacing target, and sub-target spacing is the documented degraded
-state. Where the anchor is a heuristic rather than a measurement, the cap is
-allowed to be tighter than the anchor: a list `<li>` anchors at the band MIDDLE
-(the `::marker` pseudo has no rect), which assumes the glyph stays in the
-band's right half — true for a `•`, false for a wide `10.`, so `inkLeft` also
-takes the MEASURED marker-string width (`text-metrics.ts` `measureTextWidth`,
-never a hardcoded px) when that reads further left. A measurement may only
-TIGHTEN the heuristic, never loosen it.
+moves it **within the lane** — the cap outranks the spacing target, and
+sub-target spacing is the documented degraded state. The same-row separation is
+that pass, and since task 487 it has TWO of them:
 
-**The list marker band is `2em`** (`.tiptap ul/ol { padding-left }`) — not a
-typographic preference but the lane's width: at the 1.5em this shipped with,
-the everyday top-level list cannot hold both the separation target and a clear
-bullet, so the cap fired on the common case instead of being the rare-case net.
-Changing it is a layout decision for every list; the geometry it has to satisfy
-is `(band/2 − gapPx − handleWidth) + handleInset ≥ separation target`.
+- **inboard** (353/382) — each INNER handle is pushed toward a 24px target
+  inboard of the one before it, bounded by its own lane's cap so a push can
+  never walk a handle onto the bullet;
+- **outboard** (487) — where the inboard push has run out of lane and the pair
+  is still closer than `HANDLE_WIDTH + 6`, the OUTER handle gives way into the
+  margin instead, bounded by the floor. This is what makes non-overlap a
+  guarantee rather than a target: an inner handle can be pinned against its ink,
+  but nothing on a row lies left of that row's own marker, so the margin
+  outboard is free. The floor still outranks it.
+
+Where the anchor is a heuristic rather than a measurement, the cap may be
+tighter than the anchor — but for a list row it no longer needs to be: since
+task 487 the measured marker string IS the anchor as well as the ink, so the two
+are one number and there is nothing for a `min` to tighten. The heuristic
+survives only where nothing can measure, and there a measurement may still only
+TIGHTEN it, never loosen it.
+
+**The list marker band is `2.5em`** (`.tiptap ul/ol { padding-left }`) — not a
+typographic preference but the lane's width, and it has been widened twice by
+the same argument. 1.5em → 2em (task 382): at 1.5em the everyday top-level list
+could not hold both the separation target and a clear bullet, so the cap fired
+on the common case instead of being the rare-case net. 2em → 2.5em (task 487,
+Gabriel's ruling above): a container's handle now occupies the marker column of
+the level ABOVE it, so the band has to hold the ITEM's handle **whole** rather
+than merely leave room for a push. The fits-inequality, one row's worth of
+geometry with the surplus as the seam between the two handles:
+
+> `band > markerInk + 0.25em trail + var(--margin-handle-gap) + 12px`
+
+For a `•` at the shipped 15.2px prose font that right-hand side is ≈30.6px
+against a 2em band of 30.4px — 2em does not fit at all, and the deficit IS the
+~4px overlap task 483 measured live. 2.5em = 38px, a ~7px seam. Changing it is a
+layout decision for every list at every depth; the inequality is pinned as a leg
+in `handle-marker-ink-clearance.test.tsx`.
 
 **Marker-left fallback invariant (generalizable).** When a kind's marker
 chrome can't be measured (a transient render before the NodeView mounts, an

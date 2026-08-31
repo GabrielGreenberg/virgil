@@ -2677,22 +2677,40 @@ textarea,
   padding-left: 1.3em;
 }
 
-/* The list MARKER BAND. 2em, not the 1.5em this shipped with: the band is the
-   lane the bullet AND the row's grab handles share, and at 1.5em there is not
-   enough of it left of the glyph for the item handle to sit clear of it once
-   the same-row separation pushes it inboard (task 382 — the handle painted ON
-   the bullet). At 2em the everyday top-level list reaches the separation's
-   24px target with the handle still clear of the glyph, so the ink cap in
-   `handle-layout.ts` stays the rare-case net it is meant to be rather than the
-   everyday mitigator. Nested lists inherit it from the same rule. */
+/* The list MARKER BAND. 2.5em — and it has been widened twice, each time by the
+   same argument: the band is the LANE the bullet and the row's grab handles
+   share, so its width is a geometry decision rather than a typographic taste.
+
+   1.5em → 2em (task 382): at 1.5em there was not enough band left of the glyph
+   for the ITEM handle to sit clear of it once the same-row separation pushed it
+   inboard — the handle painted ON the bullet.
+
+   2em → 2.5em (task 487, Gabriel's placement ruling: "the outer grab handle
+   should justify right under the bullet point above. this does require making
+   the depth of the bullet indents slightly deeper"). A container's handle now
+   OCCUPIES the marker column of the level above it, so the two handles on a
+   top row sit in two different columns and the band has to hold the item's
+   handle whole. The inequality — one row's worth of geometry, all in the
+   labeled text's own em except the 12px handle box, with whatever is left over
+   being the SEAM between the two handles:
+
+       band > markerInk + MARKER_TRAIL_EM + --margin-handle-gap + 12px
+
+   For a `•` (≈0.35em) at the shipped 15.2px prose font the right-hand side is
+   (0.35 + 0.25 + 0.625) em + 12px = 30.6px, against a 2em band of 30.4px — i.e.
+   2em does not fit AT ALL, and the deficit is precisely the ~4px overlap task
+   483 measured live. 2.5em = 38px, so the seam is ~7px. Nested lists inherit it
+   from the same rule, so every level steps by the same band and every level's
+   handle has the same room. Pinned as a leg in
+   `handle-marker-ink-clearance.test.tsx`; see STYLE_GUIDE.md "Margin chrome". */
 .tiptap ul {
   list-style-type: disc;
-  padding-left: 2em;
+  padding-left: 2.5em;
 }
 
 .tiptap ol {
   list-style-type: decimal;
-  padding-left: 2em;
+  padding-left: 2.5em;
 }
 
 /* Nested lists (lists within list items): tight spacing — they should
