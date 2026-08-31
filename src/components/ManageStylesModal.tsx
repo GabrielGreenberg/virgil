@@ -435,7 +435,7 @@ export default function ManageStylesModal({
                             type="button"
                             onClick={() => void apply(s.id)}
                             disabled={!!pendingMerge}
-                            className="text-[11px] px-2 py-1 hover:bg-surface-muted rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="text-[11px] px-2 py-1 hover-on-light rounded disabled:opacity-40 disabled:cursor-not-allowed"
                             data-hint={pendingMerge ? "AI merge in progress…" : "Apply this style to the current doc"}
                           >
                             Apply
@@ -485,21 +485,21 @@ export default function ManageStylesModal({
                       <button
                         type="button"
                         onClick={() => startEdit(s.id)}
-                        className="px-2 py-1 hover:bg-surface-muted rounded"
+                        className="px-2 py-1 hover-on-light rounded"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => duplicateStyle(s.id)}
-                        className="px-2 py-1 hover:bg-surface-muted rounded"
+                        className="px-2 py-1 hover-on-light rounded"
                       >
                         Duplicate
                       </button>
                       <button
                         type="button"
                         onClick={() => startRename(s)}
-                        className="px-2 py-1 hover:bg-surface-muted rounded"
+                        className="px-2 py-1 hover-on-light rounded"
                       >
                         Rename
                       </button>
@@ -512,7 +512,7 @@ export default function ManageStylesModal({
                             ? "Library must contain at least one style"
                             : undefined
                         }
-                        className="px-2 py-1 hover:bg-surface-muted rounded text-[var(--danger)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-2 py-1 hover-on-light rounded text-[var(--danger)] disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Delete
                       </button>

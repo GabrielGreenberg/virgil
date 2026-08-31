@@ -1287,7 +1287,7 @@ function CitationKeyRow({
             e.stopPropagation();
             setPgOpen(true);
           }}
-          className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
           data-hint="Add a page range or locator"
         >
           +range
@@ -1377,7 +1377,7 @@ function CitationKeyRow({
                 e.stopPropagation();
                 onRemove();
               }}
-              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity focus-ring"
+              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover-on-light opacity-0 group-hover/row:opacity-100 focus-ring"
               {...iconHint({ label: "Remove this row" })}
             >
               <svg
@@ -1460,7 +1460,7 @@ function CitationKeyRow({
               className={`text-[10px] uppercase tracking-wide px-1 py-0 rounded ${
                 bibExpanded
                   ? "text-ink-body bg-edge-subtle"
-                  : "text-[var(--muted)] hover:text-ink-body hover:bg-edge-subtle"
+                  : "text-[var(--muted)] hover:text-ink-body hover-on-light"
               }`}
               data-hint={bibExpanded ? "Hide bib entry" : "Show bib entry"}
             >
@@ -1470,7 +1470,7 @@ function CitationKeyRow({
           {entryInLibrary && trimmed && (
             <OpenEntryLink
               citekey={trimmed}
-              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
+              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light"
             />
           )}
           {/* +range moved to trail the citation display line above (task 010). */}
@@ -1481,7 +1481,7 @@ function CitationKeyRow({
               e.stopPropagation();
               onRemove();
             }}
-            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-[var(--muted)] hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
+            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-[var(--muted)] hover:text-danger hover-on-light opacity-0 group-hover/row:opacity-100 ${
               !canRemove ? "pointer-events-none" : ""
             } focus-ring`}
             {...iconHint({ label: "Remove this key" })}

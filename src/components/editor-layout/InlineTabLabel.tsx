@@ -98,7 +98,7 @@ function InlineTabLabelImpl({
             e.stopPropagation();
             onClose(id);
           }}
-          className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
+          className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100"
           {...iconHint({ label: "Close tab" })}
         >
           <IconX />

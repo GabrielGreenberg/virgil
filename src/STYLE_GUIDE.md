@@ -792,13 +792,27 @@ Marginalia margin icons are 16px, rendered via the components in
 
 Five states. One implementation each.
 
-- **Hover.** Two utility classes: `hover-on-light` (resting bg is
-  white-ish) and `hover-on-dark` (resting bg is a darker pod). Both
-  transition background-color 120ms — so **don't add Tailwind's
-  `transition-colors` alongside them.** The utilities are unlayered and
-  Tailwind's is in `@layer utilities`, so the utility class always loses;
-  pairing them looks like it does something and does nothing. Same for
-  `iconbtn-*` and `.topbarbtn`, which own their own transition.
+- **Hover.** Two utility classes, and **no third spelling**: `hover-on-light`
+  (resting bg is white-ish) and `hover-on-dark` (resting bg is a darker pod —
+  the Virgil bar, a pod header). Pick by resting bg; never hand-roll a
+  `hover:bg-*`, and never reach for a BORDER token (`--edge-subtle`) as a fill.
+  If a surface genuinely needs a heavier hover, that is a new named role with
+  its own token and its own declaration. CI reads this rule:
+  `color-token-consumers.test.ts` → "the neutral hover has ONE spelling per
+  resting bg" (allowlist for `--edge-subtle`: EMPTY).
+- **A hover utility owns the element's whole transition.** `hover-on-light` /
+  `hover-on-dark` / `iconbtn-*` / `.topbarbtn` are UNLAYERED, and Tailwind's
+  `transition-*` lives in `@layer utilities` — so the utility wins whatever the
+  class order, and **adding `transition-colors` or `transition-opacity`
+  alongside one does nothing.** That is why each now names a property list that
+  is a strict SUPERSET of `transition-colors` plus `opacity`, at one 120ms
+  ease-out: spell `hover:text-*`, `hover:border-*`, or a `group-hover` opacity
+  reveal and it fades at the shared timing with no transition utility of your
+  own. `transition-delay` is left unset, so `delay-*` still composes. The one
+  shape that must NOT take a hover utility is an element whose own transition is
+  **broader** — `transition-all`, which also carries transform and filter
+  (`<Button>`'s `BUTTON_BASE`). Such a site keeps its hand-rolled hover, on the
+  SSOT's own token, and says so in place with a `hover-on-light-exempt:` marker.
   Hover **never changes elevation** — no `hover:shadow-*`, no lift. Shadow
   here is a property of the surface tier (pods/cards carry their ambient
   shadow, floats carry `--shadow-float`, and a DRAG GHOST — the translucent

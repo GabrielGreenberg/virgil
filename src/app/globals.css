@@ -754,12 +754,58 @@ body[data-zen-mode="on"] {
 }
 
 /* ── Hover utilities ──────────────────────────────────────────────
-   Two variants. Choose by resting bg.
+   THE neutral hover. Two variants, chosen by resting bg — never a
+   hand-rolled `hover:bg-*`:
    - .hover-on-light: resting bg is white / surface / surface-muted.
    - .hover-on-dark:  resting bg is pod-panel / header-bg / topbar-bg.
-   Both transition 120ms ease-out and only affect background-color. */
-.hover-on-light {
-  transition: background-color 120ms ease-out;
+
+   ── Why the property list is the whole colour set + opacity (task 502)
+   These rules are UNLAYERED, so they beat every Tailwind `transition-*`
+   utility (which lives in `@layer utilities`) whatever the class order.
+   An unlayered rule that sets a transition therefore OWNS the element's
+   WHOLE transition: naming `background-color` alone silently DISABLED
+   the site's own `transition-colors` / `transition-opacity`.
+
+   That was not hypothetical — 23 shipped `.hover-on-light` controls also
+   change ink on hover, and their ink SNAPPED while their fill faded. It
+   is also why 29 controls hand-rolled their own `hover:bg-*` instead of
+   taking the utility: hand-rolling composes and this did not.
+
+   So the list is a strict SUPERSET of Tailwind's `transition-colors`
+   (color, background-color, border-color, text-decoration-color, fill,
+   stroke) plus `opacity`, at ONE 120ms ease-out. A site may then spell
+   `hover:text-*` / `hover:border-*` / a group-hover opacity reveal and
+   get it at the same timing, with no transition utility of its own.
+   `transition-delay` is deliberately NOT set, so a `delay-*` utility
+   still composes.
+
+   THE ONE EXEMPTION: an element whose own transition is BROADER than
+   this set (`transition-all` — transform, filter, box-shadow) must keep
+   its own and NOT take the utility; `<Button>`'s BUTTON_BASE is the only
+   such site, and it already rests on the same token. It is allowlisted
+   with that reason in src/__tests__/color-token-consumers.test.ts.
+
+   The group below is EVERY unlayered interaction utility, not just the
+   two hover ones. `.iconbtn-*` and `.topbarbtn` hover to the same two
+   values (--surface-muted-strong / rgba(0,0,0,.04)) as component-shaped
+   twins of these, and each carried its OWN narrower shorthand — so four
+   shipped sites spelling `transition-opacity` beside them had a reveal
+   that never faded. One declaration, one contract, no fourth copy to
+   drift. Their `:active` transform nudge is deliberately NOT in the list
+   (an instant press is the intent) and `:focus-visible`'s box-shadow is
+   likewise instant, as it has always been. */
+.hover-on-light,
+.hover-on-dark,
+.iconbtn-xs,
+.iconbtn-sm,
+.iconbtn-md,
+.iconbtn-lg,
+.topbarbtn {
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill,
+    stroke, opacity;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
 }
 .hover-on-light:hover {
   background-color: var(--surface-muted-strong);
@@ -790,9 +836,7 @@ body[data-zen-mode="on"] {
   border-color: var(--edge-strong);
 }
 
-.hover-on-dark {
-  transition: background-color 120ms ease-out;
-}
+/* Timing/property list shared with .hover-on-light above. */
 .hover-on-dark:hover {
   background-color: rgba(0, 0, 0, 0.04);
 }
@@ -813,7 +857,9 @@ body[data-zen-mode="on"] {
   border-radius: var(--radius-sm);
   color: var(--ink-muted);
   background: transparent;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
+  /* transition: shared with .hover-on-light above — the ONE contract every
+     unlayered interaction utility takes. A local shorthand here would come
+     LATER in the sheet and win, re-narrowing the property list. */
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
@@ -978,7 +1024,7 @@ body[data-zen-mode="on"] {
   font-weight: 500;
   color: var(--ink-subtle);
   background: transparent;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
+  /* transition: shared with .hover-on-light above (see the note there). */
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;

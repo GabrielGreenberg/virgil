@@ -163,7 +163,7 @@ export default function PrintDialog({
                   className={`px-2 py-1 text-xs rounded border transition-colors ${
                     active
                       ? "bg-[var(--control-selected)] text-white border-[var(--control-selected)]"
-                      : "bg-surface border-edge-subtle text-ink-body hover:bg-surface-muted-strong"
+                      : "bg-surface border-edge-subtle text-ink-body hover-on-light"
                   }`}
                 >
                   {PRINT_FONT_LABELS[i]}
@@ -208,7 +208,7 @@ function PrintCheckbox({
       disabled={disabled}
       data-hint={title}
       className={`flex items-center gap-2 text-xs text-left w-full px-1 py-0.5 rounded ${
-        disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-muted-strong"
+        disabled ? "opacity-40 cursor-not-allowed" : "hover-on-light"
       }`} aria-label={title}
     >
       <span
