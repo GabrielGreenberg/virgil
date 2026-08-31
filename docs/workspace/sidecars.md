@@ -1,4 +1,4 @@
-<!-- last-verified: 41d988c2 2026-08-25 -->
+<!-- last-verified: 7d60218f 2026-08-31 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -35,7 +35,15 @@ below carry only what's *distinctive*:
   on atom-linked cards (`FootnoteRef`, `CitationRef`) and on `ExampleRef`. The
   `Link` shape and Mode A/B are [anchoring.md](anchoring.md).
 - **`selectedText?: string`** — the Mode-B captured text (undefined for
-  paragraph-only / unanchored cards).
+  paragraph-only / unanchored cards). It is `doc.textBetween`, so it drops every
+  MARK and every inline ATOM: the currency the apply path splices and the copy
+  button copies, never a faithful rendering of the passage.
+- **`selectedContent?: unknown`** — the RICH twin of the same passage, taken at
+  anchor time (task 488), on the four suggestion/comment kinds. DISPLAY-ONLY: it
+  is what the "Original" surfaces render, because no render-time parse can
+  recover a citation or a `$x$` `selectedText` never held. Absent on every
+  pre-488 card and on skill-authored records, where the display door falls back
+  to parsing the bytes.
 - **`aiRequest: boolean`** — the sticky "I want Claude to act on this" flag the
   bridge collapses into a Task ([cards.md → the Task Card](cards.md#the-task-ai-requestsjson)).
 - **`archived?: boolean`** — set-aside flag (per-card Archive). Absent ≡ active;
