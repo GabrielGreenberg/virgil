@@ -128,8 +128,14 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   "src/panels/_shared/suggestion-fields.tsx :: text-emerald-800": "diff/added field chrome — wants an added/removed token pair",
   "src/panels/_shared/suggestion-fields.tsx :: placeholder:text-emerald-400": "diff/added field chrome — wants an added/removed token pair",
   "src/panels/_shared/suggestion-fields.tsx :: focus:border-emerald-400": "diff/added field chrome — wants an added/removed token pair",
-  "src/panels/_shared/suggestion-fields.tsx :: text-emerald-600": "accept-action affordance ink; the accept/reject button pair wants one token set",
-  "src/panels/_shared/suggestion-fields.tsx :: hover:bg-emerald-50": "accept-action affordance ink; the accept/reject button pair wants one token set",
+  // The three accept-ACTION emerald entries that used to sit here
+  // (`suggestion-fields :: text-emerald-600` / `:: hover:bg-emerald-50`, and
+  // `CitationCard :: text-emerald-600`) are DRAINED by task 501: the
+  // affirmative role family (`--positive-soft` / `--positive-ink` /
+  // `--positive-strong`) is the token set their own reasons asked for, and
+  // the accept/reject pair is now ONE component (`CommitActions`). The
+  // diff/added FIELD entries above stay: a legend is not an affirmative
+  // control, and repainting it needs rungs this family does not have.
   "src/panels/_shared/suggestion-fields.tsx :: text-red-700/80": "diff/destructive field chrome — wants an added/removed token pair",
   "src/panels/Cutter/CutterSuggestionCard.tsx :: text-emerald-700/90": "diff/added preview ink (twin of the Revisions card) — wants the added/removed pair",
   "src/panels/Cutter/CutterSuggestionCard.tsx :: text-red-700/70": "diff/removed preview ink (twin of the Revisions card) — wants the added/removed pair",
@@ -147,7 +153,6 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
 
   // Singletons with no filed owner yet.
   "src/panels/Bibliography/BibliographyPanel.tsx :: bg-amber-400": "in-flight pulse dot; wants the amber family or a --status-* member",
-  "src/panels/Citations/CitationCard.tsx :: text-emerald-600": "accept-action affordance ink; twin of the suggestion-fields button",
   "src/panels/Omni/OmniViewPanel.tsx :: border-sky-200": "omni notice strip edge; wants an informational edge token",
 };
 

@@ -779,7 +779,7 @@ function AddButton({
   if (state === "added") {
     return (
       <span
-        className="w-5 h-5 flex items-center justify-center rounded-full text-emerald-600"
+        className="w-5 h-5 flex items-center justify-center rounded-full text-positive-ink"
         data-hint="Already available here"
         aria-label="Already available here"
       >
@@ -913,7 +913,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="text-emerald-600"
+            className="text-positive-ink"
           >
             <polyline points="20 6 9 17 4 12" />
           </svg>

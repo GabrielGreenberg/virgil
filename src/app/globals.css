@@ -543,13 +543,47 @@
   /* ── Positive / attained roles ────────────────────────────────────
      The affirmative counterpart of the destructive family above: the
      look a surface takes when a thing the user was working toward is
-     DONE — a goal met, a suggestion accepted. Two rungs, because that
-     is what the surfaces need: a solid FILL and an INK that reads on a
-     light panel.
+     DONE — a goal met, a suggestion accepted, a change kept.
 
-     Values pinned to what the app already painted (emerald-500 /
-     emerald-700), so adopting the token is a zero-diff swap — the same
-     rule the status-dot family below states.
+     RENEGOTIATED IN PLACE (task 2026-08-31-501). This block used to say
+     "Two rungs, because that is what the surfaces need: a solid FILL
+     and an INK that reads on a light panel." That was true of the three
+     consumers task 286 could see (the goal-reached bar, the accepted
+     status dot, the Pomodoro done state) and false of a fourth kind it
+     did not know about: an affirmative CONTROL — the Keep button on a
+     pending change, the "Add" on a bib row, a copied-confirm check. A
+     control needs a hover WASH (the twin of `--danger-soft`) and an ink
+     that is neither the fill nor the heavy label ink. So the family
+     grows to four rungs, exactly mirroring the destructive family's
+     soft / action / … / strong shape, and the choice between them is
+     about EMPHASIS rather than about which surface you are on.
+
+     ONE RAMP, and that is the load-bearing decision. The two rungs 286
+     minted are TAILWIND v3 hexes annotated "≈ emerald-500 /
+     emerald-700"; Virgil ships Tailwind **v4**, whose emerald ramp is
+     oklch and renders DIFFERENT values (500 → #00bc7d, 600 → #009966,
+     700 → #007a55). So `--positive` has not been what `bg-emerald-500`
+     paints since the v4 upgrade, and that discrepancy is precisely what
+     made the raw `emerald-*` utilities a real drift rather than a
+     stylistic one — the "five hexes, relationship implicit" class of
+     `docs/virgil-design-system/10-audit.md` §8, one hue over.
+
+     The two NEW rungs are therefore pinned to the SAME v3 ramp as the
+     two that exist, not to what the v4 utilities happen to render:
+     a family assembled from two palette generations would re-create the
+     implicit relationship the family exists to codify. What that costs
+     is measured rather than waved away — adopting `--positive-ink`
+     moves the accept-control ink from v4's #009966 to #059669, ΔE ≈ 3.7
+     (far below the ΔE ≈ 17 the `--danger-strong` merge above treats as
+     "tellable apart but not two statements"), and it slightly IMPROVES
+     contrast on white (3.77:1 vs 3.65:1) — the same argument shape that
+     merge made. `--positive-soft` costs nothing at all: v3 and v4 both
+     render emerald-50 as #ecfdf5.
+
+     The two 286 rungs keep their VALUES: they have live consumers, so
+     realigning them onto v4 would be a visual change rather than a
+     consolidation. Only their "≈ emerald-N" annotations are corrected,
+     to name the generation they actually come from.
 
      Deliberately NOT merged with `--status-ok` (#22c55e), which the
      `--danger-strong` comment's merge test would ask about. That token
@@ -560,9 +594,20 @@
      hue family, different statement — and unlike the two darks that
      merge above, both of these have live consumers today, so a merge
      would be a visual change, not a consolidation. If a future surface
-     shows both at once, revisit here. */
-  --positive: #10b981;         /* solid positive fill: goal-reached bar, accepted status dot (≈ emerald-500) */
-  --positive-strong: #047857;  /* positive ink on a light panel: the "goal reached" label (≈ emerald-700) */
+     shows both at once, revisit here. Equally NOT merged with
+     `--note-color` (#15803d) and its wash: those belong to the note
+     CARD KIND, and borrowing them would couple "accepted" to a card
+     kind — the coupling the `--status-collab-*` block below already
+     warns against.
+
+     `--positive-ink` rather than a bare `--positive-*` name matching
+     `--danger`'s "action text" slot: the plain name was minted first,
+     by 286, for the solid FILL, and its consumers are live. Naming the
+     new rung by its ROLE is the rule anyway. */
+  --positive-soft: #ecfdf5;    /* affirmative hover wash: Keep / Add / accept-control hover (v3+v4 emerald-50 — identical in both) */
+  --positive: #10b981;         /* solid positive fill: goal-reached bar, accepted status dot (Tailwind v3 emerald-500) */
+  --positive-ink: #059669;     /* affirmative CONTROL ink: Keep, Add, copied-confirm check (Tailwind v3 emerald-600) */
+  --positive-strong: #047857;  /* strongest positive ink on a light panel: the "goal reached" label, the compile-log "ok" (Tailwind v3 emerald-700) */
 
   /* Status dots (traffic-light) — the semantic triple every red/green/yellow
      status affordance reads from (the Virgil-bar AI-status dot today; other
@@ -706,6 +751,16 @@ body[data-zen-mode="on"] {
      strings) read `var(--danger-strong)` as an inline style value, which needs
      no `--color-*` entry. Add the alias with its first `text-danger-strong`,
      not ahead of one. */
+  /* The affirmative family, same rule in both directions: a rung spelled as a
+     utility gets an alias, a rung read only through `var(--token)` does not.
+     No --color-positive: its three consumers (the goal-strip bar, the accepted
+     status dot, the Pomodoro ring) all reach it as `bg-[var(--positive)]` or an
+     inline style. Add it with its first `bg-positive`, not ahead of one.
+     `affirmative-green-tokens.test.ts` pins the biconditional in both
+     directions, so a rung minted here with no utility fails CI too. */
+  --color-positive-soft: var(--positive-soft);
+  --color-positive-ink: var(--positive-ink);
+  --color-positive-strong: var(--positive-strong);
   --color-ring-drag-target: var(--ring-drag-target);
 }
 

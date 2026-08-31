@@ -15,6 +15,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Chevron } from "@/components/panel-primitives";
+import { CommitActions } from "@/components/CommitActions";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
@@ -89,6 +90,19 @@ export const FIELD_PLACEHOLDER: Record<SuggestionField, string> = {
   instructions: "Instructions for the AI…",
 };
 
+/**
+ * affirmative-green-exempt (and its red twin, already pinned): the
+ * ORIGINAL / SUGGESTED field dialect is a DIFF legend, not an affirmative
+ * control. `original_text`'s red half sits on
+ * `destructive-red-tokens.test.ts` → PINNED_STOCK_RED_SITES with the reason
+ * ("a DESIGNED look… repainting them needs two rungs this family does not
+ * have — a light border and a dark body ink — and a visual decision per card
+ * surface, which is a product call, not a sweep"), and the emerald half is
+ * the same statement in the same dialect: a ground, a border, a body ink, a
+ * placeholder ink and a focus border, none of which the four-rung
+ * `--positive` family expresses. Converting one half and pinning the other
+ * would leave one legend speaking two vocabularies. Repaint BOTH or neither.
+ */
 export const FIELD_TEXTAREA_CLASS: Record<SuggestionField, string> = {
   original_text:
     "w-full bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-red-700 placeholder:text-red-300 focus:outline-none focus:border-red-400 resize-none min-h-[36px]",
@@ -448,33 +462,6 @@ export function ApplyActionRow({
   );
 }
 
-/** A check (Keep) / cross (Dismiss) glyph for the applied-card commit icons. */
-function CommitGlyph({ kind }: { kind: "check" | "cross" }) {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="flex-shrink-0"
-      aria-hidden
-    >
-      {kind === "check" ? (
-        <polyline points="20 6 9 17 4 12" />
-      ) : (
-        <>
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </>
-      )}
-    </svg>
-  );
-}
-
 /** One segment of the Original / Suggested preview toggle. */
 function PreviewSegment({
   label,
@@ -588,37 +575,17 @@ export function AppliedRecordBody({
             onClick={() => controller?.previewSuggested(family, id)}
           />
         </div>
+        {/* The Keep / Dismiss pair — the SHARED control, mounted here and by
+            the margin `PendingChangePill`. `"inside-lifting-card"` is the
+            pointer policy this surface needs: the card header owns a lift
+            gesture, so a mousedown must not reach it. */}
         <div className="ml-auto flex items-center gap-1">
-          {/* Check — keep (finalize the suggested text). */}
-          <button
-            type="button"
-            aria-label="Keep change"
-            title="Keep"
+          <CommitActions
+            onKeep={() => controller?.keep(family, id)}
+            onDismiss={() => controller?.dismiss(family, id)}
             disabled={disabled}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              controller?.keep(family, id);
-            }}
-            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 disabled:pointer-events-none transition-colors focus-ring"
-          >
-            <CommitGlyph kind="check" />
-          </button>
-          {/* Cross — dismiss (restore the original + archive; never deletes). */}
-          <button
-            type="button"
-            aria-label="Dismiss change"
-            title="Dismiss (restores original, archives the card)"
-            disabled={disabled}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              controller?.dismiss(family, id);
-            }}
-            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger disabled:opacity-40 disabled:pointer-events-none transition-colors focus-ring"
-          >
-            <CommitGlyph kind="cross" />
-          </button>
+            pointerPolicy="inside-lifting-card"
+          />
         </div>
       </div>
       {/* Row 2 — explanation (what Claude did and why), always visible when

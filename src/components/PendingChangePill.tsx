@@ -72,33 +72,7 @@ import {
   isLayoutGestureActive,
   useLayoutGestureActive,
 } from "@/lib/pane-resize";
-/** A check (Keep) / cross (Dismiss) glyph for the pill's commit icons — mirrors
- *  the applied-card body's commit icons. */
-function PillGlyph({ kind }: { kind: "check" | "cross" }) {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      {kind === "check" ? (
-        <polyline points="20 6 9 17 4 12" />
-      ) : (
-        <>
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </>
-      )}
-    </svg>
-  );
-}
-
+import { CommitActions } from "@/components/CommitActions";
 const VIEWPORT_MARGIN = 8;
 /** How far LEFT of the paragraph's text-column edge the pill's right edge sits,
  *  so it clears the paragraph grab handle (the grab bar sits ~21px left of the
@@ -472,12 +446,45 @@ export function PendingChangePill({
   if (!target) return null;
 
   return createPortal(
+    <PendingChangePillBody
+      target={target}
+      targetKey={placement.targetKey}
+      right={placement.right}
+      top={placement.top}
+    />,
+    document.body,
+  );
+}
+
+/**
+ * The pill's portal CONTENT — its chrome plus the shared `CommitActions` pair.
+ *
+ * Exported for unit testing, the same reason `resolveTargetKey` above is: the
+ * pill's placement is RAF-gated against real editor geometry, so a suite that
+ * mounted `PendingChangePill` in jsdom would never reach this JSX at all — and
+ * the contract that matters here ("the pill and the applied card mount the SAME
+ * Keep/Dismiss pair") is a claim about what a call site renders, which a test
+ * of `CommitActions` alone structurally cannot see. Splitting the body out is
+ * what lets both call sites be rendered for real (task 501).
+ */
+export function PendingChangePillBody({
+  target,
+  targetKey,
+  right,
+  top,
+}: {
+  target: PendingChangeTarget;
+  targetKey: string;
+  right: number;
+  top: number;
+}) {
+  return (
     <div
       className="pointer-events-auto flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-lg"
       style={{
         position: "fixed",
-        right: placement.right,
-        top: placement.top,
+        right,
+        top,
         // Vertically center the pill on the change's first line (it's seated in
         // the left margin, level with the prose).
         transform: "translateY(-50%)",
@@ -486,40 +493,19 @@ export function PendingChangePill({
       }}
       role="group"
       aria-label="Pending change actions"
-      data-pending-change-pill={placement.targetKey}
+      data-pending-change-pill={targetKey}
       // Prevent a mousedown on the pill from blurring the editor / clearing the
-      // selection before the click registers (mirrors the margin bolt).
+      // selection before the click registers (mirrors the margin bolt). This
+      // stays on the CONTAINER rather than moving into `CommitActions`: it must
+      // cover the pill's padding and gap too, which a per-button handler would
+      // not — which is exactly what the `"portal-over-editor"` policy records.
       onMouseDown={(e) => e.preventDefault()}
     >
-      {/* Check — keep (finalize the suggested text). */}
-      <button
-        type="button"
-        aria-label="Keep change"
-        title="Keep"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          target.onKeep();
-        }}
-        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors focus-ring"
-      >
-        <PillGlyph kind="check" />
-      </button>
-      {/* Cross — dismiss (restore original + archive; never deletes). */}
-      <button
-        type="button"
-        aria-label="Dismiss change"
-        title="Dismiss (restores original, archives the card)"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          target.onDismiss();
-        }}
-        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger transition-colors focus-ring"
-      >
-        <PillGlyph kind="cross" />
-      </button>
-    </div>,
-    document.body,
+      <CommitActions
+        onKeep={target.onKeep}
+        onDismiss={target.onDismiss}
+        pointerPolicy="portal-over-editor"
+      />
+    </div>
   );
 }

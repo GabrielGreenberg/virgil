@@ -193,6 +193,58 @@ decimal pair is one CodeMirror theme object whose accent is equally decimal
 (`rgba(124, 94, 60, …)` IS `--accent`) plus an Outline wash already scoped by
 its own queued task. Each is a visual decision per surface, not a sweep.
 
+### The affirmative / attained family
+
+The destructive family's twin, and its fix sentence closed by asking for exactly
+this. Four rungs, same shape, same rule — the choice between them is about
+EMPHASIS, not about which surface you happen to be on:
+
+| Token | Value | Role |
+|---|---|---|
+| `--positive-soft` | `#ecfdf5` | the hover WASH behind an affirmative control (`hover:bg-positive-soft`) |
+| `--positive` | `#10b981` | solid positive FILL: the goal-reached bar, the accepted status dot, the Pomodoro done ring |
+| `--positive-ink` | `#059669` | affirmative CONTROL ink: Keep on a pending change, "Add" on a bib row, a copied-confirm check (`text-positive-ink`) |
+| `--positive-strong` | `#047857` | the strongest positive ink on a light panel: the "goal reached" label, the compile-log "ok" |
+
+Three rules the family carries:
+
+- **ONE ramp.** The two rungs task 286 minted are Tailwind **v3** emerald hexes,
+  and Virgil ships **v4** — whose emerald ramp is oklch and renders different
+  values (500 → `#00bc7d`, 600 → `#009966`, 700 → `#007a55`). So `--positive`
+  has not been what `bg-emerald-500` paints since the v4 upgrade, and that gap
+  is precisely what made a raw `emerald-*` utility a real drift rather than a
+  stylistic one. The two new rungs are therefore pinned to the SAME v3 ramp
+  rather than to what the v4 utilities render: a family assembled from two
+  palette generations would re-create the implicit relationship the family
+  exists to codify. The cost is measured rather than waved away — adopting
+  `--positive-ink` moves the accept-control ink by ΔE ≈ 3.7 (far below the
+  ΔE ≈ 17 the `--danger-strong` merge treats as "two statements") and slightly
+  IMPROVES contrast on white, 3.77:1 against 3.65:1.
+- **Any new "done / met / accepted / keep" chrome consumes THIS family** — never
+  a raw `emerald-*`, `green-*` or `teal-*` utility, and never a hand-spelled
+  hex. Guard: `src/__tests__/affirmative-green-tokens.test.ts`, the hue-keyed
+  twin of the destructive census. Its primary needle is a Tailwind CLASS rather
+  than a hex, because that is where this family's literals actually live — which
+  is exactly the axis the red census records itself as blind to.
+- **A DIFF LEGEND is not an affirmative control.** The suggestion cards' green
+  reads only against the red beside it (proposed vs replaced text), so both
+  halves are pinned rather than repainted — converting one would leave one legend
+  speaking two vocabularies, and repainting both needs rungs this family has no
+  member for (a light border, a dark body ink, a placeholder ink). Same reasoning
+  the destructive census already records for the red half.
+
+**And the control PAIR is spelled once.** Keep / Dismiss on a pending AI change
+is `src/components/CommitActions.tsx` — one component, mounted by the margin
+`PendingChangePill` and by the applied suggestion card, carrying the buttons,
+their four announced strings, their sizing and the check/cross glyph. The one
+genuine per-site difference is how the pair answers a POINTER event (a fixed
+portal over the editor must not blur the selection; a card inside a lifting
+header must not let mousedown reach the lift), so that is a REQUIRED
+`pointerPolicy` prop rather than a branch — the two answers are opposite, and
+neither is guessable from inside the component. This is the *Buttons* rule
+("spell the treatment ONCE per control family, not once per button") applied to
+a pair that had drifted into two files under two names.
+
 ### The status-pill tone family (library entry state)
 
 Five tones, three rungs each — `--pill-{green,amber,red,gray,blue}-{bg,fg,edge}`
@@ -388,18 +440,16 @@ The token scales:
   keeps painting blue after the user retints the accent — the fill moves and its
   halo doesn't. Same rule as Library edge below: derive from the token, never
   re-spell its channels.
-- **Positive / attained** (`--positive` fill, `--positive-strong` ink): the
-  affirmative counterpart of the destructive family — the look a surface takes
-  when a thing the user was working toward is DONE. Two consumers today, and
-  the pair is the point: the shared `PanelGoalStrip`'s goal-reached bar + label
-  and the `accepted` suggestion status dot, which is the same statement on a
-  different surface. Values pinned to the emerald-500 / emerald-700 both
-  previously spelled raw, so adoption was a zero-diff swap. Deliberately NOT
-  merged with `--status-ok`: that green is a member of a traffic light and
-  means "ok" only against `--status-warn` / `--status-danger` in the same
-  glyph, while these are shown with no red or yellow sibling in view (globals.css
-  states the test). Any new "done / met / accepted" chrome consumes THIS pair —
-  never a raw `bg-emerald-*`, which the panel-chrome guard below now refuses.
+- **Positive / attained** (`--positive-soft` / `--positive` / `--positive-ink` /
+  `--positive-strong`): the affirmative counterpart of the destructive family —
+  the look a surface takes when a thing the user was working toward is DONE.
+  Grew from two rungs to four in task 501, when an accept BUTTON turned out to
+  need a hover wash and a control ink that neither existing rung was.
+  **See *The affirmative / attained family* above** for the rungs, the one-ramp
+  rule and the guard. Deliberately NOT merged with `--status-ok`: that green is a
+  member of a traffic light and means "ok" only against `--status-warn` /
+  `--status-danger` in the same glyph, while these are shown with no red or
+  yellow sibling in view (globals.css states the test).
 - **Library edge** (`--library-edge`): the SSOT for every Library-surface
   page edge — tab silhouette strokes, the panel/body frame border, NavPod.
   DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
