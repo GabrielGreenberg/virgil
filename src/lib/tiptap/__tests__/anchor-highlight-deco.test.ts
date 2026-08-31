@@ -60,6 +60,8 @@ import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-sto
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "@/links/_shared/types";
 
+const NONE_ARCHIVED: ReadonlySet<string> = new Set<string>();
+
 const LI_UUID = "li0001";
 const PARA_UUID = "p00001";
 
@@ -503,6 +505,9 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         store: cardStore,
         // Mode-B only here — no dock map needed, stated rather than defaulted.
         panelSides: {},
+        // Nothing archived in these fixtures — stated rather than defaulted
+        // (task 497: an archived card paints no in-document chrome).
+        archivedCardIds: NONE_ARCHIVED,
       }),
     );
     await waitForEditorInit(editor);
@@ -544,6 +549,9 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         store: cardStore,
         // Mode-B only here — no dock map needed, stated rather than defaulted.
         panelSides: {},
+        // Nothing archived in these fixtures — stated rather than defaulted
+        // (task 497: an archived card paints no in-document chrome).
+        archivedCardIds: NONE_ARCHIVED,
       }),
     );
     await waitForEditorInit(editor);
@@ -570,6 +578,9 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         store: cardStore,
         // Mode-B only here — no dock map needed, stated rather than defaulted.
         panelSides: {},
+        // Nothing archived in these fixtures — stated rather than defaulted
+        // (task 497: an archived card paints no in-document chrome).
+        archivedCardIds: NONE_ARCHIVED,
       }),
     );
     await waitForEditorInit(editor);

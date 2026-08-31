@@ -2149,6 +2149,20 @@ Selection-from-card on inline atoms: 2px ring in
 `--link-anchor-color`. On Mode-A paragraph anchors: subtle left-border
 stripe.
 
+**An ARCHIVED card draws none of it** (task 497). Archiving is where a card
+goes when the user wants it out of the way, so its whole in-document presence
+goes with it — the margin marker, the Mode-B wash and tint band, the Mode-A
+rail, and the hover / selection washes it would otherwise paint when touched
+from *View Archives*. Only its own row in the Archives list still highlights.
+The `linkedAnchor` mark stays in the document untouched (it is the anchor a
+restore needs), so this is one attribute and one CSS rule, never an edit:
+`.linked-anchor[data-anchor-archived="true"]` zeroes `--link-anchor-color` and
+forces `background: none` — and that rule must stay AFTER every other
+`.linked-anchor` background in `globals.css`, because the tint band carries an
+`!important` of its own and source order is what resolves the tie. The rule is
+stated once in `src/links/_shared/archived-anchor-chrome.ts`; see AGENTS.md
+("The chrome half").
+
 ## Margin chrome
 
 The editor's left padding (`--editor-pl`, default 88px) houses two

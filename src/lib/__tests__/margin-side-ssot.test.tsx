@@ -77,6 +77,8 @@ import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { ALL_MARKER_TYPES, panelForMarkerType } from "@/cards/marker-meta";
 import type { CardKind, MarkerType } from "@/cards/types";
 
+const NONE_ARCHIVED: ReadonlySet<string> = new Set<string>();
+
 const REPO = path.resolve(__dirname, "../../..");
 const SRC = path.join(REPO, "src");
 const LIB = path.join(REPO, "library");
@@ -283,6 +285,8 @@ describe("margin side — the rail follows the DOCK, not a value frozen at creat
           collections,
           store: cardStore,
           panelSides,
+          // Nothing archived in this fixture — stated rather than defaulted.
+          archivedCardIds: NONE_ARCHIVED,
         }),
       );
       await waitForEditorInit(editor);
