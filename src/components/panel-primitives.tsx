@@ -476,6 +476,19 @@ export function themedCard(_theme: CardTheme, selected: boolean, extra?: string)
   return `${CARD_BASE} ${selected ? "bg-surface" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
+/** The drop-target halo, spelled ONCE (task 508). A card's `box-shadow` has
+ *  exactly one owner — `themedCardStyle` — so the halo is a LAYER it composes,
+ *  never a second mechanism written onto the same element from somewhere else.
+ *
+ *  It used to be `ring-2 ring-drag-target` in `CitationCard`'s `extraCardClass`,
+ *  which lands on the SAME element this style does; Tailwind's `ring-*` IS a
+ *  `box-shadow`, and an inline declaration beats every stylesheet rule, so the
+ *  ambient lift below silently deleted it on every docked card — i.e. the halo
+ *  had never painted anywhere except a popped-out float. The 503 law
+ *  ("two mechanisms writing one property, the unlayered/inline one silently
+ *  winning"), in its inline edition. */
+const CARD_DROP_TARGET_RING = "0 0 0 2px var(--ring-drag-target)";
+
 /** Single source of truth for card-surface inline style: border color
  *  and ambient lift shadow. PanelCard, SearchPanel result rows, and any
  *  other card surface must call this so the selection visual stays
@@ -483,25 +496,38 @@ export function themedCard(_theme: CardTheme, selected: boolean, extra?: string)
  *
  *  Selection no longer paints a heavy halo. A selected card's *attention*
  *  ring is the same light 1.5px/50% outline as hover (the `[data-card-key]`
- *  rule in globals.css); its persistent identity — the cue that survives the
- *  pointer leaving — is the quiet `borderSelected` 1px border tint applied
- *  here, plus the header tint PanelCard sets from `headerSelected`. So the
- *  box-shadow is always just the ambient lift, for selected and unselected
- *  alike.
+ *  rule in globals.css — an `outline`, a disjoint property, so it composes
+ *  with the box-shadow rather than contending for it); its persistent
+ *  identity — the cue that survives the pointer leaving — is the quiet
+ *  `borderSelected` 1px border tint applied here, plus the header tint
+ *  PanelCard sets from `headerSelected`. So the box-shadow is the ambient
+ *  lift, for selected and unselected alike.
+ *
+ *  `dropTarget` composes {@link CARD_DROP_TARGET_RING} ON TOP of that lift —
+ *  the ring is a transient state ABOUT the card, not a replacement for its
+ *  elevation, so a card being hovered by a droppable payload keeps sitting on
+ *  the canvas. Same shape globals.css's popped-window ring already uses
+ *  (`var(--card-shadow-ambient), 0 0 0 1.5px …`).
  *
  *  Pop-out cards get borderless treatment because FloatingPanel adds
- *  its own chrome. */
+ *  its own chrome — and no ambient shadow, so there the ring composes alone. */
 export function themedCardStyle(
   theme: CardTheme,
   selected: boolean,
-  options?: { isPoppedOut?: boolean },
+  options?: { isPoppedOut?: boolean; dropTarget?: boolean },
 ): React.CSSProperties {
   if (options?.isPoppedOut) {
-    return { borderRadius: 0, borderWidth: 0 };
+    return {
+      borderRadius: 0,
+      borderWidth: 0,
+      ...(options.dropTarget ? { boxShadow: CARD_DROP_TARGET_RING } : {}),
+    };
   }
   return {
     ...(selected ? { borderColor: theme.borderSelected } : {}),
-    boxShadow: "var(--card-shadow-ambient)",
+    boxShadow: options?.dropTarget
+      ? `${CARD_DROP_TARGET_RING}, var(--card-shadow-ambient)`
+      : "var(--card-shadow-ambient)",
   };
 }
 
@@ -2400,6 +2426,14 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   /** Whether this card is currently archived — flips the archive button to its
    *  "Unarchive" affordance. */
   isArchived?: boolean;
+  /** True while a droppable payload is hovering this card — paints the amber
+   *  drop halo. It is a PROP rather than a class the host passes through
+   *  `extraCardClass` because PanelCard's root owns its `box-shadow` INLINE
+   *  (`themedCardStyle`), and an inline declaration beats any `ring-*` a caller
+   *  could hand it — so a class-shaped halo paints nothing at all (task 508).
+   *  The host still owns the PREDICATE (which drags may drop here); PanelCard
+   *  owns only the look. */
+  isDropTarget?: boolean;
   /** Extra classes forwarded into `themedCard(theme, selected, extra)` — typically
    *  cursor / opacity modifiers like `"cursor-grab active:cursor-grabbing"` or
    *  `"opacity-60"`. */
@@ -2508,6 +2542,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onArchiveClick,
     onRestoreClick,
     isArchived,
+    isDropTarget,
     extraCardClass,
     className,
     style,
@@ -2815,7 +2850,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       title={title}
       className={`group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
-        ...themedCardStyle(theme, selected, { isPoppedOut }),
+        ...themedCardStyle(theme, selected, { isPoppedOut, dropTarget: isDropTarget }),
         // Kind color for the card hover/selected outline rules (the
         // `[data-card-key]` color-mix rules in globals.css) — DERIVED from
         // the theme accent (CARD_THEMES / user color overrides), replacing

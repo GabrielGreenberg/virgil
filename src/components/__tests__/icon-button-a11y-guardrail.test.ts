@@ -793,12 +793,19 @@ describe("a focus indicator has ONE mechanism", () => {
     // vacuously. Floors anchored well under today's counts.
     expect(CLASS_VALUES.length).toBeGreaterThan(1500);
     expect(CLASS_VALUES.some((v) => v.file.startsWith("library/"))).toBe(true);
-    // …and it must still be able to SEE a ring at all. The floor moved 3 → 2
-    // in task 507, when the picker TRIGGER's decorative hover ring left the
-    // tree (the shell supplies that trigger's focus indicator now, which owns
-    // `box-shadow` there). The exact-set leg below is what actually pins the
-    // survivors; this is only the scanner's own can-see canary.
-    expect(RINGED.length).toBeGreaterThanOrEqual(2);
+    // …and it must still be able to SEE a ring at all. That half is now
+    // SYNTHETIC, not a floor on the live population: the population has been
+    // shrinking one deliberate task at a time (3 → 2 in task 507 when the
+    // picker TRIGGER's hover ring left; 2 → 1 in task 508 when the citation
+    // drop halo moved into `themedCardStyle`'s inline box-shadow), so a
+    // numeric floor is a canary standing on whichever site has not been
+    // retired yet — it fails for the wrong reason on the next honest removal,
+    // and it would evaporate entirely at zero. A fixture cannot. The
+    // production floor stays at ≥1 only to prove the scanner still reaches
+    // real source; the exact-set leg below is what pins the survivors.
+    expect(RING_UTILITY.test('className="ring-2 ring-drag-target"')).toBe(true);
+    expect(RING_UTILITY.test('className="focus-ring rounded-md"')).toBe(false);
+    expect(RINGED.length).toBeGreaterThanOrEqual(1);
   });
 
   it("no element declares a ring utility AND the focus indicator", () => {
@@ -829,13 +836,16 @@ describe("a focus indicator has ONE mechanism", () => {
       // shell's focus indicator, which owns `box-shadow` there; the hover
       // affordance moved to `border-color`.)
       "src/components/PanelThemePicker.tsx",
-      // The bib-merge drop-target halo on a card root that carries no focus
-      // indicator (a card wrapper strips its ring — themed selection IS the
-      // indicator), reading `--ring-drag-target`. It is the sanctioned SHAPE
-      // and it is masked today by `PanelCard`'s INLINE ambient box-shadow —
-      // the same law one mechanism over, measured and filed separately. See
-      // the note at that site.
-      "src/panels/Citations/CitationCard.tsx",
+      // `src/panels/Citations/CitationCard.tsx` was this file's other member
+      // until task 508. Its bib-merge drop halo was the sanctioned SHAPE (a
+      // decorative ring on an element carrying no focus indicator, reading
+      // `--ring-drag-target`) and it never painted: `PanelCard` writes that
+      // same root's `box-shadow` INLINE, and inline beats every stylesheet
+      // rule. The halo is now a LAYER of that inline declaration
+      // (`themedCardStyle`'s `dropTarget` option), so the class is gone —
+      // the same law this file's own "no element that takes the indicator
+      // also owns box-shadow INLINE" leg states, arriving from the side where
+      // the ring is decorative rather than the indicator.
     ]);
   });
 

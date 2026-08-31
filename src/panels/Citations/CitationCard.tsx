@@ -751,26 +751,19 @@ export function CitationCard({
   /* ── Visual state classes ────────────────────────────────────────── */
 
   // Task 316: the parked cue moved onto the `unanchored` prop (which carries
-  // `cardKey`), so this slot keeps only the drop-target ring. The two used to
-  // be exclusive arms of one ternary; they are different axes (a parked card
-  // can also be hovered as a drop target), so they now compose.
+  // `cardKey`), so this slot keeps only cursor modifiers now. The parked cue
+  // and the drop halo are different axes (a parked card can also be hovered as
+  // a drop target), so they compose rather than being exclusive arms.
   //
-  // This is the one sanctioned `ring-*` shape (task 503): a DECORATIVE ring on
-  // a card root that carries NO `.focus-ring` / `iconbtn-*` / `.topbarbtn`, and
-  // reading a real token (`--ring-drag-target`) rather than a raw palette
-  // value. `.focus-ring` is UNLAYERED and writes the same `box-shadow`, so a
-  // focus indicator added here would silently delete this ring — a card
-  // wrapper strips its focus ring anyway (themed selection IS the indicator;
-  // STYLE_GUIDE "Interaction" → Focus). Censused, allowlist EMPTY.
-  //
-  // MEASURED AND NOT PAINTING TODAY, for a reason one mechanism over and
-  // filed separately (`inbox/2026-08-31-from-worker-503-card-drop-target-ring-masked`):
-  // `PanelCard`'s root carries `style={{ ...themedCardStyle(…) }}`, whose
-  // `boxShadow: var(--card-shadow-ambient)` is INLINE and therefore beats
-  // every stylesheet rule, this ring included, on every non-popped-out card.
-  // The fix belongs to `PanelCard` — it owns that element's box-shadow and has
-  // to COMPOSE the halo with the ambient lift — not to a second speller here.
-  const stateClass = isDropTarget ? "ring-2 ring-drag-target ring-offset-0" : "";
+  // Task 508: the drop-target ring is NOT a class here. It used to be
+  // `ring-2 ring-drag-target ring-offset-0` in `extraCardClass`, which lands on
+  // PanelCard's root — the same element whose `box-shadow` PanelCard writes
+  // INLINE via `themedCardStyle`. An inline declaration beats every stylesheet
+  // rule and Tailwind's `ring-*` IS a `box-shadow`, so the halo had never
+  // painted on any docked card. This card therefore states the FACT
+  // (`isDropTarget`) and the primitive composes the halo with the ambient lift;
+  // a second speller here is exactly the fork the 503 cluster legislates
+  // against. See `themedCardStyle` / `CARD_DROP_TARGET_RING`.
 
   const onToggleFromCtx =
     onTogglePopout ??
@@ -829,7 +822,8 @@ export function CitationCard({
       // Select-only activation must not advertise disclosure semantics
       // (aria-expanded/"Collapse card") for the pinned-open draft body.
       headerDisclosure={!isDraft}
-      extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
+      isDropTarget={isDropTarget}
+      extraCardClass="cursor-pointer cursor-grab active:cursor-grabbing"
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}
       onDragOver={handleCardDragOver}

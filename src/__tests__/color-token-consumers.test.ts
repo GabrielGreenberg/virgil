@@ -229,8 +229,12 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     // `file:line` so a new one names itself.
     expect(found).toEqual([
       "src/components/panel-primitives.tsx:410",
-      "src/components/panel-primitives.tsx:1940",
-      "src/components/panel-primitives.tsx:1946",
+      // Line drift only (task 508 added the drop-halo composition ~26 lines
+      // above these two): the SITES are the unchanged `secondary` and `ghost`
+      // button variants. `file:line` is this leg's own stated reporting form,
+      // so an unrelated edit above a site costs a number update here.
+      "src/components/panel-primitives.tsx:1966",
+      "src/components/panel-primitives.tsx:1972",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });

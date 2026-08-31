@@ -736,7 +736,7 @@ body[data-zen-mode="on"] {
 
   /* Semantic UI color scale — exposes the :root tokens as Tailwind
      utilities (bg-surface, bg-surface-muted, text-ink-muted,
-     border-edge-subtle, ring-drag-target, etc.). */
+     border-edge-subtle, etc.). */
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
   --color-btn-primary: var(--btn-primary);
@@ -771,7 +771,12 @@ body[data-zen-mode="on"] {
   --color-positive-soft: var(--positive-soft);
   --color-positive-ink: var(--positive-ink);
   --color-positive-strong: var(--positive-strong);
-  --color-ring-drag-target: var(--ring-drag-target);
+  /* No --color-ring-drag-target: nothing spells it as a Tailwind UTILITY. Its
+     one consumer is `CARD_DROP_TARGET_RING` in panel-primitives, which reads
+     `var(--ring-drag-target)` as an inline box-shadow value (task 508 — the
+     `ring-drag-target` class it replaced could never paint, because the same
+     element's box-shadow is written inline). Add the alias with its first
+     `ring-drag-target`, not ahead of one. */
 }
 
 /* ── Radius scale → Tailwind namespace ────────────────────────────
