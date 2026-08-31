@@ -223,6 +223,16 @@
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
   --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+  /* The KEYBOARD FOCUS RING, spelled once (task 503). Read by the shared
+   * `:focus-visible` block below AND by the one rule that has to COMPOSE
+   * with it — a pressed `.iconbtn-toggle`, whose own inset ring sits at a
+   * higher specificity and would otherwise replace the indicator outright.
+   * Two rules, one spelling, so the ring cannot drift into two rings. */
+  --focus-ring-shadow: 0 0 0 2px var(--edge-strong);
+  /* …and the pressed toggle's inset ring, for the same reason: it is now
+   * read by the pressed rule and by the pressed+focused rule beside it. */
+  --control-selected-inset-ring: inset 0 0 0 1px
+    color-mix(in oklab, var(--control-selected-ink) 30%, transparent);
   /* Lift for a DRAG GHOST — the translucent copy of a grabbed thing that
    * follows the cursor on the topmost layer. Authored in the `filter:`
    * form (not `box-shadow`) because both consumers are clones whose
@@ -941,7 +951,25 @@ body[data-zen-mode="on"] {
    "keyboard focus is visible" never depends on whether a control could
    afford the whole utility. The selectors share ONE declaration block
    rather than three identical ones, so the ring cannot drift into
-   three rings. */
+   three rings.
+
+   AND IT OWNS THE ELEMENT'S `box-shadow` (task 503) — the same cascade
+   fact the hover utilities above record, read one property over. This
+   file is UNLAYERED and Tailwind's `ring-*` is implemented AS
+   `box-shadow`, so on an element carrying both, THIS wins whatever the
+   class order and every `ring-*` utility on it paints nothing. Three
+   shipped sites had that shape and one of them was `<Button>`'s
+   `BUTTON_BASE`, i.e. the exemplar every new button is copied from —
+   harmless only because the two spellings happened to agree.
+
+   So `ring-*` is for a DECORATIVE, non-focus ring (a drop-target halo,
+   a selection ring, a hover lift) and never on an element that also
+   carries `.focus-ring` / `.iconbtn-*` / `.topbarbtn`. An element that
+   must show two things at once gives them two different PROPERTIES —
+   `outline` is the free one here, since this rule sets it to `none`
+   only while `:focus-visible` matches. Censused in
+   src/components/__tests__/icon-button-a11y-guardrail.test.ts
+   ("a focus indicator has ONE mechanism"), allowlist EMPTY. */
 .focus-ring:focus-visible,
 .topbarbtn:focus-visible,
 .iconbtn-xs:focus-visible,
@@ -949,7 +977,7 @@ body[data-zen-mode="on"] {
 .iconbtn-md:focus-visible,
 .iconbtn-lg:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--edge-strong);
+  box-shadow: var(--focus-ring-shadow);
 }
 .iconbtn-xs[disabled],
 .iconbtn-sm[disabled],
@@ -1060,7 +1088,20 @@ body[data-zen-mode="on"] {
      taupe) on the tint so glyph/label contrast clears AA. */
   background-color: var(--control-selected-tint);
   color: var(--control-selected-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--control-selected-ink) 30%, transparent);
+  box-shadow: var(--control-selected-inset-ring);
+}
+/* …and the same toggle WHILE FOCUSED (task 503). The rule above is
+   (0,3,0) and the shared `:focus-visible` block is (0,2,0), so without
+   this the pressed state won the whole `box-shadow` property and the
+   focus ring vanished — leaving `outline: none` (which the focus rule
+   still applied) and nothing in its place, i.e. a keyboard-reachable
+   sidebar/mode toggle with NO visible focus at all. Both values are read
+   from their tokens, so this composes rather than re-spelling either. */
+.iconbtn-xs.iconbtn-toggle[aria-pressed="true"]:focus-visible,
+.iconbtn-sm.iconbtn-toggle[aria-pressed="true"]:focus-visible,
+.iconbtn-md.iconbtn-toggle[aria-pressed="true"]:focus-visible,
+.iconbtn-lg.iconbtn-toggle[aria-pressed="true"]:focus-visible {
+  box-shadow: var(--control-selected-inset-ring), var(--focus-ring-shadow);
 }
 
 /* ── Topbar button utility ─────────────────────────────────────────

@@ -175,14 +175,29 @@ function PresetSwatch({
     coords: { row, col },
     run: onPick,
   });
+  // Two signals, two PROPERTIES, and NO `.focus-ring` (task 503).
+  //
+  // SELECTED is a `ring-*` (box-shadow) and ROVING is an `outline`, so a swatch
+  // that is both shows both. `.focus-ring` used to sit here as a third
+  // declaration and it was dead twice over: this is a roving menu row
+  // (`getItemProps()` gives it `tabIndex: -1` and nothing ever calls `.focus()`
+  // on it — the house keyboard model), so it can never match `:focus-visible`;
+  // and being UNLAYERED it would have REPLACED the selected ring's box-shadow
+  // if it ever did. Its own `ResetRow` sibling below and
+  // `SelectionColorPopover`'s swatch both carry none, for the same reason. See
+  // STYLE_GUIDE "Interaction" → Focus.
+  //
+  // The selected ring reads `--edge-strong`, the app's ring token. It was
+  // `ring-stone-500` — the last raw Tailwind palette value in the tree, and
+  // `docs/virgil-design-system/10-audit.md` item 7's recorded straggler.
   return (
     <button
       {...getItemProps()}
       type="button"
       {...iconHint({ label: name })}
       className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${
-        active ? "ring-2 ring-offset-1 ring-stone-500" : "border-edge-hover"
-      } ${roving ? "outline outline-2 outline-offset-1 outline-[var(--accent-blue)]" : ""} focus-ring`}
+        active ? "ring-2 ring-offset-1 ring-edge-strong" : "border-edge-hover"
+      } ${roving ? "outline outline-2 outline-offset-1 outline-[var(--accent-blue)]" : ""}`}
       style={{ background: hex }}
     />
   );

@@ -879,17 +879,19 @@ Five states. One implementation each.
 - **Selection.** Always themed. There is no default selection color.
   Each card kind reads its theme's `borderSelected` and
   `headerSelected`.
-- **Focus.** `focus-visible:ring-2 ring-edge-strong` (offset 1).
-  Inputs use a thicker border instead of a ring. Never leave the UA default
-  ring, and never strip it bare: `outline: none` is legal only where the same
-  rule supplies the replacement — the model is `.iconbtn-*` / `.topbarbtn`
-  (`outline: none` + `box-shadow: 0 0 0 2px var(--edge-strong)`), and all three
-  now share ONE declaration block with **`.focus-ring`**, which is that
-  indicator UNBUNDLED from geometry and palette. Reach for `.focus-ring` on a
+- **Focus.** `.focus-ring` — or `.iconbtn-*` / `.topbarbtn`, which bake the
+  same thing in. **Never a Tailwind `focus-visible:ring-*` utility.** All four
+  spellings resolve to ONE declaration block in `globals.css` (`outline: none`
+  + `box-shadow: 0 0 0 2px var(--edge-strong)`), so the ring cannot drift into
+  four rings; `.focus-ring` is that indicator UNBUNDLED from geometry and
+  palette. Inputs use a thicker border instead of a ring.
+  Reach for `.focus-ring` on a
   control the size utilities genuinely don't fit — a 10px outline chevron, a
   button whose ink is accent-when-active (`iconbtn-*` would win the colour), an
   inline-styled library control. It is not an escape from `iconbtn-*`: if the
-  utility fits, take the utility. One caveat with teeth — an element whose
+  utility fits, take the utility. Never leave the UA default
+  ring, and never strip it bare: `outline: none` is legal only where the same
+  rule supplies the replacement. One caveat with teeth — an element whose
   elevation is an INLINE `box-shadow` can't be ringed at all (inline beats the
   sheet), and adding the class there deletes the UA outline while supplying
   nothing; leave those alone (`StackIcon` is the one, allowlisted in the
@@ -902,6 +904,19 @@ Five states. One implementation each.
   of ~55 `outline-none` sites ~24 supply nothing; most are those two
   exceptions, but the `BibEntryCard` request-note inputs and
   `ManageStylesModal`'s already-`edge-strong` field are real gaps.)
+- **The focus indicator owns the element's `box-shadow`** — the same cascade
+  fact as the hover bullet above, read one property over. `.focus-ring` /
+  `.iconbtn-*` / `.topbarbtn` are UNLAYERED and Tailwind's `ring-*` is
+  implemented AS `box-shadow`, so on any element carrying both, the class wins
+  whatever the class order and the `ring-*` utilities paint nothing. So:
+  **`ring-*` is for a DECORATIVE, non-focus ring only** — a drop-target halo, a
+  selection ring, a hover lift — **and never on an element that also carries
+  `.focus-ring` / `iconbtn-*` / `.topbarbtn`.** An element that genuinely needs
+  to show two things at once gives them two different PROPERTIES (`outline` is
+  the free one, and does not collide), and a ring's colour is a token, never a
+  raw Tailwind palette value. CI reads this rule:
+  `icon-button-a11y-guardrail.test.ts` → "a focus indicator has ONE mechanism"
+  (allowlist: EMPTY, both legs).
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 

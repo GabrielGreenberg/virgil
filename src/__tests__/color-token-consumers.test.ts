@@ -229,8 +229,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     // `file:line` so a new one names itself.
     expect(found).toEqual([
       "src/components/panel-primitives.tsx:410",
-      "src/components/panel-primitives.tsx:1931",
-      "src/components/panel-primitives.tsx:1937",
+      "src/components/panel-primitives.tsx:1940",
+      "src/components/panel-primitives.tsx:1946",
     ]);
     expect(Object.keys(PERMITTED_HAND_ROLLED_HOVERS)).toHaveLength(found.length);
   });
@@ -354,5 +354,135 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
   ])("hovers %s's kebab on the DARK variant, like its siblings", (rel) => {
     const src = strip(readFileSync(path.join(REPO_ROOT, rel), "utf8"), true);
     expect(src).toContain("rounded hover-on-dark text-ink-subtle focus-ring");
+  });
+});
+
+/**
+ * ONE focus ring, and nothing out-specifies it (task 2026-08-31-503).
+ *
+ * The sibling law above is about an UNLAYERED class beating a Tailwind
+ * utility. This is the same law read INSIDE the stylesheet: `globals.css` is
+ * unlayered throughout, so between two of its own rules the winner is decided
+ * by SPECIFICITY — and the shared focus-indicator block is only (0,2,0).
+ *
+ * `.iconbtn-*.iconbtn-toggle[aria-pressed="true"]` is (0,3,0) and sets a
+ * `box-shadow` of its own (the inset accent ring). So a PRESSED toggle — the
+ * sidebar strip toggles, the code/compile mode buttons — won the whole
+ * property and the focus ring vanished, while the focus rule's `outline: none`
+ * still applied: a keyboard-reachable control with NO indicator at all. That
+ * is the same end state task 281 recorded for a control whose elevation is an
+ * inline `box-shadow`, arriving from the other direction.
+ *
+ * The fix is a COMPOSITION, not a bigger literal: both halves are tokens
+ * (`--focus-ring-shadow`, `--control-selected-inset-ring`) and the focused
+ * twin reads both, so the ring is spelled once however many rules must carry
+ * it. The legs below pin the two things a future edit could quietly break —
+ * that the value has one spelling, and that the twin still out-specifies the
+ * rule it composes with.
+ */
+describe("the focus ring is spelled once and always wins", () => {
+  /** `selector { body }` pairs at depth 0, comments stripped. */
+  const cssRules = (): { selector: string; body: string }[] => {
+    const css = cssCommentsStripped(globals);
+    const out: { selector: string; body: string }[] = [];
+    let i = 0;
+    let selStart = 0;
+    let depth = 0;
+    let bodyStart = -1;
+    while (i < css.length) {
+      const c = css[i];
+      if (c === "{") {
+        depth++;
+        if (depth === 1) bodyStart = i + 1;
+      } else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          out.push({
+            selector: css.slice(selStart, bodyStart - 1).trim(),
+            body: css.slice(bodyStart, i),
+          });
+          selStart = i + 1;
+        }
+      }
+      i++;
+    }
+    return out;
+  };
+
+  /** (id, class/attr/pseudo-class, element) — enough to compare two selectors
+   *  in the same unlayered sheet. Computed on the FIRST comma-part; every
+   *  selector list this leg reads is homogeneous. */
+  const specificity = (sel: string): [number, number, number] => {
+    const s = sel.split(",")[0].trim();
+    const ids = (s.match(/#[\w-]+/g) ?? []).length;
+    const classes =
+      (s.match(/\.[\w-]+/g) ?? []).length +
+      (s.match(/\[[^\]]*\]/g) ?? []).length +
+      (s.match(/:(?!:)[\w-]+/g) ?? []).length;
+    const els = (s.match(/(?:^|[\s>+~])[a-z][\w-]*/g) ?? []).length;
+    return [ids, classes, els];
+  };
+  const gt = (a: number[], b: number[]) =>
+    a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
+
+  /** Every rule that paints a `box-shadow` on a control carrying the app's
+   *  focus indicator. */
+  const INDICATOR = /\.(?:focus-ring|topbarbtn|iconbtn-(?:xs|sm|md|lg))(?![\w-])/;
+  const shadowRules = cssRules().filter(
+    (r) => INDICATOR.test(r.selector) && /(?<![\w-])box-shadow\s*:/.test(r.body),
+  );
+
+  it("sees the rules worth censusing (self-check)", () => {
+    // Exactly two: the shared indicator block, and the pressed-toggle pair
+    // (its own rule plus the focused twin that composes with it).
+    expect(shadowRules.length).toBe(3);
+  });
+
+  it("no rule re-spells the ring — every one reads a token", () => {
+    for (const r of shadowRules) {
+      const decl = /(?<![\w-])box-shadow\s*:([^;}]*)/.exec(r.body)?.[1] ?? "";
+      expect(
+        decl.trim(),
+        `${r.selector.split(",")[0]} spells its own shadow`,
+      ).toMatch(/^var\(--(?:focus-ring-shadow|control-selected-inset-ring)\)/);
+    }
+    // …and the ring's literal lives in the token home, once.
+    expect(globals.match(/--focus-ring-shadow:\s*0 0 0 2px var\(--edge-strong\)/g) ?? [])
+      .toHaveLength(1);
+    expect(ruleBodies(cssCommentsStripped(globals))).not.toContain(
+      "0 0 0 2px var(--edge-strong)",
+    );
+  });
+
+  it("a pressed toggle's own box-shadow is out-specified by its focused twin", () => {
+    const pressed = shadowRules.find(
+      (r) => /aria-pressed/.test(r.selector) && !/:focus-visible/.test(r.selector),
+    );
+    const focused = shadowRules.find(
+      (r) => /aria-pressed/.test(r.selector) && /:focus-visible/.test(r.selector),
+    );
+    expect(pressed, "the pressed-toggle rule went missing").toBeTruthy();
+    expect(focused, "the pressed toggle has no focused twin — the ring vanishes").toBeTruthy();
+    // The load-bearing claim: (0,4,0) beats (0,3,0), so the focused twin wins.
+    expect(gt(specificity(focused!.selector), specificity(pressed!.selector))).toBe(true);
+    // …and it must beat the SHARED block too, or it would never apply.
+    const shared = shadowRules.find((r) => /\.focus-ring:focus-visible/.test(r.selector))!;
+    expect(gt(specificity(focused!.selector), specificity(shared.selector))).toBe(true);
+    // The twin COMPOSES rather than replacing: both halves paint.
+    expect(focused!.body).toContain("var(--control-selected-inset-ring)");
+    expect(focused!.body).toContain("var(--focus-ring-shadow)");
+    // Its selector list covers all four sizes — a size left out is a size
+    // whose pressed toggle silently keeps the pre-503 behaviour.
+    for (const size of ["xs", "sm", "md", "lg"]) {
+      expect(focused!.selector).toContain(`.iconbtn-${size}.iconbtn-toggle`);
+    }
+  });
+
+  it("the specificity comparator CAN SEE an inversion (self-check)", () => {
+    // A comparator that always answered `true` would make the leg above pass
+    // on the pre-503 sheet, where the twin does not exist at all.
+    expect(gt(specificity(".a:focus-visible"), specificity(".a.b[c]"))).toBe(false);
+    expect(gt(specificity(".a.b[c]:focus-visible"), specificity(".a.b[c]"))).toBe(true);
+    expect(gt(specificity(".focus-ring:focus-visible"), specificity(".focus-ring"))).toBe(true);
   });
 });

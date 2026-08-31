@@ -518,7 +518,19 @@ export function SelectionActionsMenu({
       // (0,2,0, and unlayered vs. Tailwind's `@layer utilities`) wins and the
       // one-step tint fires — matching the left-side TextObjectGrabHandle twin
       // and every other `hover-on-light` control (task 299).
-      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)] focus-ring"
+      // NO `focus-ring` (task 503), and for the same cascade reason the
+      // comment above gives for `background`: the elevation below is an
+      // INLINE `boxShadow`, which beats any non-`!important` selector — so
+      // `.focus-ring:focus-visible` could never paint its ring here, while its
+      // `outline: none` DID apply. Net effect: a keyboard-reachable control
+      // with NO focus indicator at all, which is strictly worse than the UA
+      // outline it deleted. Dropped, so the UA ring comes back — the same
+      // answer `StackIcon` takes (allowlisted there with that reason). This
+      // site takes no allowlist entry: leg C skips it anyway (`{...hint}` is
+      // an unresolvable spread). What pins the decision is the sibling leg
+      // "no element that takes the indicator also owns box-shadow INLINE" in
+      // `icon-button-a11y-guardrail.test.ts`, whose allowlist is EMPTY.
+      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)]"
       style={{
         position: "fixed",
         left: placement.left,

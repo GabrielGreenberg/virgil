@@ -754,6 +754,22 @@ export function CitationCard({
   // `cardKey`), so this slot keeps only the drop-target ring. The two used to
   // be exclusive arms of one ternary; they are different axes (a parked card
   // can also be hovered as a drop target), so they now compose.
+  //
+  // This is the one sanctioned `ring-*` shape (task 503): a DECORATIVE ring on
+  // a card root that carries NO `.focus-ring` / `iconbtn-*` / `.topbarbtn`, and
+  // reading a real token (`--ring-drag-target`) rather than a raw palette
+  // value. `.focus-ring` is UNLAYERED and writes the same `box-shadow`, so a
+  // focus indicator added here would silently delete this ring — a card
+  // wrapper strips its focus ring anyway (themed selection IS the indicator;
+  // STYLE_GUIDE "Interaction" → Focus). Censused, allowlist EMPTY.
+  //
+  // MEASURED AND NOT PAINTING TODAY, for a reason one mechanism over and
+  // filed separately (`inbox/2026-08-31-from-worker-503-card-drop-target-ring-masked`):
+  // `PanelCard`'s root carries `style={{ ...themedCardStyle(…) }}`, whose
+  // `boxShadow: var(--card-shadow-ambient)` is INLINE and therefore beats
+  // every stylesheet rule, this ring included, on every non-popped-out card.
+  // The fix belongs to `PanelCard` — it owns that element's box-shadow and has
+  // to COMPOSE the halo with the ambient lift — not to a second speller here.
   const stateClass = isDropTarget ? "ring-2 ring-drag-target ring-offset-0" : "";
 
   const onToggleFromCtx =
