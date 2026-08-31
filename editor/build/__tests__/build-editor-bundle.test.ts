@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  isPaperCommandMarkdown,
   rewriteScriptPathsForPaper,
-} from "../build-editor-bundle.mjs";
+  shippedBytes,
+  shippedPathMap,
+} from "../../../library/build/bundle-sources.mjs";
 
 // The editor skill bundle ships two copies of every command markdown:
 //   • the DEV MIRROR (.claude/commands/editor/*.md) — written from source,
@@ -19,6 +20,15 @@ import {
 // against a skill (current or future) whose helper invocation would silently
 // fail in a real synced paper folder — the failure the build rewrite exists to
 // prevent, and which is invisible in dev because cwd happens to be the repo.
+//
+// Both transforms moved to `library/build/bundle-sources.mjs` in task 506, so
+// they sit beside the shipped-path map the SECOND one (the markdown-link
+// rewrite) is derived from. `isPaperCommandMarkdown` went with them — as a
+// DELETION rather than a move: `shippedBytes` decides which transforms a file
+// takes from the file's own repo path, so a separate predicate had no caller
+// left, and a dead one is what the next author reaches for. Its two legs are
+// renegotiated in place at the bottom of this file against `shippedBytes`,
+// which is the question they were really asking.
 
 const skillsDir = fileURLToPath(new URL("../../skills", import.meta.url));
 const skillSources = readdirSync(skillsDir)
@@ -68,16 +78,43 @@ describe("rewriteScriptPathsForPaper", () => {
   });
 });
 
-describe("isPaperCommandMarkdown", () => {
-  it("selects command markdowns (including underscore includes)", () => {
-    expect(isPaperCommandMarkdown("claude-commands/review.md")).toBe(true);
-    expect(isPaperCommandMarkdown("claude-commands/_find-or-surface.md")).toBe(true);
+describe("shippedBytes", () => {
+  const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+
+  it("gives an editor skill BOTH transforms — links and helper prefixes", async () => {
+    const map = await shippedPathMap(repoRoot);
+    const out = shippedBytes(
+      "editor/skills/review.md",
+      "See [x](../scripts/card_by_id.py) and run `python3 editor/scripts/card_by_id.py`.\n",
+      map,
+    );
+    // The LINK is re-spelled relative to where the shipped copy sits
+    // (`.claude/commands/editor/` → three up, then `.virgil/scripts/editor/`);
+    // the INVOCATION takes the prose-prefix rewrite it always did.
+    expect(out).toContain("[x](../../../.virgil/scripts/editor/card_by_id.py)");
+    expect(out).toContain("python3 .virgil/scripts/editor/card_by_id.py");
   });
 
-  it("rejects helper scripts and data files", () => {
-    expect(isPaperCommandMarkdown("scripts/apply_response.py")).toBe(false);
-    expect(isPaperCommandMarkdown("scripts/ai_request_routing.json")).toBe(false);
-    expect(isPaperCommandMarkdown("bundle-manifest.json")).toBe(false);
+  it("gives a LIBRARY skill the link rewrite and NOT the prose-prefix one", async () => {
+    // The library corpus talks about `library/scripts/` as a REPO path ("do
+    // not edit any file under `library/skills/` or `library/scripts/`"), where
+    // rewriting one half of the pair would make the sentence wrong. Its skills
+    // already spell helper invocations at the synced path.
+    const map = await shippedPathMap(repoRoot);
+    const out = shippedBytes(
+      "library/skills/deep-index.md",
+      "Do not edit `library/scripts/`. See [d](_doctrine.md).\n",
+      map,
+    );
+    expect(out).toContain("Do not edit `library/scripts/`.");
+    expect(out).toContain("[d](_doctrine.md)");
+  });
+
+  it("ships helper scripts and data files byte-for-byte", async () => {
+    const map = await shippedPathMap(repoRoot);
+    const py = "run('editor/scripts/x.py')\n";
+    expect(shippedBytes("editor/scripts/apply_response.py", py, map)).toBe(py);
+    expect(shippedBytes("editor/scripts/ai_request_routing.json", py, map)).toBe(py);
   });
 });
 

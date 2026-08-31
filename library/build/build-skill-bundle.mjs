@@ -26,10 +26,18 @@
 // → same hash → no spurious "synced" toasts.
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandsDirFor } from "../lib/skill-bundle-layout.mjs";
+// What ships, where it lands, and the bytes it ships with — the ONE answer,
+// read by every builder and by both guards (task 506).
+import {
+  commandMirrorNames,
+  shippedBytes,
+  shippedPathMap,
+  shippedSources,
+} from "./bundle-sources.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
@@ -38,54 +46,6 @@ const bundleDir = join(repoRoot, "public", "skill-bundle", "library");
 // same table the app's per-folder sync writes by, so the repo's dev mirror
 // and a synced folder can never disagree about where a command lands.
 const claudeCommandsDir = join(repoRoot, commandsDirFor("library"));
-
-async function listFilesIn(dir, predicate) {
-  const entries = await readdir(join(repoRoot, dir), { withFileTypes: true });
-  return entries
-    .filter((e) => e.isFile() && predicate(e.name))
-    .map((e) => e.name)
-    .sort();
-}
-
-async function buildSources() {
-  // Skill files: every `*.md` under `library/skills/` ships in the
-  // published bundle, including include files like `_doctrine.md`
-  // that other skills reference via markdown links — agents reading
-  // a skill on a user's library must be able to resolve those links
-  // locally. The leading-underscore convention only gates the
-  // slash-command mirror (`mirrorSkillsIntoClaudeCommands` below):
-  // Claude Code's loader registers any `.md` under
-  // `.claude/commands/<category>/` as a slash command, so includes
-  // are filtered out there.
-  const skillNames = await listFilesIn(
-    "library/skills",
-    (n) => n.endsWith(".md"),
-  );
-  const scriptNames = await listFilesIn(
-    "library/scripts",
-    (n) => n.endsWith(".py") || n === "requirements.txt",
-  );
-
-  return [
-    // Workspace entry point.
-    {
-      repoPath: "library/scripts/skill-bundle-template/CLAUDE.md",
-      bundlePath: "CLAUDE.md",
-    },
-    // Bundle path uses `claude-commands/` (no leading dot) because some
-    // static hosts skip hidden directories under public/. The sync module
-    // on the client rewrites this back to `.claude/commands/` when it
-    // writes into the user's library folder.
-    ...skillNames.map((name) => ({
-      repoPath: `library/skills/${name}`,
-      bundlePath: `claude-commands/${name}`,
-    })),
-    ...scriptNames.map((name) => ({
-      repoPath: `library/scripts/${name}`,
-      bundlePath: `scripts/${name}`,
-    })),
-  ];
-}
 
 async function fileExists(p) {
   try {
@@ -97,8 +57,10 @@ async function fileExists(p) {
 }
 
 async function mirrorSkillsIntoClaudeCommands(skillNames) {
-  // Only mirror skill files (no leading underscore) — Claude Code's
-  // loader registers every `.md` here as a slash command.
+  // The repo's own developer surface. Only non-underscore names — Claude Code's
+  // loader registers every `.md` here as a slash command — and, unlike the
+  // BUNDLE, repo-only maintainer skills are mirrored here: `/library:iterate-skill`
+  // is read from this directory.
   await rm(claudeCommandsDir, { recursive: true, force: true });
   await mkdir(claudeCommandsDir, { recursive: true });
   for (const name of skillNames) {
@@ -113,17 +75,23 @@ async function main() {
   await rm(bundleDir, { recursive: true, force: true });
   await mkdir(bundleDir, { recursive: true });
 
-  const sources = await buildSources();
+  const sources = await shippedSources(repoRoot, "library");
+  const map = await shippedPathMap(repoRoot);
   const filesForManifest = [];
+  const sourceDigests = {};
   const hash = createHash("sha256");
-  const skillNames = [];
 
   for (const src of sources) {
     const absSource = join(repoRoot, src.repoPath);
     if (!(await fileExists(absSource))) {
       throw new Error(`Skill bundle source missing: ${src.repoPath}`);
     }
-    const content = await readFile(absSource);
+    const raw = await readFile(absSource);
+    // Markdown ships REWRITTEN (links re-spelled for the synced layout);
+    // helper scripts ship verbatim, byte for byte.
+    const content = src.repoPath.endsWith(".md")
+      ? Buffer.from(shippedBytes(src.repoPath, raw.toString("utf8"), map), "utf8")
+      : raw;
     const dest = join(bundleDir, src.bundlePath);
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, content);
@@ -134,21 +102,21 @@ async function main() {
     hash.update("\0");
 
     filesForManifest.push(src.bundlePath);
-    if (src.bundlePath.startsWith("claude-commands/")) {
-      const name = src.bundlePath.slice("claude-commands/".length);
-      // Underscore-prefixed files (e.g. `_doctrine.md`) ship in the
-      // bundle but are not mirrored — see `mirrorSkillsIntoClaudeCommands`.
-      if (!name.startsWith("_")) {
-        skillNames.push(name);
-      }
-    }
+    // What this shipped copy was BUILT FROM. A drift check reads these rather
+    // than re-deriving the build's transforms (see build-editor-bundle.mjs).
+    sourceDigests[src.bundlePath] = {
+      repoPath: src.repoPath,
+      sha256: createHash("sha256").update(raw).digest("hex"),
+    };
   }
 
+  const skillNames = await commandMirrorNames(repoRoot, "library");
   const version = hash.digest("hex").slice(0, 12);
   const manifest = {
     version,
     generatedAt: new Date().toISOString(),
     files: filesForManifest,
+    sourceDigests,
   };
   await writeFile(
     join(bundleDir, "bundle-manifest.json"),

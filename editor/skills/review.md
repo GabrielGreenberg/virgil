@@ -129,7 +129,8 @@ with `/loop /editor/review`.
    convention for every subskill it dispatches — it makes "every skill reflects"
    true by construction rather than relying on each subagent to remember. When
    the subagent surfaced concrete friction or a `Done:` line, pass it through
-   `--memo-json` (see [/editor/reflect](reflect.md)); a bare call still writes a
+   `--memo-json` (see `/editor/reflect`, a maintainer-only skill that ships
+   nowhere but the repo); a bare call still writes a
    correctly-classified memo from the Task's `result`. The script no-ops when
    `VIRGIL_DEV` is unset, so this line is inert in a normal or end-user session
    — leave it in unconditionally.

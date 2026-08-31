@@ -347,7 +347,8 @@ agree. **Neither census carries a COUNT**: a number restating a list is a
 second thing to keep in step, and it is the half that went stale (this
 census said "nine" while ten kinds shipped — task 463). The census is
 CHECKED against the skills' own `--recompute-warning-kind` invocations by
-[warning-kind-census.test.ts](../lib/__tests__/warning-kind-census.test.ts),
+`library/lib/__tests__/warning-kind-census.test.ts` in the Virgil repo (a
+repo-only guard — it is not part of what ships to a library folder),
 so a kind that starts being produced is named here or CI fails.
 
 - **Subskill-owned**, persisted by the producing subskill itself:

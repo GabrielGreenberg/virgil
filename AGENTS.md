@@ -6445,6 +6445,111 @@ rather than to the boundary.
 `\end{document}`. Nothing here is FSA-masked — it is all `.tex` bytes through the
 real save cycle — but the class lands on OPEN, so one eyeball is worth having.
 
+#### The reader half: a LINK resolves where the READER is, not where the author sat
+
+Same law, the other end of the same deployment (task 506) — and the case where a
+stated limit was right about one layer and wrong about the one an agent reads
+from.
+
+A skill is authored in the repo and READ on a user's synced folder, and the two
+layouts are not the same shape:
+
+```
+repo                        synced folder
+editor/skills/X.md     →    .claude/commands/editor/X.md
+editor/scripts/Y.py    →    .virgil/scripts/editor/Y.py
+docs/workspace/Z.md    →    .claude/virgil/Z.md
+```
+
+In the repo `editor/skills/` and `editor/scripts/` are siblings; on disk
+`.claude/commands/editor/` and `.virgil/scripts/editor/` are not. Task 461's
+`skill-include-links.test.ts` asserted only the REPO half and named the bundle
+half as a stated limit — but its reasoning ("both builders map `<silo>/skills/*`
+→ `claude-commands/*` and `<silo>/scripts/*` → `scripts/*`, so the relative shape
+survives") is true of the BUNDLE path, where those two ARE siblings under
+`public/skill-bundle/<silo>/`, and FALSE of the DISK path. So the 25 links
+spelled `../scripts/<helper>.py` were counted as safe while landing at
+`.claude/commands/scripts/…`, which exists nowhere; and the 13 spelled
+`../../docs/workspace/<doc>.md` landed at `.claude/docs/workspace/…` while the
+file itself sat two directories away at `.claude/virgil/<doc>.md`. **Thirty-eight
+dead pointers in shipped skills** — a responder skill following one on a real
+paper folder gets nothing.
+
+> **A relative link in shipped markdown is re-spelled at the bundle boundary as
+> the target's SHIPPED path relative to the linking file's own SHIPPED path —
+> both halves read out of ONE map, so they cannot disagree by construction.**
+> [`library/build/bundle-sources.mjs`](library/build/bundle-sources.mjs) is that
+> map (`shippedPathMap` / `shippedBytes`), and it is also the ONE answer to
+> "which files ship?" — four builders and two guards used to hold six
+> hand-written copies of that filter.
+
+Seven rules it earned:
+
+- **The rewrite is DERIVED, not a prefix table.** `rewriteScriptPathsForPaper`
+  (the pre-existing prose-prefix rewrite, which fixes `python3
+  editor/scripts/X.py` INVOCATIONS and is editor-only for a stated reason) is a
+  hand-kept pair list. The LINK rewrite reads the map, so a link family nobody
+  has written yet is correct for free — and the manifest docs' own pointers into
+  the skill set (`.claude/virgil/cards.md` → `../commands/editor/…`) came right
+  with no rule about them at all.
+- **A link whose target does NOT ship is left exactly as authored**, and whether
+  such a pointer belongs in a shipped SKILL is a separate question the guard asks
+  separately. Rewriting it would be inventing a path; deleting it would be losing
+  a pointer a maintainer reading the repo wants.
+- **A repo-only SKILL is declared by a property the corpus already reads.**
+  `dream`, `reflect`, `iterate-virgil-editor` and `iterate-skill` open their
+  `description` with `Developer-only` — exactly what `virgil/skills/start.md`
+  rule 1 routes on ("Do not offer one to an end user"). The builders read the
+  SAME declaration and do not ship them, which turns that rule from advisory into
+  structural (a skill that is not there cannot be offered) and removes ~72 KB of
+  no-op prompt from every paper folder. Discovered, never a name list. They stay
+  MIRRORED into `.claude/commands/<silo>/`, because that mirror is the repo's own
+  developer surface.
+- **The freshness guard needs TWO populations, and they are the same fact.** A
+  paper-shaped mirror carries what the bundle SHIPS in the bytes it ships them
+  with; the repo's dev mirror carries every non-underscore skill from unrewritten
+  source. One `paper` flag decides both, because the shipped SET and the shipped
+  BYTES both come from the same module.
+- **A drift check asks the bundle what it BUILT FROM rather than re-deriving the
+  transforms.** Markdown does not ship verbatim, so a check that DIFFS shipped
+  bytes against the SSOT must know every transform — and the day one is added and
+  that side has not learned it, every command markdown reports as drifted, every
+  night, which is the fastest way to make a check ignorable. `dream.py`'s §1
+  preflight used to parse the builder's `PAPER_SCRIPT_PREFIXES` out of the `.mjs`
+  source and went quietly `None` for three days when task 374 changed that
+  constant's shape. Each sub-manifest now records `sourceDigests` — per shipped
+  file, its `repoPath` plus the sha256 of the bytes it was built FROM — and the
+  drift check knows no transform at all. Sixty lines of parser and four tests
+  deleted; fail-closed on a bundle with no digests, because an empty list there
+  would read as "clean" for the whole silo.
+- **The census asks the QUESTION, not the mechanism** (task 404's rule). Leg 2
+  sweeps every shipped `.md` in every subsystem — the manifest docs included —
+  and is satisfied BY CONSTRUCTION, so what it pins is that the rewrite is WIRED,
+  which is the part that can silently stop happening.
+- **Leg 3's population is SKILL markdown, and the exclusion is stated rather than
+  allowlisted.** The operational manifest carries ~200 pointers into `src/**` and
+  `docs/architecture/` — provenance notes for a maintainer reading the doc in the
+  repo, not navigation an agent performs — and whether a reference doc should
+  carry them at all is a product question about that doc's audience. Leg 2 still
+  covers its links whose targets DO ship, which is the half that was silently
+  broken.
+
+CI: [skill-include-links.test.ts](library/lib/__tests__/skill-include-links.test.ts)
+(461's repo leg, plus the two above, both allowlists EMPTY),
+[build-editor-bundle.test.ts](editor/build/__tests__/build-editor-bundle.test.ts)
+(which transforms a given file takes), and
+[skill-bundle-freshness.test.ts](editor/skills/__tests__/skill-bundle-freshness.test.ts)
+(the two populations). Measured by neutering each half in turn: dropping the link
+rewrite takes 1 leg naming all 38 dead pointers, a shipped skill pointing at a
+non-shipping file 1, and reverting `dream.py` to the prefix parse 1. **No pre-506
+suite could see any of this**: 461's leg resolves against the REPO tree, where
+every one of the 38 links is perfectly valid.
+
+**Verified on a REAL synced layout** rather than only structurally: after a
+rebuild, `library-data/`'s `.claude/commands/**` holds **zero** unresolved
+relative links (326 resolve); the 204 that do not all sit in `.claude/virgil/`
+and are exactly the manifest-doc residual named above.
+
 #### The twin half: a parser that shares SOME vocabularies is how the rest drift
 
 Same law, and the case where the SSOT existed, was read by one layer, and hand-copied by its twin (task 341). `footnote-content.ts` is a COMPLETE second inline parser and serializer — it is what reads and writes every `\footnote{}` body and every note/todo/report/archive card body — built deliberately as a twin of the main one in `latex-parser.ts`. Four vocabularies had already been unified across that seam, each by its own task and each with a comment at the site saying so (`smartenStraightQuotes` 209, `matchInlineVerbAt` 264, `matchCommandToken` 338, `CHAR_ESCAPE_TABLE` 339). Three had not, and every one of them was silent in the direction that matters:

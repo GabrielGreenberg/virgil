@@ -77,7 +77,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -86,10 +85,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import type { TestContext } from "vitest";
-// The build's own path-rewrite helper — the SSOT of the transform the paper
-// bundle applies (`editor/scripts/` → `.virgil/scripts/editor/`). Importing it
-// does not run the build: the module main-guards on `process.argv[1]`.
-import { rewriteScriptPathsForPaper } from "../../build/build-editor-bundle.mjs";
+// WHAT SHIPS, WHERE IT LANDS, and THE BYTES IT SHIPS WITH — the same SSOT the
+// four builders read (task 506). This guard used to hand-copy two of those
+// answers (`skillNames`/`scriptNames` restated each builder's own filter) and
+// import a third from the editor builder; a mirror guard that re-derives what
+// a mirror should contain is the fork it exists to prevent.
+import {
+  commandMirrorNames,
+  scriptFileNames,
+  shippedBytes,
+  shippedPathMap,
+  shippedSources,
+} from "../../../library/build/bundle-sources.mjs";
 // The on-disk layout SSOT — the same routing the app's per-folder sync and
 // `scripts/sync-local-mirrors.mjs` write by, so this guard cannot come to
 // disagree with the writers about where a mirrored copy lands.
@@ -115,8 +122,13 @@ type Mirror = {
   dir: string;
   /** Which SSOT directory this mirror copies. */
   silo: SkillSilo;
-  /** Bytes pass through `rewriteScriptPathsForPaper` (paper-shaped mirrors). */
-  rewritten: boolean;
+  /** PAPER-SHAPED: this mirror carries what the bundle SHIPS, in the bytes it
+   *  ships them with (links re-spelled, helper prefixes rewritten). One flag,
+   *  because those are one fact — the shipped SET and the shipped BYTES both
+   *  come from `bundle-sources.mjs`. `false` is the repo's own dev mirror,
+   *  which carries unrewritten source AND the repo-only maintainer skills a
+   *  paper folder never receives (`/editor:dream` is read from there). */
+  paper: boolean;
   /** Stale here FAILS. Advisory mirrors (see header) report and skip. */
   loud: boolean;
 };
@@ -124,20 +136,20 @@ type Mirror = {
 const MIRRORS: Mirror[] = [
   // The repo's own dev mirror — unrewritten, because a maintainer runs
   // `/editor:<skill>` with the repo root as cwd.
-  { dir: commandsDirFor("editor"), silo: "editor", rewritten: false, loud: true },
-  { dir: join(MANAGED_FOLDER, commandsDirFor("editor")), silo: "editor", rewritten: true, loud: true },
-  { dir: "public/skill-bundle/editor/claude-commands", silo: "editor", rewritten: true, loud: true },
-  { dir: "out/skill-bundle/editor/claude-commands", silo: "editor", rewritten: true, loud: false },
-  // The FRONT DOOR. `build-virgil-bundle.mjs` copies bytes verbatim — it
-  // applies no path rewrite — so every virgil mirror is `rewritten: false`,
-  // including the paper-shaped ones. That is exactly why `start.md` names its
-  // helper scripts through a resolved `<editor-scripts>/` prefix rather than a
-  // literal `editor/scripts/…` path (task 473): with no rewrite, a literal one
-  // would be wrong in every synced folder.
-  { dir: commandsDirFor("virgil"), silo: "virgil", rewritten: false, loud: true },
-  { dir: join(MANAGED_FOLDER, commandsDirFor("virgil")), silo: "virgil", rewritten: false, loud: true },
-  { dir: "public/skill-bundle/virgil/claude-commands", silo: "virgil", rewritten: false, loud: true },
-  { dir: "out/skill-bundle/virgil/claude-commands", silo: "virgil", rewritten: false, loud: false },
+  { dir: commandsDirFor("editor"), silo: "editor", paper: false, loud: true },
+  { dir: join(MANAGED_FOLDER, commandsDirFor("editor")), silo: "editor", paper: true, loud: true },
+  { dir: "public/skill-bundle/editor/claude-commands", silo: "editor", paper: true, loud: true },
+  { dir: "out/skill-bundle/editor/claude-commands", silo: "editor", paper: true, loud: false },
+  // The FRONT DOOR. It takes no helper-PREFIX rewrite — that is why `start.md`
+  // names its scripts through a resolved `<editor-scripts>/` prefix rather than
+  // a literal `editor/scripts/…` path (task 473) — but its paper-shaped copies
+  // do take the LINK rewrite every shipped markdown takes, so they are
+  // `paper: true` like any other. `shippedBytes` is what decides which
+  // transforms a given file actually gets.
+  { dir: commandsDirFor("virgil"), silo: "virgil", paper: false, loud: true },
+  { dir: join(MANAGED_FOLDER, commandsDirFor("virgil")), silo: "virgil", paper: true, loud: true },
+  { dir: "public/skill-bundle/virgil/claude-commands", silo: "virgil", paper: true, loud: true },
+  { dir: "out/skill-bundle/virgil/claude-commands", silo: "virgil", paper: true, loud: false },
 ];
 
 // The other half of the same class, and the one no guard watched: helper
@@ -156,29 +168,28 @@ const SCRIPT_MIRRORS: ScriptMirror[] = [
   { dir: "out/skill-bundle/library/scripts", silo: "library", loud: false },
 ];
 
-// Skills are the top-level `*.md` in editor/skills/, minus the `_`-prefixed
-// includes (e.g. `_dev-loop-principle.md`). Those ship in the bundle like any
-// other file — nothing transcludes anything (task 461) — but the leading
-// underscore keeps them out of the COMMAND mirror, so they are not skills.
-// `_dev-loop-principle.md` is the one include a skill inlines rather than
-// links, and `dev-loop-principle.test.ts` is what holds that inlined copy to
-// this file's bytes.
-function skillNames(silo: SkillSilo): string[] {
-  return readdirSync(skillsDirFor(silo))
-    .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
+// The shipped map, resolved once — both halves of every expectation below read
+// it, so this guard and the builders cannot disagree about what a mirrored copy
+// should say.
+const SHIPPED = await shippedPathMap(repoRoot);
+
+/** Repo path of a silo's skill by basename. */
+const skillRepoPath = (silo: SkillSilo, name: string) => `${silo}/skills/${name}`;
+
+/** What a PAPER-shaped mirror carries: exactly the command markdown the
+ *  bundle ships — `_`-prefixed includes included (they ship like any other
+ *  file; nothing transcludes anything, task 461) and repo-only maintainer
+ *  skills excluded. */
+async function shippedSkillNames(silo: SkillSilo): Promise<string[]> {
+  return (await shippedSources(repoRoot, silo))
+    .filter((s) => s.bundlePath.startsWith("claude-commands/"))
+    .map((s) => s.bundlePath.slice("claude-commands/".length))
     .sort();
 }
 
-/** SSOT helper files for a silo — exactly what its builder ships. */
-function scriptNames(silo: "editor" | "library"): string[] {
-  const keep =
-    silo === "editor"
-      ? (n: string) => n.endsWith(".py") || n.endsWith(".json")
-      : (n: string) => n.endsWith(".py") || n === "requirements.txt";
-  return readdirSync(join(repoRoot, silo, "scripts"))
-    .filter(keep)
-    .sort();
-}
+/** What the repo's OWN dev mirror carries: every non-underscore skill,
+ *  repo-only ones included — `/editor:dream` is read from there. */
+const mirrorSkillNames = (silo: SkillSilo) => commandMirrorNames(repoRoot, silo);
 
 // ── The three-state verdict ──────────────────────────────────────────────────
 
@@ -198,7 +209,7 @@ export function resolveMirror(
   mirrorDirAbs: string,
   names: string[],
   ssotAbsFor: (name: string) => string,
-  expectedFor: (ssot: string) => string,
+  expectedFor: (ssot: string, name: string) => string,
 ): MirrorVerdict {
   if (!existsSync(mirrorDirAbs)) return { kind: "unseen" };
   const missing: string[] = [];
@@ -211,7 +222,7 @@ export function resolveMirror(
       missing.push(name);
       continue;
     }
-    if (read(built) !== expectedFor(read(ssotAbsFor(name)))) stale.push(name);
+    if (read(built) !== expectedFor(read(ssotAbsFor(name)), name)) stale.push(name);
   }
   return { kind: "seen", missing, stale };
 }
@@ -267,40 +278,57 @@ export function reportMirror(ctx: TestContext, row: Row): void {
 // Verdicts are resolved ONCE, at collection, so the summary row below can name
 // exactly the set the per-row legs skipped on rather than re-deriving it.
 const ROWS: Row[] = [
-  ...MIRRORS.map(({ dir, silo, rewritten, loud }): Row => ({
-    dir,
-    subject: "built skill copies",
-    consequence: "These are what a run actually reads",
-    loud,
-    verdict: resolveMirror(
-      join(repoRoot, dir),
-      skillNames(silo),
-      (name) => join(skillsDirFor(silo), name),
-      (ssot) => (rewritten ? rewriteScriptPathsForPaper(ssot) : ssot),
-    ),
-  })),
-  ...SCRIPT_MIRRORS.map(({ dir, silo, loud }): Row => ({
-    dir,
-    subject: "helper scripts",
-    consequence: "These are what a skill run actually EXECUTES",
-    loud,
-    verdict: resolveMirror(
-      join(repoRoot, dir),
-      scriptNames(silo),
-      (name) => join(repoRoot, silo, "scripts", name),
-      (ssot) => ssot,
-    ),
-  })),
+  ...(await Promise.all(
+    MIRRORS.map(async ({ dir, silo, paper, loud }): Promise<Row> => ({
+      dir,
+      subject: "built skill copies",
+      consequence: "These are what a run actually reads",
+      loud,
+      verdict: resolveMirror(
+        join(repoRoot, dir),
+        paper ? await shippedSkillNames(silo) : await mirrorSkillNames(silo),
+        (name) => join(skillsDirFor(silo), name),
+        (ssot, name) => (paper ? shippedBytes(skillRepoPath(silo, name), ssot, SHIPPED) : ssot),
+      ),
+    })),
+  )),
+  ...(await Promise.all(
+    SCRIPT_MIRRORS.map(async ({ dir, silo, loud }): Promise<Row> => ({
+      dir,
+      subject: "helper scripts",
+      consequence: "These are what a skill run actually EXECUTES",
+      loud,
+      verdict: resolveMirror(
+        join(repoRoot, dir),
+        await scriptFileNames(repoRoot, silo),
+        (name) => join(repoRoot, silo, "scripts", name),
+        (ssot) => ssot,
+      ),
+    })),
+  )),
 ];
 
 describe("skill bundle freshness (SSOT → built copies)", () => {
-  it("finds skills to guard", () => {
-    expect(skillNames("editor").length).toBeGreaterThan(0);
+  it("finds skills to guard", async () => {
+    expect((await shippedSkillNames("editor")).length).toBeGreaterThan(0);
     // The canary for the widened population: a virgil silo that resolved to an
     // empty list would make every front-door freshness row pass vacuously.
-    expect(skillNames("virgil")).toContain("start.md");
-    expect(scriptNames("editor").length).toBeGreaterThan(0);
-    expect(scriptNames("library").length).toBeGreaterThan(0);
+    expect(await shippedSkillNames("virgil")).toContain("start.md");
+    expect((await scriptFileNames(repoRoot, "editor")).length).toBeGreaterThan(0);
+    expect((await scriptFileNames(repoRoot, "library")).length).toBeGreaterThan(0);
+  });
+
+  it("guards the two populations for what each mirror actually carries", async () => {
+    const dev = await mirrorSkillNames("editor");
+    const shipped = await shippedSkillNames("editor");
+    // The dev mirror carries the maintainer skills; the bundle does not. A
+    // single population would red every paper-shaped row (missing) or leave
+    // the dev mirror's three unguarded.
+    expect(dev).toContain("dream.md");
+    expect(shipped).not.toContain("dream.md");
+    // …and the bundle carries the `_`-includes the dev mirror never has.
+    expect(shipped).toContain("_ask-shape.md");
+    expect(dev).not.toContain("_ask-shape.md");
   });
 
   // The single line a worker reads off the summary. It can only SKIP or pass —

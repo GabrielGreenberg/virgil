@@ -14,11 +14,23 @@ commit 4b453a5c had left seven skill markdowns AND `create_card.py` stale in the
 bundle, and the mirror-keyed check could see only the seven. A prompt and its
 helper going stale together is exactly what makes that invisible.
 
+THE CHECK ASKS THE BUNDLE WHAT IT BUILT FROM (task 506). Markdown does not ship
+verbatim — helper invocations are re-prefixed and every relative link is
+re-spelled for the synced layout — so a check that DIFFS shipped bytes against
+the SSOT must know every transform the build applies, and reports every command
+markdown as drifted the day it does not. The manifest's `sourceDigests` map
+records each shipped file's `repoPath` plus the sha256 of the bytes it was built
+FROM, so this side knows no transform at all and cannot fall behind one. The
+retired prefix-parsing legs are renegotiated in place below with the reason at
+the site: they pinned a mechanism whose whole purpose was to keep a re-derivation
+in step, and there is no longer a re-derivation.
+
 Every fixture is a synthetic repo in a temp dir, pinned via `VIRGIL_REPO_ROOT`,
 so the suite never depends on whether the real checkout happens to be built.
 
 Run from anywhere:  python3 editor/scripts/tests/test_dream_drift.py
 """
+import hashlib
 import json
 import os
 import sys
@@ -31,15 +43,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import dream  # noqa: E402
 from _common import SOURCE_REPO_ENV  # noqa: E402
 
-# The builder constant this check parses rather than re-spells.
-BUILDER = """\
-const PAPER_SCRIPT_PREFIXES = [
-  ["editor/scripts/", ".virgil/scripts/editor/"],
-  ["library/scripts/", ".virgil/scripts/library/"],
-];
-export function isPaperCommandMarkdown(bundlePath) { return true; }
-"""
-
 # A skill body invoking its helper repo-relative — the form the bundle rewrites.
 SKILL_SRC = "# draft-footnote\n\nRun `python3 editor/scripts/create_card.py x`.\n"
 SKILL_SHIPPED = "# draft-footnote\n\nRun `python3 .virgil/scripts/editor/create_card.py x`.\n"
@@ -48,26 +51,20 @@ SKILL_SHIPPED = "# draft-footnote\n\nRun `python3 .virgil/scripts/editor/create_
 class DriftCheckTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
+        self._built = {}
         self.repo = Path(self._tmp.name) / "repo"
         (self.repo / "editor" / "skills").mkdir(parents=True)
         (self.repo / "editor" / "scripts").mkdir(parents=True)
-        (self.repo / "editor" / "build").mkdir(parents=True)
         self.bundle = self.repo / "public" / "skill-bundle" / "editor"
         (self.bundle / "claude-commands").mkdir(parents=True)
         (self.bundle / "scripts").mkdir(parents=True)
-
-        (self.repo / "editor/build/build-editor-bundle.mjs").write_text(BUILDER)
 
         # A consistent baseline: one command markdown (rewritten on the way in),
         # one shared include, one helper script.
         self.write_pair("draft-footnote.md", SKILL_SRC, SKILL_SHIPPED)
         self.write_pair("_latex-allowlist.md", "allowlist v1\n", "allowlist v1\n")
         self.write_script("create_card.py", "print('v1')\n", "print('v1')\n")
-        self.write_manifest([
-            "claude-commands/draft-footnote.md",
-            "claude-commands/_latex-allowlist.md",
-            "scripts/create_card.py",
-        ])
+        self.write_manifest()
 
         self._prev = os.environ.get(SOURCE_REPO_ENV)
         os.environ[SOURCE_REPO_ENV] = str(self.repo)
@@ -83,14 +80,27 @@ class DriftCheckTest(unittest.TestCase):
     def write_pair(self, name, src, shipped):
         (self.repo / "editor/skills" / name).write_text(src)
         (self.bundle / "claude-commands" / name).write_text(shipped)
+        self._built[f"claude-commands/{name}"] = ("editor/skills/" + name, src)
 
     def write_script(self, name, src, shipped):
         (self.repo / "editor/scripts" / name).write_text(src)
         (self.bundle / "scripts" / name).write_text(shipped)
+        self._built[f"scripts/{name}"] = ("editor/scripts/" + name, src)
 
-    def write_manifest(self, files):
+    def write_manifest(self):
+        """What the builder recorded: for each shipped file, the repo path and
+        the sha256 of the SOURCE bytes it was built from."""
+        digests = {
+            bundle_path: {
+                "repoPath": repo_rel,
+                "sha256": hashlib.sha256(src.encode()).hexdigest(),
+            }
+            for bundle_path, (repo_rel, src) in self._built.items()
+        }
         (self.bundle / "bundle-manifest.json").write_text(
-            json.dumps({"version": "deadbeef", "files": files})
+            json.dumps({"version": "deadbeef",
+                        "files": sorted(digests),
+                        "sourceDigests": digests})
         )
 
     # ── the legs ───────────────────────────────────────────────────────────
@@ -118,10 +128,12 @@ class DriftCheckTest(unittest.TestCase):
         self.assertEqual(dream._detect_skill_drift(), ["editor/skills/draft-footnote.md"])
 
     def test_paper_path_rewrite_is_not_false_drift(self):
-        """The shipped command markdown carries `.virgil/scripts/editor/` where
-        the SSOT carries `editor/scripts/`. Diffing without the builder's
-        rewrite would report EVERY command markdown as drifted, every night —
-        the fastest way to make the check ignorable."""
+        """THE LEG THE DIGEST DESIGN EXISTS FOR. The shipped command markdown
+        carries `.virgil/scripts/editor/` where the SSOT carries
+        `editor/scripts/` — and, since task 506, re-spelled links besides.
+        Diffing the two would report EVERY command markdown as drifted, every
+        night, which is the fastest way to make the check ignorable. Asking the
+        bundle what it built FROM knows none of that."""
         self.assertIn("editor/scripts/", (self.repo / "editor/skills/draft-footnote.md").read_text())
         self.assertIn(".virgil/scripts/editor/", (self.bundle / "claude-commands/draft-footnote.md").read_text())
         self.assertEqual(dream._detect_skill_drift(), [])
@@ -138,11 +150,15 @@ class DriftCheckTest(unittest.TestCase):
         (self.bundle / "bundle-manifest.json").unlink()
         self.assertEqual(dream._detect_skill_drift(), [])
 
-    def test_unparseable_rewrite_table_fails_closed(self):
-        """If the builder's prefix table can't be read, yield NOTHING rather
-        than guess — a guessed prefix reports every command markdown as
-        drifted."""
-        (self.repo / "editor/build/build-editor-bundle.mjs").write_text("// moved\n")
+    def test_bundle_without_source_digests_fails_closed(self):
+        """RENEGOTIATED (task 506) from `test_unparseable_rewrite_table_fails_closed`:
+        the prefix table this used to break is no longer read at all. The
+        fail-closed rule it pinned survives one field over — a bundle built
+        before the builders recorded their sources yields NOTHING rather than
+        an empty list that reads as clean for the whole silo."""
+        (self.bundle / "bundle-manifest.json").write_text(
+            json.dumps({"version": "deadbeef", "files": ["scripts/create_card.py"]})
+        )
         (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
         self.assertEqual(dream._detect_skill_drift(), [])
 
@@ -181,11 +197,13 @@ class DriftCheckTest(unittest.TestCase):
         self.assertEqual(
             dream._detect_skill_drift_status(), ([], "unbuilt-bundle"))
 
-    def test_unparseable_rewrite_table_names_itself(self):
-        (self.repo / "editor/build/build-editor-bundle.mjs").write_text("// moved\n")
+    def test_bundle_without_source_digests_names_itself(self):
+        (self.bundle / "bundle-manifest.json").write_text(
+            json.dumps({"version": "deadbeef", "files": ["scripts/create_card.py"]})
+        )
         (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
         self.assertEqual(
-            dream._detect_skill_drift_status(), ([], "unparseable-rewrite-table"))
+            dream._detect_skill_drift_status(), ([], "no-source-digests"))
 
     def test_unreadable_manifest_names_itself(self):
         (self.bundle / "bundle-manifest.json").write_text("{ not json\n")
@@ -201,71 +219,21 @@ class DriftCheckTest(unittest.TestCase):
         # The two published fields are derived from exactly that pair.
         self.assertIs(reason is None, False)
 
-    def test_prefixes_are_read_from_the_builder(self):
-        """The prefixes are a token two layers must agree on byte-for-byte, so
-        they are PARSED from the builder, never re-spelled here."""
-        self.assertEqual(
-            dream._paper_script_prefixes(self.repo),
-            [("editor/scripts/", ".virgil/scripts/editor/"),
-             ("library/scripts/", ".virgil/scripts/library/")],
-        )
-
-    def test_parse_survives_the_builders_older_spelling(self):
-        """The parse keys on the SILO TOKEN, not the container syntax. Before
-        task 158 the builder spelled this as two scalar consts; a regex pinned
-        to the `PAPER_SCRIPT_PREFIXES` array would have gone None — silently
-        disarming the whole check — on the commit that introduced the array."""
-        (self.repo / "editor/build/build-editor-bundle.mjs").write_text(
-            'const REPO_SCRIPT_PREFIX = "editor/scripts/";\n'
-            'const PAPER_SCRIPT_PREFIX = ".virgil/scripts/editor/";\n'
-        )
-        self.assertEqual(
-            dream._paper_script_prefixes(self.repo),
-            [("editor/scripts/", ".virgil/scripts/editor/")],
-        )
-        # …and the check still works end to end under that spelling.
-        (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
-        self.assertEqual(dream._detect_skill_drift(), ["editor/scripts/create_card.py"])
-
-    def test_parse_survives_the_layout_ssot_spelling(self):
-        """Task 374 routed the destination half through the layout SSOT
-        (`${scriptsDirFor("editor")}/`) and the literal-only parse went quietly
-        None — the exact disarm the canary below exists to catch, and it caught
-        it (2026-08-16, three days disarmed). The destination now resolves by
-        READING the layout module (VIRGIL_DIR + the scriptsDirFor template),
-        never by re-spelling `.virgil` here, so a layout rename cannot leave
-        this side carrying a stale path."""
-        (self.repo / "editor/build/build-editor-bundle.mjs").write_text(
-            'import { scriptsDirFor } from "../../library/lib/skill-bundle-layout.mjs";\n'
-            "const PAPER_SCRIPT_PREFIXES = [\n"
-            '  ["editor/scripts/", `${scriptsDirFor("editor")}/`],\n'
-            '  ["library/scripts/", `${scriptsDirFor("library")}/`],\n'
-            "];\n"
-        )
-        layout = self.repo / "library/lib/skill-bundle-layout.mjs"
-        layout.parent.mkdir(parents=True, exist_ok=True)
-        layout.write_text(
-            'export const VIRGIL_DIR = ".virgil";\n'
-            "export function scriptsDirFor(subsystem) {\n"
-            "  return `${VIRGIL_DIR}/scripts/${subsystem}`;\n"
-            "}\n"
-        )
-        self.assertEqual(
-            dream._paper_script_prefixes(self.repo),
-            [("editor/scripts/", ".virgil/scripts/editor/"),
-             ("library/scripts/", ".virgil/scripts/library/")],
-        )
-
-    def test_real_builder_constant_is_still_parseable(self):
-        """Canary: the parse runs against the REAL build-editor-bundle.mjs, so a
-        refactor that renames or reshapes PAPER_SCRIPT_PREFIXES fails here
-        instead of silently disarming the check (fail-closed → []) forever."""
+    def test_real_bundle_records_what_it_built_from(self):
+        """Canary: the REAL editor bundle carries a `sourceDigests` map naming
+        real repo paths. A builder refactor that stops recording them fails
+        here instead of silently disarming the check (fail-closed → []) forever
+        — the role `test_real_builder_constant_is_still_parseable` used to play
+        for the retired prefix parse."""
         real = Path(__file__).resolve().parents[3]
-        if not (real / "editor/build/build-editor-bundle.mjs").is_file():
-            self.skipTest("not running from a source checkout")
-        parsed = dream._paper_script_prefixes(real)
-        self.assertIsNotNone(parsed, "PAPER_SCRIPT_PREFIXES no longer parseable")
-        self.assertIn(("editor/scripts/", ".virgil/scripts/editor/"), parsed)
+        manifest = real / "public/skill-bundle/editor/bundle-manifest.json"
+        if not manifest.is_file():
+            self.skipTest("editor bundle not built in this checkout")
+        digests = json.loads(manifest.read_text()).get("sourceDigests")
+        self.assertIsInstance(digests, dict, "builder no longer records sourceDigests")
+        self.assertTrue(digests)
+        for rec in digests.values():
+            self.assertTrue((real / rec["repoPath"]).is_file(), rec["repoPath"])
 
 
 if __name__ == "__main__":

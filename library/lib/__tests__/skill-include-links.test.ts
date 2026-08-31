@@ -56,17 +56,44 @@
 //      inherits the obligation by declaring itself. A hand list could only
 //      ever be missing a name.
 //
-// STATED LIMIT, deliberately. Leg 1 asks whether a link resolves in the
-// SOURCE TREE, not whether it resolves inside a SHIPPED bundle. Those
-// coincide for every link that stays inside `skills/` or points at
-// `../scripts/` (both builders map `<silo>/skills/*` → `claude-commands/*` and
-// `<silo>/scripts/*` → `scripts/*`, so the relative shape survives), and they
-// do NOT coincide for the ~27 links that leave those two dirs
-// (`../AGENTS.md`, `../dev/README.md`, `../../docs/workspace/*.md`,
-// `../lib/__tests__/*.ts`). Whether each of those is a legitimate repo-only
-// pointer or a broken bundle link is a per-link product question about the
-// synced-folder layout, not a fact this guard can derive — so it is named
-// here rather than half-answered by an allowlist.
+// THE OTHER PLACE THE READER SITS (task 506). Leg 1 asks whether a link
+// resolves in the SOURCE TREE. The 461 text named the bundle half as a stated
+// limit and got its reasoning backwards in the one way that mattered: it said
+// "both builders map `<silo>/skills/*` → `claude-commands/*` and
+// `<silo>/scripts/*` → `scripts/*`, so the relative shape survives". That is
+// true of the BUNDLE path — where those two are siblings under
+// `public/skill-bundle/<silo>/` — and FALSE of the DISK path an agent actually
+// reads from, where `.claude/commands/editor/` and `.virgil/scripts/editor/`
+// are two directories apart. So the 25 links spelled `../scripts/<helper>.py`
+// were counted as safe while landing at `.claude/commands/scripts/…`, which
+// exists nowhere; and the 13 spelled `../../docs/workspace/<doc>.md` landed at
+// `.claude/docs/workspace/…` while the file itself sat at `.claude/virgil/`.
+// Thirty-eight dead pointers in shipped skills, in the exact class 461 closed
+// one level up.
+//
+// LEG 2 is that question, asked of the SHIPPED BYTES: a link whose target
+// SHIPS must be spelled so it resolves at the target's shipped path. It is
+// satisfied by construction — `bundle-sources.mjs` re-spells every such link
+// from the same map both halves of the assertion read — so what this leg pins
+// is that the rewrite is WIRED, which is the part that can silently stop
+// happening. Allowlist EMPTY.
+//
+// LEG 3 is the residue: a link in a shipped SKILL whose target does not ship
+// at all. A skill is an INSTRUCTION an agent executes on a paper folder, so a
+// pointer to a file that is not there is a step it cannot take. Allowlist
+// EMPTY — a hit is de-link it (name the file in prose) or declare the skill
+// repo-only the way `dream`/`reflect`/`iterate-virgil-editor`/`iterate-skill`
+// do, by opening their description with `Developer-only`.
+//
+// STATED LIMIT, and it is a real one. Leg 3's population is SKILL markdown,
+// not every shipped file. The operational manifest (`docs/workspace/*.md`,
+// shipped to `.claude/virgil/`) carries ~200 pointers into `src/**` and
+// `docs/architecture/` — provenance notes for a maintainer reading the doc in
+// the repo, not navigation an agent performs — and whether a reference doc
+// should carry them at all is a product question about that doc's audience,
+// not a fact this guard can derive. Leg 2 still covers its links whose targets
+// DO ship (its siblings, and its pointers into the skill set), which is the
+// half that was silently broken.
 //
 // And a third leg keeps the myth from growing back in the place it lived: no
 // skill markdown may claim transclusion. Scoped to skill markdown, which is
@@ -75,9 +102,18 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
+// WHAT SHIPS, WHERE IT LANDS, and THE BYTES IT SHIPS WITH — the same SSOT the
+// four builders read, so this guard cannot come to disagree with them about
+// either half of the question (task 506).
+import {
+  shippedBytes,
+  shippedPathMap,
+  shippedSources,
+  SUBSYSTEMS,
+} from "../../build/bundle-sources.mjs";
 
 // library/lib/__tests__/ → repo root is three levels up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -85,11 +121,37 @@ const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8");
 
 const SILOS = ["editor/skills", "library/skills"] as const;
 
+/** The subsystems that author skill markdown — leg 3's population. */
+const SKILL_SUBSYSTEMS = SUBSYSTEMS.filter((s: string) => s !== "manifest");
+
+/** The set of folder-relative disk paths the bundle puts on a managed folder,
+ *  memoised per map so leg 2 asks it once. */
+const diskPathCache = new WeakMap<Map<string, string>, Set<string>>();
+function SHIPPED_DISK_PATHS(map: Map<string, string>): Set<string> {
+  let set = diskPathCache.get(map);
+  if (!set) {
+    set = new Set(map.values());
+    diskPathCache.set(map, set);
+  }
+  return set;
+}
+
 /** Relative markdown links whose target may legally be absent from the
  *  linking file's own silo. DELIBERATELY EMPTY, and it must stay that way:
  *  an entry is a pointer an agent following the doctrine gets nothing from.
  *  A hit is RESOLVE-it (or re-word the sentence so it carries no link). */
 const PERMITTED_UNRESOLVABLE_LINKS: string[] = [];
+
+/** Links in a SHIPPED file whose target also ships but which do not resolve at
+ *  the target's shipped path. DELIBERATELY EMPTY: the bundle rewrite derives
+ *  both halves from one map, so a hit means the rewrite stopped running. */
+const PERMITTED_UNRESOLVED_SHIPPED_LINKS: string[] = [];
+
+/** Links in a shipped SKILL pointing at a file that does not ship at all.
+ *  DELIBERATELY EMPTY: an entry is a step an agent on a paper folder cannot
+ *  take. A hit is DE-LINK it (name the file in prose), or declare the skill
+ *  repo-only by opening its description with `Developer-only`. */
+const PERMITTED_REPO_ONLY_POINTERS: string[] = [];
 
 /** Skill markdown that may assert transclusion. DELIBERATELY EMPTY: no
  *  builder implements any include syntax, so the claim is false wherever it
@@ -122,12 +184,14 @@ interface Link {
   href: string;
 }
 
-function relativeLinks(file: string): Link[] {
-  const src = read(file);
+/** Every RELATIVE markdown link in `src`, attributed to `file`. Takes the text
+ *  rather than reading it, so the same grammar sweeps repo source and shipped
+ *  bytes — two questions, one definition of "a link". */
+function linksIn(file: string, src: string): Link[] {
   const out: Link[] = [];
   for (const m of src.matchAll(LINK)) {
     const href = m[1];
-    if (/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(href)) continue; // absolute / anchor
+    if (/^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(href)) continue; // absolute / anchor
     out.push({ file, line: src.slice(0, m.index).split("\n").length, href });
   }
   return out;
@@ -162,7 +226,7 @@ describe("skill include links", () => {
     const broken: string[] = [];
     let checked = 0;
     for (const file of skillFiles()) {
-      for (const link of relativeLinks(file)) {
+      for (const link of linksIn(file, read(file))) {
         checked++;
         const target = link.href.split("#")[0];
         if (!target) continue; // pure in-page anchor
@@ -176,6 +240,68 @@ describe("skill include links", () => {
     expect(checked).toBeGreaterThan(100);
     expect(broken.filter((b) => !PERMITTED_UNRESOLVABLE_LINKS.includes(b))).toEqual([]);
     expect(PERMITTED_UNRESOLVABLE_LINKS).toEqual([]);
+  });
+
+  it("resolves every SHIPPED link at the target's SHIPPED path", async () => {
+    const map = await shippedPathMap(repoRoot);
+    // Every shipped markdown, whatever silo authored it — the manifest docs
+    // are read from `.claude/virgil/` and their links must land too.
+    const shippedMd: string[] = [];
+    for (const subsystem of SUBSYSTEMS) {
+      for (const src of await shippedSources(repoRoot, subsystem)) {
+        if (src.repoPath.endsWith(".md")) shippedMd.push(src.repoPath);
+      }
+    }
+    expect(shippedMd.length).toBeGreaterThan(20);
+
+    const broken: string[] = [];
+    let checked = 0;
+    for (const file of shippedMd) {
+      const fileDisk = map.get(file)!;
+      // The bytes an agent on a synced folder actually reads.
+      const shipped = shippedBytes(file, read(file), map);
+      for (const link of linksIn(file, shipped)) {
+        const target = link.href.split("#")[0];
+        if (!target) continue;
+        // Resolve the SHIPPED href against the file's own SHIPPED directory,
+        // and require that it names a path the bundle puts there.
+        const landsAt = posix.join(posix.dirname(fileDisk), target);
+        if (!SHIPPED_DISK_PATHS(map).has(landsAt)) {
+          // A pointer at something that does not ship is leg 3's question,
+          // not this one — asked of the SOURCE href, below.
+          const sourceTarget = posix.join(posix.dirname(file), target);
+          if (!map.has(sourceTarget)) continue;
+          broken.push(`${file}:${link.line} -> ${link.href} (lands at ${landsAt})`);
+          continue;
+        }
+        checked++;
+      }
+    }
+    // A rewrite that produced nothing would report green for the wrong reason.
+    expect(checked).toBeGreaterThan(100);
+    expect(
+      broken.filter((b) => !PERMITTED_UNRESOLVED_SHIPPED_LINKS.includes(b)),
+    ).toEqual([]);
+    expect(PERMITTED_UNRESOLVED_SHIPPED_LINKS).toEqual([]);
+  });
+
+  it("lets no shipped SKILL point at a file that does not ship", async () => {
+    const map = await shippedPathMap(repoRoot);
+    const dead: string[] = [];
+    for (const subsystem of SKILL_SUBSYSTEMS) {
+      for (const src of await shippedSources(repoRoot, subsystem)) {
+        if (!src.bundlePath.startsWith("claude-commands/")) continue;
+        for (const link of linksIn(src.repoPath, read(src.repoPath))) {
+          const target = link.href.split("#")[0];
+          if (!target) continue;
+          const repoTarget = posix.join(posix.dirname(src.repoPath), target);
+          if (map.has(repoTarget)) continue;
+          dead.push(`${src.repoPath}:${link.line} -> ${link.href}`);
+        }
+      }
+    }
+    expect(dead.filter((d) => !PERMITTED_REPO_ONLY_POINTERS.includes(d))).toEqual([]);
+    expect(PERMITTED_REPO_ONLY_POINTERS).toEqual([]);
   });
 
   it("holds every deep-index family member to its `_doctrine.md` pointer", () => {
