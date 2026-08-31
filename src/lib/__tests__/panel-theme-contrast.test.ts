@@ -11,7 +11,11 @@
  *
  * This is the guard that stops the next preset from being added by eye. It runs
  * over BOTH color tables, because either one is a door: `DEFAULT_PANEL_COLORS`
- * is what ships, `PRESET_COLORS` is what a user can pick.
+ * is what ships, and `PICKER_SWATCHES` — the curated `PRESET_COLORS` PLUS every
+ * shipped default the curated list does not already carry (task 494) — is what
+ * a user can pick. Reading the DERIVED grid rather than the curated list is the
+ * point: a value entering the picker enters this contract the moment it enters
+ * the grid, with nobody to remember to add it here.
  *
  * The WCAG math here is deliberately a SECOND, independent implementation
  * rather than an import from `color-math`. A guard that measures with the very
@@ -23,6 +27,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_PANEL_COLORS,
+  PICKER_SWATCHES,
   PRESET_COLORS,
   deriveCardPalette,
   deriveMarkerPalette,
@@ -65,7 +70,7 @@ const ALL_ACCENTS: [string, string][] = [
   ...(Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]).map(
     (k) => [`default:${k}`, DEFAULT_PANEL_COLORS[k]] as [string, string],
   ),
-  ...PRESET_COLORS.map((p) => [`preset:${p.name}`, p.hex] as [string, string]),
+  ...PICKER_SWATCHES.map((p) => [`preset:${p.name}`, p.hex] as [string, string]),
 ];
 
 describe("contrast oracle (self-check)", () => {
@@ -192,10 +197,17 @@ describe("the contract holds across the whole accent domain, not just the shippe
 
   it("the sweep is not vacuous", () => {
     expect(ACCENTS.length).toBeGreaterThan(1000);
-    // …and neither is the census it complements: a silently shrunk preset list
-    // would quietly shrink the table half of this guard.
+    // …and neither is the census it complements: a silently shrunk grid would
+    // quietly shrink the table half of this guard. Pinned in two parts — the
+    // CURATED list (a hand-authored palette; a change there is a design
+    // decision) and the DERIVED tail (which follows the shipped defaults, so it
+    // is stated as a floor plus the derivation's own invariant rather than as a
+    // literal that a legitimate new default would falsify).
     expect(PRESET_COLORS.length).toBe(14);
-    expect(ALL_ACCENTS.length).toBe(27);
+    expect(PICKER_SWATCHES.length).toBeGreaterThanOrEqual(PRESET_COLORS.length);
+    expect(ALL_ACCENTS.length).toBe(
+      Object.keys(DEFAULT_PANEL_COLORS).length + PICKER_SWATCHES.length,
+    );
   });
 });
 

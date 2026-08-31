@@ -71,6 +71,46 @@ export const PRESET_COLORS: { name: string; hex: string }[] = [
   { name: "Stone",    hex: "#78716c" },
 ];
 
+/**
+ * The picker's grid: the curated palette PLUS every shipped default the curated
+ * list does not already carry (task 494).
+ *
+ * `PanelThemePicker` marks a swatch active by exact-hex equality against the
+ * panel's CURRENT colour, and `pick()` short-circuits a click on the panel's own
+ * default back to `clearPanelColor`. Both of those are silently inert for a
+ * default the grid does not contain — measured at HEAD, `highlight` (#fbbf24),
+ * `todo` (#44403c) and `example` (#0d9488) were all missing, so three of eleven
+ * user-facing pickers opened at their own shipped colour with NO swatch marked
+ * active and (because the reset row is gated on `isOverridden`) nothing else in
+ * the popover saying what the current colour was.
+ *
+ * DERIVED rather than hand-extended, so the next shipped default is covered by
+ * declaring itself in `panel-theme.defaults.json` — a fourth literal added to
+ * `PRESET_COLORS` by hand is exactly the drift this fixes. The union is
+ * de-duplicated case-insensitively (the curated "Rust" #b45757 already carries
+ * footnote/cut, "Steel" #7191b0 archive, and so on), system keys are skipped
+ * (`SYSTEM_THEME_KEYS` are not user-overridable and have no picker), and the
+ * derived swatches are APPENDED — a layout call with no correct answer, noted
+ * rather than agonised over; the grid is `SWATCH_COLS`-wide so they simply start
+ * a further row.
+ *
+ * Both tables stay swept by `__tests__/panel-theme-contrast.test.ts`: a value
+ * entering the grid enters the picker's contrast contract, and every value here
+ * is by construction already a member of one of the two swept tables.
+ */
+export const PICKER_SWATCHES: readonly { name: string; hex: string }[] = (() => {
+  const seen = new Set(PRESET_COLORS.map((c) => c.hex.toLowerCase()));
+  const out: { name: string; hex: string }[] = [...PRESET_COLORS];
+  for (const key of Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]) {
+    if (SYSTEM_THEME_KEYS.has(key)) continue;
+    const hex = DEFAULT_PANEL_COLORS[key];
+    if (seen.has(hex.toLowerCase())) continue;
+    seen.add(hex.toLowerCase());
+    out.push({ name: `${key[0].toUpperCase()}${key.slice(1)} default`, hex });
+  }
+  return out;
+})();
+
 /* ── Color utilities ─────────────────────────────────────────────── */
 
 /** Mix `hex` with white by `amount` (0..1 = full white). Returns `#rrggbb`. */

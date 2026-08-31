@@ -36,6 +36,7 @@ import {
   defaultTintForLinkedAnchorKind,
 } from "@/cards/legacy-token-crosswalk";
 import { DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
+import { cssCommentsStripped } from "@/lib/__tests__/_source-scan";
 
 /** The CSS tokens the two globals.css blocks select on (Mode A ∪ Mode B). The
  *  expected theme accent for each, frozen as the shipped DEFAULT_PANEL_COLORS
@@ -107,8 +108,15 @@ describe("#27 globals.css source — hex tables deleted", () => {
   it("the two anchor-color blocks read CSS vars, not literal hex declarations", () => {
     // Pull just the two blocks (the linked-anchor data-link-card map + the
     // data-paragraph-kind map) and assert none assign a bare hex to
-    // --link-anchor-color. (Default-hex `var(…, #xxxxxx)` fallbacks are fine —
-    // those are graceful pre-mount defaults, not the live source.)
+    // --link-anchor-color.
+    //
+    // A `var(…, #xxxxxx)` FALLBACK is still legal here — it is the graceful
+    // pre-mount default, not the live source, and it has to be a literal
+    // because CSS cannot import TS. What is NOT legal, and what this comment
+    // used to license in as many words ("those are fine"), is that literal
+    // drifting from the value it restates: see the task-494 block below, which
+    // pins every one of them to `DEFAULT_PANEL_COLORS`. This leg governs the
+    // ASSIGNMENT; that one governs the FALLBACK.
     const lines = css.split("\n");
     const offenders: string[] = [];
     for (const line of lines) {
@@ -247,5 +255,105 @@ describe("#27 tint channel — the default band derives from the live accent", (
       "utf8",
     );
     expect(markSrc).toContain("/^#[0-9a-fA-F]{3,8}$/.test(tint)");
+  });
+});
+
+/**
+ * Task 494 — the pre-mount FALLBACK is PINNED to the value it restates.
+ *
+ * Every accent selector in globals.css reads `var(--link-anchor-accent-<token>,
+ * #rrggbb)`. The var is stamped at mount by `EditorLayout` from the live theme;
+ * the literal is what paints BEFORE that effect runs (SSR, first paint, and any
+ * path where the injector has not run yet). CSS cannot import TS, so the literal
+ * has to be hand-written — which makes it a hand-written restatement of
+ * `DEFAULT_PANEL_COLORS`, one per token, with nothing holding it in step.
+ *
+ * Measured at HEAD there was zero drift across all 20, so this is a live
+ * invariant with no guard rather than a live defect — and the sentence that
+ * licensed the gap was in the suite above ("Default-hex `var(…, #xxxxxx)`
+ * fallbacks are fine"), renegotiated in place. A drift here paints the wrong
+ * colour for the pre-mount window, which is exactly the window nobody looks at.
+ *
+ * The token → theme-key map is read off the LIVE `IN_TEXT_ANCHOR_ACCENTS`,
+ * never a restated list, so a new accent token is covered by declaring itself.
+ *
+ * Two directions, and the second is the one with teeth:
+ *   1. every fallback matches `DEFAULT_PANEL_COLORS[themeKeyForToken(token)]`;
+ *   2. every accent-var READ carries a fallback at all — a read with none
+ *      paints NOTHING pre-mount, which no assertion about hexes can see.
+ */
+describe("task 494 — accent var fallbacks are pinned to DEFAULT_PANEL_COLORS", () => {
+  const css = cssCommentsStripped(
+    readFileSync(resolve(__dirname, "../../app/globals.css"), "utf8"),
+  );
+
+  const THEME_KEY_BY_TOKEN = new Map(
+    IN_TEXT_ANCHOR_ACCENTS.map((r) => [r.token, r.themeKey] as const),
+  );
+
+  /** Every `var(--link-anchor-accent-<token> …)` occurrence, with whatever
+   *  fallback it carries. Token-EXACT: a loose `[a-z-]+` prefix-matches
+   *  `--link-anchor-accent-cut` out of `…-cutter-comment`, so the capture stops
+   *  at the comma or the closing paren and the token is then looked up. */
+  const READS = [
+    ...css.matchAll(
+      /var\(\s*--link-anchor-accent-([a-z0-9-]+)\s*(?:,\s*([^)]*?)\s*)?\)/g,
+    ),
+  ].map((m) => ({ token: m[1], fallback: (m[2] ?? "").trim() }));
+
+  it("the sweep is not vacuous — it sees every read and every token", () => {
+    expect(READS.length).toBeGreaterThanOrEqual(20);
+    const seen = new Set(READS.map((r) => r.token));
+    // Every token the CSS reads is a token the SSOT declares…
+    for (const r of READS) {
+      expect(
+        THEME_KEY_BY_TOKEN.has(r.token),
+        `globals.css reads an accent var for unknown token "${r.token}"`,
+      ).toBe(true);
+    }
+    // …and the CSS really does read more than a couple of them.
+    expect(seen.size).toBeGreaterThanOrEqual(10);
+  });
+
+  it("every fallback hex equals the token's DEFAULT_PANEL_COLORS value", () => {
+    const drift: string[] = [];
+    for (const { token, fallback } of READS) {
+      const key = THEME_KEY_BY_TOKEN.get(token);
+      if (!key) continue;
+      const want = DEFAULT_PANEL_COLORS[key].toLowerCase();
+      if (fallback.toLowerCase() !== want) {
+        drift.push(
+          `--link-anchor-accent-${token} falls back to "${fallback}" but ` +
+            `DEFAULT_PANEL_COLORS.${key} is ${want}`,
+        );
+      }
+    }
+    expect(drift).toEqual([]);
+  });
+
+  it("every accent-var read CARRIES a fallback — a bare read paints nothing pre-mount", () => {
+    const bare = READS.filter((r) => r.fallback === "").map((r) => r.token);
+    expect(bare).toEqual([]);
+  });
+
+  /**
+   * M3 — the two bare amber literals on `.linked-anchor`. One is the
+   * "unrecognised kind" base (`--link-anchor-color: #fbbf24`), one the
+   * `color-mix` tint fallback (`var(--tint-color, #fbbf24)`). Both restate
+   * `DEFAULT_PANEL_COLORS.highlight` from the same table as the 20 above and
+   * had the same absence of a pin. They stay literals for the same reason
+   * (CSS cannot import TS); what changes is that a drift is now a red test.
+   */
+  it("the .linked-anchor amber fallbacks equal DEFAULT_PANEL_COLORS.highlight", () => {
+    const amber = DEFAULT_PANEL_COLORS.highlight.toLowerCase();
+    const base = css.match(
+      /\.linked-anchor\s*\{[^}]*--link-anchor-color:\s*(#[0-9a-fA-F]{3,8})\s*;/,
+    );
+    expect(base, "the .linked-anchor base rule no longer declares a fallback color").toBeTruthy();
+    expect(base![1].toLowerCase()).toBe(amber);
+
+    const mix = css.match(/var\(\s*--tint-color\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)/);
+    expect(mix, "the tint color-mix no longer carries a fallback").toBeTruthy();
+    expect(mix![1].toLowerCase()).toBe(amber);
   });
 });

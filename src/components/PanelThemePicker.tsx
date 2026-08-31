@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import {
   clearPanelColor,
   DEFAULT_PANEL_COLORS,
-  PRESET_COLORS,
+  PICKER_SWATCHES,
   setPanelColor,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
@@ -120,7 +120,7 @@ export default function PanelThemePicker({
             className="grid gap-1 w-[168px]"
             style={{ gridTemplateColumns: `repeat(${SWATCH_COLS}, minmax(0, 1fr))` }}
           >
-            {PRESET_COLORS.map((c, i) => (
+            {PICKER_SWATCHES.map((c, i) => (
               <PresetSwatch
                 key={c.hex}
                 hex={c.hex}
