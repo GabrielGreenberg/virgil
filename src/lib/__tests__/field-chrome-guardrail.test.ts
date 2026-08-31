@@ -256,11 +256,18 @@ describe("field-chrome census — the accent-focus and ring bans", () => {
    * ban is asserted over every field-bearing FILE: the raw elements, the
    * `<Input|Select|Textarea …>` calls, and the primitive itself.
    *
-   * Scope is deliberately the field family rather than the whole repo:
-   * `focus-visible:ring-2` is the correct, shipped affordance on `Button`, and
-   * a future non-field control may want a ring honestly. `focus:ring-0` is
-   * excluded from the needle — it REMOVES a ring, which is the spec's own
-   * position.
+   * Scope is deliberately the field family rather than the whole repo, and the
+   * reason has been RENEGOTIATED (task 503). It used to read "`focus-visible:
+   * ring-2` is the correct, shipped affordance on `Button`" — that was true of
+   * where the spelling lived and false about what it painted: `globals.css` is
+   * unlayered, so the `.focus-ring` that same className appends won the whole
+   * `box-shadow`, and `BUTTON_BASE`'s three `focus-visible:*` utilities were
+   * dead. They are gone. The scope still stands on its OTHER half: a
+   * decorative, non-focus ring is legitimate outside the field family (a
+   * drop-target halo, a selection ring), which is exactly what
+   * `icon-button-a11y-guardrail.test.ts` → "a focus indicator has ONE
+   * mechanism" governs. `focus:ring-0` is excluded from the needle — it
+   * REMOVES a ring, which is the spec's own position.
    */
   const fieldBearing = (source: string) =>
     /<(?:input|select|textarea)\b/.test(source) ||

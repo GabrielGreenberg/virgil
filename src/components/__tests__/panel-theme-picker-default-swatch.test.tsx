@@ -82,10 +82,12 @@ function swatches(): HTMLElement[] {
 const hexOf = (el: HTMLElement) =>
   HEX_BY_NAME.get(el.getAttribute("aria-label") ?? "") ?? null;
 
-/** A swatch is ACTIVE when it wears the selected ring (`ring-2 ring-stone-500`),
- *  which is the only signal the popover gives at a non-overridden default. */
+/** A swatch is ACTIVE when it wears the selected ring (`ring-2
+ *  ring-edge-strong`), which is the only signal the popover gives at a
+ *  non-overridden default. The colour was `ring-stone-500` until task 503 —
+ *  the app's last raw Tailwind palette value. */
 const isActive = (el: HTMLElement) =>
-  el.className.includes("ring-2") && el.className.includes("ring-stone-500");
+  el.className.includes("ring-2") && el.className.includes("ring-edge-strong");
 
 async function openPickerFor(key: PanelThemeKey) {
   render(<PanelThemePicker panelKey={key} label={`${key} color`} />);
@@ -187,6 +189,98 @@ describe("task 494 — the picker marks an active swatch at every shipped defaul
     expect(active).toHaveLength(1);
     expect(hexOf(active[0])).toBe(PRESET_COLORS[0].hex.toLowerCase());
     clearPanelColor("todo");
+  });
+});
+
+/**
+ * Task 503 — a swatch's TWO signals land on two different CSS properties.
+ *
+ * A `PresetSwatch` shows up to three things: SELECTED (this is the panel's
+ * current colour), ROVING (the keyboard cursor) and, until this task, a
+ * `.focus-ring`. Two of the three wrote `box-shadow` — and `.focus-ring` is
+ * declared in the UNLAYERED `globals.css`, so it wins that property over
+ * Tailwind's `ring-*` whatever the class order, and its `outline: none` would
+ * have taken the roving outline with it.
+ *
+ * The reason the fix is a DELETION rather than a reshuffle: this is a roving
+ * menu row (`getItemProps()` gives it `tabIndex: -1`, and nothing in the menu
+ * system ever calls `.focus()` on an item), so it can never match
+ * `:focus-visible` — `.focus-ring` was dead there. Its own `ResetRow` sibling
+ * and `SelectionColorPopover`'s swatch already carry none.
+ *
+ * Asserted as PROPERTIES, not as class names: "the selected ring is present"
+ * passes on the pre-503 component, which rendered it and then let the focus
+ * rule replace it. What must hold is that no ONE property is written by more
+ * than one of the swatch's indicators.
+ */
+describe("task 503 — the swatch's indicators do not share a CSS property", () => {
+  /** The CSS property each indicator on a swatch writes. `outline-*` is
+   *  deliberately matched before `ring-*`: `outline-offset-1` must not be read
+   *  as a ring, and `focus-ring` must not either (its `ring` is preceded by a
+   *  `-`, which the lookbehind blocks). */
+  const indicatorProps = (cls: string): string[] => {
+    const props: string[] = [];
+    if (/(?<![\w-])focus-ring(?![\w-])/.test(cls)) props.push("box-shadow");
+    if (/(?<![\w-])ring-\d/.test(cls)) props.push("box-shadow");
+    if (/(?<![\w-])outline-\d/.test(cls)) props.push("outline");
+    return props;
+  };
+
+  it("the classifier reads the retired shape as a collision (self-check)", () => {
+    // The pre-503 swatch, restated locally: two writers of `box-shadow`.
+    const preFix =
+      "w-5 h-5 rounded border ring-2 ring-offset-1 ring-stone-500 " +
+      "outline outline-2 outline-offset-1 focus-ring";
+    expect(indicatorProps(preFix)).toEqual(["box-shadow", "box-shadow", "outline"]);
+    // …and that neither needle reads the other.
+    expect(indicatorProps("px-2 focus-ring")).toEqual(["box-shadow"]);
+    expect(indicatorProps("ring-2 ring-offset-1")).toEqual(["box-shadow"]);
+  });
+
+  it("a SELECTED swatch declares its ring and no focus indicator", async () => {
+    await openPickerFor("note");
+    const active = swatches().filter(isActive);
+    expect(active).toHaveLength(1);
+    expect(active[0].className).not.toMatch(/(?<![\w-])focus-ring(?![\w-])/);
+    expect(indicatorProps(active[0].className)).toEqual(["box-shadow"]);
+    // …on a token, never a raw Tailwind palette value.
+    expect(active[0].className).not.toMatch(
+      /(?<![\w-])ring-(?:stone|slate|zinc|gray|neutral)-\d/,
+    );
+  });
+
+  it("a swatch that is SELECTED and ROVING shows both, on two properties", async () => {
+    await openPickerFor("note");
+    const active = swatches().filter(isActive);
+    expect(active).toHaveLength(1);
+    // The roving cursor follows the pointer (`onMouseEnter` → `setActive`);
+    // it is never DOM focus, which is the whole reason `.focus-ring` was dead.
+    await act(async () => {
+      fireEvent.mouseEnter(active[0]);
+    });
+    const cls = active[0].className;
+    expect(cls).toMatch(/(?<![\w-])ring-\d/);
+    expect(cls).toMatch(/(?<![\w-])outline-\d/);
+    const props = indicatorProps(cls);
+    // The contract: no property is written twice.
+    expect(new Set(props).size).toBe(props.length);
+    expect(new Set(props)).toEqual(new Set(["box-shadow", "outline"]));
+  });
+
+  it("CONTROL: the swatch is not a tab stop, so the ring question does not apply", async () => {
+    await openPickerFor("note");
+    const grid = swatches();
+    expect(grid.length).toBeGreaterThan(0);
+    for (const el of grid) expect(el.tabIndex).toBe(-1);
+    // Its `ResetRow` sibling — the same kind of roving row — has always
+    // carried none, which is what made the swatch the anomaly.
+    setPanelColor("note", PRESET_COLORS[0].hex);
+    cleanup();
+    document.body.innerHTML = "";
+    await openPickerFor("note");
+    const reset = screen.getByText("Reset to default");
+    expect(reset.className).not.toMatch(/(?<![\w-])focus-ring(?![\w-])/);
+    clearPanelColor("note");
   });
 });
 

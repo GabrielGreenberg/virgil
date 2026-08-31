@@ -112,7 +112,9 @@ import path from "node:path";
 import {
   commentsStripped,
   elementsNamed,
+  strip,
   tagEnd,
+  trackedFiles,
   type JsxElementHit,
 } from "@/lib/__tests__/_source-scan";
 
@@ -522,5 +524,386 @@ describe("the visible-text classifier (self-check)", () => {
 
   it("fails LOUD on a subtree it cannot parse", () => {
     expect(hasVisibleText({ tag: "<button>", subtree: null, index: 0 })).toBeNull();
+  });
+});
+
+/* ── The focus indicator has ONE mechanism (task 2026-08-31-503) ─────── */
+
+/**
+ * > A focus indicator is `.focus-ring` (or `.iconbtn-*` / `.topbarbtn`, which
+ * > bake the same declaration in). Tailwind's `ring-*` is for a DECORATIVE,
+ * > non-focus ring only, and never on an element that also carries one of
+ * > those — and a ring's colour is a token, never a raw palette value.
+ *
+ * `globals.css` is UNLAYERED (`@import "tailwindcss"` puts every Tailwind
+ * utility in `@layer theme|base|components|utilities`), and the file states
+ * the consequence itself: *"unlayered always wins the cascade."* Tailwind's
+ * `ring-*` is implemented AS `box-shadow`, and so is the focus indicator — so
+ * on an element carrying both, the class wins whatever the class order and
+ * every `ring-*` on it paints NOTHING.
+ *
+ * This is task 502's law read one property over: *an unlayered utility that
+ * writes a property OWNS that property for the element.* 502 found it on
+ * `transition-*`; here it is on `box-shadow`.
+ *
+ * Two shipped sites had the shape and the first is why it needed a census:
+ *
+ *  - **`BUTTON_BASE`, i.e. the exemplar.** The canonical `<Button>` ended with
+ *    `focus-visible:outline-none focus-visible:ring-2
+ *    focus-visible:ring-edge-strong` and then appended `focus-ring`. Three
+ *    dead utilities on the one primitive every new button is supposed to be
+ *    copied from — harmless only because the two spellings happened to agree
+ *    at the default zero ring-offset, which is exactly why nobody noticed and
+ *    exactly why the next hand-rolled button would copy the dead one.
+ *  - **`PanelThemePicker`'s selected swatch.** Three indicators declared on
+ *    one 20x20 element: selected (`ring-2 ring-offset-1 ring-stone-500`,
+ *    box-shadow), roving (`outline …`, outline) and `focus-ring` (box-shadow).
+ *    Two of the three wrote the same property. It also carried the app's LAST
+ *    raw `stone-*` value — `docs/virgil-design-system/10-audit.md` item 7's
+ *    straggler, recorded 2026-08-09 and never filed.
+ *
+ * ── Two things the filing claimed that MEASUREMENT refutes, recorded here
+ *    rather than left to be re-filed ─────────────────────────────────────
+ *
+ *  - **The swatch's symptom was LATENT, not live.** The filing said a keyboard
+ *    user tabbing the palette could not see which swatch was selected. A
+ *    `PresetSwatch` is a roving menu row: `useMenuItem`'s `getItemProps()`
+ *    gives it `tabIndex: -1` and nothing anywhere calls `.focus()` on a menu
+ *    item (roving `aria-activedescendant` only, so the editor caret never
+ *    moves), so it can never match `:focus-visible` and `.focus-ring` was dead
+ *    there twice over. That is also why the fix is a DELETION rather than a
+ *    reshuffle of properties: its own `ResetRow` sibling and
+ *    `SelectionColorPopover`'s swatch — the app's other roving swatch grid —
+ *    already carry none, and leg C of the census above says the ring question
+ *    "doesn't apply" to a row that is not a tab stop.
+ *  - **`PanelThemePicker`'s TRIGGER is not a member.** The filing said the
+ *    anchored-menu trigger "also gives `.focus-ring`". It does not:
+ *    `AnchoredMenu` renders its trigger with `className={triggerClassName}`
+ *    and appends nothing, so `hover:ring-2 hover:ring-edge-subtle` there is a
+ *    decorative ring on an element with no focus indicator — the sanctioned
+ *    shape. (Its `shadow-inner` neighbour composes rather than collides:
+ *    Tailwind v4 folds `--tw-shadow` and `--tw-ring-shadow` into one
+ *    `box-shadow`. Only an UNLAYERED rule, or an INLINE style, replaces it.)
+ *
+ * ── What this census can and cannot see ──────────────────────────────
+ *
+ * It reads CLASS-LIST VALUES: every `…[Cc]lass(Name)?=` attribute or prop
+ * value (`className`, `triggerClassName`, `extraCardClass`, …), which is one
+ * element's class list, expanded through that file's own `const NAME = …`
+ * bindings wherever the value spells `${NAME}` or is exactly `{NAME}`. The
+ * expansion is what makes `<Button>` visible at all — its ring lived in a
+ * module const and its `focus-ring` in the JSX, so a value-only scan would
+ * have read the two halves as unrelated and reported the exemplar clean.
+ *
+ * Three limits, recorded rather than implied:
+ *
+ *  - **A value assembled from something other than a plain const is opaque** —
+ *    a function call, a prop, an object member. It fails toward silence.
+ *  - **Cross-FILE flow is invisible.** A parent that appends `focus-ring` to a
+ *    child's `className` prop is two files; only the halves each file can see
+ *    are joined. (No such pair exists today: the population leg is an exact
+ *    file set, so a new ring anywhere has to be acknowledged.)
+ *  - **A ring reached as an inline `style` is a different mechanism** and is
+ *    not censused here. Inline beats the sheet outright — the caveat
+ *    `PERMITTED_UNRINGED_ICON_BUTTONS` above already records for `StackIcon`.
+ */
+
+/** A Tailwind ring utility, variant prefixes included (`hover:ring-2`,
+ *  `focus-visible:ring-edge-strong`). The lookbehind is what keeps
+ *  `focus-ring` itself — whose `ring` is preceded by `-` — out of it. */
+const RING_UTILITY = /(?<![\w-])ring-/;
+
+/** The app's focus indicator, in any of its four spellings. */
+const FOCUS_INDICATOR =
+  /(?<![\w-])(?:focus-ring(?![\w-])|iconbtn-(?:xs|sm|md|lg)|topbarbtn)/;
+
+/** A ring whose colour is a raw Tailwind palette value rather than an app
+ *  token (`ring-edge-strong`, `ring-drag-target`, `ring-accent`). */
+const RAW_PALETTE_RING = new RegExp(
+  "(?<![\\w-])ring-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|" +
+    "lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|" +
+    "rose)-\\d",
+);
+
+/** Index just past the `close` matching the `open` at `i`, skipping strings.
+ *  (Nested template literals are not modelled — the same limit `tagEnd` in
+ *  `_source-scan` carries; none exists in either silo.) */
+function balancedEnd(s: string, i: number, open: string, close: string): number {
+  let depth = 0;
+  let j = i;
+  while (j < s.length) {
+    const c = s[j];
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c;
+      j++;
+      while (j < s.length && s[j] !== q) {
+        if (s[j] === "\\") j++;
+        j++;
+      }
+    } else if (c === open) depth++;
+    else if (c === close) {
+      depth--;
+      if (depth === 0) return j + 1;
+    }
+    j++;
+  }
+  return -1;
+}
+
+/** `NAME` → its initializer text, for every `const NAME = …;` in the file
+ *  (module or function scope — `stateClass` is a function-scope one). */
+function constBindings(src: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const decl = /(?:^|[\n;{])[ \t]*(?:export[ \t]+)?const[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[^=;]*)?=[ \t]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = decl.exec(src))) {
+    const start = m.index + m[0].length;
+    let j = start;
+    let depth = 0;
+    while (j < src.length) {
+      const c = src[j];
+      if (c === '"' || c === "'" || c === "`") {
+        const q = c;
+        j++;
+        while (j < src.length && src[j] !== q) {
+          if (src[j] === "\\") j++;
+          j++;
+        }
+      } else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
+      else if (c === ";" && depth <= 0) break;
+      j++;
+    }
+    out.set(m[1], src.slice(start, j));
+  }
+  return out;
+}
+
+/** One element's class list, with `${NAME}` / `{NAME}` resolved. Bounded at
+ *  three passes so a self-referential binding cannot spin. */
+function expandConsts(value: string, consts: Map<string, string>): string {
+  let out = value;
+  for (let pass = 0; pass < 3; pass++) {
+    const whole = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(out);
+    const before = out;
+    if (whole && consts.has(whole[1])) out = consts.get(whole[1])!;
+    out = out.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (m, n: string) =>
+      consts.has(n) ? consts.get(n)! : m,
+    );
+    if (out === before || out.length > 20000) break;
+  }
+  return out;
+}
+
+interface ClassValue {
+  file: string;
+  line: number;
+  attr: string;
+  value: string;
+  /** The enclosing JSX opening tag, so a leg can ask what ELSE the element
+   *  declares (an inline `boxShadow` is the other way to own the property).
+   *  Empty when the attribute is not inside a tag — a class constant. */
+  tag: string;
+}
+
+/** Every class-list value in both silos' production `.tsx`. Comments blanked,
+ *  string literals KEPT (the needle lives inside a `className` literal, so
+ *  blanking strings makes every leg unfalsifiable — the trap `_source-scan`'s
+ *  own header records), LINE-ALIGNED so a hit names its site. */
+function classValues(): ClassValue[] {
+  const out: ClassValue[] = [];
+  const files = [
+    ...trackedFiles("src", /\.tsx$/),
+    ...trackedFiles("library", /\.tsx$/),
+  ].filter((p) => !p.includes("__tests__"));
+  for (const abs of files) {
+    const rel = path.relative(ROOT, abs);
+    const src = strip(fs.readFileSync(abs, "utf8"), true, true);
+    const consts = constBindings(src);
+    /**
+     * The JSX opening tag an attribute at `at` belongs to, or "" when it
+     * belongs to none (a class CONSTANT sits inside no tag).
+     *
+     * Walks BACK over candidate `<` positions and keeps the first whose
+     * `tagEnd` actually COVERS the attribute — `tagEnd` is brace/quote aware,
+     * so an `onMouseDown={(e) => …}` arrow cannot truncate a tag (the trap
+     * AGENTS.md records for the pane-drag census), and a `<` that opened a
+     * TypeScript generic (`useState<Foo>`) closes early and is rejected by
+     * that same test. Bounded twice (candidates and distance) so the scan is
+     * O(1)-ish per attribute rather than quadratic on a 7000-line component;
+     * both bounds are far past any real tag, and overrunning them reports ""
+     * — silence, never a wrong neighbour.
+     */
+    const enclosingTag = (at: number): string => {
+      let open = src.lastIndexOf("<", at);
+      for (let tries = 0; tries < 60 && open >= 0 && at - open < 8000; tries++) {
+        if (/[A-Za-z]/.test(src[open + 1] ?? "")) {
+          const end = tagEnd(src, open);
+          if (end >= at) return src.slice(open, end + 1);
+        }
+        open = src.lastIndexOf("<", open - 1);
+      }
+      return "";
+    };
+    const attr = /(?<![\w$.])([\w$]*[Cc]lass(?:Name)?)\s*=\s*/g;
+    let m: RegExpExecArray | null;
+    while ((m = attr.exec(src))) {
+      const at = m.index + m[0].length;
+      const q = src[at];
+      let raw: string | null = null;
+      if (q === '"' || q === "'") {
+        const close = src.indexOf(q, at + 1);
+        if (close > 0) raw = src.slice(at + 1, close);
+      } else if (q === "{") {
+        const end = balancedEnd(src, at, "{", "}");
+        if (end > 0) raw = src.slice(at + 1, end - 1);
+      }
+      if (raw === null) continue;
+      out.push({
+        file: rel,
+        line: src.slice(0, m.index).split("\n").length,
+        attr: m[1],
+        value: expandConsts(raw, consts),
+        tag: enclosingTag(m.index),
+      });
+    }
+  }
+  return out;
+}
+
+const CLASS_VALUES = classValues();
+const RINGED = CLASS_VALUES.filter((v) => RING_UTILITY.test(v.value));
+const site = (v: ClassValue) => `${v.file}:${v.line}`;
+
+describe("a focus indicator has ONE mechanism", () => {
+  it("sees a population worth censusing (self-check)", () => {
+    // A scanner that quietly stopped matching would make both legs pass
+    // vacuously. Floors anchored well under today's counts.
+    expect(CLASS_VALUES.length).toBeGreaterThan(1500);
+    expect(CLASS_VALUES.some((v) => v.file.startsWith("library/"))).toBe(true);
+    // …and it must still be able to SEE a ring at all.
+    expect(RINGED.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("no element declares a ring utility AND the focus indicator", () => {
+    const both = RINGED.filter((v) => FOCUS_INDICATOR.test(v.value)).map(site);
+    // Allowlist EMPTY, and there is no shape that would earn one: the class
+    // wins the property outright, so a `ring-*` beside it is not a weaker
+    // indicator — it is no indicator. A hit is DELETE-the-ring (when the focus
+    // indicator is the one that should paint) or DROP-the-indicator (when the
+    // element is not a tab stop, which is what the swatch turned out to be).
+    expect(both).toEqual([]);
+  });
+
+  it("no ring names a raw Tailwind palette value", () => {
+    const raw = RINGED.filter((v) => RAW_PALETTE_RING.test(v.value)).map(site);
+    // Allowlist EMPTY. A ring is chrome like any other: it reads a token
+    // (`--edge-strong`, `--ring-drag-target`), so a theme change moves it.
+    expect(raw).toEqual([]);
+  });
+
+  it("keeps the surviving rings to a set someone decided on", () => {
+    // A tripwire, not a rule — legs 2 and 3 already govern the SHAPE of any
+    // ring anywhere. Kept at FILE granularity so ordinary line churn doesn't
+    // trip it, and so a `ring-*` appearing in a new file is an acknowledged
+    // decision rather than a silent one.
+    expect([...new Set(RINGED.map((v) => v.file))].sort()).toEqual([
+      // The picker trigger's decorative hover ring, and the selected swatch.
+      "src/components/PanelThemePicker.tsx",
+      // The bib-merge drop-target halo on a card root that carries no focus
+      // indicator (a card wrapper strips its ring — themed selection IS the
+      // indicator), reading `--ring-drag-target`. It is the sanctioned SHAPE
+      // and it is masked today by `PanelCard`'s INLINE ambient box-shadow —
+      // the same law one mechanism over, measured and filed separately. See
+      // the note at that site.
+      "src/panels/Citations/CitationCard.tsx",
+    ]);
+  });
+
+  it("no element that takes the indicator also owns box-shadow INLINE", () => {
+    // The same law through the other mechanism, and it fails the OPPOSITE way:
+    // an inline declaration beats every stylesheet rule, so here the ring is
+    // the loser — `.focus-ring` supplies `outline: none` and then cannot paint
+    // its own box-shadow, leaving a keyboard-reachable control with NO
+    // indicator at all. That is worse than never taking the class, which is
+    // why `PERMITTED_UNRINGED_ICON_BUTTONS` records `StackIcon` as unringed
+    // rather than ringed; `SelectionActionsMenu`'s margin bolt had taken it
+    // anyway (task 503) and is now unringed too.
+    //
+    // Allowlist EMPTY. A control whose elevation is genuinely inline drops the
+    // class; one whose elevation could live on the CLASS layer moves it there
+    // (the remedy the bolt's own neighbouring comment already takes for
+    // `background`, task 299), and then the ring wins normally.
+    const inlineShadow = CLASS_VALUES.filter(
+      (v) => FOCUS_INDICATOR.test(v.value) && /(?<![\w$.])boxShadow\s*:/.test(v.tag),
+    ).map(site);
+    expect(inlineShadow).toEqual([]);
+  });
+
+  it("no element that takes the indicator also owns box-shadow INLINE", () => {
+    // The same law through the other mechanism, and it fails the OPPOSITE way:
+    // an inline declaration beats every stylesheet rule, so here the ring is
+    // the loser — `.focus-ring` supplies `outline: none` and then cannot paint
+    // its own box-shadow, leaving a keyboard-reachable control with NO
+    // indicator at all. That is worse than never taking the class, which is
+    // why `PERMITTED_UNRINGED_ICON_BUTTONS` records `StackIcon` as unringed
+    // rather than ringed; `SelectionActionsMenu`'s margin bolt had taken it
+    // anyway (task 503) and is unringed now too.
+    //
+    // Allowlist EMPTY. A control whose elevation is genuinely inline drops the
+    // class; one whose elevation could live on the CLASS layer moves it there
+    // (the remedy the bolt's own neighbouring comment already takes for
+    // `background`, task 299) and then the ring wins normally. Stated limit: a
+    // `boxShadow` arriving through a variable or a spread is invisible here.
+    const inlineShadow = CLASS_VALUES.filter(
+      (v) => FOCUS_INDICATOR.test(v.value) && /(?<![\w$.])boxShadow\s*:/.test(v.tag),
+    ).map(site);
+    expect(inlineShadow).toEqual([]);
+  });
+
+  it("CAN SEE both retired shapes, through a const (synthetic canary)", () => {
+    // A census that reports zero must be shown to report non-zero, or "clean"
+    // and "blind" look identical. The const indirection is the load-bearing
+    // half: `<Button>`'s two halves lived in two places.
+    const fixture = [
+      'const BASE = "rounded-md focus-visible:ring-2 focus-visible:ring-edge-strong";',
+      "export function B() {",
+      "  return <button className={`${BASE} px-2 focus-ring`} />;",
+      "}",
+      "function S({ active }: { active: boolean }) {",
+      "  return (",
+      "    <button",
+      "      className={`w-5 h-5 ${",
+      '        active ? "ring-2 ring-offset-1 ring-stone-500" : "border-edge-hover"',
+      '      } focus-ring`}',
+      "    />",
+      "  );",
+      "}",
+    ].join("\n");
+    const src = strip(fixture, true, true);
+    const consts = constBindings(src);
+    expect(consts.get("BASE")).toContain("focus-visible:ring-2");
+
+    const values: string[] = [];
+    const attr = /(?<![\w$.])([\w$]*[Cc]lass(?:Name)?)\s*=\s*/g;
+    let m: RegExpExecArray | null;
+    while ((m = attr.exec(src))) {
+      const at = m.index + m[0].length;
+      const end = balancedEnd(src, at, "{", "}");
+      if (end > 0) values.push(expandConsts(src.slice(at + 1, end - 1), consts));
+    }
+    expect(values).toHaveLength(2);
+    // The exemplar: the ring came from the const, the indicator from the JSX.
+    expect(RING_UTILITY.test(values[0]) && FOCUS_INDICATOR.test(values[0])).toBe(true);
+    // The swatch: a MULTI-LINE template whose ring sits inside a `${…}`
+    // ternary — a line-based scan would have split the two halves apart.
+    expect(RING_UTILITY.test(values[1]) && FOCUS_INDICATOR.test(values[1])).toBe(true);
+    expect(RAW_PALETTE_RING.test(values[1])).toBe(true);
+
+    // …and the two needles do NOT read each other: `focus-ring` is not a ring
+    // utility, and `focus-visible:ring-*` is not the focus indicator.
+    expect(RING_UTILITY.test("px-2 focus-ring")).toBe(false);
+    expect(FOCUS_INDICATOR.test("focus-visible:ring-2")).toBe(false);
+    expect(RAW_PALETTE_RING.test("ring-edge-strong ring-drag-target")).toBe(false);
   });
 });

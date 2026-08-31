@@ -1913,8 +1913,17 @@ export const PANEL = {
 export type ButtonVariant = "primary" | "secondary" | "warm" | "danger" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 
+// The focus indicator is `.focus-ring`, appended in the render below — NOT a
+// `focus-visible:ring-*` utility. `globals.css` is UNLAYERED and Tailwind's
+// `ring-*` is implemented as `box-shadow`, so `.focus-ring:focus-visible` wins
+// that property whatever the class order: the three utilities this used to end
+// with (`focus-visible:outline-none focus-visible:ring-2
+// focus-visible:ring-edge-strong`) painted NOTHING. They were harmless only
+// because the two spellings happened to agree — which is exactly why nobody
+// noticed, and exactly why the next hand-rolled button copied the dead one off
+// the exemplar. Law + census: STYLE_GUIDE "Interaction" → Focus (task 503).
 const BUTTON_BASE =
-  "inline-flex items-center justify-center rounded-md font-medium transition-all duration-150 disabled:opacity-40 disabled:pointer-events-none active:translate-y-[0.5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong";
+  "inline-flex items-center justify-center rounded-md font-medium transition-all duration-150 disabled:opacity-40 disabled:pointer-events-none active:translate-y-[0.5px]";
 
 // hover-on-light-exempt: BUTTON_BASE above owns `transition-all duration-150`,
 // which is BROADER than `.hover-on-light`'s property list (it also carries the
