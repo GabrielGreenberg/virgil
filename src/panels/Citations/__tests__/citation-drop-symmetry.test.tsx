@@ -272,18 +272,31 @@ function renderCard(command = "") {
   return { container, cardEl, onUpdateCitation };
 }
 
+/** The halo the card ROOT actually paints. Read as the resolved inline
+ *  `box-shadow` rather than as a class, because the class was never the
+ *  mechanism: pre-508 the ring rode `extraCardClass`, and `PanelCard` writes
+ *  that element's `box-shadow` INLINE — so the two legs below passed for a
+ *  year while nothing painted. RENEGOTIATED in place (task 508) with the
+ *  reason at the site: what they assert is unchanged (the ring lights for a
+ *  mergeable payload and only for one); what they READ is now the property the
+ *  user can see. */
+const ringLit = (el: HTMLElement) => el.style.boxShadow.includes("var(--ring-drag-target)");
+
 describe("task 083 — citation drop ring predicts the drop (bib-entry merge only)", () => {
   it("bib-entry drag lights the drop-target ring", () => {
-    const { container, cardEl } = renderCard();
-    expect(container.querySelector(".ring-drag-target")).toBeNull();
+    const { cardEl } = renderCard();
+    expect(ringLit(cardEl)).toBe(false);
     fireEvent.dragOver(cardEl, { dataTransfer: bibEntryDT() });
-    expect(container.querySelector(".ring-drag-target")).not.toBeNull();
+    expect(ringLit(cardEl)).toBe(true);
+    // …composed WITH the ambient lift, never instead of it (task 508).
+    expect(cardEl.style.boxShadow).toContain("var(--card-shadow-ambient)");
   });
 
   it("a citation card's own atom-move drag does NOT light the ring (no false promise)", () => {
-    const { container, cardEl } = renderCard();
+    const { cardEl } = renderCard();
     fireEvent.dragOver(cardEl, { dataTransfer: citationAtomDT() });
-    expect(container.querySelector(".ring-drag-target")).toBeNull();
+    expect(ringLit(cardEl)).toBe(false);
+    expect(cardEl.style.boxShadow).toBe("var(--card-shadow-ambient)");
   });
 
   it("bib-entry drop merges the key (the real drop path still lands)", () => {

@@ -317,7 +317,7 @@ A token minted in `:root` does **not** get a Tailwind utility for free. Only
 tokens re-declared in the `@theme inline` blocks of `globals.css` emit classes
 — today the `--ink-*`/`--edge-*`/`--surface-*` scales, `--accent`,
 `--accent-light`, `--btn-primary`, `--menu-roving-bg`, `--overlay-scrim`,
-`--danger`/`--danger-soft`/`--danger-muted`, `--ring-drag-target`,
+`--danger`/`--danger-soft`/`--danger-muted`,
 `--background`/`--foreground`,
 the four font families and the radius scale. Read the block; don't trust that
 list.
@@ -2302,6 +2302,17 @@ Drop targets get a 2px dashed amber outline (`--ring-drag-target`)
 plus a 12% fill — universal across paragraph drops, panel drops, card
 drops.
 
+**A CARD's drop halo is a layer of its inline `box-shadow`, never a class**
+(task 508). A `PanelCard` root's `box-shadow` has exactly one owner —
+`themedCardStyle` — and an inline declaration beats every stylesheet rule, so
+a `ring-*` utility handed in through `extraCardClass` paints nothing at all
+(Tailwind's `ring-*` IS a `box-shadow`). The card states the FACT with
+`isDropTarget` and the primitive composes `0 0 0 2px var(--ring-drag-target)`
+ON TOP of the ambient lift — the ring is a transient state *about* the card,
+not a replacement for its elevation. `--ring-drag-target` therefore has no
+Tailwind alias: it is read as an inline value. The hover/selected attention
+ring is an `outline`, a disjoint property, so all three compose.
+
 ## Stack (visual clipboard)
 
 The Stack lives at the bottom-left of the editor pane: a 56px round
@@ -2328,10 +2339,16 @@ Eight kinds, each with its own token group:
   inherited the body ink), AI request marker (sky star), suggestion mark
   (amber highlight), linked anchor (invisible until hover).
 
-Selection-from-card on inline atoms: 2px ring in
-`--ring-drag-target`. On Mode-B linked spans: kind-specific tint via
-`--link-anchor-color`. On Mode-A paragraph anchors: subtle left-border
-stripe.
+Selection-from-card on inline atoms is per-atom and reads
+`--link-anchor-color` (the card's own accent), never the drop-target amber:
+a footnote marker takes a 1.5px ring, a citation locks its native yellow wash
+on. (This paragraph claimed "2px ring in `--ring-drag-target`" until task 508
+went looking for that token's consumers and found it had none here — the rule
+in `globals.css` has read the accent for as long as it has existed. Corrected
+in place rather than left standing: prose naming a token as a consumer is how
+the next author re-mints a Tailwind alias for it.) On Mode-B linked spans:
+kind-specific tint via `--link-anchor-color`. On Mode-A paragraph anchors:
+subtle left-border stripe.
 
 **An ARCHIVED card draws none of it** (task 497). Archiving is where a card
 goes when the user wants it out of the way, so its whole in-document presence
