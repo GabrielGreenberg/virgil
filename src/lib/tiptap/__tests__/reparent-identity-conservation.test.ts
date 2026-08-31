@@ -60,6 +60,8 @@ import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { parseLatex } from "@/lib/latex-parser";
+import { assignUuids, serializeBodyOnly } from "@/lib/latex-serializer";
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -269,6 +271,29 @@ describe("499 — Shift-Tab conserves the ITEM's identity, at every position", (
     expect(ids["2"]).toMatch(/^[0-9a-f]{4}$/); // the tail block is a new object
     expect(huskFor(ed, "i2"), outline(ed)).toBe(false);
     expect(drainOrphans()).not.toContain("i2");
+  });
+
+  it("the conserved id survives the whole `.tex` round trip", () => {
+    // The end-to-end proof, and the one a card actually depends on: a paragraph
+    // uuid only reaches a card's next session through the `.tex`. Driven from
+    // REAL source through the REAL parser, the REAL keymap and the REAL
+    // serializer, so nothing about the fixture presupposes the answer.
+    const parsed = parseLatex(
+      "Intro paragraph. %!v:1111\n\n\\begin{itemize}\n" +
+        "\\item Alpha. %!v:2222\n\\item Beta. %!v:3333\n" +
+        "\\end{itemize} %!v:4444\n",
+    );
+    assignUuids(parsed);
+    const ed = mount((parsed.content ?? []) as JSONContent[]);
+    caret(ed, "Beta.");
+    expect(press(ed, "Tab", { shiftKey: true })).toBe(true);
+    expect(idsByPath(ed)["2"], outline(ed)).toBe("3333");
+    // …and the anchor is written back on the lifted line, not on a husk and not
+    // on the list it left.
+    const tex = serializeBodyOnly(ed.getJSON() as never);
+    expect(tex).toContain("Beta. %!v:3333");
+    expect(tex).toContain("\\item Alpha. %!v:2222");
+    expect(tex).toContain("\\end{itemize} %!v:4444");
   });
 
   it("RESIDUAL, pinned: a MULTI-item lift conserves the FIRST item only", () => {
