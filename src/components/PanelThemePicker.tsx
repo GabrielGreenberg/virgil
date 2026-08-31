@@ -102,7 +102,23 @@ export default function PanelThemePicker({
       align="end"
       triggerHint={label ?? "Panel color"}
       triggerAriaLabel={label ?? "Panel color"}
-      triggerClassName="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:ring-2 hover:ring-edge-subtle transition-shadow"
+      // The hover affordance is a BORDER-COLOUR shift, not a ring (task 507).
+      //
+      // `AnchoredMenu` supplies this trigger's focus indicator now — the
+      // trigger is the element that keeps DOM focus while the menu is open —
+      // and `.focus-ring:focus-visible` is UNLAYERED, so it OWNS `box-shadow`
+      // on this element while focused. A `hover:ring-2` is `box-shadow` too, so
+      // it would paint nothing on a focused swatch: the collision task 503
+      // closed, arriving from the other side. `edge-hover → edge-strong` is the
+      // app's own bordered-pill hover vocabulary (STYLE_GUIDE "Interaction" →
+      // Hover; `.omni-bin-pill:hover` is the same shift), and `border-color` is
+      // a property nothing else on this 20x20 element claims — where `outline`
+      // is NOT free, since the same focus rule sets `outline: none`.
+      //
+      // `shadow-inner` stays: it is a REST-state inset, and yielding it to the
+      // ring while focused is the correct precedence, exactly as every
+      // `iconbtn-*` yields its own elevation.
+      triggerClassName="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:border-edge-strong transition-colors"
       triggerStyle={{ background: current }}
       wrapperClassName="relative shrink-0 inline-flex"
       trigger={() => null}

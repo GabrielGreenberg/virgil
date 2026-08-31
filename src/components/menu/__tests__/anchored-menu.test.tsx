@@ -80,6 +80,74 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     expect(btn.getAttribute("aria-expanded")).toBe("true");
   });
 
+  /* ── The trigger's focus indicator (task 507) ────────────────────────
+     The trigger is the element that KEEPS DOM focus while the menu is open —
+     rows are `tabIndex: -1` and nothing calls `.focus()` on one — so it is the
+     one element a keyboard user stands on for the whole interaction. Five of
+     the eight consumers spelled no indicator, and the icon-button census could
+     not see them (`literalClassName` returns null for
+     `className={triggerClassName}`), which is why the obligation moved into
+     the shell rather than onto a five-line sweep. */
+
+  it("supplies the focus indicator, even for a caller that spells none", () => {
+    const { container } = render(shell());
+    // The five unringed consumers' shape: no `triggerClassName` at all.
+    expect(triggerIn(container).className.split(/\s+/)).toContain("focus-ring");
+  });
+
+  it("keeps the caller's own classes alongside it", () => {
+    const { container } = render(
+      shell({ triggerClassName: "px-1.5 text-ink-muted" }),
+    );
+    const cls = triggerIn(container).className.split(/\s+/);
+    expect(cls).toContain("px-1.5");
+    expect(cls).toContain("text-ink-muted");
+    expect(cls).toContain("focus-ring");
+  });
+
+  it("does NOT double-paint on a trigger that already carries an iconbtn-*", () => {
+    // The three `iconbtn-*` consumers (`CitationCard`, and `panel-primitives`'
+    // add-dropdown + item-menu kebab). Both class names appear, and that is
+    // ONE indicator rather than two: they are two SELECTORS on one declaration
+    // block in `globals.css`, pinned as source in `icon-button-a11y-guardrail`
+    // ("the shell's indicator COMPOSES with an `iconbtn-*`") because jsdom
+    // resolves no stylesheet.
+    const { container } = render(shell({ triggerClassName: "iconbtn-sm" }));
+    const cls = triggerIn(container).className.split(/\s+/);
+    expect(cls).toContain("iconbtn-sm");
+    expect(cls).toContain("focus-ring");
+    expect(cls.filter((c) => c === "focus-ring")).toHaveLength(1);
+  });
+
+  it("a caller that declares it owns one gets NO shell ring", () => {
+    // Never a silent skip: the census requires an opted-out trigger to carry
+    // its own indicator. Here that is the whole point of the flag — a trigger
+    // whose elevation is inline `boxShadow` beats the sheet, so the class
+    // would delete the UA outline and supply nothing (the `StackIcon` shape).
+    const { container } = render(
+      shell({
+        triggerClassName: "topbarbtn",
+        triggerOwnsFocusIndicator: true,
+      }),
+    );
+    const cls = triggerIn(container).className.split(/\s+/);
+    expect(cls).toEqual(["topbarbtn"]);
+  });
+
+  it("the ring is on the element that KEEPS focus, not on a row", () => {
+    // The reason the obligation is the shell's at all. Open the menu, arrow to
+    // a row: DOM focus never leaves the trigger, and the row it highlights is
+    // announced through `aria-activedescendant` ON THE TRIGGER (task 477).
+    const { container } = render(shell());
+    const btn = triggerIn(container);
+    fireEvent.click(btn);
+    btn.focus();
+    fireEvent.keyDown(btn, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(btn);
+    expect(btn.getAttribute("aria-activedescendant")).toBeTruthy();
+    expect(btn.className.split(/\s+/)).toContain("focus-ring");
+  });
+
   it("the click is a real toggle — mousedown→click while open closes it", async () => {
     const { container } = render(shell());
     const btn = triggerIn(container);
