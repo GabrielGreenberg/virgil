@@ -67,7 +67,7 @@ import { join } from "node:path";
 import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids, serializeBodyOnly } from "@/lib/latex-serializer";
 
@@ -428,6 +428,88 @@ describe("499 — every container-changing surface conserves, not just Shift-Tab
     expect(ids["0.1"]).toBe("i2");
     expect(huskFor(ed, "L1"), outline(ed)).toBe(false);
   });
+
+  it("M8 paragraph → heading, and M8b heading → paragraph, keep the block's id", () => {
+    // `setBlockType` mints a BARE node of a different type around the same
+    // content — the RETYPE shape exactly — so these conserve too. Review-caught
+    // and DECLARED here rather than left to be rediscovered: pre-499 both
+    // minted a stranger and orphaned the block's cards, and the header's
+    // enumerated gestures were all lists and quotes.
+    const ed = mount([P("P1", "Head me"), P("P2", "x")]);
+    caret(ed, "Head me");
+    ed.chain().setHeading({ level: 1 }).run();
+    expect(ed.state.doc.child(0).type.name).toBe("heading");
+    expect(idsByPath(ed)["0"], outline(ed)).toBe("P1");
+
+    ed.chain().setParagraph().run();
+    expect(ed.state.doc.child(0).type.name).toBe("paragraph");
+    expect(idsByPath(ed)["0"], outline(ed)).toBe("P1");
+  });
+});
+
+// ── B3. the WIDER question the resurrection guard asks ───────────────────────
+//
+// A `liftListItem` strips TWO levels when the item was the list's last, and the
+// transfer can hand on only the innermost — one node holds one id. So the
+// guard's stand-down is keyed on DISSOLUTION, not on the transfer, and these
+// are the legs that say why. Every one of them needs the container in
+// `anchoredUuidsRef`, which is what part A's legs (which anchor the ITEM only)
+// structurally cannot represent.
+
+describe("499 — a container that dissolved is never resurrected, successor or not", () => {
+  it("the whole list dissolving leaves NO husk for the list's own id", () => {
+    anchored.add("L1");
+    anchored.add("i1");
+    const ed = mount([LIST("L1", ITEM("i1", P(null, "A"))), P("tail", "tail")]);
+    caret(ed, "A");
+    expect(press(ed, "Tab", { shiftKey: true })).toBe(true);
+    expect(idsByPath(ed)["0"], outline(ed)).toBe("i1"); // the item's successor
+    expect(huskFor(ed, "L1"), outline(ed)).toBe(false); // …and the list orphans
+    expect(huskFor(ed, "i1"), outline(ed)).toBe(false);
+    expect(liveUuids(ed)).not.toContain("L1");
+  });
+
+  it("a NESTED list dissolving leaves no husk either (no successor at all)", () => {
+    anchored.add("L2");
+    const ed = mount([
+      LIST("L1", ITEM("i1", P(null, "A"), LIST("L2", ITEM("i2", P(null, "B"))))),
+    ]);
+    caret(ed, "B");
+    press(ed, "Tab", { shiftKey: true });
+    // `i2` keeps its own id, so the inner list's has nowhere to go — and that
+    // is exactly the case a transfer-keyed guard would have husked.
+    expect(idsByPath(ed)["0.1"], outline(ed)).toBe("i2");
+    expect(huskFor(ed, "L2"), outline(ed)).toBe(false);
+    expect(liveUuids(ed)).not.toContain("L2");
+  });
+
+  it("a transfer whose receiver is a DEFERRED paragraph still leaves no husk", () => {
+    // The other half of why the guard's question is weaker: this transfer is
+    // PLANNED and then dropped at the landing site (a deferred inner paragraph
+    // is never a mint candidate), so a guard keyed on the plan would stand down
+    // for a transfer that never lands — and one keyed on the landing would husk.
+    anchored.add("Q1");
+    const ed = mount([LIST("L1", ITEM("i1", QUOTE("Q1", P(null, "A"))))]);
+    caret(ed, "A");
+    ed.chain().toggleBlockquote().run();
+    expect(huskFor(ed, "Q1"), outline(ed)).toBe(false);
+    expect(idsByPath(ed)["0.0"], outline(ed)).toBe("i1"); // the item is intact
+    expect(new Set(liveUuids(ed)).size).toBe(liveUuids(ed).length);
+  });
+
+  it("RESIDUAL, pinned: a JOINED-away item still husks — and so does a plain paragraph join", () => {
+    // Out of scope and PRE-EXISTING: a join is not a re-parenting, and the
+    // resurrection guard has always husked the absorbed block. Measured on a
+    // plain two-paragraph Backspace-join, where no list, lift or transfer is
+    // involved at all — so it is the guard's general join behaviour and not
+    // something this task introduced. Pinned as a CONTROL so the boundary of
+    // the fix is a stated fact rather than an assumption; filed separately.
+    anchored.add("P2");
+    const ed = mount([P("P1", "A"), P("P2", "B")]);
+    caret(ed, "B");
+    press(ed, "Backspace");
+    expect(huskFor(ed, "P2"), outline(ed)).toBe(true);
+  });
 });
 
 // ── B2. undo/redo — a transfer must survive being taken back ────────────────
@@ -650,6 +732,18 @@ const REPARENT_COMMANDS = [
   "wrapInList",
   "wrapIn",
   "lift",
+  // RETYPE producers. `setBlockType` mints a BARE node of a different type
+  // around the same content, which is the retype shape exactly — so the
+  // Heading action and the heading-strip demote chip now conserve identity
+  // where they used to mint a stranger. Review-caught: the header's enumerated
+  // gestures were all lists and quotes, and TipTap's own `toggleHeading` /
+  // `toggleCodeBlock` PRESERVE attrs, so nothing in the list vocabulary
+  // pointed at this path.
+  "setBlockType",
+  "setHeading",
+  "setParagraph",
+  "toggleHeading",
+  "toggleCodeBlock",
 ] as const;
 
 /**
@@ -674,6 +768,8 @@ const SWEPT_COMMANDS: Partial<
   toggleBulletList: "M3, M3b, M4, M4c",
   toggleOrderedList: "M7",
   toggleBlockquote: "M4b, M5, and the split-lift + heading controls",
+  setBlockType: "M8 (the Heading action) and M8b (the demote chip)",
+  setParagraph: "M8b",
 };
 
 describe("499 CENSUS: every re-parenting command family is swept", () => {
@@ -718,10 +814,10 @@ describe("499 CENSUS: every re-parenting command family is swept", () => {
       join(ROOT, "src/lib/tiptap/block-uuid-backfill.ts"),
       "utf8",
     );
-    const fastPath = src.indexOf("if (candidates.length === 0) return [];");
-    // The CALL inside `planBackfill`, not `reparentedUuids`'s own (which is
+    const fastPath = src.indexOf("if (candidates.length === 0 &&");
+    // The CALL inside `planBackfill`, not `dissolvedByReparent`'s own (which is
     // defined above it and takes the same door).
-    const pass = src.indexOf("forEachReparentPlan(transactions, (plan, trk, k, si)");
+    const pass = src.indexOf("forEachReparentStep(transactions, (step, preDoc, postDoc, trk, k, si)");
     expect(fastPath, "the keystroke fast path is gone").toBeGreaterThan(-1);
     expect(pass, "the direction-1 pass is gone").toBeGreaterThan(-1);
     expect(pass, "the transfer pass runs BEFORE the fast path").toBeGreaterThan(fastPath);
@@ -731,13 +827,25 @@ describe("499 CENSUS: every re-parenting command family is swept", () => {
     // The only way to reach the document past this net is a transaction wearing
     // the backfill's own meta, and the only way to answer the parentage
     // question twice is a second reader of a ReplaceAroundStep's gap.
+    //
+    // The meta needle reads `commentsStripped`, NOT `codeOnly`: `codeOnly`
+    // BLANKS string literals, and the bypass meta IS a string literal — so the
+    // needle matched nothing in any file, ever, and the leg was unfalsifiable
+    // (review-caught; the exact trap `_source-scan`'s own header records). The
+    // other two are symbols and read `codeOnly`, which keeps a mention in prose
+    // from indicting a file.
     const offenders: string[] = [];
     for (const file of FILES) {
       const rel = file.slice(ROOT.length + 1);
-      const code = codeOnly(readFileSync(file, "utf8"));
       if (rel === "src/lib/tiptap/block-uuid-backfill.ts") continue;
-      if (/"blockUuidBackfill"/.test(code)) offenders.push(`${rel} (spells the bypass meta)`);
-      if (/\bplanReparentTransfer\b/.test(code)) offenders.push(`${rel} (re-derives the rule)`);
+      const src = readFileSync(file, "utf8");
+      const code = codeOnly(src);
+      if (/"blockUuidBackfill"/.test(commentsStripped(src))) {
+        offenders.push(`${rel} (spells the bypass meta)`);
+      }
+      if (/\bplanReparentTransfer\b|\bdissolvedAncestorUuids\b/.test(code)) {
+        offenders.push(`${rel} (re-derives the rule)`);
+      }
       if (/\.gapFrom\b/.test(code)) offenders.push(`${rel} (reads a step gap itself)`);
     }
     expect(offenders).toEqual([]);
