@@ -35,6 +35,7 @@ import {
 // cross-silo bridge (see library/CLAUDE.md "Don't"). Backdrop-parameterized:
 // the Library PDF pane uses the warm "manila" backdrop.
 import FramedViewerSurface from "@/components/FramedViewerSurface";
+import { readerHostKind } from "@/components/editor-layout/reader-host";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -93,12 +94,15 @@ export default function RightDetail({
   );
   const [editOpen, setEditOpen] = useState(false);
 
-  // F#9: the "open in a new tab" link is redundant inside the OUTER Virgil-bar
-  // tab (you're already in a tab). PaperOuterView passes `scope="outer:..."`;
-  // the in-library Reader passes a non-"outer:" panel scope. Derive once and
-  // thread to PaperHeader as `showOpenInTab` (pure prop threading — no
+  // F#9: the "Pop out" link opens THIS PAPER in its own Virgil-bar tab, so it
+  // is redundant exactly when the paper already IS its own tab — the
+  // `popped-paper` host. It is NOT redundant in a torn-out *Library* tab, where
+  // you are looking at a paper inline inside a Library tab and popping it out
+  // still does something; the pre-434 prefix test conflated the two and hid a
+  // live affordance there (task 434 un-conflates it at the named host).
+  // Threaded to PaperHeader as `showOpenInTab` (pure prop threading — no
   // Reader-specific EditorPane render path; READER_INHERITANCE preserved).
-  const isOuterTab = scope.startsWith("outer:");
+  const isOwnPaperTab = readerHostKind(scope) === "popped-paper";
 
   // Live Reader refs lifted up from PaperRender (a sibling BELOW the header) so
   // this component can run the SINGLE `usePgmarkPages` derivation (F#11) and
@@ -374,7 +378,7 @@ export default function RightDetail({
             indexedState={entry.indexed.state}
             onEdit={canEdit ? () => setEditOpen(true) : undefined}
             editPending={!canEdit && editPending}
-            showOpenInTab={!isOuterTab}
+            showOpenInTab={!isOwnPaperTab}
             pgmarkPages={pdfPgmarkPages}
             textPodRect={textPodRect}
           />
@@ -431,7 +435,7 @@ export default function RightDetail({
           indexedState={entry.indexed.state}
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
           editPending={!canEdit && editPending}
-          showOpenInTab={!isOuterTab}
+          showOpenInTab={!isOwnPaperTab}
           pgmarkPages={pgmarkPages}
           textPodRect={textPodRect}
         />

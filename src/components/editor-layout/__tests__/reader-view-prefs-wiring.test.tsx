@@ -2,7 +2,7 @@
 //
 // Reader handler-wiring guard (Library-Reader-refactor live-control invariant).
 //
-// `useReaderView(editor, editorHandleRef, scrollEl)` mounts the REAL
+// `useReaderView(editor, editorHandleRef, scrollEl, "inline")` mounts the REAL
 // view-state engine in ephemeral mode and assembles BOTH the
 // `EditorPaneViewPrefs` bundle (through the shared `buildEditorPaneViewPrefs`
 // builder) AND the `EditorPaneMenuBarBundle` (F#16) off ONE `vp` instance.
@@ -107,7 +107,7 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
   it("drives the editor's selection + scroll commands (not a no-op)", () => {
     const stub = makeStubEditor();
     const { result } = renderHook(() =>
-      useReaderView(stub.editor, NULL_HANDLE_REF, null),
+      useReaderView(stub.editor, NULL_HANDLE_REF, null, "inline"),
     );
 
     // Scroll to the 2nd top-level block, addressed by its durable uuid — the
@@ -123,7 +123,7 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
 
   it("is a safe no-op when the editor hasn't mounted yet (null editor)", () => {
     const { result } = renderHook(() =>
-      useReaderView(null, NULL_HANDLE_REF, null),
+      useReaderView(null, NULL_HANDLE_REF, null, "inline"),
     );
     // No editor → no throw, simply does nothing.
     expect(() =>
@@ -134,7 +134,7 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
   it("the bundle satisfies the EditorPaneViewPrefs shape (key members defined)", () => {
     const stub = makeStubEditor();
     const { result } = renderHook(() =>
-      useReaderView(stub.editor, NULL_HANDLE_REF, null),
+      useReaderView(stub.editor, NULL_HANDLE_REF, null, "inline"),
     );
     const bundle = result.current.viewPrefs;
 
@@ -249,7 +249,7 @@ describe("useReaderView — section path / breadcrumb (F#16 deferred half)", () 
     const editor = makeSectionPathStubEditor();
     const scrollEl = makeScrollEl();
     const { result } = renderHook(() =>
-      useReaderView(editor, NULL_HANDLE_REF, scrollEl),
+      useReaderView(editor, NULL_HANDLE_REF, scrollEl, "inline"),
     );
 
     // compute() runs on mount (effect) → the two crossed headings form the
@@ -262,7 +262,7 @@ describe("useReaderView — section path / breadcrumb (F#16 deferred half)", () 
   it("stays EMPTY when there is no scroll container yet (null scrollEl)", () => {
     const editor = makeSectionPathStubEditor();
     const { result } = renderHook(() =>
-      useReaderView(editor, NULL_HANDLE_REF, null),
+      useReaderView(editor, NULL_HANDLE_REF, null, "inline"),
     );
     expect(result.current.viewPrefs.activeSectionPath).toEqual([]);
   });
@@ -284,7 +284,7 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
   it("satisfies the EditorPaneMenuBarBundle shape with functional setters", () => {
     const stub = makeStubEditor();
     const { result } = renderHook(() =>
-      useReaderView(stub.editor, NULL_HANDLE_REF, null),
+      useReaderView(stub.editor, NULL_HANDLE_REF, null, "inline"),
     );
     const menuBar = result.current.menuBar;
 
@@ -322,7 +322,7 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
   it("a menu toggle mutates the SAME engine the viewPrefs bundle reads (no two-engine trap)", () => {
     const stub = makeStubEditor();
     const { result } = renderHook(() =>
-      useReaderView(stub.editor, NULL_HANDLE_REF, null),
+      useReaderView(stub.editor, NULL_HANDLE_REF, null, "inline"),
     );
 
     const before = result.current.menuBar.prefs.showParTitles;

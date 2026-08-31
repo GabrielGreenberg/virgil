@@ -5,6 +5,7 @@ import { LibraryTabView } from "./LibraryTabView";
 import { CENTRAL_LIBRARY_ID } from "@library/lib/library-store";
 import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import type { FsaDocMeta } from "@/lib/doc-index";
+import { libraryReaderScope } from "@/components/editor-layout/reader-host";
 
 interface Props {
   /** Library id (custom or Project) backing this outer tab. */
@@ -41,7 +42,7 @@ export default function LibraryOuterView({
 }: Props) {
   const tabsOptions = useMemo<UseLibraryTabsOptions>(
     () => ({
-      scope: `outer:${libId}`,
+      scope: libraryReaderScope(libId),
       seed: {
         left: { openIds: [CENTRAL_LIBRARY_ID], activeId: CENTRAL_LIBRARY_ID },
         right: { openIds: [libId], activeId: libId },
