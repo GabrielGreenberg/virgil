@@ -854,11 +854,26 @@ moves only lightness to reach it, carrying hue and saturation through:
 The ink is the accent, darkened only as far as legibility requires — a
 genuinely dark accent is its own ink. **No per-kind exceptions**: a hand-tuned
 escape is only ever right for the shipped hex, and the palette is the one thing
-a user retints. Both tables (`DEFAULT_PANEL_COLORS` and the `PRESET_COLORS` the
-picker offers) are pinned by `panel-theme-contrast.test.ts`, which measures with
-its own WCAG implementation rather than the one it guards — so a preset can no
-longer be added by eye. Palettes are memoized by accent and frozen: a palette is
-a value, not a scratch object.
+a user retints. Both tables (`DEFAULT_PANEL_COLORS` and the `PICKER_SWATCHES`
+grid the picker offers) are pinned by `panel-theme-contrast.test.ts`, which
+measures with its own WCAG implementation rather than the one it guards — so a
+preset can no longer be added by eye. Palettes are memoized by accent and
+frozen: a palette is a value, not a scratch object.
+
+**The picker's grid is DERIVED, not curated** (task 494): `PICKER_SWATCHES` is
+the hand-authored `PRESET_COLORS` palette PLUS every shipped default the palette
+does not already carry, appended. The picker marks a swatch active by exact-hex
+equality against the panel's current colour and short-circuits a click on the
+panel's own default back to `clearPanelColor` — both silently inert for a
+default the grid does not contain, which is what left `highlight`, `todo` and
+`example` opening at their own colour with no active swatch and (the reset row
+being gated on `isOverridden`) nothing in the popover naming the current colour
+at all. So: **a hand-written hex that restates a `DEFAULT_PANEL_COLORS` value is
+either DERIVED from it or PINNED to it.** The one place a literal is unavoidable
+is `globals.css` — CSS cannot import TS — so the ~20
+`var(--link-anchor-accent-<token>, #rrggbb)` pre-mount fallbacks and the two
+`.linked-anchor` amber fallbacks are pinned instead, by
+`in-text-anchor-accents.test.ts`.
 
 Eleven themes, four families:
 
