@@ -33,29 +33,31 @@ Remove a collision **by construction** (relocate the hunk to a seam the
 other change doesn't touch); where that is genuinely impossible, the
 impossibility is itself a finding to route — never a reason to go shallow.
 
-Every fix this pass ripples into the skill set: prefer the **deepest unified
-change that retires the whole pattern class**, not a surgical per-skill patch —
-*within* the scope guard, the acts-vs-proposes routing, and the three hard
-boundaries below (they are never weakened by this principle).
+Every finding you FILE carries this principle into the task you write: propose
+the **deepest unified change that retires the whole pattern class**, not a
+surgical per-skill patch — *within* the scope guard, the queue routing, and the
+three hard boundaries below (they are never weakened by this principle).
 
 The **night** half of the dev-dream loop. The day half — [`/editor/reflect`](reflect.md),
 chip 17 — drops a tiered memo into `editor/dev/memos/` after every skill that
 runs under DEV mode. This skill is the overnight pass that **consumes** those
 memos: read everything since the last dream, find the cross-memo patterns, and
-ripple fixes back into the skill set — landing safe single-skill polish
-directly and proposing everything bigger for review, while **refusing** to
-cross three load-bearing boundaries.
+**file each one as a task** — ready work for the task worker, or a question for
+Gabriel — while **refusing** to cross three load-bearing boundaries. You write
+no code and you land nothing (task 522).
 
 You are the loop driver. Two scripts do the deterministic work so you can spend
-your judgment on the patterns and the edits:
+your judgment on the patterns and on writing tasks worth working:
 
 - **[`dream.py`](../scripts/dream.py)** — `select` (find + group the memos
-  since the last dream, reusing reflect.py's memo reader) and `digest` (write
-  the morning summary + the marker the next dream reads). Gated on `VIRGIL_DEV`.
-- **[`dream_land.py`](../scripts/dream_land.py)** — `classify_change` routes one
-  proposed change → **acts** / **proposes** / **refused**, and **is** the
-  three-boundary guard. Pure and dry-run-safe; you call it for *every* change
-  before you make it.
+  since the last dream, reusing reflect.py's memo reader), `file-task` (mint a
+  task into `~/virgil-tasks/` under the three-minter collision protocol), and
+  `digest` (write the morning summary + the marker the next dream reads). Gated
+  on `VIRGIL_DEV`.
+- **[`dream_land.py`](../scripts/dream_land.py)** — `task_route` answers WHICH
+  QUEUE a finding goes in, over `classify_change`'s **acts** / **proposes** /
+  **refused** verdict, and **is** the three-boundary guard. Pure and
+  dry-run-safe; you ask it for *every* finding before you file it.
 
 Design: [MEMO_DEV_DREAM_DESIGN.md §4](../../MEMO_DEV_DREAM_DESIGN.md) · subsystem
 SSOT: [editor/dev/README.md](../dev/README.md).
