@@ -2395,6 +2395,41 @@ forces `background: none` — and that rule must stay AFTER every other
 stated once in `src/links/_shared/archived-anchor-chrome.ts`; see AGENTS.md
 ("The chrome half").
 
+### The spelling squiggle (task 518)
+
+`.spell-error` — a red wavy `text-decoration` in `--danger`, with
+`text-decoration-skip-ink: none` so the wave stays continuous under descenders
+(an interrupted wave reads as two words).
+
+Three decisions worth keeping:
+
+- **A decoration, not a mark.** It is a VIEW (AGENTS.md, "Transient state is
+  never document content"), so it never enters history, never arms the
+  autosaver, and is never captured when the paragraph is archived.
+- **`text-decoration`, not a background or a recoloured word.** It has to
+  compose with every mark the prose already carries — bold, italic, a colour, an
+  anchor band — without disturbing any of them, and an underline is what a
+  reader already recognises. The word itself keeps its own ink.
+- **`--danger` without a destructive action behind it** is the one exception to
+  the destructive/alarm family's rule, and `text-decoration` is what keeps it
+  honest: nothing here is a control, nothing is about to be destroyed, and the
+  red is on the *underline* rather than on the user's words.
+
+**One underline, never two.** The plugin that paints the squiggle is the plugin
+that turns the BROWSER's spellcheck off for that surface — see
+`spellcheck-policy.ts`, whose three claims (`NEVER_SPELLCHECK_*` = "a squiggle
+here would be nonsense"; the `<body>` attribute = "the user turned checking
+off"; `VIRGIL_CHECKED_ATTRS` = "Virgil underlines this surface") are the whole
+vocabulary for who marks a misspelling. If Virgil's dictionary fails to load the
+surface is handed BACK to the browser rather than left with no checker at all.
+
+**The correction menu** is the `MenuProvider` family's rect-anchored form, opened
+by the CONTEXT MENU over a flagged word (a plain click still just places the
+caret) and offering up to six suggestions plus two named "add to dictionary"
+doors — this paper's, and the writer's own. Suppressing the native context menu
+is defensible only there, because that surface has already declined the
+browser's checker and its menu carries no spelling entries to lose.
+
 ## Margin chrome
 
 The editor's left padding (`--editor-pl`, default 88px) houses two

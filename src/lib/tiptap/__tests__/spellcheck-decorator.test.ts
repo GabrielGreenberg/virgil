@@ -47,6 +47,7 @@ import {
   spellcheckPluginKey,
 } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
+import { getBus } from "@/lib/tiptap/doc-structure/bus";
 
 // ── the port ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,15 @@ function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
     ensure: async (words) => {
       port.ensureCalls++;
       for (const w of words) verdicts.set(w, KNOWN.has(w));
+    },
+    suggest: async (w) => (w === "teh" ? ["the", "ten"] : []),
+    acceptInPaper: (w) => {
+      port.accepted.add(w);
+      version++;
+    },
+    acceptGlobally: (w) => {
+      port.accepted.add(w);
+      version++;
     },
     bump: () => {
       version++;
@@ -303,6 +313,23 @@ describe("a squiggle is a view, never document content", () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((bad) => bad === false)).toBe(true);
     expect(ed.getHTML()).toBe(before);
+  });
+
+  it("a whole check pass leaves the structural bus asleep", async () => {
+    // The repo's own keystroke-sanctity probe. A meta-only transaction is not
+    // `docChanged`, so `DocStructureObserver` must not emit — which is what
+    // keeps every card-source memo, every panel derivation and the marginalia
+    // deck from re-deriving because a squiggle appeared.
+    const { ref } = makePort();
+    const ed = mount("The quick teh fox and more teh prose.", ref);
+    await settle();
+    const bus = getBus(ed);
+    expect(bus).not.toBeNull();
+    const before = bus!.emitCount;
+    // Force a fresh pass over the whole document.
+    ed.chain().setTextSelection(2).run();
+    await settle();
+    expect(bus!.emitCount).toBe(before);
   });
 
   it("ONE owner for the underline: Virgil's checker turns the browser's off", async () => {

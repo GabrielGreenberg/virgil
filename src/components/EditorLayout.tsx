@@ -61,6 +61,7 @@ import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import BugReportWindow from "./BugReportWindow";
 import FontsDialog from "./FontsDialog";
+import { SpellSuggestionMenu } from "./SpellSuggestionMenu";
 import type { AiRequest } from "@/lib/types";
 import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
@@ -3730,6 +3731,11 @@ export default function EditorLayout() {
         prefs={editorPrefs}
         onUpdate={updatePref}
       />
+      {/* The spelling suggestion menu (task 518). Mounted ONCE, here: the open
+          menu is a gesture-scoped singleton and its request carries the
+          document's own port, so one renderer serves every keep-alive pane and
+          every popped-out float without needing per-document context. */}
+      <SpellSuggestionMenu />
       {preferencesOpen && (
         <PreferencesModal
           prefs={editorPrefs}

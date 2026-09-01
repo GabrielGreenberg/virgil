@@ -116,6 +116,48 @@ describe("one owner per question", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("only the PLUGIN opens the suggestion menu", () => {
+    // The menu offers corrections and two "add to dictionary" doors, all of
+    // which act on a range the DECORATION established. A second opener would
+    // be a surface offering a correction for a word nothing has checked.
+    const users = PRODUCTION.filter((abs) => {
+      // The store DECLARES it; the question is who CALLS it.
+      if (rel(abs) === "src/lib/spell/spell-menu-store.ts") return false;
+      return /\bopenSpellMenu\s*\(/.test(code(abs));
+    }).map(rel);
+    expect(users).toEqual(["src/lib/tiptap/spellcheck-decorator.ts"]);
+  });
+
+  it("the menu is mounted exactly ONCE, at the app root", () => {
+    // It is a gesture-scoped singleton whose request carries the document's own
+    // port. Mounted per PANE it would render N times under keep-alive; mounted
+    // nowhere the squiggle is read-only.
+    const mounts = PRODUCTION.filter((abs) => /<SpellSuggestionMenu\s*\/>/.test(code(abs))).map(rel);
+    expect(mounts).toEqual(["src/components/EditorLayout.tsx"]);
+  });
+
+  it("only the MENU reaches the two accept doors", () => {
+    // "Add to dictionary" is a user gesture with a visible consequence; a
+    // second caller would be a word accepted by something the user did not do.
+    const users = PRODUCTION.filter((abs) => {
+      const r = rel(abs);
+      if (r === "src/lib/spell/spell-port.ts") return false;
+      if (r === "src/lib/spell/spellcheck-context.tsx") return false;
+      return /\.acceptInPaper\s*\(|\.acceptGlobally\s*\(/.test(code(abs));
+    }).map(rel);
+    expect(users).toEqual(["src/components/SpellSuggestionMenu.tsx"]);
+  });
+
+  it("nothing writes the global list except through the port", () => {
+    const users = PRODUCTION.filter((abs) => {
+      const r = rel(abs);
+      if (r === "src/lib/spell/global-dictionary.ts") return false;
+      if (r === "src/lib/spell/spellcheck-context.tsx") return false;
+      return /\baddToGlobalDictionary\s*\(|\bsetGlobalDictionary\s*\(/.test(code(abs));
+    }).map(rel);
+    expect(users).toEqual([]);
+  });
+
   it("the paper dictionary is DECLARED as a sidecar", () => {
     const sv = readFileSync(`${REPO_ROOT}/src/lib/sidecar-value.ts`, "utf8");
     expect(sv).toContain('"dictionary.json": { tier: "content", store: "disk", mount: true }');

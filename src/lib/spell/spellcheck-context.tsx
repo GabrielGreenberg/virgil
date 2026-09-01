@@ -22,18 +22,16 @@
  * standalone `RichTextField`, and every SSR render simply have no checker.
  */
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BibEntry } from "@/lib/types";
-import {
-  buildAcceptedWords,
-  NO_ACCEPTED_WORDS,
-  type AcceptedWords,
-} from "@/lib/spell/accepted-words";
+import { buildAcceptedWords, type AcceptedWords } from "@/lib/spell/accepted-words";
 import {
   ensureChecked,
   knownSync,
   spellEngineAvailable,
+  suggestFor,
 } from "@/lib/spell/spell-client";
+import { addToGlobalDictionary } from "@/lib/spell/global-dictionary";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 
 const SpellcheckPortContext = createContext<SpellcheckPortRef | null>(null);
@@ -44,6 +42,8 @@ export interface SpellcheckProviderProps {
   enabled: boolean;
   /** The paper's `dictionary.json` terms. */
   paperWords: readonly string[];
+  /** Add a term to the paper's `dictionary.json`. */
+  addPaperWord: (word: string) => void;
   /** The user's global list. */
   globalWords: readonly string[];
   /** `references.bib`, for the name derivation. */
@@ -54,6 +54,7 @@ export interface SpellcheckProviderProps {
 export function SpellcheckProvider({
   enabled,
   paperWords,
+  addPaperWord,
   globalWords,
   bibEntries,
   children,
@@ -63,37 +64,54 @@ export function SpellcheckProvider({
     [paperWords, globalWords, bibEntries],
   );
 
-  // The invalidation channel. Bumped whenever a VERDICT could have changed for
-  // a reason no transaction describes — which is exactly the set of inputs
-  // above. The plugin reads it once per `update` (an integer compare) and turns
-  // a bump into one whole-document re-check.
-  const versionRef = useRef(0);
-  const acceptedRef = useRef(accepted);
-  const enabledRef = useRef(enabled);
-  useEffect(() => {
-    if (acceptedRef.current !== accepted || enabledRef.current !== enabled) {
-      acceptedRef.current = accepted;
-      enabledRef.current = enabled;
-      versionRef.current += 1;
-    }
-  }, [accepted, enabled]);
-  // Keep the refs usable on the very first render too (the effect runs after
-  // the plugin's first `update`, and a stale `enabled` there would flash the
-  // browser's underline back on).
-  acceptedRef.current = accepted;
-  enabledRef.current = enabled;
+  // The invalidation channel, as an opaque CHANGE TOKEN derived from exactly
+  // the inputs that can change a verdict. The plugin compares it with
+  // `Object.is` once per `update` and turns a change into one whole-document
+  // re-check; per-block invalidation comes from the transaction itself, so this
+  // carries only what a transaction cannot describe.
+  //
+  // A memoized token rather than an incrementing counter, and the reason is not
+  // style: a counter has to be READ out of a ref during render to be bumped,
+  // which React's own lint forbids — and the first cut that bumped it from an
+  // EFFECT instead never fired at all, because the refs below must ALSO be
+  // refreshed during render (the plugin's `update` can run before an effect
+  // does, and a stale `enabled` there flashes the browser's underline back on
+  // for a frame), so the effect always found them already equal. Measured, that
+  // left "Add to dictionary" accepting the word while the squiggle stayed.
+  const versionToken = useMemo(() => ({}), [accepted, enabled]);
 
-  const portRef = useRef<SpellcheckPortRef>({ current: null }).current;
-  if (!portRef.current) {
-    const port: SpellcheckPort = {
-      enabled: () => enabledRef.current && spellEngineAvailable(),
-      version: () => versionRef.current,
-      isAccepted: (word) => acceptedRef.current.has(word),
-      knownSync,
-      ensure: ensureChecked,
-    };
-    portRef.current = port;
-  }
+  // Live mirrors, written (never read) during render so the plugin's next
+  // `update` — which may run before any effect — sees the current values.
+  const versionRef = useRef<object>(versionToken);
+  versionRef.current = versionToken;
+  const acceptedRef = useRef(accepted);
+  acceptedRef.current = accepted;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const addPaperWordRef = useRef(addPaperWord);
+  addPaperWordRef.current = addPaperWord;
+
+  // A STATE cell, not a ref: the port and its cell must be stable for the life
+  // of the provider (an extension list built once closes over the cell), and a
+  // `useRef(...).current` read during render is exactly what the lint above
+  // forbids. The port's own closures read the refs at CALL time, which is
+  // where a ref read belongs.
+  const [port] = useState<SpellcheckPort>(() => ({
+    enabled: () => enabledRef.current && spellEngineAvailable(),
+    version: () => versionRef.current,
+    isAccepted: (word) => acceptedRef.current.has(word),
+    knownSync,
+    ensure: ensureChecked,
+    suggest: suggestFor,
+    // The two ACCEPT doors. They write; the token change that clears the
+    // squiggle is the `useMemo` above, fired by the changed word list flowing
+    // back in — so a term is never excused before it is persisted, and there is
+    // no second path to "this word is fine".
+    acceptInPaper: (word) => addPaperWordRef.current(word),
+    acceptGlobally: (word) => addToGlobalDictionary(word),
+  }));
+  const [portRef] = useState<SpellcheckPortRef>(() => ({ current: null }));
+  portRef.current = port;
 
   return (
     <SpellcheckPortContext.Provider value={portRef}>
@@ -108,21 +126,10 @@ export function SpellcheckProvider({
  */
 export function useSpellcheckPortRef(): SpellcheckPortRef {
   const ctx = useContext(SpellcheckPortContext);
-  const fallback = useRef<SpellcheckPortRef>({ current: null }).current;
+  // A STATE cell rather than `useRef(...).current`, for the reason the
+  // provider states: reading `.current` during render is what the lint (and
+  // React Compiler) forbid. The cell is stable and stays `null` forever
+  // outside a provider, which the plugin reads as "not my surface".
+  const [fallback] = useState<SpellcheckPortRef>(() => ({ current: null }));
   return ctx ?? fallback;
-}
-
-/** The composed accepted-word set — for the "Add to dictionary" affordance,
- *  which must decide "is this already accepted?" by exactly the checker's own
- *  rule. Answers the empty authority outside a provider. */
-export function useAcceptedWords(): AcceptedWords {
-  const ref = useContext(SpellcheckPortContext);
-  const port = ref?.current;
-  return useMemo<AcceptedWords>(
-    () =>
-      port
-        ? { has: (w) => port.isAccepted(w), size: 0 }
-        : NO_ACCEPTED_WORDS,
-    [port],
-  );
 }

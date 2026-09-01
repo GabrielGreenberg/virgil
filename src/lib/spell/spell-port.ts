@@ -8,24 +8,44 @@
  * free of the module singletons, so a test can drive it against a hand-built
  * port with a five-word dictionary.
  *
- * `version()` is the invalidation channel: it bumps when anything that could
+ * `version()` is the invalidation channel: it CHANGES when anything that could
  * change a VERDICT changes — the preference, the paper dictionary, the global
- * list, the bibliography — and a bump means "re-check the whole document".
- * Per-block invalidation comes from the transaction itself, so this counter
- * only ever carries the changes a transaction cannot describe.
+ * list, the bibliography — and a change means "re-check the whole document".
+ * Per-block invalidation comes from the transaction itself, so this token only
+ * ever carries the changes a transaction cannot describe.
  */
 
 export interface SpellcheckPort {
   /** Should Virgil check this document at all? (preference AND engine health) */
   enabled(): boolean;
-  /** Bumps when a verdict could have changed for reasons no transaction shows. */
-  version(): number;
+  /**
+   * An opaque CHANGE TOKEN, compared with `Object.is`. It becomes a NEW value
+   * whenever a verdict could have changed for a reason no transaction
+   * describes — the preference, the paper dictionary, the global list, the
+   * bibliography — and a change means "re-check the whole document".
+   *
+   * A token rather than a counter because the provider derives it with a
+   * `useMemo` over exactly those inputs: an incrementing number would have to
+   * be read out of a ref during render, which is precisely the thing React's
+   * own lint forbids, and the consumer never wanted the ORDER anyway.
+   */
+  version(): unknown;
   /** The user's own words — never flagged. */
   isAccepted(word: string): boolean;
   /** Cached dictionary verdict; `undefined` = not asked yet. */
   knownSync(word: string): boolean | undefined;
   /** Warm the cache for these words. */
   ensure(words: readonly string[]): Promise<void>;
+  /**
+   * Ranked alternatives for a flagged word. A whole-dictionary edit-distance
+   * search, so it runs ONLY on a user gesture — never while typing. That
+   * asymmetry with `knownSync` (a table lookup) is the performance design.
+   */
+  suggest(word: string): Promise<string[]>;
+  /** Accept this word for THIS PAPER (writes `dictionary.json`). */
+  acceptInPaper(word: string): void;
+  /** Accept this word EVERYWHERE (writes the global list). */
+  acceptGlobally(word: string): void;
 }
 
 /** A ref cell holding the live port (or `null` before/outside a provider). */

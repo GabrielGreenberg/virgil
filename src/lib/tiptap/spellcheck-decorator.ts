@@ -46,6 +46,16 @@
  * browser rather than left with no checker at all. That hand-back is the whole
  * reason `spellEngineAvailable()` is published instead of swallowed.
  *
+ * ## Right-click, not click
+ *
+ * The suggestion menu opens on the CONTEXT MENU over a flagged word, which is
+ * what every checker does and what leaves ordinary clicking alone (a plain
+ * click inside a word is how you put the caret there). Suppressing the
+ * browser's own menu is honest here and only here: this surface has already
+ * declined the browser's checker, so its context menu carries no spelling
+ * entries to lose — and over anything that is NOT flagged the event falls
+ * straight through untouched.
+ *
  * ## The word being typed is not flagged
  *
  * A token containing the caret is skipped, which is what stops `th` from being
@@ -68,6 +78,7 @@ import { blockCarriesProse } from "@/lib/prose-index";
 import { VIRGIL_CHECKED_ATTRS } from "@/lib/spellcheck-policy";
 import { tokenizeBlock, type SpellToken } from "@/lib/spell/prose-words";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
+import { closeSpellMenu, openSpellMenu } from "@/lib/spell/spell-menu-store";
 
 /** The class the squiggle is painted with; `globals.css` owns the look. */
 export const SPELL_ERROR_CLASS = "spell-error";
@@ -257,6 +268,50 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
         },
 
         props: {
+          /**
+           * Open the suggestion menu over a flagged word. Falls through for
+           * every other target, so the browser's own menu is untouched
+           * everywhere else.
+           */
+          handleDOMEvents: {
+            contextmenu(view, event) {
+              const st = spellcheckPluginKey.getState(view.state);
+              if (!st?.active) return false;
+              const port = portRef.current;
+              if (!port) return false;
+              // Resolve from the painted SPAN, not from the pointer's
+              // coordinates: `posAtDOM` is exact and needs no layout, where
+              // `posAtCoords` asks the browser's hit-test and answers null
+              // wherever there is none. The span is also the thing that owns
+              // the rect the menu anchors to, so one lookup serves both.
+              const target = (event.target as HTMLElement | null)?.closest?.(
+                `.${SPELL_ERROR_CLASS}`,
+              ) as HTMLElement | null;
+              if (!target) return false;
+              let pos: number;
+              try {
+                pos = view.posAtDOM(target, 0);
+              } catch {
+                return false;
+              }
+              const hit = st.decos
+                .find(pos, pos)
+                .find((d) => pos >= d.from && pos <= d.to);
+              if (!hit) return false;
+              const word = (hit.spec as { word?: string }).word;
+              if (!word) return false;
+              event.preventDefault();
+              openSpellMenu({
+                word,
+                from: hit.from,
+                to: hit.to,
+                rect: target.getBoundingClientRect(),
+                view,
+                port,
+              });
+              return true;
+            },
+          },
           decorations(state) {
             return spellcheckPluginKey.getState(state)?.decos ?? DecorationSet.empty;
           },
@@ -275,7 +330,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
 
         view(view) {
           let timer: ReturnType<typeof setTimeout> | null = null;
-          let lastVersion = Number.NaN;
+          let lastVersion: unknown = Symbol("unset");
           let needFull = true;
           let destroyed = false;
 
@@ -369,7 +424,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
 
           const sync = () => {
             const port = portRef.current;
-            const version = port ? port.version() : Number.NaN;
+            const version: unknown = port ? port.version() : null;
             if (!Object.is(version, lastVersion)) {
               lastVersion = version;
               needFull = true;
@@ -390,6 +445,8 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             destroy() {
               destroyed = true;
               if (timer !== null) clearTimeout(timer);
+              // A menu open over THIS view must not outlive it.
+              closeSpellMenu(view);
             },
           };
         },

@@ -5734,6 +5734,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     <SpellcheckProvider
       enabled={spellcheckEnabled}
       paperWords={spellDictionary.words}
+      addPaperWord={spellDictionary.addWord}
       globalWords={globalSpellWords}
       bibEntries={citationsHook.bibEntries}
     >
