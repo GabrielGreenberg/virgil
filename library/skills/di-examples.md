@@ -4,10 +4,10 @@ description: |
   formal-semantics math in a linguistics or philosophy paper.
   Triggers on: "convert examples for <citekey>", "format the linguistic
   examples in this paper", "do the expex pass on X", "Virgil, mathify
-  the formal semantics in <citekey>". Subskill of /deep-index;
+  the formal semantics in <citekey>". Subskill of /library/deep-index;
   invoke directly when only example/math conversion is needed. Does
-  NOT trigger for general prose cleanup (use /di-clean-prose) or
-  footnote recovery (use /recover-footnotes).
+  NOT trigger for general prose cleanup (use /library/di-clean-prose) or
+  footnote recovery (use /library/recover-footnotes).
 arguments: <citekey>
 ---
 
@@ -639,7 +639,7 @@ pgmark between them.
 
 ## Pre-validation recovery (run before §3i)
 
-Three recoverable extraction gaps the prior /index-paper pass
+Three recoverable extraction gaps the prior /library/index-paper pass
 sometimes leaves behind. All are Tier-1 cheap (the bodies are
 already in the source PDF; we just need to locate and inject them):
 
@@ -666,8 +666,8 @@ already in the source PDF; we just need to locate and inject them):
 > need a manual Edit (often an inline `\pgmark{N}` insertion at the
 > word break).
 >
-> This is **not** out-of-scope for /deep-index, despite the body
-> extraction itself belonging to /index-paper. The PDF text isn't
+> This is **not** out-of-scope for /library/deep-index, despite the body
+> extraction itself belonging to /library/index-paper. The PDF text isn't
 > being re-extracted; existing prose is just being annotated with
 > page anchors using `pdftotext` lookups (a Tier-1 operation per
 > §3d).

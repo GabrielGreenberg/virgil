@@ -7,11 +7,11 @@ description: |
   uploads", "name all the papers I dropped", "Virgil, batch-triage
   the inbox", "drain the unsorted folder". Heavy operation — must run
   from inside the library folder. Pass `auto` to skip the review step.
-  Does NOT trigger for single files (use /triage-pdf). Args: optional
+  Does NOT trigger for single files (use /library/triage-pdf). Args: optional
   `auto`.
 ---
 
-# /triage-pending $ARGUMENTS
+# /library/triage-pending $ARGUMENTS
 
 ## Bootstrap (run this first)
 
@@ -95,11 +95,18 @@ directory).
      filename and content. Empty string when the heuristic detected
      a stopword/publisher author or degenerate filename fallback
      (e.g., `unnamed-N.pdf`); paired with `flags: ["needs-metadata"]`.
-   - `flags`: subset of `["filename-mismatch", "whole-handbook",
-     "variant-copy", "sep", "preprint", "unsupported-ext", "error",
-     "bib-only", "citekey-exists", "bib-manuscript", "bib-parse-failed",
-     "needs-metadata", "needs-title", "year-from-pdf-metadata",
-     "year-scan-fallback"]`
+   - `flags`: a subset of an **OPEN** vocabulary that grows whenever a
+     detector is added. Do not read a hand list — ask the script, which
+     declares it once (`triage_batch.TRIAGE_FLAGS`):
+     ```bash
+     python3 .virgil/scripts/library/triage_batch.py --print-flags
+     ```
+     The common ones are `filename-mismatch`, `needs-title`,
+     `needs-metadata`, `variant-copy`, `whole-handbook`, `sep`,
+     `preprint`, `unsupported-ext`, `error`, and the `.bib` family
+     (`bib-only`, `citekey-exists`, `bib-manuscript`, `bib-no-citekey`,
+     `bib-parse-failed`). **A flag you have not seen before is a known
+     state, not an anomaly** — group it with the rest and say what it is.
    - `proposedFields`: bib-stub fields (title, doi, isbn, url, etc.)
    - `proposedBibState` (bib-only rows only): `"unverified"` or `"manuscript"`
    - `byline`, `textPreview`, `notes`
@@ -126,6 +133,10 @@ directory).
      - 1 filename-mismatch → Friedman2014 (filename said Vinci)
      - 0 variants
    ```
+   An **unfamiliar flag is a known state**, not an anomaly — the
+   vocabulary is open (see step 1) — so give it its own line and say
+   what it is rather than reporting it as a defect.
+
    Surface anything that looks wrong (a `proposedType=article` for a
    clearly-book filename; a SEP entry without `sep` flag; a citekey
    collision with `master.bib`). Edit the JSONL in place when you find
@@ -165,10 +176,21 @@ directory).
      `_pending/`.
    - **otherwise** → appends a stub to `master.bib`, moves the file to
      `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
-   - emits a `triaged` / `triage-filename-mismatch` / `triage-bib-imported`
-     / `triage-bib-summary` / `triage-bib-ignored-<state>` notification
-     per row (the ignored kind names the SETTLED state that won —
-     `authenticated`, `manuscript` or `canonical`; see `TERMINAL_BIB_STATES`)
+   - emits one notification per row, from an **OPEN** vocabulary the
+     script declares once (`triage_apply.NOTIFICATION_KINDS`, with the
+     `triage-bib-ignored-<state>` family derived from
+     `_tools.TERMINAL_BIB_STATES`). Ask it rather than reading a list:
+     ```bash
+     python3 .virgil/scripts/library/triage_apply.py --print-notification-kinds
+     ```
+     The commonest are `triaged`, `triage-filename-mismatch`,
+     `triage-bib-imported`, `triage-bib-summary` and
+     `triage-bib-ignored-<state>` (the ignored kind names the SETTLED
+     state that won — `authenticated`, `manuscript` or `canonical`);
+     the rest name a parked file (`triage-needs-title`,
+     `triage-needs-metadata`, `triage-needs-chapter-info`) or a `.bib`
+     outcome (`triage-bib-folded-duplicate`, `triage-bib-parse-failed`,
+     `triage-bib-cleanup-failed`, `triage-duplicate-work`)
    - bumps `.virgil/catalog-version.txt` once at the end
 
    Capture the script's per-row output and final summary in your reply.

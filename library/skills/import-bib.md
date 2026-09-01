@@ -4,9 +4,12 @@ description: |
   `papers/<citekey>/references.bib` into the central `master.bib`. The
   single-paper slice of `/library/merge-bibs`: it runs the same per-entry
   engine (duplicate-detect → authenticate → transient-skip → locked
-  master.bib write) for a single citekey, then marks the paper imported
-  on its catalog row (the blue "imported" check) and snapshots its
-  references.bib citekey set so a later *addition* clears the flag.
+  master.bib write) for a single citekey, then — **when the paper has a
+  catalog row** — marks it imported on that row (the blue "imported"
+  check) and snapshots its references.bib citekey set so a later
+  *addition* clears the flag. Step 2 states the reference-only branch,
+  where there is no row and no check; the master.bib fold is the real
+  work either way.
 
   Triggers on: "import this paper's bibliography", "import bib for
   <citekey>", "fold <citekey>'s references into master", or as the
@@ -22,7 +25,7 @@ description: |
   Args: `<citekey>`.
 ---
 
-# /import-bib $ARGUMENTS
+# /library/import-bib $ARGUMENTS
 
 Import one paper's `references.bib` into the library's `master.bib`.
 Lightweight by design — it does NOT take the snapshot/preflight/postflight
@@ -103,22 +106,50 @@ qfile=".virgil/queue/${CK}-importbib.json"
 
 2. **Run the merge engine for this paper.** It does the dedup →
    authenticate → transient-skip work, writes
-   `.virgil/merge-reports/<citekey>.json`, **marks the catalog row
-   `bib.imported = true` (snapshotting `bib.importedKeys`)**, and bumps
-   `catalog-version.txt` so the frontend shows the blue "imported" check
-   within ~6s. One-line summary on stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
+   `.virgil/merge-reports/<citekey>.json`, marks the paper imported (see
+   the branch below), and bumps `catalog-version.txt`. One-line summary
+   on stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
    ```bash
    python3 .virgil/scripts/library/merge_paper_references.py "${CK}"
    ```
    (The frontend's catalog-version poll handles the UI refresh — no
    extra bump needed.)
 
+   **The imported flag, and when it is withheld — this is the one
+   statement of that branch; everything else in this file points here.**
+   `bib.imported` / `bib.importedAt` / `bib.importedKeys` live on the
+   **catalog row**, and the blue check is rendered from `bib.imported`
+   alone. Under the **F#4 holdings model** the catalog holds HOLDINGS
+   (something on disk), so a *reference-only* citekey — cited but not
+   held — has **no row**, and there is nothing to stamp:
+   `_tools.mark_bib_imported` routes through `update_catalog_entry`,
+   which raises `KeyError` for a missing row; the engine catches it and
+   records `"no catalog row to mark imported"` in the report's `notes[]`.
+   Nothing is marked, no check appears, and **that is a correct run, not
+   a failure** — the `master.bib` fold is the real work and it landed.
+   (The exit-code block in
+   [`/library/authenticate-bib`](authenticate-bib.md) step 7 is the
+   family's statement of the same F#4 branch, and
+   [`/library/apply-bib-edit`](apply-bib-edit.md) points at it too.)
+
+   **This is a live path, not a corner.** A `.bib` fan-out entry gets a
+   bib-only `papers/<citekey>/` folder with a `references.bib` in it
+   (the `.bib` bullet in [`/library/triage-pdf`](triage-pdf.md) states
+   the full outcome), so step 1's `test -f` passes; and the Library list
+   renders reference-only entries as synthetic rows carrying the same
+   row action menu — including the **Import bibliography** item that
+   queues this very request.
+
+   So: **read `notes[]` from the report before you claim the flag
+   moved.** If it holds `no catalog row to mark imported`, say so in
+   step 5 rather than announcing a check the user will not see.
+
 3. **Surface manual review, if any.** Read the report. If
    `manual_review[]` is non-empty, briefly look at each item (reading the
    relevant `master.bib` entries when useful) and tell the user what
-   needs a human decision. Do NOT silently drop them — the paper is still
-   marked imported (re-running won't help these specific entries), so the
-   user needs to know. For `split_paper_unauthenticatable` /
+   needs a human decision. Do NOT silently drop them — a re-run won't
+   help these specific entries, and where the paper HAS a catalog row it
+   is marked imported regardless, so the user needs to know. For `split_paper_unauthenticatable` /
    `split_citekey_collision` items, default to deferring to the user.
 
 4. **Mark the request done.** If a queue file exists, delete it:
@@ -130,6 +161,14 @@ qfile=".virgil/queue/${CK}-importbib.json"
    ```
    Imported <citekey>: +<added> ~<dup> ⇄<unauth-dup-handled> ⤬<transient> ⚠<failed> ?<manual>.
    ```
+   Then, **only when the report's `notes[]` holds `no catalog row to
+   mark imported`**, one more (step 2 states the branch):
+   ```
+   Reference-only entry — no catalog row, so no "imported" check. The master.bib fold landed.
+   ```
+   Do not announce the check unconditionally: an unqualified "marked
+   imported" for a reference-only citekey sends the user looking for a
+   badge that cannot appear.
 
 ## Hard rules
 

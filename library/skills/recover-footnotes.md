@@ -6,9 +6,9 @@ description: |
   <citekey>", "fix the footnotes in this paper", "reattach the
   endnotes for X", "Virgil, the footnotes in <citekey> are broken".
   Walks the full Tier 0 → Tier 4 ladder including endnote-style
-  sub-tiers. Subskill of /deep-index; invoke directly when only
+  sub-tiers. Subskill of /library/deep-index; invoke directly when only
   footnote recovery is needed. Does NOT trigger for prose cleanup
-  (use /di-clean-prose) or bibliography work (use /clean-bibliography).
+  (use /library/di-clean-prose) or bibliography work (use /library/clean-bibliography).
 arguments: <citekey>
 ---
 

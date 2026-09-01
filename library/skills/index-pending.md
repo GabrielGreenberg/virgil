@@ -6,13 +6,13 @@ description: |
   pending library work", "run the library inbox", "Virgil, work
   through my pending papers", "catch up the library". Heavy operation
   — must run from inside the library folder. For steady-state polling
-  pair with `/loop /index-pending`. If invoked from a paper-only
+  pair with `/loop /library/index-pending`. If invoked from a paper-only
   session, prompt the user to mount the library first. Does NOT
   trigger for editor-side AI requests in a single paper (use
   /editor/review).
 ---
 
-# /index-pending
+# /library/index-pending
 
 ## Bootstrap (run this first)
 
@@ -43,7 +43,7 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 
 Drain the queue to empty in **one turn**. Designed for the catch-up
 case (a backlog after `/triage-pending`); for steady-state polling,
-wrap with `/loop /index-pending`.
+wrap with `/loop /library/index-pending`.
 
 The bulk of the work is delegated to `.virgil/scripts/library/drain_queue.py`, which
 shells out to `index_paper.py` per entry. This avoids the per-file
@@ -170,7 +170,7 @@ but no corruption.
 
 ## Why this isn't a `/loop`
 
-`/loop /index-pending` is fine for steady-state polling (new files
+`/loop /library/index-pending` is fine for steady-state polling (new files
 trickle in via the frontend). For a one-time backlog (94 PDFs from a
 bulk drop), the loop is the wrong shape — you want one drain pass to
 finish, not an indefinite poller. `/index-pending` always runs to

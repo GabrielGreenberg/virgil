@@ -10,7 +10,7 @@
      paraphrase this doctrine back into a skill; link to it.
 
      Obliged to carry that link: `deep-index.md` and every skill that
-     declares "Subskill of /deep-index" in its frontmatter — the whole
+     declares "Subskill of /library/deep-index" in its frontmatter — the whole
      family §0 speaks for. A pointer guard
      (`library/lib/__tests__/skill-include-links.test.ts`) derives that
      population from the declarations themselves and fails a member that
@@ -379,6 +379,12 @@ so a kind that starts being produced is named here or CI fails.
   subskill — so no step here may declare its kind, and a line it wrote
   stands until the next authentication of that entry. Listed so the census
   is complete: a kind nobody names is a kind the next writer clobbers.
+  **Stated scope:** a warning kind is written to a CATALOG ROW, and every
+  paper this doctrine governs has one by construction (a deep-indexed paper
+  is held on disk). Read outside that scope the sentence over-claims — under
+  the F#4 holdings model a *reference-only* entry has no row, and
+  `/library/authenticate-bib` documents its no-row exit as the normal case
+  for the entries it serves: the finding is reported and not recorded.
 
 - **A DERIVED family, owned by `/library/fuse-alternate`**: the
   `pgmark-fusion-` heads — `pgmark-fusion-low-alignment-skipped:`,

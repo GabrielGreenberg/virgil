@@ -5,8 +5,8 @@ description: |
   multi-article scans, dispatch OCR recovery, and route by genre.
   Triggers on: "preflight <citekey>", "check the metadata for X before
   deep-index", "run the deep-index preflight on this paper". Subskill
-  of /deep-index. Does NOT trigger for the full structural cleanup
-  pass (use /deep-index).
+  of /library/deep-index. Does NOT trigger for the full structural cleanup
+  pass (use /library/deep-index).
 arguments: <citekey>
 ---
 

@@ -9,12 +9,12 @@ description: |
   references.bib, empty Virgil sidecars, and an authenticated catalog
   row. Light —
   safe to invoke from a paper session with --library. Does NOT trigger
-  for newly-dropped files in unsorted/ (use /triage-pdf first) or for
-  cleaning up an already-indexed paper (use /deep-index). Args:
+  for newly-dropped files in unsorted/ (use /library/triage-pdf first) or for
+  cleaning up an already-indexed paper (use /library/deep-index). Args:
   <citekey> [--library <path>].
 ---
 
-# /index-paper $ARGUMENTS
+# /library/index-paper $ARGUMENTS
 
 > **Allowable-LaTeX doctrine.** The `main.tex` this skill emits (and any
 > heading, title or `\pgmark{N}` anchor you hand-correct in it) must stick to

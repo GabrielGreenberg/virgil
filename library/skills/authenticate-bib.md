@@ -8,13 +8,13 @@ description: |
   DOI, cross-checks fields, logs diffs, and updates master.bib +
   catalog status. Does NOT trigger for adding a new citation by
   description (use /editor/find-citation in a paper context), for
-  applying a manual user edit (use /apply-bib-edit), or for
-  whole-paper bibliography cleanup (use /clean-bibliography). Light —
+  applying a manual user edit (use /library/apply-bib-edit), or for
+  whole-paper bibliography cleanup (use /library/clean-bibliography). Light —
   safe to invoke from a paper session with --library. Args:
   <citekey> [--library <path>].
 ---
 
-# /authenticate-bib $ARGUMENTS
+# /library/authenticate-bib $ARGUMENTS
 
 ## Args
 

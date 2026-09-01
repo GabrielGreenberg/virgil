@@ -7,11 +7,11 @@ description: |
   at the notes in my library queue". Pair with /loop for steady-state
   polling. Does NOT trigger for editor-side requests in a single paper
   folder (use /editor/review) or for general queue draining of
-  triage/index/authenticate work (use /index-pending). Heavy
+  triage/index/authenticate work (use /library/index-pending). Heavy
   operation — only run from inside the library folder.
 ---
 
-# /ai-requests
+# /library/ai-requests
 
 ## Bootstrap (run this first)
 
@@ -89,7 +89,9 @@ A queue entry is an AI request when **any** of these is true:
    `.virgil/queue/<citekey>-importbib.json`. `note` is optional.
    Dispatch to `/library/import-bib <citekey>` (the skill reads the note
    from the queue file, folds `references.bib` into `master.bib`, marks
-   the paper imported, and deletes the queue file). These are also picked
+   the paper imported *when it has a catalog row* — that skill's step 2
+   states the reference-only branch, where there is none and no blue
+   check appears — and deletes the queue file). These are also picked
    up by `/index-pending` on the regular path — handle them here when the
    user explicitly invoked `/ai-requests`, especially if a `note` is set.
 
@@ -181,6 +183,6 @@ No further work.
 
 ## Pairing with /loop
 
-`/loop /ai-requests` is the right shape for "babysit my AI requests
+`/loop /library/ai-requests` is the right shape for "babysit my AI requests
 while I keep adding them." The user typically runs this in a session
-separate from `/loop /index-pending` so the two queues don't fight.
+separate from `/loop /library/index-pending` so the two queues don't fight.

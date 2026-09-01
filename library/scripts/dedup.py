@@ -97,10 +97,25 @@ def _member_actions(
         (so ``apply`` re-emits exactly the survivors that need it).
     Loser:
       * ``archive-folder`` if it has a ``papers/<ck>`` folder OR is
-        indexed/deepIndexed (its extraction is real work) — else ``drop-row``
-        (bib-only stub).
+        indexed/deepIndexed (its extraction is real work) — else
+        ``drop-row``: nothing on disk to preserve, so remove the catalog
+        row IF THERE IS ONE.
       * ``remove-master-entry`` if it has a master.bib entry.
       * always ``alias`` (loser → survivor).
+
+    ``drop-row`` was named for the pre-F#4 world and its old gloss read
+    "(bib-only stub)" — the one case it can no longer reach. Under the
+    F#4 holdings model a ``.bib``-import stub DOES get a
+    ``papers/<ck>/`` folder (``triage_apply`` writes ``references.bib``
+    plus the ``virgil/`` sidecars), so ``has_folder`` is true and it
+    routes to ``archive-folder``; and a *reference-only* entry — cited
+    but not held — never had a catalog row to drop
+    (``_tools.admit_catalog_row`` refuses to mint one), so for it the
+    action's real content is ``remove-master-entry`` + ``alias`` and the
+    row removal is a no-op. What still lands here: a legacy pre-F#4
+    ``pdf.present: false`` row, and any catalog-only row whose folder is
+    gone. Kept as an action name (the plan format is on disk) rather than
+    renamed.
     """
     meta = rec.get("meta", {}) or {}
     if is_survivor:
@@ -450,7 +465,7 @@ def _collect_plan_ops(plan: dict, tiers: set[str]) -> dict:
     Returns a dict with:
       * ``drop_master``   : set[loser ck] — remove-master-entry
       * ``rewrite_master``: {survivor ck: {"type","fields"}} — union changed
-      * ``drop_rows``     : set[loser ck] — drop-row (bib-only)
+      * ``drop_rows``     : set[loser ck] — drop-row (no folder, not indexed)
       * ``archive_rows``  : set[loser ck] — archive-folder
       * ``aliases``       : {loser ck: (survivor ck, work_key, tier)}
       * ``backfill``      : {survivor ck: union_preview fields}
@@ -618,7 +633,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print("DRY RUN — no changes will be written.")
         print(f"  master entries to remove: {len(ops['drop_master'])}")
         print(f"  master entries to rewrite: {len(ops['rewrite_master'])}")
-        print(f"  catalog rows to drop (bib-only): {len(ops['drop_rows'])}")
+        print(f"  catalog rows to drop (no folder): {len(ops['drop_rows'])}")
         print(f"  catalog rows to archive (folder): {len(ops['archive_rows'])}")
         print(f"  aliases to add: {len(ops['aliases'])}")
         print(f"  backup dir: {backup_dir}")

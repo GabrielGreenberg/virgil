@@ -153,6 +153,12 @@ const PERMITTED_UNRESOLVED_SHIPPED_LINKS: string[] = [];
  *  repo-only by opening its description with `Developer-only`. */
 const PERMITTED_REPO_ONLY_POINTERS: string[] = [];
 
+/** Skill cross-references still spelled with the bare `/<name>` form.
+ *  DELIBERATELY EMPTY: both silos ship under a prefix, so the bare form
+ *  resolves to nothing and an entry is a step an agent cannot take. A hit is
+ *  QUALIFY-it (`/library/<name>` or `/editor/<name>`). */
+const PERMITTED_BARE_SKILL_REFS: string[] = [];
+
 /** Skill markdown that may assert transclusion. DELIBERATELY EMPTY: no
  *  builder implements any include syntax, so the claim is false wherever it
  *  appears. A file may still say what does NOT happen (`_dev-loop-principle`
@@ -302,6 +308,53 @@ describe("skill include links", () => {
     }
     expect(dead.filter((d) => !PERMITTED_REPO_ONLY_POINTERS.includes(d))).toEqual([]);
     expect(PERMITTED_REPO_ONLY_POINTERS).toEqual([]);
+  });
+
+  it("names every cross-referenced SKILL by its qualified `/<silo>/<name>` path", () => {
+    // A skill markdown reference is an INSTRUCTION the reader may follow, and
+    // both silos ship under a prefix — `.claude/commands/editor/` and
+    // `.claude/commands/library/` — so `/library/<name>` and `/editor/<name>`
+    // are the invocable names and the bare `/<name>` resolves to nothing.
+    //
+    // The editor silo has been fully qualified since it shipped, including
+    // its own `# /editor/<name> $ARGUMENTS` title headers; the library silo
+    // was MIXED — 58 bare references against ~90 qualified ones in the same
+    // files, a shared stale convention rather than one file's slip (task
+    // 510; the residue task 444's sweep left). Two of the editor silo's own
+    // usage examples had drifted the same way.
+    //
+    // POPULATION DISCOVERED from the skill files themselves, so a new skill
+    // is covered by existing. Allowlist EMPTY: a hit is QUALIFY-it.
+    const silo = new Map<string, string>();
+    for (const file of skillFiles()) {
+      const [dir, name] = [file.split("/")[0], file.split("/")[2]];
+      if (name.startsWith("_")) continue; // includes are reached by link
+      silo.set(name.replace(/\.md$/, ""), dir);
+    }
+    expect(silo.size).toBeGreaterThan(20);
+
+    // A `/`-led token whose first segment IS a skill basename, not already
+    // carrying its silo. The left guard rejects a path segment (`.virgil/
+    // scripts/library/…`, `papers/<ck>/index-paper`) and a code-span open
+    // backtick; the `\b` on the right keeps `/deep-indexed` out.
+    const names = [...silo.keys()].sort((a, b) => b.length - a.length).join("|");
+    const BARE = new RegExp(`(?<![A-Za-z0-9_/\`.-])/(${names})\\b`, "g");
+
+    const bare: string[] = [];
+    for (const file of skillFiles()) {
+      const src = read(file);
+      for (const m of src.matchAll(BARE)) {
+        bare.push(`${file}:${src.slice(0, m.index).split("\n").length} -> /${m[1]}`);
+      }
+    }
+    expect(bare.filter((b) => !PERMITTED_BARE_SKILL_REFS.includes(b))).toEqual([]);
+    expect(PERMITTED_BARE_SKILL_REFS).toEqual([]);
+
+    // The needle must be able to SEE one — a regex that matched nothing would
+    // report green for the wrong reason, and this one is built from a
+    // discovered population that could silently come back empty.
+    const canary = "See /deep-index and /editor/review and /library/setup.";
+    expect([...canary.matchAll(BARE)].map((m) => m[1])).toEqual(["deep-index"]);
   });
 
   it("holds every deep-index family member to its `_doctrine.md` pointer", () => {

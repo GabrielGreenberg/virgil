@@ -4,10 +4,10 @@ description: |
   References section, emit a clean references.bib, and rewrite inline
   citations to a uniform style. Triggers on: "clean the bibliography
   for <citekey>", "fix the references in this paper", "tidy the bib
-  in <citekey>". Subskill of /deep-index; can be invoked directly when
+  in <citekey>". Subskill of /library/deep-index; can be invoked directly when
   only the bibliography needs work. Does NOT trigger for syncing a
   paper's bib against the library (use /editor/sync-bib-to-library) or
-  for authenticating a single entry (use /authenticate-bib).
+  for authenticating a single entry (use /library/authenticate-bib).
 arguments: <citekey>
 ---
 
@@ -853,7 +853,11 @@ Its **cross-field** leg (entry type vs. field set) is a dispatched pipeline
 step: [`/library/authenticate-bib`](authenticate-bib.md) step 2 runs it as an
 advisory pre-flight before the network search — `--json --no-cover-check` — and
 its step 7 re-checks and records anything still standing as a `bib-coherence:`
-line on the catalog row (task 322). Don't duplicate that here; re-authenticate the entry instead.
+line on the catalog row (task 322) — **when the entry has one.** Under the F#4
+holdings model a reference-only entry (cited but not held) has no catalog row,
+and that skill documents the no-row exit as the NORMAL case for the entries it
+serves: the finding is reported in its reply and not recorded. See its step 7
+exit codes. Don't duplicate that here; re-authenticate the entry instead.
 
 Its **cover-page** leg is not run there, deliberately: cover-page-vs-bib
 checking belongs to `/library/di-preflight`'s `detect_metadata_mismatch.py`,

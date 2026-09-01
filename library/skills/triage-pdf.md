@@ -10,11 +10,11 @@ description: |
   queued for authentication. Light — safe to invoke
   from a paper session with --library, though the file needs to be in
   the library's unsorted/. Does NOT trigger for already-indexed papers
-  (use /deep-index) or batch processing (use /triage-pending). Args:
+  (use /library/deep-index) or batch processing (use /library/triage-pending). Args:
   <filename> (relative to unsorted/) [--library <path>].
 ---
 
-# /triage-pdf $ARGUMENTS
+# /library/triage-pdf $ARGUMENTS
 
 ## Args
 
