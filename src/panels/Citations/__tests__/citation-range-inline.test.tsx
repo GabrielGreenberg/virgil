@@ -138,3 +138,65 @@ describe("CitationCard +range trails the citation display line (task 010)", () =
     expect(command).toContain("pp. 12-15");
   });
 });
+
+/**
+ * TASK 529 — the `+range` box is the fourth member of the "an edit session ends
+ * exactly once" class, and the one the original report did not name. It writes
+ * to TWO durable stores (the `\cite` command in the `.tex`, and the citations
+ * sidecar), so it is the most expensive of the four to get wrong.
+ *
+ * `onUpdateCitation` is the write door, so these legs count CALLS rather than
+ * inspecting the rendered box: pre-529 the box snapped back to the stored range
+ * on Escape while the typed one had already been written.
+ */
+describe("+range — an edit session ends exactly once (task 529)", () => {
+  function openRange(onUpdateCitation = vi.fn()) {
+    renderExpandedCard({ onUpdateCitation });
+    fireEvent.click(screen.getByText("+range"));
+    const input = screen.getByPlaceholderText("range") as HTMLInputElement;
+    // The real affordance auto-focuses on open; `blur()` is inert otherwise, so
+    // without this the whole mechanism under test cannot fire.
+    input.focus();
+    return { onUpdateCitation, input };
+  }
+
+  it("Escape writes NOTHING to the command or the sidecar", () => {
+    const { onUpdateCitation, input } = openRange();
+    fireEvent.change(input, { target: { value: "p. 22" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onUpdateCitation).not.toHaveBeenCalled();
+  });
+
+  it("Enter writes exactly ONCE", () => {
+    // Pre-529 the explicit `commitPg()` and the blur's own `onBlur` each ran
+    // from the same stale closure, where `pgDraft === (row.postnote || "")`
+    // compared against the PRE-commit postnote and so did not bail.
+    const { onUpdateCitation, input } = openRange();
+    fireEvent.change(input, { target: { value: "p. 22" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onUpdateCitation).toHaveBeenCalledTimes(1);
+    expect(onUpdateCitation.mock.calls[0][1]).toContain("p. 22");
+  });
+
+  it("blurring away still writes, once", () => {
+    const { onUpdateCitation, input } = openRange();
+    fireEvent.change(input, { target: { value: "p. 22" } });
+    fireEvent.blur(input);
+    expect(onUpdateCitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("the box is usable again right after a cancel", () => {
+    const { onUpdateCitation, input } = openRange();
+    fireEvent.change(input, { target: { value: "p. 22" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onUpdateCitation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("+range"));
+    const again = screen.getByPlaceholderText("range") as HTMLInputElement;
+    again.focus();
+    fireEvent.change(again, { target: { value: "p. 30" } });
+    fireEvent.keyDown(again, { key: "Enter" });
+    expect(onUpdateCitation).toHaveBeenCalledTimes(1);
+    expect(onUpdateCitation.mock.calls[0][1]).toContain("p. 30");
+  });
+});

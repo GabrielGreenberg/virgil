@@ -47,6 +47,7 @@ import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { iconHint } from "@/components/Hint";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1226,6 +1227,13 @@ function CitationKeyRow({
     }
   }, [pgOpen, row.postnote]);
 
+  // Commits on blur, cancels on Escape — and `.blur()` inside a keydown fires
+  // `focusout` SYNCHRONOUSLY, so the revert `setPgDraft` in that branch is
+  // batched and cannot stop this from reading the TYPED range. Pre-529 Escape
+  // therefore wrote the range the user was cancelling into the `\cite` command
+  // and the citations sidecar. `@/lib/field-edit-session`.
+  const session = useFieldEditSession();
+
   const commitPg = () => {
     if (pgDraft === (row.postnote || "")) return;
     onChangePostnote(pgDraft);
@@ -1254,17 +1262,23 @@ function CitationKeyRow({
             ref={pgInputRef}
             value={pgDraft}
             onChange={(e) => setPgDraft(e.target.value)}
-            onBlur={commitPg}
+            onBlur={() => session.commit(commitPg)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                commitPg();
-                pgInputRef.current?.blur();
+                // One Enter, one write: pre-529 the explicit `commitPg()` and
+                // the blur's own `onBlur` each ran it from this stale closure,
+                // where `pgDraft === (row.postnote || "")` still compared
+                // against the PRE-commit postnote and so did not bail — two
+                // `onChangePostnote` writes to the `\cite` command and the
+                // citations sidecar for one keypress.
+                session.commitAndBlur(pgInputRef.current, commitPg);
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                setPgDraft(row.postnote || "");
-                setPgOpen(!!row.postnote);
-                pgInputRef.current?.blur();
+                session.cancel(pgInputRef.current, () => {
+                  setPgDraft(row.postnote || "");
+                  setPgOpen(!!row.postnote);
+                });
               }
             }}
             placeholder="range"
