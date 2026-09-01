@@ -8,11 +8,12 @@
  * therefore have to live under `public/` — committed, so a fresh clone works
  * with no postinstall step, and so the service worker can precache them.
  *
- * The npm package stays a dependency because it is the SOURCE OF TRUTH this
- * script copies from, and because `dictionary-freshness.test.ts` re-reads it to
- * pin that the committed bytes still match. Run this after bumping the
- * dictionary; the test is what makes forgetting a failure rather than a
- * silently stale word list.
+ * The npm package stays a DEV dependency — nothing in the app imports it (it
+ * could not: `node:fs`), so it ships in no bundle. It is kept because it is the
+ * SOURCE OF TRUTH this script copies from, and because
+ * `dictionary-asset.test.ts` re-reads it to pin that the committed bytes still
+ * match. Run this after bumping the dictionary; that test is what makes
+ * forgetting a failure rather than a silently stale word list.
  */
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
