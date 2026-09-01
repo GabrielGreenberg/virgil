@@ -22,9 +22,9 @@
  * THE SCAN IS A PROPOSAL, NOT A PROOF. See tex-bundle-families.mjs: both error
  * directions fail open, so a declaration plus a reviewed diff is the honest
  * shape. What the scan must NOT do is mistake TALKING about a load for a load —
- * a `\tikzerror{You need to say \string\usetikzlibrary{calc}}` names five
- * libraries it does not load, which is the difference between a 1.4 MB closure
- * and a 2.2 MB one (measured).
+ * a `\tikzerror{You need to say \string\usetikzlibrary{calc}}` names a library
+ * it does not load, which is the difference between a 1.16 MB pgf/tikz closure
+ * and a 2.16 MB one (measured).
  */
 
 import { writeFile } from "node:fs/promises";
@@ -43,6 +43,13 @@ import {
   CORE_FAMILY,
 } from "./lib/tex-bundle-manifest.mjs";
 
+/**
+ * The SAME mirror the RUNTIME asks (`TEXLIVE_ENDPOINT` in src/lib/swiftlatex.ts).
+ * It has to be: a vendored byte and a streamed byte for the same package must
+ * come from one TeX Live snapshot, or a paper compiles against two versions of
+ * pgf depending on which half of its closure was cached. A build script cannot
+ * import the TS module, so the agreement is pinned in tex-bundle-integrity.
+ */
 const ENDPOINT = "https://texlive.texlyre.org/";
 const MAX_FILES = 400; // runaway backstop, far above any real family
 

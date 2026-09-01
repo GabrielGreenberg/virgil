@@ -134,6 +134,21 @@ describe("vendored TeX bundle — the declared families are actually vendored", 
       expect(forest, `forest is missing ${req}`).toContain(`${FORMAT_TEX}/${req}`);
   });
 
+  it("the vendorer fetches from the SAME mirror the runtime asks", () => {
+    // A vendored byte and a streamed byte for one package must come from one
+    // TeX Live snapshot, or a paper compiles against two versions of pgf
+    // depending on which half of its closure happened to be cached. A build
+    // script cannot import the TS module, so the two spellings are pinned here.
+    const spelling = (rel: string, re: RegExp) => {
+      const m = fs.readFileSync(path.join(REPO, rel), "utf8").match(re);
+      expect(m, `${rel}: the endpoint declaration moved — re-read this leg`).toBeTruthy();
+      return m![1];
+    };
+    expect(spelling("scripts/vendor-tex-family.mjs", /^const ENDPOINT = "([^"]+)";/m)).toBe(
+      spelling("src/lib/swiftlatex.ts", /^const TEXLIVE_ENDPOINT = "([^"]+)";/m),
+    );
+  });
+
   it("nothing EXCLUDEd was vendored anyway", () => {
     const vendored = new Set(CORE_MANIFEST.map((e) => e.cacheKey));
     for (const name of Object.keys(EXCLUDE))
