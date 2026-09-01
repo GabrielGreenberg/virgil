@@ -888,8 +888,11 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             f"NOT that nothing was captured. `reflect.py` creates the sink on "
             f"its first write, so this reads as benign on a machine's first "
             f"day and as a broken capture layer on its thirtieth — check the "
-            f"calendar, `VIRGIL_REPO_ROOT` and any `VIRGIL_DEV_HOME` pin before "
-            f"trusting any zero here. "
+            f"calendar and the sink's own resolution before trusting any zero "
+            f"here (`memoSinkKind: {fm.get('memoSinkKind', '?')}` says which "
+            f"rung answered: `synced` means nothing has yet been written into "
+            f"the shared inbox from EITHER machine, `local` means check "
+            f"`VIRGIL_REPO_ROOT` and any `VIRGIL_DEV_HOME` pin). "
             f"Left unaddressed, every following digest repeats this same "
             f"healthy-looking no-op."
         )
