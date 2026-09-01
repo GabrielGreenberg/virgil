@@ -1,4 +1,4 @@
-<!-- last-verified: 7d60218f 2026-08-31 -->
+<!-- last-verified: 6ad2d54a 2026-09-01 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-dom-contract.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/text-objects/LiftHost.tsx, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/view-prefs/registry.ts, src/lib/focus-view.ts, src/lib/identity, src/lib/bib-uid.ts, src/cards/has-content.ts, src/cards/lifecycle, src/lib/input-modality.ts, src/lib/pomodoro-timer.ts -->
 
