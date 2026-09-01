@@ -789,6 +789,50 @@ Contract: [library/scripts/tests/test_bib_auth_cli.py](scripts/tests/test_bib_au
 run under `npx vitest` via
 [bib-auth-cli-python.test.ts](lib/__tests__/bib-auth-cli-python.test.ts).
 
+#### The path half: a documented path resolves where the READER stands
+
+> **A skill's helper path is spelled in the vocabulary of the folder the agent
+> is standing in.** A library skill ships VERBATIM, so a repo-relative
+> `<silo>/scripts/` prefix there is a dead path; only `editor/skills/*.md` gets
+> `rewriteScriptPathsForPaper`. Both `.virgil/scripts/library/` and
+> `.virgil/scripts/editor/` exist in every Virgil-managed folder (the
+> meta-bundle syncs all subsystems), so that pair is always safe.
+
+The flag half above asks whether a documented flag EXISTS; this asks whether the
+PATH resolves. They fail differently, and the second is quieter in one respect:
+a fabricated flag lands as a positional and yields a plausible wrong answer,
+while a fabricated path is "No such file or directory" and the documented STEP
+simply does not happen — the recipe around it carries on regardless. Two live
+sites (task 511):
+
+- `/library/triage-pdf`'s `.bib` block spelled `python3 scripts/<name>.py`,
+  a form that resolves nowhere, while the same file used
+  `.virgil/scripts/library/` at five other places. **A file disagreeing with
+  itself is the tell.**
+- `_latex-allowlist.md` — a byte-identical include SHIPPED BY BOTH SILOS —
+  spelled `editor/scripts/bib_family.py`, correct after the editor rewrite and
+  dead in the library bundle, two paragraphs above its own prose naming the
+  synced path. Fixed by writing the SYNCED path in the source: the library
+  bundle ships it verbatim and correct, and the editor rewrite is a no-op on it
+  (idempotent by construction — `.virgil/scripts/editor/` contains no
+  `editor/scripts/` substring), so the two copies stay identical.
+
+Two shapes are deliberately unpoliced and both are REACHED by the census rather
+than merely permitted: a BARE basename (`bib_auth.py …`, the
+`_find-or-surface.md` doctrine forms) makes no path claim, and a prefix held in
+a SHELL VARIABLE (`"$scripts_editor/…"`) is the resolver-loop idiom — the loop
+is what makes it correct and the scanner cannot evaluate it. A **repo-only**
+skill is exempt BY CONSTRUCTION, not by allowlist: `isRepoOnlySkill` is the same
+declaration the builders read, so it never ships and the repo-relative form is
+the right one there.
+
+CI: the fourth leg of
+[skill-script-cli-guardrail.test.ts](lib/__tests__/skill-script-cli-guardrail.test.ts),
+riding the SAME `invocationAt` scanner the flag census uses — one answer to
+"what is an invocation", not two. Allowlist EMPTY: a hit is correct-the-path, or
+resolve it through a shell variable. Measured on the pre-511 tree it names all
+three sites by `file:line`.
+
 #### The break half: the command an agent runs is the one BASH reads
 
 Same law, one grammar down (task 445) — and the case where the guard built to

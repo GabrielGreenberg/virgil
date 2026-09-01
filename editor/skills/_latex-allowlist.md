@@ -106,7 +106,7 @@ So before you compose a cite command, ASK — never guess, never scan for
 `\usepackage{biblatex}` yourself:
 
 ```bash
-python3 editor/scripts/bib_family.py <docPath>
+python3 .virgil/scripts/editor/bib_family.py <docPath>
 # → {"family":"natbib","source":"stored","textual":"citet","parenthetical":"citep"}
 ```
 

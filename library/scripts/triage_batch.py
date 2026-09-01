@@ -1,16 +1,27 @@
-"""Batch metadata extraction for files in unsorted/.
+"""Metadata extraction for files in unsorted/ — the whole inbox, or ONE file.
 
-Walks every .pdf and .docx in `unsorted/` (skipping `_pending/`),
-extracts triage observables, and emits one JSON line per file to stdout
-(or to --output). Each row carries proposed values plus flags so the
-caller can review the whole batch in one turn rather than invoking
-/triage-pdf per-file.
+Walks the triageable drops in `unsorted/` (skipping `_pending/` and every
+other `_`-prefixed sibling), extracts triage observables, and emits one JSON
+line per row to stdout (or to --output). Each row carries proposed values plus
+flags so the caller can review the batch in one turn.
+
+`--only <filename>` scopes the run to a SINGLE drop. It exists because the
+family has two callers with opposite scopes and only one engine: the batch
+skill (`/library/triage-pending`) wants the whole inbox, while the per-file
+skill (`/library/triage-pdf`) and `/editor/sync-bib-to-library` want exactly
+one file — and without the flag the only way to honour a single-file contract
+was to hand-roll a private twin of `triage_bib` in skill prose, which is how
+that twin came to drop `bibEntryRaw`, the `citekey-exists` collision flag and
+the `@unpublished` → `manuscript` state (task 511). Scoping the BATCH is
+enough to scope the whole pipeline: `triage_apply.py` is driven entirely by the
+rows it is handed and sweeps `unsorted/` for nothing of its own.
 
 Designed to feed `triage_apply.py` once the proposals have been
 reviewed and (optionally) edited.
 
 Usage:
   python3 triage_batch.py [--library ~/Virgil-Library] [--output triage.jsonl]
+  python3 triage_batch.py --only one-drop.bib --output /tmp/one.jsonl
 """
 
 from __future__ import annotations
@@ -1015,12 +1026,97 @@ def _extract_byline_from_markdown(md: str) -> list[str]:
     return out
 
 
+# ── Which drops does a run triage? ────────────────────────────────────────
+#
+# ONE selector, so the whole-inbox sweep and a `--only` run can never disagree
+# about what counts as a triageable drop. Before task 511 the membership rule
+# lived inline in `main`'s loop and there was no second caller to disagree
+# with it; giving it a name is what makes "processes exactly that file" a
+# claim a test can hold.
+
+TRIAGEABLE_EXTS = (".pdf", ".docx", ".tex", ".bib")
+
+
+class TriageSelectionError(Exception):
+    """`--only` named something this run cannot triage. Raised, never returned:
+    a miss must stop the run rather than silently degrade to the whole inbox,
+    which is the exact failure the flag exists to prevent."""
+
+
+def _is_triageable(path: Path) -> bool:
+    if path.is_dir():
+        return False
+    if path.name.startswith("_") or path.name.startswith("."):
+        return False
+    return path.suffix.lower() in TRIAGEABLE_EXTS
+
+
+def select_sources(unsorted_dir: Path, only: Optional[str] = None) -> list[Path]:
+    """The files in `unsorted/` this run will triage, in a stable order.
+
+    `only` is a BARE FILENAME relative to `unsorted/` — exact match, no path
+    separators. It FAILS LOUDLY on anything it cannot honour, and the three
+    misses are reported apart because they want different remedies: a name
+    that is not there at all, a name that is there but is not a triageable
+    drop (a directory, an `_`-prefixed sibling, an unsupported extension), and
+    a name carrying a path separator.
+    """
+    candidates = [p for p in sorted(unsorted_dir.iterdir()) if _is_triageable(p)]
+    if only is None:
+        return candidates
+
+    name = only.strip()
+    if not name:
+        raise TriageSelectionError("empty filename")
+    if "/" in name or "\\" in name:
+        raise TriageSelectionError(
+            f"{only!r} is not a bare filename — pass a name relative to "
+            f"{unsorted_dir}/, with no path separators"
+        )
+
+    for path in candidates:
+        if path.name == name:
+            return [path]
+
+    # Not selectable. Say WHICH kind of miss it is.
+    present = unsorted_dir / name
+    if present.exists():
+        if present.is_dir():
+            reason = "it is a directory"
+        elif name.startswith("_") or name.startswith("."):
+            reason = "the name is reserved (`_`/`.`-prefixed siblings are skipped)"
+        else:
+            reason = (
+                f"the extension is not triageable "
+                f"(expected one of {', '.join(TRIAGEABLE_EXTS)})"
+            )
+        raise TriageSelectionError(f"{name!r} is in {unsorted_dir} but {reason}")
+
+    shown = [p.name for p in candidates[:10]]
+    more = "" if len(candidates) <= 10 else f" (+{len(candidates) - 10} more)"
+    raise TriageSelectionError(
+        f"no such file {name!r} in {unsorted_dir}. "
+        f"Triageable drops there: {', '.join(shown) or '(none)'}{more}"
+    )
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description="Batch-extract triage observables from unsorted/.")
+    p = argparse.ArgumentParser(
+        description="Extract triage observables from unsorted/ — all of it, or --only one drop.")
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
     p.add_argument("--output", default="-",
                    help="Output JSONL path; '-' for stdout (default)")
+    p.add_argument("--only", default=None, metavar="FILENAME",
+                   help=(
+                       "Triage exactly ONE drop: a bare filename relative to "
+                       "unsorted/, matched exactly. Errors (exit 2) rather "
+                       "than falling back to the whole inbox when the name "
+                       "is missing or not a triageable drop. Use this for "
+                       "any single-file contract — the apply step is driven "
+                       "by the rows this emits, so scoping here scopes the "
+                       "whole pipeline."
+                   ))
     p.add_argument("--marker-rescue", action="store_true",
                    help=(
                        "After the cheap heuristic pass, re-run rows whose "
@@ -1051,16 +1147,16 @@ def main() -> int:
 
     catalog = _read_catalog(library)
 
+    try:
+        sources = select_sources(unsorted_dir, args.only)
+    except TriageSelectionError as e:
+        print(f"--only: {e}", file=sys.stderr)
+        return 2
+
     rows: list[dict[str, Any]] = []
     path_by_filename: dict[str, Path] = {}
-    for path in sorted(unsorted_dir.iterdir()):
-        if path.is_dir():
-            continue
-        if path.name.startswith("_") or path.name.startswith("."):
-            continue
+    for path in sources:
         ext = path.suffix.lower()
-        if ext not in (".pdf", ".docx", ".tex", ".bib"):
-            continue
         path_by_filename[path.name] = path
         try:
             if ext == ".bib":

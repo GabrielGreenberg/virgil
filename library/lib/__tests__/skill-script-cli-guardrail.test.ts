@@ -47,6 +47,10 @@ import path from "node:path";
 // line while THIS guard, built to police those flags, folded the two lines
 // together and saw a healthy invocation (task 445). See `_shell-fence.ts`.
 import { continuesLine } from "./_shell-fence";
+// The SAME declaration the bundle builders read to decide what ships, so a
+// repo-only skill cannot drift out of this census's exemption by being
+// re-labelled in one place only.
+import { isRepoOnlySkill } from "../../build/bundle-sources.mjs";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SKILL_DIRS = ["editor/skills", "library/skills"];
@@ -69,6 +73,66 @@ const PERMITTED_UNDECLARED_SKILL_FLAGS: string[] = [];
  * "TODO: script doesn't exist yet" placeholder stays legal without an entry.
  */
 const PERMITTED_MISSING_SCRIPTS: string[] = [];
+
+/**
+ * WHERE a skill may say a helper lives — the second half of the same boundary
+ * (task 511).
+ *
+ * The flag census above asks whether a documented flag EXISTS. This one asks
+ * whether the PATH resolves where the agent is standing, and the two fail
+ * differently: a fabricated flag lands as a positional and produces a
+ * plausible wrong answer, while a fabricated path is "No such file or
+ * directory" and the documented step simply does not happen — which is worse
+ * in one way, because the recipe around it carries on.
+ *
+ * `/library/triage-pdf`'s `.bib` block spelled `python3 scripts/<name>.py`,
+ * a form that resolves nowhere: the same file uses `.virgil/scripts/library/`
+ * at five other places, so it disagreed with itself. And
+ * `_latex-allowlist.md` — a byte-identical include SHIPPED BY BOTH SILOS —
+ * spelled `editor/scripts/bib_family.py`, which the editor bundle rewrites to
+ * the synced location and the library bundle ships VERBATIM, two paragraphs
+ * above its own prose naming the synced path.
+ *
+ * The vocabulary is what the on-disk layout actually provides
+ * (`library/lib/skill-bundle-layout.mjs` → `diskPathFor`): the meta-bundle
+ * syncs EVERY subsystem into any Virgil-managed folder, so both
+ * `.virgil/scripts/library/` and `.virgil/scripts/editor/` exist in a synced
+ * paper folder AND in a synced library folder. An editor skill may also write
+ * the repo-relative `<silo>/scripts/` form, because `rewriteScriptPathsForPaper`
+ * rewrites exactly those two prefixes for that silo — and only that silo, for
+ * the reason `bundle-sources.mjs` states. A library skill has no such rewrite,
+ * so a repo-relative prefix there is a dead path.
+ *
+ * Two shapes are deliberately not policed. A BARE basename (`bib_auth.py …`,
+ * the `_find-or-surface.md` doctrine forms) makes no path claim at all, and a
+ * prefix held in a SHELL VARIABLE (`"$scripts_editor/…"`) is the resolver-loop
+ * idiom several skills already use — the census cannot evaluate it, and the
+ * loop is what makes it correct.
+ *
+ * A REPO-ONLY skill is exempt BY CONSTRUCTION rather than by allowlist: it is
+ * never shipped (`isRepoOnlySkill`, the same declaration the builders read),
+ * so it runs in this checkout where the repo-relative form is the correct one.
+ *
+ * The allowlist is EMPTY and belongs that way: a hit is a skill telling an
+ * agent to run a file that is not there.
+ */
+const ALLOWED_SCRIPT_PREFIXES: Record<string, readonly string[]> = {
+  "library/skills": [".virgil/scripts/library/", ".virgil/scripts/editor/"],
+  "editor/skills": [
+    ".virgil/scripts/library/",
+    ".virgil/scripts/editor/",
+    "library/scripts/",
+    "editor/scripts/",
+  ],
+};
+
+/**
+ * Skills that may document a script path outside their silo's vocabulary.
+ *
+ * Deliberately EMPTY. Correct the path, or resolve it through a shell
+ * variable the way the bootstrap loops do.
+ */
+const PERMITTED_FOREIGN_SCRIPT_PATHS: string[] = [];
 
 /**
  * The dual census (task 446): a flag the caller's contract REQUIRES, and how
@@ -129,7 +193,7 @@ interface Finding {
  * An explicit interpreter is the strong form: it also licenses the
  * missing-script check, because "python3 foo.py" can only be an invocation.
  */
-const INVOCATION = /python3?\s+(?:"?[^\s"`]*\/)?"?([A-Za-z0-9_]+\.py)"?/;
+const INVOCATION = /python3?\s+("?[^\s"`]*\/)?"?([A-Za-z0-9_]+\.py)"?/;
 /**
  * `<name>.py …` with no interpreter token in front.
  *
@@ -147,7 +211,7 @@ const INVOCATION = /python3?\s+(?:"?[^\s"`]*\/)?"?([A-Za-z0-9_]+\.py)"?/;
  * mention of an unknown `.py` file is not an invocation.
  */
 const BARE_INVOCATION =
-  /(?:^|[\s`("'])(?:"?[^\s"`]*\/)?"?([A-Za-z0-9_]+\.py)"?(?=\s)/;
+  /(?:^|[\s`("'])("?[^\s"`]*\/)?"?([A-Za-z0-9_]+\.py)"?(?=\s)/;
 /** A long flag, not a mid-word `--` and not an em-dash run. */
 const FLAG = /(?<![\w-])--[A-Za-z][A-Za-z0-9-]*/g;
 
@@ -176,6 +240,8 @@ function indexScripts(): Map<string, string> {
 
 interface Invocation {
   script: string;
+  /** The path prefix as WRITTEN, trailing slash included (`""` when bare). */
+  prefix: string;
   /** Everything after the script name, continuation lines folded in. */
   rest: string;
   /** True when an explicit `python3` token introduced it. */
@@ -198,7 +264,12 @@ function invocationAt(lines: string[], i: number): Invocation | null {
     rest = `${rest.slice(0, -1)} ${lines[j]}`;
     j += 1;
   }
-  return { script: m[1], rest, strong: strongMatch !== null };
+  return {
+    script: m[2],
+    prefix: (m[1] ?? "").replace(/^"/, ""),
+    rest,
+    strong: strongMatch !== null,
+  };
 }
 
 function scan(): Finding[] {
@@ -336,6 +407,59 @@ describe("skill markdown ↔ Python CLI contract", () => {
       `A skill documents an invocation without a flag its caller depends on.\n` +
         `The flag is not decoration: its absence is a different contract, and\n` +
         `nothing downstream complains.\n${findings.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("every documented script path resolves where the agent will stand", () => {
+    const findings: string[] = [];
+    let checked = 0;
+    let exemptRepoOnly = 0;
+    let skippedShellVar = 0;
+
+    for (const dir of SKILL_DIRS) {
+      const allowed = ALLOWED_SCRIPT_PREFIXES[dir];
+      expect(allowed, `no prefix vocabulary declared for ${dir}`).toBeDefined();
+      for (const rel of listFiles(dir, ".md")) {
+        const src = readFileSync(path.join(REPO_ROOT, rel), "utf8");
+        // A repo-only skill never ships, so the repo-relative form is right.
+        if (isRepoOnlySkill(src)) {
+          exemptRepoOnly += 1;
+          continue;
+        }
+        const lines = src.split("\n");
+        lines.forEach((_raw, i) => {
+          const inv = invocationAt(lines, i);
+          if (!inv) return;
+          // A bare basename claims no location; a `$var` prefix is resolved by
+          // the caller's own loop and cannot be evaluated here.
+          if (inv.prefix === "") return;
+          if (inv.prefix.includes("$")) {
+            skippedShellVar += 1;
+            return;
+          }
+          checked += 1;
+          if (allowed!.includes(inv.prefix)) return;
+          if (PERMITTED_FOREIGN_SCRIPT_PATHS.includes(rel)) return;
+          findings.push(
+            `  ${rel}:${i + 1} — ${inv.prefix}${inv.script}: ${dir} may only ` +
+              `spell ${allowed!.join(", ")}`,
+          );
+        });
+      }
+    }
+
+    // A scanner that saw nothing would report green forever, and the two
+    // exempt shapes must both be REACHED rather than merely permitted.
+    expect(checked).toBeGreaterThan(50);
+    expect(exemptRepoOnly).toBeGreaterThan(0);
+    expect(skippedShellVar).toBeGreaterThan(0);
+
+    expect(
+      findings,
+      `A skill documents a helper at a path that does not exist there.\n` +
+        `Library skills ship VERBATIM, so a repo-relative prefix is a dead\n` +
+        `path on a synced folder; only the editor silo is rewritten.\n` +
+        `${findings.join("\n")}`,
     ).toEqual([]);
   });
 

@@ -128,12 +128,14 @@ directory).
    `@unpublished`; with a DOI, treat as `@article` and let
    `/library/authenticate-bib` confirm.
 
-   For `.bib` (BibTeX file with one or more entries): parse the file
-   into a list of entries via `_bib_parse.read_bib_file()`. Each entry
-   is its own triage row — fan out per entry, do NOT treat the file as
-   a single document. There is no source PDF to move; instead each
-   entry produces a **bib-only paper folder** (`references.bib` +
-   empty `virgil/` sidecars) and an `authenticate` queue request.
+   For `.bib` (BibTeX file with one or more entries): **stop here and run
+   the `.bib` handling (multi-entry fan-out) procedure at the end of this
+   file.**
+   A `.bib` drop is not one document — it fans out to one triage row per entry,
+   and the batch engine (scoped with `--only`) is what builds those rows. Do not
+   parse it by hand: a hand-rolled row loses the verbatim entry text, the
+   `citekey-exists` collision flag, and an `@unpublished` entry's `manuscript`
+   state.
 
 2. **Propose a citekey** from the title + first author + year. Convention:
    `<LastName><Year>` (e.g. `Smith2020`). If the year is missing, use
@@ -432,26 +434,40 @@ When `<filename>` ends with `.tex`:
 
 ## `.bib` handling (multi-entry fan-out)
 
-When `<filename>` ends with `.bib`, do NOT treat it as one document.
-Instead, defer to the batch pipeline:
+**This section is the `.bib` PROCEDURE.** Step 1's `.bib` bullet points here;
+run this instead of the per-document flow, and do not hand-roll the per-entry
+rows — the batch engine is the ONE implementation of what a `.bib` entry
+becomes.
+
+When `<filename>` ends with `.bib`, do NOT treat it as one document. Fan it out
+through the batch engine, SCOPED TO THIS FILE with `--only`:
 
 ```bash
-python3 scripts/triage_batch.py --library . --output /tmp/bib-triage.jsonl
+python3 .virgil/scripts/library/triage_batch.py \
+  --library . --only "<filename>" --output /tmp/bib-triage.jsonl
 # (review/edit the JSONL if desired — each line is one bib entry)
-python3 scripts/triage_apply.py --input /tmp/bib-triage.jsonl --library .
+python3 .virgil/scripts/library/triage_apply.py \
+  --input /tmp/bib-triage.jsonl --library .
 ```
 
-The apply step:
+`--only` takes a bare filename relative to `unsorted/` and errors (exit 2)
+rather than falling back to the whole inbox — **without it `triage_batch.py`
+triages every drop in `unsorted/`**, which is `/library/triage-pending`'s job,
+not this skill's. Scoping the BATCH scopes the whole pipeline: the apply step is
+driven entirely by the rows in the JSONL and sweeps `unsorted/` for nothing of
+its own.
 
-- For each entry, decides on collision. The existing state is resolved through
+The apply step, per row:
+
+- Decides on collision. The existing state is resolved through
   `_tools.resolve_bib_state` — master.bib's `% bib.state` comment FIRST, a legacy
   catalog row as the fallback — so a FILELESS reference (cited but not held, and so
   carrying no catalog row at all under the F#4 holdings model) is seen. A settled
   entry (`TERMINAL_BIB_STATES`: authenticated / manuscript / canonical) is IGNORED
   and left byte-unchanged; anything else merges fields over the existing ones,
   preferring the incoming value on conflict.
-- Upserts into `master.bib` with `% bib.state = unverified` (`manuscript` when the row proposes it) — the F#4 home for the auth state.
-- Creates `papers/<citekey>/references.bib` + empty `virgil/` sidecars (no source file, no `main.tex`).
-- Mints **no catalog row** for a source-less citekey — that entry is reference-only under the F#4 holdings model, so the library list projects it from `bib-index.json` instead (and an already-existing row for it is refreshed, not removed). A citekey that IS held on disk still gets its real holdings row. Full model: the `.bib` bullet under **Supported source kinds** above.
-- Queues `kind: "authenticate"` for each entry that isn't a manuscript.
+- Writes the three things a `bib-imported` entry becomes, and queues its
+  `kind: "authenticate"`. **What those are, and the other three per-entry
+  outcomes, is stated once** — see the `.bib` bullet under **Supported source
+  kinds** above.
 - Deletes the source `.bib` from `unsorted/` only when every row came back `bib-imported` or `bib-ignored`; any other status (including a `bib-folded` duplicate) parks the whole file under `_pending/`.
