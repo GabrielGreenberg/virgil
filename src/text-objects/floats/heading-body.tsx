@@ -41,6 +41,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -135,8 +136,11 @@ export function HeadingBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "float",
       editable: chrome.showHeadingFloatLabelEdit,
       cardContext: true,

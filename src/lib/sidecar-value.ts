@@ -151,6 +151,12 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     "bib-settings.json": { tier: "content", store: "disk", mount: true },
     "citations.json": { tier: "content", store: "disk", mount: true },
     "cutter.json": { tier: "content", store: "disk", mount: true },
+    // The paper's spelling dictionary (task 518). CONTENT: a coinage the user
+    // taught Virgil is their own writing and is recomputable from nothing —
+    // and DISK rather than local, because the term belongs to the PAPER, so a
+    // second machine opening it must see the same list. Its cadence is a
+    // non-issue: it is written only on a deliberate "Add to dictionary".
+    "dictionary.json": { tier: "content", store: "disk", mount: true },
     "document-settings.json": { tier: "content", store: "disk", mount: true },
     "examples.json": { tier: "content", store: "disk", mount: true },
     "footnotes.json": { tier: "content", store: "disk", mount: true },

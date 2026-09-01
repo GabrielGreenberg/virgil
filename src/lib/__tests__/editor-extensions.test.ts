@@ -90,6 +90,7 @@ const EXPECTED_MAIN_ORDER = [
   "latexVerbatim",
   "latexCommentTail",
   "inlineAtomGrab",
+  "spellcheckDecorator",
   "slashPopup",
   "smartQuotes",
   "linkedAnchor",
@@ -174,6 +175,7 @@ const EXPECTED_FLOAT_ORDER = [
   "latexVerbatim",
   "latexCommentTail",
   "inlineAtomGrab",
+  "spellcheckDecorator",
   "linkedAnchor",
   "linkedAnchorGuard",
   // titleField: promoted into the shared float stack (L3j) — it was the lone

@@ -5117,6 +5117,29 @@ body.perf-contain .static-borrowed-text {
   border-bottom: none;
 }
 
+/* Spelling squiggle (task 518) — Virgil's own, drawn where the browser's used
+   to be. A ProseMirror inline DECORATION owns the span (never a mark: a
+   squiggle is a view, so it must not enter history, arm the autosaver, or be
+   captured when the paragraph is archived — the task-120 law), and the plugin
+   that paints it is the plugin that turns the browser's underline off for the
+   surface, so a word is never underlined twice.
+
+   `text-decoration` rather than a background, because it must compose with
+   every mark the prose already carries — bold, italic, a colour, an anchor
+   band — without disturbing any of them, and it is what a reader already
+   recognises as "this word is misspelled". `skip-ink: none` keeps the wave
+   continuous under descenders, where an interrupted wave reads as two words.
+   `--danger` is the app's own destructive/error red; the underline is the ONE
+   place it appears without a destructive action behind it, which is what
+   `text-decoration` (rather than red INK) keeps honest — the word itself is
+   not recoloured. */
+.tiptap .spell-error {
+  text-decoration: underline wavy var(--danger);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
 /* Scrollbar styling — auto-hide on idle, reveal on activity/hover.
    Thumb defaults to transparent; `data-scroll-active` (set by the
    useScrollActivityTracker hook) reveals it during/just-after scroll,

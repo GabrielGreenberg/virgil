@@ -34,6 +34,7 @@ import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
 import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { applyExpexWidthVars, computeExpexWidths } from "@/lib/tiptap/expex";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
@@ -239,8 +240,11 @@ function ExampleCardEditor({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const editor = useEditor({
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "float",
       editable: effectiveEditable,
       cardContext: true,

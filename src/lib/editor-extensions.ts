@@ -32,6 +32,8 @@ import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
 import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
+import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
+import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -1814,6 +1816,21 @@ export interface EditorExtensionsCtx {
   /** Float: the main editor a float reads numbering from / proxies structural
    *  writes to. `null` for the main surface. (Exercised in FCU Chips B/C.) */
   host?: { getMainEditor: () => Editor | null } | null;
+  /**
+   * The spellchecker's port (task 518). `null` is how a surface says "no
+   * checker here"; omitting it means the same thing.
+   *
+   * Every PRODUCTION caller must nevertheless STATE its answer, and that is
+   * enforced by census rather than by the type — the rule task 517 earned one
+   * layer up (a field a host may omit is the field the thirteenth host
+   * forgets, silently) applied where it costs nothing: ~40 unit fixtures build
+   * this bag by hand to drive an unrelated plugin, and making them all declare
+   * a spellchecker would be churn that teaches nothing.
+   * `spellcheck-surface-census.test.ts` discovers every production
+   * `buildEditorExtensions(` / `useEditor(` prose surface and fails one that
+   * does not name it; its allowlist is EMPTY.
+   */
+  spellcheckPortRef?: SpellcheckPortRef | null;
 }
 
 export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
@@ -2028,6 +2045,13 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // same `editableRef` the readOnlyEnforcer uses to stay inert in
     // read-only / no-pen state.
     InlineAtomGrab.configure({ editableRef: ctx.editableRef ?? null }),
+    // Virgil's own spellchecker (task 518). Ungated on surface for the same
+    // reason `InlineAtomGrab` is: a popped-out paragraph is the user's prose
+    // too. It is inert without a port (the Library reader, any host outside a
+    // `SpellcheckProvider`) and inert while the view is read-only, and it is
+    // the plugin that turns the BROWSER's underline off for the surfaces it
+    // paints — see `spellcheck-decorator.ts`.
+    SpellcheckDecorator.configure({ port: ctx.spellcheckPortRef ?? null }),
     ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
     LinkedAnchor,
     LinkedAnchorGuard,

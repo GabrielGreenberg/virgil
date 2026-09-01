@@ -44,11 +44,29 @@
  * pods below restate it as defence-in-depth; that redundancy is deliberate and
  * predates this module.
  *
- * ## What this is NOT
+ * ## THREE claims, not two (task 518)
  *
- * It governs the BROWSER's spellcheck. Virgil's own LaTeX-aware checker (task
- * 518) is what flips this pref OFF when it takes over, so there is one
- * underline rather than two — this module is the switch it will reach for.
+ * This module governs the BROWSER's spellcheck, and there are exactly three
+ * things a surface can say about it. Each has its own constant, because they
+ * are different CLAIMS that happen to compile to the same attribute value, and
+ * a census that could not tell them apart would read the third as a violation
+ * of the first:
+ *
+ *   - `NEVER_SPELLCHECK_*` — "a squiggle here would be nonsense" (a citekey
+ *     field, a source pod). True in both positions of the preference.
+ *   - the `<body>` attribute — "the user turned checking off". One write.
+ *   - `VIRGIL_CHECKED_ATTRS` — "VIRGIL underlines this surface, so the browser
+ *     must not". Contributed by the plugin that PAINTS
+ *     (`spellcheck-decorator.ts`), which is what makes the pair honest: it
+ *     appears exactly while Virgil's checker is live and vanishes the moment
+ *     the preference goes off, the surface goes read-only, or the DICTIONARY
+ *     FAILS TO LOAD — handing the surface back rather than leaving it with no
+ *     checker at all.
+ *
+ * The preference stays ONE control for the pair. `checkSpelling` off means no
+ * underline from either; on means Virgil checks the prose surfaces and the
+ * browser keeps the rest of the app's form fields, which is the only division
+ * that is true of both checkers at once.
  *
  * ## Cost class
  *
@@ -74,6 +92,16 @@ export const NEVER_SPELLCHECK_ATTRS: { readonly spellcheck: "false" } = {
  */
 export const NEVER_SPELLCHECK_PROPS: { readonly spellCheck: false } = {
   spellCheck: false,
+};
+
+/**
+ * The ProseMirror `editorProps.attributes` fragment for a surface VIRGIL
+ * checks — see the header's third claim. Spelled here rather than at the
+ * plugin so the census can tell a hand-off from a hand-written opt-out, and so
+ * there is one place that knows how a surface declines the browser's checker.
+ */
+export const VIRGIL_CHECKED_ATTRS: { readonly spellcheck: "false" } = {
+  spellcheck: "false",
 };
 
 /** The attribute this policy writes on `<body>`. */
