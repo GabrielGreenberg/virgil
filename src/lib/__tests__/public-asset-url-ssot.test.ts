@@ -414,8 +414,13 @@ describe("the service-worker half (leg 6)", () => {
     const WRITER = "scripts/lib/tex-bundle-manifest.mjs";
     const writer = codeOnly(fs.readFileSync(path.join(REPO, WRITER), "utf8"));
     expect(writer).toContain("export const swPath =");
-    // Every path that reaches the SW manifest is stripped by it.
-    for (const m of writer.matchAll(/paths\s*=\s*\[[^\]]*\]/g))
+    // Every path that reaches the SW manifest is stripped by it. The COUNT is
+    // asserted because a loop that matches nothing asserts nothing: rename the
+    // binding and this leg would pass while the manifest was emitted
+    // root-relative, which is the task-365 defect the SW swallows silently.
+    const assemblies = [...writer.matchAll(/paths\s*[:=]\s*\[[^\]]*\]/g)];
+    expect(assemblies.length, "the SW path assembly moved — re-read this leg").toBeGreaterThan(0);
+    for (const m of assemblies)
       expect(m[0], "a SW path assembled without swPath()").toContain("swPath(");
     expect(writer).toMatch(/writeFile\(\s*bundleManifestJsonPath/);
 

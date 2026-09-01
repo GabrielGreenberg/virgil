@@ -74,13 +74,7 @@ export function fmtBytes(n) {
  * written before the `family` column existed reads as `core`, so an older
  * checkout upgrades in place on the next write rather than losing its rows.
  */
-export async function readManifestTs() {
-  let src;
-  try {
-    src = await readFile(manifestTsPath, "utf8");
-  } catch {
-    return [];
-  }
+export function parseManifestRows(src) {
   const rows = [];
   const re =
     /\{\s*cacheKey:\s*"((?:[^"\\]|\\.)*)",\s*fileid:\s*"((?:[^"\\]|\\.)*)",\s*path:\s*"((?:[^"\\]|\\.)*)"(?:,\s*family:\s*"((?:[^"\\]|\\.)*)")?\s*\}/g;
@@ -95,6 +89,49 @@ export async function readManifestTs() {
   return rows;
 }
 
+export async function readManifestTs() {
+  try {
+    return parseManifestRows(await readFile(manifestTsPath, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The whole merge DECISION, pure: given every row currently in the manifest and
+ * a family's freshly-resolved rows, what does the manifest become, which of the
+ * fresh rows are rejected, and which fileids survive?
+ *
+ * Extracted from `writeBundle` because that function's paths are module
+ * constants — so without this the central claim of task 520 ("two producers,
+ * one writer, each replaces only its OWN rows") could be neutered with the
+ * whole suite green, and the next `build-tex-bundle.mjs` run would delete every
+ * vendored family's rows AND, through the prune, their bytes.
+ */
+export function mergeFamilyRows(existing, family, rows) {
+  const others = existing.filter((r) => r.family !== family);
+
+  // A cacheKey another family already owns stays with that family: one key,
+  // one owner, so a later capture cannot silently duplicate a vendored row.
+  const claimed = new Set(others.map((r) => r.cacheKey));
+  const kept = rows.filter((r) => !claimed.has(r.cacheKey));
+
+  const merged = [...others, ...kept].sort(
+    (a, b) => a.family.localeCompare(b.family) || a.cacheKey.localeCompare(b.cacheKey),
+  );
+
+  return {
+    merged,
+    kept,
+    rejected: rows.length - kept.length,
+    // PRUNE by the MERGED fileids, never this family's alone — two cacheKeys
+    // legitimately share one file, and a file another family still references
+    // is never this family's to delete.
+    liveFileids: new Set(merged.map((r) => r.fileid)),
+    paths: [...new Set(merged.map((r) => swPath(r.path)))].sort(),
+  };
+}
+
 /**
  * Replace `family`'s rows with `rows` and rewrite both tables + prune orphaned
  * bytes. Returns a small report for the caller to print.
@@ -105,20 +142,13 @@ export async function readManifestTs() {
  * file another family still references is never this family's to delete.
  */
 export async function writeBundle({ family, rows, prune = true }) {
-  const others = (await readManifestTs()).filter((r) => r.family !== family);
-
-  // A cacheKey another family already owns stays with that family: one key,
-  // one owner, so a later capture cannot silently duplicate a vendored row.
-  const claimed = new Set(others.map((r) => r.cacheKey));
-  const kept = rows.filter((r) => !claimed.has(r.cacheKey));
-  const rejected = rows.length - kept.length;
-
-  const merged = [...others, ...kept].sort(
-    (a, b) => a.family.localeCompare(b.family) || a.cacheKey.localeCompare(b.cacheKey),
+  const { merged, kept, rejected, liveFileids, paths } = mergeFamilyRows(
+    await readManifestTs(),
+    family,
+    rows,
   );
 
-  const liveFileids = new Set(merged.map((r) => r.fileid));
-  let pruned = [];
+  const pruned = [];
   if (prune) {
     const onDisk = await readdir(texbundleDir).catch(() => []);
     for (const name of onDisk) {
@@ -129,7 +159,6 @@ export async function writeBundle({ family, rows, prune = true }) {
     }
   }
 
-  const paths = [...new Set(merged.map((r) => swPath(r.path)))].sort();
   await writeFile(bundleManifestJsonPath, JSON.stringify({ paths }, null, 2) + "\n");
   await writeFile(manifestTsPath, renderManifestTs(merged));
 

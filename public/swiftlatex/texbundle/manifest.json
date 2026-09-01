@@ -54,6 +54,7 @@
     "swiftlatex/texbundle/everyshi.sty",
     "swiftlatex/texbundle/expex.sty",
     "swiftlatex/texbundle/expex.tex",
+    "swiftlatex/texbundle/expl3.sty",
     "swiftlatex/texbundle/forest-compat.sty",
     "swiftlatex/texbundle/forest.sty",
     "swiftlatex/texbundle/graphics.cfg",

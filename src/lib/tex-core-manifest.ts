@@ -138,6 +138,7 @@ export const CORE_MANIFEST: readonly CoreManifestEntry[] = [
   { cacheKey: "26/environ.sty", fileid: "environ.sty", path: "/swiftlatex/texbundle/environ.sty", family: "forest" },
   { cacheKey: "26/etoolbox.def", fileid: "etoolbox.def", path: "/swiftlatex/texbundle/etoolbox.def", family: "forest" },
   { cacheKey: "26/etoolbox.sty", fileid: "etoolbox.sty", path: "/swiftlatex/texbundle/etoolbox.sty", family: "forest" },
+  { cacheKey: "26/expl3.sty", fileid: "expl3.sty", path: "/swiftlatex/texbundle/expl3.sty", family: "forest" },
   { cacheKey: "26/forest-compat.sty", fileid: "forest-compat.sty", path: "/swiftlatex/texbundle/forest-compat.sty", family: "forest" },
   { cacheKey: "26/forest.sty", fileid: "forest.sty", path: "/swiftlatex/texbundle/forest.sty", family: "forest" },
   { cacheKey: "26/inlinedef.sty", fileid: "inlinedef.sty", path: "/swiftlatex/texbundle/inlinedef.sty", family: "forest" },

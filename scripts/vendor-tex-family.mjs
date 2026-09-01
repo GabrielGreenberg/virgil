@@ -301,28 +301,38 @@ async function main() {
   const targets = all ? Object.keys(FAMILIES) : names;
   const existing = await readManifestTs();
 
-  // `--all` means "make the bundle match the declaration", so a family that has
-  // been REMOVED from it takes its rows (and, through writeBundle's prune, its
-  // bytes) with it. Without this, deleting a family leaves rows nothing can
-  // regenerate — and "trimming a family is one config edit" would be false.
+  // `--all` means "make the bundle match the declaration", so it REBUILDS
+  // ownership rather than merging into it: every declared family's rows are
+  // cleared first, and so are the rows of any family the declaration no longer
+  // names. Two things go wrong without that, and each is only reachable by the
+  // maintenance operation this script exists to make easy:
+  //
+  //   - a family REMOVED from the declaration leaves rows nothing can
+  //     regenerate (and bytes nothing prunes), so "trimming a family is one
+  //     config edit" would be false; and
+  //   - a key cannot be RE-ASSIGNED between families, because writeBundle's
+  //     one-key-one-owner rule reads the manifest and would reject the new
+  //     owner's rows. Re-order the declaration, or re-add a family another has
+  //     since absorbed, and the bundle silently loses that closure.
+  //
+  // The clearing pass does NOT prune: the bytes are about to be re-resolved,
+  // and the last real write prunes whatever the rebuild left behind.
   if (all) {
-    const known = new Set([CORE_FAMILY, ...targets]);
-    const stale = [...new Set(existing.map((r) => r.family))].filter((f) => !known.has(f));
-    for (const family of stale) {
-      console.log(`\n=== ${family} — no longer declared: dropping its rows`);
-      if (dryRun) {
-        console.log(`  --dry-run: would drop ${existing.filter((r) => r.family === family).length} row(s)`);
-        continue;
-      }
-      const report = await writeBundle({ family, rows: [] });
-      console.log(
-        `  dropped; manifest now ${report.total} row(s); pruned ${report.pruned.length} file(s)`,
-      );
-    }
+    const declared = new Set([CORE_FAMILY, ...targets]);
+    const present = [...new Set(existing.map((r) => r.family))];
+    const stale = present.filter((f) => !declared.has(f));
+    for (const family of stale)
+      console.log(`\n=== ${family} — no longer declared: its rows will be dropped`);
+    if (!dryRun) for (const family of [...stale, ...targets]) await writeBundle({ family, rows: [], prune: false });
   }
 
+  // Read AFTER the clearing pass — `existing` predates it, so seeding `claimed`
+  // from it would leave a cleared family's keys claimed and the family that
+  // should now own them would skip them as "shared". A dry run clears nothing,
+  // so it correctly keeps the pre-clear snapshot.
+  const afterClear = dryRun ? existing : await readManifestTs();
   const claimed = new Set(
-    existing.filter((r) => !targets.includes(r.family)).map((r) => r.cacheKey),
+    afterClear.filter((r) => !targets.includes(r.family)).map((r) => r.cacheKey),
   );
   for (const name of targets) await vendor(name, { dryRun, claimed });
 

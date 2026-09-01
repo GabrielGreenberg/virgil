@@ -10690,23 +10690,40 @@ Seven rules it earned:
 - **The two things a scan cannot infer are the two things the declaration
   states.** A MACRO is not a filename (`\input\pgfsysdriver` — so pdfTeX's
   driver, `pgfsys-pdftex.def`, is a declared SEED), and what the FORMAT already
-  carries is invisible from the sources. `EXCLUDE` records the second with its
-  evidence: the vendored `.fmt` preloads expl3 (measured — `ExplSyntaxOn` and 49
-  `__kernel_msg` markers are in its bytes, which is also why the original
-  capture fetched `l3backend-pdfmode.def`, the backend an ALREADY-LOADED expl3
-  pulls at begin-document, and never expl3 itself). Vendoring it would have
-  added 1.09 MB nothing asks for.
+  carries is invisible from the sources.
+- **…and "the format has it" is not a reason on its own — what matters is
+  whether the LOAD SITE EXECUTES.** This fix's own first cut excluded
+  `expl3.sty` on the strength of the format preloading expl3, reasoning that
+  `\RequirePackage{expl3}` would be answered by `\@ifpackageloaded`. It is not:
+  measured in the `.fmt` bytes, `ver@expl3-code.tex` occurs and `ver@expl3.sty`
+  does NOT, while sibling `\ver@<pkg>.sty` markers do — so the format loaded
+  expl3 by `\input expl3-code.tex`, never through the package wrapper, and
+  xparse's unconditional `\RequirePackage{expl3}` (reached from every
+  `\begin{forest}` paper) went straight to kpse. The exclusion cost ONE serial
+  blocking mirror fetch on exactly the compile this family exists to speed up.
+  `expl3.sty` is vendored (4.4 KB); only its 1.05 MB payload is excluded, and
+  for a reason that is in the loader's own source rather than in the format's:
+  `expl3.sty` gates `{\input{expl3-code.tex}}` behind a `\csname tex\string
+  _let:D\endcsname` test, so with the code already loaded `\@gobble` swallows
+  it. The neighbouring `etex` rows are the same shape and were re-worded with
+  their real mechanism (both call sites are gobbled on a 2015+ kernel), because
+  one wrong sentence in that table had already produced one wrong exclusion.
 - **One cacheKey has one OWNER, so a closure that OVERLAPS is not a closure that
   DUPLICATES.** forest's closure begins with all of tikz's; the overlap is still
   fetched (its references are how the graph is walked) and the first family to
   declare it keeps the row. Only the LABEL depends on declaration order; the set
-  of vendored bytes does not. That is what makes the sizes per-family and
-  therefore trimmable — and `--all` means "make the bundle match the
-  declaration", so a family REMOVED from it takes its rows and its bytes with
-  it. Without that arm, "trimming a family is one config edit" would be false:
-  deleting it would strand rows nothing can regenerate. Proven by round trip —
-  undeclare `forest`, run, re-declare, run: 173 rows → 145 → 173, and the
-  bundle comes back byte-identical.
+  of vendored bytes does not.
+- **…so `--all` REBUILDS ownership rather than merging into it**, or "trimming a
+  family is one config edit" is false in two directions. Clearing only the
+  STALE families leaves the other half live: a key cannot be RE-ASSIGNED,
+  because the writer's one-key-one-owner rule reads the manifest and rejects the
+  new owner's rows — so re-declaring a family another has since absorbed
+  silently loses that closure. Both were found by driving the round trip in the
+  direction the first cut did not: undeclare the FIRST family, not the last.
+  With the rebuild, both directions are exact — 174 rows → 145 → 174 dropping
+  `forest`, 174 → 172 → 174 dropping `pgf-tikz`, bundle byte-identical each
+  time. The clearing pass does not prune, since the bytes are about to be
+  re-resolved.
 - **`family` is a column with a READER, or it would be a dead facet.** The
   producers read it to replace exactly their own rows — without which a family
   whose closure SHRINKS leaves orphan rows, and orphan bytes, in the bundle
@@ -10722,12 +10739,12 @@ Seven rules it earned:
   absorbs one* — task 331's rule, arriving at a census instead of a splice site.
 
 **Measured.** pgf/tikz: **63 files, 1.16 MB** (8 more of its closure was already
-vendored by the `core` capture). forest: **28 files, 1.10 MB** on top —
+vendored by the `core` capture). forest: **29 files, 1.10 MB** on top —
 1.5× what task 454's sizing predicted for it, because that estimate counted
 `forest.sty` as a LEAF where its real closure pulls xparse, etoolbox, environ,
 inlinedef, elocalloc, pgfopts and tikz's `shapes`/`fit`/`calc`/`intersections`
-libraries. Together **+2.25 MB over 91 files**, taking the engine payload from
-17.65 MB to 19.90 MB (+12.8 %) — the ~13 % 454 predicted, on a different
+libraries. Together **+2.26 MB over 92 files**, taking the engine payload from
+17.65 MB to 19.91 MB (+12.8 %) — the ~13 % 454 predicted, on a different
 baseline. That cost is paid ONCE at install, into the service worker's
 precache, and it replaces a per-paper wait of 60–100 serial blocking round trips.
 
@@ -10744,6 +10761,18 @@ and a duplicate cacheKey each take 1 leg; the `\string` rule 1, the
 `\DeclareOption` blanker 1, and the escaped-`%` branch of the comment stripper 1
 (that last one matters in the direction that COSTS — without it the scan cuts at
 `\%` and silently never follows the real load after it).
+
+Beside them the WRITER's own legs, which exist because its paths are module
+constants and its decision was therefore untestable until `parseManifestRows`
+and `mergeFamilyRows` were extracted from it — leaving the change's central
+claim neuterable with the whole repo suite green, and the damage landing on the
+next run of the OTHER producer. Measured: a writer that forgets other families
+takes 4 legs, a prune keyed on one family's fileids 1, dropping
+one-key-one-owner 1, losing the legacy family-less row rule 1, and an undeduped
+SW list 1. `FORMAT_TEX` is anchored to the live capture's own `26/article.cls`
+rather than to itself — every closure leg builds its expected key from that
+constant, so without the anchor a drift to 27 would leave all of them green
+while the entire bundle sat at keys the worker never asks for.
 
 **Owed, not claimed:** done-when 5, the live capture that confirms the estimate.
 Compile behaviour is not FSA-masked but a worktree cannot start the dev server,
