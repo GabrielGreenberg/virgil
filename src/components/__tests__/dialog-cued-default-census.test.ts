@@ -26,35 +26,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
-
-const ROOT = join(__dirname, "..", "..");
-
-/** The shell itself DEFINES the primitives; it declares nothing. */
-const SHELL = ["components/system-dialog.tsx"];
-
-function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
-      if (entry === "__tests__" || entry === "node_modules") continue;
-      walk(p, out);
-    } else if (/\.tsx?$/.test(entry)) {
-      out.push(p);
-    }
-  }
-  return out;
-}
-
-interface DialogSite {
-  rel: string;
-  /** The `<SystemDialog …>` open tag. */
-  tag: string;
-  /** Everything between that tag and its close. */
-  subtree: string;
-}
+import {
+  dialogElements,
+  walk,
+  SRC_ROOT as ROOT,
+  type DialogSite,
+} from "./_dialog-sites";
 
 /**
  * Every production `<SystemDialog>` that must declare an answer for `Enter`:
@@ -62,29 +42,22 @@ interface DialogSite {
  * the keyboard and swallows an out-of-frame Enter whether or not it has a cue,
  * so the swallow must be deliberate).
  *
- * Enumerated per ELEMENT, not per file: `ManageStylesModal` renders one dialog
- * and hosts three more, so a file-scoped question lets one dialog be excused by
- * a sibling's declaration.
+ * A FILTER over the shared population (`_dialog-sites.ts`), never a second walk
+ * — the variant census asks a different question of the same set, and two
+ * enumerations of "who the dialog sites are" is how one guard comes to be
+ * scanning a set the other no longer is.
+ *
+ * The scrimless needle names `draggable` alone since task 515 retired the only
+ * other member; a third one is added to the union and to this line together, and
+ * `system-dialog-variants-census.test.ts` is what makes the union side of that
+ * pair impossible to skip.
  */
 function dialogSites(): DialogSite[] {
-  const out: DialogSite[] = [];
-  for (const abs of walk(ROOT)) {
-    const rel = abs.slice(ROOT.length + 1).replace(/\\/g, "/");
-    if (SHELL.includes(rel)) continue;
-    // `commentsStripped`, NOT `codeOnly`: the variant needle must match INSIDE a
-    // quoted attribute (`variant="draggable"`), and `codeOnly` blanks string
-    // literals — the exact trap `_source-scan` documents. Comments still go, which
-    // is all the prose canary below needs.
-    const src = commentsStripped(readFileSync(abs, "utf8"));
-    for (const hit of elementsNamed(src, "SystemDialog")) {
-      const subtree = hit.subtree ?? "";
-      const scrimless = /variant=\{?"(draggable|anchored)"/.test(hit.tag);
-      const footered = elementsNamed(subtree, "SystemDialogFooter").length > 0;
-      if (!footered && scrimless) continue;
-      out.push({ rel, tag: hit.tag, subtree });
-    }
-  }
-  return out;
+  return dialogElements().filter(({ tag, subtree }) => {
+    const scrimless = /variant=\{?"draggable"/.test(tag);
+    const footered = elementsNamed(subtree, "SystemDialogFooter").length > 0;
+    return footered || !scrimless;
+  });
 }
 
 /** Does this dialog register a cued default — an `autoFocus` SystemDialogButton? */
