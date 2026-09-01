@@ -55,7 +55,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from _common import (
@@ -277,27 +277,56 @@ def _memo_sort_key(rec: dict) -> tuple[str, str]:
 
 
 def _last_marker(digests_root: Path) -> tuple[tuple[str, str] | None, Path | None]:
-    """The most recent digest's recorded high-water marker, or (None, None) if
-    none exists (the bootstrap dream).  Returns ((markerTs, markerMemo), path).
-    The latest digest is the one with the greatest (dreamedAt, filename)."""
+    """The highest recorded high-water marker, and the LATEST digest's path.
+
+    Returns ((markerTs, markerMemo) | None, path | None); the latest digest is
+    the one with the greatest (dreamedAt, filename).
+
+    THE TWO HALVES ARE ANSWERED INDEPENDENTLY, and that is the whole point.  A
+    digest that recorded no marker -- which `_advance_marker` writes on any night
+    whose window is empty and whose inherited marker is itself empty, i.e. the
+    bootstrap zero-memo night -- is still a REAL, DATED artifact.  Reading its
+    existence off its marker field conflates "no dream has recorded a high-water
+    mark" with "no dream has ever run", and the second is the load-bearing one:
+    `path` is what `_digest_dreamed_at` turns into `_advance_marker`'s
+    `prior_digest_at`, and that argument is what ARMS the trailing-self-memo hold.
+
+    So an empty marker used to disarm the hold guard, silently.  Measured
+    2026-08-23 against this tree: with the digest's marker blank the marker
+    advances ONTO the unread `skill: dream` self-reflection and `markerHeld` is
+    empty; with the same tree and the same digest carrying any marker, the memo
+    is held back correctly.  That inverts `_advance_marker`'s stated failure
+    direction -- it is written to fail toward a redundant RE-READ, and an empty
+    marker made it fail toward LOSING a reflection outright, which is exactly the
+    2026-08-17 loss its guard was added (and hand-corrected) to retire.
+
+    This is the third instance of one conflation class in the dream's own
+    scripts, after `drift`/`driftChecked` and the absent memo sink: an empty
+    value standing for both "nothing" and "could not say".  The rule the other
+    two settled on is the rule here -- publish the condition separately; never
+    re-derive it from the empty value."""
     if not digests_root.is_dir():
         return None, None
     best_rank: tuple[str, str] | None = None
     best_marker: tuple[str, str] | None = None
+    best_digest_rank: tuple[str, str] | None = None
     best_path: Path | None = None
     for p in sorted(digests_root.rglob("*.md")):
         try:
             fm, _ = _parse_memo(p.read_text(encoding="utf-8")[:2000])
         except OSError:
             continue
+        rank = ((fm.get("dreamedAt") or "").strip(), p.name)
+        # The digest EXISTS regardless of what it recorded -- rank it first.
+        if best_digest_rank is None or rank > best_digest_rank:
+            best_digest_rank = rank
+            best_path = p
         marker = (fm.get("marker") or "").strip()
         if not marker:
             continue
-        rank = ((fm.get("dreamedAt") or "").strip(), p.name)
         if best_rank is None or rank > best_rank:
             best_rank = rank
             best_marker = (marker, (fm.get("markerMemo") or "").strip())
-            best_path = p
     return best_marker, best_path
 
 
@@ -310,6 +339,53 @@ def _digest_dreamed_at(digest_path: Path | None) -> str:
     except OSError:
         return ""
     return (fm.get("dreamedAt") or "").strip()
+
+
+def _nights_since_last_digest(
+        digest_path: Path | None) -> tuple[int | None, str | None]:
+    """Calendar nights between the newest digest and tonight — the BLACKOUT
+    measure — and, when it cannot be taken, WHY not.
+
+    The loop is nightly, so a healthy run answers 0 (a second run today) or 1
+    (last night, as scheduled). Anything above 1 means nights were MISSED, and
+    that is the one no-signal condition none of the existing flags can report:
+    a dark night writes no digest, so the next run that does happen inherits a
+    perfectly ordinary-looking window — `memoCount: 0`, `memoSinkPresent: true`,
+    `selfReferentialOnly: true` — and calls four silent nights a quiet one.
+    Measured 2026-08-27 → 08-30 on this machine: the host slept, the worker, the
+    dream and the nightly deploy all stopped together, and the first run back
+    reported a healthy no-op over the gap.
+
+    A NEGATIVE answer is not a blackout; it is a clock anomaly (a digest dated
+    in the future — a skewed host, a hand-edited `dreamedAt`, a
+    `VIRGIL_DREAM_NOW` pin behind the corpus). It is reported raw rather than
+    clamped, because clamping would launder an anomaly into a healthy 0.
+
+    Returns `(nights, reason)` with EXACTLY ONE of the two set — the fifth
+    member of the conflation class `driftChecked` (2026-08-17), the absent memo
+    sink (08-22), the empty `marker` (08-23) and `everCapturedNonDream` (08-26)
+    each closed: never let one empty value stand for two conditions. `None` with
+    `reason: "bootstrap"` means there is no prior digest to measure FROM (the
+    first dream — not a finding); `None` with `reason: "unreadable"` means a
+    digest exists but carries no parseable `dreamedAt`, i.e. the run could not
+    look. Re-deriving either from a bare `null` would read the first dream and a
+    broken artifact as the same state."""
+    if digest_path is None:
+        return None, "bootstrap"
+    raw = _digest_dreamed_at(digest_path)
+    if not raw:
+        return None, "unreadable"
+    try:
+        then = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None, "unreadable"
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    try:
+        today = date.fromisoformat(_now_iso_date()[1])
+    except ValueError:                      # pragma: no cover - pinned clock
+        return None, "unreadable"
+    return (today - then.astimezone(timezone.utc).date()).days, None
 
 
 def _advance_marker(recs: list[dict], inherited: tuple[str, str] | None,
@@ -422,11 +498,14 @@ def _memo_sink_present(memos_root: Path) -> bool:
     return memos_root.is_dir()
 
 
-def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
-    """Every memo strictly after `marker`, sorted oldest→newest.
+def _read_corpus(memos_root: Path) -> list[dict]:
+    """EVERY memo in the sink, sorted oldest→newest — the corpus, unfiltered.
 
-    An empty result is ambiguous by construction — see `_memo_sink_present`,
-    which callers publish alongside it so the two cases can be told apart."""
+    Split out from `_select` so the window question ("what is new since the
+    last dream?") and the LIFETIME question ("has this sink ever held a real
+    skill run?") are answered from ONE scan. They are different questions and
+    must be answered independently — see `_corpus_lifetime` — but the sink is
+    read once, not twice."""
     if not memos_root.is_dir():
         return []
     recs = []
@@ -438,9 +517,56 @@ def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
         except OSError:
             continue
     recs.sort(key=_memo_sort_key)
-    if marker is not None:
-        recs = [r for r in recs if _memo_sort_key(r) > marker]
     return recs
+
+
+def _corpus_lifetime(corpus: list[dict]) -> tuple[bool, str | None, int]:
+    """Has the sink EVER captured a real skill run, and when was the last one?
+
+    `selfReferentialOnly` answers the same shape of question over the WINDOW
+    since the last dream, and a window-scoped flag cannot answer a lifetime
+    question: night after night it reads as "a quiet night", never as "no real
+    skill run has ever been captured here". Those are different diagnoses with
+    different remedies, and only one of them is a reason to keep dreaming.
+
+    This is the FOURTH instance of one conflation class in the loop's own
+    scripts, after `drift`/`driftChecked` (2026-08-17), the absent memo sink
+    (2026-08-22) and the empty `marker` (2026-08-23): one value standing for
+    two conditions. It sits one level ABOVE the sink check, and it is the case
+    that check cannot see — `_memo_sink_present` asks whether the sink DIRECTORY
+    exists, and the dream's own step-8 self-reflection CREATES it. So from the
+    second night onward that flag is self-satisfied: true because the reader
+    wrote to it, not because anything captured a skill run. A loop whose only
+    writer is its own reader reports a healthy preflight forever.
+
+    Measured 2026-08-26: three memos in the sink across its whole life, all
+    `skill: dream`, all written by step 8 — while the task pipeline landed ~20
+    real editor-skill commits in the same window. The capture floor itself was
+    verified healthy that night (a real `create_card.py` writeback lands a
+    correctly-classified memo through `spawn_reflection`), so the zero is an
+    INPUT famine, not a broken capture layer. Distinguishing those two is
+    exactly what this function exists for; the previous flags cannot.
+
+    Returns `(everCapturedNonDream, lastNonDreamMemoAt, nonDreamLifetimeCount)`."""
+    non_dream = [r for r in corpus if r.get("skill") != "dream"]
+    if not non_dream:
+        return False, None, 0
+    return True, non_dream[-1].get("reflectedAt") or None, len(non_dream)
+
+
+def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
+    """Every memo strictly after `marker`, sorted oldest→newest.
+
+    An empty result is ambiguous by construction — see `_memo_sink_present`,
+    which callers publish alongside it so the two cases can be told apart."""
+    return _filter_since(_read_corpus(memos_root), marker)
+
+
+def _filter_since(corpus: list[dict], marker: tuple[str, str] | None) -> list[dict]:
+    """The window half of `_select`, over an already-read corpus."""
+    if marker is None:
+        return list(corpus)
+    return [r for r in corpus if _memo_sort_key(r) > marker]
 
 
 def _summarize(recs: list[dict]) -> dict:
@@ -491,7 +617,10 @@ def cmd_select(_argv: list[str]) -> int:
     memos_root = _memos_root()
     digests_root = _digests_root()
     marker, last_digest = _last_marker(digests_root)
-    recs = _select(memos_root, marker)
+    nights_since, nights_reason = _nights_since_last_digest(last_digest)
+    corpus = _read_corpus(memos_root)
+    recs = _filter_since(corpus, marker)
+    ever_non_dream, last_non_dream_at, non_dream_lifetime = _corpus_lifetime(corpus)
     summ = _summarize(recs)
 
     new_marker, marker_held = _advance_marker(
@@ -527,6 +656,15 @@ def cmd_select(_argv: list[str]) -> int:
         "driftReason": drift_reason,
         "selfReferentialOnly": self_referential_only,
         "nonDreamMemoCount": len(non_dream),
+        # ...and `selfReferentialOnly` is a WINDOW fact, so it reads as "a quiet
+        # night" even when the sink has NEVER held a real skill run. These three
+        # answer the lifetime question independently. `everCapturedNonDream:
+        # false` means the loop has no input at all and is dreaming purely over
+        # its own step-8 output — which `memoSinkPresent` cannot report, because
+        # step 8 is what creates the sink it checks. See `_corpus_lifetime`.
+        "everCapturedNonDream": ever_non_dream,
+        "lastNonDreamMemoAt": last_non_dream_at,
+        "nonDreamLifetimeCount": non_dream_lifetime,
         # Canonical UTC date — the branch name (step 4) keys off THIS, never a
         # separate local date.today(), so branch and digest can't split across
         # two calendar dates (dream.py digest keys off the same _now_iso_date()).
@@ -542,6 +680,15 @@ def cmd_select(_argv: list[str]) -> int:
         "lastDigest": (str(last_digest.relative_to(_digests_root()))
                        if last_digest and _is_under(last_digest, _digests_root())
                        else (str(last_digest) if last_digest else None)),
+        # ...and `lastDigest` alone cannot say whether the loop has been RUNNING.
+        # A night the host slept writes no digest at all, so the next run reads a
+        # window that looks quiet in every other field. 0 or 1 is healthy; >1 is
+        # a blackout and the night's top finding; <0 is a clock anomaly. `null`
+        # is never bare — `nightsSinceReason` says which of "no prior digest"
+        # (bootstrap) and "could not read one" (unreadable) it was.
+        # See `_nights_since_last_digest`.
+        "nightsSinceLastDigest": nights_since,
+        "nightsSinceReason": nights_reason,
         "bootstrap": marker is None,           # no prior dream → first dream
         "memoCount": len(recs),
         "marker": new_marker[0],
@@ -606,7 +753,9 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
 
     out: list[str] = ["---"]
     for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
-              "memoCount", "memoSinkPresent", "acted", "proposed", "refused",
+              "memoCount", "memoSinkPresent", "everCapturedNonDream",
+              "nightsSinceLastDigest", "nightsSinceReason",
+              "acted", "proposed", "refused",
               "bootstrap", "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
@@ -636,6 +785,57 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             f"trusting any zero here. "
             f"Left unaddressed, every following digest repeats this same "
             f"healthy-looking no-op."
+        )
+        out.append("")
+    elif not fm.get("everCapturedNonDream", True):
+        out.append(
+            f"> **⚠️ The sink exists but has NEVER captured a real skill run — "
+            f"this loop has no input.** Every memo in `{fm.get('_memosRoot', '?')}` "
+            f"is a `skill: dream` self-reflection written by step 8, so the "
+            f"dream is reading its own output and nothing else. "
+            f"`memoSinkPresent: true` cannot report this: step 8 is what "
+            f"CREATES the sink that flag checks, so from the second night on it "
+            f"is true because the reader wrote to it. "
+            f"The capture floor is automatic (`apply_response` fires "
+            f"`reflect.py` after every commit), so this is an INPUT famine, not "
+            f"a broken layer — no editor skill has been run on a real paper in "
+            f"DEV mode. Until one is, every finding here is necessarily about "
+            f"the loop's own procedure, which is `neverSelfMerge` and therefore "
+            f"cannot land unattended: the nightly spend accrues to a queue only "
+            f"a human can drain."
+        )
+        out.append("")
+    nights = fm.get("nightsSinceLastDigest", "")
+    if isinstance(nights, int) and nights > 1:
+        out.append(
+            f"> **⚠️ The loop went DARK for {nights - 1} night(s) — the last "
+            f"digest before this one is {nights} nights old.** Nothing above "
+            f"can report that: a night nobody ran writes no digest, so this run "
+            f"inherited a window that looks ordinary in every other field "
+            f"(`memoCount`, `memoSinkPresent`, `selfReferentialOnly` all read "
+            f"as a quiet night). The dream, the task worker and the nightly "
+            f"deploy are scheduled together, so the ordinary cause is the HOST — "
+            f"asleep, powered off, or the scheduler unloaded — and the other two "
+            f"stopped with it: check what did NOT happen on those dates before "
+            f"reading anything below as signal."
+        )
+        out.append("")
+    elif isinstance(nights, int) and nights < 0:
+        out.append(
+            f"> **⚠️ The previous digest is dated {-nights} day(s) in the "
+            f"FUTURE.** This is a clock anomaly, not a blackout — a skewed host, "
+            f"a hand-edited `dreamedAt`, or a `VIRGIL_DREAM_NOW` pin behind the "
+            f"corpus. Marker selection ranks by `dreamedAt`, so until it is "
+            f"settled this run's own digest may not rank above the one it read."
+        )
+        out.append("")
+    elif fm.get("nightsSinceReason") == "unreadable":
+        out.append(
+            f"> **⚠️ A previous digest exists but carries no readable "
+            f"`dreamedAt`,** so this run could not measure how long the loop has "
+            f"been running — 'no blackout' and 'could not look' are the same "
+            f"silence here. Read the file named by `lastDigest` before trusting "
+            f"the cadence."
         )
         out.append("")
     if fm.get("_rotated"):
@@ -778,6 +978,7 @@ def cmd_digest(argv: list[str]) -> int:
     memos_root = _memos_root()
     digests_root = _digests_root()
     marker, last_digest = _last_marker(digests_root)
+    nights_since, nights_reason = _nights_since_last_digest(last_digest)
     recs = _select(memos_root, marker)        # re-select → authoritative facts
     summ = _summarize(recs)
 
@@ -797,6 +998,13 @@ def cmd_digest(argv: list[str]) -> int:
         "bootstrap": bool((report.get("bootstrap") or "").strip()),
         "dreamSha": _dream_sha(),
         "memoSinkPresent": _memo_sink_present(memos_root),
+        "everCapturedNonDream": _corpus_lifetime(_read_corpus(memos_root))[0],
+        # The blackout measure, recorded in the DURABLE artifact and not only in
+        # `select` — the two other no-signal conditions each render a banner from
+        # frontmatter precisely so a run cannot forget to mention them, and a
+        # third that reached only the prompt would be the one that is forgotten.
+        "nightsSinceLastDigest": ("" if nights_since is None else nights_since),
+        "nightsSinceReason": (nights_reason or ""),
         "_memosRoot": str(memos_root),
         "_date": date_str,
     }

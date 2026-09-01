@@ -17,10 +17,20 @@ description: |
 
 <!-- CENTRAL DESIGN PRINCIPLE — read first, honor on every skill edit this pass.
      Verbatim from editor/skills/_dev-loop-principle.md (SSOT). The editor bundle
-     does not transclude, so this is inlined; the drift guard
-     editor/skills/__tests__/dev-loop-principle.test.ts keeps it in sync — edit
-     the SSOT, not this copy. -->
+     does not transclude, so the sentence AND its refinements are inlined here;
+     the drift guard editor/skills/__tests__/dev-loop-principle.test.ts keeps
+     every one of them in sync byte-for-byte — edit the SSOT, not this copy. -->
 > **(CENTRAL DESIGN PRINCIPLE)** I want unified, deep, architectural solutions that capture a range of related phenomena--- avoid superficial, surgical patches.  Whenever reasonable, consider the deepest possible solution to the problem that will also improve the app.
+
+Refinement (learned): "deep" ≠ "broadest blast radius." Match the fix to
+the *true* scope of the phenomenon; verify a phenomenon is actually
+general before generalizing the fix.
+
+Refinement (Gabriel, 2026-08-31): a QUEUE collision is a queue fact, never
+a scope fact — what happens to be queued alongside must not shrink a fix.
+Remove a collision **by construction** (relocate the hunk to a seam the
+other change doesn't touch); where that is genuinely impossible, the
+impossibility is itself a finding to route — never a reason to go shallow.
 
 Every fix this pass ripples into the skill set: prefer the **deepest unified
 change that retires the whole pattern class**, not a surgical per-skill patch —
@@ -104,8 +114,12 @@ shared checkout — the human drives it live, and an *interrupted* prior run can
 leave work here. (Since 2026-08-18 a run that reaches step 6 never leaves a
 branch standing: it merges, or exports a patch and deletes. So a surviving
 `dream/*` branch means a run that never finished — reconcile with it, don't
-assume it was parked on purpose.) This was hard-won lore across several nights;
-it is now an explicit step.
+assume it was parked on purpose.) **That same change moved the durable
+cross-night artifact from a BRANCH to a PATCH**, so reconcile with *both*: a
+surviving branch is now the rare case, an exported patch the ordinary one.
+This was hard-won lore across several nights; it is now an explicit step.
+
+- **Reconcile with the exported PATCHES first — they are the ordinary artifact now.** Step 6 exports every unlanded proposal to `~/virgil-tasks/attachments/<date>-dream-<slug>.patch` and deletes its branch, so the loop's in-flight work lives *there*, not in `git branch`. Enumerate them (`ls ~/virgil-tasks/attachments/*dream*.patch`) and ask each one three questions **before** you author anything. (1) **Has it already landed?** `git apply --check <patch>` — a patch that no longer applies is landed or superseded, so confirm against the tree (read the symbol it introduced) and say so in the digest, or a dead pointer gets reconciled against every night forever. Measured 2026-08-25: two of the three patches on file were already live and nothing prunes them. (2) **Does a still-live patch already carry tonight's fix?** Re-authoring already-ruled work is the costliest way to spend a night — step 2's stale-premise rule, one artifact class over. (3) **Would tonight's change COLLIDE with a still-live one?** A collision claim is a claim about **every file both patches touch**: enumerate that intersection (`git apply --stat`) rather than generalising from one file's hunk numbers, and settle it by running `git apply --check` in both orders in a throwaway worktree. Never assert non-collision in a *permanent* message — a commit, a task note — before you have run the check. (2026-08-23 near-miss: a claim true of `dream.py` and false of the test file both patches happened to append to at the same seam.) Where a collision is real, prefer removing it **by construction** — relocate your hunk to a seam the other patch does not touch — over documenting a resolution order; where it cannot be removed, that *is* the night's finding: surface it and route the choice to the human rather than resolving already-ruled work blind.
 
 - **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
 - **Composing onto a prior branch inherits its BASE — refresh it before you reason.** §4 branches a fresh dream off `main`, so it reads current code; the bullet above composes onto a *prior* dream branch, whose base is whatever `main` was on that earlier night — and nothing ever advances it, so a stack's staleness compounds one night per night. (Measured 2026-08-11: the 08-03 → 08-09 → 08-10 stack sat **227 commits** behind `main`, eight days out.) The visible cost is merge risk, which git will at least tell you about. The dangerous one is silent: the dream **justifies** a change by reading code `main` has already moved — on 2026-08-10 that nearly shipped a regex pinned to a builder constant `main` had already reshaped, caught only because that run happened to add a canary. So before authoring on an inherited branch, merge `main` into it and re-run the editor suite; then read every premise — every constant, signature and call site your reasoning leans on — from the refreshed tree, never from the inherited one. If the merge conflicts, that *is* the night's finding: surface it in the digest and stop, rather than resolving another run's work blind.
@@ -157,6 +171,59 @@ machine's first day, a broken capture layer on its thirtieth. Don't guess which:
 a fresh clone, a wrong `VIRGIL_REPO_ROOT`, or a stale `VIRGIL_DEV_HOME` pin all
 produce it. Record the fact and the calendar in the digest and let the human
 rule; the corpus is not yours to reconstruct.
+
+**And `memoSinkPresent: true` is not evidence that anything FEEDS the sink.**
+Step 8 writes a self-reflection into it, so from the second night onward that
+flag is *self-satisfied* — true because the reader wrote there, not because a
+skill run was captured. `selfReferentialOnly` doesn't close the gap either: it
+is scoped to the WINDOW since the last dream, so it reads as *"a quiet night"*
+however many years the sink has gone without a real memo. Read
+**`everCapturedNonDream`** (with `lastNonDreamMemoAt` / `nonDreamLifetimeCount`)
+for the lifetime question — the fourth member of the conflation class
+`driftChecked`, `memoSinkPresent` and the empty `marker` each closed, one level
+above the sink check.
+
+`false` is the strongest no-signal state there is, and it outranks every finding
+in the memos: the loop has no input, so every pattern you can detect is
+necessarily about the loop's OWN procedure — which is `neverSelfMerge`, cannot
+land unattended, and accrues to a queue only the human drains. Say so in the
+digest (the renderer emits the banner from the same flag) and prefer routing a
+ruling over authoring another self-edit. It does **not** mean capture is broken:
+the floor is automatic (`apply_response` fires `reflect.py` after every commit),
+so the ordinary cause is simply that no editor skill has been run on a real
+paper in DEV mode. Verify before you diagnose — one `create_card.py` write
+against a scratch copy of a paper, with `VIRGIL_DEV_MEMOS_DIR` pinned AWAY from
+the real sink so the probe cannot pollute tomorrow's corpus, settles which it is.
+
+**And every flag above is a fact about a night that RAN.** The one failure none
+of them can see is a night that DIDN'T: a dark night writes no digest, so the
+next run that does happen inherits a perfectly ordinary window — `memoCount: 0`,
+`memoSinkPresent: true`, `selfReferentialOnly: true`, `lastDigest` present — and
+reports a healthy quiet night over the gap. Read
+**`nightsSinceLastDigest`**: **0** (a second run today) or **1** (last night, as
+scheduled) is healthy; **anything above 1 is a finding and outranks the memos**,
+because the nights it names produced no output to reason about. Measured
+2026-08-27 → 08-30 on this machine: the host slept, and the first run back
+called four dark nights quiet.
+
+Treat it as a fact about the HOST, not about the dream: the dream, the task
+worker and the nightly `virgil-update` deploy are scheduled together, so they
+stop together — check what else did not happen on those dates (an empty
+`~/virgil-tasks/log.md` stretch, no deploy) before reading anything else as
+signal, and record the span in the digest so the human can rule on the cause.
+The digest renders its own banner from the same field, so this is a reading, not
+a re-derivation.
+
+A **negative** value is not a blackout but a clock anomaly — a digest dated in
+the future (a skewed host, a hand-edited `dreamedAt`, a `VIRGIL_DREAM_NOW` pin
+behind the corpus). Marker selection ranks by `dreamedAt`, so settle it before
+trusting tonight's own digest to rank above the one it read.
+
+And `null` is never bare here — the same conflation rule, a fifth time.
+**`nightsSinceReason`** separates `bootstrap` (no prior digest exists, so there
+is nothing to measure from — not a finding) from `unreadable` (a digest exists
+but carries no parseable `dreamedAt`, so the run *could not look*). Read the
+reason; never read a bare `null` as "the first dream."
 
 *Migration note (task 431, 2026-08-23):* the loop's memory moved from the
 machine-global `~/.virgil-dev` — which the dev-machine move left behind, zeroing
@@ -379,9 +446,27 @@ inherited branch you composed onto):
    note (below), remove the worktree AND delete the branch. Record
    **EXPORTED** with the patch path.
 4. **Any gate red** → the branch must **not** survive the run, for the same
-   reason. Export the diff, file an UNMINTED work task into
-   `~/virgil-tasks/inbox/` naming the patch, the failing gate and its output
-   tail — then remove the worktree AND delete the branch. Record **FILED**.
+   reason. But **attribute the redness before you file it**: a red gate is
+   evidence about the TREE, not about your change, until you have separated
+   the two — re-run the failing legs in the primary checkout on `main`, with
+   your change absent. This rule's own filing template ("naming the patch,
+   the failing gate") writes a *false* task when the failure was already
+   there: it points a worker at your diff for a break somebody else landed.
+   The same don't-misattribute rung step 1 states about drift and step 2
+   about a stale premise, one artifact over. So:
+   - **Yours** → export the diff, file an UNMINTED work task into
+     `~/virgil-tasks/inbox/` naming the patch, the failing gate and its output
+     tail — then remove the worktree AND delete the branch. Record **FILED**.
+   - **Pre-existing on `main`** → your branch is disposed of by whichever of
+     rules 2/3 its own state calls for (a red `main` is not a reason to merge,
+     but neither is it a reason to file against you), and the redness is its
+     OWN work task — naming the commit that introduced it, not your patch.
+     Never fold an unrelated repair onto a dream branch: if that branch is
+     `neverSelfMerge`, doing so buries a two-line fix behind a human ruling.
+     Record it in the digest's `bootstrap` line — the dream is the only thing
+     that runs the full gate sweep unattended every night, so it is in
+     practice the tree's nightly health check whether or not it was designed
+     as one.
 
 **Export recipe** (rules 3, 4, and the never-self-merge clause below — one
 shape, so no path can be half-followed):
@@ -400,6 +485,42 @@ The inbox note (or DECISION task) carries the patch path, the one-line
 `git apply` command that lands it, the gate results, and **why it did not
 land** (dirty tree / red gate / the loop's own procedure). `--check` before the
 delete is not optional: after `branch -D` the patch is the only copy.
+
+**Prune the patches that have LANDED — the mirror rule, same step.** The two
+artifacts this step disposes of have *opposite* survival semantics, and stating
+both here is what keeps either from being half-followed:
+
+- a **branch** that survives this run has already merged (rule 3 — the blind
+  nightly sweep merges whatever is left standing), so a branch is deleted
+  because keeping it would land it;
+- a **patch** that survives this run has *not* landed (step 0 reconciles against
+  every survivor, every night, forever), so a patch is deleted only once it
+  provably HAS — and keeping a dead one costs a real night's attention. Measured
+  2026-08-25: two of the three patches on file were already live and nothing
+  pruned them; the same question was re-asked three nights running.
+
+So, for each `~/virgil-tasks/attachments/*dream*.patch`, delete it **only on
+PROOF of landing** — both conjuncts, never either alone:
+
+```bash
+# (1) it no longer applies …
+git -C "$VIRGIL_REPO_ROOT" apply --check <patch>     # must FAIL
+# (2) …AND the symbol it introduced is present in the tree
+git -C "$VIRGIL_REPO_ROOT" grep -n '<symbol the patch added>' -- <the file it touched>
+rm <patch>          # only when (1) failed AND (2) found it
+```
+
+`--check` failing is **not** proof on its own: a patch also stops applying when
+`main` moves *under* an unlanded one, which is the ordinary state of a patch
+that has been on file for a week. That is the whole reason for the second
+conjunct — read the symbol the patch introduced (a new function name, a new
+frontmatter key, a distinctive sentence) out of the tree it claims to be in.
+**Unprovable ⇒ KEEP**, and say so in the digest: this step's own export recipe
+deletes the branch on the strength of the patch being the only remaining copy,
+so a wrongly-pruned patch destroys the work outright, whereas a wrongly-kept one
+costs one more reconciliation. Record every deletion in the digest (patch name +
+the symbol that proved it), so a pruning decision is auditable rather than a
+file quietly disappearing.
 
 **Never self-merge — route to the human instead** (the "key decisions" half of
 the autonomy ruling). **Ask the guard; never eyeball the membership:**

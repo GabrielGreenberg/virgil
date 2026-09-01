@@ -21,10 +21,20 @@ description: |
 
 <!-- CENTRAL DESIGN PRINCIPLE — the lens every reflection is written through.
      Verbatim from editor/skills/_dev-loop-principle.md (SSOT). The editor bundle
-     does not transclude, so this is inlined; the drift guard
-     editor/skills/__tests__/dev-loop-principle.test.ts keeps it in sync — edit
-     the SSOT, not this copy. -->
+     does not transclude, so the sentence AND its refinements are inlined here;
+     the drift guard editor/skills/__tests__/dev-loop-principle.test.ts keeps
+     every one of them in sync byte-for-byte — edit the SSOT, not this copy. -->
 > **(CENTRAL DESIGN PRINCIPLE)** I want unified, deep, architectural solutions that capture a range of related phenomena--- avoid superficial, surgical patches.  Whenever reasonable, consider the deepest possible solution to the problem that will also improve the app.
+
+Refinement (learned): "deep" ≠ "broadest blast radius." Match the fix to
+the *true* scope of the phenomenon; verify a phenomenon is actually
+general before generalizing the fix.
+
+Refinement (Gabriel, 2026-08-31): a QUEUE collision is a queue fact, never
+a scope fact — what happens to be queued alongside must not shrink a fix.
+Remove a collision **by construction** (relocate the hunk to a seam the
+other change doesn't touch); where that is genuinely impossible, the
+impossibility is itself a finding to route — never a reason to go shallow.
 
 Capture friction so the night pass can act on the *class*, not the one-off:
 when you note a rough edge, note the **pattern** behind it (which skills, which

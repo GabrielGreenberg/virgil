@@ -573,5 +573,77 @@ check(LENS_RESULTS <= ALL_RESULTS, "every result-lens key is a real apply_respon
 check(LENS_RESULTS <= set(RESULT_TIER), "every result-lens key has a reflect tier floor")
 
 
+# ── an empty marker must not make a whole digest INVISIBLE ───────────────────
+# The zero-memo bootstrap night writes `marker:` blank (_advance_marker's
+# fallback).  _last_marker used to `continue` past such a digest entirely, so it
+# lost the digest PATH along with the marker -- and that path is what becomes
+# _advance_marker's `prior_digest_at`, the argument that ARMS the trailing
+# self-memo hold.  An empty marker therefore inverted the guard's stated failure
+# direction from "redundant re-read" to "lose a reflection outright".
+print("\n=== an empty marker does not hide the digest (hold guard stays armed) ===")
+
+
+def _write_digest(digests, name, dreamed_at, marker=""):
+    Path(digests, name).write_text(
+        "---\n"
+        f"dreamedAt: {dreamed_at}\n"
+        f"marker: {marker}\n"
+        "markerMemo: \n"
+        "memoCount: 0\n"
+        "---\n\n# Dream digest\n", encoding="utf-8")
+
+
+def _write_memo(memos, day, name, skill, reflected_at, tier="noted"):
+    d = Path(memos, day)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(
+        "---\n"
+        f"skill: {skill}\ntaskId: -\nkind: \u2014\nstatus: \u2014\nresult: \n"
+        f"tier: {tier}\nfixNow: false\nparagraphIds: \n"
+        f"reflectedAt: {reflected_at}\n"
+        "---\n\n## What went wrong\nbody\n", encoding="utf-8")
+
+
+def _emptymarker_tree(marker=""):
+    mem = tempfile.mkdtemp(prefix="emk-m-")
+    dig = tempfile.mkdtemp(prefix="emk-d-")
+    _write_memo(mem, "2026-08-20", "10-00-00-draft-footnote.md",
+                "draft-footnote", "2026-08-20T10:00:00.000Z")
+    _write_digest(dig, "2026-08-21.md", "2026-08-21T05:00:00.000Z", marker=marker)
+    # a trailing step-8 self-reflection, written AFTER that digest ran
+    _write_memo(mem, "2026-08-21", "05-30-00-dream.md",
+                "dream", "2026-08-21T05:30:00.000Z", tier="flagged")
+    return mem, dig
+
+
+mem, dig = _emptymarker_tree(marker="")
+sel = select(mem, dig, now="2026-08-22T23:00:00")
+check(sel["lastDigest"] is not None,
+      "a digest that recorded NO marker is still seen as a prior digest")
+check(sel["markerHeld"] == ["2026-08-21/05-30-00-dream.md"],
+      "hold guard stays ARMED after an empty-marker night (the self-memo is held back)")
+check(sel["marker"] != "2026-08-21T05:30:00.000Z",
+      "the marker does NOT advance onto the unread self-reflection")
+check(sel["bootstrap"] is True,
+      "no high-water mark anywhere → still bootstrap (read every memo)")
+
+# control: the same tree with a marker present behaved correctly before and must
+# keep behaving correctly -- a non-regression pin, not a defect leg.
+mem, dig = _emptymarker_tree(marker="2026-08-19T00:00:00.000Z")
+sel = select(mem, dig, now="2026-08-22T23:00:00")
+check(sel["bootstrap"] is False, "control: a recorded marker still means not-bootstrap")
+check(sel["markerHeld"] == ["2026-08-21/05-30-00-dream.md"],
+      "control: hold guard armed when the marker is present")
+
+# control: a genuinely first dream -- no digest at all -- must still read as one.
+mem2 = tempfile.mkdtemp(prefix="emk-m2-")
+dig2 = tempfile.mkdtemp(prefix="emk-d2-")
+_write_memo(mem2, "2026-08-20", "10-00-00-draft-footnote.md",
+            "draft-footnote", "2026-08-20T10:00:00.000Z")
+sel = select(mem2, dig2, now="2026-08-22T23:00:00")
+check(sel["lastDigest"] is None and sel["bootstrap"] is True,
+      "control: no digest at all → genuinely bootstrap, no phantom prior digest")
+
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)
