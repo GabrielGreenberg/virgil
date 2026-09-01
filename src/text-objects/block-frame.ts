@@ -19,8 +19,8 @@
  * their span from `contentWidth`, so the drop bar lines up with the grab
  * handles (and the block content) by construction rather than via an
  * independent `getBoundingClientRect().left` measurement (the §4 bug). The drop
- * path reads only `contentLeft` / `contentWidth` (never `depth`), so it calls
- * the resolver without a viewport cache (see {@link resolveBlockFrame}).
+ * path reads only `contentLeft` / `contentWidth`, so it can take the lean
+ * {@link resolveContentEdges} door directly (see {@link resolveBlockFrame}).
  *
  * Chip 4b wires the FIGURE CHROME onto the same frame: the controls that sit
  * BESIDE a figure/graphics block anchor their "beside" left to the figure box's
@@ -43,8 +43,6 @@
  * doc size.
  */
 
-import type { Editor } from "@tiptap/react";
-import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import {
   capBandCenterOffset,
   measureTextWidth,
@@ -89,13 +87,6 @@ export interface BlockFrame {
    * independent of font size / line-height.
    */
   opticalCenterY: number;
-  /**
-   * Nesting depth = count of ancestor elements carrying `data-uuid`,
-   * bounded by the editor root. O(depth). Exposed for future margin chrome
-   * (the chip-2 horizontal axis steps via the markerless-container
-   * track-width below, not via depth).
-   */
-  depth: number;
   /**
    * The block's text content-left in viewport coords (= `firstLineRect.left`).
    * For a markerless block (paragraph / heading / blockquote / codeBlock /
@@ -348,18 +339,6 @@ export function isTopRowOf(container: HTMLElement, item: HTMLElement): boolean {
  */
 function firstLineRectOf(target: HTMLElement): DOMRect {
   return target.getBoundingClientRect();
-}
-
-/** Count ancestor elements carrying `data-uuid`, stopping at the editor
- *  root (exclusive). O(depth). */
-function countUuidAncestors(el: HTMLElement, root: HTMLElement | null): number {
-  let depth = 0;
-  let cur = el.parentElement;
-  while (cur && cur !== root) {
-    if (cur.hasAttribute("data-uuid")) depth++;
-    cur = cur.parentElement;
-  }
-  return depth;
 }
 
 /** Fallback px for the em margin tokens when the custom property is missing
@@ -652,8 +631,13 @@ function parentMarkerColumnHost(el: HTMLElement): HTMLElement | null {
 /**
  * MEASURED marker geometry for a block, per kind (see
  * {@link BlockFrame.markerLeft} / {@link BlockFrame.inkLeft}). `trackWidthPx` is
- * this block's resolved track-width, consumed by the markerless-container branch
- * AND as the left-of-content fallback for the example marker kinds (#49).
+ * this block's resolved track-width, and since task 487 its ONE role is the
+ * left-of-content FALLBACK for the two example marker kinds (#49) — the position
+ * the `(n)` / `a.` column occupies when that chrome cannot be measured. It was
+ * also, until 487, the step the markerless-container branch took off its first
+ * item's anchor; that branch reads the container's own border-box left and the
+ * level-above's column ({@link BlockFrame.columnRight}) instead, and does not
+ * consume this argument at all.
  *
  * Exported for the #49 fallback-direction regression test (it asserts that an
  * example block/item whose marker chrome is missing anchors LEFT of content,
@@ -733,8 +717,8 @@ export function resolveMarkerGeometry(
  * `resolveBlockFrame` COMPOSES it (so a full frame and a direct
  * `resolveContentEdges` call can never diverge), and affordances that need only
  * the horizontal extent — the drag drop indicator (between-blocks + expex bars)
- * and the figure chrome — call it directly to skip the marker / optical-center /
- * depth work they'd otherwise compute and discard. Pure DOM, O(1)/O(wrapper-
+ * and the figure chrome — call it directly to skip the marker / optical-center
+ * work they'd otherwise compute and discard. Pure DOM, O(1)/O(wrapper-
  * descent), no doc walk; safe on the throttled-mousemove drop path.
  */
 export interface ContentEdges {
@@ -768,20 +752,18 @@ export function resolveContentEdges(el: HTMLElement): ContentEdges {
  * Resolve the canonical {@link BlockFrame} for a block's DOM element. Pure
  * DOM + ancestry; safe on the hover/scroll/RAF placement path.
  *
- * `editor` / `cache` bound the depth walk to the editor root. `cache` is
- * OPTIONAL: it supplies `editorEl` only as the depth-walk root, and
- * `cache.editorEl` IS `editor.view.dom` (editor-geometry/viewport-frame.ts),
- * so omitting it changes nothing but `depth`'s root fallback (identical element).
- * The drop indicator (chip 4a) reads only `contentLeft` / `contentWidth` — not
- * `depth` — and the drop hit-test holds no viewport cache, so it calls this
- * without one. The horizontal fields resolve from `el` + ancestry + the
- * `target`'s computed style alone.
+ * Takes the ELEMENT and nothing else. It used to take an `editor` and an
+ * optional viewport `cache` as well, and both existed for one reason: to bound
+ * an ancestor walk that computed a `depth` field. That field had no reader
+ * anywhere in either silo, and the "future margin chrome" its docstring
+ * reserved it for was decided otherwise by task 487 (a markerless container
+ * OCCUPIES the level-above's marker column — a STRUCTURAL question, answered by
+ * {@link BlockFrame.columnRight}, never by counting levels). Walk, field and
+ * both parameters retired together, so this resolve costs one less ancestor
+ * traversal per hover/scroll/RAF frame. Every remaining field resolves from
+ * `el` + ancestry + the `target`'s computed style alone.
  */
-export function resolveBlockFrame(
-  el: HTMLElement,
-  editor: Editor,
-  cache?: EditorViewportFrame | null,
-): BlockFrame {
+export function resolveBlockFrame(el: HTMLElement): BlockFrame {
   // ---- Horizontal content edges (chips 2 / 4a / 4b) ----
   // Composed from the shared `resolveContentEdges` primitive so a full frame
   // and a lean direct `resolveContentEdges` call (drop indicator / figure
@@ -803,9 +785,6 @@ export function resolveBlockFrame(
   // `measureFontMetrics` read) so this optical center, the marginalia markers,
   // and the selection grab handle can never drift from a copied expression.
   const opticalCenterY = firstLineRect.top + capBandCenterOffset(target, cs);
-  const root: HTMLElement | null =
-    cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
-  const depth = countUuidAncestors(el, root);
   // Resolve the em margin tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
@@ -848,7 +827,6 @@ export function resolveBlockFrame(
     target,
     firstLineRect,
     opticalCenterY,
-    depth,
     contentLeft,
     contentWidth,
     contentRight,

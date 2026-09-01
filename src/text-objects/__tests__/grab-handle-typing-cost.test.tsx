@@ -364,8 +364,11 @@ describe("per-placement read cost for a LIST hover (task 336)", () => {
 
     // The `<li>`'s rect is read three times across the pass, each for a
     // different question: its own placement's visibility bail, its own
-    // bullet-band anchor, and its container's (the container steps one
-    // track-width left of its first child's band). Pre-336 it was FOUR — the
+    // bullet-band anchor, and its container's INK boundary (post-487 the list
+    // takes its own border-box left as the marker reference and reads the
+    // child's rect only for `inkLeft` — the shared row's marker band, the line
+    // neither handle may cross; pre-487 that same read served the retired
+    // track-width step off the child's band). Pre-336 it was FOUR — the
     // container arm read it for `childLeft` and then again inside
     // `bulletBandAnchor`, which it reached through a `closest("ul, ol")` walk
     // back to the very element it was called from.
