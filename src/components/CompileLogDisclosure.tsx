@@ -51,7 +51,11 @@ export default function CompileLogDisclosure({
         type="button"
         onClick={() => hasContent && setOpen((v) => !v)}
         disabled={!hasContent && !isCompiling}
-        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-medium text-ink-subtle uppercase tracking-wide hover-on-light text-left disabled:cursor-default disabled:hover:bg-transparent"
+        /* `disabled:hover:bg-transparent` used to sit here and did nothing:
+           `.hover-on-light` is UNLAYERED, so it beat the utility and this
+           header — disabled whenever there is no log — painted its hover fill
+           anyway. The utility now owns the disabled state itself (task 509). */
+        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-medium text-ink-subtle uppercase tracking-wide hover-on-light text-left disabled:cursor-default"
       >
         <Chevron open={open} />
         <span>Compile log</span>

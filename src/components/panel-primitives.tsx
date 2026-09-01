@@ -2248,7 +2248,7 @@ export function PanelClose() {
 export function CardDragHandle() {
   return (
     <div
-      className="card-drag-handle cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+      className="card-drag-handle cursor-grab p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
       data-hint="Drag to pop out"
       data-hint-pos="above"
       aria-hidden="true"

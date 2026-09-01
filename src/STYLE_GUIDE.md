@@ -815,6 +815,30 @@ a finding:
 - `ItemMenu`'s panel-header trigger (`align="left"`) — bare button by
   design, no rounded lozenge.
 
+**An icon button states its INK through an `iconbtn-` VARIANT, never a
+`text-*` utility.** `globals.css` is UNLAYERED and `.iconbtn-*` writes `color`
+at BOTH rest (`--ink-muted`) and hover (`--ink-body`), so on an element carrying
+one of the four sizes every Tailwind `text-*` / `hover:text-*` paints nothing,
+whatever the class order — it is dead where it agrees with the default and a
+silent bug where it does not. The vocabulary:
+
+| Variant | Ink |
+|---|---|
+| *(none)* | `--ink-muted` at rest, `--ink-body` on hover — the default |
+| `iconbtn-meta` | `var(--muted)` at rest (the ratified 10px META tier), default hover |
+| `iconbtn-danger` | `--danger` at rest AND hover, on `--danger-soft` — a control that reads destructive at a glance (a card's trash button) |
+| `iconbtn-danger-hover` | default rest, `--danger` on `--danger-soft` when you reach for it — a per-row remove X |
+| `iconbtn-toggle` | the accent-on-tint "this mode is on" state, at `aria-pressed="true"` |
+| `iconbtn-on-dark` | the low-alpha hover fill for a button on a tinted card header (currently unused — see the census) |
+
+**Naming is a rule, not a habit:** `iconbtn-<role>` states the ink at REST (and
+owns its own hover); `iconbtn-<role>-hover` states the HOVER ink only. A rest-ink
+variant is spelled `:not(:hover)` so it cannot win the hover state on a
+source-order tie. CI reads all of this:
+`color-token-consumers.test.ts` → "an icon button states its ink through an
+`iconbtn-` VARIANT" (allowlist for the utility: EMPTY; a variant with no caller
+needs a stated reason).
+
 **A sanctioned hand-roll still owes the two things `iconbtn-*` was
 carrying for it**: the accessible name (`iconHint`, see **Hints**) and
 the focus indicator (`.focus-ring`, see **Interaction**). Those are not
@@ -863,6 +887,13 @@ Five states. One implementation each.
   **broader** — `transition-all`, which also carries transform and filter
   (`<Button>`'s `BUTTON_BASE`). Such a site keeps its hand-rolled hover, on the
   SSOT's own token, and says so in place with a `hover-on-light-exempt:` marker.
+  **A DISABLED control paints no hover fill** — the same unlayered fact one
+  state over: `disabled:hover:bg-transparent` is a layered utility and loses, so
+  the two hover classes model `[disabled]` / `[aria-disabled="true"]` themselves
+  (their `iconbtn-*` / `.topbarbtn` siblings already did, via `pointer-events:
+  none`; these kill the FILL instead, because they are worn by non-button
+  elements whose cursor and tooltip must survive). Never re-spell it at a call
+  site.
   Hover **never changes elevation** — no `hover:shadow-*`, no lift. Shadow
   here is a property of the surface tier (pods/cards carry their ambient
   shadow, floats carry `--shadow-float`, and a DRAG GHOST — the translucent

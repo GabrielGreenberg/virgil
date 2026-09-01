@@ -531,7 +531,7 @@ export function StripButton({
       }}
       // `touch-none` (touch-action: none) stops the browser pre-empting the drag
       // as scroll in the first place, so `pointercancel` fires far less often.
-      className="iconbtn-md iconbtn-toggle relative select-none touch-none"
+      className="iconbtn-md iconbtn-toggle relative touch-none"
       aria-pressed={active}
       // `data-hint` drives the CSS tooltip; `aria-label` gives the icon-only
       // button an accessible name (the SVG carries no title/text of its own).

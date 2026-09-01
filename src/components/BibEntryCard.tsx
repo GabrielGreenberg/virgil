@@ -549,7 +549,13 @@ export default function BibEntryCard({
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
-                        className="iconbtn-sm text-ink-muted hover:text-danger flex-shrink-0"
+                        /* The X is muted until you reach for it, so the ink is the
+                           `-hover` variant: `.iconbtn-*` writes `color` at rest AND
+                           hover from an UNLAYERED rule, so the `hover:text-danger`
+                           that used to sit here painted nothing (task 509). The
+                           dropped `text-ink-muted` / `flex-shrink-0` were the base
+                           values restated. */
+                        className="iconbtn-sm iconbtn-danger-hover"
                         {...iconHint({ label: `Remove field ${field}`, hint: `Remove ${field}` })}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

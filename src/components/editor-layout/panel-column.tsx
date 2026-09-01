@@ -596,7 +596,7 @@ export function PanelColumn({
         </div>
       )}
       <div
-        className={`drag-gap drag-gap-v band-grip shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
         {...gutterHandle}
         style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
       />
