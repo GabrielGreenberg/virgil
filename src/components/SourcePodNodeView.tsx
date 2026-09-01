@@ -8,6 +8,7 @@ import { EditorState } from "@codemirror/state";
 import ConfirmDialog from "./ConfirmDialog";
 import { iconHint } from "@/components/Hint";
 import type { SourcePodDerive } from "./source-pod-derive";
+import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -462,7 +463,7 @@ export default function SourcePodNodeView({
               EditorView.lineWrapping,
               // Defense-in-depth: also suppress browser spell-check so plain
               // words inside `{…}` arguments don't get wavy underlines.
-              EditorView.contentAttributes.of({ spellcheck: "false" }),
+              EditorView.contentAttributes.of(NEVER_SPELLCHECK_ATTRS),
               EditorState.tabSize.of(2),
             ]}
             basicSetup={{

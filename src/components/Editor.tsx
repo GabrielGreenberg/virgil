@@ -66,6 +66,7 @@ import type { BlockAbsorbedHandlerRef } from "@/lib/tiptap/linked-anchor";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
+import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -581,8 +582,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "doc-prose-leadin prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // Grammarly's extension is a per-keystroke O(doc) DOM scanner for
         // users who have it installed; these attributes are its documented
-        // opt-out and inert for everyone else. Native spellcheck stays ON
-        // (prose editor; A/B-measured no per-keystroke cost).
+        // opt-out and inert for everyone else. Native spellcheck is NOT
+        // decided here any more (task 517): it is one inherited `spellcheck`
+        // attribute on <body>, written from the `checkSpelling` view pref by
+        // `spellcheck-policy.ts`, so this surface and every card body / float
+        // follow one switch. Default ON (prose editor; A/B-measured no
+        // per-keystroke cost).
         "data-gramm": "false",
         "data-gramm_editor": "false",
         "data-enable-grammarly": "false",
@@ -592,7 +597,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // inherits from the main editor). Suppress the spellcheck
         // underlines that would otherwise appear under prose in
         // read-only docs.
-        ...(editable ? {} : { spellcheck: "false" }),
+        // …and this stays a rule of its OWN, above the preference: a
+        // read-only document is never squiggled whatever the pref says. A
+        // descendant `false` wins over the inherited value, so the two
+        // compose without either knowing about the other.
+        ...(editable ? {} : NEVER_SPELLCHECK_ATTRS),
       },
       handleDOMEvents: {
         // Every canonical text move is mousedown-driven, not HTML5 drag:

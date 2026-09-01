@@ -33,6 +33,7 @@ import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
+import { useNativeSpellcheck } from "@/lib/spellcheck-policy";
 import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import {
@@ -939,6 +940,14 @@ export default function EditorLayout() {
   // (default off: retint/brighten stays, colored edge is gone), reflected to a
   // body class so the CSS gate reaches every card surface (docked + omni +
   // portaled floats), exactly like `showCardTitles`.
+  // Native (browser) spellcheck — the ONE mount of the policy. The write is a
+  // single inherited `spellcheck` attribute on <body>, so it reaches every
+  // prose surface at once (main editor, card bodies, floats, example cards)
+  // without a prop threaded into each one's `editorProps.attributes`, and the
+  // deliberate opt-outs stay opted out because a descendant `false` wins over
+  // an inherited value. See `src/lib/spellcheck-policy.ts`.
+  useNativeSpellcheck(prefs.checkSpelling);
+
   const cardOutlineChrome = prefs.cardOutlineChrome;
   // Reflect the opt-in pref onto <body>: the outline rules require
   // `.card-outline-chrome`, so the default (class absent) is the no-outline

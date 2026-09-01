@@ -46,6 +46,7 @@ import { CitekeyPicker } from "./CitekeyPicker";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { iconHint } from "@/components/Hint";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1045,7 +1046,7 @@ export function CitationCard({
                     }
                   }}
                   onBlur={commitCodeDraft}
-                  spellCheck={false}
+                  {...NEVER_SPELLCHECK_PROPS}
                   density="dense"
                   className="text-[10px] card-mono px-1 py-0 flex-1 min-w-0"
                 />

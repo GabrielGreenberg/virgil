@@ -8,6 +8,7 @@ import { isHistoryTransaction } from "@tiptap/pm/history";
 import { commitSlashCommand } from "./commands";
 import {
   CARRIER_MARK_NAMES,
+  LATEX_COMMAND_MARK,
   LATEX_COMMENT_TAIL_MARK,
   LATEX_VERBATIM_MARK,
   carrierRowFor,
@@ -527,7 +528,10 @@ export const latexCarrierPluginKey = new PluginKey("latexCommandCarrier");
 
 /** Grey-monospace styling for unhandled LaTeX commands, plus Enter-to-execute. */
 export const LatexCommandMark = Mark.create({
-  name: "latexCommand",
+  // The name lives in `latex-lexer.ts` beside its two siblings, so the
+  // tiptap-free layers (the parser, the serializer, the prose index) can name
+  // this carrier without a literal of their own (task 517).
+  name: LATEX_COMMAND_MARK,
 
   // NOT inclusive (task 360). ProseMirror's default is `true`, so text typed at
   // the trailing edge of a marked run INHERITED the carrier — which is why

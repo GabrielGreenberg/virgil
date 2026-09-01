@@ -32,6 +32,7 @@ import { Kbd } from "./Kbd";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 export type NodeEditFamily = "math" | "figure";
 
@@ -222,7 +223,7 @@ export default function NodeEditPopover({
           ref={inputRef}
           className="math-popover-input"
           value={value}
-          spellCheck={false}
+          {...NEVER_SPELLCHECK_PROPS}
           rows={isDisplay ? 4 : 1}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onInputKeyDown}
@@ -268,7 +269,7 @@ export default function NodeEditPopover({
         ref={inputRef}
         className="figure-popover-input"
         value={value}
-        spellCheck={false}
+        {...NEVER_SPELLCHECK_PROPS}
         rows={isFigure ? 8 : 2}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onInputKeyDown}

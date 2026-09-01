@@ -35,6 +35,11 @@ import {
   buildUuidPosMap,
 } from "@/lib/search-sources";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
+import {
+  buildProseIndex,
+  proseOffsetToPos,
+  spanAtOffset,
+} from "@/lib/prose-index";
 import { SCOPE_DISPATCH, UUID_POS_SCOPES } from "@/panels/Search/scope-dispatch";
 import {
   resolveLiveBlockRange,
@@ -340,163 +345,20 @@ export function breadcrumbAt(
 }
 
 /**
- * A textblock's span in the joined-document-text coordinate space, paired with
- * the PM coordinates and stable uuid needed to (a) map a match start to a live
- * range at click time and (b) compute the PM `from/to` for ordering.
+ * Main-text search reads the shared PROSE INDEX (`src/lib/prose-index.ts`).
  *
- * `textStart`/`textEnd` are offsets into the SAME joined string the matcher
- * runs over; `contentStart` is the PM position of the first character inside
- * the block (`nodePos + 1`).
+ * This file used to own the walk, the block-span table and the char → PM
+ * conversion — a complete "where are the characters" answer that knew nothing
+ * about LaTeX, so `emph` matched command names and a query matched inside `%`
+ * comment blocks (task 517, subsuming 513). The index is that same walk with
+ * the prose test it was missing: a carrier run and a markless block contribute
+ * no characters, and the run table — which already existed to keep inline
+ * ATOMS from skewing the conversion — carries the resulting PM gaps for free,
+ * because a skipped carrier is exactly the same shape as a skipped atom.
  */
-interface TextRun {
-  /** Offset of this run's first char in the joined doc text. */
-  charStart: number;
-  /** PM position of this run's first char. */
-  pmStart: number;
-  /** Number of chars in the run. */
-  len: number;
-}
-
-interface BlockSpan {
-  uuid: string | null;
-  /** PM position of the first inline slot in the block (`nodePos + 1`). */
-  contentStart: number;
-  /** Offsets into the joined doc text spanned by this block. */
-  textStart: number;
-  textEnd: number;
-  /** Per-text-node runs, in ascending char order. An inline ATOM
-   *  (footnote/citation/inline-math) contributes ZERO chars but occupies one
-   *  PM slot, so consecutive runs are NOT PM-contiguous — the run table is
-   *  what makes char→PM conversion atom-accurate. */
-  runs: TextRun[];
-}
-
-/**
- * Build the joined main-text string AND the aligned per-textblock span/run
- * table in ONE walk, so the matcher's offsets and the PM positions can never
- * drift apart. Mirrors `doc.textBetween(0, size, "\n")`: consecutive
- * textblocks are joined by a single "\n" separator.
- *
- * The previous implementation matched over `textBetween(...)` but RE-derived
- * PM positions in a SEPARATE descendant walk that incremented a `textOffset`
- * counter (`+= 1` per textblock boundary) — the two counters could disagree on
- * a multi-block match, landing the highlight one position off. Deriving the
- * joined text AND the PM-coordinate run table from the SAME walk removes that
- * whole failure mode, and the per-run table keeps char→PM conversion correct
- * across inline atoms (an atom occupies a PM slot but no chars).
- */
-function buildMainTextIndex(editor: Editor): {
-  text: string;
-  spans: BlockSpan[];
-} {
-  const spans: BlockSpan[] = [];
-  let text = "";
-  let seenFirst = false;
-
-  editor.state.doc.descendants((node, nodePos) => {
-    if (!node.isTextblock) return true;
-    // Separator between consecutive textblocks (matches `textBetween`'s "\n").
-    if (seenFirst) text += "\n";
-    seenFirst = true;
-    const uuid = (node.attrs?.uuid as string | undefined) ?? null;
-    const contentStart = nodePos + 1;
-    const textStart = text.length;
-    const runs: TextRun[] = [];
-
-    // Walk the block's inline content. Text nodes contribute chars + a run;
-    // inline atoms advance the PM cursor but add no chars (and no run).
-    let pmCursor = contentStart;
-    node.forEach((child) => {
-      if (child.isText) {
-        const t = child.text ?? "";
-        runs.push({ charStart: text.length, pmStart: pmCursor, len: t.length });
-        text += t;
-      }
-      pmCursor += child.nodeSize;
-    });
-
-    spans.push({ uuid, contentStart, textStart, textEnd: text.length, runs });
-    // Don't descend further — we already consumed the block's inline content,
-    // and nested textblocks don't occur inside a leaf textblock in this schema.
-    return false;
-  });
-
-  return { text, spans };
-}
-
-/** Find the span whose half-open `[textStart, textEnd)` contains `offset`, by
- *  binary search. Spans are ascending and non-overlapping (consecutive blocks
- *  are separated by one "\n" char), so the only candidate is the rightmost
- *  span starting at or before `offset`. The old from-index-0 linear scan was
- *  O(spans) per hit — and hit count scales with doc length for short queries,
- *  so the total went quadratic in document size (task 119). */
-function spanAt(spans: BlockSpan[], offset: number): BlockSpan | null {
-  let lo = 0;
-  let hi = spans.length - 1;
-  let ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (spans[mid].textStart <= offset) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  if (ans < 0) return null;
-  const s = spans[ans];
-  if (offset >= s.textStart && offset < s.textEnd) return s;
-  // A zero-length block (empty paragraph) can host an empty match exactly at
-  // its start; tolerate `offset === textStart === textEnd`.
-  if (offset === s.textStart && s.textStart === s.textEnd) return s;
-  return null;
-}
-
-/** Convert a joined-text char offset to a PM position WITHIN `span`, walking
- *  its run table so inline atoms (0 chars / 1 PM slot) don't skew the result.
- *
- *  Runs are char-contiguous but NOT PM-contiguous: inline atoms between two
- *  text nodes contribute 0 chars but ≥1 PM slot, so the char offset at a
- *  run boundary names TWO distinct PM positions — before the atoms (the
- *  preceding run's end) and after them (the following run's start). Which one
- *  is right depends on the endpoint being converted:
- *
- *  - `"start"` — a match STARTING at the boundary begins with the following
- *    run's first char, so it resolves AFTER the atoms. (The old single
- *    inclusive-bound scan resolved it to the preceding run's end — the atom's
- *    own slot — anchoring the highlight one PM slot early and painting the
- *    atom pill.)
- *  - `"end"` — a match ENDING at the boundary must stop BEFORE the atoms,
- *    at the preceding run's end.
- *
- *  A block-final boundary (no following run) resolves to the last run's end
- *  for both endpoints. Falls back to `contentStart + (offset - textStart)`
- *  for the degenerate empty-block case (no runs). */
-function charOffsetToPm(
-  span: BlockSpan,
-  charOffset: number,
-  endpoint: "start" | "end",
-): number {
-  const runs = span.runs;
-  for (let i = 0; i < runs.length; i++) {
-    const run = runs[i];
-    const upper = run.charStart + run.len;
-    if (charOffset >= run.charStart && charOffset < upper) {
-      return run.pmStart + (charOffset - run.charStart);
-    }
-    if (charOffset === upper) {
-      if (endpoint === "end") return run.pmStart + run.len;
-      // Start endpoint at a shared boundary: defer to the following run
-      // (char-contiguous, so its charStart === upper) to land after the
-      // atoms; block-final (no following run) resolves here.
-      if (!runs[i + 1]) return run.pmStart + run.len;
-    }
-  }
-  return span.contentStart + (charOffset - span.textStart);
-}
 
 export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
-  const { text: docText, spans } = buildMainTextIndex(editor);
+  const { text: docText, spans } = buildProseIndex(editor.state.doc);
 
   const out: SearchHit[] = [];
   re.lastIndex = 0;
@@ -512,9 +374,9 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     // block boundary (rare — only a query containing the "\n" separator) is
     // clamped to its starting block, which is the correct, safe behavior:
     // `to` is computed from the END offset clamped to the start block's text.
-    const startSpan = spanAt(spans, matchStart);
+    const startSpan = spanAtOffset(spans, matchStart);
     if (startSpan) {
-      const pmFrom = charOffsetToPm(startSpan, matchStart, "start");
+      const pmFrom = proseOffsetToPos(startSpan, matchStart, "start");
       const clampedEnd = Math.min(matchEnd, startSpan.textEnd);
       // A zero-length match sits at ONE position — reuse `pmFrom` rather than
       // converting the same offset with "end" semantics, which at an atom
@@ -522,7 +384,7 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
       const pmTo =
         clampedEnd === matchStart
           ? pmFrom
-          : charOffsetToPm(startSpan, clampedEnd, "end");
+          : proseOffsetToPos(startSpan, clampedEnd, "end");
       out.push({
         scope: "mainText",
         from: pmFrom,

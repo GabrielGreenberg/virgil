@@ -40,6 +40,7 @@ import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { useMenuCombobox } from "./menu/useMenuCombobox";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 /**
  * A discoverable target for a `\ref`. Headings carry their own section
@@ -364,7 +365,7 @@ function LabelRefBody({
                 }, 150);
               }}
               placeholder="label key"
-              spellCheck={false}
+              {...NEVER_SPELLCHECK_PROPS}
             />
             {showDropdown && (
               <div className="label-ref-popover-dropdown">

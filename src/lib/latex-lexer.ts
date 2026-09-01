@@ -514,6 +514,52 @@ export const CARRIER_MARK_NAMES: readonly string[] = [
   ...new Set(CARRIER_ROWS.map((r) => r.mark)),
 ];
 
+/** Mark name for RAW LaTeX the editor does not model — a typed or parsed
+ *  `\command` run. Deliberately NOT a `CARRIER_ROWS` row: those rows answer
+ *  the DEMOTION question ("does this run still spell what its carrier says it
+ *  is?") whole-run, and `latexCommand`'s demotion is span-shaped
+ *  (`scanRawLatexSpans`, task 390) rather than a boolean about the run. The
+ *  string lives here anyway — beside the family it belongs to and reachable
+ *  from the tiptap-free modules — and the TipTap `Mark.create` in
+ *  `src/lib/tiptap/latex-command.ts` reads it. */
+export const LATEX_COMMAND_MARK = "latexCommand";
+
+/**
+ * Every mark that says a run's characters are RAW LATEX RATHER THAN PROSE —
+ * the third question in this neighbourhood, and the one nothing owned (task
+ * 517). Distinct from `CARRIER_MARK_NAMES`, which is the STRICTER census of
+ * carriers whose bytes are literal or inert; a `latexCommand` run is neither
+ * (it smart-quotes, and a `latexCommand` scanner must look INSIDE it), which
+ * is exactly why `isOpaqueRun` must keep reading the narrow set and a
+ * prose/spell/search consumer must read this one.
+ *
+ * DERIVED from the family table plus the command mark, so a fourth carrier
+ * joins by declaring a row — no consumer hand-lists the three names, which is
+ * how the word counter, the search index and the highlighter each came to
+ * hold a different partial copy.
+ */
+export const RAW_LATEX_MARK_NAMES: readonly string[] = [
+  LATEX_COMMAND_MARK,
+  ...CARRIER_MARK_NAMES,
+];
+
+/** Is THIS mark name one that says "raw LaTeX, not prose"? The name form,
+ *  because a live ProseMirror `Mark` carries a `MarkType` where a JSON mark
+ *  carries a string — two spellings of one question, so both readings below
+ *  route here rather than each testing the set. */
+export function isRawLatexMarkName(name: string): boolean {
+  return RAW_LATEX_MARK_NAMES.includes(name);
+}
+
+/** True when a JSON mark list says these characters are raw LaTeX, not prose.
+ *  The ONE predicate behind "is this text the user's writing?" — read by the
+ *  prose index (`src/lib/prose-index.ts`) and anything downstream of it. */
+export function hasRawLatexMark(
+  marks: readonly { type: string }[] | undefined,
+): boolean {
+  return !!marks?.some((m) => isRawLatexMarkName(m.type));
+}
+
 /**
  * The row governing a run wearing `mark` with `attrs`, or `undefined` when the
  * mark is not in the family.

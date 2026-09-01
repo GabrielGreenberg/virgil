@@ -94,6 +94,7 @@
   "showHeadingLabels": true,
   "omniDimResting": true,
   "cardOutlineChrome": false,
+  "checkSpelling": true,
   "dividerLevels": [
     2,
     4,

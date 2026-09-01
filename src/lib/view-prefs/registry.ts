@@ -97,6 +97,11 @@ export const VIEW_PREF_REGISTRY = {
   showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display", menuRowId: "heading-labels" },
   omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting" },
   cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display", menuRowId: "card-outline" },
+  // The browser's native spellcheck, made deliberate and switchable (task 517).
+  // Reflected onto <body> by `spellcheck-policy.ts` — a single inherited HTML
+  // attribute rather than a prop threaded into twelve `editorProps.attributes`
+  // blocks. Default ON = today's behaviour; task 518's own checker flips it.
+  checkSpelling:        { kind: "toggle", scope: "global", default: true, label: "Check spelling",      menu: "display", menuRowId: "check-spelling" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: (["note", "archive", "todo"] as const) satisfies readonly MarginaliaType[],
