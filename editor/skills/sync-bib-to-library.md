@@ -168,38 +168,28 @@ top of step 1.
       (read with `_bib_parse.find_entry_span` against
       `<docPath>/references.bib`).
 
-   b. **Build a triage JSONL** with one `bib-only` row per entry. Do
-      **not** call `triage_batch.py` — that scans every file in
-      `unsorted/` and we want a tightly-scoped run. Instead, emit
-      directly:
+   b. **Build a triage JSONL** with one `bib-only` row per entry, by
+      running the library's own batch engine SCOPED to the bundle with
+      `--only`:
       ```bash
-      python3 -c '
-      import json, os, sys
-      from pathlib import Path
-      for p in (".virgil/scripts/library", "library/scripts"):
-          if os.path.isfile(os.path.join(p, "_bib_parse.py")):
-              sys.path.insert(0, p)
-              break
-      from _bib_parse import read_bib_file
-      bundle = Path("'"$bundle"'")
-      rows = []
-      for e in read_bib_file(bundle):
-          rows.append({
-              "filename":         bundle.name,
-              "flags":            ["bib-only"],
-              "extension":        "bib",
-              "proposedCitekey":  e["citekey"],
-              "proposedType":     e["type"],
-              "proposedFields":   e["fields"],
-              "proposedBibState": "unverified",
-          })
-      Path("/tmp/sync-triage.jsonl").write_text(
-          "\n".join(json.dumps(r) for r in rows) + "\n",
-          encoding="utf-8",
-      )
-      print(f"queued {len(rows)} bib-only triage rows")
-      '
+      (cd "$library_root" && \
+       python3 .virgil/scripts/library/triage_batch.py \
+         --library . --only "$(basename "$bundle")" \
+         --output /tmp/sync-triage.jsonl)
       ```
+      `--only` takes a bare filename relative to `unsorted/` and errors
+      (exit 2) on a miss rather than falling back to the whole inbox, so
+      this is a tightly-scoped run: nothing else sitting in `unsorted/`
+      is triaged, moved or enqueued.
+
+      **Do not hand-roll the rows.** The engine is the ONE implementation
+      of what a `.bib` entry becomes, and an inline copy silently drops
+      what `triage_apply` reads: the verbatim entry text (`bibEntryRaw`),
+      the `citekey-exists` collision flag with the existing entry's
+      resolved `bib.state`, TeX-stripped field values, and — the one that
+      changes behaviour — an `@unpublished` entry's `manuscript` state,
+      without which a manuscript lands as `unverified` and is queued for
+      authentication it should never get.
 
    c. **Apply the triage JSONL** from inside the library root (so
       `triage_apply.py` resolves `master.bib` and `.virgil/catalog.json`
