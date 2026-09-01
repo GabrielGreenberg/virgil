@@ -50,6 +50,35 @@ export const LatexComment = Node.create<LatexCommentOptions>({
   // which keeps `.tex` serialization a trivial `% ${textContent}` and avoids
   // emitting meaningless `\textbf{}` inside a comment.
   marks: "",
+  // …and `code` is the SAME FACT in the framework's own vocabulary (task 512).
+  // `marks: ""` already says "byte-literal container": a node that admits no
+  // marks can never wear a carrier, so Virgil has no way to label any of its
+  // characters raw LaTeX — which is the prose index's own rule 2
+  // (`blockCarriesProse`, `prose-index.ts`). `code` is what TipTap's INPUT-rule
+  // runner reads to ask that question (`$from.parent.type.spec.code`), and
+  // declaring one spelling without the other is how the two came to disagree:
+  // every type-time transform fired inside a `%` comment. MEASURED on the
+  // pre-512 tree, typing into a comment gave `% todo a–b “q” c—d` — curly
+  // quotes and en/em dashes written straight into the comment BYTES — and
+  // typing a backtick pair silently DELETED both backticks (StarterKit's `code`
+  // mark rule matched, failed to apply a mark this node forbids, and kept its
+  // deletion). The gate is the framework's, so it covers every input rule —
+  // ours, upstream's, and the next one — where a predicate inside SmartQuotes
+  // would have closed the typography half and left its worse sibling live.
+  // The two spellings cannot drift again: `prose-index.test.ts` pins that
+  // every markless textblock declares `code` and every `code` textblock is
+  // markless.
+  code: true,
+  // …and the whitespace flip `code` would otherwise cause is DECLINED, not
+  // inherited. ProseMirror derives `whitespace` from `code`
+  // (`spec.whitespace || (spec.code ? "pre" : "normal")`), and "pre" changes
+  // how the DOM PARSER reads this node's markup — which is a clipboard
+  // behaviour with nothing to do with input rules, and one with a real hazard:
+  // a comment is ONE `%` source line, so a newline preserved out of pasted
+  // markup would emit `% line one\nline two` and put the second line LIVE in
+  // the `.tex`. Stating "normal" keeps DOM parsing byte-identical to the
+  // pre-512 tree; the input-rule gate is bought on its own.
+  whitespace: "normal",
   // Self-contained source line: editing at its edges never merges its text into
   // adjacent prose (backspace-at-start of an empty comment is handled below).
   isolating: true,
