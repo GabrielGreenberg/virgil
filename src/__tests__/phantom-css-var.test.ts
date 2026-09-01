@@ -453,12 +453,23 @@ const PERMITTED_ORPHAN_TOKENS: Readonly<Record<string, string>> = {
   "--panel-min-h":
     "the height twin of the live --panel-min; the real floor is MIN_BAND_PX=140 in view-prefs-dock.ts",
 
-  // A RUNG OF A SCALE, which is a different thing from a dead alias. The
+  // TWO RUNGS OF A SCALE, which is a different thing from a dead alias. The
   // --footnote-50/100/200/300/500 tint scale (task 175) exists so a reader
   // reaching for a red tint finds a tier rather than inventing a literal;
-  // 50/100/200/500 are all consumed and 300 is the one nobody has needed yet.
-  // Deleting the middle rung to satisfy a census would put a gap exactly where
+  // 50/100/500 are consumed and 200/300 are the ones nobody has needed yet.
+  // Deleting a middle rung to satisfy a census would put a gap exactly where
   // the next person reaches — the scale's completeness IS its value.
+  //
+  // --footnote-200 joined the list in task 525, and how it got here is the
+  // point: its ONLY reader was `.footnote-highlight-marker`, a rule with ZERO
+  // producers that §8's rust consumer sweep had migrated onto this token while
+  // reasoning about it. So a dead SELECTOR was propping up a token and making
+  // it look consumed — this census could not see that, because it asks whether
+  // a token has a READER and never whether the reader's hook has a PRODUCER.
+  // That second question is `dead-css-hook-census.test.ts`, and deleting the
+  // rule is what surfaced this rung. A scale's unused rung is honest; a live
+  // reader that can never paint is not.
+  "--footnote-200": "an unused rung of the deliberate --footnote-* tint scale (its one reader, the dead .footnote-highlight-marker, was deleted in 525)",
   "--footnote-300": "an unused rung of the deliberate --footnote-* tint scale; a scale is a vocabulary, not an alias",
 };
 

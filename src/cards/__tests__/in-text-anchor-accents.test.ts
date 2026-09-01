@@ -302,7 +302,14 @@ describe("task 494 — accent var fallbacks are pinned to DEFAULT_PANEL_COLORS",
   ].map((m) => ({ token: m[1], fallback: (m[2] ?? "").trim() }));
 
   it("the sweep is not vacuous — it sees every read and every token", () => {
-    expect(READS.length).toBeGreaterThanOrEqual(20);
+    // Floor renegotiated 20 -> 19 in task 525, which deleted ONE read: the
+    // Mode-A `[data-paragraph-kind="report-request"]` rule, dead by derivation
+    // (that kind's `cssToken` is `report`, so the attribute could never hold
+    // the value). The TOKEN is untouched — its Mode-B
+    // `.linked-anchor[data-link-card^="report-request:"]` read is live — so
+    // this is a floor about the sweep's reach, not a contract about which
+    // reads exist. The two legs below are where the content is.
+    expect(READS.length).toBeGreaterThanOrEqual(19);
     const seen = new Set(READS.map((r) => r.token));
     // Every token the CSS reads is a token the SSOT declares…
     for (const r of READS) {

@@ -3787,18 +3787,30 @@ textarea,
  * for the same card share one accent source. (See the Mode B block above for
  * the var-fallback rationale.)
  *
- * No `highlight` rule, deliberately (task 174): `LEGACY_TOKEN_CROSSWALK
- * .highlight.cssToken` is `null` by documented intent, and the sole writer
- * (`useAnchorHighlightReconciler` → `cssTokenForCardKind`) omits the attribute
- * for a null token — so a `[data-paragraph-kind="highlight"]` rule can never
- * match. A highlight paints in text through the Mode-B tint band above, not a
- * paragraph rail. Don't "restore" it; wire the crosswalk's cssToken first. */
+ * THE VALUE SET IS THE CROSSWALK'S `cssToken` COLUMN, and nothing else. The
+ * sole writer is `cssTokenForCardKind`, so this attribute can only ever hold
+ * one of `note | todo | archive | report | comment | cut`. Two kinds are
+ * therefore deliberately ABSENT here, and neither is an oversight:
+ *
+ *   • `highlight` (task 174) — its `cssToken` is `null` by documented intent,
+ *     and the writer omits the attribute for a null token. A highlight paints
+ *     in text through the Mode-B tint band above, not a paragraph rail.
+ *   • `report-request` (task 525) — its `cssToken` is `"report"`, the fork
+ *     `legacy-token-crosswalk.ts` exists to declare, so a report-request card
+ *     paints its Mode-A rail through the `report` rule below. The
+ *     `[data-paragraph-kind="report-request"]` rule that used to sit here was
+ *     a Mode-A restatement of the Mode-B `data-link-card` vocabulary, where
+ *     `report-request:` IS a live token — two same-named namespaces, one of
+ *     which never reaches this attribute. It matched nothing, ever.
+ *
+ * Don't "restore" either; wire the crosswalk's `cssToken` first. The census in
+ * `dead-css-hook-census.test.ts` derives the legal value set from that column,
+ * so a rule for an unreachable token fails rather than sitting dead. */
 [data-paragraph-kind="note"]      { --link-anchor-color: var(--link-anchor-accent-note, #15803d); }
 [data-paragraph-kind="cut"]       { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
 [data-paragraph-kind="comment"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
 [data-paragraph-kind="archive"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }
-[data-paragraph-kind="report"]         { --link-anchor-color: var(--link-anchor-accent-report, #6366f1); }
-[data-paragraph-kind="report-request"] { --link-anchor-color: var(--link-anchor-accent-report-request, #6366f1); }
+[data-paragraph-kind="report"]    { --link-anchor-color: var(--link-anchor-accent-report, #6366f1); }
 [data-paragraph-kind="todo"]      { --link-anchor-color: var(--link-anchor-accent-todo, #44403c); }
 
 [data-show-hl-report="true"]    .linked-anchor[data-link-card^="report:"],
@@ -3850,13 +3862,14 @@ textarea,
   background: var(--footnote-bg-hover, #fde8e8);
 }
 
-.footnote-highlight-marker {
-  /* The --footnote-200 scale step, not a re-spelled literal (§8's consumer
-     sweep; same treatment its sibling `.footnote-marker:hover` got in 175). */
-  background: var(--footnote-200);
-  box-shadow: 0 0 0 2px var(--footnote-color, #b45757);
-  border-radius: var(--radius-xs);
-}
+/* RETIRED (task 525): `.footnote-highlight-marker`. It had ZERO producers in
+   either silo and had nonetheless been migrated onto `var(--footnote-200)` by
+   §8's rust consumer sweep — a maintenance pass read it, reasoned about it,
+   and tokenized a rule that has never matched an element. That is exactly why
+   this deletion is worth a note: a dead rule is worse than no rule, because
+   the next reader reaches for the declared path believing it is enforced, and
+   here one already did. A footnote marker's lit state is painted by
+   `.footnote-marker` + the anchor-highlight attrs, not by a second class. */
 
 /* Card-selection highlight on the in-editor anchor.
  *
@@ -4062,34 +4075,14 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   background: #dcfce7;
   border-color: #4ade80;
 }
-.note-marker-selected {
-  background: #bbf7d0;
-  border-color: #22c55e;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
-}
-
-/* Note editor (contentEditable rich text) */
-.note-editor {
-  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
-}
-.note-editor:empty::before {
-  content: attr(data-placeholder);
-  color: var(--muted-light);
-  pointer-events: none;
-}
-.note-editor ul {
-  list-style: disc;
-  padding-left: 1.25em;
-  margin: 0.25em 0;
-}
-.note-editor ol {
-  list-style: decimal;
-  padding-left: 1.25em;
-  margin: 0.25em 0;
-}
-.note-editor li {
-  margin: 0.1em 0;
-}
+/* RETIRED (task 525): `.note-marker-selected` and the `.note-editor` family.
+   Both were hooks for a hand-rolled contentEditable note surface that no
+   longer exists — note bodies render through `RichTextField` (`.rtf-content`,
+   below) and the marker's selected state is stamped by the anchor-highlight
+   reconciler, not a class. Zero producers in either silo; deleted rather than
+   left declared, because a hook with no producer is a dead SSOT and the next
+   reader reaches for the declared path believing it is the enforced one.
+   The census in `dead-css-hook-census.test.ts` is what keeps them retired. */
 
 /* Annotation editor (bibliography) */
 .annotation-editor {
@@ -4114,46 +4107,14 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   margin: 0.1em 0;
 }
 
-/* Footnote rich text editor (contentEditable) */
-.footnote-content-editor {
-  font-family: var(--font-serif-override, var(--font-serif)), Georgia, serif;
-}
-.footnote-content-editor:empty::before {
-  content: attr(data-placeholder);
-  color: var(--muted-light);
-  pointer-events: none;
-  font-style: italic;
-}
-.footnote-content-editor p {
-  margin: 0;
-}
-.footnote-content-editor p + p {
-  margin-top: 0.4em;
-}
-.footnote-content-editor ul {
-  list-style: disc;
-  padding-left: 1.25em;
-  margin: 0.25em 0;
-}
-.footnote-content-editor ol {
-  list-style: decimal;
-  padding-left: 1.25em;
-  margin: 0.25em 0;
-}
-.footnote-content-editor li {
-  margin: 0.1em 0;
-}
-
-/* Footnote drop indicator */
-.footnote-card-drop-target {
-  outline: 2px dashed var(--footnote-color, #b45757);
-  outline-offset: -2px;
-  /* Was #fff5f5 — a SIXTH rust hex (§8 counted five) whose only role was
-     "palest rust wash", which is what --footnote-50 already is. The
-     delta is (1, 3, 3)/255 — deltaE2000 ~1.0, under the ~2.3 JND — so
-     it is below any perceptual threshold on a transient drop wash. */
-  background: var(--footnote-50);
-}
+/* RETIRED (task 525): the `.footnote-content-editor` family and
+   `.footnote-card-drop-target` — the note-editor family's footnote twins,
+   dead for the same reason (footnote bodies render through `RichTextField`;
+   the drop target belonged to a footnote-card drop surface that no longer
+   exists). Zero producers in either silo. `.footnote-card-drop-target` had
+   been TOKENIZED onto `--footnote-50` during §8's rust consumer sweep, which
+   is the same thing that happened to `.footnote-highlight-marker` above: a
+   maintenance sweep read a dead rule and treated it as live. */
 
 /* RichTextField mini-editor (Tiptap-backed footnote/note bodies) */
 .rtf-content {
@@ -4227,7 +4188,11 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 .rtf-drop-target {
   outline: 2px dashed var(--footnote-color, #b45757);
   outline-offset: -2px;
-  background: var(--footnote-50); /* was #fff5f5 — see .footnote-card-drop-target */
+  /* Was #fff5f5 — a SIXTH rust hex (§8 counted five) whose only role was
+     "palest rust wash", which is what --footnote-50 already is; the delta
+     is (1, 3, 3)/255, deltaE2000 ~1.0, under the ~2.3 JND. (The sibling
+     this note used to point at was retired in 525 — see above.) */
+  background: var(--footnote-50);
 }
 
 /* An INLINE `%` comment tail (task 347) — the mid-line sibling of the
@@ -4550,13 +4515,10 @@ body.perf-contain .static-borrowed-text {
   border-radius: var(--radius-xs);
 }
 
-.citation-node-bar {
-  display: none;
-}
-
-.citation-node-text {
-  /* text flows inline with body */
-}
+/* RETIRED (task 525): `.citation-node-bar` / `.citation-node-text` — the
+   sub-elements of a citation DOM that no longer exists. The `.citation-node`
+   NodeView emits only `CITATION_ATOM.domClass` (`citation.ts`), so neither
+   could ever match; `-text` had an EMPTY body besides. */
 
 .label-ref-node {
   display: inline;
@@ -5190,21 +5152,11 @@ html {
   scrollbar-color: var(--scrollbar-thumb, #d4cfc8) transparent;
 }
 
-/* Toolbar horizontal scroll — hide scrollbar */
-.toolbar-scroll {
-  scrollbar-width: none;
-}
-.toolbar-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-/* Scroll container with no visible scrollbar — interaction via wheel/trackpad */
-.hide-scrollbar {
-  scrollbar-width: none;
-}
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
-}
+/* RETIRED (task 525): `.toolbar-scroll` and `.hide-scrollbar` — two
+   byte-identical hide-the-scrollbar utilities with zero producers in either
+   silo. The surfaces that actually hide a scrollbar do it inline or through
+   `.scrollbar-thin` above. A utility nothing applies is a dead SSOT, not an
+   affordance: re-add one WITH its first consumer. */
 
 /* View toggles — hide paragraph titles */
 .hide-par-titles .par-title-annotation,

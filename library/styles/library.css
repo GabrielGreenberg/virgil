@@ -58,17 +58,13 @@
 
 /* ── Paper-file body — white pod sitting on the warm Virgil canvas ─── */
 
-/* The .paper-render-pod wraps <EditorContent> and gives the editor its
- * "page on a desk" appearance: white surface, soft rounded corners,
- * subtle pod-shadow. The container around it is the warm Virgil canvas
- * (var(--background)) painted by RightDetail / TabbedLibraryPanel —
- * the same canvas color the editor/view sits on elsewhere in Virgil. */
-.paper-render-pod {
-  background: var(--surface);
-  border: var(--pod-border);
-  border-radius: var(--pod-radius);
-  box-shadow: var(--pod-shadow);
-}
+/* RETIRED (task 525): `.paper-render-pod`. Its own comment described a
+ * wiring that no longer exists — it claimed to wrap `<EditorContent>` inside
+ * RightDetail / TabbedLibraryPanel — while `PaperRender.tsx` writes the same
+ * `--pod-border` / `--pod-radius` INLINE on the wrapper it actually renders.
+ * Zero producers in either silo, so the class could never match; a stale
+ * claim next to a dead rule is how the next reader concludes the declared
+ * path is the enforced one. */
 
 /* ── Page-number scroll lozenge ────────────────────────────────────── */
 
