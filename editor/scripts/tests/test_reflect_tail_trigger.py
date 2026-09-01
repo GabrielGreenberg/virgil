@@ -418,14 +418,19 @@ try:
         os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_fake_inbox2 / "dev-loop" / "memos")
         check(_common._is_throwaway_paper(sb),
               "a pin AT the default sink expresses no intent — the guard stays armed")
-        # …and the old default is no longer the default, so a pin there IS
-        # intent now. This is the half that fails if the guard keeps reading
-        # `dev_home()/memos` after the ladder moved on.
+        # …and a pin at the SUPERSEDED default expresses no intent EITHER. The
+        # rule is "away from every sink this build knows", not "away from the
+        # current one": reading only the ladder's answer would let an ambient
+        # export at the OLD default disarm the guard machine-wide again, one
+        # migration after the ten-week disarm the docstring records.
         _home = _common.dev_home_or_none()
         if _home is not None:
             os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_home / "memos")
-            check(not _common._is_throwaway_paper(sb),
-                  "a pin at the SUPERSEDED default is a real pin — it writes")
+            check(_common._is_throwaway_paper(sb),
+                  "a pin at a SUPERSEDED sink is no intent either — still armed")
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin2-")
+        check(not _common._is_throwaway_paper(sb),
+              "a pin away from EVERY known sink is real intent — it writes")
     finally:
         _common.synced_inbox_root = _orig_sync2
 finally:

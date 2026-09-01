@@ -186,7 +186,10 @@ on the same Task (the propose→accept lifecycle — `draft-suggestion` then
 
 ## The memo schema (what the script writes)
 
-Memo → `editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md`, **gitignored**,
+Memo → `<memo sink>/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` — since task 521 the
+sink is normally the Dropbox-synced `Virgil-Inbox/dev-loop/memos`, so a memo
+written from the cowork machine reaches the loop; where no synced inbox is
+reachable it is the gitignored `<checkout>/editor/dev/memos`. Either way,
 repo-side — the sibling of `editor/dev/iterations/` (the `/editor/iterate-virgil-editor`
 memos). It is **distinct** from the per-paper cowork memo stream
 (`<docPath>/.virgil/memos/`) and the library memo stream

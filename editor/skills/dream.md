@@ -247,11 +247,25 @@ is. A writer resolves its sink from whatever vintage of the skill bundle its
 paper folder carries, and bundles re-sync on doc-open, so a paper the human has
 not opened since a migration keeps writing to the old place indefinitely.
 `select` reads every such sink (`extraSinksRead`) and the corpus is their UNION,
-so nothing is lost and the flags above are honest — but a NON-ZERO
+so nothing is invisible and the flags above are honest — but a NON-ZERO
 `extraSinkNonDreamMemos` is a live divergent writer and the night's top finding:
 name the folders and recommend `python3 editor/scripts/sync_skills.py <paper>`.
 Residue-only (`extraSinkMemos > 0`, `extraSinkNonDreamMemos: 0`) is a stale
-sink worth deleting, not a finding. Measured 2026-09-01, thirteen days after
+sink worth deleting, not a finding. **"In the corpus" is not "read tonight"** —
+those are LIFETIME counts and the window is marker-filtered, so quote
+`extraSinkMemosInWindow` when you say a divergent memo was dreamed over.
+
+**And one flag outranks every count above: `unreachableMemos`.** The marker is a
+TIMESTAMP, and syncing broke the identity between "written after the last dream"
+and "sorts above its marker": a memo written on the cowork machine at 09:00 and
+synced at 23:00 is behind tonight's marker FOREVER — in the corpus, in no
+window, read by no dream, ever. Non-empty means real reflections have been
+written that this loop will never process. Nothing is lost from disk, so READ
+THEM YOURSELF (the digest names the paths) and treat their content as tonight's
+input; then say so, because every other flag reports a healthy night over them.
+This is a detected condition, not a prevented one — preventing it means
+replacing the high-water marker with a seen-SET, which is a design change to the
+whole selection discipline and belongs in the task pipeline, not in a night. Measured 2026-09-01, thirteen days after
 the 08-23 migration: five of eight bootstrapped paper folders — the
 most-worked-on among them — were still writing to the retired home.
 

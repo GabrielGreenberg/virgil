@@ -55,6 +55,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1]
@@ -63,6 +64,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import _common  # noqa: E402
 import dream  # noqa: E402
+import reflect  # noqa: E402
 
 
 def _memo(root: Path, day: str, hhmmss: str, skill: str) -> Path:
@@ -76,7 +78,10 @@ def _memo(root: Path, day: str, hhmmss: str, skill: str) -> Path:
         "tier: noted\n"
         f"reflectedAt: {day}T{hhmmss.replace('-', ':')}.000Z\n"
         "---\n\n"
-        "## issues\n\nsynthetic\n"
+        # The REAL bucket heading, read from reflect's own vocabulary — a
+        # hand-written `## issues` parses to NO buckets at all, so a fixture
+        # that used it would make every bucket assertion vacuous.
+        f"## {reflect.BUCKET_TITLES['issues']}\n\nsynthetic\n"
     )
     return p
 
@@ -352,12 +357,43 @@ class CorpusUnion(unittest.TestCase):
 
     def test_a_memo_in_both_sinks_is_ONE_memo(self):
         """A migration may COPY the old sink across, so the same memo exists at
-        the same relative path in both. A naive union double-counts it."""
-        _memo(self.live, "2026-08-30", "11-02-00", "draft-footnote")
+        the same relative path in both. A naive union double-counts it.
+
+        Written in the migration's own order — the superseded sink's file
+        first, the copy second — so the copy is the newer of the two and the
+        rule below (`newest wins`) resolves it to the sink in use."""
         _memo(self.old, "2026-08-30", "11-02-00", "draft-footnote")
+        _memo(self.live, "2026-08-30", "11-02-00", "draft-footnote")
         union = dream._read_corpus(self.live, self.extra)
         self.assertEqual(len(union), 1)
-        self.assertEqual(union[0]["sink"], "", "the sink in USE wins the tie")
+        self.assertEqual(union[0]["sink"], "", "the migrated copy is the live one")
+
+    def test_the_ENRICHED_copy_wins_even_when_it_is_the_stale_one(self):
+        """The case the sink-preference rule got wrong. A memo is not
+        write-once — the reflection convention enriches the mechanical floor in
+        place — so a stale writer's copy can be the enriched one while the
+        migration-copied twin here is the bare floor. Preferring the sink reads
+        the poorer of two versions of one memo AND reports the split as zero."""
+        _memo(self.live, "2026-08-30", "11-02-00", "draft-footnote")
+        rich = _memo(self.old, "2026-08-30", "11-02-00", "draft-footnote")
+        rich.write_text(rich.read_text().replace("synthetic", "the enriched body"))
+        union = dream._read_corpus(self.live, self.extra)
+        self.assertEqual(len(union), 1)
+        self.assertEqual(union[0]["sink"], "local")
+        self.assertIn("the enriched body", union[0]["buckets"]["issues"])
+        self.assertEqual(dream._extra_sink_split(union, union)[1], 1,
+                         "…and the split reports it rather than reading zero")
+
+    def test_a_conflicted_DAY_FOLDER_is_debris_too(self):
+        """The sink is `<day>/<memo>.md`, so a daemon can rename the DAY folder
+        exactly as easily as the file — and a basename-only filter then reads
+        every memo under it as new content."""
+        _memo(self.live, "2026-08-30", "11-02-00", "draft-footnote")
+        _memo(self.live, "2026-08-30 (Gabriel's conflicted copy 2026-09-01)",
+              "11-02-00", "draft-footnote")
+        union = dream._read_corpus(self.live)
+        self.assertEqual([r["path"] for r in union],
+                         ["2026-08-30/11-02-00-draft-footnote.md"])
 
     def test_each_record_says_which_sink_held_it(self):
         _memo(self.live, "2026-08-31", "05-15-42", "dream")
@@ -371,13 +407,18 @@ class CorpusUnion(unittest.TestCase):
         _memo(self.old, "2026-08-20", "09-00-00", "dream")
         _memo(self.old, "2026-08-30", "11-02-00", "draft-footnote")
         union = dream._read_corpus(self.live, self.extra)
-        total, non_dream, labels = dream._extra_sink_split(union)
-        self.assertEqual((total, non_dream, labels), (2, 1, ["local"]))
+        total, non_dream, labels, in_window = dream._extra_sink_split(union, union)
+        self.assertEqual((total, non_dream, labels, in_window), (2, 1, ["local"], 2))
+        # …and with an EMPTY window the lifetime counts are unchanged while the
+        # window count is zero — which is what the banner must quote, since a
+        # memo behind the inherited marker is in the corpus and dreamed over by
+        # nobody tonight.
+        self.assertEqual(dream._extra_sink_split(union, [])[3], 0)
 
     def test_residue_only_is_not_a_live_divergent_writer(self):
         _memo(self.old, "2026-08-20", "09-00-00", "dream")
         union = dream._read_corpus(self.live, self.extra)
-        self.assertEqual(dream._extra_sink_split(union)[1], 0)
+        self.assertEqual(dream._extra_sink_split(union, union)[1], 0)
 
     def test_a_conflicted_copy_is_debris_not_a_memo(self):
         """A sync daemon renames one side aside rather than merging. Counted as
@@ -414,6 +455,69 @@ class CorpusUnion(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # REPORTS — the courtesy copy
 # ---------------------------------------------------------------------------
+
+
+class LateArrivals(unittest.TestCase):
+    """A memo that ARRIVES after the window that would have selected it closed.
+
+    The loss this change INTRODUCES, and the one no other flag can see. The
+    marker is a timestamp high-water mark, which was sound while the writer and
+    the reader shared a disk: a memo existed the moment it was written. With
+    the mailbox synced across machines that identity breaks — written on the
+    cowork machine at 09:00, synced at 23:00, behind tonight's marker forever —
+    and every other flag reports a perfectly healthy night over it.
+
+    Detection, not prevention: preventing it means replacing the high-water
+    marker with a seen-SET, which renegotiates the discipline the hold-guard,
+    the digest and `_filter_since` are all built on. Refusing to call it a
+    quiet night is what can be done honestly here."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.sink = Path(self._tmp.name) / "memos"
+        self.sink.mkdir(parents=True)
+        self.marker = ("2026-08-31T22:00:00.000Z", "2026-08-31/22-00-00-dream.md")
+        self.prior = "2026-08-31T22:05:00.000Z"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _arrived(self, path: Path, when: str) -> None:
+        ts = datetime.fromisoformat(when.replace("Z", "+00:00")).timestamp()
+        os.utime(path, (ts, ts))
+
+    def test_a_memo_that_synced_late_is_NAMED_not_silently_skipped(self):
+        late = _memo(self.sink, "2026-08-31", "09-00-00", "draft-footnote")
+        self._arrived(late, "2026-08-31T23:30:00.000Z")   # after the dream ran
+        corpus = dream._read_corpus(self.sink)
+        self.assertEqual(dream._filter_since(corpus, self.marker), [],
+                         "it sorts below the marker — no window will ever hold it")
+        self.assertEqual(dream._unreachable_memos(corpus, self.marker, self.prior),
+                         ["2026-08-31/09-00-00-draft-footnote.md"])
+
+    def test_a_memo_an_EARLIER_dream_read_is_not_a_loss(self):
+        """The control that keeps this from indicting the ordinary case: almost
+        every memo in the corpus is below the marker, because a previous dream
+        read it. Arrival is what separates the two."""
+        old = _memo(self.sink, "2026-08-30", "09-00-00", "draft-footnote")
+        self._arrived(old, "2026-08-30T09:00:05.000Z")
+        corpus = dream._read_corpus(self.sink)
+        self.assertEqual(dream._unreachable_memos(corpus, self.marker, self.prior), [])
+
+    def test_a_memo_ABOVE_the_marker_is_tonights_window_not_a_loss(self):
+        fresh = _memo(self.sink, "2026-09-01", "09-00-00", "draft-footnote")
+        self._arrived(fresh, "2026-09-01T09:00:05.000Z")
+        corpus = dream._read_corpus(self.sink)
+        self.assertEqual(dream._unreachable_memos(corpus, self.marker, self.prior), [])
+
+    def test_it_fails_CLOSED_with_nothing_to_measure_against(self):
+        late = _memo(self.sink, "2026-08-31", "09-00-00", "draft-footnote")
+        self._arrived(late, "2026-08-31T23:30:00.000Z")
+        corpus = dream._read_corpus(self.sink)
+        self.assertEqual(dream._unreachable_memos(corpus, None, self.prior), [],
+                         "bootstrap: no marker, so nothing is behind one")
+        self.assertEqual(dream._unreachable_memos(corpus, self.marker, None), [],
+                         "no prior digest to date arrival against — claim nothing")
 
 
 class ReportsChannel(unittest.TestCase):
@@ -538,7 +642,8 @@ class ConflictedCopiesAtBothEnds(unittest.TestCase):
         p.write_text(
             "---\nskill: draft-footnote\n"
             f"taskId: {task}\ntier: noted\n"
-            "reflectedAt: 2026-08-30T11:02:00.000Z\n---\n\n## issues\n\nx\n")
+            "reflectedAt: 2026-08-30T11:02:00.000Z\n---\n\n"
+            f"## {reflect.BUCKET_TITLES['issues']}\n\nx\n")
         return p
 
     def test_find_existing_never_picks_a_conflicted_copy(self):
@@ -561,7 +666,7 @@ class ConflictedCopiesAtBothEnds(unittest.TestCase):
         d.mkdir(parents=True, exist_ok=True)
         body = ("---\nskill: draft-footnote\ntaskId: -\ntier: noted\n"
                 f"doc: {key}\nreflectedAt: 2026-08-30T11:02:00.000Z\n---\n\n"
-                "## issues\n\nx\n")
+                f"## {reflect.BUCKET_TITLES['issues']}\n\nx\n")
         (d / "11-02-00-draft-footnote.md").write_text(body)
         # The Dropbox grammar, deliberately: a space sorts BEFORE `.`, so this
         # copy is what an unfiltered `sorted()` returns first. Syncthing's
@@ -666,7 +771,10 @@ class UnionEndToEnd(unittest.TestCase):
         self.assertIn("extraSinkMemos: 1", text)
         self.assertIn("extraSinkNonDreamMemos: 1", text)
         self.assertIn("everCapturedNonDream: true", text)
-        self.assertIn("real skill memo(s) arrived in a SUPERSEDED sink", text)
+        self.assertIn("real skill memo(s) sit in a SUPERSEDED sink", text)
+        self.assertIn("extraSinkMemosInWindow: 1", text)
+        self.assertIn("only **1** of them fell", text,
+                      "the banner quotes the WINDOW count, not the lifetime one")
         self.assertIn("sync_skills.py", text, "the banner names the remedy")
         self.assertIn(str(self.stale), text, "…and the folder to re-sync")
 
@@ -676,7 +784,7 @@ class UnionEndToEnd(unittest.TestCase):
         the same, or the night's real top finding is diluted into furniture."""
         _memo(self.stale, "2026-08-20", "09-00-00", "dream")
         text = self._digest()
-        self.assertNotIn("real skill memo(s) arrived in a SUPERSEDED sink", text)
+        self.assertNotIn("real skill memo(s) sit in a SUPERSEDED sink", text)
         self.assertIn("exist only in a\nsuperseded sink".replace("\n", " ")
                       .split(" only in a ")[0], text)
         self.assertIn("migration residue", text)
@@ -690,6 +798,45 @@ class UnionEndToEnd(unittest.TestCase):
         text = self._digest()
         self.assertNotIn("has NEVER captured a real skill run", text)
         self.assertIn("SUPERSEDED sink", text)
+
+    def test_the_banner_quotes_the_WINDOW_count_not_the_lifetime_one(self):
+        """The leg that separates the two numbers. With no prior digest the
+        window IS the corpus and both spellings read the same — so this
+        fixture puts a marker BETWEEN two superseded-sink memos, which is the
+        state the first run after this lands is actually in: a thirteen-day
+        backlog, all of it behind the inherited marker. Saying "they were read"
+        of those is the guard-overstating-its-reach failure."""
+        prior = self.digests / "2026-08-31.md"
+        prior.write_text(
+            "---\ndreamedAt: 2026-08-31T22:05:00.000Z\n"
+            "marker: 2026-08-31T22:00:00.000Z\n"
+            "markerMemo: 2026-08-31/22-00-00-dream.md\n---\n\n# prior\n")
+        _memo(self.stale, "2026-08-20", "09-00-00", "draft-footnote")   # behind
+        _memo(self.stale, "2026-09-01", "09-00-00", "draft-footnote")   # ahead
+        text = self._digest()
+        self.assertIn("extraSinkNonDreamMemos: 2", text)
+        self.assertIn("extraSinkMemosInWindow: 1", text)
+        self.assertIn("2 real skill memo(s) sit in a SUPERSEDED sink", text)
+        self.assertIn("only **1** of them fell", text)
+
+    def test_an_unreachable_memo_is_BANNERED_in_the_digest(self):
+        """End to end: a memo that synced late is behind the marker, in the
+        corpus, in NO window — and the digest says so rather than reporting a
+        quiet night over it."""
+        prior = self.digests / "2026-08-31.md"
+        prior.write_text(
+            "---\ndreamedAt: 2026-08-31T22:05:00.000Z\n"
+            "marker: 2026-08-31T22:00:00.000Z\n"
+            "markerMemo: 2026-08-31/22-00-00-dream.md\n---\n\n# prior\n")
+        late = _memo(self.stale, "2026-08-31", "09-00-00", "draft-footnote")
+        ts = datetime.fromisoformat("2026-08-31T23:30:00+00:00").timestamp()
+        os.utime(late, (ts, ts))
+        text = self._digest()
+        self.assertIn("unreachableMemos: 1", text)
+        self.assertIn("ARRIVED after the window", text)
+        self.assertIn("2026-08-31/09-00-00-draft-footnote.md", text,
+                      "the banner NAMES the memo so it can still be read by hand")
+        self.assertIn("memoCount: 0", text, "…and no window ever holds it")
 
     def test_a_pin_suppresses_the_union_END_TO_END(self):
         """The control. `VIRGIL_DEV_MEMOS_DIR` is a caller saying where the
@@ -764,7 +911,10 @@ class LocalSinkBanner(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
         self.assertEqual(out["memoSinkKind"], "synced")
-        self.assertTrue(out["syncedMemosRoot"].endswith("/dev-loop/memos"))
+        self.assertTrue(out["memosRoot"].endswith("/dev-loop/memos"),
+                        "…and `memosRoot` already names it, so there is no "
+                        "second field saying the same thing")
+        self.assertNotIn("syncedMemosRoot", out)
         self.assertTrue(out["reportsRoot"].endswith("/dev-loop/reports"))
         # The local checkout home is now a READ sink, and `select` says so.
         self.assertIn(str((self.co / "editor" / "dev" / "memos").resolve()),

@@ -17,7 +17,9 @@ as the tier floor and the dream's filter key — see RESULT_TIER below.
 Gating: a no-op (writes nothing, exits 0) unless `VIRGIL_DEV` is truthy
 (_common.dev_mode_enabled). Never runs in an end-user session.
 
-Memos land at  editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md  — repo-side,
+Memos land at  <memo sink>/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md  — since task 521
+the sink is normally the Dropbox-synced Virgil-Inbox/dev-loop/memos (so cowork on
+a machine with no checkout still lands one), else <checkout>/editor/dev/memos —
 gitignored, the sibling of editor/dev/iterations/ (iterate-virgil-editor's
 memos). It NEVER writes to the paper's own <doc>/.virgil/memos/ stream nor to
 any paper file: the doc is read-only here (we only read its Task queue). chip 18
@@ -62,7 +64,8 @@ prior body; an omitted one is preserved (see --memo-json above).
     "summary": "..." }          # one-line Done: reply
 
 Env overrides (test seams; never set in prod):
-  VIRGIL_DEV_MEMOS_DIR   memo root (default: <repo>/editor/dev/memos)
+  VIRGIL_DEV_MEMOS_DIR   memo root (default: the synced Virgil-Inbox/dev-loop/
+                         memos, else <repo>/editor/dev/memos — _common.memos_root)
   VIRGIL_REFLECT_NOW     ISO timestamp for reflectedAt + the filename clock
 """
 
@@ -210,7 +213,8 @@ def _now_parts() -> tuple[str, str, str]:
 
 
 def _memos_root() -> Path:
-    # The one sink (shared with dream.py), under the PRIMARY checkout —
+    # The one sink (shared with dream.py) — the synced inbox, else the
+    # PRIMARY checkout (tasks 431, 521) —
     # resolves the same from a repo checkout, a worktree, OR a synced paper's
     # .virgil/scripts/editor/ copy (via VIRGIL_REPO_ROOT). Unresolvable is a
     # loud refusal, never a second default (task 431).

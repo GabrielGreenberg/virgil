@@ -506,7 +506,10 @@ def dev_mode_enabled() -> bool:
 # digest, the high-water marker — started at zero, and the dream read that as
 # a quiet night (task 431). So the home is now `<primary checkout>/editor/dev`
 # (gitignored, so it moves with the clone and never with the account), and the
-# two lessons are kept at once:
+# two lessons are kept at once. (The MEMO stream has since moved on again, to
+# the synced `Virgil-Inbox/dev-loop/memos` — see the next section. What this
+# section resolves is still the base for the digests, the iterations and the
+# dev-mode marker, and is still the LAST rung of the memo ladder.)
 #
 #   * "primary checkout" is RESOLVED, never inferred from `__file__`: the
 #     `VIRGIL_REPO_ROOT` pin first (set at user scope it reaches a paper-folder
@@ -595,9 +598,12 @@ def dev_home() -> Path:
     repo = source_repo_root()
     if repo is None:
         raise DevHomeUnresolved(
-            "virgil dev home unresolved: set VIRGIL_REPO_ROOT to the Virgil source "
-            "checkout (or VIRGIL_DEV_HOME to an explicit sink) — this script is not "
-            "running inside one, so there is nowhere to put dev-loop memos"
+            "virgil dev home unresolved: no synced Virgil-Inbox was found and this "
+            "script is not running inside a Virgil checkout, so there is nowhere to "
+            "put dev-loop artifacts. Fix ONE of: create ~/Dropbox/Virgil-Inbox (or "
+            "set VIRGIL_INBOX) so the shared mailbox resolves — the remedy on a "
+            "machine with no checkout; set VIRGIL_REPO_ROOT to the Virgil source "
+            "checkout; or set VIRGIL_DEV_HOME to an explicit sink"
         )
     return _primary_checkout(repo) / DEV_HOME_SUBDIR
 
@@ -793,7 +799,15 @@ _SYNC_CONFLICT_RE = re.compile(r"conflicted copy|\.sync-conflict-", re.IGNORECAS
 
 
 def is_sync_conflict_name(name: str) -> bool:
-    """Is this filename a sync daemon's CONFLICTED COPY rather than content?
+    """Is this path COMPONENT a sync daemon's conflicted copy rather than
+    content?
+
+    Callers pass the memo's path RELATIVE to its sink and every component is
+    tested, not just the basename: the sink is `<day>/<time>-<skill>.md`, so a
+    daemon can rename the DAY folder exactly as easily as the file — and a
+    basename-only test then reads every memo under
+    `2026-08-30 (conflicted copy …)/` as new content, which is the double-count
+    this predicate exists to prevent, one level up.
 
     A daemon that meets a file it cannot reconcile RENAMES one side aside. In
     the synced memo sink that is read-side DEBRIS at both ends and must be
@@ -805,7 +819,7 @@ def is_sync_conflict_name(name: str) -> bool:
     spellings of this rule is how the writer and the reader come to disagree
     about which files are memos, which is the class this whole subsystem is
     about."""
-    return _SYNC_CONFLICT_RE.search(name) is not None
+    return any(_SYNC_CONFLICT_RE.search(part) for part in Path(name).parts)
 
 
 RETIRED_DEV_HOMES: tuple[tuple[str, str], ...] = (
@@ -816,6 +830,23 @@ RETIRED_DEV_HOMES: tuple[tuple[str, str], ...] = (
     # bug `_dir_override` exists to prevent, and it makes the sink untestable.
     ("2026-08-23", ".virgil-dev"),  # the machine-global home (task 431)
 )
+
+
+def _known_sinks() -> list[Path]:
+    """Every memo sink this build can name — the ladder's current answer plus
+    every superseded one. Read by `_is_throwaway_paper` (a pin AT one of these
+    expresses no caller intent) and by `extra_memos_roots` (all but the first
+    are READ-only). Never raises."""
+    out: list[Path] = []
+    try:
+        out.append(_default_memos_root())
+    except DevHomeUnresolved:
+        pass
+    local = dev_home_or_none()
+    if local is not None:
+        out.append(local / "memos")
+    out.extend(Path.home() / rel / "memos" for _at, rel in RETIRED_DEV_HOMES)
+    return out
 
 
 def extra_memos_roots() -> list[tuple[str, Path]]:
@@ -959,16 +990,18 @@ def _is_throwaway_paper(doc: Path) -> bool:
         # no intent — it is an ambient convenience export — and honoring it
         # disarmed this guard machine-wide for every test run (2026-08-14: 30
         # synthetic memos per suite run into the human's real stream).
-        # The default is the LADDER's answer minus this pin (task 521 put the
-        # synced home ahead of the checkout-relative one), never `dev_home()`
-        # alone — reading a superseded rung here would make every pin look like
-        # intent and disarm the guard machine-wide, which is exactly the
-        # ten-week failure the paragraph above records.
+        # A pin counts as intent only when it points away from EVERY sink this
+        # build knows about — the ladder's current answer AND every superseded
+        # one. Reading only `dev_home()/memos` would make a pin at the synced
+        # default look like intent; reading only the ladder's answer would make
+        # a pin at the OLD default look like intent, which re-opens the same
+        # ten-week machine-wide disarm one migration later. The set is derived
+        # (`_known_sinks`), so a future migration inherits it.
         try:
-            default_sink = _default_memos_root().resolve()
-        except (DevHomeUnresolved, OSError):
-            default_sink = None
-        if default_sink is None or override.resolve() != default_sink:
+            known = {p.resolve() for p in _known_sinks()}
+        except OSError:
+            known = set()
+        if not known or override.resolve() not in known:
             return False  # pinned away from the default — the caller has said where these go
     try:
         return Path(tempfile.gettempdir()).resolve() in doc.resolve().parents
