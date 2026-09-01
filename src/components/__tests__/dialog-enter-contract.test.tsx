@@ -910,3 +910,192 @@ describe("useConfirmDialog: the promise resolves on Enter alone", () => {
     expect(resolved).toBe(true);
   });
 });
+
+/* ── the OTHER confirm door ──────────────────────────────────────── */
+
+/**
+ * Task 528 — the app has TWO imperative confirm doors, and task 386's
+ * data-safety rule was read by ONE of them.
+ *
+ * The leg five hundred lines up ("composes with task 386: a DANGER confirm cues
+ * Cancel") drives `<ConfirmDialog>`, so the law was pinned for the door that
+ * derives it and unpinned for the door that hardcoded `autoFocus` on the
+ * destruction. That is a GAP, not a renegotiation — and it is why these legs
+ * drive the REAL `SystemDialogProvider` end to end (the imperative API, the
+ * queue, the rendered frame, a real `keydown`) rather than the branch's markup:
+ * what the user gets is a PROMISE, and the promise is what must resolve `false`.
+ *
+ * The live path was Tab-strip **+** → *Reset example document*
+ * (`useFiles.resetExampleDoc`): a `tone: "danger"` confirm whose `Enter` drained
+ * the doc, removed its OPFS dir and re-seeded — no undo, no `virgil/.history/`
+ * slot — opening under a hand that had just pressed a menu row.
+ */
+describe("the imperative host door obeys the same cue rule", () => {
+  /** Drive the REAL provider; return the imperative api once mounted. */
+  function mountHost() {
+    // A BOX rather than a bare outer `let`: the hook's value has to escape the
+    // component, and a property write is what `react-hooks/refs` permits.
+    const box: { api?: ReturnType<typeof useSystemDialog> } = {};
+    function Host() {
+      box.api = useSystemDialog();
+      return null;
+    }
+    render(
+      <SystemDialogProvider>
+        <Host />
+      </SystemDialogProvider>,
+    );
+    return () => box.api!;
+  }
+
+  async function askConfirm(
+    get: () => ReturnType<typeof useSystemDialog>,
+    opts: Parameters<ReturnType<typeof useSystemDialog>["confirm"]>[0],
+  ) {
+    const box: { value?: boolean } = {};
+    await act(async () => {
+      void get()
+        .confirm(opts)
+        .then((v) => {
+          box.value = v;
+        });
+    });
+    flushFrames();
+    return box;
+  }
+
+  it("DEFECT: a DANGER confirm cues Cancel, so Enter CANCELS", async () => {
+    const get = mountHost();
+    const box = await askConfirm(get, {
+      title: "Reset example document?",
+      message: "This discards your edits and AI annotations to the example.",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+    focusBody();
+
+    pressEnter(document.body);
+    await act(async () => {});
+
+    expect(box.value).toBe(false);
+  });
+
+  it("DEFECT: the DANGER confirm's cue is Cancel, and it is what holds focus", async () => {
+    const get = mountHost();
+    await askConfirm(get, {
+      title: "Reset example document?",
+      message: "…",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Cancel" }),
+    );
+  });
+
+  it("CONTROL: a DEFAULT-tone confirm still cues its action, so Enter confirms", async () => {
+    // The accepting control — without it the danger leg passes just as happily
+    // on a door that cues NOTHING, which would break every ordinary confirm in
+    // the app while looking like a fix.
+    const get = mountHost();
+    const box = await askConfirm(get, {
+      title: "Move the document?",
+      message: "…",
+      confirmLabel: "Move",
+    });
+    focusBody();
+
+    pressEnter(document.body);
+    await act(async () => {});
+
+    expect(box.value).toBe(true);
+  });
+
+  it("CONTROL: the danger confirm's destructive answer stays reachable", async () => {
+    // Tab-then-Enter is the right cost for a deliberate destruction; a cue that
+    // moved would be a bug, a button that VANISHED would be another.
+    const get = mountHost();
+    const box = await askConfirm(get, {
+      title: "Reset example document?",
+      message: "…",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+    const reset = screen.getByRole("button", { name: "Reset" });
+    act(() => reset.focus());
+
+    pressEnter(reset);
+    await act(async () => {});
+
+    expect(box.value).toBe(true);
+  });
+
+  it("the danger confirm still PAINTS its committing button destructive", async () => {
+    // The cue moved; the affordance did not. Red is a true claim about what
+    // pressing "Reset" does.
+    const get = mountHost();
+    await askConfirm(get, {
+      title: "Reset example document?",
+      message: "…",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+
+    expect(screen.getByRole("button", { name: "Reset" }).className).toContain(
+      "bg-danger-soft",
+    );
+  });
+
+  it("a DANGER alert's sole dismiss button is not painted destructive", async () => {
+    // M2. `tone` describes the MESSAGE; this button dismisses and commits
+    // nothing, so red would be saying something untrue about the affordance.
+    const get = mountHost();
+    await act(async () => {
+      void get().alert({
+        title: "Compile failed",
+        message: "Undefined control sequence.",
+        tone: "danger",
+      });
+    });
+    flushFrames();
+
+    const ok = screen.getByRole("button", { name: "OK" });
+    expect(ok.className).not.toContain("bg-danger-soft");
+    expect(ok.className).toContain("bg-btn-primary");
+    // …and the tone reaches the thing it describes.
+    expect(screen.getByText("Undefined control sequence.").className).toContain(
+      "text-danger",
+    );
+  });
+
+  it("CONTROL: a DEFAULT-tone alert inks its message ordinarily", async () => {
+    const get = mountHost();
+    await act(async () => {
+      void get().alert({ title: "Done", message: "Saved to disk." });
+    });
+    flushFrames();
+
+    expect(screen.getByText("Saved to disk.").className).toContain("text-ink-body");
+    expect(screen.getByText("Saved to disk.").className).not.toContain("text-danger");
+  });
+
+  it("CONTROL: Enter still dismisses an alert (its cue is safe and stays)", async () => {
+    const get = mountHost();
+    const box: { done?: boolean } = {};
+    await act(async () => {
+      void get()
+        .alert({ title: "Compile failed", message: "…", tone: "danger" })
+        .then(() => {
+          box.done = true;
+        });
+    });
+    flushFrames();
+    focusBody();
+
+    pressEnter(document.body);
+    await act(async () => {});
+
+    expect(box.done).toBe(true);
+  });
+});

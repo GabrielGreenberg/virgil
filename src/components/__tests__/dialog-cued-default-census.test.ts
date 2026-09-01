@@ -23,6 +23,15 @@
  * call — exclusivity is a property of that SSOT, and a source census cannot
  * prove it. What it can prove, and does, is that nobody ships a footer with no
  * answer at all.
+ *
+ * **And since task 528 it asks a SECOND question of the same tree: is the
+ * declared cue SAFE?** The header used to say — correctly, and this is the gap
+ * it named rather than a renegotiation — that DECLARED was the only question
+ * here. So `system-dialog-host.tsx` sat in this population and PASSED with a
+ * bare `autoFocus` on the button that runs the destruction, for as long as that
+ * door has existed: a `tone: "danger"` confirm opened with **Reset** focused and
+ * `Enter` wiped the example document. A cue that is declared and destructive is
+ * worse than none, so the two questions ship together.
  */
 
 import { describe, expect, it } from "vitest";
@@ -30,7 +39,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentsStripped, elementsNamed } from "@/lib/__tests__/_source-scan";
 import {
+  canRenderDanger,
+  dialogButtonElements,
   dialogElements,
+  hasBareAutoFocus,
+  variantAttr,
   walk,
   SRC_ROOT as ROOT,
   type DialogSite,
@@ -167,5 +180,127 @@ describe("every SystemDialog that owns Enter declares its cued default", () => {
     const [hit] = elementsNamed(stripped, "SystemDialog");
     expect(declaresCue(hit.subtree ?? "")).toBe(false);
     expect(declaresNone(hit.tag)).toBe(false);
+  });
+});
+
+/**
+ * The SAFE half (task 528) — **a button that can render DESTRUCTIVE may never be
+ * the unconditional cue.**
+ *
+ * `autoFocus` marks the cued default, so a bare one on a red button hands the
+ * destruction to `Enter` under a hand that is already moving (task 386). The
+ * rule is checkable at SOURCE in exactly one direction: whether the cue is
+ * DERIVED. Whether the derivation is *correct* is a property of
+ * `confirmDialogCuedDefault`, which the behavioural legs in
+ * `dialog-enter-contract.test.tsx` drive for both doors.
+ *
+ * Both allowlists are EMPTY. A hit is DERIVE-it, never an entry: there is no
+ * true statement of the form "this button destroys and must nonetheless be
+ * cued unconditionally".
+ */
+describe("no destructive dialog button is the unconditional cue", () => {
+  const buttons = dialogButtonElements();
+  const dangerous = buttons.filter((b) => canRenderDanger(b.tag));
+
+  it("the census finds the real danger-capable buttons (it is not scanning nothing)", () => {
+    const rels = dangerous.map((b) => b.rel);
+    // DERIVED — `confirmActionVariant(tone)`; an expression is danger-capable
+    // by the fail-closed rule, which is what keeps these two in scope after the
+    // hand-spelled ternary they used to carry is gone.
+    expect(rels).toContain("components/ConfirmDialog.tsx");
+    expect(rels).toContain("components/system-dialog-host.tsx");
+    // LITERAL `variant="danger"` — statically destructive buttons, the
+    // strongest members: none of them may ever be cued.
+    expect(rels).toContain("components/StyleApplyDialog.tsx");
+    expect(rels).toContain("components/DocTypeChangeDialog.tsx");
+    expect(rels).toContain("components/ManageStylesModal.tsx");
+    // The population is the WHOLE button tree, so the safe majority is in it too.
+    expect(buttons.length).toBeGreaterThan(dangerous.length);
+  });
+
+  it("none of them carries a BARE autoFocus", () => {
+    const armed = dangerous
+      .filter((b) => hasBareAutoFocus(b.tag))
+      .map((b) => b.rel);
+    expect(armed).toEqual([]);
+  });
+
+  it("nobody hand-spells the tone→variant map — it comes from the policy leaf", () => {
+    const handRolled = buttons
+      .filter((b) => {
+        const v = variantAttr(b.tag);
+        return !!v && "expr" in v && /\bdanger\b/.test(v.expr);
+      })
+      .map((b) => b.rel);
+    // The fork task 528 closed was TWO attributes wide, not one: both doors
+    // hand-derived the cue AND hand-spelled `tone === "danger" ? "danger" : …`
+    // four lines apart. Unifying only the cue would have left the same disease
+    // live one prop over.
+    expect(handRolled).toEqual([]);
+  });
+
+  it("an alert's SOLE dismiss button is never painted destructive", () => {
+    // Its tone describes the MESSAGE; red is a claim about the AFFORDANCE, and
+    // this button commits nothing. Spelled as a LITERAL at its site precisely
+    // so there is no derivation to get backwards.
+    const host = readFileSync(join(ROOT, "components/system-dialog-host.tsx"), "utf8");
+    const alertBranch = host.slice(
+      host.indexOf('if (pending.kind === "alert")'),
+      host.indexOf('if (pending.kind === "confirm")'),
+    );
+    expect(alertBranch).not.toHaveLength(0);
+    expect(alertBranch).toContain('variant="primary"');
+    expect(alertBranch).not.toMatch(/variant=\{/);
+  });
+
+  it("the policy leaf is import-free, so BOTH doors can read it", () => {
+    // The placement rule `latex-markers.ts` earned: a facet the layer that
+    // needs it cannot import will be re-copied — which is exactly what the host
+    // did with both halves of this policy.
+    const leaf = readFileSync(join(ROOT, "components/confirm-cue-policy.ts"), "utf8");
+    expect(leaf).not.toMatch(/^\s*import\s/m);
+    expect(leaf).toMatch(/export function confirmDialogCuedDefault\(/);
+    expect(leaf).toMatch(/export function confirmActionVariant\(/);
+  });
+
+  it("CANARY: a bare autoFocus on a literal danger button is flagged", () => {
+    const bad = `<SystemDialogButton variant="danger" autoFocus onClick={boom}>Delete</SystemDialogButton>`;
+    expect(canRenderDanger(bad)).toBe(true);
+    expect(hasBareAutoFocus(bad)).toBe(true);
+  });
+
+  it("CANARY: a bare autoFocus on a DERIVED variant is flagged too", () => {
+    // The pre-528 host spelling, verbatim. It reads as ordinary code and is
+    // what shipped.
+    const bad = `<SystemDialogButton
+            variant={tone === "danger" ? "danger" : "primary"}
+            autoFocus
+            onClick={() => done(true)}
+          >`;
+    expect(canRenderDanger(bad)).toBe(true);
+    expect(hasBareAutoFocus(bad)).toBe(true);
+    const v = variantAttr(bad);
+    expect(v && "expr" in v && /danger/.test(v.expr)).toBe(true);
+  });
+
+  it("CANARY: a DERIVED autoFocus on a danger button passes, and a safe literal is out of scope", () => {
+    const derived = `<SystemDialogButton variant={confirmActionVariant(tone)} autoFocus={cuedDefault === "confirm"} onClick={ok}>`;
+    expect(canRenderDanger(derived)).toBe(true);
+    expect(hasBareAutoFocus(derived)).toBe(false);
+
+    const safe = `<SystemDialogButton variant="primary" autoFocus onClick={ok}>`;
+    expect(canRenderDanger(safe)).toBe(false);
+
+    const bare = `<SystemDialogButton onClick={ok}>`;
+    expect(canRenderDanger(bare)).toBe(false);
+  });
+
+  it("CANARY: a nested-brace variant expression is read WHOLE", () => {
+    // `[^}]*` truncates at the first `}` and stops seeing the word — failing
+    // OPEN, which for a census is the direction that costs.
+    const nested = `<SystemDialogButton variant={pick({ tone }) === "x" ? "danger" : "primary"} onClick={ok}>`;
+    const v = variantAttr(nested);
+    expect(v && "expr" in v && /danger/.test(v.expr)).toBe(true);
+    expect(canRenderDanger(nested)).toBe(true);
   });
 });
