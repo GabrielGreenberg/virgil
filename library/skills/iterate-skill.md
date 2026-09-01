@@ -10,11 +10,11 @@ description: |
   the subagent's critique memo, edits the skill markdown to fix
   flagged ambiguities, and loops. Heavy operation — runs from inside the
   library folder. Does NOT trigger for end-user requests like "process this
-  paper" — that's /index-paper or /deep-index. Args: <skill-name>
+  paper" — that's /library/index-paper or /library/deep-index. Args: <skill-name>
   <citekey1> [citekey2] ...
 ---
 
-# /iterate-skill $ARGUMENTS
+# /library/iterate-skill $ARGUMENTS
 
 Drive a closed-loop iteration on one of the Library skills (the three
 core entry points or one of the six deep-index subskills). You (the

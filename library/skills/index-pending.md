@@ -6,13 +6,13 @@ description: |
   pending library work", "run the library inbox", "Virgil, work
   through my pending papers", "catch up the library". Heavy operation
   — must run from inside the library folder. For steady-state polling
-  pair with `/loop /index-pending`. If invoked from a paper-only
+  pair with `/loop /library/index-pending`. If invoked from a paper-only
   session, prompt the user to mount the library first. Does NOT
   trigger for editor-side AI requests in a single paper (use
   /editor/review).
 ---
 
-# /index-pending
+# /library/index-pending
 
 ## Bootstrap (run this first)
 
@@ -42,8 +42,8 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 ---
 
 Drain the queue to empty in **one turn**. Designed for the catch-up
-case (a backlog after `/triage-pending`); for steady-state polling,
-wrap with `/loop /index-pending`.
+case (a backlog after `/library/triage-pending`); for steady-state polling,
+wrap with `/loop /library/index-pending`.
 
 The bulk of the work is delegated to `.virgil/scripts/library/drain_queue.py`, which
 shells out to `index_paper.py` per entry. This avoids the per-file
@@ -76,13 +76,13 @@ directory).
 
 2. **Dispatch deferred kinds via skills.** For each kind the drain
    script reported as deferred:
-   - `kind: "bib-edit"`     → invoke `/apply-bib-edit <citekey>`
-   - `kind: "authenticate"` → invoke `/authenticate-bib <citekey>`
-   - `kind: "deepIndex"` (or legacy `"richIndex"`) → invoke `/deep-index <citekey>`
+   - `kind: "bib-edit"`     → invoke `/library/apply-bib-edit <citekey>`
+   - `kind: "authenticate"` → invoke `/library/authenticate-bib <citekey>`
+   - `kind: "deepIndex"` (or legacy `"richIndex"`) → invoke `/library/deep-index <citekey>`
    - `kind: "import-bib"`   → invoke `/library/import-bib <citekey>`
    - `kind: "triage"`       → these are pre-`triage_apply` stubs;
      normally produced only by the legacy per-file flow. Invoke
-     `/triage-pdf <filename>` for each.
+     `/library/triage-pdf <filename>` for each.
 
    **Tip:** `.virgil/queue/pending-reviews.json` lists all pending authenticate
    requests as a flat manifest. Use it as a quick check for outstanding
@@ -170,9 +170,9 @@ but no corruption.
 
 ## Why this isn't a `/loop`
 
-`/loop /index-pending` is fine for steady-state polling (new files
+`/loop /library/index-pending` is fine for steady-state polling (new files
 trickle in via the frontend). For a one-time backlog (94 PDFs from a
 bulk drop), the loop is the wrong shape — you want one drain pass to
-finish, not an indefinite poller. `/index-pending` always runs to
+finish, not an indefinite poller. `/library/index-pending` always runs to
 empty in the current turn (or detached, per above); the user can wrap
 it with `/loop` if they want recurring polling.

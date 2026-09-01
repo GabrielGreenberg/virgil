@@ -7,8 +7,8 @@ description: |
   install the heavy indexing tools", "my library says it's missing
   extraction models", "fix the models toast". Idempotent — re-runs
   only install what's missing. Pass `--force` to redo from scratch.
-  Does NOT trigger for indexing a paper (use /index-paper) or
-  cleaning up an already-indexed paper (use /deep-index).
+  Does NOT trigger for indexing a paper (use /library/index-paper) or
+  cleaning up an already-indexed paper (use /library/deep-index).
 ---
 
 # /library/setup $ARGUMENTS

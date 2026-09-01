@@ -11,15 +11,15 @@ description: |
   ~/Virgil-Library). If the user asks for this from a paper-only
   session, prompt them to mount the library or offer to queue it.
   Does NOT trigger for first-time indexing of a fresh source (use
-  /index-paper). Args: <citekey> [--fresh]
+  /library/index-paper). Args: <citekey> [--fresh]
 ---
 
-# /deep-index
+# /library/deep-index
 
 ## §0 Autonomous execution contract
 
 This skill runs end-to-end without asking the user anything. The user
-invoked /deep-index because they want it done; they are not in the loop.
+invoked /library/deep-index because they want it done; they are not in the loop.
 
 **Permitted exits — exactly three.** Each is emitted as a single
 greppable keyword on its own line, immediately below the human-readable
@@ -105,7 +105,7 @@ by `--fresh` to restart from baseline. The default (no flag) is
 ## Prerequisites
 
 The paper must already be indexed (`papers/<citekey>/main.tex` must
-exist). If it doesn't, tell the user to run `/index-pending` first
+exist). If it doesn't, tell the user to run `/library/index-pending` first
 and stop.
 
 The body-populated gate is **not** re-implemented here: it is
@@ -496,7 +496,9 @@ keep deferring to it. The same split is stated in
 
 `bib-coherence:` is produced by [`/library/authenticate-bib`](authenticate-bib.md)
 (computed in its step 2, persisted in its step 7 once the run's own repairs are
-in), which is not part of this pass and can run standalone (even from a
+in — onto the catalog row, so for a reference-only entry with no row it is
+reported and not recorded; that skill's step-7 exit codes state the branch),
+which is not part of this pass and can run standalone (even from a
 paper session). It is listed here only so this census stays complete: **do
 not declare it below.** Deep-index does not recompute it, so declaring it
 would delete that skill's findings, and a line it wrote stands until the
@@ -802,9 +804,9 @@ out:
 - **No bulk re-extraction.** Targeted per-page/per-region work via
   `pdftotext -layout`, `ocrmypdf`, or PyMuPDF rasterization is
   in-scope (the §3d tier ladder uses it). Rebuilding the whole
-  `main.tex` from the PDF is an `/index-paper` failure surfaced at
-  Preflight, not a /deep-index problem.
-- **`master.bib` and bib authentication are `/authenticate-bib`'s
+  `main.tex` from the PDF is an `/library/index-paper` failure surfaced at
+  Preflight, not a /library/deep-index problem.
+- **`master.bib` and bib authentication are `/library/authenticate-bib`'s
   job.** Each paper's `references.bib` is self-contained. Exception:
   the metadata-vs-content auto-resolution policy (see doctrine §0
   Automatic decisions) updates `master.bib` via

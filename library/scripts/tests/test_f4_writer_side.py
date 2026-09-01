@@ -485,18 +485,11 @@ def test_prune_backfills_state_even_when_master_entry_missing(tmp_path):
 
 
 if __name__ == "__main__":
-    import tempfile
-    import traceback
-    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
-    for fn in fns:
-        with tempfile.TemporaryDirectory() as d:
-            try:
-                fn(Path(d))
-                print(f"PASS {fn.__name__}")
-            except Exception:
-                failed += 1
-                print(f"FAIL {fn.__name__}")
-                traceback.print_exc()
-    print(f"\n{len(fns) - failed}/{len(fns)} passed")
-    sys.exit(1 if failed else 0)
+    # Fixtures are injected BY NAME (see `_standalone.py`). The hand-written
+    # runner this replaces passed `tmp_path` POSITIONALLY, so
+    # `test_postflight_present_drop_surfaced_as_alert_in_json` — which also
+    # takes `capsys` — died with a TypeError that reads like an ordinary
+    # failure, and the file quietly reported 18/19.
+    from _standalone import main
+
+    sys.exit(main(globals()))

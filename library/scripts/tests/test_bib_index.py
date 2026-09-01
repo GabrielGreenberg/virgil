@@ -204,18 +204,10 @@ def test_atexit_rebuilds_index_after_a_master_write(tmp_path):
 
 
 if __name__ == "__main__":
-    import tempfile
-    import traceback
-    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
-    for fn in fns:
-        with tempfile.TemporaryDirectory() as d:
-            try:
-                fn(Path(d))
-                print(f"PASS {fn.__name__}")
-            except Exception:
-                failed += 1
-                print(f"FAIL {fn.__name__}")
-                traceback.print_exc()
-    print(f"\n{len(fns) - failed}/{len(fns)} passed")
-    sys.exit(1 if failed else 0)
+    # Fixtures are injected BY NAME (see `_standalone.py`). Every leg here
+    # takes `tmp_path` alone, so this file never showed the defect that
+    # motivated the shared runner (`test_f4_writer_side.py` did) — it carried
+    # the same positional runner, which is the shape that hides one.
+    from _standalone import main
+
+    sys.exit(main(globals()))

@@ -8,13 +8,13 @@ description: |
   DOI, cross-checks fields, logs diffs, and updates master.bib +
   catalog status. Does NOT trigger for adding a new citation by
   description (use /editor/find-citation in a paper context), for
-  applying a manual user edit (use /apply-bib-edit), or for
-  whole-paper bibliography cleanup (use /clean-bibliography). Light —
+  applying a manual user edit (use /library/apply-bib-edit), or for
+  whole-paper bibliography cleanup (use /library/clean-bibliography). Light —
   safe to invoke from a paper session with --library. Args:
   <citekey> [--library <path>].
 ---
 
-# /authenticate-bib $ARGUMENTS
+# /library/authenticate-bib $ARGUMENTS
 
 ## Args
 
@@ -355,7 +355,7 @@ directory).
    > `--drop-field` is applied after the merge and is the only removal
    > signal that composes with it. (`--allow-field-drop`, which trusts
    > omission as removal, is inert here; that flag is for
-   > `/apply-bib-edit`, where the user hands a complete entry.)
+   > `/library/apply-bib-edit`, where the user hands a complete entry.)
 
    **Entry type — use the helper's `proposed_type` when it set one.**
    `AuthResult.proposed_type` is non-empty when Crossref's type
@@ -621,7 +621,7 @@ directory).
    > | `failed` | `failed` | needs the attention TTL |
    >
    > Reusing `authenticated` as the family's neutral kind rather than
-   > widening the enum is the same call `/apply-bib-edit` makes.
+   > widening the enum is the same call `/library/apply-bib-edit` makes.
 
    ```bash
    cat > /tmp/<citekey>-auth-notify.json <<'EOF'

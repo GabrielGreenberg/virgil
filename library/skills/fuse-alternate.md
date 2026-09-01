@@ -7,10 +7,10 @@ description: |
   numbers from the PDF to this paper". Reads the PDF alternate from
   `papers/<citekey>/variants/`, lines up the pagination, and inserts
   `\pgmark{N}` anchors into main.tex. Does NOT trigger for first-time
-  indexing (use /index-paper). Args: <citekey>.
+  indexing (use /library/index-paper). Args: <citekey>.
 ---
 
-# /fuse-alternate $ARGUMENTS
+# /library/fuse-alternate $ARGUMENTS
 
 > **Allowable-LaTeX doctrine.** The `\pgmark{N}` anchors this skill rewrites,
 > and any surrounding `.tex` it touches, must stick to the vocabulary Virgil
@@ -80,7 +80,7 @@ All paths are relative to the library root (the current working directory).
 ## Prerequisites
 
 - `papers/<citekey>/main.tex` must already exist (indexed or deepIndexed).
-  If missing, tell the user to run `/index-pending` first and stop.
+  If missing, tell the user to run `/library/index-pending` first and stop.
 - `master.bib` must contain an entry for `<citekey>`.
 - `.virgil/catalog.json` must record the paper with
   `indexed.state in {"indexed", "deepIndexed"}` (legacy `richIndexed`
@@ -94,7 +94,7 @@ Read `.virgil/catalog.json`. Find the entry for `<citekey>`.
 
 - If `pdf.format == "pdf"` (the primary IS the PDF), stop with the
   message: `<citekey>'s primary source is already a PDF — pgmarks
-  should already be present from the original index. Run /index-paper
+  should already be present from the original index. Run /library/index-paper
   to re-derive if catalog disagrees.`
 - Otherwise filter `pdf.alternates` to entries ending in `.pdf`.
   - If empty, stop with: `<citekey> has no PDF alternate. The
@@ -258,7 +258,7 @@ directly).
 
 ## Idempotency
 
-Running `/fuse-alternate` twice on the same paper with the same
+Running `/library/fuse-alternate` twice on the same paper with the same
 alternate is a strict no-op:
 
 - `indexed.pgmarkSource` already names this alternate, AND
@@ -272,7 +272,7 @@ alternate is a strict no-op:
 
 | Reason | Message |
 |---|---|
-| No `main.tex` | `<citekey> not yet indexed. Run /index-pending first.` |
+| No `main.tex` | `<citekey> not yet indexed. Run /library/index-pending first.` |
 | Primary IS pdf | `<citekey>'s primary source is already a PDF — …` |
 | No PDF alternate | `<citekey> has no PDF alternate. …` |
 | Already fused | `<citekey> already fused from <pdf>. No-op.` |

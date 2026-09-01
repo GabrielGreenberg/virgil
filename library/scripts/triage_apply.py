@@ -35,6 +35,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    TERMINAL_BIB_STATES,
     admit_catalog_row,
     append_inbox_item,
     bump_catalog_version,
@@ -48,6 +49,47 @@ from _tools import (
     write_catalog,
     write_paper_bib_entry,
 )
+
+
+# ── The notification vocabulary ───────────────────────────────────────────
+#
+# Every `kind` this script can append to the inbox, DECLARED once. Like
+# `triage_batch.TRIAGE_FLAGS` it is an OPEN set that grows with the pipeline,
+# so the skills must not carry a hand copy — read it with
+# `--print-notification-kinds`.
+#
+# `triage-bib-ignored-<state>` is a FAMILY, not a kind: the head is completed
+# by the SETTLED state that won, so its membership is derived from
+# `_tools.TERMINAL_BIB_STATES` rather than written down (the shape
+# `fuse_alternate.py --print-recompute-flags` already has for the
+# `pgmark-fusion-` heads — a hand list silently under-covers the day a state is
+# added). `--print-notification-kinds` expands it.
+#
+# Held to the code by `library/lib/__tests__/triage-vocabulary.test.ts`, which
+# discovers the emitted set from this file's own `"kind": "…"` sites.
+NOTIFICATION_KINDS: tuple[str, ...] = (
+    "triaged",
+    "triage-filename-mismatch",
+    "triage-duplicate-work",
+    "triage-needs-title",
+    "triage-needs-metadata",
+    "triage-needs-chapter-info",
+    "triage-bib-imported",
+    "triage-bib-summary",
+    "triage-bib-folded-duplicate",
+    "triage-bib-parse-failed",
+    "triage-bib-cleanup-failed",
+)
+
+#: The one head whose tail is a `_tools.TERMINAL_BIB_STATES` member.
+NOTIFICATION_KIND_FAMILY_HEAD = "triage-bib-ignored-"
+
+
+def notification_kinds() -> list[str]:
+    """The full emitted vocabulary, family expanded — the reader's door."""
+    return sorted(NOTIFICATION_KINDS) + sorted(
+        NOTIFICATION_KIND_FAMILY_HEAD + state for state in TERMINAL_BIB_STATES
+    )
 
 
 def _now() -> str:
@@ -645,7 +687,18 @@ def main() -> int:
                    help="JSONL input path; '-' for stdin (default)")
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
+    p.add_argument("--print-notification-kinds", action="store_true",
+                   help=(
+                       "Print the notification vocabulary (one per line, the "
+                       "`triage-bib-ignored-<state>` family expanded) and "
+                       "exit. The DOOR for any reader that needs the set."
+                   ))
     args = p.parse_args()
+
+    if args.print_notification_kinds:
+        for kind in notification_kinds():
+            print(kind)
+        return 0
 
     library = Path(args.library).expanduser()
 

@@ -9,12 +9,12 @@ description: |
   references.bib, empty Virgil sidecars, and an authenticated catalog
   row. Light —
   safe to invoke from a paper session with --library. Does NOT trigger
-  for newly-dropped files in unsorted/ (use /triage-pdf first) or for
-  cleaning up an already-indexed paper (use /deep-index). Args:
+  for newly-dropped files in unsorted/ (use /library/triage-pdf first) or for
+  cleaning up an already-indexed paper (use /library/deep-index). Args:
   <citekey> [--library <path>].
 ---
 
-# /index-paper $ARGUMENTS
+# /library/index-paper $ARGUMENTS
 
 > **Allowable-LaTeX doctrine.** The `main.tex` this skill emits (and any
 > heading, title or `\pgmark{N}` anchor you hand-correct in it) must stick to
@@ -424,7 +424,7 @@ you to disambiguate something.
 
    Then sync this paper's own row in `papers/<citekey>/references.bib`
    to match (use `_resync_references_bib` from `index_paper`, like
-   `/authenticate-bib` step 6 — it **upserts** that one entry and leaves
+   `/library/authenticate-bib` step 6 — it **upserts** that one entry and leaves
    every other entry in the file untouched), and patch the `\title{}` /
    `\author{}` / `\date{}` lines at the top of
    `papers/<citekey>/main.tex` if any of those changed. `tex_emit.py`

@@ -6,13 +6,13 @@ description: |
   to drain. Reads `.virgil/queue/<citekey>-bibedit.json` for the new
   entry type + field map, rewrites the master.bib block, re-emits
   references.bib, and bumps the catalog version. Does NOT trigger for
-  external-source verification (use /authenticate-bib) or for
-  bibliography cleanup of a paper (use /clean-bibliography). Light —
+  external-source verification (use /library/authenticate-bib) or for
+  bibliography cleanup of a paper (use /library/clean-bibliography). Light —
   safe to invoke from a paper session with --library. Args:
   <citekey> [--library <path>].
 ---
 
-# /apply-bib-edit $ARGUMENTS
+# /library/apply-bib-edit $ARGUMENTS
 
 ## Args
 

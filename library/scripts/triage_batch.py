@@ -25,6 +25,43 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# ── The flag vocabulary ───────────────────────────────────────────────────
+#
+# Every flag this script can put on a row, DECLARED once. It is an OPEN set —
+# it grows whenever a detector is added — which is exactly why the skills must
+# not carry a hand copy: `/library/triage-pending` step 2 groups rows BY FLAG,
+# so a flag missing from a hand list reads to the agent as an anomaly rather
+# than as a known state. Read it with `--print-flags`, never type it out.
+#
+# Held to the code by `library/lib/__tests__/triage-vocabulary.test.ts`, which
+# discovers the emitted set from this file's own `flags.append("…")` /
+# `"flags": [...]` sites and requires the two to be equal. A hand list can only
+# ever be missing a name; a declared list with a census cannot.
+TRIAGE_FLAGS: tuple[str, ...] = (
+    # per-file observations
+    "filename-mismatch",
+    "long-title",
+    "needs-title",
+    "needs-metadata",
+    "preprint",
+    "sep",
+    "unsupported-ext",
+    "variant-copy",
+    "whole-handbook",
+    "year-ambiguous",
+    "year-from-pdf-metadata",
+    "year-scan-fallback",
+    "error",
+    # `.bib` rows (a row carrying `bib-only` switches triage_apply into its
+    # per-entry bib path)
+    "bib-only",
+    "bib-manuscript",
+    "bib-no-citekey",
+    "bib-parse-failed",
+    "citekey-exists",
+)
+
+
 # Regex patterns shared across detectors.
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s'\"<>]+")
 _ISBN_RE = re.compile(r"\b(?:ISBN[-:]?\s*)?(97[89])?[-\s]?(\d[-\s]?){9,12}[\dXx]\b")
@@ -993,7 +1030,18 @@ def main() -> int:
                        "10-30%% of a placeholder-named backlog). Results "
                        "cached at .virgil/extraction-cache/<sha256>/."
                    ))
+    p.add_argument("--print-flags", action="store_true",
+                   help=(
+                       "Print the flag vocabulary (one per line) and exit. "
+                       "The DOOR for any reader that needs the set — a skill "
+                       "must run this rather than carry a hand copy."
+                   ))
     args = p.parse_args()
+
+    if args.print_flags:
+        for flag in TRIAGE_FLAGS:
+            print(flag)
+        return 0
 
     library = Path(args.library).expanduser()
     unsorted_dir = library / "unsorted"

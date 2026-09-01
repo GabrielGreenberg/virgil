@@ -4,10 +4,10 @@ description: |
   headings, restore the heading hierarchy, handle drop caps, and
   align pagination anchors. Triggers on: "clean the prose for
   <citekey>", "fix the headings in this paper", "tidy the title and
-  drop caps for X". Subskill of /deep-index (its Phase 3); invoke
+  drop caps for X". Subskill of /library/deep-index (its Phase 3); invoke
   directly when only prose-level cleanup is needed. Does NOT trigger
-  for footnote recovery (use /recover-footnotes) or bibliography
-  cleanup (use /clean-bibliography).
+  for footnote recovery (use /library/recover-footnotes) or bibliography
+  cleanup (use /library/clean-bibliography).
 arguments: <citekey>
 ---
 
@@ -172,7 +172,7 @@ The script identifies adjacent-article spans in `main.tex` (text that
 belongs to a different article — often JSTOR scans or Annual Reviews
 collections include front-of-issue or facing-page content). Surgically
 remove each identified span via a body Edit. This **is** in-scope for
-/deep-index per §Scope doctrine — don't defer it to /index-paper. The
+/library/deep-index per §Scope doctrine — don't defer it to /library/index-paper. The
 threshold for surgical removal: the span must (a) be clearly
 attributable to a different article (different title, different
 authors), (b) not be referenced by the body of the indexed paper,
@@ -362,7 +362,7 @@ python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMEN
 > markers to align. **Skip §3c entirely.** Do **not** read the PDF
 > alternate and synthesize new pgmarks; that's out of scope for
 > deep-index (it would re-extract page boundaries, which belongs to
-> `/index-paper`). The validator in §3i will pass trivially in this
+> `/library/index-paper`). The validator in §3i will pass trivially in this
 > case (zero markers ⇒ no scope violations, no continuity gaps).
 >
 > Note: §2's PDF reading rule (read the first ~8 pages of any

@@ -10,11 +10,11 @@ description: |
   queued for authentication. Light — safe to invoke
   from a paper session with --library, though the file needs to be in
   the library's unsorted/. Does NOT trigger for already-indexed papers
-  (use /deep-index) or batch processing (use /triage-pending). Args:
+  (use /library/deep-index) or batch processing (use /library/triage-pending). Args:
   <filename> (relative to unsorted/) [--library <path>].
 ---
 
-# /triage-pdf $ARGUMENTS
+# /library/triage-pdf $ARGUMENTS
 
 ## Args
 
@@ -126,7 +126,7 @@ directory).
    ISBN / year detection. The shared helper is in `triage_batch.py`'s
    `_read_tex_meta()`. A `.tex` source without a DOI defaults to
    `@unpublished`; with a DOI, treat as `@article` and let
-   `/authenticate-bib` confirm.
+   `/library/authenticate-bib` confirm.
 
    For `.bib` (BibTeX file with one or more entries): parse the file
    into a list of entries via `_bib_parse.read_bib_file()`. Each entry
@@ -297,7 +297,7 @@ directory).
 
    Signals for book types: copyright page with publisher/ISBN, "Edited
    by" on title page, "Chapter N" headers, absence of journal/volume
-   metadata. When uncertain, default to `@article` — `/index-paper`
+   metadata. When uncertain, default to `@article` — `/library/index-paper`
    will correct the type during authentication.
 
    **SEP entries get a canonical stub.** If page-1 text or a header
@@ -316,12 +316,12 @@ directory).
    ```
    The citekey suffix `sep` distinguishes this from any non-SEP work
    by the same author/year. SEP isn't in any DOI registry; the URL is
-   the canonical identifier and `/authenticate-bib` short-circuits to
+   the canonical identifier and `/library/authenticate-bib` short-circuits to
    `authenticated` when it sees the SEP URL.
 
    Use the title + authors + year you read (as corrected by step 3).
    Include any DOI extracted in step 3. Mark `bib.state = "unverified"`
-   so `/index-paper` will authenticate it.
+   so `/library/index-paper` will authenticate it.
 
 6. **Whole-handbook check — refuse to mint a stub when the file is a
    whole edited volume, not a single chapter.** Trigger if first-page
@@ -367,7 +367,7 @@ directory).
 
    This overrides any type set in step 5. A preprint with a DOI keeps
    its DOI field — the DOI may point to the published version, which
-   `/authenticate-bib` will reconcile later.
+   `/library/authenticate-bib` will reconcile later.
 
 8. **Move the source file** from `unsorted/<filename>` to
    `papers/<citekey>/<citekey>.<ext>` — preserve the original extension. Do *not*
@@ -424,7 +424,7 @@ When `<filename>` ends with `.tex`:
    `--bib-state unverified`), or `@article` if a DOI was found in the
    body.
 4. Move `unsorted/<filename>` → `papers/<citekey>/<citekey>.tex`.
-5. Enqueue `kind: "index"`. The indexer (`/index-paper`) will copy the
+5. Enqueue `kind: "index"`. The indexer (`/library/index-paper`) will copy the
    `.tex` source verbatim into `papers/<citekey>/main.tex` —
    `index_paper.py` has a `tex-passthrough` extractor branch.
 6. Bib auth runs as part of indexing — auto-detection of a published

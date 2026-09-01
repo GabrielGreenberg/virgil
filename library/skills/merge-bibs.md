@@ -32,7 +32,7 @@ description: |
         [--allow-parallel-sync]`.
 ---
 
-# /merge-bibs $ARGUMENTS
+# /library/merge-bibs $ARGUMENTS
 
 > **Shared doctrine — find-or-surface, never fabricate.** Read
 > [_find-or-surface.md](_find-or-surface.md). This is the whole-library

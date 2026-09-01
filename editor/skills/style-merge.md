@@ -214,6 +214,6 @@ Skip everything else.
 ## Examples
 
 ```
-/style-merge virgil-data/doc_devtest
-/style-merge ~/Documents/papers/lattice-trees
+/editor/style-merge virgil-data/doc_devtest
+/editor/style-merge ~/Documents/papers/lattice-trees
 ```
