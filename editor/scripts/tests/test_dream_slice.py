@@ -199,67 +199,109 @@ check(j.get("neverSelfMerge") is True and j.get("procedurePaths") == ["editor/sc
 check("never_self_merge" not in j and "procedure_paths" not in j,
       "…and does not leak the snake_case field names onto the wire")
 
-# self_merge_check answers for a BRANCH's touched paths (what step 6 has).
+# self_merge_check answers the own-rulebook question for a set of paths.
+#
+# RENEGOTIATED (task 522): these legs used to say "a BRANCH's touched paths
+# (what step 6 has)". The dream has no branch — it lands nothing and files
+# tasks — so the FUNCTION survives with a live caller (`task_route` reads it to
+# decide `incoming/` vs `blocked/`) while its CLI door is retired below. The
+# question and every answer here are byte-for-byte what they were; only the
+# caller changed.
 ans = self_merge_check(["src/lib/foo.ts", "editor/scripts/dream_land.py",
                         "editor/skills/draft-footnote.md"])
 check(ans["neverSelfMerge"] is True and ans["procedurePaths"] == ["editor/scripts/dream_land.py"],
-      "self_merge_check flags a branch that touches ONE procedure file")
+      "self_merge_check flags a path set touching ONE procedure file")
 ans = self_merge_check(["src/lib/foo.ts", "editor/skills/draft-footnote.md"])
 check(ans["neverSelfMerge"] is False and ans["procedurePaths"] == [],
-      "self_merge_check clears an ordinary branch")
-check(self_merge_check([])["neverSelfMerge"] is False, "an empty branch clears")
+      "self_merge_check clears an ordinary path set")
+check(self_merge_check([])["neverSelfMerge"] is False, "an empty path set clears")
 
-# The CLI door step 6 actually types — positional args AND stdin (the pipe form
-# the skill documents), plus the two doors kept separate.
+# The CLI door the night actually types is `--route`, not `--self-merge-check`.
+# RENEGOTIATED (task 522): the retired door asked HALF the question about a
+# BRANCH (`git diff --name-only main...dream/<date>`); with no branch to ask
+# about, the same question survives INSIDE the whole operation. Its absence is
+# pinned, so nothing quietly re-adds a second door for one answer.
 r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check",
-                    "editor/scripts/dream.py", "src/lib/foo.ts"],
+                    "editor/scripts/dream.py"], capture_output=True, text=True)
+check(r.returncode != 0 and "--self-merge-check" not in r.stdout,
+      "the retired --self-merge-check CLI door is gone")
+r = subprocess.run([sys.executable, DREAM_LAND, "--route",
+                    json.dumps({"kind": "change",
+                                "change": {"paths": ["editor/scripts/dream.py"],
+                                           "intent": "script-change",
+                                           "oldText": "a", "newText": "b"}})],
                    capture_output=True, text=True)
-check(r.returncode == 0 and json.loads(r.stdout)["neverSelfMerge"] is True,
-      "--self-merge-check CLI (positional paths) flags a procedure file")
-r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check"],
-                   input="editor/scripts/reflect.py\nsrc/lib/foo.ts\n",
+route = json.loads(r.stdout)
+check(r.returncode == 0 and route["queue"] == "blocked"
+      and route["neverSelfMerge"] is True,
+      "--route answers the own-rulebook question as part of the whole operation")
+r = subprocess.run([sys.executable, DREAM_LAND, "--route", "{}", "--change", "{}"],
                    capture_output=True, text=True)
-check(r.returncode == 0 and json.loads(r.stdout)["procedurePaths"] == ["editor/scripts/reflect.py"],
-      "--self-merge-check CLI reads `git diff --name-only` on stdin")
-r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check", "--change", "{}"],
-                   capture_output=True, text=True)
-check(r.returncode == 2, "--change and --self-merge-check are separate doors")
+check(r.returncode == 2, "--change and --route are separate doors")
 
 
-# ── (a4) census: the SKILL asks the guard, and no branch survives its run ────
-# The leg with teeth. The guard was never the part that could misbehave — a
-# clause that re-states the membership in prose is, and so is a PARKED path that
-# leaves a branch for a sweep that merges everything blindly. Both are invisible
-# to any behavioural test of dream_land.
-print("\n=== (a4) census: dream.md asks the guard; no dream branch outlives its run ===")
+# ── (a4) census: the SKILL asks the door, and the night lands NOTHING ────────
+# The leg with teeth. The door was never the part that could misbehave — a
+# clause that re-states the membership in prose is, and so is a surviving
+# instruction to merge, branch, or export. Both are invisible to any
+# behavioural test of dream_land.
+#
+# RENEGOTIATED (task 522): this census used to REQUIRE the export recipe
+# (`branch -D dream/`, a patch under `attachments/`, `apply --check`) and the
+# `--self-merge-check` door, because in that world the night's own landing
+# machinery was the thing that could half-follow a rule. The dream lands
+# nothing now: it files tasks and the worker executes them, so the same census
+# is inverted — every live landing instruction is the defect, and the doors it
+# must spell are `--route` and `file-task`.
+print("\n=== (a4) census: dream.md asks the door; the night lands NOTHING ===")
 
-DREAM_MD = (ROOT / "editor/skills/dream.md").read_text(encoding="utf-8")
+DREAM_MD_RAW = (ROOT / "editor/skills/dream.md").read_text(encoding="utf-8")
+# Strip the `<!-- RETIRED … -->` notes before searching. This repo's convention
+# is to renegotiate a retired claim IN PLACE with the reason at the site, so a
+# raw-source needle would make writing that sentence a test failure — and, worse
+# in this direction, every negative needle below would match its own obituary
+# and pass for the wrong reason. (Measured: with the comments left in, four of
+# the six negative needles below flip.) Same rule `_source-scan.ts`'s
+# `commentsStripped` states one silo over.
+import re as _re
+DREAM_MD = _re.sub(r"<!--.*?-->", " ", DREAM_MD_RAW, flags=_re.S)
 # Search a WHITESPACE-NORMALIZED copy: this prose is hard-wrapped at ~78 cols, so
 # a multi-word needle straddles a newline as often as not. Measured — the first
 # draft of this census matched two of its four pre-fix phrases and would have
 # passed vacuously on the other two (an unfalsifiable leg wearing a defect leg's
-# clothes). Single-token needles (PARKED) are unaffected either way.
+# clothes).
 DREAM_MD_FLAT = " ".join(DREAM_MD.split())
 
-check("--self-merge-check" in DREAM_MD,
-      "dream.md step 6 asks the guard (spells the --self-merge-check door)")
+check("--route" in DREAM_MD and "dream_land.py" in DREAM_MD,
+      "dream.md asks the routing door (spells --route)")
+check("file-task" in DREAM_MD and "dream.py file-task" in DREAM_MD_FLAT,
+      "dream.md files through the script, not by hand")
 check("DEV_LOOP_PROCEDURE" in DREAM_MD,
       "dream.md names the union constant, so the membership stays in dream_land.py")
+check("blocked/" in DREAM_MD and "## Questions" in DREAM_MD,
+      "dream.md routes the human's half to blocked/ with questions")
 
-# Pre-fix phrasings: each one granted a surviving branch, which the nightly
-# /cleanup-worktrees sweep then merged whatever the clause said.
+# Pre-522 phrasings. Each one is a LIVE instruction to land something, and the
+# whole merge is that the night lands nothing: the worker is the one executor.
+for needle in ("git worktree add -b dream/",
+               "branch -D dream/",
+               "virgil-tasks/attachments/",
+               "--self-merge-check",
+               "merge --no-ff dream/",
+               "apply --check"):
+    check(needle not in DREAM_MD_FLAT,
+          f"dream.md carries no live landing instruction ({needle!r} is gone)")
+
+# ...and the older pre-fix phrasings stay pinned dead: they granted a surviving
+# branch, which the nightly /cleanup-worktrees sweep then merged blindly. Moot
+# now (no branch is created at all) and cheap to keep, since a regression here
+# would be a re-added branch.
 for needle in ("leave the branch and worktree standing",
                "stays staged whatever its gates say",
                "the nightly sweep merges green work",
                "PARKED"):
     check(needle not in DREAM_MD_FLAT,
           f"dream.md no longer grants a surviving branch ({needle!r} is gone)")
-
-check("EXPORTED" in DREAM_MD and "branch -D dream/" in DREAM_MD
-      and "virgil-tasks/attachments/" in DREAM_MD,
-      "dream.md carries the export recipe (patch under attachments/ + branch deletion)")
-check("apply --check" in DREAM_MD,
-      "…and verifies the patch applies BEFORE the branch is deleted")
 
 # No second speller: the membership lives in dream_land.py alone. A sibling
 # script re-listing it would drift silently (dev_loop.py imports the classifier).
@@ -480,7 +522,8 @@ report = {
     "acted": [{"summary": "clarified anchor wording", "paths": ["editor/skills/draft-footnote.md"],
                "memoRefs": ["2026-06-06/10-00-00-draft-footnote.md"]}],
     "proposed": [{"summary": "extract a shared anchor helper", "paths": ["editor/scripts/anchor.py"],
-                  "branch": "dream/2026-06-06", "reason": "touches a .py script",
+                  "task": "2026-06-06-004", "queue": "incoming",
+                  "reason": "touches a .py script",
                   "memoRefs": ["2026-06-06/10-01-00-draft-suggestion.md"]}],
     "refused": [{"summary": "loosen the only-writeback-path rule", "boundary": B_AGENTS_DONT,
                  "reason": "would edit the AGENTS.md Don't-rules"}],
@@ -496,20 +539,32 @@ check(fm.get("acted") == "1" and fm.get("proposed") == "1" and fm.get("refused")
       "digest frontmatter carries the acted/proposed/refused counts")
 check(fm.get("marker") == "2026-06-06T10:01:00.000Z" and fm.get("memoCount") == "2",
       "digest frontmatter carries the marker + memoCount")
-check("## Acted (1)" in text and "clarified anchor wording" in text, "ACTED entry rendered")
-check("## Proposed (1)" in text and "git merge dream/2026-06-06" in text,
-      "PROPOSED entry rendered with the merge hint (a LANDED entry names its branch)")
-check("## Refused (1)" in text and B_AGENTS_DONT in text, "REFUSED entry rendered with its boundary")
+# RENEGOTIATED (task 522): these legs pinned "## Acted"/"## Proposed" headings
+# and a `git merge <branch>` / `git apply <patch>` POINTER. The dream neither
+# merges nor exports now — the three buckets keep their keys (they are the
+# classifier's three verdicts) and every entry points at the TASK it was filed
+# as. The `acted`/`proposed`/`refused` COUNTS above are unchanged and still
+# pinned, which is the part these legs were really guarding.
+check("## Scoped — filed (1)" in text and "clarified anchor wording" in text,
+      "an `acts` entry renders under Scoped, filed")
+check("## Structural — filed (1)" in text and "task `2026-06-06-004`" in text
+      and "in `incoming/`" in text,
+      "a `proposes` entry points at the TASK it was filed as, not a branch")
+check("git merge dream/" not in text and "git apply " not in text,
+      "…and the digest carries no merge hint and no patch pointer at all")
+check("## Refused — filed as questions (1)" in text and B_AGENTS_DONT in text,
+      "a REFUSED entry renders with its boundary")
 
-exported = dict(report)
-exported["proposed"] = [{**report["proposed"][0], "summary": "EXPORTED — guard the marker",
-                         "patch": "~/virgil-tasks/attachments/2026-06-06-dream-marker.patch"}]
-r = dream(mem, dig, "digest", "--report", json.dumps(exported), now="2026-06-06T23:30:00")
+# An entry the night did NOT file is a LOST finding, and the digest says so
+# rather than reading like an ordinary line — the digest is a courtesy record
+# and the queue is the only surface anyone reads (task 522).
+unfiled = dict(report)
+unfiled["proposed"] = [{k: v for k, v in report["proposed"][0].items()
+                        if k not in ("task", "queue")}]
+r = dream(mem, dig, "digest", "--report", json.dumps(unfiled), now="2026-06-06T23:30:00")
 text2 = (Path(dig) / "2026-06-06.md").read_text()
-check(r.returncode == 0 and "git apply ~/virgil-tasks/attachments/2026-06-06-dream-marker.patch" in text2,
-      "an EXPORTED entry points at its patch, not at a branch step 6 deleted")
-check("git merge dream/2026-06-06" not in text2,
-      "…and carries no merge hint naming a branch that no longer exists")
+check(r.returncode == 0 and "NOT FILED" in text2,
+      "an entry with no task id is flagged NOT FILED")
 check("## Bootstrap" in text and "low confidence" in text, "bootstrap note rendered")
 check("Next dream reads memos after marker" in text, "digest records the next-dream marker line")
 

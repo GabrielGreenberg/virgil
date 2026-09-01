@@ -32,8 +32,9 @@ frozen spec: `EDITOR_SKILLS_V1.html` §14 · conceptual home:
    skill runs ─► /editor/reflect                 /editor/dream
                  writes a tiered memo to    ├─ read all memos since last dream
                  editor/dev/memos/          ├─ detect cross-memo patterns
-                 <date>/<time>-<skill>.md   ├─ route each → acts / proposes / refused
-   you: "put this in the memo" ──┘          ├─ apply acts; stage proposes; refuse boundaries
+                 <date>/<time>-<skill>.md   ├─ route each → incoming / blocked
+   you: "put this in the memo" ──┘          ├─ FILE a task per finding (lands nothing)
+                                            ├─ run the tree's nightly gate sweep
                                             └─ write a morning dream-digest
 ```
 
@@ -335,12 +336,17 @@ made by a guard, not by feel.
   the last dream) and `digest` (write the morning summary + the next marker).
   Gated on `VIRGIL_DEV`; reuses `reflect._parse_memo` (no second parser).
 - **[`dream_land.py`](../scripts/dream_land.py)** — `classify_change` →
-  `acts` / `proposes` / `refused`. The shared landing-mode helper **and** the
-  three-boundary guard, in one pure, dry-run-safe module.
+  `acts` / `proposes` / `refused` (how big and how risky), and over it
+  `task_route` → `incoming` / `blocked` (which queue the night's task goes in).
+  The shared classifier **and** the three-boundary guard, in one pure,
+  dry-run-safe module.
 
-**The flow:** `select` → detect cross-memo patterns → route each change through
-`dream_land` → apply the `acts`, stage the `proposes`, record the `refused` →
-`digest` → reflect on the run itself (bootstrap).
+**The flow:** `select` → detect cross-memo patterns → route each finding through
+`dream_land.task_route` → **file** it with `dream.py file-task` (`incoming/` for
+the worker, `blocked/` for the human) → run the gate sweep → `digest` → reflect
+on the run itself (bootstrap). Since task 522 the dream LANDS NOTHING: it is a
+detector on the same rails as the task worker's idle-time audits, and
+`~/virgil-tasks/` is the one attention surface.
 
 ### Since-last-dream selection
 
@@ -352,20 +358,28 @@ keeps its original `reflectedAt`, so it is not re-selected — matching "don't
 re-process"; re-selecting a re-tagged memo via a future `updatedAt` channel
 remains a forward item, deferred past the chip-19 unification.)
 
-### The two landing modes (scope-determined)
+### The two verdicts, and the one routing (task 522)
 
-| Mode | When | Where it lands |
+The verdict says how big and how risky a finding is; the ROUTING says where its
+task goes. They used to be one answer — the verdict WAS the landing mode — and
+they came apart when the dream stopped landing anything.
+
+| Verdict | When | What it means now |
 |---|---|---|
-| **acts** | a single skill-prompt `.md`, prose-polish intent (`tighten-wording` / `add-example` / `fix-typo` / `expand-guidance` / `clarify`), no contract token | committed directly on the dream branch, which step 6 then disposes of in the same run — the user reverts via git |
-| **proposes** | cross-skill · any `.py` script · the manifest (`docs/workspace/`) · rename/merge/split · any contract-adjacent change | staged in a `dream/<date>` worktree, which step 6 then LANDS or EXPORTS as a patch under `~/virgil-tasks/attachments/` before deleting the branch — no `dream/*` branch outlives its run, so the digest's pointer to unlanded work is the patch, never a merge hint |
-| **refused** | crosses a boundary (below) | recorded only — never applied, never proposed |
+| **acts** | a single skill-prompt `.md`, prose-polish intent (`tighten-wording` / `add-example` / `fix-typo` / `expand-guidance` / `clarify`), no contract token | a scoped fix. Filed as a READY task; the worker lands it |
+| **proposes** | cross-skill · any `.py` script · the manifest (`docs/workspace/`) · rename/merge/split · any contract-adjacent change | structural — wants the deeper treatment in the task's `## Design`. Also a READY task: the worker lands both kinds of diff under one discipline |
+| **refused** | crosses a boundary (below) | never authored, never worked around — filed to `blocked/` with `## Questions`, because a refusal nobody reads decides by default |
+
+…plus the one routing question the verdict does not answer: a change touching
+the loop's **own rulebook** (`neverSelfMerge`) is a READY-looking `proposes`
+that still goes to `blocked/`. Gabriel reviews the loop's own procedure.
 
 Precedence is **refused > proposes > acts**: the boundary guard runs first, and
-an unspecified intent on a lone skill prompt defaults to *propose* (acts is the
-privileged fast lane, asked for explicitly). The **fast-path** — a memo that is
-`flagged` **and** `fixNow` — gets an immediate narrow single-memo pass, but
-acts-directly only; if its change classifies as `proposes`/`refused` it drops
-back to the batch.
+an unspecified intent on a lone skill prompt defaults to *propose*. The
+**fast-path** — a memo that is `flagged` **and** `fixNow` — is now a PRIORITY
+rather than a landing mode: its task is filed `priority: high` so the worker
+claims it first. It buys no lane past the human: a fix-now finding that is
+`refused` or own-rulebook still routes to `blocked/`.
 
 ### The three enforced boundaries (the guard, not convention)
 
@@ -388,11 +402,12 @@ loop runs *inside*.
 `editor/dev/dream-digests/<YYYY-MM-DD>.md` — **gitignored**, the sibling of
 `memos/` and `iterations/` (with a checked-in `.gitkeep`). Written **every**
 run, even a no-op night. Frontmatter carries `dreamedAt` / `since` / `marker` /
-`markerMemo` / the acted/proposed/refused counts / `dreamSha`; the body lists
-the ACTED, PROPOSED (each with its step-6 outcome — **LANDED / EXPORTED /
-FILED** — and, for anything that did not land, `git apply <patch>` rather than a
-merge hint), and REFUSED (each with its boundary) entries, the counts by
-tier/skill/lens, and a bootstrap note. The
+`markerMemo` / the acted/proposed/refused counts / `taskQueuePresent` /
+`dreamSha`; the body lists the three verdict buckets — each entry naming **the
+task it was filed as** and that task's queue, or rendering **NOT FILED**, which
+is what a finding that reached no queue is — plus the counts by
+tier/skill/lens, and a bootstrap note. The digest is a RECORD, not a channel:
+since task 522 nothing needing attention may live only here. The
 clock is pinnable via `VIRGIL_DREAM_NOW` (mirroring reflect's `VIRGIL_REFLECT_NOW`).
 
 ### Bootstrap / recursion
@@ -405,25 +420,27 @@ dream's own track record). "The first dreams will be the worst."
 ### Scheduling (wired — two Claude scheduled tasks)
 
 `editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly from
-the repo, and `virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge
-sweep, version bump, push, deploy — after it. Step 6 merges a green branch to
-`main` at the end of the dream's own run, and it ships with that update.
+the repo, the task worker (`/loop /work`) claims one task per run on the hour,
+and `virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge sweep,
+version bump, push, deploy. So a finding filed at 22:06 is typically landed by
+the worker within the hour and deployed by the midnight update: the same
+end-to-end latency the retired self-merge had, with a verified diff and a human
+review path in the middle of it.
 
-**Green is necessary, not sufficient, and the two hours between those crons are
-why.** `/cleanup-virgil` runs `/cleanup-worktrees` first, which merges *every*
-surviving branch blindly ("merge them all — do not ask which"), so a `dream/*`
-branch left standing at 22:00 ships at 00:00 whether or not anything cleared
-it — which made a "leave it parked for review" instruction unenforceable as
-written. Step 6 therefore EXPORTS rather than parks in the three cases a green
-merge is withheld: the primary tree is dirty (the human mid-edit), a gate is
-red, or the guard answers `neverSelfMerge: true` — the change touches the
-loop's **own** operating procedure (`DEV_LOOP_PROCEDURE` in `dream_land.py`:
-the three loop skill prompts ∪ `dream.py` / `reflect.py` / `dream_land.py` /
-`dev_loop.py`). In each case the diff goes to a patch under
-`~/virgil-tasks/attachments/`, the worktree and branch are deleted, and the
-work — plus any decision owed — is filed into `~/virgil-tasks/inbox/` for the
-catcher. `/loop /editor/dream` on an interval remains a supported manual mode —
-same since-last-dream selection, and a same-day re-run rotates the prior digest.
+**The dream lands nothing, and that is what made the old scheduling hazard go
+away rather than be managed.** `/cleanup-virgil` runs `/cleanup-worktrees`
+first, which merges *every* surviving branch blindly ("merge them all — do not
+ask which"), so a `dream/*` branch left standing at 22:00 shipped at 00:00
+whether or not anything cleared it — which made "leave it parked for review"
+unenforceable as written, and which the old step 6 answered with an
+export-and-delete recipe. Task 522 removed the branch instead of the hazard:
+there is nothing standing at 22:00 to sweep. The `neverSelfMerge` question the
+recipe existed for survives as ROUTING — a change touching the loop's own
+operating procedure (`DEV_LOOP_PROCEDURE` in `dream_land.py`: the three loop
+skill prompts ∪ `dream.py` / `reflect.py` / `dream_land.py` / `dev_loop.py`)
+becomes a `blocked/` task with `## Questions` rather than a merge withheld.
+`/loop /editor/dream` on an interval remains a supported manual mode — same
+since-last-dream selection, and a same-day re-run rotates the prior digest.
 
 ## The unified engine: `iterations/` and `memos/` (chip 19)
 
@@ -434,7 +451,7 @@ it → record } — with **two entry points** into it:
 | Entry point | Input | Skills | Cadence | Lands edits |
 |---|---|---|---|---|
 | [`/editor/iterate-virgil-editor`](../skills/iterate-virgil-editor.md) | **synthesized** + sandboxed | single skill | **synchronous** (you watch) | **inline** in the working tree (no commit) |
-| [`/editor/reflect`](../skills/reflect.md) + [`/editor/dream`](../skills/dream.md) | **real** invocations (chip-17 memos) | cross-skill | **ambient** overnight batch | acts-on-branch / **proposes-via-worktree** / digest |
+| [`/editor/reflect`](../skills/reflect.md) + [`/editor/dream`](../skills/dream.md) | **real** invocations (chip-17 memos) | cross-skill | **ambient** overnight batch | **files a task per finding** (`incoming/` or `blocked/`) + digest; lands nothing |
 
 What the two **genuinely share** — and now use by construction, not convention:
 
@@ -461,14 +478,15 @@ What stays **specialized** (and is deliberately *not* merged):
   sandbox, and spawns a runner subagent per attempt; reflect/dream select real
   memos since the last dream and batch them. iterate converges per-case; dream
   digests once a night.
-- **⚠ The autonomy layer is `dream`-only.** Because `dream` runs **unattended**,
-  its `proposes` verdict means *stage it in a `dream/<date>` worktree for review*.
-  `iterate` runs **synchronously with the maintainer watching the diff**, so it
-  adopts `dream_land` purely as a **boundary guard**: it honors `refused` (the
-  safety net it previously lacked), **surfaces** a `proposes`-class verdict as
-  "extra scrutiny / consider a separate pass," and lands every non-refused edit
-  **inline** — it never stands up a worktree and never commits. iterate did **not**
-  inherit dream's acts-on-branch / propose-via-worktree machinery.
+- **⚠ The output channel is the asymmetry.** Because `dream` runs
+  **unattended**, it writes NOTHING to the tree: every verdict becomes a task
+  the worker executes or the catcher surfaces (task 522). `iterate` runs
+  **synchronously with the maintainer watching the diff**, so it adopts
+  `dream_land` purely as a **boundary guard**: it honors `refused` (the safety
+  net it previously lacked), **surfaces** a `proposes`-class verdict as "extra
+  scrutiny / consider a separate pass," and lands every non-refused edit
+  **inline**. Neither stands up a worktree now — iterate because a human is
+  watching, dream because it is a detector and the worker is the executor.
 
 So `iterations/` and `memos/` are **two labeled streams, one shape** — kept
 separate on purpose (the dream consumes only `memos/`; iterate consumes only
@@ -497,10 +515,10 @@ The dream reads the chip-17 memos since the last dream, keying on the
 frontmatter: `flagged` first (and any `fixNow: true` on the fast-path),
 `noted` grouped by skill + bucket, `unremarkable` only counted. It filters by
 `result` for its audits (rejection corpus / silent-edit audit / refusal
-patterns). It then routes each change (`acts` lands single-skill-prompt polish
-directly; `proposes` stages cross-skill / script / manifest / contract changes
-in a worktree; `refused` blocks a boundary crossing) and writes a morning
-digest to `editor/dev/dream-digests/` — all detailed under
+patterns). It then routes each finding through `task_route` — ordinary work to
+`incoming/`, a boundary refusal or an own-rulebook change to `blocked/` with
+`## Questions` — files it as a task, runs the tree's nightly gate sweep, and
+writes a morning digest to `editor/dev/dream-digests/` — all detailed under
 [The dream phase](#the-dream-phase-night-half) above. Forward-compat: the §15
 rules still hold — reserved overlay paths stay in the sync deny-list,
 `result: rejected` rows are kept indefinitely (rejection-fidelity for future
@@ -515,8 +533,15 @@ tier promotion; idempotent re-run.
 `editor/scripts/tests/test_dream_slice.py` — the **dream** slice: acts-vs-
 proposes routing by scope; boundary-refusal for each of the three; the
 flagged+fix-now fast-path; the since-last-dream selector (already-digested memos
-skipped); the digest with ACTED+PROPOSED+REFUSED entries; and the bootstrap
+skipped); the digest with its three verdict buckets; and the bootstrap
 (a `skill=dream` memo the next dream reads).
+
+`editor/scripts/tests/test_dream_task_filing.py` — the **output channel** (task
+522): `task_route`'s queue routing (own-rulebook and boundary refusals to
+`blocked/`, everything else ready work, an unattributed red gate a QUESTION);
+the id-collision protocol three minters now share, driven by making the pre-scan
+lie the way a concurrent catcher does; the schema bar enforced at the write; and
+the sandbox rule that stops a pinned test run minting into the live queue.
 
 `editor/scripts/tests/test_unify_slice.py` — the **unification** slice (chip 19):
 the one engine has no forks (`dev_loop` reuses `reflect._parse_memo` +

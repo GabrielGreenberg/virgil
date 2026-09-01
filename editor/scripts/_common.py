@@ -791,6 +791,58 @@ def memo_sink_kind() -> str:
     return SINK_SYNCED if synced_memos_root() is not None else SINK_LOCAL
 
 
+# ---------------------------------------------------------------------------
+# The TASK QUEUE — the dev loop's ONE output channel (task 522)
+# ---------------------------------------------------------------------------
+# Since 2026-08-31 the dream LANDS nothing. Every actionable output it produces
+# is a task file in `~/virgil-tasks/`: the worker is the only thing that touches
+# `main`, and `blocked/` is the only surface the human is asked to read. So the
+# loop needs the queue's location the same way it needs the memo sink's — and it
+# needs it under the SAME sandbox rule, which is the load-bearing half. A suite
+# that has pinned the loop's sinks must not be able to MINT A TASK into the
+# human's live queue; that hazard is measured rather than hypothetical, the
+# identical gap in `synced_inbox_root` having put 87 junk files into the real
+# Dropbox inbox in twenty minutes (2026-09-01) from suites that had correctly
+# pinned every sink they knew about.
+
+TASKS_ENV = "VIRGIL_TASKS_DIR"
+TASKS_DIRNAME = "virgil-tasks"
+
+# The queue dirs a MINTER scans for today's max id. `done/` is IN and `inbox/`
+# is OUT, and neither is arbitrary: an id retires by moving to `done/`, never by
+# disappearing, so a minter that skipped it would re-issue every id the day's
+# finished work already spent; `inbox/` holds UNMINTED drops, which carry no id
+# to collide with.
+TASK_ID_DIRS = ("incoming", "in-progress", "blocked", "done")
+
+
+def tasks_root() -> Path | None:
+    """The task queue `~/virgil-tasks/`, or None when the loop may not file.
+
+    Same ladder and the same two rules as `synced_inbox_root`. `VIRGIL_TASKS_DIR`
+    pins it and is honored WHETHER OR NOT it exists (a pin is a caller statement,
+    and the dir is created on first write); discovery requires the directory to
+    EXIST, because a queue nobody runs a worker against is not an output channel
+    and inventing one would file into a folder nothing reads.
+
+    And the SANDBOX rule: a caller that has redirected any of the loop's own
+    sinks is running a sandboxed loop, and discovery may not reach past that
+    sandbox into the human's live queue. An explicit `VIRGIL_TASKS_DIR` is never
+    suppressed — that IS the caller naming this one. Never raises."""
+    pinned = _dir_override(TASKS_ENV)
+    if pinned is not None:
+        return pinned
+    if any(_dir_override(k) is not None for k in
+           (DEV_HOME_ENV, "VIRGIL_DEV_MEMOS_DIR", "VIRGIL_DREAM_DIGESTS_DIR",
+            INBOX_ENV)):
+        return None
+    cand = Path.home() / TASKS_DIRNAME
+    try:
+        return cand.resolve() if cand.is_dir() else None
+    except OSError:
+        return None
+
+
 # Only the two UNAMBIGUOUS grammars are matched. iCloud's bare " 2" suffix is
 # deliberately NOT one: `reflect.py` mints exactly that shape itself (`-2.md`)
 # to disambiguate two memos written in the same second, so matching it would

@@ -117,8 +117,10 @@ editor/
 │   ├── reflect.md              dev-loop capture (chip 17, DEV mode only): write
 │   │                           a tiered memo after a skill → reflect.py
 │   └── dream.md                dev-loop night (chip 18, DEV mode only): read the
-│                               memos since the last dream → route → digest →
-│                               reflect on itself; dream.py + dream_land.py
+│                               memos since the last dream → route → FILE a task
+│                               per finding (~/virgil-tasks; it lands nothing —
+│                               task 522) → gate sweep → digest → reflect on
+│                               itself; dream.py + dream_land.py
 ├── scripts/                    Python helpers (stdlib-only, py3.10+)
 │   ├── _common.py              shared paths/JSON/regex/notification helpers
 │   ├── library_path.py         canonical resolver for the library folder
@@ -155,8 +157,11 @@ editor/
 │   ├── dream.py                dev-loop night engine (chip 18): gated on
 │   │                           VIRGIL_DEV; select (memos since last dream, via
 │   │                           reflect._parse_memo) + digest (→ dream-digests/)
-│   ├── dream_land.py           landing-mode classifier + the 3-boundary guard
-│   │                           (chip 18): acts / proposes / refused. Pure,
+│   │                           + file-task (mint a task into ~/virgil-tasks
+│   │                           under the 3-minter collision protocol — task 522)
+│   ├── dream_land.py           change classifier + the 3-boundary guard (chip
+│   │                           18): acts / proposes / refused, and over it
+│   │                           task_route → incoming / blocked. Pure,
 │   │                           importable — shared by dream + iterate (chip 19)
 │   └── dev_loop.py             the shared dev-loop engine (chip 19): composes
 │                               reflect._parse_memo (reader) + dream_land
