@@ -267,13 +267,13 @@ const PERMITTED_RAW_CSS_GREENS: Readonly<Record<string, string>> = {
     "Tokenising the note marker's hover/active states is that kind's own decision.",
   "src/app/globals.css:#4ade80":
     "the .note-marker hover border, sibling of the ground above. Same family, same reason.",
-  "src/app/globals.css:#bbf7d0":
-    "the .note-marker SELECTED ground. Same note-kind family; a selected marker is a card " +
-    "state, not an affirmative role.",
-  "src/app/globals.css:#22c55e":
-    "the .note-marker selected border. Byte-identical to --status-ok by coincidence of ramp, " +
-    "not by role: this is the note kind's own edge, and merging it would couple a card kind " +
-    "to the traffic light.",
+  // RETIRED in task 525: the `#bbf7d0` / `#22c55e` pair recorded here was the
+  // `.note-marker-selected` ground and edge — a rule with ZERO producers in
+  // either silo, deleted with the other nine dead inline-chrome hooks. The
+  // list may only shrink, and this is a shrink: two exceptions that had
+  // stopped excusing anything. (The `.note-marker` HOVER pair above is live
+  // and keeps its entries.) The census that keeps them from coming back is
+  // `dead-css-hook-census.test.ts`.
 };
 
 describe("stylesheets spell no raw affirmative green in a rule body", () => {

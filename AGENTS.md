@@ -6480,6 +6480,95 @@ the member and its two props to the shell fails 2 legs, naming `anchored` and
 **Owed, not claimed:** nothing. Pure type-checked deletion of a code path with no
 caller; the surviving variants' own legs are the regression net.
 
+#### The selector half: a CSS hook is a claim that something stamps it
+
+Same law, the CSS medium (task 525) — and the case where two maintenance
+sweeps read a dead rule, reasoned about it, and TOKENIZED it.
+
+The repo runs the two adjacent halves of this question and neither can see
+this one: `phantom-css-var` asks whether a `var()` READ resolves to a
+definition, `inert-preference-controls` asks whether a declared token has a
+READER. Both are about CUSTOM PROPERTIES. The missing third is about the
+SELECTOR — *does this hook have a PRODUCER?* — and eleven hooks had none:
+`.citation-node-bar` / `.citation-node-text` (sub-elements of a citation DOM
+that no longer exists), `.footnote-highlight-marker`, `.footnote-content-editor`,
+`.footnote-card-drop-target`, `.note-editor`, `.note-marker-selected`,
+`.hide-scrollbar`, `.toolbar-scroll`, `library.css`'s `.paper-render-pod`, and
+the attribute value `[data-paragraph-kind="report-request"]`.
+
+> **A class or attribute value the stylesheet matches on is a claim that
+> something stamps it on an element.** Where the vocabulary is OPEN (class
+> names) the census is a grep with a small STATED allowlist; where it is
+> CLOSED (an attribute whose writer's codomain is declared) the census is a
+> DERIVATION with an EMPTY one.
+
+Six rules it earned:
+
+- **A dead rule is worse than no rule, and here that is measured rather than
+  argued.** `.footnote-highlight-marker` was migrated onto `var(--footnote-200)`
+  by §8's rust consumer sweep — with a comment reasoning about the change — and
+  `.footnote-card-drop-target` onto `--footnote-50` by the same pass;
+  `.paper-render-pod`'s own comment described a wiring (*wraps
+  `<EditorContent>`* inside RightDetail) that no longer exists, beside a
+  `PaperRender.tsx` that writes the same pod tokens inline. Three sweeps read
+  the declared path and believed it was the enforced one.
+- **The two halves are DIFFERENT SHAPES, and the closed one is the leg with
+  teeth.** `data-paragraph-kind`'s only writer is `cssTokenForCardKind`, so its
+  legal value set IS the crosswalk's `cssToken` column — which is how
+  `report-request` was dead *by derivation* rather than by deletion: that
+  kind's `cssToken` is `"report"` (the fork `legacy-token-crosswalk.ts` exists
+  to declare), so the rule was a Mode-A restatement of the Mode-B
+  `data-link-card` vocabulary, where `report-request:` IS live. Two same-named
+  namespaces, one of which the attribute can never hold. The Mode-B leg is the
+  same shape: the `legacyDataKind` column plus whatever
+  `normalizeLegacyCardKind` accepts, asked of that function rather than
+  re-listing the legacy pair.
+- **A census whose hits are DELETIONS fails OPEN.** A class is produced by a
+  literal, by `class-${…}` (a literal prefix before an interpolation) or by
+  `${…}-class` (an interpolation before a literal suffix) — measured, the
+  literal-only reading reports 43 hits of which 26 are template families
+  (`heading-wrapper-l${n}`, `show-dividers-${n}`, `rtf-content-${variant}`), a
+  census nobody would read. Both directions bring it to 17, of which 11 were
+  genuinely dead. A missed producer costs one allowlist entry; an over-report
+  costs a deletion of live chrome.
+- **The allowlist carries two DIFFERENT claims and each is re-checked.**
+  `dependency` names the package that stamps the class (CodeMirror's
+  `cm-editor`, citeproc's `csl-*`, TipTap Placeholder's `is-editor-empty`,
+  KaTeX's `katex-display`) and a leg walks that package for the string, so an
+  upgrade that renames it fails here instead of leaving a standing licence.
+  `routed` is a DECLARED affordance whose producer is unwired — `iconbtn-lg` /
+  `iconbtn-on-dark` (documented steps of a size scale) and `.is-menu-open` (a
+  designed grab-handle state the handle never receives while its DragHandleMenu
+  is up). Deleting one retires a design and wiring one changes what the app
+  looks like; both are Gabriel's call, so they are parked with the question
+  stated rather than decided unattended.
+- **A dead SELECTOR can prop up a live-looking TOKEN.** Deleting
+  `.footnote-highlight-marker` turned `--footnote-200` into a `phantom-css-var`
+  orphan — its only reader had been that rule. Recorded beside `--footnote-300`
+  as an unused rung of the deliberate `--footnote-*` tint scale (a scale is a
+  vocabulary, not an alias), and it is the tidiest statement of why the two
+  censuses are not the same question.
+- **The retirement leg reads COMMENT-STRIPPED source**, because every deletion
+  left a note at the site naming what it removed — this repo renegotiates a
+  retired claim in place — so a raw-source needle would outlaw the very prose
+  the fix is made of. Its canary asserts the notes are still THERE, so a leg
+  that passes because someone deleted the explanation fails instead.
+
+CI: [dead-css-hook-census.test.ts](src/__tests__/dead-css-hook-census.test.ts).
+Measured by neutering each half in turn: restoring one dead class rule takes 2
+legs, restoring the `report-request` rule 1, a planted dead `data-link-card`
+prefix 1, a stale allowlist entry 1, an allowlist entry that has gained a
+producer 1, a `dependency` entry whose package no longer ships the class 1, and
+deleting a retirement note 1. Three downstream contracts are RENEGOTIATED in
+place with the reason at the site rather than re-scoped: `phantom-css-var`'s
+orphan set (gains `--footnote-200`), `in-text-anchor-accents`' non-vacuity floor
+(20 → 19 reads, the token itself untouched — its Mode-B read is live), and
+`affirmative-green-tokens`' raw-green allowlist (loses the two
+`.note-marker-selected` hexes, a shrink).
+
+**Owed, not claimed:** nothing user-visible should change, which is the point —
+every deleted hook could never match an element. Not FSA-masked.
+
 ### The vocabulary half: a token two layers must agree on is spelled ONCE
 
 Same law, fourth tense (task 255) — and the one where deleting the dead declaration would have been the *smaller* half of the truth.
