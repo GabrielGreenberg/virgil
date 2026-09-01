@@ -65,6 +65,7 @@ from _common import (
     die,
     digests_root as _shared_digests_root,
     extra_memos_roots,
+    is_sync_conflict_name,
     memo_sink_kind,
     memos_root as _shared_memos_root,
     source_repo_root,
@@ -502,24 +503,13 @@ def _memo_sink_present(memos_root: Path) -> bool:
     return memos_root.is_dir()
 
 
-# A sync daemon that meets a file it cannot reconcile RENAMES one side aside
-# rather than merging it. Those decorations are read-side DEBRIS, never
-# content: counted as memos they would inflate `nonDreamLifetimeCount` — the
-# very number the union exists to make honest — and re-report a memo the corpus
-# already holds. Only the two UNAMBIGUOUS grammars are matched (Dropbox's
-# parenthesised "conflicted copy", Syncthing's `.sync-conflict-`); iCloud's
-# bare " 2" suffix is deliberately NOT, because `reflect.py` mints exactly that
-# shape itself to disambiguate two memos written in the same second.
-_CONFLICT_COPY_RE = re.compile(r"conflicted copy|\.sync-conflict-", re.IGNORECASE)
-
-
 def _scan_sink(memos_root: Path) -> list[dict]:
     """Every memo in ONE sink directory, unsorted. `_read_corpus` is the door."""
     if not memos_root.is_dir():
         return []
     recs = []
     for p in sorted(memos_root.rglob("*.md")):
-        if p.name == ".gitkeep" or _CONFLICT_COPY_RE.search(p.name):
+        if p.name == ".gitkeep" or is_sync_conflict_name(p.name):
             continue
         try:
             recs.append(_load_memo(p, memos_root))
@@ -553,6 +543,13 @@ def _read_corpus(memos_root: Path,
     then genuinely exists at the same relative path in both, and a naive union
     double-counts it. The sink in use wins a tie, so a record's `path` is
     stable across the fix.
+
+    Stated residual: that identity is the same one `reflect._find_existing`
+    dedupes on, so two GENUINELY different memos collide only when two machines
+    ran the same skill in the same second of the same day — in which case the
+    sink in use wins and the other is not read. Widening the key to include the
+    sink would be worse: it would double-count every memo a migration copied
+    across, which is the case this dedupe exists for and the common one.
 
     Each record carries `sink` — `""` for the sink in use, else the superseded
     sink's label — so a caller can report the split without re-scanning."""

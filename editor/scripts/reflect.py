@@ -82,6 +82,7 @@ from _common import (
     atomic_write,
     dev_mode_enabled,
     die,
+    is_sync_conflict_name,
     memos_root as _shared_memos_root,
     read_json,
     resolve_doc,
@@ -508,7 +509,14 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
     whole sink, so it costs O(today) where the task-bearing scan is O(all memos
     ever) — a scan that is 38 ms at 689 memos and grows without bound, paid
     inside the 20 s subprocess that blocks every writeback before it prints its
-    result. That residual is untouched here and stated in the digest."""
+    result. That residual is untouched here and stated in the digest.
+
+    Since the sink became SYNCED (task 521) this scan also has to skip a sync
+    daemon's CONFLICTED COPIES — `is_sync_conflict_name`, the same predicate
+    the dream's corpus scan reads. Picking one here would land the enrichment
+    in the orphaned copy and leave the real memo un-updated, which is the
+    silent divergence between writer and reader this subsystem exists to
+    prevent, arriving through the filesystem instead of through resolution."""
     if not memos_root.is_dir():
         return None
     if _is_task_less(task_id):
@@ -522,6 +530,8 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
             return None
         want = doc_key(doc)
         for p in sorted(day_dir.glob("*.md")):
+            if is_sync_conflict_name(p.name):
+                continue        # a daemon's rename, not a memo — see the door
             try:
                 head = p.read_text(encoding="utf-8")[:2000]
             except OSError:
@@ -532,6 +542,8 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
                 return p
         return None
     for p in sorted(memos_root.rglob("*.md")):
+        if is_sync_conflict_name(p.name):
+            continue            # a daemon's rename, not a memo — see the door
         try:
             head = p.read_text(encoding="utf-8")[:2000]
         except OSError:

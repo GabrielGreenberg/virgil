@@ -771,6 +771,29 @@ def memo_sink_kind() -> str:
     return SINK_SYNCED if synced_memos_root() is not None else SINK_LOCAL
 
 
+# Only the two UNAMBIGUOUS grammars are matched. iCloud's bare " 2" suffix is
+# deliberately NOT one: `reflect.py` mints exactly that shape itself (`-2.md`)
+# to disambiguate two memos written in the same second, so matching it would
+# discard real memos to avoid debris — the wrong trade in both directions.
+_SYNC_CONFLICT_RE = re.compile(r"conflicted copy|\.sync-conflict-", re.IGNORECASE)
+
+
+def is_sync_conflict_name(name: str) -> bool:
+    """Is this filename a sync daemon's CONFLICTED COPY rather than content?
+
+    A daemon that meets a file it cannot reconcile RENAMES one side aside. In
+    the synced memo sink that is read-side DEBRIS at both ends and must be
+    skipped by BOTH — the dream's corpus scan (where counting it inflates
+    `nonDreamLifetimeCount`, the very number the union exists to make honest,
+    and re-reports a memo the corpus already holds) and `reflect._find_existing`
+    (where PICKING one as the memo to enrich lands the update in the orphaned
+    copy and leaves the real memo un-updated). One predicate, both readers: two
+    spellings of this rule is how the writer and the reader come to disagree
+    about which files are memos, which is the class this whole subsystem is
+    about."""
+    return _SYNC_CONFLICT_RE.search(name) is not None
+
+
 RETIRED_DEV_HOMES: tuple[tuple[str, str], ...] = (
     # ("retired on", $HOME-relative base) — every base `dev_home()` has ever
     # resolved to and no longer does. READ-SIDE ONLY; nothing may WRITE to one.

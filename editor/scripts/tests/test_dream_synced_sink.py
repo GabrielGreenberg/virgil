@@ -438,6 +438,73 @@ class ReportsChannel(unittest.TestCase):
                         "the durable digest still landed")
 
 
+class ConflictedCopiesAtBothEnds(unittest.TestCase):
+    """The predicate has TWO readers, and the write-side one is the sharper.
+
+    `reflect._find_existing` scans the sink to decide which memo the reflection
+    convention ENRICHES. Picking a daemon's conflicted copy lands the update in
+    the orphaned file and leaves the real memo un-updated — the silent
+    writer/reader divergence this subsystem exists to prevent, arriving through
+    the filesystem instead of through resolution. A leg for the corpus scan
+    alone cannot see it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.memos = Path(self._tmp.name) / "memos"
+        self.memos.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, name: str, *, task: str) -> Path:
+        d = self.memos / "2026-08-30"
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / name
+        p.write_text(
+            "---\nskill: draft-footnote\n"
+            f"taskId: {task}\ntier: noted\n"
+            "reflectedAt: 2026-08-30T11:02:00.000Z\n---\n\n## issues\n\nx\n")
+        return p
+
+    def test_find_existing_never_picks_a_conflicted_copy(self):
+        import reflect
+        real = self._write("11-02-00-draft-footnote.md", task="req-1")
+        # sorted() puts the parenthesised copy FIRST, so a scan with no filter
+        # returns it — this leg fails on any implementation that only filters
+        # the READ side.
+        self._write("11-02-00-draft-footnote (Gabriel's conflicted copy 2026-09-01).md",
+                    task="req-1")
+        found = reflect._find_existing(self.memos, "draft-footnote", "req-1", None, "")
+        self.assertEqual(found, real)
+
+    def test_the_task_less_day_scan_skips_them_too(self):
+        import reflect
+        doc = Path(self._tmp.name) / "paper"
+        doc.mkdir()
+        key = reflect.doc_key(doc)
+        d = self.memos / "2026-08-30"
+        d.mkdir(parents=True, exist_ok=True)
+        body = ("---\nskill: draft-footnote\ntaskId: -\ntier: noted\n"
+                f"doc: {key}\nreflectedAt: 2026-08-30T11:02:00.000Z\n---\n\n"
+                "## issues\n\nx\n")
+        (d / "11-02-00-draft-footnote.md").write_text(body)
+        # The Dropbox grammar, deliberately: a space sorts BEFORE `.`, so this
+        # copy is what an unfiltered `sorted()` returns first. Syncthing's
+        # `.sync-conflict-` always sorts AFTER the real name, which would make
+        # this leg pass for a reason that has nothing to do with the filter.
+        (d / "11-02-00-draft-footnote (Gabriel's conflicted copy 2026-09-01).md"
+         ).write_text(body)
+        found = reflect._find_existing(self.memos, "draft-footnote", "-", doc, "2026-08-30")
+        self.assertEqual(found, d / "11-02-00-draft-footnote.md")
+
+    def test_one_predicate_serves_both_ends(self):
+        """Two spellings of this rule is how the writer and the reader come to
+        disagree about which files are memos."""
+        import reflect
+        self.assertIs(reflect.is_sync_conflict_name, _common.is_sync_conflict_name)
+        self.assertIs(dream.is_sync_conflict_name, _common.is_sync_conflict_name)
+
+
 class LocalSinkBanner(unittest.TestCase):
     """`memoSinkKind: local` is BANNERED, for the reason every other no-signal
     flag is: a fact that reaches only the prompt is the one a run forgets."""
