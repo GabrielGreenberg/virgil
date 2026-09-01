@@ -176,21 +176,26 @@ directory).
      `_pending/`.
    - **otherwise** → appends a stub to `master.bib`, moves the file to
      `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
-   - emits one notification per row, from an **OPEN** vocabulary the
-     script declares once (`triage_apply.NOTIFICATION_KINDS`, with the
+   - emits notifications from an **OPEN** vocabulary the script declares
+     once (`triage_apply.NOTIFICATION_KINDS`, with the
      `triage-bib-ignored-<state>` family derived from
      `_tools.TERMINAL_BIB_STATES`). Ask it rather than reading a list:
      ```bash
      python3 .virgil/scripts/library/triage_apply.py --print-notification-kinds
      ```
-     The commonest are `triaged`, `triage-filename-mismatch`,
-     `triage-bib-imported`, `triage-bib-summary` and
-     `triage-bib-ignored-<state>` (the ignored kind names the SETTLED
-     state that won — `authenticated`, `manuscript` or `canonical`);
-     the rest name a parked file (`triage-needs-title`,
-     `triage-needs-metadata`, `triage-needs-chapter-info`) or a `.bib`
-     outcome (`triage-bib-folded-duplicate`, `triage-bib-parse-failed`,
-     `triage-bib-cleanup-failed`, `triage-duplicate-work`)
+     Most are per ROW — `triaged`, `triage-filename-mismatch`,
+     `triage-duplicate-work` (the PDF/DOCX **intake** work-identity
+     guard, not a `.bib` outcome: the operator dropped a file whose work
+     is already held), `triage-bib-imported`,
+     `triage-bib-folded-duplicate`, `triage-bib-ignored-<state>` (the
+     ignored kind names the SETTLED state that won — `authenticated`,
+     `manuscript` or `canonical`), and the three that park a file
+     (`triage-needs-title`, `triage-needs-metadata`,
+     `triage-needs-chapter-info`). Three are per SOURCE FILE, emitted in
+     a post-loop after every row of that file is applied:
+     `triage-bib-summary`, `triage-bib-parse-failed`,
+     `triage-bib-cleanup-failed` — so a count of notifications is not a
+     count of rows
    - bumps `.virgil/catalog-version.txt` once at the end
 
    Capture the script's per-row output and final summary in your reply.

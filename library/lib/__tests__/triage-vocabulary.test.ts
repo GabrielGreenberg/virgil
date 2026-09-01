@@ -31,10 +31,16 @@
 // `_tools.TERMINAL_BIB_STATES` member — so it is derived rather than
 // enumerated, and leg 3 pins that derivation against the shipped set.
 //
-// STATED LIMIT: the legs read source text, so a flag or kind assembled at
-// runtime from pieces would be invisible to them. Both scripts spell every
-// one as a literal today, and leg 4 pins the two doors themselves — a
-// declaration nothing prints is a declaration no skill can read.
+// STATED LIMIT, measured rather than guessed. The legs read source text, so a
+// flag or kind assembled at RUNTIME from pieces is invisible to them; both
+// scripts spell every one as a literal today. The literal FORMS are covered
+// exhaustively for flags (append / extend / `+=` / a row literal / the
+// `setdefault("flags", []).append` shape) — the first cut matched two of the
+// five and claimed the gap was runtime assembly, which named a narrower hole
+// than it had. For notification kinds the form is the single `"kind": "…"`
+// key an inbox item is built with, plus the one f-string family head leg 3
+// derives. Leg 4 pins the two doors themselves — a declaration nothing prints
+// is a declaration no skill can read.
 
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -75,14 +81,29 @@ function declaredTuple(src: string, name: string): string[] {
   return [...body.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
 }
 
-/** Every string literal appended to a `flags` list, or seeded into one. */
+/** Every string literal this file puts into a row's `flags` list.
+ *
+ *  FIVE forms, because the first cut matched two and its STATED LIMIT said the
+ *  blind spot was "a flag assembled at runtime from pieces" — which was wider
+ *  than the truth in the wrong direction: `flags.extend([…])`, `flags += […]`
+ *  and `row.setdefault("flags", []).append(…)` are plain literals and were all
+ *  invisible. A guard whose stated reach exceeds its actual reach is the
+ *  disease this whole file is about. */
 function emittedFlags(src: string): string[] {
   const out = new Set<string>();
-  for (const m of src.matchAll(/flags\.append\("([^"]+)"\)/g)) out.add(m[1]);
-  // The seeded forms: `"flags": ["a", "b"]` and `flags = ["a"]`.
-  for (const m of src.matchAll(/(?:"flags":|\bflags\s*=)\s*\[([^\]]*)\]/g)) {
-    for (const lit of m[1].matchAll(/"([^"]+)"/g)) out.add(lit[1]);
-  }
+  const add = (blob: string) => {
+    for (const lit of blob.matchAll(/"([^"]+)"/g)) out.add(lit[1]);
+  };
+  // `<anything>flags.append("x")` — any receiver whose tail is `flags`.
+  for (const m of src.matchAll(/\bflags\.append\(\s*"([^"]+)"/g)) out.add(m[1]);
+  // `<anything>flags.extend([…])` / `flags += […]` / `flags = […]`
+  for (const m of src.matchAll(/\bflags\s*(?:\.extend\(\s*|\+=\s*|=\s*)\[([^\]]*)\]/g)) add(m[1]);
+  // `"flags": [ … ]` — a row literal.
+  for (const m of src.matchAll(/"flags":\s*\[([^\]]*)\]/g)) add(m[1]);
+  // `…("flags", []).append("x")` / `…("flags", []).extend([…])` — the
+  // setdefault form, whose receiver does not end in the identifier.
+  for (const m of src.matchAll(/"flags"\s*,\s*\[\s*\]\s*\)\s*\.append\(\s*"([^"]+)"/g)) out.add(m[1]);
+  for (const m of src.matchAll(/"flags"\s*,\s*\[\s*\]\s*\)\s*\.extend\(\s*\[([^\]]*)\]/g)) add(m[1]);
   return [...out].sort();
 }
 

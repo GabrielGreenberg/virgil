@@ -106,14 +106,16 @@ qfile=".virgil/queue/${CK}-importbib.json"
 
 2. **Run the merge engine for this paper.** It does the dedup →
    authenticate → transient-skip work, writes
-   `.virgil/merge-reports/<citekey>.json`, marks the paper imported (see
-   the branch below), and bumps `catalog-version.txt`. One-line summary
-   on stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
+   `.virgil/merge-reports/<citekey>.json`, and — when the paper has a
+   catalog row (see the branch below) — marks it imported and bumps
+   `catalog-version.txt`. Both halves are conditional together: the
+   version bump rides `write_catalog`, so a run that writes no row bumps
+   nothing. One-line summary on stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
    ```bash
    python3 .virgil/scripts/library/merge_paper_references.py "${CK}"
    ```
-   (The frontend's catalog-version poll handles the UI refresh — no
-   extra bump needed.)
+   Where a bump does happen the frontend's catalog-version poll handles
+   the UI refresh within ~6s — no extra bump needed from you.
 
    **The imported flag, and when it is withheld — this is the one
    statement of that branch; everything else in this file points here.**
@@ -124,9 +126,12 @@ qfile=".virgil/queue/${CK}-importbib.json"
    held — has **no row**, and there is nothing to stamp:
    `_tools.mark_bib_imported` routes through `update_catalog_entry`,
    which raises `KeyError` for a missing row; the engine catches it and
-   records `"no catalog row to mark imported"` in the report's `notes[]`.
-   Nothing is marked, no check appears, and **that is a correct run, not
-   a failure** — the `master.bib` fold is the real work and it landed.
+   records `"no catalog row to mark imported"` in the report's `notes[]`
+   — which the engine writes to disk AFTER that branch, deliberately, so
+   the note is in the artifact you read and not only in its memory.
+   Nothing is marked and no check appears, and **that is a correct run,
+   not a failure**: the `master.bib` fold is the real work, and the
+   one-line summary above is what says whether it added anything.
    (The exit-code block in
    [`/library/authenticate-bib`](authenticate-bib.md) step 7 is the
    family's statement of the same F#4 branch, and
@@ -164,11 +169,13 @@ qfile=".virgil/queue/${CK}-importbib.json"
    Then, **only when the report's `notes[]` holds `no catalog row to
    mark imported`**, one more (step 2 states the branch):
    ```
-   Reference-only entry — no catalog row, so no "imported" check. The master.bib fold landed.
+   Reference-only entry — no catalog row, so no "imported" check.
    ```
-   Do not announce the check unconditionally: an unqualified "marked
-   imported" for a reference-only citekey sends the user looking for a
-   badge that cannot appear.
+   Say nothing about the fold there; the `+<added>` count above already
+   reports it, and an empty `references.bib` reaches this same branch
+   having folded nothing. Do not announce the check unconditionally: an
+   unqualified "marked imported" for a reference-only citekey sends the
+   user looking for a badge that cannot appear.
 
 ## Hard rules
 

@@ -18,22 +18,25 @@ names, so a leg taking a fixture nobody supports FAILS LOUDLY, naming it,
 instead of disappearing into a TypeError that reads like an ordinary failure.
 
 WHAT IT SUPPORTS, and what it deliberately does not. Two fixtures — `tmp_path`
-and `capsys` — because those are the two these suites use. It is not a pytest
-re-implementation: no parametrize, no yield fixtures, no monkeypatch (the
-suites that need `monkeypatch` already run under their own `_run_standalone`
-and are untouched). Adding one is a table entry plus a builder; guessing at
-one is how a shim starts lying about what it ran.
+and `capsys` — because those are the two anything in this directory uses (no
+suite here takes `monkeypatch`; the one file that patches at all,
+`test_bib_auth_predigital.py`, uses its own contextmanager). It is not a
+pytest re-implementation: no parametrize, no yield fixtures, no monkeypatch.
+Adding one is a table entry plus a builder, and the runner NAMES an
+unsupported fixture rather than failing obscurely — guessing at one is how a
+shim starts lying about what it ran.
 """
 
 from __future__ import annotations
 
 import inspect
 import io
+import sys
 import tempfile
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable
 
 
 class _Captured:
@@ -47,9 +50,13 @@ class _Captured:
 class _CapSys:
     """A minimal `capsys`: capture stdout/stderr, drained by `readouterr()`.
 
-    pytest's fixture drains on every read (a second call sees only what was
-    written since the first), which the shipped legs rely on, so this does the
-    same rather than accumulating.
+    pytest's fixture drains on every read: a second call sees only what was
+    written since the first. No shipped leg makes a second read today (there
+    is exactly one `readouterr()` call site in this directory), so nothing
+    RELIES on the drain — it is here so that the day one does, it means the
+    same thing under this runner as under pytest. A shim whose semantics
+    differ from the thing it stands in for is a shim that lies about what it
+    ran.
     """
 
     def __init__(self, out: io.StringIO, err: io.StringIO) -> None:
@@ -87,6 +94,32 @@ def _run_one(fn: Callable[..., Any]) -> None:
         kwargs["capsys"] = _CapSys(out, err)
         with redirect_stdout(out), redirect_stderr(err):
             fn(**kwargs)
+
+
+def main(namespace: dict[str, Any], argv: list[str] | None = None) -> int:
+    """The `__main__` shape the rest of this directory already uses.
+
+    `--standalone` forces the built-in runner regardless of whether pytest is
+    installed. The vitest shells pass it, because they assert on the
+    "<n>/<n> passed" tally this runner prints — under pytest that tally is
+    absent, and a JS guard that failed on a machine where the Python actually
+    PASSED would be failing for a reason unrelated to what it guards.
+    STATED RESIDUAL: it does NOT live here once yet. Three siblings still
+    spell their own `"--standalone" in sys.argv` branch and their own
+    `_run_standalone` — `test_validate_bib_coherence.py`,
+    `test_warning_recompute_merge.py`, `test_synthesize_canonical_entries.py`
+    — and two of them state this same reason in their own words. They are not
+    adopters, so the discovery-based vitest shell correctly leaves them to the
+    per-suite shells they already have; converting them is a separate pass.
+    """
+    argv = sys.argv if argv is None else argv
+    if "--standalone" in argv:
+        return run_standalone(namespace)
+    try:
+        import pytest
+    except ImportError:
+        return run_standalone(namespace)
+    return int(pytest.main([namespace["__file__"], "-q"]))
 
 
 def run_standalone(namespace: dict[str, Any]) -> int:

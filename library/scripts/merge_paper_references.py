@@ -970,12 +970,20 @@ def main(argv: list[str] | None = None) -> int:
             for e in catalog.get("entries", [])
         }
 
-    _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
-
     # Mark the paper imported: snapshot the references.bib citekey set so a
     # later *addition* can clear the flag (additions-only invalidation). Runs
     # for both /library/import-bib and the whole-library /library/merge-bibs,
     # since both call this engine. Skipped on --dry-run.
+    #
+    # BEFORE the report write, and that ordering is load-bearing: under F#4 a
+    # reference-only citekey has no catalog row, so this is the branch that
+    # records "no catalog row to mark imported" — the ONE signal
+    # `/library/import-bib` step 5 reads to decide whether to announce the
+    # blue "imported" check. Written first, the report went to disk with an
+    # empty `notes[]` and the note lived only in memory, so the skill read the
+    # artifact, found nothing, and announced a check the user could not see.
+    # (The empty-`references.bib` early return above already appends before
+    # its own write; this was the ordinary path.)
     if not args.dry_run:
         try:
             mark_bib_imported(library, citekey, [
@@ -984,6 +992,8 @@ def main(argv: list[str] | None = None) -> int:
             ])
         except KeyError:
             report.notes.append("no catalog row to mark imported")
+
+    _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
 
     print(
         f"+{len(report.added)} "

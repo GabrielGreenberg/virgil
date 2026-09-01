@@ -318,10 +318,11 @@ describe("skill include links", () => {
     //
     // The editor silo has been fully qualified since it shipped, including
     // its own `# /editor/<name> $ARGUMENTS` title headers; the library silo
-    // was MIXED — 58 bare references against ~90 qualified ones in the same
-    // files, a shared stale convention rather than one file's slip (task
-    // 510; the residue task 444's sweep left). Two of the editor silo's own
-    // usage examples had drifted the same way.
+    // was MIXED — measured on the pre-510 tree, **97 bare references against
+    // 108 qualified ones in the same files** — a shared stale convention
+    // rather than one file's slip (task 510; the residue task 444's sweep
+    // left). Two of the editor silo's own usage examples (150 qualified) had
+    // drifted the same way.
     //
     // POPULATION DISCOVERED from the skill files themselves, so a new skill
     // is covered by existing. Allowlist EMPTY: a hit is QUALIFY-it.
@@ -339,11 +340,12 @@ describe("skill include links", () => {
     // the right keeps `/deep-indexed` out.
     //
     // It deliberately does NOT reject a preceding BACKTICK, and that is the
-    // hole this leg's own first cut had: excluding it hid 39 references
-    // spelled inside code spans (`` `/deep-index <citekey>` ``) — more than
-    // half the population, and the form a skill is MOST likely to use when it
-    // is telling the reader what to run. A guard that cannot see the common
-    // spelling is a habit.
+    // hole this leg's own first cut had: excluding it saw 60 of those 99 and
+    // hid the other 39, every one spelled inside a code span
+    // (`` `/deep-index <citekey>` ``) — the form a skill is MOST likely to
+    // use when it is telling the reader what to run, including
+    // `/library/index-pending`'s own five-line dispatch table. A guard that
+    // cannot see the common spelling is a habit.
     const names = [...silo.keys()].sort((a, b) => b.length - a.length).join("|");
     const BARE = new RegExp(`(?<![A-Za-z0-9_/.-])/(${names})\\b`, "g");
 

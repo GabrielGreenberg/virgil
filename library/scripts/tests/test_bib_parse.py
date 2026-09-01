@@ -119,10 +119,10 @@ def test_last_wins_on_duplicate_citekeys(tmp_path):
 
 
 if __name__ == "__main__":
-    # Fixtures are injected BY NAME (see `_standalone.py`): the hand-written
-    # runner this replaces passed `tmp_path` positionally, so a leg taking
-    # `capsys` too died with a TypeError and the file quietly reported one
-    # short of its own count.
-    from _standalone import run_standalone
+    # Fixtures are injected BY NAME (see `_standalone.py`). Every leg here
+    # takes `tmp_path` alone, so this file never showed the defect that
+    # motivated the shared runner (`test_f4_writer_side.py` did) — it carried
+    # the same positional runner, which is the shape that hides one.
+    from _standalone import main
 
-    sys.exit(run_standalone(globals()))
+    sys.exit(main(globals()))
