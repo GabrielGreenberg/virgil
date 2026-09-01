@@ -12,11 +12,20 @@
      read it first. The principle must therefore appear verbatim and
      FOREGROUNDED at the top of both `dream.md` and `reflect.md`.
 
+     THE REFINEMENTS BELOW ARE PART OF THE PRINCIPLE, so the same argument
+     applies to them: until 2026-08-31 they lived HERE ONLY, in a file the
+     bundle does not transclude, which meant no run ever read them — the
+     principle reached every run and its corrections reached none. They are
+     inlined beside the sentence in both skills for exactly the reason the
+     sentence is.
+
      To keep those inline copies from drifting away from this SSOT, the
      drift guard `editor/skills/__tests__/dev-loop-principle.test.ts`
-     extracts the sentence below and asserts both skills contain it
-     byte-for-byte. Edit the wording HERE; the test will flag any copy
-     that falls out of sync. Do not paraphrase.
+     extracts the sentence AND every `Refinement (...)` paragraph below and
+     asserts both skills contain each of them byte-for-byte. Edit the
+     wording HERE; the test will flag any copy that falls out of sync — and
+     a refinement added here alone now fails rather than going unread. Do
+     not paraphrase.
 
      Not a slash command — the leading underscore filters it out of the
      command mirror in the build script. -->
@@ -28,3 +37,9 @@
 Refinement (learned): "deep" ≠ "broadest blast radius." Match the fix to
 the *true* scope of the phenomenon; verify a phenomenon is actually
 general before generalizing the fix.
+
+Refinement (Gabriel, 2026-08-31): a QUEUE collision is a queue fact, never
+a scope fact — what happens to be queued alongside must not shrink a fix.
+Remove a collision **by construction** (relocate the hunk to a seam the
+other change doesn't touch); where that is genuinely impossible, the
+impossibility is itself a finding to route — never a reason to go shallow.
