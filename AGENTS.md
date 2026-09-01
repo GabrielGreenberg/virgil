@@ -61,6 +61,7 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:470`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)
 - `lib/doc-products/pipeline.ts` — THE single DocProducts subscriber (perf Wave 1, flag `virgil:doc-products`): the update handler is a dirty flag + one timer reset (O(1)); every O(doc)/O(changed) product refresh (shared docJson, per-block-cached `.tex`, word counts) runs in the 300 ms interactive tier or the `requestLowPriority` idle tier, off the keystroke path. Flag-on it replaces the useLatexSource / useWordCount / EditorPane outline-tick / editor-ops latestDoc subscribers; derived doc products come from `getDocProducts(editor)`, never a private `getJSON` timer.
 - `lib/section-folding.ts` shared fold-chevron refresher (the `sectionFoldingPlugin` `view()`; ONE plugin-view per editor, not N per-heading subscribers — #29 nit-3). Its `update(view, prevState)` does an O(1) reference-compare of the `SectionFoldingState` (`sectionFoldingPluginKey.getState` old vs new) and bails on a plain keystroke — the apply reducer returns the SAME object on a structurally-null tx. Only on a real fold change does it `querySelectorAll('.heading-fold-chevron')` and resync each from live state via `closest('[data-uuid]')`, off the keystroke path. The per-NodeView `refreshFoldBtn()` at construction + in `update()` (editor-extensions.ts) is retained and is O(1)-per-affected-node — it is NOT an `on('transaction')` subscriber, so needs no list entry.
+- `lib/tiptap/inline-atom-grab.ts` atom-grab affordance stamp (the `InlineAtomGrab` plugin's `view()`; ONE plugin-view per editor, task 524). Its `update()` writes `data-atoms-graspable` from `atomsAreGraspable` — the same expression the mousedown handler gates the GESTURE on, so the CSS `cursor: grab` and the drag cannot disagree. [cost: O(1)/tx] two boolean reads plus one `getAttribute` compare, idempotence-gated (a `setAttribute` invalidates style even at an unchanged value — task 430), so a plain keystroke costs a string compare and writes nothing. Like its sibling above it is NOT an `on('transaction')` subscriber, so it is prose-listed here and not in the guardrail's allowlist, whose census greps that call form.
 - `SlashCommandPopup.tsx` (mounted only while the popup is open; RAF-coalesced reposition)
 - `TextObjectGrabHandle.tsx` (docChanged-gated → RAF-coalesced placement resolve. Since task 336 the RAF body is bounded by **input modality**, not by luck: the HOVER branch is the only pointer-derived one and is answered only in POINTER modality, so a keystroke resolves the selection branches and stops — a collapsed caret costs a `from !== to` compare, a live selection one O(depth) ancestor walk plus one placement. Its two earlier one-liners here are both worth remembering: "docChanged-gated, cheap" was the gate-not-callback failure mode this list's own rule outlaws (corrected in Wave-4 P6), and its replacement then *documented* the armed-hover cost as an accepted caveat rather than fixing it — see "Input modality" below.)
 - `EditorMirror.tsx` (RAF-deferred replay). PARKED since task 115 — its only consumer, `SplitEditorPanes`, is deliberately unmounted, so this subscriber cannot run today. It stays listed because the file still makes the subscription and the guardrail greps files, not mounts.
@@ -4417,6 +4418,87 @@ the `cleanup()` clear 2, the hover suppression 1, and dropping the prop 1.
 gesture, a localStorage stack), so the check is cheap and real — lift a
 paragraph onto the icon, watch the ring light, release, and see the strip open
 with the item; release elsewhere and the popout is unchanged.
+
+#### The cursor half: an affordance painted in CSS is a promise the GESTURE keeps
+
+Same law, the CHEAPEST medium (task 524) — and the case where each half was
+correct about its own question, which is exactly why no behavioural test of
+either could see the disagreement.
+
+`globals.css` gave all four inline atoms `cursor: grab` (and `:active
+grabbing`) unconditionally; `InlineAtomGrab` gates its gesture on
+`view.editable && (editableRef ? editableRef.current : true)`, and its own
+comment gives the reason — *"gating the gesture means no dead affordance."*
+The CSS comment beside the rule recorded the other half out loud (*"the grab
+gesture itself is read-only-gated in the plugin; this is just the
+affordance"*), so the fork was written down twice and reconciled nowhere. In
+every read-only surface the pointer said grab, the press said grabbing, and
+nothing happened: a collab non-pen-holder, every non-active keep-alive pane,
+the Library Reader, and — sharpest — a live **cowork-pen** hold (task 489),
+where the topbar is at that moment displaying an amber breathing badge whose
+entire job is to say the document is read-only.
+
+> **A CSS affordance is scoped to a fact the GESTURE publishes, never to a
+> proxy for it.** `data-atoms-graspable`
+> ([inline-atom-grab.ts](src/lib/tiptap/inline-atom-grab.ts)) is stamped from
+> `atomsAreGraspable` — the very expression the mousedown handler gates on —
+> and the rules read `.ProseMirror[data-atoms-graspable="true"]`.
+
+Six rules it earned:
+
+- **`contenteditable` is the tempting scope and it exempts the reported
+  surface.** MAIN pins `view.editable = true` *whatever* the user-facing state
+  (`Editor.tsx` — PM's own `contenteditable="false"` broke how some browsers
+  route selection to PM in the Reader) and gates through `editableRef`
+  instead; a float / card body has no ref and gates on `view.editable` alone.
+  So the DOM carries the answer under two different names, and the one-line
+  fix keyed on `contenteditable` would have left the cowork-pen case lying.
+  One stamped attribute hides that fork from every reader.
+- **The fall-back was already there.** Each atom's base `cursor: pointer` is
+  the honest read-only answer — a click still opens the atom's Card — so this
+  is "stop upgrading", not "remove the cursor".
+- **The affordance follows the PLUGIN, which retires a second member for
+  free.** A surface that does not mount `InlineAtomGrab` never carries the
+  attribute, so its atoms keep `pointer`: `RichTextField` card bodies render
+  citations and footnote markers and have no grab gesture at all, and were
+  advertising one.
+- **Two TRIGGERS, one WRITER, one PREDICATE.** The plugin's `view()` re-stamps
+  on every transaction, which covers every surface whose flip PM can see (a
+  float's `setEditable` → `updateState`, or a re-created editor). MAIN's answer
+  lives in a React ref PM never observes — TipTap's `useEditor` deliberately
+  re-applies its options with `editable: editor.isEditable`, so a prop flip
+  reaches no transaction — so `Editor.tsx` re-stamps from its own `editable`
+  effect, through the same exported writer. A cowork-pen hold is exactly a
+  moment when nobody is typing.
+- **[cost: O(1)/tx]** — two boolean reads, one `getAttribute` compare, and an
+  early return on an unchanged answer, because `setAttribute` invalidates style
+  even when the value is unchanged (task 430). A plugin `view()` is not an
+  `editor.on(…)` subscriber, so it is prose-listed beside
+  `sectionFoldingPlugin`'s refresher rather than in the keystroke-subscriber
+  allowlist, whose census greps that call form.
+- **It cannot feed back into the editor**: PM ignores attribute mutations whose
+  target is its own `view.dom` (`DOMObserver.registerMutation` returns null for
+  `desc == view.docView`), which is the same reason the long-standing
+  `data-editable` stamp beside it is safe.
+
+CI: [atom-grab-affordance.test.ts](src/lib/tiptap/__tests__/atom-grab-affordance.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack over the REAL parse and
+asserts the AGREEMENT — the attribute says grab exactly when
+`handleDOMEvents.mousedown` takes the press — which is unrepresentable in any
+test that drives one half. **No pre-524 suite could see this**: the CSS rule
+and the plugin gate are each self-consistent, and jsdom resolves no cascade, so
+a `getComputedStyle(...).cursor` leg would be vacuous either way. The legs with
+teeth are the two CENSUSES: the CSS one requires every atom `cursor: grab` rule
+to carry the attribute scope AND to name no `contenteditable` (so the shallow
+answer fails rather than passing), and the source one pins ONE speller of the
+attribute, ONE re-derivation of the gate, and `Editor.tsx` entering the shared
+writer. Measured by neutering each half in turn: the pre-524 unconditional rule
+takes 1 leg, the plugin-view stamp 8, the React nudge 1, a re-forked gate 1,
+and the `contenteditable` scoping 2.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a CSS rule plus a
+DOM attribute, no disk), so the check is cheap and real — open the dev doc,
+force read-only, and hover a citation.
 
 
 #### The vocabulary half: an exemption is scoped to the shape it justifies

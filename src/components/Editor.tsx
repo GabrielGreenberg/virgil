@@ -68,6 +68,7 @@ import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
+import { stampAtomsGraspable } from "@/lib/tiptap/inline-atom-grab";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -1884,9 +1885,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // doc-changing transactions; this attribute just lets the UI hide
   // affordances that would silently fail when read-only.
   useEffect(() => {
-    const dom = editor?.view.dom;
-    if (!dom) return;
-    dom.setAttribute("data-editable", String(editable));
+    const view = editor?.view;
+    if (!view) return;
+    view.dom.setAttribute("data-editable", String(editable));
+    // The atom-grab AFFORDANCE reads the same predicate `InlineAtomGrab`
+    // gates its gesture on (task 524). Its plugin view re-stamps on every
+    // transaction, which covers every surface whose answer PM can observe —
+    // but MAIN's answer is `editableRef.current`, a React ref that flips on
+    // re-render with no transaction behind it (`useEditor` deliberately
+    // re-applies its options with `editable: editor.isEditable`, so nothing
+    // reaches PM). This effect is that flip's only witness, and a cowork-pen
+    // hold or a collab hand-over is exactly a moment when nobody is typing.
+    stampAtomsGraspable(view, editableRef);
   }, [editor, editable]);
 
   // Register the editor's ProseMirror DOM with the drop-mode target

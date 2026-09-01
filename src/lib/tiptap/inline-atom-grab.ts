@@ -66,6 +66,66 @@ export interface InlineAtomGrabOptions {
  *  footnote (and renumbers). */
 const DRAG_THRESHOLD = 8;
 
+/**
+ * The affordance attribute — the ONE fact both halves of the grab read.
+ *
+ * The atoms' `cursor: grab` in `globals.css` is scoped to
+ * `.ProseMirror[data-atoms-graspable="true"]`, so the pointer offers a
+ * drag exactly where this plugin will accept one — *what the hover OFFERS
+ * is what the commit ACCEPTS* (tasks 258 / 321 / 332 / 396). Before task
+ * 524 the CSS rule was unconditional while the gesture was read-only-gated,
+ * so every read-only surface said "grab", said "grabbing" on the press, and
+ * did nothing: a collab non-pen-holder, every non-active keep-alive pane,
+ * the Library Reader, and — sharpest — a live cowork-pen hold, where the
+ * topbar's amber badge is at that moment saying the document is read-only.
+ *
+ * It is stamped on the editor root rather than read off `contenteditable`
+ * because the two disagree by design: MAIN pins `view.editable = true`
+ * (and therefore `contenteditable="true"`) whatever the user-facing state,
+ * gating instead through `editableRef` (`Editor.tsx` — PM's own
+ * `contenteditable="false"` broke selection routing in the Reader), while a
+ * float / card body has no `editableRef` and gates on `view.editable`
+ * alone. One attribute, computed from `atomsAreGraspable`, hides that fork
+ * from every reader.
+ *
+ * A surface that does not MOUNT this plugin never carries the attribute, so
+ * its atoms keep their base `cursor: pointer` — which is the honest answer
+ * there too: `RichTextField` card bodies render citations and footnote
+ * markers and have no grab gesture at all.
+ */
+export const ATOMS_GRASPABLE_ATTR = "data-atoms-graspable";
+
+/**
+ * Both layers that enforce read-only: collab toggles `view.editable`
+ * (EditorLayout setEditable); the library reader keeps it true and gates via
+ * `editableRef`. A move transaction is also filtered by `readOnlyEnforcer`,
+ * but gating the gesture means no dead affordance — and the CSS reads this
+ * same predicate through `stampAtomsGraspable`, so the two cannot drift.
+ */
+export const atomsAreGraspable = (
+  view: EditorView,
+  editableRef: RefObject<boolean> | null,
+): boolean => view.editable && (editableRef ? editableRef.current : true);
+
+/**
+ * Write `atomsAreGraspable` onto the editor root. Idempotence-gated: a
+ * `setAttribute` invalidates style even when the value is unchanged (task
+ * 430), and this runs once per transaction from the plugin view below.
+ *
+ * PM ignores attribute mutations whose target is its own `view.dom`
+ * (`DOMObserver.registerMutation` returns null for `desc == view.docView`),
+ * so this cannot feed back into the editor — the same reason `Editor.tsx`'s
+ * long-standing `data-editable` stamp is safe.
+ */
+export function stampAtomsGraspable(
+  view: EditorView,
+  editableRef: RefObject<boolean> | null,
+): void {
+  const next = atomsAreGraspable(view, editableRef) ? "true" : "false";
+  if (view.dom.getAttribute(ATOMS_GRASPABLE_ATTR) === next) return;
+  view.dom.setAttribute(ATOMS_GRASPABLE_ATTR, next);
+}
+
 let tokenCounter = 0;
 
 export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
@@ -79,12 +139,9 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     const editor = this.editor as Editor;
     const editableRef = this.options.editableRef;
 
-    // Both layers that enforce read-only: collab toggles `view.editable`
-    // (EditorLayout setEditable); the library reader keeps it true and
-    // gates via `editableRef`. A move transaction is also filtered by
-    // `readOnlyEnforcer`, but gating the gesture means no dead affordance.
+    // The gesture's gate IS the affordance's gate (see `atomsAreGraspable`).
     const isEditable = (view: EditorView): boolean =>
-      view.editable && (editableRef ? editableRef.current : true);
+      atomsAreGraspable(view, editableRef);
 
     let pending:
       | {
@@ -218,6 +275,29 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     return [
       new Plugin({
         key: new PluginKey("inlineAtomGrab"),
+        // Publish the affordance from the gate the gesture reads.
+        //
+        // [cost: O(1)/tx] Two boolean reads, one getAttribute compare, and an
+        // early return on an unchanged answer — no doc walk, no allocation, so
+        // a plain keystroke costs a string compare. (A plugin `view()` is not
+        // an `editor.on(...)` subscriber, so it is prose-listed in AGENTS.md
+        // beside `sectionFoldingPlugin`'s refresher rather than in the
+        // keystroke-subscriber allowlist, whose census greps that call form.)
+        //
+        // This covers every surface PM itself can see the flip on: a float /
+        // card body gates on `view.editable`, which only changes through
+        // `setEditable` → `updateState` → `update()` here, or through a
+        // re-created editor, which runs `view()`. MAIN's answer lives in a
+        // React ref PM never observes, so `Editor.tsx` re-stamps from its own
+        // `editable` effect — two TRIGGERS, one WRITER, one PREDICATE.
+        view(editorView) {
+          stampAtomsGraspable(editorView, editableRef);
+          return {
+            update(updatedView) {
+              stampAtomsGraspable(updatedView, editableRef);
+            },
+          };
+        },
         props: {
           handleDOMEvents: {
             mousedown(view, event) {
