@@ -20,6 +20,7 @@
  */
 
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { handleLaneFloor } from "@/text-objects/handle-layout";
 
 export interface EditorViewportFrame {
   editorEl: HTMLElement | null;
@@ -38,11 +39,28 @@ export interface EditorViewportFrame {
    *  otherwise hug each block's measured marker via block-frame.ts; this is
    *  just the off-screen-left clamp.) Read here so JS and CSS share one knob. */
   marginInset: number;
+  /** `.ProseMirror`'s own rect.left — the editor COLUMN's outside-left edge
+   *  (`contentLeft` minus the editor's padding-left). The reference the
+   *  grab-handle lane's floor is measured from (`handle-layout.ts#handleLaneFloor`),
+   *  published here so the handle placement and {@link hoverZoneLeft} read ONE
+   *  measurement of it rather than each taking their own
+   *  `getBoundingClientRect` — which also drops one forced-layout read per
+   *  placed handle per hover frame. */
+  editorColumnLeft: number;
   /** Left edge of the grab-handle hover zone — the horizontal stripe
-   *  where hovering reveals a TextObject's grab handle. Extends leftward
-   *  from `contentLeft` by `marginInset` (where the handle lives) plus a
-   *  small cushion. So the user can move the cursor from the prose into
-   *  the margin toward the handle without the resolver dropping hover. */
+   *  where hovering reveals a TextObject's grab handle. So the user can move
+   *  the cursor from the prose into the margin toward the handle without the
+   *  resolver dropping hover.
+   *
+   *  Task 526: this IS the handle lane's outboard bound
+   *  (`handle-layout.ts#handleLaneFloor`), read from the same expression the
+   *  placement floors on — the zone that REVEALS a handle is exactly the lane
+   *  a handle may OCCUPY. It was a private `contentLeft − marginInset − 8`
+   *  constant, and the two tables disagreed: `marginInset` is the
+   *  narrow-viewport FLOOR inset, not the handle's resting reach, and the
+   *  handle's reach is em-scaled per block plus a `1.8em` hit halo — so at the
+   *  shipped defaults a `\section` heading's target already stuck ~7px out of
+   *  the zone, and hovering there CLEARED the handle. */
   hoverZoneLeft: number;
   /** Right edge of the hover zone — equal to `editorRight`. Handle is
    *  on the left; no widening on the right. */
@@ -98,9 +116,6 @@ export interface EditorViewportFrame {
 }
 
 const DEFAULT_MARGIN_INSET = 22;
-/** Cushion added to the hover zone's leftward extent so the handle
- *  (~10px wide) sits comfortably inside. */
-const HOVER_MARGIN_PAD = 8;
 
 export const EMPTY_VIEWPORT_FRAME: EditorViewportFrame = {
   editorEl: null,
@@ -110,6 +125,7 @@ export const EMPTY_VIEWPORT_FRAME: EditorViewportFrame = {
   scrollTop: 0,
   scrollBottom: 0,
   marginInset: DEFAULT_MARGIN_INSET,
+  editorColumnLeft: 0,
   hoverZoneLeft: 0,
   hoverZoneRight: 0,
   podLeft: 0,
@@ -164,7 +180,10 @@ export function computeViewportFrame(
     Number.isFinite(parsedInset) && parsedInset > 0
       ? parsedInset
       : DEFAULT_MARGIN_INSET;
-  const hoverZoneLeft = contentLeft - marginInset - HOVER_MARGIN_PAD;
+  // Task 526 — ONE expression, read by the placement floor and by the zone.
+  // See `handleLaneFloor`'s docstring for the two-table bug this retires.
+  const editorColumnLeft = rect.left;
+  const hoverZoneLeft = handleLaneFloor(editorColumnLeft, marginInset);
   const hoverZoneRight = editorRight;
   // `.editor-pane-pod` is the outer pod wrapper around the text
   // column (white surface + chrome). The lifted-overlay gesture's
@@ -223,6 +242,7 @@ export function computeViewportFrame(
     scrollTop,
     scrollBottom,
     marginInset,
+    editorColumnLeft,
     hoverZoneLeft,
     hoverZoneRight,
     podLeft,
@@ -253,6 +273,7 @@ export function viewportFramesEqual(
     a.scrollTop === b.scrollTop &&
     a.scrollBottom === b.scrollBottom &&
     a.marginInset === b.marginInset &&
+    a.editorColumnLeft === b.editorColumnLeft &&
     a.podLeft === b.podLeft &&
     a.podRight === b.podRight &&
     a.podTop === b.podTop &&

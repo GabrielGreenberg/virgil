@@ -69,6 +69,8 @@ import {
   resolveHandleLane,
 } from "@/text-objects/handle-layout";
 import { resolveMarkerGeometry } from "@/text-objects/block-frame";
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
+import { buildHandleTestFrame } from "./_handle-frame";
 
 // ── Geometry constants shared by every leg ──────────────────────────────────
 const EDITOR_LEFT = 200;
@@ -131,7 +133,7 @@ function rect(top: number, bottom: number, left: number, right = 700): DOMRect {
 }
 
 let editorEl: HTMLElement;
-let frame: Record<string, unknown>;
+let frame: EditorViewportFrame;
 
 function buildEditor() {
   editorEl = document.createElement("div");
@@ -144,12 +146,10 @@ function buildEditor() {
   const column = document.createElement("div");
   column.appendChild(portal);
   document.body.appendChild(column);
-  frame = {
+  frame = buildHandleTestFrame({
     editorEl, contentLeft: 260, editorRight: 700, scrollTop: 0, scrollBottom: 800,
     marginInset: MARGIN_INSET, paperEl: column, paperRect: PORTAL_ORIGIN,
-    containsHoverZone: (x: number, y: number) => x >= EDITOR_LEFT && x <= 700 && y >= 0 && y <= 800,
-    toPortalCoords: (x: number, y: number) => ({ x, y }),
-  };
+  });
 }
 
 /** A one-item list with a REAL marker band. `padLeftPx` is the band; the item's
@@ -788,6 +788,9 @@ describe("resolveHandleLane — the three bounds and their precedence", () => {
     editorColumnLeft: EDITOR_LEFT,
     baselineInset: MARGIN_INSET,
     columnRight: null,
+    // Task 526: these legs are about the three bounds ABOVE the chevron rung —
+    // a row with no reserved chevron column, which is every non-heading block.
+    chevronRight: null,
   };
 
   it("the anchor answers when it is inside the lane", () => {

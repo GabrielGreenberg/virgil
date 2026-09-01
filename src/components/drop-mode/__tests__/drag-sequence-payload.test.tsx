@@ -74,6 +74,8 @@ import {
   wholeBlockSelection,
 } from "@/text-objects/selection-payload";
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
+import { buildHandleTestFrame } from "@/text-objects/__tests__/_handle-frame";
 import { notePointerInput } from "@/lib/input-modality";
 
 // ── The REAL main-editor schema ─────────────────────────────────────────────
@@ -406,7 +408,7 @@ describe("sequences compose — the second drag has the first's semantics", () =
 let editorEl: HTMLElement;
 let listEl: HTMLElement;
 let itemEl: HTMLElement;
-let frame: Record<string, unknown>;
+let frame: EditorViewportFrame;
 
 function rect(top: number, bottom: number, left = 200, right = 700): DOMRect {
   return {
@@ -442,14 +444,13 @@ function buildDom() {
   const column = document.createElement("div");
   column.appendChild(portal);
   document.body.appendChild(column);
-  frame = {
+  frame = buildHandleTestFrame({
     editorEl, contentLeft: 260, editorRight: 700, scrollTop: 0, scrollBottom: 800,
-    marginInset: 22, paperEl: column, paperRect: PORTAL_ORIGIN,
-    containsHoverZone: () => true,
-    toPortalCoords: (x: number, y: number) => ({
-      x: x - PORTAL_ORIGIN.left, y: y - PORTAL_ORIGIN.top,
-    }),
-  };
+    paperEl: column, paperRect: PORTAL_ORIGIN,
+    // This suite drives the LIFT gesture, not the hover reveal — its pointer
+    // never has to be inside the margin lane, so the Y/X band is waived.
+    containsHoverZoneOverride: () => true,
+  });
 }
 
 /** A fake editor whose SELECTION the leg controls, over the real fixture doc. */

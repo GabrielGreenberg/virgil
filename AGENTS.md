@@ -1731,6 +1731,113 @@ compare against Gabriel's mock-up
 (`virgil-tasks/attachments/2026-08-25-487-shot-1.png`) — each handle under its
 own level's bullet, two visually distinct pills on a top row, none on a glyph.
 
+###### The zone half: the strip that REVEALS a handle is the lane it may OCCUPY
+
+Same gutter, the axis none of the four passes above swept (task 526) — and the
+case where the two halves were not two affordances against each other but an
+affordance against **the zone that decides whether it exists at all**.
+
+Two things answered *how far left does a grab handle reach?* from different
+tables. The handle's extent is **EM-SCALED per block**: its box is
+`markerLeft − gapPx − HANDLE_WIDTH` with `gapPx` = `--margin-handle-gap:
+0.625em` resolved against that block's own font, and on top of the 12px box
+sits the chip-3 hit/hover halo, `--margin-handle-hit-pad: calc(var(
+--editor-font-size) * 1.8)`, CENTRED on the box — so the true leftmost reach is
+`markerLeft − 0.625·F_block − 0.9·F_editor − 6`. The zone that KEEPS THAT
+HANDLE ALIVE was a fixed px constant, `contentLeft − marginInset − 8`, and
+`marginInset` is a different concept entirely (`--margin-col-handle-inset`, the
+narrow-viewport FLOOR). Leaving the strip nulls `mousePosRef` and the resolver
+returns `EMPTY_RESOLVED` — with **no retention while the pointer is over the
+handle itself** — so the handle VANISHES as the user reaches for it. Measured
+at the shipped defaults: an `\section` heading's target sticks **7.2px** past
+the zone, a `\part`'s **10.7px** with three of the visible dots' own pixels
+outside it, and the prose paragraph is inside by **0.8px** — a knife-edge that
+holds at exactly one point in a 12-step preference range, since the halo
+escapes for EVERY block once `editorFontSize > 0.984rem`, i.e. at the very next
+slider step. `HOVER_MARGIN_PAD`'s own docstring named the premise that had
+expired: *"so the handle (~10px wide) sits comfortably inside"* — sized before
+chip 2 made the inset em-scaled and chip 3 added the halo, and revisited by
+neither.
+
+> **The strip that REVEALS a handle IS the lane a handle may OCCUPY.**
+> `hoverZoneLeft` is [`handleLaneFloor`](src/text-objects/handle-layout.ts) —
+> the same expression `resolveHandleLane` floors on — read by
+> `computeViewportFrame`. And because the margin has a SECOND occupant, the
+> lane is resolved outboard → inboard: the fold-chevron COLUMN places first
+> (`BlockFrame.chevronRight`) and the handle takes what remains, box AND halo.
+
+Seven rules it earned:
+
+- **Widening the zone CREATES the chevron collision, so the two halves are one
+  task.** The pre-526 refutation of that collision was *"no handle exists while
+  the pointer is on the chevron"* — which depended on the very constant this
+  retires. The handle is `z-index: 20` in its portal, the chevron `z-index: 1`,
+  the halo has no `pointer-events: none`, and their vertical centres coincide
+  by design — so clicking the right half of a `\part` chevron would have
+  opened the block menu instead of folding.
+- **ONE cap, two bounds.** `applyHitCaps` folds the lane's outboard bound into
+  the SAME `--margin-handle-hit-cap` the chip-3 sibling clamp writes, rather
+  than adding a second inline property — so there is one number and one CSS
+  expression, and "the zone contains every rendered handle" is a PROPERTY
+  rather than two numbers agreeing.
+- **The chevron column is reserved per ROW and gated on the block's KIND**
+  (`FOLD_CHEVRON_NODE_TYPES`, derived from `COLLAPSIBLE_NODE_TYPES` plus
+  `heading`, in the import-free leaf both layers can reach), never by a DOM
+  probe — `glyph-anchor.ts`'s rule: an unconditional
+  `querySelector(".source-pod-fold-chevron")` walks a source pod's whole
+  CodeMirror subtree once per hover placement. A prose row therefore keeps its
+  FULL halo, which at the slider max is 10px per side an unconditional
+  reservation would have taken for a chevron that is not there.
+- **It is a FLOOR, not a shift.** Only a gap wide enough to reach the column
+  moves anything — at the shipped heading sizes that is `\part` alone — so
+  every other row's resting position is byte-identical, and so is every row
+  task 487's outboard pass was about (a list reserves no chevron).
+- **The placement stops taking its own `getBoundingClientRect`.** The floor
+  reference is published on the frame (`editorColumnLeft`) beside the inset, so
+  the placement and the zone read ONE measurement — which also drops a forced
+  layout read per placed handle per hover frame.
+- **A test FIXTURE that stubs a wider world than production can produce is why
+  no suite could see this.** Every grab-handle fixture in the repo hand-wrote
+  its own untyped frame with its own `containsHoverZone`, and each chose a 60px
+  leftward zone against production's 30 — so a handle escaping its zone was
+  unrepresentable in all of them, and `viewport-frame.test.ts` never mentioned
+  `hoverZone` at all. They build through
+  [`_handle-frame.ts`](src/text-objects/__tests__/_handle-frame.ts) now, which
+  returns the REAL `EditorViewportFrame` type (so a new field is a compile
+  error rather than a `NaN` placement) and DERIVES the zone from
+  `handleLaneFloor`.
+- **`--margin-col-chevron-width` exists because the reservation needs it.** Both
+  chevron rules hard-coded `width: 14px` beside a tokenised `left`; the column
+  is a token pair now, read by the CSS and by the reserving JS.
+
+CI: [hover-zone-contains-handle-lane.test.tsx](src/text-objects/__tests__/hover-zone-contains-handle-lane.test.tsx)
+drives the REAL `computeViewportFrame`, the REAL `resolveHandleLane` and the
+REAL `resolveChevronColumnRight`, swept over the font-size slider's ACTUAL
+twelve stops × every heading level the app can render (h1's own stepper reaches
+3.0rem) × the source-pod kinds. **The leg with teeth is the last describe**: the
+two resolvers were never the part that could misbehave — `applyHitCaps`, the
+ONE writer of the number the halo is drawn from, is, and it had ZERO coverage
+anywhere in the repo. Measured on the fixed tree, deleting its outboard fold
+left **all 666 tests** in `src/text-objects` + `src/lib/editor-geometry` green
+while the chevron went back under a `\part` heading's halo. So that describe
+renders the SHIPPED `TextObjectGrabHandle` over a REAL measured frame and reads
+`--margin-handle-hit-cap` back off the DOM. Measured by neutering each half in
+turn: the retired fixed-px zone takes 11 legs, the chevron rung 104, and the
+halo's outboard fold 10 — with the prose-row control (uncapped, full halo)
+passing either way, which is the point.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (pure geometry over
+a live editor), so the unit contract is durable proof and the check is cheap:
+put the caret in a `\section`, move the mouse from the prose leftward onto the
+six dots — it must not blink out — then click the fold chevron and watch it
+fold.
+
+**Residual, stated.** `--margin-col-chevron` is still a fixed px offset while
+everything beside it is em-scaled, so a large-font document's chevron does not
+move while its handle does. Real, the same species one step out, and a visual
+placement change to a shipped affordance rather than a broken interaction —
+worth its own pass rather than folded in here.
+
 ### The stability half: a card moves only when it must, and then it SLIDES
 
 Same lane, and the case where every mechanism was correct and nobody owned the question of *whether to run it* (task 328). Gabriel: cards jump far too much; the gutter must FEEL STABLE. Two symptoms — a card stack that "resets several times to stay visible" while scrolling, and a perfectly visible card that jumps to the best position the moment you click its linked text.

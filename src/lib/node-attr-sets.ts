@@ -140,6 +140,32 @@ export const COLLAPSIBLE_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Node types whose chrome renders a FOLD CHEVRON in the left margin — the
+ * outboard occupant of the margin lane (task 526).
+ *
+ * Two renderers, one column. `.heading-fold-chevron` is minted by the heading
+ * NodeView (`editor-extensions.ts`, main editor only — a float has no
+ * section-folding plugin, so no chevron); `.source-pod-fold-chevron` is minted
+ * by the shared source pod (`SourcePodNodeView.tsx`), which is exactly the set
+ * of kinds that carry the sticky `collapsed` attr — so the pod half is DERIVED
+ * from {@link COLLAPSIBLE_NODE_TYPES} rather than re-listed, and a third
+ * pod-wearing kind joins this set by declaring itself there.
+ *
+ * It lives here, in the import-free leaf, for the reason every other set in
+ * this file does: `block-frame.ts` (which resolves the reserved column per
+ * block) and the sets layer must read ONE list, and a facet the layer that
+ * needs it cannot import will be re-copied.
+ *
+ * Membership decides only whether the column is RESERVED on a row — never
+ * where the chevron is. The column's geometry is `--margin-col-chevron` +
+ * `--margin-col-chevron-width`, read from CSS in `block-frame.ts`.
+ */
+export const FOLD_CHEVRON_NODE_TYPES: ReadonlySet<string> = new Set([
+  "heading",
+  ...COLLAPSIBLE_NODE_TYPES,
+]);
+
+/**
  * Container kinds whose DIRECT-child `paragraph` DEFERS its anchor identity to
  * the container — the container is the real text object, and the inner
  * paragraph must carry no uuid of its own.

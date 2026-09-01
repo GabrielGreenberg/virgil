@@ -2460,17 +2460,32 @@ browser's checker and its menu carries no spelling entries to lose.
 
 The editor's left padding (`--editor-pl`, default 88px) houses two
 shared chrome columns, expressed as CSS variables in `:root` so every
-consumer reads the same source:
+consumer reads the same source. **They are ONE lane, resolved outboard →
+inboard** — the chevron column places first and the grab handle takes what
+remains inboard of it (task 526; the left margin's reading of the rule the
+right margin already states, AGENTS.md → "The ordering half"):
 
-- `--margin-col-chevron` (default `-44px`) — fold chevron column for
-  headings and the SOURCE POD. Consumed by `.heading-fold-chevron`
-  and `.source-pod-fold-chevron`.
+- `--margin-col-chevron` (default `-44px`) + `--margin-col-chevron-width`
+  (default `14px`) — fold chevron column for headings and the SOURCE POD.
+  Consumed by `.heading-fold-chevron` and `.source-pod-fold-chevron`, and read
+  back per block by JS in
+  [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts)
+  (`BlockFrame.chevronRight`) so the handle lane can RESERVE it. Reserved per
+  ROW and gated on the block's KIND (`FOLD_CHEVRON_NODE_TYPES`), so a prose row
+  — which renders no chevron — keeps its full halo.
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
   via `getComputedStyle` in
   [src/lib/editor-geometry/viewport-frame.ts](src/lib/editor-geometry/viewport-frame.ts)
   (`frame.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
+  **It is also the left edge of the grab-handle HOVER ZONE** — one expression
+  (`handleLaneFloor`), because the zone that REVEALS a handle is exactly the
+  lane a handle may OCCUPY. Before task 526 the zone was a private
+  `contentLeft − 22 − 8` constant sized for a pre-halo, pre-em handle, so at
+  the shipped defaults every `\section` heading's hit target already reached
+  ~7px outside the strip that keeps the handle alive — and hovering it made
+  the handle vanish.
 - `--margin-handle-gap` (default `0.625em`) — the **one uniform GAP** every
   margin affordance leaves between its RIGHT edge and its block's marker.
   em-based so it scales with the labeled text; resolved PER BLOCK in
@@ -2488,8 +2503,10 @@ consumer reads the same source:
   `.text-object-grab-handle::before`): a wide, centered pad around the 12px
   dots so the target is grabbable even when the cursor occludes the dots.
   Scales with the editor font; clamped per-handle by `--margin-handle-hit-cap`
-  (an inline override, half the distance to the nearest same-row handle) so
-  close nested handles don't overlap. See "Grab hit/hover halo" below.
+  (an inline override folding TWO bounds — half the distance to the nearest
+  same-row handle, and the lane's outboard bound) so close nested handles don't
+  overlap and no halo reaches into the chevron column or out of the hover zone.
+  See "Grab hit/hover halo" below.
 
 **Horizontal — measured marker-left + one uniform em gap.** There is NO
 per-kind placement constant. Every margin affordance hugs the block's
@@ -2750,6 +2767,16 @@ Three rules:
   resolving to the inner/item handle — the more specific grab), while the 37px
   example handles keep full halos with a gap between them. Isolated handles and
   far-enough siblings are never clamped (the `min` picks the full pad).
+- **The same cap carries the lane's OUTBOARD bound (task 526).** The halo is
+  centred on the dots, so it reaches further left than the box does — by ~14px
+  at the shipped default and ~20px at the font-size slider's max. Two things
+  live out there and neither may be covered: the **fold chevron** (a click on
+  it must fold, not open the block menu) and the **edge of the hover zone**
+  (hovering outside it CLEARS the hover, so the handle vanishes as the user
+  reaches for it). `applyHitCaps` therefore folds `HandleLane.minLeft` into the
+  same `--margin-handle-hit-cap` the sibling clamp writes — one number, one CSS
+  expression — which makes "the zone contains every rendered handle" a PROPERTY
+  rather than two numbers agreeing.
 
 Grab-handle drag is the **only** popout mechanism for text objects —
 the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
