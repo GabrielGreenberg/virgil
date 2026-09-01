@@ -2813,9 +2813,14 @@ supplies neither and its pod is byte-for-byte the pod it was. Three rules:
   place is the source it was pointing at. Pinned in both directions by
   `src/lib/forest/__tests__/forest-chrome-contract.test.ts`.
 
-## Printing a fold — what reaches paper
+## What reaches paper — editor state never does
 
-> **What prints is the DOCUMENT, not the editor's current fold state.**
+> **What prints is the DOCUMENT, not the editor's current state.**
+
+Two halves. The **HIDE** half (task 408) is below; the **PAINT** half (task 523)
+follows it. They are one law and the same constraint about mechanism governs both.
+
+### The HIDE half — a fold
 
 A folded section, a LOCKED focus band and a collapsed source pod are three
 statements about the EDITOR. None was ever chosen as a print posture, and each
@@ -2849,6 +2854,50 @@ conditions, not transients. Four rules:
   stay off the paper for the same reason the corner and the badge do. Pinned by
   `src/lib/__tests__/print-fold-posture.test.ts` and
   `src/components/__tests__/source-pod-print-body.test.tsx`.
+
+### The PAINT half — a squiggle, a selection, an attention band
+
+The other half of the same law, and the one 408 could not see. A decoration that
+PAINTS view state is invisible to a census discovering `display: none` classes
+from two hand-named files, so ten days after 408 the spellchecker (task 518)
+shipped and printed — a red wavy underline under every word a stock en-US
+dictionary does not know, through BOTH print doors, with `checkSpelling`
+defaulting on. It is the one member of the class that needs no "Background
+graphics" setting, because `text-decoration` is painted with the text. Four
+rules:
+
+- **A view-only decoration DECLARES itself**, by stamping the marker class
+  beside its own: `class: viewOnly(SPELL_ERROR_CLASS)`, from
+  `src/lib/view-only-chrome.ts`. ONE rule in `@media print` then zeroes
+  `text-decoration`, `background` and `box-shadow` on `.virgil-view-only` —
+  path-independent, and it covers the spelling squiggle, the transient
+  search/diagnostics/revision band and the bib cross-highlight ring with nothing
+  to enumerate. The marker has NO screen rule, so adopting it restyles nothing.
+- **Attention chrome is neutralised by ATTRIBUTE, on the colour var.**
+  `data-card-hovered` / `data-card-selected` land on the anchored paragraph,
+  footnote marker or `.linked-anchor` ITSELF, so a blanket `background: none`
+  there would also erase the user's persistent highlight tint — a user choice
+  with its own print toggle, i.e. document content by this same posture.
+  Instead the print block zeroes `--link-anchor-color`, the one var every
+  attention rule paints from, which retires the footnote ring, both sides of the
+  Mode-A accent rail and the Mode-B selection wash in one declaration (the idiom
+  `.linked-anchor[data-anchor-archived]` already uses). Scoped to `.tiptap` so a
+  card in the print appendix keeps its inline kind accent.
+- **A decoration that renders DOCUMENT CONTENT never takes the marker.** A
+  `pgmark-chip` draws a real `\pgmark{N}`; `latex-cmd` draws raw LaTeX the schema
+  does not model. Those print. **Stated rather than implied:** `latex-cmd` still
+  prints its editor GREY, where `.citation-node` is flattened to plain prose —
+  whether the grey is chrome that should flatten too is a real question and a
+  visible product change, deliberately not answered under a fix about editor
+  STATE. Nor do the two HIDE classes take the marker: they are
+  governed by ABSENCE from the print block, and the marker's neutralisation
+  would reach the document blocks inside a folded section.
+- **The census asks the QUESTION, not the mechanism.** Every production
+  ProseMirror decoration in either silo must be view-only, a hide class, or on a
+  small reviewed allowlist that states why it is document content — a hit is
+  COVER-it. Pinned by `src/lib/__tests__/print-view-only-posture.test.ts`, whose
+  stated limit is that imperative `classList.add` painters are not a bounded
+  population (the one such site, the bib cross-highlight, is pinned by source).
 
 ## Block images (figures & pictures)
 

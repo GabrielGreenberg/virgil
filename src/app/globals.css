@@ -5802,11 +5802,68 @@ html {
   .virgil-bar, [data-strip-side], [data-floating-panel],
   [data-floating-card], [data-pristine-card-id] { display: none !important; }
 
+  /* VIEW-ONLY CHROME NEVER REACHES PAPER (task 523, widening task 408's
+     "what prints is the DOCUMENT, not the editor's current state" from the
+     HIDE half to the PAINT half).
+
+     TWO HOOKS, because view-only paint has two shapes and one blanket answer
+     would over-reach on the other — the vocabulary is declared once in
+     `src/lib/view-only-chrome.ts` and bound to these rules by
+     `print-view-only-posture.test.ts`, since CSS cannot import TS.
+
+     (1) `.virgil-view-only` — the marker every view-only DECORATION stamps
+     beside its own class (`viewOnly(SPELL_ERROR_CLASS)`). Each such
+     decoration owns its own wrapper element, so neutralising these three
+     properties on it cannot reach anything the document renders. This one
+     rule covers the spelling squiggle, the transient search/diagnostics/
+     revision band and the bib cross-highlight ring — and every future member,
+     with nothing to enumerate. `!important` is load-bearing twice: the
+     transient band carries an INLINE `background-color` (an `!important`
+     author declaration outranks a normal inline style), and the squiggle's
+     own rule would otherwise win on `.tiptap` specificity.
+
+     `text-decoration` is why the squiggle was the ONE member that printed
+     with DEFAULT print settings: Chrome drops backgrounds and box-shadows
+     unless "Background graphics" is on, but text decorations are painted with
+     the text.
+
+     (2) The card hover/selection ATTENTION chrome lands on the anchored
+     paragraph / footnote marker / `.linked-anchor` ITSELF, so a blanket
+     `background: none` there would also erase the user's persistent highlight
+     tint — a user choice with its own print toggle, i.e. document content by
+     the app's own posture. So instead we zero `--link-anchor-color`, the ONE
+     var every attention rule paints from: each
+     `color-mix(in oklab, var(--link-anchor-color) N%, transparent)` collapses
+     to transparent, which retires the footnote ring, BOTH sides of the Mode-A
+     accent rail (the `::before` bar and the inset box-shadow) and the Mode-B
+     selection wash in one declaration. Same idiom as
+     `.linked-anchor[data-anchor-archived]` far above, and it leaves
+     `--tint-color` untouched by construction.
+
+     `!important` because the per-kind rules (`.linked-anchor[data-link-card^=…]`,
+     `[data-paragraph-kind=…]`) set the same var at higher specificity; it does
+     NOT leak into descendants, because a descendant that declares the var uses
+     its own value and one that does not has no attention chrome to paint.
+     Scoped to `.tiptap` so a selected card rendered into the print appendix
+     keeps its inline kind accent — the appendix is deliberately printed
+     content, and its card roots sit outside the body's own `.tiptap`. */
+  .virgil-view-only {
+    text-decoration: none !important;
+    background: none !important;
+    box-shadow: none !important;
+  }
+  .tiptap [data-card-hovered],
+  .tiptap [data-card-selected] {
+    --link-anchor-color: transparent !important;
+  }
+
   /* Drop editor-only decorations: chip-style metadata labels above
      title/author/date and section-heading annotations are field-type
      hints, not document content. Inline citation/label-ref tokens
      keep their text but lose the chip border and tinted background so
-     they read as plain prose. */
+     they read as plain prose. Anything ADDED here is a hand list of the
+     kind the rule above exists to replace — a new view-only decoration
+     belongs on `viewOnly()`, not in this comment. */
   .title-field-annotation,
   .heading-annotation { display: none !important; }
   .citation-node,

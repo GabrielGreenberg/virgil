@@ -79,8 +79,13 @@ import { VIRGIL_CHECKED_ATTRS } from "@/lib/spellcheck-policy";
 import { tokenizeBlock, type SpellToken } from "@/lib/spell/prose-words";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { closeSpellMenu, openSpellMenu } from "@/lib/spell/spell-menu-store";
+import { viewOnly } from "@/lib/view-only-chrome";
 
-/** The class the squiggle is painted with; `globals.css` owns the look. */
+/** The class the squiggle is painted with; `globals.css` owns the look.
+ *  Stamped through `viewOnly()` at the decoration (below), because a squiggle
+ *  is the EDITOR's opinion about a word and must not reach paper (task 523 —
+ *  `text-decoration` is painted with the text, so unlike every other member of
+ *  the class it printed with default print settings). */
 export const SPELL_ERROR_CLASS = "spell-error";
 
 /** Interactive tier — the same 300 ms the doc-products interactive tier uses. */
@@ -411,7 +416,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
                   Decoration.inline(
                     tok.from,
                     tok.to,
-                    { class: SPELL_ERROR_CLASS },
+                    { class: viewOnly(SPELL_ERROR_CLASS) },
                     { word: tok.word },
                   ),
                 );

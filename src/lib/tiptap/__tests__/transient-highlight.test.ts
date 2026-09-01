@@ -57,6 +57,7 @@ import {
   TRANSIENT_HIGHLIGHT_COLOR,
 } from "@/lib/tiptap/transient-highlight";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { VIEW_ONLY_CLASS } from "@/lib/view-only-chrome";
 
 const PARA_UUID = "p00001";
 
@@ -205,15 +206,20 @@ describe("transient highlights are decorations, not document marks", () => {
     ) as HTMLElement;
     expect(livePill.classList.contains(TRANSIENT_HIGHLIGHT_CLASS)).toBe(false);
     expect(livePill.style.backgroundColor).toBe("");
-    // …and the band is carried by wrapper spans that hold ONLY our class, so
-    // the geometry rule can never reach a document node.
+    // …and the band is carried by wrapper spans that hold ONLY our own two
+    // classes, so the geometry rule can never reach a document node. The
+    // second is the view-only marker (task 523): the band is a VIEW, so the
+    // print block's one rule must reach it — and it is what beats the INLINE
+    // `background-color` below, since an `!important` author declaration
+    // outranks a normal inline style. RENEGOTIATED in place: this leg used to
+    // pin the bare class, which was the defect.
     const wrappers = Array.from(
       editor.view.dom.querySelectorAll(`.${TRANSIENT_HIGHLIGHT_CLASS}`),
     ) as HTMLElement[];
     expect(wrappers.length).toBeGreaterThan(0);
     for (const w of wrappers) {
       expect(w.tagName).toBe("SPAN");
-      expect(Array.from(w.classList)).toEqual([TRANSIENT_HIGHLIGHT_CLASS]);
+      expect(Array.from(w.classList)).toEqual([TRANSIENT_HIGHLIGHT_CLASS, VIEW_ONLY_CLASS]);
     }
     // The pill is INSIDE a wrapper — the band still reads as continuous, the
     // same containment the old <mark> produced.

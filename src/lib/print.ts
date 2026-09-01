@@ -5,7 +5,7 @@
  * `@media print`. Cleanup runs from afterprint OR a matchMedia change
  * handler — Safari and some Chromium builds skip the former.
  *
- * ── THE LAW: what prints is the DOCUMENT, not the editor's fold state ──
+ * ── THE LAW: what prints is the DOCUMENT, not the editor's current state ──
  *
  * A screen-only visibility state — a folded section, a LOCKED focus band, a
  * collapsed source pod — is a statement about the editor, never about the
@@ -25,6 +25,19 @@
  * around the two hide-class declarations, `@media print` for the pod's paper
  * body — and it is a constraint on every future print change, not a note about
  * one fix. Contract: src/lib/__tests__/print-fold-posture.test.ts.
+ *
+ * The law has a second half, and it is the same law: a decoration that PAINTS
+ * editor state (a spelling squiggle, a card selection ring, a search band) is a
+ * statement about the editor exactly as a fold is. Task 408 covered the HIDE
+ * half and its census discovered its population from `display: none` classes in
+ * two hand-named files — a census of the MECHANISM where the law is about the
+ * QUESTION — so ten days later the spellchecker shipped and its red wavy
+ * underline printed, through both doors, with `checkSpelling` defaulting on and
+ * (uniquely in the class) with no dependency on the viewer's "Background
+ * graphics" setting, since `text-decoration` is painted with the text. The
+ * vocabulary is `src/lib/view-only-chrome.ts`; the neutralisation is one rule
+ * in the same `@media print` block, for the same two-door reason; the contract
+ * is src/lib/__tests__/print-view-only-posture.test.ts.
  */
 
 import type { PanelKind } from "@/panels/_shared/types";

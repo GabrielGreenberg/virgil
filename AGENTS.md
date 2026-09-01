@@ -9648,6 +9648,14 @@ module's own stated non-goal excludes a `\caption{…}` payload inside a
 raw-LaTeX run: the index cannot say WHERE those characters are, and a payload it
 cannot place is one this checker must not claim.
 
+**PRINT — silent for ten days, and CLOSED by task 523.** This section shipped
+with nothing to say about paper, and the squiggle printed: `text-decoration` is
+painted with the text, so unlike every other view-only paint in the app it
+needed no "Background graphics" setting, and `checkSpelling` defaults ON. The
+squiggle is now stamped `viewOnly(SPELL_ERROR_CLASS)` and neutralised by ONE
+rule in `@media print` — see "What reaches paper — editor state never does" in
+`STYLE_GUIDE.md`, and the section immediately below.
+
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked except the paper
 dictionary's sidecar half, so the durable proof there is the unit round trip —
 type a misspelling and watch the squiggle arrive after the debounce, right-click
