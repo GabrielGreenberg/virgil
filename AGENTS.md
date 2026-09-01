@@ -1,4 +1,4 @@
-<!-- last-verified: 6ad2d54a 2026-09-01 -->
+<!-- last-verified: b17806ca 2026-09-01 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
