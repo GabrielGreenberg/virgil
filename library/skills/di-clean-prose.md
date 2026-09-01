@@ -362,7 +362,7 @@ python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMEN
 > markers to align. **Skip §3c entirely.** Do **not** read the PDF
 > alternate and synthesize new pgmarks; that's out of scope for
 > deep-index (it would re-extract page boundaries, which belongs to
-> `/index-paper`). The validator in §3i will pass trivially in this
+> `/library/index-paper`). The validator in §3i will pass trivially in this
 > case (zero markers ⇒ no scope violations, no continuity gaps).
 >
 > Note: §2's PDF reading rule (read the first ~8 pages of any

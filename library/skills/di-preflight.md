@@ -83,7 +83,7 @@ Runs first, because every gate after it reads `main.tex`.
 Count the non-comment bytes of `main.tex`'s body (between `\maketitle`
 and `\end{document}`). **100 or more → this gate is done; go to 0.1.**
 
-Fewer than 100 is an `/index-paper` failure, not something a deep pass
+Fewer than 100 is an `/library/index-paper` failure, not something a deep pass
 can clean up. **Determine why before reporting it** — "scanned PDF" is a
 guess, and the causes take different repairs:
 
@@ -123,7 +123,7 @@ refuses with the manual install line — which is the behavior we want.
 `--check-only` invocation only re-OCRs the PDF and archives the original;
 re-extraction is `/library/index-paper`, and deep-index's §"What this
 command does NOT do" states plainly that rebuilding `main.tex` from the
-PDF is an `/index-paper` job surfaced at preflight. So this gate
+PDF is an `/library/index-paper` job surfaced at preflight. So this gate
 *determines and routes*; it does not repair.
 
 ## Step 0.1 — Lending-slip / JSTOR boilerplate strip (one-time)

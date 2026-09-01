@@ -105,7 +105,7 @@ by `--fresh` to restart from baseline. The default (no flag) is
 ## Prerequisites
 
 The paper must already be indexed (`papers/<citekey>/main.tex` must
-exist). If it doesn't, tell the user to run `/index-pending` first
+exist). If it doesn't, tell the user to run `/library/index-pending` first
 and stop.
 
 The body-populated gate is **not** re-implemented here: it is
@@ -804,9 +804,9 @@ out:
 - **No bulk re-extraction.** Targeted per-page/per-region work via
   `pdftotext -layout`, `ocrmypdf`, or PyMuPDF rasterization is
   in-scope (the §3d tier ladder uses it). Rebuilding the whole
-  `main.tex` from the PDF is an `/index-paper` failure surfaced at
+  `main.tex` from the PDF is an `/library/index-paper` failure surfaced at
   Preflight, not a /library/deep-index problem.
-- **`master.bib` and bib authentication are `/authenticate-bib`'s
+- **`master.bib` and bib authentication are `/library/authenticate-bib`'s
   job.** Each paper's `references.bib` is self-contained. Exception:
   the metadata-vs-content auto-resolution policy (see doctrine §0
   Automatic decisions) updates `master.bib` via

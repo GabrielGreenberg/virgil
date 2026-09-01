@@ -334,11 +334,18 @@ describe("skill include links", () => {
     expect(silo.size).toBeGreaterThan(20);
 
     // A `/`-led token whose first segment IS a skill basename, not already
-    // carrying its silo. The left guard rejects a path segment (`.virgil/
-    // scripts/library/…`, `papers/<ck>/index-paper`) and a code-span open
-    // backtick; the `\b` on the right keeps `/deep-indexed` out.
+    // carrying its silo. The left guard rejects a PATH segment
+    // (`.virgil/scripts/library/…`, `papers/<ck>/index-paper`); the `\b` on
+    // the right keeps `/deep-indexed` out.
+    //
+    // It deliberately does NOT reject a preceding BACKTICK, and that is the
+    // hole this leg's own first cut had: excluding it hid 39 references
+    // spelled inside code spans (`` `/deep-index <citekey>` ``) — more than
+    // half the population, and the form a skill is MOST likely to use when it
+    // is telling the reader what to run. A guard that cannot see the common
+    // spelling is a habit.
     const names = [...silo.keys()].sort((a, b) => b.length - a.length).join("|");
-    const BARE = new RegExp(`(?<![A-Za-z0-9_/\`.-])/(${names})\\b`, "g");
+    const BARE = new RegExp(`(?<![A-Za-z0-9_/.-])/(${names})\\b`, "g");
 
     const bare: string[] = [];
     for (const file of skillFiles()) {
@@ -353,8 +360,13 @@ describe("skill include links", () => {
     // The needle must be able to SEE one — a regex that matched nothing would
     // report green for the wrong reason, and this one is built from a
     // discovered population that could silently come back empty.
-    const canary = "See /deep-index and /editor/review and /library/setup.";
-    expect([...canary.matchAll(BARE)].map((m) => m[1])).toEqual(["deep-index"]);
+    const canary =
+      "See /deep-index, `/index-paper`, /editor/review, /library/setup and " +
+      ".virgil/scripts/library/setup.py.";
+    expect([...canary.matchAll(BARE)].map((m) => m[1])).toEqual([
+      "deep-index",
+      "index-paper",
+    ]);
   });
 
   it("holds every deep-index family member to its `_doctrine.md` pointer", () => {

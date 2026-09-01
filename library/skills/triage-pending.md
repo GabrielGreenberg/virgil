@@ -41,8 +41,8 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 ---
 
 Drain `unsorted/` in one batch. Use this instead of invoking
-`/triage-pdf` once per file when you have more than a handful of new
-sources to triage — `/triage-pdf` is the per-file workflow; this is the
+`/library/triage-pdf` once per file when you have more than a handful of new
+sources to triage — `/library/triage-pdf` is the per-file workflow; this is the
 batch equivalent.
 
 > **Where any memo you write goes.** Library memos (notes about this
@@ -196,7 +196,7 @@ directory).
    Capture the script's per-row output and final summary in your reply.
 
 4. **Drain the queue.** After triage, the queue has N pending `index`
-   entries. Run `/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
+   entries. Run `/library/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
    directly) to actually index every paper and authenticate every bib.
 
 ### Optional: `--llm-rescue` for the residual

@@ -59,7 +59,7 @@ directory).
 > [_find-or-surface.md](_find-or-surface.md). The `bib` scope below is the
 > only instruction in either silo that tells you to fill bibliographic fields
 > straight from a user's free-text note — and it deliberately opts OUT of
-> `/authenticate-bib`'s tier ladder, so the acceptance bar it would have
+> `/library/authenticate-bib`'s tier ladder, so the acceptance bar it would have
 > inherited has to come from here instead. **The note is the SPEC, never the
 > EVIDENCE.**
 
@@ -74,16 +74,16 @@ A queue entry is an AI request when **any** of these is true:
    — produced by the AI request button on the bib card when the user
    typed a note before submitting. File: `.virgil/queue/<citekey>.json`.
    (`authenticate` entries **without** a note are vanilla auth requests
-   and should be left for `/index-pending` / `/authenticate-bib` to
+   and should be left for `/library/index-pending` / `/library/authenticate-bib` to
    handle on the regular path. Skip them here.)
 3. `kind == "deepIndex"` (or legacy `"richIndex"`) and the entry has a
    non-empty `note` field — produced by the deep-index button with a
    user note.
    File: `.virgil/queue/<citekey>-deepindex.json` (legacy:
    `.virgil/queue/<citekey>-richindex.json`).
-   Dispatch to `/deep-index <citekey>` (the skill reads the note from
+   Dispatch to `/library/deep-index <citekey>` (the skill reads the note from
    the queue file). `deepIndex` entries **without** a note are standard
-   deep-index requests — leave them for `/index-pending` to handle.
+   deep-index requests — leave them for `/library/index-pending` to handle.
 4. `kind == "import-bib"` — produced by the "Import bib" checkbox /
    "Import bibliography" row-menu item. File:
    `.virgil/queue/<citekey>-importbib.json`. `note` is optional.
@@ -92,8 +92,8 @@ A queue entry is an AI request when **any** of these is true:
    the paper imported *when it has a catalog row* — that skill's step 2
    states the reference-only branch, where there is none and no blue
    check appears — and deletes the queue file). These are also picked
-   up by `/index-pending` on the regular path — handle them here when the
-   user explicitly invoked `/ai-requests`, especially if a `note` is set.
+   up by `/library/index-pending` on the regular path — handle them here when the
+   user explicitly invoked `/library/ai-requests`, especially if a `note` is set.
 
 ## Procedure
 
@@ -132,9 +132,9 @@ A queue entry is an AI request when **any** of these is true:
      field the user asked for and you could not source is a surfaced
      gap, which is the success mode; a plausible value from
      recollection is the failure mode, and it will outlive every check
-     in this pipeline. Stage the result via `/apply-bib-edit <citekey>`
+     in this pipeline. Stage the result via `/library/apply-bib-edit <citekey>`
      (or write a `bib-edit` queue entry). Do **not** fall through to
-     the standard `/authenticate-bib` three-tier search unless the note
+     the standard `/library/authenticate-bib` three-tier search unless the note
      specifically asks for it — that narrows the SEARCH, never the bar.
 
    - **`paper` scope (`kind=paper-review`):** the note is about the
@@ -152,7 +152,7 @@ A queue entry is an AI request when **any** of these is true:
 3. **Mark done.** Once the request is handled, delete its queue file.
    For `authenticate` entries, also remove the matching record from
    `.virgil/queue/pending-reviews.json` via the same logic
-   `/authenticate-bib` uses.
+   `/library/authenticate-bib` uses.
 
 4. **Report.** Print a final summary of what you did per request:
 
@@ -167,7 +167,7 @@ A queue entry is an AI request when **any** of these is true:
 - Does **not** drain `kind=index` / `kind=reindex` / `kind=triage` /
   `kind=bib-edit` entries.
 - Does **not** run vanilla `authenticate` entries (those without a
-  note). They stay in the queue for `/index-pending` to pick up.
+  note). They stay in the queue for `/library/index-pending` to pick up.
 - Does **not** invoke `.virgil/scripts/library/drain_queue.py` — that's the general
   indexing path and is the wrong tool for AI requests.
 

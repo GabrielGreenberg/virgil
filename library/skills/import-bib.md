@@ -68,7 +68,7 @@ All paths below resolve against the library root.
 ## Args
 
 `$ARGUMENTS` is a single `<citekey>` (both dispatch callers —
-`/index-pending` and `/ai-requests` — always pass it explicitly). If it's
+`/library/index-pending` and `/library/ai-requests` — always pass it explicitly). If it's
 empty (a bare manual invocation), fall back to the first pending
 `*-importbib.json` request on the queue. Resolve it into `CK`:
 

@@ -80,7 +80,7 @@ All paths are relative to the library root (the current working directory).
 ## Prerequisites
 
 - `papers/<citekey>/main.tex` must already exist (indexed or deepIndexed).
-  If missing, tell the user to run `/index-pending` first and stop.
+  If missing, tell the user to run `/library/index-pending` first and stop.
 - `master.bib` must contain an entry for `<citekey>`.
 - `.virgil/catalog.json` must record the paper with
   `indexed.state in {"indexed", "deepIndexed"}` (legacy `richIndexed`
@@ -258,7 +258,7 @@ directly).
 
 ## Idempotency
 
-Running `/fuse-alternate` twice on the same paper with the same
+Running `/library/fuse-alternate` twice on the same paper with the same
 alternate is a strict no-op:
 
 - `indexed.pgmarkSource` already names this alternate, AND
