@@ -4,7 +4,10 @@ import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2,
 import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject } from "react";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
-import { dissolvedByReparent } from "@/lib/tiptap/block-uuid-backfill";
+import {
+  classifyBlockDepartures,
+  type DepartedBlock,
+} from "@/lib/tiptap/block-uuid-backfill";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
 import { linkKindSelector } from "@/links/link-dom-contract";
 
@@ -236,23 +239,72 @@ export const LinkedAnchorGuard = Extension.create({
 //
 // Overlap with MarginaliaAnchorGuard (below): that guard re-inserts a
 // uuid-bearing empty paragraph when an *anchored* block vanishes, so an
-// anchored block MOSTLY does not become an orphan. Two cases fall through
+// anchored block MOSTLY does not become an orphan. Four cases fall through
 // to this guard and MUST: a deliberate lifecycle removal (LIFECYCLE_DELETE_META),
-// and a removal whose resurrection would be a total no-op (task 367's EXCEPTION 2
-// — an empty uuid-only paragraph the user is deliberately deleting). Both are
+// a removal whose resurrection would be a total no-op (task 367's EXCEPTION 2
+// — an empty uuid-only paragraph the user is deliberately deleting), a
+// container that DISSOLVED by re-parenting (task 499's EXCEPTION 3), and a
+// block ABSORBED by a JOIN (task 514's EXCEPTION 4). The first three are
 // handled correctly here by construction rather than by care, because the
 // deferred sweep below re-reads the SETTLED doc: a block the anchor guard
 // declined to resurrect is genuinely gone, so its event fires.
+//
+// THE FOURTH IS DIFFERENT, and it is why this guard now reads the departure
+// classification too. An ABSORBED block did not orphan — its words are inside
+// the survivor — so announcing it as an orphan would make every Mode-A hook
+// STRIP the link the user's card is about, one `setTimeout` after the join.
+// Instead the sweep publishes an ABSORBED verdict carrying the survivor
+// (`BlockAbsorbedEvent`), and the card RE-HOMES onto it through task 491's
+// `retargetDisplacedAnchors` door. One uuid, one verdict — which is what makes
+// 491's "retarget before the sweep can strip" ordering rule structural here
+// rather than a race to win.
 // This guard is the safety net for blocks Mode-A-anchored but NOT
 // margin-tracked — common for cascade-extended deletions that swallow
 // a wrapper (list / exampleBlock) whose uuid was anchored. See
 // ACTION-MENU-DIAGNOSIS.md cluster C3.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const TextObjectOrphanGuard = Extension.create({
+/**
+ * A block DEPARTED, and where its content went (task 514).
+ *
+ * `survivor` is the block the absorbed one merged INTO — the paragraph the
+ * user is now looking at, which is where their margin context belongs. The
+ * guard publishes the raw node `typeName`; the consumer validates it against
+ * the text-object registry (`isAnchorableBlock`), so this layer stays
+ * registry-free.
+ */
+export interface BlockAbsorbedEvent {
+  absorbed: DepartedBlock;
+  survivor: DepartedBlock;
+}
+
+/**
+ * How the ABSORBED verdict reaches React-land.
+ *
+ * A REF, not a window event, and not by accident: N `EditorPane`s are mounted
+ * at once under multi-doc keep-alive, so a window listener registered per pane
+ * is answered by every pane (the task-329 class). A ref threaded through the
+ * extension ctx is per-EDITOR **by construction** — there is no visibility
+ * question to get wrong. The sibling `virgil-textobject-orphaned` event keeps
+ * its window channel because its consumers (`useArchive` / `useTodos`) are
+ * per-doc hooks with no editor in hand; a re-home needs the survivor's live
+ * paragraph text, so it has to be asked of the editor that performed the join.
+ */
+export type BlockAbsorbedHandlerRef = MutableRefObject<
+  ((event: BlockAbsorbedEvent) => void) | null
+>;
+
+export const TextObjectOrphanGuard = Extension.create<{
+  onBlockAbsorbedRef: BlockAbsorbedHandlerRef | null;
+}>({
   name: "textObjectOrphanGuard",
 
+  addOptions() {
+    return { onBlockAbsorbedRef: null };
+  },
+
   addProseMirrorPlugins() {
+    const { onBlockAbsorbedRef } = this.options;
     // Capture the live view so the deferred dispatch can re-check liveness
     // against the FINAL, fully-committed doc — after every appendTransaction,
     // crucially MarginaliaAnchorGuard's resurrection (it re-inserts a same-uuid
@@ -279,12 +331,17 @@ export const TextObjectOrphanGuard = Extension.create({
             },
           };
         },
-        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; O(doc) descendants only on a block-removal transaction, and then inside a setTimeout off the dispatch, never on plain typing] (task 433 census)
+        // [cost: O(1)/tx — docChanged + observer-diff removedBlocks gate; then O(replace steps × depth) for the departure classification and O(doc) descendants inside a setTimeout off the dispatch — both only on a block-removal transaction, never on plain typing] (task 433 census)
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readPendingDiff(newState);
           if (!diff || diff.removedBlocks.length === 0) return null;
           const removed = diff.removedBlocks;
+          // Read HERE, not in the deferred callback: the classification is a
+          // fact about THIS batch's steps, and `transactions` is only in scope
+          // now. O(replace steps × depth), and only on a block-removal
+          // transaction — plain typing bailed two lines above.
+          const { absorbedInto } = classifyBlockDepartures(transactions);
           setTimeout(() => {
             // Build the set of uuids still live in the settled doc ONCE. A uuid
             // present here was resurrected (or re-added by a later edit) and is
@@ -305,6 +362,28 @@ export const TextObjectOrphanGuard = Extension.create({
             }
             for (const block of removed) {
               if (liveUuids && liveUuids.has(block.uuid)) continue; // resurrected
+              // ONE uuid, ONE verdict. A block the batch ABSORBED did not
+              // orphan — its words are inside the survivor — so it gets the
+              // re-home signal INSTEAD of the orphan event, never both. That
+              // ordering is task 491's rule made structural: the orphan sweep
+              // is what strips a link naming a vanished uuid, so a card cannot
+              // be stripped and re-homed in the same breath.
+              //
+              // Two things fail OPEN back to the orphan event, because a
+              // needless orphan is today's behaviour while a re-home onto a
+              // dead paragraph is a fresh defect: a survivor that did not
+              // itself survive the batch, and a surface with no handler wired
+              // (only the main `EditorPane` mount supplies one).
+              const survivor = absorbedInto.get(block.uuid);
+              const handler = onBlockAbsorbedRef?.current ?? null;
+              if (
+                survivor &&
+                handler &&
+                (!liveUuids || liveUuids.has(survivor.uuid))
+              ) {
+                handler({ absorbed: block, survivor });
+                continue;
+              }
               window.dispatchEvent(
                 new CustomEvent("virgil-textobject-orphaned", {
                   detail: { uuid: block.uuid, typeName: block.typeName },
@@ -346,6 +425,13 @@ export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
 // EXCEPTION 1: a transaction tagged with `LIFECYCLE_DELETE_META` (the Archive /
 // Delete drag-handle actions) is a deliberate removal — the guard bypasses it
 // so the block actually goes. See the meta declaration above.
+//
+// EXCEPTIONS 2, 3 and 4 are three readings of ONE law — *a preservation guard
+// may not restore an identity that an empty paragraph cannot carry*: the
+// resurrection reproduces the removal (367), contradicts it (499), or lands a
+// blank line in the middle of text the user just merged (514). The last two are
+// answered together by `classifyBlockDepartures`, so this guard and
+// `TextObjectOrphanGuard` cannot disagree about what happened to a block.
 //
 // EXCEPTION 2 — THE NO-OP IDENTITY (task 367). A preservation guard may restore
 // what a removal LOST; it may not restore the removal itself. The remedy here is
@@ -485,7 +571,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // difference. Read from the transactions' own steps, so it answers
           // the same whichever of the two plugins the appendTransaction chain
           // runs first.
-          const dissolved = dissolvedByReparent(transactions);
+          const departures = classifyBlockDepartures(transactions);
 
           const paraType = newState.schema.nodes.paragraph;
           if (!paraType) return null;
@@ -500,7 +586,15 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // paragraph has no text for a `linkedAnchor` mark to sit on, so the
             // inline-anchor justification is vacuous for exactly this shape.
             if (resurrectionWouldBeANoOp(oldState.doc, b, paraType)) continue;
-            if (dissolved.has(b.uuid)) continue; // EXCEPTION 3 — its container dissolved
+            if (departures.dissolved.has(b.uuid)) continue; // EXCEPTION 3 — its container dissolved
+            // EXCEPTION 4 (task 514) — ABSORBED by a JOIN. Same law as 3, other
+            // mechanism: the block's content is not gone, it is INSIDE the
+            // survivor, so an empty paragraph carrying its id preserves
+            // nothing — it puts a blank line between the user's own merged text
+            // and re-mints a stranger for the half that got split back off.
+            // Verbatim the reported bug. The card follows the survivor instead;
+            // `TextObjectOrphanGuard` publishes that (one uuid, one verdict).
+            if (departures.absorbedInto.has(b.uuid)) continue;
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;

@@ -62,6 +62,7 @@ import {
 } from "@/lib/tiptap/transient-highlight";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import type { BlockAbsorbedHandlerRef } from "@/lib/tiptap/linked-anchor";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
@@ -125,6 +126,10 @@ interface EditorProps {
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
+  /** Ref to the handler that RE-HOMES a card whose anchor block was absorbed
+   *  by a join (task 514). See `BlockAbsorbedHandlerRef` in linked-anchor.ts
+   *  for why this is a ref and not a window event. */
+  onBlockAbsorbedRef?: BlockAbsorbedHandlerRef | null;
   /* NOTE (task 120): `activeAnchorId` / `activeAnchorColor` used to live here
    * and drove a third branch of `applyHighlight`. They were a migration orphan
    * — NOTHING ever passed them (the sole `<VirgilEditor>` mount is in
@@ -431,7 +436,7 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, onBlockAbsorbedRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -529,6 +534,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       docIdRef,
       texBlockIsPoppedRef: texBlockIsPoppedPredicateRef,
       anchoredUuidsRef,
+      onBlockAbsorbedRef: onBlockAbsorbedRef ?? null,
       host: null,
     }),
     content: initialContent,

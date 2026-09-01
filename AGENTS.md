@@ -4752,12 +4752,12 @@ into one before lifting (`liftOutOfList`'s own `tr.delete(pos-1, pos+1)`
 preamble), so only the FIRST item's identity is still available when the lift
 runs: the first lifted block conserves and the rest mint — the honest
 composition of a join (N text objects became one) and a split (one became N),
-pinned as its own leg. Those joined-away items still HUSK if they were
-margin-anchored, and that is the guard's general JOIN behaviour rather than
-anything this task introduced: measured on a plain two-paragraph
-Backspace-join, with no list, lift or transfer involved at all. It wants the
-same treatment one law over and is filed separately; it is pinned here as a
-control so the boundary of this fix is a stated fact. A block dropped INTO a
+pinned as its own leg. Those joined-away items also HUSKED if they were
+margin-anchored — the guard's general JOIN behaviour rather than anything this
+task introduced, measured on a plain two-paragraph Backspace-join with no list,
+lift or transfer involved at all, and pinned here as a stated boundary.
+**CLOSED by task 514** — see "The absorption half" immediately below; that
+boundary leg is renegotiated in place. A block dropped INTO a
 container that ALREADY has an identity is absorbed by it, because nothing bare
 is there to hand the id to. And the outer container of a whole-list lift
 (`bulletList` around a sole `listItem`) hands its id to nobody — the innermost
@@ -4769,6 +4769,121 @@ FSA-masked class (real anchor death reproduces under prod File System Access),
 so the durable proof here is the unit contract — anchor a note to a list item,
 Shift-Tab it out, and confirm the marker follows the text with no empty line and
 no unanchored chip.
+
+#### The absorption half: a JOIN is the THIRD way a block leaves
+
+Same guard, the departure 499 recorded and could not see (task 514) — and the
+case where the fix's own predicate, `dissolvedByReparent`, is STRUCTURALLY blind
+to it: a join produces no `ReplaceAroundStep` and no gap, so there is nothing for
+that reading to look at.
+
+Measured through the real stack with both paragraphs margin-anchored:
+
+```
+BEFORE   paragraph#P1("A")   paragraph#P2("B")     ← caret at the start of "B"
+AFTER    paragraph#P1("A")   paragraph#P2("")   paragraph#099b("B")
+```
+
+The user pressed Backspace to merge two paragraphs and got a blank line holding
+one of their identities, with their own text re-minted beside it. The join
+produced `<p P1>AB</p>`; `MarginaliaAnchorGuard` then inserted an empty
+`paragraph({uuid:"P2"})` at the mapped deletion site — which is INSIDE the merged
+textblock — so ProseMirror's fitter split it and `BlockUuidBackfill` minted a
+stranger for the half that got split off. Same on a list-item join, and it is
+what made a MULTI-item Shift-Tab lift husk once per joined-away item, because
+`liftOutOfList`'s own `tr.delete(pos - 1, pos + 1)` preamble IS a join.
+
+> **A block leaves the document in three structurally different ways, and telling
+> them apart is the whole of what the two guards need: it was REMOVED (its
+> content went with it), its container DISSOLVED (its content was re-parented,
+> task 499), or it was ABSORBED (its content MERGED into a surviving sibling).**
+> The three are ONE question — *what happened to this block's content?* — so they
+> are answered by ONE door, `classifyBlockDepartures`
+> ([block-uuid-backfill.ts](src/lib/tiptap/block-uuid-backfill.ts)), read by both
+> guards. Two doors is how the resurrection guard and the orphan sweep come to
+> disagree about a departure.
+
+**Gabriel's ruling (2026-08-31): the absorbed card FOLLOWS the survivor.** The
+join is a merge, not a delete — the words the card is about are still on screen,
+inside the survivor — and the archive-displacement precedent (task 491, "the
+margin context RE-HOMES onto the surviving neighbour") already chose that answer
+for the sibling gesture. So the re-home runs through the SAME 491 door.
+
+Eight rules it earned:
+
+- **Absorption cannot be an identity TRANSFER, which is why the two mechanisms
+  differ.** 499's dissolved reading hands a container's id to its SUCCESSOR where
+  one exists; a join has none — the survivor already HAS an identity, and one
+  node holds one id. So the absorbed identity really does leave the document, and
+  the only place the card can follow it is the SIDECAR. That is why this reading
+  publishes the SURVIVOR rather than a receiver position, and why the re-homing
+  lands in React-land rather than in the net.
+- **ONE uuid, ONE verdict.** `TextObjectOrphanGuard` publishes the ABSORBED
+  signal INSTEAD of `virgil-textobject-orphaned`, never both — so the sweep that
+  STRIPS a link naming a vanished uuid cannot race the re-home. 491 had to order
+  those two by hand ("retarget BEFORE the delete"); here they are mutually
+  exclusive by construction.
+- **The signal is a REF, not a window event.** N `EditorPane`s are mounted at
+  once under multi-doc keep-alive, so a window listener registered per pane is
+  answered by every pane (the task-329 class). A ref threaded through the
+  extension ctx is per-EDITOR by construction — there is no visibility question
+  to get wrong. The sibling `virgil-textobject-orphaned` keeps its window channel
+  because its consumers (`useArchive` / `useTodos`) are per-doc hooks with no
+  editor in hand; a re-home needs the survivor's live paragraph text, so it has
+  to be asked of the editor that performed the join.
+- **TWO things fail OPEN back to the orphan event**, because a needless orphan is
+  the pre-514 behaviour while a re-home onto a dead paragraph is a fresh defect:
+  a survivor that did not itself survive the batch (checked against the SETTLED
+  doc the sweep already walks), and a surface with no handler wired — only the
+  main `EditorPane` mount supplies one.
+- **The step reading is `ReplaceStep` ONLY, and that is the true scope rather
+  than a shortcut.** A plain join, a Delete at a block end, a range selection
+  dragged across a boundary and `liftOutOfList`'s merge preamble are all
+  `ReplaceStep`s. The one `ReplaceAroundStep` join `deleteBarrier` uses (pulling
+  a paragraph into the last item of a preceding list) RE-PARENTS, so
+  `dissolvedByReparent` already answers it and husks nothing; re-classifying it
+  as absorption would renegotiate 499's decided orphan outcome for the whole lift
+  family inside a task whose ruling is about the JOIN. Stated as a residual.
+- **The ancestor walk climbs to the uuid-BEARING node, not merely the anchorable
+  one.** A `listItem`'s body paragraph carries no uuid (it defers to the item —
+  `DEFERRING_PARENTS`), so stopping at the first anchorable ancestor would answer
+  with a node that has no identity to lose. Climbing to the id is also what makes
+  two paragraphs joined INSIDE one list item answer with the SAME node, which is
+  correct: nothing departed.
+- **"They merged" is CHECKED, never inferred from the step's shape.**
+  `step.to` lands exactly `slice.size` past `step.from` after the step, so asking
+  where those two positions sit in the POST doc asks whether the boundary
+  survived — four `resolve`s, no walk — and the surviving node's uuid must be the
+  survivor's. Everything unreadable fails CLOSED to today's behaviour.
+- **Chains resolve to their END.** A batch that joins three blocks in two steps
+  re-homes every absorbed card onto the ONE block that survived it, never onto an
+  intermediate that is itself gone. Cycle-guarded; a degenerate self-target is
+  dropped rather than published.
+
+CI: [join-absorbed-anchor.test.ts](src/lib/tiptap/__tests__/join-absorbed-anchor.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack through `handleKeyDown` and
+the shipped command chain — a direct `tr` dispatch cannot see which command a
+keymap chooses (task 418's lesson) — over the reported paragraph join, a
+list-item join, a range delete across a boundary, the multi-item lift, undo, and
+a two-cycle `.tex` fixed point. **No pre-514 suite could see any of this**:
+`anchored-block-delete-reinsert.test.ts` characterises this guard thoroughly by
+dispatching `tr.delete` DIRECTLY, where a join is unrepresentable, and 499's own
+suite PINNED the husk as the contract (renegotiated in place there, with the
+reason at the site). Its CONTROLS are half the leg count: a whole-block delete
+still resurrects, two paragraphs joined inside ONE list item announce nothing
+(one identity, nothing departed), and an intra-block delete announces nothing.
+[rehome-absorbed-anchor.test.ts](src/cards/__tests__/rehome-absorbed-anchor.test.ts)
+drives the re-home door against a recording `AnchorRetargetApi` — the two things
+that can go wrong there (a survivor whose type is not a text-object kind, since
+the guard is registry-free by design; a degenerate self-target) are invisible to
+any test of `retargetDisplacedAnchors` itself. Measured by neutering each half in
+turn: EXCEPTION 4 takes 7 legs, the absorbed notification 3, and a dropped
+`onBlockAbsorbedRef` prop 1 (the census).
+
+**Owed, not claimed:** a real-FSA eyeball. Anchor death is the FSA-masked class,
+so the durable proof here is the unit contract — anchor notes to two adjacent
+paragraphs, Backspace-join them, and confirm no blank line and both markers on
+the survivor.
 
 ### The schema half: a TYPE contract is blind to the ATTRS the type carries
 

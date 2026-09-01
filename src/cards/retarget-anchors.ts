@@ -51,7 +51,9 @@
 
 import { useMemo, useRef } from "react";
 import { getLinkedTextObjectIds } from "@/links/links";
+import { isAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import type { MarginItemHandlers, MarginItemKind } from "./delete-margin-item";
 
 /** Where the displaced anchors go. Resolved ONCE per gesture by
@@ -151,4 +153,50 @@ export function useAnchorRetargetApi(
     }),
     [],
   );
+}
+
+/**
+ * **A JOIN re-homes the margin context it absorbs** (task 514) — the second
+ * producer of the displacement this module exists for.
+ *
+ * Gabriel's ruling, 2026-08-31: Backspace-merging two anchored paragraphs is a
+ * MERGE, not a delete. The absorbed block's words are still on screen, inside
+ * the survivor, so the card that pointed at them FOLLOWS the survivor rather
+ * than orphaning to the pod header's "N unanchored" chip. That is exactly the
+ * answer task 491 already chose for the sibling gesture (an archive capture
+ * displacing a neighbour's card), so it runs through the SAME door — which is
+ * what makes "a displaced Mode-A anchor moves onto ONE surviving block,
+ * converging, dropping only the consumed pid" one rule instead of two.
+ *
+ * Ordering, for free: `TextObjectOrphanGuard` publishes the ABSORBED verdict
+ * INSTEAD of the `virgil-textobject-orphaned` event, never both, so the sweep
+ * that strips a link naming a vanished uuid cannot race the re-home. 491 had to
+ * order the two by hand ("retarget BEFORE the delete"); here the two are
+ * mutually exclusive by construction.
+ *
+ * Returns whether anything moved (diagnostics / tests; the caller ignores it).
+ */
+export function rehomeAbsorbedAnchor({
+  event,
+  retarget,
+  snapshotFor,
+}: {
+  event: BlockAbsorbedEvent;
+  retarget: AnchorRetargetApi;
+  /** Normalized text of the survivor, so the fresh Mode-A link is self-healing
+   *  on reload exactly as the re-anchor gesture's is. */
+  snapshotFor: (uuid: string) => string | null;
+}): number {
+  const { absorbed, survivor } = event;
+  // The guard is registry-free by design (it reads the schema, not the text-
+  // object vocabulary), so the KIND is validated here. A survivor whose type is
+  // not a text-object kind has no anchor to offer, and the card keeps the
+  // ordinary orphan path rather than being handed a uuid nothing can resolve.
+  if (!isAnchorableBlock(survivor.typeName, survivor.uuid)) return 0;
+  if (absorbed.uuid === survivor.uuid) return 0;
+  return retarget.retarget({
+    removed: new Set([absorbed.uuid]),
+    target: { uuid: survivor.uuid, kind: survivor.typeName },
+    snapshot: snapshotFor(survivor.uuid),
+  });
 }

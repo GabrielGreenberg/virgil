@@ -241,7 +241,11 @@ import {
   type MarginItemHandlers,
   type MarginItemKind,
 } from "@/cards/delete-margin-item";
-import { useAnchorRetargetApi } from "@/cards/retarget-anchors";
+import {
+  useAnchorRetargetApi,
+  rehomeAbsorbedAnchor,
+} from "@/cards/retarget-anchors";
+import type { BlockAbsorbedEvent } from "@/lib/tiptap/linked-anchor";
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
@@ -2804,6 +2808,33 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `useCallback` deps would churn `dispatch` — and every consumer memo behind
   // it — on every card change.
   const anchorRetarget = useAnchorRetargetApi(marginItemHandlers);
+
+  // ── A JOIN RE-HOMES the margin context it absorbs (task 514) ─────────────
+  // Backspace-merging two anchored paragraphs used to leave a blank line
+  // holding one of their identities (the resurrection guard's husk) and, once
+  // that stood down, would have STRIPPED the absorbed card's link one
+  // `setTimeout` later via the orphan sweep. Gabriel's ruling: the join is a
+  // MERGE, not a delete — the words the card is about are still there — so the
+  // card FOLLOWS the survivor, exactly as task 491's archive displacement
+  // re-homes onto the surviving neighbour.
+  //
+  // The SAME 491 door does the work, so "a displaced Mode-A anchor moves onto
+  // ONE surviving block, converging, dropping only the consumed pid" is stated
+  // once for both gestures. A ref rather than a window listener: per-EDITOR by
+  // construction under multi-doc keep-alive (the task-329 class), and the
+  // survivor's snapshot has to be read from the editor that performed the join
+  // anyway. Identity-stable — the ref is assigned, never re-subscribed.
+  const onBlockAbsorbedRef = useRef<
+    ((event: BlockAbsorbedEvent) => void) | null
+  >(null);
+  onBlockAbsorbedRef.current = (event) => {
+    rehomeAbsorbedAnchor({
+      event,
+      retarget: anchorRetarget,
+      snapshotFor: (uuid) =>
+        captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
+    });
+  };
 
   const handleMarginItemDelete = useCallback(
     (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
@@ -6920,6 +6951,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onEditorReady={handleEditorReady}
                     onCitationDrop={handleCitationDrop}
                     anchoredUuidsRef={anchoredUuidsRef}
+                    onBlockAbsorbedRef={onBlockAbsorbedRef}
                     texBlockIsPoppedRef={texBlockIsPoppedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}

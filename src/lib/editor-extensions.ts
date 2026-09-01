@@ -68,6 +68,7 @@ import {
   LinkedAnchor,
   LinkedAnchorGuard,
   TextObjectOrphanGuard,
+  type BlockAbsorbedHandlerRef,
   ExampleBlock,
   ExampleItemList,
   ExampleItem,
@@ -1805,6 +1806,11 @@ export interface EditorExtensionsCtx {
   > | null;
   /** Paragraph UUIDs carrying marginalia — gates MarginaliaAnchorGuard. */
   anchoredUuidsRef?: RefObject<Set<string>>;
+  /** Where `TextObjectOrphanGuard` reports a block ABSORBED by a join (task
+   *  514), so the displaced margin context can RE-HOME onto the survivor. A
+   *  ref rather than a window event: per-EDITOR by construction under
+   *  multi-doc keep-alive. See `BlockAbsorbedHandlerRef`. */
+  onBlockAbsorbedRef?: BlockAbsorbedHandlerRef | null;
   /** Float: the main editor a float reads numbering from / proxies structural
    *  writes to. `null` for the main surface. (Exercised in FCU Chips B/C.) */
   host?: { getMainEditor: () => Editor | null } | null;
@@ -2025,7 +2031,13 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
     LinkedAnchor,
     LinkedAnchorGuard,
-    ...(isMain ? [TextObjectOrphanGuard] : []),
+    ...(isMain
+      ? [
+          TextObjectOrphanGuard.configure({
+            onBlockAbsorbedRef: ctx.onBlockAbsorbedRef ?? null,
+          }),
+        ]
+      : []),
     // titleField (L3j, bodyless kinds Chip 4): PROMOTED out of the main-only
     // spread to an always-included entry, so the FLOAT schema gains exactly
     // `titleField` — it was the lone bodyless kind that was main-only, which
