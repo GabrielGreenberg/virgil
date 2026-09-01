@@ -219,9 +219,11 @@
      can sync native drag-to-select into its selection state (the
      SelectionDragHandle reads from `view.state.selection`). Read-only
      is enforced by the `readOnlyEnforcer` PM plugin in Editor.tsx —
-     no transactions actually mutate the doc. Suppress the artifacts
-     that contenteditable=true would otherwise show: blinking caret on
-     focus, and red-squiggle spellcheck underlines under prose. */
+     no transactions actually mutate the doc. Suppress the artifact
+     that contenteditable=true would otherwise show: a blinking caret
+     on focus. (This rule NEVER suppressed the red spellcheck squiggle,
+     which CSS cannot reach — that is `Editor.tsx`'s read-only
+     `NEVER_SPELLCHECK_ATTRS` branch, corrected here in task 517.) */
   caret-color: transparent;
 }
 [data-virgil-library-reader] .paper-render .tiptap [contenteditable] {

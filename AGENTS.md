@@ -9188,6 +9188,173 @@ vs roofs"). Measured by neutering each half in turn: the memo's fixture as the
 corpus member takes 3 legs, a roof-height drift 1, and a hypothetical routing
 change 4.
 
+## The prose index: "which characters are prose, and where"
+
+> **One question, one owner.** `src/lib/prose-index.ts` yields the PROSE
+> character runs of a document with their ProseMirror positions — every
+> carrier run, every markless block and every atom excluded — and the
+> exclusion vocabulary is DERIVED from the SSOTs and from the live schema,
+> never hand-listed.
+
+This is the "searching `emph` finds command names" class (task 517, subsuming
+the retired 513), and the finding is that three parts of Virgil each held HALF
+of one answer and none of them knew both:
+
+- the **word counter** (`word-count-core.ts`) sorts characters into categories
+  — main text / headings / footnotes / captions / math / comments — and throws
+  every POSITION away;
+- the **raw-LaTeX highlighter** (`scanRawLatexSpans` + the carrier marks) keeps
+  positions exactly, because it has to paint over them — and tracks only
+  LATEX, never prose;
+- the **Search index** kept positions and knew nothing about LaTeX at all. Its
+  `buildMainTextIndex` took every text node in every textblock with no carrier
+  filtering, so `emph` matched command names and a query matched inside a `%`
+  comment block.
+
+A spellchecker needs both halves at once, which is why the foundation was built
+before it (the approved program's phase 1 of 3; phase 2 is Virgil's own
+checker, phase 3 the curated autocorrect list).
+
+Seven rules it earned:
+
+- **The vocabulary is three DERIVED rules, not a list of node names.** A TEXT
+  node is prose unless it wears a raw-LaTeX mark; a BLOCK carries prose only
+  if it is a textblock that ADMITS MARKS; anything that is not a text node
+  contributes no prose characters. That covers every carrier, every verbatim
+  container and every atom — including ones nobody has written yet.
+- **`RAW_LATEX_MARK_NAMES` is a THIRD census, deliberately distinct from
+  `CARRIER_MARK_NAMES`.** The carrier table answers the DEMOTION question
+  ("does this run still spell what its carrier says it is?", task 407) and is
+  the STRICTER set — the marks whose bytes are literal or inert — which is
+  exactly what `isOpaqueRun` must keep reading, because a `latexCommand`
+  scanner has to look INSIDE a command run. "Is this prose?" is the wider
+  question, so it gets its own derived export (`CARRIER_MARK_NAMES` plus
+  `LATEX_COMMAND_MARK`) rather than a fourth hand list. `latexCommand`'s name
+  finally has a constant too, and `latex-command.ts` now spells NO mark-name
+  literal of its own.
+- **The markless test is asked of the LIVE SCHEMA** (`type.markSet`), which is
+  the derivation `text-object-registry.ts` asks for in place beside its own
+  `MARKLESS_BLOCK_ACTIONS` hand-assignment: a node declaring `marks: ""` can
+  never wear a carrier, so Virgil has no way to say which of its characters
+  are raw LaTeX — which is what verbatim MEANS. `latexComment` and `codeBlock`
+  fall out; a third such kind is covered by shipping.
+- **`figureBlock` is the one shape that needed a decision rather than a rule,
+  and the rules get it right anyway.** It is not a schema atom, it holds a
+  `figureCaption`, and that caption IS the user's words — so it is walked like
+  any other textblock while its siblings (`texBlock`, `forestBlock`,
+  `graphicsBlock`, `displayMath`) are excluded by the atom rule.
+- **The run table was already the right shape, and that is why the fix is
+  small.** `buildMainTextIndex` kept per-text-node runs precisely so an inline
+  ATOM — zero characters, one PM slot — could not skew char → PM conversion. A
+  SKIPPED CARRIER is the identical shape, so the whole `spanAtOffset` /
+  `proseOffsetToPos` machinery carries the new gaps for free. Consecutive runs
+  are char-contiguous and PM-DISJOINT, and that gap is the contract a consumer
+  that must not span an excluded thing (a spell squiggle, task 518) reads.
+- **It does NOT extract `\caption{…}` payloads the way the word counter does.**
+  That extraction is a REGEX REWRITE of a string — it strips commands and
+  braces — so it cannot say WHERE the surviving characters are, and this
+  index's whole contract is positions. A payload the index cannot place is one
+  it must not claim.
+- **The word counter is a stated NON-GOAL, not an oversight.** Its bucketing
+  laws (tasks 112 / 121 / 122) are settled, its buckets need the three marks
+  named INDIVIDUALLY and IN ORDER (a comment tail goes to `comments` and must
+  be tested BEFORE the pair whose `\caption{…}` payloads go to `captions`), so
+  a single "is this raw LaTeX" predicate cannot express it. It remains the
+  third half-answer and MAY migrate later — deliberately, not in passing. It
+  is the census's one exemption, scoped to that reason.
+
+**Cost class.** `buildProseIndex` is O(doc) and is a DERIVED PRODUCT: a
+consumer re-derives EVENT-DRIVEN (the `DocStructureBus` counters, a
+`doc-products` tier, or — like Search — once per user-initiated query), never
+on the keystroke path. `collectProseRuns` is the per-BLOCK entry point for a
+consumer holding a touched block from the typed structural diff.
+
+CI: [prose-index.test.ts](src/lib/__tests__/prose-index.test.ts) drives the
+REAL `buildEditorExtensions("main")` stack over the REAL parse — so the marks
+under test are the ones the parser produces rather than ones a fixture asserts
+into existence — and its legs with teeth are the SWEEPS (every `ATOM_REGISTRY`
+kind, every `RAW_LATEX_MARK_NAMES` member, every markless textblock the schema
+declares) plus the CENSUS. **No pre-517 suite could see any of this**: every
+search fixture in the repo is plain prose plus inline atoms — the one non-prose
+shape the old index already handled — so a carrier run reaching the index is
+unrepresentable in all of them.
+[search-prose-only.test.ts](src/panels/Search/__tests__/search-prose-only.test.ts)
+is the 513 acceptance, each red leg carrying its PROSE control through the
+identical harness (a suite that only proved "emph is not found" would pass on
+an index that finds nothing at all). Measured by neutering the two predicates:
+**13 legs fail**, and the 17 that pass are the controls — plain prose, a
+MODELED command's payload (an `\emph{…}` is an italic MARK, not a carrier, so
+its words survive and only the name is gone), the offset round-trip, and the
+derivation pins.
+
+**Residual, stated.** The joined text still concatenates ACROSS a skipped
+thing, so `a\foobar{x}c` reads as `ac` to a whole-string matcher — exactly as
+`doc.textBetween(0, size, "\n")` has always joined across an inline atom. That
+is preserved deliberately: changing it would move Search's behaviour, and the
+consumer that must not join (the squiggle) reads the RUNS, which is what they
+are for.
+
+### The switch half: native spellcheck becomes deliberate
+
+Same task, the memo's Tier A. Chrome spellchecks any editable text unless told
+not to, and Virgil said "don't" in ELEVEN places that had never been collected
+into a rule — two CodeMirror source pods, the read-only branch of the main
+editor, and eight discrete form inputs (citekey, label key, two hex-colour
+fields, the math and figure LaTeX textareas, the bib picker, the raw-BibTeX
+textarea). Every decision was right and none was STATED, so from outside the
+pattern read as arbitrary, and there was no way to turn the thing off.
+
+> **The switch is ONE inherited `spellcheck` attribute on `<body>`, written
+> from one `VIEW_PREF_REGISTRY` row — not a prop threaded into every prose
+> surface.**
+
+Four rules it earned:
+
+- **Twelve threads are twelve chances to forget the thirteenth.** There are
+  twelve `editorProps.attributes` blocks that would each need a
+  `checkSpelling` prop (the main editor, `RichTextField`, `BorrowedMainText`,
+  nine float bodies, `ExampleCard`) and NONE of them sets `spellcheck` today.
+  The body attribute covers every surface that exists and every surface that
+  will, by construction — the same mechanism and the same reasoning as
+  `EditorLayout`'s `.hide-card-titles` / `.card-outline-chrome` body classes,
+  whose own comment gives the reason ("cards render in the panel strips, the
+  omni host, AND body-portaled float popouts").
+- **ON is the ABSENCE of the attribute, not `"true"`.** The default state IS
+  on, so the pref's default position leaves the DOM byte-identical to what
+  shipped before the switch existed.
+- **The deliberate opt-outs need no knowledge of the pref.** They are
+  DESCENDANT `false`s, which win over an inherited value — so they survive
+  either position, and the read-only rule in `Editor.tsx` stays a rule of its
+  own ABOVE the preference: a read-only document is never squiggled whatever
+  the pref says. Both compose without either knowing about the other.
+- **They spell it through the door** (`NEVER_SPELLCHECK_ATTRS` /
+  `NEVER_SPELLCHECK_PROPS`, [spellcheck-policy.ts](src/lib/spellcheck-policy.ts))
+  rather than a bare literal, which is what makes "the surfaces deliberately
+  left out" a checkable list instead of eleven scattered literals. Two more
+  CodeMirror surfaces (the code view, the style/preamble editor) set nothing
+  and are always off regardless: CodeMirror 6 hardcodes `spellcheck: "false"`
+  in its own default content attributes.
+
+A stale claim went with it: `library/styles/library.css` said its
+`caret-color: transparent` rule suppressed "red-squiggle spellcheck
+underlines", which CSS cannot do — the suppression was always `Editor.tsx`'s
+read-only branch. Corrected in place with the reason at the site.
+
+CI: [spellcheck-policy.test.ts](src/lib/__tests__/spellcheck-policy.test.ts).
+The leg with teeth is the CENSUS — the door was never the part that could
+misbehave, a surface that opts out with a bare literal is, and it renders
+perfectly while leaving the list unstated: no production file outside the door
+may spell `spellCheck={false}` or `spellcheck: "false"` (allowlist EMPTY), the
+door must have real consumers of BOTH shapes, and the policy must have exactly
+ONE mount (two writers of one attribute is how they come to disagree, and the
+effect's cleanup restores ON). Measured: a planted literal takes the census, a
+dropped mount takes the mount leg.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a schema walk plus
+a body attribute, no disk), so the check is cheap and real — search `emph` in
+the dev doc and get prose hits only, then toggle View › Check spelling and
+watch the squiggles go.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

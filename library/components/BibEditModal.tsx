@@ -20,6 +20,7 @@ import {
   emitBibEntry,
   knownFieldsForType,
 } from "@library/lib/bib-edit";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 interface Props {
   entry: BibEntry;
@@ -673,7 +674,7 @@ function RawView({
       <textarea
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
-        spellCheck={false}
+        {...NEVER_SPELLCHECK_PROPS}
         rows={18}
         style={{
           ...inputStyle,

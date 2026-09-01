@@ -52,6 +52,7 @@ import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
 import type { SourcePodDerive } from "@/components/source-pod-derive";
+import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 
 /** What one source-pod kind contributes over the shared body. */
 export interface SourcePodFloatConfig {
@@ -307,7 +308,7 @@ export function SourcePodFloatBody({
                     latex({ enableLinting: false }),
                     sourcePodFloatTheme,
                     EditorView.lineWrapping,
-                    EditorView.contentAttributes.of({ spellcheck: "false" }),
+                    EditorView.contentAttributes.of(NEVER_SPELLCHECK_ATTRS),
                     EditorState.tabSize.of(2),
                   ]}
                   basicSetup={{

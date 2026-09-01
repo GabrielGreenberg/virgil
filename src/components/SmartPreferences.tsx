@@ -33,6 +33,7 @@ import {
 import type { LinkableKey } from "@/lib/pref-links";
 import { applyLightnessDelta } from "@/lib/pref-links";
 import { iconHint } from "@/components/Hint";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 function PrefRow({
   item,
@@ -173,7 +174,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
             const v = e.target.value.trim().toLowerCase();
             if (/^#[0-9a-f]{6}$/.test(v)) setField("color", v);
           }}
-          spellCheck={false}
+          {...NEVER_SPELLCHECK_PROPS}
           tone="transparent"
           ink="subtle"
           density="dense"

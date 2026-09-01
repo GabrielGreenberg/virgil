@@ -6,6 +6,7 @@ import { isLeaf } from "@/lib/preferences-tree";
 import { Input, Select } from "./field-primitives";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 // ─── Leaf Components ──────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export function ColorPref({
           onChange={(e) => setLocalHex(e.target.value)}
           onBlur={commitHex}
           onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-          spellCheck={false}
+          {...NEVER_SPELLCHECK_PROPS}
           tone="transparent"
           density="dense"
           ink="subtle"

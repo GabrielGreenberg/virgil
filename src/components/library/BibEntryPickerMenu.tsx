@@ -63,6 +63,7 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
 import { iconHint } from "@/components/Hint";
+import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -483,7 +484,7 @@ function BibEntryPickerBody({
             onChange={(e) => setInternalQuery(e.target.value)}
             placeholder={placeholder}
             className="flex-1 min-w-0 text-xs bg-transparent outline-none text-ink-body placeholder:text-ink-muted"
-            spellCheck={false}
+            {...NEVER_SPELLCHECK_PROPS}
           />
           <button
             type="button"
