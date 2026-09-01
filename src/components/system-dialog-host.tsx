@@ -38,6 +38,10 @@ import SystemDialog, {
   SystemDialogHeader,
   type SystemDialogSize,
 } from "./system-dialog";
+import {
+  confirmActionVariant,
+  confirmDialogCuedDefault,
+} from "./confirm-cue-policy";
 import { Input } from "./field-primitives";
 
 /* ── Option types ────────────────────────────────────────────────── */
@@ -47,7 +51,10 @@ export interface AlertOptions {
   message: ReactNode;
   /** Label for the single dismiss button. Defaults to "OK". */
   okLabel?: string;
-  /** Visual tone — `danger` tints the button red. */
+  /** Visual tone of the MESSAGE — `danger` inks a failure notice red.
+   *  It does NOT reach the button: an alert's sole button dismisses and
+   *  commits nothing, and red is a claim about the AFFORDANCE (task 528).
+   *  See `confirm-cue-policy.ts`. */
   tone?: "default" | "danger";
   size?: SystemDialogSize;
 }
@@ -57,6 +64,9 @@ export interface ConfirmOptions {
   message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** `danger` paints the confirm button destructive AND cues **Cancel**, so
+   *  `Enter` cancels — both derived from `confirm-cue-policy.ts`, the same
+   *  rules `<ConfirmDialog>` reads. */
   tone?: "default" | "danger";
   size?: SystemDialogSize;
 }
@@ -180,14 +190,24 @@ function PendingDialog({
       >
         <SystemDialogHeader title={title} titleId={titleId} />
         <SystemDialogBody>
-          <div className="text-xs text-ink-body leading-relaxed">{message}</div>
+          {/* The tone reaches the MESSAGE, which is what it describes. A red
+              failure notice is honest; a red BUTTON says "pressing this
+              destroys content without a net" (STYLE_GUIDE, "the destructive /
+              alarm family") and this one only dismisses. */}
+          <div
+            className={`text-xs leading-relaxed ${
+              tone === "danger" ? "text-danger" : "text-ink-body"
+            }`}
+          >
+            {message}
+          </div>
         </SystemDialogBody>
         <SystemDialogFooter>
-          <SystemDialogButton
-            variant={tone === "danger" ? "danger" : "primary"}
-            autoFocus
-            onClick={finish}
-          >
+          {/* Deliberately a LITERAL, not `confirmActionVariant(tone)`: this
+              button commits nothing, so there is no destructive answer to
+              derive. Cueing it is safe for the same reason — `Enter`
+              dismisses, which is what an alert is for. */}
+          <SystemDialogButton variant="primary" autoFocus onClick={finish}>
             {okLabel}
           </SystemDialogButton>
         </SystemDialogFooter>
@@ -208,6 +228,24 @@ function PendingDialog({
       pending.resolve(value);
       onDone();
     };
+    /* DERIVED, never hardcoded (task 528). A `danger` confirm cues its SAFEST
+       button, so `Enter` cancels — task 386's data-safety rule, read from the
+       ONE function `<ConfirmDialog>` reads. This door armed the destructive
+       answer for as long as it has existed; the live path was Tab-strip **+**
+       → "Reset example document", whose destruction has no undo and no
+       `virgil/.history/` slot, opening under a hand that had just pressed a
+       menu row.
+
+       This door always renders Cancel and offers no secondary, so the policy
+       can only answer "cancel" or "confirm" — there is no `"none"` arm to
+       declare. Should `ConfirmOptions` ever grow `hideCancel`, that arm
+       arrives with it and needs `noCuedDefault` on the frame, exactly as
+       `<ConfirmDialog>` spells it. */
+    const cuedDefault = confirmDialogCuedDefault({
+      tone,
+      hideCancel: false,
+      hasSecondary: false,
+    });
     return (
       <SystemDialog
         open
@@ -220,12 +258,15 @@ function PendingDialog({
           <div className="text-xs text-ink-body leading-relaxed">{message}</div>
         </SystemDialogBody>
         <SystemDialogFooter>
-          <SystemDialogButton onClick={() => done(false)}>
+          <SystemDialogButton
+            autoFocus={cuedDefault === "cancel"}
+            onClick={() => done(false)}
+          >
             {cancelLabel}
           </SystemDialogButton>
           <SystemDialogButton
-            variant={tone === "danger" ? "danger" : "primary"}
-            autoFocus
+            variant={confirmActionVariant(tone)}
+            autoFocus={cuedDefault === "confirm"}
             onClick={() => done(true)}
           >
             {confirmLabel}

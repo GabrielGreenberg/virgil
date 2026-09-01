@@ -33,6 +33,11 @@ import {
   suppressConfirm,
   type SuppressibleConfirmId,
 } from "./confirm-suppression";
+import {
+  confirmActionVariant,
+  confirmDialogCuedDefault,
+  type ConfirmTone,
+} from "./confirm-cue-policy";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
@@ -40,7 +45,15 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 
-export type ConfirmTone = "default" | "danger";
+/* The tone→button policy is a LEAF (`confirm-cue-policy.ts`) so the OTHER
+   confirm door — `system-dialog-host.tsx`, which cannot import this
+   component module — reads the SAME rules. Re-exported here because this
+   file is where every existing caller already looks for them. */
+export {
+  confirmActionVariant,
+  confirmDialogCuedDefault,
+  type ConfirmTone,
+};
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -78,39 +91,6 @@ export interface ConfirmDialogProps {
    *  on CONFIRM only (a suppression may only be minted by the choice it
    *  suppresses — task 395's override-mint rule). */
   onSuppressChange?: (checked: boolean) => void;
-}
-
-/** Which footer button a confirm dialog CUES — the one that takes initial focus
- *  and that `Enter` therefore activates.
- *
- *  A `default`-tone confirm cues its primary action, which is what a confirm
- *  dialog is for. A **danger** confirm cues its SAFEST button instead: Cancel
- *  where there is one, else the secondary answer, else nothing.
- *
- *  This is a data-safety rule, not a styling preference (task 386). Every
- *  danger confirm in the app opens under fingers that are already moving —
- *  the reporting case was a card TITLE being typed when a stray `Backspace`
- *  reached the card shell: the dialog mounted with `Delete` focused, and the
- *  very next keystroke of ordinary typing pressed it. From the keyboard's point
- *  of view "Backspace, keep typing" WAS "delete the card". A destructive
- *  default armed under a still-typing user is the trap wherever the dialog
- *  opens from, so the rule is global rather than per-caller.
- *
- *  The danger action stays fully keyboard-reachable — Tab, then Enter — which
- *  is the right cost for a deliberate destructive choice. `hideCancel` +
- *  `danger` (a single-button danger notice) cues nothing: there is no safe
- *  button to move focus to, and cueing the only button would re-arm the trap.
- *  `SystemDialog` focuses its frame in that case, so `Escape` still works and a
- *  stray `Enter` does nothing. */
-export function confirmDialogCuedDefault(opts: {
-  tone?: ConfirmTone;
-  hideCancel?: boolean;
-  hasSecondary?: boolean;
-}): "confirm" | "cancel" | "secondary" | "none" {
-  if (opts.tone !== "danger") return "confirm";
-  if (!opts.hideCancel) return "cancel";
-  if (opts.hasSecondary) return "secondary";
-  return "none";
 }
 
 /**
@@ -222,7 +202,7 @@ export default function ConfirmDialog({
           </SystemDialogButton>
         )}
         <SystemDialogButton
-          variant={tone === "danger" ? "danger" : "primary"}
+          variant={confirmActionVariant(tone)}
           autoFocus={cuedDefault === "confirm"}
           onClick={onConfirm}
         >

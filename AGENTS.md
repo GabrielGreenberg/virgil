@@ -5550,6 +5550,102 @@ which the first cut walked straight into.
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked — drag an archive card
 onto a different paragraph's side, and press only Return.
 
+##### The second-door half: a census that asks DECLARED cannot see UNSAFE
+
+Same cue, the OTHER confirm door (task 528) — and the case where the SSOT was
+alive, correct, read, and read by ONE of the two implementations that needed it,
+while the census that walks the offender's own file passed it every night.
+
+Virgil has TWO imperative confirms. `useConfirmDialog()` derives its cue through
+`confirmDialogCuedDefault()`; `useSystemDialog()`
+([system-dialog-host.tsx](src/components/system-dialog-host.tsx)) is a separate
+implementation and hardcoded `autoFocus` on the confirm button whatever the
+tone. So everywhere else in Virgil a red dialog answers `Enter` with **Cancel**,
+and here it answered with the destruction — the key the user has been TRAINED is
+safe being the one that destroys. Live in one gesture: Tab-strip **+** →
+*Reset example document* → a `tone: "danger"` confirm reading *"This discards
+your edits and AI annotations…"* with **Reset** already focused, one `Enter`
+from a drain + `removeOpfsDocDir` + re-seed with no undo and no
+`virgil/.history/` slot — task 386's "armed under an already-moving hand" in its
+purest form, since a menu row is what the user has just pressed.
+
+> **`tone` describes the MESSAGE; a button's paint describes what pressing it
+> DOES; and WHICH button is cued is a data-safety question.** All three answers
+> come from one import-free leaf
+> ([confirm-cue-policy.ts](src/components/confirm-cue-policy.ts)) that BOTH
+> doors read — the placement rule `latex-markers.ts` earned, arriving in the
+> component tree: *a facet the layer that needs it cannot import will be
+> re-copied.*
+
+Five rules it earned:
+
+- **The fork was TWO attributes wide, not one.** Both doors also hand-spelled
+  `variant={tone === "danger" ? "danger" : "primary"}`, four lines from the cue
+  they hand-spelled. Unifying only the cue would have left the same disease live
+  one prop over, so `confirmActionVariant(tone)` ships beside
+  `confirmDialogCuedDefault` and the census forbids the ternary outright.
+- **A button that COMMITS NOTHING is never painted destructive** — the second
+  member, and the one the tone→variant map gets wrong on its own. A `danger`
+  ALERT's sole button dismisses; painting it red says *pressing this destroys
+  content without a net*, which is untrue (STYLE_GUIDE, "the destructive / alarm
+  family": the rule is a claim about the AFFORDANCE rather than about severity).
+  Live at every compile-failure notice. The tone goes to the MESSAGE ink, which
+  is what it describes.
+- **…and that button's variant is a LITERAL, not a call.** `confirmActionVariant`
+  takes no `commits` parameter: the question is not *should this red button be
+  red*, it is *is this the committing button at all*, and a parameter would let a
+  caller ask the destructive question about a button with no destructive answer.
+  The literal is also what keeps its (safe, correct) bare `autoFocus` out of the
+  census's scope — see the fail-closed rule below.
+- **The census's danger predicate fails CLOSED.** Post-fix no tag spells
+  `"danger"` inside a derived variant, so "can this render destructive?" cannot
+  be a `danger` grep: a literal `variant="danger"` counts, and **any EXPRESSION
+  counts**, because a source census cannot evaluate `confirmActionVariant(tone)`.
+  Only a non-danger LITERAL (or no variant at all) proves a button safe. A new
+  derived variant is therefore in scope by existing.
+- **A guard that says what it CANNOT see is not thereby excused from it.**
+  `dialog-cued-default-census` walks this file, passes it, and its own header
+  said out loud that it asks whether a cue is DECLARED and never whether the
+  declared cue is SAFE. That sentence was accurate and the conclusion drawn from
+  it was that the gap could stand. It is renegotiated in place with the reason at
+  the site, and the two questions now ship together — a cue that is declared and
+  destructive is worse than none.
+
+CI: the host-door legs in
+[dialog-enter-contract.test.tsx](src/components/__tests__/dialog-enter-contract.test.tsx)
+drive the REAL `SystemDialogProvider` end to end (the imperative API, the queue,
+the rendered frame, one real `keydown`) and assert the **promise** resolves
+`false`, because what the user gets is a promise. **No pre-528 leg could see
+this**: the 386 leg five hundred lines above drives `<ConfirmDialog>`, so the law
+was pinned for the door that derives it and unpinned for the door that did not.
+Its three CONTROLS are half the contract — a default-tone confirm still cues its
+action (without which the danger leg passes on a door that cues NOTHING and
+breaks every ordinary confirm), the destructive answer is still Tab-reachable,
+and the danger confirm still PAINTS its committing button red. The leg with
+teeth is the CENSUS, over a SECOND shared population
+(`dialogButtonElements()` — a second walk rather than a filter over the dialog
+subtrees, because nesting would double-count `ManageStylesModal`'s four frames
+and a subtree scan would miss a danger button composed outside any frame).
+Allowlists EMPTY: there is no true statement of the form "this button destroys
+and must nonetheless be cued unconditionally". Measured by neutering each half in
+turn: the pre-528 host confirm takes 4 legs (2 behavioural + 2 census) and the
+alert's destructive paint 4 (1 behavioural + 3 census, one of them a source
+assertion over the alert branch).
+
+**Two premises the filing got wrong, corrected here rather than left standing.**
+The danger-capable population is SIX buttons, not three: the filing counted the
+two derived sites and missed the three LITERAL `variant="danger"` buttons
+(`StyleApplyDialog`, `DocTypeChangeDialog`, `ManageStylesModal`), which are the
+census's strongest members and all pass today. And the live loss really is
+confined to the example/sandbox document — what earns the severity is that this
+is an app-wide door on which the next `tone: "danger"` confirm anybody writes,
+against any paper, inherits the armed default.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live dialog, no
+disk), so the check is cheap and real — open the example document, Tab **+** →
+*Reset example document*, and confirm the focused button is **Cancel** and that
+`Enter` cancels. Do not press Reset.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

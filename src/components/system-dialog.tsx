@@ -42,9 +42,12 @@
  * initial-focus target when the dialog's own body has not claimed focus first.
  * It must never be a DESTRUCTIVE action — a
  * danger button armed under a hand that is already typing turns the user's next
- * keystroke into the destructive choice (task 386). Cue the safe answer;
- * `ConfirmDialog` derives this for every caller via
- * `confirmDialogCuedDefault()`.
+ * keystroke into the destructive choice (task 386). Cue the safe answer; BOTH
+ * confirm doors (`ConfirmDialog` and `system-dialog-host`) derive it from the
+ * one policy leaf, `confirmDialogCuedDefault()` in `confirm-cue-policy.ts` —
+ * the host hand-derived it and got it backwards until task 528. A button whose
+ * `variant` can be `danger` may never carry a BARE `autoFocus`; censused in
+ * `dialog-cued-default-census.test.ts`.
  *   - Optional anchor positioning near a source element
  *
  * Positioning variants (`variant` prop) — one shell, principled positioning

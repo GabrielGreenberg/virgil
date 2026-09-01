@@ -1890,9 +1890,29 @@ moving. The reporting case was a card TITLE being typed when a stray
 focused, so the very next keystroke of ordinary typing pressed it, and from
 the keyboard's point of view "Backspace, keep typing" WAS "delete the card".
 The destructive action stays fully keyboard-reachable (Tab, then Enter), which
-is the right cost for a deliberate destructive choice. `ConfirmDialog` derives
-this for every caller via `confirmDialogCuedDefault()`; a hand-built
-`SystemDialogFooter` must place `autoFocus` accordingly.
+is the right cost for a deliberate destructive choice.
+
+**One policy leaf, read by BOTH confirm doors** (`components/confirm-cue-policy.ts`,
+task 528). Virgil has two imperative confirms — `useConfirmDialog()` and
+`useSystemDialog()` — and the second hand-derived this rule and got it
+backwards, so a red dialog answered `Enter` with the destruction (live via Tab
+strip **+** → *Reset example document*). Both now read
+`confirmDialogCuedDefault()`; a hand-built `SystemDialogFooter` must place
+`autoFocus` accordingly, and a button whose `variant` can be `danger` may never
+carry a BARE `autoFocus` (censused in `dialog-cued-default-census.test.ts`,
+allowlist EMPTY).
+
+**`tone` describes the MESSAGE; a button's paint describes what pressing it
+DOES.** The same leaf owns `confirmActionVariant(tone)` — the tone→variant map
+both doors used to spell by hand, four attributes from the cue they also spelled
+by hand. The corollary is the half that was wrong on its own: **a button that
+COMMITS NOTHING is never painted destructive, whatever the message's tone.** An
+alert's sole dismiss button spells `variant="primary"` outright and does not ask,
+and a `danger` alert (a compile failure, a handoff that timed out) carries its
+tone on the MESSAGE ink instead. Red on a button that only dismisses says
+*pressing this destroys content without a net*, which is untrue — the same
+"a claim about the AFFORDANCE rather than about severity" reading the
+external-change badge earned.
 
 **A confirm may be SUPPRESSIBLE — and which ones may be is a rule, not a
 per-caller choice** (task 492). A confirm that guards a *deliberate* and
