@@ -497,18 +497,24 @@ describe("499 — a container that dissolved is never resurrected, successor or 
     expect(new Set(liveUuids(ed)).size).toBe(liveUuids(ed).length);
   });
 
-  it("RESIDUAL, pinned: a JOINED-away item still husks — and so does a plain paragraph join", () => {
-    // Out of scope and PRE-EXISTING: a join is not a re-parenting, and the
-    // resurrection guard has always husked the absorbed block. Measured on a
-    // plain two-paragraph Backspace-join, where no list, lift or transfer is
-    // involved at all — so it is the guard's general join behaviour and not
-    // something this task introduced. Pinned as a CONTROL so the boundary of
-    // the fix is a stated fact rather than an assumption; filed separately.
+  it("RENEGOTIATED (task 514): a JOINED-away block is ABSORBED, and absorbed leaves no husk", () => {
+    // This leg used to assert `true` — 499 pinned the husk as a stated boundary
+    // ("out of scope and PRE-EXISTING; filed separately"). Task 514 closed it:
+    // a JOIN removes the absorbed block's NODE while its CONTENT survives
+    // inside the survivor, so `classifyBlockDepartures` reports it ABSORBED and
+    // the resurrection guard stands down (EXCEPTION 4) exactly as it does for a
+    // DISSOLVED container. Renegotiated in place rather than deleted, because
+    // the old expectation pinned the defect as the contract.
+    //
+    // 514's own suite (`join-absorbed-anchor.test.ts`) owns the rest of the
+    // class — the re-home verdict, the list-item join, the range delete and the
+    // multi-item lift's per-joined-item husks. This leg stays here so 499's
+    // stated boundary moves with the code that moved it.
     anchored.add("P2");
     const ed = mount([P("P1", "A"), P("P2", "B")]);
     caret(ed, "B");
     press(ed, "Backspace");
-    expect(huskFor(ed, "P2"), outline(ed)).toBe(true);
+    expect(huskFor(ed, "P2"), outline(ed)).toBe(false);
   });
 });
 

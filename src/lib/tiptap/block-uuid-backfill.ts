@@ -410,6 +410,202 @@ export function dissolvedByReparent(
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE THIRD WAY A BLOCK LEAVES — ABSORPTION (task 514)
+//
+// A block can stop existing in three structurally different ways, and telling
+// them apart is the whole of what the two guards in `linked-anchor.ts` need:
+//
+//   REMOVED    its content went with it            → resurrect (the guard's job)
+//   DISSOLVED  its content was RE-PARENTED         → stand down (task 499)
+//   ABSORBED   its content MERGED into a surviving  → stand down, and the card
+//              sibling — a JOIN deleted the           FOLLOWS the survivor
+//              boundary between the two              (Gabriel, 2026-08-31)
+//
+// The three are ONE question — *what happened to this block's content?* — so
+// they are answered by ONE door, {@link classifyBlockDepartures}, read by both
+// guards. Two doors is how the resurrection guard and the orphan sweep come to
+// disagree about a departure, which is the shape this repo keeps re-learning.
+//
+// WHY ABSORPTION CANNOT BE A TRANSFER. `dissolvedByReparent`'s sibling reading
+// hands a dissolved container's identity to its SUCCESSOR (`planReparentTransfer`)
+// where one exists. A join has no successor to hand it to: the survivor already
+// HAS an identity, and one node holds one id. So the absorbed identity really
+// does leave the document, and the only place the card can follow it is the
+// SIDECAR — which is why this reading publishes the survivor rather than a
+// receiver position, and why the re-homing runs through task 491's
+// `retargetDisplacedAnchors` door in React-land rather than here.
+//
+// SCOPE, stated: a `ReplaceStep`. That is not one gesture's spelling — it is
+// every shape where a deletion removes a boundary between two anchorable
+// siblings and their content merges: Backspace at a block start, Delete at a
+// block end, a range selection dragged across a boundary, and `liftOutOfList`'s
+// own `tr.delete(pos - 1, pos + 1)` preamble (which is what made a MULTI-item
+// Shift-Tab lift husk once per joined-away item — 499's stated residual, closed
+// here for free). A `ReplaceAroundStep` join — the one `deleteBarrier` uses to
+// pull a paragraph into the last item of a preceding list — is deliberately NOT
+// read here: that step RE-PARENTS, `dissolvedByReparent` already answers it
+// (so it husks nothing), and re-classifying it as absorption would renegotiate
+// task 499's decided orphan outcome for the whole lift family inside a task
+// whose ruling is about the JOIN. Stated as a residual, not closed by guess.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A block identity, as the departure readings publish it. */
+export interface DepartedBlock {
+  uuid: string;
+  /** The node type's name — the caller validates it against the text-object
+   *  registry (`isAnchorableBlock`); this layer stays registry-free. */
+  typeName: string;
+}
+
+/** What this batch did to the blocks it removed. See the header above. */
+export interface BlockDepartures {
+  /** Containers whose own opening token was stripped off surviving content. */
+  dissolved: ReadonlySet<string>;
+  /** absorbed uuid → the SURVIVOR its content merged into. */
+  absorbedInto: ReadonlyMap<string, DepartedBlock>;
+}
+
+/**
+ * The innermost uuid-BEARING anchorable node containing `pos`.
+ *
+ * Bearing, not merely anchorable: a `listItem`'s own body paragraph carries no
+ * uuid (it defers to the item — `DEFERRING_PARENTS`), so stopping at the first
+ * anchorable ancestor would answer with a node that has no identity to lose.
+ * Climbing to the id is also what makes two paragraphs joined INSIDE one list
+ * item answer with the SAME node, which is correct: nothing departed.
+ *
+ * O(depth). Fails CLOSED (`null`) on any position it cannot resolve.
+ */
+function uuidBearingAncestor(
+  doc: PMNode,
+  pos: number,
+): { uuid: string; pos: number; typeName: string } | null {
+  if (pos < 0 || pos > doc.content.size) return null;
+  let $p: ReturnType<PMNode["resolve"]>;
+  try {
+    $p = doc.resolve(pos);
+  } catch {
+    return null;
+  }
+  for (let depth = $p.depth; depth > 0; depth--) {
+    const node = $p.node(depth);
+    if (!isAnchorableNode(node.type)) continue;
+    const uuid = ownUuid(node);
+    if (!uuid) continue;
+    return { uuid, pos: $p.before(depth), typeName: node.type.name };
+  }
+  return null;
+}
+
+/**
+ * Read ONE `ReplaceStep` for the question above: did this step delete the
+ * boundary between two uuid-bearing blocks and merge their content?
+ *
+ * Pure, O(depth) — four `resolve`s and no walk. Fails CLOSED on anything it
+ * cannot read as a join, because a missed absorption is today's behaviour
+ * (husk + orphan) while a wrong one re-anchors a card to a paragraph the user
+ * never merged it into.
+ */
+function readJoin(
+  step: ReplaceStep,
+  preDoc: PMNode,
+  postDoc: PMNode,
+): { absorbed: DepartedBlock; survivor: DepartedBlock } | null {
+  if (step.to <= step.from) return null; // a pure insertion joins nothing
+  const survivor = uuidBearingAncestor(preDoc, step.from);
+  const absorbed = uuidBearingAncestor(preDoc, step.to);
+  if (!survivor || !absorbed) return null;
+  // Same node ⇒ the deletion stayed inside one identity (two paragraphs inside
+  // ONE list item, or an ordinary intra-block delete). Nothing departed.
+  if (survivor.pos === absorbed.pos) return null;
+
+  // …and the two sides must actually have MERGED. `step.to` lands exactly
+  // `slice.size` past `step.from` after the step (ReplaceStep#apply splices the
+  // slice into the gap), so asking where those two positions sit in the POST
+  // doc asks whether the boundary survived — without walking anything.
+  const postEnd = step.from + step.slice.size;
+  const head = uuidBearingAncestor(postDoc, step.from);
+  const tail = uuidBearingAncestor(postDoc, postEnd);
+  if (!head || !tail) return null;
+  if (head.pos !== tail.pos) return null; // the boundary is still there
+  if (head.uuid !== survivor.uuid) return null; // …and it is the survivor's node
+  return {
+    absorbed: { uuid: absorbed.uuid, typeName: absorbed.typeName },
+    survivor: { uuid: survivor.uuid, typeName: survivor.typeName },
+  };
+}
+
+/**
+ * Follow A→B→C to its end, so a batch that joins three blocks in two steps
+ * re-homes every absorbed card onto the ONE block that survived it — never onto
+ * an intermediate that is itself gone. Cycle-guarded; a degenerate self-target
+ * is dropped rather than published.
+ */
+function resolveAbsorptionChains(
+  direct: ReadonlyMap<string, DepartedBlock>,
+): ReadonlyMap<string, DepartedBlock> {
+  const out = new Map<string, DepartedBlock>();
+  for (const [uuid, first] of direct) {
+    let target = first;
+    const seen = new Set<string>([uuid]);
+    while (!seen.has(target.uuid)) {
+      seen.add(target.uuid);
+      const next = direct.get(target.uuid);
+      if (!next) break;
+      target = next;
+    }
+    if (target.uuid === uuid) continue;
+    out.set(uuid, target);
+  }
+  return out;
+}
+
+/**
+ * Every block identity this batch ABSORBED into a surviving sibling, mapped to
+ * that survivor. See the header block above for the law and the stated scope.
+ *
+ * Computed from the transactions' OWN steps, so it answers the same whichever
+ * plugin in the `appendTransaction` chain asks it. O(replace steps × depth); a
+ * plain keystroke never reaches it (both callers bail first on an empty
+ * `removedBlocks`).
+ */
+export function absorbedByJoin(
+  transactions: readonly Transaction[],
+): ReadonlyMap<string, DepartedBlock> {
+  const direct = new Map<string, DepartedBlock>();
+  for (const trk of transactions) {
+    if (!trk.docChanged) continue;
+    // Our own backfill only ever writes `setNodeMarkup` (a ReplaceAroundStep),
+    // so it can produce no join — skipped for the same reason its sibling
+    // walker skips it, and so the two readings share one population rule.
+    if (trk.getMeta(BACKFILL_META)) continue;
+    for (let si = 0; si < trk.steps.length; si++) {
+      const step = trk.steps[si];
+      if (!(step instanceof ReplaceStep)) continue;
+      const preDoc = trk.docs[si] ?? trk.before;
+      const postDoc = trk.docs[si + 1] ?? trk.doc;
+      const join = readJoin(step, preDoc, postDoc);
+      if (join) direct.set(join.absorbed.uuid, join.survivor);
+    }
+  }
+  return resolveAbsorptionChains(direct);
+}
+
+/**
+ * The ONE door both guards in `linked-anchor.ts` read. Composing the two
+ * readings here is what keeps the resurrection guard and the orphan sweep from
+ * answering differently about one departure.
+ */
+export function classifyBlockDepartures(
+  transactions: readonly Transaction[],
+): BlockDepartures {
+  return {
+    dissolved: dissolvedByReparent(transactions),
+    absorbedInto: absorbedByJoin(transactions),
+  };
+}
+
 /**
  * Invoke `visit` for every anchorable block whose OPENING token lies in
  * `[from, to)` of `doc`. Mirrors the step-inspector's `collectRange`: a node is

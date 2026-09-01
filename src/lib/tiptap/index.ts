@@ -28,6 +28,10 @@ export {
   TextObjectOrphanGuard,
   MarginaliaAnchorGuard,
 } from "./linked-anchor";
+export type {
+  BlockAbsorbedEvent,
+  BlockAbsorbedHandlerRef,
+} from "./linked-anchor";
 export { PgMarkChip } from "./pgmark";
 export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
