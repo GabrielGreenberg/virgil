@@ -490,7 +490,7 @@ export default function SourcePodNodeView({
            the corner toggle is the discoverable one. */
         <div
           contentEditable={false}
-          className="source-pod-derived relative"
+          className="source-pod-derived"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();

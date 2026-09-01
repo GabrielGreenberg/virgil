@@ -881,6 +881,33 @@ body[data-zen-mode="on"] {
   background-color: var(--surface-muted-strong);
 }
 
+/* ── …and a DISABLED control paints no hover fill ─────────────────
+   The family completion (task 509). `:hover` matches a disabled
+   `<button>` in every browser, and these two rules are UNLAYERED — so a
+   caller's `disabled:hover:bg-transparent` (which lives in
+   `@layer utilities`) loses, and a control disabled by default went on
+   painting its hover background. Eleven shipped sites carry one of these
+   utilities beside a `disabled:` treatment; exactly one escaped, and only
+   because it spelled `disabled:pointer-events-none` — a property this
+   rule does not write, so it never competed.
+
+   The other three unlayered interaction utilities already model this:
+   `.iconbtn-*[disabled]` and `.topbarbtn[disabled]` both set
+   `pointer-events: none`. These two do NOT take that route on purpose —
+   they are worn by non-button elements (rows, list items, headers) where
+   killing pointer events would also kill the cursor and the `data-hint`
+   tooltip. What a disabled control asked for is no hover FILL, so that is
+   what this states, once, for every caller.
+
+   (0,3,0) against the (0,2,0) hover rules above, so it wins wherever it
+   matches whatever the source order. */
+.hover-on-light[disabled]:hover,
+.hover-on-light[aria-disabled="true"]:hover,
+.hover-on-dark[disabled]:hover,
+.hover-on-dark[aria-disabled="true"]:hover {
+  background-color: transparent;
+}
+
 /* ── Omni "collected cards" bin pill ──────────────────────────────
    Shared recipe for the faint count-pill controls that collect cards
    which can't cascade inline: the outside-focus band and the unanchored
@@ -1065,6 +1092,62 @@ body[data-zen-mode="on"] {
   color: var(--danger);
 }
 
+/* ── An icon button states its ink through a VARIANT ──────────────
+   The base rules above write `color` at BOTH rest (`--ink-muted`) and
+   hover (`--ink-body`), and this file is UNLAYERED — so on an element
+   carrying `iconbtn-*`, EVERY Tailwind `text-*` / `hover:text-*` utility
+   paints nothing, whatever the class order. Three shipped sites had that
+   shape and two of them were bugs: a delete-field button whose red hover
+   never painted, and a meta-row button painting `--ink-muted` beside a
+   sibling that really does paint `--muted`.
+
+   So the ink is stated HERE, as a variant, and the census in
+   `src/__tests__/color-token-consumers.test.ts` ("an icon button states
+   its ink through an `iconbtn-` VARIANT") keeps it that way — allowlist
+   EMPTY, a hit is add-the-variant.
+
+   NAMING IS A RULE, not a habit: `iconbtn-<role>` states the ink at REST
+   (and owns its own hover); `iconbtn-<role>-hover` states the HOVER ink
+   only and leaves rest to the base. `.iconbtn-danger` and
+   `.iconbtn-danger-hover` are the two readings of one role and both are
+   wanted — a card's trash button is visibly red at rest, while a
+   per-field remove X is muted until you reach for it.
+
+   (A third variant, `.iconbtn-accent` — hover-only despite the name —
+   was DELETED here: it had zero call sites in either silo, its docstring
+   named three consumers that no longer spell it, and no control anywhere
+   hand-rolls an accent hover. WIRE-it-or-DELETE-it.) */
+
+/* Destructive-on-hover — muted at rest, danger when you reach for it.
+   (0,3,0) beats the base `:hover` block (0,2,0), so it needs no
+   source-order luck and composes with a rest-ink variant below. */
+.iconbtn-xs.iconbtn-danger-hover:hover,
+.iconbtn-sm.iconbtn-danger-hover:hover,
+.iconbtn-md.iconbtn-danger-hover:hover,
+.iconbtn-lg.iconbtn-danger-hover:hover {
+  background-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* META-tier ink — the 10px `var(--muted)` row gray the in-card type
+   scale ratifies (STYLE_GUIDE "In-card type scale"), for an icon button
+   sitting in a meta row beside `.card-meta-label` / `.card-mono` text.
+
+   `:not(:hover)` is load-bearing, not cleverness. A plain
+   `.iconbtn-sm.iconbtn-meta` is (0,2,0) — the SAME weight as the base
+   `.iconbtn-sm:hover` — so placed after it in the sheet it would win the
+   hover state too and the button would never darken; placed before it,
+   it would work by source order alone and break the moment someone moved
+   the block down here with its siblings. `:not(:hover)` says what is
+   meant — a REST ink — so the rule is order-independent and cannot
+   collide with a `-hover` variant composed onto the same element. */
+.iconbtn-xs.iconbtn-meta:not(:hover),
+.iconbtn-sm.iconbtn-meta:not(:hover),
+.iconbtn-md.iconbtn-meta:not(:hover),
+.iconbtn-lg.iconbtn-meta:not(:hover) {
+  color: var(--muted);
+}
+
 /* Dark-context variant — for icon buttons that sit on tinted card
    headers (red-100, emerald-100, amber-100, …) or darker pod chrome.
    The default surface-muted-strong hover bg would clash with a tinted
@@ -1150,17 +1233,6 @@ body[data-zen-mode="on"] {
   /* F#12: warm-taupe toggle "on" — darker ink on tint for AA contrast. */
   color: var(--control-selected-ink);
   background-color: var(--control-selected-tint);
-}
-
-/* Accent-hover variant — icon buttons that should hover to brand
-   accent text on a light parent (Open-folder "+", Preferences,
-   Version-info chrome). Pairs with iconbtn-toggle when the same
-   button also has an active state. */
-.iconbtn-xs.iconbtn-accent:hover,
-.iconbtn-sm.iconbtn-accent:hover,
-.iconbtn-md.iconbtn-accent:hover,
-.iconbtn-lg.iconbtn-accent:hover {
-  color: var(--accent);
 }
 
 html, body {

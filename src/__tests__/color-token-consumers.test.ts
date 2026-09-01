@@ -490,3 +490,296 @@ describe("the focus ring is spelled once and always wins", () => {
     expect(gt(specificity(".focus-ring:focus-visible"), specificity(".focus-ring"))).toBe(true);
   });
 });
+
+/**
+ * An icon button states its ink through an `iconbtn-` VARIANT (task
+ * 2026-08-31-509).
+ *
+ * The third member of the cascade-law family. Task 502 wrote the law down for
+ * `background-color` and 503 for `box-shadow`; this is the same fact read on
+ * `color`, and it is the worst of the three because `.iconbtn-*` writes that
+ * property at BOTH rest (`--ink-muted`) and hover (`--ink-body`) — so on an
+ * element carrying one of the four size utilities, EVERY Tailwind `text-*` /
+ * `hover:text-*` paints nothing whatever the class order.
+ *
+ * Three shipped sites had that shape and two were bugs: a bib-field remove X
+ * whose `hover:text-danger` never painted, and a meta-row button reading
+ * `--ink-muted` while the `.card-mono` control eight lines up — which writes
+ * no colour, so its utility survives — really did paint `--muted` beside it.
+ * The third asked for `--ink-body` on a kebab trigger and had been painting
+ * the family default since the day it shipped.
+ *
+ * The fix that makes this a law rather than three patches is the VARIANT
+ * VOCABULARY: `iconbtn-danger-hover` (destructive when you reach for it) and
+ * `iconbtn-meta` (the ratified 10px META-tier gray) are the two inks the
+ * shipped sites asked for and the family could not express — which is also
+ * why three OTHER controls left the family entirely and hand-rolled a 20px
+ * box (see the residual note on the last leg).
+ *
+ * Two populations, both swept:
+ *   - `src/app/globals.css` — the four `iconbtn-*` sizes and their variants.
+ *   - `library/styles/library.css`, which is `@import`ed INTO globals.css and
+ *     is therefore ALSO unlayered. Task 503's sweep named it as a second
+ *     population and left it unswept; it is swept here and is CLEAN — its
+ *     fifteen colour-writing classes (`.lib-dashboard-*`, `.lib-viewswitch-btn`,
+ *     `.page-scroll-lozenge`) are each spelled alone at every call site, with
+ *     no co-occurring ink utility anywhere in either silo. Leg 6 keeps it that
+ *     way rather than recording the sweep in prose that outlives it.
+ */
+describe("an icon button states its ink through an iconbtn- VARIANT", () => {
+  const productionTsx = (): string[] =>
+    [...trackedFiles("src", /\.tsx$/), ...trackedFiles("library", /\.tsx$/)].filter(
+      (p) => !p.includes("__tests__"),
+    );
+
+  /** Comments blanked, string literals KEPT, LINE-ALIGNED — the needle lives
+   *  inside a `className` literal, so a `codeOnly`-style scan would make every
+   *  leg here unfalsifiable (the trap `_source-scan.ts`'s header records). */
+  const scan = (src: string) => strip(src, true, true);
+
+  /** Every quoted/backticked string in a production `.tsx`, with the file and
+   *  the line its opening quote sits on. A className is routinely a template
+   *  literal split across lines, so a LINE grep sees `iconbtn-sm` and the
+   *  `text-*` beside it as unrelated. */
+  const classStrings = (): { at: string; s: string }[] => {
+    const out: { at: string; s: string }[] = [];
+    for (const abs of productionTsx()) {
+      const rel = path.relative(REPO_ROOT, abs);
+      const src = scan(readFileSync(abs, "utf8"));
+      const re = /(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        out.push({
+          at: `${rel}:${src.slice(0, m.index).split("\n").length}`,
+          s: m[2].replace(/\s+/g, " ").trim(),
+        });
+      }
+    }
+    return out;
+  };
+
+  const ICONBTN = /\biconbtn-(?:xs|sm|md|lg)\b/;
+  /** A utility that writes `color` / `fill` / `stroke`, in any state prefix.
+   *  `text-xs` / `text-left` are NOT ink and must not be flagged — the needle
+   *  therefore requires the value to look like a colour token or an arbitrary
+   *  value, never a size or an alignment keyword. */
+  const INK_UTILITY =
+    /(?:^|[\s])(?:hover:|focus:|focus-visible:|active:|disabled:|group-hover:)?(?:text|fill|stroke)-(?:\[|ink-|danger|positive|accent|amber-|white\b|black\b|current\b|muted\b|transparent\b)/;
+
+  it("has no `text-*` ink utility on an element that also carries `iconbtn-*`", () => {
+    // A hit is ADD-THE-VARIANT (or delete the utility, if it restates the
+    // family default). This allowlist stays EMPTY: there is no shape for which
+    // a dead declaration is the right way to say what ink a control takes.
+    const hits = classStrings()
+      .filter((c) => ICONBTN.test(c.s) && INK_UTILITY.test(c.s))
+      .map((c) => `${c.at}  ${c.s.slice(0, 90)}`);
+    expect(hits).toEqual([]);
+  });
+
+  /** Every `iconbtn-` class spelled in production that is NOT one of the four
+   *  sizes — i.e. every variant a call site claims exists. */
+  const variantsUsed = (): Map<string, string[]> => {
+    const out = new Map<string, string[]>();
+    for (const c of classStrings()) {
+      if (!ICONBTN.test(c.s)) continue;
+      for (const m of c.s.matchAll(/\biconbtn-[\w-]+\b/g)) {
+        if (/^iconbtn-(?:xs|sm|md|lg)$/.test(m[0])) continue;
+        out.set(m[0], [...(out.get(m[0]) ?? []), c.at]);
+      }
+    }
+    return out;
+  };
+
+  it("declares every variant a call site claims", () => {
+    // A misspelled variant is the silent failure this law is most likely to
+    // produce next: it matches no rule, so the control paints the family
+    // default and looks deliberate. TypeScript cannot see a class name.
+    const css = cssCommentsStripped(globals);
+    for (const [variant, sites] of variantsUsed()) {
+      expect(
+        css,
+        `${variant} is spelled at ${sites.join(", ")} and declared nowhere`,
+      ).toMatch(new RegExp(`\\.iconbtn-(?:xs|sm|md|lg)\\.${variant}(?![\\w-])`));
+    }
+  });
+
+  /** A variant declared with no caller, and the reason it is allowed to stay.
+   *  This list may only SHRINK — an entry is a claim, not a habit. */
+  const PERMITTED_UNUSED_VARIANTS: Record<string, string> = {
+    "iconbtn-on-dark":
+      "a CONTEXT variant (the hover fill for an icon button on a tinted card header), correct and well-named; its consumers left with the deleted TargetIcon/TargetFileIcon. Whether a tinted-header icon button needs it TODAY is a visual question a worktree cannot answer — routed rather than guessed.",
+  };
+
+  it("keeps no variant that nothing spells", () => {
+    // The dual, and the reason `.iconbtn-accent` is gone rather than
+    // allowlisted: it was hover-only despite a name the vocabulary reads as
+    // rest+hover, so keeping it would ship the naming rule with a
+    // counter-example inside it — and it had ZERO callers in either silo, its
+    // docstring named three consumers that no longer spell it, and no control
+    // anywhere hand-rolls an accent hover. WIRE-it-or-DELETE-it (task 202's
+    // law, one medium over).
+    const css = cssCommentsStripped(globals);
+    const declared = new Set(
+      [...css.matchAll(/\.iconbtn-(?:xs|sm|md|lg)\.(iconbtn-[\w-]+)/g)].map((m) => m[1]),
+    );
+    const used = new Set(variantsUsed().keys());
+    const unused = [...declared].filter((v) => !used.has(v)).sort();
+    expect(unused).toEqual(Object.keys(PERMITTED_UNUSED_VARIANTS).sort());
+    // …and every variant a call site spells must be declared (leg above), so
+    // the two sets differ by exactly the stated exemptions.
+    expect([...used].filter((v) => !declared.has(v))).toEqual([]);
+  });
+
+  /** The naming rule the vocabulary now states: `iconbtn-<role>` owns the ink
+   *  at REST, `iconbtn-<role>-hover` owns the HOVER ink only. A `-hover`
+   *  variant whose rule is not `:hover`-qualified would silently paint at rest;
+   *  a rest variant that out-specifies the base `:hover` block would stop the
+   *  button darkening. Both are invisible to any render test. */
+  it("holds every UNQUALIFIED rest-ink variant to the naming rule", () => {
+    // Scope: a rule whose selector is exactly `.iconbtn-<size>.<variant>` with
+    // NOTHING further. A STATE variant (`.iconbtn-toggle[aria-pressed="true"]`)
+    // is qualified, sits at (0,3,0) and legitimately out-specifies the base
+    // hover — a pressed toggle keeps its accent ink under the cursor, which is
+    // the intent. Only an unqualified (0,2,0) rule ties with `.iconbtn-<size>:hover`
+    // and is decided by source order.
+    const css = cssCommentsStripped(globals);
+    for (const [variant] of variantsUsed()) {
+      const m = new RegExp(
+        `\\.iconbtn-lg\\.${variant}(:not\\(:hover\\))?\\s*\\{([^}]*)\\}`,
+      ).exec(css);
+      if (!m) continue; // qualified, or hover-only — not this leg's subject
+      if (!/(?<![\w-])color\s*:/.test(m[2] ?? "")) continue;
+      expect(
+        m[1],
+        `${variant} states a REST ink without :not(:hover) — it ties with the base :hover rule and would win it on source order`,
+      ).toBe(":not(:hover)");
+    }
+    // …and the two shipped ink variants, pinned by name so a rename has to be
+    // a deliberate edit here rather than a silent no-op at every call site.
+    expect(css).toMatch(
+      /\.iconbtn-lg\.iconbtn-danger-hover:hover[^{]*\{[^}]*color:\s*var\(--danger\)/,
+    );
+    expect(css).toMatch(
+      /\.iconbtn-lg\.iconbtn-meta:not\(:hover\)[^{]*\{[^}]*color:\s*var\(--muted\)/,
+    );
+  });
+
+  it("CAN SEE a swallowed ink utility (synthetic canary)", () => {
+    // A census that reports zero must be shown to report non-zero, or "clean"
+    // and "blind" look identical. Both retired spellings, plus the two shapes
+    // that must NOT flag: a size/alignment `text-*`, and an ink utility on an
+    // element that carries no `iconbtn-*` at all.
+    const fixture =
+      'const a = "iconbtn-sm text-ink-muted hover:text-danger";\n' +
+      'const b = "iconbtn-sm text-[var(--muted)] hover:text-ink-body";\n' +
+      'const c = "iconbtn-sm text-xs text-left";\n' +
+      'const d = "rounded text-ink-body hover:text-danger";\n';
+    const found = [...scan(fixture).matchAll(/(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g)]
+      .map((m) => m[2])
+      .filter((s) => ICONBTN.test(s) && INK_UTILITY.test(s));
+    expect(found).toHaveLength(2);
+    // …and the needle survives the stripper it runs through.
+    expect(scan('// iconbtn-sm text-ink-muted in prose\n')).not.toContain("iconbtn-sm");
+  });
+
+  /**
+   * The residue, and a correction to the sweep that filed this task.
+   *
+   * That sweep reported eight sites spelling `transition-colors` beside an
+   * unlayered interaction utility as "dead-but-harmless, worth a sweep". Read
+   * as whole className EXPRESSIONS rather than as lines, all eight turn out to
+   * be CONDITIONAL — the utility sits in one branch of a ternary and the
+   * `transition-colors` in the static prefix, where it is LIVE for the other
+   * branch (an `active` / `selected` state that changes bg, border and ink with
+   * no unlayered class on it). Deleting them would have removed a working
+   * transition from eight controls.
+   *
+   * So the rule is narrower than the sweep stated, and this is it: a transition
+   * utility is dead only where the unlayered class is UNCONDITIONAL. That set
+   * is empty today and this keeps it empty.
+   */
+  it("leaves no transition utility beside an UNCONDITIONAL unlayered class", () => {
+    const UNLAYERED = /\b(?:hover-on-light|hover-on-dark|iconbtn-(?:xs|sm|md|lg)|topbarbtn)\b/;
+    const dead: string[] = [];
+    for (const c of classStrings()) {
+      if (!/\btransition-(?:colors|opacity|all)\b/.test(c.s)) continue;
+      if (!UNLAYERED.test(c.s)) continue;
+      // A `${…}` hole or a `?` means the utility may be absent in some branch,
+      // and then the transition utility is the only one that state has.
+      if (/[?$]/.test(c.s)) continue;
+      dead.push(`${c.at}  ${c.s.slice(0, 90)}`);
+    }
+    expect(dead).toEqual([]);
+  });
+
+  /**
+   * The family completion. `:hover` matches a disabled `<button>` in every
+   * browser, and `.hover-on-light` / `.hover-on-dark` are unlayered — so a
+   * caller's `disabled:hover:bg-transparent` loses and a control disabled by
+   * default paints its hover fill anyway. Eleven shipped sites pair one of
+   * those two utilities with a `disabled:` treatment; exactly one escaped, and
+   * only because it spelled `disabled:pointer-events-none` — a property the
+   * utility does not write, so it never competed.
+   *
+   * The other three unlayered interaction utilities already modelled it
+   * (`.iconbtn-*[disabled]` / `.topbarbtn[disabled]` set `pointer-events:
+   * none`); these two now do, by killing the FILL rather than pointer events,
+   * because they are worn by non-button elements whose cursor and `data-hint`
+   * tooltip must survive.
+   */
+  it("gives the two hover utilities a disabled rule, and no site re-spells it", () => {
+    const css = cssCommentsStripped(globals);
+    for (const cls of ["hover-on-light", "hover-on-dark"]) {
+      for (const q of ['[disabled]', '[aria-disabled="true"]']) {
+        expect(css, `${cls}${q} has no disabled hover rule`).toContain(`.${cls}${q}:hover`);
+      }
+    }
+    expect(css).toMatch(
+      /\.hover-on-dark\[aria-disabled="true"\]:hover\s*\{[^}]*background-color:\s*transparent/,
+    );
+    // A hit is DELETE-it: the utility loses to the unlayered rule, so a site
+    // spelling it is announcing an intent it does not get.
+    const respelt = classStrings()
+      .filter((c) => /\bdisabled:hover:bg-/.test(c.s))
+      .map((c) => c.at);
+    expect(respelt).toEqual([]);
+  });
+
+  /**
+   * `library/styles/library.css` — the SECOND unlayered population, named as a
+   * stated limit by task 503's sweep and swept here. Its colour-writing classes
+   * are DISCOVERED from the sheet rather than listed, so a new one is covered
+   * by shipping.
+   *
+   * Residual, stated rather than implied: three controls
+   * (`SourcePodNodeView.tsx`'s pod-delete, `CitationCard.tsx`'s two row-remove
+   * X's) hand-roll a 20px box with `hover-on-light` + `focus-ring` + their own
+   * `hover:text-danger` INSTEAD of joining the family — and they paint
+   * correctly, because `.hover-on-light` writes only `background-color`. They
+   * are outside this census's population by construction, and the STYLE_GUIDE
+   * sanctions the shape ("a button whose ink is accent-when-active —
+   * `iconbtn-*` would win the colour"). What changed is that the reason is now
+   * one case weaker: `iconbtn-danger-hover` expresses two of the three exactly.
+   * Converging them moves visible rest inks, so it is a deliberate visual call
+   * and not a fix — left for one.
+   */
+  it("finds no swallowed ink utility in the library.css population either", () => {
+    const libCss = cssCommentsStripped(
+      readFileSync(path.join(REPO_ROOT, "library/styles/library.css"), "utf8"),
+    );
+    const colourClasses = new Set<string>();
+    for (const m of libCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const sel = m[1].trim();
+      if (sel.startsWith("@") || sel.startsWith(":")) continue;
+      if (!/(?<![\w-])color\s*:/.test(m[2])) continue;
+      for (const c of sel.matchAll(/(?:^|[\s,>])\.([\w-]+)/g)) colourClasses.add(c[1]);
+    }
+    // The sweep must have something to sweep, or it passes by finding nothing.
+    expect(colourClasses.size).toBeGreaterThan(5);
+    const needle = new RegExp(`\\b(?:${[...colourClasses].join("|")})\\b`);
+    const hits = classStrings()
+      .filter((c) => needle.test(c.s) && INK_UTILITY.test(c.s))
+      .map((c) => `${c.at}  ${c.s.slice(0, 90)}`);
+    expect(hits).toEqual([]);
+  });
+});

@@ -981,7 +981,12 @@ export function CitationCard({
                 align="end"
                 triggerHint="More options"
                 triggerAriaLabel="More options"
-                triggerClassName="iconbtn-sm text-ink-body"
+                /* No ink utility: a kebab trigger takes the family default
+                   (`--ink-muted`), which is what this has painted since it
+                   shipped — the `text-ink-body` that used to sit here was
+                   swallowed by the unlayered base rule, so making it real
+                   would introduce a look nobody has seen (task 509). */
+                triggerClassName="iconbtn-sm"
                 menuClassName="w-44"
                 trigger={() => (
                   <svg
@@ -1427,7 +1432,13 @@ function CitationKeyRow({
           <button
             type="button"
             onClick={copyCitekey}
-            className="iconbtn-sm text-[var(--muted)] hover:text-ink-body"
+            /* META tier, like the row it sits in: `iconbtn-meta` is that ink
+               stated as a VARIANT, so it actually paints. The utilities that
+               used to be here were swallowed by the unlayered base rule, which
+               is why this button read `--ink-muted` while the citekey button
+               eight lines up — a `.card-mono`, which writes no colour — really
+               did paint `--muted` beside it (task 509). */
+            className="iconbtn-sm iconbtn-meta"
             {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
           >
             {copied ? (
