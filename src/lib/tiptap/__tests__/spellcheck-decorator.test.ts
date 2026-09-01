@@ -48,6 +48,7 @@ import {
 } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { getBus } from "@/lib/tiptap/doc-structure/bus";
+import { viewOnly } from "@/lib/view-only-chrome";
 
 // ── the port ─────────────────────────────────────────────────────────────────
 
@@ -175,8 +176,13 @@ describe("what gets underlined", () => {
     const decos = spellcheckPluginKey.getState(ed.state)!.decos.find();
     expect(decos).toHaveLength(1);
     expect(ed.state.doc.textBetween(decos[0].from, decos[0].to)).toBe("teh");
+    // RENEGOTIATED in place (task 523): this pinned the BARE class, which was
+    // the defect — a squiggle with no view-only marker prints, and unlike every
+    // other member of that class it prints with DEFAULT print settings, because
+    // `text-decoration` is painted with the text. Read through the door, so the
+    // two spellings cannot drift.
     expect((decos[0] as unknown as { type: { attrs: { class: string } } }).type.attrs.class)
-      .toBe(SPELL_ERROR_CLASS);
+      .toBe(viewOnly(SPELL_ERROR_CLASS));
   });
 
   it("nothing inside a raw-LaTeX carrier is flagged", async () => {

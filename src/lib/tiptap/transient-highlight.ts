@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { viewOnly } from "@/lib/view-only-chrome";
 
 /**
  * TransientHighlightDecorator — the ONE carrier for every *transient* (view-only,
@@ -116,7 +117,11 @@ function buildSet(
           // old `<mark>` did, which is why the mark carrier never had this
           // failure mode. The atom's own DOM is then left completely untouched.
           nodeName: "span",
-          class: TRANSIENT_HIGHLIGHT_CLASS,
+          // The band is a VIEW (task 120) and therefore must not print
+          // (task 523): the marker is what the ONE print rule reaches, and
+          // it is what beats the inline `background-color` below, since an
+          // `!important` author declaration outranks a normal inline style.
+          class: viewOnly(TRANSIENT_HIGHLIGHT_CLASS),
           style: `background-color:${t.color}`,
         },
         // Typing at either edge must NOT grow the band — a transient signal

@@ -13,6 +13,7 @@ import {
 } from "@/lib/editor-geometry/section-path";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { linkIdSelector, linkKindSelector } from "@/links/link-dom-contract";
+import { VIEW_ONLY_CLASS } from "@/lib/view-only-chrome";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
@@ -203,6 +204,11 @@ const APP_VERSION = pkg.version;
 // Stable no-op fallback for the `paneState?.X ?? noop` reads in the
 // vbar source. Module-scope so JSX references stay referentially
 // stable across renders.
+/** The bib-panel cross-highlight ring on an in-editor citation. VIEW state
+ *  (which entry is selected in a panel), never document content — so every
+ *  write of it pairs with `VIEW_ONLY_CLASS`. */
+const CITATION_HIGHLIGHT_BIB_CLASS = "citation-highlight-bib";
+
 const noop = () => {};
 // Phase-C INERT fallbacks for the pane-owned sidecar slices (read only in the
 // brief pre-bubble window — same as citationsHook/collab). Stable module-level
@@ -1719,12 +1725,19 @@ export default function EditorLayout() {
         `${linkKindSelector("citation")}${linkIdSelector(c.citationId)}`,
       ) as HTMLElement | null;
       if (el) {
-        el.classList.add("citation-highlight-bib");
+        // The bib cross-highlight is VIEW state (which entry the user has
+        // selected in a panel), so it carries the view-only marker and the ONE
+        // print rule reaches it (task 523). Needed even though the print block
+        // already flattens `.citation-node`'s background with `!important`:
+        // that flatten leaves the 2px ring standing.
+        el.classList.add(CITATION_HIGHLIGHT_BIB_CLASS, VIEW_ONLY_CLASS);
         els.push(el);
       }
     }
     return () => {
-      for (const el of els) el.classList.remove("citation-highlight-bib");
+      for (const el of els) {
+        el.classList.remove(CITATION_HIGHLIGHT_BIB_CLASS, VIEW_ONLY_CLASS);
+      }
     };
   }, [selectedBibKey, allEditorCitations]);
 
