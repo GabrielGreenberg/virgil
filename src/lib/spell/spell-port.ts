@@ -19,6 +19,19 @@ export interface SpellcheckPort {
   /** Should Virgil check this document at all? (preference AND engine health) */
   enabled(): boolean;
   /**
+   * Should Virgil CORRECT an unambiguous typo as the user finishes it (task
+   * 519)? Its own preference row, independent of `enabled` — a user may want
+   * the underline without the rewriting, or the rewriting without the
+   * underline — and it rides this port rather than a second provider because a
+   * document has exactly one answer to every question about WORDS, and the
+   * corrector asks two of them the checker already owns (`isAccepted`, and
+   * what a word is).
+   *
+   * The engine is deliberately NOT consulted: the curated table is a module
+   * constant, so autocorrect works with no dictionary loaded at all.
+   */
+  autocorrect(): boolean;
+  /**
    * An opaque CHANGE TOKEN, compared with `Object.is`. It becomes a NEW value
    * whenever a verdict could have changed for a reason no transaction
    * describes — the preference, the paper dictionary, the global list, the

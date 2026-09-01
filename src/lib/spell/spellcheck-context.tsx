@@ -40,6 +40,8 @@ const SpellcheckPortContext = createContext<SpellcheckPortRef | null>(null);
 export interface SpellcheckProviderProps {
   /** The `checkSpelling` view preference. */
   enabled: boolean;
+  /** The `autocorrectTypos` view preference (task 519). */
+  autocorrect: boolean;
   /** The paper's `dictionary.json` terms. */
   paperWords: readonly string[];
   /** Add a term to the paper's `dictionary.json`. */
@@ -53,6 +55,7 @@ export interface SpellcheckProviderProps {
 
 export function SpellcheckProvider({
   enabled,
+  autocorrect,
   paperWords,
   addPaperWord,
   globalWords,
@@ -88,6 +91,11 @@ export function SpellcheckProvider({
   acceptedRef.current = accepted;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  // Not part of `versionToken`: the corrector holds no derived state to
+  // invalidate — it reads this ref at the moment a rule fires — so a change
+  // here must NOT trigger the checker's whole-document re-check.
+  const autocorrectRef = useRef(autocorrect);
+  autocorrectRef.current = autocorrect;
   const addPaperWordRef = useRef(addPaperWord);
   addPaperWordRef.current = addPaperWord;
 
@@ -98,6 +106,7 @@ export function SpellcheckProvider({
   // where a ref read belongs.
   const [port] = useState<SpellcheckPort>(() => ({
     enabled: () => enabledRef.current && spellEngineAvailable(),
+    autocorrect: () => autocorrectRef.current,
     version: () => versionRef.current,
     isAccepted: (word) => acceptedRef.current.has(word),
     knownSync,

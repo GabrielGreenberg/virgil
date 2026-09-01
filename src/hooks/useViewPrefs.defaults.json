@@ -95,6 +95,7 @@
   "omniDimResting": true,
   "cardOutlineChrome": false,
   "checkSpelling": true,
+  "autocorrectTypos": true,
   "dividerLevels": [
     2,
     4,

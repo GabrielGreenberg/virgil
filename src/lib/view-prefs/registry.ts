@@ -102,6 +102,11 @@ export const VIEW_PREF_REGISTRY = {
   // attribute rather than a prop threaded into twelve `editorProps.attributes`
   // blocks. Default ON = today's behaviour; task 518's own checker flips it.
   checkSpelling:        { kind: "toggle", scope: "global", default: true, label: "Check spelling",      menu: "display", menuRowId: "check-spelling" },
+  // The CURATED typo table (task 519), and deliberately its own row rather
+  // than a second meaning for `checkSpelling`: underlining a word and
+  // REWRITING it are different permissions, and a user may want either
+  // without the other. Default ON.
+  autocorrectTypos:     { kind: "toggle", scope: "global", default: true, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: (["note", "archive", "todo"] as const) satisfies readonly MarginaliaType[],

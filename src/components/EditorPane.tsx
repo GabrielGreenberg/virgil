@@ -1164,6 +1164,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const spellDictionary = useSpellDictionary(docId);
   const globalSpellWords = useGlobalDictionary();
   const spellcheckEnabled = viewPrefs?.prefs.checkSpelling ?? true;
+  // Autocorrect's own row (task 519) — independent of `checkSpelling`, and
+  // reading absent view prefs as the registry default for the same reason.
+  const autocorrectEnabled = viewPrefs?.prefs.autocorrectTypos ?? true;
 
   // Register the editor `\cite{}` doc-rewrite as a migrator on the
   // IdentityCascade (T1 Stage 2, checklist step 9). When a citekey rename fans
@@ -5733,6 +5736,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         extension list (which would remount an editor). */}
     <SpellcheckProvider
       enabled={spellcheckEnabled}
+      autocorrect={autocorrectEnabled}
       paperWords={spellDictionary.words}
       addPaperWord={spellDictionary.addWord}
       globalWords={globalSpellWords}
