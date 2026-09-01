@@ -111,6 +111,12 @@ export interface HandleLayoutInput {
    *  column or hug a glyph?" is a placement DECISION, and a caller that hasn't
    *  resolved it must say `null` rather than have an answer chosen for it. */
   columnRight: number | null;
+  /** The block's `BlockFrame.chevronRight` (task 526) — the inner edge of the
+   *  FOLD-CHEVRON column reserved on this row, or `null` when this row renders
+   *  no chevron. Required for the same reason the two above are: whether the
+   *  lane has an outboard occupant is a fact about the row, and a caller that
+   *  hasn't resolved it must say `null`. */
+  chevronRight: number | null;
 }
 
 /** A handle's resolved horizontal lane: where it sits, and the two bounds
@@ -122,11 +128,31 @@ export interface HandleLane {
    *  crossing the row's ink. Consumed by the same-row separation, which may
    *  push a handle inboard only within its own lane. */
   maxLeft: number;
-  /** The furthest-LEFT left-edge this handle may take — the narrow-viewport
-   *  floor. Consumed by the same-row separation's OUTBOARD pass (task 487),
-   *  which pushes an OUTER handle further into the margin when the inner one
-   *  has run out of lane. Nothing on this row lies left of the row's own
-   *  marker, so the margin between here and the floor is free. */
+  /**
+   * The lane's OUTBOARD bound: the furthest-LEFT x this handle's RENDERED
+   * EXTENT may reach — its 12px box, the hit/hover halo centred on it
+   * (`--margin-handle-hit-pad`), and anything the same-row separation pushes
+   * outboard.
+   *
+   * It is {@link handleLaneFloor} — the narrow-viewport floor — RAISED by the
+   * reserved fold-chevron column on rows that have one (task 526). Three
+   * consumers, one number, and that is the whole of the lane's outboard half:
+   *
+   *   • the RESTING position is clamped here, so a `\part`-sized heading's
+   *     em-scaled box cannot sit 3px into the 14px chevron;
+   *   • the same-row separation's OUTBOARD pass (task 487) pushes within it.
+   *     Its predecessor's stated reason — "nothing on this row lies left of
+   *     the row's own marker, so the margin out here is free" — is exactly
+   *     right and exactly what the chevron column corrects: on a chevron row
+   *     something IS out there. Byte-identical for every row 487 was about
+   *     (a list reserves no chevron, so this equals the floor there);
+   *   • the HALO is capped here by `TextObjectGrabHandle#applyHitCaps`, which
+   *     folds it into the same `--margin-handle-hit-cap` the sibling clamp
+   *     writes. Since the HOVER ZONE's left edge is the un-raised
+   *     {@link handleLaneFloor}, and this is never left of it, "the zone
+   *     contains every rendered handle" is a PROPERTY rather than two numbers
+   *     agreeing.
+   */
   minLeft: number;
 }
 
@@ -148,16 +174,33 @@ export interface HandleLane {
  *      paints on the document. It binds the resting position too, not just a
  *      push: a wide `10.` marker reaches further left than the band-middle
  *      anchor assumes, so that row's natural slot is already on the ink.
- *   3. the FLOOR (`editorColumnLeft − baselineInset`) — the furthest LEFT, so a
+ *   3. the FLOOR ({@link handleLaneFloor}) — the furthest LEFT, so a
  *      deeply-indented block on a narrow viewport never pushes the handle
  *      off-screen. The floor OUTRANKS the cap when the two conflict: an
  *      unreachable handle is worse than an overlapping one, and a cap left of
  *      the floor means the row has no clear margin at all.
+ *   4. the CHEVRON COLUMN (task 526) — the margin's OTHER occupant, and the
+ *      reason rung 3 is a LANE bound rather than a viewport clamp. Where the
+ *      row reserves one (`BlockFrame.chevronRight`) it RAISES the floor, so a
+ *      `\part`-sized heading — whose em-scaled gap otherwise puts its 12px box
+ *      3px into the 14px chevron — cannot steal the chevron's clicks, and
+ *      neither can its halo (`applyHitCaps` caps at the same
+ *      {@link HandleLane.minLeft}). This is the LEFT margin's reading of the
+ *      lane law the right margin already states (`resolveRightLane`,
+ *      AGENTS.md → "The ordering half"): the outboard occupant places first,
+ *      and the inboard one takes what remains.
  */
 export function resolveHandleLane(input: HandleLayoutInput): HandleLane {
   const anchorRight = input.columnRight ?? input.markerLeft - input.gapPx;
   const anchor = anchorRight - HANDLE_WIDTH;
-  const floor = input.editorColumnLeft - input.baselineInset;
+  // The lane's OUTBOARD bound: the narrow-viewport floor, raised by the
+  // reserved chevron column where the row has one. `Math.max` keeps rung 3's
+  // precedence — a chevron column left of the floor could never bind anyway,
+  // and one right of it is the tighter bound.
+  const floor = Math.max(
+    handleLaneFloor(input.editorColumnLeft, input.baselineInset),
+    input.chevronRight ?? -Infinity,
+  );
   const cap =
     input.inkLeft - input.gapPx * INK_CLEARANCE_FACTOR - HANDLE_WIDTH;
   const maxLeft = Math.max(cap, floor);
@@ -166,6 +209,31 @@ export function resolveHandleLane(input: HandleLayoutInput): HandleLane {
     maxLeft,
     minLeft: floor,
   };
+}
+
+/**
+ * The lane's OUTBOARD bound — the furthest-left x any grab handle's BOX may
+ * take (rung 3 above), and, since task 526, the left edge of the grab-handle
+ * HOVER ZONE (`editor-geometry/viewport-frame.ts`).
+ *
+ * Those two were separate tables and that was the bug: the zone was a fixed
+ * `contentLeft − 22 − 8` px constant sized for a pre-halo, pre-em handle, while
+ * the handle's own reach is em-scaled per block — so at the shipped defaults
+ * every `\section` heading's hit target already reached ~7px outside the strip
+ * that keeps the handle alive, and one notch up the font-size slider did it for
+ * every paragraph. Leaving the strip nulls `mousePosRef` and the resolver
+ * returns nothing, so the handle vanished as the user reached for it.
+ *
+ * Stated as ONE expression read by both: the zone that REVEALS a handle is
+ * exactly the lane a handle may OCCUPY. The halo is capped to the same bound
+ * ({@link HandleLane.minLeft}), so containment is a property rather than
+ * a coincidence between two numbers.
+ */
+export function handleLaneFloor(
+  editorColumnLeft: number,
+  baselineInset: number,
+): number {
+  return editorColumnLeft - baselineInset;
 }
 
 /**

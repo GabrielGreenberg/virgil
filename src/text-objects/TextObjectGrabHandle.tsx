@@ -148,10 +148,16 @@ interface Placement {
    */
   maxLeft: number;
   /**
-   * Task 487: the furthest-LEFT `left` this handle may take — its lane's
-   * outboard bound (the narrow-viewport floor), from `resolveHandleLane`. The
-   * separation's OUTBOARD pass pushes within it. Not rendered, so — like
-   * {@link maxLeft} — deliberately absent from {@link placementsEqual}.
+   * Task 487/526: the furthest-LEFT x this handle's RENDERED EXTENT may take —
+   * its lane's outboard bound (`HandleLane.minLeft`: the narrow-viewport
+   * floor, raised by a reserved fold-chevron column), in the same portal space
+   * as {@link left}. TWO consumers: the separation's OUTBOARD pass pushes
+   * within it, and {@link applyHitCaps} caps the hit/hover halo at it — which
+   * is what keeps the hover zone's containment a PROPERTY (the zone's left
+   * edge is the un-raised lane floor, and nothing rendered crosses it) and
+   * what keeps a fold chevron clickable under a large heading's halo. Not
+   * rendered directly, so — like {@link maxLeft} — deliberately absent from
+   * {@link placementsEqual}; the cap it produces is compared there instead.
    */
   minLeft: number;
 }
@@ -333,7 +339,27 @@ function applyHitCaps(placements: Placement[]): void {
       const d = Math.abs(placements[i].left - placements[j].left);
       if (d < nearest) nearest = d;
     }
-    placements[i].hitCapPx = Number.isFinite(nearest) ? nearest / 2 : null;
+    // Task 526 — the lane's OUTBOARD bound, folded into the same cap. The halo
+    // is centred on the dots (`left + HANDLE_WIDTH/2`), so the greatest
+    // half-width that keeps its left edge inboard of that bound is the distance
+    // from the centre to it. The bound is at least the lane floor, which IS the
+    // hover zone's left edge — so this is what makes "the zone contains every
+    // rendered handle" true by construction rather than by two numbers agreeing
+    // — and on a row that reserves a fold-chevron column it is that column's
+    // inner edge, so the chevron stays clickable under a large heading's halo.
+    // `Math.max(0, …)` only ever fires in the documented degraded state where
+    // the separation's outboard pass has spent the whole lane; there the CSS's
+    // own `max(12px, …)` floor keeps the halo at the box.
+    const centre = placements[i].left + HANDLE_WIDTH / 2;
+    const outboardCap = Math.max(0, centre - placements[i].minLeft);
+    const cap = Math.min(
+      Number.isFinite(nearest) ? nearest / 2 : Infinity,
+      outboardCap,
+    );
+    // `Infinity` is unreachable (`outboardCap` is always finite), but the
+    // null-when-unbounded contract is the one the CSS default (`999px`)
+    // encodes, so it is kept rather than assumed away.
+    placements[i].hitCapPx = Number.isFinite(cap) ? cap : null;
   }
 }
 
@@ -623,17 +649,22 @@ function computePlacement(
   // The resolve returns the whole LANE (task 382): its `maxLeft` is how far
   // inboard the same-row separation below may push this handle before its box
   // would reach the row's `inkLeft` — the bullet / `(n)` / prose it labels.
-  const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
+  // Task 526: both the floor reference and the inset come from the frame, so
+  // the placement and the HOVER ZONE (whose left edge is the same
+  // `handleLaneFloor` expression) read ONE measurement — this used to take its
+  // own `getBoundingClientRect` per placed handle per hover frame, which is
+  // both a second table and a forced layout read.
   const lane = resolveHandleLane({
     markerLeft: resolveHandleMarkerLeft(
       frame,
       ref.kind === "selection" ? "selection" : "text-object",
     ),
     gapPx: frame.gapPx,
-    editorColumnLeft,
+    editorColumnLeft: cache.editorColumnLeft,
     baselineInset: cache.marginInset,
     inkLeft: frame.inkLeft,
     columnRight: frame.columnRight,
+    chevronRight: frame.chevronRight,
   });
   const left = lane.left;
 
@@ -1357,10 +1388,14 @@ function GrabHandleRender({
     top: placement.top,
     pointerEvents: "auto",
   };
-  // Chip 3: when a near same-row sibling exists, clamp the hit-halo's
-  // half-width (see `.text-object-grab-handle::before` in globals.css) to half
-  // the gap so two close nested handles don't overlap. Absent → the CSS
-  // default (effectively unbounded) keeps the full em-scaled pad.
+  // The hit-halo's half-width cap (see `.text-object-grab-handle::before` in
+  // globals.css). ONE number, TWO bounds folded together by `applyHitCaps`:
+  // chip 3's same-row sibling clamp (half the gap, so two close nested handles
+  // don't overlap) and task 526's lane OUTBOARD bound (so the halo never
+  // reaches into the fold-chevron column, and never outside the hover zone
+  // that keeps the handle alive). Absent → the CSS default (effectively
+  // unbounded) keeps the full em-scaled pad; today only a genuinely unbounded
+  // lane could produce that.
   if (placement.hitCapPx != null) {
     (style as Record<string, string | number>)["--margin-handle-hit-cap"] =
       `${placement.hitCapPx}px`;

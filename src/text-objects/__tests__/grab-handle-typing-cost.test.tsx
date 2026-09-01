@@ -64,6 +64,8 @@ vi.mock("@/lib/marginalia-blocks", () => ({
 }));
 
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
+import { buildHandleTestFrame } from "./_handle-frame";
 import { notePointerInput } from "@/lib/input-modality";
 
 // ── DOM + frame fixtures ────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ function buildListDom() {
   document.body.appendChild(editorEl);
 }
 
-let frame: Record<string, unknown>;
+let frame: EditorViewportFrame;
 
 function buildFrame() {
   const portal = document.createElement("div");
@@ -138,22 +140,15 @@ function buildFrame() {
   const column = document.createElement("div");
   column.appendChild(portal);
   document.body.appendChild(column);
-  frame = {
+  frame = buildHandleTestFrame({
     editorEl,
     contentLeft: 260,
     editorRight: 700,
     scrollTop: 0,
     scrollBottom: 800,
-    marginInset: 22,
     paperEl: column,
     paperRect: PORTAL_ORIGIN,
-    containsHoverZone: (x: number, y: number) =>
-      x >= 200 && x <= 700 && y >= 0 && y <= 800,
-    toPortalCoords: (x: number, y: number) => ({
-      x: x - PORTAL_ORIGIN.left,
-      y: y - PORTAL_ORIGIN.top,
-    }),
-  };
+  });
 }
 
 // ── A fake editor whose events this suite can fire by hand ──────────────────

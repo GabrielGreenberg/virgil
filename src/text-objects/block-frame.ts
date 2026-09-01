@@ -50,6 +50,7 @@ import {
   measureTextWidth,
   resolveInlineContextElement,
 } from "@/lib/text-metrics";
+import { FOLD_CHEVRON_NODE_TYPES } from "@/lib/node-attr-sets";
 
 /**
  * Per-block geometry, all in VIEWPORT coordinates — the ONE source every
@@ -162,6 +163,34 @@ export interface BlockFrame {
    * two different columns.
    */
   columnRight: number | null;
+  /**
+   * Task 526 — the INNER (right) edge of the fold-chevron COLUMN reserved on
+   * this row, or `null` when this row renders no chevron.
+   *
+   * The left margin has TWO occupants and, since 526, ONE resolution: the
+   * chevron column is fixed and outboard (`--margin-col-chevron` +
+   * `--margin-col-chevron-width`, a px column measured from the block's own
+   * left edge), and the grab handle takes what remains inboard of it — its
+   * resting position is clamped there and its hit/hover halo is capped there
+   * (`handle-layout.ts#resolveHandleLane`). That is the LEFT margin's reading
+   * of the lane law the right margin already states (`resolveRightLane`,
+   * AGENTS.md → "The ordering half").
+   *
+   * Reserved per ROW rather than app-wide, and the gate is a KIND
+   * ({@link FOLD_CHEVRON_NODE_TYPES}) rather than a DOM probe, for the reason
+   * `glyph-anchor.ts` is kind-gated: an unconditional
+   * `querySelector(".source-pod-fold-chevron")` walks a source pod's whole
+   * CodeMirror subtree once per hover placement. A prose row therefore keeps
+   * its full halo — which at a large `--editor-font-size` is 10px per side the
+   * unconditional reservation would have taken for a chevron that is not there.
+   *
+   * Stated limit: the column is measured from the block's own border-box left,
+   * which is where the chevron's positioning ancestor sits for both renderers
+   * (`.heading-wrapper` IS the block element; `.source-pod` fills its wrapper's
+   * content box). A future chrome that insets its chevron from that edge would
+   * be reserved slightly outboard of where it renders.
+   */
+  chevronRight: number | null;
   /**
    * The left edge of the row's leftmost DOCUMENT INK — the boundary no margin
    * affordance may cross (task 382). {@link markerLeft} is the anchor an
@@ -339,6 +368,11 @@ function countUuidAncestors(el: HTMLElement, root: HTMLElement | null): number {
  *  20px). */
 const DEFAULT_HANDLE_GAP_PX = 10;
 const DEFAULT_TRACK_WIDTH_PX = 20;
+/** Fallbacks for the fold-chevron column when the tokens can't be read —
+ *  mirrors `--margin-col-chevron` / `--margin-col-chevron-width` in
+ *  globals.css. See {@link resolveChevronColumnRight}. */
+const DEFAULT_CHEVRON_OFFSET_PX = -44;
+const DEFAULT_CHEVRON_WIDTH_PX = 14;
 
 /** Document-root font-size in px — the base a `rem`-authored token resolves
  *  against (CSS `rem` = root em). Falls back to the editor's nominal 16px when
@@ -382,6 +416,41 @@ export function resolveMarginEm(
   }
   const px = parseFloat(raw);
   return Number.isFinite(px) && px > 0 ? px : fallbackPx;
+}
+
+/**
+ * Resolve the INNER (right) edge of the fold-chevron column reserved on this
+ * row — the left margin's outboard occupant (task 526) — or `null` when the
+ * row's kind renders no chevron.
+ *
+ * Deliberately NOT {@link resolveMarginEm}: that resolver treats a
+ * non-positive px value as unreadable and falls back, and
+ * `--margin-col-chevron` is authored NEGATIVE (a CSS-negative offset from the
+ * block's own left edge). Both tokens are px literals, so no em/rem rung is
+ * needed here; a future em spelling would want the shared resolver's ladder
+ * and a signed px branch, not a second copy of it.
+ *
+ * `blockLeft` is the block's own border-box left, which is the origin the two
+ * chevron renderers position against (see {@link BlockFrame.chevronRight}).
+ */
+export function resolveChevronColumnRight(
+  cs: CSSStyleDeclaration,
+  kind: string | null,
+  blockLeft: number,
+): number | null {
+  if (kind === null || !FOLD_CHEVRON_NODE_TYPES.has(kind)) return null;
+  const rawOffset = parseFloat(cs.getPropertyValue("--margin-col-chevron"));
+  const offset = Number.isFinite(rawOffset)
+    ? rawOffset
+    : DEFAULT_CHEVRON_OFFSET_PX;
+  const rawWidth = parseFloat(
+    cs.getPropertyValue("--margin-col-chevron-width"),
+  );
+  const width =
+    Number.isFinite(rawWidth) && rawWidth > 0
+      ? rawWidth
+      : DEFAULT_CHEVRON_WIDTH_PX;
+  return blockLeft + offset + width;
 }
 
 /**
@@ -758,12 +827,21 @@ export function resolveBlockFrame(
     "--margin-track-width",
     DEFAULT_TRACK_WIDTH_PX,
   );
+  const kind = el.getAttribute("data-text-object-kind");
   const { markerLeft, inkLeft, columnRight } = resolveMarkerGeometry(
     el,
-    el.getAttribute("data-text-object-kind"),
+    kind,
     contentLeft,
     trackWidthPx,
   );
+  // Task 526 — the margin's outboard occupant. The rect read is paid ONLY on a
+  // chevron-bearing row (the kind gate answers first), so a prose hover costs
+  // nothing; `el` is the `[data-uuid]` block element, which for both renderers
+  // is the chevron's positioning origin.
+  const chevronRight =
+    kind !== null && FOLD_CHEVRON_NODE_TYPES.has(kind)
+      ? resolveChevronColumnRight(cs, kind, el.getBoundingClientRect().left)
+      : null;
 
   return {
     el,
@@ -776,6 +854,7 @@ export function resolveBlockFrame(
     contentRight,
     markerLeft,
     columnRight,
+    chevronRight,
     inkLeft,
     gapPx,
   };

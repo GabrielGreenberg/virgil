@@ -305,13 +305,23 @@
      src/panels/Outline/__tests__/outline-partitle-contrast.test.ts. */
   --par-title-color-dense: color-mix(in oklab, var(--par-title-color) 85%, var(--ink-body));
   /* Margin coordinate system — distances are CSS-negative px from the
-     content column's left edge. Two columns share this margin: the
-     fold chevron (leftmost) and the grab-handle baseline (between
-     chevron and content). The handle inset (used as the narrow-viewport
-     FLOOR) is read by editor-geometry/viewport-frame.ts (frame.marginInset,
-     applied in handle-layout.ts) via getComputedStyle so JS placement and CSS
-     chrome stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
+     content column's left edge. Two occupants share this margin, and since
+     task 526 they are resolved as ONE lane, outboard → inboard: the fold
+     chevron COLUMN (leftmost, a fixed px column) and then the grab handle,
+     whose box AND hit/hover halo are capped inboard of it (block-frame.ts
+     `chevronRight` → handle-layout.ts `resolveHandleLane`). Every one of these
+     three knobs is read back by JS through getComputedStyle so the placement
+     and the CSS chrome cannot drift:
+       • --margin-col-chevron / --margin-col-chevron-width → the reserved
+         column, read per block in text-objects/block-frame.ts;
+       • --margin-col-handle-inset → the narrow-viewport FLOOR, read in
+         editor-geometry/viewport-frame.ts (frame.marginInset) and applied in
+         handle-layout.ts — which is ALSO the left edge of the grab-handle
+         HOVER ZONE, because the zone that reveals a handle is exactly the
+         lane a handle may occupy (task 526).
+     See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
+  --margin-col-chevron-width: 14px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
      uniform GAP left of its block's MEASURED marker (text content-left for
@@ -1473,8 +1483,8 @@ textarea,
   position: absolute;
   left: var(--margin-col-chevron, -44px);
   top: 0.5em;
-  width: 14px;
-  height: 14px;
+  width: var(--margin-col-chevron-width, 14px);
+  height: var(--margin-col-chevron-width, 14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1637,8 +1647,8 @@ textarea,
   position: absolute;
   left: var(--margin-col-chevron, -44px);
   top: 0;
-  width: 14px;
-  height: 14px;
+  width: var(--margin-col-chevron-width, 14px);
+  height: var(--margin-col-chevron-width, 14px);
   display: flex;
   align-items: center;
   justify-content: center;
