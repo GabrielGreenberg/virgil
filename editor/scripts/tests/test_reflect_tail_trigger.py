@@ -122,16 +122,50 @@ for k in _saved:
 try:
     a, b, c = reflect._memos_root(), dream._memos_root(), _common.memos_root()
     check(a == b == c, f"reflect==dream==common memos_root ({a})")
-    check(str(c).endswith("/editor/dev/memos") and ".virgil-dev" not in str(c),
-          "default is <checkout>/editor/dev/memos, NOT the retired ~/.virgil-dev")
-    # (1) a WORKTREE resolves the PRIMARY checkout's sink, not its own empty
-    # twin — whose tracked .gitkeep would make it read as present-but-quiet,
-    # which is exactly the silent divergence the home exists to prevent.
+    # RENEGOTIATED (task 521), with the reason at the site. The two legs here
+    # used to pin the DEFAULT sink as `<checkout>/editor/dev/memos` — task
+    # 431's contract, and exactly what 521 changes: all cowork now happens on a
+    # machine with no checkout, where that resolution answers NOTHING and the
+    # memo is never written. The default is the SYNCED
+    # `Virgil-Inbox/dev-loop/memos` when one is reachable, and the
+    # checkout-relative sink when it is not. What is NOT renegotiated is the
+    # invariant both legs existed to protect and which the leg above still
+    # pins: writer and reader resolve IDENTICALLY, from any cwd.
+    # A SYNTHETIC inbox, not the real one: written as `_synced is None or …`
+    # against the developer's own `~/Dropbox` this leg asserts NOTHING on every
+    # machine that has no such folder — which is every CI runner, and the loop
+    # machine until the folder is created. The one leg claiming to pin the
+    # post-521 default would then be inert exactly where it matters.
+    _fake_inbox = Path(tempfile.mkdtemp(prefix="cowork-inbox-"))
+    _orig_sync = _common.synced_inbox_root
+    _common.synced_inbox_root = lambda: _fake_inbox
+    try:
+        _want = _fake_inbox / "dev-loop" / "memos"
+        check(reflect._memos_root() == dream._memos_root() == _common.memos_root() == _want,
+              f"with a synced inbox reachable, writer AND reader take IT ({_want})")
+        check(_common.memo_sink_kind() == "synced",
+              "…and `memo_sink_kind` reports which rung answered")
+    finally:
+        _common.synced_inbox_root = _orig_sync
+    check(".virgil-dev" not in str(c),
+          "…and never the retired machine-global ~/.virgil-dev (task 431)")
+    # (1) with NO synced inbox, the sink falls back to the primary checkout —
+    # and a WORKTREE resolves the PRIMARY checkout's, not its own empty twin,
+    # whose tracked .gitkeep would make it read as present-but-quiet (the
+    # silent divergence the home exists to prevent).
     _git_common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--git-common-dir"],
                                  capture_output=True, text=True).stdout.strip()
     _primary = Path(_git_common if os.path.isabs(_git_common) else ROOT / _git_common).resolve().parent
-    check(c == (_primary / "editor" / "dev" / "memos").resolve(),
-          f"the home is under the PRIMARY checkout ({_primary}), worktree or not")
+    _orig_sync = _common.synced_inbox_root
+    _common.synced_inbox_root = lambda: None
+    try:
+        check(_common.memos_root() == (_primary / "editor" / "dev" / "memos").resolve(),
+              f"no synced inbox → the home is under the PRIMARY checkout ({_primary}), worktree or not")
+        check(_common.memo_sink_kind() == "local",
+              "…and `memo_sink_kind` SAYS so — never a silent local fallback")
+    finally:
+        _common.synced_inbox_root = _orig_sync
+
     _common._PRIMARY_CACHE.clear()
     _wt = Path(tempfile.mkdtemp(prefix="cowork-wt-"))
     _r = subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(_wt)],
@@ -369,9 +403,36 @@ try:
     # the guard stays armed. This is what makes the standing "do NOT re-add the
     # ~/.zshenv pins" lore unnecessary — an ambient convenience export at the
     # default can no longer disarm anything.
-    os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_common.dev_home() / "memos")
-    check(_common._is_throwaway_paper(sb),
-          "a pin AT the default sink expresses no intent — the guard stays armed")
+    # The "default" is the LADDER's answer, not `dev_home()/memos` — task 521
+    # put the synced `Virgil-Inbox/dev-loop/memos` ahead of the
+    # checkout-relative sink, so reading a superseded rung here would make
+    # every pin look like intent and disarm the guard machine-wide again.
+    # The default is stated CONCRETELY (a synthetic inbox), not read back out of
+    # `_default_memos_root()` — pinning to the function's own answer makes the
+    # leg true of whatever that function returns, including a wrong answer, so
+    # it would pass for an implementation that read a superseded rung.
+    _fake_inbox2 = Path(tempfile.mkdtemp(prefix="cowork-inbox2-"))
+    _orig_sync2 = _common.synced_inbox_root
+    _common.synced_inbox_root = lambda: _fake_inbox2
+    try:
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_fake_inbox2 / "dev-loop" / "memos")
+        check(_common._is_throwaway_paper(sb),
+              "a pin AT the default sink expresses no intent — the guard stays armed")
+        # …and a pin at the SUPERSEDED default expresses no intent EITHER. The
+        # rule is "away from every sink this build knows", not "away from the
+        # current one": reading only the ladder's answer would let an ambient
+        # export at the OLD default disarm the guard machine-wide again, one
+        # migration after the ten-week disarm the docstring records.
+        _home = _common.dev_home_or_none()
+        if _home is not None:
+            os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_home / "memos")
+            check(_common._is_throwaway_paper(sb),
+                  "a pin at a SUPERSEDED sink is no intent either — still armed")
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin2-")
+        check(not _common._is_throwaway_paper(sb),
+              "a pin away from EVERY known sink is real intent — it writes")
+    finally:
+        _common.synced_inbox_root = _orig_sync2
 finally:
     os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
     if _prev is not None:

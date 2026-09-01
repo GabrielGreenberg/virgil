@@ -17,7 +17,9 @@ as the tier floor and the dream's filter key — see RESULT_TIER below.
 Gating: a no-op (writes nothing, exits 0) unless `VIRGIL_DEV` is truthy
 (_common.dev_mode_enabled). Never runs in an end-user session.
 
-Memos land at  editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md  — repo-side,
+Memos land at  <memo sink>/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md  — since task 521
+the sink is normally the Dropbox-synced Virgil-Inbox/dev-loop/memos (so cowork on
+a machine with no checkout still lands one), else <checkout>/editor/dev/memos —
 gitignored, the sibling of editor/dev/iterations/ (iterate-virgil-editor's
 memos). It NEVER writes to the paper's own <doc>/.virgil/memos/ stream nor to
 any paper file: the doc is read-only here (we only read its Task queue). chip 18
@@ -62,7 +64,8 @@ prior body; an omitted one is preserved (see --memo-json above).
     "summary": "..." }          # one-line Done: reply
 
 Env overrides (test seams; never set in prod):
-  VIRGIL_DEV_MEMOS_DIR   memo root (default: <repo>/editor/dev/memos)
+  VIRGIL_DEV_MEMOS_DIR   memo root (default: the synced Virgil-Inbox/dev-loop/
+                         memos, else <repo>/editor/dev/memos — _common.memos_root)
   VIRGIL_REFLECT_NOW     ISO timestamp for reflectedAt + the filename clock
 """
 
@@ -82,6 +85,7 @@ from _common import (
     atomic_write,
     dev_mode_enabled,
     die,
+    is_sync_conflict_name,
     memos_root as _shared_memos_root,
     read_json,
     resolve_doc,
@@ -209,7 +213,8 @@ def _now_parts() -> tuple[str, str, str]:
 
 
 def _memos_root() -> Path:
-    # The one sink (shared with dream.py), under the PRIMARY checkout —
+    # The one sink (shared with dream.py) — the synced inbox, else the
+    # PRIMARY checkout (tasks 431, 521) —
     # resolves the same from a repo checkout, a worktree, OR a synced paper's
     # .virgil/scripts/editor/ copy (via VIRGIL_REPO_ROOT). Unresolvable is a
     # loud refusal, never a second default (task 431).
@@ -508,7 +513,14 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
     whole sink, so it costs O(today) where the task-bearing scan is O(all memos
     ever) — a scan that is 38 ms at 689 memos and grows without bound, paid
     inside the 20 s subprocess that blocks every writeback before it prints its
-    result. That residual is untouched here and stated in the digest."""
+    result. That residual is untouched here and stated in the digest.
+
+    Since the sink became SYNCED (task 521) this scan also has to skip a sync
+    daemon's CONFLICTED COPIES — `is_sync_conflict_name`, the same predicate
+    the dream's corpus scan reads. Picking one here would land the enrichment
+    in the orphaned copy and leave the real memo un-updated, which is the
+    silent divergence between writer and reader this subsystem exists to
+    prevent, arriving through the filesystem instead of through resolution."""
     if not memos_root.is_dir():
         return None
     if _is_task_less(task_id):
@@ -522,6 +534,8 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
             return None
         want = doc_key(doc)
         for p in sorted(day_dir.glob("*.md")):
+            if is_sync_conflict_name(p.name):
+                continue        # a daemon's rename, not a memo — see the door
             try:
                 head = p.read_text(encoding="utf-8")[:2000]
             except OSError:
@@ -532,6 +546,8 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
                 return p
         return None
     for p in sorted(memos_root.rglob("*.md")):
+        if is_sync_conflict_name(p.name):
+            continue            # a daemon's rename, not a memo — see the door
         try:
             head = p.read_text(encoding="utf-8")[:2000]
         except OSError:

@@ -225,12 +225,61 @@ is nothing to measure from — not a finding) from `unreadable` (a digest exists
 but carries no parseable `dreamedAt`, so the run *could not look*). Read the
 reason; never read a bare `null` as "the first dream."
 
-*Migration note (task 431, 2026-08-23):* the loop's memory moved from the
-machine-global `~/.virgil-dev` — which the dev-machine move left behind, zeroing
-it with no signal — to `<primary checkout>/editor/dev` (gitignored), resolved
-via `VIRGIL_REPO_ROOT` or the git common dir so a worktree reads the main
-checkout's sink, never its own empty twin. The old home's contents were copied
-across once; nothing reads `~/.virgil-dev` any more.
+**And a sink that EXISTS still cannot say whether a memo written on ANOTHER
+machine could ever arrive.** All Virgil cowork now happens on a different
+computer from the one this loop runs on, and the pre-521 sink resolved the
+PRIMARY CHECKOUT — which that machine does not have, so a reflection written
+there was not merely invisible, it was never written. Read
+**`memoSinkKind`**: `synced` is the Dropbox-shared
+`Virgil-Inbox/dev-loop/memos` both machines reach (the intended state);
+`pinned` is a caller who said where these go; **`local` is the structural
+famine** — the mailbox is on this disk only, so `everCapturedNonDream: false`
+below is a fact about the transport, not about how much cowork happened. The
+renderer banners `local` from the same field. The remedy is one folder and one
+env var, not a code change: create `~/Dropbox/Virgil-Inbox/` here, and on the
+cowork machine set `VIRGIL_DEV=1` (plus `VIRGIL_INBOX` if its Dropbox lives
+elsewhere).
+
+**And even the right mailbox is only the one THIS build writes to.** Every flag
+above asks about the READER's own state; **`extraSinkNonDreamMemos`** asks about
+the SEAM — whether the WRITERS agree with the reader about where the mailbox
+is. A writer resolves its sink from whatever vintage of the skill bundle its
+paper folder carries, and bundles re-sync on doc-open, so a paper the human has
+not opened since a migration keeps writing to the old place indefinitely.
+`select` reads every such sink (`extraSinksRead`) and the corpus is their UNION,
+so nothing is invisible and the flags above are honest — but a NON-ZERO
+`extraSinkNonDreamMemos` is a live divergent writer and the night's top finding:
+name the folders and recommend `python3 editor/scripts/sync_skills.py <paper>`.
+Residue-only (`extraSinkMemos > 0`, `extraSinkNonDreamMemos: 0`) is a stale
+sink worth deleting, not a finding. **"In the corpus" is not "read tonight"** —
+those are LIFETIME counts and the window is marker-filtered, so quote
+`extraSinkMemosInWindow` when you say a divergent memo was dreamed over.
+
+**And one flag outranks every count above: `unreachableMemos`.** The marker is a
+TIMESTAMP, and syncing broke the identity between "written after the last dream"
+and "sorts above its marker": a memo written on the cowork machine at 09:00 and
+synced at 23:00 is behind tonight's marker FOREVER — in the corpus, in no
+window, read by no dream, ever. Non-empty means real reflections have been
+written that this loop will never process. Nothing is lost from disk, so READ
+THEM YOURSELF (the digest names the paths) and treat their content as tonight's
+input; then say so, because every other flag reports a healthy night over them.
+This is a detected condition, not a prevented one — preventing it means
+replacing the high-water marker with a seen-SET, which is a design change to the
+whole selection discipline and belongs in the task pipeline, not in a night. Measured 2026-09-01, thirteen days after
+the 08-23 migration: five of eight bootstrapped paper folders — the
+most-worked-on among them — were still writing to the retired home.
+
+*Migration note (task 431, 2026-08-23; task 521, 2026-09-01):* the loop's memory
+moved from the machine-global `~/.virgil-dev` — which the dev-machine move left
+behind, zeroing it with no signal — to `<primary checkout>/editor/dev`
+(gitignored), and the MEMO half then moved again, to the Dropbox-synced
+`Virgil-Inbox/dev-loop/memos`, so cowork on any machine reaches it. Digests stay
+LOCAL and are not synced: `<date>.md` rotates in place and is the marker store,
+and a file two machines can see being rewritten is a conflicted copy waiting to
+be minted. What crosses instead is an immutable timestamped COPY under
+`dev-loop/reports/` — a courtesy channel for reading from the other machine, and
+**nothing that needs attention may live only there**; `~/virgil-tasks/` is the
+one attention surface.
 
 **Preflight 1 — are you running the current prompt?** This skill is *distributed*:
 the copy that actually runs is a built artifact — the skill BUNDLE that
@@ -589,6 +638,14 @@ outcome from step 6 — **LANDED / EXPORTED / FILED** — at the head of its
 **An entry that did not land carries its `patch` path**, and the digest points
 at `git apply <patch>` instead of a merge hint: step 6 leaves no branch behind
 either way, so the patch is the only pointer to unlanded work.
+
+It also drops an immutable, timestamped COPY of the same digest into the synced
+`Virgil-Inbox/dev-loop/reports/` (the `Done:` line names it), so the morning's
+reading is available from the cowork machine. That copy is a **courtesy channel
+only** — write-once, never revisited, and **nothing requiring attention may live
+there alone**. Everything actionable keeps flowing through `~/virgil-tasks/`,
+which is the one surface the human checks. A machine with no synced inbox simply
+gets no copy; the durable digest has already landed either way.
 
 ### 8. Reflect on this dream (bootstrap / recursion)
 

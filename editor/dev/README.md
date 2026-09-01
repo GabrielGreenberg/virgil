@@ -186,8 +186,64 @@ The dev-mode marker lives in the same home (`<repo>/editor/dev/dev-mode`).
 
 **Migration (one-time, 2026-08-23):** whatever sat under `~/.virgil-dev/`
 (`memos/`, `dream-digests/`, `iterations/`, `dev-mode`) is copied into
-`<repo>/editor/dev/`. Nothing reads the old path any more; delete it when you
-are satisfied.
+`<repo>/editor/dev/`. The dream still READS the old path when it exists (see
+"every sink" below); delete it when you are satisfied.
+
+### …and the MEMOS then moved again, to a SYNCED home (task 521)
+
+All Virgil cowork now happens on a **different computer** from the one running
+the scheduled loops (dream, worker, heartbeat, deploy). A checkout-relative sink
+cannot answer that: the cowork machine has no checkout, so `dev_home()` resolves
+nothing and a reflection written there is **never written at all** — the famine
+the dream reported every night from 2026-08-26 is structural, not a quiet
+stretch. So the MEMO stream moved onto the transport that already crosses both
+machines and already carries Virgil traffic: the Dropbox-synced `Virgil-Inbox/`
+the bug-report button writes into and the heartbeat drains.
+
+```
+Virgil-Inbox/dev-loop/memos/     ← written from ANY machine, read here
+Virgil-Inbox/dev-loop/reports/   ← an immutable COPY of each nightly digest
+```
+
+`memos_root()`'s ladder: `VIRGIL_DEV_MEMOS_DIR` → `VIRGIL_DEV_HOME/memos` →
+`$VIRGIL_INBOX` or a discovered `~/Dropbox/Virgil-Inbox` /
+`~/Library/CloudStorage/Dropbox/Virgil-Inbox` / `~/Virgil-Inbox` → the local
+`dev_home()/memos`. **Pins first** (a caller who says where these go outranks
+discovery), and the last rung is the only one that can raise — a machine with a
+synced inbox needs no checkout, which is the whole point.
+
+Which rung answered is a SAID thing, never a silent fallback: `memo_sink_kind()`
+reports `pinned` / `synced` / `local`, `select` publishes it, and the digest
+banners `local`. Two things deliberately stay LOCAL: the **digests** (`<date>.md`
+rotates in place and is the marker store — a file two machines can see being
+rewritten is a conflicted copy waiting to be minted) and the **dev-mode marker**
+(dev mode is a fact about a machine's session, not about the folder). What
+crosses is the write-once `reports/` copy, a **courtesy channel only** —
+`~/virgil-tasks/` remains the one attention surface.
+
+**Cowork-machine setup, one time:** `VIRGIL_DEV=1` in `~/.claude/settings.json`
+`env` (that machine has no checkout, so the `dev-mode` marker rung cannot fire),
+plus `VIRGIL_INBOX=<path>` if its Dropbox lives somewhere unusual.
+
+### The reader scans EVERY sink, not just the one it writes
+
+`memos_root()` is resolved independently by the READER (the dream, at HEAD) and
+by every WRITER (`reflect.py`, from whatever vintage of the skill bundle a paper
+folder carries — bundles re-sync on doc-open). There is no handshake, so every
+sink migration SPLITS the corpus silently: real memos land in the superseded
+place while `everCapturedNonDream: false` reads exactly like "nobody has ever
+written". Measured 2026-09-01, thirteen days after the 08-23 move: five of eight
+bootstrapped paper folders were still writing to `~/.virgil-dev/memos`.
+
+The fix belongs on the READ side — the divergent writers are historical code in
+folders the loop does not control — so `extra_memos_roots()` lists every sink
+this build no longer writes to (the local checkout home once the synced one is
+in use, plus `RETIRED_DEV_HOMES`) and `dream._read_corpus` reads their UNION,
+deduped on the memo's sink-relative path. `extraSinkNonDreamMemos > 0` is a live
+divergent writer and the night's top finding; residue-only is a stale sink worth
+deleting. An explicit pin suppresses the union entirely — a caller who has said
+where the memos go has said where all of them are, which is what keeps every
+suite's temp sink from folding the real corpus into a test run.
 
 ### It consumes the contract — it does not re-derive the outcome
 
