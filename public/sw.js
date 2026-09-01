@@ -15,7 +15,7 @@
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
 // their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
-const CACHE_NAME = "virgil-v8";
+const CACHE_NAME = "virgil-v9";
 
 // Same-origin curated TeX assets (P1 offline-assets). The main thread fetches
 // these in `provisionEngine` to seed the worker's kpse cache; precaching them
@@ -23,7 +23,8 @@ const CACHE_NAME = "virgil-v8";
 // cross-origin sync XHR to the mirror is NOT — and cannot be — SW-intercepted
 // (that's what the IndexedDB write-through cache + curated seed are for). We
 // precache the base `.fmt` and, if it exists, a `texbundle-manifest.json`
-// listing the curated core bundle (written by scripts/build-tex-bundle.mjs);
+// listing the curated core bundle (written by scripts/lib/tex-bundle-manifest.mjs
+// on behalf of build-tex-bundle.mjs and vendor-tex-family.mjs);
 // each listed path is precached too. Missing entries are tolerated — a cold /
 // lighter deploy simply precaches less.
 const TEX_ASSET_PRECACHE = ["./swiftlatex/swiftlatexpdftex.fmt"];

@@ -400,13 +400,33 @@ describe("the service-worker half (leg 6)", () => {
     expect(paths.filter((p) => p.startsWith("/"))).toEqual([]);
   });
 
-  it("the generator emits the SW list through its own spelling, not the TS one", () => {
+  it("the SW list is emitted through its own spelling, by ONE writer", () => {
     // The two tables have consumers with DIFFERENT bases, so one spelling for
     // both is the defect. `swPath` is where that is stated.
-    const gen = codeOnly(fs.readFileSync(path.join(REPO, "scripts/build-tex-bundle.mjs"), "utf8"));
-    expect(gen).toContain("const swPath =");
-    for (const m of gen.matchAll(/bundlePaths\.push\(([^)]*\)?)\)/g)) {
-      expect(m[1], "a SW path pushed without swPath()").toContain("swPath(");
+    //
+    // RENEGOTIATED (task 520): this leg used to read build-tex-bundle.mjs,
+    // which was then the only producer AND its own writer. There are two
+    // producers now (the live capture, and the declared-family vendorer), so
+    // the claim moved UP to the shared writer they both go through rather than
+    // being deleted — a wrapper relocates an obligation to its callers, it
+    // never absorbs one, and a census that keeps grepping the old file simply
+    // drains to nothing while the rule it guards goes unenforced.
+    const WRITER = "scripts/lib/tex-bundle-manifest.mjs";
+    const writer = codeOnly(fs.readFileSync(path.join(REPO, WRITER), "utf8"));
+    expect(writer).toContain("export const swPath =");
+    // Every path that reaches the SW manifest is stripped by it.
+    for (const m of writer.matchAll(/paths\s*=\s*\[[^\]]*\]/g))
+      expect(m[0], "a SW path assembled without swPath()").toContain("swPath(");
+    expect(writer).toMatch(/writeFile\(\s*bundleManifestJsonPath/);
+
+    // …and the producers do not write either table themselves.
+    for (const producer of ["scripts/build-tex-bundle.mjs", "scripts/vendor-tex-family.mjs"]) {
+      const src = codeOnly(fs.readFileSync(path.join(REPO, producer), "utf8"));
+      expect(src, `${producer} must go through the shared writer`).toContain("writeBundle(");
+      expect(src, `${producer} spells its own SW strip`).not.toContain("swPath =");
+      expect(src, `${producer} writes the SW manifest itself`).not.toMatch(
+        /writeFile\(\s*bundleManifestJsonPath/,
+      );
     }
   });
 });
