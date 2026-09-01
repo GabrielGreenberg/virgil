@@ -2697,7 +2697,7 @@ centers its glyph on the text's *optical center*
 top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
 from it) leaves the affordance sitting low by ~half a cap-height, and the
 error grows with font size. Read the Y from
-`resolveBlockFrame(el, …).opticalCenterY` and center the glyph on it (an
+`resolveBlockFrame(el).opticalCenterY` and center the glyph on it (an
 absolute `top` plus `transform: translateY(-50%)`). (The drag DROP INDICATOR
 does NOT optical-center: it takes its Y from the block box's top/bottom gap —
 where a block boundary sits, not where a line of text sits — and shares only
@@ -2706,7 +2706,7 @@ the *horizontal* axis with the handles, per the next rule.)
 **Content-left sharing (the horizontal analog, chip 4a).** The drag DROP
 INDICATOR — the between-blocks insert bar and the expex new-item / into-item /
 single-body bars — takes its x (and a horizontal bar's width) from the SAME
-`resolveBlockFrame(el, …).contentLeft` / `contentWidth` the grab handles read,
+`resolveBlockFrame(el).contentLeft` / `contentWidth` the grab handles read,
 never from an independent `getBoundingClientRect().left`. So the drop bar hugs
 the block's text-left and lines up with the grab handles and the block content
 by construction — it cannot drift from them. The distinction bites for an
@@ -2720,7 +2720,7 @@ ordinary paragraph text is byte-unchanged.)
 
 **Content-right sharing (the figure chrome, chip 4b).** The FIGURE CHROME — the
 pick / scale / refresh row that tucks BESIDE a hugged figure/graphics block —
-anchors its "beside" left to `resolveBlockFrame(el, …).contentRight`
+anchors its "beside" left to `resolveBlockFrame(el).contentRight`
 (`contentLeft + contentWidth`, the rendered figure box's right edge), so it hugs
 the image the way the grab handle hugs the marker on the LEFT: one frame on both
 sides, no parallel `getBoundingClientRect().right` to drift. The beside↔overlay

@@ -169,7 +169,7 @@ function asBetween(p: Placement | null) {
 describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
   it("the frame descends an exampleItem to its PROSE-left, not its label-column box", () => {
     const item = faithfulItemEl();
-    const frame = resolveBlockFrame(item, {} as Editor);
+    const frame = resolveBlockFrame(item);
     // The §4 root: box left and prose left genuinely differ.
     expect(item.getBoundingClientRect().left).toBe(ITEM_BOX_LEFT); // 90 (the old x)
     expect(frame.contentLeft).toBe(ITEM_PROSE_LEFT); // 120 (the new, canonical x)
@@ -189,7 +189,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
     );
     // AFTER: the bar sits at the prose-left (the frame), the §4 fix.
     expect(placement.rect.x).toBe(ITEM_PROSE_LEFT); // 120
-    expect(placement.rect.x).toBe(resolveBlockFrame(item, editor).contentLeft);
+    expect(placement.rect.x).toBe(resolveBlockFrame(item).contentLeft);
     // BEFORE this chip it would have been the box left (the divergence).
     expect(placement.rect.x).not.toBe(item.getBoundingClientRect().left); // ≠ 90
     // Width comes from the frame's content extent, not the outer box.
@@ -229,7 +229,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
       ITEM_TOP - 5,
     );
 
-    const frameLeft = resolveBlockFrame(faithfulItemEl(), editor).contentLeft;
+    const frameLeft = resolveBlockFrame(faithfulItemEl()).contentLeft;
     expect(into.rect.x).toBe(ITEM_PROSE_LEFT); // 120
     expect(reorder.rect.x).toBe(ITEM_PROSE_LEFT); // 120
     expect(into.rect.x).toBe(reorder.rect.x); // §4: aligned (delta 0)
@@ -251,7 +251,7 @@ describe("chip 4a — drop bar reads resolveBlockFrame().contentLeft", () => {
     // move the bar for ordinary paragraph text.
     expect(placement.rect.x).toBe(PARA_LEFT); // 64
     expect(placement.rect.x).toBe(pEl.getBoundingClientRect().left);
-    expect(placement.rect.x).toBe(resolveBlockFrame(pEl, editor).contentLeft);
+    expect(placement.rect.x).toBe(resolveBlockFrame(pEl).contentLeft);
     expect(placement.rect.width).toBe(PARA_WIDTH);
   });
 });

@@ -331,9 +331,19 @@
      larger font widens the gap proportionally; every prose block shares one
      value). 0.625em ≈ 9.5px at the 15.2px prose font, so the handle's left
      edge (= markerLeft − gap − 12px box) lands at the pre-chip-2
-     contentLeft − ~22px baseline. A markerless container (bulletList /
-     orderedList) steps its handle one TRACK-WIDTH left of its first item's
-     handle (⠿⠿ • text). See STYLE_GUIDE.md "Margin chrome". */
+     contentLeft − ~22px baseline.
+       --margin-track-width is the marker-column FALLBACK step, and since task
+     487 that is its ONLY role: where an example block/item's marker chrome
+     cannot be measured, its handle anchors one track-width LEFT of content
+     (#49) rather than on the text. It was ALSO, until 487, the step a
+     markerless container (bulletList / orderedList) took left of its first
+     item's handle (⠿⠿ • text) — a step off an arbitrary token, which on a
+     top-level list left the two handles ~8px apart: one ~20px blob where a
+     press on the left grabbed the LIST (task 483). A container now OCCUPIES
+     the marker column of the level ABOVE it, right-justified
+     (block-frame.ts `BlockFrame.columnRight`), so this token governs no
+     resting position — changing it moves the #49 fallback and nothing else.
+     See STYLE_GUIDE.md "Margin chrome". */
   --margin-handle-gap: 0.625em;
   --margin-track-width: 1.25em;
   /* Inter-block vertical rhythm. Owned by each block's margin-top

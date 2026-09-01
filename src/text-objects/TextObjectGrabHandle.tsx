@@ -632,7 +632,7 @@ function computePlacement(
   // gapPx for X, opticalCenterY for Y), so the handle, a container + its first
   // item, and the future drop indicator align to the SAME numbers by
   // construction.
-  const frame = resolveBlockFrame(anchorDom, editor, cache);
+  const frame = resolveBlockFrame(anchorDom);
 
   // ---- Horizontal: hug the block's MEASURED marker one uniform gap left ----
   // BOTH a TextObject handle and a SELECTION handle hug the block's `markerLeft`

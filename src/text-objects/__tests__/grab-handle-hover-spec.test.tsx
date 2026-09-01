@@ -186,10 +186,13 @@ describe("Gabriel's spec, as a contract", () => {
     // Both on row 1 — the list's own first line IS item 1's (394's placement).
     expect(item.top, "the item handle is not on the hovered row").toBe(rowTop(0));
     expect(list.top, "the list handle left its own first row").toBe(rowTop(0));
-    // Stacking ORDER: the container's marker-derived slot is one track-width
-    // outboard of its item's, and 353's separation still applies on this
-    // genuinely shared row: handles are 12px wide, so this is a real void
-    // between the boxes rather than two glyphs touching.
+    // Stacking ORDER (post-487): the item hugs its MEASURED bullet ink, while
+    // this top-level list has no marker column above it to occupy — so it takes
+    // the ordinary markerless slot at its own border-box left, which is
+    // outboard of the bullet by the list's marker band. 353's separation still
+    // applies on this genuinely shared row: handles are 12px wide, so this is a
+    // real void between the boxes rather than two glyphs touching. (It used to
+    // read "one track-width outboard" — the step task 487 retired.)
     expect(list.left).toBeLessThan(item.left);
     expect(Math.abs(item.left - list.left)).toBeGreaterThanOrEqual(24);
   });

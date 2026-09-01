@@ -599,7 +599,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       // box, NOT the full-width `.react-renderer` [data-uuid] host — the host
       // resolves to the column extent (which the drop indicator correctly wants),
       // so leaving `resolveFirstLineTarget` untouched keeps that bar intact.
-      const blockRight = resolveBlockFrame(block, editorRef.current).contentRight;
+      const blockRight = resolveBlockFrame(block).contentRight;
       const chromeWidth = chrome.getBoundingClientRect().width;
       const available = columnRight - blockRight - CHROME_BESIDE_GAP;
       setChromeBeside(chromeWidth > 0 && available >= chromeWidth);
