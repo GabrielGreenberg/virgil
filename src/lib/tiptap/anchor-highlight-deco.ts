@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
 
 /**
  * AnchorHighlightDecorator — paints the four card hover/selection attributes
@@ -58,8 +59,11 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  * produces no diff and the bus stays silent.
  */
 
-const DATA_CARD_SELECTED = "data-card-selected";
-const DATA_CARD_HOVERED = "data-card-hovered";
+// The two attention attr NAMES come from the view-only vocabulary, not from a
+// local copy: the print block neutralises view-only paint BY these names, and a
+// rename that reached only one side would silently print a selection halo
+// (task 523).
+export { DATA_CARD_SELECTED, DATA_CARD_HOVERED };
 const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 

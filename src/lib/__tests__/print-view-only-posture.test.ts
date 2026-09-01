@@ -31,15 +31,17 @@
  * and the mechanism is the whole finding.
  *
  * STATED LIMITS, two, neither papered over. The discovered population is
- * ProseMirror decorations: view-only paint can also arrive by an imperative
- * `classList.add` on live editor DOM, and THAT population is unbounded, so the
- * one such site the audit named (the bib cross-highlight in `EditorLayout`) is
- * pinned by SOURCE below rather than discovered — a second imperative painter
- * would be invisible here, the same limit the subscriber census states about
- * its callbacks. And the discovery needle is the literal `Decoration.<ctor>(`
- * call form, so a decoration built through an ALIASED import evades it; that is
- * the limit the link-surface census already carries, and no file in either silo
- * aliases it today.
+ * ProseMirror decorations. View-only paint can also arrive IMPERATIVELY on live
+ * editor DOM — by `classList.add` (the bib cross-highlight) or by
+ * `setAttribute` (`useLinkHighlight`'s `data-link-highlight`, the reconciler's
+ * Mode-B `data-card-*` path) — and THAT population is unbounded. Those three
+ * are covered because each writes a name the vocabulary DECLARES, which is why
+ * the attention half is keyed on names rather than on a marker; a fourth
+ * imperative painter inventing a fresh hook would be invisible here, the same
+ * limit the subscriber census states about its callbacks. And the discovery
+ * needle is the literal `Decoration.<ctor>(` call form, so a decoration built
+ * through an ALIASED import evades it — the limit the link-surface census
+ * already carries, and no file in either silo aliases it today.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -48,6 +50,7 @@ import { cssCommentsStripped, commentsStripped, strip, trackedFiles, REPO_ROOT }
 import {
   VIEW_ONLY_CLASS,
   VIEW_ONLY_ATTENTION_ATTRS,
+  VIEW_ONLY_ZEROED_PROPERTIES,
   ATTENTION_COLOR_VAR,
   viewOnly,
 } from "@/lib/view-only-chrome";
@@ -210,13 +213,31 @@ function classesOf(site: DecoSite): string[] {
   return [...new Set(names)];
 }
 
-/** Does this site DECLARE itself view-only, at the site or by attribute? */
+/**
+ * Does this site DECLARE itself view-only?
+ *
+ * The attention branch is SITE-scoped, not file-scoped, and that distinction is
+ * the one this suite's own spell-error leg already makes ("it is the SITE that
+ * declares it, not merely the file"). File-scoped, a second unrelated PAINTING
+ * decoration added to `anchor-highlight-deco.ts` would be waved through with no
+ * class check at all, on the strength of a constant seventy lines away. So a
+ * site qualifies only if it hands over an ATTR BAG *and* its file takes the
+ * attention vocabulary from the leaf — a declaration rather than a coincidence
+ * of containing the right string.
+ */
 function declaresViewOnly(site: DecoSite): boolean {
   if (/\bviewOnly\s*\(/.test(site.args)) return true;
-  // The attention chrome carries no class — it paints the two attributes onto
-  // a DOCUMENT element, which the print block neutralises by attribute (a
-  // blanket marker there would erase the user's persistent highlight tint).
-  return VIEW_ONLY_ATTENTION_ATTRS.some((a) => site.fileSrc.includes(`"${a}"`));
+  // The attention chrome carries no class — it paints declared ATTRIBUTES onto
+  // a DOCUMENT element, which the print block neutralises by name (a blanket
+  // marker there would erase the user's persistent highlight tint).
+  // The import CLAUSE must name an attention constant (`DATA_*` are the only
+  // such exports), not merely reach the leaf — otherwise any file that imports
+  // `viewOnly` would inherit the exemption for a class-less site.
+  const takesVocabulary =
+    /import\s*\{[^}]*\bDATA_[A-Z_]+\b[^}]*\}\s*from\s*"@\/lib\/view-only-chrome"/.test(
+      site.fileSrc,
+    );
+  return takesVocabulary && /\battrs\b/i.test(site.args);
 }
 
 /** The `@media screen { … }` block, brace-matched — where the hide classes
@@ -258,7 +279,15 @@ const HIDE_CLASSES = (() => {
   for (const rel of ["src/lib/section-folding.ts", "src/lib/focus-view.ts"]) {
     const src = commentsStripped(readFileSync(join(REPO_ROOT, rel), "utf8"));
     for (const m of src.matchAll(/\bclass:\s*"([a-z0-9-]+)"/g)) {
-      if (SCREEN_BLOCK.includes(`.${m[1]}`)) found.add(m[1]);
+      // MENTIONED is not HIDDEN: the screen block must carry a rule whose
+      // selector names the class AND whose body declares `display`. A
+      // substring test would let a PAINT rule added to that block launder a
+      // new class into this bucket.
+      const hidden = [...SCREEN_BLOCK.matchAll(/([^{}]+)\{([^}]*)\}/g)].some(
+        (r) =>
+          new RegExp(`\\.${m[1]}(?![\\w-])`).test(r[1]) && /display\s*:/.test(r[2]),
+      );
+      if (hidden) found.add(m[1]);
     }
   }
   return found;
@@ -289,8 +318,12 @@ describe("the view-only census", () => {
   it("discovers decoration sites across the tree at all", () => {
     // A floor that proves the discovery WORKS. A needle that matched nothing
     // would make every leg below vacuous.
-    expect(SITES.length).toBeGreaterThanOrEqual(8);
-    expect(new Set(SITES.map((s) => s.rel)).size).toBeGreaterThanOrEqual(5);
+    // The floor is the TRUE current count, not a soft guess: a discovery that
+    // silently stopped seeing a file would still clear a loose bar. It is a
+    // floor rather than an exact set because a new decoration is legitimate —
+    // what must never happen is the population SHRINKING.
+    expect(SITES.length).toBeGreaterThanOrEqual(9);
+    expect(new Set(SITES.map((s) => s.rel)).size).toBeGreaterThanOrEqual(7);
   });
 
   it("every production decoration is view-only, a hide class, or document content", () => {
@@ -357,18 +390,21 @@ describe("the view-only census", () => {
 });
 
 describe("the print block carries ONE rule for the marker", () => {
-  it("declares the marker selector with all three properties, each `!important`", () => {
+  it("declares the marker selector with every zeroed property, each `!important`", () => {
     const at = PRINT_BLOCK.indexOf(`.${VIEW_ONLY_CLASS}`);
     expect(at, "the print block never names the view-only marker").toBeGreaterThan(-1);
     const body = PRINT_BLOCK.slice(PRINT_BLOCK.indexOf("{", at), PRINT_BLOCK.indexOf("}", at));
-    // `text-decoration` is the one that matters with DEFAULT print settings —
-    // Chrome drops backgrounds and shadows unless "Background graphics" is on.
-    expect(body).toMatch(/text-decoration:\s*none\s*!important/);
-    // `!important` is load-bearing: the transient band carries an INLINE
-    // `background-color`, and an `!important` author declaration is what
-    // outranks a normal inline style.
-    expect(body).toMatch(/background:\s*none\s*!important/);
-    expect(body).toMatch(/box-shadow:\s*none\s*!important/);
+    // Swept FROM the declaration, so a fifth property is covered by declaring
+    // itself. `text-decoration` is the one that matters with DEFAULT print
+    // settings — Chrome drops backgrounds and shadows unless "Background
+    // graphics" is on. `!important` is load-bearing: the transient band carries
+    // an INLINE `background-color`, and an `!important` author declaration is
+    // what outranks a normal inline style.
+    for (const prop of VIEW_ONLY_ZEROED_PROPERTIES) {
+      expect(body, `the marker rule never zeroes \`${prop}\``).toMatch(
+        new RegExp(`${prop}:\\s*none\\s*!important`),
+      );
+    }
   });
 
   it("the marker has NO screen rule, so stamping it restyles nothing", () => {
@@ -383,19 +419,51 @@ describe("the print block carries ONE rule for the marker", () => {
       const at = PRINT_BLOCK.indexOf(`[${attr}]`);
       expect(at, `the print block never names [${attr}]`).toBeGreaterThan(-1);
     }
-    // One rule, both attributes, zeroing the var every attention rule paints
-    // from. `!important` because the per-kind rules set the same var at higher
-    // specificity; `.tiptap`-scoped so a card in the print appendix keeps its
-    // inline kind accent.
-    const m = PRINT_BLOCK.match(
-      new RegExp(
-        `\\.tiptap\\s*\\[${VIEW_ONLY_ATTENTION_ATTRS[0]}\\][^{]*\\[${VIEW_ONLY_ATTENTION_ATTRS[1]}\\][^{]*\\{([^}]*)\\}`,
-      ),
+    // ONE `.tiptap`-scoped rule naming EVERY declared attention attribute,
+    // zeroing the colour var. `!important` because the per-kind rules set the
+    // same var at higher specificity; `.tiptap`-scoped so a card in the print
+    // appendix keeps its inline kind accent. Built from the declaration, so a
+    // fourth channel joins by declaring itself — which is the whole reason
+    // `data-link-highlight` is a member: it painted a HEAVIER wash than the
+    // selection one and was covered only by the coincidence that the anchor
+    // reconciler stamps `data-card-selected` on the same element.
+    const selectors = VIEW_ONLY_ATTENTION_ATTRS.map((a) => `\\.tiptap\\s*\\[${a}\\]`).join(
+      "[^{]*",
     );
-    expect(m, "the two attention attributes are not neutralised by ONE .tiptap-scoped rule").toBeTruthy();
+    const m = PRINT_BLOCK.match(new RegExp(`${selectors}[^{]*\\{([^}]*)\\}`));
+    expect(
+      m,
+      "the declared attention attributes are not neutralised by ONE .tiptap-scoped rule",
+    ).toBeTruthy();
     expect(m![1]).toMatch(
       new RegExp(`${ATTENTION_COLOR_VAR}:\\s*transparent\\s*!important`),
     );
+  });
+
+  it("kills the appendix card outline with an UNSCOPED attention rule", () => {
+    // A selected card printed into the appendix carries
+    // `body.card-outline-chrome [data-card-key][data-card-selected] { outline }`
+    // — and its root sits OUTSIDE `.tiptap` by design, which is exactly why the
+    // var rule above is scoped and this one must not be.
+    const unscoped = [...PRINT_BLOCK.matchAll(/([^{}]+)\{([^}]*)\}/g)].find(
+      (r) =>
+        VIEW_ONLY_ATTENTION_ATTRS.every((a) => r[1].includes(`[${a}]`)) &&
+        !r[1].includes(".tiptap") &&
+        /outline:\s*none\s*!important/.test(r[2]),
+    );
+    expect(unscoped, "no unscoped `outline: none` for the attention attributes").toBeTruthy();
+  });
+
+  it("the CITATION attention variant is flattened by the older citation rule", () => {
+    // The one attention rule that does NOT paint from `--link-anchor-color` (it
+    // uses the amber highlight vars), so the var-zeroing does nothing for it.
+    // It reaches paper flattened only because this OLDER rule is `!important`
+    // and the attention rule is not — a fact about THIS rule, pinned here so a
+    // future "tidy" of it cannot silently print a hover wash.
+    const m = PRINT_BLOCK.match(/\.citation-node,\s*\.label-ref-node\s*\{([^}]*)\}/);
+    expect(m, "the print block no longer flattens `.citation-node`").toBeTruthy();
+    expect(m![1]).toMatch(/background:\s*transparent\s*!important/);
+    expect(m![1]).toMatch(/border:\s*0\s*!important/);
   });
 
   it("the screen rules the marker rides beside are UNCHANGED", () => {

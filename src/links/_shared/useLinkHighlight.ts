@@ -23,8 +23,12 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { linkIdSelector } from "../link-dom-contract";
 import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
+// Name from the view-only vocabulary (task 523). This attribute paints a
+// 45%/60% wash plus a ring from `--link-anchor-color`, which the print block
+// zeroes BY this name — until 523 it was neutralised only because the anchor
+// reconciler happens to stamp `data-card-selected` on the same element.
+import { DATA_LINK_HIGHLIGHT as DATA_HIGHLIGHT } from "@/lib/view-only-chrome";
 
-const DATA_HIGHLIGHT = "data-link-highlight";
 /** Cross-layer DOM contract with `globals.css`'s archived-chrome rule. */
 export const DATA_ANCHOR_ARCHIVED = "data-anchor-archived";
 

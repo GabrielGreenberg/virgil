@@ -26,8 +26,8 @@
  *
  *  - **PAINT ON ITS OWN ELEMENT** → `VIEW_ONLY_CLASS`, stamped by the writer
  *    beside its own class (`viewOnly(SPELL_ERROR_CLASS)`). Both decorations
- *    that take it own their own wrapper, so neutralising background /
- *    box-shadow / text-decoration there cannot reach anything the document
+ *    that take it own their own wrapper, so zeroing
+ *    `VIEW_ONLY_ZEROED_PROPERTIES` there cannot reach anything the document
  *    renders. ONE print rule covers every present and future member.
  *
  *    The bib cross-highlight is the one member whose class lands on a DOCUMENT
@@ -35,21 +35,23 @@
  *    by a decoration). That is safe by a fact about the print block rather than
  *    by construction, and it is stated at the site: the block already flattens
  *    `.citation-node`'s background, border, padding and colour with
- *    `!important`, so the only thing the marker's three properties can still
+ *    `!important`, so the only thing the marker's zeroed properties can still
  *    reach there is the 2px ring that flatten leaves standing — which is
  *    exactly the view state being removed. A future marker on a document
  *    element owes the same argument.
  *
- *  - **PAINT ON A DOCUMENT ELEMENT** (the card hover/selection attention
+ *  - **PAINT ON A DOCUMENT ELEMENT** (the hover/selection/active attention
  *    chrome) → `VIEW_ONLY_ATTENTION_ATTRS`. These attributes land on the
  *    anchored paragraph / footnote marker / `.linked-anchor` itself, so a
  *    blanket `background: none` there would also erase the user's persistent
  *    highlight tint — a USER CHOICE with its own print toggle, and therefore
  *    document content by the app's own posture. Instead the print block zeroes
- *    `--link-anchor-color`, the ONE var every attention rule paints from
- *    (`color-mix(… var(--link-anchor-color) …)` collapses to transparent) —
- *    the same idiom `.linked-anchor[data-anchor-archived]` already uses, and it
- *    leaves `--tint-color` untouched by construction.
+ *    `--link-anchor-color`, the var the `--link-anchor-color` family paints
+ *    from (`color-mix(… var(--link-anchor-color) …)` collapses to transparent)
+ *    — the same idiom `.linked-anchor[data-anchor-archived]` already uses, and
+ *    it leaves `--tint-color` untouched by construction. The exception is
+ *    stated at `ATTENTION_COLOR_VAR` below rather than glossed: the CITATION
+ *    variant paints amber and is flattened by an older print rule.
  *
  * WHY A LEAF WITH NO IMPORTS: `globals.css` cannot import TypeScript, so the
  * binding between this vocabulary and the print block is a CI census
@@ -82,20 +84,65 @@ export function viewOnly(cls: string): string {
   return `${cls} ${VIEW_ONLY_CLASS}`;
 }
 
+/* The ATTENTION attributes — view-only paint that lands on a DOCUMENT element,
+ * so it is neutralised by attribute rather than by marker. Declared here as
+ * NAMES so the three writers (`anchor-highlight-deco`, the reconciler's Mode-B
+ * raw path, `useLinkHighlight`) and the print block read one vocabulary. */
+
+/** Card SELECTION halo — `"paragraph"` for a Mode-A block, `"true"` otherwise. */
+export const DATA_CARD_SELECTED = "data-card-selected";
+/** Card HOVER halo — same value vocabulary. */
+export const DATA_CARD_HOVERED = "data-card-hovered";
 /**
- * The card hover/selection attributes — view-only paint that lands on a
- * DOCUMENT element, so it is neutralised by attribute rather than by marker.
- *
+ * The Mode-B anchor's own hover/active state — `"hover"` | `"active"`, removed
+ * otherwise. A THIRD channel, and the one that proves this list has to be a
+ * declared vocabulary rather than the two attributes anyone would think of: it
+ * paints a 45%/60% wash plus a 1px ring — HEAVIER than the 22% selection wash —
+ * and until it was named here it was neutralised only by COINCIDENCE, because
+ * the reconciler happens to stamp `data-card-selected` on the same element for
+ * the same card. Both read one store, so they co-occur; nothing pinned that,
+ * and a future colour of its own (exactly what `.citation-highlight-bib` has)
+ * would have printed a 60% wash.
+ */
+export const DATA_LINK_HIGHLIGHT = "data-link-highlight";
+
+/**
  * `data-paragraph-kind` and `data-margin-side` are deliberately NOT members:
- * they only select a colour for the rules keyed on the two attributes above,
- * so zeroing the colour retires them with nothing to enumerate.
+ * they only select a colour for the rules keyed on the attributes above, so
+ * zeroing the colour retires them with nothing to enumerate. Neither are the
+ * `data-show-hl-*` root toggles — those are a USER CHOICE with their own print
+ * toggle, i.e. document content by this same posture.
  */
 export const VIEW_ONLY_ATTENTION_ATTRS = [
-  "data-card-hovered",
-  "data-card-selected",
+  DATA_CARD_HOVERED,
+  DATA_CARD_SELECTED,
+  DATA_LINK_HIGHLIGHT,
 ] as const;
 
-/** The custom property every attention rule paints from. Zeroing it in print
- *  collapses the footnote ring, the Mode-A accent rail (both sides) and the
- *  Mode-B selection wash in one declaration. */
+/**
+ * The custom property the `--link-anchor-color` family of attention rules
+ * paints from. Zeroing it in print collapses the footnote ring, BOTH sides of
+ * the Mode-A accent rail, the Mode-B selection wash and the Mode-B hover/active
+ * wash + ring in one declaration.
+ *
+ * NOT every attention rule, and the exception is stated rather than glossed:
+ * the CITATION variant (`.citation-node[data-card-hovered]`) paints from the
+ * amber highlight vars instead. It reaches paper flattened by the print block's
+ * OLDER `.citation-node, .label-ref-node` rule, whose `!important` outranks the
+ * non-important attention rule — a fact about that rule rather than about this
+ * var, so the census pins it instead of leaving it to be rediscovered.
+ */
 export const ATTENTION_COLOR_VAR = "--link-anchor-color";
+
+/**
+ * The properties the print block zeroes for view-only paint. Declared so the
+ * marker rule and the census cannot come to disagree about the list — `outline`
+ * is the one a reader would omit, and it is the one a SELECTED card carries
+ * into the print appendix.
+ */
+export const VIEW_ONLY_ZEROED_PROPERTIES = [
+  "text-decoration",
+  "background",
+  "box-shadow",
+  "outline",
+] as const;

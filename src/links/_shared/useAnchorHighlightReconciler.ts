@@ -68,6 +68,10 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo } from "react";
+// Names from the view-only vocabulary (task 523) — the print block neutralises
+// view-only paint BY these names, so a local copy is a rename away from
+// printing a selection halo.
+import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
 import type { Editor } from "@tiptap/react";
 import {
   useStoreHover,
@@ -98,8 +102,6 @@ import {
   type PanelSideMap,
 } from "@/lib/margin-side";
 
-const DATA_CARD_SELECTED = "data-card-selected";
-const DATA_CARD_HOVERED = "data-card-hovered";
 const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 

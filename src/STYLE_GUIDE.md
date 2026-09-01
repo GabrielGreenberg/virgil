@@ -2869,20 +2869,28 @@ rules:
 - **A view-only decoration DECLARES itself**, by stamping the marker class
   beside its own: `class: viewOnly(SPELL_ERROR_CLASS)`, from
   `src/lib/view-only-chrome.ts`. ONE rule in `@media print` then zeroes
-  `text-decoration`, `background` and `box-shadow` on `.virgil-view-only` —
-  path-independent, and it covers the spelling squiggle, the transient
-  search/diagnostics/revision band and the bib cross-highlight ring with nothing
-  to enumerate. The marker has NO screen rule, so adopting it restyles nothing.
-- **Attention chrome is neutralised by ATTRIBUTE, on the colour var.**
-  `data-card-hovered` / `data-card-selected` land on the anchored paragraph,
-  footnote marker or `.linked-anchor` ITSELF, so a blanket `background: none`
-  there would also erase the user's persistent highlight tint — a user choice
-  with its own print toggle, i.e. document content by this same posture.
-  Instead the print block zeroes `--link-anchor-color`, the one var every
-  attention rule paints from, which retires the footnote ring, both sides of the
-  Mode-A accent rail and the Mode-B selection wash in one declaration (the idiom
-  `.linked-anchor[data-anchor-archived]` already uses). Scoped to `.tiptap` so a
-  card in the print appendix keeps its inline kind accent.
+  `text-decoration`, `background`, `box-shadow` and `outline` on
+  `.virgil-view-only` — path-independent, and it covers the spelling squiggle,
+  the transient search/diagnostics/revision band and the bib cross-highlight
+  ring with nothing to enumerate. The marker has NO screen rule, so adopting it
+  restyles nothing.
+- **Attention chrome is neutralised by ATTRIBUTE, on the colour var — and there
+  are THREE attributes, not the two anyone would think of.** They land on the
+  anchored paragraph, footnote marker or `.linked-anchor` ITSELF, so a blanket
+  `background: none` there would also erase the user's persistent highlight tint
+  — a user choice with its own print toggle, i.e. document content by this same
+  posture. Instead the print block zeroes `--link-anchor-color`, which retires
+  the footnote ring, both sides of the Mode-A accent rail, the Mode-B selection
+  wash and the Mode-B hover/active wash + ring in one declaration (the idiom
+  `.linked-anchor[data-anchor-archived]` already uses). `data-link-highlight` is
+  the member that proves this has to be a DECLARED vocabulary: it paints a
+  heavier wash than the selection one and was neutralised only by the
+  coincidence that the reconciler stamps `data-card-selected` on the same
+  element. The exception is stated too: the CITATION variant paints from the
+  amber vars and is flattened by the older `.citation-node` print rule instead.
+  Scoped to `.tiptap` so a card in the print appendix keeps its inline kind
+  accent — except `outline`, whose rule is deliberately unscoped, because a
+  selected card's outline is exactly what the appendix would otherwise print.
 - **A decoration that renders DOCUMENT CONTENT never takes the marker.** A
   `pgmark-chip` draws a real `\pgmark{N}`; `latex-cmd` draws raw LaTeX the schema
   does not model. Those print. **Stated rather than implied:** `latex-cmd` still
