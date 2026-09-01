@@ -9,6 +9,10 @@ import ConfirmDialog from "./ConfirmDialog";
 import { iconHint } from "@/components/Hint";
 import type { SourcePodDerive } from "./source-pod-derive";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
+import {
+  commitLiveValue,
+  useFieldEditSession,
+} from "@/lib/field-edit-session";
 
 /**
  * THE source pod — one implementation of the "raw bytes in a framed, foldable,
@@ -209,9 +213,13 @@ export default function SourcePodNodeView({
   const setTitle = useCallback(
     (next: string | null) => {
       const trimmed = next && next.trim() ? next.trim() : null;
+      // Equality-bail, like `setSource` above: a commit of an unchanged title
+      // must not dispatch a transaction (an undo step and an autosave arm for
+      // an edit that changed nothing).
+      if (trimmed === title) return;
       updateAttributes({ parTitle: trimmed });
     },
-    [updateAttributes],
+    [title, updateAttributes],
   );
 
   const toggleCollapsed = useCallback(() => {
@@ -226,12 +234,43 @@ export default function SourcePodNodeView({
     }
   }, [editingTitle]);
 
-  const commitTitle = useCallback(() => {
-    if (!editingTitle) return;
-    const val = inputRef.current?.value ?? "";
-    setEditingTitle(false);
-    setTitle(val);
-  }, [editingTitle, setTitle]);
+  // The title's edit session. Pre-529 both halves of this were wrong and in the
+  // same way: the CANCEL was recorded where the COMMIT could not read it.
+  //
+  //   onBlur={() => { setTimeout(() => { if (editingTitle) commitTitle(); }, 100); }}
+  //
+  // That `if (editingTitle)` was the author's own attempt at this very law —
+  // "Escape ended the edit, so don't commit" — implemented with a value read
+  // from the render closure in which the input still existed. It is therefore
+  // permanently `true` and dead, in the timeout AND again inside `commitTitle`.
+  // Two failures fell out: the fold chevron `preventDefault`s its mousedown so
+  // the input never blurs at all and the edit was silently DISCARDED; and where
+  // a blur did land, the deferred commit woke at +100 ms with the input already
+  // unmounted, computed `inputRef.current?.value ?? ""` and wrote that empty
+  // string over an EXISTING title. `@/lib/field-edit-session`.
+  const session = useFieldEditSession();
+
+  /** Commit the title from a LIVE element, or refuse. Never `?? ""` — for this
+   *  field the empty string is a DELETE (`setTitle` maps it to `parTitle: null`),
+   *  so a commit that cannot read its value must not run at all. */
+  const commitTitleFrom = useCallback(
+    (el: HTMLInputElement | null) =>
+      commitLiveValue(el, (val) => {
+        setEditingTitle(false);
+        setTitle(val);
+      }),
+    [setTitle],
+  );
+
+  // A pod can be collapsed while its title is being edited — by the chevron
+  // below, and also from outside (an undo of a collapse toggle, a re-parse).
+  // The input renders only under `editingTitle && !collapsed`, so leaving the
+  // flag set means re-expanding drops the user straight back into edit mode on
+  // a pod they never asked to edit. Clearing it here makes that true by
+  // construction, whichever path did the collapsing.
+  useEffect(() => {
+    if (collapsed) setEditingTitle(false);
+  }, [collapsed]);
 
   // Card-context preview: rendered inside a RichTextField (archive card, note,
   // …) or a HeadingFloat. Show a compact static `<pre>` instead of the full pod
@@ -294,16 +333,19 @@ export default function SourcePodNodeView({
                 e.stopPropagation();
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  commitTitle();
+                  const el = e.currentTarget;
+                  session.commitAndBlur(el, () => commitTitleFrom(el));
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  setEditingTitle(false);
+                  session.cancel(e.currentTarget, () => setEditingTitle(false));
                 }
               }}
-              onBlur={() => {
-                setTimeout(() => {
-                  if (editingTitle) commitTitle();
-                }, 100);
+              // Read the value SYNCHRONOUSLY, off the event's own element,
+              // while it is provably alive. The retired 100 ms deferral bought
+              // nothing but the window in which the element could vanish.
+              onBlur={(e) => {
+                const el = e.currentTarget;
+                session.commit(() => commitTitleFrom(el));
               }}
             />
           ) : title ? (
@@ -376,9 +418,17 @@ export default function SourcePodNodeView({
             e.stopPropagation();
             toggleCollapsed();
           }}
+          // This `preventDefault` keeps the ProseMirror selection still, and it
+          // also means a focused title input never blurs — so pre-529 clicking
+          // the chevron mid-edit unmounted the input and DISCARDED everything
+          // typed, with nothing to notice. Commit here instead, at mousedown,
+          // while the input is still mounted and its value still readable.
+          // Clicking away from a field commits it everywhere else in this pod;
+          // the chevron is not an exception, it was just unreachable.
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (editingTitle) commitTitleFrom(inputRef.current);
           }}
           {...iconHint({
             label: collapsed

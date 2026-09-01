@@ -5646,6 +5646,182 @@ disk), so the check is cheap and real — open the example document, Tab **+** �
 *Reset example document*, and confirm the focused button is **Cancel** and that
 `Enter` cancels. Do not press Reset.
 
+
+#### The field half: an edit session ends exactly ONCE
+
+Same cluster, the INPUT rather than the dialog (task 529) — and the case where
+the mechanism was so ordinary that four fields wrote it, the two correct sites
+sat beside them, and every one of the four still looked right on screen.
+
+`element.blur()` dispatches `focusout` SYNCHRONOUSLY, and React delegates
+`onBlur` off `focusout`. So a `.blur()` inside a keydown handler runs that
+field's own commit **nested inside the still-executing keydown**, from the
+render closure it was created in. Measured through a real React root, the
+cancel branch logs exactly:
+
+```
+["esc:begin", "commit:80", "esc:end"]        final rendered value: "40"
+```
+
+The commit fires between the two halves of the cancel and reads the TYPED `80`,
+because `setDraft("40")` is queued for the next render and cannot touch the
+binding the handlers captured; the revert then lands and wins the RENDER. **So
+the box shows the value you cancelled TO while the commit has already fired
+with the value you cancelled FROM** — which is why this survived for as long as
+the fields have existed, and why the task's Done-when insists on asserting the
+transaction COUNT: a rendered-value assertion passes on the broken code.
+
+The same synchronous blur breaks the OTHER ending, and that half is easy to
+miss because its value is right: `commitDraft(); el.blur();` runs the commit,
+then the blur runs it AGAIN from the identical stale closure — where the guards
+that would have caught a no-op (`clamped !== currentPercent`, `pgDraft ===
+row.postnote`) still hold their PRE-commit values and so do not bail.
+
+> **An edit session has two endings — COMMIT and CANCEL — and exactly one of
+> them happens. Whichever ends first wins; the other is skipped. The record of
+> "this session has ended" lives where the commit READS it and is read
+> SYNCHRONOUSLY.** React state is not such a place.
+> [`useFieldEditSession`](src/lib/field-edit-session.ts) is that record.
+
+Four members, and the cluster was wider than reported — the two most expensive
+are the ones that write:
+
+- **`FigureBlockNodeView`** (the width box): Escape resized the figure to the
+  typed value and dispatched a real `setNodeMarkup`; Enter dispatched it TWICE
+  (two undo steps and two autosave arms for one resize).
+- **`CitationCard`**'s `+range` postnote — **not named in the report**: Escape
+  wrote the cancelled range into the `\cite` command AND the citations sidecar,
+  and Enter wrote it twice. Two durable stores, so the most expensive of the
+  four.
+- **`PagePicker`** (the reader's page box): Escape scrolled to the page it
+  promised to abandon, losing the reader's position — the cancel affordance did
+  not exist.
+- **`SourcePodNodeView`**'s `+T` title — the LIVENESS half, below.
+
+Seven rules it earned:
+
+- **Exactly two things can hold the record, and only one holds BOTH endings.**
+  The **value source itself**, when synchronously writable — an UNCONTROLLED
+  input whose commit reads `el.value`, which is what `panel-primitives`'
+  `CardBodyTitle` has always done and is why it was already correct. It cannot
+  express the *Enter* half, though: there is no value to restore that makes a
+  duplicate commit safe. A **ref** answers both with one flag, so that is the
+  door, and `CardBodyTitle` takes it too — two spellings of one rule is one too
+  many (the rule task 486 earned for the refocus door). It still restores its
+  DOM value; what the door adds is that the commit is skipped BY CONSTRUCTION
+  rather than by the restored value happening to equal the stored one.
+- **The window is bounded by the blur, not by hope.** The flag is cleared in a
+  `finally` around the blur, so it is live for exactly the synchronous
+  `focusout` dispatch — precisely where the duplicate can fire — and no longer.
+  An ending whose blur never lands (a null element, an unfocused one) therefore
+  cannot swallow some LATER, unrelated commit, and the field is immediately
+  editable again. A flag cleared by the duplicate would depend on the duplicate
+  running, which is the one thing an ending cannot assume.
+- **`commitAndBlur` still commits EXPLICITLY.** Letting the blur do it (which is
+  what the two correct sites do) is tempting and wrong in one case: `blur()` is
+  a no-op on an element that never had focus, and a field whose Enter silently
+  committed nothing there would be a worse bug than the duplicate.
+- **The liveness half: a commit that cannot read a live value REFUSES.**
+  `SourcePodNodeView` deferred its title commit 100 ms and then read
+  `inputRef.current?.value ?? ""` after the input had unmounted, writing that
+  empty string — which for a title means DELETING one the user never touched.
+  `commitLiveValue` is the rule (no element, no commit) and it REPORTS, so a
+  caller can tell a refusal from a landed write. Its companion: the value is
+  read while ALIVE — a deferral may carry a value already read, it may not go
+  back for one. `BibEntryCard` already had this shape.
+- **That 100 ms guard was the author's own attempt at THIS law.** `if
+  (editingTitle) commitTitle()` meant "Escape ended the edit, so don't commit" —
+  written against a value a batched `setState` can never change under it, so it
+  was permanently `true` and dead, in the timeout AND inside `commitTitle`. The
+  fix is not a new idea; it is the intended guard, given a mechanism that works.
+- **A preservation guard's own path must not be the discard.** The pod's fold
+  chevron `preventDefault`s its mousedown — correctly, to hold the ProseMirror
+  selection still — which also means a focused title input never blurs, so
+  clicking it unmounted the input and DISCARDED everything typed. It commits at
+  mousedown now, while the input is still mounted: clicking away from a field
+  commits it everywhere else in this pod, and the chevron was not an exception,
+  it was just unreachable.
+- **A collapsed pod leaves edit mode by CONSTRUCTION.** `editingTitle` was
+  never cleared, so re-expanding dropped straight back into edit mode on a pod
+  nobody asked to edit. An effect keyed on `collapsed` answers it whichever
+  path did the collapsing — the chevron, an undo, a re-parse.
+
+**Not everything that blurs is a member, and the discriminator is the
+interesting part.** A field with no cancel branch (`PreferenceTree.ColorPref` —
+Enter blurs, and that is the whole keymap) and a field that commits on every
+keystroke (`SizeStepper`, `PanelTextSizeRow`) have no second ending to
+suppress. The last two DO name `Escape` and DO blur, so a naive census indicts
+them; what separates them is that their Escape shares a statement with Enter
+(`if (e.key === "Enter" || e.key === "Escape")`). **A branch that treats the two
+keys identically is not promising a revert** — Escape needs a door only where it
+means something DIFFERENT from Enter. The census is scoped to that, so all three
+stay out of the population by construction and the allowlist is EMPTY.
+
+CI: [field-edit-session.test.tsx](src/lib/__tests__/field-edit-session.test.tsx)
+drives the mechanism through a real React root and carries TWO canaries — the
+un-doored cancel logging `["esc:begin","commit:80","esc:end"]` at a rendered
+value of `40`, and the un-doored Enter logging the commit twice — so if either
+ever stops holding, every defect leg in this task becomes unfalsifiable rather
+than silently passing. The behavioural legs drive the REAL components and count
+WRITES, never rendered values
+([figure-scale-escape](src/components/__tests__/figure-scale-escape.test.tsx),
+[source-pod-title-edit](src/components/__tests__/source-pod-title-edit.test.tsx),
+[citation-range-inline](src/panels/Citations/__tests__/citation-range-inline.test.tsx),
+[PagePicker.escape](library/components/__tests__/PagePicker.escape.test.tsx));
+no suite anywhere exercised `FigureChrome` or `PagePicker` before this one, and
+the pod's deferred-commit leg uses FAKE TIMERS deliberately, because a leg that
+never advances the clock gives the pre-529 implementation no chance to do its
+damage and passes on it vacuously. The leg with teeth is the CENSUS — the door
+was never the part that could misbehave, a field that never asks it is, and such
+a field type-checks, renders, and looks correct on screen. Measured by neutering
+each site in turn: the figure box takes **4** legs, the pod **6**, the citation
+row **3**, and the page box **3**; every remaining leg is an accepting control
+and says so.
+
+**The census's own population is keyed on the QUESTION, not the MECHANISM**
+(task 404's rule), and getting that wrong was caught by the census itself: keyed
+on `.blur()`, every site DROPS OUT of the population the moment it is fixed, so
+the guard would go green by emptying itself. It asks instead whether a branch
+ENDS the session — a bare blur *or* the door — which keeps all five members
+visible and pins that every one of them is doored.
+
+**The same law is already spelled by hand in a medium the hook cannot reach.**
+Six vanilla-DOM editors — the par-title and heading-label inputs in
+`editor-extensions.ts`, three in `expex.ts` — are CORRECT via a local
+`let committed = false` set synchronously in the Escape branch and checked in
+the blur listener. They are deliberately NOT converted: they are not React
+components, so they cannot call a hook, and giving the factory a non-React twin
+to serve them would touch two of the most delicately-tested files in the repo
+for no behaviour change. Recorded so the next reader knows the latch is this
+rule and not a stray idiom.
+
+**A SHARED SCANNER blindness was the by-catch, and it is fixed at the SSOT.**
+`_source-scan.ts`'s `tagAround` walked back to the NEAREST `<` and gave up if it
+was not a tag — so `if (n <= MAX)` inside a sibling handler put a `<` between the
+real tag and the needle and the whole site was silently DROPPED from the
+population rather than examined. That is how `PanelTextSizeRow` stayed invisible
+to this census while its identical twin `SizeStepper` was caught: one of them
+happens to have a comparison in its `onChange`. It walks over every candidate
+now, still requiring the resolved tag to CONTAIN the needle — which is what
+preserved the anchoring guarantee its docblock rests on. Measured: the three
+other censuses that read it (`status-dot-ssot`, `card-delete-key-door`,
+`pane-drag-guardrail`) stay green, so this is a pure strengthening.
+
+**Residual, stated.** A ~10-site family sits one step away: fields whose Escape
+UNMOUNTS the input instead of blurring (the Outline's heading rename and
+`\label` key, `TabStrip`'s document rename, `LibrariesNavigator`,
+`ManageStylesModal`, `FigureAnnotation` — whose `commit` carries this same dead
+captured guard without the `?? ""` write). Removing a focused element does not
+dispatch `focusout` in current browsers, so none of them is live today; each
+becomes a member the day someone adds a `.blur()`. They are NOT converted here:
+they are correct, and converting ten correct sites on a premise about browser
+behaviour this task did not measure is exactly the "broadest blast radius"
+error the central principle's own refinement warns against.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (live editor
+gestures, no disk), so the durable proof is the unit contract and the check is
+cheap: type into a figure's width box and press Escape.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

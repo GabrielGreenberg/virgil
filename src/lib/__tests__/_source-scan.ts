@@ -387,11 +387,29 @@ export function tagEnd(source: string, start: number): number {
  * its own line.
  */
 export function tagAround(source: string, index: number): string | null {
-  const start = source.lastIndexOf("<", index);
-  if (start < 0 || !/[A-Za-z/]/.test(source[start + 1] ?? "")) return null;
-  const end = tagEnd(source, start);
-  if (end < index) return null;
-  return source.slice(start, end + 1);
+  // Walk back over EVERY candidate `<`, not just the nearest one. The nearest
+  // is routinely not a tag: `if (n <= MAX)` inside a sibling handler's body
+  // puts a `<` between the real tag and the needle, and a single-shot lookback
+  // then answers `null` — which a census reads as "no element here", i.e. the
+  // site is silently dropped from the population rather than examined. That is
+  // how `PanelTextSizeRow`'s field stayed invisible to task 529's census while
+  // its identical twin `SizeStepper` was caught: one of them happens to have a
+  // comparison in its `onChange`. Anchoring is still what keeps a junk `<` from
+  // swallowing the tag AFTER it — that guarantee is preserved by requiring the
+  // resolved tag to actually CONTAIN `index`.
+  let from = index;
+  for (;;) {
+    const start = source.lastIndexOf("<", from);
+    if (start < 0) return null;
+    if (/[A-Za-z/]/.test(source[start + 1] ?? "")) {
+      const end = tagEnd(source, start);
+      // Contains the needle ⇒ this is the element. Ends before it ⇒ a sibling
+      // tag that closed already; keep walking back.
+      if (end >= index) return source.slice(start, end + 1);
+    }
+    if (start === 0) return null;
+    from = start - 1;
+  }
 }
 
 /** Every distinct JSX open tag whose text matches `needle`. */

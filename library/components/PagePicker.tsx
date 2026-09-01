@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 
 /** `[label] / count` printed-page selector — seeds the input with the current
  *  page label, jumps to the typed LABEL on Enter / go. Renders nothing for
@@ -28,6 +29,13 @@ export default function PagePicker({
   const { pages: marks, currentLabel, scrollToPage } = pages;
   const [draft, setDraft] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // The box jumps on blur and cancels on Escape, and `.blur()` inside a keydown
+  // fires `focusout` SYNCHRONOUSLY — so the `setDraft(null)` in that branch is
+  // batched and `commit` still reads the TYPED label. Pre-529 Escape scrolled
+  // the reader to the page it was meant to cancel, i.e. the cancel affordance
+  // did not exist and cost the reader their position.
+  // `@/lib/field-edit-session`.
+  const session = useFieldEditSession();
 
   // No anchors → nothing to pick.
   if (marks.length === 0) return null;
@@ -64,16 +72,19 @@ export default function PagePicker({
           setEditing(true);
           setDraft(e.target.value);
         }}
-        onBlur={commit}
+        onBlur={() => session.commit(commit)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            commit();
-            (e.currentTarget as HTMLInputElement).blur();
+            // One Enter, one jump: pre-529 the explicit `commit()` and the
+            // blur's own `onBlur` each ran it from this stale closure.
+            session.commitAndBlur(e.currentTarget, commit);
           } else if (e.key === "Escape") {
-            setEditing(false);
-            setDraft(null);
-            (e.currentTarget as HTMLInputElement).blur();
+            e.preventDefault();
+            session.cancel(e.currentTarget, () => {
+              setEditing(false);
+              setDraft(null);
+            });
           }
         }}
         aria-label="Go to printed page"

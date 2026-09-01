@@ -30,6 +30,7 @@ import {
 } from "@/lib/pane-resize/pointer-invariants";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
@@ -993,6 +994,16 @@ export function CardBodyTitle({
   // this input is uncontrolled and commits on blur, so `value` is stale for the
   // whole time the user is typing.
   const registerTitle = useCardTitleRegistration();
+  // This input was the one field in either silo that already satisfied task
+  // 529's law, by the OTHER legal mechanism: it is UNCONTROLLED, so its Escape
+  // branch restores the DOM `value` — the very source its `onBlur` reads — and
+  // the restore is therefore visible to the commit the `.blur()` fires
+  // synchronously. It takes the door anyway, because two spellings of one rule
+  // is one too many (task 486). The restore stays: it is what leaves the input
+  // showing the stored title if it re-renders. What the door adds is that the
+  // commit is SKIPPED by construction rather than by the restored value
+  // happening to equal the stored one.
+  const session = useFieldEditSession();
   const setInputRef = useCallback(
     (el: HTMLInputElement | null) => {
       inputRef.current = el;
@@ -1023,19 +1034,28 @@ export function CardBodyTitle({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onBlur={(e) => {
-            const v = e.target.value;
-            if (v !== (value ?? "")) onChange(v);
-            if (!v.trim()) setEditing(false);
+            const el = e.currentTarget;
+            session.commit(() => {
+              const v = el.value;
+              if (v !== (value ?? "")) onChange(v);
+              if (!v.trim()) setEditing(false);
+            });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
+              // Already ONE commit before 529 — this branch only blurs and lets
+              // `onBlur` do the work — so it is byte-equivalent through the
+              // door. It takes it so this input has one spelling of the rule
+              // rather than two.
               (e.target as HTMLInputElement).blur();
             } else if (e.key === "Escape") {
               e.preventDefault();
-              (e.target as HTMLInputElement).value = value ?? "";
-              setEditing(false);
-              (e.target as HTMLInputElement).blur();
+              const el = e.currentTarget;
+              session.cancel(el, () => {
+                el.value = value ?? "";
+                setEditing(false);
+              });
             }
           }}
           placeholder={placeholder}

@@ -20,6 +20,7 @@ import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile } from "@/lib/figures/pick-file";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 import { resolveBlockFrame } from "@/text-objects/block-frame";
 import FigureAnnotation from "./FigureAnnotation";
 
@@ -870,7 +871,11 @@ interface FigureChromeProps {
   beside?: boolean;
 }
 
-function FigureChrome({
+/** Exported for `figure-scale-escape.test.tsx`: the cancel/commit contract is a
+ *  fact about THIS component's keymap, and the enclosing NodeView cannot be
+ *  mounted without a whole editor. Same precedent as `MarkerButton` /
+ *  `MarginColumn` being exported for their own sweeps. */
+export function FigureChrome({
   currentPercent,
   canScale,
   onScale,
@@ -882,6 +887,14 @@ function FigureChrome({
   useEffect(() => {
     setDraft(String(currentPercent));
   }, [currentPercent]);
+
+  // The width box commits on blur and cancels on Escape, and `.blur()` inside a
+  // keydown dispatches `focusout` SYNCHRONOUSLY — so the revert `setDraft` below
+  // cannot be what stops the commit (it is batched, and `commitDraft` reads
+  // `draft` from THIS render). Pre-529 that meant Escape resized the figure to
+  // whatever had been typed and wrote a real `setNodeMarkup` transaction, while
+  // the box rendered the reverted number. `@/lib/field-edit-session`.
+  const session = useFieldEditSession();
 
   const commitDraft = () => {
     const num = parseInt(draft, 10);
@@ -949,14 +962,20 @@ function FigureChrome({
             e.stopPropagation();
             if (e.key === "Enter") {
               e.preventDefault();
-              commitDraft();
-              (e.target as HTMLInputElement).blur();
+              // Commit AND blur through the door: pre-529 the explicit call and
+              // the blur's own `onBlur` both ran `commitDraft` from this same
+              // stale closure — where `clamped !== currentPercent` still held —
+              // so one Enter dispatched TWO byte-identical `setNodeMarkup`
+              // transactions: two undo steps and two autosave arms per resize.
+              session.commitAndBlur(e.currentTarget, commitDraft);
             } else if (e.key === "Escape") {
-              setDraft(String(currentPercent));
-              (e.target as HTMLInputElement).blur();
+              e.preventDefault();
+              session.cancel(e.currentTarget, () =>
+                setDraft(String(currentPercent)),
+              );
             }
           }}
-          onBlur={commitDraft}
+          onBlur={() => session.commit(commitDraft)}
         />
         <button
           type="button"
