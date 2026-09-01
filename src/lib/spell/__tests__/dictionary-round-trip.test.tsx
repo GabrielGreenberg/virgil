@@ -121,6 +121,7 @@ function Harness({
   return (
     <SpellcheckProvider
       enabled={enabled}
+      autocorrect={false}
       paperWords={paper}
       addPaperWord={(w) => setPaper((prev) => [...prev, w])}
       globalWords={globalWords}

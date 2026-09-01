@@ -73,6 +73,8 @@ function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
     ensureCalls: 0,
     accepted: new Set<string>(),
     enabled: () => on,
+    // task 519 — the decorator is the CHECKER; the corrector is off here.
+    autocorrect: () => false,
     version: () => version,
     isAccepted: (w) => port.accepted.has(w),
     knownSync: (w) => verdicts.get(w),

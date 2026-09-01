@@ -9653,6 +9653,112 @@ dictionary's sidecar half, so the durable proof there is the unit round trip —
 type a misspelling and watch the squiggle arrive after the debounce, right-click
 it, correct it, and confirm `\emph{teh}` inside a command never flags.
 
+
+### The correction half: a WORD swap has no reverse map
+
+Same word layer, the WRITE (task 519, phase 3 of 3) — and the case where the
+gate the typographic rules ride is exactly right for a GLYPH and not enough for
+a WORD.
+
+`typographyToLatex` turns `–` back into `--` on every save, so a smart quote
+that lands somewhere it should not have is cosmetic-in-source and round-trips.
+That is the whole reason `smart-quotes.ts` may take TipTap's own input-rule
+gate alone, and why `LatexCommandMark` is DELIBERATELY not `code: true`
+(`latex-command.ts` says so in place: smartening a quote typed into a stray
+inherited command span keeps it emitting valid `.tex`). A word replacement has
+no reverse map at all: `\label{teh}` rewritten to `\label{the}` is a broken
+cross-reference, silently and forever.
+
+> **AUTOCORRECT IS A CURATED TABLE, NEVER A DICTIONARY.** A checker that
+> silently swapped a flagged word for its nearest neighbour would rewrite the
+> user's own vocabulary — a technical term, a surname, a coinage — with no
+> signal that anything happened, which is what the write-path doctrine is
+> against. Everything Virgil is unsure about gets a SQUIGGLE and a gesture;
+> only what a human has declared unambiguous is rewritten unasked. And the
+> table is WORDS ONLY: a row is two words, so a row that inserted a space, a
+> full stop or a capital is unwritable.
+
+`AUTOCORRECT_TABLE` ([autocorrect.ts](src/lib/tiptap/autocorrect.ts)) is the
+SSOT — one `InputRule` is BUILT from it, so an addition is one row.
+
+Seven rules it earned:
+
+- **"Unambiguous" is CHECKABLE, and that is what makes the list safe to grow.**
+  The arbiter is the app's OWN shipped Hunspell dictionary — the same one the
+  checker reads — so a `wrong` the dictionary ACCEPTS (a real word someone
+  mistook for a typo) or a `right` it REJECTS fails CI, in the lower AND the
+  derived Title-case spelling. `dependant` is deliberately absent: it is the
+  standard British noun, and the failure direction of a wrong row is a rewrite
+  of the user's prose.
+- **The gate asks TWO rungs, because a construct is raw LaTeX BEFORE it is
+  finished** ([typed-prose-gate.ts](src/lib/tiptap/typed-prose-gate.ts)).
+  MEASURED on the real stack: a SETTLED `\label{teh}` is ONE text node wearing
+  `latexCommand`, which rung 1 (`isRawLatexMarkName`, the task-517 SSOT) sees;
+  an IN-FLIGHT `\textsc{teh` is `["\textsc" latexCommand] ["{teh" NO MARKS]`,
+  because `scanRawLatexSpans` fails CLOSED on an unbalanced group and claims
+  the command NAME only. One keystroke later the brace closes and the same
+  bytes ARE raw LaTeX — so **a verdict that depends on how far through a
+  construct the user has typed is not a verdict**. Rung 2 is therefore the
+  LOOSE scanner the grey `.latex-cmd` decoration and the `p-cmd-only` stamp
+  already share (`matchCommandLength`, whose own comment says it "include[s]
+  unclosed braces (user still typing)"): what the user is being SHOWN as a
+  command is not prose.
+- **Neither rung is redundant, and the divergence is a shipped fact rather than
+  caution.** `matchCommandLength` caps a command at TWO braced arguments where
+  the lexer's `scanRawLatexSpans` consumes the whole run — a cap task 349
+  removed there and not here. Measured on
+  `Alpha \addcontentsline{toc}{section}{teh} beta.`, the loose scan claims
+  `[6, 36)` and stops before `teh` at 37, while the mark covers the run whole.
+  So the 3-argument command is exactly where rung 1 is load-bearing, and it has
+  its own leg (an invariant with no leg is a habit — "The tag half").
+- **`\emph{teh}` — the task's own example — is the instructive NON-member.**
+  `\emph` is MODELLED, so a parse turns it into the ITALIC mark: there is no
+  raw LaTeX left to protect and correcting the word is right. What the example
+  really names is the IN-FLIGHT `\emph{teh `, which rung 2 declines. Both are
+  pinned, because the gate is about BYTES and not about which command they were
+  once written with.
+- **It asks the ONE authority for "this word is fine here."** A word in the
+  paper dictionary, the global list or a `references.bib` name is not a typo —
+  adding a word to your dictionary must stop Virgil CORRECTING it, not merely
+  stop it underlining it. That is also why the flag rides the SpellcheckPort
+  rather than a second provider: a document has exactly one answer to every
+  question about words, and the corrector asks two the checker already owns.
+- **Its own preference row, not a second meaning for `checkSpelling`.**
+  Underlining a word and REWRITING it are different permissions, and a user may
+  want either without the other. `autocorrectTypos`, Display group, default ON;
+  a surface that declared no port at all (the Library reader, a bare
+  `RichTextField`) corrects nothing — a surface that never stated an answer
+  gets no silent rewriting.
+- **The escape hatch is free and is the reason `undoable` matters.** TipTap's
+  core keymap runs `undoInputRule` FIRST on Backspace, so one Backspace
+  immediately after a correction restores the bytes the user actually typed;
+  the replacement is otherwise an ordinary history entry, never
+  `addToHistory: false`.
+
+Keystroke sanctity: the gate runs inside an `InputRule` HANDLER, i.e. only
+after its `find` has already matched, so it never touches the ordinary typing
+path; it is O(the block's text) and walks no document.
+
+CI: [autocorrect-typing.test.ts](src/lib/tiptap/__tests__/autocorrect-typing.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack one character at a time
+through the shipped `handleTextInput` prop — a single `insertContent` fires no
+input rule at all, so every leg would pass vacuously on it. The leg with teeth
+is the CENSUS
+([autocorrect-table.test.ts](src/lib/tiptap/__tests__/autocorrect-table.test.ts)):
+the table was never the part that could misbehave, a second copy of it is, and
+so is a hand-written alternation that stops tracking it, a consumer that
+re-derives the gate, or an extension mounted with no port — all of which
+type-check perfectly. Its needles read COMMENTS-STRIPPED source with a
+SYNTHETIC canary, because `codeOnly` blanks string literals and the needles ARE
+quoted text (the trap `_source-scan`'s own header records). Measured by
+neutering each half in turn: no gate at all takes 4 legs, rung 2 alone 1, rung
+1 alone 2, the accepted-word check 1, the preference 1, a planted second table
+1, a mount with no port 1, and a second gate consumer 1.
+
+**Owed, not claimed:** the preview minute. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real — type `teh ` in prose, then
+`\label{teh}` and edit inside it.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

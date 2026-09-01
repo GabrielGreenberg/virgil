@@ -80,6 +80,7 @@ import {
   GlossCell,
   ExpexNumbering,
   SmartQuotes,
+  Autocorrect,
   TabIndent,
   VirgilListKeymap,
   PgMarkChip,
@@ -2052,7 +2053,20 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // the plugin that turns the BROWSER's underline off for the surfaces it
     // paints — see `spellcheck-decorator.ts`.
     SpellcheckDecorator.configure({ port: ctx.spellcheckPortRef ?? null }),
-    ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
+    // Autocorrect (task 519) rides beside `SmartQuotes` and for the same
+    // reason: both are TYPE-TIME transforms of the user's prose, and both
+    // inherit TipTap's own input-rule gate by sharing its plugin. Its own gate
+    // — the one `SmartQuotes` deliberately does NOT take — is inside the rule
+    // (`typed-prose-gate.ts`): a word swap has no reverse map, so it may not
+    // fire inside a `latexCommand` run the way a glyph legitimately does.
+    // Main-only, matching `SmartQuotes`: a card body gets neither.
+    ...(isMain
+      ? [
+          SlashPopupExtension,
+          SmartQuotes,
+          Autocorrect.configure({ portRef: ctx.spellcheckPortRef ?? null }),
+        ]
+      : []),
     LinkedAnchor,
     LinkedAnchorGuard,
     ...(isMain

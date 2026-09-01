@@ -70,6 +70,8 @@ function makePort(): { ref: SpellcheckPortRef; rec: Recorder } {
   const verdicts = new Map<string, boolean>();
   const port: SpellcheckPort = {
     enabled: () => true,
+    // task 519 — this suite drives the CHECKER's gesture; the corrector is off.
+    autocorrect: () => false,
     version: () => 0,
     isAccepted: () => false,
     knownSync: (w) => verdicts.get(w),
