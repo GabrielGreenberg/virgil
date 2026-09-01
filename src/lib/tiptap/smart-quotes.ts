@@ -20,12 +20,29 @@ import { Extension, InputRule } from "@tiptap/core";
  * `latex-serializer.ts`, so the source `.tex` round-trips byte-for-byte
  * regardless of how the dash was entered.
  *
- * Scoping: all of these rules ride TipTap's `inputRulesPlugin`, which already
- * refuses to fire inside a `code`-spec node (code block) or on text carrying a
- * `code`-spec mark (inline code / verbatim). Math is an `atom` node with no
- * editable ProseMirror text, so an input rule can't fire inside it either.
- * That is what "gated to exclude code / math / verbatim" means here — the
- * framework does it; we don't re-check per rule.
+ * Scoping: all of these rules ride TipTap's `inputRulesPlugin`, which refuses
+ * to fire inside a `code`-spec NODE or on text carrying a `code`-spec MARK.
+ * Math is an `atom` node with no editable ProseMirror text, so an input rule
+ * can't fire inside it either. That is what "gated to exclude code / math /
+ * verbatim" means here — the framework does it; we don't re-check per rule,
+ * and adding a fourth typographic rule below inherits the gate by riding the
+ * same plugin.
+ *
+ * The gate is only as complete as the DECLARATIONS it reads, and until task
+ * 512 one was missing: `latexComment` declared `marks: ""` (byte-literal
+ * container) and NOT `code`, so every rule here fired inside a `%` comment
+ * block and wrote curly quotes and en/em dashes into the comment's own source
+ * bytes. It declares both now, and `prose-index.test.ts` pins that the two
+ * spellings of "byte-literal container" — a markless textblock, and a `code`
+ * textblock — are the same set, so a future verbatim node kind is gated by
+ * shipping rather than by someone remembering this file.
+ *
+ * The MARK half is deliberately asymmetric and must stay so: `latexVerbatim`
+ * and `latexCommentTail` are `code` (measured — a `"` typed inside either run
+ * is left literal), while `latexCommand` is deliberately NOT, because
+ * smartening a quote typed into a stray inherited command span is what keeps
+ * it emitting valid `.tex` (`latex-command.ts` says so in place). Do not
+ * "unify" that away.
  *
  * Doing the conversion at type time also bypasses any `latexCommand` mark
  * inheritance that would otherwise let a raw `"` / `--` through to the .tex.

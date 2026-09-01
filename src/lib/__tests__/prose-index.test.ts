@@ -299,6 +299,58 @@ describe("the excluded vocabulary is derived, not listed", () => {
     expect(proseBlocks).toContain("figureCaption");
   });
 
+  it("markless and `code` are the SAME set — two spellings of one fact (task 512)", () => {
+    // The rule above ("a node that admits no marks is a byte-literal
+    // container") is Virgil's spelling. `code` is the FRAMEWORK's spelling of
+    // the identical fact, and it is the one TipTap's input-rule runner actually
+    // reads (`$from.parent.type.spec.code`). Declaring one without the other is
+    // how they came to disagree: `latexComment` said `marks: ""` and not
+    // `code`, so every type-time transform fired inside a `%` comment —
+    // typography wrote curly quotes into the comment's own source bytes, and
+    // StarterKit's `code` mark rule DELETED a typed backtick pair outright.
+    //
+    // Pinning them as ONE SET is what stops the next verbatim node kind from
+    // shipping with the same hole: a markless textblock is gated by DECLARING
+    // itself, and a `code` textblock that started admitting marks fails here
+    // rather than silently becoming a prose container the index still skips.
+    const ed = mount("x");
+    const schema = ed.state.schema;
+    const markless: string[] = [];
+    const codeSpec: string[] = [];
+    for (const name of schemaTypeNames(ed)) {
+      const type = schema.nodes[name];
+      if (!type.isTextblock) continue;
+      const node = type.createAndFill() ?? type.create();
+      if (!blockCarriesProse(node)) markless.push(name);
+      if (type.spec.code) codeSpec.push(name);
+    }
+    expect(codeSpec.sort()).toEqual(markless.sort());
+    expect(markless.length).toBeGreaterThan(0);
+  });
+
+  it("each byte-literal container's WHITESPACE answer is pinned (task 512)", () => {
+    // ProseMirror derives it — `spec.whitespace || (spec.code ? "pre" : "normal")`
+    // — so adding `code` silently changes how the DOM PARSER reads the node.
+    // That is a clipboard behaviour with nothing to do with input rules, and
+    // the two members want OPPOSITE answers: a `codeBlock` is genuinely
+    // multi-line, so the derived "pre" is right and is left inherited; a
+    // `latexComment` is ONE `%` source line, and under "pre" a newline
+    // surviving out of pasted markup makes `% ${textContent}` emit a second
+    // LIVE `.tex` line. It is "normal" only because it says so, and this pin
+    // is what keeps that from being tidied away as redundant.
+    const ed = mount("x");
+    const schema = ed.state.schema;
+    const resolved: Record<string, string> = {};
+    for (const name of schemaTypeNames(ed)) {
+      const type = schema.nodes[name];
+      if (!type.isTextblock) continue;
+      const node = type.createAndFill() ?? type.create();
+      if (blockCarriesProse(node)) continue;
+      resolved[name] = type.whitespace;
+    }
+    expect(resolved).toEqual({ codeBlock: "pre", latexComment: "normal" });
+  });
+
   it("`RAW_LATEX_MARK_NAMES` is the carrier family PLUS the command mark", () => {
     // The derivation, stated: it is strictly WIDER than `CARRIER_MARK_NAMES`,
     // which `isOpaqueRun` must keep reading (a `latexCommand` scanner has to

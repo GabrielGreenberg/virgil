@@ -7351,6 +7351,84 @@ unrendered `form` attr 1, and the hand-listed `isOpaqueRun` 1.
 `x % TODO cite`, backspace the `%`, and open the code view: the annotation must
 be escaped prose, not a live comment.
 
+###### The container half: two spellings of one fact, and only one declared
+
+Same family, the BLOCK the three marks sit beside (task 512) — and the case
+where the fact was declared, correctly, in a vocabulary the layer that had to
+read it does not speak.
+
+`latexComment` declares `marks: ""`, and that IS "byte-literal container": a
+node admitting no marks can never wear a carrier, so Virgil has no way to say
+which of its characters are raw LaTeX, which is what verbatim MEANS. The prose
+index reads exactly that (`blockCarriesProse`, rule 2). TipTap's INPUT-rule
+runner asks the identical question in the framework's own vocabulary —
+`$from.parent.type.spec.code` — and `latexComment` did not answer it. So every
+type-time transform fired inside a `%` comment. Measured on the pre-512 tree:
+
+- typing `a--b "q" c---d` gave `% todo a–b “q” c—d` — curly quotes and en/em
+  dashes written into the comment's own SOURCE BYTES, which the serializer
+  emits raw. It round-trips, so the cost was cosmetic-in-source rather than
+  corruption, which is why it was filed `low`;
+- typing `` `code` `` **DELETED both backticks**. StarterKit's `code` MARK rule
+  matched, failed to apply a mark this node forbids, and kept its deletion
+  anyway. That one is LOSSY, and it is the reason the fix is the FRAMEWORK's
+  declaration rather than a predicate inside `SmartQuotes`: a gate confined to
+  our own rules closes the reported symptom and leaves its worse sibling live,
+  in the same block, at the same layer.
+
+> **Where two layers must agree about one fact, a node DECLARES it in both
+> vocabularies and a census pins them as ONE SET** — here every markless
+> textblock declares `code`, and every `code` textblock is markless. **And a
+> declaration that carries a DERIVED side effect declines it explicitly:**
+> ProseMirror resolves `spec.whitespace || (spec.code ? "pre" : "normal")`, so
+> `code` silently changes how the DOM PARSER reads the node — a clipboard
+> behaviour with nothing to do with input rules.
+
+Four rules it earned:
+
+- **The whitespace flip is DECLINED, not inherited, and the hazard is real
+  rather than theoretical.** A comment is ONE `%` source line, so under `"pre"`
+  a newline surviving out of pasted markup makes `% ${textContent}` emit
+  `% line one\nline two` and put the SECOND LINE LIVE in the `.tex` — the
+  corruption class this cluster exists to prevent, introduced by its own fix.
+  `whitespace: "normal"` is stated at the site, so DOM parsing is byte-identical
+  to the pre-512 tree and the input-rule gate is bought on its own. Measured:
+  dropping that one line fails two legs, one of them the live-second-line pin.
+- **The two members want OPPOSITE whitespace answers, so the pin is a MAP.**
+  A `codeBlock` is genuinely multi-line and PM's derived `"pre"` is right for
+  it; requiring an explicit declaration everywhere would be bureaucracy with no
+  defect behind it. The exact `{ codeBlock: "pre", latexComment: "normal" }`
+  pin catches a drift in either direction and makes a change a DECISION.
+- **The MARK half stays asymmetric and was MEASURED, not assumed.** The task
+  named the comment-TAIL mark as a suspect; driven through the real stack it is
+  already covered by its own `code: true` — typing inside a tail run leaves the
+  characters literal, while typing AFTER one smartens, which is correct because
+  `inclusive: false` makes what follows genuine prose that the serializer puts
+  on its own line. Both are pinned as non-regressions. `latexCommand` remains
+  deliberately NOT `code` (`latex-command.ts` says why in place): smartening a
+  quote typed into a stray inherited command span is what keeps it emitting
+  valid `.tex`. Do not "unify" that away.
+- **Every OTHER input rule was swept before the scope was drawn.** Inside a
+  comment, `- `, `# `, `1. `, `> `, `$x$`, `\emph{a}` and a nested `%` were all
+  ALREADY declined — by the schema, not by a gate — so the phenomenon was
+  exactly two rules wide and the fix is sized to it.
+
+CI: [comment-block-typography.test.ts](src/lib/tiptap/__tests__/comment-block-typography.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack, typing one character at a
+time through the shipped `handleTextInput` prop — a single `insertContent` fires
+no input rule at all and would pass on the pre-512 tree. **No pre-512 suite
+could see any of this**: `smart-quotes-dash-inputrules.test.ts` builds a minimal
+stack with no `latexComment` in it, so a comment block is unrepresentable in
+every one of its legs. The legs with teeth are the two AGREEMENT pins in
+[prose-index.test.ts](src/lib/__tests__/prose-index.test.ts) — the declaration
+was never the part that could misbehave, a future markless verbatim node that
+declares only one spelling is. Measured by neutering each half in turn: dropping
+`code` takes 4 legs, dropping `whitespace: "normal"` takes 3.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture plus a `.tex` round trip — no disk), so the check is cheap and real:
+type `"` and `--` after a `%` in a comment block and open the code view.
+
 #### The dispatcher half: the LAST layer that still read "unterminated" as "yours"
 
 Same round trip, and the case where the law had been written down twice, applied
