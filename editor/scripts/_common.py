@@ -611,11 +611,250 @@ def dev_home_or_none() -> Path | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# The SYNCED dev-loop home — one mailbox, every machine (task 521)
+#
+# All Virgil cowork now happens on a DIFFERENT computer from the one running
+# the scheduled loops (dream, worker, heartbeat, deploy). `dev_home()` above is
+# resolved from the PRIMARY CHECKOUT, and a laptop with no checkout resolves
+# nothing at all — so a reflection memo written from cowork there is not merely
+# invisible to the dream, it is never written. The famine the dream has
+# reported every night since 2026-08-26 stops being an accident and becomes
+# STRUCTURAL: the writer and the reader are on different disks.
+#
+# A checkout-relative home cannot answer that, and neither can a HOME-relative
+# one (the `~/.virgil-dev` the 431 move retired for exactly that reason: it
+# travels with neither the clone nor the account). What CAN is the transport
+# that already crosses these two machines and already carries Virgil traffic —
+# the Dropbox-synced `Virgil-Inbox/` the bug-report button writes into and the
+# heartbeat drains. Its `dev-loop/` subtree is this loop's synced home:
+#
+#   dev-loop/memos/    written from ANY machine, read here by the dream
+#   dev-loop/reports/  a COURTESY COPY of each nightly digest, readable there
+#
+# Three rules the shape rests on, all from the sync doctrine (AGENTS.md → "The
+# daemon half"), and the first is stated precisely because the tidy version of
+# it is false here:
+#
+#   * NO FILE HAS TWO WRITERS. A memo is not write-once — the reflection
+#     convention enriches the mechanical floor in place and tallies `runs: N`
+#     (`reflect._find_existing`) — but its identity is `(skill, taskId)` or
+#     `(skill, doc, day)`, so the only machine that ever writes it is the one
+#     that ran that skill. Two writers never meet on one file, which is the
+#     property that matters; write-once is merely the usual way of getting it.
+#   * the DIGEST does have a second reader-and-rewriter — `<date>.md` ROTATES
+#     in place on a same-day re-run and is the marker store — so it stays in
+#     the LOCAL `dev_home()`, and what crosses is an immutable timestamped
+#     copy under `reports/`.
+#   * a conflicted copy is READ-SIDE debris, never content — `_scan_sink`
+#     skips it rather than counting a daemon's rename as a second memo. That
+#     is the net under rule one rather than a substitute for it: a daemon can
+#     still rename a file aside mid-sync with only one writer involved.
+#
+# The ladder is PINS FIRST, then the synced home, then the computed local one,
+# and it FAILS OPEN at every rung: an explicit `VIRGIL_DEV_MEMOS_DIR` /
+# `VIRGIL_DEV_HOME` is a caller saying where these go and outranks discovery;
+# no synced home found is a SAID thing (see `memo_sink_kind`, which the dream
+# publishes and banners) and never a silent local fallback.
+# ---------------------------------------------------------------------------
+
+INBOX_ENV = "VIRGIL_INBOX"
+INBOX_DIRNAME = "Virgil-Inbox"
+DEV_LOOP_SUBDIR = "dev-loop"
+
+# Where the synced inbox is looked for, in order. `~/Dropbox` and the macOS
+# `CloudStorage` path are the same folder on a stock install (the first is a
+# symlink to the second) — both are listed because which one EXISTS differs by
+# machine and by Dropbox version, and `.resolve()` collapses them so a machine
+# carrying both never yields two sinks. `~/Virgil-Inbox` is last because it is
+# the hand-made symlink `virgil-tasks/REMOTE_INBOX.md` names: a machine whose
+# Dropbox lives somewhere unusual is reachable through it without an env pin.
+_SYNCED_INBOX_CANDIDATES = (
+    Path("Dropbox") / INBOX_DIRNAME,
+    Path("Library") / "CloudStorage" / "Dropbox" / INBOX_DIRNAME,
+    Path(INBOX_DIRNAME),
+)
+
+
+def synced_inbox_root() -> Path | None:
+    """The Dropbox-synced `Virgil-Inbox/`, or None on a machine that has none.
+
+    `VIRGIL_INBOX` pins it (the laptop's escape hatch when its Dropbox lives
+    elsewhere, and the test seam) and is honored WHETHER OR NOT it exists — a
+    pin is a caller statement, and the dir is created on first write, exactly
+    as `_dir_override` is treated everywhere else. Discovery, by contrast,
+    requires the directory to EXIST: an inbox nobody has ever synced is not a
+    transport, and inventing one would put memos in a folder no daemon
+    watches. Never raises."""
+    pinned = _dir_override(INBOX_ENV)
+    if pinned is not None:
+        return pinned
+    for rel in _SYNCED_INBOX_CANDIDATES:
+        cand = Path.home() / rel
+        try:
+            if cand.is_dir():
+                return cand.resolve()
+        except OSError:
+            continue
+    return None
+
+
+def dev_loop_root() -> Path | None:
+    """`<synced inbox>/dev-loop` — the loop's synced home, or None."""
+    inbox = synced_inbox_root()
+    return None if inbox is None else inbox / DEV_LOOP_SUBDIR
+
+
+def synced_memos_root() -> Path | None:
+    """`<synced inbox>/dev-loop/memos` — the cross-machine memo sink, or None."""
+    root = dev_loop_root()
+    return None if root is None else root / "memos"
+
+
+def synced_reports_root() -> Path | None:
+    """`<synced inbox>/dev-loop/reports` — where the dream drops a read-only
+    copy of each nightly digest so it can be read from another machine. A
+    COURTESY channel only: nothing that needs attention may live only here (the
+    task pipeline is the one attention surface). None on a machine with no
+    synced inbox."""
+    root = dev_loop_root()
+    return None if root is None else root / "reports"
+
+
+# The rungs `memo_sink_kind` reports, in ladder order.
+SINK_PINNED = "pinned"    # VIRGIL_DEV_MEMOS_DIR / VIRGIL_DEV_HOME — caller said so
+SINK_SYNCED = "synced"    # the cross-machine Virgil-Inbox/dev-loop/memos
+SINK_LOCAL = "local"      # the computed <primary checkout>/editor/dev/memos
+
+
+def _default_memos_root() -> Path:
+    """The memo sink the ladder resolves IGNORING `VIRGIL_DEV_MEMOS_DIR`.
+
+    Split out from `memos_root` because two callers need the ladder's answer
+    without the pin: `_is_throwaway_paper`, whose whole rule is "a pin AT the
+    default expresses no intent" (and which therefore has to know what the
+    default is), and `memo_sink_kind`. Raises `DevHomeUnresolved` only when
+    there is no synced home AND no resolvable checkout."""
+    pinned_home = _dir_override(DEV_HOME_ENV)
+    if pinned_home is not None:
+        return pinned_home / "memos"
+    synced = synced_memos_root()
+    if synced is not None:
+        return synced
+    return dev_home() / "memos"
+
+
 def memos_root() -> Path:
     """Where reflect writes and the dream reads the capture memos.
-    `VIRGIL_DEV_MEMOS_DIR` overrides (test seam + user pin); else
-    `dev_home()/memos`."""
-    return _dir_override("VIRGIL_DEV_MEMOS_DIR") or dev_home() / "memos"
+
+    Ladder: `VIRGIL_DEV_MEMOS_DIR` → `VIRGIL_DEV_HOME/memos` → the SYNCED
+    `Virgil-Inbox/dev-loop/memos` → `dev_home()/memos` (the primary checkout).
+    Raises `DevHomeUnresolved` only at the last rung — a machine with a synced
+    inbox needs no checkout at all, which is the whole point (task 521)."""
+    return _dir_override("VIRGIL_DEV_MEMOS_DIR") or _default_memos_root()
+
+
+def memo_sink_kind() -> str:
+    """Which rung of the memo ladder answered: `pinned` / `synced` / `local`.
+
+    The honesty half of the ladder. `memos_root()` alone cannot say whether a
+    memo written on another machine could ever arrive — a local answer and a
+    synced one are the same `Path` type — so "no synced sink found" would be a
+    silent fallback rather than a said thing. The dream publishes this and
+    banners `local`, the same treatment `memoSinkPresent` and `driftChecked`
+    get one field over. `local` on the machine that HOLDS the checkout is
+    merely narrow; on a cowork laptop it is the structural famine."""
+    if _dir_override("VIRGIL_DEV_MEMOS_DIR") is not None:
+        return SINK_PINNED
+    if _dir_override(DEV_HOME_ENV) is not None:
+        return SINK_PINNED
+    return SINK_SYNCED if synced_memos_root() is not None else SINK_LOCAL
+
+
+RETIRED_DEV_HOMES: tuple[tuple[str, str], ...] = (
+    # ("retired on", $HOME-relative base) — every base `dev_home()` has ever
+    # resolved to and no longer does. READ-SIDE ONLY; nothing may WRITE to one.
+    # Stored RELATIVE and joined at call time, never `Path.home()` at import:
+    # a home frozen at module load is the same class of cwd/env-independence
+    # bug `_dir_override` exists to prevent, and it makes the sink untestable.
+    ("2026-08-23", ".virgil-dev"),  # the machine-global home (task 431)
+)
+
+
+def extra_memos_roots() -> list[tuple[str, Path]]:
+    """Memo sinks this build no longer WRITES to but must still READ.
+
+    `memos_root()` is resolved independently by the READER (the dream, running
+    from the source checkout at HEAD) and by every WRITER (`reflect.py`,
+    running from whatever vintage of the skill bundle a paper folder happens to
+    carry — bundles re-sync on doc-open, so a paper the human has not opened
+    since a migration keeps writing with the OLD resolution, indefinitely).
+    There is no handshake between the two, so every sink migration SPLITS the
+    corpus silently: the reader's sink stays empty while real memos land in the
+    superseded one, and `nonDreamLifetimeCount: 0` then means "somebody wrote
+    where I no longer read" while reading exactly like "nobody has ever
+    written."
+
+    That is a fact about the SEAM rather than about the reader's own state —
+    the one question none of `driftChecked` / `memoSinkPresent` / the empty
+    `marker` / `everCapturedNonDream` / `nightsSinceLastDigest` can ask, and
+    the one that can make every one of them report healthily over a corpus
+    arriving somewhere else. Measured 2026-09-01, thirteen days after the 08-23
+    migration: five of eight bootstrapped paper folders (the most-worked-on
+    among them) still resolved `~/.virgil-dev/memos`.
+
+    The fix has to sit on the READ side, and that is a property of the problem
+    rather than a preference: the divergent writers are historical code in
+    folders the loop does not control, so nothing done to `reflect.py` today
+    reaches them. Migrating the writers forward (a re-sync) helps the papers it
+    reaches and cannot be relied on for the rest; reading EVERY sink is
+    complete over every writer, past and future, and costs one entry per
+    migration. Task 521's move to the synced home is the second such migration
+    and inherits the same treatment by construction — the LOCAL home joins this
+    list the moment the synced one is in use.
+
+    An explicit PIN (`VIRGIL_DEV_MEMOS_DIR` / `VIRGIL_DEV_HOME`) suppresses
+    this entirely, and that is the same rule `_is_throwaway_paper` states in
+    the WRITE direction: a caller who has said where the memos go has said
+    where ALL of them are. It is load-bearing rather than tidy — every dev-loop
+    suite pins a temp sink, so without it the union folds the human's real,
+    durable corpus into every test run.
+
+    Returns `(label, dir)` for each sink that EXISTS and is not the one in use,
+    so on a fresh machine this is empty and the union is a no-op. Never
+    raises: an unresolvable dev home is the gate's problem, not this
+    function's."""
+    if (_dir_override("VIRGIL_DEV_MEMOS_DIR") is not None
+            or _dir_override(DEV_HOME_ENV) is not None):
+        return []
+    try:
+        current = memos_root().resolve()
+    except (DevHomeUnresolved, OSError):
+        current = None
+
+    candidates: list[tuple[str, Path]] = []
+    local = dev_home_or_none()
+    if local is not None:
+        candidates.append((SINK_LOCAL, local / "memos"))
+    candidates.extend((retired_at, Path.home() / rel / "memos")
+                      for retired_at, rel in RETIRED_DEV_HOMES)
+
+    out: list[tuple[str, Path]] = []
+    seen: set[Path] = set()
+    for label, root in candidates:
+        try:
+            if not root.is_dir():
+                continue
+            real = root.resolve()
+        except OSError:
+            continue
+        if current is not None and real == current:
+            continue
+        if real in seen:
+            continue
+        seen.add(real)
+        out.append((label, root))
+    return out
 
 
 def digests_root() -> Path:
@@ -683,10 +922,14 @@ def _is_throwaway_paper(doc: Path) -> bool:
         # no intent — it is an ambient convenience export — and honoring it
         # disarmed this guard machine-wide for every test run (2026-08-14: 30
         # synthetic memos per suite run into the human's real stream).
-        home = dev_home_or_none()
+        # The default is the LADDER's answer minus this pin (task 521 put the
+        # synced home ahead of the checkout-relative one), never `dev_home()`
+        # alone — reading a superseded rung here would make every pin look like
+        # intent and disarm the guard machine-wide, which is exactly the
+        # ten-week failure the paragraph above records.
         try:
-            default_sink = (home / "memos").resolve() if home is not None else None
-        except OSError:
+            default_sink = _default_memos_root().resolve()
+        except (DevHomeUnresolved, OSError):
             default_sink = None
         if default_sink is None or override.resolve() != default_sink:
             return False  # pinned away from the default — the caller has said where these go

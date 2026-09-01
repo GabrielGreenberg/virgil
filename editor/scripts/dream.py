@@ -64,8 +64,12 @@ from _common import (
     dev_mode_enabled,
     die,
     digests_root as _shared_digests_root,
+    extra_memos_roots,
+    memo_sink_kind,
     memos_root as _shared_memos_root,
     source_repo_root,
+    synced_memos_root,
+    synced_reports_root,
 )
 
 # Reuse the chip-17 memo reader + its vocab — do NOT reinvent a parser.
@@ -498,24 +502,71 @@ def _memo_sink_present(memos_root: Path) -> bool:
     return memos_root.is_dir()
 
 
-def _read_corpus(memos_root: Path) -> list[dict]:
-    """EVERY memo in the sink, sorted oldest→newest — the corpus, unfiltered.
+# A sync daemon that meets a file it cannot reconcile RENAMES one side aside
+# rather than merging it. Those decorations are read-side DEBRIS, never
+# content: counted as memos they would inflate `nonDreamLifetimeCount` — the
+# very number the union exists to make honest — and re-report a memo the corpus
+# already holds. Only the two UNAMBIGUOUS grammars are matched (Dropbox's
+# parenthesised "conflicted copy", Syncthing's `.sync-conflict-`); iCloud's
+# bare " 2" suffix is deliberately NOT, because `reflect.py` mints exactly that
+# shape itself to disambiguate two memos written in the same second.
+_CONFLICT_COPY_RE = re.compile(r"conflicted copy|\.sync-conflict-", re.IGNORECASE)
 
-    Split out from `_select` so the window question ("what is new since the
-    last dream?") and the LIFETIME question ("has this sink ever held a real
-    skill run?") are answered from ONE scan. They are different questions and
-    must be answered independently — see `_corpus_lifetime` — but the sink is
-    read once, not twice."""
+
+def _scan_sink(memos_root: Path) -> list[dict]:
+    """Every memo in ONE sink directory, unsorted. `_read_corpus` is the door."""
     if not memos_root.is_dir():
         return []
     recs = []
     for p in sorted(memos_root.rglob("*.md")):
-        if p.name == ".gitkeep":
+        if p.name == ".gitkeep" or _CONFLICT_COPY_RE.search(p.name):
             continue
         try:
             recs.append(_load_memo(p, memos_root))
         except OSError:
             continue
+    return recs
+
+
+def _read_corpus(memos_root: Path,
+                 extra: list[tuple[str, Path]] | None = None) -> list[dict]:
+    """EVERY memo the loop can reach, sorted oldest→newest — the corpus.
+
+    Split out from `_select` so the window question ("what is new since the
+    last dream?") and the LIFETIME question ("has this sink ever held a real
+    skill run?") are answered from ONE scan. They are different questions and
+    must be answered independently — see `_corpus_lifetime` — but the sink is
+    read once, not twice.
+
+    The corpus is the UNION of the sink in use and every SUPERSEDED one that
+    still exists (`_common.extra_memos_roots`, which states why the fix belongs
+    on the read side). A writer resolves its sink from whatever vintage of the
+    bundle its paper folder carries, so a sink migration leaves real memos
+    landing in the old place for as long as that paper goes un-re-synced — and
+    the reader, scanning only its own sink, reports the loop has never been
+    fed. Reading all of them is what makes `everCapturedNonDream` mean what it
+    says.
+
+    Identity is the memo's path RELATIVE to its sink
+    (`<date>/<time>-<skill>.md`, minted from the reflection's own timestamp),
+    because a migration may COPY the old sink's contents across: the same memo
+    then genuinely exists at the same relative path in both, and a naive union
+    double-counts it. The sink in use wins a tie, so a record's `path` is
+    stable across the fix.
+
+    Each record carries `sink` — `""` for the sink in use, else the superseded
+    sink's label — so a caller can report the split without re-scanning."""
+    seen: dict[str, dict] = {}
+    for rec in _scan_sink(memos_root):
+        rec["sink"] = ""
+        seen[rec["path"]] = rec
+    for label, root in (extra or []):
+        for rec in _scan_sink(root):
+            if rec["path"] in seen:
+                continue          # the sink in use holds it too — same memo
+            rec["sink"] = label
+            seen[rec["path"]] = rec
+    recs = list(seen.values())
     recs.sort(key=_memo_sort_key)
     return recs
 
@@ -554,12 +605,40 @@ def _corpus_lifetime(corpus: list[dict]) -> tuple[bool, str | None, int]:
     return True, non_dream[-1].get("reflectedAt") or None, len(non_dream)
 
 
-def _select(memos_root: Path, marker: tuple[str, str] | None) -> list[dict]:
+def _extra_sink_split(corpus: list[dict]) -> tuple[int, int, list[str]]:
+    """How much of the corpus only a SUPERSEDED sink holds — the SEAM question.
+
+    Every no-signal flag before this one asks about the READER's own state: is
+    my prompt current (`driftChecked`), does my sink exist (`memoSinkPresent`),
+    did I read a marker (the empty `marker`), has my sink ever been fed
+    (`everCapturedNonDream`), did I run at all (`nightsSinceLastDigest`). None
+    of them asks whether the WRITERS and the reader agree about WHERE the
+    mailbox is — a fact about neither end, and the one that can make every
+    other flag report healthily over a corpus arriving somewhere else. See
+    `_common.extra_memos_roots`.
+
+    Returns `(extraOnlyCount, extraOnlyNonDreamCount, sinkLabels)`. The second
+    is the number that matters: a superseded sink holding only old
+    `skill: dream` self-memos is migration residue, while ONE real skill memo
+    there is a live writer this build no longer agrees with."""
+    extra = [r for r in corpus if r.get("sink")]
+    labels = sorted({r["sink"] for r in extra})
+    non_dream = sum(1 for r in extra if r.get("skill") != "dream")
+    return len(extra), non_dream, labels
+
+
+def _select(memos_root: Path, marker: tuple[str, str] | None,
+            extra: list[tuple[str, Path]] | None = None) -> list[dict]:
     """Every memo strictly after `marker`, sorted oldest→newest.
 
     An empty result is ambiguous by construction — see `_memo_sink_present`,
-    which callers publish alongside it so the two cases can be told apart."""
-    return _filter_since(_read_corpus(memos_root), marker)
+    which callers publish alongside it so the two cases can be told apart.
+
+    `extra` is threaded rather than resolved here so `select` and `digest` read
+    the SAME corpus: `digest` re-selects to re-derive the marker and the counts
+    authoritatively, and a union the two disagreed about would advance the
+    marker past a memo the run never reported."""
+    return _filter_since(_read_corpus(memos_root, extra), marker)
 
 
 def _filter_since(corpus: list[dict], marker: tuple[str, str] | None) -> list[dict]:
@@ -618,9 +697,11 @@ def cmd_select(_argv: list[str]) -> int:
     digests_root = _digests_root()
     marker, last_digest = _last_marker(digests_root)
     nights_since, nights_reason = _nights_since_last_digest(last_digest)
-    corpus = _read_corpus(memos_root)
+    extra_sinks = extra_memos_roots()
+    corpus = _read_corpus(memos_root, extra_sinks)
     recs = _filter_since(corpus, marker)
     ever_non_dream, last_non_dream_at, non_dream_lifetime = _corpus_lifetime(corpus)
+    extra_only, extra_only_non_dream, extra_seen = _extra_sink_split(corpus)
     summ = _summarize(recs)
 
     new_marker, marker_held = _advance_marker(
@@ -675,6 +756,33 @@ def cmd_select(_argv: list[str]) -> int:
         # the same "could not look" vs "looked and found nothing" split
         # `driftChecked` draws. See `_memo_sink_present`.
         "memoSinkPresent": _memo_sink_present(memos_root),
+        # ...and a sink that EXISTS still cannot say whether a memo written on
+        # another machine could ever arrive. All cowork now happens on a
+        # different computer from the one this loop runs on, so `local` here is
+        # the STRUCTURAL famine (task 521): the writer resolves a checkout the
+        # laptop does not have, and no memo is written at all. `synced` means
+        # the mailbox is the Dropbox-synced `Virgil-Inbox/dev-loop/memos` both
+        # machines reach; `pinned` means a caller said where these go.
+        # See `_common.memo_sink_kind`.
+        "memoSinkKind": memo_sink_kind(),
+        "syncedMemosRoot": (str(synced_memos_root())
+                            if synced_memos_root() is not None else None),
+        "reportsRoot": (str(synced_reports_root())
+                        if synced_reports_root() is not None else None),
+        # ...and every flag above is about the READER. These four are about the
+        # SEAM: a writer resolves its own sink from whatever bundle vintage its
+        # paper folder carries, so a sink migration silently routes real memos
+        # to a sink the reader has superseded — and `everCapturedNonDream:
+        # false` then reads "nobody has ever written" when the truth is
+        # "somebody wrote where I no longer look". The corpus above is the UNION
+        # over these, so they REPORT a split the reading has already healed.
+        # `extraSinkNonDreamMemos > 0` is a live divergent writer and the
+        # night's top finding; residue-only is a stale bundle worth re-syncing.
+        # See `_extra_sink_split` / `_common.extra_memos_roots`.
+        "extraSinksRead": [str(r) for _, r in extra_sinks],
+        "extraSinkMemos": extra_only,
+        "extraSinkNonDreamMemos": extra_only_non_dream,
+        "extraSinksHoldingMemos": extra_seen,
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),
         "lastDigest": (str(last_digest.relative_to(_digests_root()))
@@ -753,7 +861,9 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
 
     out: list[str] = ["---"]
     for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
-              "memoCount", "memoSinkPresent", "everCapturedNonDream",
+              "memoCount", "memoSinkPresent", "memoSinkKind",
+              "everCapturedNonDream",
+              "extraSinkMemos", "extraSinkNonDreamMemos",
               "nightsSinceLastDigest", "nightsSinceReason",
               "acted", "proposed", "refused",
               "bootstrap", "dreamSha"):
@@ -803,6 +913,50 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             f"the loop's own procedure, which is `neverSelfMerge` and therefore "
             f"cannot land unattended: the nightly spend accrues to a queue only "
             f"a human can drain."
+        )
+        out.append("")
+    # Independent of the two above, deliberately: with the corpus read as a
+    # UNION, a superseded sink holding real memos makes `everCapturedNonDream`
+    # TRUE, so the famine banner correctly does not fire — and the split would
+    # then go unmentioned entirely if this were another `elif`.
+    extra_all = fm.get("extraSinkMemos", 0)
+    extra_real = fm.get("extraSinkNonDreamMemos", 0)
+    if isinstance(extra_real, int) and extra_real > 0:
+        out.append(
+            f"> **⚠️ {extra_real} real skill memo(s) arrived in a SUPERSEDED "
+            f"sink — a live writer disagrees with this build about where the "
+            f"mailbox is.** They were read (the corpus is the union), so "
+            f"nothing is lost; what it means is that some paper folder is "
+            f"still running an older skill bundle and resolving "
+            f"`{fm.get('_extraSinks', '?')}`. Bundles re-sync on doc-open, so "
+            f"a paper the human has not opened since the migration keeps "
+            f"writing there indefinitely. Re-sync those folders "
+            f"(`python3 editor/scripts/sync_skills.py <paper>`); until then "
+            f"every reader-side flag above can read healthy over a corpus "
+            f"arriving somewhere else."
+        )
+        out.append("")
+    elif isinstance(extra_all, int) and extra_all > 0:
+        out.append(
+            f"> **Note — {extra_all} memo(s) in this corpus exist only in a "
+            f"superseded sink** (`{fm.get('_extraSinks', '?')}`), all of them "
+            f"`skill: dream` self-reflections. That is migration residue rather "
+            f"than a live divergent writer: it is read and counted, and the "
+            f"sink can be deleted once nothing writes there."
+        )
+        out.append("")
+    if fm.get("memoSinkKind") == "local":
+        out.append(
+            f"> **⚠️ No SYNCED mailbox — the memo sink is local to this "
+            f"machine (`{fm.get('_memosRoot', '?')}`).** All Virgil cowork now "
+            f"happens on a different computer, and a reflection written there "
+            f"resolves a checkout that machine does not have, so it is never "
+            f"written at all — the famine below is structural, not a quiet "
+            f"night. The loop expects "
+            f"`~/Dropbox/Virgil-Inbox/dev-loop/memos` (or `$VIRGIL_INBOX`) on "
+            f"BOTH machines; create the inbox folder here, and set "
+            f"`VIRGIL_DEV=1` (plus `VIRGIL_INBOX` if Dropbox lives elsewhere) "
+            f"on the cowork machine. See `_common.memo_sink_kind`."
         )
         out.append("")
     nights = fm.get("nightsSinceLastDigest", "")
@@ -967,6 +1121,46 @@ def _rotate_prior_digest(target: Path, new_iso: str) -> Path | None:
     return dest
 
 
+def _publish_report(text: str, iso: str, date_str: str) -> Path | None:
+    """Drop a read-only COPY of tonight's digest into the synced
+    `dev-loop/reports/`, so it can be read from the cowork machine.
+
+    A COURTESY channel and nothing more (task 521 §4, scoped down by Gabriel's
+    one-place ruling): **nothing requiring attention may live only here.**
+    Everything actionable keeps flowing through `~/virgil-tasks/`, which is the
+    one attention surface; this is for casual reading from the other machine.
+
+    WRITE-ONCE with a unique name, which is the sync doctrine rather than a
+    preference: the authoritative digest is `<date>.md` and it ROTATES in place
+    on a same-day re-run, and a file two machines can see being rewritten is a
+    conflicted copy waiting to be minted (AGENTS.md → "The daemon half"). So
+    the copy is keyed on the RUN (`<date>T<HHMMSS>Z-digest.md`), a second run
+    of a day adds a second file rather than replacing the first, and nothing
+    here is ever edited afterwards.
+
+    Best-effort: a synced inbox that does not exist, an unwritable mount, or a
+    daemon mid-sync yields `None` and no exception — the digest itself has
+    already landed durably, and losing a courtesy copy may not fail the run."""
+    reports = synced_reports_root()
+    if reports is None:
+        return None
+    stamp = iso.replace("-", "").replace(":", "")
+    # `2026-09-01T023045Z` — sortable, colon-free (portable), unique per run.
+    hhmmss = stamp[9:15] if len(stamp) >= 15 else "000000"
+    target = reports / f"{date_str}T{hhmmss}Z-digest.md"
+    n = 1
+    while target.exists():
+        target = reports / f"{date_str}T{hhmmss}Z-digest-{n}.md"
+        n += 1
+    try:
+        atomic_write([(target, text)])
+    except Exception as e:                      # noqa: BLE001 — courtesy only
+        print(f"dream: could not publish the digest copy to {reports}: {e}",
+              file=sys.stderr)
+        return None
+    return target
+
+
 def cmd_digest(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream.py digest")
     p.add_argument("--report", default=None,
@@ -979,8 +1173,11 @@ def cmd_digest(argv: list[str]) -> int:
     digests_root = _digests_root()
     marker, last_digest = _last_marker(digests_root)
     nights_since, nights_reason = _nights_since_last_digest(last_digest)
-    recs = _select(memos_root, marker)        # re-select → authoritative facts
+    extra_sinks = extra_memos_roots()
+    recs = _select(memos_root, marker, extra_sinks)   # re-select → authoritative
     summ = _summarize(recs)
+    corpus = _read_corpus(memos_root, extra_sinks)
+    extra_only, extra_only_non_dream, _extra_labels = _extra_sink_split(corpus)
 
     iso, date_str = _now_iso_date()
     new_marker, marker_held = _advance_marker(
@@ -998,7 +1195,15 @@ def cmd_digest(argv: list[str]) -> int:
         "bootstrap": bool((report.get("bootstrap") or "").strip()),
         "dreamSha": _dream_sha(),
         "memoSinkPresent": _memo_sink_present(memos_root),
-        "everCapturedNonDream": _corpus_lifetime(_read_corpus(memos_root))[0],
+        # Which rung of the sink ladder answered — recorded durably for the
+        # same reason the blackout measure is: a fact that reached only the
+        # prompt is the one a run forgets. `local` is the structural famine.
+        "memoSinkKind": memo_sink_kind(),
+        "everCapturedNonDream": _corpus_lifetime(corpus)[0],
+        # The SEAM measure, likewise durable.
+        "extraSinkMemos": extra_only,
+        "extraSinkNonDreamMemos": extra_only_non_dream,
+        "_extraSinks": " ".join(str(r) for _, r in extra_sinks),
         # The blackout measure, recorded in the DURABLE artifact and not only in
         # `select` — the two other no-signal conditions each render a banner from
         # frontmatter precisely so a run cannot forget to mention them, and a
@@ -1013,14 +1218,18 @@ def cmd_digest(argv: list[str]) -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
     rotated = _rotate_prior_digest(target, iso)
     fm["_rotated"] = rotated.name if rotated else ""
-    atomic_write([(target, _render_digest(fm, report, summ, recs))])
+    text = _render_digest(fm, report, summ, recs)
+    atomic_write([(target, text)])
+
+    published = _publish_report(text, iso, date_str)
 
     rel = target
     if _is_under(target, digests_root):
         rel = target.relative_to(digests_root)
+    tail = f" · copy → {published}" if published else ""
     print(f"Done: dreamed over {len(recs)} memo(s) "
           f"(acted {fm['acted']}, proposed {fm['proposed']}, refused {fm['refused']}). "
-          f"wrote {rel}")
+          f"wrote {rel}{tail}")
     return 0
 
 
