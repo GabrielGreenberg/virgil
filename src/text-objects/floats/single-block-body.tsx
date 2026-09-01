@@ -65,6 +65,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -282,8 +283,11 @@ export function SingleBlockBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "float",
       // Read-only kinds (displayMath) build the float editor non-editable;
       // floats gate editability via TipTap's own `editable` flag (the main

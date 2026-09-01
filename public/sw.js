@@ -15,7 +15,7 @@
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
 // their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
-const CACHE_NAME = "virgil-v7";
+const CACHE_NAME = "virgil-v8";
 
 // Same-origin curated TeX assets (P1 offline-assets). The main thread fetches
 // these in `provisionEngine` to seed the worker's kpse cache; precaching them
@@ -28,6 +28,18 @@ const CACHE_NAME = "virgil-v7";
 // lighter deploy simply precaches less.
 const TEX_ASSET_PRECACHE = ["./swiftlatex/swiftlatexpdftex.fmt"];
 const TEX_BUNDLE_MANIFEST = "./swiftlatex/texbundle/manifest.json";
+
+// The vendored Hunspell dictionary (task 518). Virgil's own spellchecker
+// FETCHES these two files, so without them it silently has no dictionary
+// offline — and the honest consequence of a failed load is that the surface
+// hands itself back to the browser's checker, i.e. the LaTeX-awareness quietly
+// disappears. Scope-relative, like every path in this file; the spellings are
+// pinned against `src/lib/spell/dictionary-asset.ts` by
+// `dictionary-asset.test.ts`, since a service worker cannot import TypeScript.
+const DICTIONARY_PRECACHE = [
+  "./dictionaries/en/index.aff",
+  "./dictionaries/en/index.dic",
+];
 
 // Cross-origin hosts whose responses we deliberately cache so they keep
 // working offline. Google Fonts is on the allowlist because the Fonts…
@@ -64,7 +76,7 @@ self.addEventListener("install", (event) => {
 async function precacheTexAssets() {
   try {
     const cache = await caches.open(CACHE_NAME);
-    const paths = [...TEX_ASSET_PRECACHE];
+    const paths = [...TEX_ASSET_PRECACHE, ...DICTIONARY_PRECACHE];
     // Optionally fold in the texbundle manifest's listed asset paths.
     try {
       const manifestUrl = new URL(TEX_BUNDLE_MANIFEST, self.location.href).href;

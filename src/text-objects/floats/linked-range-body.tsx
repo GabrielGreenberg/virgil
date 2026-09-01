@@ -49,6 +49,7 @@ import {
 } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import type { EditorHandle } from "@/components/Editor";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -144,6 +145,7 @@ export function LinkedRangeBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     // FCU factory — the SAME stack as the main editor + every other prose float
     // (`surface: "float"` drops the doc-wide numberers / folding / main-only
@@ -151,6 +153,8 @@ export function LinkedRangeBody({
     // math / figures / examples round-trips faithfully; the prior hand-rolled
     // StarterKit subset dropped those node types → blank popout.
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "float",
       editable: true,
       cardContext: true,

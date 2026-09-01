@@ -36,6 +36,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -307,8 +308,11 @@ export function ListItemBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "float",
       editable: true,
       cardContext: true,

@@ -17,6 +17,8 @@ import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   TabIndent,
@@ -317,6 +319,8 @@ function RichTextFieldImpl({
 
   const initialContent = refreshAtomDisplay(normalizeRichContent(value));
 
+  const spellcheckPortRef = useSpellcheckPortRef();
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -352,6 +356,13 @@ function RichTextFieldImpl({
       // not, so an archived paragraph carrying a `\footnote` marker rendered
       // fine collapsed and went BLANK on expand (task 308).
       ...buildCardBodySchema(schemaScope, { includeLabelRef: true }),
+      // Virgil's own spellchecker (task 518). A card body is the user's prose
+      // too — the resolved decision was that notes and todos are checked like
+      // the paper — and this is the SECOND of the two extension stacks that
+      // mount it (the other is `buildEditorExtensions`); the surface census in
+      // `spellcheck-surface-census.test.ts` is what keeps the two in step. It
+      // is inert on a read-only field and outside a `SpellcheckProvider`.
+      SpellcheckDecorator.configure({ port: spellcheckPortRef }),
     ],
     content: initialContent,
     editable,

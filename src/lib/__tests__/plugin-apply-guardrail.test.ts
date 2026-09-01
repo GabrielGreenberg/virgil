@@ -96,6 +96,10 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   "src/lib/tiptap/linked-anchor.ts#appendTransaction[3]": "clean", // resurrection guard
   "src/lib/tiptap/pgmark.ts#apply": "tagged",
   "src/lib/tiptap/slash-popup.ts#apply": "clean",
+  // Takes the `touchedTextblocks` door too, but its reach walks nothing: the
+  // ONE whole-document arm (`allProseBlocks`) is reachable only from the
+  // plugin VIEW, behind the debounce, on a port `version()` bump.
+  "src/lib/tiptap/spellcheck-decorator.ts#apply": "clean",
   "src/lib/tiptap/title.ts#appendTransaction": "clean",
   "src/lib/tiptap/transient-highlight.ts#apply": "tagged",
 };

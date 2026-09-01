@@ -182,6 +182,9 @@ import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CardPresenceProvider } from "@/cards/presence";
+import { SpellcheckProvider } from "@/lib/spell/spellcheck-context";
+import { useSpellDictionary } from "@/hooks/useSpellDictionary";
+import { useGlobalDictionary } from "@/lib/spell/global-dictionary";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
@@ -1151,6 +1154,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     citationsHook.bibEntries,
   );
   const bibSettingsHook = useBibSettings(docId);
+  // Spellchecker inputs (task 518). The paper's own dictionary is a sidecar;
+  // the global list is a cross-window `localStorage` store; the preference is
+  // the ONE `checkSpelling` control task 517 established, so there is a single
+  // switch rather than one for Virgil's checker and one for the browser's.
+  // Absent view prefs (a host that passes none) reads as ON, which matches the
+  // registry default — and such a host is read-only anyway, where the plugin
+  // is inert by construction.
+  const spellDictionary = useSpellDictionary(docId);
+  const globalSpellWords = useGlobalDictionary();
+  const spellcheckEnabled = viewPrefs?.prefs.checkSpelling ?? true;
 
   // Register the editor `\cite{}` doc-rewrite as a migrator on the
   // IdentityCascade (T1 Stage 2, checklist step 9). When a citekey rename fans
@@ -5712,6 +5725,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         mounts. `ready` (editor + doc content) starts the T0→T1→full ramp;
         the keep-alive visibility context caps hidden panes at T1. */}
     <CardPresenceProvider ready={ready}>
+    {/* The spellchecker's per-DOCUMENT seam (task 518). It wraps everything —
+        the main editor, both docked rails and every portaled float — because a
+        document has exactly ONE answer to "is this word acceptable here", and a
+        card body must not disagree with the paper it sits beside. The port it
+        publishes is a stable ref, so a dictionary edit never rebuilds an
+        extension list (which would remount an editor). */}
+    <SpellcheckProvider
+      enabled={spellcheckEnabled}
+      paperWords={spellDictionary.words}
+      addPaperWord={spellDictionary.addWord}
+      globalWords={globalSpellWords}
+      bibEntries={citationsHook.bibEntries}
+    >
     <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
@@ -7328,6 +7354,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </DiagnosticsProvider>
+    </SpellcheckProvider>
     </CardPresenceProvider>
     </CardStoreProvider>
   );

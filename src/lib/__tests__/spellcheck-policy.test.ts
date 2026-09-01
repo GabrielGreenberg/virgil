@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import {
   NEVER_SPELLCHECK_ATTRS,
   NEVER_SPELLCHECK_PROPS,
+  VIRGIL_CHECKED_ATTRS,
   SPELLCHECK_ATTR,
   applyNativeSpellcheck,
 } from "@/lib/spellcheck-policy";
@@ -61,6 +62,16 @@ describe("the switch is one attribute on <body>", () => {
     // pref and need no knowledge of it.
     expect(NEVER_SPELLCHECK_ATTRS).toEqual({ spellcheck: "false" });
     expect(NEVER_SPELLCHECK_PROPS).toEqual({ spellCheck: false });
+  });
+
+  it("VIRGIL_CHECKED is the same VALUE and a different CLAIM (task 518)", () => {
+    // The hand-off Virgil's own checker contributes while it is live. Same
+    // bytes, different question — "who underlines this surface" rather than
+    // "may anyone" — which is why it is a third constant rather than a reuse:
+    // the census below would otherwise have to read the plugin's hand-off as a
+    // hand-written opt-out, and the two must stay tellable apart.
+    expect(VIRGIL_CHECKED_ATTRS).toEqual({ spellcheck: "false" });
+    expect(VIRGIL_CHECKED_ATTRS).not.toBe(NEVER_SPELLCHECK_ATTRS);
   });
 });
 

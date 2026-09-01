@@ -62,6 +62,7 @@ import {
 } from "@/lib/tiptap/transient-highlight";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import type { BlockAbsorbedHandlerRef } from "@/lib/tiptap/linked-anchor";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
@@ -520,8 +521,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     chromeAwareScrollMargin(() => editorViewDomRef.current),
   ).current;
 
+  const spellcheckPortRef = useSpellcheckPortRef();
   const editor = useEditor({
     extensions: buildEditorExtensions({
+      // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
+      spellcheckPortRef,
       surface: "main",
       editableRef,
       cardContext: false,

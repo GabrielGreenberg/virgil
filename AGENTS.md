@@ -9355,6 +9355,140 @@ a body attribute, no disk), so the check is cheap and real — search `emph` in
 the dev doc and get prose hits only, then toggle View › Check spelling and
 watch the squiggles go.
 
+### The word half: Virgil's own spellchecker
+
+Same index, one step further in (task 518, phase 2 of the approved three-phase
+program). Characters are not what a dictionary knows about, and the step from
+one to the other is not a formality: the 517 run table's GAPS carry information
+a character-level answer throws away.
+
+> **THE RUN GAP IS THE WORD BOUNDARY.** Two prose runs that abut in the
+> document are one word split at a MARK boundary; two separated by an atom or
+> by an excluded raw-LaTeX run are two.
+> [`prose-words.ts`](src/lib/spell/prose-words.ts) MERGES PM-contiguous runs
+> before tokenizing — within a segment the character offset and the PM offset
+> advance together, so a token's document position is `pmStart + offset` with
+> nothing to correct for — and it tells the two kinds of cut APART.
+
+Seven rules the pair earned:
+
+- **An ATOM ends a word; an excluded TEXT run does not.** `Smith`+`[1]` is a
+  finished word, and refusing to check one merely because a footnote marker
+  follows it would give up most of the checkable text in a real paper. An
+  excluded text run is different: it is characters the user typed that the index
+  deliberately did not read, so `un` + `\textsc{clear}` is a FRAGMENT and is not
+  checked. So a segment records, per edge, whether the child immediately across
+  the gap was TEXT. (`hardBreak` is a non-text node and correctly ends a word.)
+- **ONE authority for "this word is fine."**
+  [`accepted-words.ts`](src/lib/spell/accepted-words.ts) composes the paper's own
+  `dictionary.json`, the user's global list and every name in the bibliography's
+  `author`/`editor` fields — three SOURCES of one answer rather than three tests
+  scattered across the checker, the popover and the add affordance. It matches
+  case-insensitively in both directions and strips ONE trailing possessive;
+  nothing else is inferred, because a plural is a different word and guessing it
+  is morphology invented for a name the dictionary has never seen.
+- **The BASE dictionary is deliberately NOT one of those sources.** It answers
+  about ENGLISH and lives in the worker; the user's exceptions answer about the
+  USER and live on the main thread. That split is what lets a dictionary change
+  re-derive with no worker round trip, and what keeps
+  [`spell-core.ts`](src/lib/spell/spell-core.ts) a pure function of its two
+  assets — testable from a five-word inline `.dic` rather than a 550 KB one.
+- **A bibliography name drops its GROUPING BRACES before splitting, and that is
+  not a renegotiation of task 409.** 409 decided the braces SURVIVE the display
+  projection, because what a bare `{…}` MEANS needs a vocabulary this codebase
+  has no SSOT for; that is about what a READER sees. Here `wordsIn` would split
+  `L{ó}pez` into `pez` — the surname the user actually writes staying flagged
+  while a fragment of it was excused — and in an author field a grouping brace
+  has exactly one BibTeX meaning, so removing it before SPLITTING is a narrow,
+  name-field-only repair that renders nothing and invents no vocabulary.
+- **A SQUIGGLE IS A VIEW**, so every rule task 120 states applies verbatim:
+  [`spellcheck-decorator.ts`](src/lib/tiptap/spellcheck-decorator.ts) paints a
+  `DecorationSet` replaced by META-ONLY transactions — no undo step, no autosave
+  arm, nothing captured when the paragraph is archived.
+- **The keystroke path is empty.** `apply` maps the set, maps its dirty-block
+  list, and on a doc change adds the textblocks the transaction TOUCHED through
+  the shared `touchedTextblocks` door (tasks 400/430). It never walks the
+  document and never asks the dictionary. The ONE whole-document arm lives in
+  the plugin VIEW, behind a 300 ms debounce (the interactive tier — a spelling
+  squiggle at the lint tier's 1.5 s would feel broken), and runs only on a port
+  `version()` change: a preference flip, a dictionary edit, a bibliography
+  reload, a document load.
+- **The pass is TWO-PHASE, because positions move and the dictionary is async.**
+  Phase A tokenizes the blocks it owes, collects the words the client has no
+  cached verdict for, and awaits ONE warm-up; phase B re-reads the LIVE document
+  and builds synchronously. A word still unresolved after the warm-up is treated
+  as KNOWN — a missed flag is the status quo, a false squiggle is the thing this
+  feature must not be.
+- **The caret MOVING is what finishes a word.** A token containing the caret is
+  skipped (which stops `th` being underlined on the way to `the`), so a
+  selection change marks both the block the caret left and the block it entered
+  — two O(depth) resolves, scheduling a pass bounded by ONE block.
+
+> **ONE OWNER FOR "WHO UNDERLINES THIS SURFACE."** The plugin that PAINTS is the
+> plugin that turns the browser's underline off, contributing `spellcheck=false`
+> through its own `props.attributes` — declaratively, so ProseMirror adds and
+> removes it and it composes with `Editor.tsx`'s read-only opt-out rather than
+> fighting it. It goes away the moment the preference goes off, the surface goes
+> read-only, or the DICTIONARY FAILS TO LOAD: the honest answer to a failed load
+> is the browser's checker, not no checker. That hand-back is why
+> `spellEngineAvailable()` is published rather than swallowed, and
+> `spellcheck-policy.ts` now states THREE claims rather than two
+> (`NEVER_SPELLCHECK_*` = "a squiggle here would be nonsense"; the `<body>`
+> attribute = "the user turned checking off"; `VIRGIL_CHECKED_ATTRS` = "Virgil
+> underlines this surface"). `checkSpelling` stays ONE control for the pair.
+
+**The dictionary is VENDORED, and it has to be.** `dictionary-en@4` (US
+English) reads its files with `node:fs`, so the package cannot be imported in a
+browser at all: `tools/sync-dictionary.mjs` copies the Hunspell pair into
+`public/dictionaries/en/`, the Worker FETCHES it through `publicAssetUrl` (task
+365's door), and `sw.js` precaches it by the same paths — which a service worker
+cannot import, so the two spellings are pinned against each other. The package
+stays a dependency BECAUSE it is the source of truth that pin reads.
+
+**The suggestion menu is a gesture-scoped SINGLETON**
+([spell-menu-store.ts](src/lib/spell/spell-menu-store.ts)) whose REQUEST carries
+the document's own port, so one renderer at the app root serves every keep-alive
+pane and every portaled float with no per-document context. It opens on the
+CONTEXT MENU over a flagged word and falls through everywhere else — suppressing
+the browser's own menu is honest only where this surface has already declined
+the browser's checker. A suggestion is an ordinary undoable `insertText`, so
+Cmd+Z restores the misspelling and a correction inside a bold run stays bold.
+
+CI: [prose-words.test.ts](src/lib/spell/__tests__/prose-words.test.ts) drives
+the REAL main stack over the REAL parse, with the MERGE case and the CUT case
+over the same shape — an implementation that merged everything and one that
+merged nothing each fail exactly one leg.
+[spellcheck-decorator.test.ts](src/lib/tiptap/__tests__/spellcheck-decorator.test.ts)
+measures the keystroke cost as an A/B against the same stack with the plugin
+ABSENT, and the reason is worth carrying forward: an ABSOLUTE walk count is
+blind here, because a whole-document rebuild inside `apply` adds exactly ONE
+`descendants` call at every document size — measured, this leg's first draft
+compared two document SIZES and passed under its own neuter, and it passed a
+second time when the B arm was `{ current: null }` (which still registers the
+plugin) rather than `null` (which does not).
+[spell-suggestion-menu.test.tsx](src/components/__tests__/spell-suggestion-menu.test.tsx)
+drives the REAL gesture and the REAL menu.
+[spellcheck-surface-census.test.ts](src/lib/__tests__/spellcheck-surface-census.test.ts)
+is the leg with teeth: a prose surface that never names the checker type-checks
+perfectly, renders perfectly, and fails in the quietest possible way — the
+browser keeps its own underline there and nothing looks broken. Membership is
+DISCOVERED from every production file that builds an extension stack; allowlists
+EMPTY.
+
+**Residuals, stated.** English only, one dictionary, no language detection: a
+German quotation is underlined word by word until its terms are added. All-caps
+tokens are never checked (academic prose is dense with acronyms a stock
+dictionary does not know), so a shouted typo is missed — the right side of that
+trade. And the checker sees only what the 517 index yields, which by that
+module's own stated non-goal excludes a `\caption{…}` payload inside a
+raw-LaTeX run: the index cannot say WHERE those characters are, and a payload it
+cannot place is one this checker must not claim.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked except the paper
+dictionary's sidecar half, so the durable proof there is the unit round trip —
+type a misspelling and watch the squiggle arrive after the debounce, right-click
+it, correct it, and confirm `\emph{teh}` inside a command never flags.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's
