@@ -29,7 +29,8 @@
     "build:meta-bundle": "node scripts/build-meta-bundle.mjs",
     "build:example-bundle": "node scripts/build-example-bundle.mjs",
     "build:skill-bundles": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/sync-local-mirrors.mjs",
-    "sync:local-mirrors": "node scripts/sync-local-mirrors.mjs"
+    "sync:local-mirrors": "node scripts/sync-local-mirrors.mjs",
+    "vendor:tex": "node scripts/vendor-tex-family.mjs --all"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

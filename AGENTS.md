@@ -10617,24 +10617,13 @@ pins WHICH WORDS reach the pane, which is a render fact no service or store test
 can reach. Measured by neutering each half in turn: the pre-454 dead end takes 3
 legs, the progress channel 4, and the pre-454 one-message pane 4.
 
-**Residuals, stated.** The pgf/tikz family is still NOT in the vendored offline
-bundle (`public/swiftlatex/texbundle/` — 82 entries, every package the dev doc
-needs except that one), so a first compile of any paper using it still streams
-60–100 files. Vendoring it would END the wait rather than making it survivable,
-and it is **sized**: measured against the shipped mirror, the 60-file core
-closure (pgf + pgfkeys + pgfmath + pgfsys + pgfcore + the two auto-loaded tikz
-libraries, plus `forest.sty` at 350 KB) is **1.50 MB**, against a 10 MB `.fmt`
-and ~1.5 MB of packages today — so it roughly doubles the package half and adds
-~13 % to the engine payload, and it lands in the service worker's precache.
-Two reasons it is a routed DECISION rather than a fix made here: the closure is
-an ESTIMATE (the real set comes from a live-compile capture, which a worktree
-cannot run, so a wrong guess ships bundle bytes nobody asks for — it fails open,
-never wrong, just wasted), and pgf is one package family among many a paper
-might want, so "vendor what this doc needs" is a policy question about the
-offline story rather than a bug. Left to Gabriel. And the per-file XHR timeout's effectiveness is unverified — the
-vendored file's own patch comment records that a synchronous cross-origin XHR
-*ignores* its timeout, which is an empirical claim someone hit and wrote down,
-and which a worktree cannot re-check.
+**Residual, stated.** The per-file XHR timeout's effectiveness is unverified —
+the vendored file's own patch comment records that a synchronous cross-origin
+XHR *ignores* its timeout, which is an empirical claim someone hit and wrote
+down, and which a worktree cannot re-check.
+
+**The pgf/tikz residual this section used to record is CLOSED by task 520** —
+see "The vendoring half" immediately below.
 
 **Owed, not claimed:** the preview acceptance. Compile behaviour is NOT
 FSA-masked — it runs in the dev preview — but a worktree cannot start the dev
@@ -10642,6 +10631,155 @@ server (Turbopack panics on the symlinked `node_modules`) and this run was
 unattended, so `virgil-dev` → `doc_devtest` → Compile → a rendered PDF is owed
 against clean `main`. What is proven here is the STRUCTURE: durability across a
 timeout, bounded convergence, and the words that reach the pane.
+
+
+### The vendoring half: a capture is the wrong instrument for a KNOWN closure
+
+Same path, and the case where the mechanism that fills the offline bundle could
+only be driven by the one thing a headless run cannot do (task 520). 454 made a
+cold tikz compile SURVIVABLE — streamed packages persist, retries continue, the
+pane narrates. This is the half that makes the wait DISAPPEAR.
+
+The bundle had ONE producer, `build-tex-bundle.mjs`, and it takes a **live
+capture**: a browser, a warmed worker, and a document that happens to exercise
+the packages you want. That is exactly right for the assets it was built for —
+a font, a map or an encoding is filed under a numeric kpse format code pdfTeX
+assigns at RUNTIME, so those keys cannot be hand-authored. It is exactly wrong
+for "vendor this package family", where the format code is KNOWN (kpse `tex` =
+26 — corroborated by every `.sty`/`.cls`/`.cfg`/`.def`/`.fd`/`.clo` row the
+original capture produced) and the closure is derivable from the sources
+themselves. So the family nobody had vendored was the family nobody COULD
+vendor without an afternoon of hand-copying, and 454 filed it as a routed
+decision for exactly that reason.
+
+> **A DECLARED family — seeds, plus the two things a source scan cannot infer —
+> is resolved against the mirror by a script; the RESULT is the checked-in
+> bundle.** Both producers write through ONE door
+> ([tex-bundle-manifest.mjs](scripts/lib/tex-bundle-manifest.mjs)), which merges
+> **by family**: each replaces exactly its own rows and carries every other
+> family's through. Adding the next family is an entry in
+> [tex-bundle-families.mjs](scripts/tex-bundle-families.mjs), not an afternoon.
+
+Seven rules it earned:
+
+- **The scan is a PROPOSAL and the declaration is where the imprecision is
+  REVIEWED.** TeX is Turing-complete and its loads are conditional, so no source
+  scan is exact — which is survivable only because both error directions fail
+  open (a missed file streams from the mirror exactly as today; an extra file is
+  wasted bytes) and *nothing here can make a compile fail that previously
+  succeeded*. What the declaration buys is that the imprecision lands as a DIFF
+  in the generated manifest rather than being re-decided by a regex on every run.
+- **TALKING about a load is not a load, and that is 1.0 MB of the answer.**
+  Measured on the shipped sources, the naive scan resolves 2.16 MB where the
+  real closure is 1.16 MB. Two rules recover the difference: `\string\usepackage{fp}`
+  PRINTS the call rather than performing it (which is a fact about TeX, so the
+  rule covers every loader instead of a list of the ones someone remembered —
+  and it is what answers pgf's dozen `\tikzerror{You need to say
+  \string\usetikzlibrary{calc}}` branches), and a `\DeclareOption{table}{…}`
+  body runs only if the caller passes that option (which is where xcolor's
+  `colortbl` → `array`, `color` and `pdfcolmk` came from; Virgil emits bare
+  `\usepackage` lines).
+- **A THIRD rule was written and DELETED, and finding it took a neuter rather
+  than a reading.** Dropping any line carrying an `…error`/`…warning`/`…typeout`
+  macro changed the closure by ZERO files with the two above in place — every
+  diagnostic in this corpus that names a load names it with `\string`, because
+  that is how TeX prints a control sequence. It was also the only rule that
+  could lose a REAL load, being line- rather than construct-granular. **A rule
+  that does nothing is worse than no rule: the next reader trusts it.** Its
+  would-be defect leg passed under its own neuter, which is what exposed it.
+- **The two things a scan cannot infer are the two things the declaration
+  states.** A MACRO is not a filename (`\input\pgfsysdriver` — so pdfTeX's
+  driver, `pgfsys-pdftex.def`, is a declared SEED), and what the FORMAT already
+  carries is invisible from the sources.
+- **…and "the format has it" is not a reason on its own — what matters is
+  whether the LOAD SITE EXECUTES.** This fix's own first cut excluded
+  `expl3.sty` on the strength of the format preloading expl3, reasoning that
+  `\RequirePackage{expl3}` would be answered by `\@ifpackageloaded`. It is not:
+  measured in the `.fmt` bytes, `ver@expl3-code.tex` occurs and `ver@expl3.sty`
+  does NOT, while sibling `\ver@<pkg>.sty` markers do — so the format loaded
+  expl3 by `\input expl3-code.tex`, never through the package wrapper, and
+  xparse's unconditional `\RequirePackage{expl3}` (reached from every
+  `\begin{forest}` paper) went straight to kpse. The exclusion cost ONE serial
+  blocking mirror fetch on exactly the compile this family exists to speed up.
+  `expl3.sty` is vendored (4.4 KB); only its 1.05 MB payload is excluded, and
+  for a reason that is in the loader's own source rather than in the format's:
+  `expl3.sty` gates `{\input{expl3-code.tex}}` behind a `\csname tex\string
+  _let:D\endcsname` test, so with the code already loaded `\@gobble` swallows
+  it. The neighbouring `etex` rows are the same shape and were re-worded with
+  their real mechanism (both call sites are gobbled on a 2015+ kernel), because
+  one wrong sentence in that table had already produced one wrong exclusion.
+- **One cacheKey has one OWNER, so a closure that OVERLAPS is not a closure that
+  DUPLICATES.** forest's closure begins with all of tikz's; the overlap is still
+  fetched (its references are how the graph is walked) and the first family to
+  declare it keeps the row. Only the LABEL depends on declaration order; the set
+  of vendored bytes does not.
+- **…so `--all` REBUILDS ownership rather than merging into it**, or "trimming a
+  family is one config edit" is false in two directions. Clearing only the
+  STALE families leaves the other half live: a key cannot be RE-ASSIGNED,
+  because the writer's one-key-one-owner rule reads the manifest and rejects the
+  new owner's rows — so re-declaring a family another has since absorbed
+  silently loses that closure. Both were found by driving the round trip in the
+  direction the first cut did not: undeclare the FIRST family, not the last.
+  With the rebuild, both directions are exact — 174 rows → 145 → 174 dropping
+  `forest`, 174 → 172 → 174 dropping `pgf-tikz`, bundle byte-identical each
+  time. The clearing pass does not prune, since the bytes are about to be
+  re-resolved.
+- **`family` is a column with a READER, or it would be a dead facet.** The
+  producers read it to replace exactly their own rows — without which a family
+  whose closure SHRINKS leaves orphan rows, and orphan bytes, in the bundle
+  forever. Proven in practice: tightening the scan mid-task pruned the 16
+  over-fetched files on the next run.
+- **Lifting the writers into a shared door nearly DRAINED the census that
+  governs them.** `public-asset-url-ssot`'s task-365 leg greps
+  `build-tex-bundle.mjs` for `swPath` and for `bundlePaths.push` — and after the
+  refactor that file has neither, so the leg would have gone green while
+  enforcing nothing. It is RENEGOTIATED in place onto the shared writer and
+  WIDENED (both producers must go through it and neither may spell its own
+  strip), because *a wrapper relocates an obligation to its callers; it never
+  absorbs one* — task 331's rule, arriving at a census instead of a splice site.
+
+**Measured.** pgf/tikz: **63 files, 1.16 MB** (8 more of its closure was already
+vendored by the `core` capture). forest: **29 files, 1.10 MB** on top —
+1.5× what task 454's sizing predicted for it, because that estimate counted
+`forest.sty` as a LEAF where its real closure pulls xparse, etoolbox, environ,
+inlinedef, elocalloc, pgfopts and tikz's `shapes`/`fit`/`calc`/`intersections`
+libraries. Together **+2.26 MB over 92 files**, taking the engine payload from
+17.65 MB to 19.91 MB (+12.8 %) — the ~13 % 454 predicted, on a different
+baseline. That cost is paid ONCE at install, into the service worker's
+precache, and it replaces a per-paper wait of 60–100 serial blocking round trips.
+
+CI: [tex-bundle-integrity.test.ts](src/lib/__tests__/tex-bundle-integrity.test.ts).
+Its legs with teeth are the AGREEMENT ones, because the bundle's two consumers
+fail in OPPOSITE, SILENT ways: a `CORE_MANIFEST` row whose bytes are absent
+fetches a 404 that `fetchBundledBytes` swallows and the package then streams —
+i.e. exactly the wait this closes, with nothing visibly wrong — while a path the
+SW precaches that the engine never seeds is dead weight and one the engine seeds
+that the SW never precaches is missing when the user goes offline. So the two
+tables and the bytes on disk are asserted as three views of ONE set. Measured by
+neutering each half in turn: a missing byte, an orphan byte, a dropped SW path
+and a duplicate cacheKey each take 1 leg; the `\string` rule 1, the
+`\DeclareOption` blanker 1, and the escaped-`%` branch of the comment stripper 1
+(that last one matters in the direction that COSTS — without it the scan cuts at
+`\%` and silently never follows the real load after it).
+
+Beside them the WRITER's own legs, which exist because its paths are module
+constants and its decision was therefore untestable until `parseManifestRows`
+and `mergeFamilyRows` were extracted from it — leaving the change's central
+claim neuterable with the whole repo suite green, and the damage landing on the
+next run of the OTHER producer. Measured: a writer that forgets other families
+takes 4 legs, a prune keyed on one family's fileids 1, dropping
+one-key-one-owner 1, losing the legacy family-less row rule 1, and an undeduped
+SW list 1. `FORMAT_TEX` is anchored to the live capture's own `26/article.cls`
+rather than to itself — every closure leg builds its expected key from that
+constant, so without the anchor a drift to 27 would leave all of them green
+while the entire bundle sat at keys the worker never asks for.
+
+**Owed, not claimed:** done-when 5, the live capture that confirms the estimate.
+Compile behaviour is not FSA-masked but a worktree cannot start the dev server,
+so against clean `main`: clear the compile cache (IndexedDB), compile a tikz and
+a forest document, and confirm the progress pane reports ZERO mirror downloads
+for those families. **A straggler streaming IS the capture** — add its reqname
+to the family's seeds and re-run `node scripts/vendor-tex-family.mjs --all`.
 
 
 ## Vendored viewers: the WRAPPER owns the defaults, and the dist gets a CENSUS
