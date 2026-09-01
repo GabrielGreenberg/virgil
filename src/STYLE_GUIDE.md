@@ -1225,6 +1225,21 @@ than one that stays quiet. Contract:
 real drag pops out, per configuration, plus a census that the glyph has
 exactly one render site and it asks.
 
+**The same rule in CSS: the in-text atom grab (task 524).** The four
+inline atoms (footnote marker, citation, `\ref`, inline math) upgrade
+their base `cursor: pointer` to `grab` — but only under
+`.ProseMirror[data-atoms-graspable="true"]`, an attribute `InlineAtomGrab`
+stamps from the very predicate it gates its mousedown on. So the pointer
+promises a drag exactly where the gesture will take one. Every read-only
+surface (a collab non-pen-holder, a non-active keep-alive pane, the
+Library Reader, a live cowork-pen hold) falls back to `pointer`, which is
+the honest answer there — a click still opens the atom's Card — and a
+surface that never mounts the plugin at all (`RichTextField` card bodies)
+never carries the attribute. **Do not re-derive that scope from
+`contenteditable`**: the main editor pins it `"true"` whatever the
+user-facing state, so it would exempt the very surface the rule is for.
+Contract: `lib/tiptap/__tests__/atom-grab-affordance.test.ts`.
+
 ### The drop button (re-anchor) — header control
 
 Every card that has a text anchor carries a **drop button**: a

@@ -4584,20 +4584,26 @@ body.perf-contain .static-borrowed-text {
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
    `pointer` (click → Card / edit popover) is upgraded to `grab`; the
-   press shows `grabbing` until the drop-mode crosshair takes over. Same
-   (0,1,0) specificity as each atom's base rule but declared later, so it
-   wins. The grab gesture itself is read-only-gated in the plugin; this is
-   just the affordance. */
-.footnote-marker,
-.citation-node,
-.label-ref-node,
-.inline-math {
+   press shows `grabbing` until the drop-mode crosshair takes over.
+   Higher specificity than each atom's base (0,1,0) rule, so it wins.
+
+   SCOPED to `[data-atoms-graspable="true"]` — the attribute `InlineAtomGrab`
+   stamps from the very predicate it gates the gesture on (task 524). Before
+   that this rule was unconditional while the gesture was not, so every
+   read-only surface offered a drag it would refuse: a collab
+   non-pen-holder, every non-active keep-alive pane, the Library Reader, and
+   a live cowork-pen hold — the one moment the topbar is displaying a badge
+   whose whole job is to say the document is read-only. Where the attribute
+   is absent or "false" the base `cursor: pointer` answers, which is the
+   honest read-only affordance: a click still opens the atom's Card.
+
+   Do NOT re-derive the scope from `contenteditable`: MAIN pins it "true"
+   whatever the user-facing state (Editor.tsx), so it would exempt exactly
+   the surface this fix is about. */
+.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math) {
   cursor: grab;
 }
-.footnote-marker:active,
-.citation-node:active,
-.label-ref-node:active,
-.inline-math:active {
+.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math):active {
   cursor: grabbing;
 }
 
