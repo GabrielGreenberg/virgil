@@ -54,20 +54,22 @@
  *   - "modal"     (default) — scrim + centered (or near `anchorRef`); MODAL_SCRIM_Z.
  *   - "draggable" — scrimless tool window, drag-positioned by its header (wire the
  *                   header strip with {@link useSystemDialogDrag}); DRAGGABLE_DIALOG_Z.
- *   - "anchored"  — scrimless popover pinned at a viewport point (`at`) or near
- *                   `anchorRef`, clamped to the viewport; MODAL_SCRIM_Z.
- *                   NO PRODUCTION CONSUMER since task 495 deleted its only one
- *                   (the preference-mode picker). Retained as a primitive
- *                   capability, and said out loud rather than left to read as
- *                   in-use: whether an unused variant of a shared shell earns
- *                   its keep is a decision about the dialog system, not one a
- *                   deletion elsewhere gets to make. Its `at` prop and the
- *                   `outsideClickGuard` below have no caller for the same
- *                   reason. WIRE it or DELETE it — do not quietly assume it
- *                   ships. (Pinned by system-dialog-variants.test.tsx, and a
- *                   suite is not a consumer.)
- * The scrimless variants close on outside mousedown (skip via `ignoreOutsideSelector`
- * for the trigger button, or `outsideClickGuard` for a modifier gesture).
+ *
+ * A THIRD member, "anchored" (a scrimless popover pinned at a viewport `at`
+ * point, with its own clamp effect and an `outsideClickGuard` escape for a
+ * modifier gesture), was DELETED by task 515. Its only consumer was the
+ * preference-mode picker, which task 495 retired as a whole dead feature; 495
+ * left the capability standing and SAID so, and this is the decision that note
+ * asked for. `<Menu>` + `useFloatingMenuPosition` already own the two anchored
+ * shapes STYLE_GUIDE routes elsewhere, so the caller it was waiting for is not
+ * coming — and an untaken capability of a shared shell is a dead SSOT the next
+ * reader trusts (task 202). Recoverable from git if a genuine anchored-DIALOG
+ * need ever appears; do not re-add it ahead of its first caller. That "one
+ * variant, one production caller" rule is now a CENSUS
+ * (`system-dialog-variants-census.test.ts`), so this cannot recur silently.
+ *
+ * The scrimless variant closes on outside mousedown (skip via
+ * `ignoreOutsideSelector` for the trigger button).
  */
 
 import {
@@ -167,7 +169,7 @@ export function useSystemDialogDrag(): {
 
 /* ── SystemDialog ─────────────────────────────────────────────────── */
 
-export type SystemDialogVariant = "modal" | "draggable" | "anchored";
+export type SystemDialogVariant = "modal" | "draggable";
 
 export interface SystemDialogProps {
   open: boolean;
@@ -178,16 +180,9 @@ export interface SystemDialogProps {
   variant?: SystemDialogVariant;
   /** Position the dialog near this element instead of dead-center. */
   anchorRef?: RefObject<HTMLElement | null>;
-  /** variant="anchored": pin the frame at this viewport point (clamped to the
-   *  viewport). Takes precedence over `anchorRef`. */
-  at?: { x: number; y: number } | null;
   /** Scrimless variants: skip outside-click-close when the click matches this
    *  CSS selector (e.g. the trigger button that toggles the dialog open). */
   ignoreOutsideSelector?: string;
-  /** Scrimless variants: return true to suppress outside-click-close for this
-   *  event (a modifier gesture that should re-target rather than dismiss).
-   *  NO PRODUCTION CALLER since task 495 — see the "anchored" note above. */
-  outsideClickGuard?: (e: MouseEvent) => boolean;
   /** DOM id of the title element — set aria-labelledby. */
   labelledBy?: string;
   /** DOM id of the description element — set aria-describedby. */
@@ -236,9 +231,7 @@ export default function SystemDialog({
   size = "sm",
   variant = "modal",
   anchorRef,
-  at,
   ignoreOutsideSelector,
-  outsideClickGuard,
   labelledBy,
   describedBy,
   frameClassName = "",
@@ -287,9 +280,9 @@ export default function SystemDialog({
     initialFocusRef.current = initialFocus;
   });
 
-  // anchorRef positioning — the MODAL variant's near-element placement (scrim
-  // stays); the scrimless "anchored" variant computes its own point-clamped
-  // position in the layout effect below.
+  // anchorRef positioning — the MODAL variant's near-element placement (the
+  // scrim stays; STYLE_GUIDE: a confirm acting on ONE visible object opens
+  // against it). The scrimless variant is drag-positioned, never anchored.
   useEffect(() => {
     if (!open) return;
     if (variant === "modal" && anchorRef?.current) {
@@ -460,45 +453,10 @@ export default function SystemDialog({
     };
   }, [open, onClose, variant, panelRef]);
 
-  // Point-anchored placement for the scrimless "anchored" variant. The frame
-  // renders `visibility:hidden` until this effect measures it and clamps to the
-  // viewport, so the popover only ever paints at its final clamped position (no
-  // unclamped flash — just a one-frame delay before it appears).
-  const [anchoredPos, setAnchoredPos] = useState<
-    { top: number; left: number } | null
-  >(null);
-  useEffect(() => {
-    if (!open || !mounted || variant !== "anchored") {
-      setAnchoredPos(null);
-      return;
-    }
-    const el = panelRef.current;
-    const w = el?.offsetWidth ?? 340;
-    const h = el?.offsetHeight ?? 360;
-    const pad = 8;
-    let x: number;
-    let y: number;
-    if (at) {
-      x = at.x;
-      y = at.y;
-    } else if (anchorRef?.current) {
-      const r = anchorRef.current.getBoundingClientRect();
-      x = r.left;
-      y = r.bottom + 8;
-    } else {
-      x = (window.innerWidth - w) / 2;
-      y = (window.innerHeight - h) / 2;
-    }
-    setAnchoredPos({
-      left: Math.max(pad, Math.min(window.innerWidth - w - pad, x)),
-      top: Math.max(pad, Math.min(window.innerHeight - h - pad, y)),
-    });
-  }, [open, mounted, variant, at, anchorRef, panelRef]);
-
   // Outside-click-to-close for scrimless variants (the modal variant closes via
   // its backdrop instead). rAF-armed so the opening mousedown on the trigger
-  // doesn't immediately re-close; skips drags, in-frame clicks, the trigger
-  // selector, and any caller guard (e.g. a modifier retarget gesture).
+  // doesn't immediately re-close; skips drags, in-frame clicks, and the trigger
+  // selector.
   useEffect(() => {
     if (!open || !mounted || !scrimless || !onClose) return;
     let armed = false;
@@ -511,7 +469,6 @@ export default function SystemDialog({
       if (panelRef.current && target && panelRef.current.contains(target)) return;
       if (ignoreOutsideSelector && target?.closest?.(ignoreOutsideSelector))
         return;
-      if (outsideClickGuard?.(e)) return;
       onClose();
     };
     document.addEventListener("mousedown", handler);
@@ -525,7 +482,6 @@ export default function SystemDialog({
     scrimless,
     onClose,
     ignoreOutsideSelector,
-    outsideClickGuard,
     isDraggingRef,
     panelRef,
   ]);
@@ -551,28 +507,22 @@ export default function SystemDialog({
     dragging: isDraggingRef.current,
   };
 
-  // ── Scrimless variants (draggable / anchored) ──────────────────────
+  // ── Scrimless variant (draggable) ──────────────────────────────────
   // No backdrop; the frame IS the portal root, positioned fixed. role=dialog on
-  // the frame itself (no aria-modal — these are non-modal surfaces).
+  // the frame itself (no aria-modal — this is a non-modal surface). `scrimless`
+  // stays the SCRIM AXIS rather than collapsing into `variant === "draggable"`:
+  // it is the axis the modal branch below contrasts with, and it happens to
+  // have one member today (task 515 retired the other).
   if (scrimless) {
-    const zIndex =
-      variant === "draggable" ? DRAGGABLE_DIALOG_Z : MODAL_SCRIM_Z;
-    let placement: CSSProperties;
-    if (variant === "draggable") {
-      placement = dragPos
-        ? { position: "fixed", top: dragPos.y, left: dragPos.x }
-        : {
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-          };
-    } else {
-      // anchored: hidden until the effect clamps against the measured frame
-      placement = anchoredPos
-        ? { position: "fixed", top: anchoredPos.top, left: anchoredPos.left }
-        : { position: "fixed", top: 0, left: 0, visibility: "hidden" };
-    }
+    const zIndex = DRAGGABLE_DIALOG_Z;
+    const placement: CSSProperties = dragPos
+      ? { position: "fixed", top: dragPos.y, left: dragPos.x }
+      : {
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+        };
     return createPortal(
       <DialogCtx.Provider value={ctxValue}>
         <div
@@ -591,14 +541,14 @@ export default function SystemDialog({
     );
   }
 
-  // ── Modal variant (default) — scrim + centered/anchored frame ──────
+  // ── Modal variant (default) — scrim + centered/anchor-placed frame ─
   return createPortal(
     <DialogCtx.Provider value={ctxValue}>
       <div
         className={`fixed inset-0 ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
         // Keep centered dialogs clear of the OS window-control strip under WCO
-        // (and the notch under safe-area); inert for anchored dialogs and when
-        // the inset is 0 (normal tab). zIndex reads the MODAL_SCRIM_Z SSOT.
+        // (and the notch under safe-area); inert for an anchorRef-placed frame
+        // and when the inset is 0 (normal tab). zIndex reads MODAL_SCRIM_Z.
         style={{ zIndex: t.zIndex, paddingTop: "var(--window-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"

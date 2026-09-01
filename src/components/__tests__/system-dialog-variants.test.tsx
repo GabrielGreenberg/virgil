@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
 //
 // Pins task 033 surfaces #1/#3: the SystemDialog positioning variants. One shell
-// (portal, SYSTEM_DIALOG_TOKENS chrome, Esc, focus, outside-click) with three
-// principled placements — "modal" (scrim, centered), "draggable" (scrimless tool
-// window on DRAGGABLE_DIALOG_Z, header drags via useSystemDialogDrag), and
-// "anchored" (scrimless popover pinned + clamped at a point, MODAL_SCRIM_Z).
+// (portal, SYSTEM_DIALOG_TOKENS chrome, Esc, focus, outside-click) with two
+// principled placements — "modal" (scrim, centered) and "draggable" (scrimless
+// tool window on DRAGGABLE_DIALOG_Z, header drags via useSystemDialogDrag).
+//
+// A THIRD member, "anchored", was pinned here until task 515 DELETED it. Its
+// legs are RENEGOTIATED rather than silently dropped, because a suite is not a
+// consumer (task 202) and these were the only thing standing behind the
+// variant, its `at={{x,y}}` prop and its `outsideClickGuard` escape for four
+// months after task 495 retired their one production caller. Nothing survives
+// to re-scope: the `at` clamp and the guard existed for that variant alone, and
+// its "closes on a plain outside mousedown" half is the draggable leg above,
+// driven through the same rAF-armed listener. What replaces them is a SOURCE
+// census (`system-dialog-variants-census.test.ts`), which asks the question
+// this suite structurally could not — does each declared variant have a
+// production CALLER — so the next untaken member cannot sit half-alive.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
@@ -131,46 +142,5 @@ describe("SystemDialog — draggable variant", () => {
     await armOutsideClick();
     fireEvent.mouseDown(screen.getByTestId("trigger"));
     expect(onClose).not.toHaveBeenCalled();
-  });
-});
-
-describe("SystemDialog — anchored variant", () => {
-  it("is scrimless, rides MODAL_SCRIM_Z, and positions near the `at` point", () => {
-    render(
-      <SystemDialog open variant="anchored" at={{ x: 200, y: 150 }} onClose={() => {}}>
-        <div data-testid="content">hi</div>
-      </SystemDialog>,
-    );
-    const dialog = screen.getByRole("dialog");
-    expect(dialog.getAttribute("aria-modal")).toBeNull();
-    expect(dialog.style.zIndex).toBe(String(MODAL_SCRIM_Z));
-    // The positioning effect has run (act flushed it) → left/top set, visible.
-    expect(dialog.style.left).toBe("200px");
-    expect(dialog.style.top).toBe("150px");
-    expect(dialog.style.visibility).not.toBe("hidden");
-  });
-
-  it("suppresses outside-click-close when outsideClickGuard returns true", async () => {
-    const onClose = vi.fn();
-    render(
-      <div>
-        <button data-testid="outside">out</button>
-        <SystemDialog
-          open
-          variant="anchored"
-          at={{ x: 10, y: 10 }}
-          onClose={onClose}
-          outsideClickGuard={(e) => e.ctrlKey}
-        >
-          <div>hi</div>
-        </SystemDialog>
-      </div>,
-    );
-    await armOutsideClick();
-    // Guarded (ctrl held) → no close; plain click → close.
-    fireEvent.mouseDown(screen.getByTestId("outside"), { ctrlKey: true });
-    expect(onClose).not.toHaveBeenCalled();
-    fireEvent.mouseDown(screen.getByTestId("outside"));
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

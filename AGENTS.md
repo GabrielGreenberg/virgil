@@ -6293,24 +6293,110 @@ Measured by neutering back to the pre-495 tree: both legs fail, naming all 18
 dead imports and every retired file; re-adding the `dataPrefs` prop alone fails
 the retirement leg.
 
-**Residual, stated rather than swept: the deletion ORPHANED a capability of a
-shared primitive.** `PreferenceModePicker` was the only production consumer of
-`SystemDialog`'s `variant="anchored"` — and of the `at={{x,y}}` and
-`outsideClickGuard` props that serve it — so all three now have zero callers,
-pinned only by `system-dialog-variants.test.tsx`, and a suite is not a consumer.
-Neither census can see it: this one asks about IMPORTS, and the dead-PROP sibling
-asks whether a prop is read in its OWN declaring file, which `outsideClickGuard`
-is. Deleting an unused VARIANT of a shell every dialog in the app mounts is a
-decision about the dialog system rather than a consequence of retiring a picker,
-so what landed here is the half that is unarguable: the false prose. Both the
-component's docstring and `STYLE_GUIDE.md` now SAY the variant has no consumer
-and name WIRE-it-or-DELETE-it, instead of citing the deleted picker as its worked
-example. A capability honestly labelled untaken is not the half-alive third state
-— a capability whose docs still name a deleted exemplar is.
+**The residual this filed is CLOSED by task 515.** 495's deletion ORPHANED a
+capability of a shared primitive: `PreferenceModePicker` was the only production
+consumer of `SystemDialog`'s `variant="anchored"` — and of the `at={{x,y}}` and
+`outsideClickGuard` props that serve it — so all three had zero callers, pinned
+only by `system-dialog-variants.test.tsx`, and a suite is not a consumer. Neither
+census could see it: this one asks about IMPORTS, and the dead-PROP sibling asks
+whether a prop is read in its OWN declaring file, which `outsideClickGuard` was.
+Deleting an unused VARIANT of a shell every dialog in the app mounts is a decision
+about the dialog system rather than a consequence of retiring a picker, so what
+landed with 495 was the half that is unarguable — the false prose — and the
+capability was left standing and honestly labelled. 515 took the decision
+(DELETE: `<Menu>` + `useFloatingMenuPosition` already own the two anchored shapes
+STYLE_GUIDE routes elsewhere, so the caller it was waiting for was not coming)
+and, because the reason it had to BE a decision was that no instrument could see
+the shape, left one behind — see "The taxonomy half" below.
 
 **Owed, not claimed:** nothing. This is pure module wiring plus CSS — not
 FSA-masked, and the deletion is type-checked. The one visible change is a
 `cursor: help` and a hover outline that could never appear.
+
+#### The taxonomy half: a declared VARIANT is a promise that some caller asks for it
+
+Same law, the axis 495 could not reach (task 515) — and the case where the
+finding was filed as a DECISION precisely because no instrument could see it.
+
+`SystemDialog`'s `variant` axis is a declared TAXONOMY (`STYLE_GUIDE.md` →
+"Positioning variants"): one shell, principled placement variety, a table telling
+the next author which member to reach for. 495 left it with a member nothing
+asked for — `"anchored"`, plus the `at={{x,y}}` prop and the `outsideClickGuard`
+escape that existed to serve it — and the memo's own sentence is the whole
+diagnosis: *neither existing census can see the shape, which is why it is a
+decision, not a guard.* `dead-component-import-guardrail` asks about IMPORTS and
+this is a string union; the dead-PROP sibling asks whether a prop is read in its
+OWN declaring file, and `outsideClickGuard` was. So it sat half-alive for four
+months with the whole suite green and its own behavioural legs passing — because
+a suite is not a consumer (task 202), and here the suite was the ONLY thing
+standing behind three pieces of a shell every dialog in the app mounts.
+
+> **A member of a declared taxonomy is a promise that the app does that thing.
+> Every member has a production CALLER, or it is not a member.** The default
+> member is called by OMISSION (an unadorned `<SystemDialog>` IS a modal
+> caller), which the census has to state or it indicts the commonest shape there
+> is.
+
+Six rules it earned:
+
+- **The instrument is what turns the next occurrence from a memo into a failing
+  test.** The deletion alone is the surgical half; the reason this needed a task
+  at all was that nothing could SEE it, and shipping the deletion without an
+  instrument leaves the next orphaned member to be found by a human reading the
+  file — which is how this one was found, four months late.
+- **Membership is DISCOVERED on BOTH sides.** The union's members are read out
+  of the shell's own `export type SystemDialogVariant` declaration and the
+  DEFAULT out of its destructuring default, so a fourth variant is covered by
+  declaring itself; the population is the shared `<SystemDialog>` element walk.
+  A hand list inside the guard that outlaws hand lists is this defect one level
+  up.
+- **ONE population, two questions.** `dialog-cued-default-census` (task 389) was
+  already walking every production `<SystemDialog>` ELEMENT, so the variant
+  census does not open a second walk: both filter
+  [_dialog-sites.ts](src/components/__tests__/_dialog-sites.ts). Two
+  enumerations of "who the dialog sites are" is how one guard comes to be
+  scanning a set the other no longer is — task 415's rule for the write-door
+  population, one subsystem over. That refactor is behaviour-neutral and its
+  eight legs are the proof.
+- **An UNRESOLVABLE site fails CLOSED.** A `variant={someExpr}` is a site the
+  census cannot read, and a site it cannot read is one that can silently become
+  the last caller of a member — the whole failure being closed. It gets its own
+  leg with an empty expected list rather than being waved through. No production
+  site is dynamic today; if a real one ever needs to be, that is a decision to
+  take deliberately, not one a regex should make.
+- **The allowlist is EMPTY, and that is a claim rather than a default.** There
+  is no true statement of the form "this variant is part of the taxonomy but
+  nothing may call it" — which is exactly the sentence a `describedBy`-shaped
+  exemption would have forced, and why the census is scoped to the VARIANT union
+  and not to every prop of the shell. That scope was MEASURED, not assumed: of
+  the twelve members of `SystemDialogProps` exactly one (`describedBy`, the ARIA
+  counterpart of `labelledBy`) has no production caller, and an a11y counterpart
+  mandated by the pattern is not the same class as an untaken positioning
+  capability. The sibling unions were measured too and are fully called
+  (`ButtonVariant` 5/5, `SystemDialogSize` 5/5), so the phenomenon was specific
+  to this union rather than general — the refinement this file's own central
+  principle carries ("deep" is not "broadest blast radius").
+- **The retirement leg watches the two pieces a rename can bring back.**
+  `variant="anchored"` cannot return silently — it would not typecheck — but
+  `outsideClickGuard` and `at` are ordinary optional members of the shell's own
+  interface, so re-adding either type-checks, renders, and is invisible to every
+  behavioural test of the dialog. It reads COMMENT-STRIPPED source, because this
+  repo renegotiates a retired claim in place with the reason at the site and the
+  docblock explaining the deletion names both — a raw-source needle would outlaw
+  the very prose the fix is made of.
+
+CI: [system-dialog-variants-census.test.ts](src/components/__tests__/system-dialog-variants-census.test.ts).
+The behavioural legs in `system-dialog-variants.test.tsx` are RENEGOTIATED in
+place with the reason at the site rather than silently dropped: nothing survives
+to re-scope (the `at` clamp and the guard existed for that variant alone, and its
+"closes on a plain outside mousedown" half is the draggable leg, driven through
+the same rAF-armed listener), and what replaces them is the census, which asks
+the question that suite structurally could not. Measured by neutering: re-adding
+the member and its two props to the shell fails 2 legs, naming `anchored` and
+`outsideClickGuard` by name.
+
+**Owed, not claimed:** nothing. Pure type-checked deletion of a code path with no
+caller; the surviving variants' own legs are the regression net.
 
 ### The vocabulary half: a token two layers must agree on is spelled ONCE
 

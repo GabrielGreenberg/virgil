@@ -1921,7 +1921,7 @@ snippet?" at the end of a drag). One rule now, in
 | a plain single-line `<input>` inside the dialog | presses the cued default… | closes |
 | …unless that input called `preventDefault()` | the control keeps it | closes |
 | anywhere OUTSIDE a `modal` dialog | presses the cued default, stopped at document CAPTURE so the document behind never sees it | closes |
-| anywhere outside a `draggable` / `anchored` window | nothing — those are not modal | closes |
+| anywhere outside a `draggable` window | nothing — it is not modal | closes |
 
 Shift+Enter and a HELD (auto-repeating) Enter are never a dialog's key: the cue
 promises what a plain Return does, and a held Return must not repeat-fire a
@@ -1970,9 +1970,9 @@ request row — passes `anchorRef` so it opens against the thing it is about to
 change. Centering a surgical confirm asks the user to approve a destruction
 with nothing on screen binding the question to its target. `anchorRef` keeps
 `variant="modal"` (scrim stays; `system-dialog.tsx` places it on the anchor
-and clamps to the viewport) — it is not the scrimless `variant="anchored"`
-popover, and the imperative `useConfirmDialog()` correctly centers because it
-has no source element. The codebase is not uniform yet: the card-delete family
+and clamps to the viewport) — a placement of the modal variant, not a variant of
+its own, and the imperative `useConfirmDialog()` correctly centers because it has
+no source element. The codebase is not uniform yet: the card-delete family
 (`TodoRow`, the `panel-primitives` card delete) anchors, while
 `TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms still
 center and should adopt `anchorRef` when next touched.
@@ -2001,7 +2001,6 @@ that matches the surface, don't reinvent the shell:
 | --- | --- | --- | --- |
 | modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
 | draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
-| anchored popover at a point (**no consumer** — see below) | `"anchored"` | no | `MODAL_SCRIM_Z` |
 | context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
 | caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
 | resting margin trigger (bolt, pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
@@ -2010,15 +2009,27 @@ that matches the surface, don't reinvent the shell:
   owns the drag (one `useDragPosition`); wire a custom header strip as the grab
   handle with **`useSystemDialogDrag()`** (`{ onMouseDown, dragging }`). Pass
   `ignoreOutsideSelector` so clicking the topbar trigger doesn't close-then-reopen.
-- **`variant="anchored"`** — scrimless popover pinned at a viewport point via
-  `at={{x,y}}` (or `anchorRef`), measured and clamped inside the viewport before
-  it paints. Pass `outsideClickGuard` to keep a modifier gesture from dismissing.
-  **It has NO production consumer.** Its only one was the preference-mode picker,
-  which task 495 deleted as a whole dead feature; the variant, `at` and
-  `outsideClickGuard` survive as an untaken capability of the shell, pinned by a
-  suite — and a suite is not a consumer. Recorded here rather than left reading
-  as in-use, which is the very class 495 is about: reach for it and you are the
-  first caller, so weigh WIRE-it-or-DELETE-it before you assume it ships.
+- **There was a third member, `variant="anchored"`** — a scrimless popover
+  pinned at a viewport `at={{x,y}}` point, with an `outsideClickGuard` escape for
+  a modifier gesture. Task 515 **DELETED** it. Its only consumer was the
+  preference-mode picker, which task 495 retired as a whole dead feature; 495
+  left the capability standing and SAID so, and 515 is the decision that note
+  asked for. The table's own `<Menu>` and `useFloatingMenuPosition` rows already
+  own the two anchored shapes it routes elsewhere (a dropdown, a caret popup),
+  so the caller this variant was waiting for was not coming — and an untaken
+  capability of a shared shell is a dead SSOT the next reader trusts (task 202),
+  worse than none, because reaching for it you are the first caller and do not
+  know it. Recoverable from git if a genuine anchored-DIALOG need ever appears;
+  do not re-add it ahead of its first caller.
+
+  **This taxonomy now has an instrument.** Every member of the union must be
+  spelled by at least one production `<SystemDialog>` — the default `"modal"` by
+  OMISSION, the rest literally — enforced by
+  [system-dialog-variants-census.test.ts](components/__tests__/system-dialog-variants-census.test.ts),
+  with the members DISCOVERED from the shell's own union and the population
+  shared with the cued-default census. Allowlist EMPTY: there is no true
+  statement of the form "this variant is part of the taxonomy but nothing may
+  call it". So a variant and its first caller land together, or CI says so.
 - `FloatingPanel`-hosted tool windows (Fonts) keep their resizable shell but should
   derive header/surface chrome from `SYSTEM_DIALOG_TOKENS`, not bespoke literals.
 
