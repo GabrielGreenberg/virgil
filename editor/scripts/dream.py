@@ -884,8 +884,10 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         out.append(
             f"> **⚠️ The capture sink does not exist — this was not a quiet "
             f"night, it was a deaf one.** `{fm.get('_memosRoot', '?')}` is "
-            f"absent, so `memoCount: 0` above means the dream could not look, "
-            f"NOT that nothing was captured. `reflect.py` creates the sink on "
+            f"absent, so nothing above came from it — a zero `memoCount` "
+            f"means the dream could not look, NOT that nothing was captured, "
+            f"and a NON-zero one came entirely from the sinks named below. "
+            f"`reflect.py` creates the sink on "
             f"its first write, so this reads as benign on a machine's first "
             f"day and as a broken capture layer on its thirtieth — check the "
             f"calendar and the sink's own resolution before trusting any zero "

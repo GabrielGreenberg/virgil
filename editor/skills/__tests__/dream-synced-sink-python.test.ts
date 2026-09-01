@@ -46,7 +46,12 @@ describe("dev-loop synced mailbox (Python, editor silo)", () => {
         `Python synced-sink suite failed:\n${output}`,
       ).toBe(0);
       expect(output, output).toMatch(/^OK$/m);
-      expect(output).toMatch(/Ran (\d+) tests/);
+      // …and a FLOOR, because "OK" is what a suite gutted down to one leg also
+      // prints. The number is a floor rather than an equality so adding a leg
+      // is not a two-file change; it only ever moves up.
+      const ran = output.match(/Ran (\d+) tests?/);
+      expect(ran, `no test tally in output:\n${output}`).not.toBeNull();
+      expect(Number(ran![1])).toBeGreaterThanOrEqual(35);
     },
   );
 });

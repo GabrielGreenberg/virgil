@@ -689,6 +689,20 @@ def synced_inbox_root() -> Path | None:
     pinned = _dir_override(INBOX_ENV)
     if pinned is not None:
         return pinned
+    # A caller who has redirected ANY of the loop's sinks is running a
+    # sandboxed loop, and DISCOVERY may not reach past the sandbox into the
+    # human's real synced folder. This is the same rule `extra_memos_roots`
+    # states on the READ side — "a caller who has said where the memos go has
+    # said where all of them are" — and it belongs at this door because the
+    # WRITE side needs it just as much: `_publish_report` resolves through here,
+    # and without this every dev-loop suite's `dream.py digest` run dropped a
+    # junk copy into the real Dropbox inbox (measured 2026-09-01: 87 files in
+    # twenty minutes, from suites that had correctly pinned every sink they
+    # knew about). An explicit `VIRGIL_INBOX` is never suppressed — that IS the
+    # caller naming this one.
+    if any(_dir_override(k) is not None for k in
+           (DEV_HOME_ENV, "VIRGIL_DEV_MEMOS_DIR", "VIRGIL_DREAM_DIGESTS_DIR")):
+        return None
     for rel in _SYNCED_INBOX_CANDIDATES:
         cand = Path.home() / rel
         try:

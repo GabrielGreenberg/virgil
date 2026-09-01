@@ -39,8 +39,13 @@ Three claims, three groups of legs:
            file two machines can see being rewritten is a conflicted copy
            waiting to be minted (AGENTS.md → "The daemon half").
 
-Every fixture is a synthetic sink tree under a temp `$HOME`, so no leg depends
-on what the real corpus or the real Dropbox folder happens to hold.
+Every fixture is synthetic. The classes that resolve the LADDER run under a
+temp `$HOME` with the dev-loop env cleared (`_EnvCase`), because the ladder
+reads both; the ones that drive the corpus door or a subprocess pin their sinks
+explicitly instead, which reaches the same isolation by the other route. Either
+way no leg depends on what the real corpus or the real Dropbox folder holds —
+and `UnionEndToEnd` deliberately sets NEITHER pin, since both suppress the union
+by design and a fixture that pinned one would make that whole class vacuous.
 
 Run from anywhere:  python3 editor/scripts/tests/test_dream_synced_sink.py
 """
@@ -173,6 +178,38 @@ class SinkLadder(_EnvCase):
         self.assertEqual(_common.memos_root(),
                          pinned.resolve() / "dev-loop" / "memos")
 
+    def test_ANY_sink_pin_suppresses_DISCOVERY_of_the_real_inbox(self):
+        """The leg that would have caught the worst bug in this change.
+
+        Every dev-loop suite pins the sinks it knows about and drives
+        `dream.py digest` — and `_publish_report` resolved the inbox by
+        DISCOVERY, which no pin they knew about could reach. Measured
+        2026-09-01: 87 junk digest copies landed in the human's real, synced
+        Dropbox folder in twenty minutes, from suites that were doing
+        everything right. A sandboxed loop must not be able to write outside
+        its sandbox, and that is a property of the DOOR, not of each caller's
+        diligence."""
+        self.fake_checkout()
+        (self.home / "Dropbox" / "Virgil-Inbox").mkdir(parents=True)
+        self.assertIsNotNone(_common.synced_inbox_root())      # discoverable…
+        for pin in ("VIRGIL_DEV_HOME", "VIRGIL_DEV_MEMOS_DIR",
+                    "VIRGIL_DREAM_DIGESTS_DIR"):
+            os.environ[pin] = str(self.base / "sandbox")
+            self.assertIsNone(_common.synced_inbox_root(), pin)
+            self.assertIsNone(_common.synced_reports_root(), pin)
+            os.environ.pop(pin)
+        self.assertIsNotNone(_common.synced_inbox_root())      # …and restored
+
+    def test_an_explicit_VIRGIL_INBOX_is_never_suppressed(self):
+        """The pin IS the caller naming this one, so it outranks the
+        suppression — which is what lets this suite's own reports legs run
+        against a temp inbox while every other suite writes nothing."""
+        self.fake_checkout()
+        os.environ["VIRGIL_DREAM_DIGESTS_DIR"] = str(self.base / "dig")
+        os.environ["VIRGIL_INBOX"] = str(self.base / "inbox")
+        self.assertEqual(_common.synced_inbox_root(),
+                         (self.base / "inbox").resolve())
+
     def test_an_explicit_home_pin_outranks_the_synced_sink(self):
         """`VIRGIL_DEV_HOME` and `VIRGIL_DEV_MEMOS_DIR` are callers saying where
         these go; discovery may not override a statement. Both report `pinned`,
@@ -216,7 +253,14 @@ class SinkLadder(_EnvCase):
         inbox.mkdir(parents=True)
         self.assertEqual(_common.synced_reports_root(),
                          inbox.resolve() / "dev-loop" / "reports")
-        os.environ["VIRGIL_INBOX"] = ""            # cleared → back to discovery
+        # An EMPTY pin is not a pin — `_dir_override` strips and reads it as
+        # unset, so this falls back to discovery rather than to `Path("")`.
+        # (Asserting the same value twice under two different resolutions is
+        # only meaningful because the pin below names a DIFFERENT directory.)
+        os.environ["VIRGIL_INBOX"] = str(self.base / "pinned")
+        self.assertEqual(_common.synced_reports_root(),
+                         (self.base / "pinned").resolve() / "dev-loop" / "reports")
+        os.environ["VIRGIL_INBOX"] = ""
         self.assertEqual(_common.synced_reports_root(),
                          inbox.resolve() / "dev-loop" / "reports")
 
@@ -430,6 +474,37 @@ class ReportsChannel(unittest.TestCase):
                           "2026-09-01T091400Z-digest.md"])
         self.assertEqual(copies[0].read_text(), first, "the first copy is untouched")
 
+    def test_two_runs_at_the_SAME_stamp_never_clobber(self):
+        """The collision suffix. Reachable, not hypothetical: a retry fires the
+        same scheduled job with the same `VIRGIL_DREAM_NOW`, and the digest's
+        own rotation deliberately does NOT move a file whose `dreamedAt`
+        matches — so without the suffix the second run silently overwrites the
+        first copy, which is the one thing a write-once channel may not do."""
+        self._run("2026-09-01T02:30:45Z", inbox=self.inbox)
+        self._run("2026-09-01T02:30:45Z", inbox=self.inbox)
+        self.assertEqual([p.name for p in self._reports()],
+                         ["2026-09-01T023045Z-digest-1.md",
+                          "2026-09-01T023045Z-digest.md"])
+
+    def test_an_unwritable_reports_dir_loses_the_COPY_and_nothing_else(self):
+        """Best-effort by contract: the durable digest has already landed, and
+        a synced mount that is offline, full or read-only may not fail the run.
+        The warning goes to STDERR — stdout carries the `Done:` line."""
+        self._run("2026-09-01T02:30:45Z", inbox=self.inbox)
+        reports = self.inbox / "dev-loop" / "reports"
+        mode = reports.stat().st_mode
+        reports.chmod(0o555)
+        try:
+            r = self._run("2026-09-02T02:30:45Z", inbox=self.inbox)
+        finally:
+            reports.chmod(mode)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("Done:", r.stdout)
+        self.assertNotIn("copy →", r.stdout)
+        self.assertIn("could not publish", r.stderr)
+        self.assertTrue((self.digests / "2026-09-02.md").is_file())
+        self.assertEqual(len(self._reports()), 1, "only the first copy exists")
+
     def test_no_synced_inbox_means_no_copy_and_no_failure(self):
         r = self._run("2026-09-01T02:30:45Z", inbox=None)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -503,6 +578,134 @@ class ConflictedCopiesAtBothEnds(unittest.TestCase):
         import reflect
         self.assertIs(reflect.is_sync_conflict_name, _common.is_sync_conflict_name)
         self.assertIs(dream.is_sync_conflict_name, _common.is_sync_conflict_name)
+
+
+class UnionEndToEnd(unittest.TestCase):
+    """The union at the layer the LOOP runs — `cmd_select` and `cmd_digest`.
+
+    THE leg with teeth for this change, and the one the CorpusUnion class above
+    structurally cannot be: every leg there calls `dream._read_corpus` /
+    `dream._select` directly with a hand-built `extra` list, so the DOOR is
+    pinned and the two CALL SITES that must thread `extra_memos_roots()` into
+    it are pinned by nothing — both revert to the single-sink form with every
+    other leg in this file green. That is the change's own headline claim (the
+    SEAM question no reader-side flag can ask) going unpinned exactly where the
+    loop executes it, and it is this project's standing failure mode: the door
+    was never the part that could misbehave, a call site that never asks it is.
+
+    Everything runs as a SUBPROCESS over a synthetic `$HOME`, a synthetic
+    checkout and a pinned inbox, so the real corpus and the real Dropbox folder
+    are untouched and unread."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.co = self.base / "checkout"
+        (self.co / "editor" / "skills").mkdir(parents=True)
+        # A paper folder carrying a PRE-migration bundle writes here; this build
+        # writes to the synced inbox, so for the reader it is a superseded sink.
+        self.stale = self.co / "editor" / "dev" / "memos"
+        self.stale.mkdir(parents=True)
+        self.inbox = self.base / "inbox"
+        self.digests = self.base / "digests"
+        self.digests.mkdir()
+        self.home = self.base / "home"
+        self.home.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _env(self):
+        env = dict(os.environ)
+        env["VIRGIL_DEV"] = "1"
+        env["HOME"] = str(self.home)
+        env["VIRGIL_REPO_ROOT"] = str(self.co)
+        env["VIRGIL_INBOX"] = str(self.inbox)
+        env["VIRGIL_DREAM_DIGESTS_DIR"] = str(self.digests)
+        env["VIRGIL_DREAM_NOW"] = "2026-09-01T02:30:45Z"
+        # NEITHER pin may be set: both suppress the union by design, so a
+        # fixture that pinned one would make this whole class vacuous.
+        for k in ("VIRGIL_DEV_HOME", "VIRGIL_DEV_MEMOS_DIR"):
+            env.pop(k, None)
+        return env
+
+    def _run(self, sub: str, *args) -> subprocess.CompletedProcess:
+        r = subprocess.run([sys.executable, str(SCRIPTS / "dream.py"), sub, *args],
+                           capture_output=True, text=True, env=self._env(),
+                           cwd=str(SCRIPTS))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    def _digest(self) -> str:
+        self._run("digest", "--report",
+                  '{"acted":[],"proposed":[],"refused":[],"bootstrap":"x"}')
+        return (self.digests / "2026-09-01.md").read_text()
+
+    # -- the leg with teeth -------------------------------------------------
+    def test_cmd_select_reads_a_real_memo_out_of_a_SUPERSEDED_sink(self):
+        _memo(self.stale, "2026-08-30", "11-02-00", "draft-footnote")
+        out = json.loads(self._run("select").stdout)
+        self.assertEqual(out["memoSinkKind"], "synced")
+        self.assertFalse(out["memoSinkPresent"],
+                         "the synced sink has never been written to yet")
+        # …and the loop is nonetheless NOT starving: the memo is real, it is in
+        # the corpus, and the lifetime flag says so. Without the union threaded
+        # into cmd_select every one of these reverts.
+        self.assertEqual(out["memoCount"], 1)
+        self.assertTrue(out["everCapturedNonDream"])
+        self.assertEqual(out["nonDreamLifetimeCount"], 1)
+        self.assertEqual(out["extraSinkMemos"], 1)
+        self.assertEqual(out["extraSinkNonDreamMemos"], 1)
+        self.assertEqual(out["extraSinksHoldingMemos"], ["local"])
+        self.assertEqual([m["path"] for m in out["memos"]],
+                         ["2026-08-30/11-02-00-draft-footnote.md"])
+
+    def test_cmd_digest_reads_the_same_union_and_BANNERS_the_divergent_writer(self):
+        _memo(self.stale, "2026-08-30", "11-02-00", "draft-footnote")
+        text = self._digest()
+        self.assertIn("extraSinkMemos: 1", text)
+        self.assertIn("extraSinkNonDreamMemos: 1", text)
+        self.assertIn("everCapturedNonDream: true", text)
+        self.assertIn("real skill memo(s) arrived in a SUPERSEDED sink", text)
+        self.assertIn("sync_skills.py", text, "the banner names the remedy")
+        self.assertIn(str(self.stale), text, "…and the folder to re-sync")
+
+    def test_residue_only_gets_the_NOTE_not_the_warning(self):
+        """A superseded sink holding only old `skill: dream` self-memos is
+        migration residue, not a live divergent writer. The two must not read
+        the same, or the night's real top finding is diluted into furniture."""
+        _memo(self.stale, "2026-08-20", "09-00-00", "dream")
+        text = self._digest()
+        self.assertNotIn("real skill memo(s) arrived in a SUPERSEDED sink", text)
+        self.assertIn("exist only in a\nsuperseded sink".replace("\n", " ")
+                      .split(" only in a ")[0], text)
+        self.assertIn("migration residue", text)
+
+    def test_the_split_banner_is_INDEPENDENT_of_the_famine_banner(self):
+        """With the corpus read as a union, a superseded sink holding real
+        memos makes `everCapturedNonDream` TRUE — so the famine banner
+        correctly does not fire, and the split would go unmentioned entirely if
+        this were another `elif`."""
+        _memo(self.stale, "2026-08-30", "11-02-00", "draft-footnote")
+        text = self._digest()
+        self.assertNotIn("has NEVER captured a real skill run", text)
+        self.assertIn("SUPERSEDED sink", text)
+
+    def test_a_pin_suppresses_the_union_END_TO_END(self):
+        """The control. `VIRGIL_DEV_MEMOS_DIR` is a caller saying where the
+        memos are, so the same fixture must report the famine — which is what
+        keeps every OTHER dev-loop suite's temp pin from folding a real corpus
+        into its run."""
+        _memo(self.stale, "2026-08-30", "11-02-00", "draft-footnote")
+        env = self._env()
+        env["VIRGIL_DEV_MEMOS_DIR"] = str(self.base / "pinned-empty")
+        r = subprocess.run([sys.executable, str(SCRIPTS / "dream.py"), "select"],
+                           capture_output=True, text=True, env=env, cwd=str(SCRIPTS))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual(out["memoCount"], 0)
+        self.assertFalse(out["everCapturedNonDream"])
+        self.assertEqual(out["extraSinksRead"], [])
 
 
 class LocalSinkBanner(unittest.TestCase):

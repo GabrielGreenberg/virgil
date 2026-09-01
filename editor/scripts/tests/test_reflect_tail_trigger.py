@@ -131,9 +131,22 @@ try:
     # checkout-relative sink when it is not. What is NOT renegotiated is the
     # invariant both legs existed to protect and which the leg above still
     # pins: writer and reader resolve IDENTICALLY, from any cwd.
-    _synced = _common.synced_memos_root()
-    check(_synced is None or c == _synced,
-          f"with a synced inbox reachable, the default sink is IT ({_synced})")
+    # A SYNTHETIC inbox, not the real one: written as `_synced is None or …`
+    # against the developer's own `~/Dropbox` this leg asserts NOTHING on every
+    # machine that has no such folder — which is every CI runner, and the loop
+    # machine until the folder is created. The one leg claiming to pin the
+    # post-521 default would then be inert exactly where it matters.
+    _fake_inbox = Path(tempfile.mkdtemp(prefix="cowork-inbox-"))
+    _orig_sync = _common.synced_inbox_root
+    _common.synced_inbox_root = lambda: _fake_inbox
+    try:
+        _want = _fake_inbox / "dev-loop" / "memos"
+        check(reflect._memos_root() == dream._memos_root() == _common.memos_root() == _want,
+              f"with a synced inbox reachable, writer AND reader take IT ({_want})")
+        check(_common.memo_sink_kind() == "synced",
+              "…and `memo_sink_kind` reports which rung answered")
+    finally:
+        _common.synced_inbox_root = _orig_sync
     check(".virgil-dev" not in str(c),
           "…and never the retired machine-global ~/.virgil-dev (task 431)")
     # (1) with NO synced inbox, the sink falls back to the primary checkout —
@@ -152,8 +165,7 @@ try:
               "…and `memo_sink_kind` SAYS so — never a silent local fallback")
     finally:
         _common.synced_inbox_root = _orig_sync
-    check(_synced is None or _common.memo_sink_kind() == "synced",
-          "a reachable synced inbox reports kind=synced")
+
     _common._PRIMARY_CACHE.clear()
     _wt = Path(tempfile.mkdtemp(prefix="cowork-wt-"))
     _r = subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach", str(_wt)],
@@ -395,9 +407,27 @@ try:
     # put the synced `Virgil-Inbox/dev-loop/memos` ahead of the
     # checkout-relative sink, so reading a superseded rung here would make
     # every pin look like intent and disarm the guard machine-wide again.
-    os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_common._default_memos_root())
-    check(_common._is_throwaway_paper(sb),
-          "a pin AT the default sink expresses no intent — the guard stays armed")
+    # The default is stated CONCRETELY (a synthetic inbox), not read back out of
+    # `_default_memos_root()` — pinning to the function's own answer makes the
+    # leg true of whatever that function returns, including a wrong answer, so
+    # it would pass for an implementation that read a superseded rung.
+    _fake_inbox2 = Path(tempfile.mkdtemp(prefix="cowork-inbox2-"))
+    _orig_sync2 = _common.synced_inbox_root
+    _common.synced_inbox_root = lambda: _fake_inbox2
+    try:
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_fake_inbox2 / "dev-loop" / "memos")
+        check(_common._is_throwaway_paper(sb),
+              "a pin AT the default sink expresses no intent — the guard stays armed")
+        # …and the old default is no longer the default, so a pin there IS
+        # intent now. This is the half that fails if the guard keeps reading
+        # `dev_home()/memos` after the ladder moved on.
+        _home = _common.dev_home_or_none()
+        if _home is not None:
+            os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_home / "memos")
+            check(not _common._is_throwaway_paper(sb),
+                  "a pin at the SUPERSEDED default is a real pin — it writes")
+    finally:
+        _common.synced_inbox_root = _orig_sync2
 finally:
     os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
     if _prev is not None:
