@@ -4,30 +4,33 @@ r"""Landing-mode classifier + the three-boundary guard for the dev-dream night.
 This is the SHARED, low-risk seam the dream phase (/editor/dream, chip 18) and
 the manual stress-test (/editor/iterate-virgil-editor, chip 11) can both stand
 on — the genuinely-common mechanism extracted now, not a premature one-engine
-rewrite. It answers HOW a proposed change lands:
+rewrite. It answers two questions about a proposed change:
 
     classify_change(change) -> Verdict(mode, reason, boundary?, neverSelfMerge)
+    task_route(finding)     -> { queue, status, priority, questionsRequired, ... }
 
     mode ∈ { "acts", "proposes", "refused" }
 
-`mode` is the routing question ("apply it, stage it, or refuse it?").
-`neverSelfMerge` is the SECOND, independent question dream.md §6 asks of the
-same paths ("may this merge unattended once its gates are green?") — a change
-can be `proposes` because it is a script and unmergeable-unattended because it
-is THIS loop's script.  Both are answered here so neither is re-derived by eye.
+`mode` says how big and how risky the change is ("scoped, structural, or over a
+boundary?").
+`neverSelfMerge` is the SECOND, independent question asked of the same paths
+("is this the loop's OWN rulebook?") — a change can be `proposes` because it is a
+script and own-rulebook because it is THIS loop's script.  Both are answered here
+so neither is re-derived by eye, and `task_route` reads the pair to decide
+whether the night's task goes to the worker or to the human.
 
-  • ACTS    — lands directly on the dream's working branch (step 6 then disposes
-              of that branch in the same run; the user reverts via git):
-              a single-skill-prompt change that does NOT touch a behavior
-              contract — tighten wording, add a clarifying example, fix a typo,
-              expand guidance.  Recorded "ACTED" in the digest; reverted via git.
-  • PROPOSES — runs in a git worktree, recorded "PROPOSED": anything cross-skill,
-              any .py script change, anything touching the manifest
-              (docs/workspace/), any skill rename/merge/split, or any
-              behavior-contract-adjacent change.  The skill's §6 then LANDS it
-              on green gates or EXPORTS it as a patch and deletes the branch —
-              a `dream/*` branch never outlives its run, because the nightly
-              sweep merges every surviving branch blindly.
+  • ACTS    — a single-skill-prompt change that does NOT touch a behavior
+              contract: tighten wording, add a clarifying example, fix a typo,
+              expand guidance.  The SMALL, scoped end of the scale.
+  • PROPOSES — anything cross-skill, any .py script change, anything touching the
+              manifest (docs/workspace/), any skill rename/merge/split, or any
+              behavior-contract-adjacent change.  The STRUCTURAL end.
+     Since task 522 neither mode is a landing INSTRUCTION any more — the dream
+     files a task and the worker lands it, so the split says how big and how
+     risky the edit is (which the digest records and which
+     /editor/iterate-virgil-editor still honors by surfacing `proposes` for
+     scrutiny), while WHICH QUEUE the task goes to is `task_route`'s separate
+     answer below.
   • REFUSED — crosses one of the THREE load-bearing boundaries the loop CANNOT
               cross.  Logged in the digest as a refused item; never silently
               applied AND never proposed.
@@ -54,12 +57,14 @@ write path.
 CLI (for the skill and the test slice):
   dream_land.py --change '<inline-json>'      # classify one change → JSON verdict
   dream_land.py --change @path/to/change.json
-  git diff --name-only main...dream/<date> | dream_land.py --self-merge-check
-        # → { "neverSelfMerge": bool, "procedurePaths": [...], "reason": "..." }
-        #   dream.md §6's second question, asked of a BRANCH rather than a
-        #   change: may this merge unattended on green gates?  Every verdict
-        #   above also carries the same two fields, so a per-change caller
-        #   never has to ask twice.
+  dream_land.py --route '<inline-json>'       # a finding → its QUEUE routing
+  dream_land.py --route @path/to/finding.json
+        # → { "queue": "incoming"|"blocked", "status", "priority",
+        #     "questionsRequired": bool, "reason", … }
+        #   The whole operation the dream asks per finding.  The old
+        #   `--self-merge-check` door asked half of it about a BRANCH; the dream
+        #   has no branch since task 522, and the never-self-merge question now
+        #   lives inside this answer.
 A change object (every field but `paths` optional):
   { "summary": "tighten the anchor-lookup wording in draft-footnote",
     "paths": ["editor/skills/draft-footnote.md"],
@@ -256,26 +261,29 @@ def dev_loop_procedure_paths(paths) -> list[str]:
     """The DEV_LOOP_PROCEDURE members among `paths` (normalized, sorted).
 
     The whole operation, not a piece: "does this touch the loop's own operating
-    procedure?" has ONE answer, and both readers take it from here — the verdict
-    stamp below, and the `--self-merge-check` door step 6 asks about a BRANCH
-    (`git diff --name-only main...dream/<date>`), which has paths but no change
-    objects.  A caller that re-listed the membership would be the hand list this
-    set exists to retire."""
+    procedure?" has ONE answer and every reader takes it from here — the verdict
+    stamp below, and through it `task_route`, which turns the answer into a
+    BLOCKED task.  A caller that re-listed the membership would be the hand list
+    this set exists to retire."""
     touched = {_norm_path(p) for p in (paths or [])}
     return sorted(touched & DEV_LOOP_PROCEDURE)
 
 
 def self_merge_check(paths) -> dict:
-    """dream.md §6's never-self-merge question, answered for a set of paths."""
+    """The own-rulebook question, answered for a set of paths.
+
+    Kept (with its CLI door retired — task 522) because `task_route` reads it:
+    the membership question still has exactly one implementation, and the reason
+    string is what a blocked task quotes back to the human."""
     procedure = dev_loop_procedure_paths(paths)
     if procedure:
         reason = (f"touches the dev-loop's own operating procedure "
-                  f"({', '.join(procedure)}) — never merges unattended, however "
-                  f"green: export it as a patch, delete the branch, file a "
-                  f"DECISION task")
+                  f"({', '.join(procedure)}) — the human reviews the loop's own "
+                  f"rulebook, so this is a BLOCKED task with questions, never a "
+                  f"work task the worker lands")
     else:
-        reason = ("touches no dev-loop procedure file — the ordinary "
-                  "green-gates landing applies")
+        reason = ("touches no dev-loop procedure file — an ordinary work task "
+                  "for the worker")
     return {"neverSelfMerge": bool(procedure),
             "procedurePaths": procedure,
             "reason": reason}
@@ -487,6 +495,117 @@ def _route_change(change: dict) -> Verdict:
 
 
 # ---------------------------------------------------------------------------
+# Where does this finding's TASK go?  (task 522)
+# ---------------------------------------------------------------------------
+# The dream LANDS nothing.  Every actionable output is a task file, so the one
+# question a night actually has to answer per finding is WHICH QUEUE — `incoming/`
+# (the worker executes it) or `blocked/` (the catcher surfaces it to the human).
+# `classify_change` answers a DIFFERENT question and keeps answering it: how big
+# and how risky is this edit (`acts` / `proposes` / `refused`).  That verdict is a
+# PIECE; `task_route` is the whole operation the dream asks, so a night can never
+# get the two half-right by asking one and forgetting the other.
+
+ROUTE_CHANGE = "change"
+ROUTE_GATE = "gate-failure"
+
+QUEUE_INCOMING = "incoming"
+QUEUE_BLOCKED = "blocked"
+
+PRIORITY_NORMAL = "normal"
+PRIORITY_HIGH = "high"
+
+
+def _route(queue: str, priority: str, reason: str, **extra) -> dict:
+    return {"queue": queue,
+            "status": "ready" if queue == QUEUE_INCOMING else "blocked",
+            "priority": priority,
+            "questionsRequired": queue == QUEUE_BLOCKED,
+            "reason": reason,
+            **extra}
+
+
+def task_route(finding: dict) -> dict:
+    """Route ONE night's finding to a queue — the dream's only landing decision.
+
+    `finding` keys:
+      kind     "change" (default) | "gate-failure"
+      change   the change object `classify_change` takes   (kind="change")
+      fixNow   bool — the maintainer flagged it fix-now     (kind="change")
+      commit   str  — the commit the redness is ATTRIBUTED to (kind="gate-failure")
+
+    The rules, and why each is here rather than in the skill's prose:
+
+    * a **boundary refusal** (B1/B2/B3) is a ruling owed, so it is BLOCKED with
+      questions.  Pre-522 a refusal was "recorded, not acted" — recorded in a
+      digest, which is write-only.  Filing it is the whole point of the merge: a
+      refusal the human never reads is a refusal that decides by default.
+    * an **own-rulebook** change (`neverSelfMerge` — the loop's own procedure
+      files) is BLOCKED.  This is what the never-self-merge guard becomes once
+      the dream merges nothing: the question stops being "may this land
+      unattended?" and becomes "who reviews it?", and the answer is the same
+      human it always was.
+    * everything else is a READY work task; `fixNow` raises it to high.  The
+      `acts`/`proposes` split survives on the verdict (the digest records it, and
+      iterate still honors it) and buys no routing difference here, because the
+      worker lands both kinds of diff with the same discipline — which is the
+      distinction this merge dissolves.
+    * a **red gate** is a work task about the TREE, never a self-modification
+      proposal, so it routes to `incoming/` at high priority however deep in the
+      loop's own scripts the break happens to sit: the dream is not authoring
+      that repair, it is reporting a broken tree, and the worker lands it under
+      its own safety.  BUT an UNATTRIBUTED red gate is blocked instead — filing
+      one as a work task points a worker at a diff nobody has separated from the
+      tree's own state, which is the measured 2026-08-25 defect (a markdown edit
+      filed as the suspect for two guards a commit two hours older had broken).
+      Attribution is the price of a work task; without it the honest artifact is
+      a question."""
+    kind = (finding.get("kind") or ROUTE_CHANGE).strip().lower()
+
+    if kind == ROUTE_GATE:
+        commit = (finding.get("commit") or "").strip()
+        if not commit:
+            return _route(QUEUE_BLOCKED, PRIORITY_HIGH,
+                          "a red gate with no attributed commit is evidence about "
+                          "the TREE that nobody has separated from your own night's "
+                          "work — file the question, never a work task pointing a "
+                          "worker at an unseparated diff",
+                          kind=ROUTE_GATE, commit="")
+        return _route(QUEUE_INCOMING, PRIORITY_HIGH,
+                      f"red gate attributed to {commit} — a work task about the "
+                      f"tree, which the worker lands under its own safety",
+                      kind=ROUTE_GATE, commit=commit)
+
+    if kind != ROUTE_CHANGE:
+        return _route(QUEUE_BLOCKED, PRIORITY_NORMAL,
+                      f"unrecognized finding kind {kind!r} — a shape this door does "
+                      f"not understand is a question, never a silent work task",
+                      kind=kind)
+
+    verdict = classify_change(finding.get("change") or {})
+    stamp = {"kind": ROUTE_CHANGE,
+             "mode": verdict.mode,
+             "boundary": verdict.boundary,
+             "neverSelfMerge": verdict.never_self_merge,
+             "procedurePaths": verdict.procedure_paths}
+
+    if verdict.mode == LAND_REFUSED:
+        return _route(QUEUE_BLOCKED, PRIORITY_NORMAL,
+                      f"boundary refusal ({verdict.boundary}) — a ruling owed: "
+                      f"{verdict.reason}", **stamp)
+    if verdict.never_self_merge:
+        return _route(QUEUE_BLOCKED, PRIORITY_NORMAL,
+                      f"touches the loop's own operating procedure "
+                      f"({', '.join(verdict.procedure_paths)}) — the human reviews "
+                      f"the loop's rulebook, however green the gates",
+                      **stamp)
+
+    return _route(QUEUE_INCOMING,
+                  PRIORITY_HIGH if finding.get("fixNow") else PRIORITY_NORMAL,
+                  f"ordinary work ({verdict.mode}: {verdict.reason})", **stamp)
+
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -514,24 +633,27 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream_land.py", description=__doc__)
     p.add_argument("--change",
                    help="a change object as inline JSON or @file → a verdict")
-    p.add_argument("--self-merge-check", action="store_true",
-                   help="answer dream.md §6's never-self-merge question for the "
-                        "PATHS given as positional args (or one per line on "
-                        "stdin, e.g. `git diff --name-only main...dream/<date>`)")
-    p.add_argument("paths", nargs="*", help="paths for --self-merge-check")
+    # `--self-merge-check` (a BRANCH's touched paths → may it merge unattended?)
+    # is retired with task 522: the dream merges nothing, so there is no branch
+    # to ask about and the question survives INSIDE `--route`, which answers it
+    # as part of the whole operation. `self_merge_check` itself stays — it is
+    # what `task_route` reads, so the membership question still has exactly one
+    # implementation.
+    p.add_argument("--route",
+                   help="a finding object as inline JSON or @file → the QUEUE "
+                        "routing (incoming/ ready vs blocked/ with questions)")
     a = p.parse_args(argv)
 
-    if a.self_merge_check:
+    if a.route:
         if a.change:
-            print("error: --change and --self-merge-check are separate doors",
+            print("error: --change and --route are separate doors",
                   file=sys.stderr)
             return 2
-        paths = a.paths or [ln.strip() for ln in sys.stdin.read().splitlines()]
-        print(json.dumps(self_merge_check([q for q in paths if q]), indent=2))
+        print(json.dumps(task_route(_load_change(a.route)), indent=2))
         return 0
 
     if not a.change:
-        p.error("one of --change or --self-merge-check is required")
+        p.error("one of --change or --route is required")
     verdict = classify_change(_load_change(a.change))
     print(json.dumps(verdict.to_json(), indent=2))
     return 0

@@ -19,11 +19,17 @@ read-and-account work around it:
            counts, the high-water marker the NEXT dream reads), merge the
            agent's qualitative ACTED / PROPOSED / REFUSED entries, and write the
            morning digest to editor/dev/dream-digests/<date>.md.
+  file-task
+           file ONE of the night's findings as a task in ~/virgil-tasks/ — the
+           loop's only actionable output since task 522.  Mints the id under the
+           three-minter collision protocol, asks dream_land.task_route which
+           queue it goes to, and enforces the pipeline's schema bar.
 
-It does NOT route changes — that is dream_land.classify_change (the shared
-landing-mode helper + the three-boundary guard).  It does NOT itself edit a
-skill or run git: the skill applies the ACTS edits and stages the PROPOSES
-worktree; this script only accounts for them in the digest.
+It does NOT decide a queue by itself — that is dream_land.task_route, over
+dream_land.classify_change (the shared landing-mode helper + the three-boundary
+guard).  It does NOT edit a skill, create a branch, or run a merge: since task
+522 the dream LANDS NOTHING.  The worker is the one executor; this script writes
+the task that asks it, and the digest that accounts for the night.
 
 "Since the last dream": the previous digest records a `marker` (the highest
 memo timestamp it processed).  This run selects memos strictly after it, so an
@@ -43,10 +49,14 @@ Env overrides (test seams; never set in prod):
   VIRGIL_DEV_MEMOS_DIR       memo root          (shared with reflect.py)
   VIRGIL_DREAM_DIGESTS_DIR   digest root        (default: <repo>/editor/dev/dream-digests)
   VIRGIL_DREAM_NOW           ISO timestamp for the digest's dreamedAt + filename date
+  VIRGIL_TASKS_DIR           task queue root    (default: ~/virgil-tasks, and a
+                             pinned dev-loop sink suppresses discovery entirely
+                             so a sandboxed run cannot mint into the live queue)
 
 Usage:
   dream.py select
   dream.py digest [--report <inline|@file>]
+  dream.py file-task --task <inline|@file>
 """
 
 from __future__ import annotations
@@ -63,6 +73,7 @@ from pathlib import Path
 
 from _common import (
     SINK_LOCAL,
+    TASK_ID_DIRS,
     DevHomeUnresolved,
     atomic_write,
     dev_mode_enabled,
@@ -74,7 +85,12 @@ from _common import (
     memos_root as _shared_memos_root,
     source_repo_root,
     synced_reports_root,
+    tasks_root,
 )
+
+# The routing SSOT. `file-task` asks it rather than re-deriving a queue from a
+# verdict, so "where does this go?" has one implementation (task 522).
+from dream_land import task_route  # noqa: E402  (sibling module)
 
 # Reuse the chip-17 memo reader + its vocab — do NOT reinvent a parser.
 from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
@@ -831,9 +847,13 @@ def cmd_select(_argv: list[str]) -> int:
         "everCapturedNonDream": ever_non_dream,
         "lastNonDreamMemoAt": last_non_dream_at,
         "nonDreamLifetimeCount": non_dream_lifetime,
-        # Canonical UTC date — the branch name (step 4) keys off THIS, never a
-        # separate local date.today(), so branch and digest can't split across
-        # two calendar dates (dream.py digest keys off the same _now_iso_date()).
+        # Canonical UTC date — every dated artifact the night writes keys off
+        # THIS, never a separate local `date.today()`, so nothing can split
+        # across two calendar dates (`digest` and `file-task` both key off the
+        # same `_now_iso_date()`). It used to name the dream BRANCH, which task
+        # 522 retired along with every other private landing channel; the rule
+        # survives its first consumer because the split it prevents is a
+        # property of the clock, not of branches.
         "dreamDate": _now_iso_date()[1],
         "memosRoot": str(memos_root),
         # ...and `memoCount: 0` is only "a quiet night" when this is true. A
@@ -855,6 +875,14 @@ def cmd_select(_argv: list[str]) -> int:
         # saying the same thing is one nobody reads.)
         "reportsRoot": (str(synced_reports_root())
                         if synced_reports_root() is not None else None),
+        # ...and since task 522 the loop's ONE actionable output is a task file,
+        # so "can I file at all?" is a preflight question exactly like
+        # `memoSinkPresent` — and for the same reason: a night that discovers it
+        # cannot file only when it TRIES has already done the detection work it
+        # is about to lose. `null` means no queue was found (or a pinned
+        # dev-loop sink suppressed discovery, which is the sandbox rule doing
+        # its job); the digest is then the night's only record and says so.
+        "taskQueueRoot": (str(tasks_root()) if tasks_root() is not None else None),
         # ...and every flag above is about the READER. These four are about the
         # SEAM: a writer resolves its own sink from whatever bundle vintage its
         # paper folder carries, so a sink migration silently routes real memos
@@ -950,6 +978,20 @@ def _fmt_refs(refs) -> str:
     return f" · from {', '.join(refs)}" if refs else ""
 
 
+def _task_pointer(entry: dict) -> str:
+    """Where the night's finding actually WENT (task 522).
+
+    An entry with no `task` is a finding the night did not file — the digest
+    SAYS so rather than reading as an ordinary entry, because since 522 an
+    unfiled finding is a lost one: the digest is a courtesy record and
+    `~/virgil-tasks/` is the only surface anyone reads."""
+    task = (entry.get("task") or "").strip()
+    if not task:
+        return " · ⚠️ **NOT FILED** (this digest is its only record)"
+    queue = (entry.get("queue") or "").strip()
+    return f" · task `{task}`" + (f" in `{queue}/`" if queue else "")
+
+
 def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     acted = report.get("acted") or []
     proposed = report.get("proposed") or []
@@ -960,7 +1002,7 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     out: list[str] = ["---"]
     for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
               "memoCount", "memoSinkPresent", "memoSinkKind",
-              "everCapturedNonDream",
+              "taskQueuePresent", "everCapturedNonDream",
               "extraSinkMemos", "extraSinkNonDreamMemos",
               "extraSinkMemosInWindow", "unreachableMemos",
               "nightsSinceLastDigest", "nightsSinceReason",
@@ -1054,6 +1096,21 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             f"also what stops this note repeating every night."
         )
         out.append("")
+    if not fm.get("taskQueuePresent", True):
+        out.append(
+            "> **⚠️ No task queue — this night's findings reached NOTHING.** "
+            "Since task 522 the loop lands nothing itself: every actionable "
+            "output is a task in `~/virgil-tasks/` (`incoming/` for the worker, "
+            "`blocked/` for the human), and this digest is a courtesy record, "
+            "not an attention surface. With no queue resolvable, whatever is "
+            "listed below was detected and then dropped. Either "
+            "`~/virgil-tasks/` is missing on this machine, or a pinned dev-loop "
+            "sink suppressed discovery — which is the sandbox rule working "
+            "correctly and means this was a test run, not a night. Re-file by "
+            "hand or re-run with `VIRGIL_TASKS_DIR` set; nothing below is "
+            "queued."
+        )
+        out.append("")
     unreachable = fm.get("unreachableMemos", 0)
     if isinstance(unreachable, int) and unreachable > 0:
         out.append(
@@ -1122,38 +1179,37 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     if fm.get("_rotated"):
         out.append(
             f"> **Second run today.** The earlier run's digest was preserved as "
-            f"`{fm['_rotated']}` — read it too; anything it did not land is a "
-            f"patch under `~/virgil-tasks/attachments/`, not a live branch. "
-            f"This file covers only the memos written since that run."
+            f"`{fm['_rotated']}` — read it too; anything it found is a TASK in "
+            f"`~/virgil-tasks/`, which is where the work actually is. This file "
+            f"covers only the memos written since that run."
         )
         out.append("")
 
-    out.append(f"## Acted ({len(acted)})")
-    out.append("_Landed directly on this dream branch — single-skill-prompt "
-               "polish; revert with `git revert`/`git checkout`._")
-    if acted:
-        for e in acted:
-            paths = ", ".join(e.get("paths") or [])
-            out.append(f"- **{paths or e.get('summary', '?')}** — "
-                       f"{e.get('summary', '')}{_fmt_refs(e.get('memoRefs'))}")
-    else:
+    # The three buckets are the three CLASSIFIER verdicts and keep their keys
+    # (`acted`/`proposed`/`refused` — what `dream_land` calls them). What task
+    # 522 changed is what happens to an entry: the dream applies and stages
+    # NOTHING now, so every one of them is a filed task and each entry points at
+    # its task ID rather than at a branch or a patch.
+    out.append(f"## Scoped — filed ({len(acted)})")
+    out.append("_Verdict `acts`: a single skill prompt, prose-polish intent. "
+               "Filed as a READY task; the worker lands it._")
+    for e in acted or []:
+        paths = ", ".join(e.get("paths") or [])
+        out.append(f"- **{paths or e.get('summary', '?')}** — "
+                   f"{e.get('summary', '')}{_task_pointer(e)}"
+                   f"{_fmt_refs(e.get('memoRefs'))}")
+    if not acted:
         out.append("- None.")
     out.append("")
 
-    out.append(f"## Proposed ({len(proposed)})")
-    out.append("_Staged in a worktree — cross-skill / script / manifest / "
-               "contract-adjacent. Step 6 then LANDED it, or EXPORTED it as a "
-               "patch and deleted the branch (no `dream/*` branch outlives its "
-               "run — the nightly sweep merges every surviving one blindly)._")
+    out.append(f"## Structural — filed ({len(proposed)})")
+    out.append("_Verdict `proposes`: cross-skill / script / manifest / "
+               "contract-adjacent. Filed as a READY task unless it touches the "
+               "loop's own rulebook, which routes to `blocked/` for a ruling._")
     if proposed:
         for e in proposed:
-            # An entry that did NOT land points at its PATCH: after step 6 the
-            # branch is gone either way, so a merge hint would name nothing.
-            patch = (e.get("patch") or "").strip()
-            branch = e.get("branch") or f"dream/{fm['_date']}"
-            pointer = f"git apply {patch}" if patch else f"git merge {branch}"
             paths = ", ".join(e.get("paths") or [])
-            out.append(f"- **{e.get('summary', '?')}** — `{pointer}`")
+            out.append(f"- **{e.get('summary', '?')}**{_task_pointer(e)}")
             out.append(f"  - touches: {paths or '—'}{_fmt_refs(e.get('memoRefs'))}")
             if e.get("reason"):
                 out.append(f"  - why proposed: {e['reason']}")
@@ -1161,13 +1217,15 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         out.append("- None.")
     out.append("")
 
-    out.append(f"## Refused ({len(refused)})")
-    out.append("_Crossed a load-bearing boundary — never applied, never "
-               "proposed (design §4)._")
+    out.append(f"## Refused — filed as questions ({len(refused)})")
+    out.append("_Crossed a load-bearing boundary (design §4): never authored, "
+               "never worked around. Filed to `blocked/`, because a refusal the "
+               "human never reads is a refusal that decides by default._")
     if refused:
         for e in refused:
             out.append(f"- 🚫 **{e.get('boundary', '?')}** — "
-                       f"{e.get('summary', '')}{_fmt_refs(e.get('memoRefs'))}")
+                       f"{e.get('summary', '')}{_task_pointer(e)}"
+                       f"{_fmt_refs(e.get('memoRefs'))}")
             if e.get("reason"):
                 out.append(f"  - {e['reason']}")
     else:
@@ -1209,14 +1267,15 @@ def _rotate_prior_digest(target: Path, new_iso: str) -> Path | None:
     latest digest, which after a successful run is TODAY's own. So the second
     run of a day selects 0 memos and rewrites the day's record as an EMPTY one.
 
-    That is worse than losing a summary. The digest is the only durable output
-    the dream authors, and an UNLANDED `proposed` entry's patch path is the ONLY
-    pointer to that work — since 2026-08-18 the skill's §6 exports and deletes
-    rather than parking a branch (a parked branch self-merges via the nightly
-    sweep), so there is no surviving worktree to rediscover it from: erase the
-    record and the patch sits orphaned in `~/virgil-tasks/attachments/`. The loss
-    is confined to the record, which is exactly the part a human reads in the
-    morning.
+    That is worse than losing a summary. Since task 522 the night's WORK lives
+    in the task queue and survives an erased digest — which is precisely why
+    that change made this rotation cheaper rather than obsolete: what an
+    overwritten digest destroys is the night's REASONING (the memo refs, the
+    verdicts, the banners), the part a human reads in the morning and the part
+    no task file carries. (The rule dates from 2026-08-18, when an unlanded
+    entry's exported patch path was the only pointer to the work itself and an
+    erased record orphaned it outright. The stake has shrunk; the rotation
+    stays.)
 
     This docstring used to add "the marker itself survives (an empty re-select
     preserves it), so the window does not reopen" — and that was FALSE, in the
@@ -1330,6 +1389,9 @@ def cmd_digest(argv: list[str]) -> int:
         # same reason the blackout measure is: a fact that reached only the
         # prompt is the one a run forgets. `local` is the structural famine.
         "memoSinkKind": memo_sink_kind(),
+        # Could the night FILE at all? Durable for that same reason, and here
+        # forgetting it means the findings went nowhere (task 522).
+        "taskQueuePresent": tasks_root() is not None,
         "everCapturedNonDream": _corpus_lifetime(corpus)[0],
         # The SEAM measure, likewise durable.
         "extraSinkMemos": extra_only,
@@ -1368,10 +1430,231 @@ def cmd_digest(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# file-task subcommand — the loop's ONE output channel (task 522)
+# ---------------------------------------------------------------------------
+# The dream lands nothing. It DETECTS, and every actionable detection becomes a
+# task file the worker executes (`incoming/`) or the catcher surfaces
+# (`blocked/`). This is the symmetric twin of the worker's own idle-time AUDITS,
+# which have had exactly this shape since they shipped: detectors file, one
+# executor lands, one catcher surfaces.
+#
+# The split between this script and the night that calls it is the same split
+# `digest` already draws: the NIGHT supplies the qualitative half (title, the
+# body sections, the memo refs) and the SCRIPT owns every deterministic fact —
+# the minted id, the created stamp, the queue, the status, the priority, the
+# `source: dream` provenance — so none of them can drift from run to run or be
+# forgotten at 4am.
+
+_TASK_ID_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{3})\b")
+
+# The schema bar, made structural. `README.md`'s own rule is "Always set a real
+# `## Done when`. A task with no acceptance criteria is one the worker can't
+# safely finish — it'll just get parked", and a blocked task with no question is
+# one the catcher cannot surface. Both were prose asked of the filer; here they
+# are conditions of the write, so a night cannot file a task the pipeline will
+# only bounce.
+_REQUIRED_SECTIONS = ("Description", "Done when")
+
+_TASK_TYPES = {"bug", "feature", "chore", "research", "other"}
+_TASK_SIZES = {"small", "large", "unknown"}
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(text: str, limit: int = 60) -> str:
+    s = _SLUG_RE.sub("-", (text or "").lower()).strip("-")
+    if len(s) > limit:
+        s = s[:limit].rsplit("-", 1)[0] or s[:limit]
+    return s or "dream-finding"
+
+
+def _minted_ids(root: Path, date_str: str) -> set[int]:
+    """Every `NNN` already minted for `date_str`, across every queue dir.
+
+    The scan is by FILENAME rather than by frontmatter: a task is addressed by
+    its filename everywhere in the pipeline, the id is its prefix, and reading N
+    hundred files to answer a question their names already carry would make the
+    immediately-before-each-write rescan too expensive to actually do twice."""
+    used: set[int] = set()
+    for sub in TASK_ID_DIRS:
+        d = root / sub
+        if not d.is_dir():
+            continue
+        try:
+            names = [f.name for f in d.iterdir()]
+        except OSError:
+            continue
+        for name in names:
+            m = _TASK_ID_RE.match(name)
+            if m and m.group(1) == date_str:
+                used.add(int(m.group(2)))
+    return used
+
+
+def _next_id(used: set[int]) -> int:
+    """One past today's MAX, never the first free hole.
+
+    The protocol `REMOTE_INBOX.md` states is max+1, and matching the other two
+    minters is the whole point of sharing one protocol — but the reason it is
+    max+1 rather than lowest-free is its own: an id can leave the queue (a
+    finding ruled wontfix, a task withdrawn) while `log.md`, a `[[2026-09-01-004]]`
+    cross-reference and a merge commit message all still name it. Re-issuing a
+    retired number would point every one of those at a different task."""
+    return max(used) + 1 if used else 1
+
+
+def _find_conflict(root: Path, task_id: str, mine: Path) -> bool:
+    """Did somebody else land the same id while we were writing?"""
+    for sub in TASK_ID_DIRS:
+        d = root / sub
+        if not d.is_dir():
+            continue
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for f in entries:
+            if f.name.startswith(task_id) and f.resolve() != mine.resolve():
+                return True
+    return False
+
+
+def _render_task(fm: dict, sections: dict, order: list[str]) -> str:
+    out = ["---"]
+    for k, v in fm.items():
+        # An empty value renders as a bare `key:` — the shape every hand-written
+        # task in the queue carries. A trailing space is invisible in a diff and
+        # would be the one difference between a dream-filed file and a
+        # catcher-filed one.
+        out.append(f"{k}: {v}" if str(v) != "" else f"{k}:")
+    out.append("---")
+    for name in order:
+        body = (sections.get(name) or "").strip()
+        if not body:
+            continue
+        out.append("")
+        out.append(f"## {name}")
+        out.append("")
+        out.append(body)
+    out.append("")
+    out.append("## Progress log")
+    out.append("")
+    return "\n".join(out)
+
+
+def cmd_file_task(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="dream.py file-task")
+    p.add_argument("--task", default=None,
+                   help="the night's qualitative half (title/type/size/sections/"
+                        "the finding to route) as inline JSON or @file")
+    a = p.parse_args(argv)
+    spec = _load_report(a.task)
+    if not spec:
+        die("file-task needs --task (inline JSON or @file)")
+
+    root = tasks_root()
+    if root is None:
+        # A night that cannot file has LOST its findings, so this is loud rather
+        # than a silent skip: the digest is write-only and would bury it.
+        die("no task queue found — set VIRGIL_TASKS_DIR, or run where "
+            "~/virgil-tasks/ exists. (A pinned dev-loop sink SUPPRESSES "
+            "discovery on purpose: a sandboxed loop may not mint into the "
+            "human's live queue.)", code=3)
+
+    title = (spec.get("title") or "").strip()
+    if not title:
+        die("file-task needs a `title`")
+
+    ttype = (spec.get("type") or "chore").strip().lower()
+    if ttype not in _TASK_TYPES:
+        die(f"unknown task type {ttype!r} (expected one of {sorted(_TASK_TYPES)})")
+    size = (spec.get("size") or "unknown").strip().lower()
+    if size not in _TASK_SIZES:
+        die(f"unknown task size {size!r} (expected one of {sorted(_TASK_SIZES)})")
+
+    # WHERE it goes is never the night's call — one door answers it, the same
+    # door whether the finding is a change or a red gate.
+    route = task_route(spec.get("finding") or spec)
+
+    sections = {str(k): str(v) for k, v in (spec.get("sections") or {}).items()}
+    missing = [s for s in _REQUIRED_SECTIONS if not sections.get(s, "").strip()]
+    if route["questionsRequired"] and not sections.get("Questions", "").strip():
+        missing.append("Questions")
+    if missing:
+        die(f"task is below the pipeline's schema bar — missing section(s): "
+            f"{', '.join(missing)} (route: {route['queue']} — {route['reason']})")
+
+    refs = [str(r) for r in (spec.get("memoRefs") or []) if str(r).strip()]
+    if refs:
+        sections["Description"] = (
+            sections["Description"].rstrip()
+            + "\n\nSource memos: " + ", ".join(f"`{r}`" for r in refs))
+
+    iso, date_str = _now_iso_date()
+    # The queue's `created` is second-resolution and zoneless, which is what
+    # every hand-written task in it carries; the loop's clock is UTC throughout,
+    # so this is a FORMAT match, not a second clock.
+    created = iso.split(".")[0].rstrip("Z")
+    slug = _slugify(spec.get("slug") or title)
+    queue_dir = root / route["queue"]
+
+    # The collision protocol (REMOTE_INBOX.md §3), now shared by three minters:
+    # scan for today's max immediately BEFORE the write, re-verify AFTER, rename
+    # on a collision. The dream's 22:06 slot overlaps neither the 23:09 heartbeat
+    # nor the on-the-hour worker, but a protocol that leans on a schedule is a
+    # protocol that breaks the first time one moves.
+    used = _minted_ids(root, date_str)
+    written: Path | None = None
+    task_id = ""
+    for _ in range(50):
+        nnn = _next_id(used)
+        task_id = f"{date_str}-{nnn:03d}"
+        target = queue_dir / f"{task_id}-{slug}.md"
+        fm = {
+            "id": task_id,
+            "type": ttype,
+            "title": title,
+            "priority": route["priority"],
+            "size": size,
+            "project": str(source_repo_root()),
+            "source": "dream",
+            "created": created,
+            "status": route["status"],
+            "after": (spec.get("after") or ""),
+            "worktree": "",
+        }
+        order = ["Questions", "Description", "Done when", "Design", "Verify"]
+        text = _render_task(fm, sections, order)
+        # Write the NEW file before deleting the superseded one, never the
+        # reverse: the two orderings trade a momentary duplicate against a
+        # momentary hole, and a crash in the hole loses the night's finding
+        # outright. Same instinct as the loop's own "unprovable ⇒ KEEP".
+        atomic_write([(target, text)])
+        if written is not None and written != target:
+            atomic_write([(written, None)])
+        written = target
+        if not _find_conflict(root, task_id, target):
+            break
+        used.add(nnn)
+    else:  # pragma: no cover — 50 straight collisions is not a race, it's a bug
+        die("could not mint a free task id after 50 attempts")
+
+    print(json.dumps({"filed": True,
+                      "id": task_id,
+                      "path": str(written),
+                      "queue": route["queue"],
+                      "status": route["status"],
+                      "priority": route["priority"],
+                      "reason": route["reason"]}, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
-_SUBCOMMANDS = {"select": cmd_select, "digest": cmd_digest}
+_SUBCOMMANDS = {"select": cmd_select, "digest": cmd_digest,
+                "file-task": cmd_file_task}
 
 
 def main(argv: list[str]) -> int:

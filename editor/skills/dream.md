@@ -5,12 +5,13 @@ description: |
   in a DEV-mode session (VIRGIL_DEV=1): on "run the dream", "dream over the
   memos", "do the overnight pass", or on a schedule (/loop or a scheduled task).
   Reads the reflection memos the chip-17 capture layer accumulated since the
-  last dream, detects cross-memo patterns, and ripples improvements back into
-  the editor skill set via two scope-determined landing modes (acts-directly /
-  proposes-via-worktree), with a flagged+fix-now fast-path, a morning digest,
-  and THREE hard boundaries it cannot cross. NO-OP outside DEV mode. Does NOT
-  trigger for end-user requests ("review my doc" → /editor/review) and never
-  edits a paper file. Args: [<docPath>].
+  last dream, detects cross-memo patterns, and FILES each finding as a task in
+  ~/virgil-tasks/ — the worker lands it, the catcher surfaces anything needing
+  a ruling. The dream is a DETECTOR: it writes no code, opens no branch and
+  merges nothing (task 522). Flagged+fix-now fast-path, a nightly gate sweep, a
+  morning digest, and THREE hard boundaries it cannot cross. NO-OP outside DEV
+  mode. Does NOT trigger for end-user requests ("review my doc" →
+  /editor/review) and never edits a paper file. Args: [<docPath>].
 ---
 
 # /editor/dream $ARGUMENTS
@@ -66,27 +67,40 @@ accidental invocation in a non-dev (or end-user) session writes nothing. The
 dream is itself a Virgil skill, so it runs in DEV mode like everything else —
 and it reflects on its **own** run (the bootstrap, step 8).
 
-A real overnight dream runs **in a fresh git worktree off `main`** — its
-acts-directly edits become commits on the dream branch; a branch whose gates
-come back green merges to `main` at the end of the run (step 6) and ships with
-the next nightly update. Green is **necessary, not sufficient**: step 6 also
-requires a clean primary tree and a change that is not this loop's own
-operating procedure, and it EXPORTS a patch (deleting the branch) in every
-other case — no `dream/*` branch outlives its run. You do not need a live worktree to exercise the logic
-(the routing + the guard + the digest are all script-driven), but a true
-scheduled run should branch first.
+**The dream lands nothing** (task 522). It reads, it detects, and it FILES:
+every actionable finding becomes a task in `~/virgil-tasks/` — `incoming/` for
+the worker to implement and merge under its own discipline, `blocked/` for the
+catcher to put in front of Gabriel. So this run opens no worktree, creates no
+branch, applies no edit and exports no patch, and the whole "did the gates go
+green?" question moves downstream to the worker, which asks it of the actual
+diff rather than of a proposal.
+
+That makes the dream symmetric with the worker's own idle-time AUDITS, which
+have had exactly this shape since they shipped: **detectors file, one executor
+lands, one catcher surfaces.** The reason is Gabriel's, verbatim — he wants ONE
+place to check for things needing his attention, and a loop with private output
+channels (a self-merge, a patch in `attachments/`, a decision note in `inbox/`)
+is three more places. The night still runs the FULL GATE SWEEP (step 6): it is
+the tree's nightly health check whether or not it was designed as one, and its
+findings file like everything else.
 
 ### How it is scheduled (wired)
 
-Two Claude scheduled tasks drive the loop, both cwd'd at the repo:
-`editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly, and
+Three scheduled routines share the pipeline, all cwd'd at the repo:
+`editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly, the
+task worker (`/loop /work`) claims one task per run on the hour, and
 `virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge sweep, version
-bump, push, GitHub Pages deploy — a couple of hours later. The dream lands
-before the update sweeps, so a green night is LIVE (deployed, and re-synced into
-paper folders on their next doc-open or `sync_skills.py` run) the following day
-with no human step. `/loop /editor/dream` on an interval remains a supported
-manual mode — same since-last-digest selection, and a same-day re-run rotates
-the prior digest rather than erasing it.
+bump, push, GitHub Pages deploy. So a finding filed at 22:06 is typically landed
+by the worker within the hour and DEPLOYED by the midnight update, which is the
+same end-to-end latency the old self-merge had, with a verified diff and a human
+review path in the middle of it. `/loop /editor/dream` on an interval remains a
+supported manual mode — same since-last-digest selection, and a same-day re-run
+rotates the prior digest rather than erasing it.
+
+The three slots are deliberately disjoint (22:06 dream · 23:09 remote-inbox
+heartbeat · the worker on the hour), but the id-minting protocol in step 6 does
+not lean on that: a protocol that rests on a schedule breaks the first time one
+moves.
 
 ## Args
 
@@ -103,28 +117,62 @@ to satisfy `reflect.py` — it is **not** the subject of the dream. Default it t
 ## The flow
 
 ```
-sync ─► read ─► detect ─► route ─► act ─► land ─► digest ─► reflect-on-self
- §0      §1      §2       §4/§5    §3+§4   §6      §7         §8
+reconcile ─► read ─► detect ─► route ─► FILE ─► gate sweep ─► digest ─► reflect-on-self
+   §0        §1      §2      §4/§5     §3+§4       §6          §7          §8
 ```
 
-### 0. Reconcile with existing dream work FIRST
+### 0. Reconcile with the QUEUE FIRST
 
-Before you author anything, reconcile with what is already in flight on this
-shared checkout — the human drives it live, and an *interrupted* prior run can
-leave work here. (Since 2026-08-18 a run that reaches step 6 never leaves a
-branch standing: it merges, or exports a patch and deletes. So a surviving
-`dream/*` branch means a run that never finished — reconcile with it, don't
-assume it was parked on purpose.) **That same change moved the durable
-cross-night artifact from a BRANCH to a PATCH**, so reconcile with *both*: a
-surviving branch is now the rare case, an exported patch the ordinary one.
-This was hard-won lore across several nights; it is now an explicit step.
+Before you author anything, reconcile with what is already in flight — the human
+drives this checkout live, the worker lands a task an hour, and re-authoring
+already-ruled work is the costliest way to spend a night. Since task 522 there
+is exactly ONE place to look, which is the whole point of the merge: the loop
+has no private artifacts left to reconcile against (no surviving `dream/*`
+branch, no exported patch under `attachments/`, no loose `inbox/` note), so
+this step is a queue read and nothing else.
 
-- **Reconcile with the exported PATCHES first — they are the ordinary artifact now.** Step 6 exports every unlanded proposal to `~/virgil-tasks/attachments/<date>-dream-<slug>.patch` and deletes its branch, so the loop's in-flight work lives *there*, not in `git branch`. Enumerate them (`ls ~/virgil-tasks/attachments/*dream*.patch`) and ask each one three questions **before** you author anything. (1) **Has it already landed?** `git apply --check <patch>` — a patch that no longer applies is landed or superseded, so confirm against the tree (read the symbol it introduced) and say so in the digest, or a dead pointer gets reconciled against every night forever. Measured 2026-08-25: two of the three patches on file were already live and nothing prunes them. (2) **Does a still-live patch already carry tonight's fix?** Re-authoring already-ruled work is the costliest way to spend a night — step 2's stale-premise rule, one artifact class over. (3) **Would tonight's change COLLIDE with a still-live one?** A collision claim is a claim about **every file both patches touch**: enumerate that intersection (`git apply --stat`) rather than generalising from one file's hunk numbers, and settle it by running `git apply --check` in both orders in a throwaway worktree. Never assert non-collision in a *permanent* message — a commit, a task note — before you have run the check. (2026-08-23 near-miss: a claim true of `dream.py` and false of the test file both patches happened to append to at the same seam.) Where a collision is real, prefer removing it **by construction** — relocate your hunk to a seam the other patch does not touch — over documenting a resolution order; where it cannot be removed, that *is* the night's finding: surface it and route the choice to the human rather than resolving already-ruled work blind.
+- **Read `~/virgil-tasks/{incoming,in-progress,blocked}/`** and ask each of your
+  candidate findings the three questions the patch-reconciliation lore used to
+  ask of a patch, which were always questions about *work already ruled on*
+  rather than about patches:
+  1. **Has it already landed?** Grep `done/` and `log.md` for the finding's
+     subject, and confirm against the TREE — read the symbol the task claims to
+     have introduced. A dead pointer that nobody confirms gets re-reconciled
+     every night forever.
+  2. **Is it already filed?** A finding that matches a live task is not a new
+     finding. **Update that task** (append to its `## Description`, sharpen its
+     `## Done when`) rather than minting a second id for one disease — the
+     catcher's own dedupe rule, and the reason the queue clusters instead of
+     accumulating.
+  3. **Would it COLLIDE with a queued one?** Two tasks whose fixes touch the
+     same seam is a real cost the worker pays serially. Prefer removing the
+     collision **by construction** — file yours at a seam the other does not
+     touch — and where that is genuinely impossible, say so in your task's
+     `after:` field or route the choice to Gabriel. (Gabriel's ruling,
+     2026-08-31: a queue collision is a queue fact, never a scope fact; what
+     happens to be queued alongside must not shrink a fix.)
+- **A blocked task is a QUESTION already asked.** If your finding is the answer
+  to one, say so in the task rather than filing a rival — and never re-ask a
+  question sitting in `blocked/`.
+- **Never rebuild the skill bundle unattended** (`npm run build:skill-bundles`)
+  — it mutates the live checkout's mirrors mid-session. This costs the loop
+  nothing: the nightly deploy regenerates the served bundle from source (CI's
+  `prebuild`), the repo-local mirrors regenerate on the next `predev`/`prebuild`,
+  and the freshness guard
+  ([skill-bundle-freshness.test.ts](../skills/__tests__/skill-bundle-freshness.test.ts))
+  catches a stale mirror. A worker landing your task owes that rebuild; you do
+  not.
 
-- **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
-- **Composing onto a prior branch inherits its BASE — refresh it before you reason.** §4 branches a fresh dream off `main`, so it reads current code; the bullet above composes onto a *prior* dream branch, whose base is whatever `main` was on that earlier night — and nothing ever advances it, so a stack's staleness compounds one night per night. (Measured 2026-08-11: the 08-03 → 08-09 → 08-10 stack sat **227 commits** behind `main`, eight days out.) The visible cost is merge risk, which git will at least tell you about. The dangerous one is silent: the dream **justifies** a change by reading code `main` has already moved — on 2026-08-10 that nearly shipped a regex pinned to a builder constant `main` had already reshaped, caught only because that run happened to add a canary. So before authoring on an inherited branch, merge `main` into it and re-run the editor suite; then read every premise — every constant, signature and call site your reasoning leans on — from the refreshed tree, never from the inherited one. If the merge conflicts, that *is* the night's finding: surface it in the digest and stop, rather than resolving another run's work blind.
-- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout. The committed branch keeps its original `dream/<prior-date>` name, so tonight's digest records a landing outcome (LANDED / EXPORTED) against an *earlier* date than the digest itself — that date skew is correct, not staleness: a finished proposal's rightful home is the branch that authored it. Step 6 then disposes of it tonight like any other branch; nothing is left standing on the strength of "it belongs to an earlier run."
-- **Never rebuild the skill bundle unattended** (`npm run build:skill-bundles`) — it mutates the live checkout's mirrors mid-session. This now costs the loop nothing: the nightly deploy regenerates the served bundle from source (CI's `prebuild`), the repo-local mirrors regenerate on the next `predev`/`prebuild`, and the freshness guard ([skill-bundle-freshness.test.ts](../skills/__tests__/skill-bundle-freshness.test.ts)) catches a stale mirror. The old standing "ruling owed to the human" on this is retired — nothing is lost by not rebuilding.
+<!-- RETIRED (task 522): this step used to reconcile with surviving `dream/*`
+     BRANCHES and with exported PATCHES under `~/virgil-tasks/attachments/` —
+     hard-won lore across several nights (the 227-commit stale-base stack of
+     2026-08-11; the 08-23 collision near-miss; the 08-25 finding that two of
+     three patches on file were already live and nothing pruned them). Every one
+     of those rules was correct for a world where the dream produced its own
+     durable artifacts. It does not: it files tasks, and a task is reconciled by
+     reading the queue. The lore's GENERALIZABLE half — has it landed, is it
+     already filed, would it collide — survives above, aimed at the artifact
+     that now exists. -->
 
 ### 1. Read the memos since the last dream
 
@@ -386,60 +434,76 @@ the three boundaries below, which the principle never overrides. (Refinement:
 ```
 
 `intent` ∈ prose-polish `{tighten-wording, add-example, fix-typo,
-expand-guidance, clarify}` (acts-eligible) **or** structural `{cross-skill,
-script-change, manifest-change, rename, merge-skill, split-skill,
-contract-change, new-helper, behavior-change}` (always proposes). Always supply
-`oldText`/`newText` so the guard can adjudicate a boundary-sensitive change.
+expand-guidance, clarify}` **or** structural `{cross-skill, script-change,
+manifest-change, rename, merge-skill, split-skill, contract-change, new-helper,
+behavior-change}`. Always supply `oldText`/`newText` so the guard can adjudicate
+a boundary-sensitive change — that is what makes the difference between an
+adjudicated verdict and a refusal-by-vagueness.
+
+**`oldText`/`newText` are a PROPOSAL, not an edit.** You write neither into the
+tree; they travel into the filed task's `## Design` so the worker can see
+exactly what you meant, and the worker authors the real diff against whatever
+`main` looks like by then.
 
 ### 3. The fast-path (flagged + fix-now)
 
-For each memo in `fixNow`: handle it **now**, in a narrow single-memo pass,
-**acts-directly only**. Build its change object, classify it (step 4); if the
-verdict is `acts`, apply it immediately and record it ACTED. If a fix-now memo's
-change comes back `proposes` or `refused`, it does **not** get the fast lane —
-it joins the batch (proposed) or is refused. The fast-path is for the small,
-safe, obvious fix the maintainer explicitly flagged.
+For each memo in `fixNow`: handle it **now**, in a narrow single-memo pass.
+Build its change object, route it (step 4), and file its task with
+`"fixNow": true` — which is what raises the task to `priority: high` so the
+worker claims it ahead of the batch. A fix-now memo whose change comes back
+`refused` or own-rulebook does **not** get the fast lane; it routes to
+`blocked/` like any other, because "the maintainer flagged it" is a statement
+about urgency and not about who may decide it.
 
-### 4. Route each change to a landing mode — BY SCOPE
+<!-- RETIRED (task 522): this used to read "acts-directly only … apply it
+     immediately and record it ACTED". Nothing is applied here now, so the fast
+     path is a PRIORITY, not a landing mode — which is all it ever really was. -->
 
-**Never decide acts-vs-proposes by feel. Ask the guard:**
+### 4. Route each finding to a QUEUE — ask the door, never decide by feel
+
+The dream lands nothing, so the only landing decision left is **which queue the
+task goes in**. One door answers it, for a change and for a red gate alike:
 
 ```bash
-python3 editor/scripts/dream_land.py --change @change.json
-# → { "mode": "acts" | "proposes" | "refused", "reason": "...", "boundary": "..." }
+python3 editor/scripts/dream_land.py --route @finding.json
+# → { "queue": "incoming" | "blocked", "status", "priority",
+#     "questionsRequired": bool, "mode", "boundary", "neverSelfMerge", "reason" }
 ```
 
-(Or `from dream_land import classify_change` if you're scripting the loop.)
+(Or `from dream_land import task_route` if you're scripting the loop.)
+`--route` answers the WHOLE question; `--change` still exists and answers the
+`acts`/`proposes`/`refused` verdict alone, which the digest records and which
+`/editor/iterate-virgil-editor` consumes. Ask `--route`; it calls `--change`
+for you.
 
-- **`acts`** — a single skill-prompt `.md`, prose-polish intent, no
-  behavior-contract token. **Apply it directly** (edit the skill markdown on the
-  dream branch) and record it under `acted` for the digest. The user reverts via
-  git if they disagree.
-- **`proposes`** — anything cross-skill, any `.py` script, anything under
-  `docs/workspace/` (the manifest), any rename/merge/split, or anything
-  contract-adjacent. **Do not apply it on the dream branch.** Stage it in a
-  worktree and record it under `proposed`:
+- **`incoming/` (ready)** — ordinary work, whatever its verdict. The
+  `acts`/`proposes` split no longer changes where the task goes, because the
+  worker lands both kinds of diff under the same discipline (worktree → types →
+  tests → merge). It still describes the finding, so carry it into the task's
+  `## Design`: an `acts` finding is a scoped prose fix, a `proposes` one is
+  structural and wants the deeper treatment.
+- **`blocked/` (questions)** — the two cases the human decides:
+  - a **boundary refusal** (step 5). Pre-522 a refusal was "recorded, not
+    acted" — recorded in a digest, which is write-only. File it: a refusal
+    nobody reads is a refusal that decides by default.
+  - an **own-rulebook** change (`neverSelfMerge: true` — `DEV_LOOP_PROCEDURE`:
+    the three skill prompts *and* `dream.py` / `reflect.py` / `dream_land.py` /
+    `dev_loop.py`). The membership lives in `dream_land.py` and **only** there;
+    the names here are a reader's gloss, not the list, so a fifth procedure file
+    joins that set and this clause follows it with no edit.
 
-  ```bash
-  # Key the branch off select's canonical UTC dreamDate — the SAME clock
-  # dream.py digest uses — so branch/digest never split across two dates.
-  # (Never local date.today(): at night in a US timezone it lands a day behind
-  #  the UTC digest, forking dream/<D> from the <D+1>.md digest.)
-  DATE=$(python3 editor/scripts/dream.py select | python3 -c "import sys,json;print(json.load(sys.stdin)['dreamDate'])")
-  # INSIDE the repo (.claude/worktrees/, gitignored) — not a sibling dir — so
-  # node module resolution walks up to the repo's node_modules and step 6's
-  # gates (tsc/vitest) can actually run in the worktree.
-  git worktree add -b dream/$DATE .claude/worktrees/dream-$DATE main
-  # …make the change in .claude/worktrees/dream-$DATE…, commit it there…
-  ```
+  A blocked task **leads with `## Questions`**, a **bold recommendation**, and
+  the sentence *"I cannot just take my own recommendation here because ___"*
+  (the auditor's routing-test discipline). `dream.py file-task` REFUSES to write
+  a blocked task without a `Questions` section — a question the catcher cannot
+  surface is not a routing, it is a drop.
 
-  One worktree per dream run is fine; group the run's proposals onto the one
-  `dream/<date>` branch. **That branch is a WORKSPACE for step 6, never a
-  durable pointer** — step 6 either merges it or exports it as a patch and
-  deletes it, so no `dream/*` branch outlives the run that made it, and the
-  digest's pointer to unlanded work is the **patch path**, not a merge hint.
-- **`refused`** — the change crosses a boundary (step 5). **Do not apply it and
-  do not propose it.** Record it under `refused` with the `boundary` + `reason`.
+<!-- RETIRED (task 522): this step used to end in `git worktree add -b
+     dream/$DATE` and a "that branch is a WORKSPACE for step 6" clause. There is
+     no branch: the dream files a task and the worker opens its own worktree.
+     The `dreamDate` rule that keyed the branch name survives in `select` for
+     the reason it was written (one UTC clock for every dated artifact), not for
+     the branch it used to name. -->
 
 ### 5. The three boundaries (the guard refuses — by construction)
 
@@ -457,156 +521,112 @@ around it — for any change that would:
    `_common.dev_mode_enabled` or its enforcement in `reflect.py`/`dream.py`.
 
 These are the load-bearing invariants the loop runs *inside*. A pattern that
-seems to call for crossing one is a signal to surface to the human in the
-digest, **not** to act on. The guard enforces this from the change's content (a
-boundary-file edit with no content to adjudicate is refused), so it cannot be
-sidestepped by leaving the intent vague.
+seems to call for crossing one is a signal to route to the human — as a
+**blocked task with `## Questions`**, not as a digest line (task 522: a digest
+is write-only, and "surface it in the digest" was a routing to nowhere). The
+guard enforces this from the change's content (a boundary-file edit with no
+content to adjudicate is refused), so it cannot be sidestepped by leaving the
+intent vague.
 
-### 6. Land the night's work — green merges, everything else EXPORTS
+The boundaries survive this merge as **detection-time** constraints: they bound
+what the dream may PROPOSE, and the worker adds its own safety when it executes.
+Above all, the one that is not in the guard at all: **never edit a paper file.**
 
-The loop's learning goes live through the ordinary daily update (the nightly
-`virgil-update` task runs `/cleanup-virgil`: merge sweep, push, deploy), so a
-branch merged to `main` tonight ships tomorrow with no human step. The merge
-gate is **green, not human review** — Gabriel's standing ruling (2026-08-15):
-*"no cap, go with green."* Key decisions still reach him, through the task
-pipeline (below), never through the digest alone.
+### 6. FILE the night's work — one task per finding, and the gate sweep
 
-For **every** `dream/<date>` branch present after steps 3–5 (tonight's and any
-inherited branch you composed onto):
+The dream lands nothing. Every actionable finding becomes a task in
+`~/virgil-tasks/`; the worker is the one thing that touches `main`, and
+`blocked/` is the one surface Gabriel is asked to read.
 
-1. **Run the gates in the worktree** (`.claude/worktrees/dream-<date>`):
-   `npx tsc --noEmit` · `npx vitest run` · every
-   `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
-2. **All green AND the primary checkout is clean on `main`**
-   (`git -C "$VIRGIL_REPO_ROOT" status --porcelain` empty of
-   tracked changes, `branch --show-current` = `main`) **AND the guard answers
-   `neverSelfMerge: false`** (the clause below — ask it *before* you merge, not
-   after) → **land-and-clean**, the
-   task worker's own discipline (`~/virgil-tasks/PROFILE.md`):
-   `git -C "$VIRGIL_REPO_ROOT" merge --no-ff dream/<date>`, remove
-   the worktree, delete the branch. Record **LANDED** in the digest entry.
-3. **Green but the primary tree is dirty** (the human mid-edit) → **export and
-   delete**, exactly as rule 4 does. Do **not** leave the branch standing "for
-   the nightly sweep": `/cleanup-worktrees` merges *every* surviving branch
-   blindly ("merge them all — do not ask which"), and `virgil-update` runs it
-   about two hours after this dream, so a branch left behind ships tonight
-   whether or not anyone cleared it. **A branch that survives this run is a
-   branch that has already merged.** So: export the diff, drop the landing
-   note (below), remove the worktree AND delete the branch. Record
-   **EXPORTED** with the patch path.
-4. **Any gate red** → the branch must **not** survive the run, for the same
-   reason. But **attribute the redness before you file it**: a red gate is
-   evidence about the TREE, not about your change, until you have separated
-   the two — re-run the failing legs in the primary checkout on `main`, with
-   your change absent. This rule's own filing template ("naming the patch,
-   the failing gate") writes a *false* task when the failure was already
-   there: it points a worker at your diff for a break somebody else landed.
-   The same don't-misattribute rung step 1 states about drift and step 2
-   about a stale premise, one artifact over. So:
-   - **Yours** → export the diff, file an UNMINTED work task into
-     `~/virgil-tasks/inbox/` naming the patch, the failing gate and its output
-     tail — then remove the worktree AND delete the branch. Record **FILED**.
-   - **Pre-existing on `main`** → your branch is disposed of by whichever of
-     rules 2/3 its own state calls for (a red `main` is not a reason to merge,
-     but neither is it a reason to file against you), and the redness is its
-     OWN work task — naming the commit that introduced it, not your patch.
-     Never fold an unrelated repair onto a dream branch: if that branch is
-     `neverSelfMerge`, doing so buries a two-line fix behind a human ruling.
-     Record it in the digest's `bootstrap` line — the dream is the only thing
-     that runs the full gate sweep unattended every night, so it is in
-     practice the tree's nightly health check whether or not it was designed
-     as one.
-
-**Export recipe** (rules 3, 4, and the never-self-merge clause below — one
-shape, so no path can be half-followed):
+**File each finding** (routed in step 4) with the script — never by hand-writing
+a file into a queue dir, because the id, the queue, the status, the priority and
+the `source: dream` stamp are all deterministic and the script owns every one of
+them:
 
 ```bash
-git -C "$VIRGIL_REPO_ROOT" diff main...dream/$DATE \
-  > ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
-# verify it applies before you delete the only other copy of the work:
-git -C "$VIRGIL_REPO_ROOT" apply --check \
-  ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
-git -C "$VIRGIL_REPO_ROOT" worktree remove .claude/worktrees/dream-$DATE
-git -C "$VIRGIL_REPO_ROOT" branch -D dream/$DATE
+python3 editor/scripts/dream.py file-task --task @finding.json
+# → { "filed": true, "id": "2026-09-01-014", "path": "...", "queue": "incoming",
+#     "status": "ready", "priority": "normal", "reason": "..." }
 ```
 
-The inbox note (or DECISION task) carries the patch path, the one-line
-`git apply` command that lands it, the gate results, and **why it did not
-land** (dirty tree / red gate / the loop's own procedure). `--check` before the
-delete is not optional: after `branch -D` the patch is the only copy.
+`finding.json` — you supply the qualitative half, exactly as with the digest:
 
-**Prune the patches that have LANDED — the mirror rule, same step.** The two
-artifacts this step disposes of have *opposite* survival semantics, and stating
-both here is what keeps either from being half-followed:
-
-- a **branch** that survives this run has already merged (rule 3 — the blind
-  nightly sweep merges whatever is left standing), so a branch is deleted
-  because keeping it would land it;
-- a **patch** that survives this run has *not* landed (step 0 reconciles against
-  every survivor, every night, forever), so a patch is deleted only once it
-  provably HAS — and keeping a dead one costs a real night's attention. Measured
-  2026-08-25: two of the three patches on file were already live and nothing
-  pruned them; the same question was re-asked three nights running.
-
-So, for each `~/virgil-tasks/attachments/*dream*.patch`, delete it **only on
-PROOF of landing** — both conjuncts, never either alone:
-
-```bash
-# (1) it no longer applies …
-git -C "$VIRGIL_REPO_ROOT" apply --check <patch>     # must FAIL
-# (2) …AND the symbol it introduced is present in the tree
-git -C "$VIRGIL_REPO_ROOT" grep -n '<symbol the patch added>' -- <the file it touched>
-rm <patch>          # only when (1) failed AND (2) found it
+```json
+{ "title": "one imperative, SPECIFIC sentence — this is what Gabriel reads",
+  "type": "chore",
+  "size": "small",
+  "slug": "optional; derived from the title otherwise",
+  "after": "optional task id this one must land after",
+  "finding": { "kind": "change", "fixNow": false,
+               "change": { "paths": ["editor/skills/draft-footnote.md"],
+                           "intent": "tighten-wording",
+                           "oldText": "…", "newText": "…" } },
+  "memoRefs": ["2026-08-30/10-05-00-draft-footnote.md"],
+  "sections": { "Description": "…", "Done when": "…",
+                "Design": "…", "Verify": "…", "Questions": "…" } }
 ```
 
-`--check` failing is **not** proof on its own: a patch also stops applying when
-`main` moves *under* an unlanded one, which is the ordinary state of a patch
-that has been on file for a week. That is the whole reason for the second
-conjunct — read the symbol the patch introduced (a new function name, a new
-frontmatter key, a distinctive sentence) out of the tree it claims to be in.
-**Unprovable ⇒ KEEP**, and say so in the digest: this step's own export recipe
-deletes the branch on the strength of the patch being the only remaining copy,
-so a wrongly-pruned patch destroys the work outright, whereas a wrongly-kept one
-costs one more reconciliation. Record every deletion in the digest (patch name +
-the symbol that proved it), so a pruning decision is auditable rather than a
-file quietly disappearing.
+**Write the task to the pipeline's own bar, not to a lower one.** A dream-filed
+task is read by the same unattended worker that reads a catcher-filed one, so it
+meets the same standard: the schema and what each section is for live in the
+queue's own docs — `~/virgil-tasks/README.md` ("Task file schema") and
+`~/virgil-tasks/CATCHER.md` ("Writing a task file"). Read them rather than a
+restatement here, which is how two descriptions of one schema come to disagree. Three things the script
+enforces because they are what a task is *for*:
 
-**Never self-merge — route to the human instead** (the "key decisions" half of
-the autonomy ruling). **Ask the guard; never eyeball the membership:**
+- **`## Description` and `## Done when` are REQUIRED.** "A task with no
+  acceptance criteria is one the worker can't safely finish — it'll just get
+  parked" (README). You already write memos at this depth; write the task there.
+- **`## Questions` is required on a blocked task.** See step 4.
+- **`memoRefs` land in the Description**, so the reasoning behind a finding is
+  one grep away six weeks later.
 
-```bash
-git -C "$VIRGIL_REPO_ROOT" diff --name-only main...dream/$DATE \
-  | python3 editor/scripts/dream_land.py --self-merge-check
-# → { "neverSelfMerge": true, "procedurePaths": [...], "reason": "..." }
-```
+Put the deep layer in `## Design` — the `deepFix` the CENTRAL DESIGN PRINCIPLE
+asks for, `file:line` pointers, and for a cluster a `### Members` list of the
+symptoms one fix retires. That is the same judgment step 2 already does; the
+task file is just where it goes now.
 
-(Every `--change` verdict carries the same `neverSelfMerge` / `procedurePaths`
-fields, so a per-change caller already has the answer and need not ask twice.)
+**Id minting — the collision protocol, now shared by THREE minters** (the
+interactive catcher, the remote-inbox heartbeat, and this loop). `file-task`
+implements it: scan every queue dir for today's max `NNN` immediately *before*
+each write, re-verify *after*, rename to the next free number on a collision.
+You do not have to do any of that by hand — but do not hand-write a task file
+either, because then nobody does.
 
-- `neverSelfMerge: true` — the change touches the loop's **own operating
-  procedure** (`DEV_LOOP_PROCEDURE` = `DEV_LOOP_SKILLS` ∪ `DEV_LOOP_SCRIPTS`:
-  the three skill prompts *and* `dream.py` / `reflect.py` / `dream_land.py` /
-  `dev_loop.py`, which are that procedure in script form). It does **not**
-  merge, however green its gates: take the **export recipe** above and file a
-  DECISION task naming the patch. Staging it is not an option — a staged
-  branch self-merges via the sweep, which is precisely how this guard was
-  unenforceable until 2026-08-18.
-- every `refused` verdict that names a ruling owed gets a DECISION task too —
-  digests are write-only, the task queue is what the human actually reviews.
+**Then run the gates — the tree's nightly health check.** This is the one piece
+of the old step 6 that survives whole, because it was never about landing:
 
-The membership lives in `dream_land.py` and **only** there; the names above are
-a reader's gloss, not the list. A fifth procedure file joins that set and this
-clause follows it with no edit here.
+1. In the primary checkout on `main`: `npx tsc --noEmit` · `npx vitest run` ·
+   every `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
+2. **Green** → record it in the digest's `bootstrap` line and stop. The dream is
+   the only thing that runs the full sweep unattended every night.
+3. **Red** → **attribute it before you file it.** A red gate is evidence about
+   the TREE, and the honest artifact depends on whether you can say *which
+   commit* broke it: `git log --oneline -20 -- <the failing area>`, then check
+   out the suspect's parent and re-run the failing leg. File it with
+   `{"kind": "gate-failure", "commit": "<sha>"}` and the door routes it to
+   `incoming/` at high priority, with the failing gate's output tail in
+   `## Description`.
+   **If you cannot attribute it, the door routes it to `blocked/` instead** —
+   and that is not a formality. Filing an unattributed break as a work task
+   points a worker at a diff nobody has separated from the tree's own state,
+   which is the measured 2026-08-25 defect: a markdown edit filed as the suspect
+   for two library guards a commit two hours older had broken.
 
-**Filing conventions** (`~/virgil-tasks`; the catcher is the ONLY id-minter):
-drop an unminted file `inbox/<UTC-date>-from-dream-<slug>.md` — never mint an
-id (a non-catcher mint has already collided with a live catcher session once;
-unminted inbox drops are the worker's own precedent). A DECISION item leads
-with `## Questions`, a **bold recommendation**, and the sentence *"I cannot
-just take my own recommendation here because ___"* (the auditor's routing-test
-discipline), and notes `source: dream` in the body. A red-gate WORK item
-carries `## Description` / `## Done when` / `## Design` / `## Verify`, the
-patch path, and the gate output tail.
+<!-- RETIRED (task 522): this step used to be the loop's landing engine —
+     green-merge-or-export, the export recipe (`git diff main...dream/$DATE >
+     ~/virgil-tasks/attachments/…patch`, `apply --check`, `worktree remove`,
+     `branch -D`), the patch-pruning rule with its two-conjunct proof of
+     landing, and the never-self-merge clause with its `--self-merge-check`
+     door. All of it existed to answer "may this branch merge itself tonight?",
+     and the dream no longer merges anything, so the question is gone rather
+     than answered differently. What each rule was PROTECTING survives, aimed at
+     the artifact that now exists: never-self-merge is step 4's `blocked/`
+     routing (the guard's membership is unchanged and still lives in
+     `dream_land.py`); "a branch that survives has already merged" is moot,
+     since none is created; "a patch that survives has NOT landed" is moot,
+     since a task's own status says which it is; and the attribute-before-filing
+     rule is above, now the difference between a work task and a question. -->
 
 ### 7. Write the digest
 
@@ -618,26 +638,33 @@ can't drift:
 python3 editor/scripts/dream.py digest --report @report.json
 ```
 
-`report.json`:
+`report.json` — the three buckets are the three **verdicts** (that is what
+`dream_land` calls them), and every entry carries the **task** it was filed as:
 
 ```json
-{ "acted":    [ { "summary": "...", "paths": ["editor/skills/x.md"], "memoRefs": ["..."] } ],
-  "proposed": [ { "summary": "EXPORTED — ...", "paths": ["editor/scripts/y.py"],
-                  "branch": "dream/2026-06-06",
-                  "patch": "~/virgil-tasks/attachments/2026-06-06-dream-y.patch",
+{ "acted":    [ { "summary": "...", "paths": ["editor/skills/x.md"],
+                  "task": "2026-09-01-014", "queue": "incoming", "memoRefs": ["..."] } ],
+  "proposed": [ { "summary": "...", "paths": ["editor/scripts/y.py"],
+                  "task": "2026-09-01-015", "queue": "incoming",
                   "reason": "touches a .py script", "memoRefs": ["..."] } ],
-  "refused":  [ { "summary": "...", "boundary": "B1:agents-dont-rules", "reason": "...", "memoRefs": ["..."] } ],
+  "refused":  [ { "summary": "...", "boundary": "B1:agents-dont-rules",
+                  "task": "2026-09-01-016", "queue": "blocked",
+                  "reason": "...", "memoRefs": ["..."] } ],
   "bootstrap": "<one line on how this dream went — feeds step 8>" }
 ```
 
 It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
-`memos/`), recording ACTED + PROPOSED + REFUSED, the counts by tier/skill/lens,
-and the `marker` the next dream reads. Note each proposed entry's landing
-outcome from step 6 — **LANDED / EXPORTED / FILED** — at the head of its
-`summary`, so the digest reads as what actually happened, not what was staged.
-**An entry that did not land carries its `patch` path**, and the digest points
-at `git apply <patch>` instead of a merge hint: step 6 leaves no branch behind
-either way, so the patch is the only pointer to unlanded work.
+`memos/`), recording the three buckets, the counts by tier/skill/lens, and the
+`marker` the next dream reads. **Quote each entry's real `task` id and queue** —
+the digest then reads as what actually happened rather than as what was
+intended, and an entry with no `task` renders as **NOT FILED**, which is exactly
+what a finding that reached no queue is. The digest is a RECORD, not a channel:
+nothing needing attention may live only here.
+
+<!-- RETIRED (task 522): the summaries used to lead with LANDED / EXPORTED /
+     FILED and an unlanded entry carried a `patch` path, because the digest was
+     the only pointer to work that had not merged. The work is a task now, so
+     the pointer is a task id and its status lives in the queue. -->
 
 It also drops an immutable, timestamped COPY of the same digest into the synced
 `Virgil-Inbox/dev-loop/reports/` (the `Done:` line names it), so the morning's
@@ -698,35 +725,40 @@ critique-memo shape, and this skill's landing-mode helper + boundary guard
 writes its critique in the same unified memo shape — `iterations/` and `memos/`
 are now two *labeled* streams of one shape, not two shapes.
 
-**The one thing that stays `dream`-specific is this skill's autonomy layer.**
-`dream` runs unattended, so its `proposes` verdict stages a change in a
-`dream/<date>` worktree. `iterate` runs synchronously, so it adopts `dream_land`
-as a **boundary guard only** — honoring `refused`, surfacing `proposes` for
-scrutiny, and landing non-refused edits inline. iterate did **not** inherit
-acts-on-branch / propose-via-worktree; that machinery is `dream`'s alone. See
+**The one thing that stays `dream`-specific is its output channel.** `dream`
+runs unattended, so it writes NOTHING to the tree: it files a task and the
+worker executes it (task 522). `iterate` runs synchronously with a human in the
+loop, so it adopts `dream_land` as a **boundary guard only** — honoring
+`refused`, surfacing `proposes` for scrutiny, and landing non-refused edits
+inline. That asymmetry is the same one it always was, with the dream's half now
+much smaller: it used to be acts-on-branch / propose-via-worktree / self-merge,
+and it is now one call to `dream.py file-task`. See
 [editor/dev/README.md](../dev/README.md).
 
 ## Hard rules
 
 - **DEV mode only.** Both scripts no-op without `VIRGIL_DEV=1`. Never hand-write
   a memo or digest to dodge the gate.
-- **The guard is law.** Route *every* change through `dream_land.classify_change`
-  and honor the verdict. Never apply a `proposes`/`refused` change on the dream
-  branch; never work around a `refused`.
-- **Never edit a paper file.** The dream rewrites Virgil's *skill set*
-  (`editor/skills/`, and via *propose* the scripts/manifest) — never a user's
+- **The guard is law.** Route *every* finding through `dream_land.task_route`
+  and honor the answer. Never work around a `refused`, and never file an
+  own-rulebook change as ready work.
+- **You LAND NOTHING.** No branch, no commit, no merge, no patch, no edit to any
+  file in the tree — including the skill prompts your findings are about. The
+  worker is the one executor. (The only files a night writes are its digest, its
+  step-8 memo, and the task files it mints.)
+- **Never edit a paper file.** The dream proposes changes to Virgil's *skill
+  set* (`editor/skills/`, the scripts, the manifest) — never a user's
   `.tex`/`.bib`/sidecar. It needs no pen and no `apply_response` contract.
-- **The digest is the only durable output you author.** Acts-directly edits are
-  git-revertable; proposed changes live on their worktree branch; refusals are
-  recorded, not acted. Always write the digest.
+- **A finding that is not FILED is lost.** The digest is a record, the synced
+  reports folder is a courtesy, and `~/virgil-tasks/` is the only surface anyone
+  reads. Always write the digest — and file first.
 - **One seam, not a fork.** Reuse `reflect._parse_memo` and `dream_land` — do not
   write a second memo parser or a parallel routing rule.
 
 ## Reply format
 
 Echo `dream.py digest`'s one-line `Done:` reply (counts + digest path), then a
-≤5-line summary: the memo count + tier split, what you ACTED on, what you
-PROPOSED and its landing outcome (LANDED / EXPORTED with the patch path /
-FILED with the patch path + task filename), any REFUSED items with
-their boundary, and any DECISION tasks filed. If DEV mode is off, say so in one
-line and stop.
+≤5-line summary: the memo count + tier split, every task you FILED (id + queue
++ one clause of what it is), any REFUSED finding with its boundary and the
+blocked task id it became, and the gate sweep's verdict. If DEV mode is off, say
+so in one line and stop.
