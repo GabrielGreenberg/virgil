@@ -40,6 +40,7 @@ import {
   writeBundle,
   readManifestTs,
   FMT_FILEID,
+  CORE_FAMILY,
 } from "./lib/tex-bundle-manifest.mjs";
 
 const ENDPOINT = "https://texlive.texlyre.org/";
@@ -288,12 +289,33 @@ async function main() {
     fail(`usage: vendor-tex-family.mjs <family|--all> [--dry-run]\nknown: ${Object.keys(FAMILIES).join(", ")}`);
 
   // Declaration order is resolution order: a family's rows are whatever its
-  // closure adds over the families declared BEFORE it (see `claimed`).
+  // closure adds over the families declared BEFORE it (see `claimed`). Only
+  // the LABEL depends on that order — the set of vendored bytes does not.
   const targets = all ? Object.keys(FAMILIES) : names;
+  const existing = await readManifestTs();
+
+  // `--all` means "make the bundle match the declaration", so a family that has
+  // been REMOVED from it takes its rows (and, through writeBundle's prune, its
+  // bytes) with it. Without this, deleting a family leaves rows nothing can
+  // regenerate — and "trimming a family is one config edit" would be false.
+  if (all) {
+    const known = new Set([CORE_FAMILY, ...targets]);
+    const stale = [...new Set(existing.map((r) => r.family))].filter((f) => !known.has(f));
+    for (const family of stale) {
+      console.log(`\n=== ${family} — no longer declared: dropping its rows`);
+      if (dryRun) {
+        console.log(`  --dry-run: would drop ${existing.filter((r) => r.family === family).length} row(s)`);
+        continue;
+      }
+      const report = await writeBundle({ family, rows: [] });
+      console.log(
+        `  dropped; manifest now ${report.total} row(s); pruned ${report.pruned.length} file(s)`,
+      );
+    }
+  }
+
   const claimed = new Set(
-    (await readManifestTs())
-      .filter((r) => !targets.includes(r.family))
-      .map((r) => r.cacheKey),
+    existing.filter((r) => !targets.includes(r.family)).map((r) => r.cacheKey),
   );
   for (const name of targets) await vendor(name, { dryRun, claimed });
 

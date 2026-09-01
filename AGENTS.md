@@ -10699,8 +10699,14 @@ Seven rules it earned:
 - **One cacheKey has one OWNER, so a closure that OVERLAPS is not a closure that
   DUPLICATES.** forest's closure begins with all of tikz's; the overlap is still
   fetched (its references are how the graph is walked) and the first family to
-  declare it keeps the row. Which is what makes the reported sizes per-family
-  and therefore trimmable: dropping `forest` is one config edit.
+  declare it keeps the row. Only the LABEL depends on declaration order; the set
+  of vendored bytes does not. That is what makes the sizes per-family and
+  therefore trimmable — and `--all` means "make the bundle match the
+  declaration", so a family REMOVED from it takes its rows and its bytes with
+  it. Without that arm, "trimming a family is one config edit" would be false:
+  deleting it would strand rows nothing can regenerate. Proven by round trip —
+  undeclare `forest`, run, re-declare, run: 173 rows → 145 → 173, and the
+  bundle comes back byte-identical.
 - **`family` is a column with a READER, or it would be a dead facet.** The
   producers read it to replace exactly their own rows — without which a family
   whose closure SHRINKS leaves orphan rows, and orphan bytes, in the bundle
