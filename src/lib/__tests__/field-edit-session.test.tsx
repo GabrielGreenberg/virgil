@@ -370,10 +370,20 @@ describe("CENSUS — a cancelling field takes the door", () => {
   // The NON-MEMBERS, pinned with their reasons so a later sweep does not
   // "unify" them in and a later tightening does not indict them.
   it("a field with NO cancel branch is out of the population by construction", () => {
-    // PreferenceTree.ColorPref — Enter blurs, and that is the whole keymap, so
-    // there is no cancel to make visible. Byte-unchanged by task 529.
+    // The hex-color field — Enter blurs, and that is the whole keymap, so there
+    // is no cancel to make visible. Byte-unchanged by task 529.
+    //
+    // RENEGOTIATED IN PLACE (task 532): this leg used to read
+    // `PreferenceTree.tsx`, which is where the control lived when 529 shipped.
+    // `SmartPreferences` hand-rolled a SECOND copy of the same swatch+hex pair
+    // with no draft at all, so the control became a primitive
+    // (`HexColorField.tsx`) that both preference surfaces render — and the
+    // keydown moved with it. The CLAIM is unchanged and so is the field's
+    // behaviour; what moved is the file that hosts it, and a census that kept
+    // reading the old one would report zero blurring handlers, i.e. pass its
+    // sibling assertion vacuously while pinning nothing.
     const src = strip(
-      readFileSync(path.join(REPO, "src/components/PreferenceTree.tsx"), "utf8"),
+      readFileSync(path.join(REPO, "src/components/HexColorField.tsx"), "utf8"),
       true,
     );
     const blurring = keydownHandlers(src).filter((x) => ENDS_SESSION.test(x.body));

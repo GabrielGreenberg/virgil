@@ -1693,6 +1693,36 @@ theme.titleColor` on focus, transparent bg, sans 0.78rem weight 500.
 Don't reuse this style. (It is already its own primitive, `CardTitleInput`
 — the pattern that made the missing ordinary one conspicuous.)
 
+### A field whose value is owned elsewhere
+
+**A field that edits something another thing owns holds a DRAFT, commits on
+a stated EDGE with a guard, and RECONCILES from the source while it is not
+dirty** — [`useFieldDraft`](components/field-draft.ts), a leaf beside the
+chrome primitives. The three obligations are not stylistic: a field with no
+draft is *not typeable at all* (React's controlled-input contract resets the
+node after every event whose handler wrote no state, so a validating
+`onChange` rejects the partials on the way to a valid value); an unguarded
+commit fires the owner's setter for a bare focus+blur, and those setters
+have side effects beyond the value (a title's `titleAuto` provenance, a
+pristine flag, a `setNodeMarkup` transaction — an undo step and an autosave
+arm for an edit that did not happen); and an unreconciled field shows a
+value the store no longer has and writes it back over what landed.
+
+The COMMIT EDGE is **blur + Enter**, not per keystroke, wherever the commit
+writes a store: a per-character commit on a colour writes a preference (and
+fires a cross-window sync) for every intermediate string.
+
+**The swatch + hex pair is one control, `HexColorField`**
+([src/components/HexColorField.tsx](components/HexColorField.tsx)) —
+normalize (`c45a5a` → `#c45a5a`, lowercased), validate on commit, flash the
+primitive's `invalid` for 800 ms and revert. Preference rows own their label
+and their reset link around it; they do not re-render the pair.
+
+CI: [field-draft-census.test.ts](components/__tests__/field-draft-census.test.ts)
+— every DOM `defaultValue` reconciles (asked per SITE against the enclosing
+declaration), and no second file renders the swatch+hex pair. Both
+allowlists empty.
+
 CI: [field-chrome-guardrail.test.ts](lib/__tests__/field-chrome-guardrail.test.ts)
 censuses both silos — every raw `<input>`/`<select>`/`<textarea>` painting
 its own chrome must be on `PERMITTED_BESPOKE_FIELDS` (empty; a hit is

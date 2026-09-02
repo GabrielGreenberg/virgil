@@ -6,6 +6,7 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
 import ConfirmDialog from "./ConfirmDialog";
+import { useFieldDraft } from "./field-draft";
 import { iconHint } from "@/components/Hint";
 import type { SourcePodDerive } from "./source-pod-derive";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
@@ -250,16 +251,36 @@ export default function SourcePodNodeView({
   // string over an EXISTING title. `@/lib/field-edit-session`.
   const session = useFieldEditSession();
 
+  // The DOM node is this field's draft, and `defaultValue` seeds it when the
+  // session OPENS — after which `title` can still move under it (an undo, a
+  // re-parse, a second window writing the same attr). Reconciling while the
+  // draft is clean is what stops the box showing a title the document no
+  // longer has, and stops the next blur writing it back: `setTitle`'s own
+  // equality bail compares the LIVE attr, so a stale draft is not an unchanged
+  // value and DOES dispatch. (task 532; the guard half `setTitle` already had.)
+  const titleDraft = useFieldDraft<string>({
+    source: title ?? "",
+    readDraft: () => inputRef.current?.value,
+    writeDraft: (next) => {
+      const el = inputRef.current;
+      if (el) el.value = next;
+    },
+  });
+
   /** Commit the title from a LIVE element, or refuse. Never `?? ""` — for this
    *  field the empty string is a DELETE (`setTitle` maps it to `parTitle: null`),
-   *  so a commit that cannot read its value must not run at all. */
+   *  so a commit that cannot read its value must not run at all.
+   *
+   *  NORMALIZE BEFORE YOU COMMIT: the draft's guard compares what is about to
+   *  be stored against the live attr, so a draft of `"A "` must arrive as `"A"`
+   *  or it reads as a change that `setTitle` then bails on anyway. */
   const commitTitleFrom = useCallback(
     (el: HTMLInputElement | null) =>
       commitLiveValue(el, (val) => {
         setEditingTitle(false);
-        setTitle(val);
+        titleDraft.commit(val.trim(), setTitle);
       }),
-    [setTitle],
+    [setTitle, titleDraft],
   );
 
   // A pod can be collapsed while its title is being edited — by the chevron
@@ -337,7 +358,10 @@ export default function SourcePodNodeView({
                   session.commitAndBlur(el, () => commitTitleFrom(el));
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  session.cancel(e.currentTarget, () => setEditingTitle(false));
+                  session.cancel(e.currentTarget, () => {
+                    titleDraft.revert();
+                    setEditingTitle(false);
+                  });
                 }
               }}
               // Read the value SYNCHRONOUSLY, off the event's own element,
