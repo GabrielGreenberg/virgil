@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
 import {
   PANEL,
@@ -11,6 +11,7 @@ import {
   useCardDeleteKey,
 } from "@/components/panel-primitives";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useFieldDraft } from "@/components/field-draft";
 import { cardHasContent } from "@/cards/has-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
@@ -93,29 +94,25 @@ export function TodoRow({
   const todoBodyStyle = usePanelBodyStyle("todo");
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
 
-  // Reconcile the controlled `notes` mirror with its source of truth. The notes
-  // textarea is a local `useState` buffer committed to disk only on blur; without
-  // this, an out-of-band write to `todos.json` (an AI cowork skill editing a
-  // todo's notes while the panel is open — the live sidecar-reactivity path
+  // The notes textarea is a local `useState` draft of a value `todos.json`
+  // owns, committed to disk only on blur. Task 102 built the reconcile rule
+  // here by hand (a `lastCommittedRef` plus a reset-when-not-dirty effect),
+  // because without it an out-of-band write to the sidecar — an AI cowork skill
+  // editing this todo while the panel is open; the live sidecar-reactivity path
   // re-reads disk and updates `item.notes` with the SAME id, so the row never
-  // remounts) would be invisible in the card AND get reverted on the next
-  // focus/blur. `lastCommittedRef` tracks the last value we know is on disk; we
-  // reset the buffer to an external change ONLY when the user has no uncommitted
-  // edit in flight (`notes === lastCommittedRef.current`), so a mid-edit local
-  // buffer is preserved and wins on commit. (task 2026-07-12-102.)
-  const lastCommittedRef = useRef(item.notes);
+  // remounts — was invisible in the card AND got reverted on the next
+  // focus/blur. Task 532 published that rule as `useFieldDraft` and this is now
+  // one of its readers rather than the only place it is spelled: a mid-edit
+  // buffer is still preserved and still wins on commit.
+  const notesDraft = useFieldDraft<string>({
+    source: item.notes,
+    readDraft: () => notes,
+    writeDraft: setNotes,
+  });
 
-  const commitNotes = useCallback(() => {
-    if (notes !== item.notes) onUpdateNotes(item.id, notes);
-    lastCommittedRef.current = notes;
-  }, [notes, item.notes, item.id, onUpdateNotes]);
-
-  useEffect(() => {
-    if (notes === lastCommittedRef.current) {
-      setNotes(item.notes);
-      lastCommittedRef.current = item.notes;
-    }
-  }, [item.notes, notes]);
+  const commitNotes = () => {
+    notesDraft.commit(notes, (v) => onUpdateNotes(item.id, v));
+  };
 
   // Delete-with-confirm — route the todo trash + panel Delete/Backspace through
   // the `cardHasContent` SSOT like every sibling panel (task 067 facet 2; todo

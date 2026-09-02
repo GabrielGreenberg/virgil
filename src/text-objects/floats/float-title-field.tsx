@@ -12,7 +12,8 @@
  */
 
 import { useEffect, useRef } from "react";
-import { autoSizeInput } from "@/lib/autoSizeInput";
+import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
+import { useFieldDraft } from "@/components/field-draft";
 import { iconHint } from "@/components/Hint";
 
 export interface FloatTitleFieldProps {
@@ -46,6 +47,37 @@ export function FloatTitleField({
 }: FloatTitleFieldProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // The DOM node is this field's draft. Two halves, both real here (task 532):
+  // the source moves under an OPEN session — `source-pod-body`'s
+  // `syncFromMain` re-reads `parTitle` off the main document on every
+  // transaction — and the blur commit was UNCONDITIONAL, so a bare focus+blur
+  // that changed nothing dispatched a `setNodeMarkup` on the user's document:
+  // an undo step and an autosave arm for an edit that did not happen. The CODE
+  // sibling six lines from the same commit path (`handleCodeChange`) already
+  // guarded exactly this.
+  const draft = useFieldDraft<string>({
+    source: title ?? "",
+    readDraft: () => inputRef.current?.value,
+    writeDraft: (next) => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.value = next;
+      syncInputWidth(el);
+    },
+  });
+
+  /** The commit edge, shared by Enter and blur. Normalize BEFORE committing so
+   *  the guard compares like with like: a draft of `"A "` against a stored
+   *  `"A"` is not a change.
+   *
+   *  A commit that would change nothing ends the session as a CANCEL: the
+   *  caller's `onCommit` is what closes edit mode, so skipping it without
+   *  saying so would leave the user staring at an input they had just clicked
+   *  away from. Nothing to write ⇒ the ending is a cancel. */
+  const commitFrom = (el: HTMLInputElement) => {
+    if (!draft.commit(el.value.trim(), (v) => onCommit(v || null))) onCancel();
+  };
+
   useEffect(() => {
     if (!editing) return;
     const input = inputRef.current;
@@ -69,16 +101,20 @@ export function FloatTitleField({
             e.stopPropagation();
             if (e.key === "Enter") {
               e.preventDefault();
-              const val = (e.target as HTMLInputElement).value.trim();
-              onCommit(val || null);
+              commitFrom(e.currentTarget);
             } else if (e.key === "Escape") {
               e.preventDefault();
+              // Restore the DOM value before leaving edit mode: some browsers
+              // fire `focusout` when a focused element is removed, and this
+              // input's blur COMMITS. Reverting first makes that stray commit a
+              // provable no-op rather than a race (task 529's law, reached
+              // through the draft door rather than a second latch).
+              draft.revert();
               onCancel();
             }
           }}
           onBlur={(e) => {
-            const val = e.currentTarget.value.trim();
-            onCommit(val || null);
+            commitFrom(e.currentTarget);
           }}
         />
       </div>

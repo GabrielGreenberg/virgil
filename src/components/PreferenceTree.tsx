@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
 import { isLeaf } from "@/lib/preferences-tree";
-import { Input, Select } from "./field-primitives";
+import { Select } from "./field-primitives";
+import { HexColorField } from "./HexColorField";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
-import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 // ─── Leaf Components ──────────────────────────────────────────────────────────
 
@@ -57,6 +57,13 @@ export function SliderPref({
   );
 }
 
+/** A preference row wrapping the shared {@link HexColorField}.
+ *
+ *  This row is where the draft / normalize / validate / reconcile contract was
+ *  first written, and it was the ONLY place it was written — `SmartPreferences`
+ *  hand-rolled a second copy of the same control with none of it (task 532).
+ *  The control is now a primitive and both sites render it; what stays here is
+ *  what belongs to a preference ROW: its label and its reset link. */
 export function ColorPref({
   label,
   description,
@@ -70,47 +77,12 @@ export function ColorPref({
   defaultValue: string;
   onChange: (v: string) => void;
 }) {
-  const [localHex, setLocalHex] = useState(value);
-  const [invalid, setInvalid] = useState(false);
-
-  useEffect(() => { setLocalHex(value); setInvalid(false); }, [value]);
-
-  const commitHex = useCallback(() => {
-    let hex = localHex.trim();
-    if (!hex.startsWith("#")) hex = "#" + hex;
-    hex = hex.toLowerCase();
-    if (/^#[0-9a-f]{6}$/.test(hex)) {
-      setInvalid(false);
-      onChange(hex);
-    } else {
-      setInvalid(true);
-      setTimeout(() => { setLocalHex(value); setInvalid(false); }, 800);
-    }
-  }, [localHex, value, onChange]);
-
   const isDefault = value.toLowerCase() === defaultValue.toLowerCase();
   return (
     <div className="flex items-center gap-3 py-1">
       <PrefLabel label={label} description={description} />
       <div className="flex items-center gap-2 flex-1">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-6 h-6 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
-        />
-        <Input
-          value={localHex}
-          onChange={(e) => setLocalHex(e.target.value)}
-          onBlur={commitHex}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-          {...NEVER_SPELLCHECK_PROPS}
-          tone="transparent"
-          density="dense"
-          ink="subtle"
-          invalid={invalid}
-          className="text-[11px] font-mono w-[70px] px-1 py-0.5"
-        />
+        <HexColorField value={value} onChange={onChange} />
         {!isDefault && (
           <button
             onClick={() => onChange(defaultValue)}

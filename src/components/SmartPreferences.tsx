@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { SMART_PREFERENCES, type SmartSection, type SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
-import { Input, Select } from "./field-primitives";
+import { Select } from "./field-primitives";
+import { HexColorField } from "./HexColorField";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -33,7 +34,6 @@ import {
 import type { LinkableKey } from "@/lib/pref-links";
 import { applyLightnessDelta } from "@/lib/pref-links";
 import { iconHint } from "@/components/Hint";
-import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
 function PrefRow({
   item,
@@ -161,26 +161,18 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         />
         <span className="text-[10px] text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
       </div>
-      <div className="flex items-center gap-1">
-        <input
-          type="color"
-          value={typo.color}
-          onChange={(e) => setField("color", e.target.value)}
-          className="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
-        />
-        <Input
-          value={typo.color}
-          onChange={(e) => {
-            const v = e.target.value.trim().toLowerCase();
-            if (/^#[0-9a-f]{6}$/.test(v)) setField("color", v);
-          }}
-          {...NEVER_SPELLCHECK_PROPS}
-          tone="transparent"
-          ink="subtle"
-          density="dense"
-          className="text-[10px] font-mono w-[60px] px-1 py-0.5"
-        />
-      </div>
+      {/* The shared swatch+hex control (task 532). This cell used to hand-roll
+          a second copy with a fully-controlled `value={typo.color}` and an
+          `onChange` that wrote the store only for an ALREADY-complete hex — so
+          every partial, and every backspace, was reset by React's controlled
+          -input contract and the box could not be typed into at all. */}
+      <HexColorField
+        value={typo.color}
+        onChange={(hex) => setField("color", hex)}
+        className="flex items-center gap-1"
+        swatchClassName="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
+        inputClassName="text-[10px] font-mono w-[60px] px-1 py-0.5"
+      />
       <button
         onClick={resetAll}
         disabled={isDefault}

@@ -29,7 +29,8 @@ import {
   isPrimaryDragStart,
 } from "@/lib/pane-resize/pointer-invariants";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
-import { autoSizeInput } from "@/lib/autoSizeInput";
+import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
+import { useFieldDraft } from "./field-draft";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
@@ -1011,6 +1012,18 @@ export function CardBodyTitle({
     },
     [registerTitle],
   );
+  // Same uncontrolled-draft contract as `CardTitleInput` (task 532). This
+  // input already GUARDED its blur write; what it lacked was reconciliation,
+  // and its input is mounted for as long as the card has a title, so an
+  // external change to `value` left it showing the old one indefinitely.
+  const draft = useFieldDraft<string>({
+    source: value ?? "",
+    readDraft: () => inputRef.current?.value,
+    writeDraft: (next) => {
+      const el = inputRef.current;
+      if (el) el.value = next;
+    },
+  });
   const hasTitle = !!value?.trim();
 
   useEffect(() => {
@@ -1037,7 +1050,10 @@ export function CardBodyTitle({
             const el = e.currentTarget;
             session.commit(() => {
               const v = el.value;
-              if (v !== (value ?? "")) onChange(v);
+              // The equality guard this used to hand-write is now the door's
+              // (task 532) — byte-identical, plus the `lastSynced` bookkeeping
+              // that makes the RECONCILE half possible.
+              draft.commit(v, onChange);
               if (!v.trim()) setEditing(false);
             });
           }}
@@ -1053,7 +1069,10 @@ export function CardBodyTitle({
               e.preventDefault();
               const el = e.currentTarget;
               session.cancel(el, () => {
-                el.value = value ?? "";
+                // `revert` restores the DOM value AND marks the field clean, so
+                // a change that landed during the edit reconciles on the next
+                // render instead of being held off by a discarded draft.
+                draft.revert();
                 setEditing(false);
               });
             }
@@ -1147,6 +1166,28 @@ export function CardTitleInput({
     if (!inputRef.current) return;
     return autoSizeInput(inputRef.current);
   }, []);
+  // The DOM node IS this field's draft, and `defaultValue` seeds it at MOUNT
+  // only — so before task 532 an external change to the source (an
+  // `/editor/edit-card` run, a second window, the sidecar watcher) left the box
+  // showing the OLD title on a row that re-renders in place, and the next blur
+  // wrote that stale value back over it. The blur write was also
+  // UNCONDITIONAL, so a bare focus+blur that changed nothing still called
+  // `useTodos.updateItem`, which flips `titleAuto` to false and un-pristines a
+  // brand-new todo. `useFieldDraft` supplies both halves: reconcile while the
+  // draft is clean, and commit only when it would change something.
+  const draft = useFieldDraft<string>({
+    source: defaultValue ?? "",
+    readDraft: () => inputRef.current?.value,
+    writeDraft: (next) => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.value = next;
+      // The auto-sizer listens to `input` events, which this write does not
+      // dispatch — without the re-measure the box keeps the old title's width
+      // and `TITLE_CLASS`'s `text-ellipsis` clips the new one.
+      syncInputWidth(el);
+    },
+  });
   return (
     <div className="flex-1 min-w-0 flex items-center">
       <input
@@ -1156,7 +1197,10 @@ export function CardTitleInput({
         onFocus={() => claim()}
         onBlur={(e) => {
           release();
-          if (onChange) onChange(e.target.value);
+          // No `onChange` ⇒ nothing owns this value ⇒ there is no commit to
+          // make, and marking the draft synced against a source nobody writes
+          // would make the next reconcile revert the user's typing.
+          if (onChange) draft.commit(e.target.value, onChange);
         }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
