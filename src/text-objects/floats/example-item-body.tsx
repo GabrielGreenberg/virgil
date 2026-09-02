@@ -316,11 +316,6 @@ export function ExampleItemBody({
   // renders as a compact card preview (docIdRef threaded below so its image
   // resolves). `.current` is reassigned each render so the closures see the
   // live handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -355,7 +350,6 @@ export function ExampleItemBody({
       editable: mainEditable,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

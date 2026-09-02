@@ -186,6 +186,15 @@ function watchScrollRequests(editor: Editor): () => number {
 const annotOf = (el: HTMLElement) =>
   el.querySelector<HTMLElement>('[data-uuid="h-1"] .heading-annotation')!;
 
+/**
+ * Since task 534 the commit enters the ONE label-rename door
+ * (`renameLabelWithRefs`) and AWAITS it, so the refocus — and the frame it
+ * schedules — lands one microtask after the keystroke. Every leg below settles
+ * that microtask BEFORE flushing frames and asserts the flush drained one, or
+ * a "no scroll" verdict could be read off a frame that was never queued.
+ */
+const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+
 /** Drive the REAL affordance: click the label chip, type, press Enter. */
 function commitLabelViaInput(el: HTMLElement, value: string): void {
   const annot = annotOf(el);
@@ -228,14 +237,15 @@ describe("task 486 — a chrome commit refocuses without repositioning", () => {
     }
   });
 
-  it("ADDING a label from the strip requests no scroll, and the caret does not move", () => {
+  it("ADDING a label from the strip requests no scroll, and the caret does not move", async () => {
     const { editor, el } = buildEditor(null);
     try {
       const parked = parkCaretFarAway(editor);
       const scrolls = watchScrollRequests(editor);
 
       commitLabelViaInput(el, "sec:intro");
-      flushFrames();
+      await settle();
+      expect(flushFrames()).toBeGreaterThan(0);
 
       // The edit landed …
       expect(editor.state.doc.firstChild!.attrs.label).toBe("sec:intro");
@@ -248,14 +258,15 @@ describe("task 486 — a chrome commit refocuses without repositioning", () => {
     }
   });
 
-  it("RENAMING a label requests no scroll", () => {
+  it("RENAMING a label requests no scroll", async () => {
     const { editor, el } = buildEditor("sec:old");
     try {
       const parked = parkCaretFarAway(editor);
       const scrolls = watchScrollRequests(editor);
 
       commitLabelViaInput(el, "sec:new");
-      flushFrames();
+      await settle();
+      expect(flushFrames()).toBeGreaterThan(0);
 
       expect(editor.state.doc.firstChild!.attrs.label).toBe("sec:new");
       expect(editor.state.selection.from).toBe(parked);
@@ -265,14 +276,15 @@ describe("task 486 — a chrome commit refocuses without repositioning", () => {
     }
   });
 
-  it("REMOVING a label requests no scroll", () => {
+  it("REMOVING a label requests no scroll", async () => {
     const { editor, el } = buildEditor("sec:old");
     try {
       const parked = parkCaretFarAway(editor);
       const scrolls = watchScrollRequests(editor);
 
       commitLabelViaInput(el, "   ");
-      flushFrames();
+      await settle();
+      expect(flushFrames()).toBeGreaterThan(0);
 
       expect(editor.state.doc.firstChild!.attrs.label).toBeNull();
       expect(editor.state.selection.from).toBe(parked);
@@ -282,13 +294,14 @@ describe("task 486 — a chrome commit refocuses without repositioning", () => {
     }
   });
 
-  it("focus STILL returns to the editor — only the scroll side effect goes", () => {
+  it("focus STILL returns to the editor — only the scroll side effect goes", async () => {
     const { editor, el } = buildEditor(null);
     try {
       const focusSpy = vi.spyOn(editor.view, "focus");
       parkCaretFarAway(editor);
       commitLabelViaInput(el, "sec:intro");
-      flushFrames();
+      await settle();
+      expect(flushFrames()).toBeGreaterThan(0);
       // `delayedFocus` calls `view.focus()` inside its frame whether or not the
       // scroll is suppressed — that is the half the site's comment is about
       // ("keeps the user in the popout"), and it must survive the fix.

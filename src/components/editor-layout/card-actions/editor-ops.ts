@@ -2,10 +2,11 @@ import { useCallback, useRef, type RefObject } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { EditorHandle } from "../../Editor";
 import {
+  findNodeByUuid,
   renameHeadingByUuid,
   renameParTitleByUuid,
-  updateHeadingLabelByUuid,
 } from "@/lib/tiptap/structural-edit";
+import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import {
   DOC_START_BLOCK_INDEX,
   resolveBlockIndex,
@@ -36,15 +37,10 @@ import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 export function useEditorOps(deps: {
   editorRef: RefObject<EditorHandle | null>;
   setLatestDoc: (doc: JSONContent | null) => void;
-  /** Central duplicate-label predicate (the SAME one the live label warning
-   *  reads). The label commit gates on it so the warning and the commit can
-   *  never disagree (OUT-F8-03 / OUT-F5-03). */
-  isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
 }) {
   const {
     editorRef,
     setLatestDoc,
-    isLabelTaken,
   } = deps;
 
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,16 +165,30 @@ export function useEditorOps(deps: {
     [editorRef],
   );
 
-  // Heading-label commit — UUID-addressed, gated on the SAME `isLabelTaken`
-  // predicate the live warning reads, so a duplicate label can never be
-  // committed past the advisory warning (OUT-F8-03 / OUT-F5-03).
+  // Heading-label commit — UUID-addressed, through the ONE label-rename door
+  // (task 534). The door gates on the SAME `@/lib/labels` predicate the live
+  // warning reads (a duplicate label can never be committed past the advisory
+  // warning — OUT-F8-03 / OUT-F5-03), and it carries every `\ref` naming the
+  // old key: pre-534 this path wrote the heading attr alone and orphaned them
+  // without asking. The confirm is MAIN's own (`EditorHandle.onConfirmLabelRename`
+  // → `EditorPane`'s dialog), so the Outline, the heading strip and the figure
+  // lozenge ask one question in one voice.
   const handleUpdateLabel = useCallback(
     (uuid: string, newLabel: string | null) => {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      updateHeadingLabelByUuid(editor, uuid, newLabel, isLabelTaken);
+      const handle = editorRef.current;
+      const editor = handle?.getEditor();
+      if (!handle || !editor) return;
+      void renameLabelWithRefs(editor, {
+        locate: () => {
+          const hit = findNodeByUuid(editor, uuid);
+          return hit && hit.node.type.name === "heading" ? hit : null;
+        },
+        newLabel,
+        confirm: (oldLabel, next, refCount) =>
+          handle.onConfirmLabelRename(oldLabel, next, refCount),
+      });
     },
-    [editorRef, isLabelTaken],
+    [editorRef],
   );
 
   // parTitle rename — UUID-addressed with a node-type guard (refuses a heading),

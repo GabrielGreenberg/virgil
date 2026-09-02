@@ -7082,6 +7082,118 @@ orphan set (gains `--footnote-200`), `in-text-anchor-accents`' non-vacuity floor
 **Owed, not claimed:** nothing user-visible should change, which is the point —
 every deleted hook could never match an element. Not FSA-masked.
 
+### The producer half: a callback a NodeView CONSUMES has a PRODUCER at the one mount that could pass it
+
+Same law, the tense none of the halves above can see (task 534) — and the case
+where the consumer read the field, the component destructured the prop, three
+surfaces implemented the behaviour, and the ONE place that could have supplied
+it never did.
+
+`<VirgilEditor>` declared `onConfirmLabelRename` and `isLabelTaken` as optional
+props; `Editor.tsx` mirrored them into refs and threaded them into the extension
+factory's `callbacks` bag and onto the `EditorHandle` proxy; the heading
+strip's lozenge (a vanilla-DOM NodeView), the figure's lozenge
+(`FigureAnnotation`) and eight float bodies all READ them. The sole production
+mount — `EditorPane` — supplied every SIBLING (`onConfirmHeadingDelete`,
+`onConfirmFigureDelete`, `onOpenHeadingTypeMenu`) and neither of these two. So
+every rename of a `\label{…}`, from any surface, on any paper, since
+`0f1761ef`, ran with `updateRefs` false: **the declaration moved and every
+`\ref` naming the old key was left behind** — a `??` in the compiled PDF, with
+no dialog, no warning, no log line, for five months. `onConfirmFootnoteMove` had
+rotted the same way behind a comment asserting that "EditorLayout always wires
+the callback", and `onAddComment` / `onArchive` were declared, destructured and
+read by nothing. Every one of those props is OPTIONAL, so all of it type-checked.
+
+**Why no existing instrument could see it.** `action-context-honesty` asks
+whether a declared FIELD is read; `dead-panel-prop-guardrail` asks whether a
+declared PROP is consumed by its own component. Both were satisfied: the
+consumer read the field, the component destructured the prop. What nobody asked
+was whether anything ever PASSES it — the missing half of "a registry earns its
+name by being read" is that a callback earns its name by being SUPPLIED.
+
+> **A callback the editor CONSUMES has a PRODUCER at the mount that could pass
+> it, or it is not on the bag.** The ref-mirror, the `callbacks` bag and the
+> `EditorHandle` proxy are three layers of plumbing that carry a value from the
+> mount to a NodeView; each of them is a promise that a host answers, and the
+> promise is checked at the mount, not at the consumer.
+
+Seven rules it earned:
+
+- **ONE door for the rename, not three copies of the walk.**
+  [`renameLabelWithRefs`](src/lib/tiptap/label-rename.ts) locates the declaring
+  node (by live position on the page, by uuid from a float or the Outline),
+  refuses a key another declaration already claims, collects every `labelRef`
+  naming the old key, asks the confirm, and moves the declaration AND every ref
+  in ONE transaction — one undo step, one autosave arm, no window in which the
+  paper is inconsistent. The heading strip, the figure lozenge and the Outline's
+  `handleUpdateLabel` all enter it. Pre-534 the first two each carried a private
+  copy of the walk (both dead) and the third carried none at all
+  (`updateHeadingLabelByUuid`, deleted).
+- **The door FAILS TOWARD NOT ORPHANING.** A rename with no confirm handler in
+  hand carries its refs. The confirm exists to let a user deliberately KEEP refs
+  on the old key (they mean to re-declare it), and "nobody wired a dialog" is
+  not that decision. The census keeps production from ever reaching the default;
+  the default is a statement about what a missing wire must COST.
+- **The label predicate has ONE home.** `isLabelTaken` was a prop threaded
+  through `EditorProps`, a ref on `HeadingCallbackRefs`, a member of the
+  `callbacks` bag, a proxy on `EditorHandle`, and a `isLabelTakenRef` block in
+  eight float bodies and `ExampleCard` — nine proxy sites for a predicate
+  `@/lib/labels` already answered from the live document. Every consumer reads
+  `isLabelTaken(editor, candidate, own)` directly now, and the prop, the ref,
+  the bag member and the proxy are DELETED. That is what makes the commit gate
+  and the live "label already in use" warning read the SAME predicate, so they
+  cannot disagree (the rule the Outline commit earned as OUT-F8-03, now held by
+  every surface).
+- **A duplicate is REFUSED, not committed.** The figure lozenge used to commit
+  a conflicting key with only a warning; now every surface answers `conflict`:
+  on Enter the input stays open with its warning lit, on blur the edit is
+  abandoned. Decided rather than inherited — a warning beside a commit that
+  proceeds is the false-affordance class one field over.
+- **The door moves the `label` and NOTHING ELSE.** A `labelRef`'s `displayText`
+  is re-derived by the numberer's own `appendTransaction` on any structural
+  change, and a label rename IS one — so the display follows on the same
+  dispatch. Two writers of one derived attr is how they come to disagree.
+- **ONE consolidated confirm dialog in `EditorPane`** (`useConfirmDialog`) now
+  produces BOTH missing callbacks — `onConfirmLabelRename` (its words spelled
+  once, beside the door, as `labelRenameConfirmCopy`) and
+  `onConfirmFootnoteMove` — rather than a second dialog per callback.
+- **The census is the leg with teeth, and its population is DISCOVERED.**
+  [editor-callback-producer-census.test.ts](src/components/__tests__/editor-callback-producer-census.test.ts)
+  parses `EditorProps` for every OPTIONAL function-typed member — so a callback
+  added tomorrow is covered by declaring itself — and asks three things: it is
+  READ in `Editor.tsx` (declaration + destructure + a use, or it is
+  `onAddComment` again), it is PASSED at the sole production `<VirgilEditor>`
+  mount (exactly one, pinned: a second mount is a second place for a producer to
+  go missing), and every member of the extension factory's `callbacks` bag is
+  one of those props and is threaded into the bag `Editor.tsx` builds. Beside
+  it: the predicate has no prop / ref / proxy anywhere, the retired Outline
+  primitive stays retired, the door's callers are an EXACT set (the three
+  producers plus the door), and the ref walk (`.label === oldLabel`) is spelled
+  in the door and in exactly one exemption — `ref.ts`'s re-point of a SINGLE ref
+  at a different existing label, a different gesture whose `return false;` is
+  pinned so it cannot become a second walk. Allowlist EMPTY.
+
+CI: [label-rename-refs.test.tsx](src/lib/tiptap/__tests__/label-rename-refs.test.tsx)
+drives the door's contract, the REAL heading NodeView through its label input,
+the REAL `FigureAnnotation` through RTL, and the REAL `useEditorOps` Outline
+handler — and its DEFECT legs assert that the `labelRef`'s `label` MOVED, never
+that a transaction was dispatched. **No pre-534 suite could see any of this**:
+`structural-edit.test.ts` drove the label WRITE one layer below the NodeView
+where the refs were never walked, and every heading / figure fixture in the repo
+renames a label no `\ref` points at. Measured by neutering each half in turn:
+**A** (the two producers removed from the mount) fails the census's leg 2;
+**B** (the door's no-confirm default flipped to orphan) 2 legs; **C** (the
+conflict gate removed) 3 legs; **D** (the Outline handler answering its own
+confirm with NO) 1 leg — the Outline DEFECT leg, which is the surface that had
+no walk at all.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture plus a `.tex` round trip — no disk), so the check is cheap and real:
+label a figure, `\ref` it from a paragraph, rename the label from the figure's
+lozenge — the dialog asks, "Update references" rewrites the `\ref` (read the
+code view) — then the same from a heading's strip and from the Outline's inline
+label editor.
+
 ### The vocabulary half: a token two layers must agree on is spelled ONCE
 
 Same law, fourth tense (task 255) — and the one where deleting the dead declaration would have been the *smaller* half of the truth.

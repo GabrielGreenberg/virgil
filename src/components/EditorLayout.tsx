@@ -2139,8 +2139,9 @@ export default function EditorLayout() {
   } = useEditorOps({
     editorRef,
     setLatestDoc,
-    // T3 (W3a): the label commit shares the live warning's predicate.
-    isLabelTaken: checkLabelTaken,
+    // (The label commit's duplicate gate is the door's own now — it reads the
+    // SAME `@/lib/labels` predicate `checkLabelTaken` wraps for the Outline's
+    // live warning; task 534.)
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────

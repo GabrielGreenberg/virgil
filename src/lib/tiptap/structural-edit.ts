@@ -375,27 +375,3 @@ export function renameParTitleByUuid(
   });
 }
 
-/**
- * Set (or clear) a heading's `\label{}`, addressed by uuid. `isTaken` reads the
- * SAME central label registry the live warning reads, so a duplicate-label
- * commit is BLOCKED, never accepted against the advisory warning
- * (`OUT-F8-03` / `OUT-F5-03`). Clearing (newLabel null/empty) is always allowed.
- */
-export function updateHeadingLabelByUuid(
-  editor: Editor,
-  uuid: string,
-  newLabel: string | null,
-  isTaken: (candidate: string, excludeLabel: string | null) => boolean,
-): boolean {
-  const trimmed = newLabel && newLabel.trim() ? newLabel.trim() : null;
-  return editStructuredNodeByUuid(editor, uuid, {
-    assertType: "heading",
-    guard: (node) => {
-      if (!trimmed) return true; // clearing is always allowed
-      const existing = (node.attrs.label as string | null) ?? null;
-      // Block when the candidate is taken by ANOTHER label (excluding our own).
-      return !isTaken(trimmed, existing);
-    },
-    setAttrs: (attrs) => ({ ...attrs, label: trimmed }),
-  });
-}

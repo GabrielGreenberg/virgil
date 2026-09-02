@@ -28,6 +28,8 @@ import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
+import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
+import { isLabelTaken } from "@/lib/labels";
 import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
 import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
@@ -98,10 +100,6 @@ import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 // `.current` on each at interaction time. `MutableRefObject<F | undefined>`
 // mirrors the `useRef(prop)` shape in Editor.tsx exactly, so passing the
 // component's existing refs is byte-identical.
-type LabelTakenPredicate = (
-  candidate: string,
-  excludeLabel: string | null,
-) => boolean;
 type LabelRenameHandler = (
   oldLabel: string,
   newLabel: string,
@@ -115,7 +113,10 @@ type HeadingTypeMenuOpener = (params: {
 }) => void;
 
 export interface HeadingCallbackRefs {
-  isLabelTakenRef?: MutableRefObject<LabelTakenPredicate | undefined>;
+  // `isLabelTakenRef` is GONE (task 534): the "label already in use" predicate
+  // is `@/lib/labels`' `isLabelTaken`, read directly against the write target.
+  // The prop-threaded twin was a mirror no host ever supplied — one consumer
+  // (the figure lozenge) went to the SSOT and worked, three took the prop.
   onConfirmLabelRenameRef?: MutableRefObject<LabelRenameHandler | undefined>;
   onConfirmHeadingDeleteRef?: MutableRefObject<HeadingDeleteHandler | undefined>;
   onOpenHeadingTypeMenuRef?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
@@ -1088,8 +1089,10 @@ export function createHeadingWithLabel(
 
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
-          // Live "label already in use" warning — consults the central
-          // predicate from @/lib/labels via the isLabelTakenRef mirror.
+          // Live "label already in use" warning — reads the central predicate
+          // from @/lib/labels DIRECTLY against the write target (main in a
+          // float). Task 534 retired the `isLabelTakenRef` mirror: it was a
+          // prop no host supplied, so this warning could never fire.
           const warning = document.createElement("div");
           warning.className = "heading-label-warning";
           warning.textContent = "⚠ label already in use";
@@ -1099,9 +1102,7 @@ export function createHeadingWithLabel(
           const refreshWarning = () => {
             const candidate = input.value.trim();
             const own = (currentNode.attrs.label as string | null) || null;
-            const predicate = refs.isLabelTakenRef?.current;
-            const taken =
-              candidate && predicate ? predicate(candidate, own) : false;
+            const taken = candidate ? isLabelTaken(getTarget(), candidate, own) : false;
             warning.style.display = taken ? "" : "none";
             input.classList.toggle("has-conflict", !!taken);
           };
@@ -1109,23 +1110,39 @@ export function createHeadingWithLabel(
           refreshWarning();
 
           let committed = false;
-          const commit = async () => {
+          const commit = async (via: "enter" | "blur") => {
             if (committed) return;
-            committed = true;
-            cleanupSizer();
             const newLabel = input.value.trim() || null;
             const oldLabel = (currentNode.attrs.label as string | null) || null;
-
-            if (oldLabel === newLabel) {
-              renderAnnot();
-              return;
-            }
 
             // Resolve against the write TARGET — MAIN in a float, where the
             // labelRef rewrite walk must run over the whole doc (the float
             // only holds this one section) and the heading is found by uuid.
             const target = getTarget();
-            if (!resolveHeadingInTarget(target)) {
+
+            // A candidate ANOTHER declaration already claims is REFUSED — the
+            // door below asks the same predicate, but it is asked here first
+            // so the input can stay OPEN: Enter keeps the user editing with the
+            // warning showing, while leaving the field abandons the conflicting
+            // draft (a blur that re-focused the input would trap focus in it).
+            // Task 534: pre-534 the warning was advisory and the duplicate was
+            // committed anyway — a duplicate `\label` is always a LaTeX error.
+            if (newLabel && newLabel !== oldLabel && isLabelTaken(target, newLabel, oldLabel)) {
+              if (via === "enter") {
+                refreshWarning();
+                input.focus();
+                return;
+              }
+              committed = true;
+              cleanupSizer();
+              renderAnnot();
+              return;
+            }
+
+            committed = true;
+            cleanupSizer();
+
+            if (oldLabel === newLabel) {
               renderAnnot();
               return;
             }
@@ -1134,60 +1151,18 @@ export function createHeadingWithLabel(
             // the user isn't staring at a stale editable input behind it.
             renderAnnot();
 
-            // Only prompt when renaming between two non-empty keys.
-            // Add/remove cases either have no refs (add) or can't point
-            // the refs anywhere meaningful (remove).
-            const refPositions: number[] = [];
-            if (oldLabel && newLabel) {
-              target.state.doc.descendants((nd, pos) => {
-                if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
-                  refPositions.push(pos);
-                }
-              });
-            }
-
-            let updateRefs = false;
-            const handler = refs.onConfirmLabelRenameRef?.current;
-            if (refPositions.length > 0 && handler && oldLabel && newLabel) {
-              updateRefs = await handler(oldLabel, newLabel, refPositions.length);
-            }
-
-            // Re-resolve the heading position after the modal in case
-            // the doc shifted (shouldn't happen while modal is open, but
-            // cheap insurance).
-            const after = resolveHeadingInTarget(target);
-            if (!after) return;
-            const headingPos = after.pos;
-            const headingNode = after.node;
-
-            const tr = target.state.tr;
-            tr.setNodeMarkup(headingPos, undefined, {
-              ...headingNode.attrs,
-              label: newLabel,
+            // ONE door for every label rename (task 534): collects the `\ref`s
+            // naming the old key over the WHOLE target document, asks the
+            // host's confirm (`onConfirmLabelRenameRef`, produced by
+            // `EditorPane`), and moves the declaration and every ref in ONE
+            // transaction. The figure lozenge and the Outline's label editor
+            // enter the same door.
+            const outcome = await renameLabelWithRefs(target, {
+              locate: () => resolveHeadingInTarget(target),
+              newLabel,
+              confirm: refs.onConfirmLabelRenameRef?.current ?? null,
             });
-
-            if (updateRefs) {
-              const display =
-                (headingNode.attrs.sectionNumber as string | null) || "??";
-              // labelRef is an inline atom of fixed size — updating attrs
-              // keeps existing positions valid within the same transaction.
-              for (const rPos of refPositions) {
-                const rNode = target.state.doc.nodeAt(rPos);
-                if (
-                  rNode &&
-                  rNode.type.name === "labelRef" &&
-                  rNode.attrs.label === oldLabel
-                ) {
-                  tr.setNodeMarkup(rPos, undefined, {
-                    ...rNode.attrs,
-                    label: newLabel,
-                    displayText: display,
-                  });
-                }
-              }
-            }
-
-            target.view.dispatch(tr);
+            if (outcome !== "renamed") return;
             // Focus the editor the NodeView lives in (the float in float
             // mode, main in main mode) — keeps the user in the popout.
             // Task 486: through the refocus DOOR, never a bare `focus()`. This
@@ -1199,12 +1174,12 @@ export function createHeadingWithLabel(
           };
 
           input.addEventListener("keydown", (ev) => {
-            if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+            if (ev.key === "Enter") { ev.preventDefault(); void commit("enter"); }
             if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); renderAnnot(); }
           });
 
           let armed = false;
-          input.addEventListener("blur", () => { if (armed) commit(); });
+          input.addEventListener("blur", () => { if (armed) void commit("blur"); });
           setTimeout(() => { armed = true; }, 200);
 
           requestAnimationFrame(() => {
@@ -1776,7 +1751,6 @@ export function createHeadingWithLabel(
 type FigureDeleteHandler = () => Promise<boolean>;
 
 export interface EditorExtensionsCallbackRefs {
-  isLabelTaken?: MutableRefObject<LabelTakenPredicate | undefined>;
   onConfirmLabelRename?: MutableRefObject<LabelRenameHandler | undefined>;
   onConfirmHeadingDelete?: MutableRefObject<HeadingDeleteHandler | undefined>;
   onOpenHeadingTypeMenu?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
@@ -1858,7 +1832,6 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   const isMain = !isFloat;
 
   const headingRefs: HeadingCallbackRefs = {
-    isLabelTakenRef: ctx.callbacks.isLabelTaken,
     onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename,
     onConfirmHeadingDeleteRef: ctx.callbacks.onConfirmHeadingDelete,
     onOpenHeadingTypeMenuRef: ctx.callbacks.onOpenHeadingTypeMenu,

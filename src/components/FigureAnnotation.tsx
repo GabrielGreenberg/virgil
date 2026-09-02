@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { isLabelTaken } from "@/lib/labels";
+import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -76,74 +77,58 @@ export default function FigureAnnotation({
     setEditing(true);
   }, [label]);
 
-  const commit = useCallback(async () => {
-    if (!editing) return;
-    if (!editor || !getFigurePos) return;
-    setEditing(false);
-    const newLabel = draft.trim() || null;
-    const oldLabel = label || null;
-    if (newLabel === oldLabel) return;
-
-    const pos = getFigurePos();
-    if (pos == null) return;
-
-    // Collect refs pointing at the old label so we can offer to update them.
-    // Only meaningful when renaming a non-empty label to a non-empty label;
-    // add/remove cases either have no refs or can't be rewritten usefully.
-    const refPositions: number[] = [];
-    if (oldLabel && newLabel) {
-      editor.state.doc.descendants((nd, p) => {
-        if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
-          refPositions.push(p);
-        }
-      });
-    }
-
-    let updateRefs = false;
-    if (refPositions.length > 0 && oldLabel && newLabel && onConfirmRename) {
-      updateRefs = await onConfirmRename(oldLabel, newLabel, refPositions.length);
-    }
-
-    const pos2 = getFigurePos();
-    if (pos2 == null) return;
-    const figNode = editor.state.doc.nodeAt(pos2);
-    if (!figNode || figNode.type.name !== "figureBlock") return;
-
-    const tr = editor.state.tr;
-    tr.setNodeMarkup(pos2, undefined, {
-      ...figNode.attrs,
-      label: newLabel || "",
-    });
-
-    if (updateRefs) {
-      const display =
-        (figNode.attrs.figureNumber as string | number | null) != null
-          ? String(figNode.attrs.figureNumber)
-          : "??";
-      for (const rPos of refPositions) {
-        const rNode = editor.state.doc.nodeAt(rPos);
-        if (
-          rNode &&
-          rNode.type.name === "labelRef" &&
-          rNode.attrs.label === oldLabel
-        ) {
-          tr.setNodeMarkup(rPos, undefined, {
-            ...rNode.attrs,
-            label: newLabel,
-            displayText: display,
-          });
-        }
-      }
-    }
-
-    editor.view.dispatch(tr);
-  }, [draft, editing, editor, label, getFigurePos, onConfirmRename]);
-
   const cancel = useCallback(() => {
     setEditing(false);
     setDraft(label);
     setConflict(false);
   }, [label]);
+
+  const commit = useCallback(
+    async (via: "enter" | "blur") => {
+      if (!editing) return;
+      if (!editor || !getFigurePos) return;
+      const newLabel = draft.trim() || null;
+      const oldLabel = label || null;
+
+      // A candidate ANOTHER declaration already claims is REFUSED — the door
+      // below asks the same `@/lib/labels` predicate, but it is asked here
+      // first so the input can stay OPEN: Enter keeps the user editing with
+      // the warning showing; leaving the field abandons the conflicting draft
+      // (a blur that re-focused the input would trap focus in it). Task 534:
+      // pre-534 the warning was advisory and `commit` never read `conflict`,
+      // so the duplicate was committed anyway — a duplicate `\label` is
+      // always a LaTeX error ("Label multiply defined").
+      if (newLabel && newLabel !== oldLabel && isLabelTaken(editor, newLabel, oldLabel)) {
+        if (via === "enter") {
+          setConflict(true);
+          inputRef.current?.focus();
+          return;
+        }
+        cancel();
+        return;
+      }
+
+      setEditing(false);
+      if (newLabel === oldLabel) return;
+
+      // ONE door for every label rename (task 534): collects the `\ref`s
+      // naming the old key over the whole document, asks the host's confirm
+      // (`onConfirmRename`, produced by `EditorPane`), and moves the
+      // declaration and every ref in ONE transaction. The heading strip and
+      // the Outline's label editor enter the same door.
+      await renameLabelWithRefs(editor, {
+        locate: () => {
+          const pos = getFigurePos();
+          if (pos == null) return null;
+          const node = editor.state.doc.nodeAt(pos);
+          return node && node.type.name === "figureBlock" ? { pos, node } : null;
+        },
+        newLabel,
+        confirm: onConfirmRename ?? null,
+      });
+    },
+    [draft, editing, editor, label, getFigurePos, onConfirmRename, cancel],
+  );
 
   const toggleNumbered = useCallback(() => {
     if (!editor || !getFigurePos) return;
@@ -233,13 +218,13 @@ export default function FigureAnnotation({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                void commit();
+                void commit("enter");
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 cancel();
               }
             }}
-            onBlur={() => void commit()}
+            onBlur={() => void commit("blur")}
             size={Math.max(draft.length, 8)}
           />
           {conflict && (

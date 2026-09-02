@@ -103,16 +103,11 @@ export function HeadingBody({
 
   // Heading-label callbacks proxied to the MAIN editor's handle. The float
   // runs the same `createHeadingWithLabel` NodeView as main; these refs let
-  // it consult main's own label predicate / rename confirmation (read off
+  // it consult main's own rename confirmation (read off
   // `editorRef.current`) and thread them into the factory's `callbacks`.
   // `.current` is reassigned each render (the standard ref-mirror pattern)
   // so the closures always see the live main handle. Defaults match what
   // the NodeView assumes when main's handle is briefly null.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -145,7 +140,6 @@ export function HeadingBody({
       editable: chrome.showHeadingFloatLabelEdit,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

@@ -259,11 +259,6 @@ export function SingleBlockBody({
   // instantiates here, so these stay inert (and wholly inert for codeBlock).
   // Threaded for parity with the factory contract. `.current` is reassigned
   // each render so the closures see the live main handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -295,7 +290,6 @@ export function SingleBlockBody({
       editable: config.editable,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
