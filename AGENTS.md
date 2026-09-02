@@ -5822,6 +5822,140 @@ error the central principle's own refinement warns against.
 gestures, no disk), so the durable proof is the unit contract and the check is
 cheap: type into a figure's width box and press Escape.
 
+#### The dismissal half: the shell owns every dismiss TRIGGER, and nobody owned what a dismissal COSTS
+
+Same cluster, one question earlier (task 530) — and the case where the shared
+shell was complete about the mechanism it owns and silent about the only thing
+that makes a dismissal dangerous.
+
+`SystemDialog` has owned every dismiss TRIGGER since it shipped: Escape (through
+the task-389 stack), the modal backdrop click, the scrimless outside-mousedown.
+Nothing owned what a dismissal COSTS, so each dialog answered privately, and the
+one holding real typed work answered wrongly. `StyleEditorModal` had **no dirty
+check anywhere in the file**: one stray click on the backdrop, or one Escape —
+which the shell deliberately does not let CodeMirror swallow, and whose comment
+names this very editor — discarded a hand-authored LaTeX preamble with no
+warning and no way back. It is the one dialog in the app whose draft is the only
+copy of real typed work, and `ManageStylesModal` mounts it CONDITIONALLY, so
+every close path unmounts it and destroys that draft.
+
+**And the same silence had a second shape one door over, where the dismissal was
+not the user's at all.** `NewDocumentModal` hands `onCreate` to
+`EditorLayout`, whose handler runs the production FSA folder picker; a user who
+cancels that picker reaches `createFileInPendingFolder` → `null`, and the
+handler then called `setNewDocModal(null)` unconditionally. So **cancelling an
+inner step closed the outer dialog and threw away the typed name and the chosen
+doc type**, for an act that created nothing. The caller decides that, and the
+shell can never see it.
+
+> **A dialog that can hold a DRAFT declares what a dismissal costs — a
+> `dismissGuard` the shell ASKS before it closes, or `dismissIsFree` — and the
+> two halves are two different owners.** The shell owns every trigger it already
+> owned, so ONE door (`requestDismiss`) sits in front of all three and a guard
+> cannot be wired to Escape and forgotten on the backdrop. What the shell cannot
+> see is an inner step aborting, so that half is a REPORT the caller returns and
+> the dialog reads — never a close the caller performs.
+
+Seven rules it earned:
+
+- **A CALLER-ONLY gate for M2 would have WEDGED the dialog permanently**, which
+  is why the fix is a report rather than a `if (!meta) return;` in
+  `EditorLayout`. `submit` sets `busy` before awaiting, and `busy` disables
+  Create, Cancel, the name field and every doc-type button AND kills the
+  dismissal outright (`onClose={busy ? undefined : onCancel}` — no Escape, no
+  scrim). A caller that simply declined to close leaves a modal reading
+  "Creating…" with no control that answers and no way out but a reload. The
+  dialog has to LEARN that nothing was created, so `NewDocumentOutcome`
+  (`"created" | "cancelled"`) crosses the boundary and `submit` clears `busy` on
+  the cancelled arm. **A successful create deliberately leaves `busy` SET** — the
+  caller unmounts us, and clearing it would re-enable Create for the frame before
+  that lands.
+- **`dismissIsFree` is a DECLARATION, not a default**, and the census reads it as
+  one: `dismissIsFree={false}` is the default spelled out and does NOT satisfy
+  the rule, exactly as `noCuedDefault` is read one census over. There are three
+  legitimate free shapes and each states which it is at the site: a draft that
+  OUTLIVES the close (`BugReportWindow`, `AIWindow` — always-mounted with an
+  `open` prop, so a dismissal hides rather than destroys), a dismissal that IS
+  the abandonment (`system-dialog-host`'s `prompt` arm, where closing answers
+  `null` and every caller reads that as cancelled), and fields that commit
+  UPSTREAM (`PreferencesModal`, `ManageStylesModal`'s rename, which commits on
+  Enter/blur).
+- **A guard may ASK, so it returns a promise — and the shell owns no confirm
+  renderer.** `DismissGuard` is `() => boolean | Promise<boolean>`; `true`
+  closes, `false` declines SILENTLY (the footer button still exists, so a refusal
+  is never a wedge), and the promise arm is what lets `StyleEditorModal` raise a
+  real `useSystemDialog().confirm` without the shell importing the host. A guard
+  that THROWS declines and logs in dev — the same fail-closed direction every
+  destructive door in this file takes.
+- **The FOOTER Cancel asks too, and that is the half a shell-only fix misses.** A
+  footer button calls its own handler and never enters the shell's door, so
+  without it the ONE dismissal the user performs DELIBERATELY would be the one
+  that discards silently — which inverts the whole point.
+- **The prompt is `tone: "danger"`, which decides the KEYBOARD as well as the
+  paint.** `confirm-cue-policy` cues CANCEL for a danger confirm (tasks 386/528),
+  so the Enter of someone who is already typing keeps their preamble rather than
+  throwing it away.
+- **DIRTY is measured against what the editor OPENED with**, so re-opening a
+  style and closing it untouched still costs nothing. A prompt on a pristine
+  close becomes furniture, and people click through furniture.
+- **The wording stays LOCAL, deliberately.** A shared `discardDraftConfirm`
+  policy leaf would have exactly one caller — every other draft-holding dialog in
+  the census is legitimately `dismissIsFree` — and an SSOT ahead of its first
+  caller is the dead-SSOT shape task 515 retired. The census is what makes a
+  second one impossible to ship silently, and the second one is when to lift it.
+- **…and `StyleEditorModal` is deliberately NOT made always-mounted** the way its
+  two `dismissIsFree` cousins are, recorded at the site so it is not re-proposed:
+  those hold ONE draft, this is keyed per style and mounted three ways, so an
+  always-mounted instance needs a reset rule and gains a stale-preamble bug in
+  its place.
+
+**The population is DISCOVERED, and by the QUESTION rather than by a mechanism**
+(task 404's rule). A subtree-only needle is blind to `PreferencesModal`, whose
+every field is composed by `PresetBar` / `PreferenceTree` / `SmartPreferences` —
+so `draftHoldingDialogs()` resolves ONE level down, skipping any file that
+DECLARES a needle primitive (or every consumer of `<Select>` resolves through
+`field-primitives.tsx` and the needle answers "yes" for the whole app). It
+over-collects a component that merely lives beside a field, and that direction is
+the safe one: an extra member costs one `dismissIsFree` line, a missed one costs
+a silent draft loss. It shares the ONE `<SystemDialog>` element walk
+([_dialog-sites.ts](src/components/__tests__/_dialog-sites.ts)) the cued-default
+(389) and variant (515) censuses already read — two enumerations of "who the
+dialog sites are" is how one guard comes to be scanning a set the other no longer
+is.
+
+CI: [dialog-dismiss-guard.test.tsx](src/components/__tests__/dialog-dismiss-guard.test.tsx)
+drives the REAL `StyleEditorModal` inside a REAL `SystemDialogProvider` — with
+only the CodeMirror COMPONENT stubbed to a live `<textarea>`, so `EditorView` /
+`EditorState` stay real for the module-scope theme — and makes the preamble dirty
+through the component's own `onChange`. **No pre-530 suite could see either
+half**: `StyleEditorModal` is rendered by nothing anywhere in the repo, and
+`NewDocumentModal`'s two appearances drive its Enter key with an `onCreate` that
+resolves `void`, so "the caller closed me for an act that created nothing" is
+unrepresentable in both of them. The leg with teeth is the CENSUS
+([dialog-dismiss-census.test.ts](src/components/__tests__/dialog-dismiss-census.test.ts)):
+the door was never the part that could misbehave, a dialog that hosts a field and
+declares nothing is, and it type-checks and renders perfectly. Both allowlists
+EMPTY — a hit is DECLARE-it, and there is no third answer a dialog holding a text
+field is entitled to give. Measured by neutering each half in turn: the pre-530
+`StyleEditorModal` takes **7 behavioural legs plus 2 census legs**, and the
+pre-530 `submit` takes **2** — with both M2 controls (a successful create leaves
+`busy` set; a thrown failure renders inline with the name intact) passing either
+way, which is the point.
+
+**Residual, stated.** `askingRef` in the shell — the latch that stops a second
+trigger stacking a second question — is UNREACHABLE from a modal today: while the
+confirm is open it owns the top of the dialog stack, and its own scrim covers
+every dismiss trigger of the dialog underneath. Its leg says so rather than
+pretending to be a defect leg, and what that leg does pin is the honest
+behaviour: the second Escape is answered BY the question (one question, never a
+queue), the draft survives, and the next Escape asks again.
+
+**Owed, not claimed:** the preview eyeball for M1, which is cheap and real (NOT
+FSA-masked — a live dialog, no disk): edit a style's preamble, click the
+backdrop, and confirm the prompt appears with **Keep editing** focused. M2's
+real repro needs the production FSA folder picker, so the durable proof there is
+the unit contract.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

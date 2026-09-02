@@ -260,6 +260,13 @@ export default function BugReportWindow({
       variant="draggable"
       onClose={onClose}
       ignoreOutsideSelector='[data-hint="Report a bug"]'
+      /* A dismissal is FREE, deliberately and by construction: EditorLayout
+         mounts this window ALWAYS with an `open` prop precisely so "a
+         conditional mount would destroy a half-written report on a stray
+         click" — the comment at that mount is the prior art task 530
+         generalized. The text additionally mirrors to localStorage, so even a
+         reload keeps it. */
+      dismissIsFree
       labelledBy="bug-report-title"
       frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
     >

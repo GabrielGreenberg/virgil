@@ -3880,8 +3880,17 @@ export default function EditorLayout() {
               newDocModal.mode === "inFolder"
                 ? await createFileInPendingFolder(name, templateId)
                 : await createFile(name, templateId);
-            if (meta) newDocModal.onCreated?.(meta.id);
+            // THE REPORT IS THE PERMISSION (task 530). `null` means nothing was
+            // created: `createFile` converts the AbortError of a cancelled OS
+            // folder sheet into it, and `createFileInPendingFolder` returns it
+            // when the pending pick is gone. Closing on that would destroy the
+            // typed name and the chosen template for an act that consumed
+            // neither — while a genuine failure (a folder-name collision)
+            // THROWS and is already rendered inline with the name preserved.
+            if (!meta) return "cancelled";
+            newDocModal.onCreated?.(meta.id);
             setNewDocModal(null);
+            return "created";
           }}
         />
       )}

@@ -335,7 +335,17 @@ export default function ManageStylesModal({
 
   return (
     <>
-      <SystemDialog open onClose={onClose} size="xl">
+      <SystemDialog
+        open
+        onClose={onClose}
+        size="xl"
+        /* A dismissal is FREE: the only draft in this dialog's OWN body is the
+           inline style-rename field, which commits on Enter or on blur — so a
+           close loses at most an uncommitted style NAME. The nested
+           `StyleEditorModal` below is a separate dialog and carries its own
+           `dismissGuard`. */
+        dismissIsFree
+      >
         <SystemDialogHeader
           title="Manage styles"
           subtitle={

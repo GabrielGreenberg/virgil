@@ -61,7 +61,15 @@ export default function CollaboratorIdentityDialog({
   }, [canSubmit, trimmed, color, onConfirm]);
 
   return (
-    <SystemDialog open={open} onClose={onCancel} size="sm">
+    <SystemDialog
+      open={open}
+      onClose={onCancel}
+      size="sm"
+      /* A dismissal is FREE: the draft is the user's own display name and a
+         colour swatch, and Escape / the backdrop IS the Cancel this dialog
+         offers. Nothing here is the only copy of anything. */
+      dismissIsFree
+    >
       <SystemDialogHeader title={title} subtitle={description} />
       <SystemDialogBody>
         <div className="flex flex-col gap-3">
