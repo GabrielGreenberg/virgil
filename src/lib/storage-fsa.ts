@@ -86,6 +86,7 @@ import {
   type DocumentTemplate,
 } from "@/lib/document-templates";
 import { getLibraryHandle } from "@library/lib/library-folder";
+import { resolveAssetImport } from "@/lib/figures/asset-import";
 import {
   stampDiskFingerprint,
   fingerprintOf,
@@ -1797,14 +1798,25 @@ export interface PickedFigureFile {
  *  FSA backend:
  *  - If a `handle` is present AND the file lives inside the paper folder,
  *    returns the relative path joined with `/` (no copy needed).
- *  - Otherwise copies the file bytes into `<paper>/<subdir>/<basename>`
- *    (creating `<subdir>` on demand) and returns `<subdir>/<basename>`.
+ *  - Otherwise lands the bytes in `<paper>/<subdir>/` (creating `<subdir>` on
+ *    demand) under the name `resolveAssetImport` decides, and returns
+ *    `<subdir>/<name>`.
  *
  *  The dev backend has its own implementation in `storage-dev.ts` that
- *  always copies via the dev API's PUT route; pick from the facade.
+ *  copies via the dev API's PUT route; pick from the facade. Both read the
+ *  SAME resolver, so they cannot come to disagree about where an asset lands
+ *  (task 341's twin rule).
  *
- *  The write goes through `enqueueDocWrite` with a `figures/import/` key
- *  prefix so concurrent imports of the same destination serialize.
+ *  The whole import — probe, decide, write — runs inside ONE `enqueueDocWrite`
+ *  task keyed on the destination DIRECTORY (`figures/import/<subdir>`), so two
+ *  concurrent imports into the same folder serialize and the second sees the
+ *  first's minted name rather than racing it for the same free slot.
+ *
+ *  write-gate-exempt: the resolver IS the byte-equality gate for this binary
+ *  write (task 533, the bytes twin of task 415's text gate). Identical bytes
+ *  REUSE the existing path and write nothing; a differing collision takes the
+ *  next FREE name — so no byte already on disk is ever replaced, which is why
+ *  neither a snapshot nor the text funnel's ledger is owed here.
  */
 export async function importFigureFile(
   h: DocWriteHandle,
@@ -1821,20 +1833,35 @@ export async function importFigureFile(
       return relative.join("/");
     }
   }
-  // Outside the paper folder, or no handle (e.g. <input type="file">) — copy
-  // bytes in. The destination follows the same convention either way:
-  // `<paper>/<subdir>/<basename>`.
+  // Outside the paper folder, or no handle (e.g. <input type="file">) — land
+  // the bytes in `<paper>/<subdir>/`. Which NAME they land under is decided
+  // against the live directory, inside the serialized task.
   const basename = picked.file.name;
-  const destPath = `${subdir}/${basename}`;
-  await enqueueDocWrite(h, `figures/import/${destPath}`, async () => {
+  const bytes = new Uint8Array(await picked.file.arrayBuffer());
+  const landed = await enqueueDocWrite(h, `figures/import/${subdir}`, async () => {
     const dh = await requireDocHandle(h.docId);
     const subdirHandle = await dh.getDirectoryHandle(subdir, { create: true });
-    const destFh = await subdirHandle.getFileHandle(basename, { create: true });
-    const writable = await destFh.createWritable();
-    await writable.write(await picked.file.arrayBuffer());
-    await writable.close();
+    const probe = async (name: string): Promise<Uint8Array | null> => {
+      try {
+        const fh = await subdirHandle.getFileHandle(name);
+        return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+      } catch (e) {
+        if (isNotFound(e)) return null;
+        throw e; // an unreadable entry is not a free name
+      }
+    };
+    const { name, action } = await resolveAssetImport(basename, bytes, probe);
+    if (action === "write") {
+      const destFh = await subdirHandle.getFileHandle(name, { create: true });
+      const writable = await destFh.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+    }
+    return `${subdir}/${name}`;
   });
-  return destPath;
+  // A read-only library paper skips the funnel entirely (it resolves to
+  // `undefined`); answer with the would-be path, as the dev twin does.
+  return landed ?? `${subdir}/${basename}`;
 }
 
 /** Helper for callers outside the React tree that need a DocWriteHandle —
