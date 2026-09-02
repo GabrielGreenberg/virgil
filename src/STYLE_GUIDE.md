@@ -1992,11 +1992,31 @@ the shell stands down when the dialog's own body has already claimed focus (a
 prompt input, a file list), so a dialog can name its Enter default without
 stealing the caret from its own field.
 
-**Accessibility posture, unchanged.** Focus is placed inside the dialog on open
-and `aria-modal` is set on the scrimmed variant; there is still no focus TRAP,
-so Tab can leave a modal. Same recorded posture as the resize gutters — Virgil
-does not yet commit to full keyboard/screen-reader operation of its chrome, and
-a half-built trap is worse than none.
+**Focus goes back where it came from.** The shell captures whatever held DOM
+focus on the open edge and returns it on EVERY close path — the cued default,
+another footer button, Escape, the backdrop, an outside mousedown, a
+programmatic close. It **fails safe** (a target that has since unmounted — the
+trash button of the card the confirm just deleted — restores nothing, rather
+than guessing a substitute) and it **stands down** (anything else already
+holding focus keeps it, so an outside click that landed on a real control is not
+undone). It uses `preventScroll`: a restore is a focus, not a navigation.
+
+The shell owns this because the shell is what took the focus. Before task 531 it
+took focus and returned none, so after any confirm the next keystrokes went
+nowhere and `Cmd-Z` did nothing until the user clicked back into the document —
+patched at exactly one call site, with the reason written down and unread. The
+corollary is that **a dialog body claims initial focus with `initialFocus` and
+never a raw DOM `autoFocus`**: `autoFocus` fires in React's layout pass, which
+runs before every effect the shell can schedule, so it can outrun the capture
+and cost that dialog its restore. Censused in `dialog-focus-restore.test.tsx`.
+
+**Accessibility posture, otherwise unchanged.** `aria-modal` is set on the
+scrimmed variant; there is still no focus TRAP, so Tab can leave a modal. A trap
+and a restore are different obligations — one CONTAINS keyboard movement, the
+other declines to STRAND a caret — and only the second is taken here. Same
+recorded posture as the resize gutters otherwise: Virgil does not yet commit to
+full keyboard/screen-reader operation of its chrome, and a half-built trap is
+worse than none.
 
 **Placement follows the SCOPE of what the dialog acts on, not the component.**
 A confirm whose consequence is app- or document-wide centers and takes the
