@@ -66,6 +66,7 @@ import {
   hashContent,
 } from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
+import { resolveAssetImport } from "@/lib/figures/asset-import";
 import {
   planSidecarCleanup,
   type SidecarCleanupReceipt,
@@ -1190,12 +1191,24 @@ export { getActiveHandle as getDocWriteHandle } from "@/lib/multi-window/doc-pip
  *  The dev backend can't replicate FSA's `docHandle.resolve(fileHandle)`
  *  same-folder short-circuit — there are no `FileSystemFileHandle`s here
  *  (the picker fell back to `<input type="file">`, which yields a bare
- *  `File`). We always copy into `<paper>/<subdir>/<basename>` via the
- *  existing PUT route, which already handles binary uploads and creates
- *  parent dirs (see `src/app/api/dev/[...path]/route.dev.ts`'s PUT).
+ *  `File`). We always land the bytes in `<paper>/<subdir>/` via the existing
+ *  PUT route, which already handles binary uploads and creates parent dirs
+ *  (see `src/app/api/dev/[...path]/route.dev.ts`'s PUT) — under the name the
+ *  SHARED `resolveAssetImport` decides, probing the existing file through the
+ *  route's binary GET. Both backends read the one resolver (task 341's twin
+ *  rule), so an asset lands under the same name whichever backend previews it.
+ *
+ *  Serialized per destination directory through `enqueueWrite`, the dev twin
+ *  of the FSA `enqueueDocWrite` key, so two imports into one folder cannot
+ *  race for the same free name.
  *
  *  Honors the same signature as the FSA version so the storage facade
  *  re-export works without per-backend branching at call sites.
+ *
+ *  write-gate-exempt: the resolver IS the byte-equality gate for this binary
+ *  write (task 533) — identical bytes reuse the existing path and PUT
+ *  nothing; a differing collision takes the next FREE name, so no byte already
+ *  on disk is ever replaced. See the FSA twin for the full reasoning.
  */
 export async function importFigureFile(
   h: DocWriteHandle,
@@ -1203,29 +1216,46 @@ export async function importFigureFile(
   subdir: string = "figures",
 ): Promise<string> {
   const basename = picked.file.name;
-  const destPath = `${subdir}/${basename}`;
   // Read-only library-paper docs never persist — skip the copy-in PUT and
   // just return the would-be relative path (parity with storage-fsa, whose
   // byte write funnels through the guarded enqueueDocWrite).
-  if (isLibraryPaper(h.docId)) return destPath;
+  if (isLibraryPaper(h.docId)) return `${subdir}/${basename}`;
   assertActive(h);
   assertNotSuperseded(h);
-  const url = docFileUrl(h.docId, destPath);
   // Reuse the figure-raster MIME conventions — the PUT route inspects
   // Content-Type to decide whether to read the body as binary or text.
   const contentType = picked.file.type || "application/octet-stream";
-  const buf = await picked.file.arrayBuffer();
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: buf,
+  const bytes = new Uint8Array(await picked.file.arrayBuffer());
+  return enqueueWrite(`${h.docId}/figures-import/${subdir}`, async () => {
+    const probe = async (name: string): Promise<Uint8Array | null> => {
+      const res = await fetch(docFileUrl(h.docId, `${subdir}/${name}`));
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        // An unreadable entry is not a free name — refusing is the only
+        // answer that replaces nothing.
+        throw new Error(
+          `[storage-dev] importFigureFile probe of ${subdir}/${name} failed: ${res.status}`,
+        );
+      }
+      return new Uint8Array(await res.arrayBuffer());
+    };
+    const { name, action } = await resolveAssetImport(basename, bytes, probe);
+    const destPath = `${subdir}/${name}`;
+    if (action === "write") {
+      const url = docFileUrl(h.docId, destPath);
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: bytes,
+      });
+      if (!res.ok) {
+        throw new Error(
+          `[storage-dev] importFigureFile PUT ${url} failed: ${res.status}`,
+        );
+      }
+    }
+    return destPath;
   });
-  if (!res.ok) {
-    throw new Error(
-      `[storage-dev] importFigureFile PUT ${url} failed: ${res.status}`,
-    );
-  }
-  return destPath;
 }
 
 // ---------------------------------------------------------------------------
