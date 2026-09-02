@@ -9,6 +9,27 @@
  * The middle pane is CodeMirror with the latex grammar (same setup as
  * the doc-bound CodeEditor, minus the persistence wiring). Validation
  * runs on every change; Save is gated behind it.
+ *
+ * **This dialog is the one in the app whose draft is the only copy of real
+ * typed work** — a hand-authored LaTeX preamble — and `ManageStylesModal`
+ * mounts it CONDITIONALLY, so every close path unmounts it and destroys that
+ * draft. Before task 530 there was no dirty check anywhere in this file: one
+ * stray click on the backdrop, or one Escape (which the shell deliberately does
+ * NOT let CodeMirror swallow — the comment there names this very editor), threw
+ * the whole edit away with no warning and no way back.
+ *
+ * It is therefore the shell's first `dismissGuard`. The DECISION not taken,
+ * recorded so it is not re-proposed: do NOT fix this by making the component
+ * always-mounted the way `BugReportWindow` and `AIWindow` are. Those hold ONE
+ * draft; this is keyed per style and mounted three ways, so an always-mounted
+ * instance needs a reset rule and gains a stale-preamble bug in its place.
+ *
+ * The discard prompt's WORDING lives here rather than in a shared policy leaf,
+ * also deliberately: it would have exactly one caller (every other draft-holding
+ * dialog in the census is legitimately `dismissIsFree`), and an SSOT ahead of
+ * its first caller is the dead-SSOT shape task 515 retired. The census is what
+ * makes a second one impossible to ship silently — and the second one is when
+ * to lift this into a leaf both read.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -21,6 +42,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { useSystemDialog } from "./system-dialog-host";
 import { Input } from "./field-primitives";
 import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
 import {
@@ -145,6 +167,30 @@ export default function StyleEditorModal({
 
   const canSave = !nameError && validation.ok;
 
+  /* ── The dismissal guard (task 530) ──────────────────────────────────
+     DIRTY is measured against what the editor OPENED with, so re-opening a
+     style and closing it untouched still costs nothing — the pristine case has
+     to stay free, or the prompt becomes furniture and people click through it.
+
+     `danger` tone is the STYLE_GUIDE rule read literally: discarding destroys
+     content with no undo. It also decides the keyboard, through
+     `confirm-cue-policy`: a danger confirm cues CANCEL, so the Enter of someone
+     who is already typing keeps their preamble rather than throwing it away
+     (task 386's law, arriving at the prompt this task adds). */
+  const systemDialog = useSystemDialog();
+  const dirty = name !== initialName || preamble !== initialPreamble;
+  const confirmDiscard = useCallback(async () => {
+    if (!dirty) return true;
+    return systemDialog.confirm({
+      title: "Discard changes?",
+      message:
+        "This style's name and preamble haven't been saved. Discarding them can't be undone.",
+      confirmLabel: "Discard",
+      cancelLabel: "Keep editing",
+      tone: "danger",
+    });
+  }, [dirty, systemDialog]);
+
   const handleSave = useCallback(() => {
     if (!canSave) return;
     onSave({
@@ -158,6 +204,7 @@ export default function StyleEditorModal({
       open
       onClose={onCancel}
       size="xl"
+      dismissGuard={confirmDiscard}
       initialFocus={() => {
         nameRef.current?.focus();
         nameRef.current?.select();
@@ -230,7 +277,18 @@ export default function StyleEditorModal({
       </div>
 
       <SystemDialogFooter>
-        <SystemDialogButton variant="secondary" onClick={onCancel}>
+        {/* Cancel asks too. It never enters the shell's door — a footer button
+            calls its own handler — so without this the ONE dismissal the user
+            performs deliberately would be the one that discards silently, which
+            inverts the whole point. */}
+        <SystemDialogButton
+          variant="secondary"
+          onClick={() => {
+            void confirmDiscard().then((ok) => {
+              if (ok) onCancel();
+            });
+          }}
+        >
           Cancel
         </SystemDialogButton>
         <SystemDialogButton

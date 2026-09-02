@@ -97,6 +97,110 @@ export function dialogButtonElements(): DialogButtonSite[] {
   return out;
 }
 
+/* ── The DRAFT-HOLDING population (task 530) ───────────────────────── */
+
+/**
+ * The field primitives whose presence means "a user can type here".
+ *
+ * `Select` is deliberately absent: a picker's value is a choice, not a draft,
+ * and a dialog does not lose typed work by closing over one.
+ */
+const TEXT_ENTRY_COMPONENTS = [
+  "Input",
+  "Textarea",
+  "CodeMirror",
+  "RichTextField",
+] as const;
+
+/**
+ * Does this markup host a TEXT-ENTRY field?
+ *
+ * A bare `<input>` counts unless its `type` says it is a switch rather than a
+ * field — a checkbox or a radio is a toggle whose value is a choice, and both
+ * appear in dialogs that hold no draft at all (`ConfirmDialog`'s "don't ask
+ * again", `ManageStylesModal`'s default-style radio).
+ */
+export function hostsTextEntry(src: string): boolean {
+  if (new RegExp(`<(?:${TEXT_ENTRY_COMPONENTS.join("|")})\\b`).test(src)) {
+    return true;
+  }
+  for (const m of src.matchAll(/<(input|textarea)\b([^>]*?)\/?>/g)) {
+    if (/type=["'](?:checkbox|radio|range|color|file|button|submit)["']/.test(m[2])) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Which component NAMES resolve to a file that hosts a text-entry field?
+ *
+ * ONE level of resolution, and it is the difference between asking the QUESTION
+ * and asking a MECHANISM (task 404's rule). `PreferencesModal`'s own subtree
+ * holds no field at all — every one of them lives in `PresetBar` /
+ * `PreferenceTree` / `SmartPreferences` — so a subtree-only needle is blind to
+ * exactly the dialog whose fields are composed rather than written inline.
+ *
+ * The resolution is FILE-level, so it over-collects a component that merely
+ * lives beside a field. That direction is the safe one: an extra member costs
+ * one `dismissIsFree` declaration, a missed one costs a silent draft loss.
+ *
+ * A file that DECLARES one of the needle's own primitives is skipped, or every
+ * consumer of any primitive resolves through it and the needle answers "yes"
+ * for the whole app.
+ */
+function componentsHostingTextEntry(): Set<string> {
+  const declaredIn = new Map<string, string[]>();
+  const fileHasField = new Map<string, boolean>();
+  const primitiveHomes = new Set<string>();
+
+  for (const abs of walk(SRC_ROOT)) {
+    const src = commentsStripped(readFileSync(abs, "utf8"));
+    fileHasField.set(abs, hostsTextEntry(src));
+    for (const m of src.matchAll(
+      /(?:export\s+default\s+)?function\s+([A-Z]\w*)\s*\(/g,
+    )) {
+      declaredIn.set(m[1], [...(declaredIn.get(m[1]) ?? []), abs]);
+    }
+    for (const m of src.matchAll(/(?:export\s+)?const\s+([A-Z]\w*)\s*[:=]/g)) {
+      declaredIn.set(m[1], [...(declaredIn.get(m[1]) ?? []), abs]);
+    }
+  }
+  for (const p of TEXT_ENTRY_COMPONENTS) {
+    for (const abs of declaredIn.get(p) ?? []) primitiveHomes.add(abs);
+  }
+
+  const out = new Set<string>();
+  for (const [name, files] of declaredIn) {
+    if (files.some((f) => !primitiveHomes.has(f) && fileHasField.get(f))) {
+      out.add(name);
+    }
+  }
+  return out;
+}
+
+let draftCache: DialogSite[] | null = null;
+
+/**
+ * Every production `<SystemDialog>` whose body can hold a DRAFT — a text field
+ * written into its own subtree, or composed by a child component whose file
+ * hosts one.
+ */
+export function draftHoldingDialogs(): DialogSite[] {
+  if (draftCache) return draftCache;
+  const hosts = componentsHostingTextEntry();
+  draftCache = dialogElements().filter(({ subtree }) => {
+    if (hostsTextEntry(subtree)) return true;
+    for (const m of subtree.matchAll(/<([A-Z]\w*)\b/g)) {
+      if (m[1].startsWith("SystemDialog")) continue;
+      if (hosts.has(m[1])) return true;
+    }
+    return false;
+  });
+  return draftCache;
+}
+
 /**
  * The `variant` attribute's value as written — `{ literal }` for
  * `variant="danger"`, `{ expr }` for `variant={…}`, `null` when the attribute

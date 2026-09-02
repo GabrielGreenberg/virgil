@@ -25,6 +25,14 @@
  *   - Backdrop scrim + click-to-close (unless dismissable=false)
  *   - Esc to close — answered by ONE open dialog: the topmost modal, else the
  *     scrimless window containing focus, else the topmost (see `dialog-stack.ts`)
+ *   - Every dismiss path — Esc, the backdrop, the scrimless outside-mousedown —
+ *     enters ONE door, `requestDismiss`, which ASKS `dismissGuard` before it
+ *     closes. The shell has always owned every TRIGGER; until task 530 nothing
+ *     owned what a dismissal COSTS, so a dialog holding real typed work
+ *     (`StyleEditorModal`'s LaTeX preamble) lost it to a stray backdrop click
+ *     with no warning. A dialog whose dismissal is free says so with
+ *     `dismissIsFree`; `dialog-dismiss-census.test.ts` requires one or the other
+ *     from every dialog that hosts a text field.
  *   - Enter activates a BUTTON: the focused in-frame button if there is one,
  *     otherwise the registered CUED DEFAULT — **never gated on where DOM focus
  *     happens to sit**. A modal answers an Enter from OUTSIDE its frame too, at
@@ -174,6 +182,23 @@ export function useSystemDialogDrag(): {
 
 export type SystemDialogVariant = "modal" | "draggable";
 
+/**
+ * May this dialog be dismissed RIGHT NOW?
+ *
+ * `true` closes it. `false` declines — the shell does nothing at all, and the
+ * dialog's own footer button is still there, so a refusal never wedges anything.
+ * A PROMISE is the third answer and the reason the union exists: it lets a
+ * dialog ASK the user ("Discard your changes?") without the shell having to own
+ * a confirm renderer of its own, and without the guard having to lie about the
+ * verdict while the question is still open.
+ *
+ * Called on EVERY dismiss path, so a dialog cannot be protected against one and
+ * not the others — which is exactly how this class shipped: `StyleEditorModal`
+ * had no dirty check anywhere, so Esc *and* the backdrop *and* Cancel were the
+ * same silent discard.
+ */
+export type DismissGuard = () => boolean | Promise<boolean>;
+
 export interface SystemDialogProps {
   open: boolean;
   /** Called on Esc, backdrop/outside click, or programmatic close. Omit for non-dismissable. */
@@ -225,6 +250,32 @@ export interface SystemDialogProps {
    * pinned by `src/components/__tests__/dialog-cued-default-census.test.ts`.
    */
   noCuedDefault?: boolean;
+  /**
+   * Guard EVERY dismiss path — see {@link DismissGuard}.
+   *
+   * Supply this when closing the dialog would DESTROY user work the dialog is
+   * the only copy of. Omit it and every dismissal closes immediately, which is
+   * the right answer for the large majority: a confirm, an alert, a picker, and
+   * every window whose draft outlives its own close (`BugReportWindow` and
+   * `AIWindow` are always-mounted with an `open` prop, so their state survives).
+   */
+  dismissGuard?: DismissGuard;
+  /**
+   * Declare that a dismissal here costs the user NOTHING.
+   *
+   * The twin of `noCuedDefault`, for the same reason: a dialog that hosts a text
+   * field and guards nothing is ambiguous — it either means it, or nobody asked.
+   * Both are LIVE props rather than markers a census alone reads (a suite is not
+   * a consumer, task 202): declaring this AND supplying a `dismissGuard` is a
+   * contradiction and `console.error`s in dev, exactly as the cue pair does.
+   *
+   * Three shapes legitimately need it. A draft that OUTLIVES the close (the
+   * always-mounted `open`-prop windows). A draft the dismissal IS the
+   * abandonment of — a name field whose whole dialog the user just pressed
+   * Escape on. And a field that commits UPSTREAM as you type, so there is no
+   * draft to lose in the first place (`PreferencesModal`).
+   */
+  dismissIsFree?: boolean;
   children: ReactNode;
 }
 
@@ -239,6 +290,8 @@ export default function SystemDialog({
   describedBy,
   frameClassName = "",
   noCuedDefault = false,
+  dismissGuard,
+  dismissIsFree = false,
   initialFocus,
   children,
 }: SystemDialogProps) {
@@ -282,6 +335,93 @@ export default function SystemDialog({
   useEffect(() => {
     initialFocusRef.current = initialFocus;
   });
+
+  /* ── The dismissal door (task 530) ─────────────────────────────────
+     ONE place every dismiss path enters, so "may this close?" is asked once
+     rather than three times — and so a dialog cannot end up protected against
+     Escape but not the backdrop, which is how a shell that owns three triggers
+     and no policy fails.
+
+     Read through refs for the same reason `initialFocus` is: the guard is an
+     inline arrow at every call site, so closing over it would churn the keyboard
+     effect on every render of the host.
+
+     [cost: O(1) per dismissal] — no work at all until the user tries to close. */
+  const dismissGuardRef = useRef(dismissGuard);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    dismissGuardRef.current = dismissGuard;
+    onCloseRef.current = onClose;
+  });
+  /** A guard's question is already on screen — a second Escape must not stack a
+   *  second one. `useSystemDialog` queues rather than stacks, so without this a
+   *  double press asks twice, the second time over a dialog already closing. */
+  const askingRef = useRef(false);
+  const liveRef = useRef(true);
+  useEffect(() => {
+    liveRef.current = true;
+    return () => {
+      liveRef.current = false;
+    };
+  }, []);
+
+  const requestDismiss = useCallback(() => {
+    const close = onCloseRef.current;
+    // No `onClose` is the pre-existing non-dismissable shape; nothing to ask.
+    if (!close) return;
+    const guard = dismissGuardRef.current;
+    if (!guard) {
+      close();
+      return;
+    }
+    if (askingRef.current) return;
+    let verdict: boolean | Promise<boolean>;
+    try {
+      verdict = guard();
+    } catch (err) {
+      // FAIL CLOSED, and the asymmetry is the whole point: a guard exists only
+      // where closing DESTROYS something, so a guard that threw has not said the
+      // dismissal is safe. Refusing costs the user one click on the footer's own
+      // Cancel (which calls the caller's handler directly and never enters this
+      // door, so a refusal can never wedge the dialog); closing costs the draft.
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[SystemDialog] dismissGuard threw; refusing to close.", err);
+      }
+      return;
+    }
+    if (verdict === true) {
+      close();
+      return;
+    }
+    if (verdict === false) return;
+    askingRef.current = true;
+    void Promise.resolve(verdict).then(
+      (ok) => {
+        askingRef.current = false;
+        // Re-read: the answer can arrive a whole confirm later, by which time the
+        // dialog may have been closed another way (the footer's Cancel, a Save)
+        // and `onClose` may be a different function than the one we asked about.
+        if (ok && liveRef.current) onCloseRef.current?.();
+      },
+      () => {
+        askingRef.current = false;
+      },
+    );
+  }, []);
+
+  // The declaration and the guard disagree — one of them is a lie, and which is
+  // a decision only the author can make. Loud in dev, and the reason
+  // `dismissIsFree` is a LIVE prop rather than a marker the census alone reads:
+  // a suite is not a consumer (task 202). Same shape as the cue pair above.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (open && dismissIsFree && dismissGuard) {
+      console.error(
+        "[SystemDialog] declares `dismissIsFree` but also supplies a " +
+          "`dismissGuard`. Drop one of them.",
+      );
+    }
+  }, [open, dismissIsFree, dismissGuard]);
 
   // anchorRef positioning — the MODAL variant's near-element placement (the
   // scrim stays; STYLE_GUIDE: a confirm acting on ONE visible object opens
@@ -421,8 +561,12 @@ export default function SystemDialog({
         // make Escape stop closing that dialog whenever its preamble editor has
         // focus. A modal always has a way out.
         if (!onClose) return;
+        // preventDefault BEFORE the door: the dialog is answering this key
+        // whether the answer turns out to be "close" or "ask first", so nothing
+        // beneath it (CodeMirror's simplifySelection, the editor keymaps) may
+        // also act on the press that raised a discard confirm.
         e.preventDefault();
-        onClose();
+        requestDismiss();
         return;
       }
       if (!isPlainEnter(e)) return;
@@ -454,7 +598,7 @@ export default function SystemDialog({
       document.removeEventListener("keydown", onCapture, true);
       window.removeEventListener("keydown", onBubble);
     };
-  }, [open, onClose, variant, panelRef]);
+  }, [open, onClose, variant, panelRef, requestDismiss]);
 
   // Outside-click-to-close for scrimless variants (the modal variant closes via
   // its backdrop instead). rAF-armed so the opening mousedown on the trigger
@@ -472,7 +616,7 @@ export default function SystemDialog({
       if (panelRef.current && target && panelRef.current.contains(target)) return;
       if (ignoreOutsideSelector && target?.closest?.(ignoreOutsideSelector))
         return;
-      onClose();
+      requestDismiss();
     };
     document.addEventListener("mousedown", handler);
     return () => {
@@ -487,13 +631,14 @@ export default function SystemDialog({
     ignoreOutsideSelector,
     isDraggingRef,
     panelRef,
+    requestDismiss,
   ]);
 
   const handleBackdrop = useCallback(
     (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget && onClose) onClose();
+      if (e.target === e.currentTarget) requestDismiss();
     },
-    [onClose],
+    [requestDismiss],
   );
 
   if (!open || !mounted) return null;

@@ -245,6 +245,13 @@ export default function PreferencesModal({
       variant="draggable"
       onClose={onClose}
       ignoreOutsideSelector='[data-hint="Preferences"]'
+      /* A dismissal is FREE: every preference commits UPSTREAM the instant it
+         changes (`onUpdate` writes straight to the prefs store), so closing
+         loses no setting. The two pockets of local text state that do die with
+         the unmount — `PresetBar`'s half-typed preset name and
+         `PreferenceTree.ColorPref`'s half-typed hex — are one short token
+         each, re-typed in seconds. */
+      dismissIsFree
       labelledBy="preferences-modal-title"
       frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
     >

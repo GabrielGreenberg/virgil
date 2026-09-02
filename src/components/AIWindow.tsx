@@ -606,6 +606,13 @@ export default function AIWindow({
          Enter pressed outside its frame (nothing behind a scrim should act on
          one) — declared here so that swallow is a decision, not an omission. */
       noCuedDefault
+      /* A dismissal is FREE: this component is ALWAYS mounted (EditorPane
+         renders it whenever `onAiWindowClose` exists) and early-returns null
+         when closed, so `composerText` survives a close and is there again on
+         reopen. Stated limit, and the one asymmetry with BugReportWindow: no
+         localStorage mirror, so a reload or a keep-alive eviction of this
+         pane loses it. */
+      dismissIsFree
       labelledBy="ai-window-title"
       frameClassName="max-h-[82vh] flex flex-col"
     >

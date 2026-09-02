@@ -10,6 +10,25 @@ import SystemDialog, {
 import { Input } from "./field-primitives";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 
+/**
+ * What `onCreate` DID — the report this dialog reads to decide whether its
+ * draft was consumed (task 530).
+ *
+ * `"created"` means the caller has the document and is about to unmount this
+ * dialog. `"cancelled"` means NOTHING was created because the user backed out
+ * of an inner step (the OS folder sheet), so the dialog stays open with the
+ * typed name and the chosen template intact. A THROW is the third answer — a
+ * real failure, rendered inline — and that one already worked, which is
+ * exactly why the abort path was the only one that lost the draft: it returns
+ * instead of throwing, so it took the SUCCESS path through `submit`.
+ *
+ * Not optional, and not `void`-able: the report is what the dialog is reading,
+ * so a caller that states nothing is a caller that has not decided (the
+ * "a defaulted argument is a decision nobody made" rule) — and the compiler
+ * is this contract's census.
+ */
+export type NewDocumentOutcome = "created" | "cancelled";
+
 interface NewDocumentModalProps {
   /** Optional subtitle shown under the title. */
   subtitle?: string;
@@ -17,8 +36,12 @@ interface NewDocumentModalProps {
   initialName?: string;
   /** Default-selected template id. */
   initialTemplateId?: string;
-  /** Called with the user-entered name and the picked template id. */
-  onCreate: (name: string, templateId: string) => void | Promise<void>;
+  /** Called with the user-entered name and the picked template id; REPORTS
+   *  whether a document was created — see {@link NewDocumentOutcome}. */
+  onCreate: (
+    name: string,
+    templateId: string,
+  ) => NewDocumentOutcome | Promise<NewDocumentOutcome>;
   onCancel: () => void;
 }
 
@@ -44,7 +67,12 @@ export default function NewDocumentModal({
     setBusy(true);
     setError(null);
     try {
-      await onCreate(name.trim(), templateId);
+      const outcome = await onCreate(name.trim(), templateId);
+      // `busy` means "an operation that will CONSUME this draft is in flight",
+      // so it clears exactly when the operation ended without consuming it.
+      // On "created" the caller unmounts us a beat later; clearing here would
+      // re-enable Create for a frame and let a fast double-click create twice.
+      if (outcome === "cancelled") setBusy(false);
     } catch (err) {
       setBusy(false);
       setError(err instanceof Error ? err.message : "Failed to create");
@@ -56,6 +84,11 @@ export default function NewDocumentModal({
       open
       onClose={busy ? undefined : onCancel}
       size="lg"
+      /* A dismissal is FREE: Escape / the backdrop IS the user abandoning the
+         name they were typing, and losing it is the point of that gesture.
+         What must not close this dialog is a NON-dismissal — which is why
+         `onCreate` reports rather than being read for its side effects. */
+      dismissIsFree
       initialFocus={() => {
         nameRef.current?.focus();
         nameRef.current?.select();

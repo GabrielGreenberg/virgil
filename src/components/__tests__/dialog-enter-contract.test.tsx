@@ -768,7 +768,12 @@ describe("a dialog whose BODY owns initial focus gets it", () => {
   });
 
   it("NewDocumentModal focuses and selects its name field", () => {
-    render(<NewDocumentModal onCreate={async () => {}} onCancel={() => {}} />);
+    render(
+      <NewDocumentModal
+        onCreate={async () => "created" as const}
+        onCancel={() => {}}
+      />,
+    );
     flushFrames();
 
     const active = document.activeElement as HTMLInputElement;
@@ -777,7 +782,7 @@ describe("a dialog whose BODY owns initial focus gets it", () => {
   });
 
   it("the cued default still answers Enter from OUTSIDE, with the body focused", () => {
-    const onCreate = vi.fn(async () => {});
+    const onCreate = vi.fn(async () => "created" as const);
     render(<NewDocumentModal onCreate={onCreate} onCancel={() => {}} />);
     flushFrames();
     const input = document.activeElement as HTMLInputElement;

@@ -320,6 +320,11 @@ function PromptDialog({
       open
       onClose={() => done(null)}
       size={size}
+      /* A dismissal is FREE, and here it is the whole point: dismissing a
+         prompt IS answering it with `null`, which is what every caller reads
+         as "cancelled". The draft is one short line, normally pre-seeded from
+         `opts.initial`, and the next ask re-seeds it. */
+      dismissIsFree
       labelledBy={title ? titleId : undefined}
     >
       <SystemDialogHeader title={title} titleId={titleId} />

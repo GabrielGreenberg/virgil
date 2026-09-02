@@ -2076,6 +2076,20 @@ Reach for these instead of hand-rolling a one-off modal.
 
 Don't nest modals. Use a popover for transients over a modal.
 
+**The one sanctioned nesting is the DISCARD confirm** (task 530). A dialog that
+can hold a draft declares what a dismissal costs — a `dismissGuard` the shell
+asks before Escape / the backdrop / the outside-mousedown close it, or
+`dismissIsFree` — and the guard that has something to lose raises a
+`useSystemDialog().confirm` over its own dialog. The task-389 stack routes the
+key to the top one, so the nesting costs nothing the flat case does not already
+pay. Its shape is fixed: **`tone: "danger"`** (discarding destroys content with
+no undo, and the tone is what cues **Cancel**, so the Enter of someone already
+typing keeps their draft), **"Discard changes?"** as the title, **Discard** and
+**Keep editing** as the two labels, and the FOOTER Cancel asks the same guard —
+a footer button never enters the shell's door, so without that the one
+deliberate dismissal would be the silent one. Never prompt on a PRISTINE close:
+a prompt nobody needs becomes furniture, and people click through furniture.
+
 ### Menus
 
 `<Menu>`/`MenuProvider` (`src/components/menu/`) is the **canonical dropdown /
