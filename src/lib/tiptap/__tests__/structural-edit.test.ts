@@ -41,11 +41,11 @@ import {
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
+import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import {
   editStructuredNodeByUuid,
   renameHeadingByUuid,
   renameParTitleByUuid,
-  updateHeadingLabelByUuid,
   findNodeByUuid,
   shallowEqualAttrs,
 } from "@/lib/tiptap/structural-edit";
@@ -120,6 +120,25 @@ function headingNode(editor: Editor) {
   return hit?.node ?? null;
 }
 
+/**
+ * The Outline's label commit, as `useEditorOps.handleUpdateLabel` spells it
+ * since task 534: the ONE label-rename door, addressed by uuid. The retired
+ * `updateHeadingLabelByUuid` took an INJECTED duplicate predicate; the door
+ * reads `@/lib/labels` against the live document, which on this fixture
+ * (HEADING2 already declares "sec:two") answers exactly what the old injected
+ * `takenByOther(new Set(["sec:two"]))` did.
+ */
+function commitLabel(editor: Editor, uuid: string, newLabel: string | null) {
+  return renameLabelWithRefs(editor, {
+    locate: () => {
+      const hit = findNodeByUuid(editor, uuid);
+      return hit && hit.node.type.name === "heading" ? hit : null;
+    },
+    newLabel,
+    confirm: null,
+  });
+}
+
 /** Count atoms of a given type in a node's direct inline content. */
 function countInlineAtoms(node: ReturnType<typeof headingNode>, typeName: string): number {
   if (!node) return 0;
@@ -183,19 +202,14 @@ describe("editStructuredNodeByUuid — setAttrs no-op bail (phantom-undo class)"
     }
   });
 
-  it("a null → null label commit (blur the '+' on an unlabeled heading) is a no-op", () => {
+  it("a null → null label commit (blur the '+' on an unlabeled heading) is a no-op", async () => {
     const { editor, cleanup } = mount();
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
       // HEADING1 has no label (undefined attr); committing `null` must normalize
       // to equal and bail — the real Outline "+"-then-blur trigger.
-      const ok = updateHeadingLabelByUuid(
-        editor,
-        HEADING_UUID,
-        null,
-        () => false,
-      );
-      expect(ok).toBe(false);
+      const outcome = await commitLabel(editor, HEADING_UUID, null);
+      expect(outcome).toBe("unchanged");
       expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
     } finally {
@@ -218,17 +232,12 @@ describe("editStructuredNodeByUuid — setAttrs no-op bail (phantom-undo class)"
     }
   });
 
-  it("a genuine attr change still dispatches exactly one tx and returns true", () => {
+  it("a genuine attr change still dispatches exactly one tx and reports it", async () => {
     const { editor, cleanup } = mount();
     try {
       const spy = vi.spyOn(editor.view, "dispatch");
-      const ok = updateHeadingLabelByUuid(
-        editor,
-        HEADING2_UUID,
-        "sec:renamed",
-        () => false,
-      );
-      expect(ok).toBe(true);
+      const outcome = await commitLabel(editor, HEADING2_UUID, "sec:renamed");
+      expect(outcome).toBe("renamed");
       expect(spy).toHaveBeenCalledTimes(1);
       expect(findNodeByUuid(editor, HEADING2_UUID)?.node.attrs.label).toBe(
         "sec:renamed",
@@ -518,67 +527,58 @@ describe("renameParTitleByUuid — the domain equals TITLED_NODE_TYPES (task 404
   });
 });
 
-describe("updateHeadingLabelByUuid — duplicate-label block (OUT-F8-03)", () => {
-  // A predicate matching the central registry's contract: taken when another
-  // heading already claims it (excluding our own label).
-  const takenByOther = (taken: Set<string>) =>
-    (candidate: string, exclude: string | null) => {
-      const k = candidate.trim();
-      if (!k) return false;
-      if (exclude && k === exclude) return false;
-      return taken.has(k);
-    };
+describe("the label-rename door — duplicate-label block (OUT-F8-03, held by the door since task 534)", () => {
+  // The old `updateHeadingLabelByUuid` legs injected a `takenByOther` predicate;
+  // the door reads the document's OWN declarations, and HEADING2 declares
+  // "sec:two", so the questions and the answers are the same ones.
 
-  it("blocks committing a label already taken by another heading", () => {
+  it("blocks committing a label already taken by another heading", async () => {
     const { editor, cleanup } = mount();
     try {
       // "sec:two" is already on HEADING2. Try to put it on HEADING1 — blocked.
-      const isTaken = takenByOther(new Set(["sec:two"]));
-      const ok = updateHeadingLabelByUuid(editor, HEADING_UUID, "sec:two", isTaken);
-      expect(ok).toBe(false);
+      const outcome = await commitLabel(editor, HEADING_UUID, "sec:two");
+      expect(outcome).toBe("conflict");
       expect(headingNode(editor)?.attrs.label).toBeFalsy();
     } finally {
       cleanup();
     }
   });
 
-  it("allows a fresh, unused label", () => {
+  it("allows a fresh, unused label", async () => {
     const { editor, cleanup } = mount();
     try {
-      const isTaken = takenByOther(new Set(["sec:two"]));
-      const ok = updateHeadingLabelByUuid(editor, HEADING_UUID, "sec:fresh", isTaken);
-      expect(ok).toBe(true);
+      const outcome = await commitLabel(editor, HEADING_UUID, "sec:fresh");
+      expect(outcome).toBe("renamed");
       expect(headingNode(editor)?.attrs.label).toBe("sec:fresh");
     } finally {
       cleanup();
     }
   });
 
-  it("allows clearing a label even though the registry would report it taken", () => {
+  it("allows clearing a label even though the registry would report it taken", async () => {
     const { editor, cleanup } = mount();
     try {
-      // Clearing HEADING2's own "sec:two" — the guard short-circuits on clear.
-      const isTaken = takenByOther(new Set(["sec:two"]));
-      const ok = updateHeadingLabelByUuid(editor, HEADING2_UUID, null, isTaken);
-      expect(ok).toBe(true);
+      // Clearing HEADING2's own "sec:two" — a clear is never a conflict, and
+      // the cleared value is the heading attr's SCHEMA default (`null`).
+      const outcome = await commitLabel(editor, HEADING2_UUID, null);
+      expect(outcome).toBe("renamed");
       expect(findNodeByUuid(editor, HEADING2_UUID)?.node.attrs.label).toBeNull();
     } finally {
       cleanup();
     }
   });
 
-  it("lets a heading keep its OWN label (exclude self) — now a no-op bail, label preserved", () => {
+  it("lets a heading keep its OWN label (exclude self) — a no-op bail, label preserved", async () => {
     const { editor, cleanup } = mount();
     try {
-      const isTaken = takenByOther(new Set(["sec:two"]));
-      // Re-commit HEADING2's own label — not a self-collision, so NOT blocked.
-      // Since the value is unchanged, the setAttrs equality bail makes this a
-      // true no-op (returns false, no phantom tx) rather than the old
-      // dispatch-anyway behavior. The user-facing contract that matters — the
-      // label is neither blocked-and-cleared nor errored — still holds.
-      const ok = updateHeadingLabelByUuid(editor, HEADING2_UUID, "sec:two", isTaken);
-      expect(ok).toBe(false);
+      // Re-commit HEADING2's own label — not a self-collision, so NOT blocked;
+      // the value is unchanged, so nothing is dispatched either.
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const outcome = await commitLabel(editor, HEADING2_UUID, "sec:two");
+      expect(outcome).toBe("unchanged");
+      expect(spy).not.toHaveBeenCalled();
       expect(findNodeByUuid(editor, HEADING2_UUID)?.node.attrs.label).toBe("sec:two");
+      spy.mockRestore();
     } finally {
       cleanup();
     }

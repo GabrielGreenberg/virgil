@@ -135,11 +135,6 @@ export function ListBody({
   // them either. Threaded for parity with the factory contract and to stay
   // structurally identical to the other prose bodies. `.current` is
   // reassigned each render so the closures see the live main handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -172,7 +167,6 @@ export function ListBody({
       editable: true,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

@@ -117,7 +117,6 @@ function buildMain(editable = true): TiptapEditor {
 function handleFor(editor: TiptapEditor): EditorHandle {
   return {
     getEditor: () => editor,
-    isLabelTaken: () => false,
     onConfirmLabelRename: async () => false,
     onConfirmHeadingDelete: async () => true,
   } as unknown as EditorHandle;

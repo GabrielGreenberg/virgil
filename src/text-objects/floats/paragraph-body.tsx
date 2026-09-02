@@ -89,11 +89,6 @@ export function ParagraphBody({
   // parity with the factory contract and to stay structurally identical to
   // heading-body. `.current` is reassigned each render so the closures see
   // the live main handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -122,7 +117,6 @@ export function ParagraphBody({
       editable: chrome.showParagraphFloatTitleEdit,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

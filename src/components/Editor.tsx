@@ -95,8 +95,6 @@ interface EditorProps {
   highlightText: string | null;
   /** Position-based highlight (from search panel). Takes priority over highlightText. */
   highlightRange: { from: number; to: number } | null;
-  onAddComment?: () => void;
-  onArchive?: () => void;
   onEditorReady?: (editor: Editor) => void;
   onCitationDrop?: (command: string, citationId?: string) => { id: string; displayText: string } | null;
   /**
@@ -108,25 +106,29 @@ interface EditorProps {
    */
   onConfirmFootnoteMove?: () => Promise<boolean>;
   /**
-   * Called when the user renames the label on a heading that has
-   * existing `\ref` pods pointing to it. Resolving `true` causes the
-   * refs to be rewritten to the new label in the same transaction;
-   * `false` leaves them pointing at the old (now orphaned) key. When
-   * omitted, Editor applies the heading rename without prompting.
+   * Called when the user renames a heading's or a figure's `\label` while
+   * `\ref` pods still point at the old key. Resolving `true` rewrites them to
+   * the new key in the same transaction as the rename; `false` leaves them
+   * pointing at the old (now orphaned) key. Consumed through ONE door,
+   * `renameLabelWithRefs` (`@/lib/tiptap/label-rename`), by the heading
+   * strip, the figure lozenge and — via `EditorHandle.onConfirmLabelRename` —
+   * every popped-out float and the Outline's label editor.
+   *
+   * PRODUCED by `EditorPane` (a `useConfirmDialog` confirm). Task 534: for five
+   * months nothing passed it, so the whole ref-rewrite branch was dead and
+   * every rename orphaned every ref — the census
+   * `editor-callback-producer-census.test.ts` now requires every optional
+   * callback declared here to be supplied at the one production mount.
+   *
+   * (`isLabelTaken` used to sit beside this as a prop; it is GONE — the
+   * "label already in use" predicate is `@/lib/labels`' own, read directly by
+   * every label editor against the document it writes to.)
    */
   onConfirmLabelRename?: (
     oldLabel: string,
     newLabel: string,
     refCount: number,
   ) => Promise<boolean>;
-  /**
-   * Predicate consulted by the heading label editor while the user
-   * types — returns `true` when the candidate key is already claimed by
-   * another `\label{...}` declaration in the doc. The editor surfaces a
-   * "label already in use" warning beneath the input when so. Wired
-   * centrally via `src/lib/labels.ts`.
-   */
-  isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
   /** Ref to the handler that RE-HOMES a card whose anchor block was absorbed
@@ -252,14 +254,15 @@ export interface EditorHandle {
   // --- Heading-label callbacks, exposed for float proxying (FCU Chip B) ---
   // A popped-out heading float runs the SAME `createHeadingWithLabel`
   // NodeView as main but proxies its structural writes back to the main
-  // editor. These three expose main's own label handlers so the float reads
-  // the identical predicate / confirmations off `editorRef.current` and
-  // threads them into the factory's `callbacks`. Each falls back to the
-  // no-prop default the NodeView assumes (predicate→false, rename→false,
-  // delete→true) when the host didn't supply the corresponding prop.
-  /** True when `candidate` is already claimed by another `\label{…}`. */
-  isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
-  /** Confirm rewriting `\ref`s when a heading label is renamed. */
+  // editor. These two expose main's own confirmations so the float reads
+  // the identical dialogs off `editorRef.current` and threads them into the
+  // factory's `callbacks`. Each falls back to the no-prop default the NodeView
+  // assumes (rename→false, delete→true) when the host didn't supply the
+  // corresponding prop — a default the producer census keeps production from
+  // ever reaching (task 534). The "label already in use" predicate is NOT
+  // proxied: it is `@/lib/labels`' `isLabelTaken`, read directly against the
+  // write target by every label editor.
+  /** Confirm rewriting `\ref`s when a heading / figure label is renamed. */
   onConfirmLabelRename: (
     oldLabel: string,
     newLabel: string,
@@ -439,7 +442,7 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, onBlockAbsorbedRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -495,10 +498,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // inside the extension closure; a ref keeps it in sync across renders.
   const onConfirmLabelRenameRef = useRef(onConfirmLabelRename);
   onConfirmLabelRenameRef.current = onConfirmLabelRename;
-  // Same ref dance for the label-conflict predicate — it's called
-  // synchronously on every keystroke inside the heading label input.
-  const isLabelTakenRef = useRef(isLabelTaken);
-  isLabelTakenRef.current = isLabelTaken;
   // Heading lozenge controls: type-menu opener, delete confirmation, and
   // the live documentclass name. All consumed from inside the vanilla
   // DOM heading node view through the standard ref-mirror pattern.
@@ -531,7 +530,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       editableRef,
       cardContext: false,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
         onOpenHeadingTypeMenu: onOpenHeadingTypeMenuRef,
@@ -807,9 +805,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               const requestConfirm = onConfirmFootnoteMoveRef.current;
               // Fire-and-forget: the drop event is already prevented, so
               // we can safely do async work and dispatch the move when
-              // the user resolves the dialog. EditorLayout always wires
-              // the callback — if it's missing we log and skip silently
-              // rather than dropping into a native browser dialog.
+              // the user resolves the dialog. `EditorPane` wires the
+              // callback (task 534 — for five months NOTHING did, and this
+              // comment claimed `EditorLayout` had); if it's missing we log
+              // and skip rather than dropping into a native browser dialog.
               if (requestConfirm) {
                 requestConfirm()
                   .then((ok) => { if (ok) performMove(); })
@@ -1049,13 +1048,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     getEditor() {
       return editor;
     },
-    // Heading-label callbacks proxied to a popped-out heading float (FCU
-    // Chip B). They read the live prop mirrors so the float consults the
-    // exact same predicate / confirmations main uses. Defaults match what
-    // the NodeView assumes when the host omitted the prop.
-    isLabelTaken(candidate: string, excludeLabel: string | null): boolean {
-      return isLabelTakenRef.current?.(candidate, excludeLabel) ?? false;
-    },
+    // Heading-label confirmations proxied to a popped-out float (FCU Chip B)
+    // and to the Outline's label editor (task 534). They read the live prop
+    // mirrors so every surface consults the exact same dialog main uses.
+    // Defaults match what the NodeView assumes when the host omitted the prop.
     onConfirmLabelRename(
       oldLabel: string,
       newLabel: string,

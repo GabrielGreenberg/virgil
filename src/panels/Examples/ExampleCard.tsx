@@ -153,11 +153,6 @@ function ExampleCardEditor({
   // heading NodeView never instantiates and these stay inert, but they're
   // threaded for parity with the factory contract. `.current` is reassigned
   // each render so the closures see the live main handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    editorRef.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((oldLabel: string, newLabel: string, refCount: number) => Promise<boolean>)
@@ -250,7 +245,6 @@ function ExampleCardEditor({
       cardContext: true,
       docIdRef,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

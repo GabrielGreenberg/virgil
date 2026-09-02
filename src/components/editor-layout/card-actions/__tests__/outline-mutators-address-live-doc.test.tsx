@@ -77,7 +77,6 @@ function makeOps(initial: PMNode) {
     useEditorOps({
       editorRef: handleRef,
       setLatestDoc: () => {},
-      isLabelTaken: () => false,
     }),
   );
   return { ...live, ops: result.current, scrollToHeading };

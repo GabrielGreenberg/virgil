@@ -114,11 +114,6 @@ export function LinkedRangeBody({
   // an embedded heading's label-rename / heading-delete confirm resolve against
   // MAIN. `.current` is reassigned each render so the closures see the live
   // main handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -159,7 +154,6 @@ export function LinkedRangeBody({
       editable: true,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },

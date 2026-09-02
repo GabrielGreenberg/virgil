@@ -238,6 +238,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { labelRenameConfirmCopy } from "@/lib/tiptap/label-rename";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -4198,32 +4199,61 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const closeHeadingTypeMenu = useCallback(() => setHeadingTypeMenuState(null), []);
 
-  // Shared confirm-dialog instance for the heading lozenge's × button
-  // and any other prompt-from-node-view flows that land here later.
-  const { confirm: confirmHeadingDelete, dialog: confirmHeadingDeleteDialog } = useConfirmDialog();
+  // ONE confirm-dialog instance for every question a NodeView asks through
+  // `<VirgilEditor>`'s optional callbacks — the heading lozenge's ×, the
+  // figure lozenge's ×, the label-rename "Update references?", and the
+  // footnote panel-drop move. They are modal and never concurrent, so one
+  // instance serves all four; what matters is that EACH callback the editor
+  // consumes has a PRODUCER here. Task 534: `onConfirmLabelRename` and
+  // `onConfirmFootnoteMove` had none for five months, so their consumers were
+  // dead with every type green — `editor-callback-producer-census.test.ts`
+  // now pins every optional callback `Editor.tsx` declares to this mount.
+  const { confirm: confirmFromNodeView, dialog: nodeViewConfirmDialog } =
+    useConfirmDialog();
   const handleConfirmHeadingDelete = useCallback(
     (typeName: string) =>
-      confirmHeadingDelete({
+      confirmFromNodeView({
         title: "Delete heading?",
         message: `Remove this ${typeName} heading. The body underneath stays in place.`,
         confirmLabel: "Delete heading",
         tone: "danger",
       }),
-    [confirmHeadingDelete],
+    [confirmFromNodeView],
   );
-
-  // Same shape for the figure annotation lozenge's × button.
-  const { confirm: confirmFigureDelete, dialog: confirmFigureDeleteDialog } =
-    useConfirmDialog();
   const handleConfirmFigureDelete = useCallback(
     () =>
-      confirmFigureDelete({
+      confirmFromNodeView({
         title: "Delete figure?",
         message: "Remove this figure and its caption.",
         confirmLabel: "Delete figure",
         tone: "danger",
       }),
-    [confirmFigureDelete],
+    [confirmFromNodeView],
+  );
+  // "Update references?" — asked by the label-rename door
+  // (`@/lib/tiptap/label-rename`) whenever a heading / figure label is renamed
+  // while `\ref`s still name the old key. YES carries the refs in the rename's
+  // own transaction; NO leaves them on the old key (the user means to
+  // re-declare it). The words are the door's, spelled once beside the
+  // mechanism they gate. Not `danger`: nothing is destroyed either way.
+  const handleConfirmLabelRename = useCallback(
+    (oldLabel: string, newLabel: string, refCount: number) =>
+      confirmFromNodeView(labelRenameConfirmCopy(oldLabel, newLabel, refCount)),
+    [confirmFromNodeView],
+  );
+  // Moving an ANCHORED footnote by dropping its panel card back into the
+  // document (Editor.tsx's `MIME_FOOTNOTE` drop branch — retained for a
+  // future card drag; its consumer asked for this confirm and, pre-534,
+  // logged a warning and skipped because nothing supplied it).
+  const handleConfirmFootnoteMove = useCallback(
+    () =>
+      confirmFromNodeView({
+        title: "Move footnote?",
+        message:
+          "This footnote is anchored elsewhere in the document. Move its marker to the drop point?",
+        confirmLabel: "Move footnote",
+      }),
+    [confirmFromNodeView],
   );
 
   // Documentclass extracted from the resolved style preamble. Drives the
@@ -6986,6 +7016,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     onConfirmFigureDelete={handleConfirmFigureDelete}
+                    onConfirmLabelRename={handleConfirmLabelRename}
+                    onConfirmFootnoteMove={handleConfirmFootnoteMove}
                     documentClass={documentClassName}
                     docId={docId}
                   />
@@ -7334,8 +7366,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               onClose={closeHeadingTypeMenu}
             />
           )}
-          {confirmHeadingDeleteDialog}
-          {confirmFigureDeleteDialog}
+          {nodeViewConfirmDialog}
           {confirmMarginItemDeleteDialog}
           {confirmDragHandleActionDialog}
           {notifyDragHandleActionDialog}

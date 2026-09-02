@@ -278,11 +278,6 @@ export function ListItemBody({
   // (these stay inert); a graphicsBlock as the item's first child renders as a
   // compact card preview (docIdRef threaded below so its image resolves).
   // `.current` is reassigned each render so the closures see the live handle.
-  const isLabelTakenRef = useRef<
-    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
-  >(undefined);
-  isLabelTakenRef.current = (candidate, excludeLabel) =>
-    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
 
   const onConfirmLabelRenameRef = useRef<
     | ((
@@ -317,7 +312,6 @@ export function ListItemBody({
       editable: true,
       cardContext: true,
       callbacks: {
-        isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
