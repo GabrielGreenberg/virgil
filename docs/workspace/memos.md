@@ -1,4 +1,4 @@
-<!-- last-verified: b17806ca 2026-09-01 -->
+<!-- last-verified: cb8bc044 2026-09-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: editor/skills/reflect.md, editor/AGENTS.md, library/scripts/skill-bundle-template/CLAUDE.md -->
 
@@ -12,7 +12,7 @@ to be running.
 |---|---|---|---|
 | **Cowork memo** | *this paper's content* — an ambiguity worth surfacing, a decision made while editing | `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md` | any session |
 | **Library memo** | *the library pipeline* — an extraction retro, a triage call, an indexing-flow idea | `~/Virgil-Library/.virgil/memos/<YYYY-MM-DD>-<slug>.md` | any session |
-| **Reflection** (a.k.a. a **"dream memo"**) | *Virgil's skill set / tooling / app behavior* — how a skill behaved, what compiles, an improvement idea | the dev-loop reflection sink, **outside** any paper or library folder, via `/editor:reflect` | dev-mode machines only — **the script's own gate decides**; on any other machine it no-ops safely |
+| **Reflection** (a.k.a. a **"dream memo"**) | *Virgil's skill set / tooling / app behavior* — how a skill behaved, what compiles, an improvement idea | the dev-loop reflection sink, **outside** any paper or library folder, via `/editor:reflect` — since task 521 normally the Dropbox-**synced** `Virgil-Inbox/dev-loop/memos`, so a memo written from a cowork machine reaches the loop at all; the gitignored in-checkout folder is the fallback where no synced inbox is reachable | dev-mode machines only — **the script's own gate decides**; on any other machine it no-ops safely |
 
 ## The one decision rule
 

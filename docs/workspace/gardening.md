@@ -1,4 +1,4 @@
-<!-- last-verified: b17806ca 2026-09-01 -->
+<!-- last-verified: cb8bc044 2026-09-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -72,7 +72,7 @@ A skill rarely emits CSS, but **content a skill pastes or authors must not colli
 with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-renderer`
 / `.node-<name>`, the `.expex-*` family, `.linked-anchor`, `.dropmode-bar-*`,
 `.virgil-bar` / `.panel-*`, and the `data-card-*` / `data-link-*` / `data-print-*`
-families. (The full namespace is the SSOT file itself,
+families, plus the standalone `data-atoms-graspable` (task 524). (The full namespace is the SSOT file itself,
 [src/app/globals.css](../../src/app/globals.css).)
 
 **Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):

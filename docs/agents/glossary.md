@@ -1,4 +1,4 @@
-<!-- last-verified: b17806ca 2026-09-01 -->
+<!-- last-verified: cb8bc044 2026-09-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/, src/components/SkillSyncControls.tsx, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/cards/predicates.ts -->
 
@@ -298,6 +298,10 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 - **"Don't show this again"** / **"stop asking me"** (user, on a confirm dialog) — the suppressible-confirm capability, owned by the confirm DOOR rather than by any caller ([src/components/confirm-suppression.ts](../../src/components/confirm-suppression.ts), task 492). A confirm opts in with one `suppressId`; a `tone: "danger"` confirm may never carry one. Replaces the retired per-window `suppressArchiveAtomWarning` pref. See `ui-chrome.md` → "Dialogs".
 
 - **"Report a bug"** / **"the bug button"** / **"the bug window"** (user, dev builds only) — `BugReportWindow` ([src/components/BugReportWindow.tsx](../../src/components/BugReportWindow.tsx)), a DEV tool behind `localStorage["virgil:bug-report"] = "1"` that files a report (text + pasted screenshots) into a Dropbox-synced inbox folder, drained into the `~/virgil-tasks` pipeline by a scheduled heartbeat on the home machine. See `ui-chrome.md` → "BugReportWindow".
+
+- **"Autocorrect"** / **"it fixed my typo"** / **"it changed my word"** / **"stop correcting me"** (user) — the type-time typo swap (task 519), View menu → Display → **"Autocorrect typos"** (`autocorrectTypos`, global, default ON). Its own permission, deliberately separate from **"Check spelling"** (`checkSpelling`) — underlining a word and REWRITING it are different things and a user may want either without the other. The table is CURATED and words-only ([src/lib/tiptap/autocorrect.ts](../../src/lib/tiptap/autocorrect.ts)), never nearest-dictionary-word: a swap has no reverse map, so only what a human declared unambiguous is rewritten unasked. Never fires inside raw LaTeX ([typed-prose-gate.ts](../../src/lib/tiptap/typed-prose-gate.ts)) or on a word the paper dictionary / global list / bibliography accepts, and ONE Backspace undoes it. See `ui-chrome.md` → View menu Display, `main-text.md` → "Type-time transforms".
+
+- **"It printed my spellcheck squiggles"** / **"the editor's marks are on the paper"** (user) — the view-only-chrome rule (task 408, widened by task 523): **what prints is the DOCUMENT, not the editor's current state.** The vocabulary is [src/lib/view-only-chrome.ts](../../src/lib/view-only-chrome.ts) — a `viewOnly(...)` stamp read by the writers that paint the chrome AND by the `@media print` block that must neutralise it, so the two cannot drift. Covers the HIDE half (a folded section, a locked focus band, a collapsed source pod) and the PAINT half (the spell squiggle, which is `text-decoration` and so prints even without "Background graphics"). See `STYLE_GUIDE.md` → "What reaches paper".
 
 ## Pending terminology
 
