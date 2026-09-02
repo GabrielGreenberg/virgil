@@ -1,6 +1,6 @@
 {
-  "version": "cf89c1640245",
-  "syncedAt": "2026-08-19T19:04:53.488310Z",
+  "version": "5cd6d4e278e9",
+  "syncedAt": "2026-08-25T03:31:14.259Z",
   "files": [
     "library/CLAUDE.md",
     "library/claude-commands/_doctrine.md",
@@ -116,6 +116,7 @@
     "library/scripts/strip_ocr_headings.py",
     "library/scripts/strip_ocr_running_headers.py",
     "library/scripts/strip_punctuation_only_headings.py",
+    "library/scripts/suppression_vocabulary.py",
     "library/scripts/synthesize_canonical_entries.py",
     "library/scripts/test_dedup_cli.py",
     "library/scripts/test_parser_hardening.py",
