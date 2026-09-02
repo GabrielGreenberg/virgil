@@ -839,11 +839,33 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       //
       // No new card to take focus → return focus to the editor so the
       // user's next keypress (Cmd-Z to undo, arrow keys to navigate)
-      // reaches the doc instead of being eaten by the browser.
-      // Critical for Delete: it routes through a confirm dialog whose
-      // close orphans focus on the body; without this re-focus, Cmd-Z
-      // does nothing until the user clicks back into the editor. See
+      // reaches the doc instead of being eaten by the browser. See
       // post-refactor followup B4.
+      //
+      // RENEGOTIATED (task 531). This used to say it was "critical for Delete:
+      // it routes through a confirm dialog whose close orphans focus on the
+      // body" — an accurate description of a defect in the dialog SHELL, patched
+      // at this one call site and nowhere else, which is exactly how the audit
+      // found it. `SystemDialog` now captures the element focus was on when it
+      // opened and gives it back on every close path, so no caller compensates
+      // for a dialog close any more.
+      //
+      // This call SURVIVES because it wants a DIFFERENT target, and the two
+      // compose rather than duplicate:
+      //   - CANCEL returns above (`if (!proceed) return;`), so this never runs;
+      //     the shell restores the grab-handle affordance the user came from,
+      //     which is where they are looking.
+      //   - CONFIRM deletes the block, taking its own handle out of the DOM —
+      //     so the shell's restore correctly finds no connected target and
+      //     stands down, and the honest destination for "the thing you were on
+      //     is gone" is the DOCUMENT, not a substitute chrome element.
+      // It also wins on ordering whichever way the two land: this runs in the
+      // microtask that resumes after `await confirm(...)`, before React flushes
+      // the passive cleanup the restore lives in, and a restore that did run
+      // first would be a still-connected element this `focus()` then overrides.
+      //
+      // `view.focus()` (raw ProseMirror) focuses with `preventScroll`, so this
+      // is a focus and not a navigation — same rule as `refocusEditor`.
       if (!focusCardKey) {
         try {
           ed.view.focus();

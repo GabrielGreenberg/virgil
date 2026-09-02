@@ -45,6 +45,12 @@
  *     INSIDE the frame, else the dialog's own `initialFocus` claim (a name
  *     field, a file row), else the cued button, else the frame — so focus always
  *     lands inside the dialog and the cue never steals a body's caret
+ *   - and, on EVERY close path, focus goes BACK to whatever held it before the
+ *     dialog opened (task 531). The shell took the focus, so the shell returns
+ *     it; a per-dialog `onClose` that refocuses is the shape that let every
+ *     confirm in the app strand the caret on `<body>`. It FAILS SAFE (a target
+ *     that has since unmounted restores nothing) and STANDS DOWN (anything else
+ *     already holding focus keeps it).
  *
  * `autoFocus` marks the CUED DEFAULT: the button `Enter` activates, and the
  * initial-focus target when the dialog's own body has not claimed focus first.
@@ -232,6 +238,14 @@ export interface SystemDialogProps {
    * Called only when focus has not already landed inside the frame, and the
    * shell falls through to the cued button if this leaves focus outside it — so
    * a claim that cannot be satisfied costs nothing.
+   *
+   * It is also the ONLY sanctioned way for a body to claim focus, and since
+   * task 531 that is load-bearing rather than tidy: a raw DOM `autoFocus` on a
+   * field fires in React's LAYOUT pass, which runs before every effect this
+   * component can schedule, so it can beat the shell's focus CAPTURE and cost
+   * that dialog its restore. This door runs inside the shell's own focus rAF —
+   * after the capture — so a body claim and a restore can never race. Censused
+   * in `dialog-focus-restore.test.tsx`.
    */
   initialFocus?: () => void;
   /**
@@ -464,6 +478,79 @@ export default function SystemDialog({
       tokenRef.current = null;
     };
   }, [open, mounted, variant, panelRef]);
+
+  // ── Focus RESTORE (task 531) ───────────────────────────────────────
+  // The third leg of the dialog focus contract: move focus IN (below), CONTAIN
+  // it (deliberately DECLINED — STYLE_GUIDE "Accessibility posture"), give it
+  // BACK. The shell owns the restore because the shell is what took the focus.
+  // Anything else is per-dialog wiring to forget, which is the shape that
+  // produced this finding: `drag-handle-actions.ts` re-focused the editor after
+  // its own confirm and wrote down exactly why ("a confirm dialog whose close
+  // orphans focus on the body"), and every other dialog in the app left the
+  // caret on `<body>` — so after any confirm the next keystrokes went nowhere
+  // and `Cmd-Z` did nothing until the user clicked back into the document.
+  //
+  // WHY THE DEPENDENCY IS `open` ALONE, and not `open && mounted` like the two
+  // effects around it. React commits a newly-mounted host node's `autoFocus`
+  // (`commitMount`) during the LAYOUT pass, and that pass is children-then-self
+  // — so a portal child's `autoFocus` beats this component's own `useEffect`
+  // AND its `useLayoutEffect`. No effect placement inside the shell can outrun
+  // it. What DOES outrun it is the `mounted` gate: a dialog whose component is
+  // conditionally mounted renders `null` on its first commit, so this effect
+  // runs in a commit where the portal does not exist yet and nothing inside it
+  // can have claimed anything. Gating on `mounted` too would give that up for
+  // no benefit. For a dialog that stays mounted and merely toggles `open` the
+  // portal does appear in this commit — safe today because no such dialog's
+  // BODY claims focus in `commitMount`, which is not a coincidence to rely on
+  // but the shell's own documented rule (`initialFocus`, run inside the focus
+  // rAF below, i.e. after this capture), pinned by the census in
+  // `dialog-focus-restore.test.tsx`.
+  //
+  // [cost: O(1) per OPEN] — one `document.activeElement` read on the open edge
+  // and at most one `focus()` on the close edge. Nothing per render, per key or
+  // per frame.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement;
+    // Nothing was focused (or only the document itself was) ⇒ nothing to give
+    // back; `<body>` is where focus lands anyway once the portal goes.
+    if (
+      !previous ||
+      previous === document.body ||
+      previous === document.documentElement
+    ) {
+      return;
+    }
+    return () => {
+      // STAND DOWN when something else has already claimed focus during the
+      // close. By the time a passive cleanup runs the portal is already
+      // detached, so a dialog that held focus leaves `activeElement` on
+      // `<body>` — anything ELSE there is a deliberate claim someone made
+      // (a handler that focused a fresh card, an outside mousedown that landed
+      // on a real control, a dialog that opened another dialog) and stealing it
+      // back would be the reposition-policy defect one axis over.
+      const now = document.activeElement;
+      if (now && now !== document.body && now !== document.documentElement) {
+        return;
+      }
+      // FAIL SAFE. An element that has since unmounted — the trash button of
+      // the card the confirm just deleted, the grab handle of the block it
+      // removed — restores NOTHING, which is exactly today's behaviour, rather
+      // than guessing a substitute target.
+      if (!previous.isConnected) return;
+      const el = previous as HTMLElement;
+      if (typeof el.focus !== "function") return;
+      try {
+        // `preventScroll` because a restore is a FOCUS, not a NAVIGATION: the
+        // caret was already where the user left it, and yanking the viewport to
+        // it is the "Refocus is not navigation" class (task 486) arriving
+        // through the shell.
+        el.focus({ preventScroll: true });
+      } catch {
+        /* a detached or hostile target — nothing to do */
+      }
+    };
+  }, [open]);
 
   // ── Initial focus ──────────────────────────────────────────────────
   // Gated on `mounted`, and that is the whole of the 389 focus half. `mounted`

@@ -8,7 +8,7 @@
  * Composed from SystemDialog primitives.
  */
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Input } from "./field-primitives";
 import SystemDialog, {
   SystemDialogBody,
@@ -49,6 +49,7 @@ export default function CollaboratorIdentityDialog({
   const [color, setColor] = useState(
     initial?.color ?? COLLAB_COLORS[0].hex,
   );
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   const trimmed = name.trim();
   const canSubmit = trimmed.length > 0 && trimmed.length <= 40;
@@ -69,6 +70,18 @@ export default function CollaboratorIdentityDialog({
          colour swatch, and Escape / the backdrop IS the Cancel this dialog
          offers. Nothing here is the only copy of anything. */
       dismissIsFree
+      /* The name field claims initial focus through the SHELL's door, not a raw
+         DOM `autoFocus`. Both put the caret in the box; only this one runs
+         inside the shell's focus rAF, i.e. AFTER the shell has captured the
+         element to give focus back to on close. A DOM `autoFocus` fires in
+         React's layout pass — before every effect the shell can schedule — so
+         it would make this the one dialog in the app with no focus restore
+         (task 531), and it was already the shape `initialFocus` exists to
+         retire. */
+      initialFocus={() => {
+        nameRef.current?.focus();
+        nameRef.current?.select();
+      }}
     >
       <SystemDialogHeader title={title} subtitle={description} />
       <SystemDialogBody>
@@ -76,6 +89,7 @@ export default function CollaboratorIdentityDialog({
           <label className="flex flex-col gap-1">
             <span className="text-[11px] text-ink-subtle">Display name</span>
             <Input
+              ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -86,7 +100,6 @@ export default function CollaboratorIdentityDialog({
               }}
               maxLength={40}
               placeholder="e.g. Sam"
-              autoFocus
               className="h-7 px-2 text-sm"
             />
           </label>
