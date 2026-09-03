@@ -140,11 +140,12 @@ export interface CreateCodePaneBridgeOptions {
    */
   getBibFamily?: () => import("@/lib/bib-family").BibFamily | null;
   /**
-   * Called when the family the body needs conflicts with the family the
-   * code-view preamble hard-loads. Reuses the save-time soft-notice surface.
+   * Called when a package family the body needs (bib, or the example family —
+   * task 543) conflicts with the member the code-view preamble hard-loads.
+   * Reuses the save-time soft-notice surface.
    */
-  onBibFamilyConflict?: (
-    conflict: import("@/lib/bib-family").BibFamilyConflict,
+  onRequirementConflict?: (
+    conflict: import("@/lib/latex-requirements").RequirementConflict,
   ) => void;
 }
 
@@ -373,7 +374,7 @@ export function createCodePaneBridge(
         preamble,
         postamble,
         bibFamily: opts.getBibFamily?.() ?? null,
-        onRequirementConflict: opts.onBibFamilyConflict,
+        onRequirementConflict: opts.onRequirementConflict,
       };
       latex =
         getDocProducts(editor)?.assembleSourceWith(assembleOpts) ??

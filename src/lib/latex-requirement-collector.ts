@@ -103,6 +103,21 @@ export const PACKAGE_DETECTORS: ReadonlyArray<{
     id: "expex",
     re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z.])|\\begin\{xlist\}/,
   },
+  // The other half of the same discriminator (task 543): a `\ex.` IS linguex
+  // — the period is the whole of linguex's opener grammar, the one
+  // `matchLinguexOpenerAt` owns, and the agreement is pinned beside the expex
+  // leg in linguex-dialect-roundtrip.test.ts. The `g`/`i`/`r` variants
+  // (`\exg.` glossed, `\exi.` unnumbered, `\exr.` re-numbered) are linguex
+  // constructs this build does not MODEL (they are carried raw, task 355) but
+  // still needs the package to COMPILE, so the detector claims them too.
+  //
+  // This is the FALLBACK half, for a linguex example that reaches the body
+  // CARRIED rather than modelled — which is exactly the paste-into-the-code-
+  // pane case, since the parser models linguex only where the preamble already
+  // loads it. Whether the package may then be INJECTED is not this row's
+  // question: `ensurePreambleRequirements` reads `EXAMPLE_PACKAGE_FAMILY` and
+  // injects a member only into a preamble that loads no other.
+  { id: "linguex", re: /\\ex(?:g|i|r)?\./ },
   // A nested example tier needs the `xlist` environment defined (see the
   // `xlistenv` requirement); expex itself does not provide it.
   { id: "xlistenv", re: /\\begin\{xlist\}/ },

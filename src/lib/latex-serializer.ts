@@ -33,6 +33,7 @@ import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 import {
   detectBodyRequirements,
   ensurePreambleRequirements,
+  type RequirementConflict,
 } from "@/lib/latex-requirements";
 import {
   typographyToLatex,
@@ -51,7 +52,7 @@ import {
   startsBlockBoundary,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
-import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
+import type { BibFamily } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
   createRequirementCollector,
@@ -1202,11 +1203,15 @@ function stripTrailingNewlines(piece: string): string {
  * line, which is how the expex walker's separator coupling (task 337's memo
  * boundary) would end up being re-decided for a grammar it does not describe.
  *
- * **Requirements: NONE, deliberately.** `need("expex")` is absent because
- * linguex arrives ONLY through the user's own preamble — it is not in any
- * auto-inject vocabulary, and never will be (declaring it here would inject a
- * `\usepackage{linguex}` into a document whose author never asked for one, and
- * loading both packages is a real compile hazard). The `\vexid` / `\vxid`
+ * **Requirements: `linguex`, from the NODE MODEL** (task 543 — renegotiated
+ * from "NONE, deliberately", whose stated reason was that declaring the
+ * package here would inject it beside a loaded expex and break the paper).
+ * That reason was about the INJECTOR, not the declaration, and it is now
+ * answered where it belongs: `ensurePreambleRequirements` reads
+ * `EXAMPLE_PACKAGE_FAMILY` and injects a member only into a preamble that loads
+ * no other, surfacing the conflict otherwise. So this arm declares exactly what
+ * it emits — the same rule every other emit-site follows — and `need("expex")`
+ * stays absent because nothing here emits expex. The `\vexid` / `\vxid`
  * markers this emits are dialect-neutral no-ops shimmed unconditionally.
  *
  * **The one stated normalization.** Author layout inside the example is
@@ -1218,6 +1223,7 @@ function stripTrailingNewlines(piece: string): string {
  * linguex part marker is legal wherever whitespace is.
  */
 function serializeLinguexExample(node: JSONContent): string {
+  need("linguex");
   const uuid = node.attrs?.uuid as string | null;
   const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
   const label = (node.attrs?.label as string) || "";
@@ -1840,7 +1846,7 @@ export interface AssembleLatexOptions {
   preamble?: string;
   postamble?: string;
   bibFamily?: BibFamily | null;
-  onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+  onRequirementConflict?: (conflict: RequirementConflict) => void;
 }
 
 /**
@@ -1890,7 +1896,7 @@ export function assembleLatex(
     required,
     {
       declaredBibFamily: declaredFamily,
-      onBibFamilyConflict: options?.onRequirementConflict,
+      onRequirementConflict: options?.onRequirementConflict,
     },
   );
   // Re-inject preamble-sourced \title/\author/\date right before
@@ -1918,12 +1924,14 @@ export function serializeToLatex(
      */
     bibFamily?: BibFamily | null;
     /**
-     * Called once at serialize time when the family the body needs conflicts
-     * with the family the preamble hard-loads (natbib baseline + `\autocite`,
-     * or the symmetric case). Per the locked decision we WARN, never rewrite —
-     * the save path renders this as a soft notice. Fires at most once.
+     * Called at serialize time when a package family the body needs conflicts
+     * with the member the preamble hard-loads — the bib family (natbib
+     * baseline + `\autocite`, or the symmetric case) or the example family
+     * (linguex examples under an expex or gb4e preamble, task 543). Per the
+     * locked decision we WARN, never rewrite — the shell renders this as a
+     * soft notice. Fires at most once per family per serialize.
      */
-    onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+    onRequirementConflict?: (conflict: RequirementConflict) => void;
   },
 ): string {
   // ONE code path (perf Wave 0, plan P2-S1): the whole-doc serialize is the

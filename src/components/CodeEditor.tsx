@@ -17,7 +17,8 @@ import {
   createCodePaneBridge,
   type CodePaneBridge,
 } from "@/lib/code-pane-bridge";
-import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
+import type { BibFamily } from "@/lib/bib-family";
+import type { RequirementConflict } from "@/lib/latex-requirements";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
   TEX_DELIMITERS_WILL_CHANGE_EVENT,
@@ -119,9 +120,10 @@ interface CodeEditorProps {
    * the family exactly like the disk-save path (P4).
    */
   bibFamily?: BibFamily | null;
-  /** Fired when the family the body needs conflicts with the family the
-   *  code-view preamble loads — the shell renders a soft notice. */
-  onBibFamilyConflict?: (conflict: BibFamilyConflict) => void;
+  /** Fired when a package family the body needs (bib, or the example family)
+   *  conflicts with the member the code-view preamble loads — the shell
+   *  renders a soft notice. */
+  onRequirementConflict?: (conflict: RequirementConflict) => void;
 }
 
 export default function CodeEditor({
@@ -136,7 +138,7 @@ export default function CodeEditor({
   compileStatus = null,
   isCompiling = false,
   bibFamily = null,
-  onBibFamilyConflict,
+  onRequirementConflict,
 }: CodeEditorProps) {
   const [value, setValue] = useState<string | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -151,8 +153,8 @@ export default function CodeEditor({
   // family / conflict handler without rebuilding when they change identity.
   const bibFamilyRef = useRef(bibFamily);
   bibFamilyRef.current = bibFamily;
-  const onBibFamilyConflictRef = useRef(onBibFamilyConflict);
-  onBibFamilyConflictRef.current = onBibFamilyConflict;
+  const onRequirementConflictRef = useRef(onRequirementConflict);
+  onRequirementConflictRef.current = onRequirementConflict;
   const scrolledRef = useRef(false);
   const [parseError, setParseError] = useState<string | null>(null);
   // Flipped to true by `onCreateEditor` once CodeMirror hands us its
@@ -306,7 +308,7 @@ export default function CodeEditor({
         persistDelimitersRef.current?.(d);
       },
       getBibFamily: () => bibFamilyRef.current ?? null,
-      onBibFamilyConflict: (c) => onBibFamilyConflictRef.current?.(c),
+      onRequirementConflict: (c) => onRequirementConflictRef.current?.(c),
     });
     bridgeRef.current = bridge;
     return () => {

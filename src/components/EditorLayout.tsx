@@ -233,7 +233,8 @@ import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { CompilePaneStatus } from "@/components/CompilePaneStatus";
 import { useSystemDialog } from "@/components/system-dialog-host";
-import { asBibFamily, type BibFamilyConflict } from "@/lib/bib-family";
+import { asBibFamily } from "@/lib/bib-family";
+import type { RequirementConflict } from "@/lib/latex-requirements";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 import { RecentPapersList } from "./RecentPapersList";
@@ -391,28 +392,44 @@ export default function EditorLayout() {
   // the dev backend (the example is a production-only FSA/OPFS feature).
   const [opfsOk, setOpfsOk] = useState(false);
 
-  // Save-time bib-family conflict warning (P4). When the family the body needs
-  // (an `\autocite` under a natbib baseline, or the symmetric case) conflicts
-  // with the family the preamble hard-loads, the serializer surfaces a
-  // BibFamilyConflict. Per the locked decision we WARN, never rewrite — reuse
-  // the low-tone systemDialog (same soft surface as the PDF-persistence and
-  // skill-sync notices), NOT a danger modal. Debounced by a signature ref so a
-  // burst of code-view serializes doesn't re-alert on the same conflict.
+  // Save-time package-family conflict warning (P4, widened by task 543). When
+  // a family the body needs conflicts with the member the preamble hard-loads
+  // — an `\autocite` under a natbib baseline, or linguex examples under an
+  // expex/gb4e preamble — the serializer surfaces ONE `RequirementConflict`
+  // record, discriminated by `family`. Per the locked decision we WARN, never
+  // rewrite — reuse the low-tone systemDialog (same soft surface as the
+  // PDF-persistence and skill-sync notices), NOT a danger modal. Debounced by
+  // a signature ref so a burst of code-view serializes doesn't re-alert on the
+  // same conflict. The copy is COMPOSED from the record's own fields rather
+  // than branched on a dialect literal — a consumer that special-cases the
+  // dialect is the fork the task-355 census exists to catch.
   const systemDialog = useSystemDialog();
-  const lastBibConflictKeyRef = useRef<string | null>(null);
-  const handleBibFamilyConflict = useCallback(
-    (conflict: BibFamilyConflict) => {
-      const key = `${conflict.declared}->${conflict.preambleHas}`;
-      if (lastBibConflictKeyRef.current === key) return;
-      lastBibConflictKeyRef.current = key;
-      const needs = conflict.declared === "biblatex" ? "biblatex" : "natbib";
+  const lastConflictKeyRef = useRef<string | null>(null);
+  const handleRequirementConflict = useCallback(
+    (conflict: RequirementConflict) => {
+      const key = `${conflict.family}:${conflict.declared}->${conflict.preambleHas}`;
+      if (lastConflictKeyRef.current === key) return;
+      lastConflictKeyRef.current = key;
+      const needs = conflict.declared;
       const has = conflict.preambleHas;
+      if (conflict.family === "bib") {
+        void systemDialog.alert({
+          title: "Bibliography package mismatch",
+          message:
+            `This document uses ${needs}-family citation commands, but the preamble loads ${has}. ` +
+            `Your commands and preamble are left unchanged — switch the preamble to \\usepackage{${needs}} ` +
+            `(or adjust the commands) so the bibliography compiles.`,
+          tone: "default",
+        });
+        return;
+      }
       void systemDialog.alert({
-        title: "Bibliography package mismatch",
+        title: "Example package mismatch",
         message:
-          `This document uses ${needs}-family citation commands, but the preamble loads ${has}. ` +
-          `Your commands and preamble are left unchanged — switch the preamble to \\usepackage{${needs}} ` +
-          `(or adjust the commands) so the bibliography compiles.`,
+          `This document has examples written for the ${needs} package, but the preamble loads ${has}. ` +
+          `Both packages define \\ex, so only one can be loaded at a time — Virgil did not add ` +
+          `\\usepackage{${needs}}, and your examples and preamble are left unchanged. ` +
+          `Switch the preamble to ${needs}, or rewrite those examples in ${has}'s syntax, so they compile.`,
         tone: "default",
       });
     },
@@ -3529,7 +3546,7 @@ export default function EditorLayout() {
                             compileStatus={paneState?.compileStatus ?? null}
                             isCompiling={paneState?.isCompiling ?? false}
                             bibFamily={asBibFamily(citationsHook.bibPackage)}
-                            onBibFamilyConflict={handleBibFamilyConflict}
+                            onRequirementConflict={handleRequirementConflict}
                           />
                           {errorsSidebarOpen ? (
                             <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">

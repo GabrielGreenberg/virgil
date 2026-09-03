@@ -204,6 +204,7 @@ const SAMPLE_FOR: Record<string, string> = {
   tikz: "\\begin{tikzpicture}\\draw (0,0);\\end{tikzpicture}",
   xcolor: "\\textcolor[HTML]{FF0000}{red}",
   forest: "\\begin{forest}[S [NP] [VP]]\\end{forest}",
+  linguex: "\\ex. one",
 };
 
 describe("the vocabulary sweep covers every member", () => {
@@ -279,6 +280,8 @@ const VOCAB_NEEDLES: ReadonlyArray<RegExp> = [
   /\\\\begin\\\{xlist\\\}/,
   /\\\\\(\?:begingl\|getfullref/,
   /\\\\begin\\\{tikzpicture\\\}/,
+  // The linguex row (task 543) — `\\ex(?:g|i|r)?\.` as spelled in the collector.
+  /\\\\ex\(\?:g\|i\|r\)\?\\\./,
 ];
 
 function vocabularyHits(code: string): string[] {
@@ -341,14 +344,16 @@ describe("census — one vocabulary, one projection", () => {
 
   it("the census can see, and the stripper swallows nothing (canary)", () => {
     // Synthetic, not standing on the drained defect: the fixture spells ALL
-    // FIVE shapes, so a needle broken by one backslash fails here too rather
+    // SIX shapes (the linguex row joined in task 543), so a needle broken by
+    // one backslash fails here too rather
     // than resting on the collector leg alone.
     const fixture = codeOnly(
       `if (/\\\\includegraphics(?![a-zA-Z])/.test(raw)) need("graphicx");\n` +
         `if (/\\\\textcolor(?![a-zA-Z])/.test(raw)) need("xcolor");\n` +
         `if (/\\\\begin\\{xlist\\}/.test(raw)) need("xlistenv");\n` +
         `if (/\\\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])/.test(raw)) need("expex");\n` +
-        `if (/\\\\begin\\{tikzpicture\\}/.test(raw)) need("tikz");\n`,
+        `if (/\\\\begin\\{tikzpicture\\}/.test(raw)) need("tikz");\n` +
+        `if (/\\\\ex(?:g|i|r)?\\./.test(raw)) need("linguex");\n`,
     );
     expect(vocabularyHits(fixture)).toEqual(VOCAB_NEEDLES.map((r) => r.source));
 

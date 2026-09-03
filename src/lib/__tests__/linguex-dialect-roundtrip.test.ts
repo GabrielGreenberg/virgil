@@ -140,7 +140,7 @@ describe("1 · detection", () => {
     ).toBe(false);
   });
 
-  it("with the package commented out, the example is CARRIED, not modelled", () => {
+  it("with the package commented out, the example is CARRIED, not modelled — and its package is INJECTED", () => {
     // The behavioural half of the leg above, and the one that matters: an
     // enabling decision that reads a commented-out line would MODEL an example
     // in a document whose author had switched the package off.
@@ -148,7 +148,25 @@ describe("1 · detection", () => {
     expect(blocksOf(parseLatex(src))).toHaveLength(0);
     const { c1, c2 } = twoCycles(src);
     expectAllPresent(c1, ["\\ex. Susan left."]);
-    expect(c2).toBe(c1);
+    // RENEGOTIATED (task 543): this leg used to pin cycle 2 as byte-identical
+    // to cycle 1, which — with the example carried raw — pinned "no package
+    // injected" as the contract. A live `\ex.` with NO example package loaded
+    // is a document that does not compile, and the commented-out line is
+    // INERT to the requirements pass exactly as a commented-out
+    // `% \usepackage{expex}` has always been (the 344 detector law) — so the
+    // fallback detector claims the carried `\ex.` and the injector lands
+    // `\usepackage{linguex}` once. The example stays CARRIED on cycle 1 (the
+    // parse asked the preamble before the injection landed); cycle 2 is the
+    // first parse that finds the live package, MODELS the example and mints
+    // its markers — the one-time canonicalization every modelled construct
+    // performs — and cycle 3 is the fixed point. That is the
+    // paste-into-the-code-pane path healing itself.
+    expect(c1.match(/^\\usepackage\{linguex\}$/gm)).toHaveLength(1);
+    expect(c1).not.toContain("\\usepackage{expex}");
+    expect(blocksOf(parseLatex(c1))).toHaveLength(1);
+    expectAllPresent(c2, ["\\ex. Susan left."]);
+    expect(c2).toContain("\\vexid{");
+    expect(save(c2)).toBe(c2);
   });
 });
 
@@ -555,7 +573,8 @@ const DIALECT_DECIDERS: readonly string[] = [
   "src/lib/latex-lexer.ts", // the two openers + the package probe
   "src/lib/latex-parser.ts", // asks the preamble, stamps the attr
   "src/lib/latex-serializer.ts", // the ONE branch
-  "src/lib/latex-requirement-collector.ts", // the `\ex.` lookahead
+  "src/lib/latex-requirement-collector.ts", // the `\ex.` lookahead + the linguex detector row
+  "src/lib/latex-requirements.ts", // the inject line + the example-family exclusion (task 543)
 ];
 
 function walkFiles(dir: string, out: string[] = []): string[] {
