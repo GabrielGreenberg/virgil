@@ -31,8 +31,14 @@ import {
 import {
   BEGIN_DOCUMENT_TOKEN,
   findDocumentBoundary,
+  preambleListLoadsPackage,
   projectDetectableLatex,
 } from "@/lib/latex-lexer";
+import {
+  EXAMPLE_PACKAGE_FAMILY,
+  asExampleDialect,
+  type ExampleDialect,
+} from "@/lib/example-dialect";
 import {
   reconcileBibFamily,
   type BibFamily,
@@ -107,6 +113,12 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   packageReq("xcolor"),
   packageReq("graphicx"),
   packageReq("expex"),
+  // `linguex` — the second example dialect Virgil models (task 355) and, since
+  // task 543, injects: declared from the NODE MODEL by the serializer's linguex
+  // arm and by the `PACKAGE_DETECTORS` fallback for a carried `\ex.`. It shares
+  // `\ex` with expex and gb4e, so the injector never lands it beside a loaded
+  // sibling — see `EXAMPLE_PACKAGE_FAMILY` and the reconciliation below.
+  packageReq("linguex"),
   packageReq("natbib"),
   packageReq("biblatex"),
   packageReq("tikz"),
@@ -260,7 +272,7 @@ export function detectBodyRequirements(bodyLatex: string): Set<string> {
  * When the preamble hard-loads the OTHER family, we do NOT delete the needed
  * family (the old bug: deleting biblatex under a natbib baseline produced a
  * `.tex` with undefined `\autocite`) and do NOT co-load (fatal) — we surface a
- * `BibFamilyConflict` via `opts.onBibFamilyConflict` and leave the user's
+ * `RequirementConflict` via `opts.onRequirementConflict` and leave the user's
  * commands + preamble verbatim (locked decision: warn, never rewrite).
  *
  * `opts.declaredBibFamily` is the authoritative/declared family (from the
@@ -269,12 +281,40 @@ export function detectBodyRequirements(bodyLatex: string): Set<string> {
  * (natbib/biblatex from the fallback detector) is used as the declared family
  * so behavior is unchanged for callers that don't pass it.
  */
+/**
+ * A requirement the body NEEDS that the preamble's own loads FORBID — one
+ * discriminated record for every mutually exclusive package family the
+ * injector reconciles, so the save/code-pane path has ONE callback to wire
+ * and a second family cannot ship with its warning forgotten (task 543).
+ *
+ *  - `bib`: the task-P4 case — the body's cite commands need one bib family
+ *    and the preamble hard-loads the other (`reconcileBibFamily`).
+ *  - `example`: the body holds examples in one dialect and the preamble loads
+ *    a DIFFERENT member of `EXAMPLE_PACKAGE_FAMILY` (expex / linguex / gb4e,
+ *    each of which defines `\ex`). `preambleHas` is the loaded member — for
+ *    the one case where nothing is loaded and BOTH dialects are needed, it is
+ *    the member Virgil is about to inject (expex, the baseline dialect).
+ *
+ * Both are WARN, never rewrite: the needed package is not injected, the user's
+ * preamble and body are untouched, and the shell renders the record as a soft
+ * notice.
+ */
+export type RequirementConflict =
+  | ({ readonly family: "bib" } & BibFamilyConflict)
+  | {
+      readonly family: "example";
+      /** The dialect the body's examples are written in. */
+      readonly declared: ExampleDialect;
+      /** The `EXAMPLE_PACKAGE_FAMILY` member the preamble loads instead. */
+      readonly preambleHas: string;
+    };
+
 export function ensurePreambleRequirements(
   preamble: string,
   required: Set<string>,
   opts?: {
     declaredBibFamily?: BibFamily | null;
-    onBibFamilyConflict?: (conflict: BibFamilyConflict) => void;
+    onRequirementConflict?: (conflict: RequirementConflict) => void;
   },
 ): string {
   const effective = new Set<string>(ALWAYS_REQUIRED_IDS);
@@ -311,7 +351,52 @@ export function ensurePreambleRequirements(
   effective.delete("natbib");
   effective.delete("biblatex");
   if (reconcile.effectiveFamily) effective.add(reconcile.effectiveFamily);
-  if (reconcile.conflict) opts?.onBibFamilyConflict?.(reconcile.conflict);
+  if (reconcile.conflict) {
+    opts?.onRequirementConflict?.({ family: "bib", ...reconcile.conflict });
+  }
+
+  // The example-package family (task 543) — the same rule for the second
+  // mutually exclusive family, and the reason it is a FAMILY rather than a
+  // second private check: expex, linguex and gb4e each define `\ex`, an
+  // injected `\usepackage` lands AFTER the user's own loads, and the later
+  // definition wins under every example the author wrote. So a member the
+  // preamble already loads OUTRANKS the model's need for any other member —
+  // that need is dropped and SURFACED, never injected. A member is asked of
+  // the projected preamble through the lexer's own door (the `List` form,
+  // since `scannable` is already projected), so "loaded" means what it means
+  // to the parser's linguex gate.
+  const loadedExample = EXAMPLE_PACKAGE_FAMILY.filter((id) =>
+    preambleListLoadsPackage(scannable, id),
+  );
+  const neededExample = EXAMPLE_PACKAGE_FAMILY.map(asExampleDialect).filter(
+    (d): d is ExampleDialect => d !== null && effective.has(d),
+  );
+  if (loadedExample.length > 0) {
+    for (const dialect of neededExample) {
+      if (loadedExample.includes(dialect)) continue;
+      effective.delete(dialect);
+      opts?.onRequirementConflict?.({
+        family: "example",
+        declared: dialect,
+        preambleHas: loadedExample[0],
+      });
+    }
+  } else if (neededExample.length > 1) {
+    // Nothing loaded and BOTH dialects needed — a mixed body in a bare
+    // preamble. Inject exactly one: expex, Virgil's baseline dialect, which
+    // is what a Virgil-authored preamble ships and what a MIXED document
+    // mints (`dominantExampleDialect`). The linguex half is surfaced as the
+    // conflict it is about to become.
+    for (const dialect of neededExample) {
+      if (dialect === "expex") continue;
+      effective.delete(dialect);
+      opts?.onRequirementConflict?.({
+        family: "example",
+        declared: dialect,
+        preambleHas: "expex",
+      });
+    }
+  }
 
   // Registry order = packages first, then shims.
   const missing = LATEX_REQUIREMENTS.filter(

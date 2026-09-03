@@ -9177,6 +9177,99 @@ vocabulary 2, the preamble projection 2.
 co-authored linguex paper. What is proven here is the `.tex` round trip end to
 end, which is not FSA-masked.
 
+#### The injection half: a package family the document may load ONE member of
+
+Same dialect, the PREAMBLE (task 543) — and the case where the injector was
+right about every package it knew and blind to the one relation between them.
+Gabriel: *"Can you auto-detect and auto-add any necessary packages (e.g. for
+forest expex linguex or anything else)?"* Most of that existed (P4, tasks 345
+/ 355 / 385); what the sweep over his real papers found was not a missing
+row but a missing RULE. Three members, measured through the real save
+pipeline on the pre-543 tree:
+
+- **A linguex `\ex.` pasted into a document with no example package got
+  NOTHING.** The linguex arm's docstring said *"Requirements: NONE,
+  deliberately"* — its stated reason being that a declaration would inject
+  linguex beside a loaded expex and break the paper. True of the INJECTOR,
+  wrong as a reason to leave the EMIT undeclared.
+- **A gb4e paper had `\usepackage{expex}` injected after `\usepackage{gb4e}`
+  on the first open.** gb4e (the third `\ex` package, which Virgil never
+  models — its `\begin{exe}` is carried raw, task 342) is what FIVE of
+  Gabriel's Dropbox papers load. The carried `\ex` tripped the expex
+  detector, both packages define `\ex`, the later load wins, and every
+  example in the paper stops compiling — task 355's hazard, one package
+  over, on a preamble the user never wrote.
+- **An expex example under a linguex-only preamble injected expex after
+  linguex** — 355 closed the false DETECTION (a `\ex.` read as expex) and
+  left the genuine expex example's injection unreconciled.
+
+> **`EXAMPLE_PACKAGE_FAMILY`** ([example-dialect.ts](src/lib/example-dialect.ts):
+> expex, linguex, gb4e) **is the set of packages that each define `\ex`, of
+> which a document may load EXACTLY ONE. A loaded member outranks the model's
+> need for any other member: that need is dropped and SURFACED, never
+> injected — the bib family's "warn, never rewrite" posture, read as a second
+> family. And every emit declares what it emits:** the linguex arm declares
+> `linguex` from the node model, and `PACKAGE_DETECTORS` gains the row for a
+> CARRIED `\ex.` — the paste case, which then heals itself (cycle 1 injects,
+> cycle 2 models and mints markers, cycle 3 is the fixed point).
+
+Five rules it earned:
+
+- **A declaration is not an injection decision.** The emit-site says what its
+  bytes need; whether the injector may LAND that need is a question about the
+  preamble, asked once in `ensurePreambleRequirements`. Conflating the two is
+  how "never declare linguex" came to be the guard for "never inject beside
+  expex" — and left the paste case with no declaration at all.
+- **A loaded-only member is a member.** gb4e has no inject line (nothing emits
+  its syntax) and belongs in the family anyway, because the exclusion rule
+  reads the family and the family is about who OWNS `\ex`. A family that
+  listed only what Virgil can write would re-open the gb4e member the moment
+  someone tidied it.
+- **ONE conflict channel, discriminated by `family`.** `RequirementConflict`
+  ([latex-requirements.ts](src/lib/latex-requirements.ts)) replaces
+  `BibFamilyConflict` at every callback (`onRequirementConflict`, threaded
+  bridge → `CodeEditor` → `EditorLayout`); a second callback for the second
+  family is two chances to wire one. The shell's copy is COMPOSED from the
+  record's fields, never branched on a dialect literal — the task-355 census
+  is what keeps a consumer from special-casing the dialect, and it now
+  allowlists `latex-requirements.ts` as a DECIDING layer.
+- **Neither loaded + both needed ⇒ expex alone, linguex surfaced.** The
+  baseline dialect (`VIRGIL_BASELINE_PACKAGES` ships it, `dominantExampleDialect`
+  mints it for a mixed document) is the one member with a claim; injecting
+  both would be the hazard the family exists to prevent.
+- **Coverage is asked of the SCHEMA, not of the last construct someone
+  added.** [package-requirement-coverage.test.ts](src/lib/__tests__/package-requirement-coverage.test.ts)
+  pins an EXACT-set fixture per node and mark type the real main schema
+  declares and asserts, per fixture, that the fallback detector rescues
+  nothing the emit-site did not declare — so a modeled construct cannot ship
+  without its package again; every detector row must have an inject line (a
+  row with none detects nothing); every `need("…")` literal must be a registry
+  id; and the linguex detector must agree with `matchLinguexOpenerAt`. The
+  family legs drive the REAL save pipeline over every loaded × needed cell.
+
+**Audited and recorded, not closed.** The sweep over 26 real preambles found no
+construct Gabriel writes that the vocabulary misses; the theoretical gaps are
+stated with their reasons: `amsmath`-only environments (`align`, `gather`,
+`cases` …) inside carried envs — every Virgil-authored preamble ships amsmath
+and no real paper lacked it; `booktabs` / `multirow` rules inside a carried
+`tabular`, `\url` / `\href` (which of `url` / `hyperref` to inject is a product
+call), and `tikz-qtree`'s `\Tree` — each needs a membership vocabulary this
+codebase has no SSOT for, and a hand list there is the drift every census here
+exists to prevent. Each is one `PACKAGE_DETECTORS` row plus one registry row
+if a real paper ever needs it.
+
+**Residuals, stated.** A Virgil-authored preamble ships expex, so linguex
+bytes pasted into a FRESH Virgil document are surfaced as a conflict rather
+than injected — the rule's honest answer, and the user's own preamble is one
+line away. And the notice travels only the code-pane serialize (as the bib
+notice always has); the disk-save path passes no callback.
+
+**Owed, not claimed:** a real-FSA eyeball on a gb4e paper (open one of the
+five, confirm `\usepackage{expex}` is NOT added and the notice names gb4e),
+and Coherence Intro compiling with every package found. Not FSA-masked at the
+`.tex` level — the family legs are the durable proof.
+
+
 #### The display half: a fragment shown to a READER is projected, not printed
 
 Same vocabulary, other DIRECTION (task 368) — and the case where every rung was

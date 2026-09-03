@@ -18,7 +18,7 @@ import {
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
-import type { BibFamilyConflict } from "@/lib/bib-family";
+import type { RequirementConflict } from "@/lib/latex-requirements";
 
 // The v1 seed preamble — pre-baseline generation, missing graphicx / natbib /
 // expex and four of the seven shims. Byte-identical to the frozen legacy
@@ -568,10 +568,10 @@ describe("ensurePreambleRequirements — bib-family reconciliation (P4: warn, ne
 `;
 
   it("declared biblatex under a natbib baseline → biblatex NOT injected, natbib NOT deleted, CONFLICT surfaced (the old fatal case)", () => {
-    let conflict: BibFamilyConflict | undefined;
+    let conflict: RequirementConflict | undefined;
     const out = ensurePreambleRequirements(natbibBaseline, new Set(["biblatex"]), {
       declaredBibFamily: "biblatex",
-      onBibFamilyConflict: (c) => {
+      onRequirementConflict: (c) => {
         conflict = c;
       },
     });
@@ -579,27 +579,29 @@ describe("ensurePreambleRequirements — bib-family reconciliation (P4: warn, ne
     expect(out).not.toContain("\\usepackage{biblatex}");
     expect(countOccurrences(out, "natbib")).toBe(1);
     // The conflict is surfaced so the save path can warn.
-    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+    // `family` discriminates the record since task 543 widened the callback to
+    // the example family; the bib half is otherwise byte-for-byte the P4 shape.
+    expect(conflict).toEqual({ family: "bib", declared: "biblatex", preambleHas: "natbib" });
   });
 
   it("symmetric: declared natbib under a biblatex baseline → conflict, no natbib injection, biblatex kept", () => {
-    let conflict: BibFamilyConflict | undefined;
+    let conflict: RequirementConflict | undefined;
     const out = ensurePreambleRequirements(biblatexBaseline, new Set(["natbib"]), {
       declaredBibFamily: "natbib",
-      onBibFamilyConflict: (c) => {
+      onRequirementConflict: (c) => {
         conflict = c;
       },
     });
     expect(out).not.toContain("\\usepackage{natbib}");
     expect(countOccurrences(out, "biblatex")).toBe(1);
-    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+    expect(conflict).toEqual({ family: "bib", declared: "natbib", preambleHas: "biblatex" });
   });
 
   it("declared family injected (the RIGHT one) when the preamble loads NO family — no conflict", () => {
     let fired = false;
     const out = ensurePreambleRequirements(bareBaseline, new Set(["biblatex"]), {
       declaredBibFamily: "biblatex",
-      onBibFamilyConflict: () => {
+      onRequirementConflict: () => {
         fired = true;
       },
     });
@@ -622,7 +624,7 @@ describe("ensurePreambleRequirements — bib-family reconciliation (P4: warn, ne
     let fired = false;
     ensurePreambleRequirements(natbibBaseline, new Set(["natbib"]), {
       declaredBibFamily: "natbib",
-      onBibFamilyConflict: () => {
+      onRequirementConflict: () => {
         fired = true;
       },
     });
@@ -911,7 +913,7 @@ describe("serializeToLatex — requirements integration", () => {
 \\begin{document}
 
 `;
-    let conflict: BibFamilyConflict | undefined;
+    let conflict: RequirementConflict | undefined;
     // The user has chosen biblatex (authoritative), the preamble is natbib.
     const out = serializeToLatex(autociteDoc, {
       preamble: natbibPreamble,
@@ -925,7 +927,9 @@ describe("serializeToLatex — requirements integration", () => {
     expect(out).toContain("\\autocite{smith2020}");
     expect(out).not.toContain("\\usepackage{biblatex}");
     expect(countOccurrences(out, "natbib")).toBe(1);
-    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+    // `family` discriminates the record since task 543 widened the callback to
+    // the example family; the bib half is otherwise byte-for-byte the P4 shape.
+    expect(conflict).toEqual({ family: "bib", declared: "biblatex", preambleHas: "natbib" });
   });
 
   it("symmetric: \\citep under a biblatex baseline → conflict, natbib not injected, user command kept", () => {
@@ -950,7 +954,7 @@ describe("serializeToLatex — requirements integration", () => {
 \\begin{document}
 
 `;
-    let conflict: BibFamilyConflict | undefined;
+    let conflict: RequirementConflict | undefined;
     const out = serializeToLatex(citepDoc, {
       preamble: biblatexPreamble,
       bibFamily: "natbib",
@@ -961,7 +965,7 @@ describe("serializeToLatex — requirements integration", () => {
     expect(out).toContain("\\citep{smith2020}");
     expect(out).not.toContain("\\usepackage{natbib}");
     expect(countOccurrences(out, "biblatex")).toBe(1);
-    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+    expect(conflict).toEqual({ family: "bib", declared: "natbib", preambleHas: "biblatex" });
   });
 
   it("no-options path injects needs-driven packages (tikz via texBlock)", () => {

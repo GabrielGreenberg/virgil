@@ -34,15 +34,48 @@
 export type ExampleDialect = "expex" | "linguex";
 
 /**
+ * **THE example-package FAMILY** — every LaTeX package that defines `\ex`, of
+ * which a document may load EXACTLY ONE (task 543). The two dialects Virgil
+ * MODELS and can therefore inject are members; so is `gb4e`, which Virgil
+ * never models (its `\begin{exe} \ex … \end{exe}` is carried raw, task 342)
+ * and never injects, but which OWNS `\ex` in a paper that loads it.
+ *
+ * The family exists because a package the requirements pass injects lands
+ * AFTER the user's own `\usepackage` lines, and the later load of `\ex` wins:
+ * injecting expex into a gb4e or linguex paper redefines `\ex` under every
+ * example the author wrote and the paper stops compiling — a preamble the user
+ * never asked for, breaking a document that compiled before Virgil opened it.
+ * Measured on the pre-543 tree for BOTH: a gb4e paper's carried `\ex` tripped
+ * the expex detector, and an expex example under a linguex-only preamble
+ * declared expex, and each injected it. `ensurePreambleRequirements` reads
+ * this list as ONE mutual-exclusion rule: a loaded member outranks the model's
+ * need for any other member, which is then surfaced as a conflict rather than
+ * injected — the bib family's own "warn, never rewrite" posture, one package
+ * family over.
+ *
+ * `gb4e` is deliberately a LOADED-ONLY member: nothing emits gb4e syntax, so
+ * there is no inject line for it, and a paper that writes gb4e is a paper
+ * Virgil carries rather than models. Pinned in
+ * package-requirement-coverage.test.ts — every DIALECT has an inject line,
+ * and the family is the exact set the exclusion rule reads.
+ */
+export const EXAMPLE_PACKAGE_FAMILY: readonly string[] = [
+  "expex",
+  "linguex",
+  "gb4e",
+];
+
+/**
  * The dialect an example carries when nothing says otherwise — every example
  * that existed before this attr did, every programmatically built node, and
  * every card-body / float / paste that has no document to ask.
  *
- * expex, because it is what Virgil has always emitted and what its
- * requirements pass auto-injects (`\usepackage{expex}` is declared by the
- * emit). linguex is NEVER auto-injected — it arrives only through the user's
- * own preamble — so defaulting the other way would be able to write a `.tex`
- * that does not compile.
+ * expex, because it is what Virgil has always emitted and what its baseline
+ * preamble ships (`VIRGIL_BASELINE_PACKAGES`), so a Virgil-authored document
+ * always compiles it. Both dialects are auto-injected since task 543 — each
+ * emit declares its own package — but ONLY into a preamble that loads no other
+ * member of `EXAMPLE_PACKAGE_FAMILY`, so the default still has to be the one
+ * Virgil's own preamble carries.
  */
 export const DEFAULT_EXAMPLE_DIALECT: ExampleDialect = "expex";
 
@@ -84,8 +117,12 @@ export function exampleDialectOf(attrs: unknown): ExampleDialect {
  *    linguex, so the package rule would start minting expex examples into a
  *    linguex file. The dominant-dialect rule matches what the author writes.
  *    A MIXED document is the genuinely ambiguous case and takes expex, which
- *    is always safe — the requirements pass injects `\usepackage{expex}` from
- *    the emit itself, where linguex is never injected at all.
+ *    is the SAFER answer rather than a free one: a mixed document's preamble
+ *    already has to load whatever its existing examples need, and where it
+ *    loads only linguex the requirements pass will NOT inject expex over it
+ *    (`EXAMPLE_PACKAGE_FAMILY` — exactly one member may be loaded) but will
+ *    surface the conflict, which is the honest outcome for an example the
+ *    author minted in a syntax their preamble cannot compile.
  */
 export function dominantExampleDialect(counts: {
   expex: number;
