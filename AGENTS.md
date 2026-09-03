@@ -380,6 +380,87 @@ no disk), so the check is cheap and real — click into a paragraph mid-document
 scroll somewhere else, add a label to a heading from its strip, and watch the
 scroll hold still.
 
+## A NodeView owns its timers' lifetime
+
+> **Every timer a vanilla NodeView arms is scheduled through its ONE
+> [`ViewLifetime`](src/lib/tiptap/view-lifetime.ts), and `destroy()` disposes
+> it — so no timer can outlive the view.** A wall-clock bound is still allowed
+> (the heading label's refocus keeper still expires at 250 ms), but the view's
+> teardown is the OUTER bound, and a scheduling call made after disposal arms
+> nothing.
+
+This is the "release gate fails with every test passing" class (task 548, the
+v0.1.104 nightly). The heading strip's label input arms a 30 ms refocus KEEPER
+— something steals focus from a freshly-mounted input in its first ~250 ms (a
+competing focus frame, PM's own selection sync), so for that window the input
+takes it back — cleared by a 250 ms `setTimeout` and by nothing else. Task 534
+rewrote `refocus-no-scroll.test.ts` to drive that input hard; when the file
+finished inside the window, vitest tore jsdom down with the keeper's last ticks
+still queued on Node's timer heap, and the next tick read `document` and threw
+into nobody's handler. Vitest exits 1 on an unhandled error whatever the
+assertions said: 11 240 passed, 2 errors, deploy SKIPPED. Load-dependent (7/7
+alone, green on a re-run of the identical commit), so it presents as "the
+deploy failed" over a green summary — the shape that trains people to re-run a
+red gate without reading it.
+
+Five rules it earned:
+
+- **The keeper is not the bug, and a `typeof document` guard is not the fix.**
+  The guard silences the symptom, leaves the timer running against a dead
+  environment, and puts a test-shaped condition into product code. The bug is
+  a timer whose OUTER bound was a wall clock rather than the view that armed it.
+- **A hand-cleared handle is a per-timer obligation the next timer forgets.**
+  This one input carried TWO timers plus a frame, and the same shape sat in
+  five NodeView bodies (paragraph title, list title, heading label, expex block
+  title + label, expex item label) — four of them with an EMPTY or absent
+  `destroy()`. The scope makes the obligation structural: a NodeView that
+  spells the scope cannot arm a timer the scope does not know about, and the
+  census forbids a bare timer verb inside any NodeView body.
+- **A frame is a timer.** `autoSizeInput`'s first measure runs in a
+  `requestAnimationFrame` that reads `getComputedStyle` and `document.body`
+  when it lands — the same class one helper down, invisible to a same-file
+  census. A NodeView hands its lifetime in; a React field gets the platform
+  frame, now cancelled by the cleanup.
+- **`onDispose` is the same rule for what an edit session leaves OUTSIDE the
+  view's DOM.** The paragraph and list title inputs are appended to
+  `document.body` (they position over the strip), with a click-away overlay;
+  a view destroyed mid-edit takes them along, and does NOT commit — the editor
+  the title would be written to is the one being torn down.
+- **Handles are opaque and minted by the scope.** Node returns a `Timeout`
+  where the DOM returns a number, and a call made after disposal must return
+  something `clear` accepts without a branch. The platform is read at CALL
+  time, so a lifetime built before `vi.useFakeTimers()` still arms FAKE
+  timers — the property that lets a `getTimerCount()` probe see a leak at all.
+
+CI: [nodeview-timer-lifetime.test.ts](src/lib/tiptap/__tests__/nodeview-timer-lifetime.test.ts)
+drives one of every NodeView that mounts an edit input through the REAL
+`buildEditorExtensions("main")` stack under fake timers, opens the input,
+destroys the editor INSIDE the window, and reads the leak as a COUNT
+(`vi.getTimerCount()` against the editor's own baseline) with a canary per
+surface proving the probe can see the arm. **No pre-548 suite could see this**:
+every one that drives these inputs ends with `editor.destroy()` in a `finally`
+and asserts nothing about what is still armed, because the leaked ticks fire
+after the test that could have observed them has passed. The keeper's REASON
+is pinned beside it (focus taken back inside 250 ms, a steal standing after),
+so a fix that quietly deleted it fails here. The leg with teeth is the CENSUS
+— population DISCOVERED (every shipped file spelling `addNodeView(`), reach the
+transitive closure over same-file function declarations (a list NodeView's
+body is a factory one call away), allowlist EMPTY, and an exact-set pin of the
+regions that own a lifetime, each of which must dispose it from a `destroy()`.
+[view-lifetime.test.ts](src/lib/tiptap/__tests__/view-lifetime.test.ts) pins the
+scope's own contract. Measured by neutering each half in turn: the pre-548
+keeper takes 3 legs, a `destroy()` that stops disposing 8, an unbounded
+`autoSizeInput` frame 2.
+
+**Stated limits.** The census sees VANILLA NodeViews; the React NodeViews
+(`ReactNodeViewRenderer`) get a weaker leg — a component file that arms a timer
+must also spell a cancel verb — and `FigureAnnotation`, the heading strip's
+React twin, is pinned timer-free. `footnote.ts`'s `setTimeout(…, 0)` event
+dispatch lives in an `appendTransaction`, not a NodeView, and is a different
+class. **Owed, not claimed:** a full CI run green on the first attempt — the
+whole local suite (896 files) runs with zero unhandled errors, and the leak it
+guards against is now uncountable rather than merely unlikely.
+
 ## Pane-drag stability
 
 > **Every pane/divider resize gesture runs on the ONE engine at [src/lib/pane-resize/](src/lib/pane-resize/)** (`usePaneResizeHandle`): pointer capture on the handle, element-scoped move/up/cancel/lostpointercapture, `button===0` start gate, `(buttons & 1)===0` missed-release failsafe (the primary-button BIT test, not `buttons===0` — releasing the drag button while a second is chorded fires only a pointermove with an updated mask, never a pointerup), Escape restore, a drag shield over iframes, RAF-coalesced equality-bailed imperative `apply()` (CSS-var writes; grid templates own hard clamps via `minmax()`/`clamp()`), and `commit()` exactly once on release. **Never** a bespoke `window`/`document` `pointermove` handler, and **never** per-frame React state, store notifies, or localStorage from a continuous gesture. Per-frame React state inside an engine consumer is sanctioned ONLY when a render-derived layout decision needs the live value (current sole case: `SplitWithCode`'s `liveRatio` — the compressed-gutter flip + clip fade derive from it in render), and only as LOCAL state driven from the engine's RAF-coalesced `apply()` (≤1 set per frame) with child subtrees bailing on element identity and persistence still commit-once; anything else is the per-frame-commit bug class this section exists to kill.

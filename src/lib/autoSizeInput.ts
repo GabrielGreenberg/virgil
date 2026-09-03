@@ -8,6 +8,8 @@
  * listener that set the field up.
  */
 
+import type { ViewLifetime, ViewTimer } from "@/lib/tiptap/view-lifetime";
+
 let sizer: HTMLSpanElement | null = null;
 
 function getSizer(): HTMLSpanElement {
@@ -37,13 +39,28 @@ export function syncInputWidth(input: HTMLInputElement, minCh = 2): void {
   input.style.width = Math.max(span.offsetWidth + 2, minCh * 8) + "px";
 }
 
-/** Keep `input` sized to its content for as long as the returned cleanup has
- *  not been called. */
-export function autoSizeInput(input: HTMLInputElement, minCh = 2): () => void {
+/**
+ * Keep `input` sized to its content for as long as the returned cleanup has
+ * not been called.
+ *
+ * The first measure runs in a FRAME (the input has to be in the DOM for the
+ * font read), and a frame is a timer: it reads `getComputedStyle` and
+ * `document.body` when it lands. A NodeView that mounts the input hands its
+ * `ViewLifetime` in, so that frame is bounded by the view's teardown like every
+ * other timer the view arms (task 548 — see `view-lifetime.ts`); a caller with
+ * no view (a React field) gets the platform frame, cancelled by the cleanup.
+ */
+export function autoSizeInput(
+  input: HTMLInputElement,
+  minCh = 2,
+  lifetime?: Pick<ViewLifetime, "requestAnimationFrame" | "clear">,
+): () => void {
   const sync = () => syncInputWidth(input, minCh);
   input.addEventListener("input", sync);
-  requestAnimationFrame(sync);
+  const frame = lifetime ? lifetime.requestAnimationFrame(sync) : requestAnimationFrame(sync);
   return () => {
     input.removeEventListener("input", sync);
+    if (lifetime) lifetime.clear(frame as ViewTimer);
+    else cancelAnimationFrame(frame as number);
   };
 }
