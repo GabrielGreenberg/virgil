@@ -289,6 +289,17 @@ class Filing(_QueueCase):
         out = self.file_task(self.spec())
         self.assertEqual(out["id"], "2026-09-01-008")
 
+    def test_NNN_is_GLOBAL_a_mint_after_a_different_days_537_yields_538(self):
+        """The numbering rule (README `id:` line) is one counter across days,
+        never one per day. Pre-540 this scan kept only today's ids, so the
+        night after `…-537` the dream minted `2026-09-02-001` — the one minter
+        that followed the written rule, and the one that broke monotonicity."""
+        (self.queue / "done" / "2026-08-31-537-yesterday.md").write_text("x")
+        (self.queue / "blocked" / "2026-08-30-120-older.md").write_text("x")
+        out = self.file_task(self.spec())
+        self.assertEqual(out["id"], "2026-09-01-538")
+        self.assertNotIn("2026-09-01-001", "".join(self.listing("incoming")))
+
     def test_an_unminted_inbox_drop_does_not_consume_an_id(self):
         (self.queue / "inbox").mkdir(exist_ok=True)
         (self.queue / "inbox" / "2026-09-01-999-raw-note.md").write_text("x")
@@ -306,7 +317,7 @@ class Filing(_QueueCase):
         self.assertEqual(first["id"], "2026-09-01-001")
         real_scan = dream._minted_ids
         try:
-            dream._minted_ids = lambda root, date_str: set()   # the lie
+            dream._minted_ids = lambda root: set()   # the lie
             spec = self.spec(title="A second, different finding")
             rc = dream.cmd_file_task(["--task", json.dumps(spec)])
             self.assertEqual(rc, 0)
@@ -316,6 +327,77 @@ class Filing(_QueueCase):
         self.assertEqual(len(names), 2, names)
         ids = sorted(n[:14] for n in names)
         self.assertEqual(ids, ["2026-09-01-001", "2026-09-01-002"])
+
+
+# ---------------------------------------------------------------------------
+# NEXT-ID — the rule as a door a hand minter can ask
+# ---------------------------------------------------------------------------
+
+
+class NextIdDoor(_QueueCase):
+    """`dream.py next-id` prints the id `file-task` would mint next — the SAME
+    scan, outside the DEV gate, reserving nothing."""
+
+    def next_id(self, *, dev: str | None = None) -> subprocess.CompletedProcess:
+        env = dict(os.environ)
+        env.pop("VIRGIL_DEV", None)
+        if dev is not None:
+            env["VIRGIL_DEV"] = dev
+        return subprocess.run([sys.executable, DREAM_PY, "next-id"],
+                              capture_output=True, text=True, env=env,
+                              cwd=str(ROOT))
+
+    def test_it_prints_the_global_max_plus_one_bare(self):
+        (self.queue / "done" / "2026-08-31-537-yesterday.md").write_text("x")
+        r = self.next_id(dev="1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "2026-09-01-538")
+        self.assertEqual(len(r.stdout.strip().splitlines()), 1)
+
+    def test_it_agrees_with_what_file_task_then_mints(self):
+        (self.queue / "in-progress" / "2026-08-31-537-x.md").write_text("x")
+        r = self.next_id(dev="1")
+        out = self.file_task(dict(Filing.READY, sections=_sections()))
+        self.assertEqual(out["id"], r.stdout.strip())
+
+    def test_it_answers_with_DEV_mode_OFF_and_reserves_nothing(self):
+        # The leg with teeth: the catcher and the auditor ask from an ordinary
+        # session, where a gated door answers the no-op line instead of an id.
+        (self.queue / "done" / "2026-08-31-537-yesterday.md").write_text("x")
+        r = self.next_id(dev="0")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "2026-09-01-538")
+        self.assertNotIn("DEV mode off", r.stdout)
+        for sub in _common.TASK_ID_DIRS:
+            names = self.listing(sub)
+            self.assertEqual(names, ["2026-08-31-537-yesterday.md"] if sub == "done" else [],
+                             f"next-id wrote into {sub}/")
+        # Asking twice yields the same answer: nothing was reserved.
+        self.assertEqual(self.next_id(dev="0").stdout, r.stdout)
+
+    def test_no_queue_prints_nothing_and_exits_1(self):
+        # A PIN is honored whether or not the dir exists (`tasks_root`'s own
+        # rule — the queue is created on first write, so the pinned answer is
+        # `…-001`). "Does not resolve" is DISCOVERY with no `~/virgil-tasks/`:
+        # then there is no queue to count, and inventing an id would be a
+        # number nothing on disk backs.
+        os.environ.pop("VIRGIL_TASKS_DIR", None)
+        empty_home = self.queue.parent / "empty-home"
+        empty_home.mkdir()
+        os.environ["HOME"] = str(empty_home)
+        try:
+            r = self.next_id(dev="1")
+        finally:
+            os.environ.pop("HOME", None)
+            if self._saved_home is not None:
+                os.environ["HOME"] = self._saved_home
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, "")
+        self.assertIn("no task queue", r.stderr)
+
+    def setUp(self):
+        super().setUp()
+        self._saved_home = os.environ.get("HOME")
 
 
 # ---------------------------------------------------------------------------
