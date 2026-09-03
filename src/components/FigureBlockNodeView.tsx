@@ -28,6 +28,13 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
 const STEP_PERCENT = 10;
+/** The width the STEPPERS seed from when the source carries no width at all
+ *  (a bare `\includegraphics{a.png}` renders at its natural size). This is a
+ *  fact about the chrome's first press — `−` gives 40, `+` gives 60 — and
+ *  NEVER a value the width box displays: a figure with no width shows an
+ *  empty box, because printing a number the document does not contain is how
+ *  the box came to display the one value it could not commit (task 537). */
+const DEFAULT_SCALE_PERCENT = 50;
 
 // Gap (px) between a hugged block's right edge and the chrome row when the row
 // sits beside the image. MUST match `.figure-chrome-beside { left: calc(100% +
@@ -437,7 +444,15 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // whether the existing width is in absolute units (which we never overwrite).
   const firstOptions = firstSource?.options ?? "";
   const canScale = canEditWidthInOptions(firstOptions);
-  const currentPercent = clampPercent(firstSource?.widthPercent ?? 50);
+  // `null` when the source carries NO width — `parseWidthSpec("")` — which is
+  // the commonest figure there is and renders at natural size (the hug layout
+  // below applies no max-width for exactly this case). Pre-537 this read
+  // `?? 50`, so the box PRINTED a width the document did not have, and the
+  // zero-change bail in `applyScale` then refused the one value the box was
+  // showing: typing 50 dispatched nothing while typing 60 worked. The chrome
+  // and the renderer must agree about the same figure.
+  const currentPercent: number | null =
+    firstSource?.widthPercent != null ? clampPercent(firstSource.widthPercent) : null;
 
   // ---- mutation helpers (close over editor + node + getPos) ----
 
@@ -471,7 +486,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
 
   const applyScale = (newPercent: number) => {
     const clamped = clampPercent(newPercent);
-    if (clamped === currentPercent) return;
+    // The task-470 zero-move rule: a gesture that produced no NET change
+    // persists nothing (a redundant `setNodeMarkup` is an undo step and an
+    // autosave arm). A source with NO width is never "unchanged" — every
+    // first commit lands, including the seed the steppers start from.
+    if (currentPercent !== null && clamped === currentPercent) return;
     const next = withUpdatedFigureWidth(mutableSource, clamped);
     if (next == null) return;
     applyToGraphicsSource(next);
@@ -871,7 +890,10 @@ function FigurePanel({ docId, source, registerRefresh }: FigurePanelProps) {
 }
 
 interface FigureChromeProps {
-  currentPercent: number;
+  /** `null` = the source carries no width (natural size). The box then shows
+   *  its `auto` placeholder rather than a number, and the steppers seed from
+   *  `DEFAULT_SCALE_PERCENT` on their first press. */
+  currentPercent: number | null;
   canScale: boolean;
   onScale: (percent: number) => void;
   onPickFile: (e: React.MouseEvent) => void;
@@ -895,9 +917,9 @@ export function FigureChrome({
   onRefresh,
   beside,
 }: FigureChromeProps) {
-  const [draft, setDraft] = useState<string>(String(currentPercent));
+  const [draft, setDraft] = useState<string>(draftFor(currentPercent));
   useEffect(() => {
-    setDraft(String(currentPercent));
+    setDraft(draftFor(currentPercent));
   }, [currentPercent]);
 
   // The width box commits on blur and cancels on Escape, and `.blur()` inside a
@@ -911,28 +933,37 @@ export function FigureChrome({
   const commitDraft = () => {
     const num = parseInt(draft, 10);
     if (Number.isNaN(num)) {
-      setDraft(String(currentPercent));
+      // An empty or unparseable draft commits NOTHING — for a width-less
+      // figure that leaves it at natural size, which is what the box says.
+      setDraft(draftFor(currentPercent));
       return;
     }
     const clamped = clampPercent(num);
+    // `null !== 50`, so the first commit on a width-less figure LANDS — the
+    // box can only display a value it can commit (task 537).
     if (clamped !== currentPercent) {
       onScale(clamped);
     }
     setDraft(String(clamped));
   };
 
+  // Where the steppers start from: the source's width, or the stated seed
+  // when it has none. The box itself never shows the seed.
+  const stepOrigin = currentPercent ?? DEFAULT_SCALE_PERCENT;
+
   const stepBy = (delta: number, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onScale(currentPercent + delta * STEP_PERCENT);
+    onScale(stepOrigin + delta * STEP_PERCENT);
   };
 
   const stopProp = (e: React.SyntheticEvent) => {
     e.stopPropagation();
   };
 
-  const minusDisabled = !canScale || currentPercent <= MIN_PERCENT;
-  const plusDisabled = !canScale || currentPercent >= MAX_PERCENT;
+  const minusDisabled = !canScale || stepOrigin <= MIN_PERCENT;
+  const plusDisabled = !canScale || stepOrigin >= MAX_PERCENT;
+  const naturalSize = currentPercent === null;
 
   return (
     <div
@@ -968,7 +999,16 @@ export function FigureChrome({
           max={MAX_PERCENT}
           step={1}
           disabled={!canScale}
-          aria-label="Width percentage"
+          // The honest empty state: a figure with no `width=` renders at
+          // natural size, and the box says so instead of printing a number
+          // the document does not hold. Typing any number sets one.
+          placeholder={naturalSize ? NATURAL_SIZE_PLACEHOLDER : undefined}
+          data-natural-size={naturalSize ? "true" : undefined}
+          aria-label={
+            naturalSize
+              ? "Width percentage — none set, the image is at its natural size"
+              : "Width percentage"
+          }
           onMouseDown={stopProp}
           onClick={stopProp}
           onChange={(e) => setDraft(e.target.value)}
@@ -985,7 +1025,7 @@ export function FigureChrome({
             } else if (e.key === "Escape") {
               e.preventDefault();
               session.cancel(e.currentTarget, () =>
-                setDraft(String(currentPercent)),
+                setDraft(draftFor(currentPercent)),
               );
             }
           }}
@@ -1036,8 +1076,19 @@ function ChromeIconButton({
   );
 }
 
+/** What the width box RENDERS for a given source width: the number, or the
+ *  empty string (the placeholder shows through) for a width-less figure. */
+function draftFor(percent: number | null): string {
+  return percent === null ? "" : String(percent);
+}
+
+/** Shown in the empty box of a width-less figure. Deliberately NOT `50`:
+ *  a muted "50" still reads as a width, and the whole defect was a number
+ *  the document did not contain. */
+const NATURAL_SIZE_PLACEHOLDER = "auto";
+
 function clampPercent(n: number): number {
-  if (!Number.isFinite(n)) return 50;
+  if (!Number.isFinite(n)) return DEFAULT_SCALE_PERCENT;
   const i = Math.round(n);
   if (i < MIN_PERCENT) return MIN_PERCENT;
   if (i > MAX_PERCENT) return MAX_PERCENT;
