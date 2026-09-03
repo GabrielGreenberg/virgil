@@ -1,6 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { setTextIfChanged } from "./idempotent-dom";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
@@ -141,7 +142,12 @@ export const TitleField = Node.create({
         contentDOM: content,
         update(updatedNode) {
           if (updatedNode.type.name !== "titleField") return false;
-          annot.textContent = FIELD_LABELS[updatedNode.attrs.field as string] || updatedNode.attrs.field;
+          // Runs on every keystroke inside the field; the annotation's text
+          // node is replaced only when the field kind changed (task 551).
+          setTextIfChanged(
+            annot,
+            FIELD_LABELS[updatedNode.attrs.field as string] || updatedNode.attrs.field,
+          );
           return true;
         },
       };

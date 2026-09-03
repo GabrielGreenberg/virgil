@@ -13,6 +13,11 @@ import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
+import {
+  setClassNameIfChanged,
+  setDataIfChanged,
+  setTextIfChanged,
+} from "@/lib/tiptap/idempotent-dom";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -87,13 +92,26 @@ function createExampleLabelPod(params: {
    *  float). Asked twice by the door when a confirm is awaited. */
   locate: (target: Editor) => { pos: number; node: PMNode } | null;
   confirm: () => LabelRenameConfirm | null;
-}): { render: () => void } {
+}): { render: () => void; sync: () => void } {
   const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm } = params;
   labelAnnot.className = chromeOnly(params.className);
   labelAnnot.contentEditable = "false";
 
+  // The renderAnnot keystroke bail (typing-latency fix 1c, task 551): the
+  // pod is rebuilt (`innerHTML = ""` + re-created spans) ONLY when the label
+  // it renders changed. `rendered` is the label the DOM currently shows;
+  // `editing` is true while an input session owns the pod — a session's own
+  // `render()` call (commit / escape) restores it, so an `update()` landing
+  // mid-edit must not repaint under the input. A flag rather than a
+  // `querySelector("input")` probe: it costs nothing per keystroke and cannot
+  // check a container the input is not in (task 552's class).
+  let rendered: string | null | undefined;
+  let editing = false;
+
   const render = () => {
     const label = getLabel();
+    rendered = label;
+    editing = false;
     labelAnnot.innerHTML = "";
     const typeSpan = document.createElement("span");
     typeSpan.textContent = typeText;
@@ -114,8 +132,15 @@ function createExampleLabelPod(params: {
     }
   };
 
+  /** Re-render only when the rendered label changed and no session is open. */
+  const sync = () => {
+    if (editing) return;
+    if (getLabel() !== rendered) render();
+  };
+
   const beginLabelEdit = (replaceTarget: HTMLElement) => {
-    if (labelAnnot.querySelector("input")) return;
+    if (editing) return;
+    editing = true;
     const input = document.createElement("input");
     input.type = "text";
     input.className = chromeOnly("heading-label-input expex-label-input");
@@ -226,7 +251,7 @@ function createExampleLabelPod(params: {
   });
 
   render();
-  return { render };
+  return { render, sync };
 }
 
 /**
@@ -1047,6 +1072,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         if (typeof v === "string") dom.setAttribute(k, v);
       });
       dom.dataset.number = node.attrs.number ? `(${node.attrs.number})` : "(?)";
+      dom.dataset.kind = node.attrs.kind === "multi" ? "multi" : "single";
       if (node.attrs.tag) dom.dataset.tag = node.attrs.tag;
       if (node.attrs.label) dom.dataset.label = node.attrs.label;
 
@@ -1079,12 +1105,22 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // --- Par-title rendering / editing ---
       // Mirror the paragraph convention: `has-text` when a title exists
       // (always visible), `has-add-btn` when empty (reveal on hover).
+      // The renderAnnot keystroke bail (typing-latency fix 1c, task 551):
+      // `renderedTitle` is the title the strip currently shows, so `update()`
+      // rebuilds the strip only when it changed; `titleEditing` is true while
+      // the click handler's input owns the strip — its commit / escape calls
+      // `renderTitle()` itself, so an `update()` landing mid-edit (the
+      // commit's own dispatch included) must not repaint under the input.
+      let renderedTitle: string | null | undefined;
+      let titleEditing = false;
       const renderTitle = () => {
         // No-op when the title strip is suppressed (card/float context) —
         // skip the wrapper has-add-btn/has-text classes so the absolutely-
         // positioned untitled-strip CSS rule never matches (#47).
         if (!titleAnnot) return;
         const title = (currentNode.attrs.parTitle as string | null) || null;
+        renderedTitle = title;
+        titleEditing = false;
         titleAnnot.innerHTML = "";
         wrapper.classList.remove("has-text", "has-add-btn");
         if (title) {
@@ -1126,7 +1162,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
       });
-      const renderLabelAnnot = labelPod.render;
 
       const commitTitle = (raw: string) => {
         const next = raw.trim() || null;
@@ -1163,6 +1198,8 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       titleAnnot?.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (titleEditing) return;
+        titleEditing = true;
         titleAnnot.innerHTML = "";
         const input = document.createElement("input");
         input.type = "text";
@@ -1227,22 +1264,30 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             stampTextObjectAttrs(wrapper, updatedNode, null);
           }
           currentNode = updatedNode;
+          // Every derived write below is idempotence-gated (task 551): this
+          // `update()` runs on every keystroke typed anywhere inside the
+          // example, and an unchanged answer must write nothing.
           const next = updatedNode.attrs.number
             ? `(${updatedNode.attrs.number})`
             : "(?)";
-          if (numberEl.textContent !== next) numberEl.textContent = next;
-          dom.dataset.number = next;
-          dom.dataset.kind =
-            updatedNode.attrs.kind === "multi" ? "multi" : "single";
-          dom.className = `expex-block expex-block-${dom.dataset.kind}`;
-          if (updatedNode.attrs.tag) dom.dataset.tag = updatedNode.attrs.tag;
-          else delete dom.dataset.tag;
-          if (updatedNode.attrs.label) dom.dataset.label = updatedNode.attrs.label;
-          else delete dom.dataset.label;
-          // Re-render title annot only if not currently being edited
-          // (and only when the strip exists — suppressed in card context).
-          if (titleAnnot && !titleAnnot.querySelector("input")) renderTitle();
-          if (!labelAnnot.querySelector("input")) renderLabelAnnot();
+          setTextIfChanged(numberEl, next);
+          setDataIfChanged(dom, "number", next);
+          const kind = updatedNode.attrs.kind === "multi" ? "multi" : "single";
+          setDataIfChanged(dom, "kind", kind);
+          setClassNameIfChanged(dom, `expex-block expex-block-${kind}`);
+          setDataIfChanged(dom, "tag", updatedNode.attrs.tag || null);
+          setDataIfChanged(dom, "label", updatedNode.attrs.label || null);
+          // Rebuild the title strip only when the title it shows changed, and
+          // never under an open input (the strip is suppressed in card
+          // context, where `titleAnnot` is null).
+          if (
+            titleAnnot &&
+            !titleEditing &&
+            ((updatedNode.attrs.parTitle as string | null) || null) !== renderedTitle
+          ) {
+            renderTitle();
+          }
+          labelPod.sync();
           return true;
         },
         destroy() {
@@ -1642,7 +1687,6 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
       });
-      const renderLabelAnnot = labelPod.render;
 
       return {
         dom,
@@ -1664,14 +1708,14 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
             stampTextObjectAttrs(dom, updatedNode, null);
           }
           currentNode = updatedNode;
-          marker.textContent = `${updatedNode.attrs.subLabel || "?"}.`;
-          dom.dataset.sublabel = updatedNode.attrs.subLabel || "";
-          if (updatedNode.attrs.tag) dom.dataset.tag = updatedNode.attrs.tag;
-          else delete dom.dataset.tag;
-          if (updatedNode.attrs.label)
-            dom.dataset.label = updatedNode.attrs.label;
-          else delete dom.dataset.label;
-          if (!labelAnnot.querySelector("input")) renderLabelAnnot();
+          // Idempotence-gated (task 551): this runs on every keystroke typed
+          // inside the item; the marker's text node in particular is only
+          // replaced when the sub-label actually changed.
+          setTextIfChanged(marker, `${updatedNode.attrs.subLabel || "?"}.`);
+          setDataIfChanged(dom, "sublabel", updatedNode.attrs.subLabel || "");
+          setDataIfChanged(dom, "tag", updatedNode.attrs.tag || null);
+          setDataIfChanged(dom, "label", updatedNode.attrs.label || null);
+          labelPod.sync();
           return true;
         },
         destroy() {

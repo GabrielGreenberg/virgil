@@ -5,6 +5,11 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import {
+  setDataIfChanged,
+  setTextIfChanged,
+  setTitleIfChanged,
+} from "@/lib/tiptap/idempotent-dom";
 // Task 232: the structural DOM facets (`data-type` / `class`) are sourced from
 // the atom SSOT instead of hardcoded literals, so a NodeView rename can't drift
 // from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
@@ -360,11 +365,13 @@ export const Footnote = Node.create<FootnoteOptions>({
         dom,
         update(updatedNode) {
           if (updatedNode.type.name !== "footnote") return false;
-          dom.dataset.footnoteId = updatedNode.attrs.footnoteId || "";
-          if (updatedNode.attrs.thanks) dom.dataset.thanks = "true";
-          else delete dom.dataset.thanks;
-          dom.textContent = updatedNode.attrs.thanks ? "A" : String(updatedNode.attrs.number || "1");
-          dom.title = richJsonToPlainText(updatedNode.attrs.content);
+          // Idempotence-gated (task 551): the numberer touches every footnote
+          // node after a structural change, and a marker whose number did not
+          // move must not replace its text node or invalidate its style.
+          setDataIfChanged(dom, "footnoteId", updatedNode.attrs.footnoteId || "");
+          setDataIfChanged(dom, "thanks", updatedNode.attrs.thanks ? "true" : null);
+          setTextIfChanged(dom, updatedNode.attrs.thanks ? "A" : String(updatedNode.attrs.number || "1"));
+          setTitleIfChanged(dom, richJsonToPlainText(updatedNode.attrs.content));
           return true;
         },
       };

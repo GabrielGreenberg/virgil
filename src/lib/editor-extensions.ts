@@ -27,6 +27,7 @@ import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
+import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
@@ -562,13 +563,15 @@ function createListTitleNodeView(
       if (tagName !== "ol") return;
       const start = currentNode.attrs.start as number | null;
       const listType = currentNode.attrs.type as string | null;
-      if (typeof start === "number" && start !== 1) {
-        listEl.setAttribute("start", String(start));
-      } else {
-        listEl.removeAttribute("start");
-      }
-      if (listType) listEl.setAttribute("type", String(listType));
-      else listEl.removeAttribute("type");
+      // Idempotence-gated (task 551): `update()` calls this on every
+      // keystroke typed inside the list, and a same-value `setAttribute`
+      // invalidates style on the whole `<ol>` subtree.
+      setAttrIfChanged(
+        listEl,
+        "start",
+        typeof start === "number" && start !== 1 ? String(start) : null,
+      );
+      setAttrIfChanged(listEl, "type", listType ? String(listType) : null);
     };
     applyOrderedListAttrs();
 
@@ -1516,15 +1519,15 @@ export function createHeadingWithLabel(
             }
             currentNode = updatedNode;
             // Keep section number in sync for CSS ::before. Same-value
-            // dataset writes still queue mutation records — guard on change.
-            const nextSectionNumber =
+            // dataset writes still queue mutation records — the shared door
+            // guards on change (task 551).
+            setDataIfChanged(
+              h,
+              "sectionNumber",
               updatedNode.attrs.numbered !== false && updatedNode.attrs.sectionNumber
                 ? (updatedNode.attrs.sectionNumber as string)
-                : undefined;
-            if (h.dataset.sectionNumber !== nextSectionNumber) {
-              if (nextSectionNumber === undefined) delete h.dataset.sectionNumber;
-              else h.dataset.sectionNumber = nextSectionNumber;
-            }
+                : null,
+            );
             // Don't overwrite annot if an input is active; skip when the
             // rendered inputs (numbered, label) are unchanged.
             if (

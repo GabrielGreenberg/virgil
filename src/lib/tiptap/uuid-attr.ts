@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isDeferredInnerParagraph } from "@/lib/anchor-uuid";
+import { setAttrIfChanged } from "@/lib/tiptap/idempotent-dom";
 
 /**
  * `UUID_ATTR_SPEC` / `makeUuidAttr` are DECLARED in the import-free leaf
@@ -67,17 +68,9 @@ export function stampTextObjectAttrs(
   parent: PMNode | null,
 ): void {
   const uuid = node.attrs?.uuid as string | null | undefined;
-  if (!uuid || isDeferredInnerParagraph(node, parent)) {
-    if (dom.hasAttribute("data-uuid")) {
-      dom.removeAttribute("data-uuid");
-      dom.removeAttribute("data-text-object-kind");
-    }
-    return;
-  }
-  if (dom.getAttribute("data-uuid") !== uuid) {
-    dom.setAttribute("data-uuid", uuid);
-  }
-  if (dom.getAttribute("data-text-object-kind") !== node.type.name) {
-    dom.setAttribute("data-text-object-kind", node.type.name);
-  }
+  const anchorable = !!uuid && !isDeferredInnerParagraph(node, parent);
+  // Idempotence-gated through the one door (task 551): a same-value
+  // `setAttribute` invalidates style, and this runs from `update()`.
+  setAttrIfChanged(dom, "data-uuid", anchorable ? uuid : null);
+  setAttrIfChanged(dom, "data-text-object-kind", anchorable ? node.type.name : null);
 }

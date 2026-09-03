@@ -2,6 +2,7 @@ import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import type { RefCommand } from "@/lib/ref-display";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { setDataIfChanged, setTextIfChanged } from "./idempotent-dom";
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
@@ -128,12 +129,13 @@ export const LabelRef = Node.create({
         dom,
         update(updatedNode: any) {
           if (updatedNode.type.name !== "labelRef") return false;
-          dom.dataset.label = updatedNode.attrs.label || "";
-          dom.dataset.refCommand = updatedNode.attrs.refCommand || "ref";
-          if (updatedNode.attrs.targetKind)
-            dom.dataset.targetKind = updatedNode.attrs.targetKind;
-          else delete dom.dataset.targetKind;
-          dom.textContent = updatedNode.attrs.displayText || "??";
+          // Idempotence-gated (task 551): an atom's update() runs only on its
+          // own attr change, so this is O(changed atoms) — the door keeps the
+          // unchanged attrs of a renumber pass from invalidating style.
+          setDataIfChanged(dom, "label", updatedNode.attrs.label || "");
+          setDataIfChanged(dom, "refCommand", updatedNode.attrs.refCommand || "ref");
+          setDataIfChanged(dom, "targetKind", updatedNode.attrs.targetKind || null);
+          setTextIfChanged(dom, updatedNode.attrs.displayText || "??");
           return true;
         },
       };
