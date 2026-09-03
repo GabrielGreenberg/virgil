@@ -1476,8 +1476,17 @@ def _slugify(text: str, limit: int = 60) -> str:
     return s or "dream-finding"
 
 
-def _minted_ids(root: Path, date_str: str) -> set[int]:
-    """Every `NNN` already minted for `date_str`, across every queue dir.
+def _minted_ids(root: Path) -> set[int]:
+    """Every `NNN` already minted, across every queue dir, WHATEVER its date.
+
+    The numbering rule has one home — the `id:` line of the queue's `README.md`
+    schema — and it is GLOBAL: `NNN` is one past the highest `NNN` anywhere in
+    the four queue dirs, and the date is merely the mint date. Until task 540
+    this scan kept only ids whose date matched today's, which is the rule two
+    prose docs used to state and no human minter ever followed: ~540 files on
+    disk ran a single counter across days, so the one minter that followed the
+    written rule produced `2026-09-02-001` the night after `…-537`, and ids
+    stopped being monotonic. A filter by date here is the fork.
 
     The scan is by FILENAME rather than by frontmatter: a task is addressed by
     its filename everywhere in the pipeline, the id is its prefix, and reading N
@@ -1494,17 +1503,18 @@ def _minted_ids(root: Path, date_str: str) -> set[int]:
             continue
         for name in names:
             m = _TASK_ID_RE.match(name)
-            if m and m.group(1) == date_str:
+            if m:
                 used.add(int(m.group(2)))
     return used
 
 
 def _next_id(used: set[int]) -> int:
-    """One past today's MAX, never the first free hole.
+    """One past the MAX on disk, never the first free hole.
 
-    The protocol `REMOTE_INBOX.md` states is max+1, and matching the other two
-    minters is the whole point of sharing one protocol — but the reason it is
-    max+1 rather than lowest-free is its own: an id can leave the queue (a
+    The protocol the queue's `README.md` states is max+1, and matching the
+    other minters (the catcher, the remote-inbox heartbeat, the auditor) is the
+    whole point of sharing one protocol — but the reason it is max+1 rather
+    than lowest-free is its own: an id can leave the queue (a
     finding ruled wontfix, a task withdrawn) while `log.md`, a `[[2026-09-01-004]]`
     cross-reference and a merge commit message all still name it. Re-issuing a
     retired number would point every one of those at a different task."""
@@ -1606,12 +1616,15 @@ def cmd_file_task(argv: list[str]) -> int:
     slug = _slugify(spec.get("slug") or title)
     queue_dir = root / route["queue"]
 
-    # The collision protocol (REMOTE_INBOX.md §3), now shared by three minters:
-    # scan for today's max immediately BEFORE the write, re-verify AFTER, rename
-    # on a collision. The dream's 22:06 slot overlaps neither the 23:09 heartbeat
-    # nor the on-the-hour worker, but a protocol that leans on a schedule is a
-    # protocol that breaks the first time one moves.
-    used = _minted_ids(root, date_str)
+    # The collision protocol (README.md `id:` rule), shared by FOUR minters —
+    # the catcher, the remote-inbox heartbeat, the auditor (the worker in idle
+    # mode) and this loop: scan for the highest NNN on disk (any date)
+    # immediately BEFORE the write, re-verify AFTER, rename on a collision. The
+    # dream's 22:06 slot overlaps neither the 23:09 heartbeat nor the
+    # on-the-hour worker, but a protocol that leans on a schedule is a protocol
+    # that breaks the first time one moves. `next-id` below is the same scan
+    # published as a door, so a hand minter can ask instead of counting.
+    used = _minted_ids(root)
     written: Path | None = None
     task_id = ""
     for _ in range(50):
@@ -1717,19 +1730,56 @@ def cmd_paths(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# next-id — the queue's numbering rule, as ONE executable door
+# ---------------------------------------------------------------------------
+
+
+def cmd_next_id(argv: list[str]) -> int:
+    """`dream.py next-id` — the id the next minted task takes, printed bare.
+
+    A pure READ, like `paths`: it runs the SAME scan `file-task` mints with
+    (`_minted_ids` → `_next_id`) and prints `YYYY-MM-DD-NNN`, creating and
+    reserving nothing — a minter still re-verifies after its own write, which
+    is the second half of the protocol and stays theirs. It exists because the
+    numbering rule had four implementations (two prose, one python, one habit)
+    and the two prose ones said "per day" while every hand minter counted
+    globally (task 540); a rule with one executable copy that any minter can
+    ask is a rule that cannot be half-followed. The date is the mint date on
+    the loop's UTC clock (`VIRGIL_DREAM_NOW` honoured, as `file-task` does);
+    under the global rule the date carries no ordering — `NNN` does. A queue
+    that does not resolve on this machine prints nothing and exits 1 rather
+    than inventing an id.
+    """
+    p = argparse.ArgumentParser(prog="dream.py next-id")
+    p.parse_args(argv)
+    root = tasks_root()
+    if root is None:
+        print("dream: no task queue resolves on this machine — set "
+              "VIRGIL_TASKS_DIR, or run where ~/virgil-tasks/ exists",
+              file=sys.stderr)
+        return 1
+    _, date_str = _now_iso_date()
+    print(f"{date_str}-{_next_id(_minted_ids(root)):03d}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
 _SUBCOMMANDS = {"select": cmd_select, "digest": cmd_digest,
-                "file-task": cmd_file_task, "paths": cmd_paths}
+                "file-task": cmd_file_task, "paths": cmd_paths,
+                "next-id": cmd_next_id}
 
 # Doors that run WITHOUT the DEV gate. The gate exists to keep the dream from
 # RUNNING — and writing — outside a dev session; a resolver that writes nothing
 # has nothing for it to protect, and gating it would hand an outside reader
 # (the catcher, asking `paths digests` from an ordinary session) the no-op line
 # where it needs a path. Membership is a claim that the door WRITES NOTHING —
-# `test_dream_synced_sink.PathsDoor` pins it.
-_UNGATED = frozenset({"paths"})
+# `test_dream_synced_sink.PathsDoor` pins it for `paths`;
+# `test_dream_task_filing.NextIdDoor` for `next-id` (a hand minter — the
+# catcher, the auditor, the heartbeat — asks it from an ordinary session).
+_UNGATED = frozenset({"paths", "next-id"})
 
 
 def main(argv: list[str]) -> int:

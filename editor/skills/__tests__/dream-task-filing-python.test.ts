@@ -5,8 +5,8 @@
  * `npm test` is vitest, so a Python guard is advisory until a vitest file shells
  * out to it. That matters more here than usual, because what this suite guards
  * is a WRITE into the human's task queue: the routing that decides whether a
- * finding reaches the worker or reaches Gabriel, the id-collision protocol three
- * minters now share, the schema bar a filed task must clear, and the sandbox
+ * finding reaches the worker or reaches Gabriel, the id-collision protocol FOUR
+ * minters now share (and the `next-id` door that publishes its numbering rule), the schema bar a filed task must clear, and the sandbox
  * rule that keeps a pinned test run from minting into the live queue at all.
  *
  * If `python3` is genuinely unavailable this FAILS rather than skips: a guard

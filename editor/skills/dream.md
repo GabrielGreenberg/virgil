@@ -588,12 +588,16 @@ asks for, `file:line` pointers, and for a cluster a `### Members` list of the
 symptoms one fix retires. That is the same judgment step 2 already does; the
 task file is just where it goes now.
 
-**Id minting — the collision protocol, now shared by THREE minters** (the
-interactive catcher, the remote-inbox heartbeat, and this loop). `file-task`
-implements it: scan every queue dir for today's max `NNN` immediately *before*
-each write, re-verify *after*, rename to the next free number on a collision.
-You do not have to do any of that by hand — but do not hand-write a task file
-either, because then nobody does.
+**Id minting — the collision protocol, shared by FOUR minters** (the
+interactive catcher, the remote-inbox heartbeat, the auditor — the worker in
+idle mode — and this loop). The numbering rule has ONE home, the `id:` line of
+the queue's `README.md` schema (global `NNN`, one past the highest on disk in
+any queue dir, regardless of date), and `file-task` implements it: scan every
+queue dir for that max immediately *before* each write, re-verify *after*,
+rename to the next free number on a collision. `dream.py next-id` is the same
+scan published as a door for the hand minters. You do not have to do any of
+that by hand — but do not hand-write a task file either, because then nobody
+does.
 
 **Then run the gates — the tree's nightly health check.** This is the one piece
 of the old step 6 that survives whole, because it was never about landing:
