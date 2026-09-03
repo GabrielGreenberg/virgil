@@ -25,7 +25,7 @@ import {
   type ActivePaneKind,
   type FsaDocMeta,
 } from "@/lib/doc-index";
-import { scanSyncConflicts } from "@/lib/sync-conflict-scan";
+import { watchSyncConflicts } from "@/lib/sync-conflict-scan";
 import { syncSkillBundle } from "@library/lib/skill-sync";
 import { resolveLibraryRootPath } from "@library/lib/library-folder";
 import {
@@ -454,9 +454,15 @@ export function useFiles() {
   // mints forks while the app is open, and the notice is signature-keyed
   // (`sync-conflict-notice.ts`), so an unchanged folder cannot re-raise a
   // dismissed report. One directory enumeration, no file reads; never throws.
+  //
+  // …and a warm tab switch is not the only way the folder changes under an
+  // open paper (task 542). The pill's own copy sends the user to Finder to
+  // clean a content fork, which by construction happens while this tab is not
+  // in front — so the watcher also re-scans on the shared tab-RETURN edge
+  // (`tab-hidden.ts`), and stands down with the doc.
   useEffect(() => {
     if (!currentDocId) return;
-    void scanSyncConflicts(currentDocId);
+    return watchSyncConflicts(currentDocId);
   }, [currentDocId]);
 
   const activateDocPane = useCallback(

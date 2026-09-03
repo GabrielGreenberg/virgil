@@ -3195,6 +3195,75 @@ folder and then `tools/triage-sync-conflicts.mjs` over it — the tool's
 said it deleted, and its "DIFFER and are kept" count should not have moved at
 all.
 
+#### The return half: a notice derived from disk state re-reads it when the user COMES BACK
+
+Same pill, the trigger it never had (task 542, Gabriel's own report with a
+screenshot: "6 conflicted copies · 6 with content" over a folder he had already
+cleaned in Finder). The scan had exactly ONE trigger — `useFiles`'s effect on
+`currentDocId` — and its own comment called a warm tab switch "a feature". True,
+and no help with one paper open: the pill's own copy sends the user to Finder
+for a content fork, Finder is by construction used while this tab is not in
+front, and nothing ever re-enumerated the folder afterwards, so the notice
+reported ghosts until a reload.
+
+> **A standing notice derived from disk state the app does not own re-reads
+> that state on the edge that observes out-of-band change: the user RETURNING
+> to the tab.** The edge is published ONCE — `onTabReturn` in
+> [tab-hidden.ts](src/lib/tab-hidden.ts), the mirror of task 363's settle edge
+> in the same module, one `visibilitychange` + one window `focus` listener for
+> every subscriber of either edge — and the scan takes it through ONE door,
+> `watchSyncConflicts(docId)` (open + return, standing down with the doc).
+
+Four rules it earned:
+
+- **Both events, coalesced.** `visibilitychange → visible` covers a tab switch
+  and an un-minimize; window `focus` covers the ordinary macOS case, where a
+  partly covered PWA window stays `visible` the whole time the user is in
+  Finder beside it. A real tab switch fires both back to back, so a return is
+  ONE delivery per `RETURN_COALESCE_MS` — a subscriber pays one listing per
+  genuine return, never one per event.
+- **Edges, never a poll.** The write-traffic doctrine (363/415) wants fewer
+  folder touches; a listing is read-only, but a timer would touch the folder
+  every few seconds for a fact that changes only while the user is elsewhere —
+  which is exactly what the return edge observes. Three triggers, all edges:
+  open, return, post-cleanup. Plus the badge's manual "Check the folder again"
+  row, the zero-latency door for a user who is already back.
+- **Dismissal semantics untouched by construction.** The notice is
+  signature-keyed, so a re-scan of an unchanged folder cannot re-raise a
+  dismissed report, while a folder that changed under the dismissal (one fork
+  gone, one still there) is judged on its new signature — pinned in both
+  directions rather than assumed.
+- **The hook returns the watcher's unsubscribe**, so the doc-switch/unmount
+  edge tears the return subscription down with the doc; a fire-and-forget
+  `void watch…` leaks one subscriber per document ever opened.
+
+**Residual, stated.** Ten production sites still hand-roll their own
+`window.addEventListener("focus", …)` refresh — the DiskWatcher, the
+SidecarWatcher, and eight Library hooks/stores — each correct, each a private
+copy of the edge this module now publishes. They were not migrated here: the
+two watchers pair focus with a per-instance poll lifecycle, and the Library
+sites are a different silo. They are the same class one step out and the
+natural next sweep.
+
+CI: [tab-return.test.ts](src/lib/__tests__/tab-return.test.ts) (the edge
+contract: both carriers, coalescing, silent subscribe, one listener per event,
+isolation) and
+[sync-conflict-rescan.test.ts](src/lib/__tests__/sync-conflict-rescan.test.ts)
+(the DEFECT leg — forks reported, files removed on the fake disk, the user
+returns, the notice clears — both carriers, both dismissal directions,
+stand-down, and the CENSUS: the hook enters the watcher and returns its
+unsubscribe, the bare scan's production callers are an exact set, the watcher
+takes the shared edge and installs no listener of its own). The badge's manual
+row is pinned in `sync-conflict-badge.test.tsx`. Measured by neutering the
+return subscription in `watchSyncConflicts`: 6 legs fail (5 behavioural, plus the census that asks for the shared edge). **No pre-542 suite
+could see this**: every scan leg calls `scanSyncConflicts` by hand, so a
+trigger that never fires is unrepresentable in all of them.
+
+**Owed, not claimed:** the preview eyeball. Reproducible in dev storage — seed
+`notes (conflicted copy 2026-09-02).json` into
+`virgil-data/doc_devtest/virgil/`, open the doc, delete the file, click away
+and back — and a real-Dropbox eyeball for the sync-masked half.
+
 ## Capture/schema symmetry — never delete what you cannot restore
 
 > **A destructive action must never delete content its capture destination cannot represent.** A card body that holds a verbatim slice of the document declares `bodySchema: "excerpt"` in `CARD_REGISTRY` and mounts the FULL main-document vocabulary; anything that deletes-and-captures validates the capture against that schema (`canMountInCardBody`) **before** dispatching the delete, and aborts + notifies if it doesn't fit.
