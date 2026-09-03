@@ -29,7 +29,7 @@ vi.mock("@/lib/storage", () => {
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { Editor } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { resolveLabelDisplay } from "@/components/editor-layout/card-actions/ref";
+import { resolveLabelDisplay } from "@/lib/ref-display";
 
 function mainCtx(): EditorExtensionsCtx {
   return {

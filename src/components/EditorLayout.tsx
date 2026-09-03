@@ -141,7 +141,9 @@ import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
-import { useRefActions, resolveLabelDisplay } from "./editor-layout/card-actions/ref";
+import { useRefActions } from "./editor-layout/card-actions/ref";
+import { resolveLabelDisplay } from "@/lib/ref-display";
+import type { ActiveRef } from "@/lib/tiptap/label";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
@@ -185,7 +187,7 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
 import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
-import { ATOM_REGISTRY, CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
+import { CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
@@ -1309,11 +1311,11 @@ export default function EditorLayout() {
   });
 
   // ── LabelRef popover state ──
-  const [activeRefLabel, setActiveRefLabel] = useState<string | null>(null);
-  const [activeRefRect, setActiveRefRect] = useState<DOMRect | null>(null);
-  const [activeRefCommand, setActiveRefCommand] = useState<
-    "ref" | "getref" | "getfullref"
-  >("ref");
+  // The clicked chip by IDENTITY (owning editor + pos), its own rect, its
+  // current command and label — ONE fact (task 550). The pre-550
+  // label/rect/command triple named the chip by its label string, which a
+  // paper repeats, so the popover opened beside — and re-pointed — the first.
+  const [activeRef, setActiveRef] = useState<ActiveRef | null>(null);
   // ── Shared inline-atom CREATE popover state (citation + `\ref`) ──
   // The deferred-commit front door: a trigger surface opens this at the caret;
   // the popover materializes the atom only on commit. `\ref` create folds onto
@@ -2380,9 +2382,7 @@ export default function EditorLayout() {
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedErrorId: setSelectedErrorIdBridge,
-    setActiveRefLabel,
-    setActiveRefRect,
-    setActiveRefCommand,
+    setActiveRef,
     setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
@@ -2399,17 +2399,26 @@ export default function EditorLayout() {
   // into EditorPane (per-doc, docId-routed) — see useFootnoteOrphanBridges.
   useFootnoteSyncBridges({ deleteSnippet });
 
-  // Highlight the active \ref node with yellow while the popover is open
+  // Highlight the active \ref chip with yellow while the popover is open —
+  // THE chip that was clicked, resolved through its owning editor's view,
+  // never every chip sharing its label.
   useEffect(() => {
-    if (!activeRefLabel) return;
-    const els = document.querySelectorAll(
-      `.${ATOM_REGISTRY.ref.domClass}[data-label="${activeRefLabel}"]`,
-    );
-    for (const el of els) el.classList.add("label-ref-active");
+    if (!activeRef) return;
+    const { editor, pos } = activeRef;
+    if (editor.isDestroyed) return;
+    let el: globalThis.Node | null = null;
+    try {
+      el = editor.view.nodeDOM(pos);
+    } catch {
+      el = null;
+    }
+    if (!(el instanceof HTMLElement)) return;
+    const chip = el;
+    chip.classList.add("label-ref-active");
     return () => {
-      for (const el of els) el.classList.remove("label-ref-active");
+      chip.classList.remove("label-ref-active");
     };
-  }, [activeRefLabel]);
+  }, [activeRef]);
 
   // ── LabelRef popover helpers ──
   const {
@@ -2420,7 +2429,7 @@ export default function EditorLayout() {
     handleInsertRef,
   } = useRefActions({
     editorRef,
-    setActiveRefLabel,
+    setActiveRef,
   });
 
   // ── Citation create-popover commit ──
@@ -3795,23 +3804,17 @@ export default function EditorLayout() {
       {confirmDialog}
       {identityDialog}
       {docClassDialog}
-      {activeRefLabel != null && activeRefRect && (
+      {activeRef && (
         <LabelRefPopover
-          label={activeRefLabel}
-          anchorRect={activeRefRect}
+          label={activeRef.label}
+          anchorRect={activeRef.rect}
           labels={gatherLabels()}
-          refCommand={activeRefCommand}
-          onChangeLabel={handleRefChangeLabel}
-          onChangeRefCommand={(lbl, cmd) => {
-            handleRefChangeCommand(lbl, cmd);
-            setActiveRefCommand(cmd);
-          }}
+          refCommand={activeRef.refCommand}
+          // Both writes address the CLICKED chip (identity), never the label.
+          onChangeLabel={(_old, next) => handleRefChangeLabel(activeRef, next)}
+          onChangeRefCommand={(_lbl, cmd) => handleRefChangeCommand(activeRef, cmd)}
           onJumpToLabel={handleRefJump}
-          onInsertRef={handleInsertRef}
-          onClose={() => {
-            setActiveRefLabel(null);
-            setActiveRefRect(null);
-          }}
+          onClose={() => setActiveRef(null)}
         />
       )}
       {atomCreateRequest?.kind === "citation" && (
@@ -3840,8 +3843,6 @@ export default function EditorLayout() {
           anchorRect={atomCreateRequest.rect}
           labels={gatherLabels()}
           refCommand={atomCreateRequest.refCommand ?? "ref"}
-          onChangeLabel={handleRefChangeLabel}
-          onChangeRefCommand={handleRefChangeCommand}
           onJumpToLabel={handleRefJump}
           onInsertRef={(label, cmd) =>
             handleInsertRef(label, cmd, atomCreateRequest.pos, atomCreateRequest.editor)

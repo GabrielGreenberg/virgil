@@ -6653,6 +6653,109 @@ byte-identical to the retired path either way — which is the point.
 open — in the Reader, drag `outline` between `citations` and `bibliography` and
 confirm it lands there.
 
+### The ref half: a NON-unique key is not an address, and three tables were one
+
+Same law, the inline atom (task 550) — and the case where the sibling atoms
+already carried identity for exactly this reason and the `\ref` chip never
+did. A paper cites the same section several times, and every step of the
+`\ref` popover's edit path resolved the chip by its LABEL STRING: the
+NodeView's click carried `{ label, refCommand }` and nothing else (where
+`virgil-math-click` carries `{ pos, editor }` and `virgil-citation-click` its
+`clickedPos`); the bridge re-found the chip with a document-wide
+`querySelector('[data-label=…]')` — the FIRST in DOM order, off-screen for a
+later duplicate, and under multi-doc keep-alive possibly a HIDDEN pane's chip
+(task 438's class); and the change handlers walked the doc and rewrote the
+FIRST `labelRef` naming the old key. So re-pointing the second
+`\ref{sec:intro}` opened the popover beside the first and silently changed
+the first. Nothing threw; the `.tex` was well-formed.
+
+**The second half was a twin resolver, and there were THREE of it.** The task
+named two — the numberer's `resolveRef` and the popover's
+`resolveLabelDisplay` — and the parser held a third (`numberHeadings` +
+`numberFigures` + `resolveRefs`, over JSON). They had drifted in BOTH
+directions: the popover copy had no figure branch, so a re-point at `fig:x`
+wrote `??` into the atom — and the numberer's structural gate cannot see an
+atom-attr write, so it stood until an unrelated edit; and the numberer copy
+never registered a flat sub-item label (`\a \label{foo}` → "3a"), so a ref
+the parser had resolved correctly at load flipped to `??` on the first
+structural edit. Task 341's twin rule, with a third member.
+
+> **A `\ref` chip is addressed by IDENTITY — the editor that owns it and its
+> position there — re-checked at commit and REFUSED on mismatch, never
+> re-found by a label the paper repeats. And "what does `\ref{label}` show?"
+> has ONE table: [`ref-display.ts`](src/lib/ref-display.ts) builds the
+> ref-target index (heading section numbers, figure numbers, the example key
+> table, every `labelRef`) off one walk, generic over the node representation,
+> and the parser (JSON), the numberer (PM) and the popover (PM) all read it.**
+
+Six rules it earned:
+
+- **The click carries the pos-space it was minted in.** `RefClickDetail` is
+  `{ label, refCommand, targetKind, pos, editor, rect }` — the
+  `AtomCreateRequest` / `virgil-math-click` shape the bridge already validates
+  (a detail without a numeric `pos`, an owning editor or a `DOMRect` is
+  DROPPED, never resolved against MAIN). The rect is THIS chip's own, so the
+  popover anchors where the user clicked; and it is re-minted as a `DOMRect`
+  at the dispatcher, because a headless DOM's `getBoundingClientRect` answers
+  a plain object that the bridge's validation would otherwise drop.
+- **The write re-checks the identity and REFUSES.** `locateRef` requires
+  `editor.state.doc.nodeAt(pos)` to still be a `labelRef` naming the clicked
+  label; the doc may have moved under the popover, and the fallback the old
+  handlers took — "the first chip with that label" — is the mis-address this
+  identity exists to prevent (task 285's rule, one atom in). A refusal returns
+  `false` over an untouched document.
+- **The NUMBER is read from MAIN; the WRITE goes to the owner.** The chip may
+  sit in a footnote or note body (its own editor, its own pos-space); a card
+  body owns no declarations, so the display resolves against the main doc
+  (the rule `handleInsertRef` already held) while the `setNodeMarkup` lands in
+  the editor the identity names.
+- **The index carries the NUMBERING rows too, not just the lookup.** The
+  parser and the numberer each used to compute section numbers and figure
+  numbers privately and then build a lookup from them; now both write
+  `sectionNumber` / `figureNumber` FROM the index's rows and resolve every
+  chip FROM the same index. So "what number does this heading have" and
+  "what does a ref to it show" cannot disagree — they are one table, built
+  once per load / per structural change. The live door
+  (`resolveLabelDisplay`) DERIVES the number rather than reading a heading's
+  attr, which also makes it independent of whether the numberer has run yet.
+- **Precedence is stated once and it is the numberer's**: heading > example >
+  figure for a key two kinds declare; within a kind the first declaration in
+  document order; the dotted `parent.sub` form only after every exact key has
+  missed. The JSON accessors' caption predicate is `hasCaption` alone, for the
+  reason the parser already stated at its site.
+- **The exemption in 534's ref-walk census is RETIRED, not kept.** That leg
+  excused `handleRefChangeLabel`'s label walk as "a different gesture that
+  stops after the first hit" — which was the defect, pinned as the contract.
+  The re-point walks nothing now, so the rename door is the only ref walker
+  left; and the task-433 plugin census reads the numberer as `clean` rather
+  than `tagged`, because its one walk moved behind an IMPORTED helper the
+  census states it cannot follow — the `[cost: …]` tag stays as the site's
+  justification, and the per-keystroke gate is unchanged.
+
+Two more readers came right for free: `gatherLabels` lists a modelled
+`figureBlock`'s label with its number (it listed only raw-text figure labels
+before), and `handleRefJump` reaches a figure through the index's positions.
+
+CI: [ref-display.test.ts](src/lib/__tests__/ref-display.test.ts) drives the
+leaf over every target kind, pins JSON/PM PARITY over ONE parsed document (the
+parser's index and the mounted doc's index are the same targets map, and what
+the parser wrote at load is what the live door answers for every chip), and
+carries the numberer-drift DEFECT leg — a structural edit after load leaves a
+flat sub-item ref at "1a". Its CENSUS pins exactly one index builder, no
+`headingMap` / `exampleMap` / `figureMap` anywhere in production, every
+reader importing the leaf, and the numberer's stale prose ("displayText may
+stay stale") renegotiated. [ref-repoint-identity.test.tsx](src/components/editor-layout/card-actions/__tests__/ref-repoint-identity.test.tsx)
+drives the REAL `useRefActions` over a doc with TWO chips to one label, and
+the REAL NodeView's DOM click through the REAL bridge — **no pre-550 suite
+drove a document with two refs to one label, so "the wrong chip changed" was
+unrepresentable in all of them.** Measured by neutering each half in turn: a
+label-first-match re-point takes 5 legs, the missing figure branch 6, the
+missing flat sub-item claim 6.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk): two refs to one section, click the SECOND, change its
+target — only it changes, and the popover sat beside it.
+
 ## A registry earns its name by being read
 
 > **A table that declares per-kind behaviour is an SSOT only if something READS it. A published export is alive only if something CALLS it — and a re-export is not a caller.**

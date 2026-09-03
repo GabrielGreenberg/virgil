@@ -633,7 +633,7 @@ describe("the ref popover commit refuses at a captured verbatim position (task 3
     return renderHook(() =>
       useRefActions({
         editorRef: { current: handle },
-        setActiveRefLabel: () => {},
+        setActiveRef: () => {},
       }),
     ).result;
   }

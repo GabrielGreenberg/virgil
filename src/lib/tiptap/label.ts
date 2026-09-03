@@ -1,4 +1,5 @@
-import { Node, Extension, mergeAttributes } from "@tiptap/react";
+import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
+import type { RefCommand } from "@/lib/ref-display";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
@@ -7,6 +8,38 @@ import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 import { ATOM_REGISTRY } from "./atom-registry";
 
 const REF_ATOM = ATOM_REGISTRY.ref;
+
+/** The event a clicked `\ref` chip dispatches on `window`. */
+export const REF_CLICK_EVENT = "virgil-label-ref-click";
+
+/**
+ * A `labelRef` atom's IDENTITY across the gap between the click and the
+ * popover's commit: the editor that owns it and its position there. The
+ * handlers that re-point it resolve `editor.state.doc.nodeAt(pos)` at commit
+ * time and REFUSE when it is no longer a `labelRef` naming `label` (the doc
+ * may have moved) — never falling back to "the first chip with that label",
+ * which is the mis-address this identity exists to prevent (task 550; the
+ * task-285 rule for addressing a node across an async gap).
+ */
+export interface RefNodeIdentity {
+  editor: Editor;
+  pos: number;
+  label: string;
+}
+
+/** What `REF_CLICK_EVENT` carries. */
+export interface RefClickDetail extends RefNodeIdentity {
+  refCommand: string;
+  targetKind: string | null;
+  /** The clicked chip's own screen rect — the popover anchors at THIS chip. */
+  rect: DOMRect;
+}
+
+/** The open popover's subject: the clicked chip plus what it currently shows. */
+export interface ActiveRef extends RefNodeIdentity {
+  refCommand: RefCommand;
+  rect: DOMRect;
+}
 
 /** \ref{label} — inline cross-reference rendered as a clickable pod. */
 export const LabelRef = Node.create({
@@ -29,8 +62,8 @@ export const LabelRef = Node.create({
       // "getref" → \getref{…} (parenthesized, e.g. "(3)")
       // "getfullref" → \getfullref{…} (dotted; rendered as "(3b)")
       refCommand: { default: "ref" },
-      // Advisory tag used by the label popover to group candidates.
-      // "heading" | "example" | null.
+      // Advisory tag written beside `displayText` by the ref-display
+      // resolver: "heading" | "example" | "figure" | null.
       targetKind: { default: null },
     };
   },
@@ -51,7 +84,7 @@ export const LabelRef = Node.create({
   },
 
   addNodeView() {
-    return ({ node }) => {
+    return ({ node, getPos, editor }) => {
       const dom = document.createElement("span");
       dom.className = REF_ATOM.domClass;
       dom.dataset.type = REF_ATOM.domType;
@@ -65,15 +98,30 @@ export const LabelRef = Node.create({
       dom.addEventListener("click", (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
-        window.dispatchEvent(
-          new CustomEvent("virgil-label-ref-click", {
-            detail: {
-              label: node.attrs.label,
-              refCommand: node.attrs.refCommand || "ref",
-              targetKind: node.attrs.targetKind || null,
-            },
-          })
-        );
+        // The click carries the chip's IDENTITY — its position in the editor
+        // that OWNS it — exactly as its siblings do (`virgil-math-click`,
+        // `virgil-citation-click`'s `clickedPos`, the shared
+        // `AtomCreateRequest`). A `\ref` label is NOT unique: a paper cites
+        // the same section several times, and a bridge that re-found the chip
+        // by its label string opened the popover beside the FIRST match and
+        // re-pointed the FIRST match (task 550). `pos` names the clicked one;
+        // `editor` is the pos-space it was minted in (main OR a card body).
+        const pos = typeof getPos === "function" ? getPos() : undefined;
+        if (pos == null) return;
+        // Re-minted as a `DOMRect` so the detail always carries the ONE shape
+        // the bridge validates (`instanceof DOMRect`, as its math/figure
+        // siblings do) — a headless DOM's `getBoundingClientRect` answers a
+        // plain object, which would otherwise drop the click at the bridge.
+        const r = dom.getBoundingClientRect();
+        const detail: RefClickDetail = {
+          label: node.attrs.label,
+          refCommand: node.attrs.refCommand || "ref",
+          targetKind: node.attrs.targetKind || null,
+          pos,
+          editor,
+          rect: new DOMRect(r.x, r.y, r.width, r.height),
+        };
+        window.dispatchEvent(new CustomEvent(REF_CLICK_EVENT, { detail }));
       });
 
       return {

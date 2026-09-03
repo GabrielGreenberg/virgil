@@ -9,6 +9,7 @@ import {
   NODE_UUID_REGEX,
 } from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
+import { buildRefTargetIndexJSON, resolveRefDisplay } from "@/lib/ref-display";
 import {
   UUID_BEARING_NODE_TYPES,
   TITLED_NODE_TYPES,
@@ -1106,20 +1107,15 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // Number footnotes sequentially
   numberFootnotes(doc);
 
-  // Assign hierarchical section numbers
-  numberHeadings(doc);
-
-  // Number expex examples (and assign sub-labels to items) so that
-  // `resolveRefs` can look up their numbers.
+  // Number expex examples (and assign sub-labels to items) so that the
+  // ref-target index can look up their numbers.
   numberExamples(doc);
 
-  // Number figureBlocks in document order so the `Figure N:` prefix is
-  // ready on first paint. The live `sectionNumbers` plugin in Editor.tsx
-  // keeps this attr in sync after edits.
-  numberFigures(doc);
-
-  // Resolve \ref / \getref / \getfullref display text
-  resolveRefs(doc);
+  // Section numbers, figure numbers and every `\ref`'s display text come
+  // from ONE table (`@/lib/ref-display`, task 550) — the same one the live
+  // numberer and the ref popover read, so what the parser writes at load is
+  // byte-for-byte what the first structural edit would have written.
+  numberAndResolveRefs(doc);
 
   // Merge sidecar titles into paragraph nodes by UUID
   if (sidecar) {
@@ -1298,42 +1294,6 @@ export function applyLinkedAnchorBoundaries(doc: JSONContent): void {
   }
 }
 
-/** Assign hierarchical section numbers (e.g. "1", "2.3", "2.3.1") to heading nodes. */
-function numberHeadings(node: JSONContent): void {
-  // First pass: find the highest heading level used.
-  // Levels 0..6 (part..subparagraph); 7 is the sentinel "above all".
-  let topLevel = 7;
-  function findTop(n: JSONContent) {
-    if (n.type === "heading" && n.attrs?.numbered !== false) {
-      const lvl = (n.attrs?.level as number) ?? 2;
-      if (lvl < topLevel) topLevel = lvl;
-    }
-    n.content?.forEach(findTop);
-  }
-  findTop(node);
-  if (topLevel > 6) return; // no numbered headings
-
-  const counters = [0, 0, 0, 0, 0, 0, 0]; // indices 0..6 → levels 0..6
-
-  function walk(n: JSONContent) {
-    if (n.type === "heading") {
-      if (n.attrs?.numbered !== false) {
-        const rawLvl = (n.attrs?.level as number) ?? 2;
-        const idx = Math.max(0, Math.min(rawLvl, 6));
-        counters[idx]++;
-        for (let i = idx + 1; i < 7; i++) counters[i] = 0;
-        const parts: number[] = [];
-        for (let i = topLevel; i <= idx; i++) parts.push(counters[i]);
-        n.attrs = { ...n.attrs, sectionNumber: parts.join(".") };
-      } else {
-        n.attrs = { ...n.attrs, sectionNumber: null };
-      }
-    }
-    n.content?.forEach(walk);
-  }
-  walk(node);
-}
-
 /** Assign sequential numbers to exampleBlocks (global) and depth-aware
  *  sub-labels (a/i/A/I, cycling) to exampleItems within each item list.
  *  Also recomputes colCount on every exampleGloss. Mirrors the live
@@ -1433,164 +1393,34 @@ function numberExamples(node: JSONContent): void {
   walk(node);
 }
 
-/** Resolve `\ref` / `\getref` / `\getfullref` display text.
+/**
+ * Write the document's derived numbers onto the parsed tree: hierarchical
+ * `sectionNumber`s on headings, sequential `figureNumber`s on the floats that
+ * take one, and each `labelRef`'s `displayText` (+ the advisory `targetKind`).
  *
- *  Builds a unified map from labels to display strings:
- *  - Heading labels → bare section number (e.g. `"2.1"`).
- *  - Example tag OR inner `\label{…}` → example number (e.g. `"3"`).
- *  - Dotted `"parent.sub"` → `"3b"` using the sub-item's computed label.
- *
- *  The `refCommand` attr selects the template:
- *  - `ref` → bare text (`"3"`).
- *  - `getref` / `getfullref` → parenthesized (`"(3)"`, `"(3b)"`).
+ * All three are READ off one `RefTargetIndex` (`@/lib/ref-display`) rather
+ * than derived here — the parser used to carry its own `numberHeadings` /
+ * `numberFigures` / `resolveRefs`, a third copy of the numberer's and the
+ * popover's walks, and the copies had drifted (task 550). The JSON accessors'
+ * caption predicate is `hasCaption` alone, for the reason stated at the
+ * accessor: on freshly parsed JSON the caption child and the flag come from
+ * one scan, so the live twin's content arm could never change the answer.
  */
-/** Assign sequential 1-based numbers to numbered figureBlocks in document
- *  order. Mirrors the live `sectionNumbers` plugin in `Editor.tsx` so the
- *  prefix is ready on first paint without waiting for a no-op edit.
- *
- *  A figure only takes a number if it will carry a `\caption` — that is LaTeX's
- *  own rule, and since task 319 stopped inventing an empty caption for a
- *  caption-less env, honouring it here is what keeps the on-screen `Figure N:`
- *  (and the `\ref` display text resolved from it, just below) equal to the
- *  number the compiled PDF will print. Counting a figure LaTeX skips would put
- *  every LATER figure's number — and every `\ref` to it — off by one.
- *
- *  `hasCaption` alone is the whole test HERE, unlike the live twin, which also
- *  asks whether the caption node has content. This runs only over freshly
- *  parsed JSON, where the caption child is built from `figAttrs.caption` and
- *  both come from ONE scan — so `hasCaption === false` implies an empty caption
- *  child, and the content arm could never change the answer. Writing it anyway
- *  would be a branch no input can reach, which reads as agreement between the
- *  two sites while proving nothing. */
-function numberFigures(node: JSONContent): void {
-  let counter = 0;
-  function walk(n: JSONContent) {
-    if (n.type === "figureBlock") {
-      if (n.attrs?.numbered !== false && n.attrs?.hasCaption !== false) {
-        counter++;
-        n.attrs = { ...(n.attrs || {}), figureNumber: counter };
-      } else {
-        n.attrs = { ...(n.attrs || {}), figureNumber: null };
-      }
-      // figureBlock's only child is a figureCaption — no nested figures.
-      return;
-    }
-    n.content?.forEach(walk);
+function numberAndResolveRefs(node: JSONContent): void {
+  const index = buildRefTargetIndexJSON(node);
+  for (const h of index.headings) {
+    h.node.attrs = { ...(h.node.attrs || {}), sectionNumber: h.number };
   }
-  walk(node);
-}
-
-function resolveRefs(node: JSONContent): void {
-  const headingMap = new Map<string, string>();
-  const exampleMap = new Map<
-    string,
-    { number: string; items: Map<string, string> }
-  >();
-  const figureMap = new Map<string, string>();
-
-  function collect(n: JSONContent) {
-    if (n.type === "heading" && n.attrs?.label && n.attrs?.sectionNumber) {
-      headingMap.set(n.attrs.label as string, n.attrs.sectionNumber as string);
-    }
-    if (
-      n.type === "figureBlock" &&
-      n.attrs?.label &&
-      n.attrs?.figureNumber != null
-    ) {
-      figureMap.set(n.attrs.label as string, String(n.attrs.figureNumber));
-    }
-    if (n.type === "exampleBlock" && n.attrs?.number) {
-      const num = String(n.attrs.number);
-      const entry = { number: num, items: new Map<string, string>() };
-      if (n.attrs.tag) exampleMap.set(n.attrs.tag as string, entry);
-      if (n.attrs.label) exampleMap.set(n.attrs.label as string, entry);
-      function walkItems(m: JSONContent) {
-        if (m.type === "exampleItem") {
-          const sub = (m.attrs?.subLabel as string) || "";
-          if (sub) {
-            if (m.attrs?.tag) entry.items.set(m.attrs.tag as string, sub);
-            if (m.attrs?.label) entry.items.set(m.attrs.label as string, sub);
-            // Flat sub-item resolution: `\ref{foo}` where foo is a
-            // sub-item label resolves to e.g. "3a" (matching expex).
-            const fullSub = `${num}${sub}`;
-            const subItemEntry = { number: fullSub, items: new Map<string, string>() };
-            if (m.attrs?.tag) {
-              const k = m.attrs.tag as string;
-              if (!exampleMap.has(k)) exampleMap.set(k, subItemEntry);
-            }
-            if (m.attrs?.label) {
-              const k = m.attrs.label as string;
-              if (!exampleMap.has(k)) exampleMap.set(k, subItemEntry);
-            }
-          }
-        }
-        // Continue recursing — items can contain nested exampleItemLists
-        // whose items also need to participate in dotted refs.
-        m.content?.forEach(walkItems);
-      }
-      n.content?.forEach(walkItems);
-      // Body-line `\label{…}` (anywhere in the `\ex`/`\pex` body, not just
-      // header-adjacent) is captured via the shared SSOT and bound to the
-      // parent (→ N) or the enclosing item (→ N+sub). Explicit tag/label/
-      // sub-item attr keys already set above win (`!has` guards).
-      for (const bl of collectExampleBodyLabelsJSON(n)) {
-        if (bl.subLabel == null) {
-          if (!exampleMap.has(bl.key)) exampleMap.set(bl.key, entry);
-        } else {
-          if (!exampleMap.has(bl.key)) {
-            exampleMap.set(bl.key, {
-              number: `${num}${bl.subLabel}`,
-              items: new Map<string, string>(),
-            });
-          }
-          if (!entry.items.has(bl.key)) entry.items.set(bl.key, bl.subLabel);
-        }
-      }
-    }
-    n.content?.forEach(collect);
+  for (const f of index.figures) {
+    f.node.attrs = { ...(f.node.attrs || {}), figureNumber: f.number };
   }
-  collect(node);
-
-  function resolve(label: string, refCommand: string): string {
-    if (!label) return "??";
-    const heading = headingMap.get(label);
-    if (heading) return refCommand === "ref" ? heading : `(${heading})`;
-    const ex = exampleMap.get(label);
-    if (ex) return refCommand === "ref" ? ex.number : `(${ex.number})`;
-    const fig = figureMap.get(label);
-    if (fig) return refCommand === "ref" ? fig : `(${fig})`;
-    const dot = label.lastIndexOf(".");
-    if (dot > 0) {
-      const parent = exampleMap.get(label.slice(0, dot));
-      if (parent) {
-        const subKey = label.slice(dot + 1);
-        const sub = parent.items.get(subKey) || subKey;
-        const full = `${parent.number}${sub}`;
-        return refCommand === "ref" ? full : `(${full})`;
-      }
-    }
-    return "??";
+  for (const { node: ref } of index.refs) {
+    const label = (ref.attrs?.label as string) || "";
+    if (!label) continue;
+    const refCommand = (ref.attrs?.refCommand as string) || "ref";
+    const { display, targetKind } = resolveRefDisplay(index, label, refCommand);
+    ref.attrs = { ...ref.attrs, displayText: display, targetKind };
   }
-
-  function fill(n: JSONContent) {
-    if (n.type === "labelRef" && n.attrs?.label) {
-      const refCommand = (n.attrs.refCommand as string) || "ref";
-      const display = resolve(n.attrs.label as string, refCommand);
-      // Set targetKind as advisory for the popover.
-      const targetKind = headingMap.has(n.attrs.label as string)
-        ? "heading"
-        : figureMap.has(n.attrs.label as string)
-          ? "figure"
-          : exampleMap.has(n.attrs.label as string)
-            ? "example"
-            : n.attrs.label && (n.attrs.label as string).includes(".")
-              ? "example"
-              : null;
-      n.attrs = { ...n.attrs, displayText: display, targetKind };
-    }
-    n.content?.forEach(fill);
-  }
-  fill(node);
 }
 
 const seenTitleFields = new Set<string>();
