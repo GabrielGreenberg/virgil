@@ -236,6 +236,29 @@ describe("sync-conflict cleanup affordance (task 411)", () => {
     expect(row!.textContent).toContain("Delete 2 files");
   });
 
+  it("offers a manual re-check that catches up with a folder cleaned outside the app (task 542)", async () => {
+    // The zero-latency door beside the tab-return edge: the user is already
+    // back, has just deleted the forks in Finder, and wants the pill to catch
+    // up now. The scan publishes; the pill goes away by itself.
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    expect(container.querySelector("[data-sync-conflict-notice]")).not.toBeNull();
+    const menu = await openMenu(container);
+    const row = rowLabelled(menu, "Check the folder again");
+    expect(row, "the re-check row must be offered").not.toBeNull();
+    mockList.mockResolvedValue(["notes.json", "editor-state.json"]);
+    await act(async () => {
+      row!.click();
+      await Promise.resolve();
+    });
+    expect(getSyncConflictNotice("doc-1")).toBeNull();
+    expect(container.querySelector("[data-sync-conflict-notice]")).toBeNull();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it("offers NOTHING when every fork is content — the row is absent, not disabled", async () => {
     // A false affordance is the shape this cluster legislates against: a row
     // that opens a confirm the door would then refuse in full.
@@ -399,7 +422,9 @@ describe("sync-conflict wiring", () => {
     // session-restore effect) all set `currentDocId` directly and never reach
     // `activateDoc`, so a scan wired there fired for a first-ever picker open
     // and never again.
-    expect(useFiles).toContain("void scanSyncConflicts(currentDocId);");
+    // Since task 542 the hook enters the WATCHER (open + tab-return) and
+    // returns its unsubscribe; the bare scan there is the pre-542 shape.
+    expect(useFiles).toContain("return watchSyncConflicts(currentDocId);");
     expect(useFiles).not.toContain("scanSyncConflicts(meta.id)");
     const cluster = fs.readFileSync(
       path.join(REPO, "src/components/editor-layout/StatusCluster.tsx"),

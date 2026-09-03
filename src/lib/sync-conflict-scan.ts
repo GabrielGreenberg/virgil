@@ -4,6 +4,16 @@
  * promise — the same shape and the same placement as the skill-bundle sync
  * beside it in `activateDoc`.
  *
+ * Since task 542 the scan has THREE triggers, and they are all EDGES, never a
+ * poll: the doc-open (via {@link watchSyncConflicts}), the user RETURNING to
+ * the tab (the same watcher, on the shared `onTabReturn` edge), and the app's
+ * own cleanup ({@link runSyncConflictCleanup}). The badge also offers a manual
+ * "Check again" row. A poll was declined on purpose: the write-traffic doctrine
+ * (tasks 363/415) wants fewer folder touches, a listing is read-only but a
+ * timer would touch the folder every few seconds for a fact that changes only
+ * when the user is elsewhere — and "elsewhere" is exactly what the return edge
+ * observes.
+ *
  * Split out of the hook so the operation is testable without React and so the
  * three pieces stay separable: the LISTING is a storage backend's, the GRAMMAR
  * is [sync-conflict.ts](sync-conflict.ts)'s, and the CHANNEL is
@@ -20,6 +30,7 @@ import { scanSidecarSiblings } from "@/lib/sync-conflict";
 import { recordSyncConflictReport } from "@/lib/sync-conflict-notice";
 import type { SidecarCleanupReceipt } from "@/lib/sync-conflict-cleanup";
 import { getActiveHandle } from "@/lib/multi-window/doc-pipeline";
+import { onTabReturn } from "@/lib/tab-hidden";
 
 export async function scanSyncConflicts(docId: string): Promise<void> {
   try {
@@ -28,6 +39,31 @@ export async function scanSyncConflicts(docId: string): Promise<void> {
   } catch {
     /* diagnostic only — never surface a scan failure as a document error */
   }
+}
+
+/**
+ * Keep the report HONEST for as long as a doc is open (task 542): scan now, and
+ * re-scan on every return to the tab until the returned unsubscribe runs.
+ *
+ * This is the door the hook enters, and it exists because the notice is
+ * derived from disk state the app does not own. Task 363's one trigger was the
+ * doc-open, and its own comment called a warm tab switch "a feature" — true,
+ * and no help with ONE paper open: delete the forks in Finder (which is what
+ * the pill's own copy tells the user to do for a content fork) and nothing
+ * ever re-enumerated the folder, so the pill went on reporting ghosts until a
+ * reload. The DiskWatcher solved this class for the `.tex` with "immediate on
+ * tab-focus"; the folder listing takes the same edge, through the SHARED
+ * channel rather than a private listener.
+ *
+ * One directory enumeration per return, no file reads, nothing on the
+ * keystroke path. Dismissal semantics are untouched: the notice is
+ * signature-keyed, so a re-scan of an UNCHANGED folder cannot re-raise a
+ * dismissed report, while a folder that changed (a fork removed, another
+ * minted) is judged on its new signature.
+ */
+export function watchSyncConflicts(docId: string): () => void {
+  void scanSyncConflicts(docId);
+  return onTabReturn(() => void scanSyncConflicts(docId));
 }
 
 /**

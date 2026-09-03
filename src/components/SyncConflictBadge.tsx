@@ -69,7 +69,10 @@ import {
   isEmptyCleanupReceipt,
   planSidecarCleanup,
 } from "@/lib/sync-conflict-cleanup";
-import { runSyncConflictCleanup } from "@/lib/sync-conflict-scan";
+import {
+  runSyncConflictCleanup,
+  scanSyncConflicts,
+} from "@/lib/sync-conflict-scan";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
@@ -168,6 +171,16 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
   const handleDismiss = useCallback(() => {
     closeMenu();
     if (docId) dismissSyncConflictNotice(docId);
+  }, [closeMenu, docId]);
+
+  // The zero-latency manual door (task 542). The watcher already re-scans on
+  // every return to the tab, so this row is for the case where the user is
+  // ALREADY back and wants the pill to catch up now — and it is honest in the
+  // other direction too, when a sync service has just landed a fork. The scan
+  // publishes to the store; the pill updates, or disappears, by itself.
+  const handleRecheck = useCallback(() => {
+    closeMenu();
+    if (docId) void scanSyncConflicts(docId);
   }, [closeMenu, docId]);
 
   // What Virgil may delete from THIS report, derived — never a set this
@@ -325,6 +338,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
             disabled={cleaning}
           />
         )}
+        <MenuRow id="recheck" label="Check the folder again" run={handleRecheck} />
         <MenuRow id="dismiss" label="Dismiss for this session" run={handleDismiss} />
         <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
           {writer} could not merge two versions of these files, so it kept both
@@ -335,7 +349,8 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
               The files marked below hold your writing, so a copy may contain
               notes or cards you cannot see in the app. Virgil does not merge or
               delete them — open the paper&apos;s <code>virgil/</code> folder in
-              Finder to compare and clean up.
+              Finder to compare and clean up. Virgil checks the folder again
+              each time you come back to this tab.
             </>
           )}
         </div>
