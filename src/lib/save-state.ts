@@ -160,8 +160,9 @@ export function describeBlockReason(
       return {
         short: "Not saving — the file changed on disk",
         sentence:
-          "Another app or a sync service changed this paper's file, so Virgil " +
-          "paused saving rather than overwrite it. Choose which version to keep.",
+          "This paper's file changed on disk — from another app, a sync " +
+          "service, or Virgil's own AI — so Virgil paused saving rather than " +
+          "overwrite it. Choose which version to keep.",
         flow: "external-change",
         action: "Resolve…",
       };

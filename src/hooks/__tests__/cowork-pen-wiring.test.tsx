@@ -75,7 +75,7 @@ import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { __resetForTests as resetPipelines } from "@/lib/multi-window/doc-pipeline";
 import { __resetForTests as resetFlushers } from "@/lib/multi-window/pending-saves";
 import { clearUnsavedWork, getUnsavedWork } from "@/lib/unsaved-work";
-import { clearCoworkPen, coworkPenHeld } from "@/lib/cowork-pen";
+import { clearCoworkPen, coworkPenHeld, getCoworkPenLastRelease } from "@/lib/cowork-pen";
 import { __resetTickersForTests } from "@/lib/emergency-mirror";
 import { requestSaveNow } from "@/lib/save-request";
 
@@ -154,6 +154,21 @@ describe("useCollab · the cowork pen makes the main text read-only", () => {
     penContextRaw = heldPen();
     renderHook(() => useCollab("doc-1"));
     await waitFor(() => expect(coworkPenHeld("doc-1")).toBe(true));
+  });
+
+  it("publishes the RELEASE TRACE off a released record (task 545)", async () => {
+    // `_common.release_pen` rewrites the record as `{holder: null, released_at}`
+    // (task 496). That time is what lets a later "changed on disk" be
+    // attributed to Virgil's own AI rather than to "another app".
+    penContextRaw = heldPen();
+    const first = renderHook(() => useCollab("doc-1"));
+    await waitFor(() => expect(first.result.current.canEditMainText).toBe(false));
+    const releasedAt = Date.now();
+    penContextRaw = JSON.stringify({ holder: null, released_at: new Date(releasedAt).toISOString() });
+    cleanup();
+    const second = renderHook(() => useCollab("doc-1"));
+    await waitFor(() => expect(second.result.current.canEditMainText).toBe(true));
+    expect(getCoworkPenLastRelease("doc-1")).toBe(releasedAt);
   });
 
   it("RELEASES when the skill's record is gone", async () => {

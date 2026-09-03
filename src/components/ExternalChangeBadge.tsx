@@ -78,6 +78,12 @@ import { StatusDot } from "./StatusDot";
 import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
 import { describeAge } from "@/lib/save-state";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
+import { useDocumentInterruption } from "@/hooks/useDocumentInterruption";
+import {
+  conflictOutcomeNotice,
+  interruptionPillLabel,
+  type DocumentInterruption,
+} from "@/lib/document-interruption";
 
 // Drop below the trigger, flip above near the viewport bottom — the ONE
 // button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
@@ -147,9 +153,24 @@ interface BadgeCopy {
   detail: string;
 }
 
-function deriveCopy(state: ExternalChangeState, unsavedAge: string | null): BadgeCopy {
+function deriveCopy(
+  state: ExternalChangeState,
+  unsavedAge: string | null,
+  view: DocumentInterruption | null,
+): BadgeCopy {
   const files = state.changes.map((c) => c.relPath).join(", ");
   const detailFiles = files ? ` (${files})` : "";
+  // TASK 545 — ONE VOICE. When the interruption view is about THIS external
+  // change it supplies the label and the sentence, so the pill names the
+  // writer exactly as the in-document band does ("Virgil's AI edited this
+  // paper" rather than "another app"). The legacy composition below survives
+  // only for the no-provider / no-doc render this badge also serves.
+  if (view && (view.kind === "conflict" || view.kind === "disk-change")) {
+    return {
+      label: interruptionPillLabel(view, unsavedAge),
+      detail: view.body + (detailFiles ? ` Files: ${files}.` : ""),
+    };
+  }
   if (state.severity === "conflict") {
     // TASK 391 — THE PAUSE GETS A CLOCK. A conflict pauses autosave, and on
     // 2026-08-19 that pause outlived the 1500 ms debounce by seventy minutes
@@ -229,6 +250,10 @@ function ExternalChangeBadge() {
   // TASK 391 — the age of the unsaved work this pause is holding. Null when
   // nothing is unsaved, which is the ordinary 'change'-tier case.
   const unsavedAge = useUnsavedAgeLabel(diskCtx?.activeDocId, describeAge);
+  // TASK 545 — the writer-attributed view of the same change (null with no
+  // doc, or when a higher-priority state — the cowork hold, a refusal —
+  // outranks it; the pill then keeps its generic copy, and the band speaks).
+  const view = useDocumentInterruption(diskCtx?.activeDocId);
   const reloadFromDisk = diskCtx?.reloadFromDisk;
   const resolveConflict = diskCtx?.resolveConflict;
   const { confirm, dialog } = useConfirmDialog();
@@ -297,27 +322,16 @@ function ExternalChangeBadge() {
       closeMenu();
       const outcome = await resolveConflict?.(choice);
       if (!outcome) return;
-      if (!outcome.applied) {
+      // TASK 545 — the outcome copy is the vocabulary's, shared with the
+      // in-document band, so the two report one result in one voice.
+      const notice = conflictOutcomeNotice(outcome);
+      if (notice) {
         await confirm({
-          title: "Couldn't resolve the conflict",
-          message:
-            "Your edits are still in the editor and the file on disk is unchanged. Try again, or reopen the paper.",
+          title: notice.title,
+          message: notice.message,
           confirmLabel: "OK",
           hideCancel: true,
-        });
-        return;
-      }
-      if (!outcome.archive) {
-        await confirm({
-          title:
-            choice === "keep-mine"
-              ? "Saved your version — no history copy"
-              : "Loaded the disk version — no history copy",
-          message:
-            "Virgil could not write a copy of the other version into virgil/.history/, so that version is gone. Everything else went through as asked.",
-          confirmLabel: "OK",
-          hideCancel: true,
-          tone: "danger",
+          tone: notice.tone === "danger" ? "danger" : undefined,
         });
       }
     },
@@ -362,7 +376,11 @@ function ExternalChangeBadge() {
     );
   }
 
-  const copy = deriveCopy(state, unsavedAge);
+  const copy = deriveCopy(state, unsavedAge, view);
+  const writer =
+    view && (view.kind === "conflict" || view.kind === "disk-change")
+      ? view.writer
+      : "unknown";
 
   // Tone tokens. 'change' → amber family; 'conflict' → danger family. Text uses
   // a legible ink on the soft tinted background (the amber/danger -500 values
@@ -451,6 +469,7 @@ function ExternalChangeBadge() {
       ref={setWrapEl}
       className="relative inline-flex items-center gap-1"
       data-external-change-badge={state.severity}
+      data-external-writer={writer}
     >
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[260px]"

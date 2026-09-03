@@ -169,6 +169,25 @@ export function coworkPenFromContext(
 }
 
 /**
+ * **The release TRACE** (task 545). `_common.release_pen` REWRITES the record
+ * as `{ holder: null, released_at }` (task 496), so a released record is not
+ * merely "no hold" — it says WHEN the last hold ended. That is the one fact
+ * that lets the app attribute an external change to its own AI: a skill
+ * commits under the pen, releases, and the DiskWatcher then notices bytes it
+ * never wrote. Without the trace every such change reads as "another app".
+ *
+ * Returns the ms epoch of the release, or `null` for a record that is absent,
+ * held, or carries no readable `released_at`. Never consulted by the hold
+ * ladder above — a release is not a hold — so it cannot wedge anything.
+ */
+export function coworkPenReleaseFromContext(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rec = raw as Record<string, unknown>;
+  if (rec.holder !== null && rec.holder !== undefined) return null;
+  return parseIso(rec.released_at);
+}
+
+/**
  * Rung 2 — `virgil/collab.json`'s `pen`, which the skill flips only on a paper
  * that already has that file.
  *
@@ -217,6 +236,13 @@ export function resolveCoworkPen(
 /* ── The store ────────────────────────────────────────────────────────── */
 
 const byDoc = new Map<string, CoworkPenState>();
+/**
+ * Per-doc: ms epoch of the most recent hold this app KNOWS ended — from the
+ * released record's `released_at`, or, for a hold whose record simply
+ * vanished (a pre-496 skill, a deleted `.virgil/`), the poll that first saw it
+ * gone. Read by the writer attribution; written by the same poller.
+ */
+const lastReleaseByDoc = new Map<string, number>();
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -268,10 +294,19 @@ export function coworkPenHeld(
 export function noteCoworkPen(
   docId: string,
   state: CoworkPenState | null,
+  now: number = Date.now(),
 ): void {
   const prev = byDoc.get(docId) ?? null;
   if (state === null) {
     if (!byDoc.delete(docId)) return;
+    // A hold this app SAW is now gone. If no released record has told us
+    // when, the honest estimate is "by now" — a record that vanished (rather
+    // than being rewritten) still ended a hold, and the attribution below
+    // must not read that hold as never having existed.
+    const known = lastReleaseByDoc.get(docId);
+    if (known === undefined || (prev?.since != null && known < prev.since)) {
+      lastReleaseByDoc.set(docId, now);
+    }
     emit();
     return;
   }
@@ -292,10 +327,87 @@ export function noteCoworkPen(
  *  any more and a retained answer could only go stale. */
 export function clearCoworkPen(docId?: string): void {
   if (docId === undefined) {
+    lastReleaseByDoc.clear();
     if (byDoc.size === 0) return;
     byDoc.clear();
-  } else if (!byDoc.delete(docId)) {
-    return;
+  } else {
+    lastReleaseByDoc.delete(docId);
+    if (!byDoc.delete(docId)) return;
   }
   emit();
+}
+
+/* ── The release trace, and the writer question ──────────────────────── */
+
+/**
+ * Publish the release time a released record carries. Monotonic per doc — an
+ * older `released_at` (a stale record the poll re-reads every 5 s) never moves
+ * the trace backwards, and an unchanged one notifies nobody.
+ */
+export function noteCoworkPenRelease(docId: string, releasedAt: number): void {
+  const prev = lastReleaseByDoc.get(docId);
+  if (prev !== undefined && prev >= releasedAt) return;
+  lastReleaseByDoc.set(docId, releasedAt);
+  emit();
+}
+
+/** ms epoch of the last cowork hold this app knows ended, or `null`. */
+export function getCoworkPenLastRelease(
+  docId: string | null | undefined,
+): number | null {
+  if (!docId) return null;
+  return lastReleaseByDoc.get(docId) ?? null;
+}
+
+/**
+ * How long BEFORE an external change was noticed a cowork release may sit and
+ * still be read as that change's author. The DiskWatcher polls every ~3 s but
+ * pauses while the tab is hidden (it polls at once on focus), so a commit made
+ * while the user was in another window is noticed late; two minutes covers
+ * the ordinary "switch back to Virgil" gap without reaching into the previous
+ * session. A sync daemon writing inside that same window is misattributed to
+ * the AI — a stated limit, and the reason the provenance log records both
+ * times rather than only the verdict.
+ */
+export const COWORK_WRITER_WINDOW_BEFORE_MS = 120_000;
+
+/**
+ * How long AFTER the change was noticed the release may be learned. The pen
+ * is polled on a 5 s clock and the watcher on a 3 s one, so the bytes can be
+ * noticed before the released record is read; a release the app learns of
+ * within this lag still belongs to the same commit.
+ */
+export const COWORK_WRITER_WINDOW_AFTER_MS = 30_000;
+
+/** Who wrote the bytes the DiskWatcher just noticed, as far as the app can
+ *  tell. `unknown` is the honest general answer ("another app or a sync
+ *  service") — Virgil holds a directory handle, not a path, and cannot name
+ *  which app. */
+export type ExternalWriter = "virgil-ai" | "unknown";
+
+/**
+ * **THE WRITER QUESTION.** Pure: given when the change was noticed and what
+ * the pen trace says, was Virgil's own AI the writer?
+ *
+ * Yes when the pen is HELD (the commit is in flight — the change IS the
+ * commit), or when the last release falls inside the window around the
+ * detection. Everything else — no trace, a release from an earlier session,
+ * a release long after — is `unknown`, which fails toward the pre-545 copy
+ * rather than toward naming the AI for a write it did not make.
+ */
+export function attributeExternalWriter(input: {
+  detectedAt: number | null;
+  pen: CoworkPenState | null;
+  lastReleasedAt: number | null;
+  now?: number;
+}): ExternalWriter {
+  const { detectedAt, pen, lastReleasedAt } = input;
+  const now = input.now ?? Date.now();
+  if (detectedAt === null) return "unknown";
+  if (pen !== null && now < pen.expiresAt) return "virgil-ai";
+  if (lastReleasedAt === null) return "unknown";
+  const delta = detectedAt - lastReleasedAt; // > 0: released BEFORE detection
+  if (delta >= 0 && delta <= COWORK_WRITER_WINDOW_BEFORE_MS) return "virgil-ai";
+  if (delta < 0 && -delta <= COWORK_WRITER_WINDOW_AFTER_MS) return "virgil-ai";
+  return "unknown";
 }
