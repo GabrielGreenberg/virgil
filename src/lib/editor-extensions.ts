@@ -13,6 +13,7 @@
 // the module itself is import-safe outside the browser.
 
 import { Heading } from "@tiptap/extension-heading";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
@@ -286,7 +287,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "par-title-input";
+          input.className = chromeOnly("par-title-input");
           input.value = (currentNode.attrs.parTitle as string) || "";
           input.placeholder = "Paragraph title…";
           input.style.position = "fixed";
@@ -366,7 +367,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
             span.textContent = title;
             titleAnnot.appendChild(span);
             const xBtn = document.createElement("button");
-            xBtn.className = "par-title-delete";
+            xBtn.className = chromeOnly("par-title-delete");
             xBtn.textContent = "×";
             xBtn.title = "Remove title";
             xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -381,7 +382,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 
               // "+T" label shown in the gap above paragraph, revealed on hover
               const addLabel = document.createElement("span");
-              addLabel.className = "par-title-add";
+              addLabel.className = chromeOnly("par-title-add");
               addLabel.textContent = "+T";
               addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
               addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
@@ -619,12 +620,15 @@ function createListTitleNodeView(
       const wrapperRect = wrapper.getBoundingClientRect();
 
       const overlay = document.createElement("div");
+      // A body-appended click-away overlay live only while a list title is
+      // being edited — chrome by construction (task 535).
+      overlay.className = chromeOnly("par-title-edit-overlay");
       overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;`;
       document.body.appendChild(overlay);
 
       const input = document.createElement("input");
       input.type = "text";
-      input.className = "par-title-input";
+      input.className = chromeOnly("par-title-input");
       input.value = currentNode.attrs.parTitle || "";
       input.placeholder = "Title…";
       input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${annotRect.top}px;`;
@@ -675,7 +679,7 @@ function createListTitleNodeView(
         span.textContent = title;
         titleAnnot.appendChild(span);
         const xBtn = document.createElement("button");
-        xBtn.className = "par-title-delete";
+        xBtn.className = chromeOnly("par-title-delete");
         xBtn.textContent = "×";
         xBtn.title = "Remove title";
         xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -687,7 +691,7 @@ function createListTitleNodeView(
         titleAnnot.style.display = "block";
 
         const addLabel = document.createElement("span");
-        addLabel.className = "par-title-add";
+        addLabel.className = chromeOnly("par-title-add");
         addLabel.textContent = "+T";
         addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
         addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
@@ -973,7 +977,10 @@ export function createHeadingWithLabel(
         if (!isFloat) {
           foldBtn = document.createElement("button");
           foldBtn.type = "button";
-          foldBtn.className = "heading-fold-chevron";
+          // Chrome-only on paper (task 535): a FOLDED chevron paints red, and
+          // a folded section prints its content (task 408) — so without the
+          // stamp the red arrow printed into the margin beside the heading.
+          foldBtn.className = chromeOnly("heading-fold-chevron");
           foldBtn.contentEditable = "false";
           foldBtn.setAttribute("aria-label", "Toggle section fold");
           const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
@@ -1058,7 +1065,9 @@ export function createHeadingWithLabel(
         wrapper.appendChild(h);
 
         const annot = document.createElement("div");
-        annot.className = "heading-annotation";
+        // Editor chrome, never paper (task 535): stamped chrome-only, so the
+        // ONE print rule hides it and the print block no longer names it.
+        annot.className = chromeOnly("heading-annotation");
         annot.contentEditable = "false";
         wrapper.appendChild(annot);
 
@@ -1077,7 +1086,7 @@ export function createHeadingWithLabel(
 
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "heading-label-input";
+          input.className = chromeOnly("heading-label-input");
           input.value = (currentNode.attrs.label as string) || "";
           input.placeholder = "label key";
 

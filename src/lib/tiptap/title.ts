@@ -1,6 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /**
@@ -129,7 +130,8 @@ export const TitleField = Node.create({
       wrapper.appendChild(content);
 
       const annot = document.createElement("div");
-      annot.className = "title-field-annotation";
+      // A field-type hint ("Title", "Author") is editor chrome (task 535).
+      annot.className = chromeOnly("title-field-annotation");
       annot.contentEditable = "false";
       annot.textContent = FIELD_LABELS[node.attrs.field as string] || node.attrs.field;
       wrapper.appendChild(annot);

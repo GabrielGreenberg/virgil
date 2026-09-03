@@ -23,10 +23,14 @@
  */
 
 import type { ForestRefusal } from "@/lib/forest/grammar";
+import { chromeOnly } from "@/lib/view-only-chrome";
 
 export function ForestRefusalBadge({ refusal }: { refusal: ForestRefusal }) {
   return (
-    <div className="forest-refusal-badge" role="status" contentEditable={false}>
+    // A statement about Virgil's renderer, never about the paper — so it is
+    // chrome-only and the ONE print rule drops it (task 535; it used to be
+    // hidden by name in the print block).
+    <div className={chromeOnly("forest-refusal-badge")} role="status" contentEditable={false}>
       <svg
         width="13"
         height="13"

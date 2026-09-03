@@ -162,7 +162,19 @@ describe("the mechanism is path-independent", () => {
 
 describe("a collapsed source pod prints its SOURCE", () => {
   it("the screen preview is dropped in print media", () => {
-    expect(PRINT_BLOCK).toMatch(/\.source-pod-preview\s*\{[^}]*display:\s*none\s*!important/);
+    // RENEGOTIATED (task 535): pre-535 this leg pinned a BY-NAME rule in the
+    // print block (`.source-pod-preview { display: none !important }`) — the
+    // hand-list shape the block's own comment said the marker rule existed to
+    // replace. The posture now lives where the WRITER declares it: the
+    // NodeView stamps the preview `chromeOnly(...)`, and ONE print rule hides
+    // every chrome-only element. So the contract is (a) the stamp is on the
+    // preview and (b) the marker rule exists — `print-chrome-only-posture`
+    // pins that the by-name rule is GONE.
+    const src = commentsStripped(
+      readFileSync(join(ROOT, "src/components/SourcePodNodeView.tsx"), "utf8"),
+    );
+    expect(src).toMatch(/chromeOnly\(\s*"source-pod-preview"\s*\)/);
+    expect(PRINT_BLOCK).toMatch(/\.virgil-chrome-only\s*\{[^}]*display:\s*none\s*!important/);
   });
 
   it("the paper body rides `.print-only`, which the print block already reveals", () => {
@@ -186,9 +198,14 @@ describe("a collapsed source pod prints its SOURCE", () => {
   it("editor-only pod affordances stay off the paper", () => {
     // The fold chevron paints RED while folded; a collapsed pod that now prints
     // its body would otherwise carry a red arrow into the paper's margin.
-    expect(PRINT_BLOCK).toMatch(
-      /\.source-pod-fold-chevron,\s*\.source-pod-row-sensor\s*\{[^}]*display:\s*none\s*!important/,
+    // RENEGOTIATED (task 535): the chevron and the row sensor used to be hidden
+    // BY NAME here; each is now stamped chrome-only by the NodeView and hidden
+    // by the ONE marker rule (asserted in the preview leg above).
+    const src = commentsStripped(
+      readFileSync(join(ROOT, "src/components/SourcePodNodeView.tsx"), "utf8"),
     );
+    expect(src).toMatch(/chromeOnly\(\s*"source-pod-row-sensor"\s*\)/);
+    expect(src).toMatch(/chromeOnly\(\s*`source-pod-fold-chevron/);
   });
 
   it("the NodeView renders the paper body with no print-state condition", () => {

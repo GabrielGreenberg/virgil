@@ -3,7 +3,8 @@
  * not the document's", read by the writers that paint it and by the print
  * block that must not.
  *
- * THE LAW (task 408, widened by task 523):
+ * THE LAW (task 408, widened by task 523, and again by task 535 — the third
+ * hook, `chromeOnly`, at the bottom of this file):
  *
  *   **WHAT PRINTS IS THE DOCUMENT, NOT THE EDITOR'S CURRENT STATE.**
  *
@@ -21,8 +22,9 @@
  * the one member of the class that needs no "Background graphics" setting,
  * because `text-decoration` is painted with the text.
  *
- * TWO HOOKS, because view-only chrome has two shapes and one blanket answer
- * would over-reach on the other:
+ * TWO HOOKS here (a THIRD, for whole chrome ELEMENTS, is declared at the
+ * bottom — task 535), because view-only chrome has more than one shape and
+ * one blanket answer would over-reach on the others:
  *
  *  - **PAINT ON ITS OWN ELEMENT** → `VIEW_ONLY_CLASS`, stamped by the writer
  *    beside its own class (`viewOnly(SPELL_ERROR_CLASS)`). Both decorations
@@ -146,3 +148,46 @@ export const VIEW_ONLY_ZEROED_PROPERTIES = [
   "box-shadow",
   "outline",
 ] as const;
+
+/* ── THE THIRD HOOK: a whole ELEMENT that is not document content (task 535) ──
+ *
+ * Neither hook above fits a NodeView's CHROME — a "Choose image…" button, a
+ * "Loading …" line, the blue label lozenge, a fold chevron. Each is a whole
+ * element that renders nothing of the node: not paint on a wrapper to
+ * de-paint, not an attribute on a document element to neutralise. The right
+ * print answer is `display: none`, and it is a DIFFERENT answer: measured,
+ * the view-only rule zeroes `text-decoration` / `background` / `box-shadow` /
+ * `outline`, every one of which leaves a "Choose image…" button's TEXT on
+ * the page.
+ *
+ * Why a third hook rather than the two-item hand list the print block used
+ * to carry (`.title-field-annotation, .heading-annotation { display: none }`):
+ * the block's own comment said a hand list was the thing the marker rule
+ * existed to replace, and the sibling it was missing was the figure lozenge —
+ * task 523's census asks *every file that constructs a PM decoration*, and a
+ * NodeView constructs none. So the writer declares it, beside its own class
+ * (`chromeOnly("figure-annotation")`), ONE print rule hides every present and
+ * future member, and `print-chrome-only-posture.test.ts` asks the QUESTION
+ * over a population that includes NodeView chrome: every chrome-SHAPED
+ * element a NodeView renders (a control, or static UI copy) is either stamped
+ * — itself or a chrome container above it — or carries a class on a small
+ * reviewed allowlist that states why it is DOCUMENT content.
+ *
+ * NOT a member, stated: a NodeView's ROOT is the node itself and never takes
+ * this. An empty figure's root keeps its `figure` env on paper and has its
+ * drop-zone paint FLATTENED there instead (the `.citation-node` shape). Nor
+ * does a paragraph title (`.par-title-annotation`): it is the user's own
+ * writing and prints — only its `+T` / `×` / input children are chrome. */
+
+/** The marker class every editor-only chrome ELEMENT stamps beside its own. */
+export const CHROME_ONLY_CLASS = "virgil-chrome-only";
+
+/**
+ * Compose an element's own class with the chrome-only marker. A named door
+ * rather than a template literal at each site, for the same reason `viewOnly`
+ * is one: the census asks "does this element declare itself chrome?" of the
+ * SOURCE, because chrome that prints renders identically on screen.
+ */
+export function chromeOnly(cls: string): string {
+  return cls ? `${cls} ${CHROME_ONLY_CLASS}` : CHROME_ONLY_CLASS;
+}

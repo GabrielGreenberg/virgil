@@ -10,6 +10,7 @@ import { useFieldDraft } from "./field-draft";
 import { iconHint } from "@/components/Hint";
 import type { SourcePodDerive } from "./source-pod-derive";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import {
   commitLiveValue,
   useFieldEditSession,
@@ -122,7 +123,7 @@ function PodCorner({
   onToggle: () => void;
 }) {
   return (
-    <div className="source-pod-corner" contentEditable={false}>
+    <div className={chromeOnly("source-pod-corner")} contentEditable={false}>
       {hasPreview && (
         <button
           type="button"
@@ -347,7 +348,7 @@ export default function SourcePodNodeView({
             <input
               ref={inputRef}
               type="text"
-              className="par-title-input"
+              className={chromeOnly("par-title-input")}
               defaultValue={title ?? ""}
               placeholder="Block title…"
               onKeyDown={(e) => {
@@ -388,7 +389,7 @@ export default function SourcePodNodeView({
               {!collapsed && (
                 <button
                   type="button"
-                  className="par-title-delete focus-ring"
+                  className={chromeOnly("par-title-delete focus-ring")}
                   {...iconHint({ label: "Remove title" })}
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -406,7 +407,7 @@ export default function SourcePodNodeView({
             </>
           ) : (
             <span
-              className="par-title-add"
+              className={chromeOnly("par-title-add")}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -430,13 +431,13 @@ export default function SourcePodNodeView({
         {/* Row-wide hover sensor — invisible, extends horizontally
             beyond the pod so the host's :hover (and thus the grab
             handle reveal) fires anywhere in the pod's Y-band. */}
-        <div className="source-pod-row-sensor" aria-hidden contentEditable={false} />
+        <div className={chromeOnly("source-pod-row-sensor")} aria-hidden contentEditable={false} />
 
         {/* Fold chevron — anchored to the pod's top via .source-pod's
             position:relative, so it lines up with the blue outline. */}
         <button
           type="button"
-          className={`source-pod-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`}
+          className={chromeOnly(`source-pod-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`)}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -503,7 +504,11 @@ export default function SourcePodNodeView({
         </pre>
         {/* Compact preview: title (rendered above) + first 2 lines + … */}
         <div
-          className="source-pod-preview"
+          // The collapsed pod's SCREEN body. On paper the pod prints its whole
+          // source instead (the `.print-only` twin above, task 408), so this is
+          // chrome-only there — the affordance ("there is more here"), not the
+          // bytes (task 535 folded the by-name print rule onto the marker).
+          className={chromeOnly("source-pod-preview")}
           contentEditable={false}
           onClick={(e) => {
             e.preventDefault();
@@ -603,7 +608,7 @@ export default function SourcePodNodeView({
             e.preventDefault();
           }}
           {...iconHint({ label: `Delete ${config.kindLabel}` })}
-          className="absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover-on-light focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 focus-ring"
+          className={chromeOnly("absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover-on-light focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 focus-ring")}
           contentEditable={false}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

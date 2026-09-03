@@ -165,8 +165,17 @@ describe("print", () => {
   });
 
   it("drops the corner chrome and the badge", () => {
-    expect(PRINT).toMatch(
-      /\.source-pod-corner,\s*\.forest-refusal-badge\s*\{[^}]*display:\s*none\s*!important/,
-    );
+    // RENEGOTIATED (task 535): pre-535 this leg pinned a BY-NAME print rule
+    // (`.source-pod-corner, .forest-refusal-badge { display: none }`) — the
+    // hand-list shape the print block's own comment said the marker rule
+    // existed to replace. The posture now lives where the WRITER declares it:
+    // both elements are stamped `chromeOnly(...)` and ONE marker rule hides
+    // every chrome-only element. `print-chrome-only-posture.test.ts` pins that
+    // the by-name rule is gone; this leg pins the two stamps and the rule.
+    const corner = readFileSync(join(process.cwd(), "src/components/SourcePodNodeView.tsx"), "utf8");
+    const badge = readFileSync(join(process.cwd(), "src/components/ForestRefusalBadge.tsx"), "utf8");
+    expect(corner).toMatch(/chromeOnly\(\s*"source-pod-corner"\s*\)/);
+    expect(badge).toMatch(/chromeOnly\(\s*"forest-refusal-badge"\s*\)/);
+    expect(PRINT).toMatch(/\.virgil-chrome-only\s*\{[^}]*display:\s*none\s*!important/);
   });
 });

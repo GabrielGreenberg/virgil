@@ -23,6 +23,7 @@ import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { resolveBlockFrame } from "@/text-objects/block-frame";
 import FigureAnnotation from "./FigureAnnotation";
+import { chromeOnly } from "@/lib/view-only-chrome";
 
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
@@ -631,7 +632,14 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         onClick={handleBodyClick}
         contentEditable={false}
       >
-        <div className="figure-empty-stack">
+        {/* PRINT (task 535): the picker CTA, its hint, the empty state's
+            control row and the per-panel resolution states below are editor
+            chrome — statements about Virgil's state, never about the paper —
+            so each is stamped `chromeOnly()` and ONE `@media print` rule hides
+            them all. The empty ROOT is the node (a `figure` env with nothing
+            in it) and stays; its drop-zone paint is flattened on paper by a
+            print rule on `.figure-block-empty` instead. */}
+        <div className={chromeOnly("figure-empty-stack")}>
           <button
             type="button"
             className="figure-empty-cta"
@@ -644,7 +652,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
           </button>
           <div className="figure-empty-hint">or click anywhere to edit code</div>
         </div>
-        <div className="figure-chrome figure-chrome-empty">
+        <div className={chromeOnly("figure-chrome figure-chrome-empty")}>
           <ChromeIconButton
             title="Remove figure"
             onClick={handleDelete}
@@ -840,11 +848,15 @@ function FigurePanel({ docId, source, registerRefresh }: FigurePanelProps) {
 
   let content: React.ReactNode;
   if (status === "loading") {
-    content = <div className="figure-placeholder">Loading {source.path}…</div>;
+    content = <div className={chromeOnly("figure-placeholder")}>Loading {source.path}…</div>;
   } else if (status === "not-found") {
-    content = <div className="figure-error">Figure not found: {source.path}</div>;
+    // DECIDED (task 535): a broken path does NOT print. A print is a
+    // rendering of the paper; the path is in the `.tex`, and danger-red
+    // editor text in the body of a manuscript reads as damage, not as
+    // information. The image simply is not there, which is the truth.
+    content = <div className={chromeOnly("figure-error")}>Figure not found: {source.path}</div>;
   } else if (status === "error") {
-    content = <div className="figure-error">{error || `Failed to render ${source.path}`}</div>;
+    content = <div className={chromeOnly("figure-error")}>{error || `Failed to render ${source.path}`}</div>;
   } else if (url) {
     content = <img src={url} alt={source.path} className="figure-image" />;
   } else {
@@ -924,7 +936,9 @@ export function FigureChrome({
 
   return (
     <div
-      className={`figure-chrome${beside ? " figure-chrome-beside" : ""}`}
+      // Chrome-only on paper (task 535): hover-revealed on screen, and until
+      // 535 invisible on paper only by the ACCIDENT of `opacity: 0` at rest.
+      className={chromeOnly(`figure-chrome${beside ? " figure-chrome-beside" : ""}`)}
       contentEditable={false}
     >
       <ChromeIconButton title="Pick image file" onClick={onPickFile}>
@@ -1009,7 +1023,10 @@ function ChromeIconButton({
   return (
     <button
       type="button"
-      className={`figure-chrome-btn${kind === "danger" ? " figure-chrome-btn-danger" : ""}`}
+      // Stamped on the button ITSELF as well as on the row that hosts it: the
+      // census resolves coverage by JSX subtree, and this component's JSX
+      // sits outside every row that renders it.
+      className={chromeOnly(`figure-chrome-btn${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
       data-hint={title}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick} aria-label={title}

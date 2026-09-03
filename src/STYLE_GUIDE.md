@@ -2943,8 +2943,9 @@ supplies neither and its pod is byte-for-byte the pod it was. Three rules:
 
 > **What prints is the DOCUMENT, not the editor's current state.**
 
-Two halves. The **HIDE** half (task 408) is below; the **PAINT** half (task 523)
-follows it. They are one law and the same constraint about mechanism governs both.
+Three halves of one law. The **HIDE** half (task 408) is below; the **PAINT** half
+(task 523) follows it; the **CHROME** half (task 535) follows that. The same
+constraint about mechanism governs all three.
 
 ### The HIDE half — a fold
 
@@ -2977,8 +2978,10 @@ conditions, not transients. Four rules:
   while hidden lays out from canvas estimates whose ResizeObserver recovery
   cannot land inside a synchronous print snapshot. Editor-only pod affordances
   (the fold chevron, which paints red while folded, and the row hover sensor)
-  stay off the paper for the same reason the corner and the badge do. Pinned by
-  `src/lib/__tests__/print-fold-posture.test.ts` and
+  stay off the paper for the same reason the corner and the badge do — and since
+  task 535 all four, and the screen preview, are stamped `chromeOnly()` by the
+  NodeView rather than hidden by name in the print block (the CHROME half,
+  below). Pinned by `src/lib/__tests__/print-fold-posture.test.ts` and
   `src/components/__tests__/source-pod-print-body.test.tsx`.
 
 ### The PAINT half — a squiggle, a selection, an attention band
@@ -3032,6 +3035,60 @@ rules:
   COVER-it. Pinned by `src/lib/__tests__/print-view-only-posture.test.ts`, whose
   stated limit is that imperative `classList.add` painters are not a bounded
   population (the one such site, the bib cross-highlight, is pinned by source).
+
+### The CHROME half — a button, a lozenge, a "Figure not found"
+
+The third generation of the same hole, and the one 523 could not see. 523's
+census population is *every production file that constructs a PM decoration*
+(`Decoration.<ctor>(`). **A NodeView constructs no decoration — it renders
+JSX, or builds DOM by hand.** So the chrome a NodeView paints BESIDE the node it
+renders was censused by nothing, and the figure NodeView paints more of it than
+anything else in the app: the blue label lozenge, an empty figure's bordered
+"Choose image…" button and "or click anywhere to edit code", the empty state's
+`×`, "Figure not found: …" in danger red and "Loading …" — all reaching paper
+through both print doors (task 535). Meanwhile the lozenge's exact twin
+`.heading-annotation` sat on a two-item HAND LIST in the print block whose own
+comment said a hand list was the thing the marker rule existed to replace.
+Five rules:
+
+- **A whole element that is not document content is `display: none`, not
+  de-painted.** This is a DIFFERENT answer from the PAINT half, and measured:
+  `.virgil-view-only` zeroes `text-decoration` / `background` / `box-shadow` /
+  `outline`, every one of which leaves a "Choose image…" button's TEXT on the
+  page. So the vocabulary has a third hook — `chromeOnly(<class>)` /
+  `CHROME_ONLY_CLASS` in `src/lib/view-only-chrome.ts` — and ONE rule in
+  `@media print` (`.virgil-chrome-only { display: none !important }`) hides
+  every present and future member. The marker has NO screen rule.
+- **The writer declares it, beside its own class.** `chromeOnly("figure-annotation")`,
+  `chromeOnly("figure-empty-stack")`, the resolution states, the heading and
+  title-field annotations, both fold chevrons, the source pod's corner /
+  preview / badge / row sensor, a comment's grab bar, "( empty math )", the
+  par-title `+T` / `×` / input. The two-item hand list and the four by-name
+  pod rules are GONE from the print block; a class hidden BY NAME there is a
+  second spelling of the same posture, and the one that drifts — pinned.
+- **A NodeView's ROOT never takes the marker** — it IS the node. An EMPTY
+  figure's root keeps its `figure` env on paper and has its drop-zone paint
+  (dashed border, background, 80px floor) FLATTENED there instead, the
+  `.citation-node` shape. Nor does a paragraph title: it is the user's own
+  writing and prints; only its chrome CHILDREN are stamped.
+- **A broken image path does NOT print.** Decided at the site: a print is a
+  rendering of the paper, the path is in the `.tex`, and danger-red editor
+  text in the body of a manuscript reads as damage, not information. The image
+  simply is not there, which is the truth.
+- **The census asks the QUESTION over a population that includes NodeView
+  chrome.** `src/lib/__tests__/print-chrome-only-posture.test.ts` discovers
+  every NodeView surface in either silo (the vanilla `addNodeView` bodies and
+  the React components a `ReactNodeViewRenderer` mounts, plus what those
+  components render) and, within each, every CHROME-SHAPED element — an
+  affordance (a `<button>`/`<input>`, a click handler, `role="button"`, a
+  `data-hint`) or a run of static UI copy the source spells as a literal.
+  Each is stamped (itself or a chrome container above it) or carries a class
+  on an EMPTY-by-default allowlist that states why it is DOCUMENT content
+  (`figure-caption-label`, the par-title text, the derived forest picture).
+  A hit is COVER-it. Its stated limits: vanilla ancestry follows
+  `appendChild`-family statements only (an element landed via `replaceWith`
+  or a helper carries its own stamp), and static copy is recognised by
+  LETTERS, so a glyph-only, handler-less, hint-less span is invisible to it.
 
 ## Block images (figures & pictures)
 

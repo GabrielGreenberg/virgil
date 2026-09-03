@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { isLabelTaken } from "@/lib/labels";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
+import { chromeOnly } from "@/lib/view-only-chrome";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -162,7 +163,11 @@ export default function FigureAnnotation({
 
   return (
     <div
-      className="figure-annotation"
+      // Editor chrome, never paper: the lozenge is a statement about the
+      // EDITOR (a label affordance), not about the figure, so it is stamped
+      // chrome-only and ONE print rule hides it — exactly as its twin
+      // `.heading-annotation` is (task 535; the law in `view-only-chrome.ts`).
+      className={chromeOnly("figure-annotation")}
       contentEditable={false}
       onMouseDown={readOnly ? undefined : onMouseDown}
       onClick={readOnly ? undefined : (e) => e.stopPropagation()}
