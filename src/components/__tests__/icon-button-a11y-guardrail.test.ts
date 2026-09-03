@@ -48,8 +48,12 @@
  *    control's visible text, which is a worse defect than the one being cured.
  *  - **A computed className is opaque.** `className={btnClass}` cannot be read
  *    for a ring token, so leg C skips it too.
- *  - **Only `<button>`.** A `role="button"` div or an `<a>` is a different
- *    (and rarer) shape here; neither is censused.
+ *  - **Only `<button>`.** An `<a>` is a different (and rarer) shape here and
+ *    is not censused. A `role="button"` on anything ELSE is censused one file
+ *    over — `role-button-census.test.ts` (task 536): the role is spelled ONCE,
+ *    by `activatableProps`, and only on a container that must hold other
+ *    interactive content; every other control is a real `<button>` and so
+ *    lands in THIS census.
  *
  * What it deliberately does NOT require is `aria-hidden` on the icon child.
  * An `aria-label` REPLACES the subtree in the name computation, and these SVGs

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, memo, useState } from "react";
+import { activatableProps } from "@/lib/activatable-props";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { COL_TEMPLATE_VAR, type ReorderableColId } from "@library/lib/list-columns";
@@ -261,8 +262,13 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      // A row is a CONTAINER (its actions are nested `<button>`s), so it takes
+      // the ONE spelling of the `button` role (task 536); the target guard
+      // keeps a key on an action button from also activating the row. No
+      // `.focus-ring` here, deliberately: the row's selection paint is an
+      // INLINE `box-shadow`, which no stylesheet ring can override
+      // (STYLE_GUIDE → Focus), so it keeps the UA outline.
+      {...activatableProps((e) => onActivate(entryKey, entry.citekey, e))}
       draggable
       onDragStart={(e) => {
         // Multi-row drag: if the grabbed row is part of the current
@@ -312,13 +318,6 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           cursorOffsetX: e.clientX - rect.left,
           cursorOffsetY: e.clientY - rect.top,
         });
-      }}
-      onClick={(e) => onActivate(entryKey, entry.citekey, e)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onActivate(entryKey, entry.citekey, e);
-        }
       }}
       title={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}
       style={{

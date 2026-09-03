@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, type ReactNode } from "react";
+import { activatableProps } from "@/lib/activatable-props";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
@@ -63,17 +64,14 @@ function InlineTabLabelImpl({
     variant === "library-pinned" ? "inset-x-[18px]" : "inset-x-0";
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onActivate(id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onActivate(id);
-        }
-      }}
+      // A tab is a CONTAINER (its close is a nested `<button>`, which the HTML
+      // content model forbids inside a `<button>`), so it takes the ONE
+      // spelling of the `button` role rather than re-deriving it (task 536).
+      // The helper's target guard is what keeps Enter on the CLOSE button
+      // from also ACTIVATING the tab by bubbling.
+      {...activatableProps(() => onActivate(id))}
       data-hint={title}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0`} aria-label={title}
+      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0 focus-ring`} aria-label={title}
     >
       <div
         aria-hidden
