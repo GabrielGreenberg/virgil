@@ -136,6 +136,33 @@ export function anchorableUuidAt(doc: PMNode, pos: number): string | null {
 }
 
 /**
+ * Every uuid any node in `doc` carries — the collision set a DOCUMENT-level
+ * mint is drawn against. O(doc), and run only at mint time (a gesture that
+ * gives a block its first identity), never on the keystroke path.
+ */
+export function collectDocUuids(doc: PMNode): Set<string> {
+  const existing = new Set<string>();
+  doc.descendants((n) => {
+    if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
+  });
+  return existing;
+}
+
+/**
+ * Mint a block uuid no node in `doc` already carries — the ONE mint door for
+ * a block identity minted from the editor (task 552). A 4-hex id collides one
+ * time in 65 536 per bare mint, and `BlockUuidBackfill` resolves a collision by
+ * re-minting the LATER duplicate in document order — which can be the OTHER,
+ * already-anchored block, orphaning its cards. Every editor-side minter that
+ * gives a block its first uuid draws from this set: the anchor hydration path
+ * (`ensureAnchorUuid`) and the paragraph / list title strips' `setTitle`, which
+ * minted bare until 552.
+ */
+export function mintDocUuid(doc: PMNode): string {
+  return generateShortId(collectDocUuids(doc));
+}
+
+/**
  * Resolve the anchorable node at `pos`, minting its UUID if missing, and
  * return the freshly-resolved `{ uuid, node }` pair WITHOUT a stale re-read of
  * the node after the `setNodeMarkup` dispatch.
@@ -157,11 +184,7 @@ function ensureAnchorUuidNode(
   if (!result) return null;
   const { node, nodePos } = result;
   if (node.attrs?.uuid) return { uuid: node.attrs.uuid as string, node };
-  const existing = new Set<string>();
-  view.state.doc.descendants((n) => {
-    if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
-  });
-  const newUuid = generateShortId(existing);
+  const newUuid = mintDocUuid(view.state.doc);
   try {
     const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
       ...node.attrs,

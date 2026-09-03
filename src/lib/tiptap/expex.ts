@@ -13,6 +13,7 @@ import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
+import { createParTitleSession } from "@/lib/tiptap/title-edit-session";
 import {
   setClassNameIfChanged,
   setDataIfChanged,
@@ -1107,12 +1108,11 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // (always visible), `has-add-btn` when empty (reveal on hover).
       // The renderAnnot keystroke bail (typing-latency fix 1c, task 551):
       // `renderedTitle` is the title the strip currently shows, so `update()`
-      // rebuilds the strip only when it changed; `titleEditing` is true while
-      // the click handler's input owns the strip — its commit / escape calls
-      // `renderTitle()` itself, so an `update()` landing mid-edit (the
-      // commit's own dispatch included) must not repaint under the input.
+      // rebuilds the strip only when it changed; the SESSION (task 552) says
+      // whether an input owns the strip — its endings call `renderTitle()`
+      // themselves, so an `update()` landing mid-edit (the commit's own
+      // dispatch included) must not repaint under the input.
       let renderedTitle: string | null | undefined;
-      let titleEditing = false;
       const renderTitle = () => {
         // No-op when the title strip is suppressed (card/float context) —
         // skip the wrapper has-add-btn/has-text classes so the absolutely-
@@ -1120,7 +1120,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         if (!titleAnnot) return;
         const title = (currentNode.attrs.parTitle as string | null) || null;
         renderedTitle = title;
-        titleEditing = false;
         titleAnnot.innerHTML = "";
         wrapper.classList.remove("has-text", "has-add-btn");
         if (title) {
@@ -1163,8 +1162,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
       });
 
-      const commitTitle = (raw: string) => {
-        const next = raw.trim() || null;
+      const commitTitle = (next: string | null) => {
         let pos: number | null = null;
         if (typeof getPos === "function") {
           const p = getPos();
@@ -1194,47 +1192,27 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       };
 
       // Title-edit wiring only when the strip exists (suppressed in card
-      // context, #47).
+      // context, #47) — the ONE session door (task 552), at its `inline`
+      // placement: this strip sits in normal flow inside the NodeView, so the
+      // input lives INSIDE it (no body append, no click-away overlay — a body
+      // overlay would paint over an input nested in the editor's stacking
+      // contexts) and focus is taken in a frame.
+      const titleSession = titleAnnot
+        ? createParTitleSession({
+            wrapper,
+            titleAnnot,
+            lifetime,
+            placement: "inline",
+            placeholder: "Title…",
+            getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
+            render: () => renderTitle(),
+            commit: (next) => commitTitle(next),
+          })
+        : null;
       titleAnnot?.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (titleEditing) return;
-        titleEditing = true;
-        titleAnnot.innerHTML = "";
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = chromeOnly("par-title-input");
-        input.value = (currentNode.attrs.parTitle as string) || "";
-        input.placeholder = "Title…";
-        titleAnnot.appendChild(input);
-        let committed = false;
-        const commit = () => {
-          if (committed) return;
-          committed = true;
-          commitTitle(input.value);
-          renderTitle();
-        };
-        let armed = false;
-        input.addEventListener("blur", () => {
-          if (armed) commit();
-        });
-        input.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") {
-            ev.preventDefault();
-            commit();
-          } else if (ev.key === "Escape") {
-            ev.preventDefault();
-            committed = true;
-            renderTitle();
-          }
-        });
-        lifetime.requestAnimationFrame(() => {
-          input.focus();
-          input.select();
-        });
-        lifetime.setTimeout(() => {
-          armed = true;
-        }, 200);
+        titleSession?.begin();
       });
 
       return {
@@ -1282,7 +1260,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           // context, where `titleAnnot` is null).
           if (
             titleAnnot &&
-            !titleEditing &&
+            !titleSession?.editing &&
             ((updatedNode.attrs.parTitle as string | null) || null) !== renderedTitle
           ) {
             renderTitle();

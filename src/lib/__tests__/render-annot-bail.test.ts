@@ -435,7 +435,8 @@ const DOOR_VERBS = /\bset(?:Attr|Data|Text|ClassName|Title)IfChanged\s*\(/g;
 
 describe("task 551 — census: a NodeView update() writes to the DOM only through the idempotent door", () => {
   const files = nodeViewPopulation();
-  const regions = files.flatMap(nodeViewRegions);
+  // Not point-free: `flatMap` would pass the INDEX as the reading (task 552).
+  const regions = files.flatMap((f) => nodeViewRegions(f));
   const bodies = regions.flatMap((r) => updateBodies(r).map((body) => ({ label: r.label, body })));
 
   it("the population is discovered and non-empty (the five members are in it)", () => {
