@@ -273,6 +273,9 @@ export function useRefActions(deps: {
         newLabel,
         refCommand,
       );
+      // label-write-exempt: re-points ONE `labelRef` atom — a REFERENCE, not a
+      // declaration (task 553 census); the rename door governs the declaring
+      // kinds in `LABEL_DECLARING_NODE_TYPES`, and `labelRef` is not one.
       editor.view.dispatch(
         editor.state.tr.setNodeMarkup(pos, undefined, {
           ...node.attrs,

@@ -204,7 +204,7 @@ describe("the label predicate has ONE home and the rename has ONE door", () => {
     }
   });
 
-  it("the three rename producers enter the door, and nothing else re-derives the ref walk", () => {
+  it("the rename producers enter the door, and nothing else re-derives the ref walk", () => {
     const callers: string[] = [];
     const walkers: string[] = [];
     for (const root of ["src", "library"]) {
@@ -216,13 +216,18 @@ describe("the label predicate has ONE home and the rename has ONE door", () => {
         if (/\.label === oldLabel\b/.test(code)) walkers.push(rel);
       }
     }
-    // The door plus its three producers — an EXACT set, so a fourth rename
-    // surface has to be acknowledged here (and enter the door) rather than
-    // quietly write the attr alone.
+    // The door plus its producers — an EXACT set, so a new rename surface has
+    // to be acknowledged here (and enter the door) rather than quietly write
+    // the attr alone. RENEGOTIATED (task 553): `expex.ts` is the FOURTH
+    // producer — its two "Ex. · label" pods wrote a bare `setNodeMarkup` for
+    // as long as they existed, and this leg could not see them because it
+    // asks who CALLS the door, never who WRITES the attr. That question is
+    // `label-write-census.test.ts` (task 404's rule: discover by the QUESTION).
     expect(callers.sort()).toEqual([
       "src/components/FigureAnnotation.tsx",
       "src/components/editor-layout/card-actions/editor-ops.ts",
       "src/lib/editor-extensions.ts",
+      "src/lib/tiptap/expex.ts",
       "src/lib/tiptap/label-rename.ts",
     ]);
     // RENEGOTIATED (task 550). The pre-550 exemption here was the ref

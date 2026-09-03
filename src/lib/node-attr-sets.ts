@@ -140,6 +140,31 @@ export const COLLAPSIBLE_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Node types that DECLARE a `\label{…}` through a `label` attr — the block
+ * kinds a `\ref` can point at (task 553). NOT `labelRef`, which also carries a
+ * `label` attr but as the key it REFERENCES: the schema pin in
+ * [node-attr-sets.test.ts](__tests__/node-attr-sets.test.ts) therefore asks for
+ * the BLOCK node types declaring the attr, and that inline atom falls out.
+ *
+ * Two readers, and both used to hand-list a subset:
+ *   • `@/lib/labels` `collectLabelKeys` — the "is this key already taken?"
+ *     registry every label editor and the rename door consult. Pre-553 it
+ *     walked `heading` and `figureBlock` only, so a key an EXAMPLE declared was
+ *     invisible to every duplicate check in the app: the heading strip happily
+ *     wrote `ex:one` beside the example that owned it.
+ *   • the label-write census (`label-write-census.test.ts`) — which sites write
+ *     a `label` attr onto a declaring node, and do they enter the door.
+ * A fifth declaring kind is covered by declaring itself here; the schema pin
+ * fails the build until it does.
+ */
+export const LABEL_DECLARING_NODE_TYPES: ReadonlySet<string> = new Set([
+  "heading",
+  "figureBlock",
+  "exampleBlock",
+  "exampleItem",
+]);
+
+/**
  * Node types whose chrome renders a FOLD CHEVRON in the left margin — the
  * outboard occupant of the margin lane (task 526).
  *

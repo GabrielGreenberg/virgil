@@ -1,4 +1,9 @@
-import { Node, Extension, mergeAttributes } from "@tiptap/react";
+import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
+import type { MutableRefObject } from "react";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
+import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
@@ -7,7 +12,7 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
-import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
+import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -32,6 +37,229 @@ export interface ExampleBlockOptions {
    *  title in card context); on an example the card host's own title is the
    *  single title affordance. */
   cardContext: boolean;
+  /** Float: the MAIN editor the label rename is written to (`host.getMainEditor()`),
+   *  so the `\ref` walk covers the whole paper rather than the float's one
+   *  example — the heading builder's shape. `null` on main. */
+  host: ExampleLabelHost | null;
+  /** The host's "Update references?" confirm (produced by `EditorPane`,
+   *  threaded through the extension factory's `callbacks` bag). `null` ⇒ the
+   *  door carries the refs without asking (its fail-toward-not-orphaning
+   *  default). */
+  onConfirmLabelRenameRef: MutableRefObject<LabelRenameConfirm | undefined> | null;
+}
+
+export interface ExampleItemOptions {
+  surface: "main" | "float";
+  host: ExampleLabelHost | null;
+  onConfirmLabelRenameRef: MutableRefObject<LabelRenameConfirm | undefined> | null;
+}
+
+export type ExampleLabelHost = { getMainEditor: () => Editor | null };
+
+/**
+ * The "Ex." / "ex." LABEL POD shared by the two expex NodeViews (task 553) —
+ * one factory where each view carried a byte-identical private copy, and the
+ * copies' `commitLabel` was a bare `setNodeMarkup` that never entered task
+ * 534's rename door: every `\ref` to the old key was orphaned (`??` in the
+ * PDF) with no dialog, and a key another declaration owned was written anyway.
+ *
+ * The pod owns the annotation's render, the inline `<input>` session (the
+ * task-529 commit/cancel latch, the blur guard armed after 200 ms through the
+ * view's lifetime), the live "already in use" warning over a key set
+ * snapshotted at edit start, and the COMMIT — which is the heading strip's
+ * byte for byte: a candidate another declaration claims is REFUSED (Enter
+ * keeps the input open with the warning lit; leaving the field abandons the
+ * draft), everything else enters `renameLabelWithRefs` against the write
+ * TARGET (main in a float).
+ */
+function createExampleLabelPod(params: {
+  labelAnnot: HTMLElement;
+  /** The pod's own class family; the factory stamps it chrome-only (task 535 —
+   *  editor chrome, never paper), so the print census reads the container's
+   *  declaration beside the elements appended into it. */
+  className: string;
+  /** The pod's type word: "Ex." for a block, "ex." for an item. */
+  typeText: string;
+  getLabel: () => string | null;
+  lifetime: ViewLifetime;
+  getTarget: () => Editor;
+  /** Resolve THIS declaring node in `target` (live pos on main, uuid in a
+   *  float). Asked twice by the door when a confirm is awaited. */
+  locate: (target: Editor) => { pos: number; node: PMNode } | null;
+  confirm: () => LabelRenameConfirm | null;
+}): { render: () => void } {
+  const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm } = params;
+  labelAnnot.className = chromeOnly(params.className);
+  labelAnnot.contentEditable = "false";
+
+  const render = () => {
+    const label = getLabel();
+    labelAnnot.innerHTML = "";
+    const typeSpan = document.createElement("span");
+    typeSpan.textContent = typeText;
+    labelAnnot.appendChild(typeSpan);
+    if (label) {
+      const sep = document.createElement("span");
+      sep.textContent = "  ·  label: ";
+      labelAnnot.appendChild(sep);
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = label;
+      labelSpan.className = "heading-label-text";
+      labelAnnot.appendChild(labelSpan);
+    } else {
+      const addBtn = document.createElement("span");
+      addBtn.className = "heading-label-add";
+      addBtn.textContent = "Label +";
+      labelAnnot.appendChild(addBtn);
+    }
+  };
+
+  const beginLabelEdit = (replaceTarget: HTMLElement) => {
+    if (labelAnnot.querySelector("input")) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = chromeOnly("heading-label-input expex-label-input");
+    input.value = getLabel() || "";
+    input.placeholder = "label key";
+    replaceTarget.replaceWith(input);
+
+    // Live warning over a key set snapshotted ONCE, here, against the write
+    // target — O(1) per keystroke; the commit re-asks the live predicate.
+    const warning = createLabelKeyWarning({
+      input,
+      container: labelAnnot,
+      keys: collectLabelKeys(getTarget()),
+      own: getLabel(),
+    });
+
+    let committed = false;
+    const commit = async (via: "enter" | "blur") => {
+      if (committed) return;
+      const newLabel = input.value.trim() || null;
+      const oldLabel = getLabel();
+      const target = getTarget();
+
+      // A candidate ANOTHER declaration already claims is REFUSED — the door
+      // asks the same predicate, but it is asked here first so the input can
+      // stay OPEN on Enter (warning lit), while leaving the field abandons
+      // the conflicting draft rather than trapping focus in it.
+      if (newLabel && newLabel !== oldLabel && isLabelTaken(target, newLabel, oldLabel)) {
+        if (via === "enter") {
+          warning.refresh();
+          input.focus();
+          return;
+        }
+        committed = true;
+        warning.dispose();
+        render();
+        return;
+      }
+
+      committed = true;
+      warning.dispose();
+      if (newLabel === oldLabel) {
+        render();
+        return;
+      }
+      // Restore the pod before awaiting a modal so the user is not staring
+      // at a stale editable input behind it; the NodeView's `update()`
+      // re-renders from the committed attr once the door dispatches.
+      render();
+      await renameLabelWithRefs(target, {
+        locate: () => locate(target),
+        newLabel,
+        confirm: confirm(),
+      });
+    };
+
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    // Delay arming the blur-commit so focus transitions inside the popover /
+    // editor don't swallow the intended edit — the heading strip's pattern.
+    let armed = false;
+    input.addEventListener("blur", () => {
+      if (armed) void commit("blur");
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void commit("enter");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        committed = true;
+        warning.dispose();
+        render();
+      }
+    });
+    lifetime.requestAnimationFrame(() => {
+      input.focus();
+      if (getLabel()) {
+        input.selectionStart = input.selectionEnd = input.value.length;
+      } else {
+        input.select();
+      }
+    });
+    lifetime.setTimeout(() => {
+      armed = true;
+    }, 200);
+  };
+
+  labelAnnot.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  labelAnnot.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("heading-label-text")) {
+      beginLabelEdit(target);
+    } else if (target.classList.contains("heading-label-add")) {
+      // Swap "Label +" for an empty editable label slot.
+      const sep = document.createElement("span");
+      sep.textContent = "  ·  label: ";
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "heading-label-text";
+      target.replaceWith(sep);
+      sep.after(labelSpan);
+      beginLabelEdit(labelSpan);
+    }
+  });
+
+  render();
+  return { render };
+}
+
+/**
+ * Locate a declaring expex node in `target`. On MAIN the NodeView's own
+ * `getPos` is the answer (cheap, scoped to this view); when it is detached
+ * (React StrictMode's double-render) or the target is ANOTHER editor (a
+ * float writing to main), the node is found by uuid.
+ */
+function locateExampleNode(
+  target: Editor,
+  typeName: "exampleBlock" | "exampleItem",
+  uuid: string | null,
+  getPos: (() => number | undefined) | undefined,
+  targetIsOwnEditor: boolean,
+): { pos: number; node: PMNode } | null {
+  if (targetIsOwnEditor && typeof getPos === "function") {
+    const p = getPos();
+    if (typeof p === "number") {
+      const nd = target.state.doc.nodeAt(p);
+      if (nd && nd.type.name === typeName) return { pos: p, node: nd };
+    }
+  }
+  if (!uuid) return null;
+  let result: { pos: number; node: PMNode } | null = null;
+  target.state.doc.descendants((nd, p) => {
+    if (result) return false;
+    if (nd.type.name === typeName && nd.attrs.uuid === uuid) {
+      result = { pos: p, node: nd };
+      return false;
+    }
+    return true;
+  });
+  return result;
 }
 
 function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
@@ -404,6 +632,8 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       cardContext: false,
       // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
       surface: "float" as "main" | "float",
+      host: null,
+      onConfirmLabelRenameRef: null,
     };
   },
   // Free-order content: paragraphs, gloss blocks, and item lists can
@@ -805,8 +1035,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // revealed "Label +" affordance when there's no label yet. Click
       // an existing label to rename in place.
       const labelAnnot = document.createElement("div");
-      labelAnnot.className = chromeOnly("heading-annotation expex-label-annotation");
-      labelAnnot.contentEditable = "false";
 
       // Block body — the example itself.
       const dom = document.createElement("div");
@@ -877,131 +1105,28 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       };
       renderTitle();
 
-      // --- "Ex." label pod (above the marker) ---
-      const renderLabelAnnot = () => {
-        const label = (currentNode.attrs.label as string | null) || null;
-        labelAnnot.innerHTML = "";
-        const typeSpan = document.createElement("span");
-        typeSpan.textContent = "Ex.";
-        labelAnnot.appendChild(typeSpan);
-        if (label) {
-          const sep = document.createElement("span");
-          sep.textContent = "  ·  label: ";
-          labelAnnot.appendChild(sep);
-          const labelSpan = document.createElement("span");
-          labelSpan.textContent = label;
-          labelSpan.className = "heading-label-text";
-          labelAnnot.appendChild(labelSpan);
-        } else {
-          const addBtn = document.createElement("span");
-          addBtn.className = "heading-label-add";
-          addBtn.textContent = "Label +";
-          labelAnnot.appendChild(addBtn);
-        }
-      };
-      renderLabelAnnot();
-
-      const commitLabel = (raw: string) => {
-        const next = raw.trim();
-        // Prefer getPos() (cheap and scoped to this NodeView). Fall back
-        // to a doc-walk by uuid when getPos returns undefined — TipTap
-        // NodeViews re-rendered during React StrictMode's double-render
-        // can end up with a detached getPos.
-        let pos: number | null = null;
-        if (typeof getPos === "function") {
-          const p = getPos();
-          if (typeof p === "number") pos = p;
-        }
-        if (pos == null) {
-          const uuid = currentNode.attrs.uuid as string | null;
-          if (uuid) {
-            editor.state.doc.descendants((nd, p) => {
-              if (pos != null) return false;
-              if (nd.type.name === "exampleBlock" && nd.attrs.uuid === uuid) {
-                pos = p;
-                return false;
-              }
-              return true;
-            });
-          }
-        }
-        if (pos == null) return;
-        const nd = editor.state.doc.nodeAt(pos);
-        if (!nd) return;
-        const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...nd.attrs,
-          label: next,
-        });
-        editor.view.dispatch(tr);
-      };
-
-      const beginLabelEdit = (replaceTarget: HTMLElement) => {
-        if (labelAnnot.querySelector("input")) return;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = chromeOnly("heading-label-input expex-label-input");
-        input.value = (currentNode.attrs.label as string) || "";
-        input.placeholder = "label key";
-        replaceTarget.replaceWith(input);
-        let committed = false;
-        const commit = () => {
-          if (committed) return;
-          committed = true;
-          commitLabel(input.value);
-          renderLabelAnnot();
-        };
-        input.addEventListener("mousedown", (e) => e.stopPropagation());
-        // Delay arming the blur-commit so focus transitions inside the
-        // popover / editor don't swallow the intended edit — matches the
-        // pattern used by the heading label input.
-        let armed = false;
-        input.addEventListener("blur", () => {
-          if (armed) commit();
-        });
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            committed = true;
-            renderLabelAnnot();
-          }
-        });
-        lifetime.requestAnimationFrame(() => {
-          input.focus();
-          if (currentNode.attrs.label) {
-            input.selectionStart = input.selectionEnd = input.value.length;
-          } else {
-            input.select();
-          }
-        });
-        lifetime.setTimeout(() => {
-          armed = true;
-        }, 200);
-      };
-
-      labelAnnot.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+      // --- "Ex." label pod (below the block) — the shared factory (task 553).
+      const isFloat = opts.surface === "float";
+      const getTarget = (): Editor =>
+        isFloat ? (opts.host?.getMainEditor() ?? editor) : editor;
+      const labelPod = createExampleLabelPod({
+        labelAnnot,
+        className: "heading-annotation expex-label-annotation",
+        typeText: "Ex.",
+        getLabel: () => (currentNode.attrs.label as string | null) || null,
+        lifetime,
+        getTarget,
+        locate: (target) =>
+          locateExampleNode(
+            target,
+            "exampleBlock",
+            (currentNode.attrs.uuid as string | null) || null,
+            getPos,
+            target === editor,
+          ),
+        confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
       });
-      labelAnnot.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const target = e.target as HTMLElement;
-        if (target.classList.contains("heading-label-text")) {
-          beginLabelEdit(target);
-        } else if (target.classList.contains("heading-label-add")) {
-          // Swap "Label +" for an empty editable label slot.
-          const sep = document.createElement("span");
-          sep.textContent = "  ·  label: ";
-          const labelSpan = document.createElement("span");
-          labelSpan.className = "heading-label-text";
-          target.replaceWith(sep);
-          sep.after(labelSpan);
-          beginLabelEdit(labelSpan);
-        }
-      });
+      const renderLabelAnnot = labelPod.render;
 
       const commitTitle = (raw: string) => {
         const next = raw.trim() || null;
@@ -1160,7 +1285,7 @@ export const ExampleItemList = Node.create({
 // exampleItem
 // ---------------------------------------------------------------------------
 
-export const ExampleItem = Node.create({
+export const ExampleItem = Node.create<ExampleItemOptions>({
   name: "exampleItem",
   // Widened from `paragraph+ exampleItemList? exampleGloss?` to allow
   // `graphicsBlock` (an `\includegraphics` outside a figure env) and
@@ -1180,6 +1305,8 @@ export const ExampleItem = Node.create({
     return {
       // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
       surface: "float" as "main" | "float",
+      host: null,
+      onConfirmLabelRenameRef: null,
     };
   },
   // NOTE: not isolating — prosemirror-schema-list's liftTarget breaks at
@@ -1492,113 +1619,30 @@ export const ExampleItem = Node.create({
       // Label pod — small "ex." chip with hover-revealed "Label +"
       // affordance, identical pattern to section headings and exampleBlock.
       const labelAnnot = document.createElement("div");
-      labelAnnot.className = chromeOnly("heading-annotation expex-item-label-annotation");
-      labelAnnot.contentEditable = "false";
       dom.appendChild(labelAnnot);
 
-      const renderLabelAnnot = () => {
-        const label = (currentNode.attrs.label as string | null) || null;
-        labelAnnot.innerHTML = "";
-        const typeSpan = document.createElement("span");
-        typeSpan.textContent = "ex.";
-        labelAnnot.appendChild(typeSpan);
-        if (label) {
-          const sep = document.createElement("span");
-          sep.textContent = "  ·  label: ";
-          labelAnnot.appendChild(sep);
-          const labelSpan = document.createElement("span");
-          labelSpan.textContent = label;
-          labelSpan.className = "heading-label-text";
-          labelAnnot.appendChild(labelSpan);
-        } else {
-          const addBtn = document.createElement("span");
-          addBtn.className = "heading-label-add";
-          addBtn.textContent = "Label +";
-          labelAnnot.appendChild(addBtn);
-        }
-      };
-      renderLabelAnnot();
-
-      const commitLabel = (raw: string) => {
-        const next = raw.trim();
-        let pos: number | null = null;
-        if (typeof getPos === "function") {
-          const p = getPos();
-          if (typeof p === "number") pos = p;
-        }
-        if (pos == null) return;
-        const nd = editor.state.doc.nodeAt(pos);
-        if (!nd || nd.type.name !== "exampleItem") return;
-        const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...nd.attrs,
-          label: next,
-        });
-        editor.view.dispatch(tr);
-      };
-
-      const beginLabelEdit = (replaceTarget: HTMLElement) => {
-        if (labelAnnot.querySelector("input")) return;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = chromeOnly("heading-label-input expex-label-input");
-        input.value = (currentNode.attrs.label as string) || "";
-        input.placeholder = "label key";
-        replaceTarget.replaceWith(input);
-        let committed = false;
-        const commit = () => {
-          if (committed) return;
-          committed = true;
-          commitLabel(input.value);
-          renderLabelAnnot();
-        };
-        input.addEventListener("mousedown", (e) => e.stopPropagation());
-        let armed = false;
-        input.addEventListener("blur", () => {
-          if (armed) commit();
-        });
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            committed = true;
-            renderLabelAnnot();
-          }
-        });
-        lifetime.requestAnimationFrame(() => {
-          input.focus();
-          if (currentNode.attrs.label) {
-            input.selectionStart = input.selectionEnd = input.value.length;
-          } else {
-            input.select();
-          }
-        });
-        lifetime.setTimeout(() => {
-          armed = true;
-        }, 200);
-      };
-
-      labelAnnot.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+      // The "ex." label pod — the shared factory (task 553).
+      const isFloat = opts.surface === "float";
+      const getTarget = (): Editor =>
+        isFloat ? (opts.host?.getMainEditor() ?? editor) : editor;
+      const labelPod = createExampleLabelPod({
+        labelAnnot,
+        className: "heading-annotation expex-item-label-annotation",
+        typeText: "ex.",
+        getLabel: () => (currentNode.attrs.label as string | null) || null,
+        lifetime,
+        getTarget,
+        locate: (target) =>
+          locateExampleNode(
+            target,
+            "exampleItem",
+            (currentNode.attrs.uuid as string | null) || null,
+            getPos,
+            target === editor,
+          ),
+        confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
       });
-      labelAnnot.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const target = e.target as HTMLElement;
-        if (target.classList.contains("heading-label-text")) {
-          beginLabelEdit(target);
-        } else if (target.classList.contains("heading-label-add")) {
-          const sep = document.createElement("span");
-          sep.textContent = "  ·  label: ";
-          const labelSpan = document.createElement("span");
-          labelSpan.className = "heading-label-text";
-          target.replaceWith(sep);
-          sep.after(labelSpan);
-          beginLabelEdit(labelSpan);
-        }
-      });
+      const renderLabelAnnot = labelPod.render;
 
       return {
         dom,

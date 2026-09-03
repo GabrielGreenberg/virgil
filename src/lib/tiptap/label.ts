@@ -247,6 +247,10 @@ export const LabelHandler = Extension.create({
           const ordered = [...changes.values()].sort((a, b) => b.headingPos - a.headingPos);
           const tr = newState.tr;
           for (const c of ordered) {
+            // label-write-exempt: ABSORBS a `\label` paragraph into the heading
+            // it follows — a declaration the paper ALREADY held, moving from a
+            // text node to an attr. No key changes, so there is no ref to carry
+            // and nothing for the rename door to ask (task 553 census).
             tr.setNodeMarkup(c.headingPos, undefined, { ...c.headingAttrs, label: c.label });
             tr.delete(c.paraPos, c.paraPos + c.paraSize);
           }
