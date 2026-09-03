@@ -967,6 +967,25 @@ Five states. One implementation each.
   uses); `outline` is NOT, because the focus rule sets `outline: none`. CI:
   `icon-button-a11y-guardrail.test.ts` → "the shell that OWNS a trigger
   supplies its focus indicator" (allowlists: EMPTY).
+- **A control is a `<button type="button">`.** `role="button"` on a `<span>`
+  or `<div>` is a three-part promise — announced operable, so focusable
+  (`tabIndex={0}`) and activated by Enter AND Space — and spelled by hand it is
+  three chances to keep two of the parts (task 536: the figure lozenge's `#`
+  and `×` announced the role, the `#` with an `aria-pressed` a keyboard user
+  could not flip, and were neither focusable nor key-bound; the heading
+  strip's twin spans said the same through `setAttribute`). A native button
+  supplies all three, plus `disabled` semantics and `.focus-ring`, and inside
+  a NodeView it is also what keeps a keystroke OUT of the document (TipTap's
+  default `stopEvent` answers true for a `BUTTON` target). The one shape that
+  cannot be a button is a CONTAINER holding other interactive content (a tab
+  with its close button, a list row with its actions, a title strip with its
+  `×`) — HTML forbids interactive content inside `<button>` — and that shape
+  takes `activatableProps()` (`src/lib/activatable-props.ts`), the ONE
+  spelling of the role, whose target guard keeps a key on the nested control
+  from also activating the container. Chrome revealed on `:hover` is revealed
+  on `:focus-within` too, or it is not a tab stop at all (`display: none`
+  removes it from the sequence). CI: `role-button-census.test.ts` — no
+  production file spells `role="button"` in either medium; allowlist EMPTY.
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 

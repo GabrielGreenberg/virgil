@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { activatableProps } from "@/lib/activatable-props";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "@/components/field-draft";
 import { iconHint } from "@/components/Hint";
@@ -126,16 +127,11 @@ export function FloatTitleField({
 
   return (
     <div
-      className="par-title-annotation"
-      onClick={handleStart}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleStart();
-        }
-      }}
+      className="par-title-annotation focus-ring"
+      // A CONTAINER with a nested `<button>` (the × below), so it takes the
+      // ONE spelling of the `button` role (task 536); the helper's target
+      // guard keeps a key on that × from also opening the editor.
+      {...activatableProps(handleStart)}
     >
       {title ? (
         <>

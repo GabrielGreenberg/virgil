@@ -5956,6 +5956,102 @@ backdrop, and confirm the prompt appears with **Keep editing** focused. M2's
 real repro needs the production FSA folder picker, so the durable proof there is
 the unit contract.
 
+#### The role half: a control that ANNOUNCES itself operable is a `<button>`
+
+Same cluster, the AFFORDANCE rather than the dialog (task 536) — and the case
+where a `role` attribute made a promise the element could not keep, in two
+media at once.
+
+`FigureAnnotation` rendered four affordances as `<span onClick>`s. Two wore
+`role="button"` — the `#` numbered toggle with an `aria-pressed` state, the
+`×` delete — and neither was focusable or key-bound; the label text and
+`Label +` were bare spans. So a screen reader announced "button, pressed" for
+a control that refused every key, and a keyboard user could number, rename or
+delete a figure from every surface EXCEPT the figure's own chrome (`#` and
+`Label +` have no other home at all). The heading strip — the lozenge's own
+stated twin — carried the identical shape through
+`setAttribute("role", "button")`, which no JSX grep can see; that is how the
+audit's "5 sites tree-wide" under-counted by three.
+
+> **A control is a `<button type="button">`.** The role's three-part promise
+> (announced operable ⇒ focusable ⇒ activates on Enter AND Space) is the
+> platform's to keep, not a hand-rolled key handler's. `role="button"` is
+> spelled ONCE — [`activatableProps`](src/lib/activatable-props.ts) — and only
+> on a CONTAINER that must hold other interactive content, which HTML forbids
+> inside a `<button>`.
+
+Six rules it earned:
+
+- **Inside a NodeView the native button is SAFER than the surgical fix, not
+  merely tidier.** TipTap's default `stopEvent` answers true for a `BUTTON`
+  target, so ProseMirror's `eventBelongsToView` declines the keydown and the
+  browser's activation is the only thing that runs. A `tabIndex`ed span with
+  an `onKeyDown` — the task's own surgical contrast — would have handed Enter
+  to PM's keymap as well: a paragraph split at the caret, from a press on the
+  chrome. Pinned on the heading twin, whose vanilla NodeView mounts headlessly,
+  with a CANARY that dispatches the same key at the heading's TEXT and
+  requires PM to split it.
+- **The target guard is the fourth part, and every hand-rolled copy lacked
+  it.** The three containers that genuinely cannot be buttons (a tab holding
+  its close button, a library row holding its actions, a title strip holding
+  its `×`) each re-derived role + tabIndex + Enter/Space by hand, and each let a
+  key on the NESTED control bubble to the container's handler — so Enter on a
+  tab's close button both closed the tab (native) and activated it (bubbled).
+  `activatableProps` answers only for `e.target === e.currentTarget`.
+- **`disabled` is the native truth for "nothing to toggle"** — a `#` on a
+  caption-less figure announces itself disabled and takes NO focus (a control
+  that says it is disabled must not be a tab stop). `readOnly` renders no
+  button at all: the float's chip stays static markup (Issue-10).
+- **The NAME is stable across a toggle; `aria-pressed` is the state channel and
+  the tooltip is what flips** — the `OmniBlankToggle` contract, taken by both
+  `#`s (`iconHint({ label: "Figure number", hint })`), so the two channels
+  cannot double-announce.
+- **Hover-revealed chrome is `:focus-within`-revealed too, or it is not a tab
+  stop.** `display: none` removes an element from the sequence, so the `×` on
+  both strips and the heading's `Label +` were unreachable by Tab however
+  focusable they became. Stated limit at the rule: Shift-Tab INTO a strip
+  lands on its last VISIBLE member first.
+- **A rebuild that destroys the focused control hands focus to its successor.**
+  The heading strip re-renders on a toggle (`annot.innerHTML = ""`), which
+  dropped a keyboard user to `<body>` on every press; `renderAnnot` records
+  the focused `data-action` and re-focuses it after the rebuild.
+
+CI: [role-button-census.test.ts](src/components/__tests__/role-button-census.test.ts)
+reads BOTH media (`role="button"` / `role={…"button"…}` in JSX, `setAttribute`
+/ `.role =` in DOM code) over both silos, allowlist EMPTY, with a synthetic
+canary per needle; its consumer legs pin that the helper has real callers,
+that none sits on a `<button>`, and that none carries a second `onKeyDown`.
+The icon-button census's header — which said a `role="button"` div "is not
+censused" — now points here: a control is a real button (and lands THERE) or
+a container spelling the one helper (and lands HERE), which is what closes
+the class. Behavioural:
+[figure-lozenge-keyboard.test.tsx](src/components/__tests__/figure-lozenge-keyboard.test.tsx)
+drives the REAL lozenge against a REAL editor per affordance and per state,
+[heading-strip-keyboard.test.ts](src/lib/__tests__/heading-strip-keyboard.test.ts)
+the REAL NodeView (routing canary, focus restore),
+[activatable-props.test.tsx](src/lib/__tests__/activatable-props.test.tsx) the
+helper and the tab's nested-close leg. **Stated honestly:** jsdom implements
+no activation behaviour for native buttons, so no leg here "presses Enter" on
+one and reads the click's effect — that would test a shim of the platform.
+The figure legs assert the CONTRACT the browser activates against (a
+`<button type="button">`, a tab stop, enabled, ringed, click reaches the
+document) and the heading legs pin the one keystroke fact this environment can
+see. Measured by neutering each half in turn: restoring the pre-536 figure
+spans fails 7 lozenge legs plus the role census; restoring the pre-536 heading
+spans 4 strip legs plus the census; dropping the target guard 2; dropping the
+focus restore 1; dropping the vanilla `aria-label`s 1. (The icon-button census
+is NOT among them, and that is the point of the pairing: a span is invisible
+to a census over `<button>`, which is exactly why this one had to exist.)
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real: Tab into a figure's
+lozenge and operate all four, then a heading's strip.
+
+**Residual, stated.** The par-title strips (`+T`, the title text) on
+paragraphs and lists are click-only spans with NO role — keyboard-dead but
+making no false promise, and so outside this census's question. Same family,
+its own pass.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

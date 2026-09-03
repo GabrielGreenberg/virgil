@@ -533,9 +533,14 @@ describe("the chrome-only census — population", () => {
     expect(shapedOf("figure-placeholder").join(" ")).toMatch(/copy/);
     expect(shapedOf("figure-error").join(" ")).toMatch(/copy/);
     expect(shapedOf("figure-scale-btn")).toContain("<button>");
+    // RENEGOTIATED (task 536): the lozenge's `×` was a `<span role="button">`
+    // and is a real `<button>` now — the shape this scanner reads as
+    // `<button>`. The `role=button` needle stays in the scanner for the next
+    // hand-rolled control; `role-button-census.test.ts` is what keeps that
+    // needle from ever matching production again.
     const loz = jsxHits("src/components/FigureAnnotation.tsx");
     expect(loz.filter((h) => h.classes.includes("figure-annotation-delete")).flatMap((h) => h.shaped)).toContain(
-      "role=button",
+      "<button>",
     );
   });
 });

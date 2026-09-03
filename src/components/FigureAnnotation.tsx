@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import { isLabelTaken } from "@/lib/labels";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { chromeOnly } from "@/lib/view-only-chrome";
+import { iconHint } from "@/components/Hint";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -156,10 +157,30 @@ export default function FigureAnnotation({
   }, [editor, getFigurePos, onConfirmDelete]);
 
   // Suppress PM focus-steal: mousedown on the lozenge shouldn't plant a caret.
+  // On a real `<button>` this ALSO stops a pointer press from moving DOM focus
+  // onto the button — which is the same intent (the caret stays where the
+  // user left it) — while keyboard focus, which arrives by Tab and not by
+  // mousedown, is untouched.
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
   };
+
+  // Every affordance is a REAL `<button type="button">` (task 536): a control
+  // that announces itself operable must be focusable in DOM order and must
+  // activate on Enter AND Space, and a native button supplies all three —
+  // plus `disabled` semantics and the design system's `.focus-ring` — for
+  // free. Pre-536 these were `<span onClick>`s, two of them wearing a
+  // `role="button"` (the `#` with an `aria-pressed` a keyboard user could not
+  // flip) with no `tabIndex` and no key handler: announced as buttons,
+  // operable by mouse only. A native button is also what keeps a keystroke on
+  // the lozenge OUT of the document: TipTap's default NodeView `stopEvent`
+  // answers true for a BUTTON target, so ProseMirror never sees the Enter,
+  // where a `tabIndex`ed span would have handed it to the Enter keymap (a
+  // paragraph split at the caret). In `readOnly` mode the chip is static:
+  // no button, no role, no focus (Issue-10's contract).
+  const interactive = !readOnly;
+  const canToggle = interactive && canNumber;
 
   return (
     <div
@@ -179,35 +200,51 @@ export default function FigureAnnotation({
           shown INERT rather than silently doing nothing when clicked — the
           affordance and the mechanism are one declaration (task 316's rule).
           `is-unavailable`, not `is-off`: the latter means the user turned
-          numbering off, which they can undo. */}
-      <span
-        className={`figure-annotation-numbered-toggle${
-          canNumber ? (numbered ? "" : " is-off") : " is-unavailable"
-        }`}
-        role={readOnly || !canNumber ? undefined : "button"}
-        aria-pressed={readOnly || !canNumber ? undefined : numbered}
-        aria-disabled={!readOnly && !canNumber ? true : undefined}
-        data-hint={
-          readOnly
-            ? undefined
-            : !canNumber
+          numbering off, which they can undo. The unavailable button is
+          `disabled`: it announces itself so and takes no focus — a control
+          that says it is disabled must not be a tab stop.
+          The accessible NAME is stable across the toggle ("Figure number");
+          `aria-pressed` is the state channel and the sighted tooltip is what
+          flips, so the two cannot double-announce (the `OmniBlankToggle`
+          contract). */}
+      {interactive ? (
+        <button
+          type="button"
+          className={`figure-annotation-numbered-toggle focus-ring${
+            canNumber ? (numbered ? "" : " is-off") : " is-unavailable"
+          }`}
+          disabled={!canNumber}
+          aria-pressed={canNumber ? numbered : undefined}
+          aria-disabled={!canNumber ? true : undefined}
+          {...iconHint({
+            label: "Figure number",
+            hint: !canNumber
               ? "No caption — LaTeX gives this figure no number"
               : numbered
                 ? "Hide figure number"
-                : "Show figure number"
-        }
-        onClick={
-          readOnly || !canNumber
-            ? undefined
-            : (e) => {
-                e.stopPropagation();
-                toggleNumbered();
-              }
-        }
-      >
-        #
-      </span>
-      {!readOnly && editing ? (
+                : "Show figure number",
+          })}
+          onClick={
+            canToggle
+              ? (e) => {
+                  e.stopPropagation();
+                  toggleNumbered();
+                }
+              : undefined
+          }
+        >
+          #
+        </button>
+      ) : (
+        <span
+          className={`figure-annotation-numbered-toggle${
+            canNumber ? (numbered ? "" : " is-off") : " is-unavailable"
+          }`}
+        >
+          #
+        </span>
+      )}
+      {interactive && editing ? (
         <>
           <span className="figure-annotation-sep">  ·  label: </span>
           <input
@@ -239,43 +276,45 @@ export default function FigureAnnotation({
       ) : label ? (
         <>
           <span className="figure-annotation-sep">  ·  label: </span>
-          <span
-            className="figure-label-text"
-            onClick={
-              readOnly
-                ? undefined
-                : (e) => {
-                    e.stopPropagation();
-                    enterEdit();
-                  }
-            }
-          >
-            {label}
-          </span>
+          {interactive ? (
+            <button
+              type="button"
+              className="figure-label-text focus-ring"
+              onClick={(e) => {
+                e.stopPropagation();
+                enterEdit();
+              }}
+            >
+              {label}
+            </button>
+          ) : (
+            <span className="figure-label-text">{label}</span>
+          )}
         </>
       ) : readOnly ? null : (
-        <span
-          className="figure-label-add"
+        <button
+          type="button"
+          className="figure-label-add focus-ring"
           onClick={(e) => {
             e.stopPropagation();
             enterEdit();
           }}
         >
           Label +
-        </span>
+        </button>
       )}
-      {!readOnly && (
-        <span
-          className="figure-annotation-delete"
-          role="button"
-          data-hint="Delete figure"
+      {interactive && (
+        <button
+          type="button"
+          className="figure-annotation-delete focus-ring"
+          {...iconHint({ label: "Delete figure" })}
           onClick={(e) => {
             e.stopPropagation();
             void requestDelete();
           }}
         >
           ×
-        </span>
+        </button>
       )}
     </div>
   );

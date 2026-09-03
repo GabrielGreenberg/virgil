@@ -2058,7 +2058,15 @@ textarea,
   text-decoration: underline;
 }
 
-.heading-annotation:hover .heading-label-add {
+/* Revealed on HOVER for the mouse and on FOCUS-WITHIN for the keyboard
+   (task 536): a `display: none` control is not a tab stop, so without the
+   second selector the strip's hover-only members were unreachable by Tab.
+   Once any button in the strip holds focus the rest appear and the next Tab
+   reaches them. Stated limit: Shift-Tab INTO the strip from below lands on
+   the last VISIBLE member first (the hidden ones are not yet in the
+   sequence), so a backward traveller reaches them one Tab later. */
+.heading-annotation:hover .heading-label-add,
+.heading-annotation:focus-within .heading-label-add {
   display: inline;
 }
 
@@ -2076,7 +2084,8 @@ textarea,
   color: var(--heading-annotation-color, #6b9ac4);
 }
 
-.heading-annotation:hover .heading-annotation-delete {
+.heading-annotation:hover .heading-annotation-delete,
+.heading-annotation:focus-within .heading-annotation-delete {
   display: inline-flex;
 }
 
@@ -3462,7 +3471,10 @@ textarea,
   color: var(--heading-annotation-color, #6b9ac4);
 }
 
-.figure-block .figure-annotation:hover .figure-annotation-delete {
+/* Hover for the mouse, focus-within for the keyboard — the heading strip's
+   rule above, one lozenge over (task 536). */
+.figure-block .figure-annotation:hover .figure-annotation-delete,
+.figure-block .figure-annotation:focus-within .figure-annotation-delete {
   display: inline-flex;
 }
 

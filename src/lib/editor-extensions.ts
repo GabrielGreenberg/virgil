@@ -1216,19 +1216,47 @@ export function createHeadingWithLabel(
         let lastAnnotNumbered: boolean | undefined;
         let lastAnnotLabel: string | null | undefined;
 
+        // Every strip affordance is a REAL `<button type="button">` (task
+        // 536; the figure lozenge's `FigureAnnotation` is the React twin of
+        // this strip and took the same shape). A native button is focusable
+        // in DOM order, activates on Enter AND Space, and takes the design
+        // system's `.focus-ring` — where the pre-536 `<span role="button">`
+        // announced itself operable and was neither focusable nor key-bound.
+        // Keystrokes on a button here never reach ProseMirror: `stopEvent`
+        // below answers true for anything inside `annot`, so the browser's
+        // native activation is the only thing that runs.
+        // Each button carries its OWN chrome-only stamp: the print census
+        // follows `appendChild` ancestry by variable name and cannot see
+        // through a factory's return value (its stated limit), and the
+        // strip's buttons are editor chrome by definition (task 535's law).
+        function chromeButton(className: string): HTMLButtonElement {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = chromeOnly(`${className} focus-ring`);
+          return b;
+        }
+
         function renderAnnot() {
           const typeName = getTypeName(currentNode);
           const isNumbered = currentNode.attrs.numbered !== false;
           const label = currentNode.attrs.label as string | null;
           lastAnnotNumbered = isNumbered;
           lastAnnotLabel = label;
+          // A rebuild DESTROYS the focused control (the `#` a keyboard user
+          // just pressed, whose click dispatched the attr change that brought
+          // us here), and focus would fall to `<body>` — the user loses their
+          // place on every toggle. Remember which affordance held focus and
+          // hand it to that affordance's successor after the rebuild.
+          const active = document.activeElement;
+          const focusedAction =
+            active instanceof HTMLElement && annot.contains(active)
+              ? active.dataset.action ?? null
+              : null;
           annot.innerHTML = "";
 
-          // 1. Type chip — clickable dropdown trigger.
-          const typeChip = document.createElement("span");
-          typeChip.className = "heading-annotation-type-chip";
+          // 1. Type chip — the heading-type menu trigger.
+          const typeChip = chromeButton("heading-annotation-type-chip");
           typeChip.dataset.action = "type-menu";
-          typeChip.setAttribute("role", "button");
           typeChip.setAttribute("aria-haspopup", "menu");
           typeChip.title = "Change heading type";
           const typeText = document.createElement("span");
@@ -1242,11 +1270,13 @@ export function createHeadingWithLabel(
 
           // 2. Numbered on/off toggle — drives \section{} vs \section*{}
           // and the CSS-rendered section number on the heading itself.
-          const numToggle = document.createElement("span");
-          numToggle.className = "heading-annotation-numbered-toggle";
+          const numToggle = chromeButton("heading-annotation-numbered-toggle");
           if (!isNumbered) numToggle.classList.add("is-off");
           numToggle.dataset.action = "toggle-numbered";
-          numToggle.setAttribute("role", "button");
+          // The NAME is stable across the toggle; `aria-pressed` is the state
+          // channel and the tooltip is what flips (the `OmniBlankToggle`
+          // contract) — a name that restated the state would double-announce.
+          numToggle.setAttribute("aria-label", "Section number");
           numToggle.setAttribute("aria-pressed", isNumbered ? "true" : "false");
           numToggle.title = isNumbered ? "Hide section number" : "Show section number";
           numToggle.textContent = "#";
@@ -1259,13 +1289,13 @@ export function createHeadingWithLabel(
             sep.textContent = "  ·  label: ";
             annot.appendChild(sep);
 
-            const labelSpan = document.createElement("span");
-            labelSpan.textContent = label;
-            labelSpan.className = "heading-label-text";
-            annot.appendChild(labelSpan);
+            const labelBtn = chromeButton("heading-label-text");
+            labelBtn.dataset.action = "edit-label";
+            labelBtn.textContent = label;
+            annot.appendChild(labelBtn);
           } else {
-            const addBtn = document.createElement("span");
-            addBtn.className = "heading-label-add";
+            const addBtn = chromeButton("heading-label-add");
+            addBtn.dataset.action = "add-label";
             addBtn.textContent = "Label +";
             annot.appendChild(addBtn);
           }
@@ -1273,13 +1303,18 @@ export function createHeadingWithLabel(
           // 4. Trailing × delete button — OMITTED in floats: deleting the
           // heading would dissolve the float's own subject (decision 3).
           if (!isFloat) {
-            const deleteBtn = document.createElement("span");
-            deleteBtn.className = "heading-annotation-delete";
+            const deleteBtn = chromeButton("heading-annotation-delete");
             deleteBtn.dataset.action = "delete";
-            deleteBtn.setAttribute("role", "button");
+            deleteBtn.setAttribute("aria-label", "Delete heading");
             deleteBtn.title = "Delete heading";
             deleteBtn.textContent = "×";
             annot.appendChild(deleteBtn);
+          }
+
+          if (focusedAction) {
+            annot
+              .querySelector<HTMLElement>(`[data-action="${focusedAction}"]`)
+              ?.focus();
           }
         }
 
