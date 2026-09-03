@@ -9,7 +9,7 @@ there is not merely invisible to the dream, it is never written. The famine the
 dream reported every night from 2026-08-26 stops being an accident and becomes
 STRUCTURAL: the writer and the reader are on different disks.
 
-Three claims, three groups of legs:
+Four claims, four groups of legs:
 
   LADDER   `memos_root()` resolves the Dropbox-synced `Virgil-Inbox/dev-loop/
            memos` when one is reachable, an explicit pin outranks it, and
@@ -38,6 +38,15 @@ Three claims, three groups of legs:
            authoritative digest ROTATES in place on a same-day re-run, and a
            file two machines can see being rewritten is a conflicted copy
            waiting to be minted (AGENTS.md → "The daemon half").
+
+  PATHS    `dream.py paths [key]` is the door an OUTSIDE reader takes to find
+           where this build puts its roots (task 538: CATCHER.md spelled the
+           digest root by hand and read a directory the dream had stopped
+           writing to ten nights earlier). Three claims: it answers with DEV
+           mode OFF (the catcher is not a dev session — the pre-538 gate would
+           hand it the no-op line), it WRITES NOTHING (which is what entitles it
+           to skip the gate), and a bare key prints a path a shell can `ls` —
+           or nothing + exit 1, never the string `None`.
 
 Every fixture is synthetic. The classes that resolve the LADDER run under a
 temp `$HOME` with the dev-loop env cleared (`_EnvCase`), because the ladder
@@ -919,6 +928,101 @@ class LocalSinkBanner(unittest.TestCase):
         # The local checkout home is now a READ sink, and `select` says so.
         self.assertIn(str((self.co / "editor" / "dev" / "memos").resolve()),
                       out["extraSinksRead"])
+
+
+# ---------------------------------------------------------------------------
+# PATHS — the door an outside reader takes (task 538)
+# ---------------------------------------------------------------------------
+
+class PathsDoor(unittest.TestCase):
+    """`dream.py paths` resolves the same roots `select`/`digest` resolve and
+    prints them — outside the DEV gate, creating nothing."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.co = self.base / "checkout"
+        (self.co / "editor" / "skills").mkdir(parents=True)
+        (self.co / "editor" / "dev" / "memos").mkdir(parents=True)
+        self.home = self.base / "home"
+        self.home.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _env(self, *, dev: str | None, digests: Path | None):
+        env = dict(os.environ)
+        env["HOME"] = str(self.home)
+        env["VIRGIL_REPO_ROOT"] = str(self.co)
+        for k in ("VIRGIL_DEV", "VIRGIL_DEV_HOME", "VIRGIL_DEV_MEMOS_DIR",
+                  "VIRGIL_INBOX", "VIRGIL_DREAM_DIGESTS_DIR", "VIRGIL_TASKS_DIR"):
+            env.pop(k, None)
+        if dev is not None:
+            env["VIRGIL_DEV"] = dev
+        if digests is not None:
+            env["VIRGIL_DREAM_DIGESTS_DIR"] = str(digests)
+        return env
+
+    def _run(self, env, *args) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(SCRIPTS / "dream.py"), "paths", *args],
+                              capture_output=True, text=True, env=env, cwd=str(SCRIPTS))
+
+    def test_a_bare_key_prints_the_pinned_digest_root_and_nothing_else(self):
+        pin = self.base / "digests"
+        pin.mkdir()
+        r = self._run(self._env(dev="1", digests=pin), "digests")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), str(pin.resolve()))
+        self.assertEqual(len(r.stdout.strip().splitlines()), 1)
+
+    def test_it_answers_with_DEV_mode_OFF(self):
+        # The leg with teeth. The catcher runs from an ordinary session; the
+        # pre-538 gate answered every subcommand with the no-op line there.
+        pin = self.base / "digests"
+        pin.mkdir()
+        r = self._run(self._env(dev="0", digests=pin), "digests")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), str(pin.resolve()))
+        self.assertNotIn("DEV mode off", r.stdout)
+
+    def test_the_default_is_the_primary_checkouts_editor_dev_and_is_NOT_created(self):
+        # No pin: the answer is `<checkout>/editor/dev/dream-digests` — the
+        # root task 431 moved the loop to — and asking WHERE it is must not
+        # make it exist. A resolver that mkdirs is a writer, and a writer may
+        # not skip the gate.
+        r = self._run(self._env(dev="0", digests=None), "digests")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        expected = (self.co / "editor" / "dev" / "dream-digests").resolve()
+        self.assertEqual(r.stdout.strip(), str(expected))
+        self.assertFalse(expected.exists(), "paths created the digest root")
+        before = sorted(p.name for p in (self.co / "editor" / "dev").iterdir())
+        self.assertEqual(before, ["memos"])
+
+    def test_the_JSON_form_names_every_root_and_the_sink_kind(self):
+        pin = self.base / "digests"
+        pin.mkdir()
+        r = self._run(self._env(dev="0", digests=pin))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        roots = json.loads(r.stdout)
+        self.assertEqual(roots["digestsRoot"], str(pin.resolve()))
+        self.assertEqual(roots["memosRoot"],
+                         str((self.co / "editor" / "dev" / "memos").resolve()))
+        # No synced inbox under this $HOME → the local rung, said out loud.
+        self.assertEqual(roots["memoSinkKind"], "local")
+        self.assertIsNone(roots["reportsRoot"])
+        self.assertIn("taskQueueRoot", roots)
+
+    def test_a_root_that_does_not_resolve_prints_NOTHING_and_exits_1(self):
+        # `None` printed as a path is a directory a shell would try to `ls`.
+        r = self._run(self._env(dev="0", digests=None), "reports")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout, "")
+        self.assertIn("reports root does not resolve", r.stderr)
+
+    def test_an_unknown_key_is_refused(self):
+        r = self._run(self._env(dev="0", digests=None), "digest")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("digests", r.stderr)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,13 @@ read-and-account work around it:
            loop's only actionable output since task 522.  Mints the id under the
            three-minter collision protocol, asks dream_land.task_route which
            queue it goes to, and enforces the pipeline's schema bar.
+  paths    print where THIS build resolves every dev-loop root — the digest
+           root, the memo sink (and which rung answered), the courtesy reports
+           dir, the task queue — as JSON, or ONE of them bare (`paths digests`).
+           The door an OUTSIDE reader takes (the catcher's nightly-digest step)
+           instead of spelling a path that has moved twice (tasks 431, 521) and
+           went stale in prose both times (task 538). Gate-free: a pure read
+           that writes nothing.
 
 It does NOT decide a queue by itself — that is dream_land.task_route, over
 dream_land.classify_change (the shared landing-mode helper + the three-boundary
@@ -57,6 +64,7 @@ Usage:
   dream.py select
   dream.py digest [--report <inline|@file>]
   dream.py file-task --task <inline|@file>
+  dream.py paths [digests|memos|reports|tasks]
 """
 
 from __future__ import annotations
@@ -1650,11 +1658,78 @@ def cmd_file_task(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# paths — the loop's roots, as THIS build resolves them
+# ---------------------------------------------------------------------------
+
+# `paths <key>` → the JSON field it prints bare. The JSON vocabulary is the one
+# `cmd_select`'s preflight block already publishes, so one name means one thing
+# whichever door a reader takes.
+_PATH_KEYS = {
+    "digests": "digestsRoot",
+    "memos": "memosRoot",
+    "reports": "reportsRoot",
+    "tasks": "taskQueueRoot",
+}
+
+
+def cmd_paths(argv: list[str]) -> int:
+    """`dream.py paths [key]` — every dev-loop root as THIS build resolves it.
+
+    A pure READ. It resolves the same doors `select` / `digest` resolve and
+    prints them; it creates nothing (a resolver answers where a root WOULD be —
+    only a write makes the directory), which is why `main` runs it OUTSIDE the
+    DEV gate. It exists so a reader that is not the dream — CATCHER.md §2's
+    nightly-digest step, run from a session that is not a dev session — asks
+    the tool instead of spelling a path: the digest root has moved twice
+    (`~/.virgil-dev` → `<primary checkout>/editor/dev`, task 431; the memo sink
+    onto the synced inbox, task 521) and the prose copy went stale both times
+    (task 538). The stored-copy rule (AGENTS.md, "The stored-copy half"): a live
+    answer is resolved at READ time from one authority, never frozen into a doc.
+
+    With a KEY the root is printed bare — one line, no JSON — so a shell can
+    `ls` it; a root that does not resolve on this machine (no synced inbox, no
+    task queue) prints nothing and exits 1 rather than printing `None` as if it
+    were a path.
+    """
+    p = argparse.ArgumentParser(prog="dream.py paths")
+    p.add_argument("key", nargs="?", choices=sorted(_PATH_KEYS),
+                   help="print ONE root bare (a path; nothing + exit 1 when "
+                        "that root does not resolve here) instead of the JSON")
+    a = p.parse_args(argv)
+    roots = {
+        "digestsRoot": str(_digests_root()),
+        "memosRoot": str(_memos_root()),
+        "memoSinkKind": memo_sink_kind(),
+        "reportsRoot": (str(synced_reports_root())
+                        if synced_reports_root() is not None else None),
+        "taskQueueRoot": (str(tasks_root()) if tasks_root() is not None else None),
+    }
+    if a.key is None:
+        print(json.dumps(roots, indent=2))
+        return 0
+    value = roots[_PATH_KEYS[a.key]]
+    if value is None:
+        print(f"dream: the {a.key} root does not resolve on this machine",
+              file=sys.stderr)
+        return 1
+    print(value)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
 _SUBCOMMANDS = {"select": cmd_select, "digest": cmd_digest,
-                "file-task": cmd_file_task}
+                "file-task": cmd_file_task, "paths": cmd_paths}
+
+# Doors that run WITHOUT the DEV gate. The gate exists to keep the dream from
+# RUNNING — and writing — outside a dev session; a resolver that writes nothing
+# has nothing for it to protect, and gating it would hand an outside reader
+# (the catcher, asking `paths digests` from an ordinary session) the no-op line
+# where it needs a path. Membership is a claim that the door WRITES NOTHING —
+# `test_dream_synced_sink.PathsDoor` pins it.
+_UNGATED = frozenset({"paths"})
 
 
 def main(argv: list[str]) -> int:
@@ -1665,7 +1740,7 @@ def main(argv: list[str]) -> int:
 
     # The gate. OFF (the default) → do nothing, succeed. The dream is a dev
     # affordance; it never runs — or writes — outside a DEV session.
-    if not dev_mode_enabled():
+    if argv[0] not in _UNGATED and not dev_mode_enabled():
         print("dream: DEV mode off (no VIRGIL_DEV, no <repo>/editor/dev/dev-mode marker) — no-op.")
         return 0
 

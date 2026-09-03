@@ -51,7 +51,7 @@ describe("dev-loop synced mailbox (Python, editor silo)", () => {
       // is not a two-file change; it only ever moves up.
       const ran = output.match(/Ran (\d+) tests?/);
       expect(ran, `no test tally in output:\n${output}`).not.toBeNull();
-      expect(Number(ran![1])).toBeGreaterThanOrEqual(35);
+      expect(Number(ran![1])).toBeGreaterThanOrEqual(50);
     },
   );
 });

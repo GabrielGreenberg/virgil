@@ -656,7 +656,10 @@ python3 editor/scripts/dream.py digest --report @report.json
 ```
 
 It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
-`memos/`), recording the three buckets, the counts by tier/skill/lens, and the
+`memos/` — a reader OUTSIDE the dream, such as the catcher's nightly-digest
+step, finds this root through `dream.py paths digests` rather than by spelling
+it: it has moved twice and the prose copy went stale both times, task 538),
+recording the three buckets, the counts by tier/skill/lens, and the
 `marker` the next dream reads. **Quote each entry's real `task` id and queue** —
 the digest then reads as what actually happened rather than as what was
 intended, and an entry with no `task` renders as **NOT FILED**, which is exactly
