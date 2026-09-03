@@ -311,8 +311,20 @@ describe("census — the retired owner cannot come back, and the chip reads the 
     expect(decl, "unanchoredMarkers derivation not found").toBeTruthy();
     expect(decl![1]).toContain("marginaliaMarkers.filter");
     expect(decl![1]).not.toContain("visibleMarginaliaMarkers");
-    // …and it is what the chip is handed.
-    expect(pane).toContain("markers={unanchoredMarkers}");
+    // …and it is what the chip is handed — through the task-544 FALLBACK
+    // filter (`chipMarkers`: the unanchored set minus every side that hosts
+    // a gutter bin), which reads that same unfiltered derivation and nothing
+    // else. RENEGOTIATED from `markers={unanchoredMarkers}`: the chip is no
+    // longer the owner, it is the fallback, and the census of THAT rule lives
+    // in `omni-one-gutter-surface.test.tsx`.
+    const chip = pane.match(
+      /const chipMarkers = useMemo\(([\s\S]{0,400}?)\);\n/,
+    );
+    expect(chip, "chipMarkers derivation not found").toBeTruthy();
+    expect(chip![1]).toContain("unanchoredMarkers.filter");
+    expect(chip![1]).not.toContain("visibleMarginaliaMarkers");
+    expect(pane).toContain("markers={chipMarkers}");
+    expect(pane).not.toContain("markers={unanchoredMarkers}");
   });
 
   it("the chip is mounted in the STICKY chrome header, not inside the marginalia host", () => {

@@ -8,8 +8,20 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { MarkerButton } from "@/components/Marginalia";
 
 /**
- * "N unanchored" — the pane-chrome affordance for cards whose anchor died
+ * "N unanchored" — the pane-chrome FALLBACK for cards whose anchor died
  * (`resolveCardAnchor` → `source:'orphan'`, surfaced as `marker.unanchored`).
+ *
+ * ## Fallback, not owner (task 544)
+ *
+ * The ONE owner of the no-anchor affordance is the gutter's "N unanchored"
+ * bin (`OmniUnanchoredBin`, in the column's sticky bin slot — task 421 made
+ * it reachable at every scroll position, which retired this chip's whole
+ * reason for being a second surface). `EditorPane` hands this chip only the
+ * markers whose RESOLVED side has no bin surface — zen, a collapsed column,
+ * the code split, the folded Reader gutters — read off the edge each
+ * `PanelColumn` publishes (`onBinSurfaceChange`). Where every side has a
+ * gutter this renders nothing, so one fact is never drawn twice on screen
+ * (Gabriel: "should be just the gutter bar").
  *
  * ## Why it lives here and not in the margin (task 410)
  *

@@ -110,9 +110,12 @@ describe("member 1 — an omni bin pill announces its own text, count included",
       ),
     );
     const found = pills(container);
-    expect(found).toHaveLength(3);
+    // RENEGOTIATED (task 544): the no-anchor bin is ONE pill counting both
+    // states ("N unanchored"); the free/orphaned distinction moved to the
+    // rows. Two pills, and each still names itself by its visible text.
+    expect(found).toHaveLength(2);
     const names = found.map(accessibleName);
-    expect(names).toEqual(["3 unanchored", "2 unplaced", "1 outside focus"]);
+    expect(names).toEqual(["5 unanchored", "1 outside focus"]);
     // …and each name CONTAINS the pill's own visible label, so a voice-control
     // user reading the pill aloud reaches it (WCAG 2.5.3). Tautological only
     // while no `aria-label` is present — which is the whole contract: with the
@@ -144,7 +147,8 @@ describe("member 1 — an omni bin pill announces its own text, count included",
       createElement(OmniUnanchoredBin, { free: [], orphaned: [item("orphaned", 1)] }),
     );
     const btn = pills(container)[0]!;
-    expect(btn.getAttribute("data-hint")).toMatch(/anchor was deleted/);
+    // (task 544: the merged pill's hint names both ways a card ends up here.)
+    expect(btn.getAttribute("data-hint")).toMatch(/no place in the text/);
     expect(btn.hasAttribute("aria-label")).toBe(false);
   });
 });

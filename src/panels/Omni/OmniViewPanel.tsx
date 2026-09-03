@@ -2,10 +2,17 @@
 
 import { useMemo, memo, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useOmniBinSlot } from "@/components/editor-layout/omni-bin-slot";
+import {
+  useOmniBinSlot,
+  cascadeFloorForBinSlot,
+  cascadeFloorForStickyOccupant,
+} from "@/components/editor-layout/omni-bin-slot";
 import type { ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
-import { useInTextPositions } from "@/hooks/useInTextPositions";
+import {
+  useInTextPositions,
+  type CascadeFloor,
+} from "@/hooks/useInTextPositions";
 import {
   useLivePosResolver,
   buildParagraphAnchorMap,
@@ -340,9 +347,16 @@ export function OmniFilterMenu({
 export function OmniBinStack({
   children,
   host = "pod",
+  occupantRef,
 }: {
   children: ReactNode;
   host?: "frame" | "pod";
+  /** In-pod host only: receives the STICKY inner — the element that is both
+   *  the pinned chrome and its own last painted pixel — so the cascade can
+   *  floor its first card under it (task 544, `cascadeFloorForStickyOccupant`).
+   *  The frame host needs none: there the column's bin SLOT is the occupant
+   *  and the floor is derived from it directly. */
+  occupantRef?: (el: HTMLElement | null) => void;
 }) {
   if (host === "frame") {
     return (
@@ -358,6 +372,7 @@ export function OmniBinStack({
       style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20 }}
     >
       <div
+        ref={occupantRef}
         data-omni-bin-sticky=""
         className="flex flex-col gap-1"
         style={{ position: "sticky", top: "var(--pod-gap, 8px)", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
@@ -441,29 +456,38 @@ export function OmniBinPill({
   );
 }
 
+/** The dashed-circle "no place in the text yet" cue — the same glyph the
+ *  docked card's parked rest-state wears (STYLE_GUIDE "Unanchored / parked
+ *  card rest-state"), spelled once for the pill and its rows. */
+function ParkedGlyph() {
+  return <span className="text-[11px] leading-none text-ink-muted">◌</span>;
+}
+
 /**
- * The two bins for cards with no live text anchor — ONE per `AnchorState`
- * that cannot cascade, because they are different facts (task 422):
+ * THE ONE bin for cards with no live text anchor — ONE pill, "N unanchored",
+ * whatever brought the card there (task 544, renegotiating task 422).
  *
- *   - **"N unanchored"** — ORPHANED: the card's stored anchor DIED (its uuid,
- *     its `linkedAnchor` mark and its text snapshot are all dead). The
- *     recoverable-ERROR tier: `BadgeOrphaned` glyph, error tone. The word
- *     is reserved for this set, so it means the SAME thing here as on the
- *     pane-chrome `UnanchoredCardsChip` (task 410) — the remaining difference
- *     between the two counts is only that this bin is per SIDE and follows
- *     the omni category filter, which the hint says.
- *   - **"N unplaced"** — FREE: a card the user deliberately made without an
- *     anchor, or parked (an archive→unarchive citation/footnote ref, a note
- *     with no link). NOT an error — the neutral tone and a dashed-circle
- *     glyph, the same "drag to anchor" cue the docked card wears (STYLE_GUIDE
- *     "Unanchored / parked card rest-state").
+ * The `AnchorState` SSOT still tells a `free` card (deliberately parked: an
+ * archive→unarchive citation/footnote ref, a note with no link) from an
+ * `orphaned` one (its stored anchor DIED — uuid, `linkedAnchor` mark and text
+ * snapshot all dead), and this surface KEEPS that distinction where it is
+ * useful — PER ROW, as the glyph beside each card (`BadgeOrphaned` for an
+ * orphan, the dashed-circle `◌` for a parked card) — while it stops SPLITTING
+ * it into two pills. Gabriel's ruling on the two-pill shape 422 shipped:
+ * "there is no conceptual distinction between unanchored and unplaced, so
+ * these can be merged" — to the user both are "a card with no place in the
+ * text", and two stacked pills over the deck read as two problems.
  *
- * Pre-422 the two were SUMMED into one pill wearing the error badge, so a
- * normal, non-error state was announced with the error glyph and an
- * error-tier count — the distinction `resolveAnchorState` exists to make,
- * erased at the one surface the user looks at. Both pills flow inside the
- * shared `OmniBinStack` column (unplaced below unanchored), so expanding
- * either pushes what follows down rather than painting over it (task 127).
+ * The pill's TONE is the strongest state it holds: `error` iff any member is
+ * orphaned (a recoverable error somewhere in the list), else `neutral`; the
+ * pill glyph follows the same rule. Orphaned rows are listed FIRST — they are
+ * the ones asking for attention. The pill keeps the word "unanchored", which
+ * is what the pod-header fallback chip has always said, so the one affordance
+ * reads the same wherever it is drawn.
+ *
+ * It renders inside the shared `OmniBinStack` column above the outside-focus
+ * bin, so expanding it pushes what follows down rather than painting over it
+ * (task 127).
  */
 export function OmniUnanchoredBin({
   free,
@@ -472,38 +496,45 @@ export function OmniUnanchoredBin({
   free: OmniItem[];
   orphaned: OmniItem[];
 }) {
-  if (free.length + orphaned.length === 0) return null;
+  const count = free.length + orphaned.length;
+  if (count === 0) return null;
+  const anyOrphaned = orphaned.length > 0;
   return (
     <div data-omni-unanchored-bin="" className="flex flex-col gap-1">
       <OmniBinPill
-        data-omni-orphaned-bin=""
-        count={orphaned.length}
-        label={`${orphaned.length} unanchored`}
-        tone="error"
-        glyph={<BadgeOrphaned theme={CARD_THEMES.error} />}
-        hintCollapsed="Cards on this side whose anchor was deleted — click to show them; drag one onto a paragraph to re-pin it"
+        data-omni-unanchored-pill=""
+        count={count}
+        label={`${count} unanchored`}
+        tone={anyOrphaned ? "error" : "neutral"}
+        glyph={
+          anyOrphaned ? <BadgeOrphaned theme={CARD_THEMES.error} /> : <ParkedGlyph />
+        }
+        hintCollapsed="Cards on this side with no place in the text — an anchor that was deleted, or a card parked without one. Click to show them; drag one onto a paragraph to place it"
         hintExpanded="Collapse unanchored cards"
       >
         {orphaned.map((item) => (
-          <div key={item.id} className="flex items-start gap-2">
+          <div
+            key={item.id}
+            className="flex items-start gap-2"
+            data-omni-bin-row="orphaned"
+          >
             <span className="pt-1 shrink-0" data-omni-bin-orphan-marker="">
               <BadgeOrphaned theme={CARD_THEMES.error} />
             </span>
             <div className="min-w-0 flex-1">{item.content}</div>
           </div>
         ))}
-      </OmniBinPill>
-      <OmniBinPill
-        data-omni-free-bin=""
-        count={free.length}
-        label={`${free.length} unplaced`}
-        tone="neutral"
-        glyph={<span className="text-[11px] leading-none text-ink-muted">◌</span>}
-        hintCollapsed="Cards parked without an anchor — click to show them; drag one into the editor to place it"
-        hintExpanded="Collapse unplaced cards"
-      >
         {free.map((item) => (
-          <div key={item.id}>{item.content}</div>
+          <div
+            key={item.id}
+            className="flex items-start gap-2"
+            data-omni-bin-row="free"
+          >
+            <span className="pt-1 shrink-0" data-omni-bin-free-marker="">
+              <ParkedGlyph />
+            </span>
+            <div className="min-w-0 flex-1">{item.content}</div>
+          </div>
         ))}
       </OmniBinPill>
     </div>
@@ -669,16 +700,6 @@ function OmniViewPanel({
     });
   }, [items, enabledCategories, hideAllCards]);
 
-  // Report the visible-card count up so the column can stay open when the
-  // omni-view alone is showing cards (no docked band) — the Reader's narrow-
-  // pane collapse rule keys off this. Effect fires only when the count flips
-  // (visibleItems is structurally memoized; plain typing never recomputes it),
-  // so this is off the keystroke path.
-  const visibleCount = visibleItems.length;
-  useEffect(() => {
-    onVisibleCardsChange?.(visibleCount);
-  }, [visibleCount, onVisibleCardsChange]);
-
   // Live-position resolver (T5 Pillar A). Entity-anchored kinds (footnote /
   // citation / example) resolve their live pos from the DocStructureObserver
   // snapshot via `cardPopKey(kind,id)`; PARAGRAPH-anchored kinds (note / todo /
@@ -690,16 +711,18 @@ function OmniViewPanel({
   // stack at the top of the gutter while typing (esp. backspace). Snapshot/
   // anchors-identity-cached, so plain typing rebuilds nothing here (keystroke
   // sanctity) — see `useLivePosResolver`.
+  // Built over the side's WHOLE item list rather than the view-filtered one
+  // (task 544): the no-anchor bin below reads every item, and the resolver
+  // must be able to answer for all of them. `visibleItems ⊆ items`, so the
+  // cascade's own lookups are covered by the same map.
   const paragraphAnchors = useMemo(
-    () => buildParagraphAnchorMap(visibleItems),
-    [visibleItems],
+    () => buildParagraphAnchorMap(items),
+    [items],
   );
   const resolvePos = useLivePosResolver(editor, cardPopKey, paragraphAnchors);
 
-  const { anchored, free, orphaned, outsideFocus } = useMemo(() => {
+  const { anchored, outsideFocus } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
-    const free: OmniItem[] = [];
-    const orphaned: OmniItem[] = [];
     const outsideFocus: OmniItem[] = [];
     for (const item of visibleItems) {
       // Cards outside the focus band have a hidden in-text anchor → bin them
@@ -717,24 +740,58 @@ function OmniViewPanel({
       // of the "note cards stack at the top while typing" fix.
       const live = resolvePos(item.id);
       const pos = live ?? item.pos;
-      if (pos == null) {
-        // No live anchor AND no baked pos → genuinely unanchored. Builders that
-        // resolve paragraph UUIDs return pos:null while the editor is still
-        // mounting; don't flash those into the unanchored bucket until live.
-        if (!editor) continue;
-        // Split the unanchored items into the two bin sections by the
-        // builder-declared anchorState. (`anchored` here is an extra guard:
-        // an anchored item should never carry pos:null, but if a builder
-        // ever regresses, treat it as orphaned rather than dropping it.)
-        if (item.anchorState === "free") free.push(item);
-        else orphaned.push(item);
-      } else {
-        anchored.push({ ...item, pos });
-      }
+      // No live anchor AND no baked pos → the card has no place in the
+      // cascade; the no-anchor bin below owns it (from the UNFILTERED list).
+      if (pos == null) continue;
+      anchored.push({ ...item, pos });
     }
     anchored.sort((a, b) => a.pos - b.pos);
-    return { anchored, free, orphaned, outsideFocus };
-  }, [visibleItems, editor, resolvePos]);
+    return { anchored, outsideFocus };
+  }, [visibleItems, resolvePos]);
+
+  // The NO-ANCHOR set (task 544) — the gutter bin's input, and the ONE owner
+  // of the affordance on a side that hosts a bin at all. Derived from the
+  // side's WHOLE item list, not from `visibleItems`: the "hide all cards"
+  // toggle and the category filter are preferences about the CASCADE — what
+  // is shown beside the text — and a card with no place in the text is not a
+  // cascade card. Task 410's rule for the pod-header chip, arriving at the
+  // surface that replaces it: an affordance that exists so a card cannot
+  // vanish must not itself be hideable by a layout preference, and the chip
+  // it stands in for never read the filter either.
+  //
+  // Builders that resolve paragraph UUIDs return pos:null while the editor is
+  // still mounting, so nothing is binned until the editor is live (the same
+  // mount-race guard the cascade split had). `anchorState` splits the rows by
+  // the builder-declared intent; an `anchored` item carrying pos:null is a
+  // builder regression and is treated as orphaned rather than dropped.
+  const { free, orphaned } = useMemo(() => {
+    const free: OmniItem[] = [];
+    const orphaned: OmniItem[] = [];
+    if (!editor) return { free, orphaned };
+    for (const item of items) {
+      if (item.outsideFocus) continue;
+      const pos = resolvePos(item.id) ?? item.pos;
+      if (pos != null) continue;
+      if (item.anchorState === "free") free.push(item);
+      else orphaned.push(item);
+    }
+    return { free, orphaned };
+  }, [items, editor, resolvePos]);
+
+  // Report "this side is showing something" up so the column can stay open
+  // when the omni-view alone has content (no docked band) — the Reader's
+  // narrow-pane collapse rule keys off it. The count includes the no-anchor
+  // bin's members (task 544): a column whose only occupant is the "N
+  // unanchored" pill has content, and a rule that crushed it to zero width
+  // would hide the one affordance that exists so those cards cannot vanish.
+  // The consumer reads it as a boolean, so a card counted twice (a free card
+  // both in the list and in the bin) changes nothing. Effect fires only when
+  // the count flips (every input is structurally memoized; plain typing never
+  // recomputes it), so this is off the keystroke path.
+  const presentCount = visibleItems.length + free.length + orphaned.length;
+  useEffect(() => {
+    onVisibleCardsChange?.(presentCount);
+  }, [presentCount, onVisibleCardsChange]);
 
   const inTextItems = useMemo(
     () => anchored.map((i) => ({ id: i.id, pos: i.pos })),
@@ -765,12 +822,36 @@ function OmniViewPanel({
   // `resolvePos(id) ?? item.pos` at measure time, so paragraph-anchored cards
   // track their anchor live on every reflow instead of riding the stale baked
   // pos — the core of the "cards stack at the top while typing" fix.
-  const { positions, naturals, editorContentHeight, panelScrollRef } =
-    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
   // Where the bins go (task 421): the column's sticky bin slot when one is
   // published, else in-pod sticky. A context read — no editor subscription,
   // no measurement; re-renders only when the slot element mounts/unmounts.
   const binSlot = useOmniBinSlot();
+  // The in-pod fallback's sticky inner (set by `OmniBinStack host="pod"`);
+  // null whenever the column hosts the bins.
+  const [podOccupant, setPodOccupant] = useState<HTMLElement | null>(null);
+  // The cascade FLOOR source (task 544): the sticky chrome the deck's first
+  // card must clear — the column's bin slot (which sits below every docked
+  // band by flex order, so a docked band floors the deck too), or the in-pod
+  // fallback's own sticky inner. Memoized per source element because the
+  // hook depends on its identity; the read itself runs inside the measure
+  // pass, and the element is observed by the pass's own ResizeObserver, so
+  // expanding a pill or docking a band re-floors the deck through the one
+  // settle door. Nothing here runs per keystroke.
+  const cascadeFloor = useMemo<CascadeFloor | null>(() => {
+    if (binSlot) return cascadeFloorForBinSlot(binSlot);
+    if (podOccupant) return cascadeFloorForStickyOccupant(podOccupant);
+    return null;
+  }, [binSlot, podOccupant]);
+  const { positions, naturals, editorContentHeight, panelScrollRef } =
+    useInTextPositions(
+      editor,
+      inTextItems,
+      true,
+      "data-omni-entry-wrapper",
+      pinned,
+      resolvePos,
+      cascadeFloor,
+    );
 
   // Motion (task 328): a sanctioned move SLIDES instead of teleporting.
   // Suppressed in the three cases where a transition would be a lie about
@@ -852,7 +933,7 @@ function OmniViewPanel({
             binSlot,
           )
         ) : (
-          <OmniBinStack host="pod">
+          <OmniBinStack host="pod" occupantRef={setPodOccupant}>
             <OmniUnanchoredBin free={free} orphaned={orphaned} />
             <OmniOutsideFocusBin items={outsideFocus} />
           </OmniBinStack>

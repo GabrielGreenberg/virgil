@@ -164,11 +164,15 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     const { container } = renderPanel(liveEditor);
     const bin = container.querySelector("[data-omni-unanchored-bin]");
     expect(bin).not.toBeNull();
-    // RENEGOTIATED (task 422): the two states are two pills — the summed
-    // "2 unanchored" this leg used to pin announced a FREE card with the
-    // error badge, the defect asserted as the contract.
-    expect(bin!.textContent).toContain("1 unanchored");
-    expect(bin!.textContent).toContain("1 unplaced");
+    // RENEGOTIATED TWICE. Task 422 split the summed pill into two so a FREE
+    // card was not announced with the error badge; task 544 (Gabriel: "no
+    // conceptual distinction between unanchored and unplaced") merged them
+    // back into ONE "N unanchored" pill and moved the distinction to the ROWS
+    // — so the count is the sum again, and what 422 protected is now the
+    // per-row glyph, pinned in `omni-one-gutter-surface.test.tsx`.
+    expect(bin!.textContent).toContain("2 unanchored");
+    expect(bin!.textContent).not.toContain("unplaced");
+    expect(bin!.querySelectorAll("button.omni-bin-pill").length).toBe(1);
     // The anchored card renders OUTSIDE the bin, positioned by the cascade.
     const wrapper = container.querySelector(
       `[data-omni-entry-wrapper="${anchoredNote.id}"]`,

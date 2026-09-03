@@ -1291,6 +1291,94 @@ sweep — delete a paragraph carrying three same-side cards, then click the firs
 block's markers (they answer) and open the chip (all three are there, and one
 of them drags back onto a paragraph).
 
+##### The one-surface half: an affordance drawn TWICE is a fork, and sticky chrome is an OWNER too
+
+Same affordance, one surface too many (task 544, Gabriel's own reports with
+screenshots). Task 410 put the chip in the pod's chrome header because it was
+"visible from anywhere in the document"; task 421 then made the omni bins
+sticky and reachable at every scroll position — which retired the chip's
+whole justification without retiring the chip. Two surfaces answered one
+fact, and not even the same fact: 410's chip counted BOTH sides unfiltered,
+422's bins were per side AND category-filtered, so the numbers disagreed on
+screen. Gabriel: *"still seeing this on-page unanchored bar — should be just
+the gutter bar."* Three members, one shape:
+
+- **The bin stack OCCLUDED the deck.** The bins live in the column's sticky
+  band frame, which floats OVER the scrolled cascade pod, and the cascade knew
+  nothing about the frame — so a note anchored to the first paragraph was
+  painted UNDER the pills, its header unreachable. Same class as this lane's
+  own occupancy laws: two owners painting into one column with no cross-owner
+  resolution, one column over.
+- **Two pills for one fact.** 422 split "N unanchored" (orphaned) from
+  "N unplaced" (parked) so a parked card was not announced as an error.
+  Gabriel ruled the split a distinction without a difference for the USER.
+- **The chip was the second renderer.**
+
+> **ONE owner for the no-anchor affordance — the gutter bin — with the
+> occlusion closed at the CASCADE (the frame's measured occupancy is the
+> cascade's floor), and the chip demoted to the FALLBACK for a side that has
+> no bin surface at all.**
+
+Six rules it earned:
+
+- **The floor is measured, and it is measured AT SCROLL ZERO.** A sticky
+  element is pinned in the VIEWPORT, so "how far into the pod does it reach"
+  has one scroll-invariant answer, and `readStickyOccupancyFloor`
+  ([omni-bin-slot.ts](src/components/editor-layout/omni-bin-slot.ts))
+  re-expresses the frame's stuck viewport Y against where the pod's top WAS
+  at scroll zero (`podRect.top + scrollTop`). A frame that has not reached
+  its pin clamps at 0 — the conservative direction. Never a constant: a
+  constant lies the moment a band docks above the bins, which is why the
+  OCCUPANT is the bin SLOT — the frame's last flex child, so its bottom is
+  below every docked band by construction, and an empty slot under a band
+  still reports the band.
+- **The floor rides the channels the cascade already has.** `read` runs
+  inside the measure pass beside the pod rect it is expressed against; the
+  slot rides the pass's own per-card ResizeObserver (a pill expanding, a band
+  docking); the committed value is held to the task-328 hysteresis and reaches
+  the resolver through `measureVersion` like every natural. Nothing runs per
+  scroll frame or per keystroke.
+- **The forward pass binds to it, the pin included; the backward pass does
+  not.** A pin above the floor rests AT the floor (a card under the bins is
+  what the pin exists to escape); the cards BEFORE a floored pin may still be
+  pulled above it, because the alternative is two cards on top of each other.
+- **What 422 protected moved down a level, not away.** The `AnchorState`
+  SSOT still splits free from orphaned; the pill counts both and wears the
+  STRONGEST state it holds (error iff any orphaned); the distinction is
+  per ROW (`BadgeOrphaned` vs the parked `◌`), orphaned rows first.
+- **The bin reads the side's WHOLE item list.** "Hide all cards" and the
+  category filter are preferences about the CASCADE; 410's rule for the chip
+  arrives at the surface that replaces it — an affordance that exists so a
+  card cannot vanish is not hideable by a layout preference. The column's
+  content signal counts bin members for the same reason (the Reader's
+  narrow-pane rule must not crush a bin-only column).
+- **The surface fact is PUBLISHED, never re-derived.** The slot sits behind
+  four render gates (zen, the code split, a side with no visible panels, a
+  collapsed column); `PanelColumn.onBinSurfaceChange` fires on the slot's own
+  mount/unmount edge, and the pane keeps the chip only for a marker whose
+  RESOLVED side (the lane's own ladder, task 205) has no bin surface.
+
+CI: [useInTextPositions-cascade-floor.test.tsx](src/hooks/__tests__/useInTextPositions-cascade-floor.test.tsx)
+drives the REAL hook and the REAL floor source over a fake stuck frame —
+**no pre-544 suite mounted any sticky chrome beside the pod**, so the
+occlusion was unrepresentable in all of them — and pins scroll-invariance,
+the observer re-floor, the equality bail and the docked-band case.
+[omni-one-gutter-surface.test.tsx](src/panels/Omni/__tests__/omni-one-gutter-surface.test.tsx)
+drives the bin over hidden / filtered items, the column's publish edges, and
+the CENSUS (the chip handed exactly the fallback set, the fact threaded from
+both rails and re-derived nowhere, the floor at the one hook call site).
+[omni-bin-free-vs-orphaned.test.tsx](src/panels/Omni/__tests__/omni-bin-free-vs-orphaned.test.tsx)
+is 422's contract RENEGOTIATED in place with the reason at the site.
+Measured by neutering each half in turn: the floor takes 4 legs, the observer
+wiring 1, the scroll correction 1, the merged pill 5, the unfiltered bin 2,
+and the chip's fallback filter 1 (the census).
+
+**Owed, not claimed:** the preview eyeball. The floor half is NOT FSA-masked
+(a live editor, no disk): anchor several notes to the dev doc's first
+paragraphs with one card parked, open one, and its header must clear the
+pill. The chip half needs a real orphan (FSA-masked) — collapse a column and
+confirm the chip lists only that side's cards.
+
 #### The vertical half: a per-owner layout with no cross-owner resolution
 
 Same lane, the other axis (task 366) — and the case where the resolver was
@@ -2155,7 +2243,8 @@ stops asking 1, and a restored `active()` helper 1.
 
 **Owed, not claimed:** the preview eyeball. The derivation is pure and NOT
 FSA-masked, but the visible symptom needs a real doc — archive a citation and
-watch the "N unplaced" pill and the unanchored chip agree.
+watch the gutter's "N unanchored" bin drop it (task 544 merged the
+"N unplaced" pill into that bin and retired the chip to a fallback).
 
 **Related, checked and deliberately NOT folded in.** `citedKeys`
 ([BibliographyPanel.tsx](src/panels/Bibliography/BibliographyPanel.tsx)) iterates
@@ -3205,8 +3294,8 @@ card, you loose the original archive card. they should just stack up on the
 preceeding paragraph."* Task 393 had pinned the opposite explicitly — archiving
 text that carries another card's anchor puts that card on the normal ORPHAN
 path, **asserted as an EQUALITY with a plain Delete over the same range**. Post
-task 410 the orphan is not literally lost (it reaches the pod header's
-"N unanchored" chip), but it leaves the margin, which is what the user
+task 410 the orphan is not literally lost (it reaches the gutter's
+"N unanchored" bin), but it leaves the margin, which is what the user
 experiences as loss.
 
 > **A DELETE removes the context, so a card that pointed at it has nowhere to
@@ -4858,9 +4947,10 @@ Seven rules they earned:
   and then dropped at the landing site, so the guard stood down for a transfer
   that never landed. Asking only *did this identity's container dissolve?*
   removes both, because it needs no agreement with the net at all. What a
-  declined resurrection costs is stated at the door: the card moves to the pod
-  header's "N unanchored" chip (task 410) — the designed home for an anchor-less
-  card, and strictly better than an empty line wearing its identity.
+  declined resurrection costs is stated at the door: the card moves to the gutter's
+  "N unanchored" bin (task 544; the pod-header chip of task 410 is its
+  fallback) — the designed home for an anchor-less card, and strictly better
+  than an empty line wearing its identity.
 - **…and the predicate is computed from the transactions' OWN steps**, never from
   either plugin's output. That is what makes it independent of where each sits in
   ProseMirror's `appendTransaction` chain.
@@ -4951,13 +5041,13 @@ container that ALREADY has an identity is absorbed by it, because nothing bare
 is there to hand the id to. And the outer container of a whole-list lift
 (`bulletList` around a sole `listItem`) hands its id to nobody — the innermost
 container is the one whose content became the paragraph — so its card orphans
-to the chip rather than husking.
+to the unanchored bin rather than husking.
 
 **Owed, not claimed:** a real-FSA eyeball. The orphan/husk half is the
 FSA-masked class (real anchor death reproduces under prod File System Access),
 so the durable proof here is the unit contract — anchor a note to a list item,
 Shift-Tab it out, and confirm the marker follows the text with no empty line and
-no unanchored chip.
+nothing in the unanchored bin.
 
 #### The absorption half: a JOIN is the THIRD way a block leaves
 

@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { OmniBinSlotContext, DATA_OMNI_BIN_SLOT } from "./omni-bin-slot";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { OmniBinSlotContext, DATA_OMNI_BIN_SLOT, DATA_STACK_FRAME } from "./omni-bin-slot";
 import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import {
   PanelId,
@@ -36,7 +36,7 @@ export function measureOmniGap(side: Side): number {
   if (typeof document === "undefined") return 0;
   const col = paneColumn(side);
   if (!col) return 0;
-  const frame = col.querySelector<HTMLElement>("[data-stack-frame]");
+  const frame = col.querySelector<HTMLElement>(`[${DATA_STACK_FRAME}]`);
   if (!frame) return 0;
   const frameRect = frame.getBoundingClientRect();
   const bands = frame.querySelectorAll<HTMLElement>("[data-dock-slot]");
@@ -239,6 +239,7 @@ export function PanelColumn({
   onFocusBand,
   collapsed,
   tail,
+  onBinSurfaceChange,
 }: {
   side: "left" | "right";
   panelPref: number;
@@ -269,6 +270,14 @@ export function PanelColumn({
    *  its `PageScrollStrip` so the drag-gap line sits just inboard of
    *  the page-mark navigator. */
   tail?: React.ReactNode;
+  /** Fires on the EDGE where this column starts / stops hosting an omni bin
+   *  surface — i.e. when its bin slot mounts or unmounts (a collapse, a zen
+   *  switch, the code split). The column is the ONE owner of that fact, so
+   *  the pane reads it here rather than re-deriving the four render gates
+   *  the slot sits behind (task 544): the pod-header unanchored chip is the
+   *  FALLBACK for a side with no bin surface, and a fallback keyed on a copy
+   *  of the condition is how the two come to disagree. */
+  onBinSurfaceChange?: (present: boolean) => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   // The omni BIN SLOT (task 421) — the last flex child of the sticky band
@@ -277,6 +286,19 @@ export function PanelColumn({
   // provider re-renders once when the element mounts/unmounts; the callback
   // ref is stable, so React never detaches and re-attaches it per render.
   const [binSlot, setBinSlot] = useState<HTMLElement | null>(null);
+  // The latest `onBinSurfaceChange`, read by the STABLE callback ref below so
+  // an inline arrow at the call site cannot make React detach + re-attach the
+  // slot ref per render (which would publish a false absent→present edge on
+  // every commit). Seeded with the mount-time callback because the ref
+  // attaches BEFORE any effect could copy a later one in.
+  const onBinSurfaceChangeRef = useRef(onBinSurfaceChange);
+  useEffect(() => {
+    onBinSurfaceChangeRef.current = onBinSurfaceChange;
+  }, [onBinSurfaceChange]);
+  const publishBinSlot = useCallback((el: HTMLElement | null) => {
+    setBinSlot(el);
+    onBinSurfaceChangeRef.current?.(el !== null);
+  }, []);
   const colRef = useRef<HTMLDivElement>(null);
   // Instance-unique gesture id: keep-alive doc panes AND the Library Reader
   // each mount a PanelColumn per side, so a bare `editor-panel-${side}` would
@@ -519,7 +541,7 @@ export function PanelColumn({
                 so omni can't bleed in. Empty frame ⇒ no z-lift. */}
             <div
               ref={frameRef}
-              data-stack-frame={side}
+              {...{ [DATA_STACK_FRAME]: side }}
               style={{
                 position: 'sticky',
                 top: frameTop,
@@ -558,7 +580,7 @@ export function PanelColumn({
                   `minHeight: 0` so an expanded bin list shrinks into what
                   the bands leave rather than overflowing the frame. */}
               <div
-                ref={setBinSlot}
+                ref={publishBinSlot}
                 {...{ [DATA_OMNI_BIN_SLOT]: side }}
                 style={{
                   position: 'relative',

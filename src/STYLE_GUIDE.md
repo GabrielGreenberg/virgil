@@ -1006,9 +1006,11 @@ perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
 text, hover deepening one step (bg → `--surface-muted-strong`, border →
 `--edge-strong`). Beware the hover trap: never rest a hover-able pill at
 the same token its hover lands on, or the feedback vanishes. The leading
-glyph stays per-bin (`◎` outside-focus, `◌` unplaced, a `BadgeOrphaned`
-badge for unanchored), and every pill declares its TONE (`neutral` /
-`error`, published as `data-omni-bin-tone`). The class is spelled ONCE,
+glyph stays per-bin (`◎` outside-focus; the no-anchor bin wears a
+`BadgeOrphaned` badge iff any member is orphaned, else the parked `◌`),
+and every pill declares its TONE (`neutral` / `error`, published as
+`data-omni-bin-tone`) — the no-anchor bin's tone is the strongest state
+it holds (task 544). The class is spelled ONCE,
 inside the `OmniBinPill` component
 (`src/panels/Omni/OmniViewPanel.tsx`) — both bins are call sites of it, and
 a future "N collected X" chip in the cascade should be a third call site
@@ -1024,6 +1026,32 @@ band by flex order and stay pinned in the viewport at every scroll
 position. The z ladder is stated once there — pinned cascade card 10 <
 bins 20 < docked band frame 30, and the bins sit INSIDE the frame when a
 band is docked, so the ladder never has to choose between them.
+
+**The bins are the ONE surface for a card with no place in the text (task
+544).** One pill per side — **"N unanchored"**, counting orphaned AND
+deliberately parked cards together (Gabriel: "no conceptual distinction
+between unanchored and unplaced"); the `AnchorState` distinction survives
+PER ROW when the pill is expanded (`BadgeOrphaned` beside an orphan, `◌`
+beside a parked card). The bin reads the side's WHOLE item list: the "hide
+all cards" toggle and the category filter are preferences about the
+CASCADE, and an affordance that exists so a card cannot vanish is not
+hideable by a layout preference. The pod-header `UnanchoredCardsChip` is
+its FALLBACK, listing only the cards whose side has no bin surface (zen, a
+collapsed column, the code split, the folded Reader gutters) — the column
+PUBLISHES that fact on the edge its slot mounts / unmounts
+(`PanelColumn.onBinSurfaceChange`), so one fact is never drawn twice.
+
+**…and the cascade CLEARS the frame.** Sticky chrome floats over the
+scrolled cascade pod, so a card anchored to the first paragraphs used to be
+painted UNDER the bins (or a docked band). `useInTextPositions` takes a
+`CascadeFloor` source (`omni-bin-slot.ts` → `cascadeFloorForBinSlot`): the
+frame's occupancy at scroll zero, read once per measure pass beside the pod
+rect, held to the reposition hysteresis, and observed by the pass's own
+ResizeObserver so an expanded pill or a newly docked band re-floors the
+deck. `resolveCascade` binds its forward pass (the pin included) to it; the
+first card clears the chrome by exactly the inter-card gap. Never a z-index
+nudge, never a constant — a constant lies the moment a band docks above the
+bins.
 
 ## Cards & themes
 
@@ -1318,21 +1346,24 @@ border + reduced opacity**, plus a hover `title` ("Unanchored <noun> —
 drag into the editor to anchor it"). This is **not** an error affordance
 — it is deliberately distinct from the `orphaned` ERROR state, whose card
 keeps its faded `BadgeOrphaned` "no anchor" dot. The omni layer draws
-the same line at BOTH its layers (task 422): the builders resolve a parked
-footnote to the neutral `free` state, not `orphaned` (`Footnotes/omni.tsx`),
-and the gutter shows one bin pill PER state — **"N unanchored"** (error
-tone, `BadgeOrphaned`, the ORPHANED set: the same word, badge and set as
-the pane-chrome `UnanchoredCardsChip`, differing only in being per side
-and filter-scoped) and **"N unplaced"** (neutral tone, a dashed-circle `◌`
-cue, the FREE set). Pre-422 the two were summed into one error-badged
-pill, so a parked card was announced as an error; the parked cue on the
-docked card is that same intent made visible.
+the same line where it matters (task 422, renegotiated by task 544): the
+builders resolve a parked footnote to the neutral `free` state, not
+`orphaned` (`Footnotes/omni.tsx`), and the gutter's ONE **"N unanchored"**
+bin keeps the distinction PER ROW — `BadgeOrphaned` beside an orphan, the
+dashed-circle `◌` beside a parked card — while the pill itself counts both
+and wears the strongest state it holds (error tone iff any member is
+orphaned). 422 had split the surface into two pills ("N unanchored" +
+"N unplaced") so a parked card was not announced as an error; Gabriel
+ruled the two-pill split a distinction without a difference for the user
+("cards with no place in the text"), so the pill merged and the cue moved
+to the rows. The parked cue on the docked card is that same intent made
+visible.
 
-**Vocabulary.** "Unanchored" names the ORPHAN set (anchor died) wherever
-it is a pill or chip label. A deliberately parked card is "unplaced" in
-the omni gutter. (The docked card's hover title still says "Unanchored
-<noun> — drag into the editor to anchor it"; renaming that copy is a
-wider change and was left alone.)
+**Vocabulary.** "Unanchored" is the ONE word for a card with no place in
+the text, wherever it is a pill or chip label — orphaned or parked alike.
+"Unplaced" is retired from the omni surface (task 544). (The docked card's
+hover title still says "Unanchored <noun> — drag into the editor to anchor
+it", which now agrees with the pill.)
 
 **The cue is ONE prop, and it carries the mechanism** (task 316):
 `unanchored={{ kind, cardKey, canAnchor }}` on `EditableCard` /
@@ -3200,16 +3231,22 @@ derived from where each element actually paints: bolt ≥ 104px, right grid
 ≥ 70px, left grid ≥ 52px. Reachable in the compressed code-split (48px comfort
 gutter), zen, and any hand-dragged margin below the floor.
 
-**"N unanchored" chip (task 410) — the margin lane holds MARKERS only.** A
-card whose anchor can no longer be resolved to any live paragraph (its stored
-UUID, its `linkedAnchor` mark, and its text snapshot are all dead — the
-resolver SSOT `resolveCardAnchor` returns `source:'orphan'`) has no line to
-align against, so it has no place in a lane whose x-axis means "beside the
-text this points at". It surfaces instead as an **`omni-bin-pill` chip in the
-pod's sticky chrome header**, beside the MenuBar
-(`UnanchoredCardsChip.tsx`): a `BadgeOrphaned` dot + "N unanchored",
-click-to-expand into a small popover of that card's normal marker buttons.
-Each entry behaves like any margin marker — click opens the card's panel; grab
+**"N unanchored" (task 410, task 544) — the margin lane holds MARKERS only.**
+A card whose anchor can no longer be resolved to any live paragraph (its
+stored UUID, its `linkedAnchor` mark, and its text snapshot are all dead —
+the resolver SSOT `resolveCardAnchor` returns `source:'orphan'`) has no line
+to align against, so it has no place in a lane whose x-axis means "beside the
+text this points at". Its home is the **gutter's "N unanchored" bin** (the
+omni column's sticky bin slot — see "Where the bins sit" and "The bins are
+the ONE surface" above), reachable at every scroll position. The
+**`UnanchoredCardsChip`** in the pod's sticky chrome header
+(`UnanchoredCardsChip.tsx`: a `BadgeOrphaned` dot + "N unanchored",
+click-to-expand into a small popover of that card's normal marker buttons)
+is the bin's FALLBACK: it lists only the cards whose side has no bin
+surface — zen, a collapsed column, the code split, the folded Reader
+gutters — and renders nothing where the gutter can show them, so one fact
+is never drawn twice (Gabriel: "should be just the gutter bar"). Each chip
+entry behaves like any margin marker — click opens the card's panel; grab
 (when editable) starts a drop-mode re-anchor session (the re-pin).
 
 It used to be an `OrphanDock` pinned inside the margin column itself, and the
@@ -3220,7 +3257,8 @@ the cramped-lane rule along with the cells, so the one surface that exists to
 stop a card vanishing could itself vanish; and pinned at `top: 6` of a
 non-scrolling pod it was unreachable on any scrolled document. The chrome
 header is STICKY, so the chip survives every scroll position, both margin
-regimes, and a side too narrow to host the lane.
+regimes, and a side too narrow to host the lane — which is exactly what
+qualifies it as the fallback for a side with no gutter.
 
 It is deliberately NOT gated on the "show marginalia" toggle or the per-type
 hide set — those are preferences about the lane, and a lost anchor is a

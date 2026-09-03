@@ -312,7 +312,7 @@ import {
   buildMarginMarkerRows,
   marginAnchorIndex,
 } from "@/links/card-anchor-rows";
-import type { PanelSideMap } from "@/lib/margin-side";
+import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
 import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
 import {
   resolveAnchorState,
@@ -3722,6 +3722,42 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [marginaliaMarkers, archivedIds],
   );
 
+  /**
+   * Which sides currently HOST a gutter bin surface (task 544). Published by
+   * each `PanelColumn` on the edge where its bin slot mounts / unmounts — the
+   * column is the one owner of that fact, and the four gates the slot sits
+   * behind (zen, the code split, a side with no visible panels, a collapsed
+   * column) are its render conditions, not something to re-derive here.
+   *
+   * The gutter's "N unanchored" bin is the ONE affordance for a card with no
+   * place in the text (Gabriel: "should be just the gutter bar"). The
+   * pod-header chip below is its FALLBACK, for exactly the cards no bin can
+   * show: a marker whose side has no bin surface. Where every side has one
+   * the chip renders nothing, so one fact is never drawn twice on screen.
+   */
+  const [binSurfaceSides, setBinSurfaceSides] = useState<Record<Side, boolean>>(
+    { left: false, right: false },
+  );
+  const noteBinSurface = useCallback((side: Side, present: boolean) => {
+    setBinSurfaceSides((prev) =>
+      prev[side] === present ? prev : { ...prev, [side]: present },
+    );
+  }, []);
+  // A marker's side is RESOLVED, never read off the record (task 205): the
+  // same override > dock > registry-default ladder the lane packs by, over
+  // the same live dock map — so "which gutter would this card's bin be in" is
+  // answered by the ladder that decides which gutter its marker is in.
+  const chipMarkers = useMemo(
+    () =>
+      unanchoredMarkers.filter(
+        (m) =>
+          !binSurfaceSides[
+            marginSideForMarkerType(m.type, marginaliaPanelSides, m.side)
+          ],
+      ),
+    [unanchoredMarkers, binSurfaceSides, marginaliaPanelSides],
+  );
+
   const cardCreation = useCardCreation({
     editorRef: innerRef,
     addNote: notesHook.addNote,
@@ -6163,6 +6199,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <PaneRail
                 side="left"
                 visiblePanels={visiblePanelsLeft}
+                onBinSurfaceChange={noteBinSurface}
                 editor={editor}
                 editorRef={innerRef}
                 examples={examples}
@@ -6565,14 +6602,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     to the left of the paragraph back/forward nav. Margin-edit
                     Save/Cancel renders in-page next to the drag guides, so
                     nothing lives here during margin edit. */}
-                {(chromeHeaderTrailing || menuBar || unanchoredMarkers.length > 0) && (
+                {(chromeHeaderTrailing || menuBar || chipMarkers.length > 0) && (
                   <div className="pointer-events-auto shrink-0 flex items-center gap-2">
                     {/* Task 410 — the "N unanchored" affordance. It sits in
                         the STICKY chrome header (not the margin lane) so it is
                         reachable at any scroll position, in either margin
-                        regime, and on a side too cramped to host the lane. */}
+                        regime, and on a side too cramped to host the lane.
+                        Since task 544 it is the FALLBACK: it lists only the
+                        cards whose side has no gutter bin surface (zen, a
+                        collapsed column, the code split, the folded Reader),
+                        because the gutter bin is the one owner where it can
+                        render at all. */}
                     <UnanchoredCardsChip
-                      markers={unanchoredMarkers}
+                      markers={chipMarkers}
                       // The SAME predicate `<Marginalia>` applies to its own
                       // markers — these are the same `MarkerButton`s, so the
                       // two surfaces must agree about whether a re-pin grab is
@@ -7257,6 +7299,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <PaneRail
                 side="right"
                 visiblePanels={visiblePanelsRight}
+                onBinSurfaceChange={noteBinSurface}
                 editor={editor}
                 editorRef={innerRef}
                 examples={examples}
@@ -7413,6 +7456,10 @@ export default EditorPane;
 interface PaneRailProps {
   side: "left" | "right";
   visiblePanels: PanelKind[];
+  /** Task 544 — the column reports whether it hosts an omni bin surface;
+   *  the pane keeps the pod-header unanchored chip only for sides that do
+   *  not. Threaded straight through to `PanelColumn`. */
+  onBinSurfaceChange?: (side: Side, present: boolean) => void;
   editor: Editor | null;
   editorRef: RefObject<EditorHandle | null>;
   examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
@@ -7654,6 +7701,7 @@ function PaneRail({
   viewPrefs,
   tail,
   omniBulkPendingChanges,
+  onBinSurfaceChange,
 }: PaneRailProps) {
   const isLeft = side === "left";
 
@@ -7820,6 +7868,7 @@ function PaneRail({
         onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
         collapsed={isCollapsed}
         tail={tail}
+        onBinSurfaceChange={(present) => onBinSurfaceChange?.(side, present)}
       />
     );
 

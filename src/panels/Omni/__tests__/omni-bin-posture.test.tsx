@@ -263,8 +263,9 @@ describe("OmniViewPanel — portals its bins into the column slot", () => {
       expect(child.hasAttribute("data-omni-entry-wrapper")).toBe(true);
     }
     expect(stack.querySelectorAll("[data-omni-entry-wrapper]").length).toBe(0);
-    // The pill still works through the portal.
-    expect(stack.textContent).toContain("1 unplaced");
+    // The pill still works through the portal. (Task 544 merged the free and
+    // orphaned pills into one "N unanchored" pill; the free note counts there.)
+    expect(stack.textContent).toContain("1 unanchored");
     fireEvent.click(stack.querySelector("button")!);
     expect(stack.querySelector('[data-test-card="free-1"]')).not.toBeNull();
   });
