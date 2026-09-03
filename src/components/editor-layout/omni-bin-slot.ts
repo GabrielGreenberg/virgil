@@ -39,6 +39,7 @@
  * docked-band half, and only the column has one.
  */
 import { createContext, useContext } from "react";
+import type { CascadeFloor } from "@/hooks/useInTextPositions";
 
 export const OmniBinSlotContext = createContext<HTMLElement | null>(null);
 
@@ -49,3 +50,80 @@ export function useOmniBinSlot(): HTMLElement | null {
 
 /** DOM marker on the slot element (one per column side). */
 export const DATA_OMNI_BIN_SLOT = "data-omni-bin-slot";
+
+/** DOM marker on the column's sticky band frame — the slot's `offsetParent`
+ *  and the element the cascade floor is measured against. Spelled here so the
+ *  omni view resolves the frame FROM the slot it was handed rather than by a
+ *  document-global query (the task-438 rule: a per-pane marker is resolved
+ *  relative to the pane, never find-first). */
+export const DATA_STACK_FRAME = "data-stack-frame";
+
+/**
+ * The cascade FLOOR under a sticky occupant (task 544) — how far into the
+ * cascade pod, AT SCROLL ZERO, the column's sticky chrome reaches.
+ *
+ * `sticky` is the element pinned in the viewport (the band frame, or the
+ * in-pod fallback's sticky inner); `occupant` is the element whose BOTTOM is
+ * the chrome's last painted pixel (the bin slot — it is the frame's last flex
+ * child, so its bottom edge is below every docked band by construction, and
+ * an empty slot beneath a docked band still reports the band's bottom plus
+ * its separator). The answer is `stuckTop + occupied + gap`, in pod
+ * coordinates at scroll zero:
+ *
+ *  - `occupied = occupant.bottom − sticky.top`, a viewport-frame difference
+ *    that scroll cannot move (both are inside the same pinned frame);
+ *  - `stuckTop = sticky.top − podRect.top − scrollTop`: the frame's pinned
+ *    viewport Y, re-expressed against where the pod's top WAS at scroll zero
+ *    (`podRect.top + scrollTop`). While the frame is stuck this is a
+ *    constant; a frame that has not yet reached its pin sits at its natural
+ *    position ABOVE the pod's first pixel, where the difference goes
+ *    negative and is clamped to 0 — the CONSERVATIVE direction, since it
+ *    floors the deck at the full occupancy instead of a few pixels less.
+ *
+ * `0` when nothing occupies the frame (`occupied ≤ 0`): no chrome, no floor,
+ * the pre-544 cascade byte for byte. The breathing room between that pixel
+ * and the first card is the CASCADE's to add (its own inter-card gap), not
+ * this reader's. Two rect reads plus one scroll read, inside the measure pass
+ * that already forces a layout — never per scroll frame, never per keystroke.
+ */
+export function readStickyOccupancyFloor(
+  sticky: HTMLElement,
+  occupant: HTMLElement,
+  podRect: DOMRect,
+  scrollTop: number,
+): number {
+  const s = sticky.getBoundingClientRect();
+  const o = occupant.getBoundingClientRect();
+  const occupied = o.bottom - s.top;
+  if (!(occupied > 0)) return 0;
+  const stuckTop = Math.max(0, s.top - podRect.top - scrollTop);
+  return stuckTop + occupied;
+}
+
+/**
+ * The floor source for a column-hosted bin stack: the slot the column
+ * published, measured against the sticky frame it lives in. `null` when the
+ * slot is not inside a frame (a fixture that mounts a bare slot), which
+ * reads as "no floor" downstream.
+ */
+export function cascadeFloorForBinSlot(slot: HTMLElement): CascadeFloor | null {
+  const frame = slot.closest<HTMLElement>(`[${DATA_STACK_FRAME}]`);
+  if (!frame) return null;
+  return {
+    el: slot,
+    read: (podRect, scrollTop) =>
+      readStickyOccupancyFloor(frame, slot, podRect, scrollTop),
+  };
+}
+
+/**
+ * The floor source for the in-pod fallback (no column published a slot): the
+ * stack's own sticky inner is both the pinned element and the occupant.
+ */
+export function cascadeFloorForStickyOccupant(occupant: HTMLElement): CascadeFloor {
+  return {
+    el: occupant,
+    read: (podRect, scrollTop) =>
+      readStickyOccupancyFloor(occupant, occupant, podRect, scrollTop),
+  };
+}

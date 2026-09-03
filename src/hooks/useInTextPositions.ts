@@ -65,6 +65,10 @@ export function findTextPosition(editor: Editor | null, text: string): number {
   return pos;
 }
 
+// The breathing room between two packed cards — and, since task 544, between
+// the deck's first card and the sticky chrome it clears: the floor source
+// reports the chrome's last painted pixel and the measure pass adds THIS, so
+// "clear the bins" and "clear the card above" mean one distance, owned here.
 const MIN_GAP = 4; // small extra gap between entries beyond their height
 const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
 
@@ -299,11 +303,59 @@ export interface NaturalEntry {
 }
 
 /**
+ * The cascade FLOOR (task 544): the pod-relative Y below which the first
+ * card may rest, so the deck clears the STICKY chrome that shares its column.
+ *
+ * The column's band frame is sticky and floats OVER the scrolled cascade pod
+ * — a docked band, and since task 421 the omni bin stack, both paint on top
+ * of whatever card sits in the pod's first pixels. The cascade knew nothing
+ * about that frame, so a card whose natural top was near the document top
+ * (a note on the first paragraph) was painted UNDER the bins: its header
+ * unreachable, its top edge cut off (Gabriel's screenshot). Same class as
+ * the marginalia lane's occupancy laws — two owners painting into one
+ * column with no cross-owner resolution — and the resolution belongs where
+ * the cascade is DECIDED, not in a z-index nudge.
+ *
+ * `read` runs INSIDE the measure pass (once per pass, beside the pod-rect
+ * read it needs — never per scroll frame, never per keystroke) and answers
+ * in POD coordinates AT SCROLL ZERO, which is what makes the value scroll-
+ * invariant like every other number the cascade holds: a sticky element is
+ * pinned in the VIEWPORT, so "how far into the pod does it reach" is a
+ * question that only has one answer, and that answer is the one at the top
+ * of the document. `readStickyOccupancyFloor` (omni-bin-slot.ts) is the one
+ * implementation; `el` is the element whose SIZE moves the floor (the bin
+ * slot — it grows when a pill expands and when a band docks above it), so
+ * the hook can observe it with the per-card ResizeObserver it already runs
+ * and re-enter the settle door on a change. `0` (no floor source, or an
+ * empty frame) is the pre-544 cascade, byte for byte; any other answer is the
+ * chrome's last painted pixel, and the pass adds the deck's own `MIN_GAP` so
+ * the first card clears the bins by exactly what it would clear a card.
+ */
+export interface CascadeFloor {
+  /** Observed by the per-card ResizeObserver: a size change here is a floor
+   *  change, and enters the settle door like a card resize. */
+  el: HTMLElement;
+  /** The chrome's last painted pixel, pod-relative at scroll zero; `0` means
+   *  "no chrome, no floor". */
+  read: (podRect: DOMRect, scrollTop: number) => number;
+}
+
+/**
  * Pure-JS cascade resolver. Given measured natural positions + heights
  * and the current item list, returns a Map of final pod-relative Y
  * values. If `pinned` is set, the pinned card's position is forced to
  * `its natural top + pinned.offset` and the cascade reflows in both
  * directions to avoid overlap.
+ *
+ * `floor` (task 544) is the pod-relative Y the deck must clear — the
+ * sticky frame's occupancy at scroll zero (see {@link CascadeFloor}). It
+ * binds the FORWARD pass, the pin included: a card whose natural top (or
+ * pin target) sits above it rests AT the floor, and everything after packs
+ * below as usual. The BACKWARD pass is deliberately NOT clamped — it exists
+ * to pull the cards BEFORE a pin up so they do not overlap it, and if the
+ * pin itself rests on the floor there is nowhere for them to go but above
+ * it: an occluded card behind a pin the user just made beats two cards
+ * painted on top of each other, and is exactly what the pre-544 deck did.
  *
  * This is the hot path on every pin change. NO DOM reads — operates
  * entirely on numbers measured separately.
@@ -312,6 +364,7 @@ export function resolveCascade(
   natural: Map<string, NaturalEntry>,
   items: ReadonlyArray<PositionItem>,
   pinned: Pinned | null,
+  floor = 0,
 ): Map<string, number> {
   if (items.length === 0 || natural.size === 0) return new Map();
 
@@ -335,17 +388,17 @@ export function resolveCascade(
   }
   rows.sort((a, b) => a.top - b.top);
 
-  // Forward pass: push cards down to avoid overlap with their predecessor.
-  // Apply the pin override mid-loop so cards AFTER the pinned one pack
-  // below the pinned card's actual top, not below its natural top.
+  // Forward pass: push cards down to avoid overlap with their predecessor —
+  // and, for the first card, with the sticky chrome above the deck (the
+  // floor). Apply the pin override mid-loop so cards AFTER the pinned one
+  // pack below the pinned card's actual top, not below its natural top.
   for (let i = 0; i < rows.length; i++) {
-    if (i > 0) {
-      const prev = rows[i - 1];
-      const minTop = prev.top + prev.height + MIN_GAP;
-      if (rows[i].top < minTop) rows[i].top = minTop;
-    }
+    const minTop = i > 0
+      ? Math.max(floor, rows[i - 1].top + rows[i - 1].height + MIN_GAP)
+      : floor;
+    if (rows[i].top < minTop) rows[i].top = minTop;
     if (pinned && pinnedTop !== null && rows[i].id === pinned.id) {
-      rows[i].top = pinnedTop;
+      rows[i].top = Math.max(pinnedTop, floor);
     }
   }
 
@@ -421,6 +474,13 @@ export function useInTextPositions(
    * `item.pos`. See `useStructuralRevisions` + `docs/perf/keystroke-sanctity-findings.md`.
    */
   resolvePos?: (id: string) => number | undefined,
+  /**
+   * The sticky chrome the deck must clear (task 544) — see {@link CascadeFloor}.
+   * Identity-stable per source element (the caller memoizes it), because it
+   * is a dependency of both the measure pass and the observer wiring. `null`
+   * / omitted ⇒ floor 0, the pre-544 cascade.
+   */
+  floor: CascadeFloor | null = null,
 ) {
   // Keep-alive re-show invariant: "hidden is frozen, not torn down; re-show is a
   // REPUBLISH of cached geometry, not a re-measure — unless something provably
@@ -474,6 +534,11 @@ export function useInTextPositions(
   // Cleared only on genuine disable/empty (alongside `naturalRef`); pruned to
   // the live item set each measure.
   const realHeightRef = useRef<Map<string, number>>(new Map());
+  // The committed cascade floor (task 544) — written by the measure pass
+  // beside the naturals, held to the same task-328 hysteresis so a sub-epsilon
+  // wobble in the bin stack's height commits nothing, and read by the
+  // resolution memo through `measureVersion` exactly as the naturals are.
+  const floorRef = useRef(0);
   // Ids whose committed naturalTop is an APPROXIMATION (out-of-zone item,
   // wave-2b C5) rather than an exact coordsAtPos read. Rebuilt per measure
   // pass; consumed by the scroll-idle refinement, which re-runs the pass
@@ -698,6 +763,22 @@ export function useInTextPositions(
       viewBottom = sr.bottom + NEAR_ZONE_PX;
     }
 
+    // The cascade floor (task 544): where the column's sticky chrome reaches
+    // into the pod at scroll zero. Read ONCE per pass, beside the pod rect it
+    // is expressed against, and held to the reposition hysteresis like every
+    // other committed number — a bin pill re-measuring one pixel taller must
+    // not re-render the deck. A change is a `changed` verdict like a moved
+    // natural: the resolver reads the floor through the same version bump.
+    const chromeBottom = floor
+      ? floor.read(podRect, scrollEl?.scrollTop ?? 0)
+      : 0;
+    const nextFloor = holdWithinEpsilon(
+      floorRef.current,
+      chromeBottom > 0 ? chromeBottom + MIN_GAP : 0,
+    );
+    const floorChanged = nextFloor !== floorRef.current;
+    floorRef.current = nextFloor;
+
     // ── Wave-2b C5: exact reads for the scroll band, arithmetic for the rest.
     // `coordsAtPos` is a forced-layout read, and pre-C5 it ran for EVERY item
     // every pass (only the card-rect read was culled) — O(items) layout reads
@@ -912,7 +993,7 @@ export function useInTextPositions(
     // Otherwise we feed back into the ResizeObserver and re-render loop:
     // setState → commit → RO fires (the new wrapper transforms tickle
     // layout) → schedule → measure → setState → … 60 fps.
-    let changed = next.size !== naturalRef.current.size;
+    let changed = floorChanged || next.size !== naturalRef.current.size;
     if (!changed) {
       for (const [id, entry] of next) {
         const prev = naturalRef.current.get(id);
@@ -930,7 +1011,7 @@ export function useInTextPositions(
     // with the last one within the hysteresis" needs no second rule — it is
     // exactly `!changed`.
     return changed ? "changed" : "stable";
-  }, [editor, items, enabledProp, entry, resolvePos]);
+  }, [editor, items, enabledProp, entry, resolvePos, floor]);
 
   // Trigger measurement on editor updates, viewport resize, editor
   // content-height changes, and on the next paint after items change.
@@ -1293,18 +1374,25 @@ export function useInTextPositions(
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : DATA_LINK_CARD;
     panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => obs.observe(el));
+    // The floor source rides the SAME observer (task 544): the bin slot grows
+    // when a pill expands and when a band docks above it, and either moves
+    // the floor. It carries no entry attribute, so `noteObservedHeights`
+    // records nothing for it and the fire is exactly one `requestSettle`.
+    if (floor) obs.observe(floor.el);
     panelEl.addEventListener("focusout", onFocusOut);
     return () => {
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabledProp, entry, requestSettle, noteObservedHeights]);
+  }, [measureVersion, enabledProp, entry, requestSettle, noteObservedHeights, floor]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that
-  // re-runs — no DOM reads, no layout flush, no second commit.
+  // re-runs — no DOM reads, no layout flush, no second commit. The floor is
+  // read through `measureVersion` like the naturals: the pass that commits a
+  // new one bumps the version.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const positions = useMemo(
-    () => resolveCascade(naturalRef.current, items, pinned),
+    () => resolveCascade(naturalRef.current, items, pinned, floorRef.current),
     [measureVersion, items, pinned],
   );
 

@@ -74,10 +74,12 @@ describe("OmniUnanchoredBin — classification + render", () => {
     );
     const bin = container.querySelector("[data-omni-unanchored-bin]")!;
     expect(bin).not.toBeNull();
-    // RENEGOTIATED (task 422): one pill per AnchorState, never a sum — a
-    // free card must not be counted under the error badge.
-    expect(bin.textContent).toContain("1 unanchored");
-    expect(bin.textContent).toContain("1 unplaced");
+    // RENEGOTIATED TWICE: task 422 split the pill per AnchorState so a free
+    // card was not counted under the error badge; task 544 merged it back
+    // into ONE "N unanchored" pill (Gabriel's ruling — the distinction now
+    // lives on each expanded ROW's glyph, not on the pill count).
+    expect(bin.textContent).toContain("2 unanchored");
+    expect(bin.textContent).not.toContain("unplaced");
     // Bodies are not rendered while collapsed.
     expect(container.querySelector('[data-test-card="free-1"]')).toBeNull();
     expect(container.querySelector('[data-test-card="orphan-1"]')).toBeNull();
