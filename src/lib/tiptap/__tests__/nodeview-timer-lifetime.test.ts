@@ -333,7 +333,8 @@ const BARE_TIMER = /(^|[^.\w$])(setTimeout|setInterval|requestAnimationFrame)\s*
 
 describe("task 548 — census: a NodeView arms every timer through its lifetime", () => {
   const files = nodeViewPopulation();
-  const regions = files.flatMap(nodeViewRegions);
+  // Not point-free: `flatMap` would pass the INDEX as the reading (task 552).
+  const regions = files.flatMap((f) => nodeViewRegions(f));
 
   it("the population is discovered and non-empty (both offenders are in it)", () => {
     expect(files).toContain("src/lib/editor-extensions.ts");

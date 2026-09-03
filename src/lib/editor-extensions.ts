@@ -24,7 +24,6 @@ import { Extension, mergeAttributes, type NodeViewRenderer } from "@tiptap/core"
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
-import { generateShortId } from "@/lib/uuid";
 import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
@@ -40,9 +39,10 @@ import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
-import { ensureAnchorUuid } from "@/lib/anchor-uuid";
+import { ensureAnchorUuid, mintDocUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
+import { createParTitleSession } from "@/lib/tiptap/title-edit-session";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -273,7 +273,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
               const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
               // Assign UUID if setting a title and node doesn't have one yet
               if (newTitle && !attrs.uuid) {
-                attrs.uuid = generateShortId();
+                attrs.uuid = mintDocUuid(nodeEditor.state.doc);
               }
               const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
               nodeEditor.view.dispatch(tr);
@@ -281,66 +281,21 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           }
         }
 
-        function enterEditMode() {
-          // Show annotation area and place input over it
-          wrapper.classList.add("has-add-btn");
-          wrapper.classList.add("is-editing-title");
-          titleAnnot.style.display = "block";
-          titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
-
-          const annotRect = titleAnnot.getBoundingClientRect();
-          const wrapperRect = wrapper.getBoundingClientRect();
-
-          const input = document.createElement("input");
-          input.type = "text";
-          input.className = chromeOnly("par-title-input");
-          input.value = (currentNode.attrs.parTitle as string) || "";
-          input.placeholder = "Paragraph title…";
-          input.style.position = "fixed";
-          input.style.left = `${wrapperRect.left}px`;
-          input.style.top = `${annotRect.top}px`;
-          input.style.zIndex = "9999";
-          document.body.appendChild(input);
-
-          // Auto-size to content (must be in DOM first for font measurement)
-          const cleanupSizer = autoSizeInput(input, 2, lifetime);
-
-          let committed = false;
-          const cleanup = () => {
-            unregister();
-            cleanupSizer();
-            wrapper.classList.remove("is-editing-title");
-            if (document.body.contains(input)) document.body.removeChild(input);
-          };
-          // The input lives on `document.body`, not under this view's DOM —
-          // a view destroyed mid-edit must take it along.
-          const unregister = lifetime.onDispose(cleanup);
-          const commit = () => {
-            if (committed) return;
-            committed = true;
-            const val = input.value.trim() || null;
-            const original = (currentNode.attrs.parTitle as string | null) || null;
-            cleanup();
-            if (val === original) {
-              renderAnnot();
-              return;
-            }
-            setTitle(val);
-          };
-
-          input.addEventListener("keydown", (ev) => {
-            ev.stopPropagation();
-            if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanup(); renderAnnot(); }
-          });
-
-          input.addEventListener("blur", () => {
-            lifetime.setTimeout(() => { if (!committed) commit(); }, 150);
-          });
-
-          input.focus();
-          input.select();
-        }
+        // ONE paragraph-title edit session (task 552): the door owns the input,
+        // the click-away overlay, `is-editing-title`, the endings and the
+        // lifetime; `update()` asks `titleSession.editing` and the click
+        // handler asks `begin()`, never a DOM-containment probe.
+        const titleSession = createParTitleSession({
+          wrapper,
+          titleAnnot,
+          lifetime,
+          placement: "body",
+          placeholder: "Paragraph title…",
+          getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
+          render: () => renderAnnot(),
+          commit: (next) => setTitle(next),
+        });
+        const enterEditMode = () => titleSession.begin();
 
         // Memo of the last-rendered annotation inputs. update() re-renders
         // ONLY when one of them changed — a plain keystroke inside the
@@ -414,7 +369,6 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
         titleAnnot.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (titleAnnot.querySelector("input")) return;
           enterEditMode();
         });
 
@@ -443,7 +397,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
             // node that changed; an unchanged answer writes nothing.
             stampCmdOnly(wrapper, updatedNode);
             if (
-              !titleAnnot.querySelector("input") &&
+              !titleSession.editing &&
               ((updatedNode.attrs.parTitle as string | null) !== lastAnnotTitle ||
                 annotHasText(updatedNode) !== lastAnnotHasText)
             ) {
@@ -619,7 +573,7 @@ function createListTitleNodeView(
         if (n) {
           const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
           if (newTitle && !attrs.uuid) {
-            attrs.uuid = generateShortId();
+            attrs.uuid = mintDocUuid(nodeEditor.state.doc);
           }
           const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
           nodeEditor.view.dispatch(tr);
@@ -627,63 +581,19 @@ function createListTitleNodeView(
       }
     }
 
-    function enterEditMode() {
-      // Show annotation area and place input over it
-      wrapper.classList.add("has-add-btn");
-      wrapper.classList.add("is-editing-title");
-      titleAnnot.style.display = "block";
-      titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
-
-      const annotRect = titleAnnot.getBoundingClientRect();
-      const wrapperRect = wrapper.getBoundingClientRect();
-
-      const overlay = document.createElement("div");
-      // A body-appended click-away overlay live only while a list title is
-      // being edited — chrome by construction (task 535).
-      overlay.className = chromeOnly("par-title-edit-overlay");
-      overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;`;
-      document.body.appendChild(overlay);
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = chromeOnly("par-title-input");
-      input.value = currentNode.attrs.parTitle || "";
-      input.placeholder = "Title…";
-      input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${annotRect.top}px;`;
-      document.body.appendChild(input);
-
-      // Auto-size to content (must be in DOM first for font measurement)
-      const cleanupSizer = autoSizeInput(input, 2, lifetime);
-
-      input.focus();
-      input.select();
-
-      let committed = false;
-      // Both elements live on `document.body`, not under this view's DOM — a
-      // view destroyed mid-edit must take them along (no commit: the editor
-      // the title would be written to is the one being torn down).
-      const teardown = () => {
-        unregister();
-        cleanupSizer();
-        wrapper.classList.remove("is-editing-title");
-        if (document.body.contains(input)) input.remove();
-        if (document.body.contains(overlay)) overlay.remove();
-      };
-      const unregister = lifetime.onDispose(() => { committed = true; teardown(); });
-      function commit() {
-        if (committed) return;
-        committed = true;
-        teardown();
-        const val = input.value.trim();
-        setTitle(val || null);
-      }
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
-        if (e.key === "Escape") { e.preventDefault(); committed = true; teardown(); renderAnnot(); }
-      });
-      input.addEventListener("blur", commit);
-      overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
-    }
+    // ONE paragraph-title edit session (task 552) — the paragraph's byte for
+    // byte, overlay included; see title-edit-session.ts.
+    const titleSession = createParTitleSession({
+      wrapper,
+      titleAnnot,
+      lifetime,
+      placement: "body",
+      placeholder: "Title…",
+      getTitle: () => (currentNode.attrs.parTitle as string | null) || null,
+      render: () => renderAnnot(),
+      commit: (next) => setTitle(next),
+    });
+    const enterEditMode = () => titleSession.begin();
 
     // Memo of the last-rendered title. update() re-renders only on change —
     // a keystroke inside a list item otherwise re-ran the innerHTML=""
@@ -731,7 +641,6 @@ function createListTitleNodeView(
     titleAnnot.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (titleAnnot.querySelector("input")) return;
       enterEditMode();
     });
 
@@ -761,7 +670,7 @@ function createListTitleNodeView(
         currentNode = updatedNode;
         applyOrderedListAttrs();
         if (
-          !titleAnnot.querySelector("input") &&
+          !titleSession.editing &&
           (updatedNode.attrs.parTitle as string | null) !== lastAnnotTitle
         ) {
           renderAnnot();

@@ -42,11 +42,11 @@ export function isMissedRelease(e: { buttons: number }): boolean {
 }
 
 /**
- * A live pointer gesture OWNS the keys it answers.
+ * A live gesture — or a live EDIT SESSION — OWNS the keys it answers.
  *
- * A gesture is the INNERMOST transient thing on screen — more transient than
- * any dialog, menu or mode the user has left open behind it — so one press
- * must end exactly one thing. Virgil already states that rule one level down,
+ * Whichever it is, it is the INNERMOST transient thing on screen — more
+ * transient than any dialog, menu or mode the user has left open behind it —
+ * so one press must end exactly one thing. Virgil already states that rule one level down,
  * for dialogs (`dialog-stack.ts`, task 389: "only the TOP entry answers a
  * key"); a gesture is the one Escape owner that used to answer without
  * claiming, and it cost real work. The engine cancels a divider drag from a
@@ -62,6 +62,19 @@ export function isMissedRelease(e: { buttons: number }): boolean {
  *     ignores `defaultPrevented` ("a modal always has a way out"), so a
  *     scrimless draggable window — Preferences, and the bug reporter with a
  *     half-typed report in it — closed from the same press too.
+ *
+ * The SECOND member is a live edit session, and it cost the same two victims
+ * (task 552). The paragraph-title `<input>` is appended to `document.body`,
+ * so it is the event TARGET and every `window`/`document` CAPTURE listener has
+ * already run by the time its own handler fires — but Escape's damage is all
+ * in the BUBBLE phase, which a claim from the target does stop. The paragraph
+ * had been claiming by hand (a bare `ev.stopPropagation()` on EVERY keydown,
+ * which also swallowed Cmd-S / Cmd-P — a key the session does NOT answer);
+ * its list and expex twins claimed nothing at all, so Escape in either of
+ * those inputs discarded an unsaved margin-edit session, closed a scrimless
+ * Preferences / bug-report window, and committed-or-discarded an open
+ * `NodeEditPopover`. `title-edit-session.ts` claims Enter and Escape here —
+ * the keys it answers, and only those.
  *
  * STATED LIMIT, so nobody discovers it later and calls it a bug: this claims
  * PROPAGATION, not the whole target. `stopPropagation()` does not stop a

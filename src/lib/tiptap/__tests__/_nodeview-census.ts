@@ -12,10 +12,24 @@
  * `function NAME(` it reaches, transitively — a list NodeView's whole body is
  * `createListTitleNodeView(…)`, one call away; a region that stopped at the
  * method would see nothing but a `return`.
+ *
+ * ONE discovery, TWO readings (task 552). A census whose needle is a SYMBOL
+ * (`setTimeout`, `setAttribute`) wants `codeOnly`, which blanks string
+ * literals so a name quoted in prose or an error message cannot indict its
+ * file. A census whose needle IS a quoted string — the title input's own
+ * class — wants `commentsStripped`, which keeps literals. Passing the
+ * transform in keeps both readings on the SAME population and the SAME reach;
+ * a second `matchAll(/addNodeView/)` somewhere else is how one census comes to
+ * be scanning a set another no longer is, which is the failure this file's
+ * existence is against.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT, codeOnly, trackedFiles } from "@/lib/__tests__/_source-scan";
+import { REPO_ROOT, codeOnly, commentsStripped, trackedFiles } from "@/lib/__tests__/_source-scan";
+
+/** How a region's source is read. `code` blanks string literals; `literals`
+ *  keeps them (and still strips comments). */
+export type RegionReading = "code" | "literals";
 
 export interface Region {
   file: string;
@@ -36,9 +50,9 @@ export function braceBody(s: string, openIdx: number): [number, number] {
   return [openIdx, s.length - 1];
 }
 
-export function nodeViewRegions(file: string): Region[] {
+export function nodeViewRegions(file: string, reading: RegionReading = "code"): Region[] {
   const raw = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
-  const src = codeOnly(raw);
+  const src = reading === "literals" ? commentsStripped(raw) : codeOnly(raw);
   const fnBodies = new Map<string, string>();
   for (const m of src.matchAll(/\bfunction\s+(\w+)\s*\(/g)) {
     const open = src.indexOf("{", src.indexOf(")", m.index!));

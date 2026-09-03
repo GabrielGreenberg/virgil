@@ -95,15 +95,18 @@
  *
  * ## The same law, already spelled by hand in a medium this hook cannot reach
  *
- * Six vanilla-DOM editors — the par-title and heading-label inputs in
- * `src/lib/editor-extensions.ts` and three in `src/lib/tiptap/expex.ts` — are
- * CORRECT, via a local `let committed = false` set synchronously in the Escape
- * branch and checked in the blur listener. That is this law, in the idiom
- * available to a plain `addEventListener`. They are deliberately NOT converted:
- * they are not React components, so they cannot call a hook, and giving the
- * factory a non-React twin to serve them would touch two of the most
- * delicately-tested files in the repo for no behaviour change. Recorded here so
- * the next reader knows the latch is the same rule and not a stray idiom.
+ * The vanilla-DOM editors — the heading-label input in
+ * `src/lib/editor-extensions.ts`, the two expex label pods in
+ * `src/lib/tiptap/expex.ts`, and the ONE paragraph-title session door
+ * (`src/lib/tiptap/title-edit-session.ts`, task 552 — the paragraph, list and
+ * example-block title strips all enter it) — are CORRECT, via a local latch
+ * set synchronously in the Escape branch and checked in the blur listener.
+ * That is this law, in the idiom available to a plain `addEventListener`.
+ * They are deliberately NOT converted: they are not React components, so they
+ * cannot call a hook, and giving the factory a non-React twin to serve them
+ * would touch two of the most delicately-tested files in the repo for no
+ * behaviour change. Recorded here so the next reader knows the latch is the
+ * same rule and not a stray idiom.
  */
 
 import { useMemo, useRef } from "react";

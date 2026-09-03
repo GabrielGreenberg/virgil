@@ -461,6 +461,118 @@ class. **Owed, not claimed:** a full CI run green on the first attempt — the
 whole local suite (896 files) runs with zero unhandled errors, and the leak it
 guards against is now uncountable rather than merely unlikely.
 
+### The session half: a guard that checks a container the thing is not in is DEAD
+
+Same NodeView bodies, the state the timers were only part of (task 552). 548
+named these as "the same shape in five NodeView bodies" and scoped itself to the
+TIMERS; 529 recorded the vanilla editors as correct on the commit/cancel latch
+and deliberately did not unify them. What was left was the SESSION, in three
+shapes — the paragraph and list title strips (`editor-extensions.ts`) and the
+expex example block's (`expex.ts`) — differing in where the input lives, how the
+session is re-entered, how it ends, and what `update()` may repaint while it is
+open. Four members, and the first is a live defect:
+
+- **M1 — the paragraph's re-entry guard was DEAD BY CONSTRUCTION.** It read
+  `titleAnnot.querySelector("input")` on a container the input never enters: the
+  input is appended to `document.body`, positioned over the strip. The strip
+  spans the full width, so a second click anywhere the input does not cover
+  reached `enterEditMode` and appended a SECOND input, whose focus blurred the
+  first; the first then committed, ran the view's render, and repainted the `+T`
+  strip UNDER the still-open second input. The list carried the identical dead
+  probe and was unreachable only by ACCIDENT — its click-away overlay eats the
+  second click. The expex block's probe was true, because its input really is
+  inside the container it checks.
+- **M2** — the same dead probe gated `update()`, so a structural change landing
+  mid-edit repainted the strip under the open input.
+- **M3** — the paragraph deferred its blur commit 150 ms where the list
+  committed immediately behind an overlay.
+- **M4** — both minted a first-title uuid with a BARE `generateShortId()`, no
+  collision set, where every other minter in the tree draws against the doc.
+
+> **A session is a per-VIEW fact, not a DOM-containment fact.** The door
+> ([title-edit-session.ts](src/lib/tiptap/title-edit-session.ts)) holds
+> `editing` and is the ONE place that flips it; the click handler asks
+> `begin()` (a no-op while a session is open) and `update()` asks `editing`, so
+> neither can be answered by probing a container the input may not be in.
+
+Seven rules it earned:
+
+- **PLACEMENT is the one thing that legitimately differs**, so it is the one
+  thing the callers pass. `"body"` (paragraph, list) appends to `document.body`
+  behind a full-screen click-away overlay — the untitled strip is an absolutely-
+  positioned overlay of the inter-paragraph gap that fades to opacity 0 off
+  hover, so an input inside it would fade with it. `"inline"` (expex) appends
+  INSIDE the strip, which sits in normal flow, takes focus in a FRAME (a
+  synchronous focus inside the editor DOM loses to ProseMirror's mouseup
+  selection sync) and mounts NO overlay — a body overlay would paint over an
+  input nested in the editor's own stacking contexts.
+- **THE SESSION CLAIMS THE KEYS IT ANSWERS, and only those** — the second
+  member of `claimGestureKey`'s law (task 471), whose docstring is renegotiated
+  in place to say so. An open title input is the innermost transient thing on
+  screen, so one press ends exactly one thing. The paragraph had been claiming
+  BY HAND (a bare `stopPropagation()` on EVERY keydown), which is why only it
+  was safe; its two twins claimed nothing, so Escape in either ALSO discarded an
+  unsaved margin-edit session, closed a scrimless Preferences / half-typed bug
+  report, and committed-or-discarded an open `NodeEditPopover`. Unifying without
+  the claim would have spread that to the paragraph. And the claim is SCOPED: a
+  blanket `stopPropagation` made the title strip the one field in the app where
+  Cmd-S did nothing.
+- **Every `window`/`document` CAPTURE listener has already run** by the time a
+  body-appended input's own handler fires, so a claim from the TARGET can only
+  reach the BUBBLE phase — which is, measured, where all four victims live
+  (`system-dialog`'s Escape is window-BUBBLE; its capture twin handles Enter
+  only, and answers `hands-off` for an out-of-frame target).
+- **An unchanged value dispatches NOTHING** (task 470's zero-move rule): the
+  expex committed unconditionally, so Enter on an untouched title cost a history
+  entry and an autosave arm for a no-op.
+- **The two endings, of which exactly one happens**, in the vanilla idiom (529):
+  `end()` records the ending BEFORE the input leaves the DOM, so the blur a
+  removal or a re-focus dispatches finds the session already over.
+- **The mint draws against the document** (`mintDocUuid`, beside
+  `ensureAnchorUuid`, which now reads it too). **Stated honestly: M4 is LATENT,
+  measured, not live** — `BlockUuidBackfill` re-mints a duplicate as soon as one
+  lands, so both spellings leave the SAME document and no end-to-end leg can
+  tell them apart. It is still worth closing: a gesture states identity before
+  dispatch and the net catches what no mechanism declared (task 320), and a mint
+  that leans on the net is one net-change away from orphaning an anchored
+  block's cards.
+- **The population is the VANILLA strips.** Two REACT surfaces also render a
+  `par-title-input` (`SourcePodNodeView`'s `+T`, `float-title-field`); neither
+  can call this door — their input is JSX React owns and their re-entry is a
+  `useState` flag no DOM probe was standing in for — and each already holds
+  529's law in its own idiom. Named at the door, and the census is scoped to
+  `addNodeView` bodies for exactly that reason, which is what keeps its
+  allowlist EMPTY.
+
+CI: [par-title-edit-session.test.ts](src/lib/tiptap/__tests__/par-title-edit-session.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack (the 548 harness shape) over
+all three strips. **No pre-552 suite could see any of this**: every one that
+drives these strips opens the input ONCE and asserts what that one session does,
+so a SECOND click on an already-open strip — the exact gesture the dead guard was
+supposed to refuse — is unrepresentable in all of them. The leg with teeth is the
+CENSUS, and it reads the SHARED `nodeViewPopulation()` at a new `literals`
+setting: a census whose needle IS a quoted class wants `commentsStripped`, where
+one whose needle is a symbol wants `codeOnly`, and passing the reading in keeps
+both on ONE discovery rather than growing a second `matchAll(/addNodeView/)`.
+Measured by neutering each half in turn: the dead re-entry guard takes 3 legs
+(and `exampleBlock` PASSES, which is the accepting control — its input really is
+inside the container), the `update()` probe 1, the key claim 6, the zero-move
+rule 3, the overlay 2, and a strip that leaves the door 7 (paragraph) / 13
+(expex), the census among them.
+
+**Residual, stated at the site.** The overlay's mousedown claims the DEFAULT and
+not propagation, so a click-away from a title input still reaches `document` and
+dismisses a scrimless Preferences window, a `NodeEditPopover` and the marginalia
+overflow pill. That is the POINTER axis of the same law, it is the LIST's shipped
+click-away semantics which this task adopts for all three strips on the task's
+own recommendation, and stopping propagation there would change what a click-away
+dismisses app-wide — a decision about dismissal semantics rather than about the
+session.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture, no disk), so the check is cheap and real: click a paragraph's title,
+then click the strip again — one input, and the strip does not flip states.
+
 ## Pane-drag stability
 
 > **Every pane/divider resize gesture runs on the ONE engine at [src/lib/pane-resize/](src/lib/pane-resize/)** (`usePaneResizeHandle`): pointer capture on the handle, element-scoped move/up/cancel/lostpointercapture, `button===0` start gate, `(buttons & 1)===0` missed-release failsafe (the primary-button BIT test, not `buttons===0` — releasing the drag button while a second is chorded fires only a pointermove with an updated mask, never a pointerup), Escape restore, a drag shield over iframes, RAF-coalesced equality-bailed imperative `apply()` (CSS-var writes; grid templates own hard clamps via `minmax()`/`clamp()`), and `commit()` exactly once on release. **Never** a bespoke `window`/`document` `pointermove` handler, and **never** per-frame React state, store notifies, or localStorage from a continuous gesture. Per-frame React state inside an engine consumer is sanctioned ONLY when a render-derived layout decision needs the live value (current sole case: `SplitWithCode`'s `liveRatio` — the compressed-gutter flip + clip fade derive from it in render), and only as LOCAL state driven from the engine's RAF-coalesced `apply()` (≤1 set per frame) with child subtrees bailing on element identity and persistence still commit-once; anything else is the per-frame-commit bug class this section exists to kill.
