@@ -1369,9 +1369,11 @@ the CENSUS (the chip handed exactly the fallback set, the fact threaded from
 both rails and re-derived nowhere, the floor at the one hook call site).
 [omni-bin-free-vs-orphaned.test.tsx](src/panels/Omni/__tests__/omni-bin-free-vs-orphaned.test.tsx)
 is 422's contract RENEGOTIATED in place with the reason at the site.
-Measured by neutering each half in turn: the floor takes 4 legs, the observer
-wiring 1, the scroll correction 1, the merged pill 5, the unfiltered bin 2,
-and the chip's fallback filter 1 (the census).
+Measured by neutering each half in turn: the floor takes 5 legs, the observer
+wiring 1, the scroll correction 2, the unfiltered bin 3, the chip's fallback
+filter 2 (a census leg in each of two suites), and reverting `OmniViewPanel`
+wholesale to its pre-544 shape 16 — the merged pill's own legs and the
+renegotiated 410/421/422 contracts among them.
 
 **Owed, not claimed:** the preview eyeball. The floor half is NOT FSA-masked
 (a live editor, no disk): anchor several notes to the dev doc's first
