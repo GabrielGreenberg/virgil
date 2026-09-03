@@ -16,14 +16,15 @@
  */
 
 import type { Editor } from "@tiptap/core";
+import type { RefCommand } from "@/lib/ref-display";
 
 /** The two inline-atom kinds that flow through the shared create popover. */
 export type AtomCreateKind = "citation" | "ref";
 
-/** The `\ref`-family command an inserted `labelRef` carries. Mirrors
- *  `RefCommand` in `LabelRefPopover` (re-declared here to keep this lib module
- *  free of a components→lib import inversion). */
-export type AtomRefCommand = "ref" | "getref" | "getfullref";
+/** The `\ref`-family command an inserted `labelRef` carries — the ONE
+ *  vocabulary (`@/lib/ref-display`), under the name this module's importers
+ *  already use. */
+export type AtomRefCommand = RefCommand;
 
 /**
  * A request to open the create popover, captured at TRIGGER time.

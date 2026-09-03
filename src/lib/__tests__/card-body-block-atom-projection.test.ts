@@ -256,7 +256,11 @@ const DISPATCH_EXEMPT: Record<string, string> = {
   // serializer's totality is pinned against the REAL schema by
   // `serializer-node-coverage.test.ts` — a stronger instrument than this one.
   "lib/latex-serializer.ts": "whole-document vocabulary; pinned by serializer-node-coverage",
-  "lib/latex-parser.ts": "whole-document vocabulary; the parse side of the same round trip",
+  // (`lib/latex-parser.ts` sat here until task 550: its only ≥2-atom dispatch
+  // was the private `resolveRefs` walk, which moved into the shared
+  // ref-target index — `@/lib/ref-display`, whose one `figureBlock` arm is
+  // below this census's two-atom needle. The entry left with the walk: a dead
+  // exemption is the standing licence this leg exists to refuse.)
   // A different question with no payload to lose: which word-count bucket does
   // this node count toward?
   "lib/word-count-core.ts": "categorization, not projection — nothing to drop",

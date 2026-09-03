@@ -118,7 +118,7 @@ import {
 } from "@/panels/_shared/card-archive-view";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
-import { resolveLabelDisplay } from "./editor-layout/card-actions/ref";
+import { resolveLabelDisplay } from "@/lib/ref-display";
 import {
   isAnchorableNode,
   MARGINALIA_HOST_ATTR,
@@ -2356,8 +2356,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // heading/example/figure lives — a card body owns none). Lands in the
   // CitationDisplayContext so RichTextField's load-time `refreshRefDisplay` can
   // turn a reloaded ref's empty displayText into its number instead of "??".
-  // Reuses `resolveLabelDisplay` — the SAME resolver the create flow
-  // (`handleInsertRef`) uses — so create-time and load-time agree. Returns null
+  // Reads `resolveLabelDisplay` — the ONE resolver (`@/lib/ref-display`) the
+  // parser, the numberer and the ref popover read — so load-time agrees with
+  // both of them (task 550). Returns null
   // when the main editor isn't mounted yet (caller keeps the existing display).
   const getRefDisplayText = useCallback(
     (label: string, refCommand: string): string | null => {

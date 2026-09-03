@@ -225,17 +225,18 @@ describe("the label predicate has ONE home and the rename has ONE door", () => {
       "src/lib/editor-extensions.ts",
       "src/lib/tiptap/label-rename.ts",
     ]);
-    // The ONE exemption is the LabelRefPopover's re-point of a SINGLE ref at a
-    // different, existing label (`handleRefChangeLabel`) — a different gesture
-    // (no declaration moves), and it stops after the first hit, which the
-    // second expectation keeps true.
-    expect(walkers.sort()).toEqual([
-      "src/components/editor-layout/card-actions/ref.ts",
-      "src/lib/tiptap/label-rename.ts",
-    ]);
+    // RENEGOTIATED (task 550). The pre-550 exemption here was the ref
+    // popover's re-point (`handleRefChangeLabel`), which walked the doc for
+    // the FIRST chip naming the old key and stopped — a shape this leg pinned
+    // as "a different gesture", and which was in fact the defect: a label is
+    // not unique, so the walk re-pointed a chip the user never clicked. The
+    // re-point now addresses the chip by IDENTITY (owning editor + pos,
+    // re-checked at commit) and walks nothing, so the door is the ONLY ref
+    // walker left and the exemption is retired rather than kept.
+    expect(walkers.sort()).toEqual(["src/lib/tiptap/label-rename.ts"]);
     const refTs = codeOnly(read(path.join(REPO_ROOT, "src/components/editor-layout/card-actions/ref.ts")));
     const handler = /const handleRefChangeLabel = useCallback\(([\s\S]*?)\n  \);/.exec(refTs)?.[1] ?? "";
-    expect(handler).toMatch(/\.label === oldLabel/);
-    expect(handler).toMatch(/return false;/);
+    expect(handler).not.toMatch(/descendants\(/);
+    expect(handler).toMatch(/locateRef\(target\)/);
   });
 });

@@ -26,6 +26,7 @@ import {
   type AtomCreateRequest,
 } from "@/lib/actions/atom-create";
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -217,9 +218,11 @@ export function useMarkerClickBridges(deps: {
    *  `setSelectedErrorIdBridge` wrapper. Called value-only (never an updater),
    *  so a plain `(id) => void` suffices. Synced from margin error-marker clicks. */
   setSelectedErrorId: (id: string | null) => void;
-  setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
-  setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
-  setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
+  /** The clicked `\ref` chip, by IDENTITY (owning editor + pos) plus its own
+   *  rect and current command — what the label popover opens on. ONE setter
+   *  for one fact; the pre-550 label/rect/command triple let the bridge
+   *  re-find the chip by its (non-unique) label string. */
+  setActiveRef: Dispatch<SetStateAction<ActiveRef | null>>;
   /** Opens the SHARED inline-atom create popover (citation + `\ref`). The
    *  trigger surfaces dispatch `virgil-atom-create-popover` with an
    *  `AtomCreateRequest` (kind + caret rect + captured insertion pos); this
@@ -273,9 +276,7 @@ export function useMarkerClickBridges(deps: {
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedErrorId,
-    setActiveRefLabel,
-    setActiveRefRect,
-    setActiveRefCommand,
+    setActiveRef,
     setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
@@ -375,32 +376,43 @@ export function useMarkerClickBridges(deps: {
     return () => window.removeEventListener("virgil-citation-click", handler);
   }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, alignOmniCardWithClick]);
 
+  // The EDIT-existing-`\ref` bridge. The chip's NodeView dispatches its
+  // IDENTITY — `pos` in the editor that OWNS it, plus that chip's own rect —
+  // and the popover opens on exactly that chip (task 550). Pre-550 the detail
+  // carried only the label string and this handler re-found the chip with a
+  // document-wide `querySelector('[data-label=…]')`: the FIRST chip in DOM
+  // order, so clicking the second of two `\ref{sec:intro}` chips opened the
+  // popover beside the first (off-screen) and re-pointed the first; under
+  // multi-doc keep-alive the first DOM match could be a HIDDEN pane's chip
+  // (task 438's class). No DOM lookup now, so no pane to get wrong. Validated
+  // the way the math/figure/atom-create bridges validate their owner: a
+  // malformed detail is dropped rather than resolved against MAIN.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.label) return;
-      const el = document.querySelector(
-        `.${ATOM_REGISTRY.ref.domClass}[data-label="${detail.label}"]`,
-      ) as HTMLElement | null;
-      if (el) {
-        setActiveRefLabel(detail.label);
-        setActiveRefRect(el.getBoundingClientRect());
-        const cmd = detail.refCommand;
-        if (cmd === "getref" || cmd === "getfullref" || cmd === "ref") {
-          setActiveRefCommand(cmd);
-        } else {
-          setActiveRefCommand("ref");
-        }
-      }
+      const detail = (e as CustomEvent).detail as Partial<RefClickDetail> | undefined;
+      if (!detail || typeof detail.label !== "string" || !detail.label) return;
+      if (typeof detail.pos !== "number") return;
+      if (!(detail.rect instanceof DOMRect)) return;
+      const owner = detail.editor as Editor | undefined;
+      if (!owner || typeof owner.isEditable !== "boolean") return;
+      const cmd = detail.refCommand;
+      setActiveRef({
+        label: detail.label,
+        pos: detail.pos,
+        editor: owner,
+        rect: detail.rect,
+        refCommand:
+          cmd === "getref" || cmd === "getfullref" || cmd === "ref" ? cmd : "ref",
+      });
     };
-    window.addEventListener("virgil-label-ref-click", handler);
-    return () => window.removeEventListener("virgil-label-ref-click", handler);
-  }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
+    window.addEventListener(REF_CLICK_EVENT, handler);
+    return () => window.removeEventListener(REF_CLICK_EVENT, handler);
+  }, [setActiveRef]);
 
-  // (`\ref` CREATE now flows through the SHARED `virgil-atom-create-popover`
+  // (`\ref` CREATE flows through the SHARED `virgil-atom-create-popover`
   // event below — `kind: "ref"` — alongside citation. The retired
   // `virgil-ref-create-popover` event is gone; the EDIT-existing-`\ref` listener
-  // above (`virgil-label-ref-click`) is untouched.)
+  // above (`REF_CLICK_EVENT`) is a separate path.)
 
   // The SHARED inline-atom create popover (citation + `\ref`). Trigger surfaces
   // (slash / lightning / grab / typed-bare) compute the caret rect + the

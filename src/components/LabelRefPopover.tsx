@@ -41,6 +41,7 @@ import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { useMenuCombobox } from "./menu/useMenuCombobox";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
+import type { RefCommand } from "@/lib/ref-display";
 
 /**
  * A discoverable target for a `\ref`. Headings carry their own section
@@ -58,7 +59,9 @@ export interface LabelInfo {
   title: string;
 }
 
-export type RefCommand = "ref" | "getref" | "getfullref";
+// The command vocabulary lives beside the resolver it selects a template for
+// (`@/lib/ref-display`); re-exported here for the popover's existing importers.
+export type { RefCommand };
 
 interface Props {
   /** The label key of the ref that was clicked (empty string = creating new ref) */
@@ -69,8 +72,10 @@ interface Props {
   labels: LabelInfo[];
   /** Current ref-command of the clicked labelRef (for the tri-toggle). */
   refCommand?: RefCommand;
-  /** Called when the user picks a different label */
-  onChangeLabel: (oldLabel: string, newLabel: string) => void;
+  /** Called when the user picks a different label for an EXISTING ref. The
+   *  host closes over the clicked chip's identity; `oldLabel` is informational.
+   *  Absent in create mode, where a pick inserts (`onInsertRef`). */
+  onChangeLabel?: (oldLabel: string, newLabel: string) => void;
   /** Called when the user clicks the target heading link */
   onJumpToLabel: (label: string) => void;
   /** Called when creating a new ref (via \ref command) — inserts a labelRef node */
@@ -175,7 +180,7 @@ interface BodyProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   /** The two-stage Escape stage-1 handler bridge (see the outer component). */
   escapeStage1Ref: React.MutableRefObject<() => boolean>;
-  onChangeLabel: (oldLabel: string, newLabel: string) => void;
+  onChangeLabel?: (oldLabel: string, newLabel: string) => void;
   onJumpToLabel: (label: string) => void;
   onInsertRef?: (label: string, refCommand?: RefCommand) => void;
   onChangeRefCommand?: (label: string, next: RefCommand) => void;
@@ -248,7 +253,7 @@ function LabelRefBody({
         onInsertRef(newLabel, refCommand);
         onClose();
       } else if (newLabel !== label) {
-        onChangeLabel(label, newLabel);
+        onChangeLabel?.(label, newLabel);
       }
     },
     [label, isCreateMode, onChangeLabel, onInsertRef, refCommand, onClose],

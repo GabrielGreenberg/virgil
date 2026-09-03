@@ -25,8 +25,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
-import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
-import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
@@ -1564,23 +1563,26 @@ export function createHeadingWithLabel(
         focusViewPlugin(),
         new Plugin({
           key: new PluginKey("sectionNumbers"),
-          // [cost: O(1)/tx — docChanged + observer-diff structural gate (headings / figures / examples / labels); deferred body O(doc) (three descendants walks) only on such a change] (task 433 census)
-          // A plain keystroke inside a paragraph publishes contentChangedUuids only and bails before any walk. With no observer diff (pending === null: the observer is not installed, e.g. a bare test stack) the numberer runs whole — a stated, tagged exemption.
+          // [cost: O(1)/tx — docChanged + observer-diff structural gate (headings / figures / examples / labels); deferred body O(doc) (one descendants walk building the shared ref-target index) only on such a change] (task 433 census)
+          // A plain keystroke inside a paragraph publishes contentChangedUuids only and bails before any walk. With no observer diff (pending === null: the observer is not installed, e.g. a bare test stack) the numberer runs whole — a stated, tagged exemption. The walk itself lives in `@/lib/ref-display` (`buildRefTargetIndexPM`) — an IMPORTED helper, which the task-433 census states it cannot follow, so this tag is the site's whole justification.
           appendTransaction(transactions, _oldState, newState) {
             if (!transactions.some((tr) => tr.docChanged)) return null;
 
-            // Gate: skip the entire numberer (3 doc walks) unless the
-            // observer says headings / figures / examples / labels
-            // actually changed. Pure text edits inside a paragraph
-            // produce contentChangedUuids only — the numberer's output
-            // can't change in that case, so we bail immediately.
+            // Gate: skip the entire numberer unless the observer says
+            // headings / figures / examples / labels actually changed. Pure
+            // text edits inside a paragraph produce contentChangedUuids only
+            // — the numberer's output can't change in that case, so we bail
+            // immediately.
             //
-            // Trade-off (memo §5): manually editing a labelRef's
-            // `label` attribute via the popover doesn't trigger this
-            // gate, so the labelRef's displayText may stay stale until
-            // the next structural change. The labelRef-insert flow
-            // (`\ref{x}` + Enter) sets displayText at insertion, so
-            // the common case still works.
+            // The gate is STRUCTURAL and that is correct for the one write it
+            // cannot see: a `labelRef` re-pointed or inserted from the ref
+            // popover changes no declaration, so nothing here fires — and
+            // nothing needs to, because the popover writes that atom's
+            // `displayText` itself from the SAME table this pass reads
+            // (`@/lib/ref-display`, task 550). Pre-550 the popover resolved
+            // through a second implementation with no figure branch, so the
+            // gate's silence let a `??` stand; the fix was one resolver, not
+            // a wider gate.
             const pending = readPendingDiff(newState);
             if (pending) {
               const structuralChange =
@@ -1598,228 +1600,41 @@ export function createHeadingWithLabel(
               if (!structuralChange) return null;
             }
 
-            // Collect heading positions & attrs
-            const headings: { pos: number; level: number; numbered: boolean; cur: string | null }[] = [];
-            newState.doc.descendants((nd, pos) => {
-              if (nd.type.name === "heading") {
-                headings.push({
-                  pos,
-                  level: nd.attrs.level,
-                  numbered: nd.attrs.numbered !== false,
-                  cur: nd.attrs.sectionNumber,
-                });
-              }
-            });
-            // Don't bail when there are no headings — figures still need
-            // numbering and label-ref resolution.
+            // ONE index: heading section numbers, figure numbers (a float
+            // takes one iff it emits a `\caption` — task 319, read through
+            // `figureNodeEmitsCaption`), the example key table, and every
+            // `labelRef` atom, off a single document walk. The parser at load
+            // and the ref popover at commit read the identical table, so the
+            // three can never disagree about what a heading is numbered or
+            // what a `\ref` to it shows.
+            const index = buildRefTargetIndexPM(newState.doc);
 
-            // Find top-level among numbered headings (levels 0..6 — 7 sentinels "above all")
-            let topLevel = 7;
-            for (const h of headings) {
-              if (h.numbered && h.level < topLevel) topLevel = h.level;
-            }
-
-            const counters = [0, 0, 0, 0, 0, 0, 0];
-            const updates: { pos: number; num: string | null }[] = [];
-
-            for (const h of headings) {
-              if (h.numbered && topLevel <= 6) {
-                const idx = h.level;
-                counters[idx]++;
-                for (let i = idx + 1; i < 7; i++) counters[i] = 0;
-                const parts: number[] = [];
-                for (let i = topLevel; i <= idx; i++) parts.push(counters[i]);
-                const num = parts.join(".");
-                if (num !== h.cur) updates.push({ pos: h.pos, num });
-              } else if (h.cur !== null) {
-                updates.push({ pos: h.pos, num: null });
-              }
-            }
-
-            // Build label→section-number map from headings
-            const headingMap = new Map<string, string>();
-            for (const h of headings) {
-              if (h.numbered && topLevel <= 6) {
-                const nd = newState.doc.nodeAt(h.pos);
-                const label = nd?.attrs.label as string | null;
-                // Use the computed number (from updates or current)
-                const upd = updates.find((u) => u.pos === h.pos);
-                const num = upd ? upd.num : h.cur;
-                if (label && num) headingMap.set(label, num);
-              }
-            }
-
-            // Build tag/label → example-number map from exampleBlocks.
-            // parentKey → { number: "3", items: Map<subKey, "a"> }
-            const exampleMap = new Map<
-              string,
-              { number: string; items: Map<string, string> }
-            >();
-            newState.doc.descendants((nd) => {
-              if (nd.type.name !== "exampleBlock") return true;
-              const parentNum = nd.attrs.number ? String(nd.attrs.number) : "";
-              if (!parentNum) return false;
-              const entry = { number: parentNum, items: new Map<string, string>() };
-              if (nd.attrs.tag) exampleMap.set(nd.attrs.tag, entry);
-              if (nd.attrs.label) exampleMap.set(nd.attrs.label, entry);
-              nd.descendants((child) => {
-                if (child.type.name === "exampleItem") {
-                  const sub = child.attrs.subLabel || "";
-                  if (!sub) return false;
-                  if (child.attrs.tag) entry.items.set(child.attrs.tag, sub);
-                  if (child.attrs.label) entry.items.set(child.attrs.label, sub);
-                  return false;
-                }
-                return true;
-              });
-              // Body-line `\label{…}` capture (shared SSOT) — parent-bound → N,
-              // item-bound → N+sub. Explicit attr keys above win (`!has`).
-              for (const bl of collectExampleBodyLabelsPM(nd)) {
-                if (bl.subLabel == null) {
-                  if (!exampleMap.has(bl.key)) exampleMap.set(bl.key, entry);
-                } else {
-                  if (!exampleMap.has(bl.key)) {
-                    exampleMap.set(bl.key, {
-                      number: `${parentNum}${bl.subLabel}`,
-                      items: new Map<string, string>(),
-                    });
-                  }
-                  if (!entry.items.has(bl.key)) entry.items.set(bl.key, bl.subLabel);
-                }
-              }
-              return false;
-            });
-
-            // Walk figureBlocks in document order. Numbered figures get
-            // sequential 1-based numbers; unnumbered figures get
-            // `figureNumber: null` and are skipped by the counter.
-            //
-            // "Numbered" asks the SAME question the emitter asks (task 319):
-            // a float takes a number iff it carries a `\caption`, so a
-            // caption-less figure — which since 319 no longer gains a phantom
-            // `\caption{}` on save — is skipped here exactly as LaTeX skips it.
-            // Counting one the PDF won't would put every later figure's number,
-            // and the `\ref` display text resolved from it below, off by one.
-            // The caption test is `captionNodeHasContent` — an atom-aware
-            // walk of the caption's immediate children, NOT `textContent`,
-            // which reports "" for a `\cite` or `$x$` atom and would leave a
-            // citation-only caption emitted by the serializer and uncounted
-            // here. O(caption children), on a walk that already visits this
-            // node and strictly downstream of the structural gate above, so it
-            // adds nothing to a plain keystroke.
-            //
-            // The gate can SEE this answer change because `FigureEntry` carries
-            // it (`emitsCaption`) and `figureStructurallyChanged` compares it —
-            // as a boolean, so typing inside an already non-empty caption
-            // derives equal and stays structurally null, while the empty↔
-            // non-empty transition (the one that changes the number) wakes this
-            // numberer exactly once. Without that, a popover caption removal
-            // left EVERY later figure's on-screen number and every `\ref`
-            // resolved from it one too high until some unrelated structural
-            // edit happened by.
-            //
-            // Residual, stated: a figure captioned by a command this model does
-            // not know — `\captionof{figure}{…}` inside a `minipage`, or a user
-            // macro — rides in `extras`, so `hasCaption` is false and Virgil
-            // does not number it while LaTeX does. Deliberately not chased with
-            // a regex over `extras`: the commonest shape there is a `\caption`
-            // belonging to a nested `subfigure`, which LaTeX does NOT count as
-            // the figure's own, so the heuristic would be wrong in the other
-            // direction for a far more common document. Pre-319 this figure was
-            // numbered AND handed a phantom `\caption{}`, i.e. captioned twice.
-            const figureUpdates: { pos: number; figureNumber: number | null }[] = [];
-            const figureMap = new Map<string, string>();
-            let figureCounter = 0;
-            newState.doc.descendants((nd, pos) => {
-              if (nd.type.name !== "figureBlock") return true;
-              const isNumbered =
-                nd.attrs.numbered !== false && figureNodeEmitsCaption(nd);
-              let next: number | null = null;
-              if (isNumbered) {
-                figureCounter += 1;
-                next = figureCounter;
-              }
-              const cur = nd.attrs.figureNumber as number | string | null;
-              const curNorm =
-                typeof cur === "string" && cur !== ""
-                  ? parseInt(cur, 10)
-                  : (cur as number | null);
-              if (next !== curNorm) {
-                figureUpdates.push({ pos, figureNumber: next });
-              }
-              const label = nd.attrs.label as string | undefined;
-              if (label && next != null) {
-                figureMap.set(label, String(next));
-              }
-              return false; // figureCaption child has no nested figures
-            });
-
-            // Resolve a label + refCommand → display text.
-            const resolveRef = (label: string, refCommand: string): string => {
-              if (!label) return "??";
-              const heading = headingMap.get(label);
-              if (heading) {
-                return refCommand === "ref" ? heading : `(${heading})`;
-              }
-              // Example — parent form first
-              const ex = exampleMap.get(label);
-              if (ex) {
-                return refCommand === "ref" ? ex.number : `(${ex.number})`;
-              }
-              const fig = figureMap.get(label);
-              if (fig) {
-                return refCommand === "ref" ? fig : `(${fig})`;
-              }
-              // Dotted "parent.sub" form for \getfullref (and \ref if the user
-              // typed the dotted form)
-              const dot = label.lastIndexOf(".");
-              if (dot > 0) {
-                const parentKey = label.slice(0, dot);
-                const subKey = label.slice(dot + 1);
-                const parent = exampleMap.get(parentKey);
-                if (parent) {
-                  const sub = parent.items.get(subKey) || subKey;
-                  const full = `${parent.number}${sub}`;
-                  return refCommand === "ref" ? full : `(${full})`;
-                }
-              }
-              return "??";
-            };
-
-            // Check labelRef nodes for stale displayText
-            const refUpdates: { pos: number; display: string }[] = [];
-            newState.doc.descendants((nd, pos) => {
-              if (nd.type.name === "labelRef") {
-                const resolved = resolveRef(
-                  nd.attrs.label as string,
-                  (nd.attrs.refCommand as string) || "ref",
-                );
-                if (nd.attrs.displayText !== resolved) {
-                  refUpdates.push({ pos, display: resolved });
-                }
-              }
-            });
-
-            if (
-              updates.length === 0 &&
-              refUpdates.length === 0 &&
-              figureUpdates.length === 0
-            )
-              return null;
             const tr = newState.tr;
-            for (const { pos, num } of updates) {
-              const nd = newState.doc.nodeAt(pos);
-              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, sectionNumber: num });
+            let changed = false;
+            for (const h of index.headings) {
+              if (h.number !== h.current) {
+                tr.setNodeMarkup(h.pos, undefined, { ...h.node.attrs, sectionNumber: h.number });
+                changed = true;
+              }
             }
-            for (const { pos, figureNumber } of figureUpdates) {
-              const nd = newState.doc.nodeAt(pos);
-              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, figureNumber });
+            for (const f of index.figures) {
+              if (f.number !== f.current) {
+                tr.setNodeMarkup(f.pos, undefined, { ...f.node.attrs, figureNumber: f.number });
+                changed = true;
+              }
             }
-            for (const { pos, display } of refUpdates) {
-              const nd = newState.doc.nodeAt(pos);
-              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, displayText: display });
+            for (const { node: ref, pos } of index.refs) {
+              const { display } = resolveRefDisplay(
+                index,
+                (ref.attrs.label as string) || "",
+                (ref.attrs.refCommand as string) || "ref",
+              );
+              if (ref.attrs.displayText !== display) {
+                tr.setNodeMarkup(pos, undefined, { ...ref.attrs, displayText: display });
+                changed = true;
+              }
             }
-            return tr;
+            return changed ? tr : null;
           },
         }),
       ];

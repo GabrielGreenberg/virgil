@@ -78,7 +78,14 @@ const PERMITTED_UNTAGGED_PLUGIN_WALKS: Record<string, string> = {};
  *   clean  — the body's reach performs no whole-document walk at all.
  */
 const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
-  "src/lib/editor-extensions.ts#appendTransaction": "tagged", // sectionNumbers
+  // sectionNumbers. RENEGOTIATED (task 550): its one whole-document walk now
+  // lives behind an IMPORTED helper (`buildRefTargetIndexPM`, the shared
+  // ref-target index the parser and the ref popover read too), which this
+  // census's own stated limit says it cannot follow — so the site reads
+  // `clean` here while its `[cost: …]` tag above the method stays and is the
+  // site's whole justification. The per-keystroke cost is unchanged: the
+  // observer-diff structural gate still bails before the helper is called.
+  "src/lib/editor-extensions.ts#appendTransaction": "clean",
   "src/lib/focus-view.ts#apply": "tagged",
   "src/lib/section-folding.ts#apply": "tagged",
   "src/lib/tiptap/anchor-highlight-deco.ts#apply": "tagged",

@@ -2,11 +2,10 @@ import type { JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 /**
- * Body-`\label` capture for expex examples — the SSOT behind the three
- * example-number resolvers:
- *   - parse/reload `exampleMap`      (`src/lib/latex-parser.ts`)
- *   - live-doc ref-display refresh   (`src/lib/editor-extensions.ts`)
- *   - create/popover resolver        (`src/components/editor-layout/card-actions/ref.ts`)
+ * Body-`\label` capture for expex examples — read by the ONE ref-target
+ * index (`src/lib/ref-display.ts`, task 550), which the parser, the live
+ * numberer and the ref popover all resolve through. (Pre-550 it fed three
+ * separate example-number resolvers, one per reader.)
  *
  * expex lets a `\label{…}` sit anywhere inside an `\ex`/`\pex` body, not just
  * immediately after the header. Only the header-adjacent form is promoted onto

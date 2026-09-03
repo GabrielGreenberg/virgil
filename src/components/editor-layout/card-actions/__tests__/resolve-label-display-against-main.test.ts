@@ -33,7 +33,7 @@ vi.mock("@/lib/storage", () => {
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { Editor } from "@tiptap/core";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
-import { resolveLabelDisplay } from "@/components/editor-layout/card-actions/ref";
+import { resolveLabelDisplay } from "@/lib/ref-display";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -48,9 +48,14 @@ function mainCtx(): EditorExtensionsCtx {
   };
 }
 
-/** Mount a real MAIN editor with a numbered, labelled heading. We seed
- *  `sectionNumber` directly so the test doesn't depend on the async numbering
- *  appendTransaction settling. */
+/** Mount a real MAIN editor with a labelled heading as its SECOND section.
+ *  RENEGOTIATED (task 550): the resolver used to READ `sectionNumber` off the
+ *  heading, so this fixture seeded "2" on a lone heading and expected "2".
+ *  The one resolver (`@/lib/ref-display`) DERIVES the number from the
+ *  document — the same derivation the parser writes at load and the numberer
+ *  keeps in sync — so a lone heading is "1" whatever its attr says. The
+ *  seeded attr stays as a stale-attr canary (see the last leg); the heading
+ *  is now genuinely second so the expected "2" is the derived answer. */
 function mountMain(): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
@@ -61,6 +66,11 @@ function mountMain(): Editor {
     content: {
       type: "doc",
       content: [
+        {
+          type: "heading",
+          attrs: { level: 1, uuid: "h-0" },
+          content: [{ type: "text", text: "Preface" }],
+        },
         {
           type: "heading",
           attrs: { level: 1, uuid: "h-1", label: "sec:intro", sectionNumber: "2" },
@@ -90,6 +100,28 @@ describe("resolveLabelDisplay against MAIN (footnote-nested ref load-time refres
     const main = mountMain();
     expect(resolveLabelDisplay(main.state.doc, "sec:intro", "getref").display).toBe("(2)");
     expect(resolveLabelDisplay(main.state.doc, "sec:intro", "getfullref").display).toBe("(2)");
+    main.destroy();
+  });
+
+  it("DERIVES the number — a stale seeded `sectionNumber` does not win (task 550)", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const main = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions(mainCtx()),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, uuid: "h-1", label: "sec:intro", sectionNumber: "7" },
+            content: [{ type: "text", text: "Only" }],
+          },
+        ],
+      },
+    });
+    expect(resolveLabelDisplay(main.state.doc, "sec:intro", "ref").display).toBe("1");
     main.destroy();
   });
 
