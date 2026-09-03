@@ -62,6 +62,16 @@ export function applyFigureEnvBodyEdit(
     });
   }
 
+  // A RAW-SOURCE writeback — every attr the user typed into the env body is
+  // re-threaded in ONE transaction, and `label` is one of them. It does NOT
+  // enter the rename door (task 553 census): whether a source edit that
+  // renames `\label{fig:a}` should ask the "Update references?" confirm and
+  // carry the refs, and whether one that types a key another declaration owns
+  // should REFUSE the save (the lozenge's behaviour) or accept it, is a product
+  // decision about a Save-button surface — routed, not guessed. Until it is
+  // taken, a rename from here orphans its refs exactly as it always has; the
+  // numberer reports them as `??`.
+  // label-write-exempt: raw-source writeback, product decision routed (task 553)
   const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
     ...node.attrs,
     extras: attrs.extras,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { isLabelTaken } from "@/lib/labels";
+import { isLabelTaken, collectLabelKeys, isLabelTakenIn } from "@/lib/labels";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { iconHint } from "@/components/Hint";
@@ -51,6 +51,11 @@ export default function FigureAnnotation({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState(label);
   const [conflict, setConflict] = useState(false);
+  // The keys declared elsewhere, SNAPSHOTTED when the edit opens (task 553):
+  // the live warning is an O(1) membership test per keystroke over this set,
+  // never a document walk. The commit re-asks the live `isLabelTaken`, so a
+  // stale snapshot can only delay the warning, never admit a duplicate.
+  const keysRef = useRef<ReadonlySet<string> | null>(null);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -66,18 +71,19 @@ export default function FigureAnnotation({
 
   const checkConflict = useCallback(
     (candidate: string) => {
-      const taken =
-        candidate && editor ? isLabelTaken(editor, candidate, label || null) : false;
+      const keys = keysRef.current;
+      const taken = candidate && keys ? isLabelTakenIn(keys, candidate, label || null) : false;
       setConflict(taken);
     },
-    [editor, label],
+    [label],
   );
 
   const enterEdit = useCallback(() => {
+    keysRef.current = editor ? collectLabelKeys(editor) : null;
     setDraft(label);
     setConflict(false);
     setEditing(true);
-  }, [label]);
+  }, [editor, label]);
 
   const cancel = useCallback(() => {
     setEditing(false);

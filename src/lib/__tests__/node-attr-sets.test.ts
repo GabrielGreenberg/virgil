@@ -65,6 +65,7 @@ import {
   UUID_BEARING_NODE_TYPES,
   TITLED_NODE_TYPES,
   COLLAPSIBLE_NODE_TYPES,
+  LABEL_DECLARING_NODE_TYPES,
   DEFERRING_PARENTS,
   deferringParent,
   EMPTY_WRAPPER_NODE_TYPES,
@@ -99,6 +100,18 @@ function schemaTypesDeclaring(attr: string): string[] {
   const schema = getSchema(buildEditorExtensions(mainCtx()));
   return Object.entries(schema.nodes)
     .filter(([, type]) => attr in (type.spec.attrs ?? {}))
+    .map(([name]) => name)
+    .sort();
+}
+
+/** BLOCK node type names the REAL main-editor schema declares `attr` on —
+ *  the inline `labelRef` atom carries a `label` attr as the key it REFERENCES,
+ *  not one it declares, which is exactly what separates a declaring kind from
+ *  a reader (task 553). */
+function schemaBlockTypesDeclaring(attr: string): string[] {
+  const schema = getSchema(buildEditorExtensions(mainCtx()));
+  return Object.entries(schema.nodes)
+    .filter(([, type]) => type.isBlock && attr in (type.spec.attrs ?? {}))
     .map(([name]) => name)
     .sort();
 }
@@ -231,6 +244,15 @@ describe("node-attr-sets · the declared sets equal the real schema", () => {
     ["collapsed", COLLAPSIBLE_NODE_TYPES],
   ] as const)("%s", (attr, declared) => {
     expect(sorted(declared)).toEqual(schemaTypesDeclaring(attr));
+  });
+
+  it("label — the DECLARING kinds are every BLOCK type carrying the attr (task 553)", () => {
+    expect(sorted(LABEL_DECLARING_NODE_TYPES)).toEqual(schemaBlockTypesDeclaring("label"));
+    // …and the block-only reading is what keeps the REFERENCE out: the
+    // `labelRef` atom declares `label` too, and a registry that counted it
+    // would report every `\ref{x}` as a declaration of `x`.
+    expect(schemaTypesDeclaring("label")).toContain("labelRef");
+    expect(LABEL_DECLARING_NODE_TYPES.has("labelRef")).toBe(false);
   });
 
   it("the schema really does declare parTitle on more than the four that worked", () => {

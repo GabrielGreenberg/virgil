@@ -29,7 +29,8 @@ import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
-import { isLabelTaken } from "@/lib/labels";
+import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
+import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
 import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
@@ -1148,25 +1149,21 @@ export function createHeadingWithLabel(
 
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
-          // Live "label already in use" warning — reads the central predicate
-          // from @/lib/labels DIRECTLY against the write target (main in a
-          // float). Task 534 retired the `isLabelTakenRef` mirror: it was a
-          // prop no host supplied, so this warning could never fire.
-          const warning = document.createElement("div");
-          warning.className = "heading-label-warning";
-          warning.textContent = "⚠ label already in use";
-          warning.style.display = "none";
-          annot.appendChild(warning);
-
-          const refreshWarning = () => {
-            const candidate = input.value.trim();
-            const own = (currentNode.attrs.label as string | null) || null;
-            const taken = candidate ? isLabelTaken(getTarget(), candidate, own) : false;
-            warning.style.display = taken ? "" : "none";
-            input.classList.toggle("has-conflict", !!taken);
-          };
-          input.addEventListener("input", refreshWarning);
-          refreshWarning();
+          // Live "label already in use" warning — ONE helper for every vanilla
+          // label editor (task 553), over a key set SNAPSHOTTED here at edit
+          // start against the write target (main in a float). Pre-553 this
+          // strip re-walked the WHOLE document on every character typed
+          // (`isLabelTaken` → `collectLabelKeys` per `input` event); the set
+          // cannot change while this chrome input holds focus, and the commit
+          // below still asks the LIVE predicate, so the warning and the commit
+          // cannot disagree. Task 534 retired the `isLabelTakenRef` mirror: it
+          // was a prop no host supplied, so this warning could never fire.
+          const warning = createLabelKeyWarning({
+            input,
+            container: annot,
+            keys: collectLabelKeys(getTarget()),
+            own: (currentNode.attrs.label as string | null) || null,
+          });
 
           let committed = false;
           const commit = async (via: "enter" | "blur") => {
@@ -1188,7 +1185,7 @@ export function createHeadingWithLabel(
             // committed anyway — a duplicate `\label` is always a LaTeX error.
             if (newLabel && newLabel !== oldLabel && isLabelTaken(target, newLabel, oldLabel)) {
               if (via === "enter") {
-                refreshWarning();
+                warning.refresh();
                 input.focus();
                 return;
               }
@@ -1906,9 +1903,20 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     ExampleBlock.configure({
       cardContext: ctx.cardContext,
       surface: isFloat ? "float" : "main",
+      // The "Ex." label pod enters the ONE rename door (task 553): the confirm
+      // is the host's (`EditorPane`, through the same `callbacks` bag the
+      // heading and figure read — so the producer census covers it), and in a
+      // float the write targets MAIN through `host`, where the `\ref` walk
+      // covers the whole paper rather than the float's one example.
+      host: isFloat ? (ctx.host ?? null) : null,
+      onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename ?? null,
     }),
     ExampleItemList,
-    ExampleItem.configure({ surface: isFloat ? "float" : "main" }),
+    ExampleItem.configure({
+      surface: isFloat ? "float" : "main",
+      host: isFloat ? (ctx.host ?? null) : null,
+      onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename ?? null,
+    }),
     ExampleGloss,
     AlignedGlossRow,
     ProseGlossRow,
