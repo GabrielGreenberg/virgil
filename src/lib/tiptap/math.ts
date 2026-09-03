@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import katex from "katex";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import {
   posHostsBlockInsert,
   posHostsInlineAtom,
@@ -36,7 +37,9 @@ export function renderMath(target: HTMLElement, latex: string, displayMode: bool
   target.innerHTML = "";
   if (!latex) {
     const ph = document.createElement("span");
-    ph.className = "math-placeholder";
+    // "( empty math )" is a statement about the editor; an empty `$$` prints
+    // nothing in LaTeX, so the placeholder is chrome-only (task 535).
+    ph.className = chromeOnly("math-placeholder");
     ph.textContent = displayMode ? "( empty display math )" : "( empty math )";
     target.appendChild(ph);
     return;

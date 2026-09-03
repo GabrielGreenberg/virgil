@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
@@ -799,7 +800,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // revealed "Label +" affordance when there's no label yet. Click
       // an existing label to rename in place.
       const labelAnnot = document.createElement("div");
-      labelAnnot.className = "heading-annotation expex-label-annotation";
+      labelAnnot.className = chromeOnly("heading-annotation expex-label-annotation");
       labelAnnot.contentEditable = "false";
 
       // Block body — the example itself.
@@ -863,7 +864,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           wrapper.classList.add("has-add-btn");
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "par-title-add-btn";
+          btn.className = chromeOnly("par-title-add-btn");
           btn.textContent = "+T";
           btn.title = "Add paragraph title";
           titleAnnot.appendChild(btn);
@@ -933,7 +934,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         if (labelAnnot.querySelector("input")) return;
         const input = document.createElement("input");
         input.type = "text";
-        input.className = "heading-label-input expex-label-input";
+        input.className = chromeOnly("heading-label-input expex-label-input");
         input.value = (currentNode.attrs.label as string) || "";
         input.placeholder = "label key";
         replaceTarget.replaceWith(input);
@@ -1035,7 +1036,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         titleAnnot.innerHTML = "";
         const input = document.createElement("input");
         input.type = "text";
-        input.className = "par-title-input";
+        input.className = chromeOnly("par-title-input");
         input.value = (currentNode.attrs.parTitle as string) || "";
         input.placeholder = "Title…";
         titleAnnot.appendChild(input);
@@ -1480,7 +1481,7 @@ export const ExampleItem = Node.create({
       // Label pod — small "ex." chip with hover-revealed "Label +"
       // affordance, identical pattern to section headings and exampleBlock.
       const labelAnnot = document.createElement("div");
-      labelAnnot.className = "heading-annotation expex-item-label-annotation";
+      labelAnnot.className = chromeOnly("heading-annotation expex-item-label-annotation");
       labelAnnot.contentEditable = "false";
       dom.appendChild(labelAnnot);
 
@@ -1528,7 +1529,7 @@ export const ExampleItem = Node.create({
         if (labelAnnot.querySelector("input")) return;
         const input = document.createElement("input");
         input.type = "text";
-        input.className = "heading-label-input expex-label-input";
+        input.className = chromeOnly("heading-label-input expex-label-input");
         input.value = (currentNode.attrs.label as string) || "";
         input.placeholder = "label key";
         replaceTarget.replaceWith(input);

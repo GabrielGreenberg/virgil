@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
 import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
 
@@ -312,7 +313,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
       if (surface === "main") stampTextObjectAttrs(dom, node, null);
 
       const bar = document.createElement("div");
-      bar.className = "latex-comment-handle";
+      // The grab bar is editor chrome (task 535): a comment prints its text,
+      // never the coloured handle beside it.
+      bar.className = chromeOnly("latex-comment-handle");
       bar.contentEditable = "false";
       bar.addEventListener("click", (e) => {
         e.preventDefault();

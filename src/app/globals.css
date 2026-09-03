@@ -5863,21 +5863,49 @@ html {
     outline: none !important;
   }
 
-  /* Drop editor-only decorations: chip-style metadata labels above
-     title/author/date and section-heading annotations are field-type
-     hints, not document content. Inline citation/label-ref tokens
-     keep their text but lose the chip border and tinted background so
-     they read as plain prose. Anything ADDED here is a hand list of the
-     kind the rule above exists to replace — a new view-only decoration
-     belongs on `viewOnly()`, not in this comment. */
-  .title-field-annotation,
-  .heading-annotation { display: none !important; }
+  /* (3) CHROME-ONLY ELEMENTS NEVER REACH PAPER (task 535, the third hook on
+     the same vocabulary). A NodeView paints chrome BESIDE the node it
+     renders — the figure's "Choose image…" button and its hint, "Loading …",
+     "Figure not found: …", the blue label lozenge, the heading lozenge, the
+     title-field chips, a fold chevron, a source pod's corner / preview /
+     badge / row sensor, a comment's grab bar, "( empty math )". None of it is
+     document content, and none of it is a DECORATION, which is why hook (1)
+     could not see it: task 523's census asks every file that constructs a
+     PM decoration, and a NodeView constructs none.
+
+     The answer is `display: none`, not the de-paint of hook (1): measured, a
+     "Choose image…" button with no background is still a button reading
+     "Choose image…". So each writer stamps `chromeOnly(<its class>)` beside
+     its own class and this ONE rule hides every present and future member —
+     the two-item hand list that used to sit here (`.title-field-annotation,
+     .heading-annotation`), whose own comment said a hand list was the thing
+     the marker rule existed to replace, is gone, and so are the four
+     by-name source-pod rules that sat further down. The census is
+     `print-chrome-only-posture.test.ts`, over a population that includes
+     NodeView chrome. `!important` because a member's screen rule may set
+     `display` at higher specificity (`.figure-block .figure-annotation`).
+
+     Inline citation/label-ref tokens are DOCUMENT content and keep their
+     text; they lose the chip border and tinted background so they read as
+     plain prose. */
+  .virgil-chrome-only { display: none !important; }
   .citation-node,
   .label-ref-node {
     background: transparent !important;
     border: 0 !important;
     padding: 0 !important;
     color: inherit !important;
+  }
+
+  /* An EMPTY figure's ROOT is the node (a `figure` env with nothing in it),
+     so it is not hidden — but its dashed drop-zone box, background and 80px
+     floor are editor paint on that root. Flattened here, the `.citation-node`
+     shape above: the block prints as what it is, nothing (task 535). */
+  .figure-block.figure-block-empty {
+    border: 0 !important;
+    background: none !important;
+    min-height: 0 !important;
+    padding: 0 !important;
   }
 
   /* Element toggles — keyed off data-print-e-* on the html element. */
@@ -5913,8 +5941,9 @@ html {
      texBlock (whose only body is bytes) and for a tree the subset refused.
 
      The refusal BADGE does not print. It is a statement about Virgil's
-     renderer, not about the paper — the same reason `.heading-annotation` and
-     the title-field chips are dropped above. What prints in its place is the
+     renderer, not about the paper — so, like the corner, it is stamped
+     chrome-only by its writer and hidden by the ONE rule above (task 535;
+     pre-535 both were hidden here by name). What prints in its place is the
      source it was pointing at, which is the thing the reader wants on paper. */
   .source-pod-derived {
     border: 0 !important;
@@ -5930,8 +5959,6 @@ html {
   .source-pod-derived-scroll {
     overflow: visible !important;
   }
-  .source-pod-corner,
-  .forest-refusal-badge { display: none !important; }
 
   /* A COLLAPSED pod prints its SOURCE (task 408, decision 2).
      The screen body of a collapsed pod is `.source-pod-preview` — the first two
@@ -5940,7 +5967,9 @@ html {
      replaced by the pod's whole source, which the NodeView renders beside it as
      an always-present `.print-only` element (SourcePodNodeView.tsx). Rendering
      it unconditionally is the point: the pod then has NO React dependency on
-     print state, so both print doors behave identically.
+     print state, so both print doors behave identically. The preview itself
+     is stamped chrome-only by the NodeView (task 535) — the marker rule above
+     is what drops it; it is no longer named here.
 
      SOURCE rather than the derived picture, and that is a measured choice: a
      tree mounted while hidden measures 0x0 and falls back to canvas ESTIMATES
@@ -5949,7 +5978,6 @@ html {
      printed tree would be visibly slightly wrong with no error. The source is
      exact, and byte-identical to what an expanded source-mode pod already
      prints. */
-  .source-pod-preview { display: none !important; }
   .source-pod-print-source {
     font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
     font-size: 0.9em;
@@ -5960,13 +5988,11 @@ html {
     break-inside: avoid; page-break-inside: avoid;
   }
 
-  /* Pod chrome that is an editor AFFORDANCE, not document content: the fold
-     chevron (which paints RED while folded — a collapsed pod that now prints
-     its body would otherwise carry a red arrow into the margin of the paper)
-     and the invisible row-wide hover sensor. Same reason `.source-pod-corner`
-     and the title-field chips are dropped above. */
-  .source-pod-fold-chevron,
-  .source-pod-row-sensor { display: none !important; }
+  /* The pod's fold chevron (which paints RED while folded — a collapsed pod
+     that prints its body would otherwise carry a red arrow into the margin of
+     the paper) and its invisible row-wide hover sensor are editor affordances
+     too, and take the same chrome-only stamp (task 535) rather than a rule
+     here. */
 
   /* Strip non-content card chrome (grip, collab pills, popout/close, jump)
      inside appendices via ONE marker. The former selectors
