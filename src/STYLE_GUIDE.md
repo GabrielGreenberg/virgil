@@ -164,6 +164,25 @@ Two rules the family carries:
   while the read-only posture stood — and needs none, because it disappears on
   its own.
 
+- **The document-interruption BAND is the ladder's GUIDED surface** (task 545;
+  `src/lib/document-interruption.ts` is the vocabulary, `DocumentInterruptionBanner`
+  the surface). Every state that stops or pauses writing — the cowork hold, a
+  disk conflict, an external change, a preservation refusal, a failed write —
+  renders as ONE band inside the paper's card, sticky under the chrome header
+  and above the first prose line: what happened (naming the writer where the
+  app can — "Virgil's AI edited this paper", never "another app" for the AI's
+  own commit), what Virgil is doing about it, ONE recommended action phrased as
+  an OUTCOME ("Use Virgil's edits", "Keep my version"), and the alternatives as
+  plain link-buttons beside it. The topbar pills keep their compact chrome and
+  take their words from the same vocabulary, so the two surfaces name one event
+  with one phrase. Tone follows the rules above and is decided ONCE in the
+  vocabulary: `live` (the cowork hold — warm family, breathing glyph, and a
+  veil that dims the prose to 0.55 while keeping it legible), `warning` (a
+  netted conflict), `info` (a change with nothing unsaved), `danger` only for
+  the two states in which the user's work is on no disk (a refusal, a failed
+  write). No dismiss on any tier: every state clears itself when its cause
+  does, and hiding a true statement is the silence the surface exists to end.
+
 - **Two rungs ALIAS the rust scale rather than restating its hex.** That is the
   point, not an optimization. The historical migration record
   (`docs/virgil-design-system/10-audit.md` §8, no longer the spec) complains

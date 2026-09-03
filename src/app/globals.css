@@ -6053,3 +6053,112 @@ html {
     animation: cowork-pen-breathe 1.6s ease-in-out infinite;
   }
 }
+
+/* ── The document-interruption BAND (task 545) ─────────────────────────
+ * ONE guided surface for every state that stops or pauses writing — the
+ * cowork hold, a disk conflict, an external change, a preservation refusal,
+ * a failed write. It sits INSIDE the paper's card, sticky just under the
+ * in-card chrome header (`--chrome-top`) and above the first prose line, so
+ * it is visible at every scroll position without looking at the topbar.
+ * z-index 29: under the chrome header (30) and the frame ring (31) — the
+ * ring wraps it — and above the prose and the reading mask (15). The
+ * tone tokens are set inline by the component from ONE palette map; the
+ * rules here are layout only. */
+.doc-interruption-band {
+  position: sticky;
+  top: var(--chrome-top, 0px);
+  z-index: 29;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 16px 10px 14px;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  pointer-events: auto;
+}
+.doc-interruption-band__glyph {
+  flex: 0 0 auto;
+  padding-top: 1px;
+  display: inline-flex;
+}
+.doc-interruption-band__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.doc-interruption-band__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.doc-interruption-band__body {
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 2px;
+  color: var(--ink-body);
+  max-width: 72ch;
+}
+.doc-interruption-band__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+.doc-interruption-band__primary {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--surface);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.doc-interruption-band__primary:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+.doc-interruption-band__secondary {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-strong);
+  border: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+.doc-interruption-band__secondary:hover:not(:disabled) {
+  background: var(--accent-light);
+}
+.doc-interruption-band__primary:disabled,
+.doc-interruption-band__secondary:disabled {
+  opacity: 0.6;
+}
+/* Narrow pods: the text keeps a readable measure and the actions wrap under
+ * it rather than crushing it. */
+.doc-interruption-band {
+  flex-wrap: wrap;
+}
+.doc-interruption-band__text {
+  min-width: 28ch;
+}
+
+/* The cowork hold VEILS the prose (task 545, Gabriel: "a loud
+ * stop-and-read-only mode … an editor-surface overlay/veil"). The pane root
+ * is stamped `data-doc-interruption` by EditorPane from the same view the
+ * band renders, so the veil and the words cannot disagree. Opacity only —
+ * composite-only, no layout — and the text stays legible: the user may keep
+ * reading while Virgil writes. `progress` cursor says "wait" without
+ * blocking the pointer; the read-only gate itself is `setEditable(false)`. */
+.editor-pane-root[data-doc-interruption="cowork-hold"] .editor-pane-pod .ProseMirror {
+  opacity: 0.55;
+  cursor: progress;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .editor-pane-root .editor-pane-pod .ProseMirror {
+    transition: opacity 0.25s ease;
+  }
+}
+@media print {
+  .doc-interruption-band {
+    display: none;
+  }
+}

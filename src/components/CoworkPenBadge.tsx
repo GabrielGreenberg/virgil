@@ -42,6 +42,17 @@ import {
   subscribeCoworkPen,
   type CoworkPenState,
 } from "@/lib/cowork-pen";
+import { deriveDocumentInterruption, interruptionPillLabel } from "@/lib/document-interruption";
+import { deriveSaveState } from "@/lib/save-state";
+
+/** The clean external snapshot: this pill is about the PEN alone, and the
+ *  vocabulary's cowork branch reads nothing else. */
+const NO_EXTERNAL = Object.freeze({
+  changes: Object.freeze([]),
+  severity: null,
+  detectedAt: null,
+  paused: false,
+});
 
 /** A 16px stroke-only quill/pen glyph — the pen, literally. */
 function PenIcon() {
@@ -77,6 +88,18 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
   const pen = useCoworkPen(docId);
   // Self-gating: nothing holds the pen, nothing to say.
   if (!pen) return null;
+  // TASK 545 — the words are the vocabulary's (`document-interruption.ts`),
+  // so this pill and the in-document band name one event with one phrase.
+  const view = deriveDocumentInterruption({
+    docId,
+    pen,
+    penLastReleasedAt: null,
+    external: NO_EXTERNAL,
+    preservation: null,
+    save: deriveSaveState(null),
+  });
+  const label = view ? interruptionPillLabel(view, null) : "Virgil is editing this paper…";
+  const hint = view?.body ?? "";
 
   return (
     <div
@@ -90,11 +113,7 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
           borderColor: "var(--amber-500)",
           color: "var(--ink-strong)",
         }}
-        data-hint={
-          "A Virgil cowork skill is writing to this paper's folder. The text is " +
-          "read-only and saving is paused until it finishes — this normally " +
-          "takes a moment and clears itself."
-        }
+        data-hint={hint}
         role="status"
         aria-label="Virgil is editing this paper — the text is read-only and saving is paused"
       >
@@ -105,7 +124,7 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
         >
           <PenIcon />
         </span>
-        <span className="truncate">Virgil is editing this paper…</span>
+        <span className="truncate">{label}</span>
       </span>
     </div>
   );

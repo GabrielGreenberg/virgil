@@ -284,6 +284,7 @@ import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
 import type { LatexError } from "@/lib/latex-errors";
 import Marginalia from "./Marginalia";
 import { UnanchoredCardsChip } from "./UnanchoredCardsChip";
+import DocumentInterruptionBanner from "./DocumentInterruptionBanner";
 import {
   PendingChangePill,
   type PendingChangeIndex,
@@ -6643,6 +6644,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   </div>
                 )}
               </div>
+            )}
+            {/* TASK 545 — the document-interruption BAND: the ONE guided
+                surface for every state that stops or pauses writing (the
+                cowork hold, a disk conflict, an external change, a
+                preservation refusal, a failed write). In-flow directly under
+                the chrome header and above the first prose line, sticky at
+                --chrome-top so it is visible at every scroll position. It
+                self-gates (null when nothing interrupts) and stamps
+                `data-doc-interruption` on `.editor-pane-root` for the veil.
+                Gated on `ready` like the header, so it cannot leak through
+                the LoadingScreen curtain. */}
+            {ready && (overrideEditor ?? editor) && (
+              <DocumentInterruptionBanner docId={docId} />
             )}
             <div
               className="editor-pane-pod"

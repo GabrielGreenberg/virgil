@@ -11712,6 +11712,98 @@ file it did not before. Inert by construction — the app's ladder reads
 `holder: null` as no hold, `acquire_pen` overwrites it unconditionally, and
 nothing else reads it.
 
+### The front-end half: one derivation, one voice, one guided surface
+
+Same path, the half the user meets (task 545). Every gate above SAYS SO in one
+vocabulary (392), and each still said it from its own pill in its own register:
+"Changed on disk · unsaved edits", "Not saving — the file changed on disk",
+"Virgil is editing this paper…". Gabriel: *"Right now it just suddenly says
+'changed on disk', and it's not clear if you should save, reload, close — or
+what?"* — and, on the cowork hold, *"there should be its own front end."*
+
+> **A state that interrupts the document is DERIVED once
+> ([document-interruption.ts](src/lib/document-interruption.ts)) — what
+> happened, naming the WRITER where the app can; what Virgil is doing about
+> it; ONE recommended action phrased as an OUTCOME; the alternatives behind
+> it — and rendered by ONE guided surface inside the paper's card
+> ([DocumentInterruptionBanner](src/components/DocumentInterruptionBanner.tsx)).
+> The doors are untouched; the vocabulary decides only which door to point at
+> and what to call it.**
+
+Five rules it earned:
+
+- **The writer is READ OFF THE PEN'S RELEASE TRACE, never guessed.** Task 489's
+  own residual: the AI holds the pen for the COMMIT only, so after release
+  "the standing conflict is still there to say" — and it said "another app or
+  a sync service", which for the AI's own write is untrue and alarming. Task
+  496 rewrote the released record as `{ holder: null, released_at }` and the
+  app read it as merely "no hold". `coworkPenReleaseFromContext` keeps the
+  time, the poller publishes it (`noteCoworkPenRelease`, monotonic per doc;
+  a SEEN hold whose record vanishes is estimated at the poll that saw it go),
+  and `attributeExternalWriter` answers from the DiskWatcher's `detectedAt`:
+  the AI while the pen is held, or for a release within 2 minutes BEFORE the
+  detection (the watcher pauses while the tab is hidden) or 30 s AFTER it
+  (the 5 s pen poll lags the 3 s watcher). Everything else is `unknown`,
+  which fails toward the pre-545 copy rather than toward naming the AI for a
+  write it did not make. Stated limit: a daemon writing inside that window is
+  misattributed, which is why the provenance log records both times.
+- **The COPY branches; the DOORS do not.** `resolveConflict`, the reload path,
+  `acknowledge()`, the preservation badge's own danger confirm (reached
+  through task 392's `requestBlockingFlow`, so which dialog a reason leads to
+  is still decided in `describeBlockReason`), and `requestSaveNow` are the
+  same four doors, netted exactly as before. What changes is what the button
+  SAYS and which one is accented.
+- **"The answer is always my copy" is a REPORT, not a standing order.**
+  Nothing auto-resolves. The recommendation follows what each door COSTS: an
+  unknown-writer conflict recommends the user's version (the disk side is
+  archived first); an AI-attributed conflict recommends the AI's edits while
+  the unsaved work is under `UNSAVED_WARN_MS` — a few keystrokes the debounce
+  had not landed — and the user's own version once it is real writing; a
+  change with nothing unsaved recommends loading it, because it costs nothing.
+  Whether an AI-attributed change with NOTHING unsaved should load itself is
+  the one fork found and routed rather than decided.
+- **The cowork hold has its own identity, and it is LOUD without being red.**
+  The `live` tone (warm family, the breathing glyph) plus a VEIL: the band
+  stamps `data-doc-interruption` on `.editor-pane-root` from the SAME view it
+  renders, and `globals.css` dims the prose to 0.55 (opacity only, composite-
+  only) with a `progress` cursor — legible, because the user may keep reading.
+  No "collaborator" vocabulary anywhere the hold speaks, pinned by a leg.
+- **The pills keep their chrome and lose their private sentences.** The
+  external-change and cowork pills read `interruptionPillLabel` and the shared
+  `conflictOutcomeNotice`, so a pill, its kebab detail and the band name one
+  event with one phrase — the surgical alternative (reword the badges) was the
+  "furniture" failure the report already describes.
+
+**Provenance, because member 1 cannot be answered from code.** Two hypotheses
+fit the recurring keep-mine prompts: the AI's own `.tex` commit (every skill
+write is UNLEDGERED, so the hash confirm always says "genuine external
+change" — accept-suggestion, a footnote/citation card, style-merge, and any
+`.bib` write all reach the badge; a note/todo/report card touches sidecars
+only and does not), or a sync daemon landing DIFFERENT bytes (a same-bytes
+re-sync is filtered and re-baselined; the 2026-08-19 revert was this shape).
+[interruption-log.ts](src/lib/interruption-log.ts) records each presentation
+with its verdict AND the two times it was derived from, at
+`window.__interruptionStats()` — the recipe is in the task file.
+
+CI: [document-interruption.test.ts](src/lib/__tests__/document-interruption.test.ts)
+(the words per state, the priority ladder, the attribution windows, the
+release trace, the pill/band agreement) and
+[document-interruption-banner.test.tsx](src/components/__tests__/document-interruption-banner.test.tsx)
+(the REAL band over the REAL stores: the veil stamp, which door each button
+enters, the alert role, the routed review, the reported net failure). The leg
+with teeth is the CENSUS: the band sits under the chrome header and above the
+pod, both pills spell `interruptionPillLabel`, the hold's copy never says
+"collaborator", the veil is keyed on the stamp, and the band spells no flow
+literal of its own. **No pre-545 suite could see the class**: each badge suite
+drives ONE channel and asserts its own phrase, and none could ask who WROTE
+the bytes, because nothing recorded the pen's release.
+
+**Owed, not claimed:** the real-machine eyeball. Conflict and cowork are the
+FSA-masked class twice over (real File System Access AND a real
+out-of-process skill): run an `/editor/*` skill that writes the `.tex`
+against an open paper, watch the veil and the band appear, and — after
+release — the band name Virgil's AI rather than "another app".
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),

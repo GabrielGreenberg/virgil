@@ -56,7 +56,9 @@ import type { PanelThemeKey } from "@/lib/panel-theme";
 import {
   COWORK_PEN_CONTEXT_PATH,
   clearCoworkPen,
+  coworkPenReleaseFromContext,
   noteCoworkPen,
+  noteCoworkPenRelease,
   resolveCoworkPen,
   type CoworkPenState,
 } from "@/lib/cowork-pen";
@@ -263,6 +265,14 @@ export function useCollab(docId: string | null): CollabHook {
         // brief window in which the disk-side gates alone stand.
       }
       if (cancelled) return;
+      // Task 545 — the RELEASE TRACE. A released record (`holder: null`,
+      // task 496) says when the last hold ended; that is what lets a later
+      // "changed on disk" be attributed to Virgil's own AI rather than to
+      // "another app". Published before the hold answer so a hold→released
+      // transition on this very tick carries the record's own time rather
+      // than the poll's estimate.
+      const releasedAt = coworkPenReleaseFromContext(penContext);
+      if (releasedAt !== null) noteCoworkPenRelease(docId, releasedAt);
       const next = resolveCoworkPen({ penContext, collabPen });
       // Identity-stable: an unchanged answer must not re-render the whole
       // EditorPane → paneState → EditorLayout cascade every 5 seconds.
