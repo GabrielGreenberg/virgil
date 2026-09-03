@@ -55,6 +55,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT, codeOnly, trackedFiles } from "@/lib/__tests__/_source-scan";
+import { braceBody, nodeViewRegions, nodeViewPopulation } from "./_nodeview-census";
 
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
@@ -329,71 +330,9 @@ const LIFETIME_OWNERS: Record<string, number> = {
 
 const BARE_TIMER = /(^|[^.\w$])(setTimeout|setInterval|requestAnimationFrame)\s*\(/g;
 
-function braceBody(s: string, openIdx: number): [number, number] {
-  let depth = 0;
-  for (let j = openIdx; j < s.length; j++) {
-    if (s[j] === "{") depth++;
-    else if (s[j] === "}") {
-      depth--;
-      if (depth === 0) return [openIdx, j];
-    }
-  }
-  return [openIdx, s.length - 1];
-}
-
-interface Region { file: string; label: string; text: string }
-
-/**
- * Every `addNodeView()` body in the file, plus the bodies of every same-file
- * `function NAME(` it reaches (transitively). A list NodeView's whole body is
- * `createListTitleNodeView(…)`, one call away — a region that stopped at the
- * method would see nothing but a `return`.
- */
-function nodeViewRegions(file: string): Region[] {
-  const raw = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
-  const src = codeOnly(raw);
-  const fnBodies = new Map<string, string>();
-  for (const m of src.matchAll(/\bfunction\s+(\w+)\s*\(/g)) {
-    const open = src.indexOf("{", src.indexOf(")", m.index!));
-    if (open < 0) continue;
-    const [a, b] = braceBody(src, open);
-    fnBodies.set(m[1], src.slice(a, b + 1));
-  }
-  const regions: Region[] = [];
-  let ordinal = 0;
-  for (const m of src.matchAll(/\baddNodeView\s*\(\s*\)\s*\{/g)) {
-    const open = m.index! + m[0].length - 1;
-    const [a, b] = braceBody(src, open);
-    let text = src.slice(a, b + 1);
-    // Transitive closure over same-file function declarations.
-    const seen = new Set<string>();
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const [name, body] of fnBodies) {
-        if (seen.has(name)) continue;
-        if (new RegExp(`\\b${name}\\s*\\(`).test(text)) {
-          seen.add(name);
-          text += "\n" + body;
-          grew = true;
-        }
-      }
-    }
-    ordinal++;
-    regions.push({ file, label: `${file}#addNodeView[${ordinal}]`, text });
-  }
-  return regions;
-}
-
-function population(): string[] {
-  const files = [...trackedFiles("src", /\.tsx?$/), ...trackedFiles("library", /\.tsx?$/)]
-    .filter((p) => !p.includes("__tests__"))
-    .map((p) => path.relative(REPO_ROOT, p));
-  return files.filter((f) => /\baddNodeView\s*\(/.test(codeOnly(fs.readFileSync(path.join(REPO_ROOT, f), "utf8"))));
-}
 
 describe("task 548 — census: a NodeView arms every timer through its lifetime", () => {
-  const files = population();
+  const files = nodeViewPopulation();
   const regions = files.flatMap(nodeViewRegions);
 
   it("the population is discovered and non-empty (both offenders are in it)", () => {

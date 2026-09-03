@@ -11,6 +11,7 @@ import {
   linkCardKey,
 } from "@/links/link-dom-contract";
 import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { setDataIfChanged } from "./idempotent-dom";
 // CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
 // the citation CARD (the atom is still inserted synchronously below). Replaces
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
@@ -331,7 +332,9 @@ export const Citation = Node.create<CitationOptions>({
         dom,
         update(updatedNode: any) {
           if (updatedNode.type.name !== "citation") return false;
-          dom.dataset.citationId = updatedNode.attrs.citationId || "";
+          // Idempotence-gated (task 551): O(changed atoms), and an unchanged
+          // id must not invalidate style on a renumber / display pass.
+          setDataIfChanged(dom, "citationId", updatedNode.attrs.citationId || "");
           applyCitationContent(dom, updatedNode.attrs.displayText, updatedNode.attrs.command);
           return true;
         },
