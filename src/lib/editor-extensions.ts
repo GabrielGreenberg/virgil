@@ -41,6 +41,7 @@ import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structur
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
+import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -159,6 +160,10 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
     addNodeView() {
       return ({ node, getPos, editor: nodeEditor }) => {
         let currentNode = node;
+        // Every timer this view arms, and the body-appended title input an
+        // edit session leaves behind, are bounded by the view's teardown
+        // (task 548 — `view-lifetime.ts`). Disposed in `destroy()` below.
+        const lifetime = createViewLifetime();
         // dragHandleEl is gone — the editor-mounted TextObjectGrabHandle
         // (src/text-objects/TextObjectGrabHandle.tsx) handles every block
         // kind now via the registry-driven, cursor/hover-following handle.
@@ -297,14 +302,18 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           document.body.appendChild(input);
 
           // Auto-size to content (must be in DOM first for font measurement)
-          const cleanupSizer = autoSizeInput(input);
+          const cleanupSizer = autoSizeInput(input, 2, lifetime);
 
           let committed = false;
           const cleanup = () => {
+            unregister();
             cleanupSizer();
             wrapper.classList.remove("is-editing-title");
             if (document.body.contains(input)) document.body.removeChild(input);
           };
+          // The input lives on `document.body`, not under this view's DOM —
+          // a view destroyed mid-edit must take it along.
+          const unregister = lifetime.onDispose(cleanup);
           const commit = () => {
             if (committed) return;
             committed = true;
@@ -325,7 +334,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           });
 
           input.addEventListener("blur", () => {
-            setTimeout(() => { if (!committed) commit(); }, 150);
+            lifetime.setTimeout(() => { if (!committed) commit(); }, 150);
           });
 
           input.focus();
@@ -441,7 +450,9 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
             }
             return true;
           },
-          destroy() {},
+          destroy() {
+            lifetime.dispose();
+          },
         };
       };
     },
@@ -491,6 +502,10 @@ function createListTitleNodeView(
   const host = opts?.host;
   return ({ node, getPos, editor: nodeEditor }) => {
     let currentNode = node;
+    // Every timer this view arms, and the body-appended input + click-away
+    // overlay an edit session leaves behind, are bounded by the view's
+    // teardown (task 548 — `view-lifetime.ts`). Disposed in `destroy()`.
+    const lifetime = createViewLifetime();
 
     // Detect nesting — return a bare list element with no chrome.
     const startPos = typeof getPos === "function" ? getPos() : null;
@@ -635,25 +650,33 @@ function createListTitleNodeView(
       document.body.appendChild(input);
 
       // Auto-size to content (must be in DOM first for font measurement)
-      const cleanupSizer = autoSizeInput(input);
+      const cleanupSizer = autoSizeInput(input, 2, lifetime);
 
       input.focus();
       input.select();
 
       let committed = false;
+      // Both elements live on `document.body`, not under this view's DOM — a
+      // view destroyed mid-edit must take them along (no commit: the editor
+      // the title would be written to is the one being torn down).
+      const teardown = () => {
+        unregister();
+        cleanupSizer();
+        wrapper.classList.remove("is-editing-title");
+        if (document.body.contains(input)) input.remove();
+        if (document.body.contains(overlay)) overlay.remove();
+      };
+      const unregister = lifetime.onDispose(() => { committed = true; teardown(); });
       function commit() {
         if (committed) return;
         committed = true;
-        cleanupSizer();
-        wrapper.classList.remove("is-editing-title");
+        teardown();
         const val = input.value.trim();
         setTitle(val || null);
-        if (document.body.contains(input)) input.remove();
-        if (document.body.contains(overlay)) overlay.remove();
       }
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); commit(); }
-        if (e.key === "Escape") { e.preventDefault(); committed = true; cleanupSizer(); wrapper.classList.remove("is-editing-title"); if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
+        if (e.key === "Escape") { e.preventDefault(); committed = true; teardown(); renderAnnot(); }
       });
       input.addEventListener("blur", commit);
       overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
@@ -741,6 +764,9 @@ function createListTitleNodeView(
           renderAnnot();
         }
         return true;
+      },
+      destroy() {
+        lifetime.dispose();
       },
     };
   };
@@ -934,6 +960,11 @@ export function createHeadingWithLabel(
         const getTarget = (): Editor =>
           isFloat ? (host?.getMainEditor() ?? nodeEditor) : nodeEditor;
 
+        // Every timer this view arms — the label input's focus frame, blur
+        // guard and refocus KEEPER — is bounded by the view's teardown (task
+        // 548 — `view-lifetime.ts`). Disposed in `destroy()` below.
+        const lifetime = createViewLifetime();
+
         // Locate this heading inside `target`. Main resolves by live
         // position (`getPos`); float resolves by uuid (its `getPos` points
         // into the float doc, not main). Returns the live node so callers
@@ -1094,7 +1125,27 @@ export function createHeadingWithLabel(
           targetSpan.replaceWith(input);
 
           // Auto-size to content (must be in DOM first for font measurement)
-          const cleanupSizer = autoSizeInput(input);
+          const sizer = autoSizeInput(input, 2, lifetime);
+
+          // The refocus KEEPER: something steals focus from a freshly-mounted
+          // input in its first ~250 ms (a competing focus frame, PM's own
+          // selection sync), so for that window the input takes it back. Its
+          // OUTER bound is the view — armed through `lifetime`, cleared on
+          // commit / escape with the sizer, and disposed with the view — where
+          // pre-548 the 250 ms wall clock was the only bound and the interval's
+          // last ticks ran against a torn-down view (a `document` read after
+          // jsdom teardown, which failed the release gate on a green suite).
+          const keeper = lifetime.setInterval(() => {
+            if (document.activeElement !== input && annot.contains(input)) {
+              input.focus();
+            }
+          }, 30);
+          const keeperExpiry = lifetime.setTimeout(() => lifetime.clear(keeper), 250);
+          const cleanupSizer = () => {
+            sizer();
+            lifetime.clear(keeper);
+            lifetime.clear(keeperExpiry);
+          };
 
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
@@ -1189,9 +1240,9 @@ export function createHeadingWithLabel(
 
           let armed = false;
           input.addEventListener("blur", () => { if (armed) void commit("blur"); });
-          setTimeout(() => { armed = true; }, 200);
+          lifetime.setTimeout(() => { armed = true; }, 200);
 
-          requestAnimationFrame(() => {
+          lifetime.requestAnimationFrame(() => {
             input.focus();
             if (currentNode.attrs.label) {
               // Place cursor at end for existing labels
@@ -1200,12 +1251,6 @@ export function createHeadingWithLabel(
               input.select();
             }
           });
-          const refocusId = setInterval(() => {
-            if (document.activeElement !== input && annot.contains(input)) {
-              input.focus();
-            }
-          }, 30);
-          setTimeout(() => clearInterval(refocusId), 250);
         }
 
         // Memo of the last-rendered annotation inputs (typeName derives from
@@ -1463,6 +1508,9 @@ export function createHeadingWithLabel(
             // also be ignored. (No chevron in floats — foldBtn is null.)
             if (foldBtn && foldBtn.contains(mutation.target)) return true;
             return false;
+          },
+          destroy() {
+            lifetime.dispose();
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;

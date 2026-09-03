@@ -7,6 +7,7 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
+import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -768,6 +769,10 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
     const opts = this.options;
     return ({ node, HTMLAttributes, editor, getPos }) => {
       let currentNode = node;
+      // Every timer this view arms (the label / title inputs' focus frames
+      // and blur guards) is bounded by the view's teardown (task 548 —
+      // `view-lifetime.ts`). Disposed in `destroy()` below.
+      const lifetime = createViewLifetime();
 
       // Outer wrapper — hosts the par-title annotation strip on top, the
       // small "Ex." label-annotation pod, and the block body (drag handle
@@ -963,7 +968,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             renderLabelAnnot();
           }
         });
-        requestAnimationFrame(() => {
+        lifetime.requestAnimationFrame(() => {
           input.focus();
           if (currentNode.attrs.label) {
             input.selectionStart = input.selectionEnd = input.value.length;
@@ -971,7 +976,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             input.select();
           }
         });
-        setTimeout(() => {
+        lifetime.setTimeout(() => {
           armed = true;
         }, 200);
       };
@@ -1061,11 +1066,11 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
             renderTitle();
           }
         });
-        requestAnimationFrame(() => {
+        lifetime.requestAnimationFrame(() => {
           input.focus();
           input.select();
         });
-        setTimeout(() => {
+        lifetime.setTimeout(() => {
           armed = true;
         }, 200);
       });
@@ -1115,7 +1120,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           if (!labelAnnot.querySelector("input")) renderLabelAnnot();
           return true;
         },
-        destroy() {},
+        destroy() {
+          lifetime.dispose();
+        },
       };
     };
   },
@@ -1443,6 +1450,10 @@ export const ExampleItem = Node.create({
     const opts = this.options;
     return ({ node, HTMLAttributes, editor, getPos }) => {
       let currentNode = node;
+      // Every timer this view arms (the label input's focus frame and blur
+      // guard) is bounded by the view's teardown (task 548 —
+      // `view-lifetime.ts`). Disposed in `destroy()` below.
+      const lifetime = createViewLifetime();
       const dom = document.createElement("div");
       Object.entries(
         mergeAttributes(HTMLAttributes, {
@@ -1555,7 +1566,7 @@ export const ExampleItem = Node.create({
             renderLabelAnnot();
           }
         });
-        requestAnimationFrame(() => {
+        lifetime.requestAnimationFrame(() => {
           input.focus();
           if (currentNode.attrs.label) {
             input.selectionStart = input.selectionEnd = input.value.length;
@@ -1563,7 +1574,7 @@ export const ExampleItem = Node.create({
             input.select();
           }
         });
-        setTimeout(() => {
+        lifetime.setTimeout(() => {
           armed = true;
         }, 200);
       };
@@ -1618,6 +1629,9 @@ export const ExampleItem = Node.create({
           else delete dom.dataset.label;
           if (!labelAnnot.querySelector("input")) renderLabelAnnot();
           return true;
+        },
+        destroy() {
+          lifetime.dispose();
         },
       };
     };
