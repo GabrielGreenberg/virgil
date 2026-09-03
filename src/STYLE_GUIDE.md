@@ -3143,6 +3143,15 @@ Five rules:
   to its right; a centered figure has the right half-gap.) Not CSS
   container queries — they force `contain: layout` on the React-NodeView
   wrapper and break inter-block rhythm.
+- **The width box says what the document says.** A figure whose
+  `\includegraphics` carries no `width=` renders at its NATURAL size, and the
+  box shows an EMPTY field with an `auto` placeholder — never a fabricated
+  number (pre-537 it printed "50", and the zero-change bail then refused the
+  one value it displayed). The `−`/`+` steppers seed from a stated
+  `DEFAULT_SCALE_PERCENT` (50 → 40 / 60) on their first press; the box itself
+  never shows the seed. Whatever the box displays is committable, and a
+  source that HAS a width keeps the task-470 rule: re-committing it
+  unchanged persists nothing.
 - **Delete lives in the grab-handle menu, not on the image.** The
   hover chrome carries only non-destructive controls — pick / scale /
   refresh — and no per-figure X, for the same reason the per-kind popout

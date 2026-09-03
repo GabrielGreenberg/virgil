@@ -3655,6 +3655,15 @@ textarea,
   cursor: not-allowed;
 }
 
+/* A width-less figure (`\includegraphics{a.png}`, natural size) shows an
+ * EMPTY box with an `auto` placeholder rather than a fabricated "50" — the
+ * chrome must not print a width the document does not contain (task 537).
+ * Firefox dims placeholders by default; the ink is already the faint tier. */
+.figure-block .figure-scale-input::placeholder {
+  color: var(--ink-faint, #b8ad9e);
+  opacity: 1;
+}
+
 /* Figure tex-mode popover — the MENU tier, like its `.math-popover` sibling
  * (task 459). Its own comment used to read "same styling family as
  * .math-popover", which is how one hand-authored vocabulary becomes two sites;
