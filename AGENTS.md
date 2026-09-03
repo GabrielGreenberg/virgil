@@ -7635,6 +7635,103 @@ lozenge — the dialog asks, "Update references" rewrites the `\ref` (read the
 code view) — then the same from a heading's strip and from the Outline's inline
 label editor.
 
+#### The kind half: a rule stated for THREE of FIVE declaring kinds, and a registry that saw TWO
+
+Same door, the two producers 534 never drove (task 553) — and the case where
+the census that pinned the door's callers as an EXACT set was asking the wrong
+question of the right population. `\label{…}` is declared by FOUR block kinds
+(`heading`, `figureBlock`, `exampleBlock`, `exampleItem` — every block node the
+schema gives a `label` attr), and 534 routed the heading strip, the figure
+lozenge and the Outline's editor through `renameLabelWithRefs`. The example
+family's two "Ex. · label" pods each carried a byte-identical private
+`commitLabel` that wrote `setNodeMarkup(pos, undefined, { …attrs, label })` and
+nothing else: renaming `ex:one` → `ex:first` from the pod left every
+`\ref{ex:one}` stranded — and the numberer, whose gate IS a `LabelEntry`
+change, dutifully re-resolved each one to `??`, which is what the compiled PDF
+printed. No dialog, no warning; a key a heading already owned was committed
+beside it. 534's census asked *who CALLS the door* and *who WALKS a ref*; a
+commit that does neither spells no needle. Task 404's rule, one census over.
+
+**And the registry underneath was half-blind.** `collectLabelKeys` — the ONE
+"is this key already taken?" walk every label editor and the door's refuse
+rung consult — hand-listed `heading` and `figureBlock`. So a key an example or
+an item declared was FREE to every duplicate check in the app: the heading strip
+wrote `ex:one` beside the example that owned it, and the door's "refuse a
+claimed key" rung could not see half the paper's declarations.
+
+> **The declaring kinds are ONE schema-pinned set, `LABEL_DECLARING_NODE_TYPES`
+> ([node-attr-sets.ts](src/lib/node-attr-sets.ts) — every BLOCK type carrying
+> a `label` attr, so the inline `labelRef` atom, which carries the key it
+> REFERENCES, falls out), read by the registry and by the census. Every
+> producer enters the door; the census asks the QUESTION — who WRITES a
+> `label` attr — over every ProseMirror attr-writing verb, and a write that is
+> not a rename of a declaration says why, per line.**
+
+Six rules it earned:
+
+- **Two byte-identical pods became ONE factory.** `createExampleLabelPod`
+  ([expex.ts](src/lib/tiptap/expex.ts)) owns the pod's render, the inline
+  input session (the 529 latch, the 548 lifetime), the live warning and the
+  COMMIT — which is the heading strip's byte for byte: a claimed key is REFUSED
+  (Enter keeps the input open with the warning lit; leaving the field abandons
+  the draft), everything else enters the door against the write TARGET. The
+  copies had already drifted from the heading in exactly the way twins do.
+- **The write target is MAIN in a float.** The pods gain the `host` +
+  `onConfirmLabelRenameRef` options `FigureBlock` already takes, threaded from
+  the same `callbacks` bag — so 534's producer census covers the new consumers
+  by construction, and an example float's rename walks the whole paper's refs
+  rather than the float's one example. `locateExampleNode` resolves by live
+  `getPos` on the view's own editor and by uuid on any other.
+- **The live warning SNAPSHOTS the key set once, at edit start** —
+  [label-key-warning.ts](src/lib/tiptap/label-key-warning.ts), ONE helper for
+  the heading strip and both pods, with the figure lozenge (React) snapshotting
+  the same way. Pre-553 the heading strip called `isLabelTaken` on every `input`
+  event: a full `doc.descendants` walk plus a regex over every `\label{` text
+  node, per CHARACTER typed into a 10-character chrome field. Sound because the
+  set cannot change while the chrome input holds focus (`stopEvent` keeps PM
+  out); the COMMIT still asks the live predicate, so a stale snapshot can only
+  delay the warning, never admit a duplicate. The pure half is
+  `isLabelTakenIn(keys, …)`; the editor form composes it.
+- **The census discovers by the QUESTION.**
+  [label-write-census.test.ts](src/lib/tiptap/__tests__/label-write-census.test.ts)
+  sweeps both silos for `setNodeMarkup` / `updateAttributes` /
+  `setNodeAttribute` calls whose arguments carry a `label` key — string
+  literals KEPT and line-aligned, because `setNodeAttribute(pos, "label", v)`
+  names the attr as a string — and every hit is the door or carries an
+  in-place `label-write-exempt: <why>` in the lines directly above it.
+  Allowlist EMPTY; the exemptions are an exact set that can only shrink.
+- **…and it found a member the audit did not name.** The figure SOURCE
+  popover's raw-body writeback (`applyFigureEnvBodyEdit`) re-extracts `label`
+  from the env body the user typed and writes it bare. Whether a source edit
+  that renames `\label{fig:a}` should ask the confirm and carry the refs, and
+  whether one that types a claimed key should REFUSE the save (the lozenge's
+  answer) or accept it, is a product decision about a Save-button surface —
+  exempted with that reason at the site and ROUTED rather than guessed. Until
+  it is taken, a rename from there orphans exactly as it always has.
+- **The 534 exact-set pin is RENEGOTIATED, not widened silently**: `expex.ts`
+  is the fourth producer, with the reason at the site that the pin could not
+  see it.
+
+CI: the example legs in
+[label-rename-refs.test.tsx](src/lib/tiptap/__tests__/label-rename-refs.test.tsx)
+drive the REAL pods over a fixture that carries a labelled example AND a
+labelled item, each `\ref`'d once — **no pre-553 fixture in the repo had a
+`labelRef` naming an example key**, so the orphan was unrepresentable in all of
+them — and assert the ref's `label` AND that no ref reads `??` afterwards (the
+numberer's own verdict). Beside them: the registry leg (the heading strip
+refuses `ex:one`), the schema pin (the set = the block types declaring `label`,
+and `labelRef` is excluded), and the warning-cost legs (12 characters cost ONE
+document walk, on the heading and on both pods — a `descendants` spy, with the
+snapshot's own walk as the canary). Measured by neutering each half in turn: a
+pod that bypasses the door takes 9 legs (6 behavioural + 3 census), the
+pre-553 two-kind registry 2, a per-keystroke warning walk 1, and a fifth
+declaring kind left out of the set 3.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture plus a `.tex` round trip — no disk): `\ref` an example, rename its label
+from the pod — the dialog asks, "Update references" rewrites the `\ref` — then
+type a heading's key into the pod and watch it refuse.
+
 ### The vocabulary half: a token two layers must agree on is spelled ONCE
 
 Same law, fourth tense (task 255) — and the one where deleting the dead declaration would have been the *smaller* half of the truth.
