@@ -1,4 +1,4 @@
-<!-- last-verified: cb8bc044 2026-09-02 -->
+<!-- last-verified: 702a1036 2026-09-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -399,10 +399,16 @@ Whole-block (TextObject) operations come from two places:
   plaintext by integer block-index; they route through the UUID-anchored,
   atom-preserving primitive `editStructuredNodeByUuid`
   ([structural-edit.ts](../../src/lib/tiptap/structural-edit.ts)) — via
-  `renameHeadingByUuid` / `renameParTitleByUuid` / `updateHeadingLabelByUuid`,
-  which splice the new label around the heading's inline atoms (math/cite/ref)
-  and gate the label commit on the same `isLabelTaken` predicate the live
-  warning reads.
+  `renameHeadingByUuid` / `renameParTitleByUuid`, which splice the new text
+  around the heading's inline atoms (math/cite/ref). Since task 534 the LABEL
+  half is not one of them: `updateHeadingLabelByUuid` is retired and
+  `handleUpdateLabel` routes through `renameLabelWithRefs`
+  ([label-rename.ts](../../src/lib/tiptap/label-rename.ts)) — the ONE door the
+  heading strip, the figure lozenge and the Outline all enter, which REFUSES a
+  key another declaration already claims (rather than warning and committing
+  anyway) and moves the declaration AND every `\ref` naming the old key in one
+  transaction. `isLabelTaken` is no longer a threaded prop or an injected
+  predicate: every surface reads it off the live document.
 - **The `DragHandleMenu` lifecycle actions** — `duplicate` (clone the captured
   passage, forking any contained atoms' sidecars via `cardLifecycle`),
   `archive`, and `delete` (Family 1).

@@ -1,4 +1,4 @@
-<!-- last-verified: cb8bc044 2026-09-02 -->
+<!-- last-verified: 702a1036 2026-09-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -78,6 +78,12 @@ families, plus the standalone `data-atoms-graspable` (task 524). (The full names
 **Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):
 
 - `virgil/` (the sidecar folder), `virgil/figures-cache/`, `virgil/.history/`.
+- `figures/` — binary assets the figure picker copies in. A skill must not
+  overwrite one: since task 533 the app itself never does either, resolving a
+  free name through [asset-import.ts](../../src/lib/figures/asset-import.ts)
+  (absent ⇒ write, same bytes ⇒ reuse, different bytes ⇒ `<stem>-2`, …). The
+  folder has no `.history/` slot and FSA has no trash, so a truncating write
+  there is unrecoverable.
 - the sibling **`.virgil/`** (agent/library plumbing — distinct from `virgil/`),
   including `.virgil/pen-context.json` (the editing pen) and `.virgil/scripts/`.
 - the **writeback-owned** infrastructure sidecars a skill must **never hand-edit**:

@@ -1,4 +1,4 @@
-<!-- last-verified: cb8bc044 2026-09-02 -->
+<!-- last-verified: 702a1036 2026-09-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -27,7 +27,7 @@ The `textObject` schema group is the single canonical answer to "is this graspab
 | Node | LaTeX | Notes |
 |---|---|---|
 | `paragraph` | (plain) | Baseline text container |
-| `heading` | `\part` / `\chapter` / `\section` / `\subsection` / `\subsubsection` / `\paragraph` / `\subparagraph` | Levels 0–6 (vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts)); supports `label` mark (`\label{}`). Per-heading control strip uses [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx) |
+| `heading` | `\part` / `\chapter` / `\section` / `\subsection` / `\subsubsection` / `\paragraph` / `\subparagraph` | Levels 0–6 (vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts)); supports `label` mark (`\label{}`) — renaming one goes through [`renameLabelWithRefs`](../../src/lib/tiptap/label-rename.ts) (task 534), the ONE door the heading strip, the figure lozenge and the Outline's inline label editor all enter: it refuses a key another declaration already claims, and moves the declaration AND every `\ref` naming the old key in ONE transaction (one undo step). Per-heading control strip uses [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx) |
 | `bulletList` / `orderedList` | `\itemize` / `\enumerate` | Nested; optional `listPreamble`. A `listItem`'s raw `\item[label]` rides the item as an opaque `itemLabel` attr (task 340) — it used to be consumed to find where the body starts and then dropped, destroying a hand-lettered enumeration on the first save |
 | `blockquote` | `\begin{quote}…\end{quote}` | |
 | `codeBlock` | `\begin{verbatim}…\end{verbatim}` | Node is `marks: ""` (`content: "text*"`), so — like `latexComment` — it greys the dead Highlight action via `MARKLESS_BLOCK_ACTIONS` (task 146) |

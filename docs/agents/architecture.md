@@ -1,4 +1,4 @@
-<!-- last-verified: cb8bc044 2026-09-02 -->
+<!-- last-verified: 702a1036 2026-09-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-dom-contract.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/text-objects/LiftHost.tsx, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/view-prefs/registry.ts, src/lib/focus-view.ts, src/lib/identity, src/lib/bib-uid.ts, src/cards/has-content.ts, src/cards/lifecycle, src/lib/input-modality.ts, src/lib/pomodoro-timer.ts -->
 
@@ -102,6 +102,7 @@ Files on disk (per paper):
 - `<name>.tex` — the paper (source of truth)
 - `<name>.bib` (optional) — bibliography
 - `virgil/` folder — sidecars (see below)
+- `figures/<name>.<ext>` (optional) — binary assets copied in by the figure picker. **Where a picked asset lands is [src/lib/figures/asset-import.ts](../../src/lib/figures/asset-import.ts)** (task 533), an import-free leaf both backends read: a candidate name that is ABSENT is written, one holding the SAME bytes is reused (no write at all), one holding DIFFERENT bytes is someone else's and the resolver tries `<stem>-2`, `<stem>-3`, … A picked asset never overwrites a byte already on disk — `figures/` has no `.history/` slot and FSA has no trash, so the pre-533 truncating write let Figure 5's `plot.png` destroy Figure 1's silently.
 - `virgil/figures-cache/<sha>.webp` (optional) — rasterized output cached by source-content sha. PDF sources rasterize on the fly via `pdfjs-dist`; PNG / JPEG / WebP pass through unchanged. Companion `virgil/figures-cache/index.json` tracks `{sourcePath → sha}` so multiple `\includegraphics` with the same source share one raster. Surface: `readFigureSource` / `readFigureRaster` / `writeFigureRaster` / `deleteFigureRaster` / `readFigureIndex` / `writeFigureIndex` on the storage backend.
 
 ### IndexedDB
