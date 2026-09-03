@@ -6036,10 +6036,12 @@ one and reads the click's effect — that would test a shim of the platform.
 The figure legs assert the CONTRACT the browser activates against (a
 `<button type="button">`, a tab stop, enabled, ringed, click reaches the
 document) and the heading legs pin the one keystroke fact this environment can
-see. Measured by neutering: restoring the pre-536 spans fails every lozenge
-leg, both role-census legs and the a11y census's icon-only name leg; dropping
-the target guard fails 2; dropping the focus restore 1; dropping the vanilla
-`aria-label`s 1.
+see. Measured by neutering each half in turn: restoring the pre-536 figure
+spans fails 7 lozenge legs plus the role census; restoring the pre-536 heading
+spans 4 strip legs plus the census; dropping the target guard 2; dropping the
+focus restore 1; dropping the vanilla `aria-label`s 1. (The icon-button census
+is NOT among them, and that is the point of the pairing: a span is invisible
+to a census over `<button>`, which is exactly why this one had to exist.)
 
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
 gesture, no disk), so the check is cheap and real: Tab into a figure's
