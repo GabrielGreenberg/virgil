@@ -1031,6 +1031,35 @@ body[data-zen-mode="on"] {
   outline: none;
   box-shadow: var(--focus-ring-shadow);
 }
+/* ── The same edge, drawn with `outline` (task 554) ────────────────
+   For an element whose `box-shadow` is TAKEN. A docked card's ambient
+   lift is written INLINE by `themedCardStyle`, and inline beats every
+   stylesheet rule — so `.focus-ring` on a card would land its
+   `outline: none` and then fail to draw its box-shadow: an element with
+   NO indicator at all, which is strictly worse than never adding the
+   class (the `StackIcon` caveat, read on a surface that — unlike
+   StackIcon — was ALSO stripping the UA outline and so kept nothing).
+
+   `outline` is the free property there, and this is the one place it is
+   spent: the rule above sets `outline: none` only while `:focus-visible`
+   matches, so the two indicators never contend. Same 2px, same
+   `--edge-strong`, declared next to each other so the two spellings
+   cannot drift into two looks.
+
+   BOTH halves live here on purpose. The `:focus` strip is what six card
+   wrappers used to hand-spell as `focus:outline-none` — which is exactly
+   what deleted the keyboard indicator, since it fires on `:focus-visible`
+   too. Keeping it INSIDE the class preserves the mouse behaviour those
+   six had while the `:focus-visible` rule below restores the keyboard
+   one. Source order is load-bearing: both selectors are (0,2,0), so the
+   `:focus-visible` rule wins by coming SECOND. */
+.focus-outline:focus {
+  outline: none;
+}
+.focus-outline:focus-visible {
+  outline: 2px solid var(--edge-strong);
+  outline-offset: 0;
+}
 .iconbtn-xs[disabled],
 .iconbtn-sm[disabled],
 .iconbtn-md[disabled],

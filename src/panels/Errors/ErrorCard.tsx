@@ -163,7 +163,6 @@ export function ErrorCard({
       }}
       onTrashClick={() => onDismiss(err.id)}
       extraCardClass=""
-      className="focus:outline-none"
       tabIndex={selected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();

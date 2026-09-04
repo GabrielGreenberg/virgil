@@ -131,7 +131,7 @@ export function HighlightCard({
         onHoverChange?.(false);
       }}
       onKeyDown={handleDeleteKey}
-      className="focus:outline-none mb-2"
+      className="mb-2"
       {...(extraDataAttrs ?? {})}
     >
       {compressed ? (

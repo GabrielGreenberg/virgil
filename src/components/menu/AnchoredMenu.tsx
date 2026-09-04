@@ -34,7 +34,7 @@
  *     (the task-094 regression, pinned by `header-add-dropdown-toggle.test.tsx`);
  *   - it supplies the trigger's FOCUS INDICATOR (task 507) — the trigger is the
  *     element that keeps DOM focus for the whole interaction, and five of the
- *     eight consumers spelled none. See `TRIGGER_FOCUS_RING_CLASS` below.
+ *     eight consumers spelled none. See `anchoredTriggerClassName` below.
  *
  * Closing stays the CALLER's business, as it is for `<MenuToggleRow>`: a filter
  * menu wants to survive a run of toggles, an action menu wants to close on pick.
@@ -54,6 +54,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { withFocusIndicator } from "@/components/focus-indicator";
 import { MenuProvider } from "./MenuProvider";
 import type { MenuLayout, MenuOrientation, MenuRole } from "./types";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
@@ -154,18 +155,21 @@ const MENU_BODY_PAD_CLASS = "py-1";
  * while focused, which is the correct precedence (STYLE_GUIDE "Interaction" →
  * Focus).
  */
-const TRIGGER_FOCUS_RING_CLASS = "focus-ring";
-
 /** `triggerClassName` with the shell's indicator appended, unless the caller
- *  declared it owns one. Exported for the suite that pins the append. */
+ *  declared it owns one. Exported for the suite that pins the append.
+ *
+ *  The APPEND itself is `withFocusIndicator` (task 554): task 507 wrote this
+ *  resolver's own `TRIGGER_FOCUS_RING_CLASS = "focus-ring"` constant, and the
+ *  sweep that followed found six more shells owing the same obligation — so
+ *  the class moved to the one door rather than being re-spelled a seventh
+ *  time. What stays HERE is the only part that is this menu's: the opt-out,
+ *  which no other member has. */
 export function anchoredTriggerClassName(
   triggerClassName: string | undefined,
   ownsFocusIndicator: boolean,
 ): string | undefined {
   if (ownsFocusIndicator) return triggerClassName;
-  return triggerClassName
-    ? `${triggerClassName} ${TRIGGER_FOCUS_RING_CLASS}`
-    : TRIGGER_FOCUS_RING_CLASS;
+  return withFocusIndicator(triggerClassName);
 }
 
 export interface AnchoredMenuRenderProps {

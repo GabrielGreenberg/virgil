@@ -32,6 +32,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Input } from "./field-primitives";
+import { withFocusIndicator } from "./focus-indicator";
 import { useFieldDraft } from "./field-draft";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 
@@ -124,7 +125,13 @@ export function HexColorField({
         type="color"
         value={value}
         onChange={(e) => draft.commit(normalizeHex(e.target.value), onChange)}
-        className={swatchClassName}
+        // The swatch is a hand-rolled control — `TextInputType` deliberately
+        // excludes `color`, so it takes no field chrome — and its whole class
+        // is the prop, whose DEFAULT PARAMETER is the same REPLACE shape as a
+        // `??` one spelling over: a caller that sizes the swatch used to lose
+        // everything the default carried, and neither branch carried an
+        // indicator (task 554).
+        className={withFocusIndicator(swatchClassName)}
       />
       <Input
         value={text}

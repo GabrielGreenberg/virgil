@@ -943,16 +943,31 @@ Five states. One implementation each.
   ring, and never strip it bare: `outline: none` is legal only where the same
   rule supplies the replacement. One caveat with teeth — an element whose
   elevation is an INLINE `box-shadow` can't be ringed at all (inline beats the
-  sheet), and adding the class there deletes the UA outline while supplying
-  nothing; leave those alone (`StackIcon` is the one, allowlisted in the
-  icon-button census with that reason). Two
-  standing exceptions, both deliberate: a **contenteditable** surface (the
+  sheet), and adding `.focus-ring` there deletes the UA outline while supplying
+  nothing. That element takes **`.focus-outline`** instead (task 554): the SAME
+  2px `--edge-strong` edge drawn with `outline`, the free property there,
+  declared next to `.focus-ring` in `globals.css` so the two spellings cannot
+  drift into two looks. Both live behind ONE door,
+  [`focus-indicator.ts`](components/focus-indicator.ts) — `withFocusIndicator`
+  — so a shell APPENDS one rather than hand-spelling a class. `StackIcon` stays
+  allowlisted with the UA outline: it never stripped one, so it has nothing to
+  restore. One
+  standing exception, deliberate: a **contenteditable** surface (the
   `.tiptap` body, the float bodies, `RichTextField`, `BorrowedMainText`)
-  strips with no replacement because the caret is the indicator, and a
-  **card wrapper** strips because themed selection is. Everything else that
-  takes keyboard focus supplies a ring or a thickened border. (Honest state:
-  of ~55 `outline-none` sites ~24 supply nothing; most are those two
-  exceptions, but the `BibEntryCard` request-note inputs and
+  strips with no replacement because the caret is the indicator. **A card
+  wrapper is no longer the second** — RENEGOTIATED (task 554). It used to strip
+  on the ground that themed selection is the indicator, which is true of what a
+  MOUSE user sees and left a keyboard user arrowing a panel list standing on an
+  unmarked card; and the strip was spelled by hand at six call sites as
+  `focus:outline-none`, which fires on `:focus-visible` too, so each of them was
+  spelling the half of an indicator that DELETES one. `PanelCard` renders that
+  root, so it supplies `.focus-outline` (its ambient lift is an inline
+  `box-shadow` — the caveat above, on the one surface that was also stripping),
+  and themed selection stays the primary cue: the class is `:focus-visible`-only,
+  so no mouse user sees a change. Everything else that
+  takes keyboard focus supplies a ring, an outline, or a thickened border.
+  (Honest state: of ~55 `outline-none` sites ~24 supply nothing; most are the
+  contenteditable exception, but the `BibEntryCard` request-note inputs and
   `ManageStylesModal`'s already-`edge-strong` field are real gaps.)
 - **The focus indicator owns the element's `box-shadow`** — the same cascade
   fact as the hover bullet above, read one property over. `.focus-ring` /
@@ -968,24 +983,45 @@ Five states. One implementation each.
   `icon-button-a11y-guardrail.test.ts` → "a focus indicator has ONE mechanism"
   (allowlist: EMPTY, both legs).
 - **A component that OWNS a focusable element supplies its focus indicator.**
-  Where a shell renders the `<button>` itself and takes only its `className`
-  from a prop, the ring is the SHELL's obligation, stated once beside the ARIA
-  and the drag isolation it already owns — not eight callers' to remember.
-  `<AnchoredMenu>` appends `focus-ring` to whatever `triggerClassName` it is
-  handed (task 507): its trigger is the element that KEEPS DOM focus while the
-  menu is open (rows are `tabIndex: -1`, so the trigger hosts
-  `aria-activedescendant`), and five of its eight consumers spelled no
-  indicator at all. `<Button>` does the same for its own `className`. A caller
-  that genuinely composes its own — the inline-`box-shadow` shape, which no
-  stylesheet ring can override — declares `triggerOwnsFocusIndicator` and keeps
+  Where a shell renders the `<button>` / `<input>` / card root itself and takes
+  only its CLASS from a prop, the indicator is the SHELL's obligation, stated
+  once beside the ARIA and the drag isolation it already owns — not N callers'
+  to remember. Every member enters ONE door,
+  [`focus-indicator.ts`](components/focus-indicator.ts)'s `withFocusIndicator`,
+  which APPENDS. **Append, never `??`-replace** (task 554): a caller's class is
+  its own (geometry, ink, spacing) and the indicator is the shell's, so the two
+  compose. `className ?? DEFAULT` is the trap — where the default IS the
+  indicator (`PopoutButton`'s `iconbtn-sm`) any class-passing caller silently
+  deletes it, and where the default has none either (`OpenEntryLink`,
+  `HexColorField`'s swatch, whose "default" is a default PARAMETER — the same
+  shape one spelling over) both branches are bare. Unbundling the indicator from
+  the geometry is what lets a caller REPLACE the geometry (passing `iconbtn-xs`
+  to a shell whose default is `iconbtn-sm` is deliberate) and still be
+  guaranteed the ring.
+  The members today: `<Button>`, `<PopoutButton>`, `<AiRequestCheckbox>`,
+  `<AnchoredMenu>`'s trigger (task 507 — the element that KEEPS DOM focus while
+  the menu is open, so it hosts `aria-activedescendant`, and five of its eight
+  consumers spelled no indicator at all), `<OpenEntryLink>`, `HexColorField`'s
+  swatch, and `<PanelCard>`'s root — which takes `.focus-outline` rather than
+  the ring, because its ambient lift is an inline `box-shadow`. `<Input>` /
+  `<Textarea>` / `<Select>` are members with a STATED POSTURE instead: the
+  border thicken is their indicator, marked in place as
+  `focus-indicator-posture:` at the element. A caller that genuinely composes
+  its own — the inline-`box-shadow` shape, which no stylesheet ring can
+  override — says so (`AnchoredMenu`'s `triggerOwnsFocusIndicator`) and keeps
   the UA outline; never a silent skip. The consequence for callers: a
-  shell-owned trigger may NOT carry a `ring-*` or an inline `boxShadow`, since
-  the appended class owns `box-shadow` there (the bullet above). Its decorative
-  hover affordance takes another PROPERTY — `border-color` is the free one
-  (`edge-hover` → `edge-strong`, the same shift the bordered-pill hover rule
-  uses); `outline` is NOT, because the focus rule sets `outline: none`. CI:
-  `icon-button-a11y-guardrail.test.ts` → "the shell that OWNS a trigger
-  supplies its focus indicator" (allowlists: EMPTY).
+  shell-owned element whose indicator is the RING may NOT carry a `ring-*` or an
+  inline `boxShadow`, since the appended class owns `box-shadow` there (the
+  bullet above) — a shell on `.focus-outline` is free of both, which is the
+  whole reason that member exists. A decorative
+  hover affordance on a ringed element takes another PROPERTY —
+  `border-color` is the free one (`edge-hover` → `edge-strong`, the same shift
+  the bordered-pill hover rule uses); `outline` is NOT, because the ring rule
+  sets `outline: none`. CI:
+  `icon-button-a11y-guardrail.test.ts` → "a SHELL that owns a focusable element
+  supplies its indicator" — population DISCOVERED from the shells (every
+  className-ish prop that reaches a focusable element the shell renders
+  itself), never a tag list; allowlists EMPTY.
 - **A control is a `<button type="button">`.** `role="button"` on a `<span>`
   or `<div>` is a three-part promise — announced operable, so focusable
   (`tabIndex={0}`) and activated by Enter AND Space — and spelled by hand it is

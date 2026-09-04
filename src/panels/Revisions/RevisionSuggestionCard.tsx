@@ -165,7 +165,7 @@ export function RevisionSuggestionCard({
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
       onKeyDown={handleDeleteKey}
-      className="focus:outline-none mb-2"
+      className="mb-2"
       kind="revision-suggestion"
       kindOptions={onConvert ? cardKindsForPanel("revisions") : undefined}
       onKindChange={
