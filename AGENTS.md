@@ -6176,6 +6176,91 @@ error the central principle's own refinement warns against.
 gestures, no disk), so the durable proof is the unit contract and the check is
 cheap: type into a figure's width box and press Escape.
 
+##### The alias half: a field whose Escape MEANS Enter drops out of the census that would judge it
+
+Same door, the half 529 wrote its own escape hatch for (task 555). That census
+asks whether a CANCELLING field takes the door, and `hasDistinctCancel` puts a
+handler spelling `e.key === "Enter" || e.key === "Escape"` OUT of the
+population — correctly, with the reason stated: for a field whose `onChange`
+already committed every keystroke (`SizeStepper`, `PanelTextSizeRow`) the two
+keys really do mean the same thing and there is nothing to revert to. The
+justification named two members BY HAND, and the third aliasing field was
+`CitationCard`'s **Code** box — the raw-LaTeX editor — whose Escape ran
+`commitCodeDraft`. It holds a DRAFT and debounces a write behind it, so the
+alias was a lie in both directions at once: the key the user presses to abandon
+an edit SAVED it, and no leg anywhere could see that, **because aliasing is
+exactly what removes a field from the population**.
+
+> **A field may alias Escape to Enter only where nothing can be cancelled, and
+> that population is DISCOVERED and pinned as an EXACT SET with each member's
+> reason — never a hand list inside the guard that outlaws hand lists.**
+
+Six rules it earned:
+
+- **Cancelling a DEBOUNCED draft is two things, not one**: drop the pending
+  write, and — because an earlier one may already have LANDED — put the
+  session's opening command BACK. That restore is a real write (the `\cite`
+  command and the citations sidecar both hold it), so it stamps
+  `lastWrittenRef` and resyncs the local rows exactly as the commit path does;
+  without that the body state keeps the cancelled parse and the next control's
+  `persist()` re-serializes the abandoned edit.
+- **The session's opening command is captured at OPEN, not read at cancel.**
+  `cit.command` at cancel time may already be a keystroke the user is
+  cancelling, which is precisely the shape a 250 ms debounce produces.
+- **The reported population was FIVE sites and the real one is ONE.**
+  `TodoRow` (×2) and `BibEntryCard` (×2) have no `Escape` handler at all and
+  never did — verified against the memo-era commit, not merely against HEAD.
+  The citations were wrong when written and the task inherited them, so the fix
+  is sized to a census rather than to the list: *verify a phenomenon is general
+  before generalizing the fix.*
+- **A guard that is always TRUE is a lie in the source, and this one was
+  covering a LIVE defect.** `FigureAnnotation`'s `commit` opened with
+  `if (!editing) return;` — the same permanently-true captured read 529 retired
+  from `SourcePodNodeView`, since the input renders only while `editing`. Its
+  commit is ASYNC (it awaits the host's rename confirm) and a dialog FOCUSES its
+  cued default (task 389), so that focus steal blurs a still-mounted input,
+  React delegates `onBlur` off the synchronous `focusout`, and the blur's own
+  commit runs from the stale closure. **Measured through the real stack: one
+  Enter on a rename with `\ref`s to carry produced TWO confirm dialogs and two
+  `renameLabelWithRefs` calls.**
+- **The conflict REFUSAL is asked before the door, not inside it.**
+  `commitAndBlur` always blurs, which would undo the refocus the Enter branch
+  exists to perform — so ONE `candidateConflicts()` predicate is hoisted and
+  read by the keydown (which keeps the session OPEN so the user can fix it) and
+  by the blur (which abandons the draft). Two endings, opposite answers, one
+  question; a second copy is how they come to disagree.
+- **`FigureAnnotation` joined the door's population through its COMMIT, not its
+  cancel.** Its Escape already ran a distinct `cancel()` — which UNMOUNTS the
+  input rather than blurring, so it matched neither half of `ENDS_SESSION` and
+  was invisible to 529 by construction. The ~8-site unmount family's posture is
+  unchanged and now PINNED as its own exact set against the same discovery, so
+  a member that grows a `.blur()` leaves one census and joins the other and both
+  legs fail — turning a silent hazard into a decision.
+
+CI: [citation-code-escape-cancel.test.tsx](src/panels/Citations/__tests__/citation-code-escape-cancel.test.tsx)
+drives the REAL card inside a CONTROLLED parent (the real data flow, and the
+only way the restore arm is representable at all — with a frozen prop the
+card's `cit.command` never moves, so "an earlier debounced write already
+landed" cannot happen), counting WRITES rather than the rendered box.
+[figure-label-commit-once.test.tsx](src/components/__tests__/figure-label-commit-once.test.tsx)
+drives the REAL lozenge over a REAL editor whose `\ref` names the label — the
+ref is what makes the door ASK, and therefore what makes a second attempt
+observable — with a confirm that BLURS the input before resolving, which is what
+the production dialog does. **No pre-555 suite could see either**: every
+figure fixture in the repo renames a label no `\ref` points at, so the confirm
+never fires; and `citation-range-inline`'s 529 legs drive the `+range` postnote,
+a different field on the same card. Measured by neutering each half in turn: the
+pre-555 aliased keydown takes 4 legs (the two Enter/blur legs pass either way —
+that field never double-committed, since its Enter did not blur), the true
+pre-555 `FigureAnnotation` 1 (its three other legs are non-regression pins and
+say so), and the ALIAS census names `CitationCard.tsx` as an undeclared alias.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (live editor
+gestures, no disk), so the durable proof is the unit contract and the check is
+cheap: open a citation card's Code field, type, press Escape — the old command
+is back — then rename a figure's label that something `\ref`s and confirm ONE
+dialog.
+
 #### The dismissal half: the shell owns every dismiss TRIGGER, and nobody owned what a dismissal COSTS
 
 Same cluster, one question earlier (task 530) — and the case where the shared

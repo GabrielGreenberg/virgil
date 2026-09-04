@@ -330,13 +330,24 @@ describe("CENSUS — a cancelling field takes the door", () => {
 
   it("every member of the population is accounted for, and it is not empty", () => {
     // A census whose population collapsed to zero passes leg 1 for the wrong
-    // reason. These five are the whole class, across both silos, and every one
+    // reason. These six are the whole class, across both silos, and every one
     // takes the door — so leg 1's empty answer is a fact about compliance, not
     // about an empty scan.
+    //
+    // WIDENED (task 555): `FigureAnnotation` joined the population, and the way
+    // it joined is the point. It was NEVER in it before — its Escape already
+    // ran a distinct `cancel()`, but that cancel UNMOUNTED the input instead of
+    // blurring, and removing a focused element dispatches no `focusout`, so it
+    // matched neither half of `ENDS_SESSION`. 529 recorded that whole ~10-site
+    // family as correct-today and out of scope. It is a member now because its
+    // COMMIT needed the door (an async commit whose confirm steals focus), not
+    // because its cancel changed — so the family's own posture is unchanged and
+    // pinned below.
     const found = cancellingFields();
     const rels = [...new Set(found.map((h) => h.rel))].sort();
     expect(rels).toEqual([
       "library/components/PagePicker.tsx",
+      "src/components/FigureAnnotation.tsx",
       "src/components/FigureBlockNodeView.tsx",
       "src/components/SourcePodNodeView.tsx",
       "src/components/panel-primitives.tsx",
@@ -397,10 +408,7 @@ describe("CENSUS — a cancelling field takes the door", () => {
     // Escape is deliberately synonymous with Enter and there is no promise to
     // break. Whether such a field should OFFER a cancel is a product question,
     // not this door's.
-    for (const rel of [
-      "src/components/SizeStepper.tsx",
-      "src/components/PanelTextSizeRow.tsx",
-    ]) {
+    for (const rel of Object.keys(PERMITTED_ESCAPE_ENTER_ALIASES)) {
       const src = strip(readFileSync(path.join(REPO, rel), "utf8"), true);
       const h = keydownHandlers(src);
       // They DO name Escape and they DO blur…
@@ -411,5 +419,106 @@ describe("CENSUS — a cancelling field takes the door", () => {
       expect(h.every((x) => !hasDistinctCancel(x.body))).toBe(true);
       expect(/onChange=\{[\s\S]{0,400}?commit/.test(src)).toBe(true);
     }
+  });
+});
+
+/* ── The UNMOUNT-ON-CANCEL family (task 555) ────────────────────────────────
+ *
+ * 529 recorded a ~10-site family one step away: fields whose Escape UNMOUNTS
+ * the input instead of blurring. Removing a focused element dispatches no
+ * `focusout` in current browsers, so none of them is live — each becomes a
+ * member of the door's population the day someone adds a `.blur()`. 529
+ * deliberately did not convert them (converting correct sites on a premise it
+ * had not measured is the "broadest blast radius" error), and 555 keeps that
+ * posture: `FigureAnnotation` was pulled in by its COMMIT, not its cancel.
+ *
+ * What was missing was any way to NOTICE the family moving. The two sets are
+ * pinned as exact sets against ONE discovery, so a member that grows a `.blur()`
+ * leaves this one and joins `cancellingFields()` — and both legs fail, which
+ * turns a silent hazard into a decision someone has to make on purpose. */
+function unmountingCancelFields(): string[] {
+  const out: string[] = [];
+  for (const { rel, src } of productionSources()) {
+    if (!src.includes("Escape")) continue;
+    for (const h of keydownHandlers(src)) {
+      if (!hasDistinctCancel(h.body)) continue;
+      if (ENDS_SESSION.test(h.body)) continue;
+      out.push(rel);
+      break;
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
+describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
+  it("is exactly the declared set, and none of them blurs", () => {
+    // CitationCard appears in BOTH censuses and that is correct: its Code box
+    // takes the door (task 555) while its citekey field still unmounts.
+    expect(unmountingCancelFields()).toEqual([
+      "library/components/BibCard.tsx",
+      "src/components/ManageStylesModal.tsx",
+      "src/components/editor-layout/TabStrip.tsx",
+      "src/panels/Bibliography/BibliographyPanel.tsx",
+      "src/panels/Citations/CitationCard.tsx",
+      "src/panels/Outline/OutlinePanel.tsx",
+      "src/panels/_shared/PanelGoalStrip.tsx",
+      "src/text-objects/floats/float-title-field.tsx",
+    ]);
+  });
+});
+
+/* ── The ALIAS census (task 555) ────────────────────────────────────────────
+ *
+ * `hasDistinctCancel` is the census's own escape hatch: a handler that says
+ * `e.key === "Enter" || e.key === "Escape"` drops OUT of the population, and
+ * 529 justified that with two members it named BY HAND. A hand list inside a
+ * guard that exists to outlaw hand lists can only ever speak for the files
+ * someone remembered — and the third aliasing field was CitationCard's Code
+ * box, whose Escape ran `commitCodeDraft`. It held a draft AND debounced a
+ * write behind it, so the alias was a lie in both directions: the key the user
+ * presses to abandon an edit SAVED it, and no leg anywhere could see that,
+ * because aliasing is exactly what removes a field from 529's population.
+ *
+ * So the aliases are DISCOVERED and pinned as an EXACT SET, each with the one
+ * property that makes the alias honest: the field's `onChange` commits every
+ * keystroke, so Escape has nothing left to cancel. A new field that aliases
+ * fails here until someone states why — which is the question 555 had to be
+ * asked by hand. */
+const PERMITTED_ESCAPE_ENTER_ALIASES: Record<string, string> = {
+  "src/components/SizeStepper.tsx":
+    "onChange calls commitRaw on every keystroke — the value is already live, " +
+    "so Escape has nothing to revert to.",
+  "src/components/PanelTextSizeRow.tsx":
+    "onChange calls commit(panelKey, n) on every keystroke — same reason.",
+};
+
+/** Every keydown that answers Escape and Enter in ONE statement. */
+function aliasingFields(): string[] {
+  const out: string[] = [];
+  for (const { rel, src } of productionSources()) {
+    if (!src.includes("Escape")) continue;
+    for (const h of keydownHandlers(src)) {
+      if (!/["']Escape["']/.test(h.body)) continue;
+      if (hasDistinctCancel(h.body)) continue;
+      out.push(rel);
+      break;
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
+describe("CENSUS — Escape may alias Enter only where nothing can be cancelled", () => {
+  it("the aliasing population is exactly the declared set", () => {
+    // An EXACT set, not a floor: an unexplained alias must fail, and a
+    // declared member that has since stopped aliasing must stop being excused.
+    expect(aliasingFields()).toEqual(
+      Object.keys(PERMITTED_ESCAPE_ENTER_ALIASES).sort(),
+    );
+  });
+
+  it("the census can see an alias at all", () => {
+    // Anchored on the two live members rather than on the drained defect: a
+    // canary standing on the thing being fixed evaporates with the fix.
+    expect(aliasingFields().length).toBeGreaterThan(0);
   });
 });
