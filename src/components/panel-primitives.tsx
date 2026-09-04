@@ -2951,6 +2951,20 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // the six callers that hand-spelled `focus:outline-none` — which fires on
       // `:focus-visible` as well, and is exactly what deleted the keyboard
       // indicator — no longer spell half an indicator each.
+      //
+      // STATED INTERACTION, not a residual left to be rediscovered: the
+      // `cardOutlineChrome` View pref (default OFF) writes its own `outline`
+      // on `body.card-outline-chrome [data-card-key][data-card-selected]`,
+      // which is (0,3,1) against this class's (0,2,0) and therefore WINS. It
+      // costs nothing, because Tab into a card SELECTS it (`onFocusCapture`
+      // below), so with that pref on a keyboard-focused card is showing the
+      // themed selection edge on the same property — a visible indicator, in
+      // the accent rather than `--edge-strong`. That is the pre-554 story
+      // ("themed selection is the indicator") surviving exactly where the user
+      // opted into it, and this class supplying one where they did not. Which
+      // edge should win when both apply is a product call, not a cascade
+      // accident; it is pinned in the census so a change to either rule has to
+      // face it.
       className={withFocusIndicator(
         `group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`,
         FOCUS_OUTLINE_CLASS,

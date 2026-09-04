@@ -1414,6 +1414,50 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     );
   });
 
+  it("pins the ONE other writer of the card outline, and why it wins", () => {
+    // Found while landing task 554 rather than assumed: `cardOutlineChrome`
+    // (a View pref, default OFF) writes `outline` on the SAME element the
+    // OUTLINE member does, at (0,3,1) against this class's (0,2,0) — so with
+    // that pref on it wins, and a keyboard-focused card shows the themed
+    // selection edge instead of `--edge-strong`. That is not a stranding
+    // (Tab into a card SELECTS it, so the accent edge is drawn) and it is not
+    // a cascade accident anyone should have to rediscover: it is the pre-554
+    // "themed selection is the indicator" story surviving exactly where the
+    // user opted into it. Which edge should win when both apply is a product
+    // call. This leg is a BOUNDS pin, not a defect leg, and it says so: what
+    // it forbids is a THIRD writer appearing on that property, or either of
+    // these two moving without the other being considered.
+    const css = cssCommentsStripped(
+      fs.readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8"),
+    );
+    const writers = [...css.matchAll(/([^{}]*\{[^{}]*?outline\s*:[^{}]*\})/g)]
+      .map((m) => m[1].split("{")[0].trim())
+      .filter((sel) => /data-card-key|\.focus-outline/.test(sel));
+    expect(writers).toEqual([
+      ".focus-outline:focus",
+      ".focus-outline:focus-visible",
+      // The PREF, whose three selectors share one block. (0,3,1) beats the
+      // class, and that is the stated interaction above.
+      'body.card-outline-chrome [data-card-key][data-card-hovered="true"],\n' +
+        'body.card-outline-chrome [data-card-key][data-card-selected="true"],\n' +
+        "body.card-outline-chrome [data-card-key]:hover",
+      // The popped-card suppression — (0,4,0), so it beat the class too, and
+      // unscoped it deleted the indicator on EVERY popped card. Task 554
+      // scoped it to `:not(:focus-visible)`, which is what its own sentence
+      // ("the window now carries the ring — selection AND hover") already
+      // said it was about. The `:not()` in each selector is the pin.
+      '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),\n' +
+        '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),\n' +
+        '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible)',
+    ]);
+    // …and the reason travels with the code, not only with this list.
+    const src = fs.readFileSync(
+      path.join(ROOT, "src/components/panel-primitives.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/STATED INTERACTION[\s\S]{0,400}cardOutlineChrome/);
+  });
+
   it("no caller passes a ring utility into a RING member's prop", () => {
     // The collision no other leg can see: the ring lives in the CALLER's file
     // and the indicator in the SHELL's. A `ring-*` there paints NOTHING while

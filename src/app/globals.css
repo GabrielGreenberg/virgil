@@ -4114,10 +4114,20 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 }
 
 /* Suppress the inner card-body outline in popped context — the window now
- * carries the ring (selection AND hover). */
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"],
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"],
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover {
+ * carries the ring (selection AND hover).
+ *
+ * SCOPED to `:not(:focus-visible)` (task 554). The rule's own sentence says
+ * what it is about — SELECTION and HOVER — and focus is neither; but it is
+ * (0,4,0) against `.focus-outline:focus-visible`'s (0,2,0), so unscoped it
+ * also deleted the card root's keyboard indicator, on every popped card,
+ * silently (a popped card is selected, so the branch always matched). The
+ * window ring it hands the job to is `body.card-outline-chrome`-gated and
+ * that pref is default OFF, so what it handed over to was nothing. Strictly
+ * additive: it draws an outline only in a state where none was drawn before,
+ * and every selection/hover state it was written for is untouched. */
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible) {
   outline: none;
 }
 
