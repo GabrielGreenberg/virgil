@@ -618,6 +618,15 @@ export function CitationCard({
   const codeDraftRef = useRef<string | null>(null);
   const codeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
+  // The command this edit session OPENED with — i.e. the last COMMITTED value,
+  // which is what Escape restores. It is not `cit.command` at cancel time,
+  // because `updateCodeDraft` writes on a 250 ms debounce: by then the store
+  // may already hold a keystroke the user is now cancelling (task 555).
+  const codeOriginalRef = useRef<string | null>(null);
+  // 529's door. The Code input is one of TWO fields on this card that end a
+  // session; the other is the per-key `+range` postnote in `CitationKeyRow`,
+  // which has its own instance because it is its own component.
+  const codeSession = useFieldEditSession();
 
   const commitCodeDraft = useCallback(() => {
     const v = codeDraftRef.current;
@@ -639,6 +648,39 @@ export function CitationCard({
       // done had the code path not stamped `lastWrittenRef`.
       syncLocalFromCommand(v);
     }
+    codeDraftRef.current = null;
+    codeOriginalRef.current = null;
+    setCodeDraft(null);
+  }, [cit.command, cit.id, onUpdateCitation, syncLocalFromCommand]);
+
+  /** ESCAPE MEANS CANCEL (task 555). Pre-555 this field's keydown aliased
+   *  Escape to Enter and ran `commitCodeDraft` — so the key the user presses
+   *  to abandon an edit SAVED it. The alias is honest only for a field whose
+   *  value is already live (`SizeStepper`, `PanelTextSizeRow`, whose `onChange`
+   *  commits every keystroke and so leaves nothing to cancel); this one holds a
+   *  draft AND debounces a write behind it, which makes the alias a lie in both
+   *  directions at once — a cancel inside 250 ms of the last keystroke really
+   *  did discard, and one after it really did not.
+   *
+   *  Cancelling is therefore two things, not one: DROP the pending debounced
+   *  write, and — because an earlier one may already have LANDED — put the
+   *  session's opening command BACK. Restoring is a real write (the `\cite`
+   *  command and the citations sidecar both hold it), so it stamps
+   *  `lastWrittenRef` and resyncs the local rows exactly as the commit path
+   *  does; without that the body state would keep the cancelled parse and the
+   *  next control's `persist()` would re-serialize the abandoned edit. */
+  const cancelCodeDraft = useCallback(() => {
+    if (codeDebounceRef.current) {
+      clearTimeout(codeDebounceRef.current);
+      codeDebounceRef.current = null;
+    }
+    const original = codeOriginalRef.current;
+    if (original !== null && original !== cit.command) {
+      lastWrittenRef.current = original;
+      onUpdateCitation(cit.id, original);
+      syncLocalFromCommand(original);
+    }
+    codeOriginalRef.current = null;
     codeDraftRef.current = null;
     setCodeDraft(null);
   }, [cit.command, cit.id, onUpdateCitation, syncLocalFromCommand]);
@@ -1041,12 +1083,19 @@ export function CitationCard({
                   value={codeDraft}
                   onChange={(e) => updateCodeDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === "Escape") {
+                    if (e.key === "Enter") {
                       e.preventDefault();
-                      commitCodeDraft();
+                      // One Enter, one commit — the explicit call and the
+                      // blur's own `onBlur` would otherwise both run it.
+                      codeSession.commitAndBlur(e.currentTarget, commitCodeDraft);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      // …and the cancel is visible to that same synchronous
+                      // `focusout`, so nothing commits behind it.
+                      codeSession.cancel(e.currentTarget, cancelCodeDraft);
                     }
                   }}
-                  onBlur={commitCodeDraft}
+                  onBlur={() => codeSession.commit(commitCodeDraft)}
                   {...NEVER_SPELLCHECK_PROPS}
                   density="dense"
                   className="text-[10px] card-mono px-1 py-0 flex-1 min-w-0"
@@ -1056,6 +1105,7 @@ export function CitationCard({
                   type="button"
                   onClick={() => {
                     codeDraftRef.current = cit.command;
+                    codeOriginalRef.current = cit.command;
                     setCodeDraft(cit.command);
                   }}
                   className="text-[10px] card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"

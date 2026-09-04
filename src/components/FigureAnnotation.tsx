@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import { isLabelTaken, collectLabelKeys, isLabelTakenIn } from "@/lib/labels";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { chromeOnly } from "@/lib/view-only-chrome";
+import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
@@ -91,52 +92,61 @@ export default function FigureAnnotation({
     setConflict(false);
   }, [label]);
 
-  const commit = useCallback(
-    async (via: "enter" | "blur") => {
-      if (!editing) return;
-      if (!editor || !getFigurePos) return;
-      const newLabel = draft.trim() || null;
-      const oldLabel = label || null;
+  // 529's door. This field's `commit` is ASYNC — it awaits the host's rename
+  // confirm — and a dialog FOCUSES its cued default (task 389), which blurs an
+  // input that is still mounted. Pre-555 `commit` opened with
+  // `if (!editing) return`, a captured render-closure read that is PERMANENTLY
+  // TRUE for every `commit` the mounted input can reach (the input renders only
+  // while `editing`), so the guard its author wrote to stop a second commit
+  // could never fire. MEASURED through the real stack: one Enter on a rename
+  // with refs to carry produced TWO confirm dialogs and two rename attempts.
+  // The door reads a REF — "the live value" the dead guard was reaching for.
+  const session = useFieldEditSession();
 
-      // A candidate ANOTHER declaration already claims is REFUSED — the door
-      // below asks the same `@/lib/labels` predicate, but it is asked here
-      // first so the input can stay OPEN: Enter keeps the user editing with
-      // the warning showing; leaving the field abandons the conflicting draft
-      // (a blur that re-focused the input would trap focus in it). Task 534:
-      // pre-534 the warning was advisory and `commit` never read `conflict`,
-      // so the duplicate was committed anyway — a duplicate `\label` is
-      // always a LaTeX error ("Label multiply defined").
-      if (newLabel && newLabel !== oldLabel && isLabelTaken(editor, newLabel, oldLabel)) {
-        if (via === "enter") {
-          setConflict(true);
-          inputRef.current?.focus();
-          return;
-        }
-        cancel();
-        return;
-      }
+  /** Would the current draft collide with a key ANOTHER declaration owns?
+   *  ONE predicate, asked by the keydown (which must keep the session OPEN so
+   *  the user can fix it) and by the blur (which abandons the draft) — the two
+   *  endings want opposite answers to the same question, and a second copy is
+   *  how they come to disagree. Task 534: pre-534 the warning was advisory and
+   *  the commit never read `conflict`, so a duplicate `\label` — always a
+   *  LaTeX error ("Label multiply defined") — was committed anyway. */
+  const candidateConflicts = useCallback(() => {
+    if (!editor) return false;
+    const newLabel = draft.trim() || null;
+    const oldLabel = label || null;
+    return !!(
+      newLabel &&
+      newLabel !== oldLabel &&
+      isLabelTaken(editor, newLabel, oldLabel)
+    );
+  }, [draft, editor, label]);
 
-      setEditing(false);
-      if (newLabel === oldLabel) return;
+  /** The WRITE. Called only once the session has already ended, so it never
+   *  decides whether the session ends — that decision is SYNCHRONOUS and lives
+   *  at the two endings below, which is what lets `commitAndBlur` blur before
+   *  the first `await` yields. */
+  const commitRename = useCallback(async () => {
+    if (!editor || !getFigurePos) return;
+    const newLabel = draft.trim() || null;
+    const oldLabel = label || null;
+    if (newLabel === oldLabel) return;
 
-      // ONE door for every label rename (task 534): collects the `\ref`s
-      // naming the old key over the whole document, asks the host's confirm
-      // (`onConfirmRename`, produced by `EditorPane`), and moves the
-      // declaration and every ref in ONE transaction. The heading strip and
-      // the Outline's label editor enter the same door.
-      await renameLabelWithRefs(editor, {
-        locate: () => {
-          const pos = getFigurePos();
-          if (pos == null) return null;
-          const node = editor.state.doc.nodeAt(pos);
-          return node && node.type.name === "figureBlock" ? { pos, node } : null;
-        },
-        newLabel,
-        confirm: onConfirmRename ?? null,
-      });
-    },
-    [draft, editing, editor, label, getFigurePos, onConfirmRename, cancel],
-  );
+    // ONE door for every label rename (task 534): collects the `\ref`s
+    // naming the old key over the whole document, asks the host's confirm
+    // (`onConfirmRename`, produced by `EditorPane`), and moves the
+    // declaration and every ref in ONE transaction. The heading strip and
+    // the Outline's label editor enter the same door.
+    await renameLabelWithRefs(editor, {
+      locate: () => {
+        const pos = getFigurePos();
+        if (pos == null) return null;
+        const node = editor.state.doc.nodeAt(pos);
+        return node && node.type.name === "figureBlock" ? { pos, node } : null;
+      },
+      newLabel,
+      confirm: onConfirmRename ?? null,
+    });
+  }, [draft, editor, label, getFigurePos, onConfirmRename]);
 
   const toggleNumbered = useCallback(() => {
     if (!editor || !getFigurePos) return;
@@ -266,13 +276,35 @@ export default function FigureAnnotation({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                void commit("enter");
+                // The conflict REFUSAL keeps the session open, so it is asked
+                // BEFORE the door: `commitAndBlur` always blurs, which would
+                // undo the refocus this branch exists to perform.
+                if (candidateConflicts()) {
+                  setConflict(true);
+                  inputRef.current?.focus();
+                  return;
+                }
+                session.commitAndBlur(e.currentTarget, () => {
+                  setEditing(false);
+                  void commitRename();
+                });
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                cancel();
+                session.cancel(e.currentTarget, cancel);
               }
             }}
-            onBlur={() => void commit("blur")}
+            onBlur={() =>
+              session.commit(() => {
+                // Leaving the field abandons a conflicting draft — refocusing
+                // it here would trap focus in the input.
+                if (candidateConflicts()) {
+                  cancel();
+                  return;
+                }
+                setEditing(false);
+                void commitRename();
+              })
+            }
             size={Math.max(draft.length, 8)}
           />
           {conflict && (
