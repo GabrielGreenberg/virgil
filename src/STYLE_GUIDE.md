@@ -966,6 +966,11 @@ Five states. One implementation each.
   and themed selection stays the primary cue: the class is `:focus-visible`-only,
   so no mouse user sees a change. Everything else that
   takes keyboard focus supplies a ring, an outline, or a thickened border.
+  **A focus indicator never reaches paper** — it is editor state by definition
+  ("What reaches paper" below), and `.focus-outline` is the one member that
+  would: an `outline` is painted like a border and prints with DEFAULT
+  settings, where `.focus-ring`'s `box-shadow` needs "Background graphics"
+  and every `iconbtn-*` wearer is chrome the print block already hides.
   (Honest state: of ~55 `outline-none` sites ~24 supply nothing; most are the
   contenteditable exception, but the `BibEntryCard` request-note inputs and
   `ManageStylesModal`'s already-`edge-strong` field are real gaps.)

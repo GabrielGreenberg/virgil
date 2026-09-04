@@ -30,6 +30,17 @@
  * Both resolve to the same 2px `--edge-strong` edge, declared beside each
  * other in `globals.css` so the two spellings cannot drift into two looks.
  *
+ * The OUTLINE member is also the one that would reach PAPER — an `outline` is
+ * painted like a border and prints with default settings, where a `box-shadow`
+ * needs "Background graphics" — so the print block neutralises it alongside
+ * every other view-only paint ("What reaches paper — editor state never does").
+ * Two OTHER rules already write `outline` on a card root, and both are pinned
+ * beside the census rather than left to the cascade: the `cardOutlineChrome`
+ * pref (default OFF, higher specificity, and it WINS — a focused card is a
+ * selected card, so the user who opted in sees their themed edge), and the
+ * popped-card suppression, which task 554 scoped to `:not(:focus-visible)`
+ * because its own sentence says it is about selection and hover.
+ *
  * ── Why this file imports NOTHING ────────────────────────────────────
  *
  * Its consumers span `panel-primitives`, `field-primitives`, the menu shell,
