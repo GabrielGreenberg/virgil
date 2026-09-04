@@ -1079,8 +1079,8 @@ function skipTemplateLiteral(s: string, j: number): number {
 }
 
 /** Every JSX opening tag in `body` whose element name is INTRINSIC (lowercase). */
-function intrinsicTags(body: string): { name: string; tag: string }[] {
-  const out: { name: string; tag: string }[] = [];
+function intrinsicTags(body: string): { name: string; tag: string; at: number }[] {
+  const out: { name: string; tag: string; at: number }[] = [];
   const re = /<([a-z][a-zA-Z0-9-]*)(?=[\s/>])/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body))) {
@@ -1102,7 +1102,7 @@ function intrinsicTags(body: string): { name: string; tag: string }[] {
       } else if (c === ">") break;
       j++;
     }
-    out.push({ name: m[1], tag: body.slice(m.index, j + 1) });
+    out.push({ name: m[1], tag: body.slice(m.index, j + 1), at: m.index });
   }
   return out;
 }
@@ -1124,6 +1124,35 @@ function propValue(tag: string, name: string): string | null {
   return null;
 }
 
+/**
+ * The comment block DIRECTLY above the element at stripped offset `at`.
+ *
+ * A marker is a COMMENT, so it is blank in the stripped view every needle
+ * reads — but `strip(…, true, true)` is LINE-ALIGNED, so the two views agree
+ * on line numbers and the marker can be read out of `raw` at the same lines.
+ * The window walks back only over comment and blank lines and stops at the
+ * first real code, which is what makes it "directly above" rather than a
+ * character count: a fixed window picks up a NEIGHBOURING element's marker
+ * (measured on this file's own canary, where a posture two elements up
+ * silently excused a bare one).
+ */
+function commentBlockAbove(raw: string, src: string, at: number): string {
+  const line = src.slice(0, at).split("\n").length - 1; // 0-indexed
+  const rawLines = raw.split("\n");
+  const srcLines = src.split("\n");
+  const out: string[] = [];
+  // "Is this line a comment?" is ASKED OF THE STRIPPER rather than guessed:
+  // a blanked line is whitespace-only in the line-aligned view. A hand
+  // heuristic gets the INTERIOR of a wrapped block comment wrong — measured,
+  // a `startsWith("*")` rule stopped at the second line of every marker in
+  // `field-primitives` and reported all three as unindicated.
+  for (let i = line - 1; i >= 0; i--) {
+    if ((srcLines[i] ?? "").trim() !== "") break;
+    out.unshift(rawLines[i] ?? "");
+  }
+  return out.join("\n");
+}
+
 interface ShellMember {
   /** Repo-relative file of the SHELL. */
   file: string;
@@ -1137,7 +1166,7 @@ interface ShellMember {
   expr: string;
   /** The element's whole opening tag. */
   tagSource: string;
-  /** RAW source from the shell's declaration to the element — where an
+  /** The comment block DIRECTLY above the element, from RAW source — where an
    *  in-place `focus-indicator-posture:` marker is read from. */
   rawAbove: string;
   /** Same-file function declarations, for the one-hop reach. */
@@ -1197,11 +1226,6 @@ function shellFocusMembers(): ShellMember[] {
         if (expr === null) continue;
         for (const prop of props) {
           if (!new RegExp(`(?<![\\w.])${prop}(?![\\w])`).test(expr)) continue;
-          // The RAW window the posture marker is read from: the element's own
-          // tag plus everything back to the shell's declaration. Raw offsets
-          // are not the stripped ones, so anchor on the tag's own first line.
-          const firstLine = t.tag.split("\n")[0];
-          const rawAt = raw.indexOf(firstLine);
           out.push({
             file: rel,
             shell,
@@ -1209,7 +1233,7 @@ function shellFocusMembers(): ShellMember[] {
             tag: t.name,
             expr,
             tagSource: t.tag,
-            rawAbove: rawAt > 0 ? raw.slice(Math.max(0, rawAt - 900), rawAt) : "",
+            rawAbove: commentBlockAbove(raw, src, bodyOpen + t.at),
             fileSource: src,
           });
         }
@@ -1455,6 +1479,9 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       "    <input className={className} />",
       "  );",
       "}",
+      "export function FallbackInside({ className }: { className?: string }) {",
+      '  return <button className={withFocusIndicator(className ?? "iconbtn-sm")}>x</button>;',
+      "}",
     ].join("\n");
 
     const found = membersIn("fixture.tsx", fixture);
@@ -1463,6 +1490,7 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       "Replacing(className)",
       "Fine(className)",
       "Postured(className)",
+      "FallbackInside(className)",
     ]);
     const mech = Object.fromEntries(found.map((m) => [m.shell, mechanismOf(m)]));
     expect(mech.Bare).toBe("none"); // leg 2 flags it
@@ -1470,14 +1498,18 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     expect(mech.Fine).toBe("ring");
     expect(mech.Postured).toBe("posture");
 
-    // Leg 3's own shape, isolated: a `??` fallback INSIDE the door is fine
-    // (`PopoutButton` is exactly that), and one outside it is not.
+    // Leg 3's own shape, isolated, and BOTH halves synthetic — the rule is not
+    // "no `??`" (a shell may legitimately fall back to a default GEOMETRY,
+    // which is `PopoutButton`'s live shape) but "the indicator is applied
+    // OUTSIDE the fallback". Keying either half on a live member would make
+    // the canary stand on that member's current spelling.
     const outside = found.find((m) => m.shell === "Replacing")!;
     expect(DOOR.test(outside.expr)).toBe(false);
     expect(/(?<![\w.])className\s*(?:\?\?|\|\|)/.test(outside.expr)).toBe(true);
-    const inside = MEMBERS.find((m) => m.shell === "PopoutButton")!;
+    const inside = found.find((m) => m.shell === "FallbackInside")!;
     expect(/(?<![\w.])className\s*\?\?/.test(inside.expr)).toBe(true);
     expect(DOOR.test(inside.expr)).toBe(true);
+    expect(mechanismOf(inside)).toBe("ring"); // …so leg 3 lets it through
 
     // …and the call-site needles read a real value rather than a prop NAME.
     expect(RING_UTILITY.test("w-5 h-5 hover:ring-2")).toBe(true);
@@ -1511,8 +1543,6 @@ function membersIn(rel: string, raw: string): ShellMember[] {
       if (expr === null) continue;
       for (const prop of props) {
         if (!new RegExp(`(?<![\\w.])${prop}(?![\\w])`).test(expr)) continue;
-        const firstLine = t.tag.split("\n")[0];
-        const rawAt = raw.indexOf(firstLine);
         out.push({
           file: rel,
           shell,
@@ -1520,7 +1550,7 @@ function membersIn(rel: string, raw: string): ShellMember[] {
           tag: t.name,
           expr,
           tagSource: t.tag,
-          rawAbove: rawAt > 0 ? raw.slice(Math.max(0, rawAt - 900), rawAt) : "",
+          rawAbove: commentBlockAbove(raw, src, bodyOpen + t.at),
           fileSource: src,
         });
       }
