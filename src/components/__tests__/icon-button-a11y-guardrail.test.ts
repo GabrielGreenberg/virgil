@@ -1433,6 +1433,8 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     const writers = [...css.matchAll(/([^{}]*\{[^{}]*?outline\s*:[^{}]*\})/g)]
       .map((m) => m[1].split("{")[0].trim())
       .filter((sel) => /data-card-key|\.focus-outline/.test(sel));
+    // …in SOURCE order, and the last entry is the print one — which is how the
+    // list also states that the screen rules come first.
     expect(writers).toEqual([
       ".focus-outline:focus",
       ".focus-outline:focus-visible",
@@ -1449,6 +1451,12 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),\n' +
         '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),\n' +
         '[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible)',
+      // The PRINT neutralisation. A focus indicator is editor state by
+      // definition, and the outline is the one member that prints with DEFAULT
+      // settings (a `box-shadow` needs "Background graphics"; an `outline` is
+      // painted like a border). Inside `@media print`, so it cannot reach a
+      // screen.
+      ".focus-outline:focus-visible",
     ]);
     // …and the reason travels with the code, not only with this list.
     const src = fs.readFileSync(
