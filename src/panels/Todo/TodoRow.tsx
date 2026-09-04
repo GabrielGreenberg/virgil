@@ -161,7 +161,6 @@ export function TodoRow({
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={tryDelete}
       extraCardClass=""
-      className="focus:outline-none"
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();

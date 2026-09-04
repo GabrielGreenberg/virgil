@@ -176,7 +176,7 @@ export function CutterSuggestionCard({
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
       onKeyDown={handleDeleteKey}
-      className="focus:outline-none mb-2"
+      className="mb-2"
       kind="cutter-suggestion"
       kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
       onKindChange={

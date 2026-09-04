@@ -65,8 +65,19 @@ export type FieldInk = "body" | "subtle" | "strong";
  */
 export type FieldDensity = "control" | "dense";
 
+// The focus substitute is `:focus-visible`, not `:focus` (task 554). The border
+// THICKEN is this family's focus indicator — STYLE_GUIDE "Interaction" → Focus,
+// "Inputs use a thicker border instead of a ring" — so it is governed by the
+// same law every other indicator in the app is, and every other one in the app
+// is keyboard-scoped. Behaviour-identical for a text field, because a browser
+// answers `:focus-visible` for a focused text input however focus arrived
+// (clicking into a box IS a request to type in it); what it changes is the
+// CONSISTENCY, so a future member of this chrome cannot inherit a mouse-focus
+// indicator by accident. `outline-none` stays UNSCOPED on purpose: it strips
+// the UA ring the border replaces, and a `:focus`-only strip would leave that
+// ring painting on a mouse click beside a border that had not thickened.
 const FIELD_BASE =
-  "border placeholder:text-ink-muted outline-none focus:border-edge-strong disabled:opacity-40 disabled:cursor-not-allowed";
+  "border placeholder:text-ink-muted outline-none focus-visible:border-edge-strong disabled:opacity-40 disabled:cursor-not-allowed";
 
 const FIELD_TONE: Record<FieldTone, { bg: string; border: string }> = {
   surface: { bg: "bg-surface", border: "border-edge-subtle" },
@@ -148,6 +159,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   ref,
 ) {
   return (
+    /* focus-indicator-posture: BORDER, not ring — `fieldChrome` carries
+       `focus-visible:border-edge-strong`, which THICKENS the resting edge, and
+       that is this family's indicator (STYLE_GUIDE "Interaction" → Focus:
+       "Inputs use a thicker border instead of a ring"). It deliberately does not
+       enter the ring door: a ring around a bordered box paints two edges. */
     <input
       ref={ref}
       type={type}
@@ -165,6 +181,11 @@ export interface TextareaProps
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   function Textarea({ tone, ink, density, invalid, className, ...rest }, ref) {
     return (
+      /* focus-indicator-posture: BORDER, not ring — `fieldChrome` carries
+         `focus-visible:border-edge-strong`, which THICKENS the resting edge, and
+         that is this family's indicator (STYLE_GUIDE "Interaction" → Focus:
+         "Inputs use a thicker border instead of a ring"). It deliberately does not
+         enter the ring door: a ring around a bordered box paints two edges. */
       <textarea
         ref={ref}
         {...rest}
@@ -184,6 +205,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   ref,
 ) {
   return (
+    /* focus-indicator-posture: BORDER, not ring — `fieldChrome` carries
+       `focus-visible:border-edge-strong`, which THICKENS the resting edge, and
+       that is this family's indicator (STYLE_GUIDE "Interaction" → Focus:
+       "Inputs use a thicker border instead of a ring"). It deliberately does not
+       enter the ring door: a ring around a bordered box paints two edges. */
     <select
       ref={ref}
       {...rest}

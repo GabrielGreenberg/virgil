@@ -29,7 +29,17 @@ describe("fieldChrome — the STYLE_GUIDE §Inputs spec, spelled once", () => {
 
   it("focus THICKENS the border to edge-strong and adds NO ring", () => {
     const c = fieldChrome();
-    expect(c).toContain("focus:border-edge-strong");
+    // RENEGOTIATED (task 554): the thicken is `:focus-visible`-scoped, not
+    // `:focus`. It pinned `focus:border-edge-strong`, which is the same
+    // indicator under the state this family had never had a reason to scope —
+    // every other indicator in the app is keyboard-only, and a browser answers
+    // `:focus-visible` for a focused text input however focus arrived, so the
+    // rendering is unchanged for every shipped member. What the pin now says
+    // is that the CONSISTENCY holds. The two drift shapes below are untouched.
+    expect(c).toContain("focus-visible:border-edge-strong");
+    // …and the unscoped `:focus` spelling stays retired, or a future member of
+    // this chrome inherits a mouse-focus indicator by accident.
+    expect(c).not.toMatch(/(?<!-visible)\bfocus:border-edge-strong/);
     // The two drift shapes the census forbids at call sites, forbidden here
     // too — a primitive that grew either would push it to every consumer at
     // once, and no call-site census could see it.
@@ -92,7 +102,7 @@ describe("Input / Select / Textarea", () => {
     const { container } = render(<Input className="w-full px-3 py-1.5 text-sm" />);
     const el = container.querySelector("input")!;
     expect(el.className).toContain("border-edge-subtle");
-    expect(el.className).toContain("focus:border-edge-strong");
+    expect(el.className).toContain("focus-visible:border-edge-strong");
     expect(el.className).toContain("w-full px-3 py-1.5 text-sm");
   });
 

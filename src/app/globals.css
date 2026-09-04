@@ -1031,6 +1031,35 @@ body[data-zen-mode="on"] {
   outline: none;
   box-shadow: var(--focus-ring-shadow);
 }
+/* ── The same edge, drawn with `outline` (task 554) ────────────────
+   For an element whose `box-shadow` is TAKEN. A docked card's ambient
+   lift is written INLINE by `themedCardStyle`, and inline beats every
+   stylesheet rule — so `.focus-ring` on a card would land its
+   `outline: none` and then fail to draw its box-shadow: an element with
+   NO indicator at all, which is strictly worse than never adding the
+   class (the `StackIcon` caveat, read on a surface that — unlike
+   StackIcon — was ALSO stripping the UA outline and so kept nothing).
+
+   `outline` is the free property there, and this is the one place it is
+   spent: the rule above sets `outline: none` only while `:focus-visible`
+   matches, so the two indicators never contend. Same 2px, same
+   `--edge-strong`, declared next to each other so the two spellings
+   cannot drift into two looks.
+
+   BOTH halves live here on purpose. The `:focus` strip is what six card
+   wrappers used to hand-spell as `focus:outline-none` — which is exactly
+   what deleted the keyboard indicator, since it fires on `:focus-visible`
+   too. Keeping it INSIDE the class preserves the mouse behaviour those
+   six had while the `:focus-visible` rule below restores the keyboard
+   one. Source order is load-bearing: both selectors are (0,2,0), so the
+   `:focus-visible` rule wins by coming SECOND. */
+.focus-outline:focus {
+  outline: none;
+}
+.focus-outline:focus-visible {
+  outline: 2px solid var(--edge-strong);
+  outline-offset: 0;
+}
 .iconbtn-xs[disabled],
 .iconbtn-sm[disabled],
 .iconbtn-md[disabled],
@@ -4085,10 +4114,20 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 }
 
 /* Suppress the inner card-body outline in popped context — the window now
- * carries the ring (selection AND hover). */
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"],
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"],
-[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover {
+ * carries the ring (selection AND hover).
+ *
+ * SCOPED to `:not(:focus-visible)` (task 554). The rule's own sentence says
+ * what it is about — SELECTION and HOVER — and focus is neither; but it is
+ * (0,4,0) against `.focus-outline:focus-visible`'s (0,2,0), so unscoped it
+ * also deleted the card root's keyboard indicator, on every popped card,
+ * silently (a popped card is selected, so the branch always matched). The
+ * window ring it hands the job to is `body.card-outline-chrome`-gated and
+ * that pref is default OFF, so what it handed over to was nothing. Strictly
+ * additive: it draws an outline only in a state where none was drawn before,
+ * and every selection/hover state it was written for is untouched. */
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"]:not(:focus-visible),
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover:not(:focus-visible) {
   outline: none;
 }
 
@@ -5881,6 +5920,20 @@ html {
   [data-card-hovered],
   [data-card-selected],
   [data-link-highlight] {
+    outline: none !important;
+  }
+
+  /* A FOCUS indicator is editor state BY DEFINITION, so it never reaches
+     paper (task 554 — the same law one channel over). Only the OUTLINE member
+     is print-reachable: `.focus-ring` is a `box-shadow`, which Chrome drops
+     unless "Background graphics" is on, and every `iconbtn-*` wearer is chrome
+     the rules above already `display: none`. An `outline` is painted like a
+     border and prints unconditionally — the same property that made the
+     spelling squiggle the one member to print with DEFAULT settings.
+     Covered by the attention rule above ONLY by coincidence (a focused card is
+     a selected card), which is exactly the coincidence `data-link-highlight`
+     was relying on before task 523 named it. */
+  .focus-outline:focus-visible {
     outline: none !important;
   }
 

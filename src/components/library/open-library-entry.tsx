@@ -22,6 +22,7 @@
 
 import { useCallback } from "react";
 import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
+import { withFocusIndicator } from "@/components/focus-indicator";
 
 export const OPEN_LIBRARY_EVENT = "virgil-open-library";
 
@@ -81,10 +82,14 @@ export function OpenEntryLink({
       }}
       data-hint="Open entry in a new tab"
       aria-label={`Open ${citekey} in a new tab`}
-      className={
+      // COMPOSE, never `??`-replace, and the default gains an indicator of
+      // its own (task 554). This was the worse of the two `??` shapes: the
+      // built-in default carried no focus token EITHER, so both branches were
+      // bare — its one class-passing caller (`CitationCard`) spells none.
+      className={withFocusIndicator(
         className ??
-        "inline-flex items-center gap-1 text-[10px] text-ink-muted hover:text-ink-body transition-colors"
-      }
+          "inline-flex items-center gap-1 text-[10px] text-ink-muted hover:text-ink-body transition-colors",
+      )}
     >
       <ExternalLinkIcon size={11} />
       <span>{label}</span>

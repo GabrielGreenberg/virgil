@@ -31,6 +31,7 @@ import {
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "./field-draft";
+import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
@@ -1670,7 +1671,12 @@ export function EditableCard({
         if ((e.target as HTMLElement).closest?.("[data-card-header]")) return;
         if (!selected && onClick) onClick();
       }}
-      className={`focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      // No `focus:outline-none` here any more: the strip AND the restore are
+      // PanelCard's, which is what renders the element (task 554). Spelling
+      // the strip alone was spelling half an indicator — and the half that
+      // deletes one, since Tailwind's `focus:` variant fires on
+      // `:focus-visible` too.
+      className={wrapperClassName}
       style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
@@ -1954,7 +1960,13 @@ export function AiRequestCheckbox({
         onToggle(!checked);
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      className={`flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`}
+      // The base is `bg-transparent p-0` — no geometry utility, so no
+      // indicator came with it, and every AI-request checkbox in every card
+      // panel was a tab stop with only the UA outline (task 554). The prop
+      // was already APPENDED, so only the indicator was missing.
+      className={withFocusIndicator(
+        `flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`,
+      )}
     >
       <CheckSquare variant="ai-request" checked={checked} />
       AI request
@@ -2058,7 +2070,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       {...rest}
-      className={`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""} focus-ring`}
+      className={withFocusIndicator(
+        `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""}`,
+      )}
     />
   );
 });
@@ -2206,7 +2220,15 @@ export function PopoutButton({
         e.stopPropagation();
         e.preventDefault();
       }}
-      className={className ?? POPOUT_BUTTON_CLASS}
+      // COMPOSE, never `??`-replace (task 554). The default IS the
+      // indicator (`iconbtn-sm` bakes the ring in), so `className ?? DEFAULT`
+      // silently deleted it for any class-passing caller — a latent trap the
+      // one live caller (`FloatChrome`'s `iconbtn-xs`) survived by luck.
+      // The caller still REPLACES the geometry, which is what it means to
+      // pass `iconbtn-xs`; the shell appends the indicator UNBUNDLED from it,
+      // so both intents are honoured. (Its imperative twin
+      // `createPopoutButtonEl` below always composes and so never had this.)
+      className={withFocusIndicator(className ?? POPOUT_BUTTON_CLASS)}
       {...iconHint({ label: title, hint: isPoppedOut ? "Dock" : "Pop out" })}
       dangerouslySetInnerHTML={{
         __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
@@ -2912,7 +2934,41 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // class internals. Present-only when selected (CSS matches on presence).
       data-selected={selected ? "" : undefined}
       title={title}
-      className={`group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
+      // The card ROOT is a keyboard target — `EditableCard` and four panels
+      // thread `tabIndex={selected ? 0 : -1}` — and PanelCard renders it, so
+      // its focus indicator is PanelCard's (task 554). It is the OUTLINE
+      // member of the door, not the ring: `themedCardStyle` below writes the
+      // ambient lift as an INLINE `box-shadow`, which beats every stylesheet
+      // rule, so `.focus-ring` would land its `outline: none` and then fail to
+      // paint — a keyboard-reachable element with no indicator at all, which
+      // is the `StackIcon` caveat read on a surface that was ALSO stripping the
+      // UA outline. `outline` is the free property here and this is where it is
+      // spent. STYLE_GUIDE's "a card wrapper strips because themed selection is
+      // the indicator" is renegotiated at the site: themed selection stays the
+      // PRIMARY cue (and the only one a mouse user ever sees — the class is
+      // `:focus-visible`-scoped), and a keyboard user arrowing a panel list now
+      // also gets the app's edge. The class carries the `:focus` strip too, so
+      // the six callers that hand-spelled `focus:outline-none` — which fires on
+      // `:focus-visible` as well, and is exactly what deleted the keyboard
+      // indicator — no longer spell half an indicator each.
+      //
+      // STATED INTERACTION, not a residual left to be rediscovered: the
+      // `cardOutlineChrome` View pref (default OFF) writes its own `outline`
+      // on `body.card-outline-chrome [data-card-key][data-card-selected]`,
+      // which is (0,3,1) against this class's (0,2,0) and therefore WINS. It
+      // costs nothing, because Tab into a card SELECTS it (`onFocusCapture`
+      // below), so with that pref on a keyboard-focused card is showing the
+      // themed selection edge on the same property — a visible indicator, in
+      // the accent rather than `--edge-strong`. That is the pre-554 story
+      // ("themed selection is the indicator") surviving exactly where the user
+      // opted into it, and this class supplying one where they did not. Which
+      // edge should win when both apply is a product call, not a cascade
+      // accident; it is pinned in the census so a change to either rule has to
+      // face it.
+      className={withFocusIndicator(
+        `group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`,
+        FOCUS_OUTLINE_CLASS,
+      )}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut, dropTarget: isDropTarget }),
         // Kind color for the card hover/selected outline rules (the

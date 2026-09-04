@@ -70,12 +70,20 @@ const NON_TEXT_TYPE =
  *  - `border-edge-…` the resting border color
  *  - `border-[var(--border…` the warm legacy border token, same role
  *  - `focus:border-…`/`focus:ring` the focus axis (accent drift + the rings)
+ *
+ * BOTH focus alternations read `focus(-visible)?:` since task 554 moved
+ * `FIELD_BASE`'s thicken to `:focus-visible`. The base owns that axis under
+ * the new spelling, so a call site appending `focus-visible:border-…` is the
+ * same collision the `:focus` form was — and a needle still pinned to the
+ * retired spelling would have gone quietly blind to it on the very commit
+ * that created the shape.
  */
 const FIELD_CHROME =
-  /\bfocus:border-|\bfocus:ring|\bborder-edge-|\brounded\b|\brounded-(?:xs|sm|md|lg|xl|pill|full)\b|border-\[var\(--border/;
+  /\bfocus(?:-visible)?:border-|\bfocus(?:-visible)?:ring|\bborder-edge-|\brounded\b|\brounded-(?:xs|sm|md|lg|xl|pill|full)\b|border-\[var\(--border/;
 
 /** The two rules STYLE_GUIDE §Inputs states absolutely. */
-const BANNED_FOCUS = /focus:border-\[var\(--accent\)\]|focus:border-accent\b|focus:ring-(?!0\b)/;
+const BANNED_FOCUS =
+  /focus(?:-visible)?:border-\[var\(--accent\)\]|focus(?:-visible)?:border-accent\b|focus(?:-visible)?:ring-(?!0\b)/;
 
 /**
  * A site is keyed by FILE, not by line. `strip` drops block comments including
@@ -449,7 +457,9 @@ describe("field-chrome census — the stripper does not swallow", () => {
     // (the task-202b runaway) would fail this, and every leg above would have
     // been silently vacuous.
     expect(stripped.length).toBeGreaterThan(real.length * 0.3);
-    expect(stripped).toContain("focus:border-edge-strong");
+    // RENEGOTIATED (task 554): `:focus-visible`, not `:focus` — the same token
+    // under the state scope every other indicator in the app already had.
+    expect(stripped).toContain("focus-visible:border-edge-strong");
     expect(stripped).not.toContain("STYLE_GUIDE.md");
   });
 });
