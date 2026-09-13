@@ -1,4 +1,4 @@
-<!-- last-verified: 702a1036 2026-09-03 -->
+<!-- last-verified: e15fe786 2026-09-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -404,11 +404,18 @@ Whole-block (TextObject) operations come from two places:
   half is not one of them: `updateHeadingLabelByUuid` is retired and
   `handleUpdateLabel` routes through `renameLabelWithRefs`
   ([label-rename.ts](../../src/lib/tiptap/label-rename.ts)) — the ONE door the
-  heading strip, the figure lozenge and the Outline all enter, which REFUSES a
+  heading strip, the figure lozenge, the Outline and (since task 553) the expex
+  "Ex. · label" pods all enter, which REFUSES a
   key another declaration already claims (rather than warning and committing
   anyway) and moves the declaration AND every `\ref` naming the old key in one
   transaction. `isLabelTaken` is no longer a threaded prop or an injected
-  predicate: every surface reads it off the live document.
+  predicate: every surface reads it off the live document — and since 553 the
+  registry it reads (`collectLabelKeys`, driven by `LABEL_DECLARING_NODE_TYPES`)
+  sees EXAMPLE keys too, where before it named `heading` + `figureBlock` only, so
+  a key an example declared was invisible to every duplicate check in the app.
+  The live "already in use" warning snapshots that key set ONCE per edit
+  ([label-key-warning.ts](../../src/lib/tiptap/label-key-warning.ts)); the COMMIT
+  still asks the live document.
 - **The `DragHandleMenu` lifecycle actions** — `duplicate` (clone the captured
   passage, forking any contained atoms' sidecars via `cardLifecycle`),
   `archive`, and `delete` (Family 1).

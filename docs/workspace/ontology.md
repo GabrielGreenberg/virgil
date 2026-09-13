@@ -1,4 +1,4 @@
-<!-- last-verified: 702a1036 2026-09-03 -->
+<!-- last-verified: e15fe786 2026-09-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -56,8 +56,12 @@ TipTap-free `.tex` layers can read and **CI-checked against the real editor
 schema** (tasks 343/346). The two sets are close but not identical: it adds
 `maketitleMarker` and omits `linkedRange` (a mark, not a node). Its siblings
 `TITLED_NODE_TYPES` / `COLLAPSIBLE_NODE_TYPES` decide what the `virgil.json`
-sidecar round-trips, and `DEFERRING_PARENTS` decides which inner paragraphs
-yield their identity to the container above them.
+sidecar round-trips, `DEFERRING_PARENTS` decides which inner paragraphs
+yield their identity to the container above them, and `LABEL_DECLARING_NODE_TYPES`
+(task 553, schema-pinned like the rest) answers *which node types absorb a
+`\label{}` into a `label` attr* — `heading`, `figureBlock`, `exampleBlock`,
+`exampleItem`. That set is what the label registry (`collectLabelKeys`) and the
+rename door walk, so a fifth declaring kind joins both by declaring itself here.
 
 Each node member carries a `%!v:` block id; the LaTeX form of each is in
 [latex.md](latex.md), the marker rules in [identity.md](identity.md).

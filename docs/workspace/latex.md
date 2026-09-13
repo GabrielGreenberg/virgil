@@ -1,4 +1,4 @@
-<!-- last-verified: 702a1036 2026-09-03 -->
+<!-- last-verified: e15fe786 2026-09-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -149,11 +149,25 @@ model a linguex site at all (asked once of the live preamble). `\exg.` / `\exi.`
 byte-literal carrier rather than half-parsed. One shared `assembleExampleBody`
 behind two splitters keeps every consumer downstream dialect-blind; a NEW example
 takes the document's dominant dialect (`dominantExampleDialect` — purely linguex
-mints linguex, empty/expex/MIXED mints expex, since expex is injected from the
-emit where linguex never is). The requirements fallback detector needed the same
+mints linguex, empty/expex/MIXED mints expex, the baseline dialect Virgil's own
+preamble ships). The requirements fallback detector needed the same
 period lookahead: without it a linguex `\ex.` declared expex and
 `ensurePreambleRequirements` injected `\usepackage{expex}` after the user's own
 `\usepackage{linguex}`, and every example in the paper stopped compiling.
+
+**The EXAMPLE PACKAGE FAMILY — expex / linguex / gb4e — is mutually exclusive**
+(task 543; `EXAMPLE_PACKAGE_FAMILY`, `src/lib/example-dialect.ts`). Each defines
+`\ex`, an injected `\usepackage` lands *after* the author's own loads, and the
+later definition wins — so **a member the preamble already loads outranks the
+model's need for any other**: that need is dropped and SURFACED, never injected.
+Since 543 BOTH dialects are declared at their emit sites (the linguex arm's
+`need("linguex")`, plus a `PACKAGE_DETECTORS` row for a carried `\ex.`), so a
+linguex paste into a paper that loads nothing gets `\usepackage{linguex}` — but a
+gb4e paper (which Virgil never models; its `\begin{exe}` is carried raw) has
+`\usepackage{expex}` *withheld*, where before 543 it was injected and broke the
+paper. Operational consequence for a skill: **never add an example package
+yourself**, and don't read a missing `\usepackage{expex}` as a bug — it may be a
+surfaced conflict.
 
 ## Serialization and escaping
 

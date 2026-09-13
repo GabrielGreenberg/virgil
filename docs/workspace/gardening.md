@@ -1,4 +1,4 @@
-<!-- last-verified: 702a1036 2026-09-03 -->
+<!-- last-verified: e15fe786 2026-09-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -42,6 +42,13 @@ The expex control words (`\ex \pex \xe \a \begingl \endgl \gla …`) are package
 commands the parser depends on — don't redefine them either. The same holds for
 `\begin{forest}…\end{forest}`, which the parser **claims whole** (task 383) rather
 than leaving to the generic carrier — its bytes are the node's authoritative `source`.
+
+**Never add an example package by hand.** `expex`, `linguex` and `gb4e` each
+define `\ex`, so exactly one may be loaded (`EXAMPLE_PACKAGE_FAMILY`, task 543):
+the injector declares the dialect the body emits and lands it ONLY into a preamble
+that loads no other member, surfacing a conflict otherwise. A `\usepackage{expex}`
+you add beside a paper's own `linguex`/`gb4e` load silently breaks every example
+in it.
 
 **Comment conventions** (all `%!v`-prefixed) — the invisible id surface:
 
