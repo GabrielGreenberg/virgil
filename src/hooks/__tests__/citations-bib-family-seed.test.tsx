@@ -51,7 +51,7 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: (h: unknown, file: string, data: unknown) =>
     writeSidecar(h, file, data),
   readBib: (id: string) => readBib(id),
-  writeBib: vi.fn(async () => undefined),
+  mutateBib: vi.fn(async () => null),
 }));
 
 import { useCitations } from "../useCitations";

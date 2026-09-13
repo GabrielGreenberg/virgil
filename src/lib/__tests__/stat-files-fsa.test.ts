@@ -140,7 +140,7 @@ import {
   readDocBundle,
   writeTex,
   readBib,
-  writeBib,
+  mutateBib,
   getBibFilename,
 } from "@/lib/storage-fsa";
 import { flushWrites } from "@/lib/write-queue";
@@ -307,10 +307,13 @@ describe("disk-ledger false-positive guarantee (FSA)", () => {
 // ---------------------------------------------------------------------------
 
 describe("disk-ledger bib stamping (FSA)", () => {
-  it("writeBib stamps the resolved .bib so a re-stat matches", async () => {
+  it("mutateBib's write half stamps the resolved .bib so a re-stat matches", async () => {
+    // RENEGOTIATED (task 558): the whole-snapshot `writeBib` is retired; the
+    // `.bib`'s ONE write door is `mutateBib`, whose write half takes the same
+    // funnel and stamps the same fingerprint.
     const h = beginDocPipeline(DOC_ID);
     const BIB = "@article{x2026, title={X}}\n";
-    await writeBib(h, BIB);
+    await mutateBib(h, () => BIB);
     await flushWrites(`${DOC_ID}/bib/references.bib`);
     await Promise.resolve();
     endDocPipeline(h);
@@ -325,7 +328,8 @@ describe("disk-ledger bib stamping (FSA)", () => {
     // readBib must NOT baseline the .bib: the watcher's own confirm-read goes
     // through readBib, and baselining there would erase the very external edit
     // it is trying to surface. The .bib baseline is the watcher's PRIME pass +
-    // writeBib only.
+    // the write half of `mutateBib` only — its in-lock base read is
+    // non-stamping too (task 558).
     const BIB = "@book{y2026, title={Y}}\n";
     docHandle.files.set("references.bib", { text: BIB, mtimeMs: nextMtime() });
     const res = await readBib(DOC_ID);

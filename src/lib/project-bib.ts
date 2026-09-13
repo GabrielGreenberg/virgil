@@ -1,11 +1,47 @@
 "use client";
 
-// Drop-from-anywhere onto a Project library tab → append the dragged
-// bib entry to the doc's references.bib (idempotent). Lives outside
-// `library/` because writing the doc's .bib is a Virgil-side concern
-// and the library subsystem must not import `@/lib/storage`.
+/**
+ * THE serialized authority for the doc's `references.bib` (task 558).
+ *
+ * The `.bib` has more writers than any sidecar: the Bibliography panel's
+ * per-entry edits (`useCitations`'s five mutators), a Library drag-drop
+ * (`addEntriesToProjectBib`), the Library tab's remove menu, the stack pull's
+ * bib carry and the auto-add of a cited library entry (both through
+ * `addBibEntry`) — plus a THIRD, out-of-process writer: the `/editor/*`
+ * skills, which rewrite the file straight on disk while the paper is open.
+ *
+ * Before this module every in-app writer persisted a WHOLE-FILE snapshot
+ * computed from a base it had read earlier, OUTSIDE the lock — the panel's
+ * React state, seeded once per doc and refreshed only by an in-app window
+ * event, or a `readBib` a few awaits before the write. `writeBib`'s queue
+ * serialized the two WRITES, so the loser's snapshot landed last and won:
+ * task 220's lost update, one file over. And because the panel's base learned
+ * about a skill's write from nothing, the user's next bib edit wrote their
+ * stale snapshot over the entry the skill had fetched — an entry with no other
+ * local copy, whose every `\cite{key}` then compiled to an undefined reference.
+ *
+ * > **Every mutation of the `.bib` is a pure function of the entry list as it
+ * > is ON DISK at the moment of the write, computed inside the serialized
+ * > write critical section, and every writer PUBLISHES the authoritative
+ * > post-write list.** Nothing persists a whole snapshot it computed earlier
+ * > from state it merely hopes is current.
+ *
+ * The backend door (`storage.mutateBib`) is TEXT-shaped — the backends are
+ * citation-js-free — so this module is where the parse/serialize pair lives,
+ * and it is the ONE production caller of that door. The in-process publish
+ * (`DOC_BIB_CHANGED_EVENT`) reaches this window's live readers (the hook
+ * adopts the published list without a disk round-trip); a peer window's or a
+ * skill's write is still MERGED OVER by the next local mutation, because there
+ * is no base but the disk — the same argument task 220 makes for the skills,
+ * whose writes no Web Lock reaches.
+ *
+ * Every write door is here. Nothing else in `src/` may call `mutateBib` or
+ * serialize the whole bib — pinned by `bib-authority.test.ts`, the guard that
+ * catches the shape this module exists to retire: not a broken writer, but a
+ * call site that never asked the authority.
+ */
 
-import { readBib, writeBib } from "@/lib/storage";
+import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFile } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
 import {
@@ -22,72 +58,135 @@ import type { BibEntry } from "@/lib/types";
  */
 type IncomingBibEntry = Omit<BibEntry, "uid"> & { uid?: string };
 
-function withUid(entry: IncomingBibEntry): BibEntry {
-  return { ...entry, uid: entry.uid ?? mintBibUid() };
-}
-
-/** Window-level event fired after a doc's references.bib changes via
- *  `addEntryToProjectBib`. `useCitations` listens and re-reads when
- *  the docId matches. */
+/**
+ * Window-level event fired after a doc's references.bib changes through this
+ * authority. `useCitations` listens and ADOPTS the published list when the
+ * detail carries one; a detail with no payload (a re-hydrate request from a
+ * disk-side signal) makes it re-read from disk.
+ */
 export const DOC_BIB_CHANGED_EVENT = "virgil-doc-bib-changed";
 
+export interface DocBibChangedDetail {
+  docId: string;
+  /** The authoritative post-write text + entries. Absent ⇒ re-read from disk. */
+  bibText?: string;
+  entries?: BibEntry[];
+}
+
 /**
- * Append `entries` to the doc's references.bib, skipping any keys
- * already present. Performs a single read-modify-write so multi-row
- * drops don't race: if the caller fired N parallel `addEntryToProjectBib`
- * calls instead of one batched call, each read would see the same
- * starting state and the last write would clobber the earlier ones —
- * the visual "overwrite" the user sees on multi-drop. Always batch.
+ * A mutation of the bib: a PURE function from the current entry list to the
+ * next one, or `null` for "nothing to change" (no write, no publish).
  *
- * Returns the count of entries actually appended (0 if nothing new).
- * Dispatches DOC_BIB_CHANGED_EVENT once on success so listeners
- * (currently `useCitations`) re-read.
+ * Purity is load-bearing rather than stylistic. The function runs while the
+ * doc lock is held, and a caller that also applies it optimistically to React
+ * state (the hook does) runs it a SECOND time against a different base — so it
+ * must close over everything it needs (a pre-built entry, a pre-minted uid)
+ * and must not read the clock or touch storage itself.
+ */
+export type BibMutator = (entries: BibEntry[]) => BibEntry[] | null;
+
+export interface BibMutationResult {
+  entries: BibEntry[];
+  bibText: string;
+}
+
+/** Parse the on-disk text; an absent/empty file is an empty list. */
+function entriesOf(bibText: string): BibEntry[] {
+  return bibText.trim() ? parseBibFile(bibText) : [];
+}
+
+/**
+ * Apply `mutate` to the doc's `.bib` through the serialized read-modify-write
+ * door and announce the result.
  *
- * The destination is pinned to the docId's currently-active pipeline.
- * If the pipeline ends mid-write (e.g. user closes the doc tab), the
- * storage layer rejects with StalePipelineError and we return 0 —
- * the .bib stays untouched.
+ * Resolves the authoritative post-write list, or `null` when nothing was
+ * persisted — a declined mutation (`mutate` returned `null`), no doc, no active
+ * write handle, a read-only library paper, or a failed write. Best-effort by
+ * contract: this never throws (its callers are UI event handlers and
+ * fire-and-forget listeners), and it publishes ONLY after a write that actually
+ * landed, so the in-memory bib can never diverge from the on-disk one in the
+ * direction that matters.
+ */
+export async function mutateProjectBib(
+  docId: string | null,
+  mutate: BibMutator,
+): Promise<BibMutationResult | null> {
+  if (!docId) return null;
+  const handle = getActiveHandle(docId);
+  if (!handle) return null;
+
+  // The door calls its text mutator exactly ONCE per queued task, so the
+  // entries it produced can be captured here rather than re-parsed out of the
+  // serialized text (which would hand the hook citation-js-normalized copies of
+  // entries it just edited in place).
+  let produced: BibEntry[] | null = null;
+  let bibText: string | null;
+  try {
+    bibText =
+      (await mutateBib(handle, (current) => {
+        const next = mutate(entriesOf(current));
+        if (next === null) return null;
+        produced = next;
+        return serializeBibFile(next);
+      })) ?? null;
+  } catch (err) {
+    if (isStalePipelineError(err)) return null;
+    console.error("Failed to persist references.bib:", err);
+    return null;
+  }
+  if (bibText === null || produced === null) return null;
+
+  const result: BibMutationResult = { entries: produced, bibText };
+  // Announce the authoritative post-write list so every live reader in THIS
+  // window (the citations hook) adopts it without a disk round-trip. Only
+  // after a successful persist — a failed write leaves the disk unchanged, so
+  // the in-memory list must not diverge from it.
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent<DocBibChangedDetail>(DOC_BIB_CHANGED_EVENT, {
+        detail: { docId, ...result },
+      }),
+    );
+  }
+  return result;
+}
+
+/**
+ * Append `entries` to the doc's references.bib, skipping any keys already
+ * present ON DISK at the moment of the write. One mutation per call, so a
+ * multi-row drop cannot race against itself — and, since task 558, cannot
+ * race against a bib card's Save or a skill's write either: the merge is
+ * computed over the freshly-read file inside the lock.
+ *
+ * Returns the count of entries actually appended (0 if nothing new, no active
+ * pipeline, or the write failed). Publishes through the authority on success.
  */
 export async function addEntriesToProjectBib(
   docId: string,
   entries: IncomingBibEntry[],
 ): Promise<number> {
   if (!docId) return 0;
-  const incoming = entries.filter((e) => Boolean(e?.key)).map(withUid);
+  const incoming = entries.filter((e) => Boolean(e?.key));
   if (incoming.length === 0) return 0;
-  const handle = getActiveHandle(docId);
-  if (!handle) return 0;
-  let existing: BibEntry[] = [];
-  try {
-    const data = await readBib(docId);
-    if (data.bibText) existing = parseBibFile(data.bibText);
-  } catch {
-    // No bib yet (brand-new doc) — fall through with empty `existing`.
-  }
-  const seen = new Set(existing.map((e) => e.key));
-  const additions: BibEntry[] = [];
-  for (const e of incoming) {
-    if (seen.has(e.key)) continue;
-    seen.add(e.key); // de-dupe within `incoming` too
-    additions.push(e);
-  }
-  if (additions.length === 0) return 0;
-  const next = [...existing, ...additions];
-  const text = serializeBibFile(next);
-  try {
-    await writeBib(handle, text);
-  } catch (err) {
-    if (isStalePipelineError(err)) return 0;
-    throw err;
-  }
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(DOC_BIB_CHANGED_EVENT, {
-        detail: { docId, keys: additions.map((e) => e.key) },
-      }),
-    );
-  }
-  return additions.length;
+  let appended = 0;
+  const result = await mutateProjectBib(docId, (existing) => {
+    const seen = new Set(existing.map((e) => e.key));
+    const used = new Set(existing.map((e) => e.uid).filter(Boolean));
+    const additions: BibEntry[] = [];
+    for (const e of incoming) {
+      if (seen.has(e.key)) continue;
+      seen.add(e.key); // de-dupe within `incoming` too
+      // Mint against the uids on DISK, so a fresh id can never collide with
+      // an entry a peer landed since this window last read the file.
+      const uid = e.uid && !used.has(e.uid) ? e.uid : mintBibUid(used);
+      used.add(uid);
+      additions.push({ ...e, uid });
+    }
+    if (additions.length === 0) return null;
+    appended = additions.length;
+    return [...existing, ...additions];
+  });
+  return result === null ? 0 : appended;
 }
 
 /**
@@ -105,9 +204,8 @@ export async function addEntryToProjectBib(
 
 /**
  * Remove the entry with the given citekey from the doc's references.bib.
- * Returns true on removal, false on miss / no-active-pipeline / read
- * error. Dispatches DOC_BIB_CHANGED_EVENT on success so any listener
- * (currently `useCitations`) re-reads.
+ * Returns true on removal, false on miss / no-active-pipeline / failed
+ * write. Publishes through the authority on success.
  *
  * The central library and `master.bib` are left untouched — this only
  * mutates the per-doc references.bib. Any `\cite{citekey}` commands
@@ -119,28 +217,9 @@ export async function removeEntryFromProjectBib(
   citekey: string,
 ): Promise<boolean> {
   if (!docId || !citekey) return false;
-  const handle = getActiveHandle(docId);
-  if (!handle) return false;
-  let existing: BibEntry[] = [];
-  try {
-    const data = await readBib(docId);
-    if (data.bibText) existing = parseBibFile(data.bibText);
-  } catch {
-    return false;
-  }
-  const next = existing.filter((e) => e.key !== citekey);
-  if (next.length === existing.length) return false; // not present
-  const text = serializeBibFile(next);
-  try {
-    await writeBib(handle, text);
-  } catch (err) {
-    if (isStalePipelineError(err)) return false;
-    throw err;
-  }
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(DOC_BIB_CHANGED_EVENT, { detail: { docId, key: citekey } }),
-    );
-  }
-  return true;
+  const result = await mutateProjectBib(docId, (existing) => {
+    const next = existing.filter((e) => e.key !== citekey);
+    return next.length === existing.length ? null : next; // null = not present
+  });
+  return result !== null;
 }

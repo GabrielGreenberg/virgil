@@ -899,6 +899,17 @@ export async function snapshotConflictSides(
 
 const BIB_DECL_RE = /\\(?:bibliography|addbibresource)\{([^}]+)\}/;
 
+/** The `.bib` filename a `.tex` declares (`\bibliography{}` /
+ *  `\addbibresource{}`), falling back to `references.bib`. Spelled ONCE:
+ *  the name resolver, the reader and the write door used to carry three
+ *  byte-identical copies of this match (task 558). */
+function bibFilenameFromTex(tex: string): string {
+  const m = tex.match(BIB_DECL_RE);
+  if (!m) return "references.bib";
+  const name = m[1].trim();
+  return name.endsWith(".bib") ? name : `${name}.bib`;
+}
+
 /**
  * Resolve the .bib filename for a doc WITHOUT touching the ledger or reading
  * the .bib content (dev parity with storage-fsa's `getBibFilename`). The
@@ -908,53 +919,59 @@ const BIB_DECL_RE = /\\(?:bibliography|addbibresource)\{([^}]+)\}/;
  * `\bibliography{}`/`\addbibresource{}`, falling back to `references.bib`.
  */
 export async function getBibFilename(docId: string): Promise<string> {
-  const tex = await readTex(docId);
-  const m = tex.match(BIB_DECL_RE);
-  let bibFilename = "references.bib";
-  if (m) {
-    bibFilename = m[1].trim();
-    if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
-  }
-  return bibFilename;
+  return bibFilenameFromTex(await readTex(docId));
 }
 
 export async function readBib(docId: string): Promise<BibReadResult> {
   const tex = await readTex(docId);
-  const m = tex.match(BIB_DECL_RE);
-  let bibFilename = "references.bib";
-  if (m) {
-    bibFilename = m[1].trim();
-    if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
-  }
+  const bibFilename = bibFilenameFromTex(tex);
   const bibText = (await fetchText(docFileUrl(docId, bibFilename))) ?? "";
   // NOTE: readBib is a PURE reader — it does NOT stamp the disk ledger. The
-  // .bib baseline is established by the watcher's PRIME pass + by writeBib.
-  // Baselining here would let the watcher's own confirm-read re-baseline the
-  // very external edit it is trying to surface (the flicker bug). See
-  // docs/memos/external-change-badge/DESIGN.md §3.
+  // .bib baseline is established by the watcher's PRIME pass + by the write
+  // half of `mutateBib`. Baselining here would let the watcher's own
+  // confirm-read re-baseline the very external edit it is trying to surface
+  // (the flicker bug). See docs/memos/external-change-badge/DESIGN.md §3.
   const detectedPackage = detectBibPackage(tex);
   return { bibText, bibFilename, detectedPackage };
 }
 
-// tex-write-exempt: writes the `.bib`, never the `.tex`, and a bibliography edit
-// is user-intent. The FSA twin still takes `snapshotPriorBib`; this backend keeps
-// no `virgil/.history/` folder, so it has no forensic net to take (task 357).
-export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
+/**
+ * Dev mirror of storage-fsa's `mutateBib` — see there for the contract
+ * (task 558): the ONLY write door the doc's `.bib` has, its base read INSIDE
+ * the per-file serial queue, `null` for "nothing to change". The
+ * whole-snapshot `writeBib` is RETIRED in both backends.
+ *
+ * Before this door the dev `writeBib` PUT straight through with no queue at
+ * all, so two bib writers raced here in a way they never could under FSA —
+ * the same shape task 220 found for the sidecars. The queue key mirrors the
+ * FSA subkey (`bib/<name>`), so `flushPrefix(docId)` still drains it.
+ *
+ * tex-write-exempt: writes the `.bib`, never the `.tex`, and a bibliography
+ * mutation is user-intent. The FSA twin still takes `snapshotPriorBib`; this
+ * backend keeps no `virgil/.history/` folder, so it has no forensic net to
+ * take (task 357).
+ */
+export async function mutateBib(
+  h: DocWriteHandle,
+  mutate: (bibText: string) => string | null,
+): Promise<string | null> {
   // A library-paper doc never persists its bib — the library's own artifact
   // (parity with storage-fsa; only the Reader's note sidecar lands, task 556).
-  if (isLibraryPaper(h.docId)) return;
+  if (isLibraryPaper(h.docId)) return null;
   assertActive(h);
-  const tex = await readTex(h.docId);
-  const m = tex.match(BIB_DECL_RE);
-  let bibFilename = "references.bib";
-  if (m) {
-    bibFilename = m[1].trim();
-    if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
-  }
-  assertNotSuperseded(h);
-  await putTrackedText(h.docId, bibFilename, bibText);
-  // Stamp the ledger with the authoritative post-write .bib fingerprint.
-  await stampLedger(h.docId, bibFilename, bibText);
+  const bibFilename = bibFilenameFromTex(await readTex(h.docId));
+  return enqueueWrite(`${h.docId}/bib/${bibFilename}`, async () => {
+    assertNotSuperseded(h);
+    // The in-lock base read is NON-stamping, for the reason the FSA twin
+    // states: the `.bib` fingerprint is the watcher's baseline.
+    const current = (await fetchText(docFileUrl(h.docId, bibFilename))) ?? "";
+    const next = mutate(current);
+    if (next === null) return null;
+    // Through the gated funnel (task 415), which also owns the post-write
+    // ledger stamp — the retired `writeBib` stamped a second time here.
+    await putTrackedText(h.docId, bibFilename, next);
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------

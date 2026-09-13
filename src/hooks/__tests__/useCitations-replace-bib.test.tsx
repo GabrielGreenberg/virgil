@@ -24,7 +24,7 @@ vi.mock("@/lib/storage", () => ({
       "@article{foo,\n  author = {A. Author},\n  title = {Orig Title},\n  year = {2001}\n}\n",
     detectedPackage: undefined,
   })),
-  writeBib: vi.fn(async () => undefined),
+  mutateBib: vi.fn(async () => null),
 }));
 
 import { useCitations } from "../useCitations";

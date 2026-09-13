@@ -16,7 +16,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
     "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "writeBib",
+    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
     "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
     "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
     "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",

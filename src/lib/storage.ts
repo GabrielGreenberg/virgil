@@ -53,7 +53,12 @@ export const readDocBundle = backend.readDocBundle;
 export const snapshotConflictSides = backend.snapshotConflictSides;
 export const writeDocBundle = backend.writeDocBundle;
 export const readBib = backend.readBib;
-export const writeBib = backend.writeBib;
+// The ONLY write door the doc's `.bib` has (task 558): a serialized
+// read-modify-write whose base read runs inside the same queued + doc-locked
+// critical section as the write — `mutateSidecar`'s guarantee, for
+// `references.bib`. The whole-snapshot `writeBib` is retired; nothing outside
+// `@/lib/project-bib` (the parse/serialize/publish authority) may call this.
+export const mutateBib = backend.mutateBib;
 export const createDocFromPicker = backend.createDocFromPicker;
 export const createDocInFolder = backend.createDocInFolder;
 export const pickProjectFolder = backend.pickProjectFolder;

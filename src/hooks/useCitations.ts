@@ -2,22 +2,22 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { generateShortId } from "@/lib/uuid";
-import { readBib, writeBib } from "@/lib/storage";
-import { DOC_BIB_CHANGED_EVENT } from "@/lib/project-bib";
+import { readBib } from "@/lib/storage";
+import {
+  DOC_BIB_CHANGED_EVENT,
+  mutateProjectBib,
+  type BibMutator,
+  type DocBibChangedDetail,
+} from "@/lib/project-bib";
 import { isUnanchored } from "@/links/links";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
   parseBibFile,
-  serializeBibFile,
   parseCiteCommand,
   citationCommandOrNull,
   formatInlineCitation,
   formatBibliography,
 } from "@/lib/bib-parser";
-import {
-  getActiveHandle,
-  isStalePipelineError,
-} from "@/lib/multi-window/doc-pipeline";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
 import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
@@ -78,6 +78,16 @@ export const CITATIONS_INERT: CitationsHook = {
   identityCascade: new IdentityCascade(),
 };
 
+/** An entry's BibTeX block, rebuilt from its fields — the byte shape every
+ *  in-place edit below writes. Pure, so a mutation that calls it produces the
+ *  same block on the view run and on the disk run. */
+function rebuildRaw(e: BibEntry): string {
+  const lines = Object.entries(e.fields)
+    .map(([k, v]) => `  ${k} = {${v}}`)
+    .join(",\n");
+  return `@${e.type}{${e.key},\n${lines}\n}`;
+}
+
 function migrate(raw: unknown): CitationsState {
   const s = raw as Partial<CitationsState>;
   if (!Array.isArray(s.citations)) return EMPTY;
@@ -106,9 +116,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   });
 
   // .bib side — lives outside the factory since it's a different sidecar
-  // with its own parse/serialize pipeline.
+  // with its own parse/serialize pipeline. `bibEntries` is a VIEW of the
+  // file: every mutation below is applied to it optimistically and then run
+  // AGAIN by the authority against the file as it is on disk, whose published
+  // result the listener adopts (task 558). `bibRaw` is set from that publish
+  // only — the authoritative text — never from a snapshot serialized here.
   const [bibEntries, setBibEntries] = useState<BibEntry[]>([]);
   const [bibRaw, setBibRaw] = useState("");
+  const bibEntriesRef = useRef(bibEntries);
+  useEffect(() => {
+    bibEntriesRef.current = bibEntries;
+  }, [bibEntries]);
   /**
    * What the `.tex` DETECTS (task 344). Deliberately local component state and
    * NOT part of the persisted `CitationsState`: detection can never distinguish
@@ -163,13 +181,6 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   // to today.
   const [identityCascade] = useState(() => new IdentityCascade());
 
-  // Pin the bib write handle to docId's currently-active pipeline.
-  // Stale handles (from a doc switch) are rejected by writeBib.
-  const handle = useMemo(
-    () => (docId ? getActiveHandle(docId) : null),
-    [docId],
-  );
-
   const refreshBib = useCallback((id: string) => {
     readBib(id)
       .then((data) => {
@@ -204,32 +215,44 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     refreshBib(docId);
   }, [docId, refreshBib]);
 
-  // Out-of-band writes to references.bib (e.g. dropping an entry onto a
-  // Project library tab) dispatch DOC_BIB_CHANGED_EVENT — re-read so the
-  // doc's citation UI reflects the new entry without a manual refresh.
+  // Every write of references.bib goes through the ONE authority
+  // (`mutateProjectBib`, task 558), which publishes the authoritative
+  // post-write list on DOC_BIB_CHANGED_EVENT — this hook's own mutations
+  // included, so the optimistic state below converges on what actually
+  // landed (a merge over the file as it was on disk, which may hold entries a
+  // Library drop, a peer window or an `/editor/*` skill added since this hook
+  // last read it). A detail with no payload is a re-hydrate request: re-read.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ docId?: string }>).detail;
+      const detail = (e as CustomEvent<Partial<DocBibChangedDetail>>).detail;
       const id = docRef.current;
       if (!id) return;
       if (detail?.docId && detail.docId !== id) return;
+      if (detail?.bibText !== undefined && detail.entries) {
+        setBibRaw(detail.bibText);
+        setBibEntries(detail.entries);
+        return;
+      }
       refreshBib(id);
     };
     window.addEventListener(DOC_BIB_CHANGED_EVENT, handler);
     return () => window.removeEventListener(DOC_BIB_CHANGED_EVENT, handler);
   }, [refreshBib]);
 
-  const persistBib = useCallback(
-    async (text: string) => {
-      if (!handle) return;
-      try {
-        await writeBib(handle, text);
-      } catch (err) {
-        if (isStalePipelineError(err)) return;
-        console.error("Failed to save bib:", err);
-      }
+  /**
+   * Apply a PURE bib mutation twice: once to the in-memory view (so the UI
+   * never waits on a disk round-trip) and once, through the authority, to the
+   * file as it is on disk inside the serialized write section. The second run
+   * is the one that lands and is published back; the first is a preview of it.
+   * No whole-file snapshot leaves this hook — `serializeBibFile` is not
+   * imported here, and that is the census's leg (task 558).
+   */
+  const runBibMutation = useCallback(
+    (mutate: BibMutator) => {
+      setBibEntries((prev) => mutate(prev) ?? prev);
+      void mutateProjectBib(docId, mutate);
     },
-    [handle],
+    [docId],
   );
 
   const addCitation = useCallback(
@@ -373,23 +396,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    */
   const updateBibEntry = useCallback(
     (key: string, fields: Record<string, string>) => {
-      setBibEntries((prev) => {
-        const next = prev.map((e) => {
+      runBibMutation((prev) => {
+        if (!prev.some((e) => e.key === key)) return null; // not on disk
+        return prev.map((e) => {
           if (e.key !== key) return e;
           const updated = { ...e, fields: { ...e.fields, ...fields } };
-          const lines = Object.entries(updated.fields)
-            .map(([k, v]) => `  ${k} = {${v}}`)
-            .join(",\n");
-          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          updated.raw = rebuildRaw(updated);
           return updated;
         });
-        const newRaw = serializeBibFile(next);
-        setBibRaw(newRaw);
-        void persistBib(newRaw);
-        return next;
       });
     },
-    [persistBib],
+    [runBibMutation],
   );
 
   /**
@@ -412,22 +429,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    */
   const replaceBibEntry = useCallback(
     (key: string, fields: Record<string, string>, type?: string) => {
-      setBibEntries((prev) => {
-        const next = prev.map((e) => {
+      runBibMutation((prev) => {
+        if (!prev.some((e) => e.key === key)) return null; // not on disk
+        return prev.map((e) => {
           if (e.key !== key) return e;
           const nextType = type ?? e.type;
           // set-all: replace the field map entirely (cleared fields are gone).
           const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
-          const lines = Object.entries(updated.fields)
-            .map(([k, v]) => `  ${k} = {${v}}`)
-            .join(",\n");
-          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          updated.raw = rebuildRaw(updated);
           return updated;
         });
-        const newRaw = serializeBibFile(next);
-        setBibRaw(newRaw);
-        void persistBib(newRaw);
-        return next;
       });
       // Fan a REAL type change through the single writer so any registered
       // migrator observes it. Resolve the retype decision from the live
@@ -442,7 +453,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }
       }
     },
-    [persistBib, bibEntries, identityCascade],
+    [runBibMutation, bibEntries, identityCascade],
   );
 
   /** Apply the `.bib`-side `key`+`type` mutation for the entry currently
@@ -451,23 +462,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    *  both flag paths so the on-disk write is identical. */
   const applyBibKeyType = useCallback(
     (match: (e: BibEntry) => boolean, newKey: string, newType: string) => {
-      setBibEntries((prev) => {
-        const next = prev.map((e) => {
+      runBibMutation((prev) => {
+        if (!prev.some(match)) return null; // not on disk
+        return prev.map((e) => {
           if (!match(e)) return e;
           const updated = { ...e, key: newKey, type: newType };
-          const lines = Object.entries(updated.fields)
-            .map(([k, v]) => `  ${k} = {${v}}`)
-            .join(",\n");
-          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          updated.raw = rebuildRaw(updated);
           return updated;
         });
-        const newRaw = serializeBibFile(next);
-        setBibRaw(newRaw);
-        void persistBib(newRaw);
-        return next;
       });
     },
-    [persistBib],
+    [runBibMutation],
   );
 
   /** Rewrite the citation SIDECAR refs that reference `oldKey` → `newKey`.
@@ -521,21 +526,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // including the original bare-`\b` ref rewrite, so the existing suite is
       // green. Do NOT route this through the boundary matcher: that's the
       // flag-ON behavior change.
-      setBibEntries((prev) => {
-        const next = prev.map((e) => {
-          if (e.key !== oldKey) return e;
-          const updated = { ...e, key: newKey, type: newType };
-          const lines = Object.entries(updated.fields)
-            .map(([k, v]) => `  ${k} = {${v}}`)
-            .join(",\n");
-          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
-          return updated;
-        });
-        const newRaw = serializeBibFile(next);
-        setBibRaw(newRaw);
-        void persistBib(newRaw);
-        return next;
-      });
+      applyBibKeyType((e) => e.key === oldKey, newKey, newType);
       if (oldKey !== newKey) {
         update((prev) => ({
           ...prev,
@@ -551,32 +542,37 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }));
       }
     },
-    [persistBib, update, bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
+    [update, bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
   );
 
   const addBibEntry = useCallback(
     (entry: BibEntry) => {
-      setBibEntries((prev) => {
-        if (prev.some((e) => e.key === entry.key)) return prev;
-        // SSOT uid-mint point: any new entry that arrives without a durable uid
-        // (e.g. /editor/find-citation, a library drop, a hand-built BibEntry)
-        // gets one minted here, avoiding collisions with the entries already in
-        // state, so the identity spine (annotations/bib-review keying, the
-        // rename cascade) has a stable id to anchor to from the entry's first
-        // moment. An entry that already carries a uid (round-tripped from a
-        // `\vbid` marker) keeps it. Under the flag this guarantees `entry.uid`
-        // is always present; flag-off it is harmless extra metadata.
-        const withUid: BibEntry = entry.uid
-          ? entry
-          : { ...entry, uid: mintBibUid(new Set(prev.map((e) => e.uid).filter(Boolean) as string[])) };
-        const next = [...prev, withUid];
-        const newRaw = serializeBibFile(next);
-        setBibRaw(newRaw);
-        void persistBib(newRaw);
-        return next;
+      // SSOT uid-mint point: any new entry that arrives without a durable uid
+      // (e.g. /editor/find-citation, a library drop, a hand-built BibEntry)
+      // gets one minted here, so the identity spine (annotations/bib-review
+      // keying, the rename cascade) has a stable id to anchor to from the
+      // entry's first moment. An entry that already carries a uid
+      // (round-tripped from a `\vbid` marker) keeps it. Minted ONCE, outside
+      // the mutator, against the uids this hook knows: the mutator runs twice
+      // (the view, then the disk) and must produce the SAME entry both times
+      // — a uid minted inside it would differ per run. Only a collision with a
+      // uid that is on disk but not yet in this view re-mints, inside, against
+      // the disk set, and the publish then converges the view on that answer.
+      const knownUids = new Set(
+        bibEntriesRef.current.map((e) => e.uid).filter(Boolean) as string[],
+      );
+      const uid = entry.uid || mintBibUid(knownUids);
+      runBibMutation((prev) => {
+        if (prev.some((e) => e.key === entry.key)) return null;
+        const used = new Set(prev.map((e) => e.uid).filter(Boolean) as string[]);
+        const withUid: BibEntry = {
+          ...entry,
+          uid: used.has(uid) && !entry.uid ? mintBibUid(used) : uid,
+        };
+        return [...prev, withUid];
       });
     },
-    [persistBib],
+    [runBibMutation],
   );
 
   const getBibEntry = useCallback(
