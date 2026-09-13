@@ -1,0 +1,206 @@
+/**
+ * Host writability — ONE derivation of "what may a READ-MOSTLY host persist?",
+ * read by BOTH layers that used to answer it separately (task 556).
+ *
+ * The Library Reader mounts a paper as a `library-paper:<citekey>` doc under
+ * `READER_CHROME`. Its main text is read-only (that is `editable: false` on
+ * the editor and is not this module's business), but it deliberately lets the
+ * user ANNOTATE while reading: `READER_CHROME.editableCardKinds` names the
+ * card kinds whose cards stay editable, and the sidecar those kinds live in is
+ * the ONE thing a Reader session may write to the paper folder. Everything
+ * else about the paper — the `.tex`, the doc bundle, the bib, the PDF, the
+ * figure rasters, every other card sidecar, and the Reader's own VIEW state
+ * (session-only by design, `library/READER_INHERITANCE.md`) — belongs to the
+ * library's indexing skills and is REFUSED.
+ *
+ * Before 556 that answer was given TWICE, and the two disagreed:
+ *
+ *   - `isSidecarWriteAllowed(chrome, filename)` — the UI-layer permit, asked by
+ *     `usePersistentState` before every disk write — derived it from the
+ *     chrome's `editableCardKinds`, and PERMITTED `notes.json`.
+ *   - both storage backends' write funnels asked a strictly stronger, blind
+ *     question — `docId.startsWith("library-paper:")` — and REFUSED every
+ *     write for such a doc unconditionally, `notes.json` included.
+ *
+ * So a note written in the Reader looked saved and was never written; the
+ * UI-layer permit was dead in production (every write it granted was refused
+ * one layer down); `usePersistentState` stamped `hasMutatedRef` for a write
+ * that never landed; and the prose on each side asserted its own answer. A
+ * permit granted at one layer and revoked blind at another is not a policy —
+ * it is two policies, and the user meets whichever one is lower.
+ *
+ * > **The set of sidecars a `library-paper:` doc may write is DERIVED — once,
+ * > here — from the Reader chrome's `editableCardKinds` through the
+ * > card-kind → sidecar map, and the storage funnels ask THIS module rather
+ * > than the docId prefix. Change `READER_EDITABLE_CARD_KINDS` and the UI
+ * > permit and the storage funnel move TOGETHER; neither can disagree with
+ * > the other again.**
+ *
+ * Placement: an import-free leaf (the rule `latex-markers.ts` /
+ * `node-attr-sets.ts` / `sidecar-value.ts` each earned) — the storage backends
+ * cannot import the React-adjacent chrome config, and a facet the layer that
+ * needs it cannot import will be re-copied. `chrome-config.ts` reads THIS
+ * module for the Reader's kinds and for the derivation; it does not hold a
+ * copy. The `library-paper:` docId vocabulary lives here too, so the prefix is
+ * spelled ONCE rather than in each backend and each Reader component.
+ *
+ * NOT this module's business: whether the MAIN TEXT is editable (that is the
+ * editor's `editable` prop), and whether a card kind's editor mounts live or
+ * read-only (that is `chrome.editableCardKinds` read directly by the card
+ * chrome). This module answers only what reaches DISK.
+ */
+
+import type { CardKind } from "@/panels/_shared/types";
+
+// ---------------------------------------------------------------------------
+// The `library-paper:` docId vocabulary (one speller)
+// ---------------------------------------------------------------------------
+
+/**
+ * Library Reader docId convention: `library-paper:<citekey>` resolves to a
+ * paper folder under `<library>/papers/<citekey>/`. Such ids are minted by the
+ * Reader's mount layer, registered one-shot via `setDocHandle`, and are
+ * deliberately NOT in either backend's doc index (so they never pollute the
+ * main app's recents) — their metadata is synthesized on demand.
+ */
+export const LIBRARY_PAPER_PREFIX = "library-paper:";
+
+/** Mint the docId the Reader mounts a library paper under. */
+export function libraryPaperDocId(citekey: string): string {
+  return `${LIBRARY_PAPER_PREFIX}${citekey}`;
+}
+
+/** Is this docId a Library Reader paper? */
+export function isLibraryPaperDoc(docId: string): boolean {
+  return docId.startsWith(LIBRARY_PAPER_PREFIX);
+}
+
+/** The citekey a `library-paper:` docId names. Caller has checked the prefix. */
+export function libraryPaperCitekey(docId: string): string {
+  return docId.slice(LIBRARY_PAPER_PREFIX.length);
+}
+
+// ---------------------------------------------------------------------------
+// Card kind → sidecar, and the derivation both layers read
+// ---------------------------------------------------------------------------
+
+/**
+ * Map from a CARD-bearing `CardKind` → its per-doc sidecar filename. This is
+ * the *card-content* sidecar set ONLY — it intentionally omits non-card state
+ * (focus-mode, document-settings, bib-settings, dictionary, view-ui), which a
+ * read-mostly host never persists at all (its view state is session-only, and
+ * a paper's settings belong to the library).
+ *
+ * `highlight` shares `notes.json` with `note` (one hook owns both); kinds that
+ * have no standalone editable sidecar (footnote/citation atoms, the
+ * example/bib/error record kinds, the suggestion families) are omitted — a
+ * read-mostly host has no editor for them and writes nothing for them.
+ */
+export const CARD_KIND_SIDECAR: Readonly<Partial<Record<CardKind, string>>> =
+  Object.freeze({
+    note: "notes.json",
+    highlight: "notes.json",
+    todo: "todos.json",
+    report: "reports.json",
+    "report-request": "reports.json",
+    archive: "archive.json",
+    "revision-comment": "revisions.json",
+    "cutter-comment": "cutter.json",
+  });
+
+/**
+ * The card kinds the Library Reader keeps editable — `READER_CHROME` reads
+ * this constant (never a literal of its own) so the chrome's declaration and
+ * the storage funnel's derivation are ONE value.
+ *
+ * Reader writes exist solely so a user can annotate while reading: today that
+ * is the `note` kind (and, through the shared sidecar, `highlight`). Widening
+ * it here widens BOTH the card chrome's live editors and what reaches the
+ * paper folder — that is the point, and it is a product decision, not a
+ * tidy-up.
+ */
+export const READER_EDITABLE_CARD_KINDS: readonly CardKind[] = Object.freeze([
+  "note",
+] as const);
+
+/**
+ * THE derivation. The sidecar filenames a host restricted to
+ * `editableCardKinds` may persist; `null` means UNRESTRICTED (no whitelist —
+ * the main app, `FULL_CHROME`, writes everything).
+ *
+ * A host that names an `editableCardKinds` whitelist is a READ-MOSTLY host:
+ * it persists exactly the card sidecars it lets the user edit and NOTHING
+ * ELSE. In particular a non-card sidecar (focus / document-settings /
+ * dictionary / view state) is refused under such a host — pre-556 the UI
+ * permit said "out of scope, allowed" for those while the storage funnel
+ * refused them all, which was the same two-layer disagreement this module
+ * closes, one file over. The effective behaviour (nothing but the editable
+ * card sidecars reaches disk) is unchanged; what changed is that both layers
+ * now SAY so.
+ */
+export function writableSidecarsFor(
+  editableCardKinds: readonly CardKind[] | undefined,
+): ReadonlySet<string> | null {
+  if (!editableCardKinds) return null;
+  const out = new Set<string>();
+  for (const kind of editableCardKinds) {
+    const file = CARD_KIND_SIDECAR[kind];
+    if (file) out.add(file);
+  }
+  return out;
+}
+
+/**
+ * The Reader's answer, derived ONCE from its declared kinds: the sidecars a
+ * `library-paper:` doc may write. Today `{ "notes.json" }`.
+ */
+export const LIBRARY_PAPER_WRITABLE_SIDECARS: ReadonlySet<string> =
+  writableSidecarsFor(READER_EDITABLE_CARD_KINDS) ?? new Set();
+
+/**
+ * May `filename` (a `virgil/` sidecar) be written for `docId`? A normal doc:
+ * always. A `library-paper:` doc: only a sidecar in the derived set. This is
+ * the question both backends' SIDECAR writers ask (`writeSidecar` /
+ * `mutateSidecar`, disk AND local-store branches).
+ */
+export function libraryPaperSidecarWritable(
+  docId: string,
+  filename: string,
+): boolean {
+  if (!isLibraryPaperDoc(docId)) return true;
+  return LIBRARY_PAPER_WRITABLE_SIDECARS.has(filename);
+}
+
+// ---------------------------------------------------------------------------
+// The FSA funnel's question, over its subkey vocabulary
+// ---------------------------------------------------------------------------
+
+/**
+ * Every FSA write enters `enqueueDocWrite(h, subkey, task)`, and a sidecar
+ * write's subkey is `virgil/<filename>` — spelled through this door by both
+ * backends so the funnel below can recognise a sidecar write WITHOUT parsing a
+ * convention it does not own.
+ */
+export const SIDECAR_SUBKEY_PREFIX = "virgil/";
+
+export function sidecarWriteSubkey(filename: string): string {
+  return `${SIDECAR_SUBKEY_PREFIX}${filename}`;
+}
+
+/**
+ * May a write with this funnel `subkey` land for `docId`? A normal doc:
+ * always. A `library-paper:` doc: ONLY a sidecar write (`virgil/<filename>`,
+ * no deeper path) whose filename is in the derived set. The `.tex`, the
+ * bundle (`"bundle"`), the bib, the PDF (`"pdf"`), the figure writers
+ * (`virgil/figures-cache/…`, a deeper path) and the sidecar cleanup
+ * (`"virgil-cleanup"`) all answer `false` — those are the library's own
+ * artifacts, managed by the indexing skills, and that refusal is UNCHANGED
+ * from the pre-556 blanket guard.
+ */
+export function libraryPaperWriteAllowed(docId: string, subkey: string): boolean {
+  if (!isLibraryPaperDoc(docId)) return true;
+  if (!subkey.startsWith(SIDECAR_SUBKEY_PREFIX)) return false;
+  const filename = subkey.slice(SIDECAR_SUBKEY_PREFIX.length);
+  if (filename.includes("/")) return false; // a figure raster / index, not a sidecar
+  return libraryPaperSidecarWritable(docId, filename);
+}

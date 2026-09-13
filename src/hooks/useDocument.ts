@@ -250,8 +250,9 @@ export function useDocument() {
         const receipt = await writeDocBundle(handle, doc, opts);
         if (!receipt.landed) {
           if (receipt.reason === "read-only") {
-            // This document does not persist AT ALL (a `library-paper:` doc in
-            // the Reader). It is not a landed write — claiming one would clear
+            // This document does not persist its BUNDLE (a `library-paper:`
+            // doc in the Reader, which lands only the note sidecar its chrome
+            // lets the user edit — task 556). It is not a landed write — claiming one would clear
             // a dirty state this surface can never legitimately reach — and it
             // is not work at risk: the channel is armed only by an UNDOABLE
             // user edit, which a read-only main text cannot produce. Reporting

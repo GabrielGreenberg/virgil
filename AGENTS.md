@@ -12566,6 +12566,89 @@ out-of-process skill): run an `/editor/*` skill that writes the `.tex`
 against an open paper, watch the veil and the band appear, and — after
 release — the band name Virgil's AI rather than "another app".
 
+### The permit half: a permit granted at one layer and revoked BLIND at another is two policies
+
+Same path, the READ-MOSTLY host (task 556). The Library Reader mounts a paper
+as a `library-paper:<citekey>` doc under `READER_CHROME`, whose
+`editableCardKinds: ["note"]` exists so a user can annotate while reading —
+and the chrome-side permit that whitelist fed (`isSidecarWriteAllowed`, asked
+by `usePersistentState` before every disk write) said YES to `notes.json`. One
+layer below, BOTH storage backends' write funnels asked a strictly stronger,
+blind question — `docId.startsWith("library-paper:")` — and refused EVERY
+write for such a doc. So a note written in the Reader looked saved and was
+never written: no error, no badge, no console line, gone on the next paper
+switch. The permit was dead in production (every write it granted was refused
+one layer down), `hasMutatedRef` was stamped for a write that never landed
+(the hazard its own comment names), and three files said the Reader persists
+nothing while two said notes are the one thing it persists.
+
+> **The set of sidecars a `library-paper:` doc may write is DERIVED — once,
+> in [host-writability.ts](src/lib/host-writability.ts) — from the Reader
+> chrome's `editableCardKinds` through the card-kind → sidecar map, and the
+> storage funnels ask THAT rather than the docId prefix.** Change
+> `READER_EDITABLE_CARD_KINDS` and the UI permit and the storage funnel move
+> TOGETHER. The `.tex`, the bundle, the bib, the PDF, the figure writers and
+> every other sidecar are refused exactly as before: those are the library's
+> own artifacts.
+
+Five rules it earned:
+
+- **Hoist the ANSWER, not the React dependency.** The backends cannot import
+  the chrome config, so the derivation lives in an import-free leaf (the
+  `latex-markers.ts` / `node-attr-sets.ts` placement rule) and
+  `chrome-config.ts` READS it — `READER_CHROME.editableCardKinds` IS the leaf's
+  constant, never a literal of its own, and `CARD_KIND_SIDECAR` left the
+  chrome file for the leaf.
+- **The FSA funnel asks over its SUBKEY, so it needs no filename parse of its
+  own.** A sidecar write's subkey is spelled through `sidecarWriteSubkey` by
+  both doors, the funnel recognises `virgil/<file>` (one segment, no deeper
+  path — a figure raster is `virgil/figures-cache/…` and is not a sidecar) and
+  answers from the derived set; `"bundle"`, `"pdf"`, the bib and the cleanup
+  keys answer `false` by construction.
+- **A whitelist makes the host read-mostly at BOTH layers.** The pre-556
+  permit answered "always allowed" for a NON-card sidecar under a whitelist
+  ("out of scope for this card guard") while the funnel refused them all — the
+  same disagreement one file over. The Reader's view state is session-only by
+  design and a paper's settings belong to the library, so both layers now say
+  NO; the effective behaviour is unchanged and the `hasMutatedRef` stamp is
+  honest, since it is never set for a write the layer below would refuse.
+- **The docId vocabulary is spelled ONCE.** The prefix lived in both backends
+  and both Reader components (`ReaderLRU`'s copy carried a "MUST match" note);
+  it is minted and parsed through the leaf now, so the id the Reader mounts and
+  the id the funnel gates are one string because there is one speller.
+- **The two doors DIFFER on the receipt question and that is preserved.** The
+  bundle and the PDF answer `read-only` / `skipped` EXPLICITLY before the
+  funnel (task 557's rule — the funnel's `undefined as T` is a lie a receipt
+  door cannot afford); the sidecar door still rides the funnel because its
+  callers are void.
+
+CI: [reader-writability.test.ts](src/lib/__tests__/reader-writability.test.ts)
+drives BOTH real backends against a fake paper folder (a note LANDS in
+`virgil/notes.json`; the `.tex`, the bundle, the bib, the PDF and a non-note
+sidecar are still refused; a normal doc writes everything), sweeps the
+AGREEMENT of the two layers over every sidecar the app knows, and carries the
+CENSUS — the derivation was never the part that could misbehave, a second blind
+prefix test in front of a sidecar door is, and so is a Reader component minting
+the prefix by hand (allowlists EMPTY).
+[useNotes-reader-persist.test.tsx](src/hooks/__tests__/useNotes-reader-persist.test.tsx)
+is the end-to-end leg: the REAL `useNotes` under the REAL `READER_CHROME`
+through the REAL `usePersistentState` and the REAL dev backend. **No pre-556
+suite could see this**: `usePersistentState.test.tsx` mocks the storage barrel
+(so the permit was the only guard it could see) and every backend suite drives
+the funnel with a hand-built handle (so the chrome was the part it could not
+see) — the defect lived in the gap between the two. Its harness note is worth
+carrying forward: the dev backend's own graph imports the barrel, so
+`importActual` inside the barrel mock is a cycle vitest refuses; the mock is a
+lazy Proxy with a `has` trap instead. Measured by neutering each way: the
+blanket refusal takes 8 legs, a funnel opened wide 8 (the controls). The
+`library-paper-write-guard` and `sidecar-write-guard` legs that pinned the
+defect as the contract are RENEGOTIATED in place with the reason at the site.
+
+**Owed, not claimed:** a real-FSA eyeball. The Reader needs a mounted library
+folder and a real paper (the FSA-masked class), so the durable proof is the
+unit contract — open a paper in the Reader, add a note, switch papers, come
+back.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),

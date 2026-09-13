@@ -6,6 +6,7 @@ import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
 import type { EditorHandle } from "@/components/Editor";
 import { READER_CHROME } from "@/components/editor-layout/chrome-config";
+import { libraryPaperDocId } from "@/lib/host-writability";
 import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { useReaderView } from "@/components/editor-layout/reader-view-prefs";
@@ -108,7 +109,7 @@ export default function PaperRender({
     setTex(null);
     setParseError(null);
     if (!handle || !citekey || !isIndexed) return;
-    const docId = `library-paper:${citekey}`;
+    const docId = libraryPaperDocId(citekey);
     let cancelled = false;
     (async () => {
       try {
@@ -418,7 +419,7 @@ function PaperReader({
   // and intentionally doesn't pollute the main app's recents. Per-doc
   // sidecar hooks (post-extraction) will resolve this prefix to the
   // paper folder via the doc-handle registry.
-  const docId = `library-paper:${citekey}`;
+  const docId = libraryPaperDocId(citekey);
 
   return (
     // Positioned wrapper so the page lozenge can pin near the right

@@ -15,6 +15,7 @@
 // the reader's note autosave (the only thing a read-only reader persists) is
 // flushed by usePersistentState's unmount flushPending before the pipeline ends.
 
+import { libraryPaperCitekey, libraryPaperDocId } from "@/lib/host-writability";
 import { useEffect, type ReactNode } from "react";
 import type { BibAuthState, CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
@@ -51,8 +52,6 @@ function ReaderKeepAliveSlot({
  *  a back-and-forth between two papers instant) if heap profiling is tight. */
 export const READER_LRU_CAPACITY = 4;
 
-/** MUST match the docId PaperRender derives (PaperRender.tsx). */
-const LIBRARY_PAPER_PREFIX = "library-paper:";
 
 interface Props {
   handle: FileSystemDirectoryHandle;
@@ -75,13 +74,13 @@ export default function ReaderLRU({
   scope,
   panel,
 }: Props) {
-  const activeId = activeCitekey ? LIBRARY_PAPER_PREFIX + activeCitekey : null;
+  const activeId = activeCitekey ? libraryPaperDocId(activeCitekey) : null;
   const lru = useKeepAliveLRU(activeId, READER_LRU_CAPACITY);
 
   return (
     <>
       {lru.map((entry) => {
-        const citekey = entry.id.slice(LIBRARY_PAPER_PREFIX.length);
+        const citekey = libraryPaperCitekey(entry.id);
         return (
           <ReaderKeepAliveSlot key={entry.id} docId={entry.id} isVisible={entry.isVisible}>
             <PaperFileBody

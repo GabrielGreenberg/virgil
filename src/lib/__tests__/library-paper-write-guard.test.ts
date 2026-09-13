@@ -1,14 +1,25 @@
 // @vitest-environment jsdom
 //
-// Read-only-Reader invariant: a `library-paper:<citekey>` doc must NEVER
-// persist ANY write. The Reader mounts a full EditorPane whose derive-on-mount
-// effects (citations, footnotes, …) arm a debounced `writeSidecar(...)`, AND
-// the load path fires a minted-UUID writeback (`writeTex` + `writeDocBundle`).
-// For a library-paper docId there is no registered folder handle, so in
-// production FSA each of those `requireDocHandle` calls throws a wave of "No
-// folder handle stored for doc library-paper:<citekey>", and in dev each
-// silently PUTs to the read-only source. So the guard must cover the WHOLE
-// write class, not just the citations sidecar:
+// Read-mostly-Reader invariant: a `library-paper:<citekey>` doc persists ONLY
+// the sidecars DERIVED from `READER_CHROME.editableCardKinds` — today
+// `notes.json`, the user's annotations — and NOTHING else. The Reader mounts a
+// full EditorPane whose derive-on-mount effects (citations, footnotes, …) arm
+// a debounced `writeSidecar(...)`, AND the load path fires a minted-UUID
+// writeback (`writeTex` + `writeDocBundle`). For a library-paper docId there is
+// no registered folder handle, so in production FSA each of those
+// `requireDocHandle` calls throws a wave of "No folder handle stored for doc
+// library-paper:<citekey>", and in dev each silently PUTs to the read-only
+// source. So the guard must cover the WHOLE write class outside the derived
+// set, not just the citations sidecar:
+//
+// RENEGOTIATED (task 556). This header used to read "must NEVER persist ANY
+// write", and the `writeSidecar` legs below pinned that as the contract while
+// the chrome one layer up PERMITTED `notes.json` — so a note written in the
+// Reader looked saved and was never written. The legs keep their teeth on a
+// NON-note sidecar (`citations.json`), which is exactly what they always
+// drove; the note half (a Reader `notes.json` write LANDS, in both backends)
+// lives in `reader-writability.test.ts`, beside the ONE derivation both the
+// UI permit and the funnels now read (`@/lib/host-writability`).
 //   - storage-fsa: EVERY write funnels through `enqueueDocWrite`, so ONE guard
 //     at that funnel covers writeSidecar / writeTex / writeDocBundle / writeBib
 //     / writePdf / the figure writers + the load-writeback.
@@ -101,8 +112,11 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
   // never-registered handle is the faithful Reader case. If the guard were
   // absent, each of these would fall into assertActive (StalePipelineError) or
   // requireDocHandle (No folder handle) and reject.
-  it("library-paper writeSidecar → no-op that resolves (never reaches requireDocHandle)", async () => {
+  it("library-paper writeSidecar of a NON-note sidecar → no-op that resolves (never reaches requireDocHandle)", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
+    // Scoped to a sidecar OUTSIDE the Reader's derived writable set (task 556):
+    // `citations.json` is refused at the funnel exactly as before. A
+    // `notes.json` write is NOT a no-op any more — see reader-writability.
     await expect(
       writeSidecarFsa(h, "citations.json", { citations: [] }),
     ).resolves.toBeUndefined();
@@ -202,8 +216,10 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     vi.clearAllMocks();
   });
 
-  it("library-paper writeSidecar → no-op that resolves and NEVER calls fetch", async () => {
+  it("library-paper writeSidecar of a NON-note sidecar → no-op that resolves and NEVER calls fetch", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
+    // Scoped to a non-note sidecar (task 556) — parity with the FSA leg above,
+    // where the reason lives.
     await expect(
       writeSidecarDev(h, "citations.json", { citations: [] }),
     ).resolves.toBeUndefined();

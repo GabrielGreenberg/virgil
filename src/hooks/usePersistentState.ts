@@ -133,14 +133,17 @@ export function usePersistentState<S>(
   stateRef.current = state;
 
   // Reader-mode write guard. The active chrome's `editableCardKinds` whitelist
-  // (e.g. the Library Reader's `["note"]`) restricts which CARD sidecars this
-  // host may write — `isSidecarWriteAllowed` refuses a write to any card
-  // sidecar whose kind the chrome doesn't expose an editor for, so a read-only
-  // host can only ever persist the note annotation sidecar even if some other
-  // card kind later gains a live editor. Defaults to FULL_CHROME (everything
-  // writable) outside an `EditorChromeProvider`, so the main app + any non-
-  // editor caller are unaffected. Read into a ref so `persist` (a stable
-  // callback) sees the latest chrome without re-creating the closure.
+  // (the Library Reader's `READER_EDITABLE_CARD_KINDS`, `["note"]`) decides
+  // which sidecars this host may write — `isSidecarWriteAllowed` reads the ONE
+  // derivation in `@/lib/host-writability` (task 556), the same one the
+  // storage funnels read for a `library-paper:` doc, so a read-mostly host
+  // persists exactly the note annotation sidecar and this permit can no
+  // longer disagree with the layer below it (pre-556 it granted `notes.json`
+  // and the funnel refused it: the note looked saved and was never written).
+  // Defaults to FULL_CHROME (everything writable) outside an
+  // `EditorChromeProvider`, so the main app + any non-editor caller are
+  // unaffected. Read into a ref so `persist` (a stable callback) sees the
+  // latest chrome without re-creating the closure.
   const chrome = useEditorChrome();
   const writeAllowedRef = useRef(true);
   writeAllowedRef.current = isSidecarWriteAllowed(chrome, filename);
@@ -204,10 +207,10 @@ export function usePersistentState<S>(
     // `readSidecarIfExists` returns null when the file doesn't exist on
     // disk; we skip `setState` in that case so editor-derived state
     // (e.g. citations populated via `syncFromEditor`) isn't clobbered by
-    // a late-arriving default. Read-only docs like the Library Reader
-    // never persist sidecars, so this branch is the steady state for
-    // them. Persisted-EMPTY values still overwrite — disk remains the
-    // source of truth whenever a sidecar exists.
+    // a late-arriving default. In the Library Reader every sidecar but the
+    // note annotations is never written (task 556), so this branch is the
+    // steady state for those. Persisted-EMPTY values still overwrite — disk
+    // remains the source of truth whenever a sidecar exists.
     readSidecarIfExists<S>(docId, filename)
       .then((raw) => {
         if (cancelled) return;
@@ -283,9 +286,12 @@ export function usePersistentState<S>(
       }
       pendingRef.current = null;
       // Reader-mode safety guard: refuse a write the active chrome disallows
-      // (read-only host writing a non-note card sidecar). The note annotation
-      // sidecar passes; everything else is dropped silently — the in-memory
-      // state still updated, only the disk write is suppressed.
+      // (a read-mostly host writing anything but its editable card sidecars).
+      // The note annotation sidecar passes — and LANDS, since the storage
+      // funnel reads the same derivation (task 556); everything else is
+      // dropped here — the in-memory state still updated, only the disk write
+      // is suppressed — which is what keeps the `hasMutatedRef` stamp below
+      // honest: it is never set for a write the layer below would refuse.
       if (!writeAllowedRef.current) return;
       const h = resolveHandle();
       if (!h) return;
