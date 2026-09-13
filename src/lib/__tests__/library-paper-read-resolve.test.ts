@@ -271,7 +271,13 @@ describe("storage-fsa — library-paper read-handle on-demand resolution", () =>
 
     it("writeDocBundle → no-op, never opens a file on the resolved paper dir", async () => {
       const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-      await expect(writeDocBundle(h, EMPTY_DOC)).resolves.toBeUndefined();
+      // RENEGOTIATED (task 557) — the door REPORTS `read-only` rather than
+      // resolving the funnel's `undefined as T`. The invariant this leg is
+      // about is unchanged and asserted below: no file is opened.
+      await expect(writeDocBundle(h, EMPTY_DOC)).resolves.toEqual({
+        landed: false,
+        reason: "read-only",
+      });
       expect(paperFileSpy).not.toHaveBeenCalled();
     });
   });
