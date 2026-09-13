@@ -1,4 +1,4 @@
-<!-- last-verified: 702a1036 2026-09-03 -->
+<!-- last-verified: e15fe786 2026-09-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -62,9 +62,26 @@ a footnote body or a note card is a real citation Atom, not grey passthrough.
 ## labelRef
 
 `\ref{}` / `\getref{}` / `\getfullref{}` parse to a `labelRef` node; the
-`refCommand` attr records which command was used. Display text is computed by
-`resolveRefs` against the matching `\label{}` (which is a **mark**, not an Atom —
-see below). No Card, no id marker — a labelRef is a pure cross-reference.
+`refCommand` attr records which command was used. No Card, no id marker — a
+labelRef is a pure cross-reference.
+
+Display text comes from **ONE table** — `buildRefTargetIndex` /
+`resolveRefDisplay` ([src/lib/ref-display.ts](../../src/lib/ref-display.ts), task
+550), read by the `.tex` parser (at load), the live numberer (on every structural
+change) and the `\ref` popover (at insert / re-point). It resolves three target
+kinds — a **heading**'s section number, an **example**'s `(N)` / `(Na)` (flat
+sub-items and the dotted `parent.sub` form included), a **figure**'s number — with
+precedence heading > example > figure and, within a kind, first declaration in
+document order. It also carries the heading/figure *numbering* rows, so "what
+number does this heading have" and "what does a ref to it show" cannot disagree.
+The three private copies it replaced (`resolveRefs` in the parser, the numberer's
+`resolveRef`, the popover's `resolveLabelDisplay`) are **retired**; an unresolved
+key renders `??`.
+
+Re-pointing an existing chip addresses it by **identity** — the click carries the
+chip's `pos` plus its owning editor, re-checked at commit and refused on mismatch
+— so a paper that cites one label several times no longer edits the first chip in
+document order (task 550).
 
 ## inlineMath
 
@@ -86,7 +103,15 @@ not Atoms, but a skill editing inline content meets them:
   round-trips; see [latex.md → opaque fallbacks](latex.md#the-two-opaque-fallbacks).
 - **`textColor`** — `\textcolor[HTML]{RRGGBB}{}` (only the `[HTML]{6-hex}` form;
   named colors round-trip as plain text).
-- **`label`** — `\label{}` carried as a mark (the target of a `labelRef`).
+- **There is no `label` mark.** A `\label{}` is **absorbed into a `label` attr**
+  on the node that declares it — `heading`, `figureBlock`, `exampleBlock`,
+  `exampleItem` (`LABEL_DECLARING_NODE_TYPES`, schema-pinned in
+  `src/lib/node-attr-sets.ts`, task 553) — or, where Virgil models nothing, left
+  as literal `\label{}` bytes in raw text or in a `displayMath` `latex` source.
+  All of those are what `collectLabelKeys` ([src/lib/labels.ts](../../src/lib/labels.ts))
+  walks, so every "is this key already claimed?" check sees the same set. Since
+  553 that includes EXAMPLE keys, which the pre-553 registry (`heading` +
+  `figureBlock` only) could not see.
 - **`latexCommentTail`** — a `%` comment tail and the rest of its source line
   (task 347). Distinct from `latexCommand`/`latexVerbatim`: it says LaTeX will not
   typeset these bytes at all, and it owns the line, so the serializer must never
