@@ -248,6 +248,57 @@ describe("a document that leaves memory keeps a mirror of THE WORK", () => {
     ).toEqual(WORK);
   });
 
+  it("M1 · with NOTHING newer than disk in memory, the tick reports no-model and the good mirror survives", async () => {
+    vi.useFakeTimers();
+    // A good mirror already on the slot — the 5 s ticks of an earlier blocked
+    // stretch, or another window's.
+    idb.set("emergency-mirror/doc-1", {
+      docId: "doc-1",
+      content: WORK,
+      savedAt: Date.now(),
+      lastLandedAt: null,
+      reason: "preservation",
+      windowId: "w",
+      hash: "seeded",
+    });
+
+    const { ed, destroy } = destructibleEditor(WORK);
+    const { result, unmount } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await vi.runOnlyPendingTimersAsync();
+    mirrorWrites.length = 0;
+
+    // Type, then leave BEFORE the 1500 ms debounce fires — an ordinary paper
+    // switch. Nothing has ever populated the snapshot ref, so once the editor
+    // is gone there is genuinely nothing in memory that is newer than disk.
+    act(() => result.current.onUpdate(ed, userTx));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    act(() => {
+      destroy();
+      unmount();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // PRE-557 `currentModel`'s third rung answered `lastSavedRef` — by
+    // definition the last model that REACHED DISK — so the forced tick wrote
+    // the disk copy over the work. `emergency-mirror`'s own `no-model` bail
+    // exists for exactly this and was unreachable: the chain never returned
+    // null once a paper had saved even once.
+    expect(
+      mirrorWrites.map((m) => m.content),
+      "with nothing newer than disk in memory the tick must write NOTHING",
+    ).toEqual([]);
+    expect(
+      (idb.get("emergency-mirror/doc-1") as { content: JSONContent }).content,
+      "the good mirror must survive untouched",
+    ).toEqual(WORK);
+  });
+
   it("M2 · an autosave PAUSE leaves a snapshot outside the live editor", async () => {
     vi.useFakeTimers();
     unresolved = true; // the 364 clobber guard holds every write
