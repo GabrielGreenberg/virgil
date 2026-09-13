@@ -46,3 +46,57 @@ export interface ConflictArchive {
    */
   mine: string | null;
 }
+
+/**
+ * **The bundle write's RECEIPT** (task 557) — what `writeDocBundle` actually
+ * did, returned rather than left for the caller to re-derive.
+ *
+ * `writeDocBundle` used to be `Promise<void>`, and a REFUSAL returns normally
+ * (the 357 gates leave the `.tex` and the sidecar byte-identical rather than
+ * throwing), so its one caller had to guess the verdict from a second source:
+ * `isWriteProtected(docId)`. That predicate answers a different question — *is
+ * a notice standing that the user has not answered?* — and the two come apart
+ * the moment a user ACKNOWLEDGES one: `recordPreservationRefusal` then drops a
+ * later refusal without arming a notice, `isWriteProtected` stays false, and
+ * the caller reports a LANDED write for a write that never happened. It then
+ * advances its last-saved marker, clears the dirty state and DELETES the
+ * emergency mirror — the durable copy of work that is now nowhere on disk.
+ *
+ * > **THE REPORT IS THE PERMISSION.** A door that can decline says so; a
+ * > caller may not infer the verdict from the absence of a throw, and may not
+ * > infer it from the absence of a FLAG either — that is the same mistake one
+ * > predicate over.
+ *
+ * The same shape `WritePdfResult` above already has, and that
+ * `captureFloatToStack`, `deleteSidecarSiblings` and the conflict doors have:
+ * the bundle write was the last door in this cluster still making its caller
+ * guess.
+ */
+export type DocWriteReceipt =
+  | { landed: true }
+  | { landed: false; reason: DocWriteRefusalReason };
+
+/**
+ * Why a bundle write did not land.
+ *
+ * - `preservation` — a 357 gate refused: either the write-side words gate
+ *   (`checkWriteAgainstRetained`) or the SERIALIZER (`UnserializableNodeError`).
+ *   They are ONE reason because they are ONE channel — both publish through
+ *   `recordPreservationRefusal`, which is the "one refusal channel for every
+ *   preservation failure" doctrine `serialize-refusal.ts` states. The work is
+ *   in memory and at risk; the caller must say so on the unsaved-work channel.
+ * - `read-only` — this document does not persist AT ALL (a `library-paper:`
+ *   doc in the Reader). Nothing was attempted and nothing is at risk: the
+ *   channel is armed only by an UNDOABLE user edit, which a read-only surface
+ *   cannot produce. Distinguished from `preservation` for the same reason
+ *   `WritePdfResult` distinguishes `skipped` from `failed` — "intentionally not
+ *   persisted" is not a failure, and reporting it as blocked work would arm a
+ *   badge, a `beforeunload` prompt and a mirror on a surface whose whole
+ *   contract is that it never saves.
+ */
+export type DocWriteRefusalReason = "preservation" | "read-only";
+
+/** The one landed receipt, so no call site spells the object literal. */
+export const DOC_WRITE_LANDED: DocWriteReceipt = Object.freeze({
+  landed: true,
+});

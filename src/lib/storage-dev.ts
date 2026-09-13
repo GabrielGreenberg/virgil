@@ -41,7 +41,12 @@ import { migrateDocumentSettings } from "@/lib/document-settings";
 import { asBibFamily, type BibFamily } from "@/lib/bib-family";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
-import type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
+import type {
+  ConflictArchive,
+  DocWriteReceipt,
+  WritePdfResult,
+} from "@/lib/storage-types";
+import { DOC_WRITE_LANDED } from "@/lib/storage-types";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 import {
@@ -698,9 +703,11 @@ export async function writeDocBundle(
      *  the full reasoning lives at that declaration (task 364). */
     userResolvedConflict?: boolean;
   },
-): Promise<void> {
-  // Read-only library-paper docs never persist (parity with storage-fsa).
-  if (isLibraryPaper(h.docId)) return;
+): Promise<DocWriteReceipt> {
+  // Read-only library-paper docs never persist (parity with storage-fsa, where
+  // the reason for answering EXPLICITLY rather than letting the funnel resolve
+  // `undefined` lives).
+  if (isLibraryPaper(h.docId)) return { landed: false, reason: "read-only" };
   assertActive(h);
   // Per-doc serial queue (parity with storage-fsa's enqueueDocWrite
   // "bundle" subkey): without it, bundle writes race — an in-flight
@@ -709,7 +716,7 @@ export async function writeDocBundle(
   // permanently (the masked-loss signature, dev backend only). The disk
   // re-read for the preamble happens INSIDE the chained task, so every
   // queued write sees its predecessor's bytes.
-  return enqueueWrite(`${h.docId}/bundle`, async () => {
+  return enqueueWrite(`${h.docId}/bundle`, async (): Promise<DocWriteReceipt> => {
     const docs = await getDevIndex();
     const entry = findEntry(docs, h.docId);
     const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
@@ -759,7 +766,7 @@ export async function writeDocBundle(
       latex = serializeToLatex(content, serializeOpts);
     } catch (err) {
       if (!reportSerializeRefusal(err, h.docId)) throw err;
-      return;
+      return { landed: false, reason: "preservation" };
     }
 
     // THE WRITE-SIDE PRESERVATION GATE (task 357) — parity with storage-fsa.
@@ -774,7 +781,7 @@ export async function writeDocBundle(
       // Publish the refusal (task 357 hole 4) — see the load gate above for
       // why the dev backend takes no forensic snapshot on the armed edge.
       recordPreservationRefusal(h.docId, writeRefusalDetail(writeVerdict));
-      return;
+      return { landed: false, reason: "preservation" };
     }
 
     // Re-check before the actual writes — a doc switch could have
@@ -796,6 +803,9 @@ export async function writeDocBundle(
         { force },
       ),
     ]);
+    // Parity with storage-fsa: past every gate is a landed write, and a
+    // per-file byte-equality decline (task 415) is still landed.
+    return DOC_WRITE_LANDED;
   });
 }
 

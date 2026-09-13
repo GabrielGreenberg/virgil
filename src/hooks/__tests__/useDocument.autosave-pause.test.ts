@@ -85,7 +85,8 @@ beforeEach(() => {
   cleanup();
   mockRead.mockReset();
   mockWrite.mockReset();
-  mockWrite.mockResolvedValue(undefined);
+  // Task 557 — the write door REPORTS what it did.
+  mockWrite.mockResolvedValue({ landed: true });
   mockRead.mockResolvedValue({ content: EMPTY_CONTENT, editorState: {} });
   resetPipelines();
   resetFlushers();
