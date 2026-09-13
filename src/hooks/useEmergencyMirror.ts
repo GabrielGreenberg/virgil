@@ -121,6 +121,10 @@ export function dropMirror(
   ticker: MirrorTicker | null,
   reason: MirrorDropReason,
 ): void {
+  // `reason` changes nothing at runtime — both endings drop the slot and reset
+  // the fingerprint. It exists so the CALL SITE states the evidence it holds,
+  // and its reader is the task-557 census, which lets only `save()`'s
+  // receipt-landed branch say `landed`.
   void reason;
   ticker?.reset();
   void clearMirror(docId);

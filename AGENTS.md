@@ -11775,6 +11775,128 @@ two minutes, hard-reload → the offer restores within seconds of the last tick;
 and a real-Dropbox eyeball of the aged pause badge. This class masks in the dev
 preview, so the durable proof here is the unit contracts.
 
+#### The evidence half: nothing touches the mirror without POSITIVE EVIDENCE about the model
+
+Same mirror, the half that made the mechanism destroy what it was built to keep
+(task 557) — and the case where the rule was stated at the site, in the right
+words, and then broken by the line immediately below it.
+
+391's mirror is cleared by exactly one thing, and `save()` says so:
+*"THIS is a landed write — the only thing that clears the dirty state and drops
+the mirror. **Never inferred from the absence of a throw.**"* It then inferred it
+from the absence of a FLAG, which is the same mistake one predicate over. Three
+breaches, all silent, all costing the user everything the mirror exists to hold:
+
+- **M1 — the unmount's forced tick mirrored THE DISK COPY over the work.** Two
+  sibling cleanups ran in declaration order over one mutable ref: the flush read
+  `latestContentRef`, nulled it, and handed the duty to the tick below it
+  (*"the forced mirror tick in the sibling cleanup below is what covers this
+  document"*) — which then found the ref empty. In production React destroys the
+  editor in CHILD cleanup first, so `currentModel()` fell through to its third
+  rung, `lastSavedRef`: **by definition the last model that reached disk.** On
+  the next open the mirror's hash matched the file, the load path took its
+  `clearMirror` + `clearRecoveryOffer` branch, and the user was offered nothing.
+  `emergency-mirror` already guards exactly this — `if (!model) return
+  "no-model"`, pinned as *"an editor that is gone reports no-model rather than
+  mirroring nothing over the work"* — and the third rung made `null` unreachable
+  once a paper had saved even once, so the guard could never fire.
+- **M2 — the PAUSE branch never populated that ref at all**, returning nineteen
+  lines before the assignment. Throughout a conflict or a cowork-pen hold — the
+  exact state the mirror exists for — the only copy of the work was the live
+  editor.
+- **M3 — an ACKNOWLEDGED notice made a later refusal read as LANDED.**
+  `recordPreservationRefusal` drops a refusal for a doc the user has already
+  answered (deliberately: re-arming the posture behind them would make the
+  acknowledgment mean nothing), so `isWriteProtected` stays FALSE while the door
+  refuses. `save()`'s only report check was that flag, so a serializer refusal
+  after a "Save anyway" advanced `lastSavedRef`, published a landed write, went
+  green with a timestamp, stopped `beforeunload` prompting — and DELETED the
+  mirror, for a write that never happened.
+
+> **Nothing may write, clear, or replace the emergency mirror without POSITIVE
+> EVIDENCE about the model it is acting on.** A mirror WRITE needs evidence the
+> model is newer than disk; a mirror CLEAR needs evidence THIS model reached
+> disk. Neither may be inferred from a fallback chain, and neither from the
+> absence of a flag.
+
+Eight rules it earned:
+
+- **THE REPORT IS THE PERMISSION, and the bundle write was the last door still
+  making its caller guess.** `writeDocBundle` returns a `DocWriteReceipt`
+  ([storage-types.ts](src/lib/storage-types.ts)) in both backends — the shape
+  `WritePdfResult`, `captureFloatToStack`, `deleteSidecarSiblings` and the
+  conflict doors already have. It retires M3 by CONSTRUCTION and hardens every
+  future refusal source: a new gate cannot be swallowed by an unrelated
+  acknowledgment, because the door states its own verdict rather than leaving a
+  second predicate to stand in for it.
+- **`lastSavedRef` is not a rung.** It is by definition already on disk, so it is
+  never an answer to *what is in memory that may not be* — which is the question
+  every consumer of `currentModel` asks (the mirror, both conflict ports, the
+  manual-save door). Each already handled `null` and must keep doing so: `null`
+  is the honest answer, and it is the one that leaves a good mirror alone.
+- **ONE capture per unmount, read by both consumers.** Two sibling cleanups with
+  an implicit ordering contract over a shared mutable ref cannot both be right
+  about which model is leaving memory. The ref is per-mount and dies with the
+  component, so nulling it bought nothing and cost everything. Deliberately NOT
+  merged into one effect: their dep arrays differ (`[save, …]` vs `[docId]`), and
+  a merged cleanup would fire `clearUnsavedWork` on every handle change.
+- **The two halves of M1 are independently sufficient, and both ship.** Dropping
+  the third rung makes the mirror unable to write the disk copy AT ALL; keeping
+  the snapshot makes the forced tick able to write the WORK. Measured: either one
+  alone leaves the reported case green, which is why the legs are stated per
+  half and the combined neuter is the true pre-557 state.
+- **CAPTURE BEFORE REPORTING.** The pause branch takes its snapshot while the
+  editor is alive — the one moment that path can answer at all — at the same
+  O(doc)-per-1500 ms cost the landing branch pays, off the keystroke path.
+- **A mirror DROP names its evidence.** `dropMirror(docId, ticker, reason)` has
+  two sanctioned reasons and the caller states which it holds: `landed` (the
+  door reported it) and `discarded` (the user chose the disk copy; the conflict
+  door archived their side first). Until 557 both callers spelled
+  `dropMirrorAfterLandedSave` and one of them was on a path where nothing had
+  landed at all, so the name was doing double duty and nothing pinned the
+  distinction. The reason has a READER — the census.
+- **`read-only` is an ANSWER, not a failure**, and it is given BEFORE the funnel.
+  `enqueueDocWrite` short-circuits a `library-paper:` write by resolving
+  `undefined as T` — a CAST, so TypeScript cannot catch a receipt-shaped door
+  returning it, and its own comment (*"none relies on a meaningful resolved
+  value"*) stopped being true the moment one did. `writePdf` already shows the
+  house answer, and for the same stated reason: the caller must distinguish
+  "intentionally not persisted" from a success. `save()` then reports NEITHER
+  landed nor blocked — the channel is armed only by an UNDOABLE user edit, which
+  a read-only main text cannot produce, so a blocked report would arm a badge, a
+  `beforeunload` prompt and a mirror on a surface whose whole contract is that it
+  never saves.
+- **The serializer and the write gate are ONE reason** (`preservation`), because
+  they are one CHANNEL — both publish through `recordPreservationRefusal`, which
+  is the "one refusal channel for every preservation failure" doctrine
+  `serialize-refusal.ts` already states.
+
+CI: [useDocument.mirror-receipt.test.ts](src/hooks/__tests__/useDocument.mirror-receipt.test.ts)
+drives the REAL hook with a fake backend and a REAL in-memory IndexedDB — the
+load path reads the slot back to decide whether to raise an offer, so a stub that
+forgot what it stored could not represent the question. **No pre-557 suite could
+see any of this**: every one of them hands the hook a fake editor that never
+destroys itself, and the defect needs the editor GONE before the parent cleanup
+runs, which is what React does in production and what `useDocument.ts` says at
+its own unmount site. So these legs destroy the editor on the unmount edge and
+then ask what the mirror holds. The leg with teeth is the CENSUS
+([mirror-evidence-census.test.ts](src/lib/__tests__/mirror-evidence-census.test.ts))
+— the receipt and the model source were never the parts that could misbehave, a
+call site that re-derives the verdict is, and every such site type-checks
+perfectly; allowlists EMPTY. Measured by neutering each half in turn: the third
+rung takes 1 behavioural + 1 census leg, the nulled snapshot 1, both M1 halves
+together 4, the pause capture 1, the receipt 2 behavioural + 1 census, a second
+module claiming a landed write 1, an evidence-less `dropMirror` 1, a backend
+returning bare 1, and the read-only answer moved inside the funnel 1. The two
+`library-paper-write-guard` legs that pinned `resolves.toBeUndefined()`, and
+`preservation-refusal-posture`'s ordering leg that pinned
+`isWriteProtected(handle.docId)`, are RENEGOTIATED in place with the reason at
+the site: all three stated the retired mechanism as the contract.
+
+**Owed, not claimed:** a real-FSA eyeball. This class is FSA-masked — pause a
+paper (an external change), type, switch papers, come back — so the durable proof
+here is the unit contract.
+
 ### The honesty half: a gate that stops writing SAYS SO, in one voice
 
 Same path, and the half the incident of 2026-08-19 turned on (task 392).
