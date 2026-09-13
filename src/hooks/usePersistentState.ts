@@ -20,6 +20,10 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import {
+  registerPendingFlusher,
+  unregisterPendingFlusher,
+} from "@/lib/multi-window/pending-saves";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { isSidecarWriteAllowed } from "@/components/editor-layout/chrome-config";
 
@@ -52,8 +56,10 @@ export interface PersistentStateOptions<S> {
    * knows better than the tier — CI forbids a bare literal at a write site.
    *
    * Pending writes are flushed synchronously on unmount, on `docId` change,
-   * and when the tab goes hidden, so no data is lost. Pass `0` to disable
-   * debouncing (matches the pre-debounce write-on-every-update behavior).
+   * when the tab goes hidden, and by the per-doc pending-flusher registry
+   * (`drainDoc` on a doc switch, the reload door before a page tears down —
+   * task 559), so no data is lost. Pass `0` to disable debouncing (matches
+   * the pre-debounce write-on-every-update behavior).
    */
   debounceMs?: number;
 }
@@ -314,17 +320,35 @@ export function usePersistentState<S>(
 
   // Fire the pending write synchronously (the persist itself stays
   // async; we just stop deferring it). Safe to call when nothing is
-  // pending. Used by the unmount/docId-change paths and could be
-  // exposed publicly later if a caller needs an explicit flush.
-  const flushPending = useCallback(() => {
+  // pending. THE SETTLE DOOR: the unmount / docId-change cleanup, the
+  // tab-hidden edge, and — through the pending-flusher registry below — the
+  // per-doc drain and the app-wide reload door. It RETURNS the write promise
+  // so a door that must know the write is on the queue before it proceeds
+  // (the reload door's step 1, task 391) can await it; the edge callers
+  // ignore the return value.
+  const flushPending = useCallback((): Promise<void> => {
     if (pendingTimerRef.current !== null) {
       window.clearTimeout(pendingTimerRef.current);
       pendingTimerRef.current = null;
     }
     const payload = pendingRef.current;
     pendingRef.current = null;
-    if (payload !== null) void persist(payload);
+    return payload !== null ? persist(payload) : Promise.resolve();
   }, [persist]);
+
+  // Register the settle door with the ONE pending-flusher registry (task 559),
+  // under this document, beside `useDocument`'s bundle debounce. A document's
+  // writes are coalesced in ~20 places, and an app-wide door — the reload door
+  // before a page tears down, `drainDoc` before a doc switch — can only flush
+  // what is registered: pre-559 nothing here was, so a note body typed in the
+  // 300 ms before a reload sat outside the door, outside the unsaved-work
+  // channel and outside the mirror at once. Token-matched unregister, so a
+  // stale cleanup never evicts a sibling sidecar's registration.
+  useEffect(() => {
+    if (!docId) return;
+    registerPendingFlusher(docId, flushPending);
+    return () => unregisterPendingFlusher(docId, flushPending);
+  }, [docId, flushPending]);
 
   const update = useCallback(
     (fn: (prev: S) => S) => {
@@ -367,7 +391,7 @@ export function usePersistentState<S>(
   // even if a switch happens mid-debounce.
   useEffect(() => {
     return () => {
-      flushPending();
+      void flushPending();
     };
   }, [docId, flushPending]);
 

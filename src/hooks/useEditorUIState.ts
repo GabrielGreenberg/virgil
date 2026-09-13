@@ -17,6 +17,10 @@ import {
   transactionTouchesFold,
 } from "@/lib/section-folding";
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
+import {
+  registerPendingFlusher,
+  unregisterPendingFlusher,
+} from "@/lib/multi-window/pending-saves";
 import { onTabHidden } from "@/lib/tab-hidden";
 import type { EditorStateData } from "@/lib/types";
 
@@ -214,20 +218,32 @@ export function useEditorUIState(
   // writers below (cursor / scroll / folds) all schedule through this, so a
   // scroll-pause burst, a click into a new paragraph and a fold toggle inside
   // one window collapse to ONE disk write. `flushPending` is the settle door:
-  // it is the doc-switch/unmount cleanup AND the tab-hidden edge, so the value
-  // is never delayed past the moment it stops being live.
+  // it is the doc-switch/unmount cleanup, the tab-hidden edge AND the
+  // pending-flusher registry's entry (task 559), so the value is never delayed
+  // past the moment it stops being live.
   const pendingRef = useRef<EditorStateData | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  const flushPending = useCallback(() => {
+  const flushPending = useCallback((): Promise<void> => {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     const payload = pendingRef.current;
     pendingRef.current = null;
-    if (payload !== null) void persistNow(payload);
+    return payload !== null ? persistNow(payload) : Promise.resolve();
   }, [persistNow]);
+
+  // …and register that same door with the ONE pending-flusher registry
+  // (task 559), so the per-doc drain and the app-wide reload door flush this
+  // coalescer alongside the bundle autosave and every card sidecar. It returns
+  // the write promise for exactly that caller; the edge callers below ignore
+  // it. Token-matched unregister, so a stale cleanup never evicts a sibling.
+  useEffect(() => {
+    if (!docId) return;
+    registerPendingFlusher(docId, flushPending);
+    return () => unregisterPendingFlusher(docId, flushPending);
+  }, [docId, flushPending]);
 
   const persist = useCallback(
     (s: EditorStateData) => {
@@ -245,7 +261,12 @@ export function useEditorUIState(
 
   // Settle on doc switch / unmount — the new doc's handle is different, so a
   // write that fired afterwards would be dropped by the stale-pipeline guard.
-  useEffect(() => () => flushPending(), [docId, flushPending]);
+  useEffect(
+    () => () => {
+      void flushPending();
+    },
+    [docId, flushPending],
+  );
   // …and on the tab going hidden, the last edge at which an async FSA write
   // still reliably completes.
   useEffect(() => onTabHidden(flushPending), [flushPending]);

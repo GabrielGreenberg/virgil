@@ -22,6 +22,10 @@
 //   4. UNMOUNT    — and so does unmount / a doc switch (pre-existing contract,
 //                   pinned here because the coalescer is what makes it
 //                   load-bearing).
+//   5. REGISTRY   — and so does the app-wide door (task 559): the coalescer
+//                   registers its settle door with the ONE pending-flusher
+//                   registry, so the reload door's first move fires it
+//                   beside the bundle autosave and every card sidecar.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
@@ -39,12 +43,18 @@ vi.mock("@/lib/multi-window/doc-pipeline", () => ({
 
 import { useEditorUIState } from "../useEditorUIState";
 import { VIEW_WRITE_DEBOUNCE_MS } from "@/lib/sidecar-value";
+import {
+  __registeredCountForTests,
+  __resetForTests as resetFlushers,
+  flushAllPendingDocs,
+} from "@/lib/multi-window/pending-saves";
 
 beforeEach(() => {
   mockRead.mockReset();
   mockRead.mockResolvedValue(null);
   mockWrite.mockReset();
   mockWrite.mockResolvedValue(undefined);
+  resetFlushers();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -124,5 +134,24 @@ describe("editor-state write cadence (task 363)", () => {
     act(() => unmount());
     expect(mockWrite).toHaveBeenCalledTimes(1);
     expect(mockWrite.mock.calls[0][2]).toMatchObject({ scrollTop: 1234 });
+  });
+
+  it("settles on the app-wide flush — registered with the pending-flusher registry (task 559)", async () => {
+    const { result, unmount } = await mountLoaded();
+    expect(__registeredCountForTests("doc-1")).toBe(1);
+    act(() => result.current.writeScroll(4242));
+    expect(mockWrite).not.toHaveBeenCalled();
+    await act(async () => {
+      await flushAllPendingDocs();
+    });
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    expect(mockWrite.mock.calls[0][2]).toMatchObject({ scrollTop: 4242 });
+    // …and the timer, had it fired, has nothing left to write.
+    act(() => {
+      vi.advanceTimersByTime(VIEW_WRITE_DEBOUNCE_MS + 50);
+    });
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    act(() => unmount());
+    expect(__registeredCountForTests("doc-1")).toBe(0);
   });
 });

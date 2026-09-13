@@ -57,11 +57,25 @@ export interface ReloadReadiness {
 /**
  * Make a reload as cheap as it can be made, then report honestly.
  *
- * 1. Fire every document's pending debounce and await the writes.
+ * 1. Fire every document's pending debounces — ALL of them — and await the
+ *    writes. A document coalesces its writes in ~20 places (the bundle
+ *    autosave, one debounce per card sidecar, the view-state coalescer), and
+ *    each registers its settle door with the one pending-flusher registry
+ *    (task 559); pre-559 only the bundle did, so a card body typed in the
+ *    300 ms before a reload was outside this door, and the report below said
+ *    `unlanded: []` about a document that was about to lose it.
  * 2. Re-read the channel — a refusal returns normally, so step 1's resolution
  *    is not evidence of anything.
  * 3. For whatever is still unlanded, force a mirror tick (`force`: young work
  *    is as exposed as old work once the page is going).
+ *
+ * The channel and the mirror deliberately stay MODEL-scoped. A sidecar write
+ * is either landed by step 1 or logged by its own `persist` — it is not on
+ * the unsaved-work channel (which would make every 300 ms card edit look like
+ * blocked work) and cannot be in the mirror (which stores the TipTap model,
+ * where a card body does not live). So `unlanded` still means model work; what
+ * step 1 buys is that the sidecar half has actually been fired and awaited by
+ * the time it is computed.
  */
 export async function prepareForReload(): Promise<ReloadReadiness> {
   try {

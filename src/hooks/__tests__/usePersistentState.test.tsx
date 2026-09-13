@@ -21,6 +21,11 @@ import {
   beginDocPipeline,
   __resetForTests,
 } from "@/lib/multi-window/doc-pipeline";
+import {
+  __registeredCountForTests,
+  __resetForTests as resetFlushers,
+  flushAllPendingDocs,
+} from "@/lib/multi-window/pending-saves";
 import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
 import {
   READER_CHROME,
@@ -38,6 +43,7 @@ beforeEach(() => {
   mockWrite.mockReset();
   mockWrite.mockResolvedValue(undefined);
   __resetForTests();
+  resetFlushers();
 });
 
 // Unmount every rendered hook between tests so their window event listeners
@@ -446,5 +452,72 @@ describe("usePersistentState — live external-sidecar re-read", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(mockRead).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Task 559 — the settle door is REGISTERED with the one pending-flusher
+ * registry, so an app-wide door (the reload door's `flushAllPendingDocs`, the
+ * per-doc `drainDoc`) fires this hook's debounce beside the bundle autosave.
+ * Pre-559 the hook flushed only on its own three edges (unmount, doc switch,
+ * tab hidden) and registered nothing, so a note body typed in the 300 ms
+ * before an app-driven reload was outside the door — and `unlanded: []` was
+ * reported about a document that was about to lose it.
+ */
+describe("registers its debounce with the pending-flusher registry (task 559)", () => {
+  it("an app-wide flush LANDS an armed debounced write — and is awaited, not fired-and-forgotten", async () => {
+    beginDocPipeline("doc-1");
+    mockRead.mockResolvedValue({ items: ["a"] });
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-1", "notes.json", EMPTY, {
+        debounceMs: 60_000, // far off — only a flush can land it
+      }),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["a"]));
+    expect(__registeredCountForTests("doc-1")).toBe(1);
+
+    let settled = false;
+    mockWrite.mockImplementation(
+      () =>
+        new Promise<void>((r) =>
+          setTimeout(() => {
+            settled = true;
+            r();
+          }, 5),
+        ),
+    );
+    act(() => {
+      result.current.update((prev) => ({ items: [...prev.items, "typed"] }));
+    });
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await flushAllPendingDocs();
+    });
+    // The write was fired by the registry AND its promise was awaited by the
+    // door before `flushAllPendingDocs` resolved.
+    expect(settled).toBe(true);
+    expectWriteToDoc("doc-1", "notes.json", { items: ["a", "typed"] });
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it("unregisters on unmount — and never registers for a null docId", async () => {
+    beginDocPipeline("doc-1");
+    mockRead.mockResolvedValue(null);
+    const { unmount } = renderHook(() =>
+      usePersistentState<Shape>("doc-1", "notes.json", EMPTY),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(__registeredCountForTests("doc-1")).toBe(1);
+    unmount();
+    expect(__registeredCountForTests("doc-1")).toBe(0);
+
+    renderHook(() => usePersistentState<Shape>(null, "notes.json", EMPTY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(__registeredCountForTests("doc-1")).toBe(0);
   });
 });

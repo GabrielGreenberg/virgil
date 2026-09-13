@@ -70,12 +70,14 @@ export const deleteDocFromIndex = backend.deleteDocFromIndex;
 export const flushDoc = backend.flushDoc;
 
 /**
- * Full drain: fire any pending React-debounced save (if useDocument has
- * one registered), then wait for the storage write queue to empty.
- * Prefer over `flushDoc` at every boundary that requires the doc's
- * latest edits to be on disk — doc switch, tab close, compile, delete.
- * `flushDoc` alone has no visibility into un-fired React debounces, so
- * an edit made within the autosave debounce window would be missed.
+ * Full drain: fire EVERY pending React-debounced write the doc holds — the
+ * bundle autosave, each card sidecar's debounce, the view-state coalescer
+ * (all registered with the pending-flusher registry, task 559) — then wait
+ * for the storage write queue to empty. Prefer over `flushDoc` at every
+ * boundary that requires the doc's latest edits to be on disk — doc switch,
+ * tab close, compile, delete. `flushDoc` alone has no visibility into
+ * un-fired React debounces, so an edit made within a debounce window would
+ * be missed.
  */
 export async function drainDoc(docId: string): Promise<void> {
   await flushPendingForDoc(docId);
