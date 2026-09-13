@@ -10,8 +10,9 @@
  * intentional library/read-only skip, and a swallowed IO failure. The result
  * makes them distinguishable so the compile hook can:
  *   - `written` — persisted to disk; nothing to surface.
- *   - `skipped` — a library/read-only paper that intentionally never persists;
- *     NOT an error. The in-memory viewer still shows the compiled PDF.
+ *   - `skipped` — a library paper, which intentionally never persists a PDF
+ *     (only the Reader's note sidecar lands — task 556); NOT an error. The
+ *     in-memory viewer still shows the compiled PDF.
  *   - `failed`  — the write was attempted and rejected (dev PUT `!resp.ok`, or
  *     a real FSA IO error). The hook surfaces a NON-BLOCKING notice — the
  *     compile itself succeeded and the in-memory PDF is fully usable.
@@ -85,8 +86,10 @@ export type DocWriteReceipt =
  *   `recordPreservationRefusal`, which is the "one refusal channel for every
  *   preservation failure" doctrine `serialize-refusal.ts` states. The work is
  *   in memory and at risk; the caller must say so on the unsaved-work channel.
- * - `read-only` — this document does not persist AT ALL (a `library-paper:`
- *   doc in the Reader). Nothing was attempted and nothing is at risk: the
+ * - `read-only` — this document does not persist its BUNDLE (a
+ *   `library-paper:` doc in the Reader, which lands only the note sidecar its
+ *   chrome lets the user edit — task 556). Nothing was attempted and nothing
+ *   is at risk: the
  *   channel is armed only by an UNDOABLE user edit, which a read-only surface
  *   cannot produce. Distinguished from `preservation` for the same reason
  *   `WritePdfResult` distinguishes `skipped` from `failed` — "intentionally not

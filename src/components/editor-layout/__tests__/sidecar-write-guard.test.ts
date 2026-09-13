@@ -12,8 +12,14 @@
  * constants and the real `CARD_KIND_SIDECAR` filenames, so a future widening
  * of the Reader's writable surface is a conscious, test-breaking change.
  *
- * Pure logic — chrome-config.ts has only type-only imports, so this runs in the
- * default `node` env with no DOM / no heavy module graph.
+ * Since task 556 this permit is a READER of the one derivation in
+ * `@/lib/host-writability` — the same set the storage funnels ask for a
+ * `library-paper:` doc — so what it says YES to is what reaches disk. The
+ * AGREEMENT of the two layers is pinned in `reader-writability.test.ts`; this
+ * suite pins the permit's own answers.
+ *
+ * Pure logic — chrome-config.ts and the leaf have only type-only imports, so
+ * this runs in the default `node` env with no DOM / no heavy module graph.
  */
 
 import { describe, it, expect } from "vitest";
@@ -46,12 +52,22 @@ describe("isSidecarWriteAllowed — Reader is note-write-only", () => {
     }
   });
 
-  it("allows non-card state under READER_CHROME (focus/style/view-ui are out of scope)", () => {
-    // A filename that is NOT a known card sidecar is non-card state and is
-    // never gated — the guard governs card sidecars only.
-    expect(isSidecarWriteAllowed(READER_CHROME, "focus-mode.json")).toBe(true);
-    expect(isSidecarWriteAllowed(READER_CHROME, "document-style.json")).toBe(true);
-    expect(isSidecarWriteAllowed(READER_CHROME, "view-ui.json")).toBe(true);
+  it("refuses non-card state under READER_CHROME too (a read-mostly host persists ONLY its editable card sidecars)", () => {
+    // RENEGOTIATED (task 556). This leg used to assert TRUE here — "non-card
+    // state is out of scope for this card guard" — while the storage funnel one
+    // layer below refused every one of these writes for a `library-paper:` doc.
+    // That was the fork the task closed: a permit that says YES to a write the
+    // funnel will refuse is not a permit, and `usePersistentState` stamped its
+    // `hasMutatedRef` on the strength of it (hiding the sidecar for the doc,
+    // the hazard its own comment names). The Reader's view state is
+    // session-only BY DESIGN (`library/READER_INHERITANCE.md`) and a paper's
+    // settings belong to the library, so the honest answer at BOTH layers is
+    // NO — the effective behaviour (nothing but `notes.json` reaches disk) is
+    // unchanged; what changed is that the permit now SAYS so.
+    expect(isSidecarWriteAllowed(READER_CHROME, "focus.json")).toBe(false);
+    expect(isSidecarWriteAllowed(READER_CHROME, "document-settings.json")).toBe(false);
+    expect(isSidecarWriteAllowed(READER_CHROME, "dictionary.json")).toBe(false);
+    expect(isSidecarWriteAllowed(READER_CHROME, "something-nobody-declared.json")).toBe(false);
   });
 });
 

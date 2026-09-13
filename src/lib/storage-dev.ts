@@ -71,6 +71,12 @@ import {
   hashContent,
 } from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
+import {
+  isLibraryPaperDoc as isLibraryPaper,
+  libraryPaperCitekey,
+  libraryPaperSidecarWritable,
+  sidecarWriteSubkey,
+} from "@/lib/host-writability";
 import { resolveAssetImport } from "@/lib/figures/asset-import";
 import {
   planSidecarCleanup,
@@ -91,23 +97,16 @@ const API = "/api/dev";
 const LIBRARY_API = "/api/dev-library";
 
 /**
- * Library Reader docId convention: `library-paper:<citekey>` resolves
- * to a paper folder under `~/Virgil-Library/papers/<citekey>/`. In
- * the dev preview, the corresponding HTTP route is
- * `/api/dev-library/papers/<citekey>/...` (handled by the
- * `dev-library` API). The synthetic `library-paper:` IDs are NOT in
- * the dev index — they're created on the fly by the Reader's mount
- * layer. Mirrors the synthetic-meta path in `storage-fsa.ts`.
+ * Library Reader docId convention (`@/lib/host-writability` spells the
+ * prefix once, and both backends read `isLibraryPaperDoc` /
+ * `libraryPaperCitekey` from it): `library-paper:<citekey>` resolves to a
+ * paper folder under `~/Virgil-Library/papers/<citekey>/`. In the dev
+ * preview, the corresponding HTTP route is
+ * `/api/dev-library/papers/<citekey>/...` (handled by the `dev-library`
+ * API). The synthetic `library-paper:` IDs are NOT in the dev index —
+ * they're created on the fly by the Reader's mount layer. Mirrors the
+ * synthetic-meta path in `storage-fsa.ts`.
  */
-const LIBRARY_PAPER_PREFIX = "library-paper:";
-
-function isLibraryPaper(docId: string): boolean {
-  return docId.startsWith(LIBRARY_PAPER_PREFIX);
-}
-
-function libraryPaperCitekey(docId: string): string {
-  return docId.slice(LIBRARY_PAPER_PREFIX.length);
-}
 
 /**
  * Build the API URL for a doc's file. Library papers route through
@@ -493,18 +492,24 @@ async function persistSidecarInLock<T>(
 /** The per-file serial-queue key, shared by BOTH sidecar write doors so a
  *  snapshot write and a read-modify-write can never interleave (task 220). */
 const sidecarWriteKey = (docId: string, filename: string) =>
-  `${docId}/virgil/${filename}`;
+  `${docId}/${sidecarWriteSubkey(filename)}`;
 
 export async function writeSidecar<T>(
   h: DocWriteHandle,
   filename: string,
   data: T,
 ): Promise<void> {
-  // Parity with storage-fsa: library-paper docs are read-only and must never
-  // persist sidecars. Without this, the dev backend silently PUTs to
-  // /api/dev-library, corrupting the read-only source (and masking the FSA
-  // "No folder handle stored" throw the Reader hits in production).
-  if (isLibraryPaper(h.docId)) return;
+  // Parity with storage-fsa's `enqueueDocWrite` funnel: a library-paper doc
+  // writes ONLY the sidecar set DERIVED from the Reader chrome's editable card
+  // kinds (`@/lib/host-writability`, task 556) — today `notes.json`, so a note
+  // annotation written while reading LANDS in the paper folder, and every
+  // other sidecar is refused so the dev backend never PUTs a read-only
+  // paper's other state to /api/dev-library.
+  //
+  // RENEGOTIATED (task 556): this used to be a blanket `isLibraryPaper`
+  // refusal, which made `READER_CHROME.editableCardKinds` a permit nothing
+  // downstream honoured.
+  if (!libraryPaperSidecarWritable(h.docId, filename)) return;
   assertActive(h);
   // ROUTE (task 417): a `store: "local"` file never reaches the dev route.
   if (isLocalSidecar(filename)) return writeLocalSidecar(h.docId, filename, data);
@@ -526,7 +531,9 @@ export async function mutateSidecar<T>(
   defaultValue: T,
   mutate: (current: T) => T | null,
 ): Promise<T | null> {
-  if (isLibraryPaper(h.docId)) return null;
+  // The same derived answer as `writeSidecar` (task 556): outside the
+  // Reader's writable set nothing is persisted, which is the honest `null`.
+  if (!libraryPaperSidecarWritable(h.docId, filename)) return null;
   assertActive(h);
   if (isLocalSidecar(filename)) {
     return mutateLocalSidecar(h.docId, filename, defaultValue, mutate, () =>
@@ -559,9 +566,10 @@ export async function readTex(docId: string): Promise<string> {
 }
 
 export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
-  // Read-only library-paper docs never persist (parity with storage-fsa's
-  // enqueueDocWrite funnel guard). The load-writeback / minted-UUID writeback
-  // would otherwise PUT to the read-only source.
+  // A library-paper doc never persists its `.tex` (parity with storage-fsa's
+  // enqueueDocWrite funnel — only the Reader's derived note sidecar lands,
+  // task 556). The load-writeback / minted-UUID writeback would otherwise PUT
+  // to the library's own source.
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   // Same per-doc "bundle" serial queue as writeDocBundle (parity with
@@ -643,9 +651,10 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   }
   const newLatex = serialized;
   const writebackHandle = getActiveHandle(docId);
-  // Read-only library-paper docs never persist — skip the opportunistic
+  // A library-paper doc never persists its `.tex` / bundle (only the Reader's
+  // derived note sidecar lands — task 556) — skip the opportunistic
   // load-writeback (the tex + virgil.json PUTs observed in the live smoke).
-  // Parity with the storage-fsa enqueueDocWrite funnel guard.
+  // Parity with the storage-fsa enqueueDocWrite funnel.
   if (writebackHandle && !isLibraryPaper(docId)) {
     // Fire-and-forget — don't block the editor from opening. The
     // `isActive` re-check inside the closure rejects the writeback if
@@ -704,9 +713,9 @@ export async function writeDocBundle(
     userResolvedConflict?: boolean;
   },
 ): Promise<DocWriteReceipt> {
-  // Read-only library-paper docs never persist (parity with storage-fsa, where
-  // the reason for answering EXPLICITLY rather than letting the funnel resolve
-  // `undefined` lives).
+  // A library-paper doc never persists its bundle (parity with storage-fsa,
+  // where the reason for answering EXPLICITLY rather than letting the funnel
+  // resolve `undefined` lives; only the Reader's note sidecar lands — 556).
   if (isLibraryPaper(h.docId)) return { landed: false, reason: "read-only" };
   assertActive(h);
   // Per-doc serial queue (parity with storage-fsa's enqueueDocWrite
@@ -931,7 +940,8 @@ export async function readBib(docId: string): Promise<BibReadResult> {
 // is user-intent. The FSA twin still takes `snapshotPriorBib`; this backend keeps
 // no `virgil/.history/` folder, so it has no forensic net to take (task 357).
 export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
-  // Read-only library-paper docs never persist (parity with storage-fsa).
+  // A library-paper doc never persists its bib — the library's own artifact
+  // (parity with storage-fsa; only the Reader's note sidecar lands, task 556).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   const tex = await readTex(h.docId);
@@ -966,7 +976,8 @@ export async function writePdf(
   h: DocWriteHandle,
   pdfBytes: Uint8Array,
 ): Promise<WritePdfResult> {
-  // Read-only library-paper docs never persist (parity with storage-fsa).
+  // A library-paper doc never persists a compiled PDF (parity with
+  // storage-fsa; only the Reader's note sidecar lands, task 556).
   if (isLibraryPaper(h.docId)) return { status: "skipped" };
   assertActive(h);
   const filename = await getPdfFilename(h.docId);
@@ -1061,7 +1072,8 @@ export async function writeFigureRaster(
   cacheKey: string,
   blob: Blob,
 ): Promise<void> {
-  // Read-only library-paper docs never persist (parity with storage-fsa).
+  // A library-paper doc never persists a figure raster (parity with
+  // storage-fsa; only the Reader's note sidecar lands, task 556).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
@@ -1105,7 +1117,8 @@ export async function writeFigureIndex(
   h: DocWriteHandle,
   index: Record<string, { source: string; mtimeMs: number; size: number }>,
 ): Promise<void> {
-  // Read-only library-paper docs never persist (parity with storage-fsa).
+  // A library-paper doc never persists its figure index (parity with
+  // storage-fsa; only the Reader's note sidecar lands, task 556).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
@@ -1226,9 +1239,10 @@ export async function importFigureFile(
   subdir: string = "figures",
 ): Promise<string> {
   const basename = picked.file.name;
-  // Read-only library-paper docs never persist — skip the copy-in PUT and
-  // just return the would-be relative path (parity with storage-fsa, whose
-  // byte write funnels through the guarded enqueueDocWrite).
+  // A library-paper doc never imports a figure asset (only the Reader's note
+  // sidecar lands, task 556) — skip the copy-in PUT and just return the
+  // would-be relative path (parity with storage-fsa, whose byte write funnels
+  // through `enqueueDocWrite`, which refuses every non-sidecar library write).
   if (isLibraryPaper(h.docId)) return `${subdir}/${basename}`;
   assertActive(h);
   assertNotSuperseded(h);
@@ -1416,8 +1430,9 @@ export async function deleteSidecarSiblings(
     refused: [],
     failed: [],
   };
-  // Read-only library papers never mutate their source (parity with the FSA
-  // funnel's LIBRARY_PAPER_PREFIX short-circuit).
+  // A library paper's sidecar folder is never CLEANED from the Reader (parity
+  // with the FSA funnel, where a cleanup is not a sidecar write and so falls
+  // outside the Reader's derived writable set — task 556).
   if (isLibraryPaper(h.docId)) return receipt;
   assertActive(h);
   // Drain BEFORE enqueueing — from inside the queue this would wait on itself.

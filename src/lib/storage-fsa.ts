@@ -25,6 +25,13 @@
  */
 
 import { generateEntityId } from "@/lib/uuid";
+import {
+  isLibraryPaperDoc,
+  libraryPaperCitekey,
+  libraryPaperSidecarWritable,
+  libraryPaperWriteAllowed,
+  sidecarWriteSubkey,
+} from "@/lib/host-writability";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 import {
   isLocalSidecar,
@@ -136,16 +143,18 @@ const DEFAULT_SIDECAR: VirgilSidecar = { paragraphs: {} };
  * teardown/remount race, or a non-Reader read (view-session auto-open, façade
  * reads) — fall back to resolving the handle on demand from the mounted
  * library folder. This keeps READS working without relying on PaperRender's
- * racy registration; it does NOT re-enable writes, which short-circuit earlier
- * at the `enqueueDocWrite` library-paper guard (before any `requireDocHandle`
- * call in the task body). A normal doc with no registered handle still throws
- * the same diagnostic — the fallback is gated on the `library-paper:` prefix. */
+ * racy registration; it does NOT widen writes, which are decided earlier at
+ * the `enqueueDocWrite` funnel (`libraryPaperWriteAllowed`, task 556 — only
+ * the Reader's derived note sidecar lands; everything else short-circuits
+ * before any `requireDocHandle` call in the task body). A normal doc with no
+ * registered handle still throws the same diagnostic — the fallback is gated
+ * on the `library-paper:` prefix. */
 async function requireDocHandle(
   docId: string,
 ): Promise<FileSystemDirectoryHandle> {
   const h = await getDocHandle(docId);
   if (h) return h; // registered fast-path — unchanged, still wins
-  if (docId.startsWith(LIBRARY_PAPER_PREFIX)) {
+  if (isLibraryPaperDoc(docId)) {
     const dir = await resolveLibraryPaperDir(docId);
     if (dir) return dir;
   }
@@ -159,7 +168,7 @@ async function requireDocHandle(
 async function resolveLibraryPaperDir(
   docId: string,
 ): Promise<FileSystemDirectoryHandle | null> {
-  const citekey = docId.slice(LIBRARY_PAPER_PREFIX.length);
+  const citekey = libraryPaperCitekey(docId);
   const lib = await getLibraryHandle();
   if (!lib) return null;
   try {
@@ -391,16 +400,27 @@ function enqueueDocWrite<T>(
   subkey: string,
   task: () => Promise<T>,
 ): Promise<T> {
-  // Read-only library-paper docs never persist — enforce the documented
-  // invariant at the single write funnel. Every card-hook sidecar write, the
-  // load-writeback (tex + bundle), bib, pdf, and the figure writers all pass
-  // through here, so this one guard covers the entire write class. Reads
+  // A `library-paper:` doc (the Library Reader) persists ONLY what the Reader
+  // chrome lets the user edit — today the note sidecar — and the funnel asks
+  // `@/lib/host-writability` for that answer rather than the docId prefix
+  // (task 556). Every card-hook sidecar write, the load-writeback (tex +
+  // bundle), bib, pdf, and the figure writers all pass through here, so this
+  // one door decides the entire write class: a sidecar write whose filename is
+  // in the DERIVED set proceeds; every other write for such a doc still
+  // short-circuits exactly as the pre-556 blanket guard did. Reads
   // (`readSidecar`/`readTex`/`getTexFileHandle`/`requireDocHandleForRead`) call
   // `requireDocHandle` directly and bypass this funnel, so library-paper reads
   // keep working. The skipped writes resolve to `undefined`; every caller is a
   // void write (`Promise<void>` / `Promise<string>` figure-import), none relies
-  // on a meaningful resolved value.
-  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX))
+  // on a meaningful resolved value — the receipt-returning doors (bundle, pdf)
+  // answer EXPLICITLY before reaching here.
+  //
+  // RENEGOTIATED (task 556): this used to read "Read-only library-paper docs
+  // never persist" and refused `notes.json` along with everything else, while
+  // `READER_CHROME.editableCardKinds` and `isSidecarWriteAllowed` one layer up
+  // PERMITTED it — so a note written in the Reader looked saved and was never
+  // written. One derivation now, read by both layers.
+  if (!libraryPaperWriteAllowed(h.docId, subkey))
     return Promise.resolve(undefined as T);
   assertActive(h);
   return enqueueWrite(`${h.docId}/${subkey}`, () =>
@@ -538,8 +558,9 @@ export async function readSidecar<T>(
  * "file exists with an empty/default value". Used by `usePersistentState`
  * to avoid clobbering editor-derived state (e.g. citations populated
  * via `syncFromEditor`) when the sidecar has never been written —
- * the Library Reader case, where `library-paper:<citekey>` docs never
- * persist sidecars.
+ * the Library Reader case, where a `library-paper:<citekey>` doc persists
+ * only its note sidecar (task 556) and every other sidecar is absent by
+ * construction.
  */
 export async function readSidecarIfExists<T>(
   docId: string,
@@ -615,18 +636,18 @@ export async function writeSidecar<T>(
   // ROUTE (task 417): a `store: "local"` file goes to IndexedDB and never
   // enters the disk funnel — no swap file, no ledger stamp, nothing for a
   // sync daemon to see. The two guards the funnel would have applied are
-  // kept: a read-only library-paper doc persists nothing (parity with disk —
-  // the Reader's view state is deliberately not remembered either way), and
-  // a superseded pipeline's write is dropped.
+  // kept: a library-paper doc writes only its DERIVED sidecar set (task 556 —
+  // a local-store file is view state, so the Reader's is deliberately not
+  // remembered either way), and a superseded pipeline's write is dropped.
   if (isLocalSidecar(filename)) {
-    if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return;
+    if (!libraryPaperSidecarWritable(h.docId, filename)) return;
     assertActive(h);
     return writeLocalSidecar(h.docId, filename, data);
   }
-  // Read-only library-paper docs never persist — the guard lives at the
-  // `enqueueDocWrite` funnel below, which this (and every other writer) routes
-  // through.
-  return enqueueDocWrite(h, `virgil/${filename}`, () =>
+  // The library-paper answer lives at the `enqueueDocWrite` funnel below,
+  // which this (and every other writer) routes through; the subkey is spelled
+  // through the shared door so the funnel can recognise a sidecar write.
+  return enqueueDocWrite(h, sidecarWriteSubkey(filename), () =>
     persistSidecarInLock(h.docId, filename, data),
   );
 }
@@ -651,8 +672,9 @@ export async function writeSidecar<T>(
  * caller that also applies it to in-memory state runs it a second time on a
  * different base. Returning `null` means "nothing to change" — no write, no
  * ledger stamp, and the call resolves `null`, so a caller can tell a no-op
- * apart from a landed write. A library-paper (read-only) doc also resolves
- * `null`: nothing was persisted, which is the honest report.
+ * apart from a landed write. A library-paper doc mutating a sidecar outside
+ * its derived writable set (task 556) also resolves `null`: nothing was
+ * persisted, which is the honest report.
  */
 export async function mutateSidecar<T>(
   h: DocWriteHandle,
@@ -662,7 +684,7 @@ export async function mutateSidecar<T>(
 ): Promise<T | null> {
   // ROUTE (task 417): the local twin serializes per key and migrates once.
   if (isLocalSidecar(filename)) {
-    if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return null;
+    if (!libraryPaperSidecarWritable(h.docId, filename)) return null;
     assertActive(h);
     return mutateLocalSidecar(h.docId, filename, defaultValue, mutate, () =>
       readSidecarFromDisk<T>(h.docId, filename),
@@ -670,7 +692,7 @@ export async function mutateSidecar<T>(
   }
   const result = await enqueueDocWrite<T | null>(
     h,
-    `virgil/${filename}`,
+    sidecarWriteSubkey(filename),
     async () => {
       const current = await readSidecar<T>(h.docId, filename, defaultValue);
       const next = mutate(current);
@@ -679,8 +701,9 @@ export async function mutateSidecar<T>(
       return next;
     },
   );
-  // `enqueueDocWrite` short-circuits a library-paper doc to `undefined` without
-  // running the task — normalize to the same "nothing persisted" report.
+  // `enqueueDocWrite` short-circuits a library-paper write outside the derived
+  // set to `undefined` without running the task — normalize to the same
+  // "nothing persisted" report.
   return result ?? null;
 }
 
@@ -1022,13 +1045,15 @@ export async function writeDocBundle(
     userResolvedConflict?: boolean;
   },
 ): Promise<DocWriteReceipt> {
-  // Library/read-only papers never persist. `enqueueDocWrite` guards this too
-  // — but it guards it by resolving `undefined as T`, which for a receipt-
-  // returning door is a LIE TypeScript cannot catch (the cast is inside the
-  // funnel). So the answer is given EXPLICITLY and BEFORE the funnel, exactly
-  // as `writePdf` does and for the same stated reason: the caller must be able
-  // to distinguish "intentionally not persisted" from a success.
-  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX))
+  // A library paper never persists its BUNDLE (the `.tex` + `virgil.json` are
+  // the library's own artifacts; only the Reader's note sidecar lands — task
+  // 556). `enqueueDocWrite` refuses this too — but it refuses by resolving
+  // `undefined as T`, which for a receipt-returning door is a LIE TypeScript
+  // cannot catch (the cast is inside the funnel). So the answer is given
+  // EXPLICITLY and BEFORE the funnel, exactly as `writePdf` does and for the
+  // same stated reason: the caller must be able to distinguish "intentionally
+  // not persisted" from a success.
+  if (isLibraryPaperDoc(h.docId))
     return { landed: false, reason: "read-only" };
   return enqueueDocWrite(h, "bundle", async (): Promise<DocWriteReceipt> => {
     const docHandle = await requireDocHandle(h.docId);
@@ -1458,11 +1483,12 @@ export async function writePdf(
   h: DocWriteHandle,
   pdfBytes: Uint8Array,
 ): Promise<WritePdfResult> {
-  // Library/read-only papers never persist. `enqueueDocWrite` also guards this
-  // (it resolves `undefined` for library docs), but we return an EXPLICIT
+  // A library paper never persists a compiled PDF (only its note sidecar
+  // lands — task 556). `enqueueDocWrite` also refuses this (it resolves
+  // `undefined` for a non-sidecar library write), but we return an EXPLICIT
   // `skipped` so the caller can distinguish "intentionally not persisted" from
   // a success — the viewer still shows the in-memory bytes either way.
-  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return { status: "skipped" };
+  if (isLibraryPaperDoc(h.docId)) return { status: "skipped" };
   return enqueueDocWrite(h, "pdf", async () => {
     try {
       const docHandle = await requireDocHandle(h.docId);
@@ -2135,19 +2161,18 @@ export async function listDocs(): Promise<FsaDocMeta[]> {
 }
 
 /**
- * Library Reader docId convention: `library-paper:<citekey>` resolves
- * to a paper folder under `~/Virgil-Library/papers/<citekey>/`. These
- * IDs are registered via `setDocHandle` by the Reader's mount layer
- * but are intentionally NOT in the `FsaDocIndex` (so they don't
- * pollute the main app's recents). The metadata they need to
- * round-trip through the storage layer (texFilename, folderName,
- * timestamps) is synthesized on the fly here — Library papers always
- * use the canonical `main.tex` filename, and the timestamps are
+ * Library Reader docId convention (`@/lib/host-writability` spells the
+ * prefix once): `library-paper:<citekey>` resolves to a paper folder under
+ * `~/Virgil-Library/papers/<citekey>/`. These IDs are registered via
+ * `setDocHandle` by the Reader's mount layer but are intentionally NOT in
+ * the `FsaDocIndex` (so they don't pollute the main app's recents). The
+ * metadata they need to round-trip through the storage layer (texFilename,
+ * folderName, timestamps) is synthesized on the fly here — Library papers
+ * always use the canonical `main.tex` filename, and the timestamps are
  * cosmetic (sidecar reads don't consult them).
  */
-const LIBRARY_PAPER_PREFIX = "library-paper:";
 function syntheticLibraryPaperMeta(docId: string): FsaDocMeta {
-  const citekey = docId.slice(LIBRARY_PAPER_PREFIX.length);
+  const citekey = libraryPaperCitekey(docId);
   const stamp = "1970-01-01T00:00:00.000Z";
   return {
     id: docId,
@@ -2161,7 +2186,7 @@ function syntheticLibraryPaperMeta(docId: string): FsaDocMeta {
 }
 
 async function getDocMetaOrThrow(docId: string): Promise<FsaDocMeta> {
-  if (docId.startsWith(LIBRARY_PAPER_PREFIX)) {
+  if (isLibraryPaperDoc(docId)) {
     return syntheticLibraryPaperMeta(docId);
   }
   const idx = await readIndex();
@@ -2323,8 +2348,9 @@ export async function deleteSidecarSiblings(
       return receipt;
     },
   );
-  // `enqueueDocWrite` short-circuits a library-paper doc to `undefined` without
-  // running the task — normalize to "nothing happened" rather than crash.
+  // `enqueueDocWrite` short-circuits a library-paper doc's cleanup (not a
+  // sidecar write, so outside its derived set) to `undefined` without running
+  // the task — normalize to "nothing happened" rather than crash.
   return result ?? empty;
 }
 
