@@ -23,7 +23,7 @@ vi.mock("@/lib/storage", () => {
   const names = [
     "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
     "mutateSidecar", "readTex", "writeTex", "readDocBundle", "writeDocBundle",
-    "readBib", "writeBib", "createDocFromPicker", "createDocInFolder",
+    "readBib", "mutateBib", "createDocFromPicker", "createDocInFolder",
     "pickProjectFolder", "registerDocInFolder", "openExistingDocFromPicker",
     "listDocs", "renameDoc", "deleteDocFromIndex", "flushDoc", "drainDoc",
     "detectBibPackage", "readPaperFolder", "getTexFilename", "writePdf",

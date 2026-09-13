@@ -337,7 +337,7 @@ describe("storage-fsa — a Reader note LANDS, everything else is still refused"
       landed: false,
       reason: "read-only",
     });
-    await expect(fsa.writeBib(h, "@book{k, title={T}}")).resolves.toBeUndefined();
+    await expect(fsa.mutateBib(h, () => "@book{k, title={T}}")).resolves.toBeNull();
     await expect(fsa.writePdf(h, new Uint8Array([1]))).resolves.toEqual({
       status: "skipped",
     });
@@ -416,7 +416,7 @@ describe("storage-dev — a Reader note LANDS, everything else is still refused"
       landed: false,
       reason: "read-only",
     });
-    await expect(dev.writeBib(h, "@book{k, title={T}}")).resolves.toBeUndefined();
+    await expect(dev.mutateBib(h, () => "@book{k, title={T}}")).resolves.toBeNull();
     await expect(dev.writePdf(h, new Uint8Array([1]))).resolves.toEqual({
       status: "skipped",
     });

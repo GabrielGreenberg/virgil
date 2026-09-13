@@ -169,7 +169,7 @@ import {
   writeSidecar,
   mutateSidecar,
   readSidecar,
-  writeBib,
+  mutateBib,
   writeTex,
   invalidateSidecarBundle,
 } from "@/lib/storage-fsa";
@@ -339,20 +339,26 @@ describe("every ledgered writer inherits the gate", () => {
     expect(wrotePath("virgil/notes.json")).toBe(0);
   });
 
-  it("writeBib: identical bytes write nothing AND mint no history slot", async () => {
+  it("mutateBib: identical bytes write nothing AND mint no history slot", async () => {
     // The forensic snapshot rides `beforeWrite`, so a declined write cannot
     // fill `virgil/.history/` with copies of bytes nothing replaced — history
     // slots are themselves sync traffic.
+    //
+    // RENEGOTIATED (task 558): this used to drive `writeBib`, the
+    // whole-snapshot door that every bib writer persisted a stale base
+    // through. The door is `mutateBib` now — same funnel, same snapshot, but
+    // the mutation is computed over the file as read INSIDE the lock — and a
+    // mutation that reproduces the on-disk bytes is the gate's no-op case.
     const h = beginDocPipeline(DOC_ID);
     docHandle.files.set("references.bib", {
       text: "@book{a,\n  title={T},\n}\n",
       mtimeMs: ++clock,
     });
-    await writeBib(h, "@book{a,\n  title={T2},\n}\n");
+    await mutateBib(h, () => "@book{a,\n  title={T2},\n}\n");
     expect(wrotePath("references.bib")).toBe(1);
 
     writes = [];
-    await writeBib(h, "@book{a,\n  title={T2},\n}\n");
+    await mutateBib(h, () => "@book{a,\n  title={T2},\n}\n");
     expect(writes).toEqual([]);
     const slots = docHandle.dirs.get("virgil")?.dirs.get(".history");
     expect([...(slots?.dirs.keys() ?? [])]).toHaveLength(1);

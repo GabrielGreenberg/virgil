@@ -27,7 +27,7 @@ vi.mock("@/lib/storage", () => ({
   readSidecarIfExists: vi.fn(async () => ({})),
   writeSidecar: vi.fn(async () => undefined),
   readBib: vi.fn(async () => ({ bibText: "", detectedPackage: undefined })),
-  writeBib: vi.fn(async () => undefined),
+  mutateBib: vi.fn(async () => null),
 }));
 
 import { regionForAddress, regionForNode } from "@/hooks/useFocusMode";

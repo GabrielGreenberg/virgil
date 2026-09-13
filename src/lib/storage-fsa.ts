@@ -1438,32 +1438,109 @@ export async function readBib(docId: string): Promise<BibReadResult> {
   const bibFilename = await resolveBibFilename(docId);
   const bibText = await safeReadText(docHandle, bibFilename, "");
   // NOTE: readBib is a PURE reader — it does NOT stamp the disk ledger. The
-  // .bib baseline is established by the watcher's PRIME pass + by writeBib;
-  // baselining here would let the watcher's own confirm-read re-baseline the
-  // very external edit it is trying to surface (the flicker bug). See
-  // docs/memos/external-change-badge/DESIGN.md §3.
+  // .bib baseline is established by the watcher's PRIME pass + by the write
+  // half of `mutateBib`; baselining here would let the watcher's own
+  // confirm-read re-baseline the very external edit it is trying to surface
+  // (the flicker bug). See docs/memos/external-change-badge/DESIGN.md §3.
   const tex = await safeReadText(docHandle, meta.texFilename, "");
   const detectedPackage = detectBibPackage(tex);
   return { bibText, bibFilename, detectedPackage };
 }
 
-export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
-  const bibFilename = await resolveBibFilename(h.docId);
-  return enqueueDocWrite(h, `bib/${bibFilename}`, async () => {
-    const docHandle = await requireDocHandle(h.docId);
-    const virgil = await getVirgilSubdir(docHandle);
-    const fh = await docHandle.getFileHandle(bibFilename, { create: true });
-    // Through the gated funnel (task 415), which also stamps the ledger with
-    // the authoritative post-write `.bib` fingerprint. The forensic snapshot
-    // rides `beforeWrite` for the same reason the bundle's does — a declined
-    // write mints no `.history/` slot.
-    const takeSnapshot = onceBeforeWrite(() =>
-      snapshotPriorBib(docHandle, virgil, bibFilename),
-    );
-    await writeTrackedText(h.docId, bibFilename, fh, bibText, {
-      beforeWrite: takeSnapshot,
-    });
+/**
+ * The WRITE half of a `.bib` persist, run INSIDE the caller's already-held
+ * critical section (`enqueueDocWrite`'s queued task on the `bib/<name>` key).
+ * The `.bib` twin of `persistSidecarInLock`: it does no queueing, no pipeline
+ * check and no library-paper guard of its own, and MUST NOT be called outside
+ * the funnel. Its one caller is `mutateBib` — the whole-snapshot `writeBib`
+ * that used to be its other caller is RETIRED (task 558), so a bib write that
+ * did not read its base inside this same section is unrepresentable.
+ *
+ * Through the gated funnel (task 415), which also stamps the ledger with the
+ * authoritative post-write `.bib` fingerprint. The forensic snapshot rides
+ * `beforeWrite` for the same reason the bundle's does — a declined write
+ * mints no `.history/` slot.
+ */
+async function persistBibInLock(
+  docId: string,
+  docHandle: FileSystemDirectoryHandle,
+  bibFilename: string,
+  bibText: string,
+): Promise<void> {
+  const virgil = await getVirgilSubdir(docHandle);
+  const fh = await docHandle.getFileHandle(bibFilename, { create: true });
+  const takeSnapshot = onceBeforeWrite(() =>
+    snapshotPriorBib(docHandle, virgil, bibFilename),
+  );
+  await writeTrackedText(docId, bibFilename, fh, bibText, {
+    beforeWrite: takeSnapshot,
   });
+}
+
+/**
+ * Serialized READ-MODIFY-WRITE of the doc's `.bib` (task 558) — the bib twin
+ * of `mutateSidecar`, and the ONLY write door the `.bib` has.
+ *
+ * `references.bib` has more writers than any sidecar: the Bibliography panel's
+ * per-entry edits, a Library drag-drop, the stack pull's bib carry, the
+ * auto-add of a cited library entry — and a THIRD, out-of-process writer, the
+ * `/editor/*` skills (`find-citation`, `sync-bib-to-library`,
+ * `answer-bib-review`), which rewrite the file straight on disk while the paper
+ * is open. Until this door every in-app writer persisted a WHOLE-FILE snapshot
+ * computed from a base it had read earlier, outside the lock: the panel's
+ * React state, seeded once per doc, or a `readBib` a few awaits before the
+ * write. Two in-app writers racing off different bases lost the earlier entry;
+ * a skill's entry was destroyed by the user's next bib edit; and every
+ * `\cite{key}` naming the lost entry then compiled to an undefined reference,
+ * with no other local copy of an entry the skill had fetched. Nothing threw.
+ *
+ * > **A mutation of the `.bib` is a pure function of the file as it is ON
+ * > DISK, computed inside the same serialized, doc-locked critical section as
+ * > the write.** The read here goes to the file DIRECTLY (never a cached
+ * > snapshot), so `mutate` always sees the freshest bytes — including bytes a
+ * > skill or a peer window landed a moment ago — and no writer can interleave
+ * > between the two halves. That is what covers the out-of-process writer,
+ * > which no Web Lock reaches: its entry is never computed away from a stale
+ * > base, because there is no base but the disk.
+ *
+ * `mutate` takes and returns the file's TEXT — the backend is TipTap- and
+ * citation-js-free, so the parse/serialize pair lives in the ONE authority
+ * that calls this door (`@/lib/project-bib`), which is also where the
+ * post-write list is published. `mutate` must be PURE and cheap: it runs while
+ * the doc lock is held. Returning `null` means "nothing to change" — no write,
+ * no ledger stamp, no snapshot, and the call resolves `null`, so a caller can
+ * tell a no-op apart from a landed write. A library-paper doc (whose `.bib` is
+ * the library's own artifact) also resolves `null`: nothing was persisted.
+ *
+ * The in-lock base read is deliberately NON-stamping (`safeReadText`, the same
+ * reader `readBib` uses), unlike `mutateSidecar`'s `readTrackedText`. The
+ * `.tex`/`.bib` ledger fingerprint is the external-change watcher's baseline
+ * and is KEPT stale across a genuine external change so the badge stays lit
+ * (task 415, "The redundancy half"); stamping it here on a mutation that then
+ * DECLINES would silently absorb an external edit the watcher had not yet
+ * surfaced. The write half stamps, which is the only stamp a landed write
+ * needs.
+ */
+export async function mutateBib(
+  h: DocWriteHandle,
+  mutate: (bibText: string) => string | null,
+): Promise<string | null> {
+  const bibFilename = await resolveBibFilename(h.docId);
+  const result = await enqueueDocWrite<string | null>(
+    h,
+    `bib/${bibFilename}`,
+    async () => {
+      const docHandle = await requireDocHandle(h.docId);
+      const current = await safeReadText(docHandle, bibFilename, "");
+      const next = mutate(current);
+      if (next === null) return null;
+      await persistBibInLock(h.docId, docHandle, bibFilename, next);
+      return next;
+    },
+  );
+  // `enqueueDocWrite` short-circuits a library-paper write to `undefined`
+  // without running the task — normalize to the same "nothing persisted" report.
+  return result ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -2437,7 +2514,7 @@ async function safeReadJson<T>(
 // ---------------------------------------------------------------------------
 // Shadow snapshots — virgil/.history/<timestamp>/
 //
-// Forensic recovery layer. Every successful writeDocBundle / writeBib
+// Forensic recovery layer. Every successful writeDocBundle / mutateBib
 // snapshots the prior version under virgil/.history/<ISO-timestamp>/
 // before overwriting. Last 20 snapshots are kept. If anything ever
 // slips past the pipeline check (Layer 1) and overwrites a doc with

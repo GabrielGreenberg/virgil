@@ -3046,6 +3046,112 @@ Two kinds of leg in the first suite, and both were needed. The CONCURRENCY legs 
 
 One harness detail worth carrying forward, because the suite's first draft got it wrong: these setters schedule their persist from inside a `setState` **updater**, which React invokes lazily at the next render — so `await act(async () => { setter(); await sleep(20) })` waits *before* the updater has run, and the write is still unscheduled when the assertion reads the disk. Every leg then "fails on the pre-fix code" for a timing reason rather than a content one, which is an unfalsifiable defect leg wearing a passing one's clothes. Call the setter in a SYNC `act` to force the flush, then drain the I/O in an async one.
 
+#### The bib half: the one multi-writer file that never received its door
+
+Same law, the file with the MOST writers (task 558) — and the case where the
+rule above was stated, its door was built, every `virgil/*.json` file took it,
+and `references.bib` kept the pre-220 shape for a year with the whole suite
+green.
+
+`writeBib` wrapped only the WRITE. Every in-app mutation was a read-modify-write
+whose READ ran outside the lock: `addEntriesToProjectBib` did `readBib` → parse
+→ append → `writeBib`; the Bibliography panel's five mutators persisted a whole
+`serializeBibFile(next)` derived from React state seeded ONCE per doc and
+refreshed only by an in-app `window` event that `project-bib.ts` alone
+dispatched. The write queue serialized the two WRITES, so the loser's
+whole-file snapshot landed last and won — task 220's lost update, one file
+over. Three members: **M1** two in-app writers racing off different bases (a
+Library drop while a bib card's Save is in flight) drop the earlier entry;
+**M2** an `/editor/*` skill's entry (`find-citation`, `sync-bib-to-library`,
+`answer-bib-review` write the file straight on disk) is destroyed by the user's
+next in-app bib edit, and every `\cite{key}` naming it then compiles to an
+undefined reference with no other local copy of an entry the skill fetched;
+**M3** two Virgil windows on one paper, where window B's base never learns
+about A's addition at all.
+
+> **`mutateBib` is the `.bib`'s ONE write door in both backends — the bib twin
+> of `mutateSidecar`, base read INSIDE the same queued, doc-locked critical
+> section as the write — and the whole-snapshot `writeBib` is RETIRED, so a bib
+> write that did not read its base under the lock is unrepresentable rather
+> than merely discouraged.** [`project-bib.ts`](src/lib/project-bib.ts) is the
+> ONE authority above it: the door is TEXT-shaped (the backends are
+> citation-js-free), so the parse/serialize pair and the post-write PUBLISH
+> live there, and every writer — the Library drop and remove, and all five of
+> `useCitations`'s mutators — enters `mutateProjectBib` with a PURE
+> `BibEntry[] → BibEntry[] | null` mutator.
+
+Six rules it earned:
+
+- **The hook applies the mutator TWICE and keeps no snapshot.** Once to its
+  view (so the UI never waits on disk) and once, through the authority, to the
+  file as read under the lock — whose published result the hook's own listener
+  adopts, so the view CONVERGES on what actually landed (a merge over entries a
+  skill or a peer window added since the hook last read). `bibRaw` is set from
+  the publish only; `serializeBibFile` is no longer imported by the hook, and
+  that is the census's leg.
+- **A uid is minted ONCE, outside the mutator.** The mutator runs twice, and a
+  uid minted inside it would differ per run — the identity spine (annotations,
+  the rename cascade) would briefly anchor to an id the file never held. Only a
+  collision with a uid that is on disk but not yet in the view re-mints, inside,
+  against the disk set, and the publish converges the view on that answer.
+- **An edit of an entry a peer already removed DECLINES** (`null`), never
+  resurrects it — the ai-requests rule. And `addEntriesToProjectBib` mints
+  against the uids ON DISK, so a drop's fresh id cannot collide with one a peer
+  landed since this window last read the file.
+- **The in-lock base read is deliberately NON-stamping**, unlike
+  `mutateSidecar`'s `readTrackedText`. The `.tex`/`.bib` ledger fingerprint is
+  the external-change watcher's baseline and is KEPT stale across a genuine
+  external change so the badge stays lit (task 415); stamping it on a mutation
+  that then declines would silently absorb an edit the watcher had not yet
+  surfaced. The write half stamps, which is the only stamp a landed write needs.
+- **The out-of-process writer is covered for free**, by the same argument
+  task 220 makes for the skills: no Web Lock reaches python, and none is
+  claimed — but merging over the file as it is on disk means a skill's entry is
+  never computed away from a stale base, because there is no base but the disk.
+- **`bibFilenameFromTex` is spelled once in the dev backend** — the name
+  resolver, the reader and the retired write door used to carry three
+  byte-identical copies of the `\bibliography{}` match — and the dev door
+  finally takes the per-file queue (`bib/<name>`, so `flushPrefix` drains it);
+  the retired dev `writeBib` PUT straight through with no queue at all, the
+  pre-220 sidecar shape one file over.
+
+CI: [bib-mutate-door.test.ts](src/lib/__tests__/bib-mutate-door.test.ts)
+drives the REAL doors in BOTH backends over a journalled fake disk — the
+`mutate-sidecar-primitive` shape, which is the MODEL and stays green beside
+it: the CONTENT leg, the ORDERING leg (no base read starts while another
+mutation's read→write pair is open — the forensic copy reads via
+`arrayBuffer()` and is deliberately not a journalled read), the behind-the-back
+write surviving the next mutation, the declined `null` with no write and no
+history slot, and the non-stamping base read pinned against an external edit.
+[bib-authority.test.tsx](src/lib/__tests__/bib-authority.test.tsx) drives the
+REAL hook and the REAL `project-bib` writers over a slow serialized door:
+M1 (a drop racing a Save; two hook mutations in one tick), M2 (a skill's entry
+survives the hook's next edit AND the view converges on it), the no-resurrect
+rule, the once-minted uid, and the CENSUS — `writeBib` retired in both silos,
+`mutateBib` spelled only by its definitions, the barrel and the authority,
+`serializeBibFile(` called by no production file but the two parsers and the
+authority, the event dispatched by the authority alone, and the hook's four
+routed mutators as an EXACT count. **No pre-558 suite could see any of this**:
+every one of them exercised a single writer at a time and asserted the hook's
+in-memory state, where a stale snapshot is indistinguishable from a merge.
+Measured by neutering each half in turn: hoisting the base read outside the
+lock takes 2 legs per backend, the hook mutating over its stale view 5, and an
+authority that publishes nothing 3. The four legs that drove `writeBib`
+(`per-file-write-gate`, `reader-writability` ×2, `stat-files-fsa`) are
+RENEGOTIATED in place with the reason at the site.
+
+**Residual, stated.** M3's DURABILITY half is closed (window B's next mutation
+merges over A's addition, because it reads the disk); its VISIBILITY half is
+not — the publish is `window.dispatchEvent`, so B's panel learns of A's entry
+only through the DiskWatcher badge and a reload, exactly as it does for a
+`.tex` edit. A bib-only external change could re-hydrate the panel silently
+(nothing in the bib state is unsaved work), but that renegotiates what the
+external-change badge means for the `.tex`/`.bib` pair and is a product call.
+
+**Owed, not claimed:** a real-FSA eyeball, since the skill half is the
+FSA-masked class — run `/editor/find-citation` against an open paper, then
+edit a bib card, then read `references.bib` and see both entries.
+
 #### The daemon half: against a writer you cannot serialize with, write LESS and NOTICE the fork
 
 Same file, one writer further out (task 363) — and the case where the authority

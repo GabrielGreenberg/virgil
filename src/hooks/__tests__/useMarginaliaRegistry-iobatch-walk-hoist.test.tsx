@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
     "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "writeBib",
+    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
   ];
   const mod: Record<string, unknown> = { isDevStorage: false };
   for (const name of STORAGE_FNS) mod[name] = vi.fn();

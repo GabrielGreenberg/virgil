@@ -21,11 +21,11 @@
 // lives in `reader-writability.test.ts`, beside the ONE derivation both the
 // UI permit and the funnels now read (`@/lib/host-writability`).
 //   - storage-fsa: EVERY write funnels through `enqueueDocWrite`, so ONE guard
-//     at that funnel covers writeSidecar / writeTex / writeDocBundle / writeBib
+//     at that funnel covers writeSidecar / writeTex / writeDocBundle / mutateBib
 //     / writePdf / the figure writers + the load-writeback.
 //   - storage-dev: no common funnel, so each write entry point that takes a
 //     `DocWriteHandle` guards directly (writeSidecar / writeTex /
-//     writeDocBundle / writeBib / writePdf / figure writers + the inline
+//     writeDocBundle / mutateBib / writePdf / figure writers + the inline
 //     load-writeback in readDocBundle).
 //
 // These tests pin both halves of the invariant — the second is the critical

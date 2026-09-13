@@ -22,7 +22,7 @@ vi.mock("@/lib/storage", () => ({
     bibText: "@article{foo,\n  title = {A}\n}\n@article{foobar,\n  title = {B}\n}\n",
     detectedPackage: undefined,
   })),
-  writeBib: vi.fn(async () => undefined),
+  mutateBib: vi.fn(async () => null),
 }));
 
 import { useCitations } from "../useCitations";
