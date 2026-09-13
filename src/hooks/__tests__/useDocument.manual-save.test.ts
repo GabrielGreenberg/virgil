@@ -38,12 +38,19 @@ vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
   useDiskWatcherOrNull: () => fakeCtx,
 }));
 
-// The preservation channel decides whether a write LANDED. Drive it directly:
-// that is exactly what a real gate does, and it is what makes "the report is
-// the channel" testable without a storage backend.
-let protectedDoc = false;
+// RENEGOTIATED (task 557). This used to read: "the preservation channel decides
+// whether a write LANDED" — and driving the verdict from `isWriteProtected` was
+// exactly the inference 557 retired. `isWriteProtected` answers *is a notice
+// standing that the user has not answered?*, which comes apart from *did this
+// write land?* the moment one is ACKNOWLEDGED. **The DOOR decides now**, and it
+// says so in its receipt.
+//
+// So one flag drives BOTH halves, because in production both are true together
+// for an unacknowledged refusal: the door returns the refusal AND the notice
+// stands (which is what `restoreFromMirror`, the other reader, asks about).
+let refusing = false;
 vi.mock("@/lib/preservation-notice", () => ({
-  isWriteProtected: () => protectedDoc,
+  isWriteProtected: () => refusing,
 }));
 
 import { useDocument } from "../useDocument";
@@ -63,13 +70,18 @@ beforeEach(() => {
   cleanup(); // unmount before the registry forgets these pipelines
   mockRead.mockReset();
   mockWrite.mockReset();
-  mockWrite.mockResolvedValue(undefined);
+  // Task 557 — the write door REPORTS what it did, and `refusing` is what
+  // makes it refuse. A fake that always resolved "landed" would make every
+  // refusal leg below unfalsifiable.
+  mockWrite.mockImplementation(async () =>
+    refusing ? { landed: false, reason: "preservation" } : { landed: true },
+  );
   mockRead.mockResolvedValue({ content: EMPTY, editorState: {} });
   resetPipelines();
   resetFlushers();
   clearUnsavedWork();
   unresolved = false;
-  protectedDoc = false;
+  refusing = false;
 });
 
 function editor(content: JSONContent): Editor {
@@ -128,7 +140,7 @@ describe("requestSaveNow · the door", () => {
     // null and the work is very much unlanded, so "nothing pending" is exactly
     // the wrong answer to a user asking for their work to be saved.
     const result = await mounted();
-    protectedDoc = true;
+    refusing = true;
     act(() => {
       result.current.onUpdate(editor(TYPED), {
         docChanged: true,
@@ -140,7 +152,7 @@ describe("requestSaveNow · the door", () => {
     });
     mockWrite.mockClear();
 
-    protectedDoc = false;
+    refusing = false;
     let out;
     await act(async () => {
       out = await requestSaveNow("doc-1");
@@ -151,7 +163,7 @@ describe("requestSaveNow · the door", () => {
 
   it("REPORTS the refusal off the channel, never from the absence of a throw", async () => {
     const result = await mounted();
-    protectedDoc = true; // a preservation gate is refusing
+    refusing = true; // a preservation gate is refusing
     act(() => {
       result.current.onUpdate(editor(TYPED), {
         docChanged: true,

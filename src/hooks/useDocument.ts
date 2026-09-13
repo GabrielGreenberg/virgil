@@ -33,7 +33,7 @@ import {
   type SaveAttemptOutcome,
 } from "@/lib/save-request";
 import {
-  dropMirrorAfterLandedSave,
+  dropMirror,
   useEmergencyMirror,
 } from "@/hooks/useEmergencyMirror";
 import {
@@ -155,10 +155,26 @@ export function useDocument() {
   }, []);
 
   /**
-   * The LIVE editor model, or the last flushed snapshot when the editor is
-   * gone. Both conflict ports need it, the emergency mirror ticks from it, and
-   * none of them may invent its own source: archiving one model and writing
-   * another would make the net a copy of something that never existed.
+   * **The model that is in MEMORY and may not be on disk** — the live editor,
+   * or the last flushed snapshot when the editor is gone, and `null` when
+   * there is neither. Both conflict ports need it, the emergency mirror ticks
+   * from it, and none of them may invent its own source: archiving one model
+   * and writing another would make the net a copy of something that never
+   * existed.
+   *
+   * **`lastSavedRef` is NOT a rung** (task 557). It is by definition the last
+   * model that REACHED DISK, so it is never a legitimate answer to the
+   * question every consumer here is asking. Until 557 it was the third rung,
+   * and it made `null` unreachable once a paper had saved even once — which
+   * defeated `emergency-mirror`'s own `no-model` bail, the guard whose whole
+   * job is "an editor that is gone reports no-model rather than mirroring
+   * nothing over the work". The unmount's forced tick then wrote THE DISK COPY
+   * over a good mirror of unlanded work, and the next open compared the mirror
+   * against the file, found them equal, and offered the user nothing. That is
+   * the 2026-08-19 incident, reintroduced by the mechanism built to prevent it.
+   *
+   * Every consumer already handles `null` and must keep doing so: it is the
+   * honest answer, and it is the one that leaves a good mirror alone.
    *
    * Declared here (rather than beside its conflict-port consumers below)
    * because the mirror is mounted before `save`, so the ONE model source has
@@ -167,7 +183,7 @@ export function useDocument() {
   const currentModel = useCallback((): JSONContent | null => {
     const editor = editorRef.current;
     if (editor && !editor.isDestroyed) return editor.getJSON();
-    return latestContentRef.current ?? lastSavedRef.current;
+    return latestContentRef.current;
   }, []);
 
   // THE EMERGENCY MIRROR (task 391). While a write is refused, paused, or
@@ -219,15 +235,31 @@ export function useDocument() {
       },
     ) => {
       try {
-        await writeDocBundle(handle, doc, opts);
         // A REFUSED write returns normally — the gate leaves the `.tex` and the
         // sidecar byte-identical rather than throwing (task 357 hole 4). So the
-        // refusal is read off the channel the gate publishes to, never inferred
-        // from the absence of a throw: claiming "saved" here would be the same
-        // silence the gate exists to end, and advancing `lastSavedRef` to a doc
-        // that never reached disk would make the mint-flush suppression skip a
-        // later legitimate write of it. The banner is what tells the user.
-        if (isWriteProtected(handle.docId)) {
+        // verdict is READ OFF THE DOOR'S OWN RECEIPT (task 557), never inferred
+        // from the absence of a throw and never — as it was until 557 — from
+        // `isWriteProtected`, which answers a DIFFERENT question: *is a notice
+        // standing that the user has not answered?* The two come apart the
+        // moment one is acknowledged, and the failure is silent and total:
+        // `recordPreservationRefusal` drops a later refusal without arming a
+        // notice, the flag stays false, and a write that never happened is
+        // reported LANDED — advancing `lastSavedRef`, clearing the dirty state
+        // and DELETING the emergency mirror, which at that point is the only
+        // copy of the work.
+        const receipt = await writeDocBundle(handle, doc, opts);
+        if (!receipt.landed) {
+          if (receipt.reason === "read-only") {
+            // This document does not persist AT ALL (a `library-paper:` doc in
+            // the Reader). It is not a landed write — claiming one would clear
+            // a dirty state this surface can never legitimately reach — and it
+            // is not work at risk: the channel is armed only by an UNDOABLE
+            // user edit, which a read-only main text cannot produce. Reporting
+            // it BLOCKED would arm a badge, a `beforeunload` prompt and a
+            // mirror on a surface whose whole contract is that it never saves.
+            // save-silent-ok: nothing was attempted and nothing is at risk.
+            return;
+          }
           // Task 391: the refusal is also a fact about the USER'S WORK, not
           // only about the document. Publishing it here is what arms the
           // emergency mirror and what every reload door reads — the incident's
@@ -238,9 +270,11 @@ export function useDocument() {
         }
         lastSavedRef.current = doc;
         // THIS is a landed write — the only thing that clears the dirty state
-        // and drops the mirror. Never inferred from the absence of a throw.
+        // and drops the mirror. Never inferred from the absence of a throw, and
+        // since task 557 never from the absence of a flag either: it is the
+        // door's own report.
         noteSaveLanded(handle.docId);
-        dropMirrorAfterLandedSave(handle.docId, mirrorTickerRef.current);
+        dropMirror(handle.docId, mirrorTickerRef.current, "landed");
       } catch (err) {
         if (isStalePipelineError(err)) {
           if (err.reason === "superseded") {
@@ -415,19 +449,21 @@ export function useDocument() {
       // may lag by up to one debounce window (~1500 ms). The doc-switch
       // path in `useFiles` calls `drainDoc(prevId)` → `flushPendingForDoc`
       // BEFORE unmount, capturing the live snapshot.
-      const editor = editorRef.current;
-      let pending: JSONContent | null;
-      if (editor && !editor.isDestroyed) {
-        pending = editor.getJSON();
-      } else {
-        pending = latestContentRef.current;
-      }
-      latestContentRef.current = null;
+      // ONE source, shared with the sibling cleanup below (task 557). This
+      // used to read the same two rungs by hand and then NULL the snapshot ref
+      // — and the sibling it names as its cover runs AFTER it, by declaration
+      // order, reading that very ref. So the flush destroyed the mirror's
+      // input and the tick fell through to `lastSavedRef`, mirroring the disk
+      // copy over the work. Two sibling cleanups with an implicit ordering
+      // contract over a shared mutable ref cannot both be right about which
+      // model is leaving memory; the ref is per-mount and dies with the
+      // component, so nulling it bought nothing and cost everything.
+      const pending = currentModel();
       // save-silent-ok: no model to write (see `flushPending`). The forced
       // mirror tick in the sibling cleanup below is what covers this document.
       if (pending) void save(pending, takeDelimitersOpts());
     };
-  }, [save, takeDelimitersOpts, hasWorkToWrite]);
+  }, [save, takeDelimitersOpts, hasWorkToWrite, currentModel]);
 
   // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
   // flush above is fire-and-forget and may be refused), then stop reporting
@@ -538,6 +574,19 @@ export function useDocument() {
       // hot path), never per keystroke; it is a single O(1) store read.
       const paused = autosavePauseReason(watcherRef.current, docId);
       if (paused) {
+        // Task 557 — CAPTURE BEFORE REPORTING. A pause is precisely the state
+        // the mirror exists for, and until 557 this branch returned nineteen
+        // lines before `latestContentRef.current = doc`: throughout a conflict
+        // or a cowork-pen hold the ONLY copy of the work was the live editor,
+        // so the moment it was destroyed every memory-side consumer had
+        // nothing. The editor is alive HERE, which is the one moment this path
+        // can answer the question at all. O(doc) at most once per 1500 ms, off
+        // the keystroke path — the same cost the landing branch below pays.
+        const live = editorRef.current;
+        if (live && !live.isDestroyed) {
+          latestContentRef.current =
+            getDocProducts(live)?.ensureFresh().docJson ?? live.getJSON();
+        }
         // Task 391: the pause is correct AND it means the user's work is
         // memory-only from here. Say so on the channel — that is what arms the
         // mirror and what stops a reload door opening quietly on top of it.
@@ -802,7 +851,11 @@ export function useDocument() {
         // state and no emergency copy, having replaced the user's work with
         // nothing. The disk only wins once it has actually answered.
         clearUnsavedWork(docId);
-        dropMirrorAfterLandedSave(docId, mirrorTickerRef.current);
+        // `discarded`, not `landed` (task 557): no write happened here — the
+        // user chose the disk copy and the conflict door archived their side
+        // first. Saying `landed` would be the same inference this task is
+        // about, one caller over.
+        dropMirror(docId, mirrorTickerRef.current, "discarded");
       })
       .catch((err) => {
         console.error("Failed to reload document:", err);
@@ -946,7 +999,11 @@ export function useDocument() {
     }
     const doc = currentModel();
     if (doc) {
-      latestContentRef.current = null;
+      // KEEP the snapshot (task 557), matching `keepMineOverDisk` above. This
+      // nulled it, so a manual save that was then REFUSED left the memory-side
+      // consumers with nothing but the live editor — the same editor-only state
+      // the pause branch used to leave, and the one the mirror exists for.
+      latestContentRef.current = doc;
       await save(doc, takeDelimitersOpts());
     }
     // No model at all (no editor, nothing ever snapshotted) falls through to

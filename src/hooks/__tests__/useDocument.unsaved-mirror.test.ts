@@ -105,7 +105,10 @@ const userTx = { docChanged: true, getMeta: () => undefined } as never;
 
 beforeEach(() => {
   mockRead.mockReset().mockResolvedValue({ content: EMPTY, editorState: {} });
-  mockWrite.mockReset().mockResolvedValue(undefined);
+  // Task 557 — the door REPORTS. A fake that resolved `undefined` was the
+  // pre-557 shape in which the caller had to guess the verdict from a second
+  // source; it now has to state it, which is the whole contract.
+  mockWrite.mockReset().mockResolvedValue({ landed: true });
   mockSnapshot.mockReset().mockResolvedValue({
     slot: "s",
     disk: ["main.tex"],
@@ -172,7 +175,10 @@ describe("useDocument publishes to the unsaved-work channel", () => {
   it("a REFUSED write reports `preservation` and never reads as saved", async () => {
     vi.useFakeTimers();
     try {
-      // The 357 gate refuses inside writeDocBundle and returns NORMALLY.
+      // The 357 gate refuses inside writeDocBundle and returns NORMALLY — so
+      // the real door does BOTH: it publishes to the notice channel (what the
+      // banner reads) and, since task 557, RETURNS the refusal (what `save`
+      // reads). The fake does both too, or it is not this door.
       mockWrite.mockImplementation(async () => {
         recordPreservationRefusal("doc-1", {
           source: "write",
@@ -182,6 +188,7 @@ describe("useDocument publishes to the unsaved-work channel", () => {
           lost: 90,
           allowed: 4,
         });
+        return { landed: false, reason: "preservation" };
       });
       const { result } = renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
       await vi.runOnlyPendingTimersAsync();
@@ -237,6 +244,7 @@ describe("useDocument publishes to the unsaved-work channel", () => {
         lost: 1,
         allowed: 0,
       });
+      return { landed: false, reason: "preservation" };
     });
     await act(async () => {
       await expect(docActions!.keepMine()).resolves.toBe(false);
@@ -257,6 +265,7 @@ describe("the unload prompt asks the CHANNEL, not the debounce handle", () => {
           lost: 90,
           allowed: 4,
         });
+        return { landed: false, reason: "preservation" };
       });
       const { result } = renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
       await vi.runOnlyPendingTimersAsync();
@@ -326,6 +335,7 @@ describe("restoring the mirror", () => {
     });
     mockWrite.mockImplementation(async () => {
       order.push("write");
+      return { landed: true };
     });
     mockRead.mockImplementation(async () => {
       order.push("reload");
@@ -360,6 +370,7 @@ describe("restoring the mirror", () => {
         lost: 1,
         allowed: 0,
       });
+      return { landed: false, reason: "preservation" };
     });
     renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
     await act(async () => {});

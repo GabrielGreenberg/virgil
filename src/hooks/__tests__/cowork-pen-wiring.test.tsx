@@ -111,7 +111,8 @@ function heldPen(ttlSec = 30) {
 beforeEach(() => {
   penContextRaw = null;
   collabSidecar = null;
-  mockWrite.mockReset().mockResolvedValue(undefined);
+  // Task 557 — the write door REPORTS what it did.
+  mockWrite.mockReset().mockResolvedValue({ landed: true });
   resetPipelines();
   resetFlushers();
   __resetTickersForTests();

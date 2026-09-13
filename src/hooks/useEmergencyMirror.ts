@@ -86,15 +86,46 @@ export function useEmergencyMirror(opts: {
 }
 
 /**
- * A write LANDED for this document, so its mirror is debris. Exported here
- * rather than called inline in `useDocument` so the ticker's fingerprint is
- * reset in the same breath: leaving it set would make the next armed tick
- * report "unchanged" against a slot that no longer exists.
+ * Why a mirror may be dropped. The mirror is cleared by exactly TWO things,
+ * and a caller states which evidence it holds (task 557) rather than borrowing
+ * the other's name:
+ *
+ * - `landed` — the write door REPORTED that this model reached disk. The only
+ *   evidence that clears a dirty state, and it may be read from nothing but a
+ *   `DocWriteReceipt`.
+ * - `discarded` — the user chose the DISK copy over their own (the conflict
+ *   badge's Reload). No write landed; the disk simply won, and the conflict
+ *   door archived their side to `virgil/.history/` before this ran. Keeping a
+ *   mirror alive would offer to restore, on the next open, exactly the version
+ *   they just discarded.
+ *
+ * The reason has a READER — the task-557 census, which lets only `save()`'s
+ * receipt-landed branch say `landed`. Until 557 both callers spelled
+ * `dropMirrorAfterLandedSave` and one of them was on a path where nothing had
+ * landed at all, so the name was doing double duty and nothing pinned the
+ * distinction.
  */
-export function dropMirrorAfterLandedSave(
+export type MirrorDropReason = "landed" | "discarded";
+
+/**
+ * This document's mirror is debris — drop it. Exported here rather than called
+ * inline in `useDocument` so the ticker's fingerprint is reset in the same
+ * breath: leaving it set would make the next armed tick report "unchanged"
+ * against a slot that no longer exists.
+ *
+ * `reason` is REQUIRED. A defaulted one would be a decision nobody made, and
+ * the two answers rest on opposite evidence.
+ */
+export function dropMirror(
   docId: string,
   ticker: MirrorTicker | null,
+  reason: MirrorDropReason,
 ): void {
+  // `reason` changes nothing at runtime — both endings drop the slot and reset
+  // the fingerprint. It exists so the CALL SITE states the evidence it holds,
+  // and its reader is the task-557 census, which lets only `save()`'s
+  // receipt-landed branch say `landed`.
+  void reason;
   ticker?.reset();
   void clearMirror(docId);
 }

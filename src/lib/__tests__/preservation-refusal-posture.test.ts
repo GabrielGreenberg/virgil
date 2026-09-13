@@ -233,6 +233,26 @@ import { join } from "node:path";
 const REPO = join(__dirname, "../../..");
 const read = (rel: string) => readFileSync(join(REPO, rel), "utf8");
 
+/**
+ * The body of the declaration that STARTS at `marker`, brace-balanced from its
+ * first `{`. Used to ask a question of ONE function rather than of a whole
+ * file: `isWriteProtected` is legitimately read elsewhere in `useDocument`
+ * (`restoreFromMirror` asks whether a notice stands), so a file-wide needle
+ * would indict a correct call site.
+ */
+function declBody(src: string, marker: string): string {
+  const at = src.indexOf(marker);
+  if (at < 0) return "";
+  let i = src.indexOf("{", at);
+  if (i < 0) return "";
+  let depth = 0;
+  for (let j = i; j < src.length; j++) {
+    if (src[j] === "{") depth++;
+    else if (src[j] === "}" && --depth === 0) return src.slice(i, j + 1);
+  }
+  return src.slice(i);
+}
+
 describe("census · every refusal reaches the channel", () => {
   const BACKENDS = ["src/lib/storage-fsa.ts", "src/lib/storage-dev.ts"] as const;
 
@@ -276,7 +296,7 @@ describe("census · every refusal reaches the channel", () => {
     expect(dev).not.toContain("snapshotPriorBundle");
   });
 
-  it("the save path reads the CHANNEL rather than the absence of a throw", () => {
+  it("the save path reads the DOOR'S RECEIPT rather than the absence of a throw", () => {
     // `writeDocBundle` returns normally on a refusal, so a save path that
     // inferred success from "nothing threw" would report Saved over a write
     // that never happened — and advance `lastSavedRef` to a doc that never
@@ -285,12 +305,30 @@ describe("census · every refusal reaches the channel", () => {
     // TASK 392 renegotiated the NEEDLE, not the rule. `saveStatus` was a dead
     // export (declared, written, read by nothing) and is retired; the "saved
     // claim" this leg guards is now the channel publish, which is what every
-    // surface actually reads. Keying on the retired state would have left the
-    // leg passing vacuously on a `src` that no longer contains it.
+    // surface actually reads.
+    //
+    // TASK 557 renegotiated the needle AGAIN, and this time the MECHANISM with
+    // it. The check used to be `isWriteProtected(handle.docId)` — a second
+    // source, answering *is a notice standing that the user has not answered?*
+    // rather than *did this write land?*. The two come apart the moment a
+    // notice is ACKNOWLEDGED: `recordPreservationRefusal` then drops a later
+    // refusal without arming one, the flag stays false, and a write that never
+    // happened is reported LANDED — clearing the dirty state and DELETING the
+    // emergency mirror, which at that point is the only copy of the work. So
+    // the verdict is the door's own `DocWriteReceipt`. The rule is unchanged:
+    // the refusal check still precedes the saved claim.
     const src = read("src/hooks/useDocument.ts");
-    expect(src).toContain("isWriteProtected(handle.docId)");
+    expect(src).toContain("const receipt = await writeDocBundle(");
+    expect(src).toContain("if (!receipt.landed)");
     expect(src).not.toContain("setSaveStatus");
-    const at = src.indexOf("isWriteProtected(handle.docId)");
+    // The retired inference may not come back: nothing in `save` may re-derive
+    // the verdict from the protection flag.
+    const saveBody = declBody(src, "const save = useCallback(");
+    expect(
+      saveBody,
+      "the landed verdict is the receipt's, never the notice flag's",
+    ).not.toContain("isWriteProtected(");
+    const at = src.indexOf("if (!receipt.landed)");
     const savedAt = src.indexOf("noteSaveLanded(handle.docId)", at);
     const assignAt = src.indexOf("lastSavedRef.current = doc", at);
     expect(savedAt, "the refusal check must precede the saved claim").toBeGreaterThan(at);

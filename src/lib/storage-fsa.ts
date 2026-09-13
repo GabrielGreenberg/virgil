@@ -79,7 +79,12 @@ import {
   isStalePipelineError,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
-import type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
+import type {
+  ConflictArchive,
+  DocWriteReceipt,
+  WritePdfResult,
+} from "@/lib/storage-types";
+import { DOC_WRITE_LANDED } from "@/lib/storage-types";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -1016,8 +1021,16 @@ export async function writeDocBundle(
      */
     userResolvedConflict?: boolean;
   },
-): Promise<void> {
-  return enqueueDocWrite(h, "bundle", async () => {
+): Promise<DocWriteReceipt> {
+  // Library/read-only papers never persist. `enqueueDocWrite` guards this too
+  // — but it guards it by resolving `undefined as T`, which for a receipt-
+  // returning door is a LIE TypeScript cannot catch (the cast is inside the
+  // funnel). So the answer is given EXPLICITLY and BEFORE the funnel, exactly
+  // as `writePdf` does and for the same stated reason: the caller must be able
+  // to distinguish "intentionally not persisted" from a success.
+  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX))
+    return { landed: false, reason: "read-only" };
+  return enqueueDocWrite(h, "bundle", async (): Promise<DocWriteReceipt> => {
     const docHandle = await requireDocHandle(h.docId);
     const meta = await getDocMetaOrThrow(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
@@ -1080,7 +1093,7 @@ export async function writeDocBundle(
           () => {},
         );
       }
-      return;
+      return { landed: false, reason: "preservation" };
     }
 
     // THE WRITE-SIDE PRESERVATION GATE (task 357). 350-D gated the LOAD
@@ -1113,7 +1126,7 @@ export async function writeDocBundle(
           () => {},
         );
       }
-      return;
+      return { landed: false, reason: "preservation" };
     }
     const latexHash = hashContent(latex);
     const sidecarJson = JSON.stringify(newSidecar, null, 2);
@@ -1204,6 +1217,10 @@ export async function writeDocBundle(
     } else {
       delimiterCacheByDoc.delete(h.docId);
     }
+    // Past every gate: the bundle was committed to the funnel, which is what
+    // "landed" means here. A per-file byte-equality DECLINE (task 415) is still
+    // a landed write — those bytes ARE the file.
+    return DOC_WRITE_LANDED;
   });
 }
 

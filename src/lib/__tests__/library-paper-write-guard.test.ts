@@ -113,9 +113,19 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
     await expect(writeTexFsa(h, "\\documentclass{article}")).resolves.toBeUndefined();
   });
 
-  it("library-paper writeDocBundle → no-op that resolves (never reaches requireDocHandle, no No-folder-handle throw)", async () => {
+  it("library-paper writeDocBundle → reports `read-only` (never reaches requireDocHandle, no No-folder-handle throw)", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-    await expect(writeDocBundleFsa(h, EMPTY_DOC)).resolves.toBeUndefined();
+    // RENEGOTIATED (task 557). This asserted `undefined` — which is what the
+    // FUNNEL resolves (`undefined as T`, a cast TypeScript cannot catch) for a
+    // library-paper write. That was fine while the door returned `void`, and it
+    // is precisely the hazard once it returns a RECEIPT: `save()` would read
+    // `.landed` off `undefined` and throw inside the Reader. So the door
+    // answers EXPLICITLY and BEFORE the funnel, exactly as `writePdf` does —
+    // and this leg is what pins that the funnel can no longer swallow it.
+    await expect(writeDocBundleFsa(h, EMPTY_DOC)).resolves.toEqual({
+      landed: false,
+      reason: "read-only",
+    });
   });
 
   // Zero blast radius: a normal doc still reaches the real write path. An
@@ -206,9 +216,15 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("library-paper writeDocBundle → no-op that resolves and NEVER calls fetch", async () => {
+  it("library-paper writeDocBundle → reports `read-only` and NEVER calls fetch", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-    await expect(writeDocBundleDev(h, EMPTY_DOC)).resolves.toBeUndefined();
+    // RENEGOTIATED (task 557) — parity with the FSA leg above, where the reason
+    // lives. The guard still short-circuits at the top of the function; what
+    // changed is that it now SAYS so rather than resolving `undefined`.
+    await expect(writeDocBundleDev(h, EMPTY_DOC)).resolves.toEqual({
+      landed: false,
+      reason: "read-only",
+    });
     // Zero blast radius: not even the read-before-write probes fire, because
     // the guard short-circuits at the top of the function.
     expect(fetchSpy).not.toHaveBeenCalled();
