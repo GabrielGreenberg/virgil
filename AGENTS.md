@@ -13420,12 +13420,89 @@ refusal disarms the debounce, so there is no 1500 ms clock.
 `.tex`, which is the FSA-masked class — acknowledge from the pill, and watch
 the save badge clear on that same gesture.
 
+### The stash half: a PAYLOAD is consumed by the write that LANDS it, never by the attempt
+
+Same door, the one obligation 557 and 567 left in a REF (task 568, an audit
+finding). The code-pane preamble lives in the bridge closure and never in the
+TipTap doc, so when the pane flushes a preamble edit, `pendingDelimitersRef`
+is by its own comment *the ONLY durable copy until a write lands* — the bridge
+clears its own `pendingPersist` BEFORE calling the persist callback, and keeps
+rendering the pane from the edited preamble, so a lost stash is a MASKED loss.
+Every save path SPENT it up front: `takeDelimitersOpts` nulled the ref and
+handed the payload to `save`, from eight call sites, and `save` never put it
+back. A write then refused by the preservation gate, thrown by FSA, or dropped
+by a stale pipeline left the ref empty and the payload nowhere; the next
+autosave carried no delimiters, `writeDocBundle` re-read the OLD preamble off
+disk (its cache is stamped only after both gates, so refused delimiters never
+reach it) and wrote it back, and nothing resynced the pane. Old preamble on
+disk, new preamble on screen, forever. The live sequence is ordinary: a load
+refusal standing, a preamble edit in the pane, refused, acknowledged, one
+keystroke.
+
+> **A payload is consumed by the write that LANDS it, never by the attempt** —
+> the "report is the permission" law (357/364/557) read on a PAYLOAD instead
+> of a flag. `save` composes the `delimiters` option ITSELF from the stash and
+> clears it only on `receipt.landed`, for the very object it carried; no
+> caller may hand it one (`SaveOpts` omits the key, so a spend at a call site
+> is a compile error). ONE writer fills the stash (`saveWithDelimiters`, first
+> statement, on every branch), ONE consumer empties it, and the only other
+> clears are the two DISK-WINS paths (`refetch`, the tex-delimiters-changed
+> listener), where replaying a stale stash would clobber the preamble those
+> paths just wrote.
+
+Four rules it earned:
+
+- **Fill FIRST, then decide when to attempt.** Until 568 the unpaused branch
+  of `saveWithDelimiters` nulled the stash and handed the payload to `save`,
+  so the payload lived only inside a pending write and a refused one took it
+  with it. The pause branch had stashed it correctly since task 364 — the
+  attempt-time spend was invisible precisely because the one suite that drove
+  the stash drove the PAUSE branch, where no attempt is made.
+- **Consume by IDENTITY, not by presence.** A fresher payload stashed by a
+  later `saveWithDelimiters` while an older write is still in flight must
+  survive that older write's landing; a bare `= null` on the landed branch
+  would drop it — the same defect one write later.
+- **The channel is armed on the GESTURE, and the predicate reads the stash as
+  a third rung.** A preamble edit in a ref is exactly the memory-only state
+  the unsaved-work channel exists to name (392), so `noteUnsavedEdit` runs
+  before any attempt; and `hasWorkToWrite` reads `pendingDelimitersRef` beside
+  the debounce handle and the channel, because a landing elsewhere can clear
+  the channel under a payload that has not landed (567's stated residual).
+- **The surgical form was declined for the reason the class exists.** Re-stash
+  in `save`'s refused arm and `catch` saves the same bytes and leaves eight
+  call sites spending on the attempt, so the ninth forgets the rule. Retiring
+  the spend door is what makes "the stash is the only copy" true by
+  construction.
+
+CI: [useDocument.delimiters-stash.test.ts](src/hooks/__tests__/useDocument.delimiters-stash.test.ts)
+drives the REAL hook over a fake door that refuses, throws or drops exactly
+once and then lands, and asserts what the LANDING write carried — never the
+rendered pane, which looked right the whole time. **No pre-568 suite could see
+this**: `useDocument.autosave-pause.test.ts` stashes through the pause branch
+and its door always lands. The leg with teeth is the CENSUS
+([delimiters-stash-census.test.ts](src/lib/__tests__/delimiters-stash-census.test.ts)):
+one fill, one identity-guarded consume on the landed side, exactly two
+disk-wins clears, `save` composing the option itself, the caller type omitting
+the key, and the spend door retired in both silos. Measured by neutering the
+consume back to attempt-time: 7 behavioural legs and 2 census legs fail.
+
+**Residual, stated.** The emergency mirror stores only the TipTap model, so a
+RELOAD during a standing stash loses the preamble edit — the same class one
+door over, and closing it is a mirror-schema change (model + delimiters).
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked in dev storage with
+a forced refusal: edit the preamble in the code pane while a preservation
+notice stands, acknowledge, type one character, read the `.tex`.
+
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),
 [save-state-view](src/lib/__tests__/save-state-view.test.ts),
 [save-state-badge](src/components/__tests__/save-state-badge.test.tsx),
 [useDocument.manual-save](src/hooks/__tests__/useDocument.manual-save.test.ts),
+[useDocument.delimiters-stash](src/hooks/__tests__/useDocument.delimiters-stash.test.ts),
+[delimiters-stash-census](src/lib/__tests__/delimiters-stash-census.test.ts),
 [write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),
 [preservation-refusal-posture](src/lib/__tests__/preservation-refusal-posture.test.ts),
 [preservation-notice-badge](src/components/__tests__/preservation-notice-badge.test.tsx),
