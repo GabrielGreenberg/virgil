@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
+import type { JSONContent } from "@tiptap/react";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import {
@@ -226,7 +227,7 @@ export function useArchive(docId: string | null) {
    * Returns true iff the content landed and the card was retired.
    */
   const restoreSnippet = useCallback(
-    (id: string, land: (content: unknown) => boolean): boolean => {
+    (id: string, land: (content: JSONContent) => boolean): boolean => {
       // The ref, not `state`, so a caller that fires before React re-renders
       // still reads the live collection. `update` below is functional, so the
       // write itself is never based on this read.

@@ -3920,6 +3920,29 @@ real-paper flow (anchor behaviour reproduces under prod File System Access), so
 the durable proof here is the unit contract; Gabriel's exact passage is the
 fixture.
 
+**The census's population is discovered by the QUESTION, not by who mints (task
+565).** 393's needle was `createArchiveSnippet(` — who MINTS a snippet — and
+`EditorHandle.archiveSelection` minted nothing: it returned raw slice JSON for a
+caller to mint (inline children at doc level, the shape `slice-capture.ts` says
+throws the moment the body mounts), normalized nothing, asked no schema, deleted
+FIRST and re-homed no anchor — a dead capture outside the door with zero
+callers, invisible to the mint needle, and exactly what the next agent asked to
+"archive the selection" would reach for off the handle. DELETED, with
+`restoreExcerptAtCaret`'s equally dead legacy-string arm (`useArchive`'s
+migrator normalizes every snippet at load, so no string ever reached it — and
+the arm handed a string to `insertContentAt`, which parses it as HTML; the door
+is typed `JSONContent` end to end now, and the migrator is the ONE place a
+string becomes content). The census asks the question a capture site answers —
+cut a range OUT (`doc.slice(` + a delete verb) and KEEP a JSON copy (`.toJSON(`),
+in one declaration — over `src/components/**` + `src/lib/**`, resolved through
+`enclosingDeclaration`, hoisted into `_source-scan.ts` from the refocus census
+so a FIFTH private region resolver was not minted. A MOVE cuts and re-inserts, a
+CONVERSION cuts and rebuilds, a COPY keeps and deletes nothing — none spells all
+three, so the allowlist is EMPTY by construction; measured on the pre-565 tree
+the needle names exactly the retired handle, and a synthetic canary in its shape
+(with a mover, a copier, a converter and a doored capture as controls) keeps the
+leg from going vacuous on a tree whose population is empty.
+
 ### The displacement half: a capture SETS TEXT ASIDE, so the margin context it displaces RE-HOMES
 
 Same door, the cards the capture did not capture (task 491) — and the case where

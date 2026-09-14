@@ -612,3 +612,56 @@ export function trackedFiles(relRoot: string, ext: RegExp): string[] {
 export function resetTrackedFilesCache(): void {
   lsFilesCache.clear();
 }
+
+// ---------------------------------------------------------------------------
+// REGION: the enclosing DECLARATION of an offset
+// ---------------------------------------------------------------------------
+
+/** A brace that opens a control statement is not a declaration. */
+const CONTROL_HEADER =
+  /^\s*(?:\}?\s*(?:else\b|catch\b|finally\b)|if\s*\(|for\s*\(|while\s*\(|switch\s*\(|try\b|do\b)/;
+
+/**
+ * The enclosing DECLARATION of `offset`: walk back to the innermost unmatched
+ * `{`, and keep hopping outward while that brace belongs to a control statement
+ * rather than a function/method/arrow. Returns the declaration's whole text.
+ *
+ * ONE home (task 565): this was `refocus-scroll-census`'s private helper, and
+ * the capture-site census needed the same answer — a fifth private copy of a
+ * region resolver (`container-fit-guardrail` and `tex-write-accountability`
+ * each hold an `enclosingRegion`, `citation-display-projection` a
+ * `declarationRegion`) is how two censuses come to disagree about what "the
+ * declaration" is. Stated limit, inherited by every caller: the region is
+ * brace-balanced text, so a needle in one branch speaks for the whole
+ * declaration — granularity, not a proof. Pass COMMENT-STRIPPED source
+ * (`codeOnlyLines` / `commentsStripped`) so a brace inside a comment cannot
+ * unbalance the walk.
+ */
+export function enclosingDeclaration(src: string, offset: number): string {
+  let i = offset;
+  let depth = 0;
+  let open = -1;
+  while (i >= 0) {
+    const c = src[i];
+    if (c === "}") depth++;
+    else if (c === "{") {
+      if (depth === 0) { open = i; break; }
+      depth--;
+    }
+    i--;
+  }
+  if (open < 0) return src;
+  const lineStart = src.lastIndexOf("\n", open) + 1;
+  const nl = src.indexOf("\n", open);
+  const header = src.slice(lineStart, nl < 0 ? src.length : nl);
+  if (CONTROL_HEADER.test(header)) {
+    return lineStart === 0 ? src : enclosingDeclaration(src, lineStart - 1);
+  }
+  let d = 0;
+  let j = open;
+  for (; j < src.length; j++) {
+    if (src[j] === "{") d++;
+    else if (src[j] === "}") { d--; if (d === 0) break; }
+  }
+  return src.slice(lineStart, j + 1);
+}

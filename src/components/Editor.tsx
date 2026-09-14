@@ -273,11 +273,10 @@ export interface EditorHandle {
   onConfirmHeadingDelete: (typeName: string) => Promise<boolean>;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
-  archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
   /** Re-insert an archived excerpt at the caret. Returns whether the content
    *  actually LANDED — a caller that drops the archive entry afterwards is
    *  destroying the only copy, so it must not do so on a false. */
-  restoreArchive: (content: unknown) => boolean;
+  restoreArchive: (content: JSONContent) => boolean;
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string, sourceEl?: HTMLElement | null) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
@@ -1108,58 +1107,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (el) scrollHeadingToActiveLine(editor.view.dom, el);
       }
     },
-    archiveSelection(_archiveId: string): { content: unknown; paragraphId: string | null } | null {
-      if (!editor) return null;
-      const sel = editor.state.selection;
-
-      // After the delete, resolve (or create) an anchor at the cursor and
-      // return its UUID. Three cases:
-      //   1. Paragraph-archive: cursor lands inside the now-empty paragraph,
-      //      which still carries its original UUID. `ensureAnchorUuid`
-      //      returns the existing UUID.
-      //   2. Heading- or block-atom-archive: the host block was removed.
-      //      The cursor lands inside whatever paragraph survived at the
-      //      join — usually a UUID-less empty paragraph, which the helper
-      //      stamps.
-      //   3. Edge case (e.g. atom was at doc end): no anchorable node at
-      //      cursor — insert a fresh empty paragraph with a UUID.
-      const resolveAnchor = (): string | null => {
-        const existing = ensureAnchorUuid(editor.view, editor.state.selection.from);
-        if (existing) return existing;
-        // Cursor not inside any anchorable node — insert one.
-        const seen = new Set<string>();
-        editor.state.doc.descendants((n) => {
-          const u = n.attrs?.uuid as string | undefined;
-          if (u) seen.add(u);
-        });
-        const newUuid = generateShortId(seen);
-        editor
-          .chain()
-          .focus()
-          .insertContent({ type: "paragraph", attrs: { uuid: newUuid } })
-          .run();
-        return newUuid;
-      };
-
-      // Slice the selection to preserve full node structure (paragraphs,
-      // headings, blockquotes, AND block atoms like texBlock/figureBlock/
-      // latexComment). The matching restoreArchive path below feeds the
-      // slice JSON back through `insertContent`, so round-trip works for
-      // any node type without per-atom branching. The text-emptiness
-      // check is intentional only for text selections: an atom slice has
-      // size > 0 but `textBetween` is empty, so the guard would wrongly
-      // reject it; the explicit `slice.size === 0` covers the legitimate
-      // "nothing to archive" case.
-      const { from, to } = sel;
-      if (from === to) return null;
-      const slice = editor.state.doc.slice(from, to);
-      if (slice.size === 0) return null;
-      const richContent = { type: "doc", content: slice.content.toJSON() };
-      editor.chain().focus().deleteSelection().run();
-      const paragraphId = resolveAnchor();
-      return { content: richContent, paragraphId };
-    },
-    restoreArchive(content: unknown): boolean {
+    restoreArchive(content: JSONContent): boolean {
       // The return leg of the capture law — see `restoreExcerptAtCaret`. It
       // reports whether the excerpt LANDED, which is what makes it safe for the
       // caller to then drop the archive entry holding the only copy.

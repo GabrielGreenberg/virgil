@@ -270,9 +270,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
 
       // Plant the main editor's selection so anchor / footnote / archive
       // paths operate on the right region. Atom refs plant a
-      // NodeSelection on the block itself (which atom-aware paths like
-      // `archiveSelection` detect); text-bearing refs plant a
-      // TextSelection over the range, as before.
+      // NodeSelection on the block itself (so an atom-aware path reads the
+      // BLOCK, not a text range); text-bearing refs plant a TextSelection
+      // over the range, as before. (The `archiveSelection` handle this used
+      // to name as the atom-aware reader was a dead capture outside the door
+      // — task 565 retired it; the archive branch below is the one capture.)
       try {
         if (resolved.selectionKind === "node") {
           ed.view.dispatch(

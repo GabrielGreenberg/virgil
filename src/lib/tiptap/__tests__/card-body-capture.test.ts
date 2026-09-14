@@ -46,7 +46,13 @@ import {
 } from "@/lib/tiptap/borrowed-schema";
 import { unsupportedConstructs } from "@/lib/tiptap/schema-mount";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import {
+  codeOnly,
+  codeOnlyLines,
+  enclosingDeclaration,
+  trackedFiles,
+  REPO_ROOT,
+} from "@/lib/__tests__/_source-scan";
 import { getSchema } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
@@ -522,5 +528,138 @@ describe("task 393 — census: one door, and nothing re-derives it", () => {
         /\bretargetDisplacedAnchors\s*\(/.test(codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"))),
       );
     expect(hits).toEqual([]);
+  });
+});
+
+describe("task 565 — capture sites are discovered by the QUESTION, not by who mints", () => {
+  // The 393 census discovers a capture site by `createArchiveSnippet(` — who
+  // MINTS a snippet. `EditorHandle.archiveSelection` minted nothing: it
+  // returned raw slice JSON for a CALLER to mint (inline children at doc
+  // level — the shape `slice-capture.ts` says throws the moment the body
+  // mounts), normalized nothing, asked no schema, deleted FIRST and re-homed
+  // no anchor. A dead capture path outside the door with zero callers, and
+  // exactly what the next agent asked to "archive the selection" would reach
+  // for off the handle — invisible to a mint-shaped needle, because it mints
+  // nothing itself.
+  //
+  // The question a capture site answers is "cut a range OUT of the document
+  // and KEEP a JSON copy of it": a declaration that takes `doc.slice(`,
+  // spells a delete verb, and spells `.toJSON(`. A MOVE (the drop-mode
+  // text-range spec, the Outline reorder) cuts and RE-INSERTS, a CONVERSION
+  // (`texRun` / `exampleRun`) cuts and rebuilds, a COPY (the Stack snapshot)
+  // keeps JSON and deletes nothing — none spells all three, so they fall out
+  // by construction and the allowlist is EMPTY. Measured on the pre-565 tree:
+  // exactly one hit, `Editor.tsx`'s `archiveSelection`. On the fixed tree the
+  // population is empty, which is why the canary leg below exists.
+  const CUT = /\b(?:deleteSelection|deleteRange)\s*\(|\.delete\s*\(/;
+  const KEEP = /\.toJSON\s*\(/;
+  const SLICE = /\bdoc\.slice\s*\(/g;
+  const DOOR = /\bprepareCardBodyCapture\s*\(/;
+
+  /** Declarations in `src` that cut a range and keep a JSON copy of it. */
+  function cutAndKeepDeclarations(src: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    SLICE.lastIndex = 0;
+    while ((m = SLICE.exec(src))) {
+      const decl = enclosingDeclaration(src, m.index);
+      if (seen.has(decl)) continue;
+      seen.add(decl);
+      if (CUT.test(decl) && KEEP.test(decl)) out.push(decl);
+    }
+    return out;
+  }
+
+  const population = () =>
+    [...trackedFiles("src/components", /\.tsx?$/), ...trackedFiles("src/lib", /\.tsx?$/)]
+      .filter((abs) => !/__tests__|\.test\./.test(abs))
+      .map((abs) => path.relative(REPO_ROOT, abs));
+
+  it("the population is real", () => {
+    const rels = population();
+    expect(rels).toContain("src/components/Editor.tsx");
+    expect(rels).toContain("src/components/editor-layout/card-actions/drag-handle-actions.ts");
+    expect(rels.length).toBeGreaterThan(300);
+  });
+
+  it("every cut-and-keep declaration enters the door (allowlist EMPTY — a hit is MIGRATE-it)", () => {
+    const offenders: string[] = [];
+    for (const rel of population()) {
+      const src = codeOnlyLines(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      for (const decl of cutAndKeepDeclarations(src)) {
+        if (!DOOR.test(decl)) offenders.push(`${rel} :: ${decl.split("\n")[0].trim()}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the needle catches the retired handle's shape and only that shape (synthetic canaries)", () => {
+    // A canary must not stand on the drained defect — the handle is gone, so
+    // its shape is planted here. Beside it the three neighbours the needle
+    // must NOT indict, and one doored capture it must accept.
+    const handle = `
+      archiveSelection(id: string) {
+        const { from, to } = editor.state.selection;
+        const slice = editor.state.doc.slice(from, to);
+        const rich = { type: "doc", content: slice.content.toJSON() };
+        editor.chain().focus().deleteSelection().run();
+        return rich;
+      }`;
+    const caught = cutAndKeepDeclarations(handle);
+    expect(caught).toHaveLength(1);
+    expect(DOOR.test(caught[0])).toBe(false);
+
+    const mover = `
+      function moveRange(from: number, to: number, at: number) {
+        const slice = doc.slice(from, to);
+        let tr = state.tr.delete(from, to);
+        tr = tr.insert(tr.mapping.map(at), slice.content);
+        view.dispatch(tr);
+      }`;
+    expect(cutAndKeepDeclarations(mover)).toEqual([]);
+
+    const copier = `
+      function snapshot(from: number, to: number) {
+        const slice = doc.slice(from, to);
+        return { content: slice.toJSON() };
+      }`;
+    expect(cutAndKeepDeclarations(copier)).toEqual([]);
+
+    const converter = `
+      function texRun(state: EditorState) {
+        if (state.doc.slice(from, to).content.size === 0) return;
+        let tr = state.tr.deleteSelection();
+        tr = tr.replaceSelectionWith(node);
+      }`;
+    expect(cutAndKeepDeclarations(converter)).toEqual([]);
+
+    const doored = `
+      function archiveRange(from: number, to: number) {
+        if (doc.slice(from, to).content.size === 0) return;
+        const capture = prepareCardBodyCapture({ doc, from, to }, "excerpt");
+        if (!capture.ok) return;
+        tr.delete(from, to);
+        store(capture.content.toJSON());
+      }`;
+    const hits = cutAndKeepDeclarations(doored);
+    expect(hits).toHaveLength(1);
+    expect(DOOR.test(hits[0])).toBe(true);
+  });
+
+  it("the retired handle stays retired, in both silos", () => {
+    const files = productionFiles();
+    const hits = files.filter((rel) =>
+      /\barchiveSelection\b/.test(codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"))),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("the restore door has no string arm — the migrator is the ONE place a legacy string becomes content", () => {
+    const door = codeOnly(fs.readFileSync(path.join(REPO, "src/lib/tiptap/restore-excerpt.ts"), "utf8"));
+    expect(door).not.toMatch(/typeof\s+content\s*===\s*["']string["']/);
+    expect(door).not.toMatch(/\blatexComment\b/);
+    const hook = codeOnly(fs.readFileSync(path.join(REPO, "src/hooks/useArchive.ts"), "utf8"));
+    expect(hook).toMatch(/normalizeRichContent\s*\(\s*s\.text\s*\)/);
   });
 });

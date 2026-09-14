@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import { canMountInSchema } from "@/lib/tiptap/schema-mount";
 import { anchoredUuidsOf } from "@/lib/tiptap/linked-anchor";
 
@@ -27,7 +27,12 @@ import { anchoredUuidsOf } from "@/lib/tiptap/linked-anchor";
  *      rather than a description of one). Since task 563 that primitive asks
  *      about CONTENT as well as vocabulary, so a body the document can name
  *      but not hold is refused here rather than by the throw leg 2 catches.
- *      A string body is legacy plain text and has no JSON shape to check.
+ *      A STRING never reaches this door (task 565): `useArchive`'s migrator
+ *      normalizes every snippet at load, so the door is typed JSON and refuses
+ *      anything else. The pre-565 string arm was dead — and a live hazard: it
+ *      handed a string to `insertContentAt`, which parses it as HTML (measured,
+ *      `a < b & <b>bold</b>` inserted a BOLD mark), and its `% ` branch
+ *      re-derived the comment carrier by hand.
  *   2. ASK THE FITTER — a schema-valid payload can still fail to land: a
  *      read-only host swallows the transaction, and a caret can sit where the
  *      content does not fit. So compare the document before and after rather
@@ -89,12 +94,13 @@ import { anchoredUuidsOf } from "@/lib/tiptap/linked-anchor";
  * document-order rule and the intent agree (contrast task 320, where they did
  * not and the mechanism had to state identity itself).
  */
-export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): boolean {
+export function restoreExcerptAtCaret(
+  editor: Editor | null,
+  content: JSONContent | null | undefined,
+): boolean {
   if (!editor) return false;
-  if (content == null) return false;
-  if (typeof content !== "string") {
-    if (!canMountInSchema(editor.state.schema, content).ok) return false;
-  }
+  if (content == null || typeof content !== "object") return false;
+  if (!canMountInSchema(editor.state.schema, content).ok) return false;
   // AT the caret, never OVER a selection. `insertContent` inserts at the
   // current selection and REPLACES it when it isn't empty — so restoring with
   // prose selected in the document would delete that prose, which is the very
@@ -109,23 +115,7 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
 
   const before = editor.state.doc;
   try {
-    if (typeof content === "string") {
-      // Legacy plain-text snippet. A leading "% " marks a LaTeX comment, which
-      // round-trips through the `latexComment` node rather than as prose.
-      if (content.startsWith("% ")) {
-        const body = content.slice(2);
-        editor.chain().focus().insertContentAt(at, {
-          type: "latexComment",
-          content: body ? [{ type: "text", text: body }] : [],
-        }).run();
-      } else {
-        editor.chain().focus().insertContentAt(at, content).run();
-      }
-    } else {
-      const doc = content as { type?: string; content?: unknown[] };
-      const nodes = doc?.content ?? [];
-      editor.chain().focus().insertContentAt(at, nodes).run();
-    }
+    editor.chain().focus().insertContentAt(at, content.content ?? []).run();
   } catch {
     // Leg 1 asks about content too (task 563), so a content-invalid body — a
     // hand- or agent-edited archive.json, or a schema tightened after the

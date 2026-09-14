@@ -207,7 +207,7 @@ function typesInCard(content: unknown): string {
 
 /** Restore the capture into a fresh main document at a caret in a plain
  *  paragraph, and hand back the `.tex` body it serializes to. */
-function restoredTex(content: unknown): string {
+function restoredTex(content: JSONContent): string {
   const target = mountDoc([
     { type: "paragraph", attrs: { uuid: "t-1" }, content: [{ type: "text", text: "landing" }] },
   ]);
