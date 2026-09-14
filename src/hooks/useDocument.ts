@@ -1177,8 +1177,9 @@ export function useDocument() {
   // Whenever the .tex delimiters change AUTHORITATIVELY out of band (style
   // switch, external-change Reload, compile documentclass-switch — the
   // paths that dispatch tex-delimiters-changed after writing disk), drop
-  // any stale pause-swallowed stash: replaying it on the next save would
-  // silently revert the preamble those paths just wrote. The open code
+  // any standing stash (the second of the two sanctioned DISK-WINS clears,
+  // task 568): replaying it on the next save would silently revert the
+  // preamble those paths just wrote. The open code
   // pane re-reads disk on the same event, so the user's view resyncs too.
   // Set ONCE per mount; O(1) per event, never on the keystroke path.
   useEffect(() => {
