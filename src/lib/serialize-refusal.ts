@@ -39,8 +39,10 @@ import { getRetainedCounts } from "@/lib/write-preservation";
  * which is the shape of the defect this module exists to close.
  *
  * `armed` is true only for the FIRST refusal since this document was loaded;
- * the caller takes its unconditional forensic snapshot on that edge (the
- * autosave retries every 1500 ms while the notice stands).
+ * the caller takes its unconditional forensic snapshot on that edge (every
+ * later write of the document is refused again while the notice stands — the
+ * next keystroke's autosave, a mint flush, a manual save — and only bumps the
+ * count; a refusal disarms the debounce, so there is no 1500 ms retry clock).
  */
 export function reportSerializeRefusal(
   err: unknown,

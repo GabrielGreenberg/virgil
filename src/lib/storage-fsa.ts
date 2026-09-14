@@ -88,6 +88,7 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import type {
   ConflictArchive,
+  DocWriteOptions,
   DocWriteReceipt,
   WritePdfResult,
 } from "@/lib/storage-types";
@@ -1026,24 +1027,11 @@ const SNAPSHOT_MIN_INTERVAL_MS = 60_000;
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  opts?: {
-    delimiters?: { preamble: string; postamble: string };
-    /**
-     * **This write IS the user's decision** (task 364). Set only by the
-     * external-change conflict's "keep my version" door, which has already
-     * archived BOTH sides through `snapshotConflictSides` — so the automatic-
-     * write gate below steps aside rather than silently declining to do the
-     * one thing the user just asked for.
-     *
-     * Stated as a claim rather than a convenience: the 357 gate exists because
-     * an AUTOMATIC write must not lose content, and a conflict resolution is
-     * the opposite of automatic. Refusing it would leave the badge's promise
-     * ("your version is kept") unkept with nothing on screen to say so — this
-     * cluster's own silence failure mode. The net is what makes the exemption
-     * safe, and it is unconditional at the call site, never rate-limited.
-     */
-    userResolvedConflict?: boolean;
-  },
+  // The option bag is spelled ONCE, in `storage-types.ts` (task 567): its two
+  // user CLAIMS (`userResolvedConflict`, task 364; `acknowledgePreservation`,
+  // task 567) are documented at the declaration, and both are read at the
+  // write-side gate below.
+  opts?: DocWriteOptions,
 ): Promise<DocWriteReceipt> {
   // A library paper never persists its BUNDLE (the `.tex` + `virgil.json` are
   // the library's own artifacts; only the Reader's note sidecar lands — task
@@ -1133,15 +1121,23 @@ export async function writeDocBundle(
     // the `.tex` AND `virgil.json` are both left alone — the sidecar matters
     // here because this path replaces it wholesale, carrying damage no .tex
     // gate could see.
-    const writeVerdict = opts?.userResolvedConflict
-      ? null
-      : checkWriteAgainstRetained(h.docId, latex);
+    //
+    // TWO user claims step it aside, and both are ONE write wide: the conflict
+    // decision (task 364) and the "Save anyway" acknowledgment (task 567). The
+    // second is recorded on the LANDED receipt by `useDocument.save`, so a
+    // claim whose write does not land leaves the notice standing.
+    const writeVerdict =
+      opts?.userResolvedConflict || opts?.acknowledgePreservation
+        ? null
+        : checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
       // Publish the refusal (task 357 hole 4) — see the load gate above for
-      // why the FIRST one snapshots unconditionally. The autosave retries this
-      // write every 1500 ms while the notice stands, so only the armed EDGE
-      // snapshots; the rest merely bump the notice's refusal count.
+      // why the FIRST one snapshots unconditionally. Every later write of this
+      // document is refused again while the notice stands (the next
+      // keystroke's autosave, a mint flush, a manual save — the debounce is
+      // disarmed by a refusal, so there is no 1500 ms clock; task 567), and
+      // only the armed EDGE snapshots; the rest merely bump the refusal count.
       const { armed } = recordPreservationRefusal(
         h.docId,
         writeRefusalDetail(writeVerdict),

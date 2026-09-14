@@ -5,7 +5,8 @@ import { JSONContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
 import { isRealUserEdit, noteUserEdit } from "@/lib/write-preservation";
-import { isWriteProtected } from "@/lib/preservation-notice";
+import { acknowledgePreservationNotice } from "@/lib/preservation-notice";
+import type { DocWriteOptions, DocWriteReceipt } from "@/lib/storage-types";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
 import {
   readDocBundle,
@@ -31,6 +32,7 @@ import {
 import {
   registerSaveDoor,
   type SaveAttemptOutcome,
+  type SaveRequestOptions,
 } from "@/lib/save-request";
 import {
   dropMirror,
@@ -76,6 +78,19 @@ import {
  * storage-layer `flushDoc` only drains writes that already entered the
  * queue, not the un-fired React debounce.
  */
+
+/**
+ * What `save` reports (task 567): the write door's own `DocWriteReceipt`, plus
+ * the one outcome the door cannot report because it never returned — a THROWN
+ * write (a revoked permission, quota, a stale pipeline), which `save` catches,
+ * publishes as `error` on the unsaved-work channel, and hands back here so a
+ * caller that must state a verdict has one to read. Every proxy for it
+ * (`hasUnlandedWork`, `isWriteProtected`, the channel's reason) answers a
+ * DIFFERENT question — whether work is outstanding, whether a notice stands —
+ * and each was wrong on some path a caller took it on.
+ */
+type SaveReceipt = DocWriteReceipt | { landed: false; reason: "error" };
+
 export function useDocument() {
   const handle = useDocWriteHandle();
   const docId = handle.docId;
@@ -224,16 +239,25 @@ export function useDocument() {
     [docId],
   );
 
+  /**
+   * **`save` RETURNS its receipt** (task 567), and every door that reports a
+   * verdict reads it — `keepMineOverDisk`, `restoreFromMirror`,
+   * `saveNowRequested`. Until 567 each of those read a PROXY after the await
+   * (`!hasUnlandedWork`, `isWriteProtected`, `getUnsavedWork(…)?.reason`),
+   * and the second was the 557 defect one door over: `save` swallows a THROWN
+   * write into `noteSaveBlocked("error")` and returns normally, so a restore
+   * whose write threw found the notice flag false, went on to `refetch` and
+   * DELETED the mirror and the recovery offer for a write that never landed.
+   * The catch arm is therefore an `error` receipt, not a silence — the
+   * channel still gets its report, and the caller gets the verdict as well.
+   *
+   * The one caller-facing CLAIM this door records is `acknowledgePreservation`
+   * (the badge's "Save anyway"), and it is recorded on the LANDED side only:
+   * an acknowledgment is the user's informed choice to overwrite the file with
+   * the version they see, and a write that did not land has not honoured it.
+   */
   const save = useCallback(
-    async (
-      doc: JSONContent,
-      opts?: {
-        delimiters?: { preamble: string; postamble: string };
-        /** Task 364 — this write IS the user's conflict decision; the
-         *  automatic-write gate steps aside. See `writeDocBundle`. */
-        userResolvedConflict?: boolean;
-      },
-    ) => {
+    async (doc: JSONContent, opts?: DocWriteOptions): Promise<SaveReceipt> => {
       try {
         // A REFUSED write returns normally — the gate leaves the `.tex` and the
         // sidecar byte-identical rather than throwing (task 357 hole 4). So the
@@ -259,7 +283,7 @@ export function useDocument() {
             // it BLOCKED would arm a badge, a `beforeunload` prompt and a
             // mirror on a surface whose whole contract is that it never saves.
             // save-silent-ok: nothing was attempted and nothing is at risk.
-            return;
+            return receipt;
           }
           // Task 391: the refusal is also a fact about the USER'S WORK, not
           // only about the document. Publishing it here is what arms the
@@ -267,7 +291,7 @@ export function useDocument() {
           // unload flushes all resolved exactly like this one and every guard
           // downstream read them as success.
           noteSaveBlocked(handle.docId, "preservation");
-          return;
+          return receipt;
         }
         lastSavedRef.current = doc;
         // THIS is a landed write — the only thing that clears the dirty state
@@ -276,6 +300,17 @@ export function useDocument() {
         // door's own report.
         noteSaveLanded(handle.docId);
         dropMirror(handle.docId, mirrorTickerRef.current, "landed");
+        // Task 567 — the "Save anyway" ACKNOWLEDGMENT is recorded HERE, on the
+        // landed receipt, and nowhere else. The claim stepped the write gate
+        // aside for this one write; only a write that actually reached disk
+        // makes the notice a thing the user has answered. A refused, thrown or
+        // dropped write leaves the notice standing (unacknowledged, its pill
+        // up), which is the honest state: the file the user agreed to
+        // overwrite has not been overwritten.
+        if (opts?.acknowledgePreservation) {
+          acknowledgePreservationNotice(handle.docId);
+        }
+        return receipt;
       } catch (err) {
         if (isStalePipelineError(err)) {
           if (err.reason === "superseded") {
@@ -300,10 +335,11 @@ export function useDocument() {
           // content — but neither leaves this model on disk, so neither may
           // report clean.
           noteSaveBlocked(handle.docId, "error");
-          return;
+          return { landed: false, reason: "error" };
         }
         console.error("Failed to save document:", err);
         noteSaveBlocked(handle.docId, "error");
+        return { landed: false, reason: "error" };
       }
     },
     [handle],
@@ -897,14 +933,17 @@ export function useDocument() {
     // which tells the user their version was not kept.
     if (!doc) return false;
     latestContentRef.current = doc;
-    await save(doc, { ...takeDelimitersOpts(), userResolvedConflict: true });
-    // Task 391 — REPORT whether it landed, read off the one channel rather
-    // than inferred from the absence of a throw. `userResolvedConflict` steps
+    const receipt = await save(doc, {
+      ...takeDelimitersOpts(),
+      userResolvedConflict: true,
+    });
+    // Task 391 — REPORT whether it landed; task 567 — read off the write's
+    // OWN receipt rather than a channel proxy. `userResolvedConflict` steps
     // the 357 write gate aside but not the SERIALIZE gate, and the write can
     // fail outright; either way the door must not report the user's version
     // "kept" while it sits in memory alone.
-    return !hasUnlandedWork(docId);
-  }, [currentModel, save, takeDelimitersOpts, docId]);
+    return receipt.landed;
+  }, [currentModel, save, takeDelimitersOpts]);
 
   /**
    * TASK 391 — restore the emergency mirror over the file on disk.
@@ -940,10 +979,17 @@ export function useDocument() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    await save(recovered, { userResolvedConflict: true });
-    // save-silent-ok: reported by RETURN, off the channel the gate published
-    // to — the badge keeps its offer standing and the mirror survives.
-    if (isWriteProtected(docId)) return false; // refused — keep the mirror
+    const receipt = await save(recovered, { userResolvedConflict: true });
+    // Task 567 — the verdict is the write's OWN receipt. Until 567 this read
+    // `isWriteProtected`, which answers whether a NOTICE stands: a THROWN
+    // write (a revoked permission, quota, a stale pipeline) is swallowed by
+    // `save` into the channel and leaves that flag false, so the restore went
+    // on to refetch and DELETE the mirror and the offer for a write that never
+    // landed — the recovered model gone from the badge, recoverable only by
+    // hand from `virgil/.history/`.
+    // save-silent-ok: reported by RETURN, off the receipt — the badge keeps
+    // its offer standing and the mirror survives.
+    if (!receipt.landed) return false; // refused or failed — keep the mirror
     await refetch();
     void clearMirror(docId);
     clearRecoveryOffer(docId);
@@ -991,34 +1037,53 @@ export function useDocument() {
    *   handle is null and the work is unlanded; "nothing pending" is exactly
    *   the wrong answer to a user asking for their work to be saved.
    */
-  const saveNowRequested = useCallback(async (): Promise<SaveAttemptOutcome> => {
-    const paused = autosavePauseReason(watcherRef.current, docId);
-    if (paused) {
-      noteSaveBlocked(docId, paused);
-      return { landed: false, reason: paused };
-    }
-    if (saveTimerRef.current !== null) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    const doc = currentModel();
-    if (doc) {
+  const saveNowRequested = useCallback(
+    async (opts?: SaveRequestOptions): Promise<SaveAttemptOutcome> => {
+      const paused = autosavePauseReason(watcherRef.current, docId);
+      if (paused) {
+        // A document can be BOTH refused and conflicted, and the "Save anyway"
+        // claim (task 567) must not walk past the 364 pause: the claim never
+        // reaches the door here, so the notice stands and the caller routes
+        // to the conflict flow, which is the one that has to go first.
+        noteSaveBlocked(docId, paused);
+        return { landed: false, reason: paused };
+      }
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      const doc = currentModel();
+      if (!doc) {
+        // No model at all (no editor, nothing ever snapshotted): nothing can
+        // be attempted, so there is no receipt to read and the channel is the
+        // only witness. A document with nothing to write and nothing
+        // outstanding IS saved; one with unlanded work and no model to write
+        // it from is the `error` tier the debounce's own arm reports.
+        if (!hasUnlandedWork(docId)) return { landed: true };
+        return { landed: false, reason: getUnsavedWork(docId)?.reason ?? "error" };
+      }
       // KEEP the snapshot (task 557), matching `keepMineOverDisk` above. This
       // nulled it, so a manual save that was then REFUSED left the memory-side
       // consumers with nothing but the live editor — the same editor-only state
       // the pause branch used to leave, and the one the mirror exists for.
       latestContentRef.current = doc;
-      await save(doc, takeDelimitersOpts());
-    }
-    // No model at all (no editor, nothing ever snapshotted) falls through to
-    // the same question every other path asks: does the channel still hold
-    // work? A document with nothing to write and nothing outstanding IS saved.
-    if (!hasUnlandedWork(docId)) return { landed: true };
-    return {
-      landed: false,
-      reason: getUnsavedWork(docId)?.reason ?? "error",
-    };
-  }, [docId, currentModel, save, takeDelimitersOpts]);
+      const receipt = await save(doc, {
+        ...takeDelimitersOpts(),
+        acknowledgePreservation: opts?.acknowledgePreservation,
+      });
+      // Task 567 — the verdict is the write's OWN receipt. The pre-567 channel
+      // read here happened to agree on every path (`noteSaveLanded` clears the
+      // channel, a throw arms it), but it was a PROXY — the same shape whose
+      // two siblings (`keepMineOverDisk`, `restoreFromMirror`) did NOT agree —
+      // and a door that states a verdict reads the receipt of the write it
+      // asked for. A read-only bundle (the Reader) attempted nothing and has
+      // nothing at risk, which is the pre-567 fall-through's answer made
+      // explicit: nothing to write and nothing outstanding IS saved.
+      if (receipt.landed || receipt.reason === "read-only") return { landed: true };
+      return { landed: false, reason: receipt.reason };
+    },
+    [docId, currentModel, save, takeDelimitersOpts],
+  );
 
   useEffect(
     () => registerSaveDoor(docId, saveNowRequested),

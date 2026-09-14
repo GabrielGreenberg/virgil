@@ -38,19 +38,26 @@ vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
   useDiskWatcherOrNull: () => fakeCtx,
 }));
 
-// RENEGOTIATED (task 557). This used to read: "the preservation channel decides
-// whether a write LANDED" — and driving the verdict from `isWriteProtected` was
-// exactly the inference 557 retired. `isWriteProtected` answers *is a notice
-// standing that the user has not answered?*, which comes apart from *did this
-// write land?* the moment one is ACKNOWLEDGED. **The DOOR decides now**, and it
-// says so in its receipt.
+// RENEGOTIATED (task 557, then 567). Until 557 this read: "the preservation
+// channel decides whether a write LANDED" — and driving the verdict from
+// `isWriteProtected` was exactly the inference 557 retired. `isWriteProtected`
+// answers *is a notice standing that the user has not answered?*, which comes
+// apart from *did this write land?* the moment one is ACKNOWLEDGED. **The DOOR
+// decides**, and it says so in its receipt.
 //
-// So one flag drives BOTH halves, because in production both are true together
-// for an unacknowledged refusal: the door returns the refusal AND the notice
-// stands (which is what `restoreFromMirror`, the other reader, asks about).
+// 557 left `restoreFromMirror` reading the flag after `save()` returned, and
+// 567 retired that too: `save` RETURNS its receipt and every verdict door reads
+// it, so the hook no longer reads the flag ANYWHERE. What it does reach in the
+// store is the flag's one WRITER, `acknowledgePreservationNotice` — recorded on
+// a landed receipt that carried the badge's "Save anyway" claim — spied here so
+// the 567 legs can see whether, and when, it is called.
+//
+// `refusing` is what makes the fake door refuse, and the door steps aside for
+// the claim exactly as both real backends do.
 let refusing = false;
+const ackSpy = vi.fn();
 vi.mock("@/lib/preservation-notice", () => ({
-  isWriteProtected: () => refusing,
+  acknowledgePreservationNotice: (...a: unknown[]) => ackSpy(...a),
 }));
 
 import { useDocument } from "../useDocument";
@@ -73,13 +80,17 @@ beforeEach(() => {
   // Task 557 — the write door REPORTS what it did, and `refusing` is what
   // makes it refuse. A fake that always resolved "landed" would make every
   // refusal leg below unfalsifiable.
-  mockWrite.mockImplementation(async () =>
-    refusing ? { landed: false, reason: "preservation" } : { landed: true },
+  mockWrite.mockImplementation(
+    async (_h: unknown, _doc: unknown, opts?: { acknowledgePreservation?: boolean }) =>
+      refusing && !opts?.acknowledgePreservation
+        ? { landed: false, reason: "preservation" }
+        : { landed: true },
   );
   mockRead.mockResolvedValue({ content: EMPTY, editorState: {} });
   resetPipelines();
   resetFlushers();
   clearUnsavedWork();
+  ackSpy.mockClear();
   unresolved = false;
   refusing = false;
 });
@@ -230,5 +241,107 @@ describe("requestSaveNow · the door", () => {
     for (const call of mockWrite.mock.calls) {
       expect((call[0] as { docId: string }).docId).toBe("doc-b");
     }
+  });
+});
+
+describe("requestSaveNow · the \"Save anyway\" CLAIM (task 567)", () => {
+  // The preservation badge's danger confirm promises that saving will write the
+  // version in the editor over the file. Until 567 it flipped the notice flag
+  // and requested NO write — the refusal had already disarmed the debounce, so
+  // the file stayed stale until the next keystroke while the save badge went
+  // on saying "Not saving … Review…". The gesture asks THIS door now, carrying
+  // the acknowledgment as a claim the gate steps aside for; the acknowledgment
+  // is recorded on the LANDED receipt, and nowhere else.
+  const type = (result: Awaited<ReturnType<typeof mounted>>) =>
+    act(() => {
+      result.current.onUpdate(editor(TYPED), {
+        docChanged: true,
+        getMeta: () => undefined,
+      } as never);
+    });
+
+  it("a refused document is WRITTEN when the claim rides the door, and the notice is then acknowledged", async () => {
+    const result = await mounted();
+    refusing = true;
+    type(result);
+    await act(async () => {
+      await requestSaveNow("doc-1"); // the gate refuses; the debounce is disarmed
+    });
+    expect(hasUnlandedWork("doc-1")).toBe(true);
+    expect(ackSpy).not.toHaveBeenCalled();
+    mockWrite.mockClear();
+
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1", { acknowledgePreservation: true });
+    });
+    // PRE-567: nothing was written at all — the badge flipped the flag and
+    // returned, and this document stayed stale on disk.
+    expect(out).toEqual({ landed: true });
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    expect(
+      (mockWrite.mock.calls[0][2] as { acknowledgePreservation?: boolean }).acknowledgePreservation,
+      "the claim reaches the write door",
+    ).toBe(true);
+    expect(ackSpy, "the acknowledgment is recorded on the landed receipt").toHaveBeenCalledWith("doc-1");
+    expect(hasUnlandedWork("doc-1"), "…and the save-state tier is clean").toBe(false);
+  });
+
+  it("a claim whose write THROWS records no acknowledgment and reports `error`", async () => {
+    const result = await mounted();
+    refusing = true;
+    type(result);
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockWrite.mockImplementationOnce(async () => {
+      throw new Error("EACCES: permission revoked");
+    });
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1", { acknowledgePreservation: true });
+    });
+    quiet.mockRestore();
+    expect(out).toEqual({ landed: false, reason: "error" });
+    expect(
+      ackSpy,
+      "an acknowledgment the write could not honour is not recorded — the notice stands",
+    ).not.toHaveBeenCalled();
+    expect(hasUnlandedWork("doc-1")).toBe(true);
+  });
+
+  it("the claim never walks past the clobber guard", async () => {
+    // A document can be BOTH refused and conflicted. The 364 pause is decided
+    // before the door is asked, so the claim never reaches it; the caller is
+    // routed to the conflict flow, which must be answered first.
+    const result = await mounted();
+    refusing = true;
+    type(result);
+    unresolved = true;
+    mockWrite.mockClear();
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1", { acknowledgePreservation: true });
+    });
+    expect(out).toEqual({ landed: false, reason: "conflict" });
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(ackSpy).not.toHaveBeenCalled();
+  });
+
+  it("an ordinary Save carries NO claim — a refused document stays refused", async () => {
+    // The Save button and Cmd+S enter this same door without the claim, and a
+    // standing refusal must still refuse them: the acknowledgment is a decision
+    // only the badge's confirm is entitled to make.
+    const result = await mounted();
+    refusing = true;
+    type(result);
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1");
+    });
+    expect(out).toEqual({ landed: false, reason: "preservation" });
+    expect(
+      (mockWrite.mock.calls.at(-1)?.[2] as { acknowledgePreservation?: boolean } | undefined)
+        ?.acknowledgePreservation,
+    ).toBeUndefined();
+    expect(ackSpy).not.toHaveBeenCalled();
   });
 });

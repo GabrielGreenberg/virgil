@@ -131,15 +131,104 @@ describe("census · a landed write is CLAIMED in exactly one place", () => {
     const save = declBody(src, "const save = useCallback(");
     expect(save).toContain("const receipt = await writeDocBundle(");
     expect(save).toContain("if (!receipt.landed)");
+    // WIDENED (task 567): the needle used to be scoped to `save` alone, and
+    // `restoreFromMirror` read the flag after `save()` returned — a THROWN
+    // write is swallowed into the channel and leaves the flag false, so the
+    // restore refetched and deleted the mirror and the offer for a write that
+    // never landed. No declaration in the hook has a reason to read it now:
+    // `save` RETURNS its receipt and every verdict door reads that.
     expect(
-      save,
-      "`isWriteProtected` answers whether a NOTICE stands, not whether THIS " +
-        "write landed — the two come apart on an acknowledged refusal",
+      src,
+      "`isWriteProtected` answers whether a NOTICE stands, not whether a " +
+        "write landed — the two come apart on an acknowledged refusal and on " +
+        "a thrown write; no save caller in the hook may read it",
     ).not.toContain("isWriteProtected(");
     // And the claim sits on the landed side of that branch.
     const at = save.indexOf("if (!receipt.landed)");
     expect(save.indexOf("noteSaveLanded(", at)).toBeGreaterThan(at);
     expect(save.indexOf("dropMirror(", at)).toBeGreaterThan(at);
+  });
+
+  it("`save` RETURNS its receipt, and every door that states a verdict reads it", () => {
+    // Task 567. The three doors that REPORT (`keepMineOverDisk` to the
+    // conflict badge, `restoreFromMirror` to the recovery badge,
+    // `saveNowRequested` to the Save button and Cmd+S) each used to read a
+    // proxy after the await — `!hasUnlandedWork`, `isWriteProtected`,
+    // `getUnsavedWork(…)?.reason` — and each proxy answers a different
+    // question from "did THIS write land". A verdict door assigns the receipt
+    // and reads `.landed`; a channel read may survive only BEFORE the attempt
+    // (the no-model arm of the manual door, which has no receipt to read).
+    const src = codeOnly(read(path.join(REPO_ROOT, DOC_HOOK)));
+    const save = declBody(src, "const save = useCallback(");
+    // The receipt's reason is QUOTED text, so that one needle reads the view
+    // that keeps string literals (`codeOnly` blanks them — the trap this
+    // file's mirror-drop leg already records).
+    const saveQuoted = declBody(
+      commentsStripped(read(path.join(REPO_ROOT, DOC_HOOK))),
+      "const save = useCallback(",
+    );
+    expect(saveQuoted, "the catch arm is an `error` receipt, not a silence").toContain(
+      'return { landed: false, reason: "error" }',
+    );
+    expect(save).toContain("return receipt;");
+    for (const door of ["keepMineOverDisk", "restoreFromMirror", "saveNowRequested"]) {
+      const body = declBody(src, `const ${door} = useCallback(`);
+      expect(body, `${door} must exist`).not.toBe("");
+      const attempt = body.indexOf("const receipt = await save(");
+      expect(attempt, `${door} reads the receipt of the save it asks for`).toBeGreaterThan(-1);
+      expect(body.indexOf("receipt.landed", attempt)).toBeGreaterThan(attempt);
+      for (const proxy of ["hasUnlandedWork(", "getUnsavedWork(", "isWriteProtected("]) {
+        expect(
+          body.indexOf(proxy, attempt),
+          `${door} reads the channel proxy \`${proxy}\` AFTER the attempt — a verdict from a proxy`,
+        ).toBe(-1);
+      }
+    }
+  });
+
+  it("the \"Save anyway\" acknowledgment is recorded on the LANDED receipt, and nowhere else", () => {
+    // Task 567. `acknowledgePreservationNotice` is the one WRITER of the flag
+    // that steps the write gate aside. Recorded at the gesture (as the badge
+    // did until 567) it was a decision about a write that had not been asked
+    // for; recorded in `save` it rests on the receipt. So the store's own
+    // declaration and `save`'s landed branch are its only production sites,
+    // and the call is guarded by the claim the caller made.
+    const offenders: string[] = [];
+    for (const abs of productionFiles()) {
+      const src = codeOnly(read(abs));
+      if (!/\backnowledgePreservationNotice\s*\(/.test(src)) continue;
+      if (rel(abs) === "src/lib/preservation-notice.ts") continue; // its declaration
+      if (rel(abs) !== DOC_HOOK) {
+        offenders.push(`${rel(abs)} · acknowledges a notice at a gesture, not on a receipt`);
+        continue;
+      }
+      const outside = src.split(/\backnowledgePreservationNotice\s*\(/).length - 1;
+      const save = declBody(src, "const save = useCallback(");
+      const inside = save.split(/\backnowledgePreservationNotice\s*\(/).length - 1;
+      if (outside !== inside)
+        offenders.push(`${DOC_HOOK} · ${outside - inside} acknowledgment(s) outside \`save\``);
+      const at = save.indexOf("if (!receipt.landed)");
+      const ack = save.indexOf("acknowledgePreservationNotice(");
+      if (ack < at) offenders.push(`${DOC_HOOK} · the acknowledgment precedes the landed branch`);
+      if (!/if\s*\(opts\?\.acknowledgePreservation\)\s*\{?\s*acknowledgePreservationNotice\(/.test(save))
+        offenders.push(`${DOC_HOOK} · the acknowledgment is not guarded by the caller's claim`);
+    }
+    expect(
+      offenders,
+      "an acknowledgment is the user's choice to overwrite the file with the " +
+        "version they see; a write that did not land has not honoured it",
+    ).toEqual([]);
+    // …and the badge asks the door with the claim rather than flipping the flag.
+    const badge = codeOnly(read(path.join(REPO_ROOT, "src/components/PreservationNoticeBadge.tsx")));
+    expect(badge).toContain("acknowledgePreservation: true");
+    expect(badge).toContain("requestSaveNow(");
+    // The claim steps the gate aside in BOTH backends, beside the 364 claim.
+    for (const f of ["src/lib/storage-fsa.ts", "src/lib/storage-dev.ts"]) {
+      const body = fnBody(codeOnly(read(path.join(REPO_ROOT, f))), "export async function writeDocBundle(");
+      expect(body, `${f}: the write gate steps aside for the acknowledgment claim`).toMatch(
+        /opts\?\.userResolvedConflict \|\| opts\?\.acknowledgePreservation/,
+      );
+    }
   });
 
   it("the mirror is dropped through ONE door, and every caller states its evidence", () => {

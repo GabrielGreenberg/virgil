@@ -42,9 +42,28 @@ export type SaveAttemptOutcome =
   | { landed: true }
   | { landed: false; reason: UnsavedBlockReason | "no-door" };
 
+/**
+ * What a caller may CLAIM about the save it is asking for (task 567).
+ *
+ * `acknowledgePreservation` is the preservation badge's "Save anyway — I
+ * understand": the write-side words gate steps aside for this ONE write, and
+ * the acknowledgment is recorded on the LANDED receipt inside `useDocument`'s
+ * `save` — never at the gesture. Pre-567 the badge flipped the notice flag and
+ * requested no write at all; the debounce had already been disarmed by the
+ * refusal, so the file stayed stale until the user's next keystroke, while the
+ * save badge kept saying "Not saving … Review…" over a document whose next
+ * Save would silently overwrite the file. The claim rides the door for the
+ * same reason the door exists: it respects the clobber guard (a document can
+ * be BOTH refused and conflicted, and the acknowledgment must not walk past
+ * the 364 pause), and its answer is a REPORT the caller can act on.
+ */
+export interface SaveRequestOptions {
+  acknowledgePreservation?: boolean;
+}
+
 /** The door a document's pipeline publishes. Returns the OUTCOME, so no
  *  caller has to infer landing from the absence of a throw. */
-export type SaveDoor = () => Promise<SaveAttemptOutcome>;
+export type SaveDoor = (opts?: SaveRequestOptions) => Promise<SaveAttemptOutcome>;
 
 const doors = new Map<string, SaveDoor>();
 
@@ -75,10 +94,11 @@ export function hasSaveDoor(docId: string | null | undefined): boolean {
  */
 export async function requestSaveNow(
   docId: string | null | undefined,
+  opts?: SaveRequestOptions,
 ): Promise<SaveAttemptOutcome> {
   const door = docId ? doors.get(docId) : undefined;
   if (!door) return { landed: false, reason: "no-door" };
-  return door();
+  return door(opts);
 }
 
 // ── The blocking-flow channel ──────────────────────────────────────────────
