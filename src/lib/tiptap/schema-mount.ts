@@ -65,7 +65,9 @@ export function canMountInSchema(
 ): SchemaMountCheck {
   if (json == null) return { ok: true };
   try {
-    schema.nodeFromJSON(json as never);
+    // Rung 1 — vocabulary. Rung 2 — content: `check()` walks the built tree
+    // against every type's content expression, which `create` skipped.
+    schema.nodeFromJSON(json as never).check();
     return { ok: true };
   } catch (err) {
     // ProseMirror's own messages are precise and user-legible ("Unknown node
