@@ -36,11 +36,28 @@ export type SchemaMountCheck = { ok: true } | { ok: false; reason: string };
 
 /**
  * Can `json` be represented by `schema`? A `false` here means the surface
- * mounting it will silently substitute an EMPTY document (see the header), so
- * the caller must refuse rather than proceed.
+ * mounting it will either silently substitute an EMPTY document (see the
+ * header) or — the other half, task 563 — mount a model the schema NAMES but
+ * cannot HOLD, which renders and then throws on the first keystroke.
  *
- * Cheap: one `Schema.nodeFromJSON`, on a discrete action — never on a keystroke
- * path.
+ * Two questions, asked in the order they fail:
+ *
+ *  1. VOCABULARY — `Schema.nodeFromJSON`, which builds through
+ *     `NodeType.create` and throws on an unknown node or mark type.
+ *  2. CONTENT — `node.check()`, which walks the built tree and throws where a
+ *     node's children do not satisfy its type's content expression. `create`
+ *     deliberately does not run it, and TipTap runs it only under
+ *     `enableContentCheck`, which Virgil leaves off — so without this rung a
+ *     `{doc: [listItem, listItem]}` (two bullet items cut from their list)
+ *     answered "mountable", the archive dispatcher deleted the text, and the
+ *     card held a dead body. Measured before widening (task 563): every `.tex`
+ *     corpus parse in the repo, plus the shared preservation corpus, passes
+ *     `check()` against the main schema, so the code-pane door inherits the
+ *     rung at no cost and refuses a lossy parse one gate earlier (task 357's
+ *     posture).
+ *
+ * Cheap: one `Schema.nodeFromJSON` and one walk of the same tree, on a
+ * discrete action — never on a keystroke path.
  */
 export function canMountInSchema(
   schema: Schema,
@@ -52,8 +69,8 @@ export function canMountInSchema(
     return { ok: true };
   } catch (err) {
     // ProseMirror's own messages are precise and user-legible ("Unknown node
-    // type: heading"); surface them rather than flattening every cause to one
-    // opaque string.
+    // type: heading", "Invalid content for node listItem: <…>"); surface them
+    // rather than flattening every cause to one opaque string.
     return {
       ok: false,
       reason: err instanceof Error ? err.message : String(err),
@@ -176,4 +193,65 @@ export function unsupportedConstructs(schema: Schema, json: unknown): string[] {
   };
   walk(json);
   return out;
+}
+
+/**
+ * Name the nodes in `json` whose CONTENT `schema` cannot hold — the node types
+ * (deduped, first-seen order) whose children fail their type's content
+ * expression although every type in the model is known.
+ *
+ * The content twin of {@link unsupportedConstructs}, and held to the same
+ * division: {@link canMountInSchema} DECIDES (it runs `node.check()` against
+ * the schema itself); this walk only EXPLAINS a refusal, and runs only on the
+ * failure path. `check()` throws at the FIRST invalid node and prints the
+ * offending fragment into its message; a user told "the Archive panel can't
+ * hold a “listItem” in that shape" can act on that, where the raw fragment
+ * dump is noise. DERIVED from `NodeType.validContent`, never parsed out of the
+ * message.
+ *
+ * Returns `[]` when the model does not build at all (a vocabulary gap, a
+ * malformed node) — those are the sibling's to name.
+ */
+export function invalidContentNodes(schema: Schema, json: unknown): string[] {
+  let root: PMNode;
+  try {
+    root = schema.nodeFromJSON(json as never);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const note = (name: string) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  };
+  const walk = (n: PMNode, isRoot: boolean): void => {
+    if (!n.isText && !n.type.validContent(n.content)) {
+      // The ROOT is the destination itself, so "doc in that shape" would name
+      // the thing the user cannot re-select. Name the first CHILD its content
+      // expression cannot place — the orphan `listItem` at doc level — and
+      // fall back to the root only where every child places and the tail is
+      // what fails.
+      const culprit = isRoot ? firstUnplaceableChild(n) : null;
+      note(culprit ?? n.type.name);
+    }
+    n.forEach((child) => walk(child, false));
+  };
+  walk(root, true);
+  return out;
+}
+
+/** The type name of the first child `n`'s content expression cannot place
+ *  (walking `ContentMatch.matchType` child by child), or null if every child
+ *  places and only the required tail is missing. */
+function firstUnplaceableChild(n: PMNode): string | null {
+  let match = n.type.contentMatch;
+  for (let i = 0; i < n.childCount; i++) {
+    const child = n.child(i);
+    const next = match.matchType(child.type);
+    if (!next) return child.type.name;
+    match = next;
+  }
+  return null;
 }

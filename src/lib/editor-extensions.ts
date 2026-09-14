@@ -31,7 +31,10 @@ import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
-import { MAIN_STARTERKIT_NODE_ATTRS } from "@/lib/node-attr-sets";
+import {
+  MAIN_STARTERKIT_NODE_ATTRS,
+  MAIN_STARTERKIT_NODE_CONTENT,
+} from "@/lib/node-attr-sets";
 import { guardWrapperShortcuts, guardWrapperInputRules } from "@/lib/tiptap/wrapper-gate";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
@@ -760,13 +763,14 @@ export function createBlockquoteWithUuid() {
 
 export function createListItemWithUuid() {
   return ListItem.extend({
-    // Sub-object: lives only inside bulletList/orderedList. Widen content
-    // so the FIRST child may be a graphicsBlock (e.g. an item that's just
-    // `\includegraphics{...}`), not only a paragraph. Subsequent children
-    // were already free via `block*` since graphicsBlock is in the block
-    // group. Adding another inner kind (tables, etc.) is a one-token
-    // edit to the union.
-    content: "(paragraph | graphicsBlock) block*",
+    // Sub-object: lives only inside bulletList/orderedList. The content
+    // expression is READ from the leaf, not spelled here (task 563): the
+    // EXCERPT card body registers the same string on its own `listItem`, and
+    // the two schemas disagreeing about what an item may HOLD is how an
+    // `\includegraphics`-headed item came to mount content-invalid in the
+    // archive card. Widening the union (tables, etc.) is a one-token edit to
+    // `MAIN_STARTERKIT_NODE_CONTENT.listItem` — and nowhere else.
+    content: MAIN_STARTERKIT_NODE_CONTENT.listItem,
     group: "textObject",
     addAttributes() {
       return {

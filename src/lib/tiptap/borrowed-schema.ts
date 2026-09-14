@@ -61,9 +61,11 @@ import {
   type SchemaMountCheck,
 } from "@/lib/tiptap/schema-mount";
 import StarterKit from "@tiptap/starter-kit";
+import ListItem from "@tiptap/extension-list-item";
 import {
   CARD_BODY_BLOCK_ATOMS,
   MAIN_STARTERKIT_NODE_ATTRS,
+  MAIN_STARTERKIT_NODE_CONTENT,
   dataOnlyAttrs,
 } from "@/lib/node-attr-sets";
 import Highlight from "@tiptap/extension-highlight";
@@ -137,10 +139,15 @@ export const CARD_STARTER_KIT_CONFIG = {
  * over the capture. Deleted from the document, unmountable in the card.
  */
 export const EXCERPT_STARTER_KIT_CONFIG = {
-  // The ONE override shared with the card scope: the paragraph comes from
+  // The override shared with the card scope: the paragraph comes from
   // `buildCardBodySchema` (`CardParagraph`, task 430). Every block kind
-  // stays ON.
+  // stays ON — except `listItem`, which `buildExcerptOnlySchema` registers
+  // with the MAIN editor's content expression (task 563; see
+  // `ExcerptListItem`). Vocabulary and attrs were mirrored; the content
+  // expression is the third axis, and it is the one the capture door's content
+  // check reads.
   paragraph: false as const,
+  listItem: false as const,
 };
 
 /**
@@ -218,9 +225,28 @@ const ExcerptDocumentAttrs = Extension.create({
   },
 });
 
+/**
+ * The EXCERPT surface's `listItem`: StarterKit's node with the MAIN editor's
+ * CONTENT EXPRESSION (task 563). Task 402 mirrored the main editor's attrs
+ * onto the plain StarterKit nodes and recorded this as its known related gap
+ * — `"paragraph block*"` here against `"(paragraph | graphicsBlock) block*"`
+ * in `createListItemWithUuid`. With the capture door now asking the excerpt
+ * schema about CONTENT and not only vocabulary, that gap would REFUSE a list
+ * item whose first child is an `\includegraphics` although the document holds
+ * it, and it mounted content-invalid in the card before that. Read from the
+ * same leaf the main builder reads, so the two cannot drift; the attrs still
+ * arrive through {@link ExcerptDocumentAttrs}, keyed on the node NAME, which
+ * this extension keeps. Mirror the schema, not the machinery: no NodeView, no
+ * `group: "textObject"` (inert — no content expression references it).
+ */
+const ExcerptListItem = ListItem.extend({
+  content: MAIN_STARTERKIT_NODE_CONTENT.listItem,
+});
+
 function buildExcerptOnlySchema(): AnyExtension[] {
   return [
     ExcerptDocumentAttrs,
+    ExcerptListItem,
     Highlight.configure({ multicolor: true }),
     TextColor,
     // ── expex example family ────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { canMountInSchema } from "@/lib/tiptap/schema-mount";
 
 /**
  * Put a captured document EXCERPT back into the document at the caret, and
@@ -19,11 +20,13 @@ import type { Editor } from "@tiptap/react";
  *
  * Three legs, in order:
  *
- *   1. ASK THE DESTINATION — `schema.nodeFromJSON` on the LIVE editor's own
+ *   1. ASK THE DESTINATION — `canMountInSchema` on the LIVE editor's own
  *      schema, so the question cannot drift from what the insertion will
  *      actually do (the same reason `canMountInCardBody` asks a real schema
- *      rather than a description of one). A string body is legacy plain text
- *      and has no JSON shape to check.
+ *      rather than a description of one). Since task 563 that primitive asks
+ *      about CONTENT as well as vocabulary, so a body the document can name
+ *      but not hold is refused here rather than by the throw leg 2 catches.
+ *      A string body is legacy plain text and has no JSON shape to check.
  *   2. ASK THE FITTER — a schema-valid payload can still fail to land: a
  *      read-only host swallows the transaction, and a caret can sit where the
  *      content does not fit. So compare the document before and after rather
@@ -64,11 +67,7 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
   if (!editor) return false;
   if (content == null) return false;
   if (typeof content !== "string") {
-    try {
-      editor.state.schema.nodeFromJSON(content as never);
-    } catch {
-      return false;
-    }
+    if (!canMountInSchema(editor.state.schema, content).ok) return false;
   }
   // AT the caret, never OVER a selection. `insertContent` inserts at the
   // current selection and REPLACES it when it isn't empty — so restoring with
@@ -100,13 +99,12 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
       editor.chain().focus().insertContentAt(at, nodes).run();
     }
   } catch {
-    // Leg 1 accepts more than the insert does: `schema.nodeFromJSON` builds
-    // nodes through `NodeType.create`, which does NOT check content
-    // expressions, while `insertContentAt` calls `node.check()` OUTSIDE its own
-    // try/catch. A content-invalid body (a hand- or agent-edited archive.json,
-    // or a schema tightened after the capture) therefore THROWS here rather
-    // than failing quietly — and an exception escaping into a click handler is
-    // a refusal the user never sees. Report it as one instead.
+    // Leg 1 asks about content too (task 563), so a content-invalid body — a
+    // hand- or agent-edited archive.json, or a schema tightened after the
+    // capture — is refused above. This catch stays as the net under it:
+    // `insertContentAt` calls `node.check()` OUTSIDE its own try/catch, and an
+    // exception escaping into a click handler is a refusal the user never
+    // sees. Report it as one instead.
     return false;
   }
   return !editor.state.doc.eq(before);

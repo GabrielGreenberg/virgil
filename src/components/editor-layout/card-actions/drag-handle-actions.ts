@@ -665,17 +665,32 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // loss that could not happen. `capture.content` below is the same
           // object that was judged; never re-derive a second payload here.
           //
+          // The door takes the RANGE, not a slice (task 563): the leaf cuts it
+          // WITH its parents, so a selection from the middle of one bullet item
+          // to the middle of the next arrives as `bulletList(listItem, listItem)`
+          // — a model the card can hold and a restore lands as a two-item list
+          // — rather than two orphan items at doc level that mounted a dead
+          // card and restored as a phantom list. Open (partly covered)
+          // ancestors are captured identity-less; wholly covered blocks keep
+          // theirs. The door then asks the excerpt schema about CONTENT as
+          // well as vocabulary.
+          //
           // Runs BEFORE `cleanupAndComputeDeleteRange`, so an abort leaves the
           // document and every sidecar completely untouched.
           const capture = prepareCardBodyCapture(
-            ed.state.doc.slice(extended.from, extended.to),
+            { doc: ed.state.doc, from: extended.from, to: extended.to },
             bodySchemaForCardKind("archive"),
           );
           if (!capture.ok) {
             console.warn(
               "[Archive] refused — the capture cannot mount in the archive card body; " +
                 "the document was NOT modified.",
-              { reason: capture.reason, constructs: capture.constructs, ref },
+              {
+                reason: capture.reason,
+                constructs: capture.constructs,
+                illFormed: capture.illFormed,
+                ref,
+              },
             );
             // A refusal NAMES what it refused (the loud-refusal rule): "part of
             // it" leaves the user with nothing to act on.

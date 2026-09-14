@@ -279,7 +279,14 @@ describe("census — one door for a captured passage", () => {
       path.join(process.cwd(), "src/links/links.ts"),
       "utf8",
     );
-    expect(codeOnly(links)).toContain("captureSliceContent(");
+    // RENEGOTIATED (task 563): the needle was `captureSliceContent(`, a leaf
+    // that took a caller-built `Slice`. The leaf OWNS THE CUT now
+    // (`captureRangeContent(doc, from, to)` — it slices WITH the range's
+    // parents, so a cross-item selection is captured as the list it came
+    // from), and a minter handing it a slice of its own is exactly the shape
+    // this task retired.
+    expect(codeOnly(links)).toContain("captureRangeContent(");
+    expect(codeOnly(links)).not.toContain("captureSliceContent(");
   });
 
   it("the slice→JSON conversion has ONE implementation", () => {

@@ -270,3 +270,46 @@ describe("restoreExcerptAtCaret", () => {
     expect(found).toBe(true);
   });
 });
+
+describe("restoreExcerptAtCaret — the content half of leg 1 (task 563)", () => {
+  it("a body the schema NAMES but cannot HOLD is refused at the door, doc untouched", () => {
+    // Two orphan list items at doc level: the pre-563 capture shape, still
+    // reachable from a hand- or agent-edited archive.json. `nodeFromJSON`
+    // builds it (every type is known), so leg 1 used to wave it through and the
+    // catch under the insert was the only net. `canMountInSchema` asks about
+    // content now, so it is a stated refusal rather than a caught throw.
+    const editor = mountEditor();
+    const before = editor.state.doc.toJSON();
+    const orphans = {
+      type: "doc",
+      content: [
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "a" }] }] },
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "b" }] }] },
+      ],
+    };
+    expect(restoreExcerptAtCaret(editor, orphans)).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(before);
+  });
+
+  it("the same items captured WITH their list restore as that list (the control)", () => {
+    const editor = mountEditor();
+    editor.commands.setTextSelection(3);
+    const list = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "a" }] }] },
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "b" }] }] },
+          ],
+        },
+      ],
+    };
+    expect(restoreExcerptAtCaret(editor, list)).toBe(true);
+    const types: string[] = [];
+    editor.state.doc.forEach((n) => types.push(n.type.name));
+    expect(types).toContain("bulletList");
+    expect(types.filter((t) => t === "bulletList")).toHaveLength(1);
+  });
+});
