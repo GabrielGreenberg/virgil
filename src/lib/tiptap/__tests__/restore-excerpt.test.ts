@@ -256,21 +256,24 @@ describe("restoreExcerptAtCaret", () => {
     expect(editor.state.doc.toJSON()).toEqual(before);
   });
 
-  it("a legacy plain-text snippet lands as prose", () => {
+  it("a STRING is refused at the door — the migrator is the one place a legacy string becomes content (task 565)", () => {
+    // RENEGOTIATED. Two pre-565 legs pinned "a legacy plain-text snippet lands
+    // as prose" and "a `% ` snippet lands as a latexComment" — a string arm
+    // no production caller could reach: `useArchive.migrateSnippet` runs
+    // `normalizeRichContent` over every snippet at load and its string arm
+    // converts to JSON, so nothing downstream ever holds a string. The arm
+    // was dead AND a hazard: it handed the string to `insertContentAt`, which
+    // parses it as HTML (measured: `a < b & <b>bold</b>` inserted a BOLD
+    // mark), and its `% ` branch re-derived the comment carrier by hand. The
+    // door is typed JSON now; a string that somehow arrives is a REFUSAL over
+    // an untouched document, never a parse.
     const editor = mountEditor();
-    expect(restoreExcerptAtCaret(editor, "plain snippet")).toBe(true);
-    expect(editor.state.doc.textContent).toContain("plain snippet");
-  });
-
-  it("a legacy `% ` snippet lands as a latexComment node", () => {
-    const editor = mountEditor();
-    expect(restoreExcerptAtCaret(editor, "% a latex comment")).toBe(true);
-    let found = false;
-    editor.state.doc.descendants((n) => {
-      if (n.type.name === "latexComment") found = true;
-      return true;
-    });
-    expect(found).toBe(true);
+    const before = editor.state.doc.toJSON();
+    const asString = (s: string) => s as unknown as Parameters<typeof restoreExcerptAtCaret>[1];
+    expect(restoreExcerptAtCaret(editor, asString("plain snippet"))).toBe(false);
+    expect(restoreExcerptAtCaret(editor, asString("% a latex comment"))).toBe(false);
+    expect(restoreExcerptAtCaret(editor, asString("a < b & <b>bold</b>"))).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(before);
   });
 });
 

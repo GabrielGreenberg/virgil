@@ -40,10 +40,11 @@
  *    at-a-node needles are deliberately the WRITE/RESOLVE family
  *    (`setNodeMarkup` / `insertContentAt` / `nodeDOM` / `domAtPos`) and NOT the
  *    read-only walks (`.descendants(` / `doc.forEach(`): measured on this tree,
- *    including the walks flags two genuine caret commits
- *    (`Editor.tsx`'s `archiveSelection`, `smart-insert.ts`'s prelude) whose
+ *    including the walks flagged two genuine caret commits
+ *    (`smart-insert.ts`'s prelude, and — until task 565 retired it as a dead
+ *    capture outside the door — `Editor.tsx`'s `archiveSelection`) whose
  *    declarations happen to walk the doc for an unrelated reason, and buying
- *    those off with exemptions would put two standing licences where the
+ *    those off with exemptions would put standing licences where the
  *    allowlist is supposed to be empty.
  *  - It governs the **implicit** scroll `focus()` schedules. An explicit
  *    `view.dispatch(tr.scrollIntoView())` after a caret insert is a different,
@@ -55,7 +56,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { codeOnlyLines } from "@/lib/__tests__/_source-scan";
+import { codeOnlyLines, enclosingDeclaration } from "@/lib/__tests__/_source-scan";
 
 const REPO = path.resolve(__dirname, "../../../..");
 const SILOS = [
@@ -74,10 +75,6 @@ const OPTS_OUT = /scrollIntoView:\s*false|\brefocusEditor\(/;
 
 /** The two ways a site says "the scroll is mine and it is intended". */
 const NAMES_ITS_TARGET = /\.setTextSelection\(|\.insertContentAt\(|\.scrollIntoView\(/;
-
-/** A brace that opens a control statement is not a declaration. */
-const CONTROL_HEADER =
-  /^\s*(?:\}?\s*(?:else\b|catch\b|finally\b)|if\s*\(|for\s*\(|while\s*\(|switch\s*\(|try\b|do\b)/;
 
 function walkSource(dir: string): string[] {
   const out: string[] = [];
@@ -104,40 +101,6 @@ function bothSilos(): Array<{ rel: string; source: string }> {
     }
   }
   return files;
-}
-
-/**
- * The enclosing DECLARATION of `offset`: walk back to the innermost unmatched
- * `{`, and keep hopping outward while that brace belongs to a control statement
- * rather than a function/method/arrow. Returns the declaration's whole text.
- */
-function enclosingDeclaration(src: string, offset: number): string {
-  let i = offset;
-  let depth = 0;
-  let open = -1;
-  while (i >= 0) {
-    const c = src[i];
-    if (c === "}") depth++;
-    else if (c === "{") {
-      if (depth === 0) { open = i; break; }
-      depth--;
-    }
-    i--;
-  }
-  if (open < 0) return src;
-  const lineStart = src.lastIndexOf("\n", open) + 1;
-  const nl = src.indexOf("\n", open);
-  const header = src.slice(lineStart, nl < 0 ? src.length : nl);
-  if (CONTROL_HEADER.test(header)) {
-    return lineStart === 0 ? src : enclosingDeclaration(src, lineStart - 1);
-  }
-  let d = 0;
-  let j = open;
-  for (; j < src.length; j++) {
-    if (src[j] === "{") d++;
-    else if (src[j] === "}") { d--; if (d === 0) break; }
-  }
-  return src.slice(lineStart, j + 1);
 }
 
 /** The focus call's own STATEMENT — the chain it sits in, to its `;`. */

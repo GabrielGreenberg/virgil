@@ -1,3 +1,4 @@
+import type { JSONContent } from "@tiptap/react";
 import type { Link } from "@/links/_shared/types";
 
 export interface ParagraphMeta {
@@ -221,8 +222,10 @@ export interface ArchivedSnippet {
   /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
   titleAuto?: boolean;
   /** Rich content (Tiptap JSONContent). Legacy snippets stored plain `text`;
-   *  the useArchive hook migrates them to JSONContent on load. */
-  content: unknown;
+   *  `useArchive`'s migrator is the ONE place a string becomes content (task
+   *  565) — nothing downstream ever sees a string, so nothing downstream may
+   *  parse one. */
+  content: JSONContent;
   createdAt: string;
   /** When true, this snippet was created with no anchor target — a
    *  deliberately-free clip (archived from a block with nothing anchorable
