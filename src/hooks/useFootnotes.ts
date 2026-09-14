@@ -181,9 +181,10 @@ export function useFootnotes(
 
   /** Flip a footnote ref's archived (set-aside) flag. The caller (EditorPane's
    *  archive handler) additionally splices the `\footnote` atom out of the doc;
-   *  the now-atomless ref survives `syncFromEditor` as an unanchored entry (the
-   *  `archived` flag rides along on the preserved object), so the archived card
-   *  keeps its content. Unarchive (archived=false) leaves it as a normal
+   *  the now-atomless ref stays in the sidecar as an unanchored entry (nothing
+   *  reconciles `footnotes.json` against the editor's atoms — the panel's live
+   *  rows come from `getFootnotes()`, and atomless refs are selected by the
+   *  `unanchored` flag), so the archived card keeps its content. Unarchive (archived=false) leaves it as a normal
    *  unanchored ref — the atom is NOT re-inserted. */
   const setArchived = useCallback((id: string, archived: boolean) => {
     pristine?.markDirty(id);
@@ -191,7 +192,7 @@ export function useFootnotes(
       const next = {
         footnotes: prev.footnotes.map((f) =>
           // Archiving ALSO marks `unanchored` (mirror of useCitations.setArchived)
-          // so the atomless ref survives `syncFromEditor` and the panel lists it
+          // so the atomless ref is SELECTED as unanchored and the panel lists it
           // under Archives. Unarchive clears `archived` only — `unanchored` rides
           // on (the atom is NOT re-inserted; the card returns re-placeable).
           f.id === id
@@ -274,29 +275,15 @@ export function useFootnotes(
     return newRef.id;
   }, [persist]);
 
-  const syncFromEditor = useCallback(
-    (editorFootnotes: Array<{ footnoteId: string; content: JSONContent }>) => {
-      const current = stateRef.current;
-      const editorIds = new Set(editorFootnotes.map((f) => f.footnoteId));
-
-      // Keep unanchored footnotes (in state but not in editor)
-      const unanchored = current.footnotes.filter((f) => !editorIds.has(f.id));
-
-      // Build list from editor footnotes (canonical for anchored)
-      const anchored: FootnoteRef[] = editorFootnotes.map((ef) => {
-        const existing = current.footnotes.find((f) => f.id === ef.footnoteId);
-        return existing
-          ? { ...existing, content: ef.content }
-          : { id: ef.footnoteId, content: ef.content, createdAt: new Date().toISOString() };
-      });
-
-      const next = { footnotes: [...anchored, ...unanchored] };
-      stateRef.current = next;
-      setState(next);
-      persist(next);
-    },
-    [persist]
-  );
+  // There is deliberately NO `syncFromEditor` here (task 570). The footnote
+  // panel's live rows are `getFootnotes()` off the editor node; this sidecar is
+  // the MIRROR that outlives an atom (archived / unanchored refs, the aiRequest
+  // flag, the edited body via `updateFootnoteContent`). The editor-derived
+  // reconcile this hook used to export had no production caller since the
+  // keystroke-sanctity work of 2026-05, and this hook has no `loaded` gate —
+  // wired into a mount effect it would run over the pre-load EMPTY and write
+  // the loss (the citations defect). A reconcile that writes a sidecar from
+  // editor-derived inputs belongs on `usePersistentState.updateWhenLoaded`.
 
   return useMemo(
     () => ({
@@ -307,7 +294,6 @@ export function useFootnotes(
       setArchived,
       setFootnoteAiRequest,
       cloneFootnote,
-      syncFromEditor,
       contentFor,
       markAnchored,
     }),
@@ -319,7 +305,6 @@ export function useFootnotes(
       setArchived,
       setFootnoteAiRequest,
       cloneFootnote,
-      syncFromEditor,
       contentFor,
       markAnchored,
     ],

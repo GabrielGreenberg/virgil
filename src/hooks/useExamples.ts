@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
-import type { ExamplesState, ExampleRef } from "@/lib/types";
+import type { ExamplesState } from "@/lib/types";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import {
   getActiveHandle,
@@ -17,8 +17,16 @@ const EMPTY: ExamplesState = { examples: [] };
  * Examples live in the `.tex` as `\ex … \xe` / `\pex … \xe` blocks; this
  * sidecar (`examples.json`) stores only panel-side metadata that can't be
  * derived from the editor tree on its own (optional custom title, creation
- * timestamps). `syncFromEditor` reconciles the sidecar against the current
- * editor contents on every parse.
+ * timestamps).
+ *
+ * There is deliberately NO `syncFromEditor` here (task 570). The examples
+ * panel derives its rows from the live editor (the DocStructureBus-gated
+ * memos in `EditorPane`), and the editor-derived reconcile this hook used to
+ * export had no caller since the keystroke-sanctity work of 2026-05 — a dead
+ * load-time reconcile with no `loaded` gate is exactly the shape that, once
+ * wired into a mount effect, runs over the pre-load default and writes the
+ * loss (the citations defect). A reconcile that writes a sidecar from
+ * editor-derived inputs belongs on `usePersistentState.updateWhenLoaded`.
  */
 export function useExamples(docId: string | null) {
   const [state, setState] = useState<ExamplesState>(EMPTY);
@@ -109,63 +117,12 @@ export function useExamples(docId: string | null) {
     [persist],
   );
 
-  /** Reconcile sidecar metadata against the editor's current example
-   *  blocks. Adds entries for brand-new examples, drops the metadata rows
-   *  for examples the user deleted in the tex, preserves title + createdAt
-   *  for ones that persist across the sync. */
-  const syncFromEditor = useCallback(
-    (editorExamples: Array<{ id: string; tag: string; label: string }>) => {
-      const current = stateRef.current;
-      const byId = new Map(current.examples.map((e) => [e.id, e]));
-      const next: ExampleRef[] = editorExamples.map((ee) => {
-        const existing = byId.get(ee.id);
-        if (existing) {
-          return {
-            ...existing,
-            tag: ee.tag,
-            label: ee.label,
-          };
-        }
-        return {
-          id: ee.id,
-          tag: ee.tag,
-          label: ee.label,
-          // T6/C12 (FORK-1): blank title + machine-default provenance, empty
-          // until the user names it (which flips `titleAuto` false).
-          title: "",
-          titleAuto: true,
-          createdAt: new Date().toISOString(),
-        };
-      });
-      // Only write through if the projection actually differs.
-      const changed =
-        next.length !== current.examples.length ||
-        next.some((e, i) => {
-          const c = current.examples[i];
-          return (
-            !c ||
-            c.id !== e.id ||
-            c.tag !== e.tag ||
-            c.label !== e.label ||
-            c.title !== e.title
-          );
-        });
-      if (!changed) return;
-      const snapshot = { examples: next };
-      stateRef.current = snapshot;
-      setState(snapshot);
-      persist(snapshot);
-    },
-    [persist],
-  );
-
   return useMemo(
     () => ({
       exampleRefs: state.examples,
       updateExampleTitle,
       deleteExample,
-      syncFromEditor,
     }),
-    [state.examples, updateExampleTitle, deleteExample, syncFromEditor],
+    [state.examples, updateExampleTitle, deleteExample],
   );
 }

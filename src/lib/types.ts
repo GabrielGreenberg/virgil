@@ -459,8 +459,9 @@ export interface FootnoteRef {
   /** When true, this footnote has no corresponding `\footnote` atom in the
    *  editor — it was set aside (archived) or the user may later re-place it.
    *  Mirrors CitationRef.unanchored: archiving sets BOTH `archived` and
-   *  `unanchored` so the atomless ref survives `syncFromEditor` (which keeps any
-   *  ref absent from the editor) and the panel can list it under Archives. An
+   *  `unanchored` so the atomless ref is SELECTED as unanchored (nothing
+   *  reconciles `footnotes.json` against the editor — the panel's live rows are
+   *  derived from the editor node) and the panel can list it under Archives. An
    *  unarchive clears `archived` but leaves `unanchored` (the atom is NOT
    *  re-inserted — the card returns as a re-placeable unanchored ref). */
   unanchored?: boolean;

@@ -109,6 +109,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const {
     state,
     update,
+    updateWhenLoaded,
     stateRef,
   } = usePersistentState<CitationsState>(docId, "citations.json", EMPTY, {
     migrate,
@@ -652,7 +653,18 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    *  panel-only citations. The editor regenerates citation ids on each
    *  parse, so prev anchored ids never match new editor ids — they must
    *  be dropped. Only entries flagged via `isUnanchored` are carried
-   *  forward. */
+   *  forward.
+   *
+   *  A LOAD-TIME RECONCILE, so it enters `updateWhenLoaded` and never bare
+   *  `update` (task 570): its inputs are the editor's atoms, and `prev` must
+   *  be the sidecar AS LOADED. Run through `update` from an effect keyed on
+   *  the editor alone, a sync that landed before the ~20-file sidecar batch
+   *  resolved stamped `hasMutatedRef`, the loader bailed, and the merge ran
+   *  over EMPTY — every unanchored/archived card and the stored `bibPackage`
+   *  / `citationStyle` / `bibPath` gone, then written over the file 300 ms
+   *  later. The door HOLDS the sync until the read resolves (latest call
+   *  wins — the W2c resync policy may fire in the same window) and applies
+   *  it once, over the loaded state. */
   const syncFromEditor = useCallback(
     (editorCitations: Array<{ citationId: string; command: string }>) => {
       const refs: CitationRef[] = editorCitations.map((ec) => {
@@ -664,12 +676,12 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           createdAt: new Date().toISOString(),
         };
       });
-      update((prev) => {
+      updateWhenLoaded((prev) => {
         const unanchored = prev.citations.filter(isUnanchored);
         return { ...prev, citations: [...refs, ...unanchored] };
       });
     },
-    [update],
+    [updateWhenLoaded],
   );
 
   // Memoize the returned hook so EditorLayout (which now reads it via
