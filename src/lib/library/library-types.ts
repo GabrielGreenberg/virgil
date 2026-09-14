@@ -126,19 +126,6 @@ export interface LibraryItemStatusDetail {
 }
 
 // ---------------------------------------------------------------------------
-// Per-doc overlay (Virgil-owned, lives in doc's virgil/library-overlay.json)
-// ---------------------------------------------------------------------------
-
-export interface LibraryOverlay {
-  /** Markdown notes the user wrote about a library item, scoped to this doc. */
-  notesByItemId: Record<string, string>;
-}
-
-export const EMPTY_LIBRARY_OVERLAY: LibraryOverlay = {
-  notesByItemId: {},
-};
-
-// ---------------------------------------------------------------------------
 // Derived / computed (not persisted)
 // ---------------------------------------------------------------------------
 
