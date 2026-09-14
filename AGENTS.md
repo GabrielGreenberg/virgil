@@ -13495,6 +13495,98 @@ a forced refusal: edit the preamble in the code pane while a preservation
 notice stands, acknowledge, type one character, read the `.tex`.
 
 
+### The load half: a reconcile that WRITES a sidecar runs over the sidecar AS LOADED
+
+Same path, the moment BEFORE any gate above can see a write (task 570, an
+audit finding) — and the case where the law was written in the primitive's
+own docstring and the one caller that most needed it never asked.
+
+`usePersistentState` hydrates a sidecar asynchronously; until the read
+resolves, `state` is the EMPTY default, and the `loaded` docstring said so:
+*"A load-only reconcile MUST gate on this: firing before the read resolves
+would run over an empty card array and then never re-run."* `useCitations.
+syncFromEditor` — the mount-time reconcile that re-derives every anchored
+`CitationRef` from the editor's atoms — ran from an `EditorPane` effect keyed
+on the editor ALONE, through bare `update()`. `update()` stamps
+`hasMutatedRef`, and the loader bails on that stamp (correctly: a REAL user
+mutation must not be stomped by a late read). Nothing orders the two: the
+editor renders as soon as the `.tex` is parsed, while the citations read waits
+on `Promise.all` over ~20 sidecar files. Whenever that batch lost the race —
+a large `revisions.json`, a cloud placeholder, a small `.tex` — the merge ran
+over EMPTY, the loader declined to populate, and 300 ms later `citations.json`
+was WRITTEN with every unanchored / archived citation and the user's
+`bibPackage` / `citationStyle` / `bibPath` gone. Silent, and won by disk
+speed, which is why no fixture in the repo could see it: every one resolves
+its read before it syncs.
+
+> **A reconcile whose inputs come from somewhere OTHER than the sidecar it
+> writes — the editor's atoms, a doc walk — enters ONE door,
+> [`updateWhenLoaded`](src/hooks/usePersistentState.ts): before the read
+> resolves the derivation is HELD (latest wins, nothing written, the
+> loader-stomp guard NOT stamped) and applied exactly once over the LOADED
+> state; after it, the door is `update()`. A read-only consumer gates on
+> `loaded`; a WRITING one cannot, because it also has to remember to re-run.**
+
+Five rules it earned:
+
+- **The hook owns the gate, not the caller.** The surgical fix — `if
+  (!citationsHook.loaded) return` in the effect — closes the reported case and
+  leaves the rule as a caller-side obligation: the effect would then have to
+  RE-RUN on `loaded` (so it is keyed on two things, the second easy to
+  forget), and the W2c resync policy calls the SAME `syncFromEditor` off the
+  structural diff and would carry no gate at all. The `EditorPane` effect
+  stays keyed on the editor alone, and the census pins that it carries no
+  `.loaded` — a second copy of the rule is how the two copies come to
+  disagree.
+- **The hold reads a SYNCHRONOUS mirror, not the render flag.** The door may
+  be called from an effect in the very commit the read resolved in, before
+  React has re-rendered `loaded`; `loadedRef` answers from the read's own
+  terminal branch. The apply rides the `loaded` EFFECT, one commit AFTER the
+  loader's `setState`, so the derivation's `prev` is the sidecar as loaded.
+- **A read that THREW applies to MEMORY only and writes nothing.** The panel
+  reflects the editor; an automatic write of the default over a sidecar this
+  session could not read would destroy whatever it holds — the write path's
+  own law, arriving at its earliest door.
+- **The loader-stomp guard is UNTOUCHED.** A genuine `update()` before the
+  read still wins over disk, pinned as a control: the bail is right for the
+  case it was written for, and the defect was a load-time reconcile pretending
+  to be one.
+- **Two dead reconciles of the same shape are DELETED, not gated.**
+  `useExamples.syncFromEditor` and `useFootnotes.syncFromEditor` had no
+  production caller since the 2026-05 keystroke-sanctity work (both panels
+  derive their rows from the live editor) and no `loaded` gate of their own —
+  one mount effect away from the citations defect, in a hook the door cannot
+  reach. WIRE-it-or-DELETE-it (task 202); the two footnote legs that drove the
+  dead path are RENEGOTIATED onto the live mirror write
+  (`updateFootnoteContent`) with the reason at the site.
+
+CI: [load-time-reconcile-door.test.tsx](src/hooks/__tests__/load-time-reconcile-door.test.tsx)
+drives the REAL door and the REAL `useCitations` over a read that is a
+DEFERRED promise resolved by hand — the defect is an ORDER, and a
+`mockResolvedValue` can only ever resolve first, which is the one shape every
+pre-570 fixture has. The census
+([load-time-reconcile-census.test.ts](src/hooks/__tests__/load-time-reconcile-census.test.ts))
+is the leg with teeth: the door was never the part that could misbehave, the
+NEXT editor-derived reconcile written through bare `update()` / `persist()` /
+`setState()` is, and it type-checks and renders perfectly — so every
+production `syncFromEditor` declaration is an EXACT set whose bodies enter
+the door and spell no bare write, the retired pair stays retired, the door
+has one implementation, and the mount effect carries no caller gate.
+Allowlists EMPTY. Measured by neutering each half in turn: the pre-570 bare
+`update` takes the defect leg plus the census (2), a door with no hold 5.
+
+**Owed, not claimed:** a real-FSA eyeball — a paper with a large
+`revisions.json` and an archived citation, opened cold, the citation still in
+the Archives view afterwards. FSA-masked (a race won by disk speed), so the
+durable proof is the deferred-read contract.
+
+**Found, not fixed:** `useExamples` and `useFootnotes` keep bespoke loaders
+with NO loader-stomp guard at all — a user mutation before their read
+resolves is overwritten by the late read (the opposite direction of this
+defect). Pre-existing, not reachable from a load-time reconcile now that the
+two are deleted, and closing it is a migration of both hooks onto
+`usePersistentState` rather than a gate.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),

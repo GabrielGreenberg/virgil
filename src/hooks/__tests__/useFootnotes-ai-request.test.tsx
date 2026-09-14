@@ -215,7 +215,14 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     });
   });
 
-  it("the aiRequest flag survives syncFromEditor (an in-text edit re-sync)", async () => {
+  // RENEGOTIATED (task 570): this leg used to drive `syncFromEditor`, which
+  // had no production caller (the panel's live rows come from `getFootnotes()`
+  // off the editor node; the sidecar is the MIRROR) and was DELETED as a dead
+  // load-time reconcile — a reconcile that writes a sidecar from editor-derived
+  // inputs belongs on `usePersistentState.updateWhenLoaded`. The property it
+  // pinned (an in-text edit that re-syncs the mirror carries the flag along) is
+  // asserted against the LIVE re-sync path, `updateFootnoteContent`.
+  it("the aiRequest flag survives an in-text body edit (updateFootnoteContent, the mirror's live re-sync)", async () => {
     beginDocPipeline(DOC);
     DISK["footnotes.json"] = {
       footnotes: [
@@ -232,17 +239,16 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
 
     await act(async () => {
-      result.current.syncFromEditor([
-        {
-          footnoteId: "fn-3",
-          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }] },
-        },
-      ]);
+      result.current.updateFootnoteContent("fn-3", {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }],
+      });
     });
 
-    // syncFromEditor spreads `...existing`, so the flag must ride along.
+    // The edit spreads `...f`, so the flag must ride along with the new body.
     const ref = result.current.footnoteRefs.find((f) => f.id === "fn-3");
     expect(ref?.aiRequest).toBe(true);
+    expect(richJsonToPlainText(ref?.content ?? {})).toContain("edited");
   });
 });
 
@@ -326,8 +332,8 @@ describe("useFootnotes — sidecar content stays coherent on edit (task_9768c44e
     const { result } = renderHook(() => useFootnotes(DOC));
     await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
 
-    // Archive: BOTH flags so the atomless ref survives syncFromEditor and lists
-    // under the panel's Archives view.
+    // Archive: BOTH flags so the atomless ref is SELECTED as unanchored and
+    // lists under the panel's Archives view.
     await act(async () => {
       result.current.setArchived("fn-arch", true);
     });
@@ -337,15 +343,23 @@ describe("useFootnotes — sidecar content stays coherent on edit (task_9768c44e
       expect(ref?.unanchored).toBe(true);
     }
 
-    // The archived (atomless) ref survives a re-sync that doesn't include it.
+    // RENEGOTIATED (task 570): this used to drive `syncFromEditor([])` — "the
+    // editor has no footnote atoms" — and assert the archived ref survived it.
+    // That reconcile had no production caller and is DELETED (see the note at
+    // its former site in useFootnotes.ts): nothing reconciles `footnotes.json`
+    // against the editor's atoms, so the archived (atomless) ref is durable by
+    // construction. What is still worth pinning is that an UNRELATED mirror
+    // write in the same session carries it, content and flags intact.
     await act(async () => {
-      result.current.syncFromEditor([]); // editor has no footnote atoms
+      result.current.addFootnote("another", "fn-other");
     });
     {
       const ref = result.current.footnoteRefs.find((f) => f.id === "fn-arch");
       expect(ref?.archived).toBe(true);
       expect(ref?.unanchored).toBe(true);
       expect(richJsonToPlainText(ref?.content ?? {})).toContain("keep me");
+      const s = lastWrite("footnotes.json") as FootnotesState | undefined;
+      expect(s?.footnotes.find((f) => f.id === "fn-arch")?.archived).toBe(true);
     }
 
     // Unarchive: clears `archived` but leaves `unanchored` (atom NOT re-inserted;

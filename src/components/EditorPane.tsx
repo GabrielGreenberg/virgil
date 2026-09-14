@@ -2416,6 +2416,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // survive the merge (handled inside `syncFromEditor`). Runs once per
   // editor mount; subsequent add / delete go through the imperative
   // hooks and don't need a re-sync.
+  //
+  // Deliberately keyed on the editor ALONE and NOT on the sidecar's `loaded`
+  // (task 570): the HOOK owns the load gate. `syncFromEditor` enters
+  // `usePersistentState.updateWhenLoaded`, which holds the sync until the
+  // `citations.json` read resolves and applies it over the loaded state — so
+  // an editor that mounts before the ~20-file sidecar batch lands cannot run
+  // the merge over EMPTY and write the loss. A caller-side `loaded` gate here
+  // would be a second copy of that rule, one the W2c resync policy (which
+  // calls the same `syncFromEditor` off the structural diff) would not share.
   useEffect(() => {
     if (!editor) return;
     const editorCits = innerRef.current?.getCitations() ?? [];

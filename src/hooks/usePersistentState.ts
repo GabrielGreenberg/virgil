@@ -78,6 +78,35 @@ export interface PersistentStateApi<S> {
    * the value back should still prefer `update()`: it coalesces.
    */
   persist: (s: S) => Promise<void>;
+  /**
+   * THE LOAD-TIME RECONCILE DOOR (task 570). `update()` for a derivation whose
+   * inputs come from somewhere OTHER than this sidecar — the editor's live
+   * atoms, a doc walk — and which must therefore run over the sidecar AS
+   * LOADED, never over the pre-load default. Called before the initial read
+   * for the current `docId` has resolved, the derivation is HELD (the latest
+   * call wins; nothing is written and `hasMutatedRef` is NOT stamped, so the
+   * loader still populates state from disk) and applied once `loaded` flips;
+   * called after, it is exactly `update()`.
+   *
+   * Why a door and not a caller-side `if (!loaded) return`: the caller that
+   * most needed the gate (`useCitations.syncFromEditor`, run from an
+   * `EditorPane` effect keyed on the editor alone) never asked, and a
+   * `syncFromEditor` that always produces a new object stamped `hasMutatedRef`
+   * through `update()` — so when the ~20-file sidecar batch resolved AFTER the
+   * editor mounted, the loader bailed on the stamp, every unanchored/archived
+   * citation and the user's `bibPackage` / `citationStyle` / `bibPath` were
+   * dropped, and 300 ms later that state was WRITTEN over `citations.json`. A
+   * caller-side gate also has to remember to RE-RUN once `loaded` flips; the
+   * door holds the derivation and applies it, so a caller cannot run early
+   * and cannot forget to run late.
+   *
+   * On a read that THREW (`loadError`) the derivation is applied to MEMORY
+   * only — the panel reflects the editor — and nothing is written: an
+   * automatic write over a sidecar this session could not read would destroy
+   * whatever it holds (the write path's law). Reset on every `docId` change:
+   * a derivation held for one document is never applied to another.
+   */
+  updateWhenLoaded: (fn: (prev: S) => S) => void;
   /** Live mirror of `state` for callers that need synchronous access. */
   stateRef: MutableRefObject<S>;
   /**
@@ -86,8 +115,11 @@ export interface PersistentStateApi<S> {
    * Mirrors `useEditorUIState.loaded`. A load-only reconcile MUST gate on
    * this: firing before the read resolves would run over an empty card
    * array (the pre-load default) and then never re-run, silently skipping
-   * the heal. Reset to false on every `docId` change. Additive — existing
-   * consumers can ignore it.
+   * the heal. A READ-ONLY consumer gates on the flag; a reconcile that
+   * WRITES this sidecar (the editor-derived `syncFromEditor` family) enters
+   * `updateWhenLoaded` instead, which holds the gate for it (task 570 — the
+   * one writer that most needed this rule never asked it). Reset to false on
+   * every `docId` change. Additive — existing consumers can ignore it.
    */
   loaded: boolean;
   /**
@@ -171,6 +203,17 @@ export function usePersistentState<S>(
   // consumers (the Mode-B re-apply / Mode-A reconcile) are safe on partial data
   // and keep gating on `loaded` alone. Reset on docId change below.
   const [loadError, setLoadError] = useState(false);
+  // Synchronous mirrors of the two flags above, for the load-time reconcile
+  // door: `updateWhenLoaded` may be called from an effect that runs in the
+  // same commit the read resolved in, before React has re-rendered the state
+  // flag, and it must answer from the READ's outcome rather than from a
+  // possibly-stale render value. Written in the loader's terminal branches
+  // beside the `set*` calls, reset with them on `docId` change.
+  const loadedRef = useRef(false);
+  const loadErrorRef = useRef(false);
+  // A derivation handed to `updateWhenLoaded` before the read resolved — the
+  // latest call wins, and the `loaded` effect below applies it exactly once.
+  const heldReconcileRef = useRef<((prev: S) => S) | null>(null);
 
   // Debounce machinery: track the latest pending write so we can flush
   // it (synchronously where needed) on doc switch / unmount. `pendingRef`
@@ -202,11 +245,15 @@ export function usePersistentState<S>(
 
   useEffect(() => {
     hasMutatedRef.current = false;
+    loadedRef.current = false;
+    loadErrorRef.current = false;
+    heldReconcileRef.current = null;
     setLoaded(false);
     setLoadError(false);
     let cancelled = false;
     if (!docId) {
       setState(defaultValue);
+      loadedRef.current = true;
       setLoaded(true);
       return;
     }
@@ -224,6 +271,7 @@ export function usePersistentState<S>(
         // mutation — the read is terminally resolved either way; we just
         // skip the state overwrite. Set BEFORE the early returns so the
         // reconcile gate releases.
+        loadedRef.current = true;
         setLoaded(true);
         if (raw === null) return;
         if (hasMutatedRef.current) return;
@@ -241,6 +289,8 @@ export function usePersistentState<S>(
         // The read terminated (so release the reconcile gate) but FAILED, so the
         // empty default is NOT authoritative — flag it so the destructive orphan
         // reaper stands down for this kind (no mass-reap of live marks).
+        loadErrorRef.current = true;
+        loadedRef.current = true;
         setLoadError(true);
         setLoaded(true);
       });
@@ -383,6 +433,44 @@ export function usePersistentState<S>(
     [persist, debounceMs],
   );
 
+  // ── THE LOAD-TIME RECONCILE DOOR (task 570) ────────────────────────────────
+  // See `PersistentStateApi.updateWhenLoaded`. Two halves: the CALL, which
+  // either holds the derivation (read not yet resolved) or applies it; and the
+  // `loaded` EFFECT below, which applies a held derivation exactly once, in the
+  // commit AFTER the loader's own `setState` landed — so the derivation's
+  // `prev` is the sidecar as loaded, never the pre-load default. The apply
+  // path is `update()` (persisted, `hasMutatedRef` stamped — the read is over,
+  // so the stamp can no longer hide the sidecar from the loader) EXCEPT on a
+  // read that THREW, where it is memory-only: the default in memory is not
+  // the file, and an automatic write of it would destroy the file's contents.
+  const applyReconcile = useCallback(
+    (fn: (prev: S) => S) => {
+      if (loadErrorRef.current) {
+        setState((prev) => fn(prev));
+        return;
+      }
+      update(fn);
+    },
+    [update],
+  );
+  const updateWhenLoaded = useCallback(
+    (fn: (prev: S) => S) => {
+      if (!loadedRef.current) {
+        heldReconcileRef.current = fn;
+        return;
+      }
+      applyReconcile(fn);
+    },
+    [applyReconcile],
+  );
+  useEffect(() => {
+    if (!loaded) return;
+    const held = heldReconcileRef.current;
+    if (held === null) return;
+    heldReconcileRef.current = null;
+    applyReconcile(held);
+  }, [loaded, applyReconcile]);
+
   // Flush any pending write whenever the doc id changes (the new doc's
   // handle is different — writing then would either race or be dropped
   // by the stale-pipeline guard). Same on unmount: hand the last value
@@ -470,5 +558,14 @@ export function usePersistentState<S>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
 
-  return { state, setState, update, persist, stateRef, loaded, loadError };
+  return {
+    state,
+    setState,
+    update,
+    persist,
+    updateWhenLoaded,
+    stateRef,
+    loaded,
+    loadError,
+  };
 }
