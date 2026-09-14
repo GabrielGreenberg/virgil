@@ -9849,6 +9849,77 @@ Four rules it earned:
 
 Same *class* as task 259 (a per-kind capability that "looks pinned" and isn't) and adjacent to the parked 228 (this same assertion's consumer-**reconciliation** symmetry, a different axis, still open).
 
+#### The reverse half: a completeness guard runs in the direction that ROTS
+
+Same law, the DOCS-vs-code instance (task 562) — and the case where the guard
+was designed, built, graduated to an error, run on every push, and asked its
+question in exactly one direction. `check-coherence.mjs` check 2 ("type
+accounting") verified that every type EXPORTED from `src/lib/types.ts` is NAMED
+in VIRGIL.md's Public-type registry or its delegated enumeration. It never asked
+the reverse — that every NAME still EXISTS. So `DocumentPayload` (deleted in
+task 417), and `UserComment` / `CommentsState` (deleted in A1 gardening) stayed
+enumerated in the skill-facing manifest `sidecars.md` — the last two with full
+field-level schemas, so a skill reading it believed `comments.json` had a live
+typed shape to write against — and a `**58** exported` count sat two exports
+stale in three places, with CI green and the SKETCH's own staging note saying
+"58/58 accounted". The v0.1.105 release refresh agent flagged the count as
+unresolved and declined to change one side alone, which is how it was found.
+
+> **A completeness guard between two sets asks BOTH inclusions, and its
+> reference set is what the code EXPORTS, never what the doc NAMES.** Forward:
+> every export is named. Reverse: every name resolves — to an export of one of
+> the registry section's OWN `covers-code` sources, or to a declaration the
+> naming doc makes (`<!-- type-externals: JSONContent (why) -->`). A stated
+> `**N** exported` count is a claim about code and is checked as one.
+
+Six rules it earned:
+
+- **The naming SURFACES are discovered from the graph, never hand-listed**: the
+  registry section, every local `.md#section` it links, and the WHOLE body of
+  every graph node whose `derives-from` targets the registry section. That last
+  arm is the one with teeth here — the dead `comments.json` schema sat OUTSIDE
+  the delegated Coverage section, in "Legacy / dead types", where a
+  section-scoped reverse arm walks past it. A doc derived from the type registry
+  IS a type-naming doc.
+- **The universe is the registry section's `covers-code`, which is why `Link`
+  needs no special case.** `Link` is exported by `src/links/_shared/types.ts`,
+  not by `types.ts`, and the registry section already covers that file (and
+  `src/panels/_shared/types.ts`) — the doc had been recording the fact
+  ("doc-of-record elsewhere") without the check being able to read it.
+- **An external is DECLARED by the doc that names it, and a declaration that has
+  stopped excusing anything is an error** — one a covers-code source does
+  export, or one the doc names nowhere. The list can only shrink. TipTap's
+  `JSONContent` is the one member.
+- **A delegation follows links to GRAPH NODES only.** The registry links to the
+  check's own `*.SKETCH.md` as a pointer to the DESIGN; sketches are excluded
+  from the graph by construction (`discoverDocs`), so they cannot be naming
+  surfaces — measured, the first cut indicted the SKETCH's own prose about the
+  stale 58.
+- **A schema-shaped token claims its LEADING identifier.** The manifest states a
+  sidecar's shape as `` `TypeName { field; … }` ``, so a bare-PascalCase reading
+  walks past exactly the form the dead schema was written in.
+- **The count is pinned, not deleted.** A number a reader takes as fact about
+  code is the thing that rotted; the check now reads every `**N** exported` on a
+  naming surface against the real export count. The unbolded restatements
+  ("all 58", "two of the 58") were reworded to carry no number.
+
+**The task's own arithmetic was wrong, and checking it is what sized the fix.**
+It read 58 named − 3 absent = 55 against 57 exported and concluded the
+enumeration was also MISSING two types. Measured, the Coverage index names all
+57 exports; its 61 tokens were 57 + the three dead names + `Link`. So the
+enumeration needed no recomputing — the counts and the corpses did.
+
+CI: fixtures E–J in [check-coherence.smoke.mjs](tools/check-coherence.smoke.mjs)
+drive the REAL CLI over a miniature registry graph: the forward direction (which
+had NO smoke coverage before), the reverse on all three surfaces (registry,
+delegated section, derived doc outside it — in schema form), the count pin, the
+undeclared external and both stale-declaration shapes, the section-in-whole-doc
+dedupe, and the two accepting controls (a sibling covers-code type, a declared
+external). Measured against the pre-562 script: **14 legs fail** — every reverse,
+count and externals leg — and the forward and clean legs pass, which is the point.
+The real check ran on the stale docs and named exactly the three dead types,
+`JSONContent`, and the four `**58**`s, and nothing else.
+
 ### The dialect half: what a system DOES model, it gives back in the form it was given
 
 Same round trip, and the case that is the carrier doctrine's other side (task
