@@ -13884,6 +13884,17 @@ Four mechanisms, and the first two are one idea:
   failure instead of a grind, the per-file timeout drops from 150 s to 30 s, and
   `kpse_find_pk_impl` gains the offline short-circuit its sibling has had all
   along — found by the independent diagnosis, not by the report.
+  **Negative-cached, but into the RIGHT table (task 573):** the first cut wrote
+  every non-200 — and every offline / breaker short-circuit — into
+  `texlive404_cache` / `pk404_cache`, module-level tables nothing ever clears in
+  a worker that lives for the session. So the per-compile reset of the miss
+  lists was defeated by the key-level cache: after reconnecting, a package that
+  missed offline was never retried AND no longer named. Two claims, two tables —
+  a DEFINITIVE miss (301/404/410) is durable for the worker's life, because an
+  `\IfFileExists` probe of an absent file must not re-issue a blocking round trip
+  every compile; a miss we merely could not RESOLVE goes in the per-compile
+  `self.__transientMiss`, cleared in `prepareExecutionContext`. Pinned in
+  `worker-kpse-contract`.
 
 Five rules they earned:
 
