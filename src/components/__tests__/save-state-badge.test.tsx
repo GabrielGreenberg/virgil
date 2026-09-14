@@ -114,6 +114,75 @@ describe("SaveStateBadge · the tiers", () => {
   });
 });
 
+describe("SaveStateBadge · the REGISTER (task 571)", () => {
+  // Pre-571 the badge re-derived its colour from its TIER — `blocked ⇒ the
+  // alarm ramp`, whatever the reason — so a cowork hold and a netted conflict
+  // painted red on this pill while the band and the pills beside it painted
+  // the same state amber. The colour is the reason's own now, read off the
+  // ONE kind → tone → palette table; these legs read the SPECIFIED style
+  // (jsdom resolves no CSS vars, so a computed read cannot tell `--amber-100`
+  // from `--danger-soft`). No pre-571 leg asserted the palette at all.
+  const swatch = () => screen.getByRole("status").getAttribute("style") ?? "";
+  const tone = () => pill()?.getAttribute("data-save-tone");
+
+  it("a COWORK hold is the LIVE warm family, and offers NO button", () => {
+    act(() => noteSaveBlocked(DOC, "cowork"));
+    render(<SaveStateBadge docId={DOC} />);
+    expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
+    expect(tone()).toBe("live");
+    expect(swatch()).toContain("--amber-100");
+    expect(swatch()).not.toContain("--danger");
+    // 489's "Try again" could only re-report the hold (the door answers
+    // `cowork`, which names no flow, so the click did nothing). 545's band
+    // decided `recommended: null` for the same state; the badge agrees.
+    expect(saveBtn()).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Try again/);
+  });
+
+  it("…and past the escalation threshold the sentence still comes out, with still no button", () => {
+    act(() =>
+      noteSaveBlocked(DOC, "cowork", Date.now() - (UNSAVED_ESCALATE_MS + 1_000)),
+    );
+    render(<SaveStateBadge docId={DOC} />);
+    expect(pill()?.getAttribute("data-save-escalated")).toBe("true");
+    expect(document.body.textContent).toMatch(/clears itself/i);
+    expect(saveBtn()).toBeNull();
+  });
+
+  it("a netted CONFLICT is the WARNING family, with its Resolve door", () => {
+    // Task 364 dropped the conflict pill's red because both doors archive both
+    // sides first; a red save pill beside an amber conflict pill was telling
+    // the user two things about one state.
+    act(() => noteSaveBlocked(DOC, "conflict"));
+    render(<SaveStateBadge docId={DOC} />);
+    expect(tone()).toBe("warning");
+    expect(swatch()).toContain("--amber-100");
+    expect(swatch()).not.toContain("--danger");
+    expect(saveBtn()?.textContent).toMatch(/Resolve/);
+  });
+
+  it("a PRESERVATION refusal and a failed write are the alarm ramp", () => {
+    // The two states in which the user's work is on no disk and nothing is
+    // coming to put it there — the only members of the `danger` register.
+    for (const reason of ["preservation", "error"] as const) {
+      cleanup();
+      clearUnsavedWork();
+      act(() => noteSaveBlocked(DOC, reason));
+      render(<SaveStateBadge docId={DOC} />);
+      expect(tone(), reason).toBe("danger");
+      expect(swatch(), reason).toContain("--danger-soft");
+      expect(saveBtn(), reason).not.toBeNull();
+    }
+  });
+
+  it("the UNSAVED tier is the WARNING family — nothing has declined the write", () => {
+    act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 5_000)));
+    render(<SaveStateBadge docId={DOC} />);
+    expect(tone()).toBe("warning");
+    expect(swatch()).toContain("--amber-100");
+  });
+});
+
 describe("SaveStateBadge · the collapse rule", () => {
   it("a REASSURANCE may be collapsed away", () => {
     act(() => noteSaveLanded(DOC));

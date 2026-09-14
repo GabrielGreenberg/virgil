@@ -25,7 +25,22 @@ import {
   noteCoworkPenRelease,
   type CoworkPenState,
 } from "@/lib/cowork-pen";
-import { describeBlockReason, UNSAVED_WARN_MS, type SaveStateView } from "@/lib/save-state";
+import {
+  describeBlockReason,
+  interruptionKindForReason,
+  UNSAVED_WARN_MS,
+  type SaveStateView,
+} from "@/lib/save-state";
+import {
+  INTERRUPTION_TONE,
+  TONE_PALETTE,
+  paletteForTone,
+  toneForInterruptionKind,
+  type InterruptionKind,
+} from "@/lib/interruption-tone";
+import type { UnsavedBlockReason } from "@/lib/unsaved-work";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ExternalChangeState } from "@/lib/disk-watcher";
 import type { PreservationNotice } from "@/lib/preservation-notice";
 
@@ -241,5 +256,67 @@ describe("deriveDocumentInterruption", () => {
     const gone = conflictOutcomeNotice({ choice: "take-disk", archive: null, applied: true })!;
     expect(gone.tone).toBe("danger");
     expect(gone.title).toMatch(/no history copy/);
+  });
+});
+
+/* ── The register (task 571) ────────────────────────────────────────── */
+
+describe("the tone register · ONE table for the band and the save badge", () => {
+  // Pre-571 the band held a private tone → token switch and the save badge
+  // re-derived its colour from its TIER (`blocked ⇒ danger`), so for ONE
+  // document in ONE state the band painted amber and the save pill red. Both
+  // read `interruption-tone.ts` now; these legs pin that the badge's answer
+  // for a REASON is the band's answer for the KIND that reason presents as.
+  function inputsFor(reason: UnsavedBlockReason): InterruptionInputs {
+    switch (reason) {
+      case "cowork":
+        return inputs({ pen: held() });
+      case "preservation":
+        return inputs({ preservation: notice() });
+      case "conflict":
+        return inputs({
+          external: external("conflict"),
+          save: save({ tier: "blocked", reason: "conflict", ageMs: 4_000 }),
+        });
+      case "error":
+        return inputs({ save: save({ tier: "blocked", reason: "error", ageMs: 4_000 }) });
+    }
+  }
+  const REASONS: UnsavedBlockReason[] = ["cowork", "preservation", "conflict", "error"];
+
+  it.each(REASONS)("%s — the badge's tone IS the band's tone for that state", (reason) => {
+    const band = deriveDocumentInterruption(inputsFor(reason));
+    expect(band, `the ${reason} inputs must derive a view`).not.toBeNull();
+    expect(band!.kind).toBe(interruptionKindForReason(reason));
+    expect(describeBlockReason(reason).tone).toBe(band!.tone);
+    // …and both read the table rather than each other.
+    expect(band!.tone).toBe(INTERRUPTION_TONE[band!.kind]);
+  });
+
+  it("every kind has a tone, and the register is what STYLE_GUIDE says it is", () => {
+    const kinds: InterruptionKind[] = ["cowork-hold", "preservation", "conflict", "save-error", "disk-change"];
+    for (const k of kinds) expect(toneForInterruptionKind(k), k).toBe(INTERRUPTION_TONE[k]);
+    // The alarm ramp is reserved for the two states in which the user's work
+    // is on no disk and nothing is coming to put it there.
+    expect(Object.entries(INTERRUPTION_TONE).filter(([, t]) => t === "danger").map(([k]) => k).sort())
+      .toEqual(["preservation", "save-error"]);
+    expect(INTERRUPTION_TONE["cowork-hold"]).toBe("live");
+    expect(INTERRUPTION_TONE.conflict).toBe("warning");
+    expect(INTERRUPTION_TONE["disk-change"]).toBe("info");
+  });
+
+  it("every palette token is a var() that globals.css defines", () => {
+    const globals = readFileSync(join(__dirname, "..", "..", "app", "globals.css"), "utf8");
+    for (const [tone, palette] of Object.entries(TONE_PALETTE)) {
+      for (const [slot, value] of Object.entries(palette)) {
+        const m = /^var\((--[a-z0-9-]+)\)$/.exec(value);
+        expect(m, `${tone}.${slot} = ${value}`).not.toBeNull();
+        expect(globals, `${tone}.${slot} → ${m![1]} is undefined`).toMatch(new RegExp(`${m![1]}:\\s*[^;]+;`));
+      }
+    }
+    // `live` and `warning` share tokens BY DESIGN — the breathing glyph is what
+    // separates them, and it is the one pill's to carry (STYLE_GUIDE).
+    expect(paletteForTone("live")).toEqual(paletteForTone("warning"));
+    expect(paletteForTone("danger").bg).toBe("var(--danger-soft)");
   });
 });

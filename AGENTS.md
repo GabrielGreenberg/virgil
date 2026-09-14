@@ -13660,6 +13660,105 @@ defect). Pre-existing, not reachable from a load-time reconcile now that the
 two are deleted, and closing it is a migration of both hooks onto
 `usePersistentState` rather than a gate.
 
+### The tone half: a state has ONE register, and a TIER is not a register
+
+Same front end, the colour (task 571, an audit finding) — and the case where
+task 545 decided the answer ONCE, in the vocabulary, and one of the five
+registers it closed went on reading a table that was never written down.
+
+`deriveDocumentInterruption` answers `tone` per KIND — `cowork-hold → live`,
+`conflict → warning`, `preservation` / `save-error → danger` — and the band
+painted it. The save badge read none of that: it painted `--danger-soft` for
+`tier === "blocked"` with no branch on the reason, because
+`describeBlockReason` carried `short / sentence / flow / action` and no tone,
+so the badge had nothing else to ask. For ONE document in ONE state the band
+and the cowork pill were amber (`CoworkPenBadge`, `ExternalChangeBadge`'s
+conflict tier — task 364 dropped its red precisely because both doors are
+netted) while the save pill beside them was red. And during a cowork hold the
+badge offered "Try again": `saveNowRequested` answers `cowork` while the pen
+is held, `requestBlockingFlow` finds no flow, and the badge re-reports the
+hold — a RECORDED decision (task 489) that 545 overrode for the same state
+with `recommended: null` ("the honest answer is to wait"), leaving two SSOTs
+with the badge reading the older one. The band's own `paletteFor` was a
+third copy of the palette, beside five pills each hand-spelling the tokens.
+
+> **A kind has ONE tone and a tone has ONE palette, both stated in an
+> import-free leaf every surface can reach
+> ([interruption-tone.ts](src/lib/interruption-tone.ts):
+> `INTERRUPTION_TONE`, `TONE_PALETTE`, `paletteForTone`).** The vocabulary
+> reads the table per kind; `describeBlockReason` gains a `tone` column read
+> through the one reason → kind bridge it owns (`interruptionKindForReason`);
+> and every surface that presents an interruption paints through
+> `paletteForTone`. The tier says how LOUD, the reason says which COLOUR.
+
+Five rules it earned:
+
+- **The leaf is where it is because of the import graph.** `save-state.ts`
+  sits BELOW `document-interruption.ts` (which imports `describeAge` and
+  `UNSAVED_WARN_MS` from it), so a table only the upper module could reach
+  would be re-copied by the lower one — which is exactly the fork this closes.
+  The placement rule `latex-markers.ts` and `node-attr-sets.ts` each earned.
+- **A pill about ONE kind asks for THAT kind, never for the top view.**
+  `ExternalChangeBadge` reads `toneForInterruptionKind("conflict")` rather
+  than `view.tone`: the view is the priority ladder's WINNER, and while a
+  cowork hold or a refusal outranks the disk change the conflict pill is still
+  about the disk change. Reading the winner's tone would paint it red under a
+  standing refusal.
+- **A surface about a state the leaf does not model names its TONE.**
+  `MirrorRecoveryBadge` (a recovery offer, not an `InterruptionKind`) and the
+  save badge's unsaved tier read `paletteForTone("warning")` — the register,
+  not a token. Warm-family pills about something other than a document write
+  (the sync-conflict folder report, a forest refusal) are NOT members and take
+  the family from STYLE_GUIDE directly; making them look up a kind they have
+  not got would be the wrong unification.
+- **A reason with NO way out offers NO button.** `action` is `string | null`;
+  the cowork hold's is `null`, and the badge renders nothing there — the
+  pending tier's own rule ("a control which can only re-report the state is
+  dead chrome"). 489's "Try again" was right for `error`, whose cause may have
+  cleared, and wrong for a hold, whose resolution is the pen's own release.
+  The escalation sentence still comes out past two minutes.
+- **`live` and `warning` share tokens BY DESIGN**, pinned rather than
+  tidied away: what separates the cowork hold is the breathing glyph, and
+  STYLE_GUIDE reserves that for the ONE pill about something happening right
+  now — the save badge does not pulse.
+
+CI: the register legs in
+[save-state-badge.test.tsx](src/components/__tests__/save-state-badge.test.tsx)
+read the SPECIFIED style (jsdom resolves no CSS vars, so a computed read
+cannot tell `--amber-100` from `--danger-soft`) and assert the cowork hold
+renders no button, escalated or not; the PARITY legs in
+[document-interruption.test.ts](src/lib/__tests__/document-interruption.test.ts)
+pin, per reason, that the badge's tone IS the band's tone for the kind that
+reason presents as, and that every palette token is a `var()` `globals.css`
+defines. **No pre-571 suite asserted the badge's palette at all** — the badge
+suite pinned tier attributes, text and button verbs, so a tier-derived colour
+was unrepresentable in it. The leg with teeth is the CENSUS in
+[save-state-census.test.ts](src/lib/__tests__/save-state-census.test.ts):
+the table was never the part that could misbehave, a surface that paints
+without asking it is, and it type-checks and renders perfectly — so the
+population is DISCOVERED (every production component that imports an
+interruption / save-state vocabulary), no member may spell a `var(--danger`
+/ `var(--amber` literal (allowlist EMPTY), the painters are an EXACT set with
+the one non-painter (`SoftwareUpdateBanner`, sentence only) declared with its
+reason, the map and the table each have ONE declaring file, no second
+`case "live":` switch exists, and the badge reads `desc.tone`. Its literal
+needles read `strip(…, true, true)`, because `codeOnly` blanks the very bytes
+they grep for — the trap `_source-scan`'s own header records, and the fix's
+own first cut walked into. `save-state-view.test.ts`'s "every reason has a
+non-empty action" leg is RENEGOTIATED in place with the reason at the site:
+it pinned the dead button as the contract. Measured by neutering each half in
+turn: the tier-derived palette (`blocked ? "danger" : "warning"`, still
+through the map) takes 2 badge legs + 1 census leg; the restored "Try again"
+2 badge legs + 1 view leg — and NO census leg, stated because it is the
+shape to remember: the census's `action !== null` needle reads the BADGE,
+and this neuter is in the vocabulary, so the behavioural legs are the only
+instrument that sees it; a pill re-spelling its tokens 2 census legs; the
+band's private `paletteFor` switch restored 3 census legs.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked for the colour
+(force a conflict in dev storage, or hold the pen): the band, the conflict
+pill and the save pill must be one colour.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](src/lib/__tests__/save-state-census.test.ts),

@@ -77,6 +77,7 @@ import { iconHint } from "@/components/Hint";
 import { StatusDot } from "./StatusDot";
 import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
 import { describeAge } from "@/lib/save-state";
+import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { useDocumentInterruption } from "@/hooks/useDocumentInterruption";
 import {
@@ -227,6 +228,10 @@ function MenuRow({
     >
       <span
         className="text-[12px]"
+        // interruption-tone-exempt: a destructive-CHOICE ink for this menu row —
+        // task 528's family ("a button's paint describes what pressing it
+        // DOES"), not an interruption register; the row paints a choice, never
+        // the state the pill above it presents.
         style={{ color: danger ? "var(--danger)" : "var(--ink-strong)" }}
       >
         {label}
@@ -382,25 +387,22 @@ function ExternalChangeBadge() {
       ? view.writer
       : "unknown";
 
-  // Tone tokens. 'change' → amber family; 'conflict' → danger family. Text uses
-  // a legible ink on the soft tinted background (the amber/danger -500 values
-  // are too light to read at 11px), with the icon/border carrying the hue.
-  // WARNING tier for a conflict — the same warm family as 'change', one step
-  // up, never the alarm ramp. Red is reserved for an action that destroys
-  // content with no net, and after task 364 neither door does.
-  const tone = isConflict
-    ? {
-        bg: "var(--amber-100)",
-        border: "var(--amber-500)",
-        icon: "var(--amber-500)",
-        actionText: "var(--ink-strong)",
-      }
-    : {
-        bg: "var(--amber-50)",
-        border: "var(--amber-200)",
-        icon: "var(--amber-500)",
-        actionText: "var(--ink-strong)",
-      };
+  // Tone tokens, read off the ONE kind → tone → palette table
+  // (`interruption-tone.ts`, task 571) for the kind THIS pill presents —
+  // deliberately not off `view.tone`, which is the top-priority state and may
+  // be a cowork hold or a refusal while this pill is about the disk change.
+  // A conflict is the WARNING register (the same warm family as a change, one
+  // step up, never the alarm ramp: red is reserved for an action that
+  // destroys content with no net, and after task 364 neither door does); a
+  // change with nothing unsaved is `info`. Text uses a legible ink on the soft
+  // tinted background, with the icon/border carrying the hue.
+  const palette = paletteForTone(toneForInterruptionKind(isConflict ? "conflict" : "disk-change"));
+  const tone = {
+    bg: palette.bg,
+    border: palette.edge,
+    icon: palette.edge,
+    actionText: palette.ink,
+  };
 
   const reloadLabel = "Reload";
   const dismissLabel = "Dismiss";

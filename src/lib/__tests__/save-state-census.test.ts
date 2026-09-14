@@ -30,7 +30,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { codeOnlyLines } from "./_source-scan";
+import { codeOnlyLines, commentsStripped, strip } from "./_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -259,6 +259,183 @@ describe("census · a data-integrity state is never hideable", () => {
     // ASK it rather than restate it — the census's own reason for existing.
     const code = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
     expect(code).toContain("isSaveTierProtected(");
+  });
+});
+
+describe("census · ONE tone table for every surface that presents an interruption (task 571)", () => {
+  // Pre-571 the band held a private tone → token switch, five topbar pills
+  // each hand-wrote the same tokens, and the save badge re-derived its colour
+  // from its TIER — so a cowork hold and a netted conflict were amber on the
+  // band and red on the save pill beside it. The table was never the part
+  // that could misbehave; a surface that paints without asking it is, and it
+  // type-checks and renders perfectly. So the population here is DISCOVERED
+  // by the QUESTION — which production components READ an interruption /
+  // save-state vocabulary, i.e. present one of these states — never a hand
+  // list of the pills someone remembered.
+  const LEAF = "src/lib/interruption-tone.ts";
+  const VOCABULARIES = [
+    "@/lib/document-interruption",
+    "@/hooks/useDocumentInterruption",
+    '@/lib/save-state"',
+    "@/hooks/useSaveState",
+    "@/hooks/usePreservationNotice",
+    "@/lib/cowork-pen",
+  ];
+  /** A hand-spelled palette token of the two families the register paints.
+   *  The needle lives INSIDE a string literal, so the legs that ask it read
+   *  `commentsStripped` / `strip(…, true, true)` — `codeOnly` blanks the very
+   *  bytes it greps for (the trap `_source-scan`'s own header records). */
+  const PALETTE_LITERAL = /var\(--(?:danger|amber)/;
+
+  it("the literal needle can see (a census whose needle is quoted text needs a canary)", () => {
+    expect(PALETTE_LITERAL.test(strip('x = { bg: "var(--amber-100)" }; // c', true, true))).toBe(true);
+    expect(PALETTE_LITERAL.test(strip('x = { bg: "var(--danger-soft)" };', false, true))).toBe(false);
+  });
+
+  const presenters = () =>
+    walk("src/components").filter((rel) => {
+      if (rel.includes("__tests__") || !rel.endsWith(".tsx")) return false;
+      const code = codeOnlyLines(read(rel));
+      // The imports name the vocabulary as a STRING, which `codeOnlyLines`
+      // blanks — so the population is read off the raw source, and the
+      // needles below off the code.
+      const raw = read(rel);
+      return VOCABULARIES.some((v) => raw.includes(v)) && code.length > 0;
+    });
+
+  it("the population is discovered, and it can see the surfaces the defect lived on", () => {
+    const pop = presenters();
+    for (const must of [
+      "src/components/SaveStateBadge.tsx",
+      "src/components/DocumentInterruptionBanner.tsx",
+      "src/components/CoworkPenBadge.tsx",
+      "src/components/ExternalChangeBadge.tsx",
+      "src/components/PreservationNoticeBadge.tsx",
+    ]) {
+      expect(pop, `discovery missed ${must}`).toContain(must);
+    }
+  });
+
+  /** A hit excused IN PLACE, with its reason — scoped to the LINE it sits
+   *  above, never to the file (task 204's rule). The one shape that earns it:
+   *  a menu row's destructive-CHOICE ink, which is task 528's family (a
+   *  button's paint describes what pressing it DOES), not a state's register. */
+  const EXEMPT = "interruption-tone-exempt:";
+  const hits = () => {
+    const spellers: string[] = [];
+    const excused: string[] = [];
+    for (const rel of presenters()) {
+      const lines = strip(read(rel), true, true).split("\n");
+      const rawLines = read(rel).split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (!PALETTE_LITERAL.test(lines[i])) continue;
+        // The marker sits in the comment block DIRECTLY above the hit.
+        const above = rawLines.slice(Math.max(0, i - 6), i).join("\n");
+        (above.includes(EXEMPT) ? excused : spellers).push(`${rel}:${i + 1} · ${lines[i].trim()}`);
+      }
+    }
+    return { spellers, excused };
+  };
+
+  it("no presenter spells a palette token of its own — every one paints through `paletteForTone`", () => {
+    // Allowlist EMPTY: a hit is MIGRATE-it. A pill about a state the leaf does
+    // not model names its TONE (`paletteForTone("warning")`), never a token.
+    expect(hits().spellers, "a surface presenting an interruption paints its own palette").toEqual([]);
+  });
+
+  it("every exemption marker still excuses a real hit, and the excused set is exactly the two menu rows", () => {
+    // A marker that has stopped excusing anything is a standing licence for
+    // the next literal added beneath it — so the excused set is pinned EXACTLY,
+    // and each marker must sit above a hit.
+    expect(hits().excused.map((h) => h.split(" · ")[0].replace(/:\d+$/, "")).sort()).toEqual([
+      "src/components/ExternalChangeBadge.tsx",
+      "src/components/PreservationNoticeBadge.tsx",
+    ]);
+    for (const rel of presenters()) {
+      const rawLines = read(rel).split("\n");
+      const stripped = strip(read(rel), true, true).split("\n");
+      rawLines.forEach((line, i) => {
+        if (!line.includes(EXEMPT)) return;
+        const below = stripped.slice(i + 1, i + 8).join("\n");
+        expect(PALETTE_LITERAL.test(below), `${rel}:${i + 1} carries a marker that excuses nothing`).toBe(true);
+      });
+    }
+  });
+
+  it("the painters are an EXACT set, and the one non-painter states its reason", () => {
+    // A member that paints nothing (the update banner lists blocked documents
+    // in its own chrome and reads only the SENTENCE) is declared here with
+    // its reason, so a new presenter must either enter the door or be named
+    // — and a painter that quietly stopped asking the door fails as a
+    // non-painter nobody declared.
+    const NON_PAINTERS: Record<string, string> = {
+      "src/components/SoftwareUpdateBanner.tsx":
+        "reads describeBlockReason(...).sentence into the blocked list; paints no interruption tone",
+    };
+    const painters = presenters().filter((rel) => codeOnlyLines(read(rel)).includes("paletteForTone("));
+    const silent = presenters().filter((rel) => !painters.includes(rel));
+    expect(silent.sort()).toEqual(Object.keys(NON_PAINTERS).sort());
+    expect(painters.sort()).toEqual(
+      [
+        "src/components/CoworkPenBadge.tsx",
+        "src/components/DocumentInterruptionBanner.tsx",
+        "src/components/ExternalChangeBadge.tsx",
+        "src/components/MirrorRecoveryBadge.tsx",
+        "src/components/PreservationNoticeBadge.tsx",
+        "src/components/SaveStateBadge.tsx",
+      ].sort(),
+    );
+  });
+
+  it("the tone → palette map and the kind → tone table each have ONE home", () => {
+    const declarers = walk("src").filter((rel) => {
+      if (rel.includes("__tests__")) return false;
+      const code = codeOnlyLines(read(rel));
+      return /(?:const|function) (?:TONE_PALETTE|paletteForTone|INTERRUPTION_TONE|toneForInterruptionKind)\b/.test(code);
+    });
+    expect(declarers).toEqual([LEAF]);
+    // …and no production file re-derives the map as a switch over the tones —
+    // the band's retired shape.
+    const switches = walk("src").filter((rel) => {
+      if (rel.includes("__tests__") || rel === LEAF) return false;
+      const code = commentsStripped(read(rel));
+      return /case "live":|case "warning":|case "info":/.test(code);
+    });
+    expect(switches, "a second tone → token switch").toEqual([]);
+    expect(codeOnlyLines(read("src/components/DocumentInterruptionBanner.tsx"))).not.toContain(
+      "function paletteFor",
+    );
+  });
+
+  it("the badge and the vocabulary both READ the table — neither re-derives a tone from the tier", () => {
+    const badge = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
+    expect(badge).toContain("desc.tone");
+    expect(badge).toContain("paletteForTone(");
+    // The retired shape: a colour chosen by `blocked ? … : …`.
+    expect(badge).not.toMatch(/blocked\s*\?\s*\{?\s*background/);
+    const vocab = codeOnlyLines(read("src/lib/save-state.ts"));
+    expect(vocab).toContain("toneForInterruptionKind(interruptionKindForReason(reason))");
+    // The band's vocabulary states every branch's tone from the table, never
+    // as a literal (the `conflictOutcomeNotice` dialog tone below it is a
+    // different vocabulary — a confirm's `"danger" | "default"`).
+    const raw = commentsStripped(read("src/lib/document-interruption.ts"));
+    const derivation = raw.slice(
+      raw.indexOf("export function deriveDocumentInterruption"),
+      raw.indexOf("export function conflictOutcomeNotice"),
+    );
+    expect(derivation.length).toBeGreaterThan(100);
+    expect(derivation).not.toMatch(/tone:\s*"(?:live|warning|info|danger)"/);
+    expect((derivation.match(/toneForInterruptionKind\(/g) ?? []).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("a blocked reason with NO action renders NO button — the vocabulary decides, the badge obeys", () => {
+    // 489 offered "Try again" on a cowork hold and 545 decided `recommended:
+    // null` for the same state; the badge read the older table. The table is
+    // one now (`action: null`), and the badge must not invent a button for it.
+    const vocab = codeOnlyLines(read("src/lib/save-state.ts"));
+    expect(vocab).toMatch(/action:\s*string \| null/);
+    const badge = codeOnlyLines(read("src/components/SaveStateBadge.tsx"));
+    expect(badge).toMatch(/action !== null &&/);
   });
 });
 

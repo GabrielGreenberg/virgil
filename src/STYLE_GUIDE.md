@@ -127,10 +127,20 @@ Two rules the family carries:
   when everything has landed, "Saving…" in the ordinary gap between a keystroke
   and the 1500 ms debounce; the warm WARNING family once writing has been
   unsaved past `UNSAVED_WARN_MS` ("Unsaved · 3 minutes", with a **Save now**
-  button); and the alarm ramp only where a gate has actually REFUSED, which is
-  the one state in which the user's work is on no disk and nothing is coming to
-  put it there. Two consequences worth stating, because both were mistakes the
-  first cut made:
+  button); and for a BLOCKED write, the register of the REASON's interruption
+  kind — read off the ONE kind → tone table in `src/lib/interruption-tone.ts`
+  through `describeBlockReason(...).tone` (task 571): the alarm ramp only for
+  a refusal or a failed write, the two states in which the user's work is on
+  no disk and nothing is coming to put it there; the warm WARNING family for a
+  netted conflict (task 364's rule — both doors archive first, so a red pill
+  would be telling the user something untrue); the LIVE warm family for a
+  cowork hold (task 489). The tier says how LOUD, the reason says which
+  COLOUR. This paragraph used to read "the alarm ramp only where a gate has
+  actually REFUSED", and the badge implemented that as `blocked ⇒ red` — which
+  painted a paused conflict and a cowork hold red on the save pill while the
+  pills beside it and the band painted the same state amber. Renegotiated in
+  place: a PAUSE is not a refusal. Three consequences worth stating, because
+  each was a mistake a first cut made:
   - **A reassurance may be collapsed away; a data-integrity state may not.**
     `isSaveTierProtected` decides it once, and `topbarRightCollapsed` / zen are
     read through that — the task-357 rule ("a data-integrity notice must not be
@@ -141,6 +151,12 @@ Two rules the family carries:
     and minute 70, so the escalated tier brings the whole SENTENCE out beside
     it — what happened, and which flow the user has to answer. A warning that
     cannot grow is furniture by the second hour.
+  - **A reason with NO way out offers NO button.** The cowork hold clears
+    itself; a "Try again" there could only re-report the hold (the door answers
+    `cowork`, which names no flow), which is a control that does nothing — the
+    pending tier's own rule. `describeBlockReason("cowork").action` is `null`
+    and the badge renders nothing where the band renders `recommended: null`
+    (task 571, retiring task 489's button).
   The reason vocabulary (`describeBlockReason`) is single-sourced for the same
   reason the tone ladder is: the update banner, the topbar pill and any future
   surface must call a paused conflict the same thing, or the user reads three
@@ -175,8 +191,10 @@ Two rules the family carries:
   an OUTCOME ("Use Virgil's edits", "Keep my version"), and the alternatives as
   plain link-buttons beside it. The topbar pills keep their compact chrome and
   take their words from the same vocabulary, so the two surfaces name one event
-  with one phrase. Tone follows the rules above and is decided ONCE in the
-  vocabulary: `live` (the cowork hold — warm family, breathing glyph, and a
+  with one phrase. Tone follows the rules above and is decided ONCE — the
+  kind → tone table AND the tone → token palette both live in
+  `src/lib/interruption-tone.ts` (task 571), read by the band, every pill and
+  the save badge alike: `live` (the cowork hold — warm family, breathing glyph, and a
   veil that dims the prose to 0.55 while keeping it legible), `warning` (a
   netted conflict), `info` (a change with nothing unsaved), `danger` only for
   the two states in which the user's work is on no disk (a refusal, a failed

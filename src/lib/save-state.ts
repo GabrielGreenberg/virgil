@@ -42,8 +42,14 @@
  *   wrong. What it says at twenty seconds is nonetheless TRUE — the last
  *   twenty seconds of writing are not on disk — and it clears itself 1500 ms
  *   after the user stops.
- * - **`blocked`** — a gate said no, and said why. Red immediately: there is no
- *   grace period for a write that has already been refused.
+ * - **`blocked`** — a gate said no, and said why. Immediately, with no grace
+ *   period — and in the REGISTER the reason's interruption kind has (task
+ *   571): the alarm ramp only where the user's work is on no disk and nothing
+ *   is coming to put it there (a refusal, a failed write); the warm family for
+ *   a netted conflict; the LIVE warm family for a cowork hold. The tier says
+ *   HOW LOUD; the reason says WHICH COLOUR, and it reads the one table in
+ *   `interruption-tone.ts` so the save pill cannot paint red beside a cowork
+ *   pill and a band painting the same state amber.
  *
  * `escalated` crosses {@link UNSAVED_ESCALATE_MS} of unsaved work in the
  * `unsaved` or `blocked` tiers. The incident ran seventy minutes behind a pill
@@ -51,6 +57,11 @@
  */
 
 import type { UnsavedBlockReason, UnsavedWorkState } from "./unsaved-work";
+import {
+  toneForInterruptionKind,
+  type InterruptionKind,
+  type InterruptionTone,
+} from "./interruption-tone";
 
 /** Dirty-and-unblocked for longer than this reads as a WARNING, not as the
  *  ordinary gap between a keystroke and the debounce. See the tier notes. */
@@ -146,8 +157,38 @@ export interface BlockDescription {
   /** The surface that owns the way out, or `null` when retrying IS the way
    *  out (an FSA/lock error has no flow to open — it has a next attempt). */
   flow: BlockingFlow | null;
-  /** What the "Save now" button says in this tier. */
-  action: string;
+  /** What the "Save now" button says in this tier — or `null` when there is
+   *  NO action to offer: the way out is to wait, and a button that can only
+   *  re-report the hold is dead chrome (the pending tier's own rule). */
+  action: string | null;
+  /** The visual register, read off the ONE kind → tone table
+   *  (`interruption-tone.ts`) through {@link interruptionKindForReason} — so
+   *  the save pill and the band cannot paint one state two colours. */
+  tone: InterruptionTone;
+}
+
+/**
+ * Which interruption KIND a blocking reason is. The save channel speaks in
+ * reasons (what stopped the write) and the guided band in kinds (what the user
+ * is looking at); this is the one bridge, exhaustive by the `never` arm, so a
+ * fifth reason cannot ship without saying which state it presents as.
+ */
+export function interruptionKindForReason(reason: UnsavedBlockReason): InterruptionKind {
+  switch (reason) {
+    case "conflict":
+      return "conflict";
+    case "preservation":
+      return "preservation";
+    case "cowork":
+      return "cowork-hold";
+    case "error":
+      return "save-error";
+    default: {
+      const unhandled: never = reason;
+      void unhandled;
+      return "save-error";
+    }
+  }
 }
 
 /** The reason vocabulary. Exhaustive over `UnsavedBlockReason` by the switch's
@@ -155,6 +196,7 @@ export interface BlockDescription {
 export function describeBlockReason(
   reason: UnsavedBlockReason,
 ): BlockDescription {
+  const tone = toneForInterruptionKind(interruptionKindForReason(reason));
   switch (reason) {
     case "conflict":
       return {
@@ -165,6 +207,7 @@ export function describeBlockReason(
           "overwrite it. Choose which version to keep.",
         flow: "external-change",
         action: "Resolve…",
+        tone,
       };
     case "preservation":
       return {
@@ -174,6 +217,7 @@ export function describeBlockReason(
           "holds less than the file on disk does. Answer that notice to decide.",
         flow: "preservation",
         action: "Review…",
+        tone,
       };
     case "cowork":
       return {
@@ -182,12 +226,19 @@ export function describeBlockReason(
           "A Virgil cowork skill is writing to this paper's folder, so saving " +
           "is paused and the text is read-only until it finishes. This " +
           "normally takes a moment and clears itself.",
-        // No flow: there is nothing for the user to answer. The hold is one
-        // atomic commit and the pen self-expires, so the way out is to wait —
-        // and "Try again" is the honest button for a state whose resolution IS
-        // a next attempt (the same shape `error` takes, for the same reason).
+        // No flow and NO action: there is nothing for the user to answer, and
+        // nothing for them to press. The hold is one atomic commit and the pen
+        // self-expires, so the way out is to wait. Task 489 offered "Try
+        // again" here on the ground that a next attempt IS the resolution —
+        // which is true of `error` (whose cause may have cleared) and false of
+        // a hold: a Save during the hold reports the hold, routes to no flow,
+        // and the badge re-reports it — a control that does nothing. Task
+        // 545's band decided `recommended: null` ("the honest answer is to
+        // wait") for the same state, and this table now says the same thing
+        // (task 571).
         flow: null,
-        action: "Try again",
+        action: null,
+        tone,
       };
     case "error":
       return {
@@ -197,6 +248,7 @@ export function describeBlockReason(
           "still has permission to the folder, then try again.",
         flow: null,
         action: "Try again",
+        tone,
       };
     default: {
       const unhandled: never = reason;
@@ -206,6 +258,7 @@ export function describeBlockReason(
         sentence: "Virgil could not write this paper to disk.",
         flow: null,
         action: "Try again",
+        tone,
       };
     }
   }

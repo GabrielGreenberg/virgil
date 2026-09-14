@@ -19,7 +19,9 @@
  * written correctly, and the state clears itself. What makes it LOUD is that it
  * is present at all, that it names what is happening in the user's own words,
  * and that its dot animates: this is the app's only badge for something
- * happening RIGHT NOW rather than something that has happened.
+ * happening RIGHT NOW rather than something that has happened. The tokens are
+ * the `live` register's, read off the ONE tone table (`interruption-tone.ts`,
+ * task 571) — the same read the band and the save badge make for this state.
  *
  * ## Where it sits
  *
@@ -43,6 +45,7 @@ import {
   type CoworkPenState,
 } from "@/lib/cowork-pen";
 import { deriveDocumentInterruption, interruptionPillLabel } from "@/lib/document-interruption";
+import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
 import { deriveSaveState } from "@/lib/save-state";
 
 /** The clean external snapshot: this pill is about the PEN alone, and the
@@ -53,6 +56,9 @@ const NO_EXTERNAL = Object.freeze({
   detectedAt: null,
   paused: false,
 });
+
+/** The cowork hold's register — `live`, from the one kind → tone table. */
+const PALETTE = paletteForTone(toneForInterruptionKind("cowork-hold"));
 
 /** A 16px stroke-only quill/pen glyph — the pen, literally. */
 function PenIcon() {
@@ -109,9 +115,9 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[280px]"
         style={{
-          background: "var(--amber-100)",
-          borderColor: "var(--amber-500)",
-          color: "var(--ink-strong)",
+          background: PALETTE.bg,
+          borderColor: PALETTE.edge,
+          color: PALETTE.ink,
         }}
         data-hint={hint}
         role="status"
@@ -119,7 +125,7 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
       >
         <span
           aria-hidden
-          style={{ color: "var(--amber-500)", display: "inline-flex" }}
+          style={{ color: PALETTE.edge, display: "inline-flex" }}
           className="cowork-pen-pulse"
         >
           <PenIcon />
