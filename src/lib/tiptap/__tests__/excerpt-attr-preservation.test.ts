@@ -160,12 +160,13 @@ function documentFrom(tex: string, sidecar?: VirgilSidecar) {
   return doc;
 }
 
-/** The ARCHIVE capture: the real dispatcher's `doc.slice(from, to)` through the
- *  ONE capture door. Returns exactly the object the snippet would store. */
+/** The ARCHIVE capture: the real dispatcher's `{ doc, from, to }` through the
+ *  ONE capture door (the leaf takes the cut itself since task 563). Returns
+ *  exactly the object the snippet would store. */
 function archiveWholeDoc(main: Editor): JSONContent {
   const doc = main.state.doc;
   const capture = prepareCardBodyCapture(
-    doc.slice(0, doc.content.size),
+    { doc, from: 0, to: doc.content.size },
     bodySchemaForCardKind("archive"),
   );
   if (!capture.ok) throw new Error(`capture refused: ${capture.reason}`);

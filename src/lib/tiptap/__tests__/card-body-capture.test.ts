@@ -34,7 +34,6 @@ vi.mock("@/lib/storage", () => {
 });
 import fs from "node:fs";
 import path from "node:path";
-import { Slice, Fragment } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import {
   prepareCardBodyCapture,
@@ -48,6 +47,13 @@ import {
 import { unsupportedConstructs } from "@/lib/tiptap/schema-mount";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { getSchema } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import {
+  buildEditorExtensions,
+  type EditorExtensionsCtx,
+} from "@/lib/editor-extensions";
+import { invalidContentNodes } from "@/lib/tiptap/schema-mount";
 
 const REPO = path.resolve(__dirname, "../../../..");
 const SILOS = ["src", "library"];
@@ -100,21 +106,32 @@ describe("task 393 — prepareCardBodyCapture (the one door)", () => {
     expect(JSON.stringify(ANCHORED_DOC)).toContain("linkedAnchor");
   });
 
-  it("takes a live Slice — the capture shape — as well as JSON", () => {
+  it("takes a live DocRange — the capture shape — as well as JSON", () => {
+    // RENEGOTIATED (task 563). This leg used to hand the door a caller-built
+    // `Slice` — an inline fragment (openStart/openEnd 1) and a block fragment —
+    // and pin that the inline one was WRAPPED in a paragraph. The leaf owns
+    // the cut now: it takes `{ doc, from, to }` and slices WITH the range's
+    // parents, so a sub-paragraph range arrives as the paragraph it came from
+    // (identity-less, since that paragraph survives) and a whole-block range
+    // passes the block through with its identity. A caller-built slice is the
+    // shape that produced two orphan `listItem`s at doc level.
     const schema = cardBodySchemaFor("excerpt");
-    const para = schema.nodes.paragraph.create(null, schema.text("Sliced."));
-    // openStart/openEnd 1 ⇒ the fragment's children are INLINE, the shape that
-    // used to throw `contentMatchAt on a node with invalid content`.
-    const inline = new Slice(Fragment.from(schema.text("Sliced.")), 0, 0);
-    const blocks = new Slice(Fragment.from(para), 0, 0);
-    for (const slice of [inline, blocks]) {
-      const prepared = prepareCardBodyCapture(slice, "excerpt");
-      if (!prepared.ok) throw new Error("expected ok");
-      expect(prepared.content.type).toBe("doc");
-      // Bare inline is wrapped so the result is `block+`-valid in every case.
-      expect(prepared.content.content?.[0]?.type).toBe("paragraph");
-      expect(JSON.stringify(prepared.content)).toContain("Sliced.");
-    }
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create({ uuid: "p1" }, schema.text("Sliced whole.")),
+    ]);
+    const inside = prepareCardBodyCapture({ doc, from: 1, to: 7 }, "excerpt");
+    if (!inside.ok) throw new Error("expected ok");
+    expect(inside.content.type).toBe("doc");
+    expect(inside.content.content?.[0]?.type).toBe("paragraph");
+    expect(inside.content.content?.[0]?.attrs?.uuid ?? null).toBeNull();
+    expect(JSON.stringify(inside.content)).toContain("Sliced");
+    expect(JSON.stringify(inside.content)).not.toContain("whole.");
+
+    const whole = prepareCardBodyCapture({ doc, from: 0, to: doc.content.size }, "excerpt");
+    if (!whole.ok) throw new Error("expected ok");
+    expect(whole.content.content?.[0]?.type).toBe("paragraph");
+    expect(whole.content.content?.[0]?.attrs?.uuid).toBe("p1");
+    expect(JSON.stringify(whole.content)).toContain("Sliced whole.");
   });
 
   it("still REFUSES a genuine vocabulary gap — the 308 invariant is untouched", () => {
@@ -181,6 +198,199 @@ describe("task 393 — prepareCardBodyCapture (the one door)", () => {
     expect(unsupportedConstructs(schema, doc)).toEqual(["zzz", "aaa"]);
     // Known vocabulary names nothing — so an empty list is evidence, not silence.
     expect(unsupportedConstructs(schema, normalizeRichContent(ANCHORED_DOC))).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 563 — the cut brings the parents along, and the check asks CONTENT
+// ---------------------------------------------------------------------------
+
+function mainCtx(): EditorExtensionsCtx {
+  return {
+    surface: "main",
+    editableRef: { current: true },
+    cardContext: false,
+    callbacks: {},
+    docIdRef: { current: null },
+    texBlockIsPoppedRef: { current: undefined },
+    anchoredUuidsRef: { current: new Set<string>() },
+    host: null,
+  };
+}
+
+/** Document position `offset` characters into the text node starting with
+ *  `prefix`. */
+function posInText(doc: PMNode, prefix: string, offset: number): number {
+  let found = -1;
+  doc.descendants((n, pos) => {
+    if (found === -1 && n.isText && n.text?.startsWith(prefix)) found = pos + offset;
+    return found === -1;
+  });
+  if (found === -1) throw new Error(`no text starting with "${prefix}"`);
+  return found;
+}
+
+describe("task 563 — the leaf owns the cut, WITH the range's parents", () => {
+  const mainSchema = getSchema(buildEditorExtensions(mainCtx()));
+  const capture = (doc: PMNode, from: number, to: number) =>
+    prepareCardBodyCapture({ doc, from, to }, "excerpt");
+
+  const listDoc = () =>
+    mainSchema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          attrs: { uuid: "L1", parTitle: "My list" },
+          content: [
+            { type: "listItem", attrs: { uuid: "i1", itemLabel: "(a)" }, content: [{ type: "paragraph", content: [{ type: "text", text: "alpha one" }] }] },
+            { type: "listItem", attrs: { uuid: "i2" }, content: [{ type: "paragraph", content: [{ type: "text", text: "beta two" }] }] },
+            {
+              type: "listItem",
+              attrs: { uuid: "i3" },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "gamma three" }] },
+                {
+                  type: "bulletList",
+                  attrs: { uuid: "L2" },
+                  content: [
+                    { type: "listItem", attrs: { uuid: "n1" }, content: [{ type: "paragraph", content: [{ type: "text", text: "nested one" }] }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { type: "paragraph", attrs: { uuid: "p9", parTitle: "Titled", label: null }, content: [{ type: "text", text: "closing prose" }] },
+      ],
+    } as never);
+
+  it("a selection across two items captures the LIST, cut — and the model passes the excerpt schema's content check", () => {
+    const doc = listDoc();
+    const c = capture(doc, posInText(doc, "alpha", 3), posInText(doc, "beta", 4));
+    if (!c.ok) throw new Error(`refused: ${c.reason}`);
+    expect(c.content.content!.map((n) => n.type)).toEqual(["bulletList"]);
+    expect(c.content.content![0].content!.map((n) => n.type)).toEqual(["listItem", "listItem"]);
+    expect(() => cardBodySchemaFor("excerpt").nodeFromJSON(c.content as never).check()).not.toThrow();
+  });
+
+  it("open ancestors are captured FRESH — uuid, parTitle, and what a split leaves behind — while a contained sibling keeps its identity", () => {
+    const doc = listDoc();
+    const c = capture(doc, posInText(doc, "alpha", 3), posInText(doc, "gamma", 3));
+    if (!c.ok) throw new Error(`refused: ${c.reason}`);
+    const list = c.content.content![0];
+    // The list survives in the document: its copy carries neither its identity
+    // nor its title.
+    expect(list.attrs?.uuid ?? null).toBeNull();
+    expect(list.attrs?.parTitle ?? null).toBeNull();
+    const [first, middle, last] = list.content!;
+    expect(first.attrs?.uuid ?? null).toBeNull();
+    // `itemLabel` is `keepOnSplit: false` — a cut is a split, so the fragment
+    // does not carry the `\item[(a)]` marker the surviving item keeps.
+    expect(first.attrs?.itemLabel ?? null).toBeNull();
+    expect(last.attrs?.uuid ?? null).toBeNull();
+    expect(middle.attrs?.uuid).toBe("i2");
+  });
+
+  it("a sub-paragraph selection captures the paragraph, identity-less and title-less (today's bytes, one rule)", () => {
+    const doc = listDoc();
+    const c = capture(doc, posInText(doc, "closing", 2), posInText(doc, "closing", 9));
+    if (!c.ok) throw new Error(`refused: ${c.reason}`);
+    const para = c.content.content![0];
+    expect(para.type).toBe("paragraph");
+    expect(para.attrs?.uuid ?? null).toBeNull();
+    expect(para.attrs?.parTitle ?? null).toBeNull();
+    expect(JSON.stringify(c.content)).toContain("osing p");
+  });
+
+  it("a whole block keeps its identity and its title (the control — it is LEAVING the document)", () => {
+    const doc = listDoc();
+    const from = doc.content.size - doc.lastChild!.nodeSize;
+    const c = capture(doc, from, doc.content.size);
+    if (!c.ok) throw new Error(`refused: ${c.reason}`);
+    const para = c.content.content![0];
+    expect(para.attrs?.uuid).toBe("p9");
+    expect(para.attrs?.parTitle).toBe("Titled");
+  });
+
+  it("a cut that opens an item INSIDE a nested list is CLOSED the way the fitter would close it", () => {
+    // From inside the nested item back out to the closing paragraph: the
+    // outer `listItem` arrives holding only its nested `bulletList`, which its
+    // content expression (`(paragraph | graphicsBlock) block*`) cannot start
+    // with. `fillBefore` supplies the empty leading paragraph — DERIVED from
+    // the expression, exactly what a restore's fitter would do — so the model
+    // mounts rather than refusing an ordinary selection.
+    const doc = listDoc();
+    const c = capture(doc, posInText(doc, "nested", 3), posInText(doc, "closing", 3));
+    if (!c.ok) throw new Error(`refused: ${c.reason}`);
+    const outerItem = c.content.content![0].content![0];
+    expect(outerItem.type).toBe("listItem");
+    expect(outerItem.content![0].type).toBe("paragraph");
+    expect(outerItem.content![1].type).toBe("bulletList");
+    expect(() => cardBodySchemaFor("excerpt").nodeFromJSON(c.content as never).check()).not.toThrow();
+  });
+
+  it("a partial selection inside a COMMENT is the comment node, never prose; inside a CODE BLOCK, verbatim", () => {
+    const doc = mainSchema.nodeFromJSON({
+      type: "doc",
+      content: [
+        { type: "latexComment", attrs: { uuid: "c1" }, content: [{ type: "text", text: "parked old prose" }] },
+        { type: "codeBlock", attrs: { uuid: "k1" }, content: [{ type: "text", text: "raw {bytes}" }] },
+      ],
+    } as never);
+    const comment = capture(doc, posInText(doc, "parked", 2), posInText(doc, "parked", 8));
+    if (!comment.ok) throw new Error(comment.reason);
+    expect(comment.content.content!.map((n) => n.type)).toEqual(["latexComment"]);
+    expect(comment.content.content![0].attrs?.uuid ?? null).toBeNull();
+    const code = capture(doc, posInText(doc, "raw", 1), posInText(doc, "raw", 9));
+    if (!code.ok) throw new Error(code.reason);
+    expect(code.content.content!.map((n) => n.type)).toEqual(["codeBlock"]);
+  });
+
+  it("an empty or inverted range is REFUSED — a `block+` body holds nothing, and the dispatcher bails before asking", () => {
+    // The leaf captures an empty document for an empty range (the display
+    // capture never asks — `createLinkedAnchor` returns null first); the door
+    // then refuses it, because the content check is the same one that would
+    // refuse an empty archive card. The archive dispatcher's own empty-range
+    // bail runs before it ever reaches here.
+    const doc = listDoc();
+    const at = posInText(doc, "alpha", 2);
+    expect(capture(doc, at, at).ok).toBe(false);
+    expect(capture(doc, at + 3, at).ok).toBe(false);
+  });
+
+  it("the door REFUSES a known vocabulary in a shape the schema cannot hold, and NAMES the node", () => {
+    // The pre-563 capture shape, handed in as JSON (a hand- or agent-edited
+    // sidecar can still produce it): two orphan items at doc level. Every type
+    // is known, so `nodeFromJSON` builds it and a vocabulary-only probe says
+    // "mountable" — which is how the archive card came to hold a dead body.
+    const orphans: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "a" }] }] },
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "b" }] }] },
+      ],
+    };
+    const refusal = refusalOf(prepareCardBodyCapture(orphans, "excerpt"));
+    expect(refusal.constructs).toEqual([]);
+    expect(refusal.illFormed).toEqual(["listItem"]);
+    expect(describeCardBodyRefusal(refusal)).toBe("“listItem” in that shape");
+    expect(refusal.reason).toMatch(/Invalid content/);
+  });
+
+  it("`invalidContentNodes` names the CHILD the root cannot place and the PARENT whose content fails below it", () => {
+    const schema = cardBodySchemaFor("excerpt");
+    expect(invalidContentNodes(schema, { type: "doc", content: [{ type: "listItem" }] })).toEqual(["listItem"]);
+    expect(
+      invalidContentNodes(schema, {
+        type: "doc",
+        content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph" }] }] }] }] }],
+      }),
+    ).toEqual(["listItem"]);
+    // A vocabulary gap is the sibling's to name — this walk answers nothing.
+    expect(invalidContentNodes(schema, { type: "doc", content: [{ type: "futureBlock" }] })).toEqual([]);
+    // A valid model names nothing — an empty list is evidence, not silence.
+    expect(invalidContentNodes(schema, normalizeRichContent(ANCHORED_DOC))).toEqual([]);
   });
 });
 

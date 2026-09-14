@@ -25,7 +25,7 @@
 
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { captureSliceContent } from "@/lib/tiptap/slice-capture";
+import { captureRangeContent } from "@/lib/tiptap/slice-capture";
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
@@ -723,8 +723,10 @@ export function createLinkedAnchor(
   // falls back to plain text through `StaticBorrowedText`'s own refusal. Asking
   // it would also drag the resolved card-body schema, and so the whole
   // extension stack, into the import graph of a module every card surface pulls.
-  const capturedContent = captureSliceContent(
-    editor.state.doc.slice(sel.from, sel.to),
+  const capturedContent = captureRangeContent(
+    editor.state.doc,
+    sel.from,
+    sel.to,
   );
   const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
   const cardKind = legacyKindToCardKindString(kind);

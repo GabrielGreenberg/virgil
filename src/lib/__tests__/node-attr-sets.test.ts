@@ -72,6 +72,8 @@ import {
   jsonCarriesContent,
   MAIN_STARTERKIT_NODE_ATTRS,
   dataOnlyAttrs,
+  MAIN_STARTERKIT_NODE_CONTENT,
+  cutFreshAttrs,
 } from "@/lib/node-attr-sets";
 // Comments stripped, string literals KEPT — the drift this census hunts lives
 // in literals (`new Set(["paragraph", …])`), so blanking them would make the
@@ -721,5 +723,62 @@ describe("node-attr-sets · no parTitle file holds a second hand list", () => {
     );
     expect(sibling).toContain("UUID_BEARING_NODE_TYPES");
     expect(sibling).toContain("@/lib/node-attr-sets");
+  });
+});
+
+describe("node-attr-sets · MAIN_STARTERKIT_NODE_CONTENT is checked against the schema (task 563)", () => {
+  // The CONTENT axis of the StarterKit-override table. Task 402 mirrored the
+  // main editor's attrs onto the excerpt surface and recorded the `listItem`
+  // content expression as its known related gap; the capture door now asks the
+  // excerpt schema about content, so the two must be ONE string. This leg
+  // pins the direction "no stale entry" — every override the table claims is
+  // really the main schema's — and `excerpt-schema.test.ts` pins the other.
+  it("every entry is exactly the content expression the real main schema declares", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    for (const [type, content] of Object.entries(MAIN_STARTERKIT_NODE_CONTENT)) {
+      expect(schema.nodes[type], `unknown node type ${type}`).toBeDefined();
+      expect(schema.nodes[type].spec.content, `${type}.content`).toBe(content);
+    }
+  });
+
+  it("every key is one of the StarterKit nodes the main editor re-registers", () => {
+    for (const type of Object.keys(MAIN_STARTERKIT_NODE_CONTENT)) {
+      expect(Object.keys(MAIN_STARTERKIT_NODE_ATTRS)).toContain(type);
+    }
+    // …and the table is not empty (the legs above pass vacuously on {}).
+    expect(MAIN_STARTERKIT_NODE_CONTENT.listItem).toMatch(/graphicsBlock/);
+  });
+});
+
+describe("node-attr-sets · cutFreshAttrs — what a node cut OPEN by a capture leaves behind (task 563)", () => {
+  it("names the identity trio exactly where the type declares each, plus every keepOnSplit:false attr", () => {
+    expect([...cutFreshAttrs("paragraph")].sort()).toEqual(["parTitle", "uuid"]);
+    expect([...cutFreshAttrs("listItem")].sort()).toEqual(["itemLabel", "uuid"]);
+    expect([...cutFreshAttrs("bulletList")].sort()).toEqual(["listOptions", "parTitle", "uuid"]);
+    expect([...cutFreshAttrs("heading")].sort()).toEqual(["label", "shortTitle", "uuid"]);
+    expect([...cutFreshAttrs("codeBlock")].sort()).toEqual(["uuid"]);
+    expect(cutFreshAttrs("latexComment")).toContain("uuid");
+    expect(cutFreshAttrs("exampleBlock")).toEqual(expect.arrayContaining(["uuid", "parTitle", "label"]));
+  });
+
+  it("never names an attr the real schema does not declare on that type, and never a keepOnSplit:true one", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    for (const [type, nodeType] of Object.entries(schema.nodes)) {
+      const declared = new Set(Object.keys(nodeType.spec.attrs ?? {}));
+      for (const attr of cutFreshAttrs(type)) {
+        expect(declared.has(attr), `${type}.${attr} is not a declared attr`).toBe(true);
+      }
+      // `numbered` / `sectionNumber` / `listPreamble` are recomputed or carried
+      // state a split KEEPS — a cut keeps them too.
+      for (const kept of ["numbered", "sectionNumber", "listPreamble", "collapsed"]) {
+        expect(cutFreshAttrs(type)).not.toContain(kept);
+      }
+    }
+  });
+
+  it("answers [] for a type with nothing to leave behind", () => {
+    expect(cutFreshAttrs("text")).toEqual([]);
+    expect(cutFreshAttrs("glossCell")).toEqual([]);
+    expect(cutFreshAttrs("no-such-type")).toEqual([]);
   });
 });

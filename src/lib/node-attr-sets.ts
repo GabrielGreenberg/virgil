@@ -577,3 +577,76 @@ export function dataOnlyAttrs(specs: StructuralAttrSpecs): StructuralAttrSpecs {
     ]),
   );
 }
+
+/**
+ * The CONTENT EXPRESSIONS the main editor overrides on StarterKit's own block
+ * nodes — the second axis of {@link MAIN_STARTERKIT_NODE_ATTRS}, and the ONE
+ * declaration both the main builder and the EXCERPT card body read (task 563).
+ *
+ * Task 402 gave the excerpt surface the main editor's ATTRS and recorded this
+ * as its "known related gap": `listItem` was `"paragraph block*"` on the
+ * excerpt side and `"(paragraph | graphicsBlock) block*"` on the main side.
+ * Type membership and attr parity were both complete, and the two schemas
+ * still disagreed about what a list item may HOLD — so a list item whose
+ * first child is an `\includegraphics` mounted content-invalid in the archive
+ * card, and the capture door's content check (which asks the EXCERPT schema)
+ * would refuse a capture the main document holds perfectly well.
+ *
+ * Spelled ONCE so it cannot drift: `createListItemWithUuid` reads it for the
+ * main editor and `buildExcerptOnlySchema` registers the same expression on
+ * the excerpt's `listItem`. The parity leg in `excerpt-schema.test.ts` pins
+ * every shared node type's `spec.content` equal, so a future override on a
+ * main node alone is a failing test rather than a silent fork.
+ */
+export const MAIN_STARTERKIT_NODE_CONTENT = {
+  // Sub-object: lives only inside bulletList/orderedList. Widened so the FIRST
+  // child may be a graphicsBlock (an item that is just `\includegraphics{…}`),
+  // not only a paragraph. Subsequent children were already free via `block*`
+  // since graphicsBlock is in the block group. Adding another inner kind
+  // (tables, etc.) is a one-token edit to the union — here, and nowhere else.
+  listItem: "(paragraph | graphicsBlock) block*",
+} as const satisfies Readonly<Partial<Record<MainStarterKitNodeName, string>>>;
+
+/**
+ * The attrs a node CUT OPEN by a capture must not carry (task 563).
+ *
+ * A capture that slices the document WITH its parents (`doc.slice(from, to,
+ * true)`) brings the ancestors along — the list that makes an item an item,
+ * the comment node that makes bytes inert — and an ancestor the range only
+ * partly covers arrives OPEN: a fragment of a node that SURVIVES in the
+ * document. Task 320's law for a relocation ("a move conserves identity, a
+ * split mints it") read on a copy: the surviving node keeps its identity, so
+ * the fragment is a fresh presence. Otherwise a partial-paragraph capture
+ * carries the source paragraph's `parTitle` and `label` into the excerpt, and a
+ * restore lands a second `\label{}` beside the first.
+ *
+ * Two families, both DERIVED rather than listed per node:
+ *
+ *  - IDENTITY — `uuid`, `parTitle`, `label`, each stripped exactly where the
+ *    type declares it (the three sets above, which the schema pins). `uuid`
+ *    would be re-minted on restore by `BlockUuidBackfill` anyway; `parTitle`
+ *    and `label` have no such net.
+ *  - WHAT A SPLIT LEAVES BEHIND — every `keepOnSplit: false` attr in
+ *    {@link MAIN_STARTERKIT_NODE_ATTRS} (`itemLabel`, `listOptions`,
+ *    `shortTitle`). A cut IS a split, so the fragment takes what a freshly
+ *    split sibling takes: pressing Enter in `\item[(b)] beta` does not mint a
+ *    second `(b)`, and neither does archiving its second half.
+ *
+ * Stated limit: the split family is read off the StarterKit table only. The
+ * expex / figure nodes declare their own attrs in their own extensions, and
+ * TipTap's `keepOnSplit` is an extension-level fact a ProseMirror node cannot
+ * report — so for those kinds only the identity trio is stripped.
+ */
+export function cutFreshAttrs(typeName: string): readonly string[] {
+  const out: string[] = [];
+  if (UUID_BEARING_NODE_TYPES.has(typeName)) out.push("uuid");
+  if (TITLED_NODE_TYPES.has(typeName)) out.push("parTitle");
+  if (LABEL_DECLARING_NODE_TYPES.has(typeName)) out.push("label");
+  const table = (MAIN_STARTERKIT_NODE_ATTRS as Record<string, StructuralAttrSpecs>)[typeName];
+  if (table) {
+    for (const [name, spec] of Object.entries(table)) {
+      if (spec.keepOnSplit === false && !out.includes(name)) out.push(name);
+    }
+  }
+  return out;
+}

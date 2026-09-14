@@ -35,11 +35,17 @@
  * Cheap: one JSON walk plus one `Schema.nodeFromJSON` over the captured slice
  * (edit-sized, not doc-sized), on a discrete user action — never a keystroke.
  */
-import type { Slice } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { captureSliceContent, isSlice } from "@/lib/tiptap/slice-capture";
-import { unsupportedConstructs } from "@/lib/tiptap/schema-mount";
+import {
+  captureRangeContent,
+  isDocRange,
+  type DocRange,
+} from "@/lib/tiptap/slice-capture";
+import {
+  invalidContentNodes,
+  unsupportedConstructs,
+} from "@/lib/tiptap/schema-mount";
 import {
   canMountInCardBody,
   cardBodySchemaFor,
@@ -61,38 +67,47 @@ export type CardBodyCapture =
        *  the mount failed for a content expression rather than a vocabulary
        *  gap — see {@link unsupportedConstructs}. */
       constructs: string[];
+      /** Node types the destination KNOWS but whose captured CONTENT it cannot
+       *  hold — a `listItem` cut in a shape the schema cannot close (task 563).
+       *  Empty when the model does not build at all. */
+      illFormed: string[];
     };
 
 /**
  * Derive the payload a card body at `scope` would store from `source`, and
  * prove the destination can hold it.
  *
- * `source` is a live `Slice` (the capture shape) or any JSON the card
- * normalizer accepts. On `ok: false` the caller MUST abort the destructive half
- * — nothing has been deleted yet, and the alternative is a section removed from
- * the document and a card that renders blank.
+ * `source` is a live {@link DocRange} (the capture shape — the leaf takes the
+ * cut, WITH the range's parents, so a caller cannot hand it the wrong slice;
+ * task 563) or any JSON the card normalizer accepts. On `ok: false` the caller
+ * MUST abort the destructive half — nothing has been deleted yet, and the
+ * alternative is a section removed from the document and a card that renders
+ * blank, or that renders and throws on its first keystroke.
  */
 export function prepareCardBodyCapture(
-  source: Slice | unknown,
+  source: DocRange | unknown,
   scope: CardBodySchemaScope,
 ): CardBodyCapture {
   // The SAME normalize the write performs (`useArchive.updateSnippet` →
   // `normalizeRichContent`), run BEFORE the check rather than after it. This
-  // line is the whole of task 393: what is judged is what is stored. The slice
+  // line is the whole of task 393: what is judged is what is stored. The range
   // arm reads the shared leaf (task 488), so the payload this door VALIDATES is
   // byte-identical to the one the display capture beside a Mode-B anchor takes.
-  const content = isSlice(source)
-    ? captureSliceContent(source)
+  const content = isDocRange(source)
+    ? captureRangeContent(source.doc, source.from, source.to)
     : normalizeRichContent(source);
   // ONE probe, still: `canMountInCardBody` stays the authority on whether the
-  // destination can hold this (it asks the schema itself). The schema is
-  // re-read below only to NAME the gap, and only on the failure path.
+  // destination can hold this (it asks the schema itself — vocabulary AND
+  // content, since task 563). The schema is re-read below only to NAME the
+  // gap, and only on the failure path.
   const check = canMountInCardBody(content, scope);
   if (check.ok) return { ok: true, content };
+  const schema = cardBodySchemaFor(scope);
   return {
     ok: false,
     reason: check.reason,
-    constructs: unsupportedConstructs(cardBodySchemaFor(scope), content),
+    constructs: unsupportedConstructs(schema, content),
+    illFormed: invalidContentNodes(schema, content),
   };
 }
 
@@ -105,7 +120,16 @@ export function describeCardBodyRefusal(
   refusal: Extract<CardBodyCapture, { ok: false }>,
 ): string {
   const names = refusal.constructs.map((n) => `“${n}”`);
-  if (names.length === 0) return `part of it (${refusal.reason})`;
+  if (names.length > 0) return joinNames(names);
+  // A known vocabulary in a shape the schema cannot hold (task 563): name the
+  // node whose CONTENT failed, so "cut in that shape" points at the thing the
+  // user can re-select rather than at ProseMirror's fragment dump.
+  const shapes = refusal.illFormed.map((n) => `“${n}”`);
+  if (shapes.length > 0) return `${joinNames(shapes)} in that shape`;
+  return `part of it (${refusal.reason})`;
+}
+
+function joinNames(names: string[]): string {
   if (names.length === 1) return names[0];
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }

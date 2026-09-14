@@ -427,6 +427,87 @@ describe("task 308 — main-document vocabulary ⊆ excerpt vocabulary", () => {
   });
 });
 
+// ── 2b. CONTENT-EXPRESSION PARITY (task 563) ──────────────────────────────
+
+describe("task 563 — every shared node type HOLDS the same content in both schemas", () => {
+  // Type membership (leg 2) and attr parity (task 402) were both complete, and
+  // the two schemas still disagreed about what a `listItem` may HOLD:
+  // `"paragraph block*"` here against `"(paragraph | graphicsBlock) block*"` on
+  // the main side. That is the axis the capture door now asks about — it runs
+  // `node.check()` against the EXCERPT schema — so a divergence is no longer a
+  // latent mount defect but a live false REFUSAL of a capture the document
+  // holds perfectly well. Spelled once (`MAIN_STARTERKIT_NODE_CONTENT`), and
+  // pinned here for EVERY shared type so the next override is a failing test.
+  const mainSchema = getSchema(buildEditorExtensions(mainCtx()));
+  const excerptSchema = getSchema(excerptReadOnlyExtensions());
+
+  it("spec.content is equal for every node type in both schemas", () => {
+    const drift: string[] = [];
+    for (const [name, mainType] of Object.entries(mainSchema.nodes)) {
+      const excerptType = excerptSchema.nodes[name];
+      if (!excerptType) continue;
+      if ((mainType.spec.content ?? "") !== (excerptType.spec.content ?? "")) {
+        drift.push(`${name}: main "${mainType.spec.content}" vs excerpt "${excerptType.spec.content}"`);
+      }
+    }
+    expect(
+      drift,
+      "A node type whose CONTENT EXPRESSION differs between the main editor and " +
+        "the archive body. The capture door asks the excerpt schema whether it " +
+        "can HOLD the model, so a stricter excerpt refuses a capture the document " +
+        "holds, and a looser one mounts a body the document cannot take back. " +
+        "Declare the override in `MAIN_STARTERKIT_NODE_CONTENT` (node-attr-sets.ts) " +
+        "and register it on the excerpt side in `buildExcerptOnlySchema`.",
+    ).toEqual([]);
+  });
+
+  it("spec.group agrees modulo `textObject` (a main-only tag no content expression references)", () => {
+    const groups = (g: string | undefined) =>
+      (g ?? "").split(/\s+/).filter((t) => t && t !== "textObject").sort().join(" ");
+    const drift: string[] = [];
+    for (const [name, mainType] of Object.entries(mainSchema.nodes)) {
+      const excerptType = excerptSchema.nodes[name];
+      if (!excerptType) continue;
+      if (groups(mainType.spec.group) !== groups(excerptType.spec.group)) {
+        drift.push(`${name}: main "${mainType.spec.group}" vs excerpt "${excerptType.spec.group}"`);
+      }
+    }
+    expect(drift).toEqual([]);
+    // …and the exclusion still excuses something: main really does tag with it.
+    expect(mainSchema.nodes.listItem.spec.group).toContain("textObject");
+  });
+
+  it("the parity is LIVE: a list item whose first child is a graphic mounts in the excerpt body", () => {
+    // Task 402's stated "known related gap", closed. Before 563 this doc built
+    // (the vocabulary is known) and mounted CONTENT-INVALID in the card.
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "graphicsBlock", attrs: { command: "\\includegraphics{fig.png}" } },
+                { type: "paragraph", content: [{ type: "text", text: "caption-ish" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(canMountInCardBody(doc, "excerpt").ok).toBe(true);
+    const { editor, cleanup } = mount(excerptEditableExtensions(), doc as Content, true);
+    try {
+      expect(() => editor.state.doc.check()).not.toThrow();
+      expect(() => editor.commands.selectAll()).not.toThrow();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 // ── 3. THE GUARD ───────────────────────────────────────────────────────────
 
 describe("task 308 — canMountInCardBody (the never-destroy guard)", () => {
@@ -476,6 +557,18 @@ describe("task 308 — canMountInCardBody (the never-destroy guard)", () => {
     );
     expect(check.ok).toBe(false);
     expect(check.ok === false && check.reason).toMatch(/nopeNode/);
+  });
+
+  it("refuses a KNOWN vocabulary in a shape the schema cannot hold (task 563)", () => {
+    // Every type here is known, so the pre-563 vocabulary-only probe said
+    // "mountable" — and the archive card mounted a dead body. The check runs
+    // `node.check()` now, on the schema itself.
+    const check = canMountInCardBody(
+      { type: "doc", content: [{ type: "listItem", content: [{ type: "paragraph" }] }] },
+      "excerpt",
+    );
+    expect(check.ok).toBe(false);
+    expect(check.ok === false && check.reason).toMatch(/Invalid content/);
   });
 
   it("treats null/undefined content as mountable (nothing to lose)", () => {
