@@ -53,18 +53,70 @@ describe("vendored worker — kpse negative cache", () => {
     expect(WORKER).toMatch(/status === 301 \|\| status === 404 \|\| status === 410/);
   });
 
-  it("negative-caches a TRANSIENT failure too, so it cannot refetch forever", () => {
-    // The key property: after a transient failure the key is written into the
-    // 404 cache anyway. A retry within one compile buys nothing (the mirror
-    // just answered) and costs another blocking round trip.
-    const fileImpl = WORKER.slice(
-      WORKER.indexOf("function kpse_find_file_impl"),
-      WORKER.indexOf("function kpse_find_pk_impl"),
+  // RENEGOTIATED (task 573). This leg used to be "negative-caches a TRANSIENT
+  // failure too" and required `texlive404_cache[cacheKey] = 1` at least TWICE
+  // in the file lookup — i.e. the transient arm writing the DURABLE cache. That
+  // was the defect pinned as the contract: `texlive404_cache` is a module-level
+  // table nothing ever clears, and the engine worker lives for the session, so
+  // a key that missed OFFLINE or failed TRANSIENTLY stayed missing — unnamed,
+  // since the miss lists ARE reset per compile — until a page reload. The
+  // property 454 needed (no re-probe WITHIN a compile) is kept; it now lives in
+  // a per-compile table.
+  const FILE_IMPL = WORKER.slice(
+    WORKER.indexOf("function kpse_find_file_impl"),
+    WORKER.indexOf("function kpse_find_pk_impl"),
+  );
+  const PK_IMPL = WORKER.slice(
+    WORKER.indexOf("function kpse_find_pk_impl"),
+    WORKER.indexOf("var moduleOverrides"),
+  );
+
+  it("negative-caches a TRANSIENT failure for THIS compile, so it cannot refetch within it", () => {
+    expect(FILE_IMPL).toContain("__virgilNoteFetchFailure");
+    expect(FILE_IMPL).toMatch(/__virgilTransientMisses\(\)\[cacheKey\] = 1/);
+    expect(PK_IMPL).toContain("__virgilNoteFetchFailure");
+    expect(PK_IMPL).toMatch(/__virgilTransientMisses\(\)\["pk\/" \+ cacheKey\] = 1/);
+  });
+
+  it("writes the DURABLE miss cache on the DEFINITIVE arm only (task 573)", () => {
+    // Exactly one durable write per lookup, and it sits behind `res.definitive`.
+    // A second write is the offline / breaker / transient arm leaking into a
+    // table that outlives the compile.
+    const fileWrites = FILE_IMPL.match(/texlive404_cache\[cacheKey\] = 1/g) ?? [];
+    expect(fileWrites.length).toBe(1);
+    expect(FILE_IMPL).toMatch(
+      /if \(res\.definitive\) \{\s*texlive404_cache\[cacheKey\] = 1;/,
     );
-    expect(fileImpl).toContain("__virgilNoteFetchFailure");
-    // Both the definitive and the transient arm must write the miss cache.
-    const cacheWrites = fileImpl.match(/texlive404_cache\[cacheKey\] = 1/g) ?? [];
-    expect(cacheWrites.length).toBeGreaterThanOrEqual(2);
+    const pkWrites = PK_IMPL.match(/pk404_cache\[cacheKey\] = 1/g) ?? [];
+    expect(pkWrites.length).toBe(1);
+    expect(PK_IMPL).toMatch(/if \(res\.definitive\) \{\s*pk404_cache\[cacheKey\] = 1;/);
+  });
+
+  it("the offline / breaker short-circuit records a PER-COMPILE miss, in both lookups", () => {
+    for (const [impl, key] of [
+      [FILE_IMPL, "cacheKey"],
+      [PK_IMPL, '"pk/" + cacheKey'],
+    ] as const) {
+      const arm = impl.slice(
+        impl.indexOf("if (self.__offline || self.__mirrorDown)"),
+        impl.indexOf("const remote_url"),
+      );
+      expect(arm).toContain("__offlineMisses");
+      expect(arm).toContain(`__virgilTransientMisses()[${key}] = 1`);
+      expect(arm).not.toMatch(/404_cache/);
+    }
+  });
+
+  it("consults BOTH negative caches before the offline branch and the fetch", () => {
+    for (const [impl, durable, key] of [
+      [FILE_IMPL, "texlive404_cache", "cacheKey"],
+      [PK_IMPL, "pk404_cache", '"pk/" + cacheKey'],
+    ] as const) {
+      const check = impl.indexOf(`cacheKey in ${durable} || ${key} in __virgilTransientMisses()`);
+      expect(check).toBeGreaterThan(0);
+      expect(check).toBeLessThan(impl.indexOf("self.__offline"));
+      expect(check).toBeLessThan(impl.indexOf("__virgilKpseFetch("));
+    }
   });
 
   it("trips a circuit breaker when the mirror keeps failing", () => {
@@ -89,11 +141,27 @@ describe("vendored worker — kpse negative cache", () => {
     // the session, and the miss list describes the wrong compile.
     const prep = WORKER.slice(
       WORKER.indexOf("function prepareExecutionContext"),
-      WORKER.indexOf("function prepareExecutionContext") + 600,
+      // To the end of the function (the next top-level statement), not a fixed
+      // byte window: patch comments grow it.
+      WORKER.indexOf('Module["postRun"]', WORKER.indexOf("function prepareExecutionContext")),
     );
     // The reset sits in the MINIFIED region, so match without spacing.
     expect(prep).toMatch(/__mirrorDown\s*=\s*false/);
     expect(prep).toContain("__downloadFailures");
+    // Task 573: and the per-compile negative cache, or the reset above is
+    // defeated — the miss lists are cleared while the keys that produced them
+    // stay short-circuited, so a reconnected mirror is never retried and the
+    // package is no longer named.
+    expect(prep).toMatch(/__transientMiss\s*=\s*\{\}/);
+  });
+
+  it("clears no DURABLE miss cache per compile (an absent file is absent)", () => {
+    // The rejected alternative: resetting texlive404_cache every compile would
+    // re-issue a blocking mirror round trip for every `\IfFileExists` probe of
+    // a genuinely absent file, the exact grind 454 removed.
+    // Exactly one assignment each: the module-level declaration.
+    expect(WORKER.match(/texlive404_cache\s*=\s*\{\}/g)?.length).toBe(1);
+    expect(WORKER.match(/pk404_cache\s*=\s*\{\}/g)?.length).toBe(1);
   });
 });
 

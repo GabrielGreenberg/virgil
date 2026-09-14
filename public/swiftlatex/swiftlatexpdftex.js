@@ -1,7 +1,7 @@
 var Module=typeof Module!="undefined"?Module:{};const TEXCACHEROOT="/tex";const WORKROOT="/work";var Module={};self.memlog="";self.initmem=undefined;self.mainfile="main.tex";self.texlive_endpoint="https://texlive2.swiftlatex.com/";Module["print"]=function(a){self.memlog+=a+"\n"};Module["printErr"]=function(a){self.memlog+=a+"\n";console.log(a)};Module["preRun"]=function(){FS.mkdir(TEXCACHEROOT);FS.mkdir(WORKROOT)};function _allocate(content){let res=_malloc(content.length);HEAPU8.set(new Uint8Array(content),res);return res}function dumpHeapMemory(){var src=wasmMemory.buffer;var dst=new Uint8Array(src.byteLength);dst.set(new Uint8Array(src));return dst}function restoreHeapMemory(){if(self.initmem){var dst=new Uint8Array(wasmMemory.buffer);dst.set(self.initmem)}}function closeFSStreams(){for(var i=0;i<FS.streams.length;i++){var stream=FS.streams[i];if(!stream||stream.fd<=2){continue}FS.close(stream)}}function prepareExecutionContext(){self.memlog="";restoreHeapMemory();closeFSStreams();FS.chdir(WORKROOT);/* PATCHED (virgil, task 454): reset the per-compile kpse bookkeeping so a
    new compile re-tries a mirror that was unreachable during the last one, and
    so the miss/failure lists the result carries describe THIS compile only.
-   Survive re-vendor. */self.__offlineMisses=[];self.__downloadFailures=[];self.__consecutiveFetchFailures=0;self.__mirrorDown=false}Module["postRun"]=function(){self.postMessage({"result":"ok"});self.initmem=dumpHeapMemory()};function cleanDir(dir){let l=FS.readdir(dir);for(let i in l){let item=l[i];if(item==="."||item===".."){continue}item=dir+"/"+item;let fsStat=undefined;try{fsStat=FS.stat(item)}catch(err){console.error("Not able to fsstat "+item);continue}if(FS.isDir(fsStat.mode)){cleanDir(item)}else{try{FS.unlink(item)}catch(err){console.error("Not able to unlink "+item)}}}if(dir!==WORKROOT){try{FS.rmdir(dir)}catch(err){console.error("Not able to top level "+dir)}}}Module["onAbort"]=function(){self.memlog+="Engine crashed";self.postMessage({"result":"failed","status":-254,"log":self.memlog,"cmd":"compile"});return};function compileLaTeXRoutine(){prepareExecutionContext();const setMainFunction=cwrap("setMainEntry","number",["string"]);setMainFunction(self.mainfile);let status=_compileLaTeX();if(status===0){let pdfArrayBuffer=null;_compileBibtex();try{let pdfurl=WORKROOT+"/"+self.mainfile.substr(0,self.mainfile.length-4)+".pdf";pdfArrayBuffer=FS.readFile(pdfurl,{encoding:"binary"})}catch(err){console.error("Fetch content failed.");status=-253;self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]});return}self.postMessage({"result":"ok","status":status,"log":self.memlog,"pdf":pdfArrayBuffer.buffer,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]},[pdfArrayBuffer.buffer])}else{console.error("Compilation failed, with status code "+status);self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]})}}function compileFormatRoutine(){prepareExecutionContext();let status=_compileFormat();if(status===0){let pdfArrayBuffer=null;try{let pdfurl=WORKROOT+"/pdflatex.fmt";pdfArrayBuffer=FS.readFile(pdfurl,{encoding:"binary"})}catch(err){console.error("Fetch content failed.");status=-253;self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]});return}self.postMessage({"result":"ok","status":status,"log":self.memlog,"pdf":pdfArrayBuffer.buffer,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]},[pdfArrayBuffer.buffer])}else{console.error("Compilation format failed, with status code "+status);self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]})}}function mkdirRoutine(dirname){try{FS.mkdir(WORKROOT+"/"+dirname);self.postMessage({"result":"ok","cmd":"mkdir"})}catch(err){console.error("Not able to mkdir "+dirname);self.postMessage({"result":"failed","cmd":"mkdir"})}}function writeFileRoutine(filename,content){try{FS.writeFile(WORKROOT+"/"+filename,content);self.postMessage({"result":"ok","cmd":"writefile"})}catch(err){console.error("Unable to write mem file");self.postMessage({"result":"failed","cmd":"writefile"})}}function setTexliveEndpoint(url){if(url){if(!url.endsWith("/")){url+="/"}self.texlive_endpoint=url}}self["onmessage"]=function(ev){let data=ev["data"];let cmd=data["cmd"];if(cmd==="compilelatex"){compileLaTeXRoutine()}else if(cmd==="compileformat"){compileFormatRoutine()}else if(cmd==="settexliveurl"){setTexliveEndpoint(data["url"])}else if(cmd==="mkdir"){mkdirRoutine(data["url"])}else if(cmd==="writefile"){writeFileRoutine(data["url"],data["src"])}else if(cmd==="setmainfile"){self.mainfile=data["url"]}else if(cmd==="grace"){console.error("Gracefully Close");self.close()}else if(cmd==="flushcache"){cleanDir(WORKROOT)}else if(cmd==="seedcache"){/* PATCHED (virgil): seed the kpse cache from the main thread so a seeded asset is byte-identical to a real fetch (same FS.writeFile + texlive200_cache assignment kpse_find_file_impl does on a 200). Survive re-vendor. */try{const savepath=TEXCACHEROOT+"/"+data["fileid"];FS.writeFile(savepath,new Uint8Array(data["src"]));texlive200_cache[data["cacheKey"]]=savepath;self.postMessage({"result":"ok","cmd":"seedcache","cacheKey":data["cacheKey"]})}catch(err){console.error("seedcache failed "+err);self.postMessage({"result":"failed","cmd":"seedcache","cacheKey":data["cacheKey"]})}}else if(cmd==="dumpnewcache"){/* PATCHED (virgil): drain the keys added to texlive200_cache since the last dump so the main thread can write them through to persistent IndexedDB. Transferable ArrayBuffers; only the NEW delta. Survive re-vendor. */const newly=self.__newlyCached||{};const entries=[];const transfer=[];for(const cacheKey in newly){const fileid=newly[cacheKey];try{const bytes=FS.readFile(TEXCACHEROOT+"/"+fileid,{encoding:"binary"});const buf=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);entries.push({cacheKey:cacheKey,fileid:fileid,bytes:buf});transfer.push(buf)}catch(err){console.error("dumpnewcache read failed "+cacheKey+" "+err)}}self.__newlyCached={};self.postMessage({"cmd":"dumpnewcache","entries":entries},transfer)}else if(cmd==="setoffline"){/* PATCHED (virgil): main thread pushes navigator.onLine (or a reachability probe result) here; when offline, kpse_find_file_impl fails uncached keys fast instead of hanging on sync XHR. Survive re-vendor. */self.__offline=!!data["value"];self.__offlineMisses=[]}else{console.error("Unknown command "+cmd)}};
+   Survive re-vendor. */self.__offlineMisses=[];self.__downloadFailures=[];self.__consecutiveFetchFailures=0;self.__mirrorDown=false;/* PATCHED (virgil, task 573): the per-compile negative cache. A miss we could not RESOLVE this compile (offline, breaker tripped, transient failure) lives here, never in texlive404_cache/pk404_cache, so the next compile retries it and names it again. Survive re-vendor. */self.__transientMiss={}}Module["postRun"]=function(){self.postMessage({"result":"ok"});self.initmem=dumpHeapMemory()};function cleanDir(dir){let l=FS.readdir(dir);for(let i in l){let item=l[i];if(item==="."||item===".."){continue}item=dir+"/"+item;let fsStat=undefined;try{fsStat=FS.stat(item)}catch(err){console.error("Not able to fsstat "+item);continue}if(FS.isDir(fsStat.mode)){cleanDir(item)}else{try{FS.unlink(item)}catch(err){console.error("Not able to unlink "+item)}}}if(dir!==WORKROOT){try{FS.rmdir(dir)}catch(err){console.error("Not able to top level "+dir)}}}Module["onAbort"]=function(){self.memlog+="Engine crashed";self.postMessage({"result":"failed","status":-254,"log":self.memlog,"cmd":"compile"});return};function compileLaTeXRoutine(){prepareExecutionContext();const setMainFunction=cwrap("setMainEntry","number",["string"]);setMainFunction(self.mainfile);let status=_compileLaTeX();if(status===0){let pdfArrayBuffer=null;_compileBibtex();try{let pdfurl=WORKROOT+"/"+self.mainfile.substr(0,self.mainfile.length-4)+".pdf";pdfArrayBuffer=FS.readFile(pdfurl,{encoding:"binary"})}catch(err){console.error("Fetch content failed.");status=-253;self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]});return}self.postMessage({"result":"ok","status":status,"log":self.memlog,"pdf":pdfArrayBuffer.buffer,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]},[pdfArrayBuffer.buffer])}else{console.error("Compilation failed, with status code "+status);self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]})}}function compileFormatRoutine(){prepareExecutionContext();let status=_compileFormat();if(status===0){let pdfArrayBuffer=null;try{let pdfurl=WORKROOT+"/pdflatex.fmt";pdfArrayBuffer=FS.readFile(pdfurl,{encoding:"binary"})}catch(err){console.error("Fetch content failed.");status=-253;self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]});return}self.postMessage({"result":"ok","status":status,"log":self.memlog,"pdf":pdfArrayBuffer.buffer,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]},[pdfArrayBuffer.buffer])}else{console.error("Compilation format failed, with status code "+status);self.postMessage({"result":"failed","status":status,"log":self.memlog,"cmd":"compile","offlineMisses":self.__offlineMisses||[],"downloadFailures":self.__downloadFailures||[]})}}function mkdirRoutine(dirname){try{FS.mkdir(WORKROOT+"/"+dirname);self.postMessage({"result":"ok","cmd":"mkdir"})}catch(err){console.error("Not able to mkdir "+dirname);self.postMessage({"result":"failed","cmd":"mkdir"})}}function writeFileRoutine(filename,content){try{FS.writeFile(WORKROOT+"/"+filename,content);self.postMessage({"result":"ok","cmd":"writefile"})}catch(err){console.error("Unable to write mem file");self.postMessage({"result":"failed","cmd":"writefile"})}}function setTexliveEndpoint(url){if(url){if(!url.endsWith("/")){url+="/"}self.texlive_endpoint=url}}self["onmessage"]=function(ev){let data=ev["data"];let cmd=data["cmd"];if(cmd==="compilelatex"){compileLaTeXRoutine()}else if(cmd==="compileformat"){compileFormatRoutine()}else if(cmd==="settexliveurl"){setTexliveEndpoint(data["url"])}else if(cmd==="mkdir"){mkdirRoutine(data["url"])}else if(cmd==="writefile"){writeFileRoutine(data["url"],data["src"])}else if(cmd==="setmainfile"){self.mainfile=data["url"]}else if(cmd==="grace"){console.error("Gracefully Close");self.close()}else if(cmd==="flushcache"){cleanDir(WORKROOT)}else if(cmd==="seedcache"){/* PATCHED (virgil): seed the kpse cache from the main thread so a seeded asset is byte-identical to a real fetch (same FS.writeFile + texlive200_cache assignment kpse_find_file_impl does on a 200). Survive re-vendor. */try{const savepath=TEXCACHEROOT+"/"+data["fileid"];FS.writeFile(savepath,new Uint8Array(data["src"]));texlive200_cache[data["cacheKey"]]=savepath;self.postMessage({"result":"ok","cmd":"seedcache","cacheKey":data["cacheKey"]})}catch(err){console.error("seedcache failed "+err);self.postMessage({"result":"failed","cmd":"seedcache","cacheKey":data["cacheKey"]})}}else if(cmd==="dumpnewcache"){/* PATCHED (virgil): drain the keys added to texlive200_cache since the last dump so the main thread can write them through to persistent IndexedDB. Transferable ArrayBuffers; only the NEW delta. Survive re-vendor. */const newly=self.__newlyCached||{};const entries=[];const transfer=[];for(const cacheKey in newly){const fileid=newly[cacheKey];try{const bytes=FS.readFile(TEXCACHEROOT+"/"+fileid,{encoding:"binary"});const buf=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);entries.push({cacheKey:cacheKey,fileid:fileid,bytes:buf});transfer.push(buf)}catch(err){console.error("dumpnewcache read failed "+cacheKey+" "+err)}}self.__newlyCached={};self.postMessage({"cmd":"dumpnewcache","entries":entries},transfer)}else if(cmd==="setoffline"){/* PATCHED (virgil): main thread pushes navigator.onLine (or a reachability probe result) here; when offline, kpse_find_file_impl fails uncached keys fast instead of hanging on sync XHR. Survive re-vendor. */self.__offline=!!data["value"];self.__offlineMisses=[]}else{console.error("Unknown command "+cmd)}};
 /* PATCHED (virgil, task 454): the kpse network layer, rewritten around ONE
    shared fetch helper. Three defects the upstream pair had, each of which turns
    a slow cold compile into an unbounded grind:
@@ -96,6 +96,20 @@ function __virgilStreamAsset(cacheKey, fileid, buffer) {
     /* never fail a compile on the durability channel */
   }
 }
+/* PATCHED (virgil, task 573): TWO negative caches answering two different
+   claims. texlive404_cache / pk404_cache hold DEFINITIVE misses only — "the
+   mirror says this file does not exist" — and are durable for the worker's
+   life (an \IfFileExists probe must not re-issue a blocking round trip every
+   compile). A miss we merely could not RESOLVE this compile — offline, the
+   breaker tripped, a 5xx/429/network/timeout — goes in the per-compile table
+   below, which prepareExecutionContext clears. So within a compile nothing is
+   re-probed, and across compiles a reconnected mirror is retried and a
+   still-missing package is NAMED again. One table for both lookup kinds, keyed
+   as the streaming channel keys them (cacheKey / "pk/" + cacheKey).
+   Survive re-vendor. */
+function __virgilTransientMisses() {
+  return self.__transientMiss || (self.__transientMiss = {});
+}
 let texlive404_cache = {};
 let texlive200_cache = {};
 function kpse_find_file_impl(nameptr, format, _mustexist) {
@@ -104,7 +118,7 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
     return 0;
   }
   const cacheKey = format + "/" + reqname;
-  if (cacheKey in texlive404_cache) {
+  if (cacheKey in texlive404_cache || cacheKey in __virgilTransientMisses()) {
     return 0;
   }
   if (cacheKey in texlive200_cache) {
@@ -118,7 +132,7 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
      name the unavailable package. Survive re-vendor. */
   if (self.__offline || self.__mirrorDown) {
     (self.__offlineMisses || (self.__offlineMisses = [])).push(reqname);
-    texlive404_cache[cacheKey] = 1;
+    __virgilTransientMisses()[cacheKey] = 1;
     return 0;
   }
   const remote_url = self.texlive_endpoint + "pdftex/" + cacheKey;
@@ -137,9 +151,10 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
     texlive404_cache[cacheKey] = 1;
     return 0;
   }
-  /* Transient. Never re-probe this key in this compile (that is defect (a)),
-     count it, and trip the breaker if the mirror looks dead. */
-  texlive404_cache[cacheKey] = 1;
+  /* Transient. Never re-probe this key in THIS compile (that is defect (a)),
+     count it, and trip the breaker if the mirror looks dead. Per-compile table
+     only (task 573): the next compile retries it. */
+  __virgilTransientMisses()[cacheKey] = 1;
   __virgilNoteFetchFailure(reqname, res.reason);
   self.__consecutiveFetchFailures = (self.__consecutiveFetchFailures || 0) + 1;
   if (self.__consecutiveFetchFailures >= KPSE_MAX_CONSECUTIVE_FAILURES) {
@@ -156,7 +171,7 @@ function kpse_find_pk_impl(nameptr, dpi) {
     return 0;
   }
   const cacheKey = dpi + "/" + reqname;
-  if (cacheKey in pk404_cache) {
+  if (cacheKey in pk404_cache || "pk/" + cacheKey in __virgilTransientMisses()) {
     return 0;
   }
   if (cacheKey in pk200_cache) {
@@ -165,7 +180,7 @@ function kpse_find_pk_impl(nameptr, dpi) {
   }
   if (self.__offline || self.__mirrorDown) {
     (self.__offlineMisses || (self.__offlineMisses = [])).push(reqname);
-    pk404_cache[cacheKey] = 1;
+    __virgilTransientMisses()["pk/" + cacheKey] = 1;
     return 0;
   }
   const remote_url = self.texlive_endpoint + "pdftex/pk/" + cacheKey;
@@ -183,8 +198,10 @@ function kpse_find_pk_impl(nameptr, dpi) {
     __virgilStreamAsset("pk/" + cacheKey, pkid, res.buffer);
     return _allocate(intArrayFromString(savepath));
   }
-  pk404_cache[cacheKey] = 1;
-  if (!res.definitive) {
+  if (res.definitive) {
+    pk404_cache[cacheKey] = 1;
+  } else {
+    __virgilTransientMisses()["pk/" + cacheKey] = 1;
     __virgilNoteFetchFailure(reqname, res.reason);
     self.__consecutiveFetchFailures = (self.__consecutiveFetchFailures || 0) + 1;
     if (self.__consecutiveFetchFailures >= KPSE_MAX_CONSECUTIVE_FAILURES) {
