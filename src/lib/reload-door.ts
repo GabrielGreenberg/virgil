@@ -63,7 +63,11 @@ export interface ReloadReadiness {
  *    each registers its settle door with the one pending-flusher registry
  *    (task 559); pre-559 only the bundle did, so a card body typed in the
  *    300 ms before a reload was outside this door, and the report below said
- *    `unlanded: []` about a document that was about to lose it.
+ *    `unlanded: []` about a document that was about to lose it. The registry
+ *    runs in TWO PHASES: a coalescer that feeds the MODEL (the code pane's
+ *    600 ms re-parse into TipTap) is `settle` and completes before any disk
+ *    writer STARTS, so the bundle write snapshots a model that already
+ *    carries the code edit.
  * 2. Re-read the channel — a refusal returns normally, so step 1's resolution
  *    is not evidence of anything.
  * 3. For whatever is still unlanded, force a mirror tick (`force`: young work

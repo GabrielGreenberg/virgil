@@ -28,6 +28,7 @@ import {
 import {
   __registeredCountForTests,
   __resetForTests as resetFlushers,
+  flushAllPendingDocs,
   flushPendingForDoc,
   registerPendingFlusher,
   unregisterPendingFlusher,
@@ -161,6 +162,34 @@ describe("prepareForReload", () => {
     expect(flushed).toBe(1);
     expect(r).toEqual({ unlanded: [], mirrored: true });
     expect(writes).toHaveLength(0);
+  });
+
+  it("settles an UPSTREAM coalescer before any writer snapshots — the code pane feeds the model the bundle write reads", async () => {
+    // The code pane holds the last 600 ms of typing in CodeMirror and only
+    // then re-parses it INTO the TipTap model; the bundle writer snapshots that
+    // model live. Its host mounts AFTER useDocument, so its registration is
+    // the newer one — under a flat "start everything at once" the writer runs
+    // first and snapshots a model WITHOUT the code edit, and the edit lands in
+    // a model the page is about to discard. The `settle` phase is what makes
+    // the order a contract rather than an accident of mount order.
+    let model = "stale — code edit still in CodeMirror";
+    let written: string | null = null;
+    noteUnsavedEdit("A");
+    registerPendingFlusher("A", async () => {
+      written = model; // the writer snapshots at START, exactly as flushPending does
+      noteSaveLanded("A");
+    });
+    registerPendingFlusher(
+      "A",
+      async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        model = "settled — code edit in the model";
+      },
+      { phase: "settle" },
+    );
+    const r = await prepareForReload();
+    expect(written).toBe("settled — code edit in the model");
+    expect(r.unlanded).toEqual([]);
   });
 
   it("reloadNow PREPARES before it reloads — never the other way round", async () => {
@@ -299,6 +328,80 @@ describe("the pending-flusher registry is a per-document MULTI-SET (task 559)", 
     await expect(flushPendingForDoc("A")).rejects.toThrow("permission lost");
     expect(fired).toEqual(["notes"]);
   });
+
+  // ── TWO PHASES: every `settle` flusher completes before any `write` STARTS ──
+
+  it("runs the settle phase to completion before the write phase starts — whatever the registration order", async () => {
+    const order: string[] = [];
+    // Writer registered FIRST (its host mounts first), settler second.
+    registerPendingFlusher("A", async () => {
+      order.push("write-start");
+    });
+    registerPendingFlusher(
+      "A",
+      async () => {
+        order.push("settle-start");
+        await new Promise((r) => setTimeout(r, 5));
+        order.push("settle-done");
+      },
+      { phase: "settle" },
+    );
+    await flushPendingForDoc("A");
+    expect(order).toEqual(["settle-start", "settle-done", "write-start"]);
+    expect(__registeredCountForTests("A", "settle")).toBe(1);
+    expect(__registeredCountForTests("A", "write")).toBe(1);
+    expect(__registeredCountForTests("A")).toBe(2);
+  });
+
+  it("the app-wide flush keeps each document's phase order while running documents concurrently", async () => {
+    const order: string[] = [];
+    registerPendingFlusher("A", async () => {
+      order.push("A:write");
+    });
+    registerPendingFlusher(
+      "A",
+      async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        order.push("A:settle");
+      },
+      { phase: "settle" },
+    );
+    registerPendingFlusher("B", async () => {
+      order.push("B:write");
+    });
+    await flushAllPendingDocs();
+    expect(order.indexOf("A:settle")).toBeLessThan(order.indexOf("A:write"));
+    // B did not wait for A's settle — documents are independent.
+    expect(order.indexOf("B:write")).toBeLessThan(order.indexOf("A:settle"));
+  });
+
+  it("a settle REJECTION stops the per-doc write phase (the model the writers would snapshot is not the user's) — and is swallowed app-wide", async () => {
+    const fired: string[] = [];
+    registerPendingFlusher("A", async () => {
+      fired.push("write");
+    });
+    registerPendingFlusher(
+      "A",
+      async () => {
+        throw new Error("settle failed");
+      },
+      { phase: "settle" },
+    );
+    await expect(flushPendingForDoc("A")).rejects.toThrow("settle failed");
+    expect(fired).toEqual([]);
+    // The app-wide door swallows per flusher, so the write phase still runs —
+    // one coalescer's failure must not strand a disk write.
+    await flushAllPendingDocs();
+    expect(fired).toEqual(["write"]);
+  });
+
+  it("unregister is phase-blind — a settle flusher leaves by the same door", async () => {
+    const settle = async () => {};
+    registerPendingFlusher("A", settle, { phase: "settle" });
+    expect(__registeredCountForTests("A", "settle")).toBe(1);
+    unregisterPendingFlusher("A", settle);
+    expect(__registeredCountForTests("A")).toBe(0);
+  });
 });
 
 /**
@@ -332,10 +435,25 @@ describe("census — every coalescing writer registers with the ONE registry", (
       .map(({ rel }) => rel)
       .sort();
 
+  // A registrant that spells `phase: "settle"` is a MODEL-upstream coalescer,
+  // not a disk writer. Read off comments-stripped source with literals KEPT —
+  // `codeOnly` blanks the very string the needle is.
+  const SETTLE_PHASE = /\bphase:\s*"settle"/;
+  const settleRegistrants = () =>
+    [...trackedFiles("src", /\.tsx?$/), ...trackedFiles("library", /\.tsx?$/)]
+      .filter((p) => !/\/__tests__\//.test(p))
+      .filter((p) => {
+        const src = readFileSync(p, "utf8");
+        return REGISTER.test(codeOnly(src)) && SETTLE_PHASE.test(commentsStripped(src));
+      })
+      .map((p) => p.slice(REPO_ROOT.length + 1))
+      .sort();
+
   const registrants = () =>
     production()
       .filter(({ rel, code }) => rel !== REGISTRY_FILE && REGISTER.test(code))
       .map(({ rel }) => rel)
+      .filter((rel) => !settleRegistrants().includes(rel))
       .sort();
 
   it("discovers a real population — the bundle autosave and both sidecar coalescers", () => {
@@ -352,8 +470,42 @@ describe("census — every coalescing writer registers with the ONE registry", (
     );
   });
 
-  it("the coalescing writers and the registry's registrants are the SAME set", () => {
+  it("the coalescing writers and the registry's WRITE-phase registrants are the SAME set", () => {
     expect(registrants()).toEqual(coalescingWriters());
+  });
+
+  it("the SETTLE-phase registrants are the model-upstream coalescers — an exact set, with the reason", () => {
+    // This population CANNOT be derived by the write needle: a settle
+    // coalescer puts nothing on disk. Its members are the coalescers one step
+    // upstream of the model — today the code pane's 600 ms code→TipTap
+    // re-parse, whose settle door (`bridge.flush()`) its HOST registers. A new
+    // member is a decision about phase ordering, so it lands here by hand,
+    // with its reason; a member that leaves must leave this list too.
+    expect(settleRegistrants()).toEqual(["src/components/CodeEditor.tsx"]);
+    // …and the host hands over the BRIDGE's flush — the settle door is the
+    // bridge's own, not a second re-parse.
+    const host = codeOnly(
+      readFileSync(join(REPO_ROOT, "src/components/CodeEditor.tsx"), "utf8"),
+    );
+    expect(host).toMatch(/bridge\.flush\(\)/);
+  });
+
+  it("the card-body field's 250 ms debounce is a KNOWN settle member that is NOT registered — stated, not silent", () => {
+    // `RichTextField` coalesces card-body keystrokes for 250 ms before its
+    // `onChange` reaches the sidecar hook, whose `update` arms the disk write
+    // INSIDE a `setState` updater React runs lazily at the next render. So a
+    // settle flusher there would fire `onChange` and still find the write
+    // phase with nothing armed — it needs a synchronous render flush, which is
+    // a different mechanism (task 559's stated residual). This leg pins the
+    // gap as DECLARED: the field must not silently join the registry under a
+    // phase that cannot land its write, and the day it takes a real door this
+    // leg is the one to renegotiate.
+    const field = readFileSync(
+      join(REPO_ROOT, "src/components/RichTextField.tsx"),
+      "utf8",
+    );
+    expect(REGISTER.test(codeOnly(field))).toBe(false);
+    expect(field).toMatch(/task 559/);
   });
 
   it("flushAllPendingDocs has exactly ONE production caller — the reload door — and no second flush registry exists", () => {

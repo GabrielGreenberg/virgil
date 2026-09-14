@@ -35,6 +35,24 @@
  * > "flush all sidecars" registry beside this one would be the same gap with
  * > two names.
  *
+ * ## TWO PHASES: settle, then write — task 559
+ *
+ * Not every coalescer writes DISK. The code pane holds the user's last 600 ms
+ * of typing in CodeMirror and only then re-parses it INTO the TipTap model;
+ * the bundle writer (`useDocument.flushPending`) reads that model live. So a
+ * flat "fire everything at once" is order-dependent in exactly the wrong way:
+ * the writer's registration is older (its host mounts first), so it starts
+ * first, snapshots the model WITHOUT the pending code edit, and the edit then
+ * lands in a model the page is about to discard. A flusher that feeds what
+ * another flusher reads is a `settle` flusher, and every settle flusher is
+ * awaited to completion before any `write` flusher STARTS.
+ *
+ * `write` is the default and that is the honest one, not an unstated choice:
+ * a registrant that puts bytes on disk is what this registry has always held.
+ * A `settle` registrant makes the STRONGER claim — "I mutate what a writer will
+ * read" — and a stronger claim is stated by the one making it. Nothing else in
+ * the phase is inferred.
+ *
  * Registrations are token-matched (the `doc-pipeline.ts` shape): unregister
  * removes only the identical function, so a stale cleanup can't evict a live
  * sibling's registration — which matters more now that a document holds many.
@@ -42,41 +60,86 @@
 
 type Flusher = () => Promise<void>;
 
-const flushers = new Map<string, Set<Flusher>>();
+/**
+ * `settle` — fires pending work INTO the document model (the code pane's
+ * code→TipTap re-parse). `write` — fires a pending DISK write (the bundle
+ * autosave, a sidecar debounce, the view-state coalescer). Settle completes
+ * before write starts.
+ */
+export type FlushPhase = "settle" | "write";
 
-export function registerPendingFlusher(docId: string, fn: Flusher): void {
-  let set = flushers.get(docId);
-  if (!set) {
-    set = new Set();
-    flushers.set(docId, set);
+interface DocFlushers {
+  settle: Set<Flusher>;
+  write: Set<Flusher>;
+}
+
+const flushers = new Map<string, DocFlushers>();
+
+export interface RegisterPendingFlusherOptions {
+  /** Defaults to `"write"` — see the module header for why that is the honest default. */
+  phase?: FlushPhase;
+}
+
+export function registerPendingFlusher(
+  docId: string,
+  fn: Flusher,
+  opts?: RegisterPendingFlusherOptions,
+): void {
+  let entry = flushers.get(docId);
+  if (!entry) {
+    entry = { settle: new Set(), write: new Set() };
+    flushers.set(docId, entry);
   }
-  set.add(fn);
+  entry[opts?.phase ?? "write"].add(fn);
 }
 
 /**
  * Idempotent unregister. Only removes `fn` itself — a newer registration for
  * the same docId (or a sibling writer's) isn't accidentally cleared by a stale
- * cleanup.
+ * cleanup. Phase-blind: a function is registered under exactly one phase, so
+ * removing it from both is removing it from the one it is in.
  */
 export function unregisterPendingFlusher(docId: string, fn: Flusher): void {
-  const set = flushers.get(docId);
-  if (!set) return;
-  set.delete(fn);
-  if (set.size === 0) flushers.delete(docId);
+  const entry = flushers.get(docId);
+  if (!entry) return;
+  entry.settle.delete(fn);
+  entry.write.delete(fn);
+  if (entry.settle.size === 0 && entry.write.size === 0) flushers.delete(docId);
 }
 
 /**
- * Fire EVERY registered debounce for `docId` and await their writes. No-op if
- * nothing is registered. Errors are propagated (the first rejection wins, the
- * rest still run — every flusher is started before any is awaited); callers
- * that want fire-and-forget semantics should attach `.catch(() => {})`
- * themselves. In practice the sidecar flushers never reject — their `persist`
- * catches and logs — so a rejection here is the bundle write's.
+ * Run one document's flushers in phase order. Every member of a phase is
+ * STARTED before any member of it is awaited (they are independent writes);
+ * the `write` phase is not started until the whole `settle` phase has
+ * resolved — that gap is the contract, see the module header. `run` wraps
+ * each call so the caller decides between propagating and swallowing.
+ */
+async function flushDocPhased(
+  entry: DocFlushers,
+  run: (fn: Flusher) => Promise<void>,
+): Promise<void> {
+  if (entry.settle.size > 0) {
+    await Promise.all([...entry.settle].map(run));
+  }
+  if (entry.write.size > 0) {
+    await Promise.all([...entry.write].map(run));
+  }
+}
+
+/**
+ * Fire EVERY registered debounce for `docId` — settle phase, then write phase
+ * — and await their writes. No-op if nothing is registered. Errors are
+ * propagated (the first rejection of a phase wins, the rest of that phase
+ * still run; a settle rejection stops the write phase, since the model the
+ * writers would snapshot is then not the one the user has); callers that want
+ * fire-and-forget semantics should attach `.catch(() => {})` themselves. In
+ * practice the sidecar flushers never reject — their `persist` catches and
+ * logs — so a rejection here is the bundle write's.
  */
 export async function flushPendingForDoc(docId: string): Promise<void> {
-  const set = flushers.get(docId);
-  if (!set || set.size === 0) return;
-  await Promise.all([...set].map((fn) => fn()));
+  const entry = flushers.get(docId);
+  if (!entry) return;
+  await flushDocPhased(entry, (fn) => fn());
 }
 
 /**
@@ -85,19 +148,25 @@ export async function flushPendingForDoc(docId: string): Promise<void> {
  * reload drops every mounted pipeline at once, and under multi-doc keep-alive
  * the paper holding unsaved work is often a BACKGROUND one nobody is looking
  * at. Individual failures are swallowed — one writer's failed flush must not
- * strand the rest.
+ * strand the rest, and one document's must not strand another's. Documents
+ * run concurrently; each document's phases run in order.
  */
 export async function flushAllPendingDocs(): Promise<void> {
-  const all: Promise<void>[] = [];
-  for (const set of flushers.values()) {
-    for (const fn of set) all.push(fn().catch(() => {}));
-  }
-  await Promise.all(all);
+  const swallow = (fn: Flusher) => fn().catch(() => {});
+  await Promise.all(
+    [...flushers.values()].map((entry) => flushDocPhased(entry, swallow)),
+  );
 }
 
-/** Test helper — how many writers are registered under `docId`. */
-export function __registeredCountForTests(docId: string): number {
-  return flushers.get(docId)?.size ?? 0;
+/** Test helper — how many flushers are registered under `docId`, optionally one phase's. */
+export function __registeredCountForTests(
+  docId: string,
+  phase?: FlushPhase,
+): number {
+  const entry = flushers.get(docId);
+  if (!entry) return 0;
+  if (phase) return entry[phase].size;
+  return entry.settle.size + entry.write.size;
 }
 
 /** Test helper — wipe all registrations. */

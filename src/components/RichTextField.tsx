@@ -462,6 +462,17 @@ function RichTextFieldImpl({
     onUpdate: ({ editor }) => {
       // Debounce so we don't thrash the parent (and the persist call chain)
       // on every keystroke.
+      //
+      // STATED RESIDUAL (task 559): this is a coalescer one step UPSTREAM of
+      // the sidecar write — the last 250 ms of card-body typing sit here, not
+      // in the hook the pending-flusher registry flushes. It is deliberately
+      // NOT registered as a `settle` flusher: `onChange` lands in the hook's
+      // `update`, which arms its disk write INSIDE a `setState` updater that
+      // React runs lazily at the next render, so a flush here would fire
+      // `onChange` and the registry's write phase would still find nothing
+      // armed. Closing it needs a synchronous render flush around the
+      // hand-off (a different mechanism, with its own harness); until then
+      // the blur edge below and the sidecar hook's own doors are the nets.
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         onChangeRef.current(editor.getJSON());
