@@ -1,6 +1,7 @@
 <!-- last-verified: 702a1036 2026-09-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
+<!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
 
 # Sidecar schemas — operational manifest
 
@@ -12,10 +13,13 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **57** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
+That count, and every type name this doc backticks, are checked in BOTH directions
+by coherence check 2 (`tools/check-coherence.mjs`): a type deleted from the SSOT
+but still named here fails CI, and so does a stale count.
 
 ## Conventions across the card schemas (read once)
 
@@ -376,17 +380,23 @@ path** — don't write them; flagged as pruning candidates:
 - **`suggestions.json`** — `SuggestionsState { suggestions: Suggestion[];
   currentIndex; reviewedAt; documentHash }`, `Suggestion { id; explanation;
   original_text; suggested_text; revision; note; status }`. The pre-Revisions
-  inline-review path.
-- **`comments.json`** — `CommentsState { comments: UserComment[] }`, `UserComment
-  { id; selectedText; comment; createdAt; resolved }`. Pre-card inline comments.
+  inline-review path (`useSuggestions` still reads it).
 - **No live consumer at all** (the dead pre-card review pipeline — safe to prune):
-  `SessionState`, `DocumentPayload`, `ReviewRequest`, `ClaudeSuggestion`.
+  `SessionState`, `ReviewRequest`, `ClaudeSuggestion`.
+
+Two former members are gone from the SSOT and are recorded here only so nobody
+re-adds them: the `comments.json` pair (a pre-card inline-comments state and its
+row type, removed in A1 gardening — that file was never wired into any panel) and
+the document-payload bundle type (removed in task 417 when both backends stopped
+reading `editor-state.json` into a field no caller consumed). Neither is named in
+backticks here, deliberately: a backticked type name in this doc is a claim that
+the type exists, and check 2 now holds it to that.
 
 ## Coverage
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **58** exported types are named below (schema above, or
+forward-points to. All **57** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -405,13 +415,14 @@ doc-of-record noted), grouped by family:
 - **Bibliography support** — `BibEntry`, `BibReviewRequest`, `BibReviewState`,
   `BibSettings`, `BibEntryRequest`, `AnnotationsState`, `AnnotationsStateV2`.
 - **Infrastructure** — `VirgilSidecar`, `ParagraphMeta`, `EditorStateData`.
-- **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `UserComment`,
-  `CommentsState`, `SessionState`, `DocumentPayload`, `ReviewRequest`,
-  `ClaudeSuggestion`.
+- **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `SessionState`,
+  `ReviewRequest`, `ClaudeSuggestion`.
 
-Two of the 58 have their **doc-of-record elsewhere**: `OriginalAnchor` (the
-Mode-B→A re-anchor record) and the `Link` family are owned by
-[anchoring.md](anchoring.md) — their shapes live there, not duplicated above.
+One of them has its **doc-of-record elsewhere**: `OriginalAnchor` (the Mode-B→A
+re-anchor record) is owned by [anchoring.md](anchoring.md), as is the `Link`
+family — which is exported by `src/links/_shared/types.ts`, a sibling SSOT the
+registry section also covers, not by `types.ts`. Their shapes live there, not
+duplicated above.
 
 ## Rules for skills
 
