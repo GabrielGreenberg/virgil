@@ -75,7 +75,7 @@ describe("vendored worker — kpse negative cache", () => {
     expect(FILE_IMPL).toContain("__virgilNoteFetchFailure");
     expect(FILE_IMPL).toMatch(/__virgilTransientMisses\(\)\[cacheKey\] = 1/);
     expect(PK_IMPL).toContain("__virgilNoteFetchFailure");
-    expect(PK_IMPL).toMatch(/__virgilTransientMisses\(\)\["pk\/" \+ cacheKey\] = 1/);
+    expect(PK_IMPL).toMatch(/__virgilTransientMisses\(\)\[__virgilPkKey\(cacheKey\)\] = 1/);
   });
 
   it("writes the DURABLE miss cache on the DEFINITIVE arm only (task 573)", () => {
@@ -95,7 +95,7 @@ describe("vendored worker — kpse negative cache", () => {
   it("the offline / breaker short-circuit records a PER-COMPILE miss, in both lookups", () => {
     for (const [impl, key] of [
       [FILE_IMPL, "cacheKey"],
-      [PK_IMPL, '"pk/" + cacheKey'],
+      [PK_IMPL, "__virgilPkKey(cacheKey)"],
     ] as const) {
       const arm = impl.slice(
         impl.indexOf("if (self.__offline || self.__mirrorDown)"),
@@ -110,7 +110,7 @@ describe("vendored worker — kpse negative cache", () => {
   it("consults BOTH negative caches before the offline branch and the fetch", () => {
     for (const [impl, durable, key] of [
       [FILE_IMPL, "texlive404_cache", "cacheKey"],
-      [PK_IMPL, "pk404_cache", '"pk/" + cacheKey'],
+      [PK_IMPL, "pk404_cache", "__virgilPkKey(cacheKey)"],
     ] as const) {
       const check = impl.indexOf(`cacheKey in ${durable} || ${key} in __virgilTransientMisses()`);
       expect(check).toBeGreaterThan(0);
@@ -162,6 +162,73 @@ describe("vendored worker — kpse negative cache", () => {
     // Exactly one assignment each: the module-level declaration.
     expect(WORKER.match(/texlive404_cache\s*=\s*\{\}/g)?.length).toBe(1);
     expect(WORKER.match(/pk404_cache\s*=\s*\{\}/g)?.length).toBe(1);
+  });
+});
+
+/**
+ * TASK 574 — THE PERSISTENT cacheKey GRAMMAR.
+ *
+ * kpse keeps two positive caches (texlive200_cache for files, pk200_cache for
+ * bitmap fonts) and the write-through channels flatten both into ONE
+ * persistent namespace by prefixing pk keys with "pk/". Pre-574 the pk lookup
+ * MINTED that prefix and the `seedcache` arm never PARSED it: every persisted
+ * key went into texlive200_cache, which kpse_find_pk_impl never reads, so a
+ * pk font the user had compiled online was held in IndexedDB and never
+ * restored — re-downloaded every session, missing offline.
+ */
+describe("vendored worker — the persistent cacheKey grammar (task 574)", () => {
+  const PK_IMPL = WORKER.slice(
+    WORKER.indexOf("function kpse_find_pk_impl"),
+    WORKER.indexOf("var moduleOverrides"),
+  );
+  const SEED_ARM = WORKER.slice(
+    WORKER.indexOf('cmd==="seedcache"'),
+    WORKER.indexOf('cmd==="dumpnewcache"'),
+  );
+  const HELPERS = WORKER.slice(
+    WORKER.indexOf("const VIRGIL_PK_KEY_PREFIX"),
+    WORKER.indexOf("/* PATCHED (virgil, task 573): TWO negative caches"),
+  );
+
+  it("spells the pk prefix ONCE, and every minting site goes through it", () => {
+    // One definition; no hand-built `"pk/" + …` concatenation anywhere, so the
+    // minting arm and the parsing arm cannot come to disagree about the prefix.
+    expect(WORKER.match(/const VIRGIL_PK_KEY_PREFIX = "pk\/";/g)?.length).toBe(1);
+    expect(WORKER).not.toMatch(/"pk\/"\s*\+/);
+    // The streaming arm and the dumpnewcache ledger both mint with the helper.
+    expect(PK_IMPL).toContain("__virgilStreamAsset(__virgilPkKey(cacheKey)");
+    expect(PK_IMPL).toMatch(/__newlyCached = \{\}\)\)\[__virgilPkKey\(cacheKey\)\] = pkid/);
+  });
+
+  it("the seedcache arm routes through the grammar parser, never a bare table write", () => {
+    expect(SEED_ARM).toContain('__virgilSeedEntry(data["cacheKey"],savepath)');
+    expect(SEED_ARM).not.toMatch(/texlive200_cache\[/);
+    expect(SEED_ARM).not.toMatch(/pk200_cache\[/);
+  });
+
+  it("a pk key minted by the lookup is seeded back into the table the lookup READS", () => {
+    // Behavioural, over the file's own helper bytes: run __virgilPkKey and
+    // __virgilSeedEntry against fake tables. The pk lookup's own table key is
+    // `dpi + "/" + reqname`, read out of PK_IMPL rather than restated.
+    expect(PK_IMPL).toContain('const cacheKey = dpi + "/" + reqname;');
+    const run = new Function(
+      "pk200_cache",
+      "texlive200_cache",
+      `${HELPERS}; return { __virgilPkKey, __virgilSeedEntry };`,
+    );
+    const pk200: Record<string, string> = {};
+    const tl200: Record<string, string> = {};
+    const { __virgilPkKey, __virgilSeedEntry } = run(pk200, tl200) as {
+      __virgilPkKey: (k: string) => string;
+      __virgilSeedEntry: (k: string, p: string) => void;
+    };
+
+    const lookupKey = 600 + "/" + "cmr10";
+    __virgilSeedEntry(__virgilPkKey(lookupKey), "/tex/pk-1");
+    __virgilSeedEntry("26/expex.sty", "/tex/exp-1");
+
+    expect(pk200).toEqual({ [lookupKey]: "/tex/pk-1" });
+    expect(tl200).toEqual({ "26/expex.sty": "/tex/exp-1" });
   });
 });
 
