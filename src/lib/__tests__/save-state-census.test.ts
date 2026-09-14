@@ -30,7 +30,14 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { codeOnlyLines, commentsStripped, strip } from "./_source-scan";
+import {
+  codeOnlyLines,
+  commentsStripped,
+  elementSubtree,
+  enclosingDeclaration,
+  strip,
+  tagsContaining,
+} from "./_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -166,20 +173,63 @@ describe("census · every silencing gate has a voice", () => {
 });
 
 describe("census · the manual-save door", () => {
-  const CALLERS = ["src/components/SaveStateBadge.tsx", "src/components/EditorLayout.tsx"];
+  const DOOR = "src/lib/save-request.ts";
 
-  it("every caller of `requestSaveNow` also routes a blocked outcome", () => {
+  /** Every production file in BOTH silos that asks the manual-save door —
+   *  DISCOVERED from the tree, never listed (task 572). This leg shipped
+   *  with a two-entry hand list under a header whose first property is
+   *  "membership is DISCOVERED", and for the whole of its life a third
+   *  caller (the interruption band's `retry` arm, task 545) and then a
+   *  fourth (the preservation badge's "Save anyway", task 567) were never
+   *  opened: each happened to route, so the violation was the census's
+   *  blindness rather than a live swallow — but the NEXT caller is exactly
+   *  what this leg exists to catch, and a hand list could only be missing
+   *  it. The door module is excluded because it is the thing being asked;
+   *  the suites because a suite is not a consumer (task 202). */
+  const callers = () =>
+    [...walk("src"), ...walk("library")].filter((rel) => {
+      if (rel === DOOR || rel.includes("__tests__")) return false;
+      return codeOnlyLines(read(rel)).includes("requestSaveNow(");
+    });
+
+  it("the caller census can see (an empty discovery would pass the routing leg vacuously)", () => {
+    const pop = callers();
+    for (const must of [
+      "src/components/SaveStateBadge.tsx",
+      "src/components/EditorLayout.tsx",
+      "src/components/DocumentInterruptionBanner.tsx",
+      "src/components/PreservationNoticeBadge.tsx",
+    ]) {
+      expect(pop, `discovery missed ${must}`).toContain(must);
+    }
+  });
+
+  it("every CALL SITE of `requestSaveNow` routes a blocked outcome", () => {
     // A Save button that asks for a write and drops the refusal on the floor is
     // this incident's silence with a button on it. The routing call is what
-    // turns a blocked answer into the flow that can unblock it.
-    for (const rel of CALLERS) {
+    // turns a blocked answer into the flow that can unblock it — and it is
+    // asked of the enclosing DECLARATION of each call, not of the file: a
+    // file that routes in one handler and swallows in another would pass a
+    // whole-file grep with the swallow intact.
+    const offenders: string[] = [];
+    for (const rel of callers()) {
       const code = codeOnlyLines(read(rel));
-      if (!code.includes("requestSaveNow(")) continue;
-      expect(
-        code.includes("requestBlockingFlow("),
-        `${rel} asks for a manual save without routing a blocked outcome`,
-      ).toBe(true);
+      let at = code.indexOf("requestSaveNow(");
+      while (at >= 0) {
+        const region = enclosingDeclaration(code, at);
+        if (!region.includes("requestBlockingFlow(")) {
+          const line = code.slice(0, at).split("\n").length;
+          offenders.push(`${rel}:${line}`);
+        }
+        at = code.indexOf("requestSaveNow(", at + 1);
+      }
     }
+    expect(
+      offenders,
+      "a manual-save request whose enclosing declaration never routes a " +
+        "blocked outcome — ask `requestBlockingFlow(docId, outcome.reason)` " +
+        "on the not-landed branch",
+    ).toEqual([]);
   });
 
   it("nothing outside the door module registers or reads a save door", () => {
@@ -228,28 +278,101 @@ describe("census · the manual-save door", () => {
 describe("census · a data-integrity state is never hideable", () => {
   const CLUSTER = "src/components/editor-layout/StatusCluster.tsx";
 
-  it("the save badge and the conflict badge render OUTSIDE the collapsible group", () => {
+  /** The population is DISCOVERED from the cluster's own JSX (task 572): every
+   *  `<…Badge` / `<…Banner` element it renders. The pre-572 leg pinned TWO of
+   *  them by name while four more data-integrity badges — cowork pen,
+   *  preservation, mirror recovery, sync conflict — each carried the same
+   *  invariant in its own docblock and none was censused: moving any of them
+   *  inside the collapsible wrapper passed CI. A badge that legitimately
+   *  belongs INSIDE the group says so in the comment block directly above its
+   *  tag with a reason (`collapsible-ok: <why>`); the allowlist is EMPTY, and
+   *  no badge claims it today. The tag scan reads comment-stripped source so
+   *  a badge named in prose is not a badge rendered. */
+  const EXEMPT = "collapsible-ok:";
+  const BADGE_TAG = /<([A-Z]\w*(?:Badge|Banner))(?![\w.])/g;
+  const HIDER = /(?:topbarRightCollapsed|collapsePreference)\b[^;]*?&&/;
+
+  type Badge = { name: string; at: number };
+  /** Every rendered badge/banner tag, first occurrence per name, in order. */
+  const badges = (stripped: string): Badge[] => {
+    const seen = new Map<string, number>();
+    for (const m of stripped.matchAll(BADGE_TAG)) {
+      const name = m[1]!;
+      if (!seen.has(name)) seen.set(name, m.index ?? 0);
+    }
+    return [...seen].map(([name, at]) => ({ name, at }));
+  };
+
+  it("the badge census can see (an empty discovery would pass the gate leg vacuously)", () => {
+    const pop = badges(commentsStripped(read(CLUSTER))).map((b) => b.name);
+    for (const must of [
+      "SaveStateBadge",
+      "ExternalChangeBadge",
+      "CoworkPenBadge",
+      "PreservationNoticeBadge",
+      "MirrorRecoveryBadge",
+      "SyncConflictBadge",
+    ]) {
+      expect(pop, `discovery missed ${must}`).toContain(must);
+    }
+  });
+
+  it("every badge the cluster renders sits OUTSIDE the collapsible group", () => {
     // Renegotiated in place by task 395, same invariant, new spelling. The
     // collapsible tools used to be an inline `{!topbarRightCollapsed && (<>`
     // fragment; the bar's occupancy rule needs the group's NATURAL width in
     // BOTH states, so it is now a `max-content` wrapper that collapses by
-    // width instead of unmounting. The question the census asks is unchanged
-    // and is now structural rather than positional: a data-integrity badge
-    // must not be a DESCENDANT of the group a layout preference can hide.
-    const src = read(CLUSTER);
+    // width instead of unmounting. The question the census asks is structural
+    // rather than positional: a data-integrity badge must not be a DESCENDANT
+    // of the group a layout preference can hide (the task-357 rule) — and it
+    // must not be re-wrapped in the inline `{!topbarRightCollapsed && …}`
+    // form the group retired, which a position test alone cannot see.
+    const raw = read(CLUSTER);
+    const src = commentsStripped(raw);
     // Anchored on the element that HIDES (the group wrapper carrying the
     // width/aria-hidden), not on the inner measurement marker a few lines
     // below it — a census should name the thing whose absence it is asserting.
-    const gate = src.indexOf('data-bar-tier="collapsible"');
-    expect(gate, "the collapsible tool group must exist to be measured against").toBeGreaterThan(0);
-    for (const el of ["<SaveStateBadge", "<ExternalChangeBadge"]) {
-      const at = src.indexOf(el);
-      expect(at, `${el} is not rendered at all`).toBeGreaterThan(0);
-      expect(
-        at,
-        `${el} sits INSIDE the collapsible tool group — a data-integrity ` +
-          "notice must not be hideable by a layout preference (the task-357 rule)",
-      ).toBeLessThan(gate);
+    const [gateTag, ...moreGates] = tagsContaining(src, /data-bar-tier="collapsible"/);
+    expect(gateTag, "the collapsible tool group must exist to be measured against").toBeTruthy();
+    expect(moreGates, "one collapsible group, or the census cannot say which one hides").toEqual([]);
+    const group = elementSubtree(src, gateTag!);
+    expect(group, "the collapsible group's subtree must resolve (fail LOUD)").not.toBeNull();
+
+    const offenders: string[] = [];
+    for (const { name, at } of badges(src)) {
+      // The exemption lives in the comment block DIRECTLY above the tag — the
+      // text between the previous tag's close and this tag — never anywhere
+      // else in the file (task 204's rule: scoped to the shape it justifies).
+      const prevClose = src.lastIndexOf(">", at - 1);
+      const window = raw.slice(prevClose < 0 ? 0 : prevClose, at + name.length + 1);
+      if (window.includes(EXEMPT)) continue;
+      const insideGroup = group!.includes(`<${name}`);
+      const inlineGated = HIDER.test(src.slice(prevClose < 0 ? 0 : prevClose, at));
+      if (insideGroup) offenders.push(`${name} is a descendant of the collapsible group`);
+      if (inlineGated) offenders.push(`${name} is wrapped in an inline collapse gate`);
+    }
+    expect(
+      offenders,
+      "a data-integrity notice must not be hideable by a layout preference " +
+        "(task 357); a badge that legitimately belongs in the collapsible group " +
+        `says so above its tag with \`${EXEMPT} <why>\``,
+    ).toEqual([]);
+  });
+
+  it("an exemption must excuse a badge that would otherwise be flagged", () => {
+    // A marker with nothing to excuse is a standing licence (the stale-entry
+    // rule every allowlist in this repo owes). None is claimed today; the leg
+    // exists so the first one is a decision rather than a habit.
+    const raw = read(CLUSTER);
+    const src = commentsStripped(raw);
+    const gateTag = tagsContaining(src, /data-bar-tier="collapsible"/)[0]!;
+    const group = elementSubtree(src, gateTag) ?? "";
+    for (const { name, at } of badges(src)) {
+      const prevClose = src.lastIndexOf(">", at - 1);
+      const window = raw.slice(prevClose < 0 ? 0 : prevClose, at + name.length + 1);
+      if (!window.includes(EXEMPT)) continue;
+      const wouldFlag = group.includes(`<${name}`) || HIDER.test(src.slice(prevClose, at));
+      expect(wouldFlag, `${name} carries \`${EXEMPT}\` but sits outside the group — stale`).toBe(true);
     }
   });
 
