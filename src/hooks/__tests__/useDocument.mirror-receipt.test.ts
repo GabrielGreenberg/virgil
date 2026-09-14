@@ -90,14 +90,18 @@ import { clearUnsavedWork, hasUnlandedWork, getUnsavedWork } from "@/lib/unsaved
 import {
   acknowledgePreservationNotice,
   clearPreservationNotice,
+  isPreservationAcknowledged,
   isWriteProtected,
   recordPreservationRefusal,
 } from "@/lib/preservation-notice";
 import { __resetTickersForTests } from "@/lib/emergency-mirror";
 import {
   __resetMirrorRecoveryForTests,
+  getRecoveryActions,
   getRecoveryOffer,
 } from "@/lib/mirror-recovery";
+import { requestSaveNow } from "@/lib/save-request";
+import { deriveSaveState } from "@/lib/save-state";
 
 const DISK: JSONContent = { type: "doc", content: [] };
 const WORK: JSONContent = {
@@ -440,5 +444,185 @@ describe("accepting controls — an implementation that never clears anything fa
     expect(mockWrite).toHaveBeenCalled();
     expect(dels, "a write that never happened may not drop the mirror").toBe(0);
     expect(getUnsavedWork("doc-1")?.reason).toBe(null);
+  });
+});
+
+// ── Task 567 — the flow acts on the RECEIPT, never on the notice FLAG ────────
+//
+// Two doors in the preservation flow still decided on the flag after 557:
+//
+// - "Save anyway" ACKNOWLEDGED and wrote nothing. The refusal had already
+//   disarmed the debounce and `save` does not re-arm on a refused receipt, so
+//   the file stayed stale until the next keystroke — while the save badge kept
+//   its blocked tier ("Not saving … Review…") over a document whose next Save
+//   would silently overwrite the file. The acknowledgment now rides the
+//   manual-save door as a CLAIM and is recorded on the LANDED receipt.
+// - `restoreFromMirror` read `isWriteProtected` after `save()`. A THROWN write
+//   is swallowed into the channel and leaves that flag false, so the restore
+//   refetched and DELETED the mirror and the recovery offer for a write that
+//   never landed.
+//
+// These legs drive the REAL store (the manual-save harness mocks it): the
+// acknowledgment is a fact about the notice, and only the real store can say
+// whether it was recorded and when.
+describe("task 567 · \"Save anyway\" is a WRITE, and the acknowledgment rests on its receipt", () => {
+  /** The door as both real backends behave: it refuses (publishing the
+   *  refusal) unless the write carries the acknowledgment claim. */
+  function doorRefusesUnlessAcknowledged() {
+    mockWrite.mockImplementation(
+      async (_h: unknown, _doc: unknown, opts?: { acknowledgePreservation?: boolean }) => {
+        if (opts?.acknowledgePreservation) return { landed: true };
+        recordPreservationRefusal("doc-1", { ...refusal });
+        return { landed: false, reason: "preservation" };
+      },
+    );
+  }
+
+  async function refusedDocument() {
+    vi.useFakeTimers();
+    doorRefusesUnlessAcknowledged();
+    const { ed } = destructibleEditor(WORK);
+    const { result } = renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
+    await vi.runOnlyPendingTimersAsync();
+    act(() => result.current.onUpdate(ed, userTx));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000); // the debounce fires and is refused
+    });
+    expect(isWriteProtected("doc-1"), "a notice stands").toBe(true);
+    expect(deriveSaveState(getUnsavedWork("doc-1")).tier).toBe("blocked");
+    mockWrite.mockClear();
+    return result;
+  }
+
+  it("the claim writes the refused document, lands, and only THEN acknowledges the notice", async () => {
+    await refusedDocument();
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1", { acknowledgePreservation: true });
+    });
+    // PRE-567: the badge called `acknowledgePreservationNotice` and asked for
+    // no write; `mockWrite` would have ZERO calls here.
+    expect(mockWrite, "the gesture IS a write").toHaveBeenCalledTimes(1);
+    expect(out).toEqual({ landed: true });
+    expect(isPreservationAcknowledged("doc-1"), "acknowledged on the landed receipt").toBe(true);
+    expect(isWriteProtected("doc-1")).toBe(false);
+    expect(
+      deriveSaveState(getUnsavedWork("doc-1")).tier,
+      "the save badge leaves the blocked tier on that landed write",
+    ).toBe("clean");
+  });
+
+  it("a claim whose write THROWS leaves the notice STANDING, unacknowledged", async () => {
+    await refusedDocument();
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockWrite.mockImplementationOnce(async () => {
+      throw new Error("EACCES: permission revoked");
+    });
+    let out: unknown;
+    await act(async () => {
+      out = await requestSaveNow("doc-1", { acknowledgePreservation: true });
+    });
+    quiet.mockRestore();
+    expect(out).toEqual({ landed: false, reason: "error" });
+    // The file the user agreed to overwrite has NOT been overwritten, so the
+    // notice — and its pill — stay up rather than vanishing behind an
+    // acknowledgment the write could not honour.
+    expect(isPreservationAcknowledged("doc-1")).toBe(false);
+    expect(isWriteProtected("doc-1")).toBe(true);
+    expect(deriveSaveState(getUnsavedWork("doc-1")).reason).toBe("error");
+  });
+
+  it("no state exists in which the badge says \"Review…\" over a document the next Save silently overwrites", async () => {
+    // The pre-567 shape end to end: after the badge's gesture the channel said
+    // `preservation` (→ "Review…") while the gate had stepped aside, so the
+    // very next plain Save wrote the file with no further confirm. Post-567 a
+    // plain Save on a still-refused document is refused again, and the ONLY
+    // gesture that lands it is the one carrying the claim — whose receipt is
+    // what clears the tier.
+    await refusedDocument();
+    let plain: unknown;
+    await act(async () => {
+      plain = await requestSaveNow("doc-1");
+    });
+    expect(plain).toEqual({ landed: false, reason: "preservation" });
+    expect(deriveSaveState(getUnsavedWork("doc-1")).reason).toBe("preservation");
+    expect(isWriteProtected("doc-1"), "still standing — nothing was overwritten").toBe(true);
+  });
+});
+
+describe("task 567 · `restoreFromMirror` decides from the write's RECEIPT", () => {
+  // `savedAt` must be RECENT: `readMirror` expires a slot older than
+  // `MIRROR_MAX_AGE_MS` on read, which is the one-sweep-per-session prune.
+  const MIRROR = {
+    docId: "doc-1",
+    content: WORK,
+    savedAt: Date.now(),
+    lastLandedAt: null,
+    reason: "preservation" as const,
+    windowId: "w",
+    hash: "seeded",
+  };
+
+  /** Mount over a surviving mirror slot; the load path raises the offer. */
+  async function withOffer() {
+    vi.useFakeTimers();
+    idb.set("emergency-mirror/doc-1", MIRROR);
+    renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getRecoveryOffer("doc-1")?.entry.content).toEqual(WORK);
+    const actions = getRecoveryActions("doc-1");
+    expect(actions, "the hook registered its recovery doors").toBeTruthy();
+    dels = 0;
+    mockRead.mockClear();
+    return actions!;
+  }
+
+  it("a restore whose write THROWS reports false and keeps the mirror AND the offer", async () => {
+    const actions = await withOffer();
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockWrite.mockImplementationOnce(async () => {
+      throw new Error("EACCES: permission revoked");
+    });
+    let landed: boolean | undefined;
+    await act(async () => {
+      landed = await actions.restore();
+    });
+    quiet.mockRestore();
+    // PRE-567: `save` swallowed the throw into the channel, `isWriteProtected`
+    // was false (no notice stands), and the restore went on to refetch, clear
+    // the mirror and clear the offer — the recovered model gone from the badge
+    // for a write that never landed.
+    expect(landed).toBe(false);
+    expect(dels, "the mirror survives a write that did not land").toBe(0);
+    expect(idb.get("emergency-mirror/doc-1")).toEqual(MIRROR);
+    expect(getRecoveryOffer("doc-1"), "the offer still stands").toBeTruthy();
+    expect(mockRead, "no refetch over an untouched disk").not.toHaveBeenCalled();
+  });
+
+  it("a restore the door REFUSES (the serializer gate) keeps both too", async () => {
+    const actions = await withOffer();
+    mockWrite.mockImplementationOnce(async () => ({ landed: false, reason: "preservation" }));
+    let landed: boolean | undefined;
+    await act(async () => {
+      landed = await actions.restore();
+    });
+    expect(landed).toBe(false);
+    expect(dels).toBe(0);
+    expect(getRecoveryOffer("doc-1")).toBeTruthy();
+  });
+
+  it("control · a LANDED restore clears the mirror and the offer, and reloads from disk", async () => {
+    const actions = await withOffer();
+    let landed: boolean | undefined;
+    await act(async () => {
+      landed = await actions.restore();
+    });
+    expect(landed).toBe(true);
+    expect(mockWrite).toHaveBeenCalled();
+    expect(dels, "a landed restore drops the mirror").toBeGreaterThan(0);
+    expect(getRecoveryOffer("doc-1")).toBeNull();
+    expect(mockRead, "…and the editor is reloaded from what actually landed").toHaveBeenCalled();
   });
 });

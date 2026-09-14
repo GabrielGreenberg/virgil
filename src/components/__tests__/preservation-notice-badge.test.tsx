@@ -7,13 +7,35 @@
 //
 // The acknowledgment leg matters as much as the appearance leg: "Save anyway"
 // is the ONLY way out, and once taken the pill must go and stay gone.
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, cleanup, act, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { render, cleanup, act, screen, fireEvent } from "@testing-library/react";
 
 // The badge's chrome imports reach `@/lib/storage`, whose dynamic
 // `require("@/lib/storage-fsa")` doesn't resolve under vitest (the same stub
 // the sibling external-change badge suite takes). Nothing here touches disk.
 vi.mock("@/lib/storage", () => ({}));
+
+// Task 567 — the manual-save DOOR is the thing "Save anyway" must ask, so it is
+// spied: what the badge hands it (the acknowledgment CLAIM) and how it routes a
+// blocked answer are the render facts this suite can see. The door's own
+// behaviour — writing, landing, recording the acknowledgment on the receipt —
+// is pinned in `useDocument.mirror-receipt.test.ts` against the REAL store.
+let saveOutcome: { landed: true } | { landed: false; reason: string } = { landed: true };
+const saveSpy = vi.fn(async (_docId: string, _opts?: unknown) => saveOutcome);
+const routeSpy = vi.fn();
+vi.mock("@/lib/save-request", () => ({
+  requestSaveNow: (...a: [string, unknown?]) => saveSpy(...a),
+  requestBlockingFlow: (...a: unknown[]) => routeSpy(...a),
+  subscribeBlockingFlow: () => () => {},
+  getBlockingFlowRequest: () => null,
+}));
+// The danger confirm, resolved deterministically (the sibling badge suite's
+// shape) — `confirmResult` is what the user answered.
+let confirmResult = true;
+const confirmSpy = vi.fn(async (_opts: { title?: string; tone?: string }) => confirmResult);
+vi.mock("../ConfirmDialog", () => ({
+  useConfirmDialog: () => ({ confirm: confirmSpy, dialog: null }),
+}));
 
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import {
@@ -32,12 +54,31 @@ const DETAIL = {
   allowed: 4,
 } as const;
 
+beforeEach(() => {
+  saveSpy.mockClear();
+  routeSpy.mockClear();
+  confirmSpy.mockClear();
+  saveOutcome = { landed: true };
+  confirmResult = true;
+});
+
 afterEach(() => {
   cleanup();
   clearPreservationNotice();
 });
 
 const pill = () => document.querySelector("[data-preservation-notice]");
+
+/** Open the kebab and press "Save anyway", then let the awaited handler settle. */
+async function pressSaveAnyway() {
+  act(() => {
+    (pill()?.querySelector("button[aria-haspopup='menu']") as HTMLElement)?.click();
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByText(/save anyway/i));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  });
+}
 
 describe("PreservationNoticeBadge", () => {
   it("renders nothing with no doc and nothing with a clean doc", () => {
@@ -115,5 +156,60 @@ describe("PreservationNoticeBadge", () => {
     // The explanation is still there — withholding the action must not mean
     // withholding the account of what happened.
     expect(document.body.textContent ?? "").toMatch(/sideNoteBlock/);
+  });
+});
+
+describe("\"Save anyway\" is a WRITE (task 567)", () => {
+  // Until 567 the confirm's handler called `acknowledgePreservationNotice` and
+  // nothing else: the pill went away, the file stayed stale (the refusal had
+  // disarmed the debounce and nothing re-armed it), and the save badge kept
+  // saying "Not saving … Review…" over a document whose next Save would then
+  // silently overwrite the file. The handler asks the manual-save door now,
+  // carrying the acknowledgment as a CLAIM; the acknowledgment is recorded on
+  // the landed receipt inside `useDocument`, never here.
+  it("asks the manual-save door with the acknowledgment CLAIM", async () => {
+    render(<PreservationNoticeBadge docId={DOC} />);
+    act(() => {
+      recordPreservationRefusal(DOC, DETAIL);
+    });
+    await pressSaveAnyway();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0].tone).toBe("danger");
+    // PRE-567: `saveSpy` had zero calls — no write was ever requested.
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).toHaveBeenCalledWith(DOC, { acknowledgePreservation: true });
+    // The badge itself recorded nothing: with a door that (here) touches no
+    // store, the notice is exactly as it was. The flag's one writer is the
+    // landed receipt in `useDocument.save`.
+    expect(pill(), "the pill stands until a write with the claim LANDS").not.toBeNull();
+    expect(routeSpy).not.toHaveBeenCalled();
+  });
+
+  it("ROUTES a blocked answer to the flow that owns it (the 392 rule)", async () => {
+    // A document can be both refused and conflicted; the door reports the
+    // conflict without writing, and the badge hands the user to that flow
+    // rather than re-refusing in silence or walking past the guard.
+    saveOutcome = { landed: false, reason: "conflict" };
+    render(<PreservationNoticeBadge docId={DOC} />);
+    act(() => {
+      recordPreservationRefusal(DOC, DETAIL);
+    });
+    await pressSaveAnyway();
+    expect(saveSpy).toHaveBeenCalledWith(DOC, { acknowledgePreservation: true });
+    expect(routeSpy).toHaveBeenCalledWith(DOC, "conflict");
+    expect(pill(), "nothing landed, so nothing is acknowledged").not.toBeNull();
+  });
+
+  it("a cancelled confirm asks for nothing", async () => {
+    confirmResult = false;
+    render(<PreservationNoticeBadge docId={DOC} />);
+    act(() => {
+      recordPreservationRefusal(DOC, DETAIL);
+    });
+    await pressSaveAnyway();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(routeSpy).not.toHaveBeenCalled();
+    expect(pill()).not.toBeNull();
   });
 });

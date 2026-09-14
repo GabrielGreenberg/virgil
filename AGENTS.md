@@ -12067,8 +12067,11 @@ Ten rules the cluster earned:
   user who has been told and has decided is the worse failure. The FIRST refusal
   forces an unconditional forensic snapshot of the intact bundle into
   `virgil/.history/`, bypassing the autosave rate limit, so the pre-refusal file
-  is on disk before any acknowledged write. Only the armed EDGE snapshots (the
-  autosave retries every 1500 ms while the notice stands). The dev backend keeps
+  is on disk before any acknowledged write. Only the armed EDGE snapshots (every
+  later write is refused again while the notice stands — the next keystroke's
+  autosave, a mint flush, a manual save; a refusal disarms the debounce, so
+  there is no 1500 ms retry clock — and merely bumps the count). The dev
+  backend keeps
   no history folder, so its armed edge is unused — stated at its sites rather than
   silently absent. There is deliberately NO plain dismiss: dismissing would hide
   the notice while every write stayed refused, which is the silence the surface
@@ -13298,6 +13301,124 @@ defect as the contract are RENEGOTIATED in place with the reason at the site.
 folder and a real paper (the FSA-masked class), so the durable proof is the
 unit contract — open a paper in the Reader, add a note, switch papers, come
 back.
+
+### The acknowledgment half: "Save anyway" is a WRITE, and the flag it flips rests on the RECEIPT
+
+Same path, the two doors the 557 sweep did not reach (task 567, an audit
+finding). 557's law — *the report is the permission; a write is known to have
+landed only by the door's receipt, never by a flag* — was applied to `save`
+and left standing at the two places that consumed `save` and still decided on
+the NOTICE flag:
+
+- **"Save anyway" was not a save.** The badge's danger confirm promised that
+  *saving will write the version you see in the editor over the file on disk*,
+  then called `acknowledgePreservationNotice` and nothing else. No write was
+  requested, and there was no retry to inherit: a refusal has already disarmed
+  the debounce (`debouncedSave` nulls the handle before `save` runs, and `save`
+  does not re-arm on a refused receipt — the `storage-fsa` comment claiming
+  "the autosave retries every 1500 ms while the notice stands" was stale
+  prose, corrected at all three sites). So the pill vanished, the file stayed
+  stale until the next keystroke, and the SAVE badge — cleared only by a
+  landed write — went on saying *"Not saving … Review…"* over a document whose
+  next plain Save (the gate having stepped aside) would silently overwrite the
+  file: a door labelled "review" with the effect "overwrite", one gesture
+  after a dialog that said the overwrite had happened.
+- **`restoreFromMirror` read `isWriteProtected` after `save()`.** `save`
+  swallows a THROWN write (a revoked permission, quota, a stale pipeline) into
+  `noteSaveBlocked("error")` and returns normally, so the flag was false, the
+  restore refetched, and it DELETED the mirror and the recovery offer for a
+  write that never landed — the recovered model gone from the badge,
+  recoverable only by hand from `virgil/.history/`. The 557 census's flag
+  needle was scoped to `save`'s declaration, so this read was invisible to it.
+
+> **`save` RETURNS its receipt, and every door that states a verdict reads
+> it.** `SaveReceipt` is the door's own `DocWriteReceipt` plus the one outcome
+> the door cannot report because it never returned — the caught throw, handed
+> back as `error` beside its channel publish. **And the "Save anyway"
+> acknowledgment is a CLAIM the write carries, recorded on the LANDED receipt
+> and nowhere else** — `DocWriteOptions.acknowledgePreservation`, the exact
+> twin of task 364's `userResolvedConflict`, stepping the write-side words
+> gate aside for that ONE write in both backends.
+
+Six rules it earned:
+
+- **Acknowledge-then-write is the wrong ORDER, and the reason is the gate's own
+  shape.** `checkWriteAgainstRetained` steps aside on `isPreservationAcknowledged`,
+  so the obvious fix (acknowledge, THEN ask the manual door) records the user's
+  choice before any write has been attempted — and a write that then cannot
+  land (a conflict pause, a throw) leaves the notice hidden behind an
+  acknowledgment it never honoured, the pill gone and the save badge carrying a
+  state the user has no surface for. Carrying the acknowledgment AS the write's
+  claim inverts that: the gate steps aside for the claim, and `save` records
+  the acknowledgment only when the receipt says landed. A refused, thrown or
+  dropped write leaves the notice STANDING, unacknowledged, its pill up — which
+  is the honest state, since the file the user agreed to overwrite has not been
+  overwritten.
+- **The claim rides the manual-save DOOR, not a private write.** The door is
+  what respects the clobber guard: a document can be BOTH refused and
+  conflicted, and the 364 pause is decided before the door is asked, so the
+  claim never reaches the write and the badge ROUTES to the conflict flow (the
+  392 rule) — which must be answered first. `SaveDoor` takes
+  `SaveRequestOptions`; `requestSaveNow(docId, opts)` threads it.
+- **The serializer gate is NOT stepped aside**, and the byte-equality gate is
+  untouched: the claim is about the WORDS gate, whose refusal the user has been
+  shown and has answered. A serialize refusal produces no bytes and has nothing
+  to save anyway (the badge withholds the row for that source).
+- **The option bag is spelled ONCE.** `DocWriteOptions` in `storage-types.ts`
+  — both backends and `save` used to declare it inline, three copies of one
+  shape, and a third claim is what makes a fourth copy one too many.
+- **The manual door's channel read was a proxy that HAPPENED to agree, and it
+  goes too.** `saveNowRequested` answered `!hasUnlandedWork` / the channel's
+  reason after its await, and on every path today that agrees with the receipt
+  (`noteSaveLanded` clears the channel; a throw arms it) — stated rather than
+  dressed as a defect. It is replaced because it is the same SHAPE whose two
+  siblings did not agree, and a door that states a verdict reads the receipt of
+  the write it asked for. The channel survives in that door only on the
+  no-model arm, BEFORE any attempt, where there is no receipt to read and the
+  channel is the only witness. (Found in passing, routed rather than fixed: a
+  keystroke landing DURING an in-flight write is cleared by that write's
+  `noteSaveLanded`, so the channel under-reports it for the 1500 ms until the
+  debounce lands it — a fact about the channel, not about any door.)
+- **The census asks the whole hook, and it asks the flag's WRITER too.**
+  `isWriteProtected(` may appear nowhere in `useDocument.ts` (no save caller
+  has a reason to read it); the three verdict doors must assign `const receipt
+  = await save(` and read `.landed` with no channel proxy after the attempt;
+  and `acknowledgePreservationNotice(` has exactly two production sites — the
+  store's declaration and `save`'s landed branch, guarded by the claim.
+
+CI: the 567 describes in
+[useDocument.mirror-receipt.test.ts](src/hooks/__tests__/useDocument.mirror-receipt.test.ts)
+drive the REAL hook against the REAL notice store — a refused document is
+WRITTEN by the claim, lands, and only then reads acknowledged with the
+save-state tier clean; a claim whose write throws leaves the notice standing;
+a plain Save on a refused document is refused again; and a restore whose write
+throws (or is refused) returns `false` with the mirror slot and the offer
+intact, beside the landed control. **No pre-567 suite could see either
+member**: every "Save anyway" leg asserted the PILL went away (which the flag
+flip satisfied perfectly), and every restore fixture handed the hook a door
+that landed. [useDocument.manual-save.test.ts](src/hooks/__tests__/useDocument.manual-save.test.ts)
+pins the claim at the door (it writes, it records nothing on a throw, it never
+walks past the clobber guard, an ordinary Save carries none) and the
+keystroke-during-write leg; [preservation-notice-badge.test.tsx](src/components/__tests__/preservation-notice-badge.test.tsx)
+pins what the gesture HANDS the door and how it routes. The census legs live in
+[mirror-evidence-census.test.ts](src/lib/__tests__/mirror-evidence-census.test.ts);
+`preservation-refusal-posture`'s "no plain DISMISS" leg is RENEGOTIATED in
+place with the reason at the site — it required the badge to spell the very
+call that was the defect.
+
+**Residual, stated.** A SERIALIZE refusal arriving on a document whose LOAD
+refusal the user has already acknowledged is dropped by
+`recordPreservationRefusal` (the user made the call), so the save badge's
+"Review…" routes to a pill that renders nothing for an acknowledged notice —
+the pre-567 dead end, untouched here because it is a decision about what a
+later refusal of a DIFFERENT kind may re-arm. And the retry prose was wrong in
+three places, not one: every later write is refused again while a notice
+stands (the next keystroke's autosave, a mint flush, a manual save), and a
+refusal disarms the debounce, so there is no 1500 ms clock.
+
+**Owed, not claimed:** the real-FSA eyeball. A load refusal needs a lossy
+`.tex`, which is the FSA-masked class — acknowledge from the pill, and watch
+the save badge clear on that same gesture.
 
 ### CI, and the limits stated rather than implied
 

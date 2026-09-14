@@ -103,3 +103,54 @@ export type DocWriteRefusalReason = "preservation" | "read-only";
 export const DOC_WRITE_LANDED: DocWriteReceipt = Object.freeze({
   landed: true,
 });
+
+/**
+ * The option bag every bundle write accepts — spelled ONCE (task 567). Both
+ * backends and `useDocument.save` used to declare it inline, three copies of
+ * one shape, and the third claim below is what made a fourth copy one too many.
+ *
+ * Two of the fields are CLAIMS the user has made, and both are read at the
+ * write-side preservation gate. A claim steps the gate aside for THIS write
+ * only; what it records DURABLY is decided by the receipt, never by the
+ * gesture that made it.
+ */
+export interface DocWriteOptions {
+  /** Code-pane delimiters riding this write — the ONLY copy of a preamble
+   *  edit until a write lands (`useDocument.pendingDelimitersRef`). */
+  delimiters?: { preamble: string; postamble: string };
+  /**
+   * **This write IS the user's conflict decision** (task 364). Set only by
+   * the external-change conflict's "keep my version" door, which has already
+   * archived BOTH sides through `snapshotConflictSides` — so the automatic-
+   * write gate steps aside rather than silently declining to do the one thing
+   * the user just asked for.
+   *
+   * Stated as a claim rather than a convenience: the 357 gate exists because
+   * an AUTOMATIC write must not lose content, and a conflict resolution is
+   * the opposite of automatic. Refusing it would leave the badge's promise
+   * ("your version is kept") unkept with nothing on screen to say so — this
+   * cluster's own silence failure mode. The net is what makes the exemption
+   * safe, and it is unconditional at the call site, never rate-limited. It
+   * also FORCES past the per-file byte-equality gate (task 415).
+   */
+  userResolvedConflict?: boolean;
+  /**
+   * **This write IS the user's "Save anyway"** (task 567). Set only by the
+   * preservation badge's danger confirm, through the manual-save door. The
+   * write-side words gate steps aside for this ONE write exactly as it does
+   * for `userResolvedConflict`; the ACKNOWLEDGMENT is recorded on the LANDED
+   * receipt (`useDocument.save`), never at the gesture. So a claim whose
+   * write did not land — a conflict pause, a throw, a stale pipeline — leaves
+   * the notice standing rather than hiding it behind an acknowledgment the
+   * write could not honour, and the gesture that said "saving will write the
+   * version you see" cannot resolve without a write having been attempted.
+   * Pre-567 the badge flipped the flag and wrote NOTHING: the debounce had
+   * already been disarmed by the refusal, so the file stayed stale until the
+   * next keystroke, while the save badge went on saying "Review…" over a
+   * document whose next Save would silently overwrite the file.
+   *
+   * The SERIALIZER gate is NOT stepped aside (it produces no bytes, so there
+   * is nothing to save anyway), and the byte-equality gate is untouched.
+   */
+  acknowledgePreservation?: boolean;
+}

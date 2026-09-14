@@ -43,6 +43,7 @@ import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
 import type {
   ConflictArchive,
+  DocWriteOptions,
   DocWriteReceipt,
   WritePdfResult,
 } from "@/lib/storage-types";
@@ -705,13 +706,8 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  opts?: {
-    delimiters?: { preamble: string; postamble: string };
-    /** This write IS the user's decision — the conflict's "keep my version"
-     *  door, which has already archived both sides. Parity with storage-fsa;
-     *  the full reasoning lives at that declaration (task 364). */
-    userResolvedConflict?: boolean;
-  },
+  // Spelled once in `storage-types.ts` (task 567); parity with storage-fsa.
+  opts?: DocWriteOptions,
 ): Promise<DocWriteReceipt> {
   // A library-paper doc never persists its bundle (parity with storage-fsa,
   // where the reason for answering EXPLICITLY rather than letting the funnel
@@ -782,9 +778,14 @@ export async function writeDocBundle(
     // Refuses BEFORE either PUT and before the ledger stamp, so both the .tex
     // and `virgil.json` are left untouched and the watcher does not read an
     // untaken write as an external change.
-    const writeVerdict = opts?.userResolvedConflict
-      ? null
-      : checkWriteAgainstRetained(h.docId, latex);
+    // Two user claims step it aside, one write wide each — the conflict
+    // decision (task 364) and the "Save anyway" acknowledgment (task 567),
+    // which `useDocument.save` records on the LANDED receipt. Parity with
+    // storage-fsa, where the reasoning lives.
+    const writeVerdict =
+      opts?.userResolvedConflict || opts?.acknowledgePreservation
+        ? null
+        : checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
       // Publish the refusal (task 357 hole 4) — see the load gate above for

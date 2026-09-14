@@ -32,7 +32,7 @@
 import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { usePreservationNotice } from "@/hooks/usePreservationNotice";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
-import { acknowledgePreservationNotice } from "@/lib/preservation-notice";
+import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
@@ -181,7 +181,25 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
       tone: "danger",
     });
     if (!ok) return;
-    acknowledgePreservationNotice(docId);
+    // TASK 567 — "Save anyway" IS a save. The confirm above promised that
+    // saving will write the version in the editor over the file, so the
+    // gesture asks the manual-save door for exactly that write, carrying the
+    // acknowledgment as a CLAIM the write-side gate steps aside for. The
+    // acknowledgment is RECORDED on the landed receipt inside `useDocument`'s
+    // `save` — never here. Pre-567 this line flipped the notice flag and
+    // requested no write: the refusal had already disarmed the debounce, so
+    // the file stayed stale until the next keystroke, the pill vanished, and
+    // the save badge went on saying "Not saving … Review…" over a document
+    // whose next Save would silently overwrite the file — a door labelled
+    // "review" with the effect "overwrite", one gesture after a dialog that
+    // said the overwrite had happened.
+    //
+    // A write that cannot land ROUTES (the 392 rule): a conflict pause hands
+    // the user to the conflict flow, which must be answered first; the notice
+    // stays standing until a write with this claim actually lands.
+    const outcome = await requestSaveNow(docId, { acknowledgePreservation: true });
+    if (outcome.landed || outcome.reason === "no-door") return;
+    requestBlockingFlow(docId, outcome.reason);
   }, [closeMenu, confirm, docId, lost, region, isMount]);
 
   // ── render gate ────────────────────────────────────────────────────

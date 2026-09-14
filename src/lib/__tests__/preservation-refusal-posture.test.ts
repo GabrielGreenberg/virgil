@@ -346,11 +346,27 @@ describe("census · every refusal reaches the channel", () => {
     expect(gate).toContain("clearPreservationNotice(docId)");
   });
 
-  it("the banner offers no plain DISMISS", () => {
+  it("the banner offers no plain DISMISS, and its one way out is a WRITE", () => {
     // Dismissing would hide the notice while every write stayed refused —
     // the silence this surface exists to end, wearing a tidier UI.
+    //
+    // RENEGOTIATED (task 567). This leg used to require the badge to spell
+    // `acknowledgePreservationNotice(` — and that call was the whole of what
+    // "Save anyway" did: it flipped the flag and requested NO write. The
+    // refusal had already disarmed the debounce, so the file stayed stale
+    // until the next keystroke while the save badge went on saying "Not
+    // saving … Review…" over a document whose next Save would silently
+    // overwrite the file. The way out is now the manual-save door carrying
+    // the acknowledgment as a CLAIM; the acknowledgment itself is recorded on
+    // the LANDED receipt inside `useDocument.save` (the 557 law, applied to
+    // the flag's one writer), so the badge may not spell it at all.
     const badge = read("src/components/PreservationNoticeBadge.tsx");
-    expect(badge).toContain("acknowledgePreservationNotice(");
+    expect(badge).toContain("requestSaveNow(");
+    expect(badge).toContain("acknowledgePreservation: true");
+    expect(
+      badge,
+      "the acknowledgment is the write's receipt, never the gesture's flag flip",
+    ).not.toContain("acknowledgePreservationNotice(");
     expect(badge).not.toMatch(/clearPreservationNotice\(/);
   });
 });
