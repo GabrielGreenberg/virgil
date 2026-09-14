@@ -57,9 +57,22 @@ describe("WCO bar seam-anchor (task 289)", () => {
 
   it("the tab-title wrappers keep the 094 seam anchor (regression guard)", () => {
     const strip = read("components/editor-layout/TabStrip.tsx");
-    // Inline (inactive) tab wrappers.
+    // Inline (inactive) tab wrappers. RENEGOTIATED in place (task 561): the
+    // pre-561 needle pinned `shrink-0` on every inline wrapper, which was the
+    // strip's non-compression — not the seam anchor this leg is about. The
+    // seam anchor is `self-end mb-[3px]`; the flex-shrink is the occupancy
+    // ladder's (compressible tabs `shrink`, the pinned Library root
+    // `shrink-0`), and BOTH spellings must keep the anchor.
+    expect(strip).toMatch(/className="self-end mb-\[3px\] shrink"/);
     expect(strip).toMatch(/className="self-end mb-\[3px\] shrink-0"/);
-    // The strip itself fills the bar height and keeps tabs at the seam.
-    expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 gap-0\.5 px-2 self-stretch relative"/);
+    expect(strip, "an inline wrapper lost its seam anchor").not.toMatch(
+      /className="self-end shrink(?:-0)?"/,
+    );
+    // The strip itself fills the bar height and keeps tabs at the seam — and
+    // since 561 so does its SCROLLER, which is the box the tabs actually sit
+    // in (the strip's right padding moved onto the scroller as the row's
+    // trailing slack, so the root is `pl-2` rather than `px-2`).
+    expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 gap-0\.5 pl-2 self-stretch relative"/);
+    expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 self-stretch"/);
   });
 });

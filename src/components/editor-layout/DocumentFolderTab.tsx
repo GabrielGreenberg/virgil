@@ -77,7 +77,14 @@ function DocumentFolderTabImpl({ fill, onClick, title, children }: Props) {
           marginRight: V.contentInsetRight,
           marginTop: TAB_TOP_GUTTER,
           height: V.tabH,
-          minWidth: 80,
+          // The active tab's reserved floor, read from the variant spec in
+          // the geometry SSOT (task 561) — one table for both strips, where
+          // this row used to spell its own `80` beside the inner strip's
+          // `ACTIVE_MIN_CONTENT`. It is a MINIMUM for a short name: the
+          // active tab is `shrink-0` and never compresses (see
+          // tab-strip-occupancy.ts — inactive tabs yield, then the strip
+          // scrolls).
+          minWidth: V.activeMinContent,
         }}
       >
         {children}

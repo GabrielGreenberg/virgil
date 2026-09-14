@@ -3362,14 +3362,49 @@ measurements by `useBarOccupancy`:
    is unclickable with no affordance to reach it. An explicit user toggle
    outranks the rule in both directions — the rule governs the DEFAULT.
 
-Under the ladder is a structural FLOOR: the tab strip clips its own horizontal
-overflow (`overflow-x: clip` with `overflow-y: visible`, so the active tab keeps
-its 1px seam overhang), so even a tab row too wide to fit after the tools have
-yielded can never paint over tier 1. **A new bar occupant declares which tier it
-is in; it does not position itself against the others** — and nothing in a
-higher tier changes width in response to the verdict, which is what keeps the
-rule from oscillating against its own output (the save pill therefore honours
-the user's collapse *preference*, never the auto verdict).
+When the tabs STILL do not fit after the tools have yielded, tier 2 degrades
+in a stated order rather than clipping — Gabriel's decision (2026-08-31,
+task 561) on the fork 395 left open, and the ladder the Library's inner strip
+had already shipped as "F#15", promoted into one shared module
+([tab-strip-occupancy.ts](components/chrome/tab-strip-occupancy.ts)) that BOTH
+strips read:
+
+- **COMPRESS.** Inactive tabs share the width (`flex-shrink`, weighted by their
+  natural width, so long names give first) and their LABELS ellipsize down to
+  `INACTIVE_MIN_LABEL_PX`; a tab's own floor is its fixed chrome plus that, so a
+  pinned tab with a menu never overflows its own box at the floor. The ACTIVE
+  tab is `shrink-0` and RESISTS — it holds its name, and its only floor is a
+  minimum size for a short name (`FOLDER_TAB_VARIANTS[v].activeMinContent`,
+  per variant because the two content rows differ). The Library root tab is
+  the strip's PINNED tab (Chrome's pinned tabs) and never compresses.
+- **SCROLL.** Past the floors the strip scrolls — a native `overflow-x: auto`
+  scroller with its scrollbar hidden (Chrome/Safari's bare treatment; no
+  arrows), a vertical wheel over it mapped onto horizontal scroll (Firefox's
+  and VS Code's tab-bar convention; a genuine horizontal swipe and Shift+wheel
+  stay the browser's, and a wheel that cannot move the strip is not consumed),
+  and the ACTIVE tab always nudged fully into view by the minimum `scrollLeft`
+  delta — on activation, on open, on a neighbour's close, and when the strip
+  itself narrows — never `scrollIntoView()`, which centres and races. The `+`
+  is an ACTION, pinned outside the scroller. A paper/library drag toward a
+  strip edge auto-scrolls it.
+
+Under the ladder is still a structural FLOOR: the tab row lives in a scroll
+container, which clips, so even at the bottom of the ladder a tab can never
+paint over tier 1. The seam is the one detail the scroller owes: `overflow-x:
+auto` coerces an unstated vertical axis to `auto`, and the active tab hangs 1px
+BELOW the strip to merge into the canvas — so the axis is stated `hidden` and
+the overhang is kept INSIDE the clip by a 1px bottom padding + −1px margin
+pair (`tabStripSeamPadding`), the mechanism the inner strip has carried since
+task 324. **A new bar occupant declares which tier it is in; it does not
+position itself against the others** — and nothing in a higher tier changes
+width in response to the verdict, which is what keeps the rule from
+oscillating against its own output (the save pill therefore honours the user's
+collapse *preference*, never the auto verdict). The occupancy rule is fed the
+tab row's NATURAL width, recovered from a compressed row by
+`tabRowNaturalWidth` (each label's `scrollWidth` still reports its
+un-ellipsized text width): fed the compressed box, collapsing the tools would
+let the tabs decompress, the rule would expand the tools, and the bar would
+oscillate.
 
 The collapsible group collapses by WIDTH rather than unmounting, so that its
 natural width stays measurable. Three things the unmount used to give it are

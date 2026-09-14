@@ -19,11 +19,16 @@
 // >      beats bare z-order for exactly that reason: a tool hidden under a tab
 // >      is unclickable with no affordance to reach it.
 // >
-// > Below the ladder sits a structural FLOOR: the tab strip clips its own
-// > horizontal overflow (`overflow-x: clip`, `overflow-y: visible` so the
-// > active tab keeps its 1px seam overhang), so even when tier 2 cannot fit
-// > after tier 3 has yielded, tabs can never paint over tier 1. The invariant
-// > the TopBar/TabStrip comments used to PROMISE is a mechanism now.
+// > When tier 2 STILL does not fit after tier 3 has yielded, it degrades in
+// > a stated order rather than clipping (task 561, Gabriel's decision on the
+// > fork 395 left open): COMPRESS — inactive tabs share the width and
+// > ellipsize to a floor, the active tab resists — then SCROLL, with the
+// > active tab always nudged into view. That ladder is shared with the
+// > Library's inner strip (src/components/chrome/tab-strip-occupancy.ts).
+// > Under it sits a structural FLOOR: the tab row lives in a scroll container,
+// > which clips, so even at the bottom of the ladder tabs can never paint over
+// > tier 1. The invariant the TopBar/TabStrip comments used to PROMISE is a
+// > mechanism now.
 //
 // WHY THIS EXISTS (task 2026-08-19-395). The bar had three independent
 // positioners and no priority rule. `TabStrip` is `flex-1 min-w-0` but its
@@ -42,18 +47,28 @@
 //
 // ── The predicate, and why it needs no hysteresis and no cache ─────────────
 //
-// Let W be the bar's inner width, R the protected status width, T the tab
-// row's natural (max-content) width and K the tools group's natural width.
-// The honest question is state-INDEPENDENT:
+// Let W be the bar's inner width, R the protected status width (plus the
+// pinned "+" and the strip's own padding, which are constants exactly like
+// R), T the tab row's NATURAL (max-content) width and K the tools group's
+// natural width. The honest question is state-INDEPENDENT:
 //
 //     everything fits  ⟺  T + K + R ≤ W
 //
 // but W and R are awkward to measure (the bar carries WCO window-inset padding
 // and the protected set changes as badges self-gate). The tab strip's OWN
-// assigned box already carries both, because the strip is the flex-1 occupant
-// and the status cluster is `shrink-0`:
+// assigned box — its SCROLLER, the flex-1 occupant beside the `shrink-0`
+// status cluster — already carries both:
 //
 //     tabStripPx = W − R − (toolsCollapsed ? 0 : K)
+//
+// `T` must be the tab row's NATURAL width, never its laid-out one: since task
+// 561 the row COMPRESSES to the scroller's width before it scrolls, so its box
+// is bounded by `tabStripPx` by construction and the predicate below could
+// never say "collapse" if it read the box. `tabRowNaturalWidth`
+// (tab-strip-occupancy.ts) recovers the natural width — box + the width the
+// labels lost to ellipsizing + the overflow past the scroller — which is what
+// keeps "the tools yield BEFORE the tabs compress" true and the rule below
+// state-independent.
 //
 // Substituting gives the same predicate in either state:
 //
@@ -82,13 +97,16 @@ export const BAR_FIT_EPSILON_PX = 1;
  */
 export type BarOccupancyMeasure = {
   /**
-   * The tab strip's assigned CONTENT width — the flex-1 occupant's box, which
-   * already nets out the protected status width and (while expanded) the tools
+   * The tab strip's SCROLLER content width — the tab row's assigned box, the
+   * flex-1 occupant beside the pinned "+" and the `shrink-0` status cluster,
+   * so it already nets out the protected width and (while expanded) the tools
    * group. `null` when there is no tab strip at all (zen mode renders a drag
    * spacer instead), which makes the rule inert.
    */
   tabStripPx: number | null;
-  /** The tab row's natural (max-content) width. `null` before first measure. */
+  /** The tab row's NATURAL (max-content) width — recovered from the row by
+   *  `tabRowNaturalWidth` even while it is compressed. `null` before first
+   *  measure. */
   tabsNaturalPx: number | null;
   /** The tools group's natural (max-content) width. `null` before first measure. */
   toolsNaturalPx: number | null;

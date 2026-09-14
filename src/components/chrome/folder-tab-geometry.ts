@@ -105,10 +105,12 @@ export const FOLDER_TAB_SEAM_OVERLAP = 1;
  * `overflow: hidden` clip boundary at ANY DPR. Combined with
  * {@link TAB_TOP_GUTTER} the top ink sits ≥ (STRIP_TOP_HEADROOM +
  * TAB_TOP_GUTTER) CSS px inside the strip clip — the ink-cushion invariant,
- * unit-tested against these constants. (The OUTER Virgil-bar strip clips only
- * HORIZONTALLY since task 395 — `overflow-x: clip` with `overflow-y: visible`,
- * so no vertical cushion is needed there either; its top cushion remains the
- * in-cap TAB_TOP_GUTTER, and the seam overhang below stays unclipped.)
+ * unit-tested against these constants. (The OUTER Virgil-bar strip's scroller
+ * is the bar's full height (`self-stretch`) with its tabs bottom-aligned, so
+ * the top ink sits the whole bar's slack above its clip and no headroom is
+ * needed there; its top cushion remains the in-cap TAB_TOP_GUTTER. Both
+ * strips keep the seam overhang below INSIDE the clip by the same 1px
+ * padding/margin pair — `tabStripSeamPadding` in tab-strip-occupancy.ts.)
  */
 export const STRIP_TOP_HEADROOM = 2;
 
@@ -121,14 +123,6 @@ export const STRIP_TOP_HEADROOM = 2;
  * layout relationship, not a measured one.
  */
 export const STRIP_SIDE_PAD = 4;
-
-/**
- * F#15 floor — the active library tab's content region never compresses
- * below this width (the wrapper's `minWidth` is
- * `2*FOLDER_TAB_SWOOP + ACTIVE_MIN_CONTENT + 1`). Below the floor the strip
- * scrolls; it never ellipsizes the active tab.
- */
-export const ACTIVE_MIN_CONTENT = 116;
 
 /**
  * Maximum rendered width (px) of a Virgil-bar tab's LABEL, for BOTH of the
@@ -231,6 +225,21 @@ export interface FolderTabVariantSpec {
    *  cushion — the previously-clipped outer half-pixel of the right foot
    *  stroke now renders into the inter-tab gap instead of being cut off. */
   capRightOverhang: number;
+  /**
+   * The ACTIVE tab's reserved content floor (px) — the F#15 floor, per
+   * variant. An active tab RESISTS the tab-strip compression ladder
+   * (tab-strip-occupancy.ts): it is `flex-shrink: 0` and holds its full
+   * name, so this floor is a MINIMUM SIZE for a short name, never a
+   * compression stop. The two variants carry different numbers because
+   * their content rows differ — the library row holds a pin, an icon, a menu
+   * and a close beside the label; the topbar row holds a label and a close —
+   * and BOTH strips read the number here rather than hand-writing it
+   * (the outer tab used to spell `minWidth: 80` privately, task 561).
+   * The library wrapper's floor is `2*FOLDER_TAB_SWOOP + activeMinContent +
+   * 1` (the +1 is the F#8 cushion inside its footprint); the topbar variant
+   * places the floor on its content row directly.
+   */
+  activeMinContent: number;
   /** Seam-bridge span: "body" bridges only the flat-body run so the body's
    *  top border shows in the swoop valleys (inner tabs, task 053); "full"
    *  bridges the entire base including the feet (outer tabs' historical
@@ -379,9 +388,11 @@ function makeVariant(args: {
   contentInsetRight: number;
   capRightOverhang: number;
   bridgeSpan: "body" | "full";
+  activeMinContent: number;
 }): FolderTabVariantSpec {
   return {
     tabH: args.tabH,
+    activeMinContent: args.activeMinContent,
     // +1 bottom stroke gutter (the base stroke's lower half-pixel) + the top
     // cushion. The bottom ink's outer edge lands exactly ON svgH — inside the
     // viewport (locked by the ink-cushion test).
@@ -412,6 +423,7 @@ export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec>
     contentInsetRight: S + 1, // the F#8 +1 lives inside the footprint
     capRightOverhang: 0,
     bridgeSpan: "body",
+    activeMinContent: 116,
   }),
   /** Outer Virgil-bar tabs (DocumentFolderTab). Historical box:
    *  svgW = 2S + tabW (no +1 — preserved for inline↔folder pixel parity),
@@ -422,6 +434,7 @@ export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec>
     contentInsetRight: S,
     capRightOverhang: 1, // the F#8 cushion pokes out instead
     bridgeSpan: "full",
+    activeMinContent: 80,
   }),
 };
 

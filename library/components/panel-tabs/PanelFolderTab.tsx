@@ -9,7 +9,6 @@ import {
 } from "react";
 import { FolderTabChrome } from "@/components/chrome/FolderTabChrome";
 import {
-  ACTIVE_MIN_CONTENT,
   FOLDER_TAB_SEAM_OVERLAP,
   FOLDER_TAB_SWOOP,
   FOLDER_TAB_VARIANTS,
@@ -109,9 +108,12 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           // (max-content), rounded UP to a whole CSS px. calc-size() is
           // Chromium 129+ — Virgil is Chromium-only (FSA).
           width: "calc-size(max-content, round(up, size, 1px))",
-          // The reserved-width floor: swoop flares + the ACTIVE_MIN_CONTENT
-          // body floor + the F#8 +1 cushion (the historical inner-tab box).
-          minWidth: 2 * S + ACTIVE_MIN_CONTENT + 1,
+          // The reserved-width floor: swoop flares + the variant's
+          // activeMinContent body floor + the F#8 +1 cushion (the historical
+          // inner-tab box). The floor is the geometry SSOT's, per variant
+          // (task 561) — the outer Virgil-bar tab reads its own from the same
+          // table instead of hand-writing one.
+          minWidth: 2 * S + V.activeMinContent + 1,
           cursor: "default",
           alignSelf: "flex-end",
           height: V.svgH,

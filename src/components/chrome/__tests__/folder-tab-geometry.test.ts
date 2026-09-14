@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ACTIVE_MIN_CONTENT,
   CAP_INNER,
   CAP_W,
   CAP_W_TUCKED,
@@ -311,8 +310,17 @@ describe("variant parameterization — named differences only, one geometry", ()
     expect(lib.contentInsetLeft + lib.contentInsetRight).toBe(25);
   });
 
-  it("the F#15 reserved floor survives: ACTIVE_MIN_CONTENT + flares + the +1 cushion", () => {
-    expect(ACTIVE_MIN_CONTENT).toBe(116);
-    expect(2 * S + ACTIVE_MIN_CONTENT + 1).toBe(141);
+  it("the F#15 reserved floor survives, PER VARIANT: activeMinContent + flares + the +1 cushion", () => {
+    // RENEGOTIATED in place (task 561): the floor was a module-level
+    // `ACTIVE_MIN_CONTENT` read by ONE strip while the outer tab hand-wrote
+    // `minWidth: 80` — a shared SSOT with one consumer. It is a field of the
+    // variant spec now, because the two content rows genuinely differ (the
+    // library row carries pin + icon + menu + close beside its label; the
+    // topbar row a label + close), and BOTH strips read it from here. The
+    // library number and its wrapper floor are byte-identical to the old
+    // constant; the topbar number is the old hand-written 80, relocated.
+    expect(lib.activeMinContent).toBe(116);
+    expect(2 * S + lib.activeMinContent + 1).toBe(141);
+    expect(top.activeMinContent).toBe(80);
   });
 });
