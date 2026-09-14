@@ -146,6 +146,23 @@ describe("provisionEngine", () => {
     expect([...nat!.bytes]).toEqual([7, 7]);
   });
 
+  it("replays a persisted pk-font record with its cacheKey UNCHANGED — the worker owns the grammar (task 574)", async () => {
+    // The worker mints "pk/<dpi>/<name>" and parses it back in its seedcache
+    // arm. The main thread must be a pass-through: stripping or rewriting the
+    // prefix here would be a second speller of a grammar it does not own.
+    const engine0 = new FakeEngine();
+    engine0.queueDump([dumpEntry("pk/600/cmr10", "pk-1", [5, 5])]);
+    await captureNewAssets(engine0);
+
+    const engine = new FakeEngine();
+    await provisionEngine(engine);
+
+    const pk = engine.seeded.find((s) => s.fileid === "pk-1");
+    expect(pk).toBeDefined();
+    expect(pk!.cacheKey).toBe("pk/600/cmr10");
+    expect([...pk!.bytes]).toEqual([5, 5]);
+  });
+
   it("pushes navigator.onLine into the worker (setOffline(false) when online)", async () => {
     const engine = new FakeEngine();
     await provisionEngine(engine);
