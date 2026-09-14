@@ -303,8 +303,41 @@ describe("census · a data-integrity state is never hideable", () => {
     return [...seen].map(([name, at]) => ({ name, at }));
   };
 
+  type Site = Badge & { exempt: boolean; insideGroup: boolean; inlineGated: boolean };
+  /** One resolution of the cluster, read by every leg below. The scan runs on
+   *  COMMENT-BLANKED, LINE-ALIGNED source (so a badge named in prose is not a
+   *  badge rendered), and the `collapsible-ok:` marker — which lives IN a
+   *  comment — is read off the RAW lines between the previous tag's close and
+   *  this tag. Line alignment is what makes that honest: `commentsStripped`
+   *  DELETES comment bytes, so a stripped OFFSET is not a raw offset and a
+   *  window sliced across the two reads the wrong text; a LINE number is the
+   *  same number in both. */
+  const resolveCluster = () => {
+    const raw = read(CLUSTER);
+    const src = strip(raw, true, true);
+    const rawLines = raw.split("\n");
+    const lineOf = (offset: number) => src.slice(0, offset).split("\n").length - 1;
+    // Anchored on the element that HIDES (the group wrapper carrying the
+    // width/aria-hidden), not on the inner measurement marker a few lines
+    // below it — a census should name the thing whose absence it is asserting.
+    const gates = tagsContaining(src, /data-bar-tier="collapsible"/);
+    const group = gates[0] ? elementSubtree(src, gates[0]) : null;
+    const sites: Site[] = badges(src).map(({ name, at }) => {
+      const prevClose = Math.max(0, src.lastIndexOf(">", at - 1));
+      const window = rawLines.slice(lineOf(prevClose), lineOf(at) + 1).join("\n");
+      return {
+        name,
+        at,
+        exempt: window.includes(EXEMPT),
+        insideGroup: (group ?? "").includes(`<${name}`),
+        inlineGated: HIDER.test(src.slice(prevClose, at)),
+      };
+    });
+    return { raw, gates, group, sites };
+  };
+
   it("the badge census can see (an empty discovery would pass the gate leg vacuously)", () => {
-    const pop = badges(commentsStripped(read(CLUSTER))).map((b) => b.name);
+    const pop = resolveCluster().sites.map((b) => b.name);
     for (const must of [
       "SaveStateBadge",
       "ExternalChangeBadge",
@@ -327,29 +360,19 @@ describe("census · a data-integrity state is never hideable", () => {
     // of the group a layout preference can hide (the task-357 rule) — and it
     // must not be re-wrapped in the inline `{!topbarRightCollapsed && …}`
     // form the group retired, which a position test alone cannot see.
-    const raw = read(CLUSTER);
-    const src = commentsStripped(raw);
-    // Anchored on the element that HIDES (the group wrapper carrying the
-    // width/aria-hidden), not on the inner measurement marker a few lines
-    // below it — a census should name the thing whose absence it is asserting.
-    const [gateTag, ...moreGates] = tagsContaining(src, /data-bar-tier="collapsible"/);
-    expect(gateTag, "the collapsible tool group must exist to be measured against").toBeTruthy();
-    expect(moreGates, "one collapsible group, or the census cannot say which one hides").toEqual([]);
-    const group = elementSubtree(src, gateTag!);
+    const { gates, group, sites } = resolveCluster();
+    expect(gates[0], "the collapsible tool group must exist to be measured against").toBeTruthy();
+    expect(gates.slice(1), "one collapsible group, or the census cannot say which one hides").toEqual([]);
     expect(group, "the collapsible group's subtree must resolve (fail LOUD)").not.toBeNull();
 
     const offenders: string[] = [];
-    for (const { name, at } of badges(src)) {
-      // The exemption lives in the comment block DIRECTLY above the tag — the
-      // text between the previous tag's close and this tag — never anywhere
-      // else in the file (task 204's rule: scoped to the shape it justifies).
-      const prevClose = src.lastIndexOf(">", at - 1);
-      const window = raw.slice(prevClose < 0 ? 0 : prevClose, at + name.length + 1);
-      if (window.includes(EXEMPT)) continue;
-      const insideGroup = group!.includes(`<${name}`);
-      const inlineGated = HIDER.test(src.slice(prevClose < 0 ? 0 : prevClose, at));
-      if (insideGroup) offenders.push(`${name} is a descendant of the collapsible group`);
-      if (inlineGated) offenders.push(`${name} is wrapped in an inline collapse gate`);
+    for (const site of sites) {
+      // The exemption lives in the comment block DIRECTLY above the tag,
+      // never anywhere else in the file (task 204's rule: scoped to the shape
+      // it justifies).
+      if (site.exempt) continue;
+      if (site.insideGroup) offenders.push(`${site.name} is a descendant of the collapsible group`);
+      if (site.inlineGated) offenders.push(`${site.name} is wrapped in an inline collapse gate`);
     }
     expect(
       offenders,
@@ -362,18 +385,20 @@ describe("census · a data-integrity state is never hideable", () => {
   it("an exemption must excuse a badge that would otherwise be flagged", () => {
     // A marker with nothing to excuse is a standing licence (the stale-entry
     // rule every allowlist in this repo owes). None is claimed today; the leg
-    // exists so the first one is a decision rather than a habit.
-    const raw = read(CLUSTER);
-    const src = commentsStripped(raw);
-    const gateTag = tagsContaining(src, /data-bar-tier="collapsible"/)[0]!;
-    const group = elementSubtree(src, gateTag) ?? "";
-    for (const { name, at } of badges(src)) {
-      const prevClose = src.lastIndexOf(">", at - 1);
-      const window = raw.slice(prevClose < 0 ? 0 : prevClose, at + name.length + 1);
-      if (!window.includes(EXEMPT)) continue;
-      const wouldFlag = group.includes(`<${name}`) || HIDER.test(src.slice(prevClose, at));
-      expect(wouldFlag, `${name} carries \`${EXEMPT}\` but sits outside the group — stale`).toBe(true);
+    // exists so the first one is a decision rather than a habit. Two shapes:
+    // a marker above a badge that sits OUTSIDE the group, and a marker that
+    // attaches to no badge at all.
+    const { raw, sites } = resolveCluster();
+    for (const site of sites.filter((s) => s.exempt)) {
+      expect(
+        site.insideGroup || site.inlineGated,
+        `${site.name} carries \`${EXEMPT}\` but is not hideable — stale`,
+      ).toBe(true);
     }
+    const markers = raw.split(EXEMPT).length - 1;
+    expect(markers, `a \`${EXEMPT}\` marker that attaches to no rendered badge`).toBe(
+      sites.filter((s) => s.exempt).length,
+    );
   });
 
   it("the badge decides hideability from the SSOT, not from its own opinion", () => {
