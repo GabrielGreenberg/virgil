@@ -31,7 +31,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { codeOnly } from "./_source-scan";
+import { codeOnly, commentsStripped } from "./_source-scan";
 import {
   ALL_VIRGIL_SIDECAR_FILENAMES,
   CONTENT_WRITE_DEBOUNCE_MS,
@@ -60,27 +60,79 @@ const SRC_FILES = walk(path.join(REPO, "src"));
 /**
  * Filenames that look like a sidecar but are NOT written into `virgil/`, each
  * with WHY. Kept deliberately small: a name that IS a `virgil/` write target
- * belongs in `SIDECAR_VALUE`, never here.
+ * belongs in `SIDECAR_VALUE`, never here — and an entry that excuses a name
+ * production no longer spells is STALE and fails the leg below (task 560: the
+ * list carried `library-overlay.json` under a reason that was false against
+ * the code — the hook wrote it through the ordinary `writeSidecar` door into
+ * the paper's `virgil/` — so the guard that exists to catch an undeclared
+ * sidecar was the thing certifying it as fine; the hook had no consumer and
+ * is deleted, and the list may now only shrink).
  */
 const NON_SIDECAR_JSON: Record<string, string> = {
   "index.json": "the doc index (OPFS/dev root) and the figures cache index — neither lives in virgil/",
   "unsaved-model.json": "a forensic name inside virgil/.history/, written by the snapshot path only",
   "manifest.json": "the PWA manifest",
-  "library-overlay.json": "a Library-silo file, outside any paper's virgil/",
   "personal-snapshot.json": "the prefs promoter's input, in the repo not a paper",
 };
 
 describe("sidecar value SSOT — totality", () => {
-  it("declares every *.json filename production treats as a virgil/ sidecar", () => {
+  /**
+   * Every `"<name>.json"` literal spelled in production `src/`, comments
+   * stripped and string literals KEPT — the needle IS a quoted string, so this
+   * reads `commentsStripped`, never `codeOnly`, which blanks every literal and
+   * therefore every filename. The pre-560 leg read `codeOnly`: measured, its
+   * `seen` set was EMPTY on every tree since it shipped, so "undeclared" was
+   * `[]` by construction and the census had certified totality without ever
+   * examining a name — the same trap `_source-scan`'s own header records for
+   * the task-389 and task-552 censuses. The canary below is what keeps it from
+   * going vacuous again.
+   */
+  function spelledJsonNames(): Set<string> {
     const seen = new Set<string>();
     for (const file of SRC_FILES) {
-      const src = codeOnly(fs.readFileSync(file, "utf8"));
+      const src = commentsStripped(fs.readFileSync(file, "utf8"));
       for (const m of src.matchAll(/"([a-z][a-z0-9-]*\.json)"/g)) seen.add(m[1]!);
     }
+    return seen;
+  }
+
+  it("CAN SEE: the scan finds the sidecars production is known to spell (never vacuous)", () => {
+    // A totality leg over an empty `seen` passes for the wrong reason, which is
+    // exactly what shipped. So the scan must find a declared sidecar every
+    // production writer spells (`notes.json`) and a declared NON-sidecar an
+    // exemption excuses (`manifest.json`) — a stripper that blanks literals
+    // fails here before the totality leg can pass vacuously.
+    const seen = spelledJsonNames();
+    expect(seen.has("notes.json")).toBe(true);
+    expect(seen.has("manifest.json")).toBe(true);
+    expect(seen.size).toBeGreaterThan(10);
+  });
+
+  it("declares every *.json filename production treats as a virgil/ sidecar", () => {
+    const seen = spelledJsonNames();
     const undeclared = [...seen]
       .filter((f) => !(f in SIDECAR_VALUE))
       .filter((f) => !(f in NON_SIDECAR_JSON));
     expect(undeclared).toEqual([]);
+  });
+
+  it("every NON_SIDECAR_JSON exemption still excuses a name production spells (no stale entries)", () => {
+    // An allowlist inside a census may only shrink: an entry naming a file
+    // nothing in src/ writes is a standing licence for the next writer of that
+    // name to land outside SIDECAR_VALUE with CI green. Measured on the pre-560
+    // tree this names `library-overlay.json` — and would have from the day its
+    // hook lost its last consumer, had the leg existed.
+    const seen = spelledJsonNames();
+    const stale = Object.keys(NON_SIDECAR_JSON).filter((f) => !seen.has(f));
+    expect(stale).toEqual([]);
+  });
+
+  it("an exemption never covers a name SIDECAR_VALUE declares (the two lists are disjoint)", () => {
+    // The header's own rule, pinned: a name that IS a virgil/ write target
+    // belongs in SIDECAR_VALUE, never here — so an entry in both is a
+    // contradiction rather than a double declaration.
+    const both = Object.keys(NON_SIDECAR_JSON).filter((f) => f in SIDECAR_VALUE);
+    expect(both).toEqual([]);
   });
 
   it("names all three files the storm was made of", () => {

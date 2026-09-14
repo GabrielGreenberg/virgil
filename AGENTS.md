@@ -3496,6 +3496,27 @@ with is a habit, not a guard. Membership is DISCOVERED now (every file that call
 population), scoped to WRITERS rather than to every `debounceMs` in the tree
 (`useLatexLint` and `useLatexSource` share the word and answer a different
 question), and the allowlist is EMPTY.
+**And its TOTALITY leg was VACUOUS from the day it shipped (task 560).** Its
+needle is a quoted filename (`"notes.json"`) and it read `codeOnly`, which
+BLANKS every string literal — so `seen` was EMPTY on every tree, "undeclared"
+was `[]` by construction, and the census had certified "total over every file
+Virgil writes" without ever examining a name. The exemption list beside it
+excused `library-overlay.json` as "a Library-silo file, outside any paper's
+`virgil/`" — false against the code (`useLibraryOverlay` wrote it through the
+ordinary `writeSidecar` door into the paper's `virgil/`) and irrelevant, since
+nothing was checked. The trap is the one `_source-scan`'s own header states and
+tasks 389/552 each walked into: *a census whose needle IS a quoted class wants
+`commentsStripped`; one whose needle is a symbol wants `codeOnly`.* Both live in
+this ONE file — the debounce census's symbol needle keeps `codeOnly`, the
+filename census reads `commentsStripped` (measured: 25 names, 21 declared, 4
+exempted), and a CAN-SEE canary requires the scan to find `notes.json` and
+`manifest.json` so the leg can never go vacuous again. The exemption list gains
+the leg every allowlist in this file owes — an entry excusing a name production
+no longer spells is STALE and fails — plus a disjointness pin against
+`SIDECAR_VALUE`. The consumer-less hook and its orphaned `LibraryOverlay` type
+are DELETED (WIRE-it-or-DELETE-it), so the false exemption goes with them for
+the right reason. Measured by neutering: `codeOnly` back takes 2 legs, the
+restored exemption 1.
 [sync-conflict.test.ts](src/lib/__tests__/sync-conflict.test.ts) (the grammars,
 over REAL fork names copied out of the reporting folder — a hand-invented fixture
 would only prove the regex matches its author's idea of Dropbox), the race-back
