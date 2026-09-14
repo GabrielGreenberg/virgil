@@ -150,8 +150,10 @@ export function noteSaveLanded(docId: string, now = Date.now()): void {
 
 /**
  * A write attempt did not land, and this is why. Idempotent for a repeated
- * reason (the autosave retries every 1500 ms while a gate stands, and the
- * paused debounce re-arms forever) — only the FIRST attempt of a run and any
+ * reason (a PAUSED autosave re-arms its debounce and retries every 1500 ms for
+ * as long as the pause stands; a REFUSED one is disarmed, and every later
+ * write of the document — the next keystroke, a mint flush, a manual save —
+ * is refused again; task 567) — only the FIRST attempt of a run and any
  * change of reason notify, so a standing block costs no re-renders.
  *
  * A block implies dirt: a path can only decline a write it was asked to make,
