@@ -573,6 +573,67 @@ session.
 gesture, no disk), so the check is cheap and real: click a paragraph's title,
 then click the strip again — one input, and the strip does not flip states.
 
+### The test half: a TEST owns its mounts' lifetime, and a wait is a DRAIN
+
+Same class, the harness (task 566, the v0.1.106 gate) — and the case where the
+rule 548 wrote for the view was owed by the test and nobody had registered it.
+`bib-authority.test.tsx` (task 558) mounts the REAL `useCitations` with
+`renderHook` many times over a deliberately SLOW serialized `mutateBib` door,
+and waited for each write with a 40 ms timer. Under the gate's runner a queued
+mutation — or the `DOC_BIB_CHANGED_EVENT` publish the still-mounted hook adopts
+via `setState` — resolved AFTER the file had finished and jsdom was gone; React
+scheduled a commit on a `window` that no longer existed; vitest exited 1 on
+**7 unhandled errors with all 11,663 tests passing**, and the release shipped
+on a re-run of the identical commit — the habit 548's own section warns against.
+16/16 green in isolation, which is what a load race looks like.
+
+The mount was the half that should not have needed a task. Testing Library
+registers its per-test `cleanup` only off a GLOBAL `afterEach`, and
+`vitest.config.ts` sets no `globals: true` — so for the life of the tree NO
+`render` / `renderHook` was ever unmounted by the framework. Eighty-one suites
+spelled `afterEach(cleanup)` by hand; ~220 did not, and every one of them
+leaked its mounts past its file. Only this suite was slow enough to lose the
+race, which is why it read as one file's flake.
+
+> **A TEST owns its mounts' lifetime, and a wait is a DRAIN, not a timer.**
+> `vitest.setup.ts` registers `afterEach(cleanup)` once, for every file, off
+> the `afterEach` it IMPORTS — so a mount cannot outlive its test by being
+> forgotten. And a test that waits for asynchronous work waits on the QUEUE
+> that holds it (`flushPrefix`), never on a wall-clock guess about scheduler
+> load; the gate runner is the one place the guess is wrong.
+
+Four rules it earned:
+
+- **The registration is REPO-WIDE, not per file** — a per-file obligation is
+  one the next suite forgets, which is exactly what ~220 suites had done. Safe
+  by CENSUS rather than by hope: no suite in either silo renders in a
+  `beforeAll` or keeps a mount across tests on purpose.
+- **The import is lazy and GATED**: a node-env suite has no `document`, a jsdom
+  suite that mounted nothing has an EMPTY body (Testing Library appends every
+  container to `document.body`), and instantiating react-dom in ~250 DOM
+  suites that never render a React tree would be work with no reader.
+- **The slow door STAYS slow.** Its two awaits are what make the concurrency
+  legs falsifiable; the fix is to wait for it correctly. `settle()` is two
+  rounds of drain-plus-one-tick (the queue's tracked promise settles a
+  microtask before the publish and the hook's adopt run), and an `afterEach`
+  drains the doc's queue again so no write outlives the test that queued it.
+- **The leg with teeth is BEHAVIOURAL, across two tests.** A canary that leaves
+  a hook mounted on purpose cannot ship (it IS the unhandled error), so the
+  guard mounts a hook with an armed window listener in test A and reads in
+  test B that its cleanup ran and the listener is gone — measured, neutering
+  the config entry fails it. Beside it the census pins the config entry, the
+  imported-`afterEach` shape (`_source-scan`'s own trap: a quoted needle wants
+  `commentsStripped`), and that the racing suite spells the drain and no
+  wall-clock wait.
+
+CI: [test-mount-lifetime.test.tsx](src/__tests__/test-mount-lifetime.test.tsx).
+**Residual, stated:** the 81 hand-spelled `afterEach(cleanup)` calls are left
+in place — redundant now, harmless, and 81 files of churn for no behaviour.
+The other ~45 suites that wait on a `setTimeout` guess are not converted here:
+with their mounts now cleaned per test, a late timer costs a FAILED assertion
+rather than an unhandled error, and each conversion needs the queue that suite
+actually waits on.
+
 ## Pane-drag stability
 
 > **Every pane/divider resize gesture runs on the ONE engine at [src/lib/pane-resize/](src/lib/pane-resize/)** (`usePaneResizeHandle`): pointer capture on the handle, element-scoped move/up/cancel/lostpointercapture, `button===0` start gate, `(buttons & 1)===0` missed-release failsafe (the primary-button BIT test, not `buttons===0` — releasing the drag button while a second is chorded fires only a pointermove with an updated mask, never a pointerup), Escape restore, a drag shield over iframes, RAF-coalesced equality-bailed imperative `apply()` (CSS-var writes; grid templates own hard clamps via `minmax()`/`clamp()`), and `commit()` exactly once on release. **Never** a bespoke `window`/`document` `pointermove` handler, and **never** per-frame React state, store notifies, or localStorage from a continuous gesture. Per-frame React state inside an engine consumer is sanctioned ONLY when a render-derived layout decision needs the live value (current sole case: `SplitWithCode`'s `liveRatio` — the compressed-gutter flip + clip fade derive from it in render), and only as LOCAL state driven from the engine's RAF-coalesced `apply()` (≤1 set per frame) with child subtrees bailing on element identity and persistence still commit-once; anything else is the per-frame-commit bug class this section exists to kill.

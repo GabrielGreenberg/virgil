@@ -30,11 +30,12 @@
 // an await on each half. `bib-mutate-door.test.ts` proves the SHIPPED doors
 // have that shape; this suite proves everything ABOVE them uses it.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 import { codeOnly } from "./_source-scan";
+import { flushPrefix } from "@/lib/write-queue";
 
 // ---------------------------------------------------------------------------
 // The slow, serialized door + a pure reader, over one string.
@@ -93,9 +94,31 @@ const entry = (key: string): Omit<BibEntry, "uid"> & { uid?: string } => ({
   raw: `@book{${key},\n  title = {${key.toUpperCase()}},\n}`,
 });
 
-async function settle(ms = 40): Promise<void> {
+/**
+ * Wait for the doc's writes to LAND and for the hook to adopt the publish.
+ *
+ * A DRAIN of the real per-key queue, never a wall-clock wait (task 566). The
+ * first version waited 40 ms; a timer is a guess about scheduler load, and
+ * the deploy gate's runner is the one place the guess is wrong: there a
+ * queued mutation — or the `DOC_BIB_CHANGED_EVENT` publish the still-mounted
+ * hook adopts via `setState` — resolved AFTER the file had finished and
+ * jsdom was gone, and React committed on a `window` that no longer existed.
+ * Seven of them did, with all 11,663 tests passing, and vitest exited 1.
+ *
+ * Two rounds, and each round is a drain plus ONE tick: the queue's tracked
+ * promise settles a microtask before `mutateProjectBib`'s own continuation
+ * (the publish, then the hook's adopt) runs, so the tick after the drain is
+ * what lets those land; and a continuation may enqueue again, which the
+ * second drain catches. The door stays SLOW on purpose — its two awaits are
+ * what make the concurrency legs falsifiable — the fix is to WAIT for it
+ * correctly, not to speed it up.
+ */
+async function settle(): Promise<void> {
   await act(async () => {
-    await new Promise((r) => setTimeout(r, ms));
+    for (let round = 0; round < 2; round++) {
+      await flushPrefix(DOC);
+      await tick();
+    }
   });
 }
 
@@ -110,6 +133,16 @@ async function mountWith(text: string) {
 beforeEach(() => {
   DISK = "";
   resetPipelines();
+});
+
+// No write may outlive the test that queued it, whatever a test asserted:
+// drain the doc's queue before the next test (and before the FILE ends) so
+// the slow door's timers cannot fire into a torn-down environment. The hook
+// itself is unmounted by the repo-wide `afterEach(cleanup)` in
+// `vitest.setup.ts`; this is the other half of the same lifetime.
+afterEach(async () => {
+  await flushPrefix(DOC);
+  await tick();
 });
 
 // ---------------------------------------------------------------------------
