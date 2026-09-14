@@ -3292,6 +3292,79 @@ Two kinds of leg in the first suite, and both were needed. The CONCURRENCY legs 
 
 One harness detail worth carrying forward, because the suite's first draft got it wrong: these setters schedule their persist from inside a `setState` **updater**, which React invokes lazily at the next render — so `await act(async () => { setter(); await sleep(20) })` waits *before* the updater has run, and the write is still unscheduled when the assertion reads the disk. Every leg then "fails on the pre-fix code" for a timing reason rather than a content one, which is an unfalsifiable defect leg wearing a passing one's clothes. Call the setter in a SYNC `act` to force the flush, then drain the I/O in an async one.
 
+#### The in-flight half: a dirty predicate that reads the TIMER is blind to the write it just armed
+
+Same law, the sidecar hook's OWN guard (task 569, an audit finding) — and the
+case where task 392's rule was written for `useDocument`, enforced there by a
+census, and carried as an unexamined twin one hook over. `usePersistentState`
+re-reads a sidecar off disk on the watcher's `virgil-sidecar-changed` event
+ONLY when the instance is clean, and "clean" was `pendingTimerRef.current ===
+null` — at both guard sites. But `persist`, `flushPending` and the debounce
+callback all null that handle BEFORE `await writeSidecar`, so for the whole
+in-flight window (the per-file queue, the cross-window doc lock, the FSA
+`createWritable` + rename) the guard answered CLEAN. An external change to the
+same file polled inside it passed both reads: disk (the external bytes) was
+`setState`d over the local edit in memory, our write then landed the LOCAL
+payload, and the next `update()` wrote memory back over the local edit.
+Silent; reachability ≈ in-flight ms / 3 000 per external change while the
+user edits that sidecar. **No pre-569 suite could see it**: the hook's own
+suite pins the mid-debounce deferral with a 5 s timer that never fires, and
+the watcher-wiring suite's fake write resolved synchronously, so its in-flight
+window was zero microtasks wide.
+
+> **ONE dirty predicate per coalescing writer — `hasPendingWrite()` = a write
+> is ARMED ∨ a write is IN FLIGHT — read by every guard site, never the timer
+> handle.** The in-flight half is a counter moved synchronously before the
+> `await` (the same turn the caller nulled the handle, so there is no
+> interleaving point) and released in `finally`, so a refusal or a throw lets
+> go exactly as a landing does. The null-handle comparison lives in exactly
+> two declarations — the predicate and the one timer-cancel door — and the
+> census says so.
+
+Three rules it earned:
+
+- **A refused write is not an owed write.** A `persist` the layer below
+  refuses (read-only chrome, no pipeline handle) returns before the counter
+  moves, exactly as it returns before stamping `hasMutatedRef` — so in a
+  read-mostly host disk stays the truth and an external change still
+  re-hydrates. Stated at the site: memory there holds an edit disk will never
+  see, and that is the host's design.
+- **A deferral is LOCAL WINS, and the prose said otherwise for a year.** The
+  guard's comment promised the watcher would "re-check once the write has
+  flushed". It cannot: the watcher re-baselines its ledger to the external
+  bytes BEFORE it emits and has no way to know a listener declined, and our
+  landed whole-snapshot write re-baselines it again to OURS, so the next poll
+  is a cheap mtime/size match. The external bytes are overwritten — the
+  220/558 two-writers class every sidecar that is not `ai-requests.json` or
+  the bib still carries, recorded for its own design pass (per-kind merge
+  semantics). `useAiRequests` already knew this and REPLAYS a deferred re-read
+  once its mutations drain; that is right there because it MERGES, and wrong
+  here: a replay after a landed snapshot reads back our own bytes, and after a
+  refused one adopts disk over unlanded memory — the stomp the guard exists to
+  prevent, one turn later. Verified with a leg through the REAL watcher, as
+  the filing asked, and the leg pins the opposite of what the filing assumed.
+- **The fake write has to STAMP.** The wiring suite's `writeSidecar` now lands
+  bytes with a fresh mtime AND re-baselines the disk ledger the way
+  `writeTrackedText` does; a fake that skipped the stamp would re-emit on the
+  next poll and pass the deferral legs for the wrong reason.
+
+CI: [usePersistentState-inflight-dirty-guard.test.tsx](src/hooks/__tests__/usePersistentState-inflight-dirty-guard.test.tsx)
+holds the write open on a controlled promise and lands the event inside it —
+the debounced path, the `debounceMs: 0` direct path, and the second guard
+read (a write that STARTS while the re-read is in flight) — with the two
+release controls (a settled write, a thrown write) and the decided
+refused-write case. Its CENSUS pins the two owners of the null-handle
+comparison by `enclosingDeclaration`, both listener asks, the counter around
+the await, and the retired prose.
+[sidecar-watcher-wiring.test.tsx](src/components/editor-layout/contexts/__tests__/sidecar-watcher-wiring.test.tsx)
+drives the REAL watcher over the fake disk for the mid-debounce and in-flight
+deferrals (disk holds the LOCAL bytes afterwards, no later poll re-reads) and
+a later external write still re-hydrating. Measured by neutering each half in
+turn — see the task's progress log.
+
+**Owed, not claimed:** a real external writer (a skill or a peer window) is
+the FSA-masked class, so the durable proof is the unit contract.
+
 #### The bib half: the one multi-writer file that never received its door
 
 Same law, the file with the MOST writers (task 558) — and the case where the
