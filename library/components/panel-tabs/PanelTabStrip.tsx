@@ -22,12 +22,23 @@ import {
   STRIP_SIDE_PAD,
   STRIP_TOP_HEADROOM,
 } from "@/components/chrome/folder-tab-geometry";
+import {
+  INACTIVE_TAB_LABEL_STYLE,
+  TAB_LABEL_ATTRS,
+  TAB_STRIP_SCROLLER_STYLE,
+  autoScrollForDrag,
+  useTabStripScroller,
+} from "@/components/chrome/tab-strip-occupancy";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { FONT_MONO } from "@/lib/font-stacks";
 
-// F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
-// ellipsize their names down to this width before the active tab compresses.
-const INACTIVE_MIN_CONTENT = 60;
+// F#15 — the occupancy ladder this strip pioneered (inactive tabs absorb the
+// squeeze first and ellipsize their names to a floor; the active tab resists;
+// past the floors the strip scrolls with the active tab kept in view) is the
+// SHARED ladder now: src/components/chrome/tab-strip-occupancy.ts, read by
+// this strip and the outer Virgil-bar strip alike (task 561). The floors, the
+// scroller style, the into-view nudge, the wheel mapping and the drag
+// auto-scroll all live there; this file spells none of them.
 
 export type TabDef = {
   id: string;
@@ -142,27 +153,18 @@ export function PanelTabStrip({
   const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // F#15 scroll-active-into-view. Engages ONLY past the floor: when every tab
-  // has compressed to its min-width and the total still exceeds the strip
-  // (scrollWidth > clientWidth, i.e. the overflow:hidden strip has off-screen
-  // content), nudge the active tab fully into view via scrollLeft so its 1px
-  // bridge stays attached to the body. Above the floor the tabs share the width
-  // and there's nothing to scroll, so this is a no-op. Keyed on activeId + tab
-  // count so it re-runs on selection / open / close — not on every render, and
-  // never on a doc keystroke (the strip subscribes to no editor events).
-  useEffect(() => {
-    const strip = stripRef.current;
-    const el = tabRefs.current.get(activeId);
-    if (!strip || !el) return;
-    if (strip.scrollWidth <= strip.clientWidth) return; // above the floor
-    const stripRect = strip.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    if (elRect.right > stripRect.right) {
-      strip.scrollLeft += elRect.right - stripRect.right;
-    } else if (elRect.left < stripRect.left) {
-      strip.scrollLeft -= stripRect.left - elRect.left;
-    }
-  }, [activeId, tabs.length]);
+  // F#15 scroll-active-into-view — the SHARED scroll half of the ladder
+  // (task 561): engages only past the floors (above them the tabs share the
+  // width and there is nothing to scroll), nudges the active tab fully into
+  // view by the minimum scrollLeft delta on selection / open / close / a strip
+  // resize, and maps a vertical wheel over the strip onto horizontal scroll.
+  // Never on a doc keystroke — the strip subscribes to no editor events.
+  useTabStripScroller({
+    scrollerRef: stripRef,
+    tabRefs,
+    activeKey: activeId,
+    tabCount: tabs.length,
+  });
 
   // Task 053 — measure whether the active tab's right foot sits on the body's
   // top-right corner, so its swoop can tuck into the corner (the mirror of the
@@ -327,11 +329,15 @@ export function PanelTabStrip({
       e.dataTransfer.dropEffect = "move";
       setDragOverIndex(computeInsertionIndex(e.clientX));
       setEntryDragOverTabId(null);
+      // Edge-zone auto-scroll so a hidden tab is reachable as a drop target
+      // (after the rect reads above — the write never sits between them).
+      if (stripRef.current) autoScrollForDrag(stripRef.current, e.clientX);
       return;
     }
     // Entry drag (row → library):
     if (dataTransferHas(e, ENTRY_DT_TYPE)) {
       const tabId = findTabAtPosition(e.clientX, e.clientY);
+      if (stripRef.current) autoScrollForDrag(stripRef.current, e.clientX);
       if (!tabId) {
         if (entryDragOverTabId !== null) setEntryDragOverTabId(null);
         return;
@@ -535,13 +541,14 @@ export function PanelTabStrip({
         // (they compress and their names ellipsize first), while the ACTIVE
         // tab is flex:0 0 auto and RESISTS, holding its full name down to its
         // reserved min-width floor (see PanelFolderTab). Only past the floors
-        // does total content exceed the strip; then the scroll-active-into-view
-        // effect below keeps the active tab visible via scrollLeft. Scrollbar
-        // hidden — the strip stays visually clean. Per-tab menus are
-        // body-portaled (see TabMenuTrigger) so this overflow can't clip them.
-        overflowX: "hidden",
-        overflowY: "hidden",
-        scrollbarWidth: "none",
+        // does total content exceed the strip; then it SCROLLS — user-
+        // scrollable since task 561 (`overflow-x: auto`, wheel-mapped, hidden
+        // scrollbar), with the shared scroll hook above keeping the active tab
+        // in view. `overflow-y: hidden` is stated explicitly; the seam
+        // overhang stays inside that clip via the 1px padding row above.
+        // Per-tab menus are body-portaled (see TabMenuTrigger) so this
+        // overflow can't clip them.
+        ...TAB_STRIP_SCROLLER_STYLE,
       }}
       onDragOver={handleStripDragOver}
       onDragLeave={handleStripDragLeave}
@@ -624,6 +631,7 @@ export function PanelTabStrip({
                   />
                 ) : (
                   <span
+                    {...TAB_LABEL_ATTRS}
                     style={{
                       fontSize: 13,
                       lineHeight: "16px",
@@ -792,12 +800,13 @@ const BackgroundTab = forwardRef<
         display: "inline-flex",
         alignItems: "center",
         // F#15: inactive tabs SHARE the strip width and absorb the squeeze
-        // first — flex:1 1 auto down to INACTIVE_MIN_CONTENT, then their names
-        // ellipsize (the button below carries min-w-0 + text-overflow:ellipsis).
-        // They yield before the active tab compresses, so the active name stays
-        // intact longest.
+        // first — flex:1 1 auto down to the tab's automatic flex minimum,
+        // which is its fixed chrome (padding, pin, menu, close) plus the
+        // shared LABEL floor the button below carries (task 561: the old
+        // tab-level `minWidth: 60` was chrome-blind, so a pinned tab with a
+        // menu overflowed its own box at the floor). They yield before the
+        // active tab compresses, so the active name stays intact longest.
         flex: "1 1 auto",
-        minWidth: INACTIVE_MIN_CONTENT,
         // Cap at the natural content width so a short-named inactive tab does
         // NOT stretch to fill the strip — it only shares width when crowded.
         maxWidth: "max-content",
@@ -818,6 +827,7 @@ const BackgroundTab = forwardRef<
       )}
       <button
         type="button"
+        {...TAB_LABEL_ATTRS}
         onClick={onClick}
         title={label}
         style={{
@@ -835,12 +845,13 @@ const BackgroundTab = forwardRef<
           fontFamily: "inherit",
           // F#15: the label is the part that ellipsizes when the inactive tab
           // is squeezed — it takes the flex shrink (the pin/menu/close stay
-          // fixed) and clips with an ellipsis. min-w-0 lets it shrink below its
-          // text width; the title attr keeps the full name on hover.
+          // fixed) and clips with an ellipsis down to the SHARED floor
+          // (tab-strip-occupancy.ts); the title attr keeps the full name on
+          // hover.
           flex: "1 1 auto",
-          minWidth: 0,
           overflow: "hidden",
           textOverflow: "ellipsis",
+          ...INACTIVE_TAB_LABEL_STYLE,
         }}
       >
         {label}
@@ -1387,6 +1398,14 @@ function DropIndicator({
 }) {
   if (!stripEl) return null;
   const stripRect = stripEl.getBoundingClientRect();
+  // This line is an absolutely-positioned child of the strip, which is a
+  // SCROLL CONTAINER: its `left` is in the strip's scrolled coordinate space
+  // and it scrolls with the content, while the tab rects it is placed from
+  // are VIEWPORT rects. So the strip's own scrollLeft is added back — at
+  // scrollLeft 0 (the only state the pre-561 strip could reach without the
+  // active tab being squeezed off) the two agree, which is why this was
+  // latent rather than visible.
+  const scrolled = stripEl.scrollLeft;
   let x: number;
   if (tabs.length === 0) {
     x = 4;
@@ -1413,7 +1432,7 @@ function DropIndicator({
         position: "absolute",
         top: 4,
         bottom: 0,
-        left: x,
+        left: x + scrolled,
         width: 2,
         background: "var(--accent)",
         borderRadius: 1,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { tabRowNaturalWidth } from "@/components/chrome/tab-strip-occupancy";
 import { resolveBarOccupancy } from "./bar-occupancy";
 
 /**
@@ -12,13 +13,25 @@ import { resolveBarOccupancy } from "./bar-occupancy";
  *
  * ── Cost ─────────────────────────────────────────────────────────────────
  * ONE `ResizeObserver` for the whole bar, observing three boxes: the tab
- * strip's own flex box, the tab row's `max-content` wrapper, and the tools
- * group's `max-content` wrapper. Per fire it reads `entry.contentRect.width`
- * (delivered post-layout — it forces NO layout), stores it behind a
- * per-role equality bail, and re-runs a pure arithmetic predicate whose output
- * is ONE boolean, committed only when it flips. So a continuous OS window
- * resize costs three number compares plus one comparison per frame, and
- * exactly ONE React render across the whole drag — at the crossing.
+ * strip's SCROLLER box (the tab row's assigned width), the tab ROW, and the
+ * tools group's `max-content` wrapper. Per fire it reads
+ * `entry.contentRect.width` (delivered post-layout — it forces NO layout),
+ * stores it behind a per-role equality bail, and re-runs a pure arithmetic
+ * predicate whose output is ONE boolean, committed only when it flips. So a
+ * continuous OS window resize costs three number compares plus one
+ * comparison per frame, and exactly ONE React render across the whole drag —
+ * at the crossing.
+ *
+ * The ROW is the one box whose contentRect is not the number the rule wants:
+ * since task 561 the row COMPRESSES (its tabs share the width and ellipsize)
+ * and then SCROLLS, so its box is capped at the scroller's width while its
+ * NATURAL width — the `T` in the predicate — may be larger. `tabRowNaturalWidth`
+ * (tab-strip-occupancy.ts) recovers it from the row: box + what its labels
+ * lost to ellipsizing + what overflows the scroller, all post-layout DOM reads
+ * of O(tabs), on the SAME fire. Feeding the rule the compressed box instead is
+ * the naive rule bar-occupancy.ts rejects — collapsing the tools would free
+ * room, the tabs would decompress and "fit", the rule would expand the tools,
+ * and the bar would oscillate.
  *
  * It observes NOTHING that changes while typing (tab widths move on open /
  * close / rename, tool widths on a badge self-gating), so it is invisible to
@@ -48,9 +61,9 @@ export type BarOccupancy = {
   autoCollapsed: boolean;
   /** Toggle the tools group — the chip's click handler. */
   toggleTools: () => void;
-  /** Ref callback for the tab strip's own flex box. */
+  /** Ref callback for the tab strip's SCROLLER box (the row's assigned width). */
   tabStripMeasureRef: (el: HTMLElement | null) => void;
-  /** Ref callback for the tab row's `max-content` wrapper. */
+  /** Ref callback for the tab ROW (its natural width is recovered from it). */
   tabsMeasureRef: (el: HTMLElement | null) => void;
   /** Ref callback for the tools group's `max-content` wrapper. */
   toolsMeasureRef: (el: HTMLElement | null) => void;
@@ -126,7 +139,17 @@ export function useBarOccupancy(opts: {
       for (const entry of entries) {
         const role = rolesRef.current.get(entry.target);
         if (!role) continue;
-        const w = entry.contentRect.width;
+        // The row reports its NATURAL width, recovered from the (possibly
+        // compressed) box — see the cost note above. The scroller element is
+        // the strip's own; a bare mount with no scroller bound reads the box.
+        const w =
+          role === "tabs"
+            ? tabRowNaturalWidth(
+                entry.target as HTMLElement,
+                (elsRef.current.tabStrip as HTMLElement | null | undefined) ?? null,
+                entry.contentRect.width,
+              )
+            : entry.contentRect.width;
         if (measuredRef.current[role] !== w) {
           measuredRef.current[role] = w;
           changed = true;

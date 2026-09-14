@@ -35,12 +35,22 @@
  * A preview eyeball at the screenshot's width is OWED, not claimed: this run
  * was unattended and could not start a dev server. The class is NOT
  * FSA-masked, so that check is cheap and real.
+ *
+ * Task 561 added the ladder UNDER tier 2 (`tab-strip-occupancy.ts`): when the
+ * tabs still do not fit after the tools have yielded, they COMPRESS (inactive
+ * tabs ellipsize to a shared floor; the active tab resists) and then the strip
+ * SCROLLS with the active tab kept in view — the product decision 395 left
+ * open ("a scroll, an overflow chevron"), answered by Gabriel: scroll. Section
+ * 5 below pins it against the REAL bar; the rule's own anti-oscillation
+ * property gains the leg it needed once the row could compress (a rule fed
+ * the COMPRESSED width would collapse the tools, watch the tabs decompress,
+ * expand them, and loop).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { createRef, useRef, useState } from "react";
+import { createRef, useEffect, useRef, useState } from "react";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { codeOnly, commentsStripped, tagsContaining } from "@/lib/__tests__/_source-scan";
 import {
@@ -67,7 +77,15 @@ import {
   type StatusClusterProps,
 } from "@/components/editor-layout/StatusCluster";
 import type { FsaDocMeta } from "@/lib/doc-index";
-import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
+import { OUTER_LIBRARY_ROOT_ID } from "@/lib/doc-index";
+import {
+  FOLDER_TAB_SEAM_OVERLAP,
+  TAB_LABEL_MAX_PX,
+} from "@/components/chrome/folder-tab-geometry";
+import {
+  TAB_LABEL_ATTR,
+  TAB_LABEL_FLOOR_MIN_WIDTH,
+} from "@/components/chrome/tab-strip-occupancy";
 
 // ───────────────────────────────────────────────────────────────────────────
 // 1. The rule
@@ -226,21 +244,43 @@ const DOC: FsaDocMeta = {
 
 const noop = () => {};
 
+/** Three more documents for the crowded-strip legs (section 5). */
+const DOCS_MORE: FsaDocMeta[] = ["Doc Two", "Doc Three"].map((name, i) => ({
+  ...DOC,
+  id: `doc${i + 2}`,
+  name,
+  folderName: name,
+}));
+
+/** The tab wrappers the strip keys `outerTabRefs` by — exposed for the legs
+ *  that stub a tab's geometry. */
+let lastOuterTabRefs: Map<string, HTMLElement> | null = null;
+
 function Harness({
   userCollapsed,
   setUserCollapsed,
+  docs = [DOC],
+  outerOrder = [DOC.id],
+  currentDocId = DOC.id,
 }: {
   userCollapsed: boolean;
   setUserCollapsed: (v: boolean) => void;
+  docs?: FsaDocMeta[];
+  outerOrder?: string[];
+  currentDocId?: string;
 }) {
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   const outerTabRefs = useRef(new Map<string, HTMLElement>());
+  // Published from an effect, never during render (react-hooks/globals).
+  useEffect(() => {
+    lastOuterTabRefs = outerTabRefs.current;
+  });
   const tabStrip: TabStripProps = {
-    docs: [DOC],
-    openTabIds: [DOC.id],
-    outerOrder: [DOC.id],
+    docs,
+    openTabIds: docs.map((d) => d.id),
+    outerOrder,
     activePane: "doc",
-    currentDocId: DOC.id,
+    currentDocId,
     currentLibraryOuterId: null,
     currentPaperCitekey: null,
     libraryRegistry: new Map(),
@@ -373,12 +413,20 @@ describe("the REAL bar under compression", () => {
   });
 
   it("observes exactly the three boxes the rule needs, through ONE observer", () => {
+    // RENEGOTIATED in place (task 561): the strip's scroll ladder mounts its
+    // own ResizeObserver over the SCROLLER box (`useTabStripScroller`, so a
+    // strip that narrows under the active tab scrolls it back into view) —
+    // a second callback in the bar, observing ONE box. The occupancy rule's
+    // own observer is still exactly three boxes through one callback, and
+    // the scroller it observes is the SAME element the ladder observes.
     mount();
-    const roles = observed
-      .map((o) => o.el.getAttribute("data-bar-occupant"))
-      .sort();
-    expect(roles).toEqual(["status-tools", "tab-strip", "tabs"]);
-    expect(new Set(observed.map((o) => o.cb)).size).toBe(1);
+    const byCb = new Map<ResizeObserverCallback, string[]>();
+    for (const o of observed) {
+      const role = o.el.getAttribute("data-bar-occupant") ?? "?";
+      byCb.set(o.cb, [...(byCb.get(o.cb) ?? []), role].sort());
+    }
+    const roleSets = [...byCb.values()].sort((a, b) => b.length - a.length);
+    expect(roleSets).toEqual([["status-tools", "tab-strip", "tabs"], ["tab-strip"]]);
   });
 
   it("a wide bar keeps every occupant", () => {
@@ -533,6 +581,143 @@ describe("collapsing the tool group", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// 5. The ladder UNDER tier 2 — compress, then scroll (task 561)
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("the tab strip's occupancy ladder — compress, then scroll", () => {
+  beforeEach(() => {
+    observed = [];
+    globalThis.ResizeObserver = FakeRO as unknown as typeof ResizeObserver;
+  });
+  afterEach(() => {
+    cleanup();
+    globalThis.ResizeObserver = RealRO;
+    lastOuterTabRefs = null;
+  });
+
+  const crowded = () =>
+    render(
+      <Harness
+        userCollapsed={false}
+        setUserCollapsed={noop}
+        docs={[DOC, ...DOCS_MORE]}
+        outerOrder={[OUTER_LIBRARY_ROOT_ID, DOC.id, ...DOCS_MORE.map((d) => d.id)]}
+      />,
+    );
+  const scrollerEl = () =>
+    document.querySelector<HTMLElement>('[data-bar-occupant="tab-strip"]')!;
+  const rowEl = () => document.querySelector<HTMLElement>('[data-bar-occupant="tabs"]')!;
+  /** The per-tab wrapper the strip keys `outerTabRefs` by. */
+  const wrapperOf = (label: string) => screen.getByLabelText(label).parentElement!;
+
+  it("inactive tabs COMPRESS (`shrink`), the active tab RESISTS (`shrink-0`), the pinned Library root never compresses", () => {
+    crowded();
+    // Inactive: flex-shrink 1 with the automatic (min-content) minimum, which
+    // is the tab's fixed chrome plus its label's floor.
+    for (const name of ["Doc Two: main.tex", "Doc Three: main.tex"]) {
+      const w = wrapperOf(name);
+      expect(w.className, `${name} must be compressible`).toMatch(/\bshrink\b/);
+      expect(w.className).not.toMatch(/shrink-0/);
+    }
+    // Active: the folder tab holds its name; only the strip scrolls.
+    expect(wrapperOf("Coherence Intro: main.tex").className).toMatch(/shrink-0/);
+    // The Library root is the strip's pinned tab (Chrome's pinned tabs).
+    expect(wrapperOf("Library").className).toMatch(/shrink-0/);
+  });
+
+  it("an inactive LABEL ellipsizes to the shared floor and no further, under the shared cap", () => {
+    crowded();
+    const label = screen.getByLabelText("Doc Two: main.tex").querySelector<HTMLElement>(`[${TAB_LABEL_ATTR}]`)!;
+    expect(label.className).toMatch(/\btruncate\b/);
+    expect(label.style.minWidth).toBe(TAB_LABEL_FLOOR_MIN_WIDTH);
+    expect(label.style.maxWidth).toBe(`${TAB_LABEL_MAX_PX}px`);
+    // Every label in the row is visible to the occupancy reader.
+    const labels = rowEl().querySelectorAll(`[${TAB_LABEL_ATTR}]`);
+    expect(labels.length).toBe(4); // Library root + 3 docs
+  });
+
+  it("past the floors the strip SCROLLS: a scroller with a hidden scrollbar, and the seam kept INSIDE its clip", () => {
+    crowded();
+    const s = scrollerEl();
+    expect(s.style.overflowX).toBe("auto");
+    expect(s.style.overflowY, "an unstated axis would be coerced to auto and grow a 1px scroll range").toBe("hidden");
+    expect(s.style.scrollbarWidth).toBe("none");
+    // The active tab hangs FOLDER_TAB_SEAM_OVERLAP below the strip to merge
+    // into the canvas; the padding keeps that inside the scroller's padding
+    // box (never clipped), the margin keeps the footprint unchanged.
+    expect(s.style.paddingBottom).toBe(`${FOLDER_TAB_SEAM_OVERLAP}px`);
+    expect(s.style.marginBottom).toBe(`-${FOLDER_TAB_SEAM_OVERLAP}px`);
+    // The row: natural width when roomy, the scroller's width when crowded.
+    const row = rowEl();
+    expect(row.style.width).toBe("max-content");
+    expect(row.style.maxWidth).toBe("100%");
+    expect(row.className).toMatch(/\bmin-w-0\b/);
+    expect(s.contains(row)).toBe(true);
+  });
+
+  it("the '+' is an ACTION and stays PINNED outside the scroller", () => {
+    crowded();
+    const plus = screen.getByRole("button", { name: "Open paper or create new" });
+    expect(scrollerEl().contains(plus)).toBe(false);
+    expect(screen.getByLabelText("Library").closest('[data-bar-occupant="tab-strip"]')).not.toBeNull();
+  });
+
+  it("activating an off-screen tab scrolls it into view by the MINIMUM delta — through the real strip", () => {
+    const view = crowded();
+    const s = scrollerEl();
+    Object.defineProperty(s, "clientWidth", { value: 300, configurable: true });
+    Object.defineProperty(s, "scrollWidth", { value: 900, configurable: true });
+    s.getBoundingClientRect = () =>
+      ({ left: 0, right: 300, width: 300, top: 0, bottom: 0, height: 0, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const three = lastOuterTabRefs!.get("doc3")!;
+    three.getBoundingClientRect = () =>
+      ({ left: 600, right: 700, width: 100, top: 0, bottom: 0, height: 0, x: 600, y: 0, toJSON() {} }) as DOMRect;
+    expect(s.scrollLeft).toBe(0);
+    view.rerender(
+      <Harness
+        userCollapsed={false}
+        setUserCollapsed={noop}
+        docs={[DOC, ...DOCS_MORE]}
+        outerOrder={[OUTER_LIBRARY_ROOT_ID, DOC.id, ...DOCS_MORE.map((d) => d.id)]}
+        currentDocId="doc3"
+      />,
+    );
+    // The activated tab is re-keyed to the active (folder) wrapper — the
+    // nudge read the wrapper the strip keys by id, wherever the id renders.
+    expect(s.scrollLeft).toBe(400);
+  });
+
+  it("the rule still reads the NATURAL width after compression — the anti-oscillation leg", () => {
+    // The row's box is capped at the scroller's width once it compresses, so
+    // a rule fed the box could never say "collapse". The labels' own
+    // `scrollWidth` remembers the width they were denied.
+    crowded();
+    const labels = rowEl().querySelectorAll<HTMLElement>(`[${TAB_LABEL_ATTR}]`);
+    const squeeze = (px: number) => {
+      for (const l of labels) {
+        Object.defineProperty(l, "scrollWidth", { value: 90 + px, configurable: true });
+        Object.defineProperty(l, "clientWidth", { value: 90, configurable: true });
+      }
+    };
+    // Control: nothing ellipsized, the row fits its box exactly → expanded.
+    squeeze(0);
+    deliver({ "tab-strip": 300, tabs: 300, "status-tools": 200 });
+    expect(toolsReachable()).toBe(true);
+    // Now each of the four labels has lost 15px to compression: the box
+    // still reads 300, the NATURAL width is 360, and the tools must yield.
+    squeeze(15);
+    deliver({ tabs: 300 - 1, "tab-strip": 300 - 1 }); // a hair narrower, so the entries re-fire
+    expect(toolsReachable(), "a rule reading the compressed box never collapses the tools").toBe(false);
+    // Collapsing freed 200px: the row decompresses to its natural 360 and the
+    // box now reports it. The collapsed-state predicate asks 360 + 200 ≤ 499,
+    // which is false — so the tools STAY collapsed rather than flip-flopping.
+    squeeze(0);
+    deliver({ "tab-strip": 499, tabs: 360 });
+    expect(toolsReachable()).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // 4. The census — the halves no render can see
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -542,20 +727,117 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 describe("census · the structural floor and the shared cap", () => {
   const STRIP = "src/components/editor-layout/TabStrip.tsx";
 
-  it("the tab strip clips its OWN horizontal overflow, and only the horizontal", () => {
-    // The floor that makes an overlap unrepresentable rather than merely
-    // avoided. `clip` (not `hidden`) with `overflow-y` stated EXPLICITLY: per
-    // CSS Overflow 3, `hidden` on one axis coerces a `visible` other axis to
-    // `auto`, which would eat the active tab's 1px seam overhang below the
-    // strip. The pair is the mechanism; the rule above is the policy.
-    // `commentsStripped`, NOT `codeOnly`: the needle IS a string literal, and
-    // codeOnly blanks those — the trap `_source-scan`'s own header documents.
-    const code = commentsStripped(read(STRIP));
-    expect(code).toMatch(/overflowX:\s*"clip"/);
-    expect(code).toMatch(/overflowY:\s*"visible"/);
-    expect(code, "`hidden` would coerce overflow-y to auto").not.toMatch(
-      /overflowX:\s*"hidden"/,
-    );
+  it("the tab strip's floor is a SCROLLER, and it spells no scroll axis of its own", () => {
+    // RENEGOTIATED in place (task 561). This leg used to pin `overflow-x:
+    // clip` + `overflow-y: visible` as the structural floor — the pair that
+    // clips horizontally while leaving the seam overhang unclipped. That was
+    // the floor 395 chose in place of a product decision, and it pinned the
+    // decision's absence as the contract: a tab row wider than the strip
+    // simply LOST its rightmost tabs. Gabriel's decision is to scroll. The
+    // floor is still structural (a scroll container clips), but the axis is
+    // the SHARED scroller style — `overflow-x: auto`, `overflow-y: hidden`
+    // stated explicitly — and the seam overhang is kept inside the clip by
+    // the shared padding/margin pair rather than by leaving the axis visible.
+    // Both strips read those from tab-strip-occupancy.ts; neither may spell
+    // an overflow axis of its own, or the two can disagree about the seam.
+    // `commentsStripped`, NOT `codeOnly`: the needles are string literals.
+    for (const rel of [STRIP, "library/components/panel-tabs/PanelTabStrip.tsx"]) {
+      const code = commentsStripped(read(rel));
+      expect(code, `${rel} must spread the shared scroller style`).toMatch(
+        /\.\.\.TAB_STRIP_SCROLLER_STYLE/,
+      );
+      // Axis-SPECIFIC needle: `overflow: "hidden"` on a label (the ellipsis
+      // idiom) or a menu row is not a scroll axis.
+      expect(code, `${rel} spells its own scroll axis`).not.toMatch(
+        /overflow[XY]:\s*"(?:clip|hidden|auto|scroll|visible)"/,
+      );
+    }
+    const strip = commentsStripped(read(STRIP));
+    expect(strip).toMatch(/tabStripSeamPadding\(FOLDER_TAB_SEAM_OVERLAP\)/);
+    // The retired floor stays retired.
+    expect(strip).not.toMatch(/overflowX:\s*"clip"/);
+  });
+
+  it("both strips mount the ONE scroll hook and neither re-derives the into-view nudge", () => {
+    // The ladder was never the part that could misbehave — a strip writing
+    // its own `scrollLeft` is (the inner strip's inline nudge was exactly
+    // that, and it is what the outer strip would have copied). Any
+    // `scrollLeft` WRITE outside the module, in either silo, is a re-fork.
+    const MODULE = "src/components/chrome/tab-strip-occupancy.ts";
+    for (const rel of [STRIP, "library/components/panel-tabs/PanelTabStrip.tsx"]) {
+      expect(codeOnly(read(rel)), `${rel} does not mount useTabStripScroller`).toMatch(
+        /\buseTabStripScroller\(/,
+      );
+    }
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        if (fs.statSync(full).isDirectory()) {
+          if (entry === "__tests__" || entry === "node_modules") continue;
+          walk(full);
+        } else if (/\.tsx?$/.test(entry)) {
+          const rel = path.relative(ROOT, full).split(path.sep).join("/");
+          if (rel === MODULE) continue;
+          if (/\.scrollLeft\s*(?:\+=|-=|=)[^=]/.test(codeOnly(read(rel)))) offenders.push(rel);
+        }
+      }
+    };
+    walk(path.join(ROOT, "src"));
+    walk(path.join(ROOT, "library"));
+    expect(offenders).toEqual([]);
+    // …and the module really is the one writer (a can-see canary).
+    expect(codeOnly(read(MODULE))).toMatch(/\.scrollLeft\s*=/);
+  });
+
+  it("no tab strip declares its own min-content floor — the floors are the shared module's", () => {
+    // `ACTIVE_MIN_CONTENT` sat in the shared geometry module and was read by
+    // ONE strip while the other hand-wrote `minWidth: 80`; the inactive floor
+    // was private to the inner strip. A positive `minWidth` literal in any of
+    // the five tab files is that fork coming back. (`minWidth: 0` — "let flex
+    // shrink me" — is not a floor and stays legal.)
+    for (const rel of [
+      STRIP,
+      "src/components/editor-layout/InlineTabLabel.tsx",
+      "src/components/editor-layout/DocumentFolderTab.tsx",
+      "library/components/panel-tabs/PanelTabStrip.tsx",
+      "library/components/panel-tabs/PanelFolderTab.tsx",
+    ]) {
+      const code = commentsStripped(read(rel));
+      // Asked PER TAG: the inner strip's body-portaled menus carry a
+      // `minWidth` of their own, and a menu's floor is not a tab's.
+      for (const tag of tagsContaining(code, /minWidth:\s*[1-9]\d*\s*[,}]/)) {
+        expect(tag, `${rel} hand-writes a floor: ${tag.slice(0, 80)}`).toMatch(/role="menu"/);
+      }
+      expect(code, `${rel} hand-spells the label floor`).not.toMatch(/calc-size\(max-content,\s*min\(size/);
+    }
+    // The active floors read the variant spec; the inactive floor reads the
+    // shared style.
+    expect(codeOnly(read("src/components/editor-layout/DocumentFolderTab.tsx"))).toMatch(/minWidth:\s*V\.activeMinContent/);
+    expect(codeOnly(read("library/components/panel-tabs/PanelFolderTab.tsx"))).toMatch(/V\.activeMinContent/);
+    for (const rel of ["src/components/editor-layout/InlineTabLabel.tsx", "library/components/panel-tabs/PanelTabStrip.tsx"]) {
+      expect(codeOnly(read(rel)), `${rel} does not take the shared label floor`).toMatch(/\.\.\.INACTIVE_TAB_LABEL_STYLE/);
+    }
+  });
+
+  it("every tab label span carries the label attribute the occupancy reader finds them by", () => {
+    // `tabRowNaturalWidth` recovers the row's natural width from its labels;
+    // a label without the attribute is compression the rule cannot see. Asked
+    // PER TAG (the three active spans + the inline one in the bar; the active
+    // span + the inactive button in the inner strip), never as a count.
+    const spans = [
+      ...tagsContaining(commentsStripped(read(STRIP)), /\btruncate\b/),
+      ...tagsContaining(commentsStripped(read("src/components/editor-layout/InlineTabLabel.tsx")), /\btruncate\b/),
+    ];
+    expect(spans.length, "the label needle is stale").toBe(4);
+    const inner = tagsContaining(
+      commentsStripped(read("library/components/panel-tabs/PanelTabStrip.tsx")),
+      /lineHeight: "16px"/,
+    ).filter((t) => !/^<input/.test(t));
+    expect(inner.length, "the inner-strip label needle is stale").toBe(2);
+    for (const tag of [...spans, ...inner]) {
+      expect(tag, `a tab label with no attribute: ${tag.slice(0, 100)}`).toMatch(/TAB_LABEL_ATTRS/);
+    }
   });
 
   it("no file promises a clamp that nothing implements", () => {

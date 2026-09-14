@@ -5,6 +5,10 @@ import { activatableProps } from "@/lib/activatable-props";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
+import {
+  INACTIVE_TAB_LABEL_STYLE,
+  TAB_LABEL_ATTRS,
+} from "@/components/chrome/tab-strip-occupancy";
 import { iconHint } from "@/components/Hint";
 
 /**
@@ -22,6 +26,16 @@ import { iconHint } from "@/components/Hint";
  *
  * Omitting `onClose` hides the × button (used by the Library root tab,
  * which is permanent and can't be closed).
+ *
+ * COMPRESSION (task 561): the strip's occupancy ladder
+ * (src/components/chrome/tab-strip-occupancy.ts) squeezes inactive tabs
+ * first. This component is the block-level child of a flexible wrapper in
+ * `TabStrip`, so it takes the wrapper's width, and its LABEL is the part that
+ * yields — `truncate` (overflow hidden + ellipsis) with the shared floor as
+ * its `min-width`, so the tab's automatic flex minimum is its fixed chrome
+ * (padding, icon, close) plus that floor. Everything else here is `shrink-0`
+ * or fixed. The label also carries `TAB_LABEL_ATTRS`, which is how the bar's
+ * occupancy rule recovers the row's NATURAL width from a compressed one.
  *
  * Perf: this component is `memo`'d, and the per-tab call-site arrows have
  * been removed. The owner threads the tab's stable `id` plus the
@@ -71,7 +85,7 @@ function InlineTabLabelImpl({
       // from also ACTIVATING the tab by bubbling.
       {...activatableProps(() => onActivate(id))}
       data-hint={title}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0 focus-ring`} aria-label={title}
+      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default focus-ring`} aria-label={title}
     >
       <div
         aria-hidden
@@ -79,12 +93,16 @@ function InlineTabLabelImpl({
       />
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span
+        {...TAB_LABEL_ATTRS}
         className="relative text-[13px] leading-4 truncate"
         style={{
           // The bar-wide label cap (task 395) — shared with the ACTIVE folder
           // tab's label so the two renderers of one tab can't disagree about
           // how wide a name may get.
           maxWidth: TAB_LABEL_MAX_PX,
+          // …and the compression FLOOR (task 561): under a squeeze the label
+          // ellipsizes down to this and no further; past it the strip scrolls.
+          ...INACTIVE_TAB_LABEL_STYLE,
           ...(monospace ? { fontFamily: FONT_MONO } : null),
         }}
       >

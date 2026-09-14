@@ -3,6 +3,7 @@
 import {
   memo,
   useCallback,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type ReactNode,
@@ -25,7 +26,18 @@ import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
 import { FONT_MONO } from "@/lib/font-stacks";
-import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
+import {
+  FOLDER_TAB_SEAM_OVERLAP,
+  FOLDER_TAB_VARIANTS,
+  TAB_LABEL_MAX_PX,
+} from "@/components/chrome/folder-tab-geometry";
+import {
+  TAB_LABEL_ATTRS,
+  TAB_STRIP_SCROLLER_STYLE,
+  autoScrollForDrag,
+  tabStripSeamPadding,
+  useTabStripScroller,
+} from "@/components/chrome/tab-strip-occupancy";
 import { iconHint } from "@/components/Hint";
 
 // Negative margins applied to the active folder-tab wrapper so promoting a
@@ -33,6 +45,17 @@ import { iconHint } from "@/components/Hint";
 // in lockstep with the inline-label padding (see InlineTabLabel).
 const ACTIVE_TAB_LEFT_SHIFT_PX = 18;
 const ACTIVE_TAB_RIGHT_SHIFT_PX = 8;
+
+// The scroller's trailing slack (px): a LAST active tab's border box extends
+// past its own margin box by ACTIVE_TAB_RIGHT_SHIFT_PX (the negative margin
+// above) plus the topbar cap's 1px stroke overhang. Inside a scroll
+// container that protrusion would be 9px of scrollable overflow — a strip
+// that "overflows" by a hair with every tab in view, and a phantom scroll
+// range. As the scroller's own padding it is inside the padding box, which a
+// scroll container never counts as overflow. (Pre-561 the strip's `px-2`
+// absorbed 8 of the 9 and clipped the cap's last column.)
+const TAB_ROW_END_SLACK_PX =
+  ACTIVE_TAB_RIGHT_SHIFT_PX + FOLDER_TAB_VARIANTS.topbar.capRightOverhang;
 
 export type TabStripProps = {
   /** Open docs (for TabPlusMenu + per-tab render). */
@@ -93,9 +116,11 @@ export type TabStripProps = {
   // The two boxes `useBarOccupancy` measures for the bar's ONE width
   // negotiation (see bar-occupancy.ts). Optional so a bare mount (tests,
   // a future host) renders identically with the rule inert.
-  /** Ref callback for the strip's own flex box — its ASSIGNED width. */
+  /** Ref callback for the strip's SCROLLER box — the tab row's ASSIGNED
+   *  width (the strip minus the pinned "+"). */
   stripMeasureRef?: (el: HTMLElement | null) => void;
-  /** Ref callback for the tab row's `max-content` wrapper — its NATURAL width. */
+  /** Ref callback for the tab ROW — measured for its NATURAL width, which
+   *  `tabRowNaturalWidth` recovers from the row even while it is compressed. */
   tabsMeasureRef?: (el: HTMLElement | null) => void;
 };
 
@@ -141,19 +166,46 @@ function TabStripImpl(props: TabStripProps) {
     exampleAvailable,
   } = props;
 
-  // ONE stable composed ref for the strip's root: the drop-indicator's own
+  // ONE stable composed ref for the strip's SCROLLER: the scroll hook's own
   // RefObject plus the bar-occupancy measure callback. Deliberately NOT an
   // inline arrow — React detaches and re-attaches an unstable ref callback on
   // every render, and this one's detach DROPS the strip's measurement, so an
   // inline arrow makes an ordinary re-render look like "the tab strip left the
   // bar" and can bounce the occupancy verdict against its own re-renders.
-  const stripRef = useCallback(
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const scrollerMeasureRef = useCallback(
     (el: HTMLDivElement | null) => {
-      tabStripRef.current = el;
+      scrollerRef.current = el;
       stripMeasureRef?.(el);
     },
-    [tabStripRef, stripMeasureRef],
+    [stripMeasureRef],
   );
+
+  // Which entry of `outerOrder` is the active one — the key the scroll ladder
+  // keeps in view. Same vocabulary the render loop below keys `outerTabRefs`
+  // by: the Library root by its singleton id, papers/libraries by their
+  // prefixed ids, documents by doc id.
+  const activeKey =
+    activePane === "doc"
+      ? currentDocId
+      : activePane === "paper"
+        ? currentPaperCitekey !== null
+          ? OUTER_PAPER_PREFIX + currentPaperCitekey
+          : null
+        : currentLibraryOuterId === null
+          ? null
+          : currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID
+            ? OUTER_LIBRARY_ROOT_ID
+            : OUTER_LIBRARY_PREFIX + currentLibraryOuterId;
+
+  // The scroll half of the occupancy ladder (task 561): active tab kept in
+  // view on activation / open / close / resize, vertical wheel → horizontal.
+  useTabStripScroller({
+    scrollerRef,
+    tabRefs: outerTabRefs,
+    activeKey,
+    tabCount: outerOrder.length,
+  });
 
   // Outer-tab strip render. Library root + the currently active entry render
   // as full DocumentFolderTab silhouettes; every other entry collapses to a
@@ -204,6 +256,10 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
+            // The Library root is the strip's one PINNED tab (Chrome's
+            // pinned tabs): it never compresses, so its `library-pinned`
+            // padding — which pre-reserves the folder silhouette's footprint
+            // — is never squeezed under its own label.
             className="self-end mb-[3px] shrink-0"
           >
             <InlineTabLabel
@@ -246,6 +302,7 @@ function TabStripImpl(props: TabStripProps) {
               onClick={() => {}}
             >
               <span
+                {...TAB_LABEL_ATTRS}
                 className="text-[13px] leading-4 truncate min-w-0"
                 style={{ fontFamily: FONT_MONO, maxWidth: TAB_LABEL_MAX_PX }}
               >
@@ -274,7 +331,11 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-end mb-[3px] shrink-0"
+            // COMPRESSIBLE (task 561): `shrink` (flex 0 1 auto) with the
+            // automatic flex minimum, which is this tab's fixed chrome plus
+            // the shared label floor (InlineTabLabel). Inactive tabs yield
+            // first; the active tab is `shrink-0` and resists.
+            className="self-end mb-[3px] shrink"
           >
             <InlineTabLabel
               id={citekey}
@@ -365,6 +426,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <IconLibrary />
               <span
+                {...TAB_LABEL_ATTRS}
                 className="text-[13px] leading-4 truncate min-w-0"
                 style={{ maxWidth: TAB_LABEL_MAX_PX }}
               >
@@ -393,7 +455,7 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-end mb-[3px] shrink-0"
+            className="self-end mb-[3px] shrink"
             {...dropHandlers}
             style={dropStyle}
           >
@@ -474,6 +536,7 @@ function TabStripImpl(props: TabStripProps) {
               />
             ) : (
               <span
+                {...TAB_LABEL_ATTRS}
                 className="text-[13px] leading-4 truncate min-w-0"
                 // The bar-wide label cap (task 395). `max-width` clamps the
                 // span's max-content CONTRIBUTION, so the tab's
@@ -511,7 +574,7 @@ function TabStripImpl(props: TabStripProps) {
             if (el) outerTabRefs.current.set(doc.id, el);
             else outerTabRefs.current.delete(doc.id);
           }}
-          className="self-end mb-[3px] shrink-0"
+          className="self-end mb-[3px] shrink"
         >
           <InlineTabLabel
             id={doc.id}
@@ -528,28 +591,24 @@ function TabStripImpl(props: TabStripProps) {
 
   return (
     <div
-      ref={stripRef}
-      data-bar-occupant="tab-strip"
-      className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-stretch relative"
-      // ── The bar's structural FLOOR (task 395) ───────────────────────────
-      // The tabs are `shrink-0` by design (a tab's silhouette is layout-owned
-      // and pixel-stable across activation), so a crowded strip's content is
-      // WIDER than its flex box. Before this it simply spilled RIGHT into the
-      // `shrink-0` status cluster and the two interleaved by paint order —
-      // Gabriel's screenshot, tool icons crossing a tab label. `overflow-x:
-      // clip` makes that unrepresentable: the tab row can never paint outside
-      // the strip's own box, so it can never reach the protected
-      // data-integrity badges, whatever the occupancy rule decides.
-      //
-      // `clip`, not `hidden`, and `overflow-y` stated EXPLICITLY: per CSS
-      // Overflow 3 a `visible` axis is coerced to `auto` only when the other
-      // axis is neither `visible` nor `clip`, so `clip` + `visible` is the one
-      // pair that clips horizontally while leaving the vertical axis alone —
-      // which is load-bearing here, because the active folder tab hangs
-      // FOLDER_TAB_SEAM_OVERLAP px below this box on purpose (it overlaps the
-      // bar's bottom border so the tab merges into the canvas). `hidden` would
-      // force overflow-y to auto and eat that seam.
-      style={{ overflowX: "clip", overflowY: "visible" }}
+      ref={tabStripRef}
+      className="flex items-end flex-1 min-w-0 gap-0.5 pl-2 self-stretch relative"
+      // ── The bar's structural FLOOR, and the occupancy ladder under it ──
+      // (task 395, renegotiated by 561.) The tabs are TIER 2 of the bar's
+      // ladder (bar-occupancy.ts): when they and the collapsible tools cannot
+      // both fit, the tools yield FIRST. When the tabs still do not fit after
+      // that, this strip degrades in a stated order rather than clipping —
+      // tab-strip-occupancy.ts, shared with the Library's inner strip:
+      // COMPRESS (inactive tabs share the width and ellipsize to a floor; the
+      // active tab resists) → SCROLL (the SCROLLER below is `overflow-x: auto`
+      // with a hidden scrollbar, and the active tab is always nudged into
+      // view). The floor is still structural: a scroll container clips, so
+      // the tab row can never paint over the status cluster's protected
+      // data-integrity badges, whatever the rule decides — and this ROOT
+      // never overflows (its only flex children are the pinned "+" and the
+      // `min-w-0 flex-1` scroller), so it needs no clip of its own. It stays
+      // `position: relative` because the drop indicator is positioned
+      // against it (see below).
       onDragOver={(e) => {
         const types = e.dataTransfer.types;
         let acceptable = false;
@@ -563,6 +622,7 @@ function TabStripImpl(props: TabStripProps) {
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
         // Insertion index = first outer-tab whose midpoint is right of cursor.
+        // Viewport rects, so this is correct at any scrollLeft.
         let idx = outerOrder.length;
         for (let i = 0; i < outerOrder.length; i++) {
           const el = outerTabRefs.current.get(outerOrder[i]);
@@ -571,6 +631,9 @@ function TabStripImpl(props: TabStripProps) {
           if (e.clientX < r.left + r.width / 2) { idx = i; break; }
         }
         if (paperDropIndex !== idx) setPaperDropIndex(idx);
+        // Edge-zone auto-scroll (after the reads above, so the write never
+        // sits between two of the gesture's own rect reads).
+        if (scrollerRef.current) autoScrollForDrag(scrollerRef.current, e.clientX);
       }}
       onDragLeave={(e) => {
         const next = e.relatedTarget as Node | null;
@@ -602,20 +665,8 @@ function TabStripImpl(props: TabStripProps) {
         openLibraryOuterTab(libId, dropIdx);
       }}
     >
-      {/* The tab row's NATURAL extent (task 395). `max-content` + `shrink-0`
-          so this wrapper reports the width the tabs WANT regardless of the box
-          the strip was assigned — which is what makes the occupancy predicate
-          state-independent (bar-occupancy.ts). It adds no layout of its own:
-          it carries the strip's own `items-end` + `gap-0.5`, sits at the
-          strip's content origin, and a bottom-aligned flex item's negative
-          margin (the active tab's seam overlap) resolves identically one level
-          in. */}
-      <div
-        ref={tabsMeasureRef}
-        data-bar-occupant="tabs"
-        className="flex items-end gap-0.5 shrink-0"
-        style={{ width: "max-content" }}
-      >
+      {/* The "+" is an ACTION, not a tab: it stays PINNED outside the
+          scroller, so a crowded strip can never scroll it out of reach. */}
       <TabPlusMenu
         docs={docs}
         openTabIds={openTabIds}
@@ -629,17 +680,61 @@ function TabStripImpl(props: TabStripProps) {
         devStorage={devStorage}
         exampleAvailable={exampleAvailable}
       />
-      {tabNodes}
+      {/* The SCROLLER (task 561): the tab row's ASSIGNED box, and the one the
+          occupancy rule measures as `tabStripPx`. `overflow-x: auto` with the
+          scrollbar hidden; `overflow-y` stated `hidden` explicitly (per CSS
+          Overflow 3 an unstated `visible` axis would be coerced to `auto` and
+          grow a 1px vertical scroll range from the active tab's seam
+          overhang). The overhang is kept INSIDE the clip by the seam
+          padding/margin pair instead — the mechanism the inner strip has
+          carried since task 324 — so the active folder tab still hangs
+          FOLDER_TAB_SEAM_OVERLAP below the bar and merges into the canvas.
+          `self-stretch` fills the bar height so the tabs stay at the seam
+          (task 289). */}
+      <div
+        ref={scrollerMeasureRef}
+        data-bar-occupant="tab-strip"
+        className="flex items-end flex-1 min-w-0 self-stretch"
+        style={{
+          ...TAB_STRIP_SCROLLER_STYLE,
+          ...tabStripSeamPadding(FOLDER_TAB_SEAM_OVERLAP),
+          paddingRight: TAB_ROW_END_SLACK_PX,
+        }}
+      >
+        {/* The tab ROW. `width: max-content` capped at the scroller's width
+            (`max-width: 100%`, `min-w-0`): ROOMY, its box IS the tabs'
+            natural width; CROWDED, it sits at the scroller's width and its
+            flexible children compress — inactive wrappers `shrink`, the
+            active one `shrink-0` — and past their floors the tabs overflow it
+            into the scroller's scroll range. The occupancy rule recovers the
+            NATURAL width from this element in every regime
+            (`tabRowNaturalWidth`, tab-strip-occupancy.ts) — never the
+            compressed box, which would make the tools decompress the tabs by
+            expanding and oscillate (bar-occupancy.ts). It adds no layout of
+            its own: the strip's `items-end` + `gap-0.5`, and a
+            bottom-aligned item's negative margin resolves identically one
+            level in. */}
+        <div
+          ref={tabsMeasureRef}
+          data-bar-occupant="tabs"
+          className="flex items-end gap-0.5 min-w-0"
+          style={{ width: "max-content", maxWidth: "100%" }}
+        >
+          {tabNodes}
+        </div>
       </div>
       {paperDropIndex !== null && (
         /* Live geometry read by design: the drop indicator measures the strip +
            tab rects at paint time, and this branch only renders while a drag is
            active (paperDropIndex != null). Reading the refs during render is the
            intended behaviour (carried over verbatim from the inline original) —
-           the rule flags it as a false positive here. */
+           the rule flags it as a false positive here. It is a child of this
+           NON-scrolling root, clamped to the scroller's visible span, so it is
+           visible for a drop past the scrolled-out boundary too. */
         /* eslint-disable react-hooks/refs */
         <PaperDropIndicator
           stripEl={tabStripRef.current}
+          scrollerEl={scrollerRef.current}
           tabRefs={outerTabRefs.current}
           order={outerOrder}
           index={paperDropIndex}
@@ -653,8 +748,8 @@ function TabStripImpl(props: TabStripProps) {
           pod chrome header (93b286c0) and its `menuLocation` pref was deleted
           as dead (bab3a399), and the prose outlived the mechanism. What holds
           the "tabs and tools never overlap" invariant now is the pair above —
-          the measured occupancy rule in bar-occupancy.ts and this strip's own
-          `overflow-x: clip` — both of which are code. */}
+          the measured occupancy rule in bar-occupancy.ts and the scroller's
+          own clip — both of which are code. */}
     </div>
   );
 }
