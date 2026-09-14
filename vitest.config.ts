@@ -12,6 +12,12 @@ export default defineConfig({
     // Per-file envs via the // @vitest-environment jsdom comment.
     // Default is node so pure-logic tests are fast.
     environment: "node",
+    // No `globals: true` — and that is why the setup file exists: Testing
+    // Library registers its per-test `cleanup` only off a GLOBAL `afterEach`,
+    // so without this entry every render stays mounted past its test (task
+    // 566: a mount that outlives jsdom teardown exits vitest 1 with every
+    // test passing). The file registers it explicitly for every suite.
+    setupFiles: ["./vitest.setup.ts"],
     include: [
       "src/**/__tests__/**/*.test.{ts,tsx}",
       "library/**/__tests__/**/*.test.{ts,tsx}",
