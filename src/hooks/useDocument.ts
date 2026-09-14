@@ -401,8 +401,11 @@ export function useDocument() {
     };
   }, [docId]);
 
-  // Register the flusher so external callers (doc-switch barrier,
-  // pagehide) can fire the pending debounce before the pipeline ends.
+  // Register the flusher so external callers (doc-switch barrier, the reload
+  // door) can fire the pending debounce before the pipeline ends. One entry of
+  // several under this docId: every `usePersistentState` sidecar and the
+  // view-state coalescer register beside it (task 559), so a per-doc or
+  // app-wide flush fires every coalesced write the document holds.
   useEffect(() => {
     registerPendingFlusher(docId, flushPending);
     return () => unregisterPendingFlusher(docId, flushPending);

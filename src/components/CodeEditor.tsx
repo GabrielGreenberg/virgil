@@ -25,6 +25,10 @@ import {
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
 import { codeBandField } from "@/lib/code-band";
+import {
+  registerPendingFlusher,
+  unregisterPendingFlusher,
+} from "@/lib/multi-window/pending-saves";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -311,7 +315,22 @@ export default function CodeEditor({
       onRequirementConflict: (c) => onRequirementConflictRef.current?.(c),
     });
     bridgeRef.current = bridge;
+    // The code pane is a COALESCER too — the user's last 600 ms of typing sit
+    // in CodeMirror until `flushCodeToTipTap` re-parses them into the model —
+    // and it is one step UPSTREAM of the bundle writer, which snapshots the
+    // live model. So its settle door registers with the ONE pending-flusher
+    // registry (task 559) in the `settle` phase: the reload door and
+    // `drainDoc` run it to completion BEFORE any disk writer starts, and the
+    // bundle write then carries the code edit. The flush is synchronous
+    // (parse + `setContent`, which arms the autosaver in the same tick) and
+    // its refusals stay the pane's own — a lossy parse keeps the last-good
+    // model and surfaces inline, exactly as on the debounce path.
+    const settle = async () => {
+      bridge.flush();
+    };
+    registerPendingFlusher(docId, settle, { phase: "settle" });
     return () => {
+      unregisterPendingFlusher(docId, settle);
       bridge.dispose();
       bridgeRef.current = null;
     };

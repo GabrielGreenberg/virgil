@@ -11881,6 +11881,77 @@ two minutes, hard-reload → the offer restores within seconds of the last tick;
 and a real-Dropbox eyeball of the aged pause badge. This class masks in the dev
 preview, so the durable proof here is the unit contracts.
 
+#### The population half: a door flushes what is REGISTERED, and one registrant of twenty was
+
+Same door, the half its own docblock claimed (task 559, an audit finding). Step 1
+of `prepareForReload` reads *"fire every document's pending debounce"*, and it
+fires what `registerPendingFlusher` holds — which was a `Map<docId, Flusher>`,
+ONE slot per document, with exactly one caller in the tree: `useDocument`'s
+bundle autosave. Every `usePersistentState` instance (one per card sidecar,
+~20 per document) and `useEditorUIState` (the view-state coalescer) kept a
+private timer and registered nothing, so a note body typed in the 300 ms before
+an app-driven reload was outside the door, outside the unsaved-work channel
+(which only the bundle path feeds) and outside the mirror (which stores the
+TipTap MODEL, where a card body does not live) at once — and `unlanded: []` was
+reported about a document about to lose it. The same class as the save-state
+census reading only `useDocument.ts`, costing the user's writing instead of a
+missing guard; in practice narrowed by the tab-hidden settle edge, which fires
+AFTER the report is computed and during an unload with no completion guarantee.
+
+> **Every coalescing writer registers its settle door with the ONE
+> pending-flusher registry, under its document — a per-doc MULTI-SET, so
+> "flush the document" means every debounce it holds. And the registry runs in
+> TWO PHASES: a coalescer that feeds the MODEL is `settle` and completes before
+> any disk writer STARTS.**
+
+Four rules it earned:
+
+- **`drainDoc` inherits the fix for free.** It already called
+  `flushPendingForDoc` before draining the queue, so a doc switch, a compile and
+  a delete now settle every sidecar debounce too — no second mechanism.
+- **The channel and the mirror stay MODEL-scoped, deliberately.** A sidecar
+  write is landed by step 1 or logged by its own `persist`; putting it on the
+  unsaved-work channel would make every 300 ms card edit read as blocked work,
+  and the mirror cannot represent it. So `unlanded` keeps its meaning; what the
+  door buys is that the sidecar half has been fired and awaited by the time it
+  is computed.
+- **The phase exists because of ORDER, found by asking what else coalesces.**
+  The code pane holds the last 600 ms of typing in CodeMirror and only then
+  re-parses it into TipTap; the bundle writer snapshots the live model. Its
+  host mounts AFTER `useDocument`, so under a flat start-everything-at-once the
+  writer snapshots first and the code edit lands in a model the page is about
+  to discard. `CodeEditor` registers the bridge's own `flush()` as `settle`;
+  the settle door inherits the pane's parse gates (a lossy parse keeps the
+  last-good model). `write` is the default because it is what every
+  registrant WAS; a settle registrant makes the stronger claim and states it.
+- **A member that cannot be landed is DECLARED, not silently added.**
+  `RichTextField`'s 250 ms body debounce is the same shape one step further
+  upstream, and its `onChange` arms the sidecar write INSIDE a `setState`
+  updater React runs lazily — so a settle flusher there would fire and the
+  write phase would still find nothing armed. It needs a synchronous render
+  flush around the hand-off, a different mechanism with its own harness;
+  stated at the site and pinned by the census as a known non-registrant.
+
+CI: [reload-door.test.ts](src/lib/__tests__/reload-door.test.ts) — the door
+awaits a sidecar registered BESIDE the bundle (the leg fails under the one-slot
+registry, where the later registration replaced it), the upstream-settle leg
+(a writer registered first still snapshots a settled model), the phase-order
+pins, and the CENSUS: every production file spelling a write door behind a
+`setTimeout(` registers with the registry (write-phase registrants = coalescing
+writers, exact set, allowlist EMPTY), the settle registrants are an exact set
+with the reason (that population cannot be derived by the write needle), and
+`flushAllPendingDocs` has one caller. [code-pane-settle-before-write.test.ts](src/lib/__tests__/code-pane-settle-before-write.test.ts)
+drives the REAL bridge over a REAL CodeMirror state — the writer registered
+first snapshots the code edit, and the same flush registered as a plain member
+does NOT, which is what proves the phase is load-bearing rather than tidy.
+[usePersistentState.test.tsx](src/hooks/__tests__/usePersistentState.test.tsx)
+and [editor-state-write-cadence.test.ts](src/hooks/__tests__/editor-state-write-cadence.test.ts)
+pin that each coalescer registers, is AWAITED, and unregisters on unmount.
+
+**Owed, not claimed:** the preview eyeball — NOT FSA-masked in dev storage:
+type in a note, trigger the update banner's reload, reopen; and type in the
+code pane, reload within a second, reopen.
+
 #### The evidence half: nothing touches the mirror without POSITIVE EVIDENCE about the model
 
 Same mirror, the half that made the mechanism destroy what it was built to keep
