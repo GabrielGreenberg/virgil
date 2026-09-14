@@ -5970,6 +5970,117 @@ make a footnote, type `$\lambda$`, click away, and it must still be there. The
 ARCHIVE half touches sidecars and is partially FSA-masked; the unit contract is
 the durable proof there.
 
+### The parent half: a capture cuts WITH the ancestors that give its bytes their meaning
+
+Same door, the shape none of its four suites could represent (task 563) — and
+the case where the vocabulary check passed a model the destination could NAME
+and not HOLD, on the everyday gesture of drag-selecting across two bullets.
+
+`doc.slice(from, to)` cuts at the SHARED-DEPTH node, so a selection from the
+middle of one `listItem` to the middle of the next arrives as two items open at
+both ends with no list around them. `captureSliceContent` knew two shapes —
+wrap inline children in a paragraph, pass blocks through — and a `listItem` is
+`isBlock`, so it went to DOC level: `{doc: [listItem, listItem]}`.
+`canMountInSchema` asked `schema.nodeFromJSON`, which builds through
+`NodeType.create` and checks the VOCABULARY only; the door said `ok`, the
+delete ran, and the archive card mounted a content-invalid model (TipTap runs
+`check()` only under `enableContentCheck`, which Virgil leaves off). It
+RENDERED, and the first keystroke — or a select-all — threw `contentMatchAt on
+a node with invalid content`: a dead card holding the only copy. Restore
+reported SUCCESS, because the fitter WRAPS orphans in whatever holds them: two
+items became a fresh list, two `exampleItem`s a fresh numbered example
+(renumbering every example after it), two `glossCell`s a uuid-less
+`\begingl … \endgl` at top level, which is invalid expex. Same root, second
+symptom: a partial selection inside a `codeBlock` or `latexComment` yielded
+inline TEXT, which the paragraph wrap turned into PROSE — `% parked old prose`
+typeset on restore, `raw {bytes}` came back `\{bytes\}` (the 347/349
+promotion class, through a door that promises a verbatim slice). Every archive
+fixture in the repo selects INSIDE one paragraph or WHOLE blocks, where the
+shared depth is the document and those two shapes are the only two that exist.
+
+> **A capture cuts WITH its parents, and the leaf OWNS the cut.**
+> [`captureRangeContent(doc, from, to)`](src/lib/tiptap/slice-capture.ts)
+> slices `includeParents` (the primitive task 122 recorded as load-bearing for
+> the selection counter), so its top-level children are always real document
+> blocks, cut: a sub-paragraph range is `paragraph(text)`, two items are
+> `bulletList(listItem, listItem)`, a range inside a comment is
+> `latexComment(text)`. A caller hands it a RANGE, never a slice it built
+> itself — which slice is taken was the whole of the defect. **And the mount
+> check asks CONTENT as well as vocabulary:** `canMountInSchema` runs
+> `node.check()` after `nodeFromJSON`, so a model the schema names and cannot
+> hold is REFUSED with the document untouched.
+
+Six rules it earned:
+
+- **An OPEN ancestor is a fragment of a node that SURVIVES, so it is captured
+  FRESH.** Task 320's law ("a move conserves identity, a split mints it") read
+  on a copy: along each open chain the attrs `cutFreshAttrs`
+  ([node-attr-sets.ts](src/lib/node-attr-sets.ts)) names are cleared — the
+  identity trio (`uuid` / `parTitle` / `label`, each stripped where the schema
+  pins the type declares it) plus every `keepOnSplit: false` attr of the
+  StarterKit table (`itemLabel`, `listOptions`, `shortTitle`): a cut IS a
+  split, so archiving the second half of `\item[(b)] beta` mints no second
+  `(b)`. A block the range covers WHOLE keeps its identity — it is leaving the
+  document and a restore re-establishes it, exactly as before. This is also
+  what keeps today's single-paragraph bytes (a fresh, attr-less paragraph) and
+  what stops a partial-paragraph capture carrying its source's `\label` into a
+  restore.
+- **An open node is CLOSED the way ProseMirror closes one.** A cut can leave an
+  open node content-invalid on its own (an item whose range starts inside a
+  NESTED list begins with a `bulletList`), and the fitter would close exactly
+  that on restore by `ContentMatch.fillBefore` — so the leaf does the same, on
+  the same schema fact, which is what lets the CARD hold the model. The fill is
+  DERIVED (an empty paragraph, never a guess); a shape it cannot close is left
+  for the door to refuse.
+- **The content rung was MEASURED before it widened**, because two other
+  callers share the primitive (the code-pane bridge, `checkKeptEverything`'s
+  failure path): every `.tex` under the primary's `samples/`, `virgil-data/`,
+  `library-data/papers/` and `public/examples/` plus both sides of every
+  preservation-corpus case — 50 sources — passes `check()` against the main
+  schema, so the code pane inherits the rung at no cost and refuses a lossy
+  parse one gate earlier (task 357's posture). Stated limit: that is a corpus
+  measurement, not a proof about the parser; a shape it cannot close is now a
+  refusal where it was a silent mount.
+- **A refusal NAMES the node whose CONTENT failed.** `invalidContentNodes` is
+  the content twin of `unsupportedConstructs`, derived from
+  `NodeType.validContent` rather than parsed out of PM's message, and at the
+  ROOT it names the first child the destination cannot PLACE (the orphan item)
+  rather than "doc", which the user cannot re-select. It EXPLAINS only; the
+  primitive DECIDES.
+- **Content-expression parity, spelled once.** Task 402 mirrored TYPES and
+  ATTRS and recorded `listItem`'s content as its known gap. With the door now
+  asking the EXCERPT schema about content, that gap would REFUSE an
+  `\includegraphics`-headed item the document holds perfectly well — so
+  `MAIN_STARTERKIT_NODE_CONTENT` is the ONE declaration, read by
+  `createListItemWithUuid` and registered by the excerpt's `ExcerptListItem`,
+  and `excerpt-schema.test.ts` pins `spec.content` equal for every shared node
+  type (mirror the schema, not the machinery).
+- **The three halves are LAYERED, and that is measured rather than tidy.** With
+  the content rung in place, the pre-563 two-shape walk no longer mounts a dead
+  card — the door REFUSES it (6 dispatcher legs fail as refusals, not as
+  throws). The cut-with-parents is what turns that refusal back into the
+  archive the user asked for.
+
+CI: [archive-cross-sibling-capture.test.tsx](src/components/editor-layout/card-actions/__tests__/archive-cross-sibling-capture.test.tsx)
+drives the REAL `useDragHandleActions` over the REAL main stack, MOUNTS the
+capture in the REAL editable excerpt surface and TYPES in it, then RESTORES
+into a fresh document and reads the `.tex` — lists, expex items, gloss cells,
+a comment, a code block, and the whole-block CONTROL (byte-identical to the
+pre-563 capture, identity kept). The door legs live in
+[card-body-capture.test.ts](src/lib/tiptap/__tests__/card-body-capture.test.ts)
+(the cut, the freshening, the nested-list close, the refusal that names the
+node, `invalidContentNodes`' root rule); the parity legs in
+[excerpt-schema.test.ts](src/lib/tiptap/__tests__/excerpt-schema.test.ts).
+`captured-passage.test.tsx`'s census is RENEGOTIATED in place (the needle was
+the retired slice-taking leaf; the minter must enter the range-taking one).
+Measured by neutering each half in turn: the two-shape walk takes **10** legs
+(6 dispatcher + 4 door), the content rung **4**, the `listItem` parity **2**.
+
+**Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
+gesture plus a JSON round trip, no disk), so the check is cheap and real:
+drag-select across two bullets in the dev doc, Archive, type in the card,
+restore.
+
 ### The keyboard half: a destructive key asks ONE door, and a danger confirm cues its SAFEST button
 
 Same law, the KEYBOARD carrier (task 386). Gabriel's repro: archive some text,
