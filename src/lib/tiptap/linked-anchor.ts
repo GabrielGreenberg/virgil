@@ -1,4 +1,4 @@
-import { Mark, Extension, mergeAttributes } from "@tiptap/react";
+import { Mark, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
@@ -640,3 +640,33 @@ export const MarginaliaAnchorGuard = Extension.create<{
     ];
   },
 });
+
+/**
+ * The set of block uuids a card is ANCHORED to, read off the MOUNTED guard —
+ * the ONE source `MarginaliaAnchorGuard` itself preserves against, for a
+ * consumer that holds only an editor.
+ *
+ * Why a reader on the guard and not a second derivation: "does anything
+ * anchor to this block?" is the question the guard answers when a block
+ * VANISHES, and a door that must answer it BEFORE a block vanishes (the
+ * archive restore at an empty paragraph, task 564) has to answer from the
+ * same table or the two come to disagree about which blank line matters.
+ * `EditorPane` fills the ref from the margin markers it packs; nothing else
+ * may re-derive it from the sidecars.
+ *
+ * A surface that never mounts the guard (a card body, a float, the Library
+ * reader) answers with the EMPTY set: nothing there is anchored, which is
+ * both true and the answer that keeps such a surface's behaviour unchanged.
+ * O(#extensions) — a `find` over the mounted extension list, never a walk.
+ */
+export function anchoredUuidsOf(editor: Editor): ReadonlySet<string> {
+  const guard = editor.extensionManager.extensions.find(
+    (e) => e.name === MarginaliaAnchorGuard.name,
+  );
+  const ref = (
+    guard?.options as { anchoredUuidsRef?: MutableRefObject<Set<string>> } | undefined
+  )?.anchoredUuidsRef;
+  return ref?.current ?? NO_ANCHORED_UUIDS;
+}
+const NO_ANCHORED_UUIDS: ReadonlySet<string> = new Set();
+

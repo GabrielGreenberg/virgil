@@ -42,7 +42,7 @@ import { restoreExcerptAtCaret } from "../restore-excerpt";
 
 const PARA_UUID = "p00001";
 
-function mainCtx(): EditorExtensionsCtx {
+function mainCtx(anchored: Iterable<string> = [PARA_UUID]): EditorExtensionsCtx {
   return {
     surface: "main",
     editableRef: { current: true },
@@ -50,7 +50,7 @@ function mainCtx(): EditorExtensionsCtx {
     callbacks: {},
     docIdRef: { current: null },
     texBlockIsPoppedRef: { current: undefined },
-    anchoredUuidsRef: { current: new Set([PARA_UUID]) },
+    anchoredUuidsRef: { current: new Set(anchored) },
     host: null,
   } as unknown as EditorExtensionsCtx;
 }
@@ -68,13 +68,16 @@ const PLAIN_DOC = {
   ],
 };
 
-function mountEditor(content: unknown = PLAIN_DOC): Editor {
+function mountEditor(
+  content: unknown = PLAIN_DOC,
+  anchored: Iterable<string> = [PARA_UUID],
+): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   const editor = new Editor({
     element,
     editable: true,
-    extensions: buildEditorExtensions(mainCtx()),
+    extensions: buildEditorExtensions(mainCtx(anchored)),
     content: content as never,
   });
   editors.push(editor);
@@ -311,5 +314,154 @@ describe("restoreExcerptAtCaret — the content half of leg 1 (task 563)", () =>
     editor.state.doc.forEach((n) => types.push(n.type.name));
     expect(types).toContain("bulletList");
     expect(types.filter((t) => t === "bulletList")).toHaveLength(1);
+  });
+});
+
+describe("restoreExcerptAtCaret — the landing half (task 564)", () => {
+  // TipTap's `insertContentAt` special-cases a collapsed caret in an EMPTY
+  // textblock when the payload is all blocks: it widens the range by one on
+  // each side (`from -= 1; to += 1`) and REPLACES the paragraph node. For a
+  // blank line nobody refers to that is the nicer result — no stray blank
+  // line left behind. For a blank line a card is ANCHORED to it is silent
+  // data loss: the paragraph's uuid leaves the document, the anchor guard
+  // stands down by task 367's rule (the removed node IS the remedy), and every
+  // card anchored there goes to the unanchored bin — while the door reports
+  // SUCCESS, since the document did change. And that uuid is DURABLE: the
+  // serializer emits an empty uuid-bearing paragraph as its own `%!v:<uuid>`
+  // line, the parser reads it back as exactly that node, and `assignUuids`
+  // strips a uuid only on a DEFERRED inner paragraph. Task 367 built its
+  // whole section around that shape.
+  const EMPTY = "e0000";
+
+  function sandwich(attrs: Record<string, unknown>) {
+    return {
+      type: "doc",
+      content: [
+        { type: "paragraph", attrs: { uuid: "pre00" }, content: [{ type: "text", text: "before" }] },
+        { type: "paragraph", attrs },
+        { type: "paragraph", attrs: { uuid: "post0" }, content: [{ type: "text", text: "after" }] },
+      ],
+    };
+  }
+
+  /** Caret inside the (empty) second top-level block. */
+  function caretInSecondBlock(editor: Editor): void {
+    const first = editor.state.doc.child(0).nodeSize;
+    editor.commands.setTextSelection(first + 1);
+    expect(editor.state.selection.$from.parent.childCount).toBe(0);
+  }
+
+  /**
+   * The top-level blocks, as (type, uuid, text) — the shape every leg reads.
+   * `BlockUuidBackfill` mints a fresh id for every excerpt block on the way
+   * in; those are reported as `"*"` so a leg pins the FIXTURE's identities
+   * and not the mint.
+   */
+  const FIXTURE_IDS = new Set(["pre00", EMPTY, "post0"]);
+  function blocks(editor: Editor): Array<[string, string | null, string]> {
+    const out: Array<[string, string | null, string]> = [];
+    editor.state.doc.forEach((n) => {
+      const uuid = (n.attrs.uuid as string | null) ?? null;
+      out.push([n.type.name, uuid && !FIXTURE_IDS.has(uuid) ? "*" : uuid, n.textContent]);
+    });
+    return out;
+  }
+
+  it("an ANCHORED empty paragraph is left standing and the excerpt lands AFTER it", () => {
+    const editor = mountEditor(sandwich({ uuid: EMPTY }), [EMPTY]);
+    caretInSecondBlock(editor);
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    expect(blocks(editor)).toEqual([
+      ["paragraph", "pre00", "before"],
+      ["paragraph", EMPTY, ""],
+      ["heading", "*", "Recovered"],
+      ["paragraph", "*", "body text"],
+      ["paragraph", "post0", "after"],
+    ]);
+  });
+
+  it("…and the paragraph never LEFT — the guard had nothing to resurrect (one node, in place)", () => {
+    // A resurrection puts the uuid back at the deletion site; the pre-564
+    // door produced no resurrection at all (task 367's stand-down), so the
+    // distinction here is between a paragraph that stayed and one that was
+    // re-minted. Ask the structural diff's own instrument: count the nodes
+    // carrying the id after the restore, and check it is still block #1.
+    const editor = mountEditor(sandwich({ uuid: EMPTY }), [EMPTY]);
+    caretInSecondBlock(editor);
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    const holders = blocks(editor).filter(([, uuid]) => uuid === EMPTY);
+    expect(holders).toHaveLength(1);
+    expect(blocks(editor)[1]).toEqual(["paragraph", EMPTY, ""]);
+  });
+
+  it("CONTROL: an empty paragraph nobody anchors is REPLACED in place — no stray blank line", () => {
+    const editor = mountEditor(sandwich({ uuid: EMPTY }), ["pre00"]);
+    caretInSecondBlock(editor);
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    expect(blocks(editor)).toEqual([
+      ["paragraph", "pre00", "before"],
+      ["heading", "*", "Recovered"],
+      ["paragraph", "*", "body text"],
+      ["paragraph", "post0", "after"],
+    ]);
+  });
+
+  it("CONTROL: a caret in a NON-empty paragraph still splits it (today's behaviour, byte for byte)", () => {
+    const editor = mountEditor(sandwich({ uuid: EMPTY }), [EMPTY]);
+    editor.commands.setTextSelection(4); // "bef|ore"
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    expect(blocks(editor).map(([t, , text]) => [t, text])).toEqual([
+      ["paragraph", "bef"],
+      ["heading", "Recovered"],
+      ["paragraph", "body text"],
+      ["paragraph", "ore"],
+      ["paragraph", ""],
+      ["paragraph", "after"],
+    ]);
+  });
+
+  it("a TITLED empty paragraph is not a shape the app keeps — the cleaner retires it either way, so the door has no title rung", () => {
+    // `EmptyParagraphTitleCleaner` (title.ts) holds the invariant "no empty
+    // titled paragraph survives an edit": on any touched block OR ITS
+    // SIBLINGS it clears the title and the uuid. An excerpt landing beside
+    // the paragraph is exactly such an edit, so an insert-AFTER rung keyed on
+    // `parTitle` would buy a stray, now-untitled blank line and nothing else.
+    // The door therefore asks only the anchored set; this leg pins that a
+    // title alone changes nothing about the landing.
+    const editor = mountEditor(sandwich({ uuid: EMPTY, parTitle: "Interlude" }), ["pre00"]);
+    caretInSecondBlock(editor);
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    expect(blocks(editor)).toEqual([
+      ["paragraph", "pre00", "before"],
+      ["heading", "*", "Recovered"],
+      ["paragraph", "*", "body text"],
+      ["paragraph", "post0", "after"],
+    ]);
+    let titled = 0;
+    editor.state.doc.descendants((n) => {
+      if (n.attrs.parTitle) titled += 1;
+      return true;
+    });
+    expect(titled).toBe(0);
+  });
+
+  it("a surface with NO anchor guard mounted answers 'nothing anchored' and keeps the in-place replace", () => {
+    // A card body / float never mounts MarginaliaAnchorGuard. The reader
+    // must answer with an empty set there rather than throw or guess.
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions({
+        ...mainCtx([EMPTY]),
+        anchoredUuidsRef: undefined,
+      } as unknown as EditorExtensionsCtx),
+      content: sandwich({ uuid: EMPTY }) as never,
+    });
+    editors.push(editor);
+    caretInSecondBlock(editor);
+    expect(restoreExcerptAtCaret(editor, excerpt)).toBe(true);
+    expect(blocks(editor).map(([t]) => t)).toEqual(["paragraph", "heading", "paragraph", "paragraph"]);
   });
 });

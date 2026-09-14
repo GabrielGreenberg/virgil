@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { canMountInSchema } from "@/lib/tiptap/schema-mount";
+import { anchoredUuidsOf } from "@/lib/tiptap/linked-anchor";
 
 /**
  * Put a captured document EXCERPT back into the document at the caret, and
@@ -54,6 +55,31 @@ import { canMountInSchema } from "@/lib/tiptap/schema-mount";
  * primitive if a second caret-shaped splice ever appears. Until then a rule that
  * can be verified by construction beats a probe that has to be trusted.
  *
+ *   4. ASK WHAT THE CARET'S PARAGRAPH IS WORTH (task 564) — leg 3 answers
+ *      "may the paragraph split?" and an EMPTY paragraph never splits: TipTap's
+ *      `insertContentAt` widens a collapsed caret in an empty textblock by one
+ *      position on each side and REPLACES the node with a block payload. For a
+ *      blank line nobody refers to that is the nicer result (no stray blank
+ *      line). For a blank line a card is ANCHORED to it is a third silent
+ *      shape leg 2 cannot see: the paragraph's uuid leaves the document, the
+ *      anchor guard stands down by task 367's rule (the removed node IS the
+ *      remedy), every card anchored there goes to the unanchored bin — and the
+ *      document DID change, so "did it land?" says yes. That uuid is durable
+ *      (the serializer emits an empty uuid-bearing paragraph as its own
+ *      `%!v:<uuid>` line and the parser reads it straight back), so the loss
+ *      survives the save. So the landing is resolved as a POSITION rather than
+ *      a yes/no: an anchored empty paragraph is left standing and the excerpt
+ *      lands just AFTER it. "Anchored" is read off the guard's own set
+ *      (`anchoredUuidsOf`), never re-derived from the sidecars, so the door
+ *      and the guard cannot disagree about which blank line matters.
+ *
+ *      A `parTitle` is deliberately NOT a rung here. `EmptyParagraphTitleCleaner`
+ *      holds the invariant "no empty titled paragraph survives an edit" and
+ *      clears the title AND the uuid on any touched block or its siblings; an
+ *      excerpt landing beside the paragraph is exactly such an edit, so a
+ *      title rung would buy a stray, now-untitled blank line and nothing else.
+ *      A blank line's title is not a shape the app keeps.
+ *
  * On block IDENTITY: the excerpt still carries the `uuid`s the capture sliced
  * out of the document, so a restore RE-ESTABLISHES them — every card anchored
  * to the archived paragraph finds its anchor again. Where the id is still taken
@@ -73,11 +99,13 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
   // current selection and REPLACES it when it isn't empty — so restoring with
   // prose selected in the document would delete that prose, which is the very
   // thing this path exists to prevent, committed against a different victim.
-  // Anchoring at `selection.to` makes the restore purely additive: with a
+  // Anchoring at `selection.to` keeps a SELECTION out of the insert: with a
   // collapsed caret it is the caret, with a selection it lands just after it
-  // and the selected text survives untouched.
-  const at = editor.state.selection.to;
-  if (!caretMaySplit(editor, at)) return false;
+  // and the selected text survives untouched. It is NOT "purely additive" —
+  // an empty paragraph under the caret is replaced (leg 4), which is why the
+  // landing is resolved rather than taken as `to`.
+  const at = resolveRestoreLanding(editor, editor.state.selection.to);
+  if (at === null) return false;
 
   const before = editor.state.doc;
   try {
@@ -111,10 +139,13 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
 }
 
 /**
- * May a block insert at this caret proceed? Only where the split it causes is
- * ordinary editing — i.e. the caret sits in a plain top-level `paragraph`.
+ * WHERE does a block insert at this caret land — or `null` for "nowhere,
+ * refuse"? Two questions folded into one answer, because the second only
+ * exists once the first has been asked.
  *
- * The two things it refuses are different failures with the same symptom:
+ * MAY IT? Only where the split it causes is ordinary editing — i.e. the caret
+ * sits in a plain top-level `paragraph`. The two things it refuses are
+ * different failures with the same symptom:
  *
  *   • a caret inside ANY container (`exampleItem`, `listItem`, `blockquote`,
  *     `alignedGlossRow`) — the fitter can only make room by CLOSING the
@@ -129,13 +160,27 @@ export function restoreExcerptAtCaret(editor: Editor | null, content: unknown): 
  *
  * Both are silent — the document changes either way, so a "did it land?" test
  * cannot tell success from corruption. This is the check that can.
+ *
+ * WHERE? At the caret, with ONE exception (task 564): an EMPTY paragraph is not
+ * split by the insert but REPLACED by it (TipTap widens the range around an
+ * empty textblock), and where that paragraph carries an identity a card is
+ * anchored to, replacing it is the loss leg 4 describes. So the excerpt lands
+ * just AFTER such a paragraph (`$at.after(1)`, a top-level gap — nothing there
+ * to split or replace) and the paragraph stays. An empty paragraph nobody
+ * anchors keeps the replace: the nicer result, and byte-identical to what
+ * shipped before.
  */
-function caretMaySplit(editor: Editor, at: number): boolean {
+function resolveRestoreLanding(editor: Editor, at: number): number | null {
   const doc = editor.state.doc;
-  if (at < 0 || at > doc.content.size) return false;
+  if (at < 0 || at > doc.content.size) return null;
   const $at = doc.resolve(at);
   // A top-level gap (a GapCursor between blocks) encloses nothing and splits
   // nothing — the insert simply lands there.
-  if ($at.depth === 0) return true;
-  return $at.depth === 1 && $at.parent.type.name === "paragraph";
+  if ($at.depth === 0) return at;
+  if ($at.depth !== 1 || $at.parent.type.name !== "paragraph") return null;
+  const para = $at.parent;
+  if (para.childCount > 0) return at;
+  const uuid = (para.attrs as { uuid?: string | null }).uuid;
+  if (uuid && anchoredUuidsOf(editor).has(uuid)) return $at.after(1);
+  return at;
 }
