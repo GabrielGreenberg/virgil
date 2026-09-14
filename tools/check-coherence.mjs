@@ -15,11 +15,18 @@
  *                         + a heading whose GitHub slug matches; every
  *                         covers-code path resolves to a file/dir. Plus the
  *                         union invariant (doc-level ⊇ per-section) as a warn.
- *   2. types     (error)  every exported type in src/lib/types.ts is
- *                         accounted for in VIRGIL.md's Public-type registry
- *                         section (following its delegation link to the full
- *                         enumeration). Graduated to error: Phase 0 filled
- *                         the registry (chip 4).
+ *   2. types     (error)  BIDIRECTIONAL type accounting (task 562). Forward:
+ *                         every exported type in src/lib/types.ts is named in
+ *                         VIRGIL.md's Public-type registry section (following
+ *                         its delegation link to the full enumeration).
+ *                         Reverse: every PascalCase backtick name in the
+ *                         registry, its delegated sections and every doc that
+ *                         derives-from the registry is exported by one of the
+ *                         registry section's covers-code sources, or is declared
+ *                         `<!-- type-externals: … -->` (a stale declaration is
+ *                         itself an error). Plus: every `**N** exported` count
+ *                         those surfaces state equals the real count. Graduated
+ *                         to error: Phase 0 filled the registry (chip 4).
  *   3. concepts  (warn)   every code-identifier-shaped backtick token in
  *                         VIRGIL.md (CONST_CASE, camelCase, *.ts/*.py names,
  *                         \v… macros) appears somewhere in the codebase.
@@ -140,6 +147,12 @@ function parseDoc(rel) {
     lastVerified: null, // short sha
     derivesFrom: [], // [{ path, anchor }]
     coversCode: [], // doc-level paths
+    // `<!-- type-externals: A, B (why) -->` — PascalCase names this doc may
+    // backtick although no registry covers-code source exports them (a
+    // dependency's type, e.g. TipTap's JSONContent). Read by check 2's
+    // reverse direction; a declared name that IS exported locally is stale
+    // and errors, so the list can only excuse something real.
+    typeExternals: new Set(),
     sections: [], // [{ title, slug, level, coversCode:[], stub:bool, line }]
     headingSlugs: new Set(),
   };
@@ -206,6 +219,14 @@ function ingestHeaderComment(doc, body, section) {
     const paths = splitPaths(m[1]);
     if (section) section.coversCode = paths;
     else doc.coversCode = paths;
+  } else if ((m = /^type-externals:\s*(.+)$/.exec(body))) {
+    // Doc-scoped whichever position it sits in: the reverse arm reads a
+    // derived doc's WHOLE body, so a section-level declaration would only
+    // invite the question of which section a name "belongs" to.
+    for (const tok of m[1].split(",")) {
+      const name = tok.trim().split(/\s/)[0];
+      if (name) doc.typeExternals.add(name);
+    }
   } else if (/^STUB\b/.test(body)) {
     if (section) section.stub = true;
   }
@@ -503,7 +524,56 @@ const TYPES_TS = "src/lib/types.ts";
 const REGISTRY_DOC = "docs/architecture/VIRGIL.md";
 const REGISTRY_SLUG = "public-type-registry";
 
-function checkTypes() {
+const REGISTRY_TITLE = "Public-type registry";
+/** A schema-shaped backtick token — the manifest's field-level idiom: `TypeName { field; … }`. */
+const SCHEMA_LEAD = /^([A-Z][A-Za-z0-9]+)\s*\{/;
+/**
+ * The type NAME a backtick token claims, if any: a bare PascalCase token names
+ * itself; a schema-shaped token (`CommentsState { comments: UserComment[] }`)
+ * claims its LEADING identifier — that is how the manifest states a sidecar's
+ * shape, and the reported dead schema was written in exactly that form, so a
+ * bare-token reading would have walked past it.
+ */
+function claimedTypeName(token) {
+  if (PASCAL.test(token)) return token;
+  const m = SCHEMA_LEAD.exec(token);
+  return m ? m[1] : null;
+}
+/** A stated count of the SSOT's exports: `**57** exported …` (bold, then the word). */
+const STATED_COUNT = /\*\*(\d+)\*\*\s+exported\b/g;
+
+/**
+ * Check 2 asks its question in BOTH directions (task 562). The forward
+ * direction — every exported type is NAMED — is the one the SKETCH designed
+ * and the one that shipped. It is structurally blind to the direction that
+ * rots: a type deleted from `types.ts` stays enumerated in a skill-facing
+ * manifest forever, and a `**58** exported` claim two exports stale reads as
+ * fact, with this check silently green. So:
+ *
+ *   FORWARD  every export of src/lib/types.ts is named somewhere on a NAMING
+ *            SURFACE (error per missing type — unchanged).
+ *   REVERSE  every PascalCase backtick name on a naming surface is exported by
+ *            one of the registry section's own `covers-code` sources (the
+ *            registry covers the sibling `_shared/types.ts` files too, which is
+ *            how `Link` — owned by src/links — resolves without a special case)
+ *            OR is declared `<!-- type-externals: … -->` by the doc that names
+ *            it. Anything else is a deleted/renamed type still in prose: error.
+ *   STALE    a declared external that a covers-code source DOES export is an
+ *            exemption that has stopped excusing anything: error. So is one
+ *            named nowhere.
+ *   COUNT    every `**N** exported` a naming surface states equals the real
+ *            export count of the SSOT: error otherwise. The number is the one
+ *            thing on these surfaces that a reader takes as fact about code.
+ *
+ * The NAMING SURFACES are discovered from the graph, never hand-listed: the
+ * registry section itself; every local `.md#section` it links (the delegated
+ * enumeration); and the whole body of every graph node whose `derives-from`
+ * targets the registry section — a doc derived from the type registry IS a
+ * type-naming doc, so a stale name anywhere in its field-level schemas counts
+ * (the reported `comments.json` schema sat OUTSIDE the delegated Coverage
+ * section, which is why a section-scoped reverse arm would have missed it).
+ */
+function checkTypes(docs) {
   if (!exists(TYPES_TS)) {
     add("types", "warn", TYPES_TS, null, "types SSOT not found — skipping type accounting");
     return;
@@ -511,34 +581,158 @@ function checkTypes() {
   const exported = exportedTypeNames(TYPES_TS);
   const body = sectionBody(REGISTRY_DOC, REGISTRY_SLUG);
   if (body === null) {
-    add("types", "warn", REGISTRY_DOC, "Public-type registry", "registry section not found — types unaccounted (warn-only)");
+    add("types", "warn", REGISTRY_DOC, REGISTRY_TITLE, "registry section not found — types unaccounted (warn-only)");
     return;
   }
-  // Accounted = backtick PascalCase tokens in the registry section ∪ those
-  // in every local .md#section it delegates the enumeration to.
-  const accounted = new Set([...backtickTokens(body)].filter((t) => PASCAL.test(t)));
+  const registryDoc = docs.find((d) => d.rel === REGISTRY_DOC) ?? parseDoc(REGISTRY_DOC);
+  const registrySection = registryDoc.sections.find((s) => s.slug === REGISTRY_SLUG);
+
+  // The type UNIVERSE for the reverse direction = the exports of every source
+  // the registry section says it covers (falling back to the SSOT alone).
+  const universeSources = registrySection?.coversCode.length ? registrySection.coversCode : [TYPES_TS];
+  const universe = new Set();
+  for (const src of universeSources) for (const t of exportedTypeNamesUnder(src)) universe.add(t);
+
+  // ── naming surfaces ──
+  const surfaces = [];
+  const seen = new Set();
+  const pushSurface = (doc, section, text) => {
+    const key = `${doc.rel}#${section ?? "*"}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    surfaces.push({ doc, section, text });
+  };
+  pushSurface(registryDoc, REGISTRY_TITLE, body);
   for (const link of markdownLinks(body)) {
     const tgt = resolveDocLink(REGISTRY_DOC, link);
     if (!tgt) continue;
+    // A design sketch is excluded from the graph by construction (see
+    // discoverDocs), so it cannot be a naming surface — the registry links to
+    // it as a pointer to the DESIGN of this very check, not as an enumeration.
+    if (tgt.rel.endsWith(".SKETCH.md")) continue;
     const delegated = sectionBody(tgt.rel, tgt.slug);
     if (delegated === null) continue;
-    for (const t of backtickTokens(delegated)) if (PASCAL.test(t)) accounted.add(t);
+    const tgtDoc = docs.find((d) => d.rel === tgt.rel) ?? parseDoc(tgt.rel);
+    pushSurface(tgtDoc, tgt.slug, delegated);
+  }
+  for (const d of docs) {
+    const derived = d.derivesFrom.some(
+      (e) => path.normalize(e.path) === REGISTRY_DOC && (e.anchor === null || e.anchor === REGISTRY_SLUG),
+    );
+    if (derived) pushSurface(d, null, proseBody(d.rel));
+  }
+  // A delegated SECTION inside a doc whose WHOLE body is a surface is covered
+  // by the whole-doc surface; keeping both would report each stale name twice.
+  const wholeDocs = new Set(surfaces.filter((s) => s.section === null).map((s) => s.doc.rel));
+  for (let i = surfaces.length - 1; i >= 0; i--) {
+    const s = surfaces[i];
+    if (s.section !== null && s.section !== REGISTRY_TITLE && wholeDocs.has(s.doc.rel)) surfaces.splice(i, 1);
+  }
+
+  // ── FORWARD: every export is named on some surface ──
+  const accounted = new Set();
+  for (const s of surfaces) {
+    for (const tok of backtickTokens(s.text)) {
+      const t = claimedTypeName(tok);
+      if (t) accounted.add(t);
+    }
   }
   const unaccounted = [...exported].filter((t) => !accounted.has(t)).sort();
   const n = exported.size;
-  if (unaccounted.length === 0) {
-    return; // 58/58 — silent pass
-  }
-  // Registry filled (Phase 0) → per-type error, per the SKETCH graduation.
   for (const t of unaccounted) {
     add(
       "types",
       "error",
       REGISTRY_DOC,
-      "Public-type registry",
-      `exported type '${t}' (src/lib/types.ts) is unaccounted (${unaccounted.length}/${n} unaccounted)`,
+      REGISTRY_TITLE,
+      `exported type '${t}' (${TYPES_TS}) is unaccounted (${unaccounted.length}/${n} unaccounted)`,
     );
   }
+
+  // ── REVERSE: every name on a surface resolves (or is declared external) ──
+  const externalsNamed = new Set();
+  for (const s of surfaces) {
+    const sectionLabel = s.section ?? "(whole doc — derives-from the registry)";
+    const stale = new Set();
+    for (const tok of backtickTokens(s.text)) {
+      const t = claimedTypeName(tok);
+      if (t === null || universe.has(t)) continue;
+      if (s.doc.typeExternals.has(t)) {
+        externalsNamed.add(`${s.doc.rel}::${t}`);
+        continue;
+      }
+      stale.add(t);
+    }
+    for (const t of [...stale].sort()) {
+      add(
+        "types",
+        "error",
+        s.doc.rel,
+        sectionLabel,
+        `names type '${t}' which no registry covers-code source exports (${universeSources.join(", ")}) — deleted or renamed? remove it, or declare it <!-- type-externals: ${t} --> if it is genuinely a dependency's type`,
+      );
+    }
+    // ── COUNT: a stated export count is a claim about code; check it ──
+    for (const m of s.text.matchAll(STATED_COUNT)) {
+      const stated = Number(m[1]);
+      if (stated !== n) {
+        add(
+          "types",
+          "error",
+          s.doc.rel,
+          sectionLabel,
+          `states **${stated}** exported types; ${TYPES_TS} exports ${n}`,
+        );
+      }
+    }
+  }
+
+  // ── STALE externals: a declaration must still be excusing something ──
+  for (const d of surfaces.map((s) => s.doc).filter((d, i, a) => a.indexOf(d) === i)) {
+    for (const t of [...d.typeExternals].sort()) {
+      if (universe.has(t)) {
+        add("types", "error", d.rel, null, `type-externals declares '${t}' but a registry covers-code source exports it — the declaration is stale`);
+      } else if (!externalsNamed.has(`${d.rel}::${t}`)) {
+        add("types", "error", d.rel, null, `type-externals declares '${t}' but the doc names it nowhere — the declaration is stale`);
+      }
+    }
+  }
+}
+
+/** Exported type names of a .ts file, or of every non-test .ts/.tsx under a directory. */
+function exportedTypeNamesUnder(rel) {
+  const out = new Set();
+  if (!exists(rel)) return out;
+  const a = abs(rel);
+  if (fs.statSync(a).isDirectory()) {
+    for (const e of fs.readdirSync(a, { withFileTypes: true })) {
+      if (e.name === "__tests__" || e.name === "node_modules") continue;
+      const child = `${rel.replace(/\/$/, "")}/${e.name}`;
+      if (e.isDirectory()) for (const t of exportedTypeNamesUnder(child)) out.add(t);
+      else if (/\.tsx?$/.test(e.name) && !/\.(test|d)\.tsx?$/.test(e.name))
+        for (const t of exportedTypeNames(child)) out.add(t);
+    }
+    return out;
+  }
+  if (/\.tsx?$/.test(rel)) for (const t of exportedTypeNames(rel)) out.add(t);
+  return out;
+}
+
+/** A doc's prose with fenced blocks and HTML comments removed (headers are not prose). */
+function proseBody(rel) {
+  const FENCE = /^\s*(```|~~~)/;
+  let inFence = false;
+  const out = [];
+  for (const line of read(rel).split("\n")) {
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (/^\s*<!--.*-->\s*$/.test(line)) continue;
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 function markdownLinks(text) {
@@ -1070,7 +1264,7 @@ function main() {
   const docs = docRels.map(parseDoc);
 
   runCheck("edges", () => checkEdges(docs));
-  runCheck("types", () => checkTypes());
+  runCheck("types", () => checkTypes(docs));
   runCheck("concepts", () => checkConcepts());
   runCheck("drift", () => checkDrift(docs));
   runCheck("shadow", () => checkShadow());
