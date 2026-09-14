@@ -30,6 +30,7 @@ import { memo, useCallback, useState } from "react";
 import { useMirrorRecoveryOffer } from "@/hooks/useMirrorRecovery";
 import { getRecoveryActions } from "@/lib/mirror-recovery";
 import { describeAge } from "@/lib/save-state";
+import { paletteForTone } from "@/lib/interruption-tone";
 import { useConfirmDialog } from "./ConfirmDialog";
 
 function LifebuoyIcon() {
@@ -140,12 +141,15 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[360px]"
         style={{
-          // The WARNING family the external-change badge uses, one step below
-          // the alarm ramp — nothing here destroys anything, and RED means "no
-          // net" (STYLE_GUIDE). Both answers this badge offers have one.
-          background: "var(--amber-100)",
-          borderColor: "var(--amber-500)",
-          color: "var(--ink-strong)",
+          // The WARNING register, read off the ONE tone → palette table
+          // (`interruption-tone.ts`, task 571) — one step below the alarm ramp,
+          // because nothing here destroys anything and RED means "no net"
+          // (STYLE_GUIDE). Both answers this badge offers have one. A recovery
+          // offer is not an `InterruptionKind`, so it names its TONE directly,
+          // the same read the save badge makes for its unsaved tier.
+          background: paletteForTone("warning").bg,
+          borderColor: paletteForTone("warning").edge,
+          color: paletteForTone("warning").ink,
         }}
         data-mirror-recovery={offer.entry.reason ?? "aging"}
         data-hint="Virgil kept a copy of work that never reached disk"

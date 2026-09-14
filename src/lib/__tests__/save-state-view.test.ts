@@ -110,18 +110,43 @@ describe("isSaveTierProtected · a reassurance may be collapsed, a notice may no
 });
 
 describe("the reason VOCABULARY", () => {
-  const REASONS: UnsavedBlockReason[] = ["conflict", "preservation", "error"];
+  const REASONS: UnsavedBlockReason[] = ["conflict", "preservation", "cowork", "error"];
 
   it("every reason has words, and they differ", () => {
+    // RENEGOTIATED by task 571: this leg used to require a non-empty `action`
+    // for every reason, which pinned the cowork hold's dead "Try again" as
+    // the contract. An action is now OPTIONAL — `null` where the vocabulary
+    // has nothing to offer — and the leg asks the words, which every reason
+    // still owes.
     const shorts = new Set<string>();
     for (const r of REASONS) {
       const d = describeBlockReason(r);
       expect(d.short.length, r).toBeGreaterThan(0);
       expect(d.sentence.length, r).toBeGreaterThan(0);
-      expect(d.action.length, r).toBeGreaterThan(0);
+      if (d.action !== null) expect(d.action.length, r).toBeGreaterThan(0);
       shorts.add(d.short);
     }
     expect(shorts.size).toBe(REASONS.length);
+  });
+
+  it("the cowork hold offers NO action — the way out is to wait (task 571)", () => {
+    // A Save during the hold reports the hold, routes to no flow, and the
+    // badge re-reports it: a control that does nothing. Task 545's band had
+    // already decided `recommended: null` for this state; the two tables now
+    // agree. Every other reason still names a button.
+    expect(describeBlockReason("cowork").action).toBeNull();
+    expect(describeBlockReason("cowork").flow).toBeNull();
+    for (const r of ["conflict", "preservation", "error"] as const) {
+      expect(describeBlockReason(r).action, r).not.toBeNull();
+    }
+  });
+
+  it("every reason carries the TONE of its interruption kind (task 571)", () => {
+    // The register is the kind's, read off the one table — not the tier's.
+    expect(describeBlockReason("cowork").tone).toBe("live");
+    expect(describeBlockReason("conflict").tone).toBe("warning");
+    expect(describeBlockReason("preservation").tone).toBe("danger");
+    expect(describeBlockReason("error").tone).toBe("danger");
   });
 
   it("names the FLOW for the two reasons a dialog can resolve, and none for the retryable one", () => {

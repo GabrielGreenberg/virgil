@@ -33,11 +33,17 @@ import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { usePreservationNotice } from "@/hooks/usePreservationNotice";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
+import { paletteForTone, toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 import { iconHint } from "@/components/Hint";
+
+/** The refusal's register — `danger`, from the one kind → tone table
+ *  (`interruption-tone.ts`, task 571): the user's work is on no disk and
+ *  nothing is coming to put it there. */
+const PALETTE = paletteForTone(toneForInterruptionKind("preservation"));
 
 const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
 
@@ -96,6 +102,10 @@ function MenuRow({
     >
       <span
         className="text-[12px]"
+        // interruption-tone-exempt: a destructive-CHOICE ink for this menu row —
+        // task 528's family ("a button's paint describes what pressing it
+        // DOES"), not an interruption register; the row paints a choice, never
+        // the state the pill above it presents.
         style={{ color: danger ? "var(--danger)" : "var(--ink-strong)" }}
       >
         {label}
@@ -269,14 +279,14 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border max-w-[280px]"
         style={{
-          background: "var(--danger-soft)",
-          borderColor: "var(--danger)",
-          color: "var(--ink-strong)",
+          background: PALETTE.bg,
+          borderColor: PALETTE.edge,
+          color: PALETTE.ink,
         }}
         data-hint="Virgil could not fully read this file — it is not saving"
         aria-label="Not saving — Virgil could not fully read this file"
       >
-        <span aria-hidden style={{ color: "var(--danger)", display: "inline-flex" }}>
+        <span aria-hidden style={{ color: PALETTE.edge, display: "inline-flex" }}>
           <ShieldIcon />
         </span>
         <span className="truncate">

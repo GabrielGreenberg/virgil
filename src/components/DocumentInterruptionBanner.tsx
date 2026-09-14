@@ -39,8 +39,10 @@
  * destructive / alarm family": nothing here destroys anything, every conflict
  * door is netted); `danger` is reserved for the two states in which the
  * user's work is on no disk and nothing is coming — the preservation refusal
- * and a failed write. The recommended button is the accented one; an
- * alternative is a plain link-button. No dismiss: a state that is still true
+ * and a failed write. Which kind takes which tone, and which tokens a tone
+ * paints, are both stated in `interruption-tone.ts` and read here (task 571
+ * retired this file's private copy of the palette). The recommended button is
+ * the accented one; an alternative is a plain link-button. No dismiss: a state that is still true
  * cannot be hidden, and every state here clears itself when its cause does.
  *
  * KEYSTROKE SANCTITY: reads state only through `useDocumentInterruption`
@@ -57,6 +59,7 @@ import {
   type DocumentInterruption,
   type InterruptionAction,
 } from "@/lib/document-interruption";
+import { paletteForTone } from "@/lib/interruption-tone";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -136,19 +139,6 @@ function glyphFor(v: DocumentInterruption) {
   }
 }
 
-/** The tone → token map, spelled once. */
-function paletteFor(tone: DocumentInterruption["tone"]) {
-  switch (tone) {
-    case "live":
-    case "warning":
-      return { bg: "var(--amber-100)", edge: "var(--amber-500)", ink: "var(--ink-strong)" };
-    case "info":
-      return { bg: "var(--amber-50)", edge: "var(--amber-200)", ink: "var(--ink-strong)" };
-    case "danger":
-      return { bg: "var(--danger-soft)", edge: "var(--danger)", ink: "var(--ink-strong)" };
-  }
-}
-
 function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
   const view = useDocumentInterruption(docId);
   const diskCtx = useDiskWatcherOrNull();
@@ -222,7 +212,10 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
     // edge; it paints nothing and takes no space.
     return <span ref={setEl} hidden data-doc-interruption-band="none" />;
   }
-  const palette = paletteFor(view.tone);
+  // The tone → token map lives in `interruption-tone.ts` (task 571): this band
+  // used to hold a private copy, and the save badge beside it read none — so
+  // one state painted two colours. One map, every surface.
+  const palette = paletteForTone(view.tone);
   const live = view.tone === "live";
 
   return (

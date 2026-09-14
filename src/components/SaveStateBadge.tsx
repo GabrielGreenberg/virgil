@@ -21,12 +21,20 @@
  *   is already happening is dead chrome, and a control that blinks in and out
  *   on every typing pause is the fastest way to teach someone to stop seeing
  *   it. Cmd+S still works here — the KEYBOARD door is always open.
- * - **unsaved** — amber, aged, with **Save now**. Twenty seconds of writing has
- *   not landed and nothing has declined it.
- * - **blocked** — red, with the REASON in the user's words and a button that
- *   OPENS the flow holding the write. Never a re-attempt into the same wall:
- *   a Save that silently re-refuses is the incident's silence with a button
- *   on it.
+ * - **unsaved** — the warm WARNING family, aged, with **Save now**. Twenty
+ *   seconds of writing has not landed and nothing has declined it.
+ * - **blocked** — the REASON in the user's words, painted in the register that
+ *   reason's interruption kind has (`describeBlockReason(...).tone`, read off
+ *   the ONE kind → tone table in `interruption-tone.ts` — task 571): the alarm
+ *   ramp for a refusal or a failed write, the warm family for a netted
+ *   conflict, the LIVE warm family for a cowork hold. Pre-571 this badge
+ *   re-derived the colour from its TIER (`blocked ⇒ red`), so it painted red
+ *   beside a cowork pill and a band painting the same state amber. Its button
+ *   OPENS the flow holding the write — never a re-attempt into the same wall,
+ *   since a Save that silently re-refuses is the incident's silence with a
+ *   button on it — and where the vocabulary offers NO action (the cowork hold:
+ *   the way out is to wait) there is NO button, by the pending tier's own
+ *   rule that a control which can only re-report the state is dead chrome.
  *
  * Past two minutes the non-clean tiers ESCALATE — the sentence comes out beside
  * the pill, because the incident ran on a pill nobody saw.
@@ -46,6 +54,7 @@ import {
   describeLandedAt,
   isSaveTierProtected,
 } from "@/lib/save-state";
+import { paletteForTone, type InterruptionTone } from "@/lib/interruption-tone";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 
 function SaveIcon() {
@@ -129,40 +138,32 @@ function SaveStateBadgeImpl({
   const desc = blocked && view.reason ? describeBlockReason(view.reason) : null;
   const age = describeAge(view.ageMs);
   const label = desc ? `${desc.short} · ${age} unsaved` : `Unsaved · ${age}`;
+  // The vocabulary decides the button's words — and whether there IS one.
   const action = desc ? desc.action : "Save now";
+  // The register: a blocked reason's own tone; the unsaved tier is the warm
+  // WARNING family (nothing has declined the write, it merely has not landed).
+  const tone: InterruptionTone = desc ? desc.tone : "warning";
+  const palette = paletteForTone(tone);
 
   return (
     <span
       className="inline-flex items-center gap-1"
       data-save-state={blocked ? "blocked" : "unsaved"}
+      data-save-tone={tone}
       data-save-escalated={view.escalated ? "true" : undefined}
     >
       <span
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border whitespace-nowrap"
-        style={
-          blocked
-            ? {
-                background: "var(--danger-soft)",
-                borderColor: "var(--danger)",
-                color: "var(--ink-strong)",
-              }
-            : {
-                background: "var(--amber-100)",
-                borderColor: "var(--amber-500)",
-                color: "var(--ink-strong)",
-              }
-        }
+        style={{
+          background: palette.bg,
+          borderColor: palette.edge,
+          color: palette.ink,
+        }}
         role="status"
         aria-label={label}
         data-hint={desc ? desc.sentence : "This document's recent changes are not on disk yet"}
       >
-        <span
-          aria-hidden
-          style={{
-            color: blocked ? "var(--danger)" : "var(--amber-500)",
-            display: "inline-flex",
-          }}
-        >
+        <span aria-hidden style={{ color: palette.edge, display: "inline-flex" }}>
           <SaveIcon />
         </span>
         <span>{label}</span>
@@ -174,16 +175,18 @@ function SaveStateBadgeImpl({
             : "Virgil has not managed to write this paper to disk. Save now, or copy your recent work somewhere safe."}
         </span>
       )}
-      <button
-        type="button"
-        onClick={() => void handleSave()}
-        disabled={busy}
-        className="topbarbtn"
-        data-save-now
-        aria-label={action}
-      >
-        {busy ? "Saving…" : action}
-      </button>
+      {action !== null && (
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={busy}
+          className="topbarbtn"
+          data-save-now
+          aria-label={action}
+        >
+          {busy ? "Saving…" : action}
+        </button>
+      )}
     </span>
   );
 }

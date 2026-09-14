@@ -65,31 +65,20 @@ import {
 } from "./save-state";
 import type { UnsavedBlockReason } from "./unsaved-work";
 import type { ConflictOutcome } from "./conflict-resolution";
-
-/** The states that interrupt a document, in PRIORITY order (first wins when
- *  several stand at once — see {@link deriveDocumentInterruption}). */
-export type InterruptionKind =
-  /** An `/editor/*` skill holds the pen: the text is read-only, saving is
-   *  paused, and it clears itself. The only "happening right now" state. */
-  | "cowork-hold"
-  /** A gate refused to write: the model holds less than the file. */
-  | "preservation"
-  /** The file changed on disk AND the user has unsaved edits here. */
-  | "conflict"
-  /** The last write threw (permission, lock, quota). */
-  | "save-error"
-  /** The file changed on disk; nothing unsaved here, nothing at risk. */
-  | "disk-change";
+import {
+  toneForInterruptionKind,
+  type InterruptionKind,
+  type InterruptionTone,
+} from "./interruption-tone";
 
 /**
- * The visual register, decided ONCE here so no surface re-derives it
- * (STYLE_GUIDE → "The destructive / alarm family"): `live` is the breathing
- * warm family (something happening NOW), `warning` the warm family one step
- * up (unexpected, netted, nothing destructive), `info` the informational
- * amber, `danger` the alarm ramp — reserved for a state in which the user's
- * work is on no disk and nothing is coming to put it there.
+ * The KINDS and their TONE live one leaf down (`interruption-tone.ts`, task
+ * 571) — import-free, so `save-state.ts`, which sits BELOW this module in the
+ * import graph, can read the same table for the save badge instead of
+ * re-deriving the register from its tier. Re-exported here so every existing
+ * importer of the vocabulary keeps its one import.
  */
-export type InterruptionTone = "live" | "warning" | "info" | "danger";
+export type { InterruptionKind, InterruptionTone } from "./interruption-tone";
 
 /** What a door DOES, named by its outcome rather than its mechanism. */
 export type InterruptionActionId =
@@ -247,7 +236,7 @@ export function deriveDocumentInterruption(
   if (pen !== null && now < pen.expiresAt) {
     return {
       kind: "cowork-hold",
-      tone: "live",
+      tone: toneForInterruptionKind("cowork-hold"),
       writer: "virgil-ai",
       title: "Virgil is editing this paper",
       body:
@@ -271,7 +260,7 @@ export function deriveDocumentInterruption(
     };
     return {
       kind: "preservation",
-      tone: "danger",
+      tone: toneForInterruptionKind("preservation"),
       writer: "unknown",
       title,
       body,
@@ -298,7 +287,7 @@ export function deriveDocumentInterruption(
       if (ai) {
         return {
           kind: "conflict",
-          tone: "warning",
+          tone: toneForInterruptionKind("conflict"),
           writer,
           title: "Virgil's AI edited this paper while you had unsaved changes",
           body:
@@ -311,7 +300,7 @@ export function deriveDocumentInterruption(
       }
       return {
         kind: "conflict",
-        tone: "warning",
+        tone: toneForInterruptionKind("conflict"),
         writer,
         title: removed
           ? "This paper's file was removed from disk while you were editing"
@@ -330,7 +319,7 @@ export function deriveDocumentInterruption(
     if (ai) {
       return {
         kind: "disk-change",
-        tone: "info",
+        tone: toneForInterruptionKind("disk-change"),
         writer,
         title: "Virgil's AI finished editing this paper",
         body:
@@ -342,7 +331,7 @@ export function deriveDocumentInterruption(
     }
     return {
       kind: "disk-change",
-      tone: "info",
+      tone: toneForInterruptionKind("disk-change"),
       writer,
       title: removed
         ? "This paper's file was removed from disk"
@@ -361,7 +350,7 @@ export function deriveDocumentInterruption(
   if (save.tier === "blocked" && save.reason === "error") {
     return {
       kind: "save-error",
-      tone: "danger",
+      tone: toneForInterruptionKind("save-error"),
       writer: "unknown",
       title: "Virgil couldn't save this paper",
       body:
