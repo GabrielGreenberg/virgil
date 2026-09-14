@@ -221,6 +221,50 @@ export function usePersistentState<S>(
   // stored separately so we can cancel without losing the payload.
   const pendingRef = useRef<S | null>(null);
   const pendingTimerRef = useRef<number | null>(null);
+  // Writes this instance has handed to `writeSidecar` that have not yet
+  // SETTLED (landed, refused, or thrown). Incremented in `persist` immediately
+  // before its `await`, decremented in its `finally` — so between the debounce
+  // callback nulling the timer handle and the bytes reaching disk, the
+  // instance still reads as holding work (task 569, below).
+  const inFlightRef = useRef(0);
+
+  // THE ONE PLACE the armed timer handle is compared and cleared. `persist`,
+  // `flushPending` and the debounce re-arm all cancel through this door, so
+  // the null-handle comparison appears in exactly two declarations — here and
+  // in `hasPendingWrite` — and a census can say so. Touches ONLY the handle:
+  // whether the parked PAYLOAD survives is each caller's own decision.
+  const cancelArmedTimer = useCallback((): void => {
+    if (pendingTimerRef.current !== null) {
+      window.clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+  }, []);
+
+  // ── THE ONE DIRTY PREDICATE (task 569) ─────────────────────────────────────
+  // "Does this instance hold a write that has not yet LANDED?" — a debounced
+  // write is ARMED, or a write is IN FLIGHT. Task 392 retired exactly this
+  // mistake from `useDocument` (`saveTimerRef.current !== null` as the dirty
+  // test — "the debounce callback nulls the handle BEFORE calling save"), and
+  // this hook carried its twin: the debounce callback, `flushPending` and
+  // `persist` all null `pendingTimerRef` BEFORE `await writeSidecar`, so for
+  // the whole in-flight window — the per-file queue, the cross-window doc
+  // lock, the FSA `createWritable` + rename — a guard reading the timer alone
+  // answered CLEAN. An external change to the same file polled in that window
+  // passed both guard reads, disk (the external bytes) was `setState`d over
+  // the local edit in memory, and our write then landed the LOCAL payload:
+  // memory said external, disk said local, and the next `update()` wrote
+  // memory back over the local edit. Silent. Every reader of "is this
+  // instance dirty?" asks HERE, never the timer handle.
+  //
+  // Deliberately NOT a member: a write the layer below REFUSES (read-only
+  // chrome, no pipeline handle) is not a write this instance OWES — `persist`
+  // returns before the counter moves, exactly as it returns before stamping
+  // `hasMutatedRef` — so in a read-mostly host disk stays the truth and an
+  // external change still re-hydrates. Stated rather than implied: memory
+  // there holds an edit disk will never see, and that is the host's design.
+  const hasPendingWrite = useCallback((): boolean => {
+    return pendingTimerRef.current !== null || inFlightRef.current > 0;
+  }, []);
 
   // Tracks whether the user has mutated state via `update()` since the
   // mount-effect loader was last started. Prevents the loader's async
@@ -336,10 +380,7 @@ export function usePersistentState<S>(
       // `stateRef` refreshes on RENDER, so `update(f); persist({...stateRef
       // .current})` inside ONE handler would drop `f` — derive the payload from
       // the same state `update` did, or just use `update`.
-      if (pendingTimerRef.current !== null) {
-        window.clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
+      cancelArmedTimer();
       pendingRef.current = null;
       // Reader-mode safety guard: refuse a write the active chrome disallows
       // (a read-mostly host writing anything but its editable card sidecars).
@@ -358,14 +399,22 @@ export function usePersistentState<S>(
       // sidecar for that doc, leaving every load-gated reconcile running over
       // the empty default.
       hasMutatedRef.current = true;
+      // IN FLIGHT from here until the write SETTLES — the `hasPendingWrite`
+      // half the timer handle cannot carry. Incremented synchronously, in the
+      // same turn the caller nulled the handle, so there is no interleaving
+      // point between the two; decremented in `finally`, so a refusal or a
+      // throw releases it exactly as a landing does.
+      inFlightRef.current += 1;
       try {
         await writeSidecar(h, filename, s);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error(`Failed to save ${errorLabel ?? filename}:`, err);
+      } finally {
+        inFlightRef.current -= 1;
       }
     },
-    [resolveHandle, filename, errorLabel],
+    [resolveHandle, filename, errorLabel, cancelArmedTimer],
   );
 
   // Fire the pending write synchronously (the persist itself stays
@@ -377,14 +426,11 @@ export function usePersistentState<S>(
   // (the reload door's step 1, task 391) can await it; the edge callers
   // ignore the return value.
   const flushPending = useCallback((): Promise<void> => {
-    if (pendingTimerRef.current !== null) {
-      window.clearTimeout(pendingTimerRef.current);
-      pendingTimerRef.current = null;
-    }
+    cancelArmedTimer();
     const payload = pendingRef.current;
     pendingRef.current = null;
     return payload !== null ? persist(payload) : Promise.resolve();
-  }, [persist]);
+  }, [persist, cancelArmedTimer]);
 
   // Register the settle door with the ONE pending-flusher registry (task 559),
   // under this document, beside `useDocument`'s bundle debounce. A document's
@@ -417,9 +463,7 @@ export function usePersistentState<S>(
           void persist(next);
         } else {
           pendingRef.current = next;
-          if (pendingTimerRef.current !== null) {
-            window.clearTimeout(pendingTimerRef.current);
-          }
+          cancelArmedTimer();
           pendingTimerRef.current = window.setTimeout(() => {
             pendingTimerRef.current = null;
             const payload = pendingRef.current;
@@ -430,7 +474,7 @@ export function usePersistentState<S>(
         return next;
       });
     },
-    [persist, debounceMs],
+    [persist, debounceMs, cancelArmedTimer],
   );
 
   // ── THE LOAD-TIME RECONCILE DOOR (task 570) ────────────────────────────────
@@ -503,12 +547,30 @@ export function usePersistentState<S>(
   // below hits disk rather than the stale cached snapshot.
   //
   // DATA SAFETY — DIRTY GUARD (no clobber): re-read ONLY when THIS instance is
-  // clean, i.e. it has no pending debounced write (`pendingTimerRef.current ===
-  // null`). If a local card edit is mid-debounce we DEFER — skip this round and
-  // let the next poll re-check once the write has flushed — so an in-progress
-  // local edit is never overwritten by the on-disk value. The guard is
-  // per-instance (docId+filename), so a dirty notes.json never blocks a clean
-  // revisions.json re-read.
+  // clean, i.e. `hasPendingWrite()` is false — no debounced write ARMED and no
+  // write IN FLIGHT (task 569; the timer handle alone reads clean for the whole
+  // in-flight window, which is the window the defect lived in). If a local
+  // edit is pending we DEFER — skip this round — so an in-progress local edit is
+  // never overwritten by the on-disk value. The guard is per-instance
+  // (docId+filename), so a dirty notes.json never blocks a clean revisions.json
+  // re-read.
+  //
+  // WHAT A DEFERRAL MEANS, stated honestly: LOCAL WINS for this file. This hook
+  // writes WHOLE SNAPSHOTS, so the pending write lands the local state over the
+  // external bytes, and `writeTrackedText` then re-baselines the disk ledger to
+  // OUR bytes — so the watcher's next poll takes the cheap mtime/size path and
+  // emits NOTHING. The external change is not "re-checked once the write has
+  // flushed" (an earlier draft of this comment claimed that, and it is false —
+  // the watcher re-baselines to the external bytes BEFORE it emits, and has no
+  // way to know a listener declined); it is overwritten, which is the
+  // 220/558 "two writers means ONE serialized read-modify-merge authority"
+  // class, owed by every sidecar that is not `ai-requests.json` or the bib and
+  // recorded for a design pass of its own. `useAiRequests` REPLAYS a deferred
+  // re-read once its in-flight mutations drain, and that is right THERE because
+  // it merges: disk after the drain holds the union. Here a replay after a
+  // landed write would read back our own snapshot (a no-op), and after a
+  // refused or thrown write would adopt disk over unlanded memory — the stomp
+  // this guard exists to prevent, one turn later. So: defer, and only defer.
   //
   // KEYSTROKE SANCTITY: this is an event listener on `window`, NOT an
   // `editor.on(...)` subscriber. It fires only on an external sidecar change
@@ -521,9 +583,10 @@ export function usePersistentState<S>(
       const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
       if (!detail) return;
       if (detail.docId !== docId || detail.filename !== filename) return;
-      // DIRTY GUARD: a pending debounced write means local state has an unsaved
-      // edit — defer rather than clobber it. The next poll re-emits once clean.
-      if (pendingTimerRef.current !== null) return;
+      // DIRTY GUARD: an armed or in-flight write means local state has an
+      // unsaved edit — defer rather than clobber it (see above for what the
+      // deferral costs).
+      if (hasPendingWrite()) return;
       // Re-read from disk (the bundle was invalidated by the watcher, so this
       // hits disk). Update state on success; on absence (file removed) fall back
       // to the default so the panel empties. A read error leaves state as-is.
@@ -531,8 +594,9 @@ export function usePersistentState<S>(
         .then((raw) => {
           if (cancelled) return;
           // Re-check the dirty guard AFTER the async read: the user may have
-          // started editing while the read was in flight — never stomp that.
-          if (pendingTimerRef.current !== null) return;
+          // started editing — or a `persist()` may have started writing — while
+          // the read was in flight. Never stomp either.
+          if (hasPendingWrite()) return;
           if (raw === null) {
             // External removal → reset to the empty default (matches the load
             // path's "absent" handling, but here the sidecar existed then went
