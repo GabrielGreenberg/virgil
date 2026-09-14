@@ -116,7 +116,10 @@ export const DOC_WRITE_LANDED: DocWriteReceipt = Object.freeze({
  */
 export interface DocWriteOptions {
   /** Code-pane delimiters riding this write — the ONLY copy of a preamble
-   *  edit until a write lands (`useDocument.pendingDelimitersRef`). */
+   *  edit until a write lands (`useDocument.pendingDelimitersRef`). Composed
+   *  by `useDocument.save` alone, from the stash, and the stash is consumed
+   *  only when the write that carried it LANDS (task 568) — a refused, thrown
+   *  or dropped write leaves it standing for the next write. */
   delimiters?: { preamble: string; postamble: string };
   /**
    * **This write IS the user's conflict decision** (task 364). Set only by

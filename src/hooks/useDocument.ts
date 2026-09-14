@@ -90,6 +90,10 @@ import {
  * and each was wrong on some path a caller took it on.
  */
 type SaveReceipt = DocWriteReceipt | { landed: false; reason: "error" };
+/** What a CALLER may hand `save`. `delimiters` is deliberately absent: the
+ *  preamble stash is `save`'s own to compose (task 568), so no call site can
+ *  spend it on an attempt. */
+type SaveOpts = Omit<DocWriteOptions, "delimiters">;
 
 export function useDocument() {
   const handle = useDocWriteHandle();
@@ -139,35 +143,47 @@ export function useDocument() {
   // refreshed on every call so a remount-without-onUpdate can't leave
   // it pointing at a stale editor.
   const editorRef = useRef<Editor | null>(null);
-  // Code-pane delimiters whose immediate commit was SWALLOWED by the
-  // autosave-pause guard (or by a destroyed-editor race) in
-  // `saveWithDelimiters`. The bridge clears its own `pendingPersist` BEFORE
-  // invoking the persist callback, so this ref is the ONLY durable copy of
-  // the user's preamble edit until a write lands — dropping it would
-  // permanently lose the edit while the code pane keeps displaying it (the
-  // masked-loss failure mode of the original bug). Every bundle-write path
-  // below consumes it via `takeDelimitersOpts()` so the NEXT successful
-  // save carries the delimiters exactly once. Cleared when disk becomes
-  // authoritative out-of-band: `refetch()` (external-change Reload) and the
-  // per-doc tex-delimiters-changed event (style switch / compile
-  // class-switch / Reload), where replaying a stale stash would clobber
-  // the just-written preamble.
+  /**
+   * **THE PREAMBLE STASH** — the code pane's delimiters (preamble +
+   * postamble), which live in the bridge closure and never in the TipTap
+   * doc. The bridge clears its own `pendingPersist` BEFORE invoking the
+   * persist callback, so from `saveWithDelimiters` onward this ref is the
+   * ONLY durable copy of the user's preamble edit until a write LANDS —
+   * dropping it early loses the edit permanently while the code pane keeps
+   * displaying it (the masked-loss failure mode of the original bug).
+   *
+   * **The stash is consumed by a LANDED write, never by an attempt** (task
+   * 568). Until 568 every save path SPENT it up front (`takeDelimitersOpts`
+   * nulled the ref and handed the payload to `save`), so a write that was
+   * then refused by the preservation gate, threw, or was dropped by a stale
+   * pipeline left the ref empty and the payload nowhere: the next autosave
+   * carried no delimiters, `writeDocBundle` re-read the OLD preamble off
+   * disk and wrote it back, and nothing resynced the pane — old preamble on
+   * disk, new preamble on screen, forever. The "report is the permission"
+   * law (357/364/557) applied to a PAYLOAD instead of a flag.
+   *
+   * So there is ONE writer that fills it (`saveWithDelimiters` — every
+   * branch, so the payload is durable from the moment the pane hands it
+   * over) and ONE consumer that empties it (`save`'s landed branch, and only
+   * for the very object it carried, so a fresher payload stashed while a
+   * write was in flight survives that write's landing). Every bundle write
+   * reads it — `save` composes the `delimiters` option itself, which is what
+   * makes "the stash is the only copy" true by construction rather than by
+   * eight call sites agreeing. The only other clears are the out-of-band
+   * DISK-WINS paths, where replaying a stale stash would clobber the
+   * preamble those paths just wrote: `refetch()` (external-change Reload)
+   * and the per-doc tex-delimiters-changed event (style switch / compile
+   * class-switch / Reload). Nothing else may null it — pinned by
+   * `delimiters-stash-census.test.ts`.
+   *
+   * Stated residual: the emergency mirror stores only the TipTap model, so a
+   * reload during a standing stash loses the preamble edit. Closing that is a
+   * mirror-schema change (model + delimiters) — the same class, one door over.
+   */
   const pendingDelimitersRef = useRef<{
     preamble: string;
     postamble: string;
   } | null>(null);
-
-  // Consume the stashed delimiters (one-shot). Returns the `writeDocBundle`
-  // opts for the next save, or undefined when nothing is stashed — so every
-  // save call site can pass `takeDelimitersOpts()` unconditionally.
-  const takeDelimitersOpts = useCallback(():
-    | { delimiters: { preamble: string; postamble: string } }
-    | undefined => {
-    const d = pendingDelimitersRef.current;
-    if (!d) return undefined;
-    pendingDelimitersRef.current = null;
-    return { delimiters: d };
-  }, []);
 
   /**
    * **The model that is in MEMORY and may not be on disk** — the live editor,
@@ -231,11 +247,17 @@ export function useDocument() {
    * `flushAllPendingDocs` (the reload door's first move) a no-op.
    *
    * The channel is the SSOT: an armed debounce OR unlanded work on the
-   * channel. O(1) — two field reads, and it is never called from the typing
-   * path.
+   * channel OR a standing preamble stash (task 568 — a payload that has not
+   * landed is work not on disk whether or not the channel has caught up with
+   * it; the channel is armed on the same gesture, so this third read is the
+   * belt to that brace). O(1) — three field reads, and it is never called
+   * from the typing path.
    */
   const hasWorkToWrite = useCallback(
-    () => saveTimerRef.current !== null || hasUnlandedWork(docId),
+    () =>
+      saveTimerRef.current !== null ||
+      hasUnlandedWork(docId) ||
+      pendingDelimitersRef.current !== null,
     [docId],
   );
 
@@ -257,7 +279,16 @@ export function useDocument() {
    * the version they see, and a write that did not land has not honoured it.
    */
   const save = useCallback(
-    async (doc: JSONContent, opts?: DocWriteOptions): Promise<SaveReceipt> => {
+    async (doc: JSONContent, opts?: SaveOpts): Promise<SaveReceipt> => {
+      // TASK 568 — the preamble stash rides EVERY bundle write and is the
+      // door's to compose: no caller spells `delimiters`, so no caller can
+      // spend the stash on an attempt. The object read here is what the
+      // landed branch compares against — identity, not bytes — so a fresher
+      // payload stashed while this write is in flight is left standing.
+      const delimiters = pendingDelimitersRef.current;
+      const writeOpts: DocWriteOptions | undefined = delimiters
+        ? { ...opts, delimiters }
+        : opts;
       try {
         // A REFUSED write returns normally — the gate leaves the `.tex` and the
         // sidecar byte-identical rather than throwing (task 357 hole 4). So the
@@ -271,7 +302,7 @@ export function useDocument() {
         // reported LANDED — advancing `lastSavedRef`, clearing the dirty state
         // and DELETING the emergency mirror, which at that point is the only
         // copy of the work.
-        const receipt = await writeDocBundle(handle, doc, opts);
+        const receipt = await writeDocBundle(handle, doc, writeOpts);
         if (!receipt.landed) {
           if (receipt.reason === "read-only") {
             // This document does not persist its BUNDLE (a `library-paper:`
@@ -294,6 +325,16 @@ export function useDocument() {
           return receipt;
         }
         lastSavedRef.current = doc;
+        // The stash is CONSUMED here and only here (task 568): the write that
+        // carried it has reached disk, so the disk copy is now the durable
+        // one. Identity-guarded so a payload stashed by a later
+        // `saveWithDelimiters` while this write was queued rides the NEXT
+        // landing instead of being silently dropped with this one. A refused,
+        // thrown or dropped write never reaches this line, which is the whole
+        // fix — the ref still holds the payload and the next write carries it.
+        if (delimiters && pendingDelimitersRef.current === delimiters) {
+          pendingDelimitersRef.current = null;
+        }
         // THIS is a landed write — the only thing that clears the dirty state
         // and drops the mirror. Never inferred from the absence of a throw, and
         // since task 557 never from the absence of a flag either: it is the
@@ -386,8 +427,8 @@ export function useDocument() {
     // snapshot was ever taken, so there is nothing this call could land.
     if (!pending) return;
     latestContentRef.current = null;
-    await save(pending, takeDelimitersOpts());
-  }, [save, takeDelimitersOpts, hasWorkToWrite]);
+    await save(pending);
+  }, [save, hasWorkToWrite]);
 
   // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
   // forces a full remount when the docId changes, so this effect runs
@@ -501,9 +542,9 @@ export function useDocument() {
       const pending = currentModel();
       // save-silent-ok: no model to write (see `flushPending`). The forced
       // mirror tick in the sibling cleanup below is what covers this document.
-      if (pending) void save(pending, takeDelimitersOpts());
+      if (pending) void save(pending);
     };
-  }, [save, takeDelimitersOpts, hasWorkToWrite, currentModel]);
+  }, [save, hasWorkToWrite, currentModel]);
 
   // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
   // flush above is fire-and-forget and may be refused), then stop reporting
@@ -548,7 +589,7 @@ export function useDocument() {
       // save-silent-ok: no model to write (see `flushPending`).
       if (pending) {
         latestContentRef.current = null;
-        void save(pending, takeDelimitersOpts());
+        void save(pending);
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -573,7 +614,7 @@ export function useDocument() {
       const pending = editor && !editor.isDestroyed
         ? editor.getJSON()
         : latestContentRef.current;
-      if (pending) void save(pending, takeDelimitersOpts());
+      if (pending) void save(pending);
       // The mirror makes the loss small; this prompt makes it CHOSEN. Both
       // matter: a native leave-confirmation is the only thing that can stop a
       // reload the user did not understand they were asking for.
@@ -586,7 +627,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save, takeDelimitersOpts, docId, hasWorkToWrite]);
+  }, [save, docId, hasWorkToWrite]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -656,13 +697,13 @@ export function useDocument() {
       // Populate the snapshot ref so the unmount cleanup (which fires
       // after the editor is destroyed) has something to flush.
       latestContentRef.current = doc;
-      // Carry any pause-swallowed code-pane delimiters (see
+      // `save` carries any standing preamble stash itself (see
       // `pendingDelimitersRef`) — this is the retry path that lands a
       // preamble edit after the user resolves an external change via
-      // Dismiss / "Keep my version".
-      save(doc, takeDelimitersOpts());
+      // Dismiss / "Keep my version", or after a refused write is acknowledged.
+      save(doc);
     }, 1500);
-  }, [save, takeDelimitersOpts, docId]);
+  }, [save, docId]);
   // Sync the self-reference ref in an effect (never during render). The re-arm
   // path inside the timer reads it only after this effect has run.
   useEffect(() => {
@@ -708,8 +749,8 @@ export function useDocument() {
     const doc =
       getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
     latestContentRef.current = doc;
-    void save(doc, takeDelimitersOpts());
-  }, [save, debouncedSave, takeDelimitersOpts, docId]);
+    void save(doc);
+  }, [save, debouncedSave, docId]);
 
   // Code-pane preamble commit: persist the live TipTap JSON with the
   // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
@@ -721,35 +762,54 @@ export function useDocument() {
   // the NEW preamble from disk naturally. Runs only on a discrete code-pane
   // flush that changed the delimiters, never on the keystroke path.
   //
-  // AUTOSAVE-CLOBBER GUARD: while an external change is unresolved, skip
-  // the write like every other save path (re-arm the debounce so the dirty
-  // flag stays true) — but STASH the delimiters in `pendingDelimitersRef`
-  // first. The bridge already consumed its own pendingPersist before
-  // calling us, so this call's argument is the ONLY copy of the user's
-  // preamble edit; without the stash it would be permanently lost on the
-  // Dismiss / "Keep my version" resolution (the re-armed debounce would
-  // save WITHOUT delimiters and writeDocBundle would re-read the stale
-  // on-disk preamble, while the pane keeps displaying the edit). Resolving
-  // via Reload instead resyncs the pane from disk (disk wins, by design) —
-  // that path clears the stash (refetch + the delimiters-changed event).
+  // THE ONE WRITER OF THE STASH (task 568). The bridge already consumed its
+  // own pendingPersist before calling us, so this call's argument is the
+  // ONLY copy of the user's preamble edit — it goes into
+  // `pendingDelimitersRef` FIRST, on every branch, and stays there until a
+  // write that carried it LANDS. The argument is strictly fresher than any
+  // earlier stash (the bridge re-extracts the FULL delimiters from the
+  // current pane text, so a prior swallowed edit is already folded in), so
+  // overwriting is the supersede rule, and an older payload still riding an
+  // in-flight write cannot clear this one when it lands (`save` clears by
+  // identity). Which branch then runs decides only WHEN the next attempt is
+  // made, never whether the bytes survive:
+  //
+  // - AUTOSAVE-CLOBBER GUARD: while an external change is unresolved (or a
+  //   cowork skill holds the pen), no automatic write — re-arm the debounce
+  //   so the retry carries the stash after Dismiss / "Keep my version".
+  //   Resolving via Reload instead resyncs the pane from disk (disk wins, by
+  //   design) — that path clears the stash (refetch + the delimiters-changed
+  //   event).
+  // - Editor gone (pane-teardown race): a terminal flush (unmount cleanup /
+  //   pagehide), which saves from the content ref, carries it.
+  // - Otherwise: the same immediate-flush shape as `flushNow` (same handle,
+  //   same "bundle" write queue — ordered against autosaves). `writeDocBundle`
+  //   skips its disk re-read for a carried payload, so the pane's edit reaches
+  //   disk instead of being resurrected-over by the stale on-disk preamble;
+  //   subsequent autosaves then re-read the NEW preamble from disk naturally.
+  //   If THIS write is refused, throws or is dropped, the stash still holds
+  //   the payload and the next write that lands carries it.
+  //
+  // Runs only on a discrete code-pane flush that changed the delimiters,
+  // never on the keystroke path.
   const saveWithDelimiters = useCallback(
     (delimiters: { preamble: string; postamble: string }) => {
+      pendingDelimitersRef.current = delimiters;
+      // A preamble edit sitting in a ref is exactly the memory-only state the
+      // unsaved-work channel exists to name (task 392) — arm it on the
+      // gesture, before any attempt, so a stash that outlives a refused,
+      // thrown or paused write is reported as unlanded work from the moment
+      // it exists. O(1), edge-only.
+      noteUnsavedEdit(docId);
       const paused = autosavePauseReason(watcherRef.current, docId);
       if (paused) {
         noteSaveBlocked(docId, paused);
-        pendingDelimitersRef.current = delimiters;
         debouncedSave();
         return;
       }
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) {
-        // Editor gone (pane-teardown race) — keep the payload so a terminal
-        // flush (unmount cleanup / pagehide), which saves from the content
-        // ref, still carries it instead of silently dropping the edit.
-        pendingDelimitersRef.current = delimiters;
         // Task 392 — the stash keeps the bytes; it does not put them on disk.
-        // A preamble edit sitting in a ref is exactly the memory-only state
-        // this channel exists to name.
         noteSaveBlocked(docId, "error");
         return;
       }
@@ -757,13 +817,9 @@ export function useDocument() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      // The argument is strictly fresher than any earlier stash (the bridge
-      // re-extracts the FULL delimiters from the current pane text, so a
-      // prior swallowed edit is already folded in) — supersede it.
-      pendingDelimitersRef.current = null;
       const doc = editor.getJSON();
       latestContentRef.current = doc;
-      void save(doc, { delimiters });
+      void save(doc);
     },
     [save, debouncedSave, docId],
   );
@@ -870,8 +926,10 @@ export function useDocument() {
   // event only AFTER the reload completes — see disk-watcher.tsx).
   const refetch = useCallback((): Promise<void> => {
     setLoading(true);
-    // Reload = disk wins: a stashed pause-swallowed delimiters payload must
-    // not survive to clobber the freshly reloaded preamble.
+    // Reload = disk wins: a stashed delimiters payload must not survive to
+    // clobber the freshly reloaded preamble. One of the two sanctioned
+    // out-of-band clears (task 568); the other is the delimiters-changed
+    // listener below.
     pendingDelimitersRef.current = null;
     return readDocBundle(docId)
       .then((bundle) => {
@@ -933,17 +991,14 @@ export function useDocument() {
     // which tells the user their version was not kept.
     if (!doc) return false;
     latestContentRef.current = doc;
-    const receipt = await save(doc, {
-      ...takeDelimitersOpts(),
-      userResolvedConflict: true,
-    });
+    const receipt = await save(doc, { userResolvedConflict: true });
     // Task 391 — REPORT whether it landed; task 567 — read off the write's
     // OWN receipt rather than a channel proxy. `userResolvedConflict` steps
     // the 357 write gate aside but not the SERIALIZE gate, and the write can
     // fail outright; either way the door must not report the user's version
     // "kept" while it sits in memory alone.
     return receipt.landed;
-  }, [currentModel, save, takeDelimitersOpts]);
+  }, [currentModel, save]);
 
   /**
    * TASK 391 — restore the emergency mirror over the file on disk.
@@ -1068,7 +1123,6 @@ export function useDocument() {
       // the pause branch used to leave, and the one the mirror exists for.
       latestContentRef.current = doc;
       const receipt = await save(doc, {
-        ...takeDelimitersOpts(),
         acknowledgePreservation: opts?.acknowledgePreservation,
       });
       // Task 567 — the verdict is the write's OWN receipt. The pre-567 channel
@@ -1082,7 +1136,7 @@ export function useDocument() {
       if (receipt.landed || receipt.reason === "read-only") return { landed: true };
       return { landed: false, reason: receipt.reason };
     },
-    [docId, currentModel, save, takeDelimitersOpts],
+    [docId, currentModel, save],
   );
 
   useEffect(
