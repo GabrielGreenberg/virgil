@@ -22,9 +22,16 @@ import type { SpellcheckPort } from "@/lib/spell/spell-port";
 export interface SpellMenuRequest {
   /** The flagged word, exactly as it appears in the document. */
   word: string;
-  /** Its document range in `view`. */
+  /**
+   * Its document range in `view` AT OPEN. A snapshot for display and tests
+   * only — never edit through it: the document can change while suggestions
+   * load, so the range to replace is re-resolved from `spec` at the moment a
+   * row is chosen (`liveSpellRange`, task 581).
+   */
   from: number;
   to: number;
+  /** The squiggle's identity, mapped through every transaction by the plugin. */
+  spec: { readonly word: string };
   /** Viewport rect of the word, for anchoring. */
   rect: DOMRect;
   view: EditorView;

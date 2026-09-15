@@ -405,3 +405,130 @@ describe("a squiggle is a view, never document content", () => {
     expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
   });
 });
+
+// ── D. a squiggle's ground can move (task 581) and requests can overlap (582) ─
+
+describe("a squiggle never outlives the prose it was painted on (task 581)", () => {
+  /** Convert the paragraph holding `word` into a block of `type`. */
+  function convert(ed: Editor, word: string, type: "codeBlock" | "latexComment") {
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.isTextblock && n.textContent.includes(word)) at = pos;
+      return at < 0;
+    });
+    expect(at).toBeGreaterThanOrEqual(0);
+    const nodeType = ed.state.schema.nodes[type];
+    expect(nodeType).toBeTruthy();
+    ed.view.dispatch(ed.state.tr.setBlockType(at + 1, at + 1, nodeType));
+    // Premise: the conversion really is the gap-preserving shape that carries
+    // the squiggle INTO the new block by mapping — the defect's ground.
+    expect(ed.state.doc.textContent).toContain(word);
+  }
+
+  for (const type of ["codeBlock", "latexComment"] as const) {
+    it(`converting a flagged paragraph to a ${type} removes its squiggle`, async () => {
+      const { ref } = makePort();
+      const ed = mount("Some prose here.\n\nMore teh prose.", ref);
+      await settle();
+      expect(flagged(ed)).toEqual(["teh"]);
+      convert(ed, "teh", type);
+      await settle();
+      expect(flagged(ed)).toEqual([]);
+      expect(ed.view.dom.querySelector(`.${SPELL_ERROR_CLASS}`)).toBeNull();
+    });
+  }
+
+  it("…and a WHOLE-document pass replaces the set outright, never per prose block", async () => {
+    // The whole-doc arm visits prose blocks only, so a per-block removal cannot
+    // reach a squiggle sitting in a block that stopped being prose. Plant one
+    // there by mapping, then force a whole pass through the version channel.
+    const { ref, port } = makePort();
+    const ed = mount("Some prose here.\n\nMore teh prose.", ref);
+    await settle();
+    convert(ed, "teh", "codeBlock");
+    // Before the debounce fires, bump the version: the next pass is whole-doc.
+    port.bump();
+    ed.view.dispatch(ed.state.tr.setMeta("forceUpdate", true));
+    await settle();
+    expect(flagged(ed)).toEqual([]);
+  });
+
+  it("control: converting an UNFLAGGED paragraph leaves other squiggles alone", async () => {
+    const { ref } = makePort();
+    const ed = mount("Some prose here.\n\nMore teh prose.", ref);
+    await settle();
+    convert(ed, "Some", "codeBlock");
+    await settle();
+    expect(flagged(ed)).toEqual(["teh"]);
+  });
+});
+
+describe("a whole-document request survives an overlapping pass (task 582)", () => {
+  it("a version bump during a dirty pass's await still yields a whole-document re-check", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick fox.\n\nSome qwerty text.", ref);
+    await settle();
+    expect(flagged(ed)).toEqual(["qwerty"]);
+
+    // The next `ensure` is held open, as the first dictionary load is.
+    const realEnsure = port.ensure;
+    let release: () => void = () => {};
+    port.ensure = (words) =>
+      new Promise<void>((resolve) => {
+        release = () => void realEnsure(words).then(resolve);
+      });
+
+    // A dirty pass over paragraph 1 that has to ask the dictionary.
+    ed.chain().setTextSelection(5).insertContent("blorp ").run();
+    ed.chain().setTextSelection(2).run();
+    await vi.advanceTimersByTimeAsync(SPELL_DEBOUNCE_MS + 10);
+
+    // While it awaits: "Add to dictionary" on a word in an UNTOUCHED block.
+    port.accepted.add("qwerty");
+    port.bump();
+    ed.view.dispatch(ed.state.tr.setMeta("forceUpdate", true));
+
+    port.ensure = realEnsure;
+    release();
+    await settle();
+    // The dirty pass flagged its word; the whole pass cleared the accepted one.
+    expect(flagged(ed)).toEqual(["blorp"]);
+  });
+
+  it("passes are serial: a debounce firing mid-pass does not start a second one", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick fox.", ref);
+    await settle();
+    const realEnsure = port.ensure;
+    let inFlight = 0;
+    let peak = 0;
+    let release: () => void = () => {};
+    port.ensure = (words) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      return new Promise<void>((resolve) => {
+        release = () => {
+          inFlight--;
+          void realEnsure(words).then(resolve);
+        };
+      });
+    };
+    ed.chain().setTextSelection(5).insertContent("blorp ").run();
+    ed.chain().setTextSelection(2).run();
+    await vi.advanceTimersByTimeAsync(SPELL_DEBOUNCE_MS + 10);
+    // Another edit needing the dictionary, whose debounce fires mid-pass.
+    ed.chain().setTextSelection(5).insertContent("snarf ").run();
+    ed.chain().setTextSelection(2).run();
+    await vi.advanceTimersByTimeAsync(SPELL_DEBOUNCE_MS + 10);
+    expect(peak).toBe(1);
+    port.ensure = (words) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      return realEnsure(words).finally(() => inFlight--);
+    };
+    release();
+    await settle();
+    expect(peak).toBe(1);
+    expect(flagged(ed)).toEqual(["blorp", "snarf"]);
+  });
+});

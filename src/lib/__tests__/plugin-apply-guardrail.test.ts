@@ -106,7 +106,12 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   // Takes the `touchedTextblocks` door too, but its reach walks nothing: the
   // ONE whole-document arm (`allProseBlocks`) is reachable only from the
   // plugin VIEW, behind the debounce, on a port `version()` bump.
-  "src/lib/tiptap/spellcheck-decorator.ts#apply": "clean",
+  // RENEGOTIATED (task 581): "clean" → "door". A whole-document pass now
+  // REPLACES the set outright (a per-prose-block removal cannot reach a squiggle
+  // carried into a block that stopped being prose), which puts a
+  // `DecorationSet.create` in `apply` — stated in place as meta-only and
+  // version-bump-only, never a keystroke.
+  "src/lib/tiptap/spellcheck-decorator.ts#apply": "door",
   "src/lib/tiptap/title.ts#appendTransaction": "clean",
   "src/lib/tiptap/transient-highlight.ts#apply": "tagged",
 };
