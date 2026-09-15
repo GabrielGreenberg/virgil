@@ -11899,6 +11899,23 @@ plus a decorator leg in `spellcheck-decorator.test.ts`. Measured by neutering:
 no retry takes 6 legs, a cached failure verdict 1, a decorator that never
 subscribes 1.
 
+**…and a squiggle is RE-VERIFIED where it is used (tasks 581/582).** Three
+things the pass used to trust from an earlier moment: a block's prose-ness (a
+paragraph converted to a code block or `%` comment carried its squiggles in by
+mapping, and phase B skipped a non-prose block, so they stayed —
+right-clickable over verbatim bytes); the menu's range (captured at OPEN, while
+suggestions load and the document can move); and a boolean whole-document
+request (a dirty pass resuming from its `ensure` cleared a request a version
+bump made during the await). Now `tokensAt` answers `[]` for a textblock that
+stopped being prose, a whole-document pass REPLACES the set; the decoration
+SPEC is the squiggle's identity (reused when a pass re-flags the same word at
+the same range), and `liveSpellRange` finds it in the live mapped set — the
+menu edits only what is still that flagged word, else closes; the request is a
+generation counter satisfied only by a whole pass with nothing newer; passes
+are serial; and a block holding a word typed during phase A's await stays
+OWED rather than being settled clean. Legs in both spell suites; each of the
+seven halves fails its own leg under neuter.
+
 **The dictionary is VENDORED, and it has to be.** `dictionary-en@4` (US
 English) reads its files with `node:fs`, so the package cannot be imported in a
 browser at all: `tools/sync-dictionary.mjs` copies the Hunspell pair into
