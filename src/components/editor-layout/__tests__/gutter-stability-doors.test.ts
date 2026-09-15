@@ -36,6 +36,9 @@ import { resolveCascade, type NaturalEntry } from "@/hooks/useInTextPositions";
 const BAND_TOP = 0;
 const BAND_BOTTOM = 800;
 const POD_TOP = -200; // the pod is scrolled: its origin sits above the band
+/** The deck owner the scene's pod stamps (task 583 — pins are keyed per
+ *  deck, never per side). */
+const OWNER = "omni-pin-test-a";
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -85,28 +88,38 @@ function scene(
   side.dataset.panelColumnSide = "right";
 
   const pod = document.createElement("div");
+  pod.setAttribute("data-omni-pin-owner", OWNER);
   pod.getBoundingClientRect = () => rect(POD_TOP, 4000);
 
-  const wrapper = document.createElement("div");
-  wrapper.dataset.omniEntryWrapper = cardKey;
-  wrapper.setAttribute("data-omni-natural-top", String(naturalTop));
-  wrapper.getBoundingClientRect = () => rect(POD_TOP + podRelTop, height);
-
-  pod.appendChild(wrapper);
+  const wrapper = addWrapper(pod, cardKey, podRelTop, height, naturalTop);
   side.appendChild(pod);
   row.appendChild(side);
   document.body.appendChild(row);
   return { row, pod, wrapper };
 }
 
+/** A second (or third) card wrapper in the same pod. */
+function addWrapper(
+  pod: HTMLElement,
+  cardKey: string,
+  podRelTop: number,
+  height = 120,
+  naturalTop: number = podRelTop,
+): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.dataset.omniEntryWrapper = cardKey;
+  wrapper.setAttribute("data-omni-natural-top", String(naturalTop));
+  wrapper.getBoundingClientRect = () => rect(POD_TOP + podRelTop, height);
+  pod.appendChild(wrapper);
+  return wrapper;
+}
+
 beforeEach(() => {
-  omniPinStore.clearPin("left");
-  omniPinStore.clearPin("right");
+  omniPinStore.clearAll();
 });
 afterEach(() => {
   document.body.innerHTML = "";
-  omniPinStore.clearPin("left");
-  omniPinStore.clearPin("right");
+  omniPinStore.clearAll();
 });
 
 const KEY = "float:card:note:abc";
@@ -117,7 +130,7 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // 0..800 band. The user clicks its marker 40px lower.
     scene(KEY, 300);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    expect(omniPinStore.get("right")).toBeNull();
+    expect(omniPinStore.get(OWNER)).toBeNull();
 
     // …and the deck is what it was. Real cascade, real naturals, three cards
     // packed tightly enough that the backward pass has something it COULD
@@ -134,7 +147,7 @@ describe("the card door — clicking the text of a visible card moves nothing", 
       { id: "c", pos: 3 },
     ];
     const unpinned = resolveCascade(natural, items, null);
-    const pin = omniPinStore.get("right") as { offset: number } | null;
+    const pin = omniPinStore.get(OWNER) as { offset: number } | null;
     const after = resolveCascade(
       natural,
       items,
@@ -158,9 +171,9 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // and re-packing its neighbours — a move nobody asked for, caused by the
     // very gesture that was supposed to move nothing.
     scene(KEY, 300);
-    omniPinStore.requestPin("right", "float:card:note:other", 999);
+    omniPinStore.requestPin(OWNER, "float:card:note:other", 999);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    const pin = omniPinStore.get("right")!;
+    const pin = omniPinStore.get(OWNER)!;
     expect(pin.cardId).toBe("float:card:note:other");
     expect(pin.offset).toBe(999);
   });
@@ -171,7 +184,7 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     requestOmniCardPlacement(KEY, { viewportY: 140 });
     // Stored ANCHOR-RELATIVE (task 362): the requested absolute pod Y minus
     // the card's natural top.
-    expect(omniPinStore.get("right")!.offset).toBe(140 - POD_TOP - 1400);
+    expect(omniPinStore.get(OWNER)!.offset).toBe(140 - POD_TOP - 1400);
   });
 
   it("MOVES a visible card that is very far from the click — necessity (b)", () => {
@@ -179,13 +192,13 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // buried card's cascade offset from its own anchor IS the burial.
     scene(KEY, 300);
     requestOmniCardPlacement(KEY, { viewportY: 620 });
-    expect(omniPinStore.get("right")!.offset).toBe(620 - POD_TOP - 300);
+    expect(omniPinStore.get(OWNER)!.offset).toBe(620 - POD_TOP - 300);
   });
 
   it("takes a pod-relative desired top verbatim (the jump path's pre-scroll measurement)", () => {
     scene(KEY, 1400); // off screen ⇒ sanctioned
     requestOmniCardPlacement(KEY, { podTop: 42 });
-    expect(omniPinStore.get("right")!.offset).toBe(42 - 1400);
+    expect(omniPinStore.get(OWNER)!.offset).toBe(42 - 1400);
   });
 
   it("holdOmniCard pins the current top WHEN A PIN IS STANDING — the freeze still works", () => {
@@ -203,11 +216,17 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // height-independent; the backward pass is pin-gated), so the write held
     // nothing and instead lifted every card ABOVE it off its anchor, forever.
     // The freeze is asserted where it is real — with a pin standing.
-    omniPinStore.requestPin("right", "float:card:note:other", 30);
-    const { wrapper } = scene(KEY, 300, 120, 220);
+    //
+    // RENEGOTIATED AGAIN (task 583) — "a pin is standing" is not enough: the
+    // pinned card must be IN THIS DECK and BELOW the pressed one, because the
+    // backward pass only reaches rows above the pin. The pin is placed on a
+    // real wrapper under KEY.
+    const { wrapper, pod } = scene(KEY, 300, 120, 220);
+    addWrapper(pod, "float:card:note:other", 600, 120, 580);
+    omniPinStore.requestPin(OWNER, "float:card:note:other", 30);
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")!.cardId).toBe(KEY);
-    expect(omniPinStore.get("right")!.offset).toBe(80);
+    expect(omniPinStore.get(OWNER)!.cardId).toBe(KEY);
+    expect(omniPinStore.get(OWNER)!.offset).toBe(80);
   });
 
   it("holdOmniCard writes NOTHING on a pin-free side — a hold that holds nothing (task 490)", () => {
@@ -218,7 +237,7 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // clears a pin.
     const { wrapper } = scene(KEY, 300, 120, 220);
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")).toBeNull();
+    expect(omniPinStore.get(OWNER)).toBeNull();
 
     // …and the accepting control, which is Gabriel's second report as
     // arithmetic. The pressed card sits 80px below its anchor because the card
@@ -251,10 +270,154 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // through the coordinate. A hold may only hold what the deck's own rule
     // could have produced, and the forward pass never puts a card above its
     // anchor.
-    omniPinStore.requestPin("right", "float:card:note:other", 30);
-    const { wrapper } = scene(KEY, 220, 120, 300); // lifted 80px ABOVE its anchor
+    const { wrapper, pod } = scene(KEY, 220, 120, 300); // lifted 80px ABOVE its anchor
+    addWrapper(pod, "float:card:note:other", 400, 120, 600); // the pin, below it
+    omniPinStore.requestPin(OWNER, "float:card:note:other", 30);
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")!.cardId).toBe("float:card:note:other");
+    expect(omniPinStore.get(OWNER)!.cardId).toBe("float:card:note:other");
+  });
+
+  describe("task 583 — the hold asks whether THIS pin can move THIS card", () => {
+    const OTHER = "float:card:note:other";
+
+    it("DEFECT LEG — a press on a card BELOW a standing pin writes nothing", () => {
+      // Gabriel's 490 bug, re-armed: after ONE marker click pinned OTHER, the
+      // pre-583 rule ("any pin standing?") let every press below it replace the
+      // pin — OTHER snapped back to its natural top (a card the user did not
+      // touch) and the pressed card froze at the crowd's displacement. The
+      // forward pass sets a row's top from its predecessors only, and the
+      // backward pass is the identity after the pinned row, so no transient
+      // can move the pressed card.
+      const { wrapper, pod } = scene(KEY, 700, 120, 620); // pushed 80 below
+      addWrapper(pod, OTHER, 300, 120, 400);
+      omniPinStore.requestPin(OWNER, OTHER, -100);
+      const before = omniPinStore.get(OWNER)!;
+      holdOmniCard(wrapper);
+      expect(omniPinStore.get(OWNER)).toBe(before); // untouched, same object
+    });
+
+    it("a pin naming a card NO LONGER IN THIS DECK (archived, deleted) enables nothing", () => {
+      // Inert in the cascade, and pre-583 still enough to satisfy the rule.
+      const { wrapper } = scene(KEY, 300, 120, 220);
+      omniPinStore.requestPin(OWNER, OTHER, 30);
+      const before = omniPinStore.get(OWNER)!;
+      holdOmniCard(wrapper);
+      expect(omniPinStore.get(OWNER)).toBe(before);
+    });
+
+    it("pressing the PINNED card itself writes nothing — its top IS the pin", () => {
+      const { wrapper } = scene(KEY, 300, 120, 220);
+      omniPinStore.requestPin(OWNER, KEY, 80);
+      const before = omniPinStore.get(OWNER)!;
+      holdOmniCard(wrapper);
+      expect(omniPinStore.get(OWNER)).toBe(before);
+    });
+
+    it("a natural-top TIE is ordered as the cascade orders it — by DOM (items) order", () => {
+      // `resolveCascade` sorts by natural top, stably over the items the pod
+      // renders wrappers in; so on a tie, the wrapper EARLIER in the pod is
+      // the row above.
+      const earlier = scene(KEY, 300, 120, 220);
+      addWrapper(earlier.pod, OTHER, 300, 120, 220);
+      omniPinStore.requestPin(OWNER, OTHER, 0);
+      holdOmniCard(earlier.wrapper); // KEY precedes OTHER ⇒ above ⇒ holds
+      expect(omniPinStore.get(OWNER)!.cardId).toBe(KEY);
+
+      document.body.innerHTML = "";
+      omniPinStore.clearAll();
+      const s2 = scene(OTHER, 300, 120, 220);
+      const later = addWrapper(s2.pod, KEY, 300, 120, 220);
+      omniPinStore.requestPin(OWNER, OTHER, 0);
+      const before = omniPinStore.get(OWNER)!;
+      holdOmniCard(later); // KEY follows OTHER ⇒ below ⇒ no transient
+      expect(omniPinStore.get(OWNER)).toBe(before);
+    });
+
+    it("LIFECYCLE — after a press below the pin, the pressed card still returns to its anchor", () => {
+      // Driven through the REAL `resolveCascade`: the deck Gabriel reported.
+      // OTHER is pinned; KEY sits below it, pushed 80px off its anchor by an
+      // expanded card `a` between them. Press KEY (no pin written), collapse
+      // `a` — KEY walks back to its anchor, because nothing froze it.
+      const { wrapper, pod } = scene(KEY, 700, 120, 620);
+      addWrapper(pod, OTHER, 100, 120, 100);
+      omniPinStore.requestPin(OWNER, OTHER, 0);
+      holdOmniCard(wrapper);
+      const pin = omniPinStore.get(OWNER)!;
+      const items = [
+        { id: OTHER, pos: 1 },
+        { id: "a", pos: 2 },
+        { id: KEY, pos: 3 },
+      ];
+      const collapsed = new Map<string, NaturalEntry>([
+        [OTHER, { naturalTop: 100, height: 120 }],
+        ["a", { naturalTop: 300, height: 60 }],
+        [KEY, { naturalTop: 620, height: 120 }],
+      ]);
+      const after = resolveCascade(collapsed, items, {
+        id: pin.cardId,
+        offset: pin.offset,
+      });
+      expect(after.get(KEY)).toBe(620);
+      // Vacuity guard: the pre-583 write (KEY pinned at its crowd offset)
+      // really would have kept it displaced.
+      const preFix = resolveCascade(collapsed, items, { id: KEY, offset: 80 });
+      expect(preFix.get(KEY)).toBe(700);
+    });
+  });
+
+  describe("task 583 — one deck's pins are invisible to another deck", () => {
+    const OTHER = "float:card:note:other";
+
+    function secondPane(): { wrapper: HTMLElement; pod: HTMLElement } {
+      const row = document.createElement("div");
+      const side = document.createElement("div");
+      side.dataset.panelColumnSide = "right"; // same rail, different pane
+      const pod = document.createElement("div");
+      pod.setAttribute("data-omni-pin-owner", "omni-pin-test-b");
+      pod.getBoundingClientRect = () => rect(POD_TOP, 4000);
+      const wrapper = addWrapper(pod, KEY, 300, 120, 220);
+      addWrapper(pod, OTHER, 600, 120, 580);
+      side.appendChild(pod);
+      row.appendChild(side);
+      document.body.appendChild(row);
+      return { wrapper, pod };
+    }
+
+    it("a pin in pane A does not enable a hold in pane B", () => {
+      scene(OTHER, 600, 120, 580); // pane A's pod holds OTHER, pinned
+      omniPinStore.requestPin(OWNER, OTHER, 0);
+      const b = secondPane(); // pane B has its own KEY above its own OTHER — unpinned
+      holdOmniCard(b.wrapper);
+      expect(omniPinStore.get("omni-pin-test-b")).toBeNull();
+      expect(omniPinStore.get(OWNER)!.cardId).toBe(OTHER);
+    });
+
+    it("a pin written in pane B does not replace pane A's pin", () => {
+      scene(OTHER, 600, 120, 580);
+      omniPinStore.requestPin(OWNER, OTHER, 5);
+      const b = secondPane();
+      omniPinStore.requestPin("omni-pin-test-b", OTHER, 0);
+      holdOmniCard(b.wrapper); // B's own pin ⇒ B's hold writes in B
+      expect(omniPinStore.get("omni-pin-test-b")!.cardId).toBe(KEY);
+      expect(omniPinStore.get(OWNER)!.cardId).toBe(OTHER);
+      expect(omniPinStore.get(OWNER)!.offset).toBe(5);
+    });
+
+    it("a pod with NO owner is refused — fail CLOSED", () => {
+      const { wrapper, pod } = scene(KEY, 1400);
+      pod.removeAttribute("data-omni-pin-owner");
+      requestOmniCardPlacement(KEY, { viewportY: 140 });
+      holdOmniCard(wrapper);
+      expect(omniPinStore.get(OWNER)).toBeNull();
+    });
+
+    it("releaseOwner drops only that deck's slot", () => {
+      omniPinStore.requestPin(OWNER, OTHER, 1);
+      omniPinStore.requestPin("omni-pin-test-b", OTHER, 2);
+      omniPinStore.releaseOwner("omni-pin-test-b");
+      expect(omniPinStore.get("omni-pin-test-b")).toBeNull();
+      expect(omniPinStore.get(OWNER)!.offset).toBe(1);
+    });
   });
 
   it.each([
@@ -277,21 +440,21 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     if (value === null) wrapper.removeAttribute("data-omni-natural-top");
     else wrapper.setAttribute("data-omni-natural-top", value);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    expect(omniPinStore.get("right")).toBeNull();
+    expect(omniPinStore.get(OWNER)).toBeNull();
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")).toBeNull();
+    expect(omniPinStore.get(OWNER)).toBeNull();
   });
 
   it("pins the WRAPPER's own id, so a multi-anchor `@N` row still matches", () => {
     scene(`${KEY}@1`, 1400); // off screen, so the move is sanctioned
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    expect(omniPinStore.get("right")!.cardId).toBe(`${KEY}@1`);
+    expect(omniPinStore.get(OWNER)!.cardId).toBe(`${KEY}@1`);
   });
 
   it("publishes nothing when the card isn't in the DOM at all", () => {
     scene("float:card:note:other", 300);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    expect(omniPinStore.get("right")).toBeNull();
+    expect(omniPinStore.get(OWNER)).toBeNull();
   });
 });
 

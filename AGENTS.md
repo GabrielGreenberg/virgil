@@ -2379,7 +2379,7 @@ Six rules it earned:
 
 - **Necessity (c) needed no rule of its own.** Gabriel named three sanctioned cases: off-screen, very far from its linked text, and a margin-marker click on a card buried in a dense 16-card stack. The third is not a third rule — a buried card's displacement from its own anchor IS what being buried means, so the FAR rung surfaces it. Three stated cases, two rungs; a third would have been a switch nobody could keep in sync with the other two.
 - **The fail-open direction is the whole of rung 1, and a DEGENERATE band is "unreadable", not "visible".** A needless move is the pre-328 behaviour and one the user asked for by clicking; a wrongly-held move makes a deliberate click do nothing with nothing on screen to explain it. And a `display:none` keep-alive pane reports a zero-height band while an unrendered wrapper reports a zero-height rect — a naive containment test calls both fully visible (visible span and whole are both 0) and would hold every move for a pane nobody can see.
-- **A refused card placement writes NOTHING; it does not write a no-op pin.** A pin at the card's own current top looks deck-neutral and in isolation is (the cascade's forward pass reproduces the value it is then overridden with, and its backward pass is the identity on a deck that already clears). But the store holds ONE pin per side, so publishing it REPLACES whatever pin another card holds — releasing that card to its natural position and re-packing its neighbours. **A "hold" that moves a different card is this bug wearing the fix's clothes.** `holdOmniCard` is the deliberate exception, and the reason the two doors are spelled separately: the wrapper's mousedown freeze exists precisely to install a pin.
+- **A refused card placement writes NOTHING; it does not write a no-op pin.** A pin at the card's own current top looks deck-neutral and in isolation is (the cascade's forward pass reproduces the value it is then overridden with, and its backward pass is the identity on a deck that already clears). But the store holds ONE pin per deck (per rail until task 583), so publishing it REPLACES whatever pin another card holds — releasing that card to its natural position and re-packing its neighbours. **A "hold" that moves a different card is this bug wearing the fix's clothes.** `holdOmniCard` is the deliberate exception, and the reason the two doors are spelled separately: the wrapper's mousedown freeze exists precisely to install a pin.
 - **A jump is TWO movements, and the card's exists only to compensate for the document's — so the pin rides the scroll's verdict.** `jumpToLink`/`jumpToCard` dispatch `virgil-card-jumped` only when `alignEntryToYIfNeeded` reports a real scroll; the handler then asks the card question against the card's POST-scroll rect, which is exactly the right moment — a card the scroll pushed off screen comes back to its marker, one still comfortably in view rides the scroll with the rest of the deck. Renegotiated deliberately: pre-328 the pin froze the clicked card's screen position on every jump, which kept ONE card still by moving all its neighbours.
 - **Hysteresis belongs at the ONE place tops commit.** `holdWithinEpsilon` in the measure pass ([useInTextPositions.ts](src/hooks/useInTextPositions.ts)): a pass that would move a card less than the epsilon keeps the committed value, so `measureVersion` never bumps and the deck does not re-render. That is what kills the per-scroll-pause reset — the C5 scroll-idle refinement re-runs on every 150ms pause while approximated items exist, and post-327 its corrections are small, but small and visible are different things. Comparing against the COMMITTED value (never the last measured one) bounds the held error at one epsilon instead of letting a slow real drift integrate. Heights take the tighter `HEIGHT_EPSILON_PX` because they feed the cascade: every card packed below an unchanged card inherits its wobble.
 - **A sanctioned move SLIDES, and the hysteresis is what makes that safe.** `.omni-entry-slide` transitions `transform` (the property the cascade already positions with — composite-only, so a moving deck costs no main-thread work) for 180ms, opted IN under `prefers-reduced-motion: no-preference`, and withheld during the pod's arming window and any live layout gesture. Without the hold, this transition would promote sub-threshold jitter from a teleport the eye can miss into a visible glide it cannot — the transition must not turn a stability defect into a nicer-looking stability defect. A freshly mounted wrapper never animates: a CSS transition does not run on an element's FIRST computed value, and a card renders only once `positions` has a top for it.
@@ -2889,10 +2889,50 @@ scrolled well off screen, then scroll back and watch the deck below it close up.
 
 **Residual, stated.** A card whose `entry` selector is a FUNCTION rather than an
 attribute name cannot be inverted from an observed element, so it keeps the
-pre-490 behaviour; the only production caller passes the string form. And the
-hold's pin-free rule is deliberately CONSERVATIVE — the backward pass can only
-reach cards ABOVE the pinned one, so a press on a card BELOW it is also a no-op,
-and asking that would mean resolving the pinned card's wrapper at gesture time.
+pre-490 behaviour; the only production caller passes the string form. (The
+hold's second residual — "the pin-free rule is deliberately CONSERVATIVE" — was
+not safe, and is CLOSED by task 583; see immediately below.)
+
+##### The reach half: a guard keyed on "any X exists" is not a guard, when X is never cleared
+
+Same door, one question narrower (task 583, an audit finding). 490's hold rule
+asked only *is ANY pin standing on this side?* and called the approximation the
+safe direction. It was not, because a live pin is never cleared except by a
+replacement: after ONE marker click every later press on a card BELOW the pinned
+one passed the rule, REPLACED the pin (the pinned card snapped back — a visible
+jump of a card the user did not touch) and froze the pressed card at the crowd's
+displacement — 490's bug verbatim, re-armed for the session. A pin naming a card
+no longer in the deck (archived, deleted) is inert in the cascade and still
+satisfied it. And the store was ONE slot per side for the whole app, so a marker
+click in doc B released doc A's pinned card, and A's pin armed B's holds.
+
+> **A hold writes only where a transient can move THIS card: a pinned card is
+> live IN THIS DECK and sits BELOW the pressed one in cascade order** (natural
+> top, then DOM order on a tie — `resolveCascade`'s own sort, read off the pod's
+> children, no rect). **And a pin is a per-DECK fact:** `omniPinStore` is keyed
+> by an OWNER each `OmniViewPanel` mints and stamps on its pod
+> (`data-omni-pin-owner`), resolved from the wrapper by ONE helper,
+> `pinOwnerOf`, read by the placement door and the lift; the slot is released on
+> unmount, and a pod with no owner fails CLOSED.
+
+Why exact is provable: the forward pass sets a row from its predecessors only,
+and the backward pass can only move rows BEFORE the pinned row — every row after
+it was already packed below its predecessor, so the pull is the identity there;
+pressing the pinned card itself moves nothing either.
+
+CI: the task-583 describes in
+[gutter-stability-doors.test.ts](src/components/editor-layout/__tests__/gutter-stability-doors.test.ts)
+(press below a live pin, an inert pin, the pinned card itself, the tie, the REAL
+`resolveCascade` lifecycle, and two panes) and the owner census in
+`gutter-stability-census` (one writer, one resolver, no side-keyed store call).
+**No pre-583 suite could see it**: every hold fixture pinned a card that was not
+in the pod at all, and none mounted two decks. The two pre-existing freeze legs
+are RENEGOTIATED in place (their pin now names a real wrapper below the pressed
+card). Measured by neutering each half in turn: the any-pin rule takes 5 legs,
+a global slot 7.
+
+**Owed, not claimed:** the real-paper eyeball — click a margin marker, then
+collapse a card below the pinned one: neither card moves.
 
 #### The settle half: a termination criterion is the consumer's FIXED POINT, never a proxy for it
 

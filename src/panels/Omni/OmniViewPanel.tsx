@@ -45,7 +45,8 @@ import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import {
   usePinRequest,
-  type PinSide,
+  mintPinOwner,
+  omniPinStore,
 } from "@/components/editor-layout/omni-pin-store";
 import { holdOmniCard } from "@/components/editor-layout/omni-card-placement";
 import { useLayoutGestureActive } from "@/lib/pane-resize";
@@ -809,7 +810,16 @@ function OmniViewPanel({
   // document edits with its anchor. Cards AFTER it pack below; cards BEFORE
   // pack above. Result: the whole deck reflows around the pin without
   // overlap, and the pin cannot go stale.
-  const pinRequest = usePinRequest(side as PinSide);
+  // The pin is keyed by THIS deck's owner (task 583), never by side alone:
+  // N omni decks are mounted at once (keep-alive panes, the Reader, both
+  // rails), and a module slot shared across them let a marker click in one
+  // document release another document's pinned card. The owner is stamped on
+  // the pod below (`data-omni-pin-owner`), which is how the placement door and
+  // the lift resolve it from the wrapper they hold; the slot is released when
+  // this deck unmounts.
+  const [pinOwner] = useState(mintPinOwner);
+  useEffect(() => () => omniPinStore.releaseOwner(pinOwner), [pinOwner]);
+  const pinRequest = usePinRequest(pinOwner);
   const pinned = useMemo(
     () => (pinRequest
       ? { id: pinRequest.cardId, offset: pinRequest.offset }
@@ -921,6 +931,7 @@ function OmniViewPanel({
           measureVersion. */}
       <div
         ref={panelScrollRef}
+        data-omni-pin-owner={pinOwner}
         className="relative"
         style={{ minHeight: editorContentHeight || undefined }}
       >
