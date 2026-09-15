@@ -1,0 +1,57 @@
+diff --git a/node_modules/@tiptap/core/dist/index.cjs b/node_modules/@tiptap/core/dist/index.cjs
+index 81fea41..6945664 100644
+--- a/node_modules/@tiptap/core/dist/index.cjs
++++ b/node_modules/@tiptap/core/dist/index.cjs
+@@ -2159,7 +2159,12 @@ var getTextContentFromNodes = ($from, maxMatch = 500) => {
+       parent,
+       index
+     })) || node.textContent || "%leaf%";
+-    textBefore += node.isAtom && !node.isText ? chunk : chunk.slice(0, Math.max(0, sliceEndPos - pos));
++    if (node.isText) {
++      textBefore += chunk.slice(0, Math.max(0, sliceEndPos - pos));
++      return;
++    }
++    textBefore += "\ufffc".repeat(Math.max(0, Math.min(node.nodeSize, sliceEndPos - pos)));
++    return false;
+   });
+   return textBefore;
+ };
+diff --git a/node_modules/@tiptap/core/dist/index.js b/node_modules/@tiptap/core/dist/index.js
+index 3aeb731..7b355d3 100644
+--- a/node_modules/@tiptap/core/dist/index.js
++++ b/node_modules/@tiptap/core/dist/index.js
+@@ -2026,7 +2026,12 @@ var getTextContentFromNodes = ($from, maxMatch = 500) => {
+       parent,
+       index
+     })) || node.textContent || "%leaf%";
+-    textBefore += node.isAtom && !node.isText ? chunk : chunk.slice(0, Math.max(0, sliceEndPos - pos));
++    if (node.isText) {
++      textBefore += chunk.slice(0, Math.max(0, sliceEndPos - pos));
++      return;
++    }
++    textBefore += "\ufffc".repeat(Math.max(0, Math.min(node.nodeSize, sliceEndPos - pos)));
++    return false;
+   });
+   return textBefore;
+ };
+diff --git a/node_modules/@tiptap/core/src/helpers/getTextContentFromNodes.ts b/node_modules/@tiptap/core/src/helpers/getTextContentFromNodes.ts
+index 36e2909..612c5a9 100644
+--- a/node_modules/@tiptap/core/src/helpers/getTextContentFromNodes.ts
++++ b/node_modules/@tiptap/core/src/helpers/getTextContentFromNodes.ts
+@@ -22,7 +22,15 @@ export const getTextContentFromNodes = ($from: ResolvedPos, maxMatch = 500) => {
+       node.textContent ||
+       '%leaf%'
+ 
+-    textBefore += node.isAtom && !node.isText ? chunk : chunk.slice(0, Math.max(0, sliceEndPos - pos))
++    // Virgil patch (task 578): a matcher's string offsets must equal PM
++    // offsets, or a rule's replace range lands ON a node it never matched.
++    // Every non-text inline node is one U+FFFC per PM slot it occupies.
++    if (node.isText) {
++      textBefore += chunk.slice(0, Math.max(0, sliceEndPos - pos))
++      return
++    }
++    textBefore += '\ufffc'.repeat(Math.max(0, Math.min(node.nodeSize, sliceEndPos - pos)))
++    return false
+   })
+ 
+   return textBefore

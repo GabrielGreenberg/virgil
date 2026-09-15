@@ -34,6 +34,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 // never recognize a different footnote vocabulary.
 import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
 import { refuseTypedInsertWhenReadOnly } from "@/lib/tiptap/typed-latex-read-only-gate";
+import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
 // register the footnote CARD (the atom is still inserted synchronously below).
 // Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
@@ -201,6 +202,9 @@ export const Footnote = Node.create<FootnoteOptions>({
             });
             const footnoteId = idGenerator(existing);
             const start = from + 1 - match[0].length;
+            // Task 578: the typed `\footnote{…` must be text end to end — an
+            // inline atom inside the match window would be swallowed.
+            if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
             // `from` is the PRE-insert caret (the typed "}" is not yet in the
             // doc), so replace `start..from` and let the atom consume the "}".
             const trFixed = state.tr.replaceWith(

@@ -30,6 +30,7 @@ import {
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 
 const CITATION_ATOM = ATOM_REGISTRY.citation;
 
@@ -193,6 +194,9 @@ export const Citation = Node.create<CitationOptions>({
               if (match) {
                 const command = match[0];
                 const start = from + text.length - command.length;
+                // Task 578: the typed command must be text end to end — an
+                // inline atom inside the match window would be swallowed.
+                if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
                 const existing = new Set<string>();
                 state.doc.descendants((node) => {
                   if (node.type.name === "citation" && node.attrs.citationId) {
@@ -229,6 +233,8 @@ export const Citation = Node.create<CitationOptions>({
               if (match) {
                 const partial = match[0];
                 const start = from - partial.length;
+                // Task 578: same door as the full branch.
+                if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
                 const existing = new Set<string>();
                 state.doc.descendants((node) => {
                   if (node.type.name === "citation" && node.attrs.citationId) {
