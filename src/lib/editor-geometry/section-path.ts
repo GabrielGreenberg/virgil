@@ -38,6 +38,7 @@ import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { SECTION_ACTIVE_LINE_FRACTION } from "@/components/editor-layout/layout-scroll";
 import { posAtViewportY } from "./viewport-probe";
+import { createBlockVocabCache } from "./block-vocab";
 
 export interface SectionPathResult {
   path: { text: string; index: number; sectionNumber: string | null }[];
@@ -68,43 +69,21 @@ export function geomBreadcrumbEnabled(): boolean {
   }
 }
 
-// Par-titled vocabulary cache — uuids in doc order, rebuilt only when the
-// structure VERSION moves (a structural change; a parTitle flip bumps it via
-// `blockParTitleChanged`). Positions are deliberately NOT cached: a plain
-// keystroke shifts pos without bumping version, so probes read
-// `structure.blocks.get(uuid).pos` from the materialized snapshot instead —
-// order is version-stable, positions are read-fresh.
-interface ParTitleVocab {
-  version: number;
-  uuids: string[];
-}
-const vocabCache = new WeakMap<Editor, ParTitleVocab>();
-
-function parTitledVocab(
-  editor: Editor,
-  structure: NonNullable<ReturnType<typeof getBus>>["structure"],
-): string[] {
-  const cached = vocabCache.get(editor);
-  if (cached && cached.version === structure.version) return cached.uuids;
-  const entries: { uuid: string; pos: number }[] = [];
-  for (const b of structure.blocks.values()) {
-    // `parTitled` is `deriveParTitled(attrs)`, and only the six members of
-    // TITLED_NODE_TYPES declare the attr at all (ProseMirror drops an
-    // undeclared one), so the flag IS the membership test — there is no
-    // second vocabulary here to drift from the set. Task 404 retired the
-    // legacy walk's three-name list, which read "tex/expex par-titles are
-    // deliberately not breadcrumb entries": a breadcrumb that omits the
-    // titled block you are standing in is the invisibility bug by another
-    // name, and the four sibling readers were widened in the same pass.
-    if (b.parTitled) {
-      entries.push({ uuid: b.uuid, pos: b.pos });
-    }
-  }
-  entries.sort((a, b) => a.pos - b.pos);
-  const vocab = { version: structure.version, uuids: entries.map((e) => e.uuid) };
-  vocabCache.set(editor, vocab);
-  return vocab.uuids;
-}
+// Par-titled vocabulary — uuids in doc order, rebuilt only when the
+// snapshot's STRUCTURAL version moves (block add/remove/reorder or a
+// `parTitle` flip via `blockParTitleChanged`), never on a plain keystroke
+// (task 585 — the retired `version` key moved on every content-only diff).
+// Positions are read fresh; see ./block-vocab.
+//
+// `parTitled` is `deriveParTitled(attrs)`, and only the six members of
+// TITLED_NODE_TYPES declare the attr at all (ProseMirror drops an undeclared
+// one), so the flag IS the membership test — there is no second vocabulary
+// here to drift from the set. Task 404 retired the legacy walk's three-name
+// list, which read "tex/expex par-titles are deliberately not breadcrumb
+// entries": a breadcrumb that omits the titled block you are standing in is
+// the invisibility bug by another name, and the four sibling readers were
+// widened in the same pass.
+const parTitledVocab = createBlockVocabCache((b) => b.parTitled);
 
 /** Last index in `arr` whose resolved pos is <= `p`, or -1. `posOf` must be
  *  monotonic over `arr` (doc order). */
@@ -120,7 +99,7 @@ function lastAtOrBefore<T>(
     const mid = (lo + hi) >> 1;
     const pos = posOf(arr[mid]);
     if (pos === undefined) {
-      // Entry vanished mid-snapshot (shouldn't happen — version-keyed) —
+      // Entry vanished mid-snapshot (shouldn't happen — structural-version-keyed) —
       // treat as "before" so the search stays sound and the backward walk
       // skips it.
       lo = mid + 1;

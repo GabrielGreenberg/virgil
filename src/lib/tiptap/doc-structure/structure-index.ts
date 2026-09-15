@@ -31,6 +31,7 @@ import {
   type FootnoteEntry,
   type HeadingEntry,
   type LabelEntry,
+  nextStructuralVersion,
   type StructureDiff,
 } from "./types";
 
@@ -294,6 +295,7 @@ export function buildInitial(doc: PMNode): DocStructure {
     // footnote-nested descent + `nestedInFootnoteId`. In-process sanity stamp
     // only — no persisted consumer reads it; it bumps per `applyDiff` after.
     version: 3,
+    structuralVersion: nextStructuralVersion(),
     blocks,
     headings,
     footnotes,
@@ -491,6 +493,7 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
 
   return {
     version: prev.version + 1,
+    structuralVersion: nextStructuralVersion(),
     blocks,
     headings,
     footnotes,

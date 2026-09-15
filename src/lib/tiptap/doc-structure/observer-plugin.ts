@@ -161,6 +161,7 @@ function mapStructurePositions(
   }
   return {
     version: prev.version,
+    structuralVersion: prev.structuralVersion,
     blocks,
     headings,
     footnotes,

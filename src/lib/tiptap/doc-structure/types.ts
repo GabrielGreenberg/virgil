@@ -207,8 +207,19 @@ export interface LabelEntry {
 // ---------------------------------------------------------------------------
 
 export interface DocStructure {
-  /** Monotonic — bumps on every applied diff. Use as a memoization key. */
+  /** Monotonic — bumps on every NON-EMPTY diff, INCLUDING a content-only one
+   *  (plain typing inside a uuid'd block bumps it). A memo keyed on it is
+   *  re-derived per keystroke; key on `structuralVersion` for anything that
+   *  only a structural change can alter. */
   version: number;
+  /** Moves ONLY when the index is built fresh or a STRUCTURAL diff is folded
+   *  (`diffHasStructuralEntries` — block add/remove/reorder, a `parTitle`
+   *  flip, heading/footnote/citation/label changes…); never on a content-only
+   *  keystroke and never on a position-only remap. Drawn from ONE module-wide
+   *  monotonic sequence, so a value is unique across editors and plugin-state
+   *  re-inits — a per-editor cache can never collide with a fresh index that
+   *  happens to restart the count. Task 585. */
+  structuralVersion: number;
   /** Every anchorable block keyed by UUID. */
   blocks: ReadonlyMap<string, BlockEntry>;
   /** Just the heading subset (in document order). */
@@ -234,8 +245,18 @@ export interface DocStructure {
   labels: ReadonlyMap<string, LabelEntry>;
 }
 
+/** The ONE sequence `DocStructure.structuralVersion` is drawn from (0 is
+ *  reserved for `EMPTY_STRUCTURE`). Only `buildInitial` and `applyDiff` may
+ *  call it — a position-only remap carries the value through. */
+let structuralVersionSeq = 0;
+export function nextStructuralVersion(): number {
+  structuralVersionSeq += 1;
+  return structuralVersionSeq;
+}
+
 export const EMPTY_STRUCTURE: DocStructure = {
   version: 0,
+  structuralVersion: 0,
   blocks: new Map(),
   headings: [],
   footnotes: [],
