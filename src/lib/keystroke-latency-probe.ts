@@ -1,6 +1,6 @@
 // Keystroke-latency probe — the runtime half of the typing-responsiveness
 // guardrail (companion CI guard: `src/lib/__tests__/editor-observer-guardrail.
-// test.ts`; contract in AGENTS.md "Editor-observer stability"). It measures
+// test.ts`; contract in docs/agents/laws/editor-observer-stability.md "Editor-observer stability"). It measures
 // the number the user actually feels — keydown → pixels-on-screen — plus a
 // work-attribution channel that names WHICH observer/measure sites ran on the
 // keystroke path, so a regression is attributable from the dev console.

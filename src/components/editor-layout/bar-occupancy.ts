@@ -8,7 +8,7 @@
 // >   1. PROTECTED STATUS — the data-integrity badges (save state, preservation
 // >      refusal, external change, sync conflict, mirror recovery), the running
 // >      timer, and the collapse toggle itself. Never yields. This is not a
-// >      preference: AGENTS.md ("The honesty half") makes a data-integrity
+// >      preference: docs/agents/laws/the-write-path.md ("The honesty half") makes a data-integrity
 // >      notice un-hideable by a layout preference, and the toggle is what makes
 // >      a collapse reversible.
 // >   2. TABS — Gabriel's decision (2026-08-19): "text tabs should occlude the

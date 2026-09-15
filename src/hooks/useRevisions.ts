@@ -309,7 +309,7 @@ export function useRevisions(
    * `status` and `appliedChange` deliberately do NOT travel — an applied
    * suggestion's `appliedChange` binds a live range in the SOURCE paper's
    * `.tex`, so a copy claiming `applied` here would offer Keep/Revert over a
-   * splice this document does not have (AGENTS.md, "The lifecycle half").
+   * splice this document does not have (docs/agents/laws/capture-schema-symmetry.md, "The lifecycle half").
    */
   const addCommentFromSeed = useCallback(
     (

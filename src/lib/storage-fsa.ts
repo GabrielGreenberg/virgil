@@ -598,7 +598,7 @@ export async function readSidecarIfExists<T>(
  *
  * tex-write-exempt: writes a `virgil/*.json` sidecar, never the `.tex`. Its own
  * preservation authority is `mutateSidecar` — a read-modify-MERGE computed
- * inside this same critical section (AGENTS.md "The sidecar half") — which is a
+ * inside this same critical section (docs/agents/laws/cross-window-store-stability.md "The sidecar half") — which is a
  * different guarantee from a word-mass gate and the right one for a JSON
  * document with several writers. The bundle path's `snapshotPriorBundle` copies
  * `virgil.json` alongside the `.tex`, so the forensic net does reach here.

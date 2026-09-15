@@ -287,7 +287,7 @@ describe("task 454 — the compile has a voice", () => {
 
   it("keeps each document's progress separate", async () => {
     // The service is a module singleton shared by every mounted EditorPane
-    // (AGENTS.md, "Per-doc services under multi-pane keep-alive"). A progress
+    // (docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md, "Per-doc services under multi-pane keep-alive"). A progress
     // slot rather than a registry would render doc A's compile in doc B's pane.
     passQueue = [{ kind: "ok" }];
     const svc = new CompileService();

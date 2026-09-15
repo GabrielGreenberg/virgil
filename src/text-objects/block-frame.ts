@@ -165,7 +165,7 @@ export interface BlockFrame {
    * resting position is clamped there and its hit/hover halo is capped there
    * (`handle-layout.ts#resolveHandleLane`). That is the LEFT margin's reading
    * of the lane law the right margin already states (`resolveRightLane`,
-   * AGENTS.md → "The ordering half").
+   * docs/agents/laws/editor-geometry.md → "The ordering half").
    *
    * Reserved per ROW rather than app-wide, and the gate is a KIND
    * ({@link FOLD_CHEVRON_NODE_TYPES}) rather than a DOM probe, for the reason

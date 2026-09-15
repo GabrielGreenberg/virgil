@@ -3,7 +3,7 @@
  * payload has when it crosses from one editor into another, and the reason
  * neither can be left to the container fit.
  *
- * `AGENTS.md` ("The move half", rule 4) states the first: *"A payload arrives
+ * `docs/agents/laws/capture-schema-symmetry.md` ("The move half", rule 4) states the first: *"A payload arrives
  * in the target's vocabulary or not at all."* Until this module that law was
  * enforced in exactly ONE place — a private helper inside `fitNodesAtInsert`
  * — reachable only by going through the container FIT. Two splices are

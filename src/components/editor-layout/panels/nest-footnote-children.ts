@@ -9,7 +9,7 @@
  * plumbing: it does NO doc walk. The host derives the
  * `citationId → footnoteId` map from the snapshot under a structural gate
  * (`useStructuralRevisions().citations`), so it never runs on a plain keystroke
- * (keystroke sanctity — see AGENTS.md "Card-source derivation").
+ * (keystroke sanctity — see docs/agents/laws/keystroke-sanctity.md "Card-source derivation").
  *
  * The transform is intentionally NOT containment: a nested cite stays a
  * STANDALONE omni item (it keeps cascading as its own card, sharing its host

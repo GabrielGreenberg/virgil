@@ -1,6 +1,6 @@
 // Window-resize guardrail — the FOURTH grep-allowlist sibling (after
 // keystroke-subscriber, scroll-reposition, and pane-drag), covering the
-// continuous-layout-gesture class from task 317 (doctrine: AGENTS.md
+// continuous-layout-gesture class from task 317 (doctrine: docs/agents/laws/layout-gesture-stability.md
 // "Layout-gesture stability").
 //
 // The law: *a continuous layout gesture — a pane-divider drag or an OS window
@@ -265,7 +265,7 @@ describe("window-resize guardrail — detector fixtures", () => {
   it("does not flag a file that only MENTIONS the pattern in comments", () => {
     const commentOnly = `
       // Never window.addEventListener("resize", measure) without a park —
-      // see AGENTS.md "Layout-gesture stability".
+      // see docs/agents/laws/layout-gesture-stability.md "Layout-gesture stability".
       export function ok() { return 1; }
     `;
     expect(detectResizeListener(commentOnly)).toBe(false);

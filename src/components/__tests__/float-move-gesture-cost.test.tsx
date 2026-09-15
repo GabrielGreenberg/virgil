@@ -672,7 +672,7 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
     const region = moveBranch();
     // `commitPos` is the undock edge (once per gesture, and the drag's one
     // legitimate layout change). A bare `setPos(` here is the per-frame-commit
-    // bug class AGENTS.md "Pane-drag stability" exists to kill.
+    // bug class docs/agents/laws/pane-drag-stability.md "Pane-drag stability" exists to kill.
     expect(region.includes("setPos(")).toBe(false);
     expect(region.includes("scheduleTranslate()"), "the shell moves by transform").toBe(true);
   });

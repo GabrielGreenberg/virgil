@@ -2619,7 +2619,7 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
  * unconditional `"ok"` on the stated ground that "a mark is harmless on ANY
  * block … on a `marks: ""` codeBlock it's a near-no-op". Harmless it is; but a
  * cell that is enabled, clickable and CANNOT DO ANYTHING is the false-affordance
- * class (`AGENTS.md` → "what the hover OFFERS is what the commit ACCEPTS"), and
+ * class (`docs/agents/laws/capture-schema-symmetry.md` → "what the hover OFFERS is what the commit ACCEPTS"), and
  * the markless verbatim blocks (`codeBlock` / `latexComment`, `marks: ""`) are
  * exactly where all five sat lit and inert. Read from the schema
  * (`allowsMarkType`) — not a list of block names — so a future verbatim kind, or

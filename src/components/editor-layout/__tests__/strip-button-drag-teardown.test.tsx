@@ -13,7 +13,7 @@
 //     trailing `pointerup`, so without a cancel handler the ghost is stranded.
 //   - unmount mid-drag — no pointerup fires either; the unmount effect reclaims.
 //
-// Task 439 pins the rest of the law (AGENTS.md → "Pane-drag stability": a
+// Task 439 pins the rest of the law (docs/agents/laws/pane-drag-stability.md → "Pane-drag stability": a
 // bespoke gesture inherits COALESCE, SNAPSHOT, COMMIT ONCE and the two POINTER
 // INVARIANTS, and IMPORTS the invariants rather than re-deriving them):
 //   - a right/middle press arms nothing, so it can neither toggle the panel nor

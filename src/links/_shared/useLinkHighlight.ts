@@ -140,7 +140,7 @@ export function useLinkHighlight({
   //    shape the bus reports, so `onAnyChange` is what puts it back.
   //
   // `onAnyChange` is `emitCount`-gated: typing N plain characters fires it ZERO
-  // times (AGENTS.md, "Keystroke sanctity"). The sweep is O(archived) and runs
+  // times (docs/agents/laws/keystroke-sanctity.md, "Keystroke sanctity"). The sweep is O(archived) and runs
   // only off that channel or a prop change.
   //
   // Residual, stated: a MARK-ATTRS re-stamp (a card-kind morph rewriting

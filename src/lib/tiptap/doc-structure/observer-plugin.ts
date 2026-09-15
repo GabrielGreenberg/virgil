@@ -49,7 +49,7 @@ interface PluginState {
    *  caches key off it). */
   structure: DocStructure;
   /** StepMaps accumulated since `structure` was last materialized. The
-   *  keystroke-path invariant (AGENTS.md "Keystroke sanctity"): a
+   *  keystroke-path invariant (docs/agents/laws/keystroke-sanctity.md "Keystroke sanctity"): a
    *  structurally-null tx APPENDS here — O(steps), zero entity iteration,
    *  zero Map clones — and the O(entities) remap runs lazily at
    *  consumer-read time (`readDocStructure`), which is RAF/user-paced,

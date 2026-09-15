@@ -59,7 +59,7 @@
  *
  * O(the block's text), and only on a MATCH: an `InputRule` handler runs after
  * its `find` has already matched, so this never touches the ordinary keystroke
- * path (AGENTS.md → "Keystroke sanctity"). Nothing here walks the document.
+ * path (docs/agents/laws/keystroke-sanctity.md → "Keystroke sanctity"). Nothing here walks the document.
  */
 
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";

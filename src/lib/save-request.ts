@@ -30,7 +30,7 @@
  * / `registerRecoveryActions` already have, keyed per document for the same
  * reason they are: N `EditorPane`s are mounted at once under multi-doc
  * keep-alive, so "the current doc" is not a module-level fact
- * (AGENTS.md → "Per-doc services under multi-pane keep-alive"). Each entry
+ * (docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md → "Per-doc services under multi-pane keep-alive"). Each entry
  * disposes identity-guarded, so an evicted pane can never null out a live one.
  */
 

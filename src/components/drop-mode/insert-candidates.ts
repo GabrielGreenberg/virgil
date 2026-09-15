@@ -33,7 +33,7 @@
  *    the hit-test picked, so the user was SHOWN the level and could not CHOOSE
  *    it.
  *  - **F3 — a refused position still painted an inviting bar** and said nothing
- *    on release (`AGENTS.md`, "The feedback half" / "The proxy half").
+ *    on release (`docs/agents/laws/capture-schema-symmetry.md`, "The feedback half" / "The proxy half").
  *
  * …and a fifth, which 416 left standing because its own harness could not
  * represent it (task 481 — audit 457, Gabriel's seed symptom 2, *"weird gaps
@@ -91,7 +91,7 @@
  * level per payload node. No doc walk, no transaction, no `planDrop`. The
  * pre-416 path read ONE rect; this reads one per level, and that is the whole
  * increase. Everything here runs on the frame-coalesced pass, never per raw
- * pointer event (`AGENTS.md`, "The content half").
+ * pointer event (`docs/agents/laws/pane-drag-stability.md`, "The content half").
  *
  * RESIDUAL, stated rather than implied: the filter runs rungs 1 and 2 of the
  * fit and NOT rung 3 (the empirical `bareInsertIsSafe` probe, which builds a

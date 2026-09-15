@@ -1,0 +1,11 @@
+<!-- last-verified: 3a8f4892 2026-09-15 -->
+<!-- derives-from: AGENTS.md#laws -->
+
+# Editor-observer stability
+
+> **No deep MutationObserver (`subtree`/`characterData`) over editor content, ever** — a characterData MO fires as a pre-paint microtask on EVERY keystroke, and one that reads layout (`scrollHeight`/`getBoundingClientRect`) forces a full-document layout right after the text mutation; one that then writes styles dirties layout AGAIN (measured ~30 ms per full-page relayout at ~320 blocks — the old editor-scrollbar MO paid this double-forced-layout per keystroke, the "typing feels sticky" class). Geometry belongs to **ResizeObservers** (post-layout delivery, ≤1/frame, only on real size change) and structure to the **DocStructureBus** — and an RO callback must be **read-before-write with equality bails** on every write (CSS var or React state), so it can't force mid-frame layout or feedback-loop on its own writes (var write → observed element resizes → RO fires → equal values → zero writes → stop).
+
+Two guards enforce it (the same probe + grep-allowlist pattern as the laws above):
+
+- **Runtime probe** — `window.__keystrokeStats()` ([src/lib/keystroke-latency-probe.ts](../../../src/lib/keystroke-latency-probe.ts)) measures keydown→paint latency (Event Timing API, sub-16 ms keystrokes counted honestly in p50/p95) and, via its work-attribution channel (`recordKeystrokeWork(siteId)`), names WHICH observer/measure sites ran on each keystroke. A healthy plain keystroke attributes **zero** fires; a wrap-changing keystroke at most one per site. `window.__keystrokeStatsReset()` between scenarios.
+- **Grep-allowlist test** — [src/lib/\_\_tests\_\_/editor-observer-guardrail.test.ts](../../../src/lib/__tests__/editor-observer-guardrail.test.ts) flags every `new MutationObserver` with `subtree`/`characterData: true` (allowlist `PERMITTED_DEEP_MUTATION_OBSERVERS` — currently only the Outline panel's own-DOM measure) and every `new ResizeObserver` (allowlist `PERMITTED_RESIZE_OBSERVERS`), each entry carrying a one-line bounded/equality-bailed justification. A new unlisted observer fails CI. Keep this prose and both allowlists in sync — same discipline as the other two laws.

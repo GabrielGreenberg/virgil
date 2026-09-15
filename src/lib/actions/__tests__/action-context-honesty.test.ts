@@ -16,7 +16,7 @@
  * a value nothing produced or consumed — which is exactly what made it read
  * as load-bearing.
  *
- * This is the "dead SSOT" law of AGENTS.md ("A registry earns its name by
+ * This is the "dead SSOT" law of docs/agents/laws/a-registry-earns-its-name-by-being-read.md ("A registry earns its name by
  * being read") in its FIELD tense rather than its export tense: the
  * `link-surface-honesty` census asks whether a published symbol is CALLED,
  * and structurally cannot see a declared field that is written but never read.

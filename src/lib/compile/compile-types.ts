@@ -90,7 +90,7 @@ export interface CompileInput {
    * The document this compile belongs to. REQUIRED rather than optional: the
    * service is a module singleton shared by every mounted `EditorPane`, so a
    * progress record with no owner would be rendered by whichever pane read it
-   * (AGENTS.md, "Per-doc services under multi-pane keep-alive"). Task 454.
+   * (docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md, "Per-doc services under multi-pane keep-alive"). Task 454.
    */
   docId: string;
 }

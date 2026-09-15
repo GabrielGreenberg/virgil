@@ -138,7 +138,7 @@ function emit() {
 
 // A peer window's tick must reach this window, or its snapshot goes stale and
 // its next write clobbers the peer's from a stale base — the whole reason this
-// contract has one home (AGENTS.md, "Cross-window store stability").
+// contract has one home (docs/agents/laws/cross-window-store-stability.md, "Cross-window store stability").
 subscribeToStorageKey(STORAGE_KEY, () => {
   current = readFromStorage();
   emit();

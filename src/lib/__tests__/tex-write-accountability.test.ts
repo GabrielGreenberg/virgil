@@ -24,7 +24,7 @@
 //
 // The obvious census asks "which declarations mention `texFilename`?" — a hand
 // list wearing a regex's clothes, and one that this repo's own history says
-// will be missing a name (AGENTS.md, "The default half"). `writeTemplateFiles`
+// will be missing a name (docs/agents/laws/a-registry-earns-its-name-by-being-read.md, "The default half"). `writeTemplateFiles`
 // writes a `.tex` and never spells the word. So the needle is the WRITE call
 // itself, which between the two backends is every text write either makes — and
 // the accountability question is then asked of ALL of them. The ones that write
