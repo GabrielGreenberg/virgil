@@ -1115,6 +1115,11 @@ export function createEditorGeometryService(
     hostEl = host;
 
     const root = resolveRoot();
+    // One engine owns exactly one IO + one RO (task 586). A prime that runs
+    // while a previous pair is still live would otherwise orphan it — the old
+    // observers keep delivering into this engine's closures forever.
+    intersectionObserver?.disconnect();
+    resizeObserver?.disconnect();
     intersectionObserver = new IntersectionObserver(onIntersection, {
       root,
       rootMargin: `${NEAR_ZONE_PX}px 0px ${NEAR_ZONE_PX}px 0px`,
@@ -1184,11 +1189,20 @@ export function createEditorGeometryService(
     // Editor may already be ready when the engine starts; if not, wait for
     // `create`. RAF-defer prime so the DOM has a chance to mount anchorable
     // elements before we query them.
+    //
+    // The deferred prime belongs to THIS start (task 586): the stop closure
+    // cancels it, and the callback re-checks that this start is still the
+    // live one. Without both, a retain → release → retain inside one frame
+    // (React StrictMode's effect double-invoke) ran the first start's prime
+    // after its stop, constructing an IO + RO that no stop ever disconnects.
     let primed = false;
+    let primeRafId = 0;
     function tryPrime() {
       if (primed) return;
       primed = true;
-      requestAnimationFrame(() => {
+      primeRafId = requestAnimationFrame(() => {
+        primeRafId = 0;
+        if (stopEngine !== thisStop) return;
         if (!editor || editor.isDestroyed) return;
         prime();
       });
@@ -1205,10 +1219,12 @@ export function createEditorGeometryService(
     geometryStatsByEditor.set(editor, service.stats);
     installProbe();
 
-    stopEngine = () => {
+    const thisStop = () => {
       stopEngine = null;
       geometryStatsByEditor.delete(editor);
       editor.off("create", tryPrime);
+      if (primeRafId) cancelAnimationFrame(primeRafId);
+      primeRafId = 0;
       unsubBus?.();
       disposeFontReady();
       recomputePark?.dispose();
@@ -1245,6 +1261,7 @@ export function createEditorGeometryService(
       coordsMemo = null;
       coordsMemoDoc = null;
     };
+    stopEngine = thisStop;
   }
 
   const service: EditorGeometryService = {
