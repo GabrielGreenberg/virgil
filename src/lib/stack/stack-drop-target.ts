@@ -45,16 +45,42 @@ export function useStackDropTarget(): boolean {
 }
 
 /**
- * Cached viewport rect of the StackIcon, updated by the icon component
- * via a ResizeObserver. The FloatingPanel hit-test reads this each frame
- * (cheap pure-data lookup) instead of querying the DOM.
+ * Cached viewport rect of the StackIcon. The FloatingPanel hit-test and the
+ * content-lift hit-test read this each frame (a cheap pure-data lookup) instead
+ * of querying the DOM.
+ *
+ * OWNER-KEYED (task 589). The slot is singular because the Stack's chrome is
+ * mounted once (`StackChromeHost`) — but the writer's cleanup used to clear it
+ * unconditionally, and while the icon was rendered per `EditorPane` that made an
+ * evicted warm pane erase the LIVE icon's rect: `isOverStackIcon` answered
+ * `false` from then on, so float-drag and content-lift capture onto the Stack
+ * silently stopped working until the next window resize re-published. Keying the
+ * slot makes "a departing owner removes only its OWN entry" a property of the
+ * module rather than of how many icons happen to be mounted.
  */
 let iconRect: { left: number; top: number; right: number; bottom: number } | null = null;
+let iconRectOwner: object | null = null;
 
 export function setStackIconRect(
+  owner: object,
   rect: { left: number; top: number; right: number; bottom: number } | null,
 ) {
+  if (rect === null) {
+    // Clearing is only ever the CURRENT owner's to do. A stale owner tearing
+    // down after a newer icon published is a no-op, not a global erase.
+    if (iconRectOwner !== owner) return;
+    iconRect = null;
+    iconRectOwner = null;
+    return;
+  }
   iconRect = rect;
+  iconRectOwner = owner;
+}
+
+/** TEST-ONLY: forget the rect and its owner. */
+export function __resetStackIconRect(): void {
+  iconRect = null;
+  iconRectOwner = null;
 }
 
 /** True when the cursor falls within the icon's circular hit area. */

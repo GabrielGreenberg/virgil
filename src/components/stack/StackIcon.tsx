@@ -9,15 +9,21 @@
  * Pinned via `position: fixed; bottom; left` — viewport-anchored, never
  * follows page scroll. Visual style reads from Virgil design tokens so
  * the icon belongs to the same material family as floating cards.
+ *
+ * MOUNTED ONCE, by `StackChromeHost` (task 589) — never per `EditorPane`. It
+ * portals to `document.body`, which escapes the keep-alive wrapper's
+ * `display:none`, so a per-pane mount put one identical button per warm pane at
+ * the same fixed spot and let an evicted pane's teardown erase the one global
+ * icon rect. It therefore takes NO per-doc props: the doc that owns a capture is
+ * resolved from the terminal registry at the GESTURE (`getStackTerminal()`).
  */
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
 import { MIME_TEXT_INSERT } from "@/lib/marginalia";
-import type { Editor } from "@tiptap/react";
 import { addStackItem } from "@/hooks/useStack";
-import type { StackBibCtx } from "@/lib/stack/bib-carry";
+import { getStackTerminal } from "@/lib/stack/stack-terminal";
 import {
   parkDuringLayoutGesture,
   useLayoutGestureActive,
@@ -27,18 +33,6 @@ import { LAYOUT_SITE_STACK_ICON } from "@/lib/layout-gesture-probe";
 export interface StackIconProps {
   open: boolean;
   onToggle: () => void;
-  /** Main editor — needed for HTML5-drag-into-stack handlers (text
-   *  selections, paragraph captures from the editor's own grip). */
-  mainEditor: Editor | null;
-  /** Source attribution for new stack items. */
-  source: { docId: string | null; docTitle?: string };
-  /** The SOURCE doc's bibliography resolvers (task 235). REQUIRED — this
-   *  component is a stack PRODUCER, and every producer answers the bib
-   *  question at the add door so a `\cite` riding the dropped content isn't
-   *  dangling after a cross-doc pull. An HTML5 `MIME_TEXT_INSERT` payload is
-   *  exactly the family that never goes through `lib/stack/snapshot.ts`, which
-   *  is why the obligation sits on `addStackItem` rather than in a helper. */
-  bibCtx: StackBibCtx;
 }
 
 /** Module-constant so `useLayoutGestureActive`'s snapshot memo keys on one
@@ -50,13 +44,7 @@ const ICON_DIAMETER = 56;
 export const STACK_INSET_LEFT = 12;
 export const STACK_INSET_BOTTOM = 12;
 
-export function StackIcon({
-  open,
-  onToggle,
-  mainEditor,
-  source,
-  bibCtx,
-}: StackIconProps) {
+export function StackIcon({ open, onToggle }: StackIconProps) {
   const [html5Hover, setHtml5Hover] = useState(false);
   const [hover, setHover] = useState(false);
   const stackTarget = useStackDropTarget();
@@ -76,16 +64,23 @@ export function StackIcon({
   // and suppressing hover for them would be a decision nobody made.
   const contentDragActive = useLayoutGestureActive(CONTENT_GESTURE);
   const ref = useRef<HTMLButtonElement | null>(null);
+  // Identity of THIS icon in the module-level rect slot. Since task 589 the
+  // chrome is mounted once (`StackChromeHost`), so there is only ever one — but
+  // the slot is owner-checked anyway, because "my cleanup erases the global
+  // value" is exactly the defect this task retired, and an unowned `null` on
+  // teardown is one re-introduced second mount away from killing capture again.
+  const rectOwner = useRef<object>({});
 
   // Publish the icon's viewport rect for the FloatingPanel hit-test.
   // Viewport-anchored, so the rect only changes on resize.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const owner = rectOwner.current;
     const update = () => {
       const h = window.innerHeight;
       const left = STACK_INSET_LEFT;
       const top = h - STACK_INSET_BOTTOM - ICON_DIAMETER;
-      setStackIconRect({
+      setStackIconRect(owner, {
         left,
         top,
         right: left + ICON_DIAMETER,
@@ -102,7 +97,7 @@ export function StackIcon({
     return () => {
       window.removeEventListener("resize", onResize);
       park.dispose();
-      setStackIconRect(null);
+      setStackIconRect(owner, null);
     };
   }, []);
 
@@ -131,7 +126,13 @@ export function StackIcon({
     e.preventDefault();
     e.stopPropagation();
     setHtml5Hover(false);
-    if (!mainEditor) return;
+    // Resolved AT DROP TIME, not captured at render: the chrome is mounted once
+    // above the keep-alive slots, so which doc owns the capture is a question
+    // only the gesture can answer (task 589). The bib obligation (task 235)
+    // rides the same resolution — a `\cite` in the payload carries the SOURCE
+    // doc's entry, never the last-rendered pane's.
+    const terminal = getStackTerminal();
+    if (!terminal || !terminal.getEditor()) return;
     const insertData = e.dataTransfer.getData(MIME_TEXT_INSERT);
     if (insertData) {
       try {
@@ -147,12 +148,12 @@ export function StackIcon({
           addStackItem({
             id: crypto.randomUUID(),
             capturedAt: new Date().toISOString(),
-            source,
+            source: terminal.getSource(),
             payload: {
               kind: "paragraph",
               node: node as unknown as import("@tiptap/react").JSONContent,
             },
-          }, bibCtx);
+          }, terminal.getBibCtx());
         }
       } catch {
         /* ignore */

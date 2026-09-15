@@ -65,6 +65,7 @@ import PrintDialog from "./PrintDialog";
 import BugReportWindow from "./BugReportWindow";
 import FontsDialog from "./FontsDialog";
 import { SpellSuggestionMenu } from "./SpellSuggestionMenu";
+import { StackChromeHost } from "./stack/StackChromeHost";
 import type { AiRequest } from "@/lib/types";
 import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
@@ -3608,6 +3609,14 @@ export default function EditorLayout() {
             </DocKeepAliveSlot>
           );
         })}
+
+      {/* The ONE Stack chrome (task 589). The icon + strip are app-global —
+          one localStorage envelope, one viewport-fixed button, one open state —
+          so they are mounted HERE, above the keep-alive slots and beside the
+          Library/Reader surfaces, rather than once per `EditorPane`. Each pane
+          publishes only its per-doc terminal; this host renders nothing until
+          some mounted pane wants the chrome (viewPrefs present, not zen). */}
+      <StackChromeHost />
 
       {/* Main area */}
       {activePane === "paper" && currentPaperCitekey ? (

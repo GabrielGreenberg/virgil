@@ -111,9 +111,13 @@ vi.mock("@/lib/editor-geometry/use-viewport-frame", () => ({
 import { LiftHost, useLiftHost, type LiftHostApi } from "@/text-objects/LiftHost";
 import {
   setStackIconRect,
+  __resetStackIconRect,
   setStackDropTarget,
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
+
+/** Stand-in for the icon component's own rect-slot owner (task 589). */
+const RECT_OWNER = {};
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { StackIcon } from "@/components/stack/StackIcon";
 import {
@@ -150,14 +154,14 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => {
     rafQueue = [];
   });
-  setStackIconRect(ICON);
+  setStackIconRect(RECT_OWNER, ICON);
 });
 
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
   anchorDom.current = null;
-  setStackIconRect(null);
+  __resetStackIconRect();
   setStackDropTarget(false);
   vi.unstubAllGlobals();
 });
@@ -436,13 +440,7 @@ describe("the icon's own chrome speaks once, and truly (task 456)", () => {
   /** The rendered fill of the portaled button. */
   function mountIcon() {
     render(
-      <StackIcon
-        open={false}
-        onToggle={() => undefined}
-        mainEditor={null}
-        source={{ docId: "d1" }}
-        bibCtx={{ getBibEntry: () => undefined, getAnnotation: () => undefined }}
-      />,
+      <StackIcon open={false} onToggle={() => undefined} />,
     );
     const btn = document.querySelector<HTMLElement>('[data-stack-icon-hit="true"]');
     if (!btn) throw new Error("the stack icon did not mount");

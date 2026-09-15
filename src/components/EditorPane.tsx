@@ -204,9 +204,12 @@ import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCard
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
 import type { StackPullApi } from "./drop-mode/types";
-import { StackIcon } from "./stack/StackIcon";
-import { StackStrip } from "./stack/StackStrip";
-import { useStack, addStackItem } from "@/hooks/useStack";
+import { addStackItem } from "@/hooks/useStack";
+import {
+  openStackStrip,
+  registerStackTerminal,
+  type StackTerminal,
+} from "@/lib/stack/stack-terminal";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
@@ -1847,11 +1850,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const recentlyAdded = useRecentlyAddedTracker();
 
   // ── Stack (visual clipboard) ────────────────────────────────────
-  // Window-global; `useStack` reads/writes a versioned envelope in
-  // localStorage. The strip is collapsed by default; click the icon to
-  // toggle.
-  const stack = useStack();
-  const [stackOpen, setStackOpen] = useState(false);
+  // Window-global in every respect: one localStorage envelope, one cached icon
+  // rect, one open/closed strip. Its CHROME is therefore mounted once, above
+  // the keep-alive slots (`StackChromeHost`), and NOT here — a portal escapes
+  // its React parent's DOM, so a per-pane icon was neither hidden by the warm
+  // slot's `display:none` nor safe to tear down (task 589). What this pane owns
+  // is the per-doc half: the terminal it publishes below.
   const stackSourceRef = useRef<{ docId: string | null }>({ docId: docId ?? null });
   stackSourceRef.current = { docId: docId ?? null };
   // The SOURCE doc's bibliography, for the stack-add door (task 235). Every
@@ -1871,27 +1875,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const stackBibCtxRef = useRef<StackBibCtx>(stackBibCtx);
   stackBibCtxRef.current = stackBibCtx;
-  // Click-away: close the strip when the user mousedowns outside both
-  // the icon and the strip. Effect is skipped while the strip is
-  // closed to avoid a persistent document listener.
+  // Publish this pane's Stack terminal — the per-doc answers the ONE mounted
+  // Stack chrome asks for. Getters over refs, so the entry's identity is stable
+  // and the registration effect re-runs only when the CHROME GATE flips
+  // (viewPrefs arriving, zen toggling): never per render, never per keystroke.
+  // The disposer is owner-checked inside the registry, so an evicted warm pane
+  // removes only its own entry.
+  const stackWantsChrome = !!viewPrefs && !viewPrefs.zenMode;
+  const stackTerminalToken = useRef<object>({});
   useEffect(() => {
-    if (!stackOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (
-        target.closest('[data-stack-icon-hit="true"]') ||
-        target.closest('[data-stack-strip="true"]')
-      ) {
-        return;
-      }
-      setStackOpen(false);
+    const token = stackTerminalToken.current;
+    const terminal: StackTerminal = {
+      getEditor: () => innerRef.current?.getEditor() ?? null,
+      getSource: () => stackSourceRef.current,
+      getBibCtx: () => stackBibCtxRef.current,
+      wantsChrome: stackWantsChrome,
     };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [stackOpen]);
+    return registerStackTerminal(token, terminal);
+  }, [stackWantsChrome]);
   // The `virgil-stack-drop` handler lives below, right after `popoutsDeps`
   // is declared — it resolves the dropped float's `Floatable.snapshotForStack`
   // via `captureFloatToStack(key, popoutsDeps, …)`, so it must be declared
@@ -5206,7 +5207,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // The bib carry is resolved at the ADD door for every payload family
       // alike (task 235) — a card, a text slice, a paragraph, a heading.
       addStackItem(item, stackBibCtxRef.current);
-      setStackOpen(true);
+      openStackStrip();
       return true;
     },
     [popoutsDeps],
@@ -5904,26 +5905,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               stack={dropStackApi}
             />
           )}
-          {/* Stack icon + popout strip (bottom-left of the editor pane).
-              Anchored to editorPaneRootRef via ResizeObserver inside
-              each component. Hidden in zen mode to keep the canvas
-              calm. */}
-          {viewPrefs && !viewPrefs.zenMode && (
-            <>
-              <StackIcon
-                open={stackOpen}
-                onToggle={() => setStackOpen((v) => !v)}
-                mainEditor={editor}
-                source={{ docId: docId ?? null }}
-                bibCtx={stackBibCtx}
-              />
-              <StackStrip
-                open={stackOpen}
-                items={stack.items}
-                onRemove={stack.remove}
-              />
-            </>
-          )}
+          {/* Stack icon + strip are NOT rendered here. They are app-global
+              chrome (one envelope, one viewport-fixed icon, one open strip) and
+              are mounted once by `StackChromeHost` above the keep-alive slots;
+              this pane publishes only its terminal (see the registration near
+              `stackBibCtx`). Task 589 — a per-pane portal to <body> gave N warm
+              panes N stacked icons, and an evicted pane's teardown erased the
+              one global icon rect, killing capture until a window resize. */}
           {/* Per-doc popouts — card floats (notes, footnotes, citations, …)
               AND text-object floats (paragraph / heading / example blocks),
               dispatched through AF's unified `FloatHost`. Each entry in
