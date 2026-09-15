@@ -22,12 +22,22 @@
  * standalone `RichTextField`, and every SSR render simply have no checker.
  */
 
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { BibEntry } from "@/lib/types";
 import { buildAcceptedWords, type AcceptedWords } from "@/lib/spell/accepted-words";
 import {
   ensureChecked,
   knownSync,
+  onSpellAvailabilityChange,
+  spellAvailabilityEpoch,
   spellEngineAvailable,
   suggestFor,
 } from "@/lib/spell/spell-client";
@@ -99,6 +109,26 @@ export function SpellcheckProvider({
   const addPaperWordRef = useRef(addPaperWord);
   addPaperWordRef.current = addPaperWord;
 
+  // The push half (task 580). A STATE cell for the reason the port is one.
+  const [invalidateListeners] = useState(() => new Set<() => void>());
+  // A render-derived token change is PUSHED once it has committed, so the
+  // decorator re-checks without waiting for an unrelated transaction. The
+  // refs above already hold the new values, so the plugin's compare sees it.
+  useEffect(() => {
+    for (const fn of [...invalidateListeners]) fn();
+  }, [versionToken, invalidateListeners]);
+
+  // `version()` folds the client's availability EPOCH into the render token,
+  // so an engine recovery — which no render and no transaction describes —
+  // is a version change, i.e. one whole-document re-check. The pair is cached
+  // so an unchanged pair answers the SAME object (the plugin compares with
+  // `Object.is`). A mutable box, not a closure `let`, for the lint.
+  const [versionCache] = useState(() => ({
+    token: null as object | null,
+    epoch: -1,
+    value: {} as object,
+  }));
+
   // A STATE cell, not a ref: the port and its cell must be stable for the life
   // of the provider (an extension list built once closes over the cell), and a
   // `useRef(...).current` read during render is exactly what the lint above
@@ -107,7 +137,24 @@ export function SpellcheckProvider({
   const [port] = useState<SpellcheckPort>(() => ({
     enabled: () => enabledRef.current && spellEngineAvailable(),
     autocorrect: () => autocorrectRef.current,
-    version: () => versionRef.current,
+    version: () => {
+      const token = versionRef.current;
+      const epoch = spellAvailabilityEpoch();
+      if (versionCache.token !== token || versionCache.epoch !== epoch) {
+        versionCache.token = token;
+        versionCache.epoch = epoch;
+        versionCache.value = {};
+      }
+      return versionCache.value;
+    },
+    onInvalidate: (listener) => {
+      invalidateListeners.add(listener);
+      const offAvailability = onSpellAvailabilityChange(listener);
+      return () => {
+        invalidateListeners.delete(listener);
+        offAvailability();
+      };
+    },
     isAccepted: (word) => acceptedRef.current.has(word),
     knownSync,
     ensure: ensureChecked,

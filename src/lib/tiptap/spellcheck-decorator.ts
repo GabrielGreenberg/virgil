@@ -462,14 +462,37 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             }
           };
 
-          sync();
+          // The PUSH half of the invalidation channel (task 580): an engine
+          // recovery, a preference flip or a dictionary edit with nobody typing
+          // reaches `sync` without waiting for a transaction. Re-subscribed if
+          // the ref ever holds a different port.
+          let subscribedPort: SpellcheckPort | null = null;
+          let unsubscribe: (() => void) | null = null;
+          const ensureSubscribed = () => {
+            const port = portRef.current;
+            if (port === subscribedPort) return;
+            unsubscribe?.();
+            unsubscribe = null;
+            subscribedPort = port;
+            if (port) unsubscribe = port.onInvalidate(() => sync());
+          };
+
+          const syncAndSubscribe = () => {
+            ensureSubscribed();
+            sync();
+          };
+
+          syncAndSubscribe();
 
           return {
-            // [cost: O(1) — a version compare, a dirty-length read and a timer
-            // reset. The check itself is the debounced callback.]
-            update: sync,
+            // [cost: O(1) — a port identity compare, a version compare, a
+            // dirty-length read and a timer reset. The check itself is the
+            // debounced callback.]
+            update: syncAndSubscribe,
             destroy() {
               destroyed = true;
+              unsubscribe?.();
+              unsubscribe = null;
               if (timer !== null) clearTimeout(timer);
               // A menu open over THIS view must not outlive it.
               closeSpellMenu(view);

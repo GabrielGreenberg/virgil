@@ -70,6 +70,7 @@ function makePort(): SpellcheckPortRef {
     enabled: () => true,
     autocorrect: () => false,
     version: () => 0,
+    onInvalidate: () => () => {},
     isAccepted: () => false,
     knownSync: (w) => verdicts.get(w),
     ensure: async (words) => {

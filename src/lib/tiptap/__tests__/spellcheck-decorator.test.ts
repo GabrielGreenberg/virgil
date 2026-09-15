@@ -64,12 +64,15 @@ interface FakePort extends SpellcheckPort {
   accepted: Set<string>;
   bump(): void;
   setEnabled(on: boolean): void;
+  /** Push an invalidation, as the provider does on an engine recovery. */
+  invalidate(): void;
 }
 
 function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
   const verdicts = new Map<string, boolean>();
   let version = 0;
   let on = true;
+  const listeners = new Set<() => void>();
   const port: FakePort = {
     ensureCalls: 0,
     accepted: new Set<string>(),
@@ -77,6 +80,13 @@ function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
     // task 519 — the decorator is the CHECKER; the corrector is off here.
     autocorrect: () => false,
     version: () => version,
+    onInvalidate: (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    invalidate: () => {
+      for (const fn of [...listeners]) fn();
+    },
     isAccepted: (w) => port.accepted.has(w),
     knownSync: (w) => verdicts.get(w),
     ensure: async (words) => {
