@@ -10,7 +10,9 @@ import { setFocusBandMeta } from "@/lib/focus-view";
 import {
   computeSectionPathAt,
   geomBreadcrumbEnabled,
+  pushCrossedHeading,
 } from "@/lib/editor-geometry/section-path";
+import { headingLevelOf } from "@/lib/heading-types";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { linkIdSelector, linkKindSelector } from "@/links/link-dom-contract";
 import { VIEW_ONLY_CLASS } from "@/lib/view-only-chrome";
@@ -1945,8 +1947,8 @@ export default function EditorLayout() {
       doc.forEach((node, offset, index) => {
         if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
 
-        if (node.type.name === "heading" && node.attrs?.level) {
-          const level = node.attrs.level as number;
+        if (node.type.name === "heading" && headingLevelOf(node.attrs) !== null) {
+          const level = headingLevelOf(node.attrs)!; // task 587: `\part` is level 0
           // Measure where this heading is on screen
           let headingTop: number | null = null;
           try {
@@ -1962,10 +1964,7 @@ export default function EditorLayout() {
           // stack. Otherwise stop scanning — later headings haven't
           // been reached yet.
           if (headingTop <= referenceY) {
-            while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-              stack.pop();
-            }
-            stack.push({ level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
+            pushCrossedHeading(stack, { level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
             lastCrossedStack = [...stack];
             // New section scope — clear any active parTitle from the
             // previous section so we re-scan within this one.

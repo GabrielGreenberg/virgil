@@ -33,6 +33,25 @@ export const HEADING_TYPES: readonly HeadingTypeEntry[] = [
   { level: 6, name: "Subparagraph",  command: "subparagraph" },
 ] as const;
 
+/** The outermost sectioning level (`\part` = 0), DERIVED from the table.
+ *  A heading-chain walk climbs until it has pushed a heading at this level —
+ *  never until a hand-written `> 1` (task 587: that literal stopped the
+ *  breadcrumb at a `\chapter`, so a part above a chapter never showed). */
+export const OUTERMOST_HEADING_LEVEL: number = Math.min(
+  ...HEADING_TYPES.map((h) => h.level),
+);
+
+/** A heading node's level, or null when it carries none. The ONE reader of
+ *  `attrs.level` for "is this a sectioning heading?": a truthiness test
+ *  (`node.attrs?.level`) answers NO for `\part`, whose level is 0 — the
+ *  shape both legacy breadcrumb walks shipped (task 587). */
+export function headingLevelOf(
+  attrs: { level?: unknown } | null | undefined,
+): number | null {
+  const level = attrs?.level;
+  return typeof level === "number" && Number.isFinite(level) ? level : null;
+}
+
 export function headingTypeName(level: number): string {
   const clamped = Math.max(0, Math.min(level, 6));
   return HEADING_TYPES[clamped].name;
