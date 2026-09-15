@@ -11877,6 +11877,28 @@ Seven rules the pair earned:
 > attribute = "the user turned checking off"; `VIRGIL_CHECKED_ATTRS` = "Virgil
 > underlines this surface"). `checkSpelling` stays ONE control for the pair.
 
+**…and a failed load is RECOVERABLE (task 580).** Pre-580 a failure set a latch,
+the latch made the port report DISABLED, a disabled surface never asked the
+client again, and the latch's only reset lived inside a successful ask — so the
+worker's deliberate don't-cache-a-rejected-engine retry was dead code, one
+offline first-open cost the whole session, and every word asked during the
+outage was cached KNOWN forever. Three rules now, all in
+[spell-client.ts](src/lib/spell/spell-client.ts): the CLIENT owns the retry (a
+back-off probe from `SPELL_RETRY_BASE_MS` doubling to `SPELL_RETRY_CAP_MS`, plus
+the tab-return edge and `online`), never the surface, which stays handed to the
+browser throughout so a probe cannot flicker two underlines; a failure caches
+NO verdict (an unresolved word is already read as known in phase B, the one
+place that answer belongs); and every availability flip is PUBLISHED — the
+provider folds the client's epoch into `version()`, and the port's REQUIRED
+`onInvalidate` pushes it so a recovery while the user is READING runs one
+whole-document re-check with no transaction. A crashed WORKER is not a failed
+dictionary: requests `onerror` strands are answered by the main-thread engine.
+CI: [spell-engine-recovery.test.tsx](src/lib/spell/__tests__/spell-engine-recovery.test.tsx)
+drives the REAL client and provider through a failing-then-succeeding fetch,
+plus a decorator leg in `spellcheck-decorator.test.ts`. Measured by neutering:
+no retry takes 6 legs, a cached failure verdict 1, a decorator that never
+subscribes 1.
+
 **The dictionary is VENDORED, and it has to be.** `dictionary-en@4` (US
 English) reads its files with `node:fs`, so the package cannot be imported in a
 browser at all: `tools/sync-dictionary.mjs` copies the Hunspell pair into
