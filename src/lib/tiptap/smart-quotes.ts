@@ -1,4 +1,5 @@
 import { Extension, InputRule } from "@tiptap/core";
+import { rangeHoldsOnlyText } from "./typed-prose-gate";
 
 /**
  * Type-time typographic input rules: smart curly quotes and en/em dashes.
@@ -63,12 +64,15 @@ export const SmartQuotes = Extension.create({
         find: /(^|[\s([{—–—–])"$/,
         handler: ({ state, range, match }) => {
           const lead = match[1] ?? "";
+          // Task 578: replace only what the rule rewrites, and only over text.
+          if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
           state.tr.insertText(`${lead}“`, range.from, range.to);
         },
       }),
       new InputRule({
         find: /"$/,
         handler: ({ state, range }) => {
+          if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
           state.tr.insertText("”", range.from, range.to);
         },
       }),
@@ -77,6 +81,7 @@ export const SmartQuotes = Extension.create({
       new InputRule({
         find: /(?:---|–-)$/,
         handler: ({ state, range }) => {
+          if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
           state.tr.insertText(EM_DASH, range.from, range.to);
         },
       }),
@@ -84,6 +89,7 @@ export const SmartQuotes = Extension.create({
       new InputRule({
         find: /--$/,
         handler: ({ state, range }) => {
+          if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
           state.tr.insertText(EN_DASH, range.from, range.to);
         },
       }),

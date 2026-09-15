@@ -5,6 +5,7 @@ import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
 import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { rangeHoldsOnlyText } from "./typed-prose-gate";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -215,6 +216,10 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
             const blockStart = $from.start();
             const blockEnd = $from.end();
+            // Task 578: a comment is markless `text*`, so converting a paragraph
+            // that holds an inline atom (a footnote, a citation, inline math,
+            // a hard break) would DELETE it. The `%` stays a literal character.
+            if (!rangeHoldsOnlyText(state.doc, blockStart, blockEnd)) return false;
             const fullText = state.doc.textBetween(blockStart, blockEnd, "", "");
             const commentText = (fullText.startsWith("%")
               ? fullText
@@ -261,6 +266,10 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             const node = newState.doc.nodeAt(block.pos);
             if (!node || node.type !== paragraphType) continue;
             const text = node.textContent;
+            // Task 578: same door as the typed half — `textContent` omits
+            // atoms, so a paragraph holding one must never be rebuilt as a
+            // text-only comment.
+            if (!rangeHoldsOnlyText(newState.doc, block.pos + 1, block.pos + node.nodeSize - 1)) continue;
             if (text.startsWith("% ") || text === "%") {
               const commentText = text.replace(/^% ?/, "");
               changes.push({ pos: block.pos, size: node.nodeSize, text: commentText });
