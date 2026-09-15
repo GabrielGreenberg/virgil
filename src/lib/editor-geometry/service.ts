@@ -40,10 +40,7 @@ import {
   walkAnchorableBlocks,
   resolveDomForUuid,
 } from "@/lib/marginalia-blocks";
-import {
-  findEditorScrollFor,
-  findRowScroll,
-} from "@/components/editor-layout/layout-scroll";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { resolveGlyphAnchor } from "./glyph-anchor";
 import {
@@ -750,13 +747,27 @@ export function createEditorGeometryService(
   }
 
   /**
-   * Resolve the IntersectionObserver root. `findRowScroll()` returns
-   * the unified row scroll container under the current layout; if it's
-   * not mounted yet (initial render race), passing `null` falls back
-   * to the viewport which is still correct.
+   * Resolve the IntersectionObserver root: the scroll container that CONTAINS
+   * this editor (`findEditorScrollFor`, the same answer the viewport frame
+   * reads). If it's not mounted yet (initial render race), passing `null`
+   * falls back to the viewport, which is still correct.
+   *
+   * Task 584 — this used to read `findRowScroll()`, the VISIBLE pane's row.
+   * The root is captured once per prime and never re-resolved, so an engine
+   * primed while its pane was hidden observed against ANOTHER pane's scroller
+   * for the life of the pane; per the IntersectionObserver spec a target that
+   * is not a descendant of the root never intersects, so no block was ever
+   * measured. With the resolver exact there is nothing to re-resolve on the
+   * first visible refresh, so no re-prime path is added.
    */
   function resolveRoot(): Element | null {
-    return findRowScroll();
+    let dom: HTMLElement | null = null;
+    try {
+      dom = (editor.view?.dom as HTMLElement) ?? null;
+    } catch {
+      dom = null;
+    }
+    return findEditorScrollFor(dom);
   }
 
   /**

@@ -117,6 +117,26 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
     expect(offenders).toEqual([]);
   });
 
+  it("the bare visible-pane ladder is called only inside its own door (task 584)", () => {
+    // `findRowScroll()` answers "whichever pane is VISIBLE" — the right question
+    // only for a caller with NO element in hand. Every production caller holds
+    // one (an editor view, an entry), and must ask `findEditorScrollFor` /
+    // `findRowScrollFor`, which resolve the element's OWN row and fall back to
+    // the ladder only when it has none. The geometry service's IO root read
+    // the bare ladder and was captured once per prime, so a pane primed while
+    // hidden observed against another pane's scroller for its whole life.
+    // Allowlist EMPTY outside the door.
+    const SCROLL_DOOR = "components/editor-layout/layout-scroll.ts";
+    const offenders: string[] = [];
+    for (const [file, code] of CODE) {
+      if (rel(file) === SCROLL_DOOR) continue;
+      if (/\bfindRowScroll\s*\(/.test(code)) offenders.push(rel(file));
+    }
+    expect(offenders).toEqual([]);
+    // Can-see canary: the needle matches the door's own definition.
+    expect(/\bfindRowScroll\s*\(/.test(CODE.get(path.join(SRC, SCROLL_DOOR)) ?? "")).toBe(true);
+  });
+
   it("only the two doors spell a marker inside the generic resolver", () => {
     // A caller could hold the generic resolver and re-derive a named door with
     // the wrong miss policy. One named door per marker: the three column/dock
