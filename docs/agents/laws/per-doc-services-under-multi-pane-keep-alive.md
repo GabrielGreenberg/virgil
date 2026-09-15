@@ -172,3 +172,80 @@ RAW file, where both policy literals appear in the door's own header prose.
 **Owed, not claimed:** a real eyeball. The repro needs a granted authored doc
 AND a Library paper open at once, which is the FSA/multi-pane-masked class, so
 the durable proof here is the unit contract.
+
+### The GLOBAL-CHROME half: app-global chrome is MOUNTED ONCE, not once per pane
+
+The inverse reading of the same law (task 589). The rules above say what to do
+when a module-level value is per-DOCUMENT. The Stack said the opposite and was
+broken by the opposite mistake: the value is genuinely APP-GLOBAL — one
+localStorage envelope (`useStack`), one cached icon rect
+([stack-drop-target.ts](../../../src/lib/stack/stack-drop-target.ts)), one
+illuminated-ring signal — while its CHROME was rendered by every `EditorPane`.
+
+**A `createPortal` to `document.body` escapes the keep-alive wrapper.** That is
+the fact the per-pane mount got wrong. `KeepAliveSlot`'s `display:none` hides a
+subtree, and a portal is not in that subtree: N warm panes (capacity 3, plus the
+Library Reader — and `ReaderLRU` keeps several of those) each painted an
+identical `position:fixed` button at the same bottom-left spot. So:
+
+- **Capture went dead.** Each mounted `StackIcon` wrote the one module-level
+  `iconRect` and each one's cleanup set it to `null`. Evicting an LRU tail
+  (opening a 4th paper) or closing a Reader therefore erased it; the survivors'
+  publish effect has `[]` deps and never re-published. From then on
+  `isOverStackIcon` answered `false`, so `FloatingPanel` neither lit the ring nor
+  fired `virgil-stack-drop`, and `LiftHost` never captured a lifted paragraph —
+  the user dragged a card onto the Stack and it just dropped as a float. A window
+  resize repaired it, which is why it read as flaky rather than as broken. This is
+  the CLOBBER failure mode above, in a value that is not per-doc at all.
+- **The icon toggled a hidden pane's strip.** `stackOpen` was per-pane `useState`
+  while the topmost portal was the LAST-mounted pane's, so a capture opened the
+  visible pane's strip and the button could then only toggle some other pane's.
+
+The fix is not to key the chrome by pane — that is precisely the "keying a
+genuinely app-global value by pane is the same error mirrored" warning above.
+It is to **mount it once**
+([StackChromeHost](../../../src/components/stack/StackChromeHost.tsx), rendered a
+single time by `EditorLayout`, above the keep-alive slots and beside the Library
+surfaces), and to let each pane publish only the per-doc half it actually owns —
+a `StackTerminal` (editor, source attribution, bib resolvers, chrome gate) in
+[stack-terminal.ts](../../../src/lib/stack/stack-terminal.ts), with the same
+owner-token registry + identity-guarded dispose + `pickActiveByEditor` ladder
+`drop-mode/controller.ts` uses, for the same reasons.
+
+Three rules it adds:
+
+- **Resolve the owner AT THE GESTURE, not at render.** The icon's HTML5 drop door
+  calls `getStackTerminal()` inside `onDrop`. A terminal captured as a prop at
+  render would freeze at whichever pane last caused the single host to re-render —
+  which for the bib obligation (task 235) means a `\cite` carrying the WRONG
+  document's entry. Same reasoning as "bind the value to the GESTURE" above.
+- **The chrome GATE is an ANY over the registry, not the resolved terminal's
+  answer.** `someTerminalWantsChrome()` preserves exactly the aggregate semantics
+  the per-pane mount had (chrome existed if any pane had `viewPrefs && !zenMode`),
+  including the surfaces where the ladder is honestly ambiguous — PDF view, where
+  every doc slot is `display:none` and no pane wins. It is not a guess: zen is
+  uniform across doc panes (one `zenModeOn` feeds every bundle) and always `false`
+  in the Reader. Using the resolved terminal there would make the icon vanish in
+  PDF view — a decision nobody made.
+- **A singular slot still checks its owner.** `setStackIconRect(owner, rect)` now
+  clears only if the caller still holds the slot. The value stays app-global — it
+  was NOT converted to a per-pane registry — but "my teardown erases the live
+  value" is the defect this task retired, and an unchecked `null` is one
+  second mount away from reinstating it.
+
+CI:
+[stack-chrome-single-host.test.tsx](../../../src/components/stack/__tests__/stack-chrome-single-host.test.tsx)
+— a stale owner's `null` is a no-op while the current owner's still clears; a
+superseded registration's disposer removes nothing; three registered panes yield
+exactly ONE `[data-stack-icon-hit]` and one `[data-stack-strip]`; the strip's open
+state is global; the ANY gate. Plus the structural floor as a CENSUS — the
+registry was never the part that could misbehave, a second mount site is — so
+`EditorPane` may contain no `<StackIcon>`/`<StackStrip>` element and `EditorLayout`
+exactly one `<StackChromeHost>`. Neutered in four cuts (the rect owner check, the
+registry identity guard, the chrome gate, the per-pane mount), each of which
+fails its own legs.
+
+**Owed, not claimed:** a real eyeball — open four papers so the LRU evicts a
+pane, then drag a note float onto the Stack icon and confirm the ring lights and
+the item lands. Multi-pane + FSA is the masked class; the durable proof is the
+unit contract above.

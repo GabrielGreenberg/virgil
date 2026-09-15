@@ -30,9 +30,13 @@ import { render, fireEvent, cleanup, act } from "@testing-library/react";
 import FloatingPanel from "@/components/FloatingPanel";
 import {
   setStackIconRect,
+  __resetStackIconRect,
   getStackDropTarget,
   setStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
+
+/** Stand-in for the icon component's own rect-slot owner (task 589). */
+const RECT_OWNER = {};
 
 // The icon is bottom-left-anchored; these are the coords its own component
 // publishes (a 56px circle inset 12px from the viewport's left/bottom).
@@ -48,7 +52,7 @@ const HELD = { buttons: 1 };
 
 afterEach(() => {
   cleanup();
-  setStackIconRect(null);
+  __resetStackIconRect();
   setStackDropTarget(false);
   document.body.style.userSelect = "";
   document.body.style.cursor = "";
@@ -72,7 +76,7 @@ function mountFloat(cardKey: string) {
       <div data-testid="body">float body</div>
     </FloatingPanel>,
   );
-  setStackIconRect(ICON);
+  setStackIconRect(RECT_OWNER, ICON);
   return {
     header: document.querySelector<HTMLDivElement>('[data-testid="body"]')!,
     onChange,
