@@ -365,6 +365,39 @@ describe("a squiggle is a view, never document content", () => {
     expect(flagged(ed)).toEqual([]);
   });
 
+  it("a RECOVERY pushed with nobody typing re-checks the whole document (task 580)", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick teh fox.", ref);
+    await settle();
+    expect(flagged(ed)).toEqual(["teh"]);
+
+    // The engine fails: the surface is handed back to the browser.
+    port.setEnabled(false);
+    port.invalidate();
+    await settle();
+    expect(flagged(ed)).toEqual([]);
+    expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
+
+    // It recovers while the user is READING — no transaction at all. The push
+    // alone must bring the squiggles (and Virgil's ownership) back.
+    port.setEnabled(true);
+    port.invalidate();
+    await settle();
+    expect(flagged(ed)).toEqual(["teh"]);
+    expect(ed.view.dom.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("…and without the push, nothing happens until a transaction — the control", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick teh fox.", ref);
+    await settle();
+    port.setEnabled(false);
+    await settle();
+    // No push, no transaction: the stale answer stands (which is why the push
+    // channel exists at all).
+    expect(flagged(ed)).toEqual(["teh"]);
+  });
+
   it("a surface with NO port is inert — the accepting control", async () => {
     const ed = mount("The quick teh fox.", { current: null });
     await settle();
