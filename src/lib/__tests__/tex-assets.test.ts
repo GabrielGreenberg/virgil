@@ -8,6 +8,8 @@ import type { TexCacheDumpEntry } from "@/types/swiftlatex";
 // operate on a per-token Map so the tex-asset cache round-trips like real IDB.
 // ---------------------------------------------------------------------------
 const stores = new Map<symbol, Map<string, unknown>>();
+/** Task 577 — every VALUE read (a full structured clone in real IndexedDB). */
+const idbReads = { get: 0 };
 function backing(token: symbol): Map<string, unknown> {
   let m = stores.get(token);
   if (!m) {
@@ -20,7 +22,10 @@ function backing(token: symbol): Map<string, unknown> {
 vi.mock("idb-keyval", () => {
   return {
     createStore: (_db: string, _name: string) => Symbol("store"),
-    get: async (key: string, token: symbol) => backing(token).get(key),
+    get: async (key: string, token: symbol) => {
+      idbReads.get += 1;
+      return backing(token).get(key);
+    },
     set: async (key: string, value: unknown, token: symbol) => {
       backing(token).set(key, value);
     },
@@ -51,6 +56,8 @@ import {
   captureNewAssets,
   listCachedKeys,
   clearTexCache,
+  attachAssetStream,
+  __resetTexAssetSizeIndexForTest,
   type ProvisionableEngine,
   type TexAssetRecord,
 } from "@/lib/tex-assets";
@@ -84,6 +91,9 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   stores.clear();
+  idbReads.get = 0;
+  // A cleared backing store is a fresh session: forget the size index too.
+  __resetTexAssetSizeIndexForTest();
   // Default: online.
   Object.defineProperty(globalThis.navigator ?? (globalThis as unknown as { navigator: object }).navigator ?? {}, "onLine", { value: true, configurable: true });
   if (typeof globalThis.navigator === "undefined") {
@@ -283,5 +293,94 @@ describe("dev tools", () => {
     expect(rec.hash.length).toBeGreaterThan(0);
     expect(typeof rec.fetchedAt).toBe("number");
     expect([...rec.bytes]).toEqual([1, 2, 3]);
+  });
+});
+
+describe("task 577 — the size index + one serial decision", () => {
+  it("persisting K new assets does O(K) value reads, not O(K x cache)", async () => {
+    // A prior session left N records behind.
+    const N = 20;
+    const K = 10;
+    const seedEngine = new FakeEngine();
+    seedEngine.queueDump(
+      Array.from({ length: N }, (_, i) => dumpEntry(`26/old-${i}.sty`, `old-${i}`, [i, i, i])),
+    );
+    await captureNewAssets(seedEngine);
+
+    // New session, no provisioning scan: the first write builds the index once.
+    __resetTexAssetSizeIndexForTest();
+    idbReads.get = 0;
+    const engine = new FakeEngine();
+    engine.queueDump(
+      Array.from({ length: K }, (_, i) => dumpEntry(`26/new-${i}.sty`, `new-${i}`, [9, i])),
+    );
+    await captureNewAssets(engine);
+
+    expect(await listCachedKeys()).toHaveLength(N + K);
+    // One build scan (N) + one prior-record lookup per asset (K). Pre-577 each
+    // new key re-read the whole cache: ~K*(N + K/2) = 250+.
+    expect(idbReads.get).toBeLessThanOrEqual(N + K);
+  });
+
+  it("the provisioning scan primes the index — a following write re-reads nothing but its own key", async () => {
+    const seedEngine = new FakeEngine();
+    seedEngine.queueDump(
+      Array.from({ length: 15 }, (_, i) => dumpEntry(`26/p-${i}.sty`, `p-${i}`, [i])),
+    );
+    await captureNewAssets(seedEngine);
+    __resetTexAssetSizeIndexForTest();
+
+    const engine = new FakeEngine();
+    await provisionEngine(engine);
+    idbReads.get = 0;
+    engine.queueDump([dumpEntry("26/fresh.sty", "fresh", [1, 2])]);
+    await captureNewAssets(engine);
+    expect(idbReads.get).toBe(1);
+  });
+
+  it("CONCURRENT streams cannot all pass the cap: the check is serialized with the write", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let sink: ((e: TexCacheDumpEntry) => void) | null = null;
+    const engine = new FakeEngine() as FakeEngine & ProvisionableEngine;
+    engine.onAsset = (cb) => {
+      sink = cb;
+    };
+    attachAssetStream(engine);
+    expect(sink).not.toBeNull();
+
+    // Three 25MB assets fired back to back WITHOUT awaiting — the streaming
+    // shape. Two fit under 64MB; the third must be dropped. Pre-577 every
+    // stream read the same empty total and all three were written.
+    const mb25 = 25 * 1024 * 1024;
+    for (const name of ["a", "b", "c"]) {
+      sink!({
+        cacheKey: `40/stream-${name}.sty`,
+        fileid: `stream-${name}`,
+        bytes: new Uint8Array(mb25).fill(name.charCodeAt(0)).buffer,
+      });
+    }
+
+    const dropped = () =>
+      warn.mock.calls.filter((c) => /size cap/i.test(String(c[0]))).length;
+    await vi.waitFor(
+      async () => {
+        expect((await listCachedKeys()).length + dropped()).toBe(3);
+      },
+      { timeout: 25_000, interval: 50 },
+    );
+    expect(await listCachedKeys()).toHaveLength(2);
+    expect(dropped()).toBe(1);
+  }, 30_000);
+
+  it("clearTexCache leaves a known-empty index: the next write scans nothing", async () => {
+    const engine = new FakeEngine();
+    engine.queueDump([dumpEntry("1/a.sty", "a", [1]), dumpEntry("1/b.sty", "b", [2])]);
+    await captureNewAssets(engine);
+    await clearTexCache();
+    idbReads.get = 0;
+    engine.queueDump([dumpEntry("1/c.sty", "c", [3])]);
+    await captureNewAssets(engine);
+    expect(idbReads.get).toBe(1);
+    expect(await listCachedKeys()).toEqual(["1/c.sty"]);
   });
 });

@@ -18,10 +18,11 @@
  *
  * Storage: the SAME idb-keyval store Virgil already uses
  * (`createStore("virgil","kv")`, exactly as src/lib/doc-index.ts), under a
- * `tex-asset/<cacheKey>` key prefix. Write-through goes through the per-key
- * serial `enqueueWrite` from src/lib/write-queue.ts so concurrent compiles
- * never race the cache. Integrity/dedup uses the shared cyrb53 `hashContent`
- * from src/lib/disk-ledger.ts.
+ * `tex-asset/<cacheKey>` key prefix. Every read-decide-write against the store
+ * runs as ONE task on the serial `enqueueWrite(TEX_ASSET_QUEUE, …)` queue from
+ * src/lib/write-queue.ts, so concurrent streams and compiles never race the
+ * dedup or the size cap (task 577). Integrity/dedup uses the shared cyrb53
+ * `hashContent` from src/lib/disk-ledger.ts.
  *
  * This layer touches ONLY the engine-internal `/tex` kpse cache — never the
  * document `/work` bytes and never the `.tex` source — so the byte-stable
@@ -41,6 +42,9 @@ import type { TexCacheDumpEntry } from "@/types/swiftlatex";
 const store = createStore("virgil", "kv");
 
 const KEY_PREFIX = "tex-asset/";
+
+/** The ONE serial queue every store read-decide-write enters (task 577). */
+const TEX_ASSET_QUEUE = "tex-asset";
 
 /**
  * Total-size cap for the persistent TeX cache. TeXLive's cacheKey namespace is
@@ -144,15 +148,12 @@ export async function provisionEngine(engine: ProvisionableEngine): Promise<void
       }),
     );
 
-    // Tier B — persisted write-through cache.
-    const storeKeys = await persistedStoreKeys();
-    await Promise.all(
-      storeKeys.map(async (storeKey) => {
-        const rec = (await get(storeKey, store)) as TexAssetRecord | undefined;
-        if (!rec || !rec.bytes) return;
-        engine.seedCache(rec.cacheKey, rec.fileid, rec.bytes);
-      }),
-    );
+    // Tier B — persisted write-through cache. The same scan primes the size
+    // index, so a session pays ONE full read of the store, not one per asset.
+    const records = await loadPersistedRecords();
+    for (const rec of records) {
+      engine.seedCache(rec.cacheKey, rec.fileid, rec.bytes);
+    }
   } catch (err) {
     console.warn("[tex-assets] provisionEngine seeding failed (falling back to mirror):", err);
   }
@@ -203,52 +204,120 @@ export function attachAssetStream(engine: ProvisionableEngine): void {
 }
 
 /**
+ * TASK 577 — THE SIZE INDEX.
+ *
+ * The cap needs the cache's total size, and idb-keyval has no size-only read:
+ * summing `rec.bytes.byteLength` means structured-cloning every record's BYTES
+ * onto the main thread. Doing that per new asset made a cold compile
+ * O(assets × cache) in deserialization — tens of MB re-read for every package
+ * streamed. So the total is computed ONCE per session (lazily, or for free off
+ * the provisioning scan) and then maintained by the same queued task that
+ * writes or deletes a record.
+ *
+ * `null` = not yet built. Only ever read or written INSIDE a
+ * `TEX_ASSET_QUEUE` task, which is what makes the cap check and the write one
+ * atomic decision: pre-577 the check ran outside the queue, so K concurrent
+ * streams all read the same pre-write total, all passed, and all wrote.
+ *
+ * Staleness, stated: a second window writing the shared store is invisible
+ * here. Its record is then either re-counted on overwrite (overcount — the
+ * cap trips early, the safe direction) or simply not counted until the next
+ * session's scan. The cap is a quota guard, not an invariant.
+ */
+interface SizeIndex {
+  sizes: Map<string, number>;
+  total: number;
+}
+let sizeIndex: SizeIndex | null = null;
+
+function indexFrom(records: readonly TexAssetRecord[]): SizeIndex {
+  const sizes = new Map<string, number>();
+  let total = 0;
+  for (const rec of records) {
+    const n = rec.bytes.byteLength;
+    total += n - (sizes.get(rec.cacheKey) ?? 0);
+    sizes.set(rec.cacheKey, n);
+  }
+  return { sizes, total };
+}
+
+/** Full scan of the persisted records. Call ONLY inside a queue task. */
+async function scanPersistedRecords(): Promise<TexAssetRecord[]> {
+  const storeKeys = await persistedStoreKeys();
+  const recs = await Promise.all(
+    storeKeys.map((k) => get(k, store) as Promise<TexAssetRecord | undefined>),
+  );
+  return recs.filter((r): r is TexAssetRecord => !!r && !!r.bytes);
+}
+
+/** Every persisted record, read under the queue; primes the size index. */
+function loadPersistedRecords(): Promise<TexAssetRecord[]> {
+  return enqueueWrite(TEX_ASSET_QUEUE, async () => {
+    const records = await scanPersistedRecords();
+    if (!sizeIndex) sizeIndex = indexFrom(records);
+    return records;
+  });
+}
+
+/** The size index, building it on first use. Call ONLY inside a queue task. */
+async function ensureSizeIndex(): Promise<SizeIndex> {
+  if (!sizeIndex) sizeIndex = indexFrom(await scanPersistedRecords());
+  return sizeIndex;
+}
+
+/** Test-only: forget the index, as a fresh session would. */
+export function __resetTexAssetSizeIndexForTest(): void {
+  sizeIndex = null;
+}
+
+/**
  * Write ONE asset through to the persistent cache. Shared by the streaming sink
  * and the end-of-compile batch, so an asset arriving on both channels is
  * written once (dedup by cacheKey + byte hash) and the size cap is honoured
  * identically on both.
+ *
+ * The WHOLE decision — prior-record lookup, hash compare, cap check, write,
+ * index update — is one serial queue task (task 577). The hash is computed
+ * before entering: it is pure CPU and needs no ordering.
  *
  * Returns true when bytes were written.
  */
 async function persistAsset(entry: TexCacheDumpEntry): Promise<boolean> {
   if (!entry?.cacheKey || !entry.bytes) return false;
   const bytes = new Uint8Array(entry.bytes);
-  const storeKey = cacheKeyToStoreKey(entry.cacheKey);
-  const prev = (await get(storeKey, store)) as TexAssetRecord | undefined;
   const hash = hashBytes(bytes);
-  if (prev && prev.hash === hash) return false;
+  const cacheKey = entry.cacheKey;
+  const storeKey = cacheKeyToStoreKey(cacheKey);
 
-  if (!prev) {
-    // Only a NEW key can grow the cache, so only a new key pays the size scan.
-    const runningSize = await currentCacheSize();
-    if (runningSize + bytes.byteLength > CACHE_SIZE_CAP_BYTES) {
-      console.warn(
-        `[tex-assets] cache size cap (${CACHE_SIZE_CAP_BYTES} bytes) reached; dropped ${entry.cacheKey} (${bytes.byteLength}B)`,
-      );
-      return false;
+  return enqueueWrite(TEX_ASSET_QUEUE, async () => {
+    const prev = (await get(storeKey, store)) as TexAssetRecord | undefined;
+    if (prev && prev.hash === hash) return false;
+
+    const index = await ensureSizeIndex();
+    const prevSize = index.sizes.get(cacheKey) ?? 0;
+    if (!prev) {
+      // Only a NEW key can grow the cache past the cap; a changed existing
+      // key replaces its own bytes.
+      if (index.total - prevSize + bytes.byteLength > CACHE_SIZE_CAP_BYTES) {
+        console.warn(
+          `[tex-assets] cache size cap (${CACHE_SIZE_CAP_BYTES} bytes) reached; dropped ${cacheKey} (${bytes.byteLength}B)`,
+        );
+        return false;
+      }
     }
-  }
 
-  const rec: TexAssetRecord = {
-    cacheKey: entry.cacheKey,
-    fileid: entry.fileid,
-    bytes,
-    hash,
-    fetchedAt: Date.now(),
-  };
-  await enqueueWrite("tex-asset", () => set(storeKey, rec, store));
-  return true;
-}
-
-/** Current total bytes of the persisted cache (for the size cap). */
-async function currentCacheSize(): Promise<number> {
-  let total = 0;
-  const storeKeys = await persistedStoreKeys();
-  for (const storeKey of storeKeys) {
-    const rec = (await get(storeKey, store)) as TexAssetRecord | undefined;
-    if (rec?.bytes) total += rec.bytes.byteLength;
-  }
-  return total;
+    const rec: TexAssetRecord = {
+      cacheKey,
+      fileid: entry.fileid,
+      bytes,
+      hash,
+      fetchedAt: Date.now(),
+    };
+    await set(storeKey, rec, store);
+    index.total += bytes.byteLength - prevSize;
+    index.sizes.set(cacheKey, bytes.byteLength);
+    return true;
+  });
 }
 
 /**
@@ -289,6 +358,10 @@ export async function listCachedKeys(): Promise<string[]> {
 
 /** Wipe the entire persistent TeX asset cache (dev action). */
 export async function clearTexCache(): Promise<void> {
-  const storeKeys = await persistedStoreKeys();
-  await Promise.all(storeKeys.map((k) => del(k, store)));
+  await enqueueWrite(TEX_ASSET_QUEUE, async () => {
+    const storeKeys = await persistedStoreKeys();
+    await Promise.all(storeKeys.map((k) => del(k, store)));
+    // Known-empty, not unknown: the next write needs no scan.
+    sizeIndex = { sizes: new Map(), total: 0 };
+  });
 }
