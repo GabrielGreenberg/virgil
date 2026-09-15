@@ -77,7 +77,9 @@ import { SECTION_ACTIVE_LINE_FRACTION } from "./layout-scroll";
 import {
   computeSectionPathAt,
   geomBreadcrumbEnabled,
+  pushCrossedHeading,
 } from "@/lib/editor-geometry/section-path";
+import { headingLevelOf } from "@/lib/heading-types";
 import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
@@ -426,8 +428,8 @@ function useReaderSectionPath(
       let activeParTitleIdx: number | null = null;
 
       doc.forEach((node, offset, index) => {
-        if (node.type.name === "heading" && node.attrs?.level) {
-          const level = node.attrs.level as number;
+        if (node.type.name === "heading" && headingLevelOf(node.attrs) !== null) {
+          const level = headingLevelOf(node.attrs)!; // task 587: `\part` is level 0
           let headingTop: number | null = null;
           try {
             headingTop = view.coordsAtPos(offset + 1).top;
@@ -436,13 +438,7 @@ function useReaderSectionPath(
           }
           if (headingTop == null) return;
           if (headingTop <= referenceY) {
-            while (
-              stack.length > 0 &&
-              stack[stack.length - 1].level >= level
-            ) {
-              stack.pop();
-            }
-            stack.push({
+            pushCrossedHeading(stack, {
               level,
               text: node.textContent || "Untitled",
               index,

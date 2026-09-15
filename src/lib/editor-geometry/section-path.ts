@@ -39,10 +39,30 @@ import { getBus } from "@/lib/tiptap/doc-structure";
 import { SECTION_ACTIVE_LINE_FRACTION } from "@/components/editor-layout/layout-scroll";
 import { posAtViewportY } from "./viewport-probe";
 import { createBlockVocabCache } from "./block-vocab";
+import { OUTERMOST_HEADING_LEVEL } from "@/lib/heading-types";
 
 export interface SectionPathResult {
   path: { text: string; index: number; sectionNumber: string | null }[];
   parTitleIndex: number | null;
+}
+
+/**
+ * The LEGACY walk's crossing rule, spelled once for both fallback walks
+ * (EditorLayout, the Reader): a heading that has crossed the reference line
+ * pops every open entry at its own level or deeper, then pushes itself.
+ * Previous-smaller-level semantics — exactly the backward chain the fast
+ * path collects, which is what lets a parity leg hold the two together
+ * (task 587: the two copies had drifted from the fast path by dropping
+ * `\part`, level 0, on a truthiness test).
+ */
+export function pushCrossedHeading<T extends { level: number }>(
+  stack: T[],
+  entry: T,
+): void {
+  while (stack.length > 0 && stack[stack.length - 1].level >= entry.level) {
+    stack.pop();
+  }
+  stack.push(entry);
 }
 
 /** Locked-focus band, in top-level block indices (inclusive). */
@@ -183,7 +203,10 @@ export function computeSectionPathAt(
 
   const chain: HeadingEntry[] = [];
   let nextLevel = Infinity;
-  for (let i = hIdx; i >= 0 && nextLevel > 1; i--) {
+  // Climb until the OUTERMOST level has been pushed (`\part` = 0, derived
+  // from HEADING_TYPES). A `> 1` literal stopped at a `\chapter`, so a part
+  // above a chapter never showed (task 587).
+  for (let i = hIdx; i >= 0 && nextLevel > OUTERMOST_HEADING_LEVEL; i--) {
     const h = headings[i];
     if (h.level >= nextLevel) continue;
     if (!inBand(h.pos)) continue;

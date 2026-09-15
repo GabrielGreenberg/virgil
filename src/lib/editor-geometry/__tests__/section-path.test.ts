@@ -303,3 +303,139 @@ describe("par-titled vocabulary cost (task 585)", () => {
     expect(hits).toEqual([]);
   });
 });
+
+// ── Task 587: `\part` is heading level 0 ──────────────────────────────────
+//
+// The fast path climbed `while nextLevel > 1`, stopping at a `\chapter`, and
+// both legacy fallbacks gated on `node.attrs?.level` (falsy for 0). No
+// pre-587 fixture carried a level-0 heading, so both were unrepresentable.
+
+import { pushCrossedHeading } from "../section-path";
+import {
+  HEADING_TYPES,
+  OUTERMOST_HEADING_LEVEL,
+  headingLevelOf,
+} from "@/lib/heading-types";
+
+type Spec = { level: number; text: string } | { text: string };
+
+function makeDoc(specs: Spec[]): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  return new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: specs.map((s, i) =>
+        "level" in s
+          ? { type: "heading", attrs: { uuid: `h${i}`, level: s.level }, content: [{ type: "text", text: s.text }] }
+          : { type: "paragraph", attrs: { uuid: `p${i}` }, content: [{ type: "text", text: s.text }] },
+      ),
+    },
+  });
+}
+
+/** The legacy fallbacks' fold, driven over the doc in order up to (and
+ *  including) block `upTo` — exactly what their crossing walk does when the
+ *  reference line sits inside that block. */
+function fallbackChain(ed: Editor, upTo: number): string[] {
+  const stack: { level: number; text: string }[] = [];
+  ed.state.doc.forEach((node, _off, index) => {
+    if (index > upTo) return;
+    if (node.type.name !== "heading") return;
+    const level = headingLevelOf(node.attrs);
+    if (level === null) return;
+    pushCrossedHeading(stack, { level, text: node.textContent });
+  });
+  return stack.map((s) => s.text);
+}
+
+function fastChain(ed: Editor, blockIdx: number): string[] {
+  const p = blockPos(ed, blockIdx) + 1;
+  const r = computeSectionPathAt(ed, stubView(ed, () => p), stubScrollEl(), null);
+  return r!.path.map((e) => e.text);
+}
+
+describe("task 587 — \\part (level 0) in the breadcrumb", () => {
+  const CASES: { name: string; specs: Spec[]; expected: string[] }[] = [
+    {
+      name: "part > chapter > section",
+      specs: [{ level: 0, text: "I" }, { level: 1, text: "A" }, { level: 2, text: "x" }, { text: "body" }],
+      expected: ["I", "A", "x"],
+    },
+    {
+      name: "part > section",
+      specs: [{ level: 0, text: "I" }, { level: 2, text: "x" }, { text: "body" }],
+      expected: ["I", "x"],
+    },
+    {
+      name: "chapter > section (control)",
+      specs: [{ level: 1, text: "A" }, { level: 2, text: "x" }, { text: "body" }],
+      expected: ["A", "x"],
+    },
+    {
+      name: "a second part closes the first",
+      specs: [{ level: 0, text: "I" }, { level: 1, text: "A" }, { level: 0, text: "II" }, { level: 2, text: "y" }, { text: "body" }],
+      expected: ["II", "y"],
+    },
+  ];
+
+  for (const c of CASES) {
+    it(`fast path returns the full chain: ${c.name}`, () => {
+      const ed = makeDoc(c.specs);
+      try {
+        expect(fastChain(ed, c.specs.length - 1)).toEqual(c.expected);
+      } finally {
+        ed.destroy();
+      }
+    });
+
+    it(`fallback fold agrees with the fast path at EVERY block: ${c.name}`, () => {
+      const ed = makeDoc(c.specs);
+      try {
+        expect(fallbackChain(ed, c.specs.length - 1)).toEqual(c.expected);
+        for (let i = 0; i < c.specs.length; i++) {
+          expect(fallbackChain(ed, i)).toEqual(fastChain(ed, i));
+        }
+      } finally {
+        ed.destroy();
+      }
+    });
+  }
+
+  it("the outermost level is DERIVED from HEADING_TYPES, and a level-0 heading reads as a heading", () => {
+    expect(OUTERMOST_HEADING_LEVEL).toBe(Math.min(...HEADING_TYPES.map((h) => h.level)));
+    expect(OUTERMOST_HEADING_LEVEL).toBe(0);
+    expect(headingLevelOf({ level: 0 })).toBe(0);
+    expect(headingLevelOf({ level: 3 })).toBe(3);
+    expect(headingLevelOf({})).toBeNull();
+    expect(headingLevelOf(null)).toBeNull();
+    expect(headingLevelOf({ level: "2" })).toBeNull();
+  });
+
+  it("census: no breadcrumb path tests a heading level for truthiness or climbs to a literal floor", () => {
+    const root = join(__dirname, "../../../..");
+    // codeOnly: comments AND string literals blanked — every needle here is
+    // a code shape, and this repo renegotiates retired claims in comments.
+    const read = (p: string) => codeOnly(readFileSync(join(root, p), "utf8"));
+    const sites = [
+      "src/components/EditorLayout.tsx",
+      "src/components/editor-layout/reader-view-prefs.ts",
+      "src/lib/editor-geometry/section-path.ts",
+    ];
+    for (const p of sites) {
+      const src = read(p);
+      expect(src, p).not.toMatch(/attrs\??\.level\s*\)\s*\{/);
+      expect(src, p).not.toMatch(/nextLevel\s*>\s*\d/);
+    }
+    // both fallbacks enter the shared fold, and neither re-spells its pop rule
+    // (the helper in section-path.ts is its one legitimate speller)
+    for (const p of sites.slice(0, 2)) {
+      expect(read(p), p).not.toMatch(/stack\[stack\.length - 1\]\.level\s*>=/);
+      expect(read(p), p).toMatch(/pushCrossedHeading\(stack,/);
+      expect(read(p), p).toMatch(/headingLevelOf\(node\.attrs\)/);
+    }
+  });
+});
