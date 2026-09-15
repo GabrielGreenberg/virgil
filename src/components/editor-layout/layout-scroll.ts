@@ -68,14 +68,36 @@ export function findRowScroll(): HTMLElement | null {
   return resolvePaneMarker("[data-virgil-row-scroll]", "fail-open");
 }
 
+/**
+ * The row scroll container that OWNS `el` — its own `[data-virgil-row-scroll]`
+ * ancestor — falling back to the visible-pane ladder ONLY when `el` has none
+ * (a body-portaled float, a detached node).
+ *
+ * Task 584. The ladder answers "whichever pane is VISIBLE right now", which is
+ * the right question only for a caller with NO element in hand. A caller that
+ * holds an element already inside a pane has an exact answer one `closest`
+ * away (task 438's rule: a relative resolution needs no ladder), and the two
+ * answers DIVERGE exactly when the asking pane is hidden — an editor that
+ * becomes ready in a keep-alive slot while the Library Reader is visible was
+ * handed the Reader's scroller as its IntersectionObserver root (no block ever
+ * intersects a root that is not its ancestor → no margin markers for the
+ * session) and as its scroll-idle refinement listener.
+ */
+export function findRowScrollFor(el: Element | null | undefined): HTMLElement | null {
+  const own = el?.closest("[data-virgil-row-scroll]") as HTMLElement | null | undefined;
+  return own ?? findRowScroll();
+}
+
 /** The scroll container relevant to a given ProseMirror view. Mirror
  *  panes have their own `overflow-y-auto` (marked `data-virgil-mirror-scroll`);
- *  the canonical view's scroll source is the row. */
+ *  the canonical view's scroll source is the row that CONTAINS it (task 584 —
+ *  never "the visible pane's row", which is another pane's scroller whenever
+ *  this view's pane is hidden). */
 export function findEditorScrollFor(viewDom: HTMLElement | null | undefined): HTMLElement | null {
   if (!viewDom) return findRowScroll();
   const ownScroll = viewDom.closest("[data-virgil-mirror-scroll]") as HTMLElement | null;
   if (ownScroll) return ownScroll;
-  return findRowScroll();
+  return findRowScrollFor(viewDom);
 }
 
 /**
@@ -90,7 +112,7 @@ export function findEditorScrollFor(viewDom: HTMLElement | null | undefined): HT
  */
 export function resolveAlignScroll(entry: HTMLElement): HTMLElement | null {
   const own = findScrollParent(entry);
-  const row = findRowScroll();
+  const row = findRowScrollFor(entry);
   const isListPanelScroll = !!own && own !== row;
   return isListPanelScroll ? own : row;
 }
