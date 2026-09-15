@@ -31,6 +31,8 @@ type PassBehavior =
 let passQueue: PassBehavior[] = [];
 let fetchSink: ((name: string) => void) | null = null;
 const resetSpy = vi.fn();
+/** Task 576: the ordered teardown decisions the service made. */
+let teardown: string[] = [];
 
 function makeFakeEngine() {
   return {
@@ -69,7 +71,13 @@ function makeFakeEngine() {
 
 vi.mock("@/lib/swiftlatex", () => ({
   getPdfTeXEngine: vi.fn(async () => makeFakeEngine()),
-  resetPdfTeXEngine: () => resetSpy(),
+  resetPdfTeXEngine: async (mode: string) => {
+    resetSpy(mode);
+    teardown.push(`reset:${mode}`);
+  },
+  terminateDrainingWorkers: () => {
+    teardown.push("terminate-draining");
+  },
   writeEngineFile: () => {},
 }));
 vi.mock("@/lib/tex-assets", () => ({
@@ -118,6 +126,7 @@ beforeEach(() => {
   passQueue = [];
   fetchSink = null;
   resetSpy.mockClear();
+  teardown = [];
   __resetAllCompileProgress();
   vi.useFakeTimers();
 });
@@ -287,5 +296,71 @@ describe("task 454 — the compile has a voice", () => {
     );
     expect(getCompileProgress("doc-A").phase).toBe("done");
     expect(getCompileProgress("doc-B").phase).toBe("idle");
+  });
+});
+
+/**
+ * TASK 576 — a hang must not leave a worker spinning forever.
+ *
+ * `closeWorker` used to ONLY post 'grace'. A worker processes a message only
+ * when its event loop is free, and one blocked inside a genuine hang never is,
+ * so every Compile click on a looping document leaked another CPU-pinned
+ * worker. The service knows which case it is in (it counts downloads per
+ * attempt), so the teardown mode is decided there, and the continuation loop's
+ * end ends every orphan that was kept draining.
+ */
+describe("task 576 — the teardown mode follows the attempt", () => {
+  it("TERMINATES the worker of a timeout that downloaded nothing", async () => {
+    passQueue = [{ kind: "hang", fetches: 0 }];
+    const svc = new CompileService();
+    await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(teardown).toEqual(["reset:terminate", "terminate-draining"]);
+  });
+
+  it("keeps a PRODUCTIVE timeout draining, then ends it when the loop is over", async () => {
+    passQueue = [{ kind: "hang", fetches: 12 }, { kind: "ok" }];
+    const svc = new CompileService();
+    const result = await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(result.status).toBe("ok");
+    // The orphan survives the SECOND attempt (its late bytes still persist)
+    // and is ended only once the loop has settled.
+    expect(teardown).toEqual(["reset:keep-draining", "terminate-draining"]);
+  });
+
+  it("a hang that follows a productive attempt is terminated, and the earlier orphan ended", async () => {
+    passQueue = [
+      { kind: "hang", fetches: 40 },
+      { kind: "hang", fetches: 0 },
+    ];
+    const svc = new CompileService();
+    await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(teardown).toEqual([
+      "reset:keep-draining",
+      "reset:terminate",
+      "terminate-draining",
+    ]);
+  });
+
+  it("an ABORT terminates, even mid-download", async () => {
+    passQueue = [{ kind: "hang", fetches: 9 }];
+    const ctrl = new AbortController();
+    const svc = new CompileService();
+    const promise = svc.compile({
+      files: texFile(),
+      mainTexFilename: "main.tex",
+      docId: DOC,
+      signal: ctrl.signal,
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    ctrl.abort();
+    await runToSettle(promise);
+    expect(teardown[0]).toBe("reset:terminate");
+    expect(teardown.at(-1)).toBe("terminate-draining");
   });
 });

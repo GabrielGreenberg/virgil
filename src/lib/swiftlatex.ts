@@ -79,23 +79,36 @@ export function getPdfTeXEngine(): Promise<PdfTeXEngine> {
  * CompileService calls this after a compile timeout / worker-error rejection so
  * it can reboot cleanly on the next compile.
  *
- * Best-effort and fire-and-forget: if the singleton has a resolved engine we
- * `closeWorker()` it (posts 'grace', drops the worker ref); we then null the
- * promise unconditionally. A still-pending boot promise is simply dropped —
- * its worker, if any, is orphaned but harmless once the next boot supersedes
- * it. Never throws.
+ * The singleton is nulled SYNCHRONOUSLY so the next call reboots; the close
+ * itself rides the (possibly still pending) boot promise, and the returned
+ * promise settles once it has run. Never rejects.
+ *
+ * `mode` is REQUIRED (task 576), because the two answers are opposite claims:
+ *
+ *  - `"keep-draining"` — the timed-out pass was PRODUCTIVE (it was downloading).
+ *    The worker is closed with 'grace' and kept running as an orphan so its late
+ *    downloads still reach the durability sink. It is recorded here, and
+ *    {@link terminateDrainingWorkers} ends it once those bytes stop mattering.
+ *  - `"terminate"` — a genuine hang, an abort, a worker error or a failed boot.
+ *    'grace' would never be processed (the worker's event loop is never free),
+ *    so it is `Worker.terminate()`d. Anything else is a CPU-pinned worker that
+ *    lives until the tab is reloaded.
  */
-export function resetPdfTeXEngine(): void {
+export type EngineCloseMode = "keep-draining" | "terminate";
+
+/** Engines whose worker was closed in keep-draining mode and may still run. */
+const drainingEngines = new Set<PdfTeXEngine>();
+
+export function resetPdfTeXEngine(mode: EngineCloseMode): Promise<void> {
   const pending = enginePromise;
   enginePromise = null;
-  if (!pending) return;
-  // Best-effort: close the worker if the engine already resolved. We don't
-  // await here — reset must be synchronous so the service can immediately
-  // trigger a reboot on the next call.
-  void pending
+  if (!pending) return Promise.resolve();
+  return pending
     .then((engine) => {
       try {
-        engine.closeWorker();
+        engine.closeWorker(mode);
+        if (mode === "keep-draining") drainingEngines.add(engine);
+        else drainingEngines.delete(engine);
       } catch {
         // A dead worker may already be gone; ignore.
       }
@@ -103,6 +116,25 @@ export function resetPdfTeXEngine(): void {
     .catch(() => {
       // The engine never booted — nothing to close.
     });
+}
+
+/**
+ * Terminate every worker still draining from an earlier `keep-draining` reset
+ * (task 576). Called when a compile's continuation loop is over — success, stop
+ * or budget — at which point everything they downloaded has already streamed
+ * through to the persistent cache, and an orphan still running is at best idle
+ * and at worst spinning in a hang forever. Never throws.
+ */
+export function terminateDrainingWorkers(): void {
+  const engines = [...drainingEngines];
+  drainingEngines.clear();
+  for (const engine of engines) {
+    try {
+      engine.terminateDrainingWorkers();
+    } catch {
+      // already gone
+    }
+  }
 }
 
 /**

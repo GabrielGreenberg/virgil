@@ -57,7 +57,14 @@ declare global {
     setTexliveEndpoint(url: string): void;
     compileLaTeX(): Promise<PdfTeXCompileResult>;
     flushCache(): void;
-    closeWorker(): void;
+    /**
+     * PATCHED (virgil, task 576): the mode is REQUIRED. `keep-draining` posts
+     * 'grace' and keeps the orphan listed so its late downloads still persist;
+     * `terminate` calls `Worker.terminate()` (and ends any listed orphans).
+     */
+    closeWorker(mode: "keep-draining" | "terminate"): void;
+    /** PATCHED (virgil, task 576): terminate every `keep-draining` orphan. */
+    terminateDrainingWorkers(): void;
     /**
      * PATCHED (virgil, P1): seed the worker's kpse cache from the main thread.
      * Writes `src` into memfs and registers `cacheKey` in texlive200_cache so a

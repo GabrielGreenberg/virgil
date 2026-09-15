@@ -93,6 +93,9 @@ var PdfTeXEngine = /** @class */ (function () {
         this.assetCallback = undefined;
         this.fetchProgressCallback = undefined;
         this.streamChannelInstalled = false;
+        // PATCHED (virgil, task 576): workers closed in 'keep-draining' mode,
+        // held so they can be terminated once their bytes stop mattering.
+        this.drainingWorkers = [];
     }
     PdfTeXEngine.prototype.loadEngine = function () {
         return __awaiter(this, void 0, void 0, function () {
@@ -414,27 +417,61 @@ var PdfTeXEngine = /** @class */ (function () {
         this.fetchProgressCallback = cb;
         this.installStreamChannel();
     };
-    PdfTeXEngine.prototype.closeWorker = function () {
+    // PATCHED (virgil, task 576): `mode` is REQUIRED — 'keep-draining' or
+    // 'terminate'. A defaulted mode would be a decision nobody made.
+    //
+    // 'keep-draining' (task 454's behaviour, byte-for-byte): post 'grace' and
+    // drop our reference, so a worker blocked mid-compile keeps running as an
+    // ORPHAN (still issuing its synchronous package fetches) until that compile
+    // unwinds and it processes the message. Its listener holds this engine
+    // alive, so those late downloads still reach the asset sink and are still
+    // worth persisting. That argument holds ONLY while the pass will unwind, so
+    // the orphan is recorded in `drainingWorkers` and the caller bounds it with
+    // `terminateDrainingWorkers()` once the continuation loop is over.
+    //
+    // 'terminate': `Worker.terminate()`. A worker blocked inside a genuine hang
+    // (`\def\x{\x}\x`, a runaway loop) NEVER processes 'grace' — the message
+    // waits on an event loop that is never free — so without terminate() it
+    // pins a core and holds its whole WASM heap until the tab is reloaded, one
+    // more per Compile click.
+    PdfTeXEngine.prototype.closeWorker = function (mode) {
+        if (mode !== 'keep-draining' && mode !== 'terminate') {
+            throw new Error("closeWorker: mode must be 'keep-draining' or 'terminate'");
+        }
         if (this.latexWorker !== undefined) {
-            this.latexWorker.postMessage({ 'cmd': 'grace' });
+            if (mode === 'terminate') {
+                this.latexWorker.terminate();
+            }
+            else {
+                this.latexWorker.postMessage({ 'cmd': 'grace' });
+                this.drainingWorkers.push(this.latexWorker);
+            }
             this.latexWorker = undefined;
+        }
+        if (mode === 'terminate') {
+            this.terminateDrainingWorkers();
         }
         // PATCHED (virgil, task 454): drop the PROGRESS sink and KEEP the
         // DURABILITY sink, deliberately.
-        //
-        // `closeWorker` does not `terminate()` — it posts 'grace' and drops our
-        // reference, so a worker blocked mid-compile keeps running as an ORPHAN
-        // (still issuing its synchronous package fetches) until that compile
-        // unwinds and it processes the message. Its listener holds this engine
-        // alive, so those late downloads still reach the asset sink and are
-        // still worth persisting: they are exactly the packages the next
-        // attempt would otherwise re-fetch.
         //
         // The progress sink is per-ATTEMPT bookkeeping, so it MUST be dropped —
         // an orphan's fetches counted against the next attempt would make a
         // dead hang look productive and keep the continuation loop going.
         this.fetchProgressCallback = undefined;
         this.streamChannelInstalled = false;
+    };
+    // PATCHED (virgil, task 576): end every 'keep-draining' orphan. Safe on a
+    // worker that already self.close()d — terminate() on a closed worker is a
+    // no-op. Its useful bytes were written through as they streamed.
+    PdfTeXEngine.prototype.terminateDrainingWorkers = function () {
+        var workers = this.drainingWorkers;
+        this.drainingWorkers = [];
+        for (var i = 0; i < workers.length; i++) {
+            try {
+                workers[i].terminate();
+            }
+            catch (err) { /* already gone */ }
+        }
     };
     return PdfTeXEngine;
 }());
