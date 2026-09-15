@@ -64,12 +64,15 @@ interface FakePort extends SpellcheckPort {
   accepted: Set<string>;
   bump(): void;
   setEnabled(on: boolean): void;
+  /** Push an invalidation, as the provider does on an engine recovery. */
+  invalidate(): void;
 }
 
 function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
   const verdicts = new Map<string, boolean>();
   let version = 0;
   let on = true;
+  const listeners = new Set<() => void>();
   const port: FakePort = {
     ensureCalls: 0,
     accepted: new Set<string>(),
@@ -77,6 +80,13 @@ function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
     // task 519 — the decorator is the CHECKER; the corrector is off here.
     autocorrect: () => false,
     version: () => version,
+    onInvalidate: (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    invalidate: () => {
+      for (const fn of [...listeners]) fn();
+    },
     isAccepted: (w) => port.accepted.has(w),
     knownSync: (w) => verdicts.get(w),
     ensure: async (words) => {
@@ -353,6 +363,39 @@ describe("a squiggle is a view, never document content", () => {
     await settle();
     expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
     expect(flagged(ed)).toEqual([]);
+  });
+
+  it("a RECOVERY pushed with nobody typing re-checks the whole document (task 580)", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick teh fox.", ref);
+    await settle();
+    expect(flagged(ed)).toEqual(["teh"]);
+
+    // The engine fails: the surface is handed back to the browser.
+    port.setEnabled(false);
+    port.invalidate();
+    await settle();
+    expect(flagged(ed)).toEqual([]);
+    expect(ed.view.dom.hasAttribute("spellcheck")).toBe(false);
+
+    // It recovers while the user is READING — no transaction at all. The push
+    // alone must bring the squiggles (and Virgil's ownership) back.
+    port.setEnabled(true);
+    port.invalidate();
+    await settle();
+    expect(flagged(ed)).toEqual(["teh"]);
+    expect(ed.view.dom.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("…and without the push, nothing happens until a transaction — the control", async () => {
+    const { ref, port } = makePort();
+    const ed = mount("The quick teh fox.", ref);
+    await settle();
+    port.setEnabled(false);
+    await settle();
+    // No push, no transaction: the stale answer stands (which is why the push
+    // channel exists at all).
+    expect(flagged(ed)).toEqual(["teh"]);
   });
 
   it("a surface with NO port is inert — the accepting control", async () => {

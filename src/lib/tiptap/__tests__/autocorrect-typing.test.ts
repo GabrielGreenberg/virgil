@@ -78,6 +78,7 @@ function makePort(): { ref: SpellcheckPortRef; port: FakePort } {
     enabled: () => false, // the CHECKER is irrelevant here — only the corrector
     autocorrect: () => port.on,
     version: () => 0,
+    onInvalidate: () => () => {},
     isAccepted: (w) => port.accepted.has(w.toLowerCase()),
     knownSync: () => undefined,
     ensure: async () => {},

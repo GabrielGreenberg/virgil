@@ -43,6 +43,19 @@ export interface SpellcheckPort {
    * own lint forbids, and the consumer never wanted the ORDER anyway.
    */
   version(): unknown;
+  /**
+   * The PUSH half of the invalidation channel (task 580): `listener` is called
+   * whenever `enabled()` or `version()` may have changed for a reason no
+   * transaction carries — above all the dictionary engine recovering (or
+   * failing) with nobody typing. Without it a change waits for the next
+   * transaction to be noticed, and a recovery that happens while the user is
+   * reading is never noticed at all. Returns the unsubscribe.
+   *
+   * REQUIRED rather than optional: a port that cannot say "something changed"
+   * is a surface that silently never recovers, and an optional member is a
+   * decision nobody made.
+   */
+  onInvalidate(listener: () => void): () => void;
   /** The user's own words — never flagged. */
   isAccepted(word: string): boolean;
   /** Cached dictionary verdict; `undefined` = not asked yet. */

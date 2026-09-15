@@ -73,6 +73,7 @@ function makePort(): { ref: SpellcheckPortRef; rec: Recorder } {
     // task 519 — this suite drives the CHECKER's gesture; the corrector is off.
     autocorrect: () => false,
     version: () => 0,
+    onInvalidate: () => () => {},
     isAccepted: () => false,
     knownSync: (w) => verdicts.get(w),
     ensure: async (words) => {

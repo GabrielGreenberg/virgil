@@ -61,6 +61,7 @@ function portRef(): SpellcheckPortRef {
       enabled: () => false,
       autocorrect: () => true,
       version: () => 0,
+      onInvalidate: () => () => {},
       isAccepted: () => false,
       knownSync: () => undefined,
       ensure: async () => {},
