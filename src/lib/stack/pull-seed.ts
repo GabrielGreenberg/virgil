@@ -44,7 +44,7 @@
  *   `appliedChange`, `originalAnchor`) — state about this record's life in the
  *   source doc. Dropping `status`/`appliedChange` is load-bearing rather than
  *   incidental: an applied suggestion's `appliedChange` binds a LIVE range in
- *   the source paper's `.tex` (AGENTS.md, "The lifecycle half"), so a pulled
+ *   the source paper's `.tex` (docs/agents/laws/capture-schema-symmetry.md, "The lifecycle half"), so a pulled
  *   copy that claimed `applied` would advertise a Keep/Revert over a splice
  *   that does not exist in this document.
  *
@@ -168,7 +168,7 @@ export const NON_TRAVELLING_FIELDS: {
 /**
  * The ONE door from a snapshot record to a pull seed. Pure: it neither reads
  * the clock nor mints an id, because `planCardDrop` runs its resolution TWICE
- * per gesture (once per `DropSpec` door — AGENTS.md, "The feedback half").
+ * per gesture (once per `DropSpec` door — docs/agents/laws/capture-schema-symmetry.md, "The feedback half").
  */
 export function pullSeed<K extends StackCardKind>(
   kind: K,

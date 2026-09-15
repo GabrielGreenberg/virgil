@@ -6,7 +6,7 @@ import { measureOmniGap } from "./panel-column";
 import { paneStrip } from "./pane-dom";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";
 // The two pointer invariants every held gesture in the app takes from the ONE
-// SSOT — imported, never re-derived (AGENTS.md "Pane-drag stability"; the
+// SSOT — imported, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability"; the
 // census's no-twins allowlist is EMPTY).
 import {
   isMissedRelease,
@@ -88,7 +88,7 @@ export function useStripHandlers(deps: {
 //
 // ## A bespoke held gesture owes the four obligations whole (task 439)
 //
-// AGENTS.md → "Pane-drag stability": a gesture the engine's
+// docs/agents/laws/pane-drag-stability.md → "Pane-drag stability": a gesture the engine's
 // `getValue/apply/commit(px)` shape genuinely doesn't fit may stay bespoke —
 // but it inherits COALESCE, SNAPSHOT, COMMIT ONCE and the two POINTER
 // INVARIANTS, and it *imports* the invariants rather than re-deriving them.

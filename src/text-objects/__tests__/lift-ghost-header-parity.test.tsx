@@ -224,7 +224,7 @@ describe("lift ghost header ≡ the header it releases into (task 437)", () => {
 
   it("CENSUS: no comment names `TextObjectFloat` as a live mount", () => {
     // A comment describing a retired mechanism is how the next reader
-    // concludes the invariant is held (AGENTS.md, "Bar occupancy"). The four
+    // concludes the invariant is held (docs/agents/laws/bar-occupancy.md, "Bar occupancy"). The four
     // false claims this task retired lived in four different files, none of
     // which any behavioural test reads.
     // globals.css named it FOUR times, every one of them present-tense about

@@ -1,7 +1,7 @@
 // Scroll-listener guardrail — the FIFTH grep-allowlist sibling (after
 // keystroke-subscriber, scroll-reposition, pane-drag and window-resize),
 // closing the gap task 416 found in the continuous-layout-gesture law
-// (doctrine: AGENTS.md "Layout-gesture stability").
+// (doctrine: docs/agents/laws/layout-gesture-stability.md "Layout-gesture stability").
 //
 // The law: *a continuous layout gesture — a pane-divider drag, an OS window
 // resize, OR a content drag (drop-mode session) — costs O(1) settles, not
@@ -364,7 +364,7 @@ describe("scroll-listener guardrail — detector fixtures", () => {
   it("does not flag a file that only MENTIONS the pattern in comments", () => {
     const commentOnly = `
       // Never scrollEl.addEventListener("scroll", measure) without a park —
-      // see AGENTS.md "Layout-gesture stability".
+      // see docs/agents/laws/layout-gesture-stability.md "Layout-gesture stability".
       export function ok() { return 1; }
     `;
     expect(detectScrollListener(commentOnly)).toBe(false);

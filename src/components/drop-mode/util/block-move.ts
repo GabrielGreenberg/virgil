@@ -14,7 +14,7 @@
  * this, a `targetEditor === sourceEditor` fork guarded an insert-then-delete
  * cross-editor branch whose condition was true by construction — unreachable
  * code reasoning about a dispatch ordering that could never occur, which is
- * exactly what the dead-SSOT rule (`AGENTS.md`, "A registry earns its name by
+ * exactly what the dead-SSOT rule (`docs/agents/laws/a-registry-earns-its-name-by-being-read.md`, "A registry earns its name by
  * being read") outlaws. Making a cross-editor block move real is a PRODUCT
  * decision, not a mechanical one: it would newly enable main→card-body block
  * capture, which the capture/schema-symmetry law governs.

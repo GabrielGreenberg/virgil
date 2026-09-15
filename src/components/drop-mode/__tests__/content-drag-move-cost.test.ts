@@ -4,7 +4,7 @@
 //
 // Gabriel: dragging bullet-list items is "extremely choppy and rough — should
 // be smooth-like-butter Notion-style." The audit found the content drag had
-// taken none of the four obligations a bespoke gesture inherits (AGENTS.md,
+// taken none of the four obligations a bespoke gesture inherits (docs/agents/laws/pane-drag-stability.md,
 // "Pane-drag stability"):
 //
 //   • COALESCE — the hit-test was paced by a 16 ms wall-clock timer whose FAST

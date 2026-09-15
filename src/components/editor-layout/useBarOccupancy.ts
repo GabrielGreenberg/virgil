@@ -38,7 +38,7 @@ import { resolveBarOccupancy } from "./bar-occupancy";
  * keystroke sanctity: no editor subscription, no `emitCount`.
  *
  * ── Live during a layout gesture, deliberately ───────────────────────────
- * AGENTS.md ("Layout-gesture stability") says a geometry follower either PARKS
+ * docs/agents/laws/layout-gesture-stability.md ("Layout-gesture stability") says a geometry follower either PARKS
  * or SUPPRESSES for the duration of a gesture. This one does neither, for the
  * reason `useWindowChrome` doesn't: the frame ITSELF is the obligation. Park
  * the decision and the bar visibly overlaps for the whole of an OS window

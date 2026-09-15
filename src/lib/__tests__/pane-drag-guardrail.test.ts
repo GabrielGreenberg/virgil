@@ -192,7 +192,7 @@ const PERMITTED_ANNOUNCED_SEPARATORS: Record<string, string> = {};
 //                 predicates stays live after a release it never observed.
 //   NO TWINS    — and it must not RE-DERIVE them. `e.button !== 0` and
 //                 `(e.buttons & 1) === 0` are the two spellings the law names
-//                 (AGENTS.md "Pane-drag stability": *it imports these; it does
+//                 (docs/agents/laws/pane-drag-stability.md "Pane-drag stability": *it imports these; it does
 //                 not re-derive them*). Allowlist empty; nine production sites
 //                 carried a twin before task 333.
 //
@@ -258,7 +258,7 @@ const PERMITTED_ELEMENT_POINTER_GESTURES: Record<string, string> = {
 const PERMITTED_INVARIANT_FREE_GESTURES: Record<string, string> = {};
 
 /** Empty likewise. A hand-written twin is the "never re-derive" half of the
- *  law (AGENTS.md "Pane-drag stability"), and it is how the four gestures task
+ *  law (docs/agents/laws/pane-drag-stability.md "Pane-drag stability"), and it is how the four gestures task
  *  333 fixed drifted: each looked complete at its own site while agreeing with
  *  the engine on the start gate and not on the release. MIGRATE it, never list
  *  it. */
@@ -1547,7 +1547,7 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
 
   it("censuses every window-level move listener in both silos — chrome or no chrome", () => {
     // EXTRA file = a new pointer gesture (or hover watcher) landed. Verify it
-    // against the four obligations (AGENTS.md "Pane-drag stability":
+    // against the four obligations (docs/agents/laws/pane-drag-stability.md "Pane-drag stability":
     // coalesce / snapshot geometry at the gesture edge / commit once / the two
     // pointer invariants), then list it here with that justification. If it
     // resizes a pane it does not belong here at all — migrate it onto
@@ -1891,7 +1891,7 @@ describe("pane-drag guardrail — element-scoped pointer-gesture census (task 43
 
   it("censuses every element-scoped HELD gesture in both silos", () => {
     // EXTRA file = a gesture written with pointer capture or a press+hold
-    // handler pair landed. Verify it against the four obligations (AGENTS.md
+    // handler pair landed. Verify it against the four obligations (docs/agents/laws/pane-drag-stability.md
     // "Pane-drag stability") and list it above with that justification. If it
     // resizes a pane it does not belong here at all — migrate it onto
     // `usePaneResizeHandle`, which is the one sanctioned owner and is excluded

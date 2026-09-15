@@ -2,7 +2,7 @@
 // perf Wave 4 P6) — the CI half of the keystroke-sanctity law, the sibling of
 // `scroll-reposition-guardrail.test.ts`.
 //
-// The law (AGENTS.md, "Keystroke sanctity"): no plugin, hook, or React effect
+// The law (docs/agents/laws/keystroke-sanctity.md, "Keystroke sanctity"): no plugin, hook, or React effect
 // may do work proportional to document size on each keystroke. Its most direct
 // enforcement point is the set of live `editor.on('update'|'transaction')`
 // subscribers on the MAIN editor — each must be O(1) per transaction (a

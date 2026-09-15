@@ -21,7 +21,7 @@
  *  - **Per document.** Several `EditorPane`s are mounted at once under multi-doc
  *    keep-alive, and the compile service is a module singleton shared by all of
  *    them. A progress record keyed by docId is what keeps pane B from rendering
- *    pane A's compile (AGENTS.md, "Per-doc services under multi-pane
+ *    pane A's compile (docs/agents/laws/per-doc-services-under-multi-pane-keep-alive.md, "Per-doc services under multi-pane
  *    keep-alive"). The store is a registry, not a slot.
  *  - **The phase is what the user is WAITING ON, not an internal step count.**
  *    `fetching` exists because it is the phase that takes minutes and the one a

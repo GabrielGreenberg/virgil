@@ -37,7 +37,7 @@ Four claims, four groups of legs:
   REPORTS  the digest's courtesy copy is WRITE-ONCE with a unique name. The
            authoritative digest ROTATES in place on a same-day re-run, and a
            file two machines can see being rewritten is a conflicted copy
-           waiting to be minted (AGENTS.md → "The daemon half").
+           waiting to be minted (docs/agents/laws/cross-window-store-stability.md → "The daemon half").
 
   PATHS    `dream.py paths [key]` is the door an OUTSIDE reader takes to find
            where this build puts its roots (task 538: CATCHER.md spelled the

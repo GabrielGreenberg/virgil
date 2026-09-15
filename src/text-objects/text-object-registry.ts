@@ -1220,7 +1220,7 @@ export function blockKindAllowsAction(
  *     `\gla`/`\glb`/`\glc` are measured against each other by column. An atom
  *     dropped into the last cell of the last tier changes what that column is
  *     without changing any other tier — the same silent alignment destruction
- *     `dropEmptiedSourceBlock` refuses (see AGENTS.md, "The identity half").
+ *     `dropEmptiedSourceBlock` refuses (see docs/agents/laws/capture-schema-symmetry.md, "The identity half").
  *     `proseGlossRow` (the `\glft` free translation) is skipped with it: it is
  *     the gloss's own apparatus, not the example's sentence.
  *   • `figureCaption` — writing into an EMPTY caption flips the `hasCaption`
@@ -1619,7 +1619,7 @@ function blockTypeHostsInlineAtom(
  *
  * Consumers (task 396 — before it, this had exactly ONE, which is how three
  * later surfaces inherited the retired premise that "an inline atom never
- * splits"; see `AGENTS.md` → "A registry earns its name by being read"):
+ * splits"; see `docs/agents/laws/a-registry-earns-its-name-by-being-read.md` → "A registry earns its name by being read"):
  *   1. the typed `$…$` input rules (`lib/tiptap/math.ts`, task 150);
  *   2. `inlineAtomInsertApplies` — the AFFORDANCE, greying the lightning grid's
  *      `$x$` and `Cross-ref` cells (`lib/actions/action-registry.ts`);

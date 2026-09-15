@@ -14,7 +14,7 @@ interface Position {
 /**
  * The gesture's clamp bounds — how far the panel's top-left may travel before
  * its far edge leaves the viewport. Captured ONCE on the gesture edge, exactly
- * as `FloatingPanel`'s `MoveGeometry` is (AGENTS.md "Pane-drag stability", the
+ * as `FloatingPanel`'s `MoveGeometry` is (docs/agents/laws/pane-drag-stability.md "Pane-drag stability", the
  * SNAPSHOT obligation): `offsetWidth`/`offsetHeight` are forced-layout reads,
  * and a dialog's size and the viewport are gesture-invariant, so reading them
  * inside the RAF body made every frame a write → read → write.

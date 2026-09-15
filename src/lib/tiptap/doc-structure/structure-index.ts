@@ -58,7 +58,7 @@ export function buildInitial(doc: PMNode): DocStructure {
   // enclosing example's id (`nestedInContainerId.kind === "example"`). The
   // stack is O(depth) and runs INSIDE the single load-only `buildInitial`
   // walk — no extra doc pass, and `applyDiff` never re-walks (keystroke
-  // sanctity; see AGENTS.md "Card-source derivation"). `id` is the example's
+  // sanctity; see docs/agents/laws/keystroke-sanctity.md "Card-source derivation"). `id` is the example's
   // `ExampleEntry.id` (first non-empty of uuid → tag → label, via the shared
   // `deriveExampleIdentity`) so it matches the example omni item key
   // `cardPopKey("example", id)` the nesting transform resolves.

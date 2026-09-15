@@ -1,5 +1,5 @@
 // Editor-observer stability guardrail — the CI half of the third perf law
-// (AGENTS.md "Editor-observer stability"), sibling of
+// (docs/agents/laws/editor-observer-stability.md "Editor-observer stability"), sibling of
 // `keystroke-subscriber-guardrail.test.ts` (keystroke sanctity) and
 // `scroll-reposition-guardrail.test.ts` (scroll-anchor stability).
 //

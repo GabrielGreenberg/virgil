@@ -53,7 +53,7 @@ import { MarkerButton } from "@/components/Marginalia";
  * preferences over the lane; they do not silence this. A card that lost its
  * anchor is the same class of fact as a save refusal — the app's own rule is
  * that a data-integrity notice is not hideable by a layout preference
- * (AGENTS.md, "The honesty half"). Archived cards ARE excluded, because an
+ * (docs/agents/laws/the-write-path.md, "The honesty half"). Archived cards ARE excluded, because an
  * archived card is deliberately out of the margin and out of its panel's
  * default list; its home is the Archive panel, where it is already reachable.
  *

@@ -396,7 +396,7 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
   it("the narrow type-only twin is NOT exported — one door, one answer", () => {
     // `blockTypeHostsInlineAtom` cannot clamp a stale caret and every real
     // consumer holds a position, so an exported narrow twin is how a call site
-    // comes to ask the smaller question (AGENTS.md → "A registry earns its name
+    // comes to ask the smaller question (docs/agents/laws/a-registry-earns-its-name-by-being-read.md → "A registry earns its name
     // by being read": a sibling call is not a consumer).
     const ssot = keepLiteralsAligned(
       readFileSync(join(REPO, "src/text-objects/text-object-registry.ts"), "utf8"),

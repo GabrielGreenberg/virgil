@@ -67,7 +67,7 @@
  *
  * `buildProseIndex` is **O(doc)** — one `descendants` walk plus one pass over
  * each prose block's inline children. It is a DERIVED PRODUCT and must never
- * run on the keystroke path (AGENTS.md → "Keystroke sanctity"). A consumer
+ * run on the keystroke path (docs/agents/laws/keystroke-sanctity.md → "Keystroke sanctity"). A consumer
  * re-derives EVENT-DRIVEN: gated on the per-category counters from
  * `useStructuralRevisions` (the `DocStructureBus`), or in a `doc-products`
  * tier, or — like the Search panel today — once per user-initiated query.

@@ -19,7 +19,7 @@ import {
   type DockGeometry,
 } from "@/components/editor-layout/dock-drag";
 // The two pointer invariants EVERY drag gesture in the app honors — imported
-// from the engine's SSOT, never re-derived (AGENTS.md "Pane-drag stability";
+// from the engine's SSOT, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability";
 // task 185). A bespoke gesture buys a different SHAPE, not an exemption.
 import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";

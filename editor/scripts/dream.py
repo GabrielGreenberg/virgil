@@ -1327,7 +1327,7 @@ def _publish_report(text: str, iso: str, date_str: str) -> Path | None:
     WRITE-ONCE with a unique name, which is the sync doctrine rather than a
     preference: the authoritative digest is `<date>.md` and it ROTATES in place
     on a same-day re-run, and a file two machines can see being rewritten is a
-    conflicted copy waiting to be minted (AGENTS.md → "The daemon half"). So
+    conflicted copy waiting to be minted (docs/agents/laws/cross-window-store-stability.md → "The daemon half"). So
     the copy is keyed on the RUN (`<date>T<HHMMSS>Z-digest.md`), a second run
     of a day adds a second file rather than replacing the first, and nothing
     here is ever edited afterwards.
@@ -1696,7 +1696,7 @@ def cmd_paths(argv: list[str]) -> int:
     the tool instead of spelling a path: the digest root has moved twice
     (`~/.virgil-dev` → `<primary checkout>/editor/dev`, task 431; the memo sink
     onto the synced inbox, task 521) and the prose copy went stale both times
-    (task 538). The stored-copy rule (AGENTS.md, "The stored-copy half"): a live
+    (task 538). The stored-copy rule (docs/agents/laws/a-registry-earns-its-name-by-being-read.md, "The stored-copy half"): a live
     answer is resolved at READ time from one authority, never frozen into a doc.
 
     With a KEY the root is printed bare — one line, no JSON — so a shell can

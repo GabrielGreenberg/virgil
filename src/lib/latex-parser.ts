@@ -3645,7 +3645,7 @@ function parseExampleBodyAsBlocks(
     // which is the pre-350 defect, and that is the least-bad of three bad
     // options rather than an oversight: pushing the unmountable child instead
     // would hand TipTap a schema mismatch, which `createNodeFromContent`
-    // SWALLOWS into an empty document (AGENTS.md "Capture/schema symmetry") —
+    // SWALLOWS into an empty document (docs/agents/laws/capture-schema-symmetry.md "Capture/schema symmetry") —
     // a blank paper rather than one lost construct. And a drop here is not
     // silent any more: the load-writeback preservation gate (task 350 D)
     // weighs the serialized output against the source and REFUSES the write,

@@ -13,7 +13,7 @@
  * not have and then removed the thing the user was holding.
  *
  * That is the false-affordance family this subsystem has already been drained
- * of twice (`AGENTS.md` → "The affordance half: what the hover OFFERS is what
+ * of twice (`docs/agents/laws/capture-schema-symmetry.md` → "The affordance half: what the hover OFFERS is what
  * the commit ACCEPTS", and "The feedback half: the DECISION is derived from the
  * EXECUTION"). The rule both earned applies verbatim here: **the affordance and
  * the commit read the SAME table**, and the capability is resolved ONCE at

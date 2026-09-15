@@ -50,7 +50,7 @@
 //
 // ── The SECOND question (task 328): did you ADOPT? ──────────────────────────
 //
-// Same splice-site family, one axis over. `AGENTS.md` ("The move half", rule 4)
+// Same splice-site family, one axis over. `docs/agents/laws/capture-schema-symmetry.md` ("The move half", rule 4)
 // states the law — *a payload arrives in the target's vocabulary or not at all*
 // — and until 328 the ONLY enforcement was a private helper inside
 // `fitNodesAtInsert`, reachable solely THROUGH the container fit. So the two

@@ -187,7 +187,7 @@ export interface HandleLane {
  *      neither can its halo (`applyHitCaps` caps at the same
  *      {@link HandleLane.minLeft}). This is the LEFT margin's reading of the
  *      lane law the right margin already states (`resolveRightLane`,
- *      AGENTS.md → "The ordering half"): the outboard occupant places first,
+ *      docs/agents/laws/editor-geometry.md → "The ordering half"): the outboard occupant places first,
  *      and the inboard one takes what remains.
  */
 export function resolveHandleLane(input: HandleLayoutInput): HandleLane {

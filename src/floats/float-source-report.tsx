@@ -32,7 +32,7 @@ import {
  *
  * This carries the FACT ("the source is missing"), never an AFFORDANCE
  * ("hide the jump button"). One resolution, two drawings — the banner the user
- * reads and the chrome affordance — exactly the law `AGENTS.md` states under
+ * reads and the chrome affordance — exactly the law `docs/agents/laws/editor-geometry.md` states under
  * "The resolution half: two DRAWINGS of one anchor read ONE resolution". A
  * `setCanJump` channel would have been the body RESTATING the chrome's
  * decision, and the next chrome element that depends on the same fact would

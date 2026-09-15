@@ -118,7 +118,7 @@ const DEFAULT_POD_GAP = 10;
  * for. `findDockTargetAtPoint` (dead since the band-stack model — zero callers
  * in either silo) and `findDockTargetByPanelProximity` (whose only two callers
  * were the two FloatingPanel sites converted with this) are both DELETED, per
- * AGENTS.md "A registry earns its name by being read". A consumer must now
+ * docs/agents/laws/a-registry-earns-its-name-by-being-read.md "A registry earns its name by being read". A consumer must now
  * spell `readDockGeometry` to sweep — which its own move-path source contract
  * can forbid.
  */

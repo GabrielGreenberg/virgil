@@ -130,7 +130,7 @@ describe("the ceiling — what a pull leaves behind", () => {
   it("an APPLIED suggestion is not carried as applied", () => {
     // The splice `appliedChange` describes lives in the SOURCE paper's `.tex`.
     // A copy claiming `applied` would advertise Keep/Revert over a range this
-    // document has never had (AGENTS.md, "The lifecycle half").
+    // document has never had (docs/agents/laws/capture-schema-symmetry.md, "The lifecycle half").
     for (const kind of ["revision-suggestion", "cutter-suggestion"] as const) {
       expect(seedFor(kind).status, kind).toBeUndefined();
       expect(seedFor(kind).appliedChange, kind).toBeUndefined();

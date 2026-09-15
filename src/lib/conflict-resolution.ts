@@ -16,7 +16,7 @@
  *
  * That is why the archive is not a per-door step. Making it one is how the two
  * doors come to disagree about what gets kept: the shape this cluster keeps
- * re-learning (AGENTS.md, "what the hover OFFERS is what the commit ACCEPTS").
+ * re-learning (docs/agents/laws/capture-schema-symmetry.md, "what the hover OFFERS is what the commit ACCEPTS").
  * Here the order is stated ONCE and both doors are derived from it.
  *
  * ## Why the ports rather than the calls

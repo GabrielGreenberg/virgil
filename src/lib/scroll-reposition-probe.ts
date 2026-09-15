@@ -20,7 +20,7 @@
 // The companion CI guard is `src/lib/__tests__/scroll-reposition-guardrail.test.ts`
 // (a source-grep permitted-subscriber allowlist, modelled on the keystroke-
 // sanctity allowlist + `float-policy.test.ts`). The contract itself is written
-// up in AGENTS.md ("Scroll-anchor stability").
+// up in docs/agents/laws/scroll-anchor-stability.md ("Scroll-anchor stability").
 
 /** Canonical portal ids — the fixed portals wired to record into the probe. */
 export const SCROLL_PORTAL_SELECTION_BOLT = "selection-actions-bolt";

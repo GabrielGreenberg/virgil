@@ -739,7 +739,7 @@ describe("(F) per-kind: a text mark applies inside each PROSE kind's text run", 
   // with the comment "the cell is enabled … the oracle's stated divergence
   // between an enabled cell and a near-zero effect". An enabled, clickable cell
   // that cannot do anything is not a sanctioned divergence — it is the
-  // false-affordance class (`AGENTS.md` → "what the hover OFFERS is what the
+  // false-affordance class (`docs/agents/laws/capture-schema-symmetry.md` → "what the hover OFFERS is what the
   // commit ACCEPTS"), and all five mark cells sat lit and inert in both markless
   // verbatim blocks. `formatApplies` is a per-mark FACTORY now and reads
   // `allowsMarkType` off the live schema. What the leg still pins unchanged is

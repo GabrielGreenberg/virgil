@@ -1645,7 +1645,7 @@ change to chrome shared by nine other sites, and its own task. Before task
 and active drag looked identical.
 
 This governs **engine-driven dividers**. A gesture the engine's shape doesn't
-fit may stay bespoke (AGENTS.md "Pane-drag stability" names them), and its
+fit may stay bespoke (docs/agents/laws/pane-drag-stability.md "Pane-drag stability" names them), and its
 chrome is its own affair — the Outline focus-band edge handles paint
 `--accent` legitimately, and are not a violation of the sentence above.
 
@@ -1696,7 +1696,7 @@ new `resize` **or `scroll`** listener that neither parks nor suppresses fails
 the census in `window-resize-guardrail.test.ts` /
 `scroll-listener-guardrail.test.ts` (the scroll half because a CONTENT drag
 auto-scrolls the document, so its followers are the scroll listeners — a user
-scroll is not a gesture and is unaffected); doctrine in AGENTS.md "Pane-drag
+scroll is not a gesture and is unaffected); doctrine in docs/agents/laws/pane-drag-stability.md "Pane-drag
 stability" + "Layout-gesture stability".
 
 ## Code view
@@ -2630,7 +2630,7 @@ restore needs), so this is one attribute and one CSS rule, never an edit:
 forces `background: none` — and that rule must stay AFTER every other
 `.linked-anchor` background in `globals.css`, because the tint band carries an
 `!important` of its own and source order is what resolves the tie. The rule is
-stated once in `src/links/_shared/archived-anchor-chrome.ts`; see AGENTS.md
+stated once in `src/links/_shared/archived-anchor-chrome.ts`; see docs/agents/laws/editor-geometry.md
 ("The chrome half").
 
 ### The spelling squiggle (task 518)
@@ -2675,7 +2675,7 @@ shared chrome columns, expressed as CSS variables in `:root` so every
 consumer reads the same source. **They are ONE lane, resolved outboard →
 inboard** — the chevron column places first and the grab handle takes what
 remains inboard of it (task 526; the left margin's reading of the rule the
-right margin already states, AGENTS.md → "The ordering half"):
+right margin already states, docs/agents/laws/editor-geometry.md → "The ordering half"):
 
 - `--margin-col-chevron` (default `-44px`) + `--margin-col-chevron-width`
   (default `14px`) — fold chevron column for headings and the SOURCE POD.
