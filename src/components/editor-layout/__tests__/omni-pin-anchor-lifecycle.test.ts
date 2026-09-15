@@ -72,6 +72,8 @@ import { REPOSITION_EPSILON_PX } from "@/lib/reposition-policy";
 import { resolveCascade, type NaturalEntry } from "@/hooks/useInTextPositions";
 
 const POD_TOP = -200; // the pod is scrolled: its origin sits above the band
+/** The deck owner the scene's pod stamps (task 583). */
+const OWNER = "omni-pin-lifecycle";
 const BAND_BOTTOM = 800;
 
 /** The Stojnić archive card from Gabriel's paper, in miniature. */
@@ -104,6 +106,7 @@ function scene(podRelTop: number, naturalTop = podRelTop): HTMLElement {
   side.dataset.panelColumnSide = "right";
 
   const pod = document.createElement("div");
+  pod.setAttribute("data-omni-pin-owner", OWNER);
   pod.getBoundingClientRect = () => rect(POD_TOP, 4000);
 
   const wrapper = document.createElement("div");
@@ -193,8 +196,7 @@ function preFixCardY(naturalTop: number, storedAbsoluteTop: number): number {
 }
 
 const clearPins = () => {
-  omniPinStore.clearPin("left");
-  omniPinStore.clearPin("right");
+  omniPinStore.clearAll();
 };
 
 beforeEach(clearPins);
@@ -213,7 +215,7 @@ describe("a pinned card and its marker never disagree about the anchor", () => {
   function pinAtMarkerClick(): number {
     scene(ANCHOR_0);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    const pin = omniPinStore.get("right");
+    const pin = omniPinStore.get(OWNER);
     expect(pin, "an off-screen card is a sanctioned move").not.toBeNull();
     return pin!.offset;
   }
@@ -291,7 +293,7 @@ describe("the offset is the gesture's durable half", () => {
   it("a marker click puts the card where the click was, at pin time", () => {
     scene(900);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    const offset = omniPinStore.get("right")!.offset;
+    const offset = omniPinStore.get(OWNER)!.offset;
     // Pod-relative desired Y was `140 - POD_TOP`; the card's natural top was
     // 900; so the card lands back at the requested Y on the next resolve.
     expect(cardY(900, { id: KEY, offset })).toBe(140 - POD_TOP);
@@ -312,11 +314,19 @@ describe("the offset is the gesture's durable half", () => {
     // be when open". The freeze is asserted where it is real: with a pin
     // standing, which is the only state in which the card's own top depends on
     // its own height. See `holdIsNeeded` in `omni-card-placement.ts`.
-    omniPinStore.requestPin("right", "float:card:note:other", 30);
+    //
+    // And again (task 583): the standing pin must be a card IN THIS DECK
+    // BELOW the pressed one — the backward pass reaches only rows above the
+    // pin — so the pinned wrapper is added under KEY.
     const wrapper = scene(760, 600);
+    const other = document.createElement("div");
+    other.dataset.omniEntryWrapper = "float:card:note:other";
+    other.setAttribute("data-omni-natural-top", "1100");
+    wrapper.parentElement!.appendChild(other);
+    omniPinStore.requestPin(OWNER, "float:card:note:other", 30);
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")!.cardId).toBe(KEY);
-    expect(omniPinStore.get("right")!.offset).toBe(160);
+    expect(omniPinStore.get(OWNER)!.cardId).toBe(KEY);
+    expect(omniPinStore.get(OWNER)!.offset).toBe(160);
     expect(cardY(600, { id: KEY, offset: 160 })).toBe(760);
     // …and one edit later, still 160 below wherever the anchor now is.
     expect(cardY(1000, { id: KEY, offset: 160 })).toBe(1160);
@@ -339,7 +349,7 @@ describe("the reference may be an ESTIMATE, and the pin rides its correction", (
     const EXACT = 900;
     scene(1400, APPROX); // off screen ⇒ sanctioned; natural still estimated
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    const offset = omniPinStore.get("right")!.offset;
+    const offset = omniPinStore.get(OWNER)!.offset;
 
     // The pin lands exactly where the gesture asked, against the estimate…
     expect(cardY(APPROX, { id: KEY, offset })).toBe(140 - POD_TOP);
@@ -355,11 +365,11 @@ describe("the lift clears the pin it actually holds", () => {
     // it was already true before the fix, and the census below is what
     // catches the part that actually misbehaved.
     const rowId = `${KEY}@1`;
-    omniPinStore.requestPin("right", rowId, 40);
-    omniPinStore.clearPin("right", KEY); // what the lift used to pass
-    expect(omniPinStore.get("right")).not.toBeNull();
-    omniPinStore.clearPin("right", rowId); // what it passes now
-    expect(omniPinStore.get("right")).toBeNull();
+    omniPinStore.requestPin(OWNER, rowId, 40);
+    omniPinStore.clearPin(OWNER, KEY); // what the lift used to pass
+    expect(omniPinStore.get(OWNER)).not.toBeNull();
+    omniPinStore.clearPin(OWNER, rowId); // what it passes now
+    expect(omniPinStore.get(OWNER)).toBeNull();
   });
 
   it("CENSUS — the lift gesture clears by the WRAPPER's id, never the bare card key", () => {

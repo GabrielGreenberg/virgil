@@ -68,7 +68,7 @@ import { themeFromAccent, DEFAULT_PANEL_COLORS, accentInk, getPanelColor, type C
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
-import { omniPinStore } from "./editor-layout/omni-pin-store";
+import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
 import { iconHint } from "@/components/Hint";
 
 /**
@@ -2880,16 +2880,17 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // is `<key>@N`. `clearPin`'s identity guard declines a mismatch, so
       // the bare key silently cleared nothing for exactly those rows and
       // left the pin standing after the card had left the deck.
-      const sideEl = cardEl.closest(
-        "[data-panel-column-side]",
-      ) as HTMLElement | null;
-      const side = sideEl?.dataset.panelColumnSide;
+      //
+      // And clear it in the deck that OWNS it (task 583): the pin store is
+      // keyed per omni deck, resolved from the wrapper's pod — never by side,
+      // which would reach whichever pane shares that rail.
       const pinnedWrapper = cardEl.closest(
         "[data-omni-entry-wrapper]",
       ) as HTMLElement | null;
-      if (side === "left" || side === "right") {
+      const pinOwner = pinOwnerOf(pinnedWrapper);
+      if (pinOwner) {
         omniPinStore.clearPin(
-          side,
+          pinOwner,
           pinnedWrapper?.dataset.omniEntryWrapper ?? cardKey,
         );
       }

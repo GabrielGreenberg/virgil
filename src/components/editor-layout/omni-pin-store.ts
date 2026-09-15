@@ -68,28 +68,42 @@
  * 327 made non-absorbing, and the 328 slide renders it as a glide rather
  * than a teleport. Pinned as a contract in `omni-pin-anchor-lifecycle`.
  *
- * Single pin per side: marker clicks track the selection, and there's at
- * most one selected card at a time, so a new marker click simply REPLACES
- * the prior pin atomically. Nothing else clears one — the pin is untied
- * from selection deliberately, so collapse-toggling a pinned card doesn't
- * snap it back to its cascaded position. (An earlier version of this
- * header claimed `OmniViewPanel` cleared the pin from a `useSelection()`
- * subscription; there is no such subscription and there has not been one
- * since the pin was made persistent. Corrected rather than left standing:
- * a header describing a lifecycle the code does not have is how the next
- * reader concludes the pin is already bounded.)
+ * ## One pin per POD, keyed by its OWNER (task 583)
  *
- * The one non-replacement clear is the card LIFT / pop-out gesture
- * (`panel-primitives.tsx`), which unmounts the wrapper from the cascade.
- * It clears by the WRAPPER's id — the same identity `requestPin` stores —
- * because a multi-anchor card's row is `<key>@N` and `clearPin`'s identity
- * guard declines a mismatch, which used to leave a lifted multi-anchor
- * row's pin standing forever.
+ * > **A pin is a fact about ONE deck, so it lives in that deck's slot.** N
+ * > `OmniViewPanel`s are mounted at once (multi-doc keep-alive, the Library
+ * > Reader, both rails of a pane), and each one mints an OWNER token and
+ * > stamps it on its pod (`data-omni-pin-owner`). Every read and write names
+ * > the owner; nothing is keyed by side alone.
+ *
+ * Until 583 the store held ONE slot per SIDE for the whole app, so a marker
+ * click in doc B released doc A's pinned card (it had snapped back by the time
+ * the user returned), and A's standing pin satisfied B's hold rule — a
+ * per-DOCUMENT value in a single module slot, the "Per-doc services under
+ * multi-pane keep-alive" class. The owner is resolved from the DOM the gesture
+ * already holds (`pinOwnerOf(wrapper)` — the wrapper's pod), which is the one
+ * spelling of "wrapper → owner" both the placement door and the lift read.
+ *
+ * Within one owner there is still ONE pin: marker clicks track the selection,
+ * and there's at most one selected card at a time, so a new marker click
+ * simply REPLACES the prior pin atomically. Nothing else clears a LIVE pin —
+ * the pin is untied from selection deliberately, so collapse-toggling a pinned
+ * card doesn't snap it back to its cascaded position. (An earlier version of
+ * this header claimed `OmniViewPanel` cleared the pin from a `useSelection()`
+ * subscription; there is no such subscription and there has not been one
+ * since the pin was made persistent.) What bounds a standing pin's REACH is
+ * not a clear but the hold rule in `omni-card-placement.ts`, which since 583
+ * asks whether the pinned card can actually move the pressed one.
+ *
+ * Two non-replacement clears: the card LIFT / pop-out gesture
+ * (`panel-primitives.tsx`), which unmounts the wrapper from the cascade — it
+ * clears by the WRAPPER's id, the same identity `requestPin` stores, because a
+ * multi-anchor card's row is `<key>@N` and `clearPin`'s identity guard
+ * declines a mismatch — and the owning panel's UNMOUNT (`releaseOwner`), so a
+ * closed pane leaves no slot behind.
  */
 
 import { useSyncExternalStore } from "react";
-
-export type PinSide = "left" | "right";
 
 /** The DOM channel the pod publishes each card's measured natural top on,
  *  and the ONE thing that makes the publish site able to speak in anchor-
@@ -97,6 +111,11 @@ export type PinSide = "left" | "right";
  *  `OmniViewPanel`'s positioned wrapper, which renders only once the card
  *  HAS a measured natural top — so a wrapper in the DOM always carries it. */
 export const DATA_OMNI_NATURAL_TOP = "data-omni-natural-top";
+
+/** The DOM channel each pod stamps its pin OWNER on (task 583). Written by
+ *  `OmniViewPanel` (a bare JSX attribute — JSX has no computed-attribute
+ *  syntax); read only through `pinOwnerOf`. */
+export const DATA_OMNI_PIN_OWNER = "data-omni-pin-owner";
 
 export interface PinRequest {
   /** `data-omni-entry-wrapper` key — the canonical `float:card:<kind>:<id>`
@@ -112,50 +131,79 @@ export interface PinRequest {
   version: number;
 }
 
-const _pins: Record<PinSide, PinRequest | null> = { left: null, right: null };
+const _pins = new Map<string, PinRequest>();
 const _listeners = new Set<() => void>();
 let _nextVersion = 0;
+let _nextOwner = 0;
 
 function emit(): void {
   for (const fn of _listeners) fn();
 }
 
+/** Mint a pin owner for one omni deck. Called once per `OmniViewPanel`
+ *  instance (`useState(mintPinOwner)`). */
+export function mintPinOwner(): string {
+  return `omni-pin-${++_nextOwner}`;
+}
+
+/** The ONE spelling of "which deck does this wrapper belong to?": the owner
+ *  its pod stamped. A wrapper is a direct child of the pod (the placement
+ *  door already takes `wrapper.parentElement` as the pod). `null` when the
+ *  pod carries no owner — callers fail CLOSED on that: a pin with no owner
+ *  is a pin no deck reads. */
+export function pinOwnerOf(wrapper: Element | null | undefined): string | null {
+  const owner = wrapper?.parentElement?.getAttribute(DATA_OMNI_PIN_OWNER);
+  return owner ? owner : null;
+}
+
 export const omniPinStore = {
-  get(side: PinSide): PinRequest | null {
-    return _pins[side];
+  get(owner: string): PinRequest | null {
+    return _pins.get(owner) ?? null;
   },
 
   /** Pin a card at the given offset from its natural (anchor-derived) top.
-   *  Replaces any existing pin on this side.
+   *  Replaces any existing pin for this OWNER — and no other owner's.
    *
    *  MECHANISM, not policy: this writes whatever offset it is handed.
    *  Whether a card may be moved at all — and to which Y — is decided ONCE
    *  by `omni-card-placement.ts`, the only production caller (task 328;
    *  CI: `gutter-stability-census`), which is also the only place the
-   *  absolute→anchor-relative conversion happens (task 362). Three
-   *  publishers used to reach this directly and each moved its card
-   *  unconditionally. */
-  requestPin(side: PinSide, cardId: string, offset: number): void {
-    const cur = _pins[side];
+   *  absolute→anchor-relative conversion happens (task 362). */
+  requestPin(owner: string, cardId: string, offset: number): void {
+    const cur = _pins.get(owner);
     if (cur && cur.cardId === cardId && cur.offset === offset) {
       // Same payload — still bump version so any subscriber treats it as
       // a fresh request (e.g. user re-clicked the same marker after
       // scroll, intending to re-pin at the original Y).
-      _pins[side] = { ...cur, version: ++_nextVersion };
+      _pins.set(owner, { ...cur, version: ++_nextVersion });
       emit();
       return;
     }
-    _pins[side] = { cardId, offset, version: ++_nextVersion };
+    _pins.set(owner, { cardId, offset, version: ++_nextVersion });
     emit();
   },
 
-  /** Clear the pin on this side. If `cardId` is given, only clear if the
+  /** Clear this owner's pin. If `cardId` is given, only clear if the
    *  current pin matches (so a stale clear doesn't drop someone else's
    *  fresh pin). */
-  clearPin(side: PinSide, cardId?: string): void {
-    if (!_pins[side]) return;
-    if (cardId && _pins[side]!.cardId !== cardId) return;
-    _pins[side] = null;
+  clearPin(owner: string, cardId?: string): void {
+    const cur = _pins.get(owner);
+    if (!cur) return;
+    if (cardId && cur.cardId !== cardId) return;
+    _pins.delete(owner);
+    emit();
+  },
+
+  /** Drop an owner's slot entirely — the owning deck unmounted. */
+  releaseOwner(owner: string): void {
+    if (!_pins.delete(owner)) return;
+    emit();
+  },
+
+  /** Test seam: forget every owner's pin. */
+  clearAll(): void {
+    if (_pins.size === 0) return;
+    _pins.clear();
     emit();
   },
 
@@ -167,14 +215,14 @@ export const omniPinStore = {
 
 const _getServerSnapshot = () => null;
 
-/** Hook: subscribe to the current pin request for a given side. Returns
+/** Hook: subscribe to the current pin request for one deck's owner. Returns
  *  the same object identity across renders if the underlying pin hasn't
  *  changed (so consumers can use it as a useEffect dependency without
  *  thrashing). */
-export function usePinRequest(side: PinSide): PinRequest | null {
+export function usePinRequest(owner: string): PinRequest | null {
   return useSyncExternalStore(
     omniPinStore.subscribe,
-    () => _pins[side],
+    () => _pins.get(owner) ?? null,
     _getServerSnapshot,
   );
 }

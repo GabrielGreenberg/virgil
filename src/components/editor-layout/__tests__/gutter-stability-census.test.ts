@@ -128,6 +128,47 @@ describe("anchor axis — the natural-top DOM channel agrees across the layer br
   });
 });
 
+describe("card axis — the pin OWNER attribute (task 583)", () => {
+  // Pins are keyed per omni deck, resolved from the wrapper's pod. Same
+  // two-layer shape as the natural-top attribute above, with one more rule:
+  // the wrapper → owner resolution is spelled ONCE (`pinOwnerOf`), so the
+  // placement door and the lift cannot come to disagree about which deck a
+  // card is in — and a drift fails CLOSED (no owner ⇒ every pin refused).
+  const ATTR = "data-omni-pin-owner";
+  const WRITER = "panels/Omni/OmniViewPanel.tsx";
+  const STORE = "components/editor-layout/omni-pin-store.ts";
+  const LIFT = "components/panel-primitives.tsx";
+
+  it("the writer spells the attribute the store's constant declares", () => {
+    const store = readFileSync(path.join(SRC, STORE), "utf8");
+    const declared = /DATA_OMNI_PIN_OWNER\s*=\s*"([^"]+)"/.exec(store);
+    expect(declared, "the constant must exist").not.toBeNull();
+    expect(declared![1]).toBe(ATTR);
+    expect(CODE.get(path.join(SRC, WRITER))).toContain(`${ATTR}=`);
+  });
+
+  it("nothing else reads or writes it, and both consumers resolve through pinOwnerOf", () => {
+    const offenders = [...CODE.entries()]
+      .filter(([, code]) => code.includes(ATTR))
+      .map(([f]) => rel(f))
+      .filter((f) => f !== WRITER && f !== STORE);
+    expect(offenders).toEqual([]);
+    expect(CODE.get(path.join(SRC, PIN_DOOR))).toMatch(/\bpinOwnerOf\(/);
+    expect(CODE.get(path.join(SRC, LIFT))).toMatch(/\bpinOwnerOf\(/);
+  });
+
+  it("no production file keys the pin store by SIDE", () => {
+    // The pre-583 shape: `omniPinStore.get(r.side)` / `usePinRequest(side …)`
+    // — one module slot per rail for every mounted deck.
+    const offenders = [...CODE.entries()]
+      .filter(([, code]) =>
+        /\b(?:omniPinStore\.(?:get|requestPin|clearPin)|usePinRequest)\(\s*(?:r\.)?side\b/.test(code),
+      )
+      .map(([f]) => rel(f));
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("document axis — alignEntryToY has one home", () => {
   it("no production file outside layout-scroll scrolls the row unconditionally", () => {
     // `alignEntryToYIfNeeded(` does not match: the needle ends at the paren.

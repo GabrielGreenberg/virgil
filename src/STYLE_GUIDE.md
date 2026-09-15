@@ -3287,7 +3287,7 @@ linked text re-places its card, and clicking a card scrolls the document to
 its text, only when the counterpart is not ALREADY fully visible and near
 enough — one predicate, `mayReposition` in `src/lib/reposition-policy.ts`,
 answers that for every such gesture, and refusing writes nothing at all
-rather than a no-op pin (the omni pin store holds one pin per side, so even
+rather than a no-op pin (the omni pin store holds one pin per deck, so even
 a same-position pin would release another card's). When a move IS sanctioned
 the omni wrapper glides instead of teleporting: `.omni-entry-slide`, 180ms
 `transform` ease-out, opted in under `prefers-reduced-motion:
