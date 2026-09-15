@@ -1,4 +1,4 @@
-<!-- last-verified: 78a7db3e 2026-09-14 -->
+<!-- last-verified: 3b09f304 2026-09-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -105,8 +105,9 @@ sets the `aiRequest?` flag on the `footnotes.json` entry AND bridges a
 `kind: "footnote"` Task into `ai-requests.json` (`bridgeCardAiRequestFlag`,
 `linkedTo: { panel: "footnotes", cardId }`); the routing is declared on
 `CARD_REGISTRY` (`{ kind: "footnote", linkPanel: "footnotes" }`), not a bespoke
-path. The flag rides the `...existing` spread through `syncFromEditor`, so it
-survives a re-parse.
+path. The flag lives on the `footnotes.json` mirror, which the editor-derived
+rows never rewrite (there is no `syncFromEditor` reconcile since task 570), so
+it survives a re-parse.
 
 That Task is **drainable end-to-end** (#55b rework): `/editor/draft-footnote`
 reads the `kind: "footnote"` queue entry and, because `linkedTo.panel ===
