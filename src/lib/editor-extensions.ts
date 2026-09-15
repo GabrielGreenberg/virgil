@@ -1853,10 +1853,15 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // Virgil's own spellchecker (task 518). Ungated on surface for the same
     // reason `InlineAtomGrab` is: a popped-out paragraph is the user's prose
     // too. It is inert without a port (the Library reader, any host outside a
-    // `SpellcheckProvider`) and inert while the view is read-only, and it is
-    // the plugin that turns the BROWSER's underline off for the surfaces it
-    // paints — see `spellcheck-decorator.ts`.
-    SpellcheckDecorator.configure({ port: ctx.spellcheckPortRef ?? null }),
+    // `SpellcheckProvider`) and inert while the SURFACE is read-only — asked
+    // through the same `editableRef` the atom grab and the readOnlyEnforcer
+    // read (task 579: MAIN pins `view.editable = true`, so the view alone
+    // cannot answer) — and it is the plugin that turns the BROWSER's underline
+    // off for the surfaces it paints — see `spellcheck-decorator.ts`.
+    SpellcheckDecorator.configure({
+      port: ctx.spellcheckPortRef ?? null,
+      editableRef: ctx.editableRef ?? null,
+    }),
     // Autocorrect (task 519) rides beside `SmartQuotes` and for the same
     // reason: both are TYPE-TIME transforms of the user's prose, and both
     // inherit TipTap's own input-rule gate by sharing its plugin. Its own gate

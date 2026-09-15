@@ -68,7 +68,7 @@ import { registerEditorMount } from "@/lib/editor-census-probe";
 import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
-import { stampAtomsGraspable } from "@/lib/tiptap/inline-atom-grab";
+import { announceSurfaceEditability } from "@/lib/tiptap/surface-editable";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -1840,7 +1840,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     // re-applies its options with `editable: editor.isEditable`, so nothing
     // reaches PM). This effect is that flip's only witness, and a cowork-pen
     // hold or a collab hand-over is exactly a moment when nobody is typing.
-    stampAtomsGraspable(view, editableRef);
+    //
+    // Task 579: the spellchecker asks the same question, so the flip is
+    // ANNOUNCED rather than stamped here — a meta-only transaction that runs
+    // every plugin view's `update()` against `surfaceIsEditable`. The atom
+    // grab re-stamps from its view, the spellchecker re-evaluates whether it
+    // owns this surface's underline; one witness, no per-affordance call.
+    announceSurfaceEditability(view);
   }, [editor, editable]);
 
   // Register the editor's ProseMirror DOM with the drop-mode target

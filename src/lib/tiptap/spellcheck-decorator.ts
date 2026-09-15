@@ -41,7 +41,9 @@
  * its own `props.attributes` — declaratively, so ProseMirror adds and removes
  * it, and so it composes with `Editor.tsx`'s read-only
  * `NEVER_SPELLCHECK_ATTRS` rather than fighting it. If the preference is off,
- * the surface is read-only, or the DICTIONARY FAILS TO LOAD, the plugin goes
+ * the surface is read-only (asked through `surfaceIsEditable`, never
+ * `view.editable` alone — MAIN pins that to true, task 579), or the
+ * DICTIONARY FAILS TO LOAD, the plugin goes
  * inactive and the attribute goes with it — the surface is handed back to the
  * browser rather than left with no checker at all. That hand-back is the whole
  * reason `spellEngineAvailable()` is published instead of swallowed.
@@ -80,6 +82,8 @@ import { tokenizeBlock, type SpellToken } from "@/lib/spell/prose-words";
 import type { SpellcheckPort, SpellcheckPortRef } from "@/lib/spell/spell-port";
 import { closeSpellMenu, openSpellMenu } from "@/lib/spell/spell-menu-store";
 import { viewOnly } from "@/lib/view-only-chrome";
+import type { RefObject } from "react";
+import { surfaceIsEditable } from "@/lib/tiptap/surface-editable";
 
 /** The class the squiggle is painted with; `globals.css` owns the look.
  *  Stamped through `viewOnly()` at the decoration (below), because a squiggle
@@ -118,6 +122,14 @@ interface SpellResultMeta {
 export interface SpellcheckDecoratorOptions {
   /** The live port; `null` disables the plugin entirely. */
   port: SpellcheckPortRef | null;
+  /**
+   * MAIN's mirror of the React `editable` prop (task 579). MAIN pins
+   * `view.editable = true` whatever the user-facing state, so without this the
+   * read-only gate below is always open there — the Library Reader squiggled
+   * every paper and offered corrections the `readOnlyEnforcer` then dropped.
+   * `null` on surfaces whose `view.editable` is honest (card bodies, floats).
+   */
+  editableRef: RefObject<boolean> | null;
 }
 
 /** The textblock the caret is in, or null. O(depth). */
@@ -198,11 +210,12 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
   name: "spellcheckDecorator",
 
   addOptions() {
-    return { port: null };
+    return { port: null, editableRef: null };
   },
 
   addProseMirrorPlugins() {
     const portRef = this.options.port;
+    const editableRef = this.options.editableRef;
     if (!portRef) return [];
 
     return [
@@ -282,6 +295,11 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             contextmenu(view, event) {
               const st = spellcheckPluginKey.getState(view.state);
               if (!st?.active) return false;
+              // Asked LIVE, not only through `active`: between an editability
+              // flip and the debounced pass that clears the squiggles, a
+              // flagged word is still painted, and a menu opened over it would
+              // offer an edit the read-only enforcer silently drops (task 579).
+              if (!surfaceIsEditable(view, editableRef)) return false;
               const port = portRef.current;
               if (!port) return false;
               // Resolve from the painted SPAN, not from the pointer's
@@ -342,7 +360,7 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
           const currentPort = (): SpellcheckPort | null => {
             const port = portRef.current;
             if (!port) return null;
-            return port.enabled() && view.editable ? port : null;
+            return port.enabled() && surfaceIsEditable(view, editableRef) ? port : null;
           };
 
           const schedule = () => {
@@ -369,6 +387,9 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
 
             if (!port) {
               needFull = true;
+              // A menu left open over a surface this plugin no longer owns
+              // would still offer its rows (task 579).
+              closeSpellMenu(view);
               if (state.active || state.decos !== DecorationSet.empty) {
                 dispatchMeta({ active: false, clear: true });
               }
