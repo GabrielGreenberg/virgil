@@ -363,20 +363,30 @@ describe("source census — one writer, one predicate", () => {
     ]);
   });
 
-  it("Editor.tsx re-stamps through the shared writer, not a hand-rolled setAttribute", () => {
+  it("Editor.tsx ANNOUNCES the flip through the shared door, not a hand-rolled setAttribute", () => {
+    // RENEGOTIATED in place (task 579): this pinned a direct
+    // `stampAtomsGraspable(` call, which was right while the atom grab was the
+    // ONLY affordance asking the editability question. The spellchecker asks it
+    // too, so the effect now ANNOUNCES the flip (a meta-only transaction every
+    // plugin view's `update()` answers) — and this plugin's `update()` is the
+    // one writer that re-stamps. The contract asserted is unchanged: no
+    // hand-rolled attribute write in Editor.tsx.
     const code = commentsStripped(
       fs.readFileSync(path.join(ROOT, "src/components/Editor.tsx"), "utf8"),
     );
-    expect(code).toContain("stampAtomsGraspable(");
-    expect(code).toContain('from "@/lib/tiptap/inline-atom-grab"');
+    expect(code).toContain("announceSurfaceEditability(");
+    expect(code).not.toContain(ATOMS_GRASPABLE_ATTR);
   });
 
   it("the plugin does not re-derive the gate beside the predicate", () => {
     const code = commentsStripped(
       fs.readFileSync(path.join(ROOT, "src/lib/tiptap/inline-atom-grab.ts"), "utf8"),
     );
-    // `view.editable &&` may appear exactly once: inside `atomsAreGraspable`.
+    // RENEGOTIATED in place (task 579): the conjunction moved to the shared
+    // door `surfaceIsEditable`, so the plugin spells it ZERO times and reads
+    // the door instead.
     const occurrences = code.split(/view\.editable\s*&&/).length - 1;
-    expect(occurrences).toBe(1);
+    expect(occurrences).toBe(0);
+    expect(code).toContain("surfaceIsEditable(");
   });
 });
