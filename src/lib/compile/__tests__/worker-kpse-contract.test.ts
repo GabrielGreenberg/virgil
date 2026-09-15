@@ -298,3 +298,63 @@ describe("vendored engine wrapper — the persistent channel", () => {
     expect(close).not.toContain("assetCallback = undefined");
   });
 });
+
+/**
+ * TASK 576 — a hung worker is TERMINATED, not merely asked to leave.
+ *
+ * Pre-576 `closeWorker()` only posted 'grace'. A worker processes a message
+ * only when its event loop is free, and one blocked inside a genuine hang
+ * (`\def\x{\x}\x`) never is — so it pinned a core until the tab was reloaded,
+ * one more per Compile click. The wrapper is plain script with no browser
+ * dependency at construction, so unlike the worker it CAN be driven here:
+ * these legs evaluate the shipped bytes against a fake `Worker`.
+ */
+describe("vendored engine wrapper — close mode (task 576)", () => {
+  type FakeWorker = { posted: unknown[]; terminated: number; postMessage(m: unknown): void; terminate(): void };
+  function fakeWorker(): FakeWorker {
+    return {
+      posted: [],
+      terminated: 0,
+      postMessage(m) { this.posted.push(m); },
+      terminate() { this.terminated += 1; },
+    };
+  }
+  function engineWith(worker: FakeWorker) {
+    const mod = new Function(`${ENGINE}\nreturn exports;`)() as {
+      PdfTeXEngine: new () => Record<string, unknown> & {
+        latexWorker: unknown;
+        closeWorker(mode?: string): void;
+        terminateDrainingWorkers(): void;
+      };
+    };
+    const engine = new mod.PdfTeXEngine();
+    engine.latexWorker = worker;
+    return engine;
+  }
+
+  it("refuses a close with no stated mode", () => {
+    const engine = engineWith(fakeWorker());
+    expect(() => engine.closeWorker()).toThrow(/mode/);
+  });
+
+  it("'terminate' calls Worker.terminate()", () => {
+    const w = fakeWorker();
+    const engine = engineWith(w);
+    engine.closeWorker("terminate");
+    expect(w.terminated).toBe(1);
+    expect(engine.latexWorker).toBeUndefined();
+  });
+
+  it("'keep-draining' posts grace, keeps the orphan alive, and ends it on request", () => {
+    const w = fakeWorker();
+    const engine = engineWith(w);
+    engine.closeWorker("keep-draining");
+    expect(w.posted).toEqual([{ cmd: "grace" }]);
+    expect(w.terminated).toBe(0);
+    engine.terminateDrainingWorkers();
+    expect(w.terminated).toBe(1);
+    // Idempotent: the list is drained.
+    engine.terminateDrainingWorkers();
+    expect(w.terminated).toBe(1);
+  });
+});

@@ -41,7 +41,13 @@
  * recovery can never collide with a live worker.
  */
 
-import { getPdfTeXEngine, resetPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
+import {
+  getPdfTeXEngine,
+  resetPdfTeXEngine,
+  terminateDrainingWorkers,
+  writeEngineFile,
+  type EngineCloseMode,
+} from "@/lib/swiftlatex";
 import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
@@ -185,6 +191,19 @@ class CompileService {
    * returned as-is. See `MAX_COLD_ATTEMPTS` above for why this is bounded twice.
    */
   private async runWithContinuation(input: CompileInput): Promise<CompileResult> {
+    try {
+      return await this.continueUntilSettled(input);
+    } finally {
+      // Task 576: a productive timeout left its worker DRAINING (still
+      // downloading, bytes streaming to the persistent cache). Once the loop
+      // is over — success, stop or budget — those bytes have been written
+      // through, and an orphan still running is at best idle and at worst a
+      // hang pinning a core until the tab is reloaded. End them all.
+      terminateDrainingWorkers();
+    }
+  }
+
+  private async continueUntilSettled(input: CompileInput): Promise<CompileResult> {
     const startedAt = Date.now();
     let attempt = 1;
     let totalFetched = 0;
@@ -247,8 +266,9 @@ class CompileService {
     try {
       engine = await this.ensureEngine();
     } catch (err) {
-      // Boot failed — reset so the next call retries a fresh boot.
-      resetPdfTeXEngine();
+      // Boot failed — reset so the next call retries a fresh boot. Nothing was
+      // downloading, so there is nothing worth draining.
+      await resetPdfTeXEngine("terminate");
       this.booted = false;
       return {
         status: "boot-failed",
@@ -336,11 +356,19 @@ class CompileService {
       } catch (err) {
         // Timeout OR worker-error rejection OR abort — recover the engine.
         if (err instanceof AbortError) {
-          await this.recover();
+          await this.recover("terminate");
           if (lastGood) break; // return the good artifact below
           return this.abortedResult();
         }
-        await this.recover();
+        // Task 576: only a timeout that was DOWNLOADING keeps its worker
+        // draining. A zero-fetch timeout is a genuine hang and a worker-error
+        // rejection a dead worker — 'grace' would never be processed by
+        // either, so they are terminated.
+        await this.recover(
+          err instanceof TimeoutError && this.assetsThisAttempt > 0
+            ? "keep-draining"
+            : "terminate",
+        );
         // If an earlier pass produced a good PDF, keep it as degraded.
         if (lastGood) {
           hardFailure = true;
@@ -491,12 +519,14 @@ class CompileService {
   }
 
   /**
-   * Reset the engine after a hang / crash: `resetPdfTeXEngine()` closes the
+   * Reset the engine after a hang / crash: `resetPdfTeXEngine(mode)` closes the
    * worker and nulls the module singleton, so the next `ensureEngine()` boots
    * fresh. Marks the engine cold again (next compile gets the COLD budget).
+   * The mode is the caller's statement of whether the worker's pass will ever
+   * unwind (task 576) — see `EngineCloseMode`.
    */
-  private async recover(): Promise<void> {
-    resetPdfTeXEngine();
+  private async recover(mode: EngineCloseMode): Promise<void> {
+    await resetPdfTeXEngine(mode);
     this.booted = false;
   }
 

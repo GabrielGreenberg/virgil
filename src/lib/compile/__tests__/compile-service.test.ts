@@ -54,7 +54,8 @@ vi.mock("@/lib/swiftlatex", () => ({
     if (bootShouldFail) throw new Error("boot boom");
     return makeFakeEngine();
   }),
-  resetPdfTeXEngine: () => resetSpy(),
+  resetPdfTeXEngine: async (mode: string) => resetSpy(mode),
+  terminateDrainingWorkers: () => {},
   // Real writeEngineFile behavior: creates dirs then writes the file.
   writeEngineFile: (
     engine: { makeMemFSFolder: (d: string) => void; writeMemFSFile: (p: string, d: string | Uint8Array) => void },
@@ -288,7 +289,8 @@ describe("CompileService — worker-error rejection", () => {
     const svc = new CompileService();
     const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("timeout");
-    expect(resetSpy).toHaveBeenCalled();
+    // Task 576: a dead worker never processes 'grace' — terminate it.
+    expect(resetSpy).toHaveBeenCalledWith("terminate");
   });
 });
 
@@ -298,7 +300,7 @@ describe("CompileService — boot failure", () => {
     const svc = new CompileService();
     const result = await svc.compile({ files: texFile("Hello."), mainTexFilename: "main.tex", docId: "doc-test" });
     expect(result.status).toBe("boot-failed");
-    expect(resetSpy).toHaveBeenCalled();
+    expect(resetSpy).toHaveBeenCalledWith("terminate");
     expect(result.log).toContain("boot boom");
   });
 });
