@@ -117,6 +117,30 @@ interface SpellResultMeta {
   decos?: readonly Decoration[];
   /** Drop every decoration (the plugin is going inactive). */
   clear?: boolean;
+  /**
+   * The pass covered the WHOLE document: `decos` replaces the set outright
+   * rather than per block (task 581). A per-prose-block removal cannot reach a
+   * squiggle that a block conversion carried into a code block or a `%`
+   * comment, because that block is no longer a prose block to be visited.
+   */
+  replaceAll?: boolean;
+  /**
+   * Blocks this pass painted but still OWES a re-check: they hold a word that
+   * arrived after phase A asked the dictionary, so its verdict is not cached
+   * yet. They stay dirty, so the next pass asks about it (task 582).
+   */
+  owed?: readonly number[];
+}
+
+/**
+ * What a squiggle carries. The object is the decoration's IDENTITY: mapping
+ * keeps it by reference, and a pass that re-flags the same word at the same
+ * range REUSES it (see phase B), so a suggestion menu opened over a word can
+ * find that word again at the moment it is USED, wherever edits have moved it
+ * — and finds nothing once it is no longer a flagged word (task 581).
+ */
+export interface SpellDecoSpec {
+  readonly word: string;
 }
 
 export interface SpellcheckDecoratorOptions {
@@ -166,7 +190,17 @@ function allProseBlocks(doc: PMNode): number[] {
   return out;
 }
 
-/** The tokens of one block position, or `null` when it no longer names one. */
+/**
+ * The tokens of one block position: `null` when it no longer names a
+ * TEXTBLOCK, `[]` when it names one that carries no prose.
+ *
+ * The two answers are different claims and phase B reads the difference: a
+ * textblock that STOPPED being prose (a paragraph converted to a code block or
+ * a `%` comment — a `ReplaceAroundStep` whose gap carries the old squiggles in
+ * with the content) is still a block this pass is answering for, and its
+ * answer is "no squiggles" (task 581). Only a position that names nothing is
+ * skipped.
+ */
 function tokensAt(doc: PMNode, pos: number): SpellToken[] | null {
   if (pos < 0 || pos >= doc.content.size) return null;
   let node: PMNode | null = null;
@@ -175,8 +209,35 @@ function tokensAt(doc: PMNode, pos: number): SpellToken[] | null {
   } catch {
     return null;
   }
-  if (!node || !blockCarriesProse(node)) return null;
+  if (!node || !node.isTextblock) return null;
+  if (!blockCarriesProse(node)) return [];
   return tokenizeBlock(node, pos + 1);
+}
+
+/**
+ * The live range of a squiggle identified by its spec, or `null` when that
+ * word is no longer flagged anywhere in `state` (task 581).
+ *
+ * Read at the moment a suggestion is APPLIED, never trusted from the moment
+ * the menu opened: suggestions load asynchronously, and the document can
+ * change underneath the open menu (a code-pane flush, a cowork commit, a
+ * collaborator). The plugin's own set is mapped through every one of those
+ * transactions, so it is the one table that knows where the word went — and a
+ * pass that stopped flagging it (the word was accepted, edited, or its block
+ * stopped being prose) drops the spec, so the answer is honestly "gone".
+ * The text is re-checked as well, defensively, so a mapping that collapsed or
+ * shifted the range can never edit bytes that are not the word.
+ */
+export function liveSpellRange(
+  state: EditorState,
+  spec: SpellDecoSpec,
+): { from: number; to: number } | null {
+  const st = spellcheckPluginKey.getState(state);
+  if (!st) return null;
+  const hit = st.decos.find(undefined, undefined, (s) => s === spec)[0];
+  if (!hit || hit.from >= hit.to) return null;
+  if (state.doc.textBetween(hit.from, hit.to) !== spec.word) return null;
+  return { from: hit.from, to: hit.to };
 }
 
 /**
@@ -249,10 +310,19 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
               if (meta.clear) {
                 decos = DecorationSet.empty;
                 dirty = [];
+              } else if (meta.replaceAll) {
+                // [cost: O(squiggles) — a `DecorationSet.create` over the result
+                // of a WHOLE-document pass, reachable only from this plugin's
+                // own meta, which is dispatched only after a `version()` bump
+                // (preference, dictionary, bibliography, document load). A
+                // keystroke never carries it; the per-block arm below is what a
+                // typing pass takes.]
+                decos = DecorationSet.create(tr.doc, [...(meta.decos ?? [])]);
+                dirty = mergeDirty([], meta.owed ?? []);
               } else if (meta.blocks) {
                 decos = replaceBlockDecos(decos, tr.doc, meta.blocks, meta.decos ?? []);
                 const done = new Set(meta.blocks);
-                dirty = dirty.filter((p) => !done.has(p));
+                dirty = mergeDirty(dirty.filter((p) => !done.has(p)), meta.owed ?? []);
               }
             }
 
@@ -321,11 +391,12 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
                 .find(pos, pos)
                 .find((d) => pos >= d.from && pos <= d.to);
               if (!hit) return false;
-              const word = (hit.spec as { word?: string }).word;
-              if (!word) return false;
+              const spec = hit.spec as SpellDecoSpec;
+              if (!spec?.word) return false;
               event.preventDefault();
               openSpellMenu({
-                word,
+                word: spec.word,
+                spec,
                 from: hit.from,
                 to: hit.to,
                 rect: target.getBoundingClientRect(),
@@ -354,8 +425,23 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
         view(view) {
           let timer: ReturnType<typeof setTimeout> | null = null;
           let lastVersion: unknown = Symbol("unset");
-          let needFull = true;
+          /**
+           * A whole-document re-check is a REQUEST with a generation, not a
+           * boolean (task 582). `sync` bumps `fullGen` on every version change;
+           * a pass records the generation it ran for and satisfies the request
+           * only if it was a whole-document pass AND no newer request arrived
+           * while it awaited the dictionary. A boolean that every pass cleared
+           * let a dirty-block pass, resuming from its `ensure`, erase the
+           * request a version bump made during that await.
+           */
+          let fullGen = 1;
+          let doneGen = 0;
+          /** Passes are SERIAL: a debounce firing mid-pass asks for one more
+           *  pass after it rather than starting a concurrent one. */
+          let running = false;
+          let rerun = false;
           let destroyed = false;
+          const needFull = () => doneGen !== fullGen;
 
           const currentPort = (): SpellcheckPort | null => {
             const port = portRef.current;
@@ -368,7 +454,18 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             if (timer !== null) clearTimeout(timer);
             timer = setTimeout(() => {
               timer = null;
-              void run();
+              if (running) {
+                rerun = true;
+                return;
+              }
+              running = true;
+              void run().finally(() => {
+                running = false;
+                if (rerun && !destroyed) {
+                  rerun = false;
+                  schedule();
+                }
+              });
             }, SPELL_DEBOUNCE_MS);
           };
 
@@ -386,7 +483,8 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             if (!state) return;
 
             if (!port) {
-              needFull = true;
+              // Going inactive: whatever comes back must re-check everything.
+              fullGen++;
               // A menu left open over a surface this plugin no longer owns
               // would still offer its rows (task 579).
               closeSpellMenu(view);
@@ -396,7 +494,8 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
               return;
             }
 
-            const doWholeDoc = needFull;
+            const gen = fullGen;
+            const doWholeDoc = needFull();
             const blocksOf = (s: SpellPluginState, doc: PMNode) =>
               doWholeDoc ? allProseBlocks(doc) : [...s.dirty];
 
@@ -424,28 +523,59 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
 
             const decos: Decoration[] = [];
             const handled: number[] = [];
+            const owed: number[] = [];
             for (const pos of blocks) {
               const tokens = tokensAt(doc, pos);
               if (!tokens) continue;
               handled.push(pos);
+              let owes = false;
               for (const tok of tokens) {
                 if (port.isAccepted(tok.word)) continue;
+                const verdict = port.knownSync(tok.word);
+                if (verdict === undefined && !missing.has(tok.word)) {
+                  // Typed while phase A awaited: nobody has asked about it
+                  // yet, so this block stays owed rather than being settled
+                  // as clean (the next pass asks). A word phase A DID ask
+                  // about and that is still unresolved is treated as known —
+                  // bounded, never a re-ask loop.
+                  owes = true;
+                  continue;
+                }
                 // Still unresolved after the one warm-up ⇒ treat as known.
-                if (port.knownSync(tok.word) !== false) continue;
+                if (verdict !== false) continue;
                 if (caret !== null && caret > tok.from && caret <= tok.to) continue;
+                // Re-flagging the same word at the same range keeps its spec,
+                // so an open menu can still find it (task 581). O(squiggles in
+                // this word's range).
+                const prior = live.decos
+                  .find(tok.from, tok.to)
+                  .find(
+                    (d) =>
+                      d.from === tok.from &&
+                      d.to === tok.to &&
+                      (d.spec as SpellDecoSpec).word === tok.word,
+                  );
+                const spec: SpellDecoSpec =
+                  (prior?.spec as SpellDecoSpec | undefined) ?? { word: tok.word };
                 decos.push(
                   Decoration.inline(
                     tok.from,
                     tok.to,
                     { class: viewOnly(SPELL_ERROR_CLASS) },
-                    { word: tok.word },
+                    spec,
                   ),
                 );
               }
+              if (owes) owed.push(pos);
             }
 
-            needFull = false;
-            dispatchMeta({ active: true, blocks: handled, decos });
+            if (doWholeDoc) {
+              // Satisfied only if no newer request arrived during the await.
+              if (gen === fullGen) doneGen = gen;
+              dispatchMeta({ active: true, replaceAll: true, decos, owed });
+            } else {
+              dispatchMeta({ active: true, blocks: handled, decos, owed });
+            }
           }
 
           const sync = () => {
@@ -453,11 +583,11 @@ export const SpellcheckDecorator = Extension.create<SpellcheckDecoratorOptions>(
             const version: unknown = port ? port.version() : null;
             if (!Object.is(version, lastVersion)) {
               lastVersion = version;
-              needFull = true;
+              fullGen++;
             }
             const state = spellcheckPluginKey.getState(view.state);
             const wantActive = currentPort() !== null;
-            if (needFull || (state && state.dirty.length > 0) || wantActive !== !!state?.active) {
+            if (needFull() || (state && state.dirty.length > 0) || wantActive !== !!state?.active) {
               schedule();
             }
           };

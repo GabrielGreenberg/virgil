@@ -271,3 +271,57 @@ describe("what each row does", () => {
     expect(spy).toHaveBeenCalledWith("teh");
   });
 });
+
+// ── task 581: a suggestion edits the word, not the range it USED to be at ───
+
+describe("a suggestion is re-verified at the moment it is chosen (task 581)", () => {
+  async function openOver(body: string) {
+    const { ref, rec } = makePort();
+    const ed = mount(body, ref);
+    await settle();
+    rightClick(squiggle()!);
+    await act(async () => {
+      render(<SpellSuggestionMenu />);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return { ed, rec };
+  }
+
+  it("text inserted BEFORE the word while the menu is open still replaces the word", async () => {
+    const { ed } = await openOver("The quick teh fox.");
+    // The document changes underneath the open menu (a code-pane flush, a
+    // cowork commit) — no plugin pass has run yet.
+    ed.view.dispatch(ed.state.tr.insertText("very ", 1));
+    await act(async () => {
+      screen.getByText("the").click();
+    });
+    expect(ed.getText()).toContain("very The quick the fox.");
+    expect(spellMenuRequest()).toBeNull();
+  });
+
+  it("…and after a re-check pass runs, the same squiggle is still found", async () => {
+    const { ed } = await openOver("The quick teh fox.");
+    ed.view.dispatch(ed.state.tr.insertText("very ", 1));
+    await act(async () => {
+      await settle();
+    });
+    await act(async () => {
+      screen.getByText("the").click();
+    });
+    expect(ed.getText()).toContain("very The quick the fox.");
+  });
+
+  it("a word that is no longer there is NOT edited — the menu just closes", async () => {
+    const { ed } = await openOver("The quick teh fox.");
+    // The flagged word itself is deleted while suggestions are showing.
+    const text = ed.state.doc.textContent;
+    const at = text.indexOf("teh") + 1;
+    ed.view.dispatch(ed.state.tr.delete(at, at + 4));
+    const before = ed.getText();
+    await act(async () => {
+      screen.getByText("the").click();
+    });
+    expect(ed.getText()).toBe(before);
+    expect(spellMenuRequest()).toBeNull();
+  });
+});

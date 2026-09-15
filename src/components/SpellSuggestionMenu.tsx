@@ -34,6 +34,7 @@ import { MenuProvider } from "@/components/menu/MenuProvider";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { MenuSectionLabel, MenuSeparator } from "@/components/menu/MenuChrome";
 import { closeSpellMenu, useSpellMenuRequest } from "@/lib/spell/spell-menu-store";
+import { liveSpellRange } from "@/lib/tiptap/spellcheck-decorator";
 
 const PLACEMENTS: FloatingMenuPlacement[] = [
   { side: "below", align: "start" },
@@ -73,10 +74,19 @@ export function SpellSuggestionMenu() {
   const close = () => closeSpellMenu();
 
   const replaceWith = (replacement: string) => {
-    const { view, from, to } = request;
+    const { view, spec } = request;
+    // Re-verified at the moment it is USED (task 581): the range captured when
+    // the menu opened is stale the instant the document changes underneath it,
+    // so ask the plugin's live, mapped set where this squiggle is NOW — and do
+    // nothing if it is no longer a flagged word at all.
+    const live = liveSpellRange(view.state, spec);
+    if (!live) {
+      close();
+      return;
+    }
     // An ordinary undoable edit. `insertText` carries the marks at `from`, so
     // a corrected word inside a bold run stays bold.
-    view.dispatch(view.state.tr.insertText(replacement, from, to));
+    view.dispatch(view.state.tr.insertText(replacement, live.from, live.to));
     view.focus();
     close();
   };
