@@ -192,6 +192,48 @@ describe("task 454 — a productive timeout converges", () => {
   });
 });
 
+describe("task 575 — the loop records WHY it stopped", () => {
+  it("a hang that FOLLOWED productive attempts is recorded as a hang, not as progress", async () => {
+    // Attempt 1 fetches 40 and times out (continued); attempt 2 fetches NOTHING
+    // and times out (stopped as a hang). The total says 40, and pre-575 both
+    // outcome vocabularies read that total as "still downloading — press
+    // Compile again", which re-hangs.
+    passQueue = [
+      { kind: "hang", fetches: 40 },
+      { kind: "hang", fetches: 0 },
+    ];
+    const svc = new CompileService();
+    const result = await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(result.status).toBe("timeout");
+    expect(result.attempts).toBe(2);
+    expect(result.assetsFetched).toBe(40);
+    expect(result.stop).toBe("hang");
+    const p = getCompileProgress(DOC);
+    expect(p.message).not.toMatch(/still downloading|press compile again to continue|carry on/i);
+  });
+
+  it("a timeout still downloading when the attempts ran out is recorded as productive", async () => {
+    passQueue = Array.from({ length: 12 }, () => ({ kind: "hang" as const, fetches: 5 }));
+    const svc = new CompileService();
+    const result = await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(result.stop).toBe("productive-timeout");
+    expect(getCompileProgress(DOC).message).toMatch(/carry on/i);
+  });
+
+  it("a compile that did not time out is recorded as settled", async () => {
+    passQueue = [{ kind: "ok" }];
+    const svc = new CompileService();
+    const result = await runToSettle(
+      svc.compile({ files: texFile(), mainTexFilename: "main.tex", docId: DOC }),
+    );
+    expect(result.stop).toBe("settled");
+  });
+});
+
 describe("task 454 — the compile has a voice", () => {
   it("publishes live progress while a compile is downloading", async () => {
     passQueue = [{ kind: "hang", fetches: 4 }, { kind: "ok" }];
