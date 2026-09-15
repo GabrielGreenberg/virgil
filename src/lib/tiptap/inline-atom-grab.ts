@@ -32,6 +32,7 @@ import type { Editor } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import type { RefObject } from "react";
+import { surfaceIsEditable } from "./surface-editable";
 import {
   isMissedRelease,
   isPrimaryDragStart,
@@ -101,11 +102,13 @@ export const ATOMS_GRASPABLE_ATTR = "data-atoms-graspable";
  * `editableRef`. A move transaction is also filtered by `readOnlyEnforcer`,
  * but gating the gesture means no dead affordance — and the CSS reads this
  * same predicate through `stampAtomsGraspable`, so the two cannot drift.
+ * The conjunction itself is `surfaceIsEditable` (task 579), the one door the
+ * spellchecker reads too.
  */
 export const atomsAreGraspable = (
   view: EditorView,
   editableRef: RefObject<boolean> | null,
-): boolean => view.editable && (editableRef ? editableRef.current : true);
+): boolean => surfaceIsEditable(view, editableRef);
 
 /**
  * Write `atomsAreGraspable` onto the editor root. Idempotence-gated: a
@@ -288,8 +291,10 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         // card body gates on `view.editable`, which only changes through
         // `setEditable` → `updateState` → `update()` here, or through a
         // re-created editor, which runs `view()`. MAIN's answer lives in a
-        // React ref PM never observes, so `Editor.tsx` re-stamps from its own
-        // `editable` effect — two TRIGGERS, one WRITER, one PREDICATE.
+        // React ref PM never observes, so `Editor.tsx`'s `editable` effect
+        // ANNOUNCES the flip (`announceSurfaceEditability`, task 579) — a
+        // meta-only transaction that runs this `update()` — two TRIGGERS, one
+        // WRITER, one PREDICATE.
         view(editorView) {
           stampAtomsGraspable(editorView, editableRef);
           return {
