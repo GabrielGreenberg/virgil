@@ -40,6 +40,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { coordsAtPosCached } from "./registry";
 import { posAtViewportY } from "./viewport-probe";
+import { createBlockVocabCache } from "./block-vocab";
 
 /** Sentinel for "scrolled to the very top (title area visible)". */
 export const DOC_TOP_SENTINEL = "__DOC_TOP__";
@@ -55,35 +56,10 @@ export function geomActiveBlockEnabled(): boolean {
   }
 }
 
-// Anchorable vocabulary cache — uuids in doc order, rebuilt only when the
-// structure VERSION moves. Positions are deliberately NOT cached (a plain
-// keystroke shifts pos without bumping version) — probes read
-// `structure.blocks.get(uuid).pos` fresh. Same pattern as section-path's
-// par-title vocab.
-interface BlockVocab {
-  version: number;
-  uuids: string[];
-}
-const vocabCache = new WeakMap<Editor, BlockVocab>();
-
-function blockVocab(
-  editor: Editor,
-  structure: NonNullable<ReturnType<typeof getBus>>["structure"],
-): string[] {
-  const cached = vocabCache.get(editor);
-  if (cached && cached.version === structure.version) return cached.uuids;
-  const entries: { uuid: string; pos: number }[] = [];
-  for (const b of structure.blocks.values()) {
-    entries.push({ uuid: b.uuid, pos: b.pos });
-  }
-  entries.sort((a, b) => a.pos - b.pos);
-  const vocab = {
-    version: structure.version,
-    uuids: entries.map((e) => e.uuid),
-  };
-  vocabCache.set(editor, vocab);
-  return vocab.uuids;
-}
+// Anchorable vocabulary — every tracked block's uuid in doc order, keyed on
+// the snapshot's STRUCTURAL version (task 585), positions read fresh. Same
+// cache as section-path's par-title vocab; see ./block-vocab.
+const blockVocab = createBlockVocabCache(() => true);
 
 /** First index in `uuids` whose live pos is >= `p`, or -1. */
 function firstAtOrAfter(

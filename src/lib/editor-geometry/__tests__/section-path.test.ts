@@ -215,3 +215,91 @@ describe("computeSectionPathAt", () => {
     expect(result!.path.map((e) => e.text)).toEqual(["Alpha"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 585 — the par-titled vocabulary is keyed on the snapshot's STRUCTURAL
+// version, so plain typing costs the breadcrumb no per-block work. The
+// retired key (`structure.version`) bumps on every content-only diff, which
+// rebuilt the vocabulary (O(blocks) + sort) on every typing frame.
+// ---------------------------------------------------------------------------
+
+import { __blockVocabBuildCount } from "../block-vocab";
+import { getBus } from "@/lib/tiptap/doc-structure";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { codeOnly } from "@/lib/__tests__/_source-scan";
+
+describe("par-titled vocabulary cost (task 585)", () => {
+  it("typing 20 characters into a uuid'd paragraph builds the vocabulary ONCE", () => {
+    const view = stubView(editor, () => blockPos(editor, 4) + 1);
+    computeSectionPathAt(editor, view, stubScrollEl(), null);
+    const builds = __blockVocabBuildCount();
+    const versionBefore = getBus(editor)!.structure.version;
+    const structuralBefore = getBus(editor)!.structure.structuralVersion;
+    for (let i = 0; i < 20; i++) {
+      editor.view.dispatch(
+        editor.state.tr.insertText("x", blockPos(editor, 1) + 2),
+      );
+      const r = computeSectionPathAt(editor, view, stubScrollEl(), null);
+      expect(r!.parTitleIndex).toBe(3);
+    }
+    // Premise: the retired key really DID move while typing — without this
+    // the count leg could pass on a doc whose version never bumps.
+    expect(getBus(editor)!.structure.version).toBeGreaterThan(versionBefore);
+    expect(getBus(editor)!.structure.structuralVersion).toBe(structuralBefore);
+    expect(__blockVocabBuildCount()).toBe(builds);
+  });
+
+  it("control: a parTitle flip on another block rebuilds it and the breadcrumb includes the block", () => {
+    const view = stubView(editor, () => blockPos(editor, 4) + 1);
+    computeSectionPathAt(editor, view, stubScrollEl(), null);
+    const builds = __blockVocabBuildCount();
+    editor.view.dispatch(
+      editor.state.tr.setNodeAttribute(blockPos(editor, 4), "parTitle", "Late"),
+    );
+    expect(
+      computeSectionPathAt(editor, view, stubScrollEl(), null)!.parTitleIndex,
+    ).toBe(4);
+    expect(__blockVocabBuildCount()).toBe(builds + 1);
+  });
+
+  it("control: inserting a titled block rebuilds it (a structural add moves the key)", () => {
+    const view = stubView(editor, () => blockPos(editor, 5) + 1); // p3 after the insert
+    computeSectionPathAt(editor, view, stubScrollEl(), null);
+    const builds = __blockVocabBuildCount();
+    editor.view.dispatch(
+      editor.state.tr.insert(
+        blockPos(editor, 4),
+        editor.schema.nodes.paragraph.create(
+          { uuid: "pNew", parTitle: "Inserted" },
+          editor.schema.text("new"),
+        ),
+      ),
+    );
+    expect(
+      computeSectionPathAt(editor, view, stubScrollEl(), null)!.parTitleIndex,
+    ).toBe(4);
+    expect(__blockVocabBuildCount()).toBe(builds + 1);
+  });
+
+  it("census: no reader outside doc-structure keys a cache on `structure.version`", () => {
+    const root = join(__dirname, "../../.."); // src/
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) {
+          if (name === "__tests__" || name === "node_modules") continue;
+          walk(p);
+        } else if (/\.(ts|tsx)$/.test(name)) {
+          if (p.includes(join("tiptap", "doc-structure"))) continue;
+          // Symbol needle → `codeOnly` (comments may NAME the retired key).
+          const src = codeOnly(readFileSync(p, "utf8"));
+          if (/structure\.version\b/.test(src)) hits.push(p);
+        }
+      }
+    };
+    walk(root);
+    expect(hits).toEqual([]);
+  });
+});
