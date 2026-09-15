@@ -57,7 +57,7 @@
 
 import { Extension, InputRule } from "@tiptap/core";
 import type { SpellcheckPortRef } from "@/lib/spell/spell-port";
-import { typedTextIsProse } from "./typed-prose-gate";
+import { rangeHoldsOnlyText, typedTextIsProse } from "./typed-prose-gate";
 
 /** One curated correction: a word that is never a word, and what it is. */
 export interface AutocorrectRow {
@@ -234,7 +234,14 @@ export const Autocorrect = Extension.create<AutocorrectOptions>({
           // The bytes about to be overwritten must be PROSE. `range.to` is the
           // trigger position: everything the rule replaces lies before it.
           if (!typedTextIsProse(state.doc.resolve(range.to))) return null;
-          state.tr.insertText(`${lead}${fixed}${trail}`, range.from, range.to);
+          // Replace the TYPO only (task 578). The lead is a boundary the rule
+          // matched, never something it rewrites: it may be a character, or the
+          // placeholder slot of an inline atom (a footnote marker, inline math),
+          // and re-inserting it as text deleted that atom. The trail is the
+          // typed trigger — not in the document yet — so it rides the insert.
+          const typoFrom = range.from + lead.length;
+          if (!rangeHoldsOnlyText(state.doc, typoFrom, range.to)) return null;
+          state.tr.insertText(`${fixed}${trail}`, typoFrom, range.to);
           return undefined;
         },
       }),

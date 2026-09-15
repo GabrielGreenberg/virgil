@@ -62,7 +62,7 @@
  * path (AGENTS.md → "Keystroke sanctity"). Nothing here walks the document.
  */
 
-import type { ResolvedPos } from "@tiptap/pm/model";
+import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
 import { isRawLatexMarkName } from "@/lib/latex-lexer";
 import { blockCarriesProse } from "@/lib/prose-index";
 import { forEachBareCommand } from "./cmd-only-paragraph";
@@ -135,4 +135,45 @@ export function typedTextIsProse($pos: ResolvedPos): boolean {
   if (precedingRunIsRawLatex($pos)) return false;
   if (bareCommandCovers($pos)) return false;
   return true;
+}
+
+/**
+ * "Does `[from, to)` hold nothing but TEXT?" — the refusal door for any
+ * type-time rule that REPLACES a range it matched (task 578).
+ *
+ * ## The invariant it enforces
+ *
+ * A type-time rule may rewrite TEXT it matched; it never deletes a non-text
+ * node. A rule computes its replace range from a STRING (the text before the
+ * caret), and an inline atom — a footnote, a citation, inline math, a hard
+ * break — occupies a PM slot while contributing a placeholder (or nothing) to
+ * that string. So a pattern whose body class spans the placeholder
+ * (`\$([^$]+)$`, `\footnote\{([^}]*)\}$`) matches straight across an atom, and
+ * the handler's `replaceWith` deletes it: a footnote's body lives nowhere else.
+ * The core half of this task aligns TipTap's matcher string with PM positions
+ * (`patches/@tiptap+core+3.20.5.patch`); this door is what makes a matched
+ * range that REACHES an atom a refusal rather than a deletion, whatever string
+ * the rule matched against.
+ *
+ * A range crossing a textblock boundary answers `false` too — no type-time rule
+ * matches across one, so such a range is a skew by definition.
+ *
+ * ## Cost
+ *
+ * O(the match window): a `nodesBetween` over `[from, to)`, reached only after a
+ * rule has already matched. Never on the ordinary keystroke path.
+ */
+export function rangeHoldsOnlyText(doc: PMNode, from: number, to: number): boolean {
+  if (from > to || from < 0 || to > doc.content.size) return false;
+  if (from === to) return true;
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  if (!$from.sameParent($to) || !$from.parent.isTextblock) return false;
+  let onlyText = true;
+  doc.nodesBetween(from, to, (node) => {
+    if (!onlyText) return false;
+    if (node.isInline && !node.isText) onlyText = false;
+    return onlyText;
+  });
+  return onlyText;
 }

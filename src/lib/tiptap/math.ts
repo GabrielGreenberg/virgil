@@ -9,6 +9,7 @@ import {
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
 import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
 // from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
 // drift from ATOM_REGISTRY. displayMath is deliberately NOT an atom (a block, not
@@ -246,10 +247,14 @@ export const InlineMath = Node.create<MathOptions>({
               "￼"
             );
             // Match $...$ where the closing $ is what the user just typed
-            const match = textBefore.match(/\$([^$]+)$/);
+            // Task 578: the body class excludes the U+FFFC atom placeholder, and
+            // the replace range is asked of the door — a `$` pair around an
+            // inline atom must never swallow it into the math's `latex`.
+            const match = textBefore.match(/\$([^$\ufffc]+)$/);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;
+            if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
             const tr = state.tr.replaceWith(
               start,
               from,
@@ -354,10 +359,12 @@ export const DisplayMath = Node.create<MathOptions>({
             }
 
             // Case 2: $$content$$ — closing pair
-            const match = textBefore.match(/\$\$([^$]+)\$$/);
+            // Task 578: same refusal as the inline twin above.
+            const match = textBefore.match(/\$\$([^$\ufffc]+)\$$/);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;
+            if (!rangeHoldsOnlyText(state.doc, start, from)) return false;
             const tr = state.tr.replaceWith(
               start,
               from,
