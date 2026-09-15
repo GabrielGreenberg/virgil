@@ -16,7 +16,10 @@ import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { compileService } from "@/lib/compile/compile-service";
 import { finishCompile } from "@/lib/compile/compile-progress";
 import type { CompileResult } from "@/lib/compile/compile-types";
-import type { CompileStatus } from "@/lib/compile/compile-types";
+import {
+  compilePackageName,
+  describeCompileOutcome,
+} from "@/lib/compile/compile-outcome";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { useSystemDialog } from "@/components/system-dialog-host";
 
@@ -173,7 +176,7 @@ export function useLatexCompile(
         result.status === "ok" || result.status === "degraded" ? 0 : 1;
       setLastStatus(numericStatus);
 
-      const offlineErrors = [
+      const packageErrors = [
         ...offlineMissErrors(result, salt),
         ...downloadFailureErrors(result, salt),
       ];
@@ -181,7 +184,7 @@ export function useLatexCompile(
       if ((result.status === "ok" || result.status === "degraded") && result.pdf) {
         // A PDF exists. Surface any warning-level diagnostics (degraded keeps
         // them) plus any offline-package misses, but never block the PDF.
-        setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
+        setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...packageErrors]);
         const pdfBytes = result.pdf;
         // Best-effort persistence (P6). `writePdf` now returns a structured
         // result: `written` (nothing to do), `skipped` (library/read-only — the
@@ -220,34 +223,41 @@ export function useLatexCompile(
 
         // A degraded compile still produced a PDF; warn (but don't alert as
         // an error) when a later pass failed, the bibtex stage broke, or a
-        // package was unavailable offline.
+        // package could not be downloaded / was unavailable offline.
         if (result.status === "degraded") {
-          const reason =
-            offlineErrors.length > 0
-              ? `${offlineErrors.length === 1 ? "A package was" : `${offlineErrors.length} packages were`} unavailable offline — some content may be missing.`
-              : result.bibtexStatus === "failed"
-                ? "The bibliography step failed — citations may show as [?]."
-                : "A later compile pass failed — cross-references or the ToC may be stale.";
-          void systemDialog.alert({
-            title: "Compiled with warnings",
-            message: `${reason} See the Errors panel for details.`,
-            tone: "default",
-          });
+          // The words come from the ONE outcome vocabulary the PDF pane also
+          // reads (task 575) — never a sentence of this hook's own.
+          const outcome = describeCompileOutcome(result);
+          if (outcome) {
+            void systemDialog.alert({
+              title: outcome.title,
+              message: outcome.message,
+              tone: outcome.tone,
+            });
+          }
         }
         return;
       }
 
       // No usable PDF. Distinguish the failure kinds for a clear message.
-      setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
+      setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...packageErrors]);
       console.error(
         `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
       );
-      const { title, message } = failureMessage(
-        result.status,
-        result.log,
-        result.assetsFetched ?? 0,
+      // An ok/degraded result that somehow carried no PDF is, for the user, a
+      // failed compile — word it as one rather than as a success.
+      const outcome = describeCompileOutcome(
+        result.status === "ok" || result.status === "degraded"
+          ? { ...result, status: "failed" }
+          : result,
       );
-      void systemDialog.alert({ title, message, tone: "danger" });
+      if (outcome) {
+        void systemDialog.alert({
+          title: outcome.title,
+          message: outcome.message,
+          tone: outcome.tone,
+        });
+      }
     } catch (err) {
       console.error("[compile] error:", err);
       // Task 454: the progress channel must reach a terminal state on EVERY
@@ -308,7 +318,7 @@ function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
   const errors: LatexError[] = [];
   let ordinal = 0;
   for (const raw of misses) {
-    const pkg = raw.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
+    const pkg = compilePackageName(raw);
     if (seen.has(pkg)) continue;
     seen.add(pkg);
     const message = `Package ${pkg} unavailable offline`;
@@ -339,7 +349,7 @@ function downloadFailureErrors(result: CompileResult, salt: string): LatexError[
   const errors: LatexError[] = [];
   let ordinal = 0;
   for (const f of failures) {
-    const pkg = f.name.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
+    const pkg = compilePackageName(f.name);
     if (seen.has(pkg)) continue;
     seen.add(pkg);
     const message = `Could not download package ${pkg}`;
@@ -355,42 +365,4 @@ function downloadFailureErrors(result: CompileResult, salt: string): LatexError[
     });
   }
   return errors;
-}
-
-/** Map a non-PDF CompileResult status to a user-facing alert. */
-function failureMessage(
-  status: CompileStatus,
-  _log: string,
-  assetsFetched = 0,
-): { title: string; message: string } {
-  switch (status) {
-    case "timeout":
-      // Task 454: a timeout that DOWNLOADED packages is not a dead end — every
-      // one of them is cached now, so the next attempt resumes from there. Say
-      // that, rather than implying the work was thrown away (which is exactly
-      // what used to happen).
-      return assetsFetched > 0
-        ? {
-            title: "Still downloading LaTeX packages",
-            message: `This paper needs packages that aren't cached yet — ${assetsFetched} downloaded so far, and they're saved. Press Compile again to carry on from here.`,
-          }
-        : {
-            title: "Compile timed out",
-            message:
-              "The compile took too long and was stopped. The engine has been reset — try compiling again.",
-          };
-    case "boot-failed":
-      return {
-        title: "Compile engine failed to start",
-        message:
-          "The LaTeX engine could not be started. Check your network connection and try again.",
-      };
-    default:
-      // "failed" (and, defensively, an ok/degraded result that somehow carried
-      // no pdf) fall through to the generic message.
-      return {
-        title: "Compile failed",
-        message: "See the Errors panel or compile-log drawer for details.",
-      };
-  }
 }

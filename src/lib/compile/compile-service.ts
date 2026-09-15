@@ -48,6 +48,7 @@ import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-fil
 import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { detectBibtexFailure } from "@/lib/compile/bibtex-log";
 import { detectPassPlan } from "@/lib/compile/reference-resolution";
+import { describeCompileOutcome } from "@/lib/compile/compile-outcome";
 import {
   beginCompile,
   finishCompile,
@@ -219,11 +220,17 @@ class CompileService {
         ...result,
         attempts: attempt,
         assetsFetched: totalFetched,
+        stop:
+          result.status !== "timeout"
+            ? "settled"
+            : productiveTimeout
+              ? "productive-timeout"
+              : "hang",
       };
       finishCompile(
         input.docId,
         finished.status === "ok" ? "ok" : finished.status,
-        outcomeMessage(finished),
+        describeCompileOutcome(finished)?.message ?? null,
       );
       return finished;
     }
@@ -568,40 +575,6 @@ class CompileService {
       bibtexStatus: "absent",
       diagnostics: [],
     };
-  }
-}
-
-/**
- * A one-line, user-facing account of a non-ok outcome, for the progress record
- * the PDF pane renders. The compile's failure has to reach a PIXEL — task 392's
- * rule, one subsystem over: a gate that stops working says so.
- */
-function outcomeMessage(result: CompileResult): string | null {
-  const failures = result.downloadFailures ?? [];
-  switch (result.status) {
-    case "ok":
-      return null;
-    case "degraded":
-      if (failures.length > 0) {
-        return `${failures.length === 1 ? "A package" : `${failures.length} packages`} could not be downloaded — some content may be missing.`;
-      }
-      if ((result.offlineMisses?.length ?? 0) > 0) {
-        return "Some packages were unavailable offline — some content may be missing.";
-      }
-      if (result.bibtexStatus === "failed") {
-        return "The bibliography step failed — citations may show as [?].";
-      }
-      return "A later compile pass failed — cross-references or the ToC may be stale.";
-    case "timeout":
-      return (result.assetsFetched ?? 0) > 0
-        ? `Still downloading LaTeX packages (${result.assetsFetched} so far). They are cached now — press Compile again to continue.`
-        : "The compile took too long and was stopped. The engine has been reset — try again.";
-    case "boot-failed":
-      return "The LaTeX engine could not start. Check your network connection and try again.";
-    default:
-      return failures.length > 0
-        ? `${failures.length === 1 ? "A package" : `${failures.length} packages`} could not be downloaded, and the compile failed. See the Errors panel.`
-        : "The compile failed. See the Errors panel for details.";
   }
 }
 

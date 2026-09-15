@@ -64,7 +64,20 @@ export interface CompileResult {
   attempts?: number;
   /** Packages downloaded from the mirror across every attempt. */
   assetsFetched?: number;
+  /**
+   * Why the continuation loop stopped (task 575). Set by the loop, which is the
+   * only place that KNOWS — a reader must never re-infer it from
+   * `assetsFetched`, which totals EVERY attempt and so reads a hang that
+   * followed productive attempts as progress.
+   *   - `settled`: the last attempt did not time out (ok / degraded / failed / boot-failed);
+   *   - `productive-timeout`: the last attempt timed out WHILE downloading and the
+   *     loop ran out of budget, attempts, or was aborted — pressing Compile again continues;
+   *   - `hang`: the last attempt timed out having downloaded NOTHING.
+   */
+  stop?: CompileStop;
 }
+
+export type CompileStop = "settled" | "productive-timeout" | "hang";
 
 export interface CompileInput {
   /** Every file in the paper folder, as raw bytes (sidecars already excluded). */
