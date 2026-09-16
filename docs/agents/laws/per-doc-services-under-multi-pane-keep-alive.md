@@ -231,6 +231,38 @@ Measured by neutering in 4 cuts: restoring the bare `querySelector` takes 5 legs
 derived leg, which is the whole point; a stale exemption takes 1; flipping the
 miss policy to fail-open takes the policy census plus the no-visible-pane leg.
 
+#### The NEEDLE half: the census reads MEANING, not spelling (task 600)
+
+The coverage fix above widened WHICH names the census asks about; the needle
+that finds a call was still a regex over source text with a substring test on
+the captured argument. So the same violation passed written as
+`` document.querySelector(`[${DATA_STACK_FRAME}]`) `` (no literal marker — the
+"stated limit" above), `getElementById`, `const d = document; d.querySelector`,
+`el.ownerDocument.querySelector`, a `+` concatenation, or any argument with a
+nested `)` (`[^)]*` stopped at the inner closer). **A guard's needle is part of
+its claim**: an empty allowlist behind a spelling-matcher says less than it reads.
+
+The needle is now a parsed AST
+([_document-query-scan.ts](../../../src/components/editor-layout/__tests__/_document-query-scan.ts),
+the TypeScript compiler, already a dependency). It RESOLVES the receiver
+(`document`, `window`/`globalThis`/`self`.`document`, any `ownerDocument`,
+`.body`/`.documentElement` of one, a `const` alias, and a `?? document` /
+`|| document` / ternary fallback) and FOLDS the argument (literals, templates,
+`+`, and `const` bindings — local or imported by relative/`@/` specifier). An
+unfoldable part is a `HOLE` character no marker contains. The resolver-call leg
+(`resolvePaneMarker(…)`) uses the same folding. The scanner's header states what
+still passes: runtime-computed selectors, scope-blind aliasing, parameters,
+namespace imports and re-export chains, non-DOM wrappers.
+
+Widening the needle surfaced three reads the regex never saw — all constant-built
+and all outside this door: `drag-ghost.ts`'s `GHOST_ATTR` sweep (body-level) and
+the anchor-highlight reconciler's `DATA_CARD_SELECTED`/`DATA_CARD_HOVERED` panel
+sweep (per-CARD, the same call already exempt for `data-card-key`). They are
+listed with reasons. Measured by neutering the scanner back to regex power:
+7 of the 8 new canaries fail plus the stale-exemption leg; the eighth (nested
+`)`) cannot fail that way because a parser does not truncate — the old regex's
+capture of that fixture was confirmed by hand to stop at `attrOf(x`.
+
 ### The GLOBAL-CHROME half: app-global chrome is MOUNTED ONCE, not once per pane
 
 The inverse reading of the same law (task 589). The rules above say what to do
