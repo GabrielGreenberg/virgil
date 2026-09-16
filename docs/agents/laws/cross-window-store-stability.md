@@ -336,6 +336,20 @@ have seen these forks"), and Virgil is a PWA that stays open for days, so a
 doc-keyed dismissal would silence a fork of `notes.json` minted at 4pm because
 the 9am report was acknowledged.
 
+**The skill-bundle sync had the same wiring defect, and the lesson is now a
+rule (task 602): work that happens BECAUSE a paper became current is keyed on
+`currentDocId`, never on an open door.** `useFiles`' post-claim sequence is ONE
+helper, `admitDoc` (drain outgoing → register → tab + current → recents), used by
+`openFile`, `activateDoc` and `createFile`; the skill sync and the sync-conflict
+watcher are effects on `currentDocId`, so the session-restore effect — which sets
+the current doc without passing through any door — gets them too. The auto-sync
+never prompts: an ungranted folder is skipped UNMARKED and the permission gate's
+`noteDocAccessGranted` re-runs it (the one way the current doc becomes writable
+without `currentDocId` changing). The mirror event, "an open doc leaves this
+window", is ONE helper too, `retireOpenDoc` (close, forget, peer handoff): the
+active doc's successor is its neighbour, never `null` while tabs remain. Pinned
+by [useFiles-skill-sync-door.test.tsx](../../../src/hooks/__tests__/useFiles-skill-sync-door.test.tsx).
+
 **The DiskWatcher/ledger interaction was already right and had never been named.**
 A daemon produces two shapes and the ledger has to tell them apart: a RE-WRITE of
 bytes Virgil itself just wrote (same content, new mtime/inode — the ping-pong
