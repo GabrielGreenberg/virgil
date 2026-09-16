@@ -256,7 +256,7 @@ Grabbing a card's **drop button** (the double-chevron — rightmost control on t
 
 ### MIME drop types
 
-After the chip-H drop-mode fold (PHASE 1/2, 296280a/79ccdad), the paragraph-anchor MIMEs (`MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_REPORT`) were **removed** — those panel→margin / margin-pin re-anchor drags now go through the drop-mode controller. The surviving `MIME_*` constants in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) are now ONLY inline-insertion payloads (`MIME_CITATION`, `MIME_FOOTNOTE`, `MIME_ARCHIVE`, `MIME_TEXT_INSERT`) plus `MIME_SELECTION_ANCHOR` (the selection-chip → panel drag). `ANCHOR_DRAG_TYPES` is now just `[MIME_MARGINALIA_MOVE]` (a residual never-produced suppress token).
+After the chip-H drop-mode fold (PHASE 1/2, 296280a/79ccdad), the paragraph-anchor MIMEs (`MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_REPORT`) were **removed** — those panel→margin / margin-pin re-anchor drags now go through the drop-mode controller. The surviving `MIME_*` constants in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) are now ONLY inline-insertion payloads (`MIME_CITATION`, `MIME_FOOTNOTE`, `MIME_ARCHIVE`) plus the card-merge discriminator `MIME_BIB_MERGE`. `ANCHOR_DRAG_TYPES` is now just `[MIME_MARGINALIA_MOVE]` (a residual never-produced suppress token). Task 590 deleted `MIME_TEXT_INSERT` (a reader with no producer since `ec382103`) and `MIME_SELECTION_ANCHOR` (never produced, never read), and made the producer question DATA: each surviving MIME declares `produced: true | false` in `DRAG_MIME_PRODUCTION`, checked against the repo's `setData` call sites by `src/lib/__tests__/drag-mime-production.test.ts`.
 
 ### Adding a new marginalia type
 

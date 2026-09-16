@@ -2,9 +2,10 @@
 
 /**
  * StackIcon — always-visible round button at the bottom-left of the
- * viewport. Click toggles the StackStrip. Drag-over (either an
- * in-flight FloatingPanel move or an HTML5 capture drag) illuminates
- * the ring blue.
+ * viewport. Click toggles the StackStrip. Drag-over by an in-flight
+ * capture gesture — a FloatingPanel move or a content lift, both of them
+ * in-app pointer sessions — illuminates the ring blue. There is no HTML5
+ * drop door here: every Stack producer is an in-app gesture (task 590).
  *
  * Pinned via `position: fixed; bottom; left` — viewport-anchored, never
  * follows page scroll. Visual style reads from Virgil design tokens so
@@ -21,9 +22,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
-import { MIME_TEXT_INSERT } from "@/lib/marginalia";
-import { addStackItem } from "@/hooks/useStack";
-import { getStackTerminal } from "@/lib/stack/stack-terminal";
 import {
   parkDuringLayoutGesture,
   useLayoutGestureActive,
@@ -45,7 +43,6 @@ export const STACK_INSET_LEFT = 12;
 export const STACK_INSET_BOTTOM = 12;
 
 export function StackIcon({ open, onToggle }: StackIconProps) {
-  const [html5Hover, setHtml5Hover] = useState(false);
   const [hover, setHover] = useState(false);
   const stackTarget = useStackDropTarget();
   // Task 456 — WHAT THE HOVER OFFERS IS WHAT THE COMMIT ACCEPTS, applied to
@@ -101,77 +98,9 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
     };
   }, []);
 
-  // HTML5 drag-to-stack handlers — today the only live HTML5 producer
-  // is `MIME_TEXT_INSERT` (from external paste / selection sources). The
-  // legacy `MIME_PAR_CAPTURE` / `MIME_TEXT_CAPTURE` MIMEs are gone — the
-  // float-to-stack path now runs entirely through the in-app drop session
-  // (the `virgil-stack-drop` event fired by FloatingPanel.tsx). Phase E
-  // and beyond may emit `MIME_TEXTOBJECT` from TextObjectGrabHandle for
-  // selection-hydration drag-out; we'll wire the consumer here then.
-  const onDragOver = (e: React.DragEvent) => {
-    const t = e.dataTransfer?.types ?? [];
-    if (t.includes(MIME_TEXT_INSERT)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
-      if (!html5Hover) setHtml5Hover(true);
-    }
-  };
-  const onDragLeave = (e: React.DragEvent) => {
-    const related = e.relatedTarget as Node | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setHtml5Hover(false);
-    }
-  };
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setHtml5Hover(false);
-    // Resolved AT DROP TIME, not captured at render: the chrome is mounted once
-    // above the keep-alive slots, so which doc owns the capture is a question
-    // only the gesture can answer (task 589). The bib obligation (task 235)
-    // rides the same resolution — a `\cite` in the payload carries the SOURCE
-    // doc's entry, never the last-rendered pane's.
-    const terminal = getStackTerminal();
-    if (!terminal || !terminal.getEditor()) return;
-    const insertData = e.dataTransfer.getData(MIME_TEXT_INSERT);
-    if (insertData) {
-      try {
-        const { content } = JSON.parse(insertData) as { content: unknown };
-        if (content) {
-          const docJson = content as { type?: string; content?: unknown[] };
-          const node =
-            docJson.type === "doc" &&
-            Array.isArray(docJson.content) &&
-            docJson.content.length > 0
-              ? (docJson.content[0] as Record<string, unknown>)
-              : (content as Record<string, unknown>);
-          // The add REPORTS (task 591) and this door has no surface to say
-          // it on — an HTML5 drop leaves no float open and tears nothing
-          // down, so a refusal here costs the user only the drop itself.
-          // Named rather than discarded so the swallow is a decision, not an
-          // oversight; if `MIME_TEXT_INSERT` ever regains a producer
-          // (task 590 — it has had none since ec382103), this is where a
-          // notice belongs.
-          const landed = addStackItem({
-            id: crypto.randomUUID(),
-            capturedAt: new Date().toISOString(),
-            source: terminal.getSource(),
-            payload: {
-              kind: "paragraph",
-              node: node as unknown as import("@tiptap/react").JSONContent,
-            },
-          }, terminal.getBibCtx());
-          if (!landed) console.warn("[stack] HTML5 drop: the Stack is full");
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
   if (typeof document === "undefined") return null;
 
-  const illuminated = stackTarget || html5Hover;
+  const illuminated = stackTarget;
 
   // ── Color resolution from Virgil design tokens ─────────────────────
   // Idle: warm mid-tone pod surface — darker than card chrome so the
@@ -208,10 +137,6 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
       onClick={onToggle}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onDragOver={onDragOver}
-      onDragEnter={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
       style={{
         position: "fixed",
         left: STACK_INSET_LEFT,

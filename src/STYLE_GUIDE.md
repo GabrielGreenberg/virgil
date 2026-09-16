@@ -2555,12 +2555,14 @@ Three categories.
    the Revisions MIME) are gone. `MIME_MARGINALIA_MOVE` remains only as a
    legacy `ANCHOR_DRAG_TYPES` member. Drop indicator: 2px solid blue line.
 2. **Inline insert drag** (text-only). MIMEs:
-   `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
-   `MIME_TEXT_INSERT`. Ghost: white pill with
-   ellipsis text. Drop indicator: ProseMirror native cursor.
-3. **Selection drag** (selection chip → panel). MIME:
-   `MIME_SELECTION_ANCHOR`. Ghost: small chip with selection excerpt.
-4. **Card-merge discriminator** (`MIME_BIB_MERGE`). A bib-entry drag
+   `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`. Ghost: white pill
+   with ellipsis text. Drop indicator: ProseMirror native cursor. Of
+   these only `MIME_CITATION` has a live producer today; the other two
+   are deliberately armed readers, and which is which is stated as data
+   in `DRAG_MIME_PRODUCTION` (`src/lib/marginalia.ts`) rather than in a
+   comment beside the reader — see **A drag MIME states whether anyone
+   writes it** below.
+3. **Card-merge discriminator** (`MIME_BIB_MERGE`). A bib-entry drag
    carries this *alongside* `MIME_CITATION` so a merge target's drop
    ring lights only when the drop would actually merge. Rule: **a drop
    ring must gate on a type the drop handler will accept** — `dragover`
@@ -2570,6 +2572,26 @@ Three categories.
 Drop targets get a 2px dashed amber outline (`--ring-drag-target`)
 plus a 12% fill — universal across paragraph drops, panel drops, card
 drops.
+
+**A drag MIME states whether anyone writes it** (task 590). A custom
+`application/x-virgil-*` type is half a contract — a producer that calls
+`setData` and a reader that calls `getData`. Delete the producer and the
+reader keeps type-checking, keeps rendering, and keeps *looking* live; the
+only record of which half survives used to be a comment beside the reader,
+and those comments rot in the one direction that matters. `StackIcon`'s said
+"today the only live HTML5 producer is `MIME_TEXT_INSERT`" for three months
+after the last `setData` for it was deleted, and the handler it described
+would have corrupted a multi-block payload if revived.
+
+So each surviving MIME declares `produced: true | false` (plus, when false,
+*why the reader is kept*) in `DRAG_MIME_PRODUCTION`
+(`src/lib/marginalia.ts`), and a census checks the declaration against the
+repo's actual `setData` call sites. `produced: false` is not a defect —
+`MIME_MARGINALIA_MOVE` and `MIME_FOOTNOTE` are deliberately armed readers
+that close the moment their gesture returns. The rule is that a MIME must
+have a READER outside the constants module, and that the deliberateness is
+written where the check can see it. **Adding a new drag MIME means adding its
+row.**
 
 **A CARD's drop halo is a layer of its inline `box-shadow`, never a class**
 (task 508). A `PanelCard` root's `box-shadow` has exactly one owner —

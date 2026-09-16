@@ -9,8 +9,9 @@
 //
 // The Stack had three capture producers in design and two in code. The float
 // drag (`FloatingPanel` → `virgil-stack-drop`) was fixed and capability-gated
-// by task 332; the HTML5 `MIME_TEXT_INSERT` drop lives on the icon itself; and
-// the CONTENT LIFT — dragging a paragraph / heading / list item / selection
+// by task 332; the third was an HTML5 `MIME_TEXT_INSERT` drop on the icon
+// itself, which task 590 later found had had no producer since `ec382103` and
+// deleted; and the CONTENT LIFT — dragging a paragraph / heading / list item / selection
 // straight out of the document — had no stack terminal at all. `onUp` had
 // exactly two: `commitDropSession()` (a doc move) and `popOutAtRect(...)` (a
 // float). It never asked `isOverStackIcon`, and `onMove` never lit the ring.
