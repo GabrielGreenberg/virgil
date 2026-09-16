@@ -5,11 +5,13 @@
  * authored docs (one visible, the rest hidden by `KeepAliveSlot`, whose own
  * docblock calls the `display:none` CSS invariant load-bearing) plus the Library
  * Reader's pane inside `PaperOuterView` / `LibraryOuterView`. Every one of them
- * renders its own tool strip, its own `PanelColumn`, its own stack frame and its
- * own band anchors, so `[data-panel-column-side]`, `[data-flex-col]`,
- * `[data-stack-frame]`, `[data-dock-slot]` and `[data-strip-side]` are per-PANE
+ * renders its own tool strip, its own `PanelColumn`, its own stack frame, its
+ * own band anchors and its own rendered paper page, so
+ * `[data-panel-column-side]`, `[data-flex-col]`, `[data-stack-frame]`,
+ * `[data-dock-slot]`, `[data-strip-side]` and `[data-editor-page]` are per-PANE
  * markers whose selector carries NO pane discriminator: `left-0` exists once per
- * mounted pane that has a band docked on the left.
+ * mounted pane that has a band docked on the left, and `[data-editor-page]`
+ * exists once per mounted pane, full stop.
  *
  * A bare `document.querySelector` therefore answers with the FIRST match in
  * DOM ORDER — and the doc keep-alive block renders BEFORE the paper/library
@@ -32,10 +34,13 @@
  *    `findRowScroll`). Measuring the wrong column is the pre-438 status quo;
  *    answering `null` turns a working feature off. So when no match is visible,
  *    hand back the first match at all.
- *  - `"fail-closed"` — a PORTAL TARGET (`FloatingPanel`'s dock-slot anchor). An
- *    invisible anchor is strictly WORSE than the body-portal fallback the caller
- *    already has: the panel is "open" in prefs, its strip icon lights
- *    `aria-pressed`, and nothing appears anywhere. Answer `null` and let the
+ *  - `"fail-closed"` — an ANCHOR the caller acts THROUGH rather than measures
+ *    (`FloatingPanel`'s dock-slot anchor; print isolation's paper page). An
+ *    invisible anchor is strictly WORSE than the caller's own fallback: the
+ *    docked panel is "open" in prefs, its strip icon lights `aria-pressed`, and
+ *    nothing appears anywhere; print's is worse still, since the tagging walk
+ *    it seeds writes `!important` display rules that UN-HIDE the hidden pane it
+ *    anchored on and HIDE the visible one (task 597). Answer `null` and let the
  *    caller take its own fallback.
  *
  * ## Stated limit: this scopes by CSS VISIBILITY, not by REACT TREE
@@ -158,4 +163,30 @@ export function paneFlexColumns(): HTMLElement[] {
  */
 export function paneStrip(side: Side): HTMLElement | null {
   return resolvePaneMarker(`[data-strip-side="${side}"]`, "fail-open");
+}
+
+/**
+ * The rendered paper page (`[data-editor-page]`, stamped once per `EditorPane`
+ * on its `.paper-render` wrapper) in the visible pane — the element print
+ * isolation walks up from.
+ *
+ * FAIL-CLOSED, and the argument is the one `paneDockSlot` makes rather than the
+ * measurement one. `applyPrintAttrs` does not MEASURE this element; it uses it
+ * as an ANCHOR to tag an ancestor chain, marking every off-chain sibling
+ * `data-print-hide` and every ancestor `data-print-ancestor`. Both print rules
+ * carry `!important`, and `[data-print-ancestor]` sets `display: block` —
+ * which is exactly the declaration `KeepAliveSlot` relies on to hide a warm
+ * pane. So anchoring on a hidden pane does not merely print the wrong thing:
+ * it UN-HIDES the warm pane and HIDES the one the user is looking at (task
+ * 597, reproducible from the Library Reader, where every doc pane is hidden
+ * and every doc pane renders first).
+ *
+ * A fail-open answer would therefore hand back precisely the element that
+ * causes that inversion. Answering `null` instead means no tagging at all —
+ * the caller's own `if (editorPage)` guard already degrades to "print the
+ * plain document with no page isolation", which is the same posture the
+ * browser's own File → Print door takes (see `print.ts`'s second-door note).
+ */
+export function panePrintPage(): HTMLElement | null {
+  return resolvePaneMarker("[data-editor-page]", "fail-closed");
 }

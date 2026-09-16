@@ -62,6 +62,11 @@ const PANE_MARKERS = [
   "data-stack-frame",
   "data-dock-slot",
   "data-strip-side",
+  // Task 597. This one is the reason the derived leg at the bottom of this file
+  // exists: it was a per-pane marker from the day `EditorPane` stamped it, and
+  // nothing forced it onto this literal. It sat unlisted for the life of the
+  // census while `print.ts` resolved it off `document`.
+  "data-editor-page",
 ] as const;
 
 /**
@@ -164,6 +169,7 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       ["components/editor-layout/layout-scroll.ts", "resolvePaneMarker("],
       ["components/EditorLayout.tsx", "paneFlexColumns("],
       ["components/editor-layout/drag-drop.tsx", "paneStrip("],
+      ["lib/print.ts", "panePrintPage("],
     ];
     for (const [file, needle] of expected) {
       const code = CODE.get(path.join(SRC, ...file.split("/")));
@@ -187,6 +193,7 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       ["paneColumn", "fail-open"],
       ["paneStrip", "fail-open"],
       ["paneDockSlot", "fail-closed"],
+      ["panePrintPage", "fail-closed"],
     ];
     for (const [door, policy] of singleDoors) {
       const body = doorCode.slice(doorCode.indexOf(`export function ${door}`));
@@ -222,5 +229,124 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
     // keeps this census from indicting the door for describing itself.
     expect(doorCode).toContain("export function resolvePaneMarker");
     expect(doorCode).toContain("export function paneDockSlot");
+  });
+});
+
+/**
+ * THE DERIVED LEG — task 597. The census above asks its question once per name
+ * in a HAND-KEPT list, and that is exactly how `[data-editor-page]` walked
+ * through it: it was a per-pane marker from the day `EditorPane` stamped it,
+ * `print.ts` resolved it off `document`, and no line of this file mentioned it.
+ * A guard whose coverage is a literal ages out silently while its allowlist
+ * stays proudly empty.
+ *
+ * So the question is INVERTED. The needle is no longer "is one of these five
+ * names resolved globally" but **"is ANY `data-*` attribute resolved off
+ * `document` in production"** — and the answer must be listed below WITH A
+ * REASON or the leg fails. A newly stamped per-pane marker read globally now
+ * fails on its first commit, with no list to remember to grow.
+ *
+ * STATED LIMIT (the same one `globalHits` carries): this sees the marker NAMES
+ * a call spells literally. A selector assembled entirely from interpolated
+ * constants (`` `[${ATTR}]` ``) mentions no literal `data-` and is invisible
+ * here, as it is to every leg above. The idiom the repo actually uses spells
+ * at least one name literally — measured: all eleven current hits do.
+ */
+const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
+  // ── per-CARD, not per-PANE. The door's header scopes these OUT by name and
+  //    states why (`omni-card-placement.ts` already answers this question for
+  //    the card family; widening the pane door to every `data-*` in the app is
+  //    the broadest-blast-radius mistake). They are a real hazard one level
+  //    down — a card key can exist in two mounted panes — but they are a
+  //    DIFFERENT door's business, and moving them here would hide that.
+  "data-card-key": "per-CARD lookup — owned by the card-placement door, not this one",
+  "data-pristine-card-id": "per-CARD sweep (drop-mode) — same family as data-card-key",
+  "data-footnote-id": "per-ATOM id inside a document — a marker-click jump, not pane chrome",
+  "data-citation-id": "per-ATOM id inside a document — a marker-click jump, not pane chrome",
+  "data-contains-active-card":
+    "per-CARD state flag, read only alongside [data-floating-panel]",
+
+  // ── genuinely DOCUMENT-level: one instance per window, by construction.
+  "data-floating-panel":
+    "floats portal to <body>, so the float layer is document-level — there is no per-pane set to pick from",
+  "data-swiftlatex":
+    "the <script> tag in the app shell — one per window, above every pane",
+};
+
+/** Every `data-*` name a document-global selector spells literally. */
+function globalMarkerNames(code: string): Array<{ name: string; hit: string }> {
+  const re =
+    /document(?:\s*\.\s*body)?\s*\.\s*querySelector(?:All)?\s*(?:<[^>]*>)?\s*\(([^)]*)\)/g;
+  const out: Array<{ name: string; hit: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    for (const n of m[1].match(/data-[a-z0-9-]+/g) ?? []) {
+      out.push({ name: n, hit: m[0].trim().replace(/\s+/g, " ") });
+    }
+  }
+  return out;
+}
+
+describe("pane-dom census, derived — any document-global data-* read is listed or it fails", () => {
+  const DOORS = new Set([DOOR, "components/editor-layout/layout-scroll.ts"]);
+
+  /** Every production hit, once, with the file that spells it. */
+  function survey() {
+    const hits: Array<{ file: string; name: string; hit: string }> = [];
+    for (const [file, code] of CODE) {
+      const r = rel(file);
+      if (DOORS.has(r)) continue;
+      for (const { name, hit } of globalMarkerNames(code)) {
+        hits.push({ file: r, name, hit });
+      }
+    }
+    return hits;
+  }
+
+  it("no unlisted marker is resolved off document anywhere in production", () => {
+    const offenders = survey()
+      .filter((h) => !(h.name in EXEMPT_GLOBAL_MARKERS))
+      .map((h) => `${h.file} → ${h.hit}  [${h.name}]`);
+    // Pre-597 this listed `lib/print.ts → document.querySelector<HTMLElement>
+    // ('[data-editor-page]')`, which no leg above could see.
+    expect(offenders).toEqual([]);
+  });
+
+  it("every exemption is still earned by a real call site (no rotting reasons)", () => {
+    // A registry earns its name by being read: an exemption whose call site is
+    // gone is a standing permission nobody asked for. Delete it instead.
+    const seen = new Set(survey().map((h) => h.name));
+    const stale = Object.keys(EXEMPT_GLOBAL_MARKERS).filter((k) => !seen.has(k));
+    expect(stale).toEqual([]);
+  });
+
+  it("every exemption states a reason", () => {
+    for (const [k, why] of Object.entries(EXEMPT_GLOBAL_MARKERS)) {
+      expect(why.length, `${k} needs a real reason`).toBeGreaterThan(20);
+    }
+  });
+
+  it("the derived census can see a NEW marker nobody listed (canary)", () => {
+    const synthetic = commentsStripped(
+      'const el = document.querySelector<HTMLElement>("[data-brand-new-pane-thing]");',
+    );
+    const names = globalMarkerNames(synthetic).map((h) => h.name);
+    expect(names).toEqual(["data-brand-new-pane-thing"]);
+    expect(names.every((n) => n in EXEMPT_GLOBAL_MARKERS)).toBe(false);
+    // …and the relative form, which is legal, is still invisible to it.
+    expect(
+      globalMarkerNames(
+        commentsStripped('root.querySelector("[data-brand-new-pane-thing]");'),
+      ),
+    ).toEqual([]);
+  });
+
+  it("the derived census would have caught task 597's actual line", () => {
+    const synthetic = commentsStripped(
+      "const editorPage = document.querySelector<HTMLElement>('[data-editor-page]');",
+    );
+    const names = globalMarkerNames(synthetic).map((h) => h.name);
+    expect(names).toEqual(["data-editor-page"]);
+    expect(names[0] in EXEMPT_GLOBAL_MARKERS).toBe(false);
   });
 });

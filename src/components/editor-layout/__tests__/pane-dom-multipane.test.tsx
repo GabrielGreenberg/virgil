@@ -39,6 +39,8 @@ import {
   resolveDockTargetByPanelProximity,
 } from "../dock-drag";
 import { findRowScroll } from "../layout-scroll";
+import { panePrintPage } from "../pane-dom";
+import { applyPrintAttrs, DEFAULT_PRINT_OPTIONS } from "@/lib/print";
 import { render, cleanup } from "@testing-library/react";
 import FloatingPanel from "@/components/FloatingPanel";
 import { KeepAliveVisibilityProvider } from "@/lib/keep-alive/visibility-context";
@@ -106,6 +108,15 @@ function buildPane(opts: {
       : { left: 0, top: 0, width: 0, height: 0 },
   );
   pane.appendChild(strip);
+
+  // The rendered paper page — stamped once per `EditorPane` on its
+  // `.paper-render` wrapper, and the anchor print isolation walks up from
+  // (task 597).
+  const page = document.createElement("div");
+  page.setAttribute("data-editor-page", "true");
+  page.setAttribute("data-test-pane-of-page", id);
+  stubVisible(page, visible);
+  pane.appendChild(page);
 
   const col = document.createElement("div");
   col.setAttribute("data-panel-column-side", "left");
@@ -499,5 +510,60 @@ describe("the two sweeps the first census pass missed", () => {
     buildPane({ id: "only-hidden", visible: false, colLeft: 7, bands: [] });
     expect(paneFlexColumns()).toHaveLength(1);
     expect(paneStrip("left")).not.toBeNull();
+  });
+});
+
+/**
+ * M5 — print isolation (task 597). The one member the census could not see,
+ * because `[data-editor-page]` was never on its hand-kept marker list.
+ *
+ * This is not "the wrong pane gets measured" like M2–M4. The walk seeded here
+ * writes `!important` display rules: `[data-print-hide] { display: none }` on
+ * every off-chain sibling, `[data-print-ancestor] { display: block }` on every
+ * ancestor — and that second rule is exactly the declaration `KeepAliveSlot`
+ * uses to hide a warm pane. Anchoring on the hidden pane therefore UN-HID it
+ * and HID the one the user was looking at.
+ */
+describe("M5 — print isolation anchors on the visible pane", () => {
+  it("resolves the VISIBLE pane's paper page", () => {
+    buildTwoPanes();
+    const page = panePrintPage();
+    expect(page).not.toBeNull();
+    expect(page!.getAttribute("data-test-pane-of-page")).toBe("visible-reader");
+  });
+
+  it("tags the VISIBLE pane as the print ancestor and HIDES the warm one", () => {
+    const { hidden, visible } = buildTwoPanes();
+    const cleanup = applyPrintAttrs(DEFAULT_PRINT_OPTIONS);
+
+    // Pre-fix these two assertions were exactly inverted: the hidden doc pane
+    // was the ancestor chain (and so un-hidden by the print rule) and the
+    // Reader's visible pane carried `data-print-hide`.
+    expect(visible.pane.dataset.printAncestor).toBe("true");
+    expect(visible.pane.dataset.printHide).toBeUndefined();
+    expect(hidden.pane.dataset.printHide).toBe("true");
+    expect(hidden.pane.dataset.printAncestor).toBeUndefined();
+
+    cleanup();
+    expect(visible.pane.dataset.printAncestor).toBeUndefined();
+    expect(hidden.pane.dataset.printHide).toBeUndefined();
+  });
+
+  it("tags nothing at all when no pane is visible (fail-closed)", () => {
+    const only = buildPane({
+      id: "only-hidden",
+      visible: false,
+      colLeft: 48,
+      bands: [0],
+    });
+    expect(panePrintPage()).toBeNull();
+    const cleanup = applyPrintAttrs(DEFAULT_PRINT_OPTIONS);
+    // No anchor ⇒ no walk. `@media print` falls back to the plain document,
+    // the same posture the browser's own File → Print door takes — never the
+    // inversion a fail-open answer would have produced.
+    expect(only.pane.dataset.printAncestor).toBeUndefined();
+    expect(only.pane.dataset.printHide).toBeUndefined();
+    expect(document.body.dataset.printAncestor).toBeUndefined();
+    cleanup();
   });
 });

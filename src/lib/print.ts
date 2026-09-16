@@ -46,6 +46,7 @@ import {
   releaseAppendices,
   getPrintIntent,
 } from "@/lib/print-intent";
+import { panePrintPage } from "@/components/editor-layout/pane-dom";
 
 export type PrintElementKey =
   | "title"
@@ -129,7 +130,12 @@ if (process.env.NODE_ENV !== "production") {
 
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
-function applyPrintAttrs(options: PrintOptions): () => void {
+/**
+ * Exported for `pane-dom-multipane.test.tsx`, which drives the ISOLATION WALK
+ * directly: the thing that could misbehave here is which pane the walk anchors
+ * on, and `runPrint` can only be reached through `window.print()`.
+ */
+export function applyPrintAttrs(options: PrintOptions): () => void {
   const html = document.documentElement;
   html.dataset.printing = "true";
   for (const [k, v] of Object.entries(options.elements)) {
@@ -143,9 +149,18 @@ function applyPrintAttrs(options: PrintOptions): () => void {
   // Walk from the editor page up to <body>, tagging each ancestor as
   // a layout-release target and each non-chain sibling as hidden. The
   // matching @media print rules live in globals.css.
+  //
+  // `[data-editor-page]` is a per-PANE marker — up to four `EditorPane`s are
+  // mounted at once and every one of them stamps it — so it is resolved
+  // through the `pane-dom.ts` ladder, FAIL-CLOSED (the door states the
+  // argument). A bare `document.querySelector` answered the first match in DOM
+  // order, which on the Library Reader is always a HIDDEN warm doc pane; the
+  // rules this walk seeds then un-hid that pane and hid the Reader's, so the
+  // user printed a paper they were not looking at (task 597). No visible page
+  // ⇒ no tagging at all, and `@media print` falls back to the plain document.
   const ancestors: HTMLElement[] = [];
   const hidden: HTMLElement[] = [];
-  const editorPage = document.querySelector<HTMLElement>('[data-editor-page]');
+  const editorPage = panePrintPage();
   if (editorPage) {
     let el: HTMLElement = editorPage;
     while (el.parentElement && el !== document.body) {
