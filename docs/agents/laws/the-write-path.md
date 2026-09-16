@@ -1717,6 +1717,12 @@ band's private `paletteFor` switch restored 3 census legs.
 (force a conflict in dev storage, or hold the pen): the band, the conflict
 pill and the save pill must be one colour.
 
+### The projection half: what the save READS may not be able to fail the save
+
+> **A door the write path calls to obtain the document must return an EXACT model or nothing — and it must not do work the write did not ask for.** Anything extra it computes is a new way for the save to die, at a call site whose debounce is already disarmed.
+
+Task 592. `getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON()` is how all four write doors obtain the model ([useDocument.ts:669,696,750,870](../../../src/hooks/useDocument.ts)), and `ensureFresh()` used to run the doc-products pipeline's **idle** tier inline as well — `assembleLatex` + `computeCategoryCounts`, two whole-doc walks producing `sourceText` and `wordCounts` that no write door reads. Neither is inside `buildSourceText`'s fail-open catch, and the autosave call site has no `try`, so a serializer refusal in a projection the save did not need aborted the write with `saveTimerRef.current` already null: no `save(doc)`, no `noteSaveBlocked`, no mirror arm, no retry, no badge — the user keeps typing into a document that silently stopped saving. `ensureFresh` now refreshes Tier A alone and answers **exact or nothing**: `docJson: null` on a Tier A failure, which is exactly what makes the `?? editor.getJSON()` fallback in every caller reachable rather than decorative. The tier doctrine behind it lives in [keystroke-sanctity.md](keystroke-sanctity.md) → "The tier half".
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](../../../src/lib/__tests__/save-state-census.test.ts),

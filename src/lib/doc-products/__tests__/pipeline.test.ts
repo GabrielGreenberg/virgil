@@ -7,7 +7,9 @@
  *   - per-block cache: one edit = one block re-serialized (miss counters)
  *   - sourceText assembles through the shared serializer with the disk
  *     preamble; the external (code-view) feed suppresses + overrides
- *   - ensureFresh returns synchronously-fresh products
+ *   - ensureFresh refreshes TIER A ONLY and re-arms a stale Tier B (592)
+ *   - freshness is per-tier and per-input: a bibFamily switch re-derives
+ *     sourceText with no edit; a hidden pane converges on the visible edge
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -19,10 +21,32 @@ vi.mock("@/lib/storage", () => ({
   ),
 }));
 
+/** Flipped by the 592 refusal leg: `assembleLatex` sits OUTSIDE
+ *  buildSourceText's fail-open catch, and used to throw clean through the old
+ *  ensureFresh into the autosave call site — with the debounce disarmed. */
+let assembleThrows = false;
+vi.mock("@/lib/latex-serializer", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/latex-serializer")>();
+  return {
+    ...actual,
+    assembleLatex: (...args: Parameters<typeof actual.assembleLatex>) => {
+      if (assembleThrows) throw new Error("serializer refused a node");
+      return actual.assembleLatex(...args);
+    },
+  };
+});
+
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { createDocProducts, getDocProducts, type DocProducts } from "../pipeline";
+import {
+  createDocProducts,
+  getDocProducts,
+  pipelineStats,
+  type DocProducts,
+} from "../pipeline";
 import { blockCacheStats } from "../block-caches";
+import type { BibFamily } from "@/lib/bib-family";
 
 let editor: Editor | null = null;
 let products: DocProducts | null = null;
@@ -35,7 +59,7 @@ function makeEditor(content: string): Editor {
 function attach(ed: Editor): DocProducts {
   products = createDocProducts(ed, {
     docId: "test-doc",
-    getBibFamily: () => null,
+    getBibFamily: () => bibFamily,
     isSuppressed: () => suppressed,
     isVisible: () => visible,
     interactiveMs: 300,
@@ -45,10 +69,13 @@ function attach(ed: Editor): DocProducts {
 
 let suppressed = false;
 let visible = true;
+let bibFamily: BibFamily | null = null;
 
 beforeEach(() => {
   suppressed = false;
   visible = true;
+  bibFamily = null;
+  assembleThrows = false;
   vi.useFakeTimers();
 });
 
@@ -117,7 +144,7 @@ describe("doc-products pipeline", () => {
     expect(p.snapshot().sourceText).toContain("alphaxy");
   });
 
-  it("hidden pane stays dirty-but-inert; ensureFresh recovers synchronously", async () => {
+  it("hidden pane stays stale-but-inert; ensureFresh still hands the save path an EXACT docJson", async () => {
     const ed = makeEditor("<p>alpha</p>");
     const p = attach(ed);
     await settle();
@@ -125,8 +152,117 @@ describe("doc-products pipeline", () => {
     ed.commands.insertContentAt(ed.state.doc.content.size - 1, " hidden-edit");
     await vi.advanceTimersByTimeAsync(1000);
     expect(p.snapshot().sourceText).not.toContain("hidden-edit");
+    // The save path's product is docJson, and it is exact even while hidden.
     const fresh = p.ensureFresh();
-    expect(fresh.sourceText).toContain("hidden-edit");
+    expect(JSON.stringify(fresh.docJson)).toContain("hidden-edit");
+    // Tier B is NOT dragged along — it stays where the tier contract puts it.
+    expect(fresh.sourceText).not.toContain("hidden-edit");
+  });
+
+  it("a hidden pane converges on the visible edge, with no further edit (592)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    visible = false;
+    ed.commands.insertContentAt(ed.state.doc.content.size - 1, " hidden-edit");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(p.snapshot().sourceText).not.toContain("hidden-edit");
+    // The pane comes back. useDocProductsHost's input-change effect calls
+    // exactly this; nothing else happens — no keystroke, no autosave.
+    visible = true;
+    p.revalidate();
+    await settle();
+    expect(p.snapshot().sourceText).toContain("hidden-edit");
+    expect(JSON.stringify(p.snapshot().docJson)).toContain("hidden-edit");
+  });
+
+  it("ensureFresh after a settled tier runs NO whole-doc walks (592)", async () => {
+    const ed = makeEditor("<p>alpha</p><p>beta</p>");
+    const p = attach(ed);
+    await settle();
+    const tierB = pipelineStats.tierBRuns;
+    const assemblies = pipelineStats.assemblies;
+
+    // The autosave shape: ensureFresh at the 1500 ms fire, tiers already settled.
+    const fresh = p.ensureFresh();
+    expect(fresh.docJson?.content?.length).toBe(2);
+    expect(pipelineStats.tierBRuns).toBe(tierB);
+    expect(pipelineStats.assemblies).toBe(assemblies);
+    // And nothing was merely deferred: no idle callback was armed either.
+    await settle();
+    expect(pipelineStats.tierBRuns).toBe(tierB);
+    expect(pipelineStats.assemblies).toBe(assemblies);
+  });
+
+  it("ensureFresh mid-pause refreshes Tier A but only RE-ARMS Tier B (592)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const tierB = pipelineStats.tierBRuns;
+    const assemblies = pipelineStats.assemblies;
+
+    // An edit lands and the autosave fires before the 300 ms boundary.
+    ed.commands.insertContentAt(ed.state.doc.content.size - 1, " typed");
+    const fresh = p.ensureFresh();
+    // Tier A ran inline — the save gets the exact doc.
+    expect(JSON.stringify(fresh.docJson)).toContain("alpha typed");
+    // Tier B did NOT run inline.
+    expect(pipelineStats.tierBRuns).toBe(tierB);
+    expect(pipelineStats.assemblies).toBe(assemblies);
+    // It was re-armed, so the idle tier still converges on its own callback.
+    await settle();
+    expect(pipelineStats.tierBRuns).toBe(tierB + 1);
+    expect(p.snapshot().sourceText).toContain("alpha typed");
+  });
+
+  it("a bibFamily switch re-derives sourceText with no editor edit (592)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const before = p.snapshot().sourceText!;
+    expect(before).not.toContain("natbib");
+
+    // The user's Package control fires NO transaction — the value just moves.
+    bibFamily = "natbib";
+    p.revalidate();
+    await settle();
+    const after = p.snapshot().sourceText!;
+    expect(after).toContain("natbib");
+    expect(after).not.toBe(before);
+  });
+
+  it("a Tier B refusal can no longer take the save with it (592)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const counts = p.snapshot().wordCounts;
+    const lastGoodSource = p.snapshot().sourceText;
+    assembleThrows = true;
+
+    ed.commands.insertContentAt(ed.state.doc.content.size - 1, " typed");
+    // The autosave's door: it must return a usable, EXACT docJson rather than
+    // propagating the projection's failure into a call site whose debounce is
+    // already disarmed.
+    const fresh = p.ensureFresh();
+    expect(JSON.stringify(fresh.docJson)).toContain("alpha typed");
+
+    // And the re-armed idle tier swallows it too — degraded, never escaping:
+    // the source holds its last good text while the counts still advance.
+    await settle();
+    expect(p.snapshot().sourceText).toBe(lastGoodSource);
+    expect(p.snapshot().wordCounts).not.toBe(counts);
+    expect(JSON.stringify(p.snapshot().docJson)).toContain("alpha typed");
+  });
+
+  it("a delimiters re-read that changes nothing re-arms nothing (592)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const tierB = pipelineStats.tierBRuns;
+    // Same inputs → the freshness record says there is nothing to redo.
+    p.revalidate();
+    await settle();
+    expect(pipelineStats.tierBRuns).toBe(tierB);
   });
 
   it("external feed overrides sourceText and suppression blocks the pipeline's own serialize", async () => {
