@@ -173,6 +173,48 @@ RAW file, where both policy literals appear in the door's own header prose.
 AND a Library paper open at once, which is the FSA/multi-pane-masked class, so
 the durable proof here is the unit contract.
 
+#### The CENSUS half: a guard whose COVERAGE is a literal ages out silently
+
+Task 597 is the sixth member, and it is the one the census above could not see.
+`[data-editor-page]` — stamped once per `EditorPane` on its `.paper-render`
+wrapper — was a per-pane marker from the day it shipped, `print.ts` resolved it
+off `document`, and the census passed anyway with its allowlist proudly EMPTY:
+`PANE_MARKERS` was a hand-kept list of five NAMES, and nothing forces a newly
+stamped attribute onto a literal. **An empty allowlist is a claim about what
+was checked, not about what exists.**
+
+The member itself is worse than the five before it, and the difference is what
+sets the miss policy. M2–M4 MEASURE the wrong pane; this one ACTS through it.
+`applyPrintAttrs` walks up from the page tagging every ancestor
+`data-print-ancestor` and every off-chain sibling `data-print-hide`, and both
+print rules carry `!important` — with `[data-print-ancestor] { display: block }`
+being exactly the declaration `KeepAliveSlot` relies on to hide a warm pane. So
+anchoring on the hidden pane does not print the wrong thing by accident: it
+UN-HIDES the warm doc and HIDES the paper the user is looking at. That puts it
+in `paneDockSlot`'s class, not `paneColumn`'s — **fail-closed**, because a
+fail-open answer hands back precisely the element that causes the inversion,
+while `null` degrades to "no page isolation", the posture the browser's own
+File → Print door already takes.
+
+The fix that stops the NEXT member is the second half: the census's question is
+INVERTED. It no longer asks "is one of these N names resolved globally" but
+**"is ANY `data-*` attribute resolved off `document` in production"** — and each
+answer must sit in an `EXEMPT_GLOBAL_MARKERS` map with a stated reason (the
+per-CARD family, which `omni-card-placement.ts` owns; the genuinely
+document-level float layer and app-shell `<script>`). Default is FAIL, so a new
+per-pane marker read globally fails on its first commit with no list to
+remember to grow; a companion leg deletes an exemption whose call site is gone
+("a registry earns its name by being read"). Stated limit, the same one the
+original needle carries: a selector assembled entirely from interpolated
+constants spells no literal `data-` and is invisible — all eleven current hits
+spell at least one.
+
+Measured by neutering in 4 cuts: restoring the bare `querySelector` takes 5 legs
+(2 behavioural, 3 census); doing that AND removing `data-editor-page` from
+`PANE_MARKERS` — i.e. the exact pre-597 state of this file — still takes the
+derived leg, which is the whole point; a stale exemption takes 1; flipping the
+miss policy to fail-open takes the policy census plus the no-visible-pane leg.
+
 ### The GLOBAL-CHROME half: app-global chrome is MOUNTED ONCE, not once per pane
 
 The inverse reading of the same law (task 589). The rules above say what to do
