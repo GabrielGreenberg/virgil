@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import {
+  subscribeToStorageKey,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
 
 const STORAGE_KEY = "virgil-helper-mode";
 
@@ -12,21 +16,34 @@ function _notify() {
   _listeners.forEach((l) => l());
 }
 
+function _read(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw != null && JSON.parse(raw) === true;
+  } catch {
+    return false;
+  }
+}
+
 function _loadOnce() {
   if (_loaded) return;
   _loaded = true;
   if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw != null) _on = JSON.parse(raw) === true;
-  } catch {
-    /* ignore */
-  }
+  _on = _read();
+  // A peer window's toggle re-reads here, so two windows can't disagree on
+  // helper-mode chrome until a reload (task 599). Module-lifetime, like the
+  // snapshot it guards.
+  subscribeToStorageKey(STORAGE_KEY, () => {
+    const next = _read();
+    if (next === _on) return;
+    _on = next;
+    _notify();
+  });
 }
 
 function _persist() {
   if (typeof window === "undefined") return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_on)); } catch { /* ignore */ }
+  writeStorageIfChanged(STORAGE_KEY, JSON.stringify(_on));
 }
 
 function _subscribe(listener: () => void) {
