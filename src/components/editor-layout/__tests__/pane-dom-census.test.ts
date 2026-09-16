@@ -18,6 +18,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import {
+  DocumentQueryScanner,
+  HOLE,
+  makeResolver,
+  type DocumentQuery,
+} from "./_document-query-scan";
 
 const SRC = path.resolve(__dirname, "../../..");
 const LIBRARY = path.resolve(SRC, "../library");
@@ -48,6 +54,9 @@ const CODE = new Map(
   PRODUCTION.map((f) => [f, commentsStripped(readFileSync(f, "utf8"))]),
 );
 
+const RAW = new Map(PRODUCTION.map((f) => [f, readFileSync(f, "utf8")]));
+const SCANNER = new DocumentQueryScanner(RAW, makeResolver(SRC, RAW));
+
 const rel = (f: string) => path.relative(SRC, f).split(path.sep).join("/");
 
 const DOOR = "components/editor-layout/pane-dom.ts";
@@ -70,30 +79,24 @@ const PANE_MARKERS = [
 ] as const;
 
 /**
- * A DOCUMENT-GLOBAL `querySelector` / `querySelectorAll` whose argument mentions
- * the marker — the generic-typed `document.querySelector<HTMLElement>(…)` form
- * and a template literal included, and `document.body.…` as well as `document.…`
- * (the `body` receiver resolves exactly the same set and reads like the relative
- * form).
- *
- * STATED LIMITS, because a census that overstates its reach is the failure mode
- * this whole family is about: the needle sees a literal `document` receiver, so
- * an ALIASED one (`const d = document; d.querySelector(…)`), a `getElementById`,
- * or a selector assembled from string parts would pass. None is an idiom this
- * repo uses; the `?? document` fallback that DID read as relative was retired in
- * `panel-primitives.tsx` rather than exempted.
+ * A DOCUMENT-GLOBAL DOM query whose folded selector mentions the marker. The
+ * receiver and the argument are both RESOLVED on the parsed file (task 600):
+ * `document.body.…`, `window.document.…`, `el.ownerDocument.…`, a `const d =
+ * document` alias and a `root ?? document` fallback all count as global, and
+ * `` `[${DATA_STACK_FRAME}]` `` counts as naming `data-stack-frame`. Stated
+ * limits live in `_document-query-scan.ts`'s header.
  */
-function globalHits(code: string, marker: string): string[] {
-  // `querySelectorAll?` would mean "querySelectorAl" + an optional "l" and
-  // miss the singular form entirely — measured, in this file's first draft.
-  const re =
-    /document(?:\s*\.\s*body)?\s*\.\s*querySelector(?:All)?\s*(?:<[^>]*>)?\s*\(([^)]*)\)/g;
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(code))) {
-    if (m[1].includes(marker)) out.push(m[0]);
-  }
-  return out;
+function hitsFor(queries: DocumentQuery[], marker: string): string[] {
+  return queries.filter((q) => q.selector.includes(marker)).map((q) => q.hit);
+}
+
+/** A synthetic production file, scanned by a scanner that also sees the real
+ *  tree — so a canary can import a real exported constant. */
+function scanSynthetic(code: string, at = "components/editor-layout/__canary__.tsx") {
+  const file = path.join(SRC, ...at.split("/"));
+  const sources = new Map(RAW);
+  sources.set(file, code);
+  return new DocumentQueryScanner(sources, makeResolver(SRC, sources)).documentQueries(file);
 }
 
 describe("pane-dom census — no document-global resolution of a per-pane marker", () => {
@@ -102,8 +105,8 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       const offenders: string[] = [];
       for (const [file, code] of CODE) {
         if (rel(file) === DOOR) continue;
-        for (const hit of globalHits(code, marker)) {
-          offenders.push(`${rel(file)} → ${hit.trim()}`);
+        for (const hit of hitsFor(SCANNER.documentQueries(file), marker)) {
+          offenders.push(`${rel(file)} → ${hit}`);
         }
       }
       expect(offenders).toEqual([]);
@@ -115,8 +118,8 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
     const offenders: string[] = [];
     for (const [file, code] of CODE) {
       if (rel(file) === DOOR || rel(file) === SCROLL_DOOR) continue;
-      for (const hit of globalHits(code, "data-virgil-row-scroll")) {
-        offenders.push(`${rel(file)} → ${hit.trim()}`);
+      for (const hit of hitsFor(SCANNER.documentQueries(file), "data-virgil-row-scroll")) {
+        offenders.push(`${rel(file)} → ${hit}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -149,12 +152,13 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
     // ~dozen callers already import `findRowScroll` by name).
     const ALLOWED = new Set([DOOR, "components/editor-layout/layout-scroll.ts"]);
     const offenders: string[] = [];
-    for (const [file, code] of CODE) {
+    for (const file of CODE.keys()) {
       const r = rel(file);
       if (ALLOWED.has(r)) continue;
-      for (const marker of [...PANE_MARKERS, "data-virgil-row-scroll"]) {
-        const re = new RegExp(`resolvePaneMarkers?\\s*\\(\\s*[^)]*${marker}`);
-        if (re.test(code)) offenders.push(`${r} → resolvePaneMarker(… ${marker} …)`);
+      for (const call of SCANNER.callsTo(file, /^resolvePaneMarkers?$/)) {
+        for (const marker of [...PANE_MARKERS, "data-virgil-row-scroll"]) {
+          if (call.args.includes(marker)) offenders.push(`${r} → ${call.hit}  [${marker}]`);
+        }
       }
     }
     expect(offenders).toEqual([]);
@@ -211,16 +215,101 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
   });
 
   it("the census can see a hit (canary)", () => {
-    const synthetic = commentsStripped(
-      'const x = document.querySelector<HTMLElement>(`[data-dock-slot="${k}"]`);',
+    const synthetic = scanSynthetic(
+      'export const x = (k: string) => document.querySelector<HTMLElement>(`[data-dock-slot="${k}"]`);',
     );
-    expect(globalHits(synthetic, "data-dock-slot")).toHaveLength(1);
+    expect(hitsFor(synthetic, "data-dock-slot")).toHaveLength(1);
     // …and does NOT fire on the relative form, which is legal.
-    const relative = commentsStripped(
-      'const y = root.querySelector("[data-dock-slot]"); const z = el.closest("[data-panel-column-side]");',
+    const relative = scanSynthetic(
+      'export const f = (root: Element, el: Element) => { root.querySelector("[data-dock-slot]"); el.closest("[data-panel-column-side]"); };',
     );
-    expect(globalHits(relative, "data-dock-slot")).toEqual([]);
-    expect(globalHits(relative, "data-panel-column-side")).toEqual([]);
+    expect(hitsFor(relative, "data-dock-slot")).toEqual([]);
+    expect(hitsFor(relative, "data-panel-column-side")).toEqual([]);
+    // A comment that NAMES the violation is not one (the AST sees no call).
+    expect(scanSynthetic('// document.querySelector("[data-dock-slot]")\nexport {};')).toEqual([]);
+  });
+
+  // Task 600 — one canary per spelling the regex needle could not see. Each is
+  // a fixture written the missed way; each must be FLAGGED.
+  describe("the needle sees every spelling of the same violation (task 600 canaries)", () => {
+    const flags = (code: string, marker: string) =>
+      expect(hitsFor(scanSynthetic(code), marker), code).toHaveLength(1);
+
+    it("a selector built from a LOCAL constant", () => {
+      flags(
+        'const ATTR = "data-stack-frame"; export const f = () => document.querySelector(`[${ATTR}]`);',
+        "data-stack-frame",
+      );
+    });
+
+    it("a selector built from an IMPORTED constant (the real DATA_STACK_FRAME)", () => {
+      // `omni-bin-slot.ts` exports it; `panel-column.tsx` interpolates it off
+      // `col.` today, which is legal only because of the receiver.
+      flags(
+        'import { DATA_STACK_FRAME as F } from "./omni-bin-slot";\nexport const f = () => document.querySelector<HTMLElement>(`[${F}]`);',
+        "data-stack-frame",
+      );
+      flags(
+        'import { DATA_STACK_FRAME } from "@/components/editor-layout/omni-bin-slot";\nexport const f = () => document.querySelectorAll(`[${DATA_STACK_FRAME}]`);',
+        "data-stack-frame",
+      );
+    });
+
+    it("string concatenation", () => {
+      flags(
+        'export const f = (k: string) => document.querySelector("[data-" + "dock-slot=\\"" + k + "\\"]");',
+        "data-dock-slot",
+      );
+    });
+
+    it("getElementById", () => {
+      flags('export const f = () => document.getElementById("data-flex-col");', "data-flex-col");
+    });
+
+    it("an ALIASED document receiver", () => {
+      flags(
+        'const d = document; export const f = () => d.querySelector("[data-flex-col]");',
+        "data-flex-col",
+      );
+      flags(
+        'export const f = () => { const doc = window.document; return doc.body.querySelector("[data-flex-col]"); };',
+        "data-flex-col",
+      );
+    });
+
+    it("an ownerDocument receiver", () => {
+      flags(
+        'export const f = (el: Element) => el.ownerDocument.querySelector("[data-strip-side]");',
+        "data-strip-side",
+      );
+      flags(
+        'export const f = (el: Element) => el.ownerDocument?.querySelector("[data-strip-side]");',
+        "data-strip-side",
+      );
+    });
+
+    it("a `?? document` fallback receiver", () => {
+      flags(
+        'export const f = (root?: Element) => (root ?? document).querySelector("[data-panel-column-side]");',
+        "data-panel-column-side",
+      );
+    });
+
+    it("a nested `)` inside the argument does not truncate it", () => {
+      // The regex's `[^)]*` stopped at `attrOf(x)`'s closer and never saw the
+      // literal marker after it.
+      flags(
+        'declare function attrOf(x: unknown): string;\nexport const f = (x: unknown, k: string) => document.querySelector(`[${attrOf(x)}="1"][data-dock-slot="${k}"]`);',
+        "data-dock-slot",
+      );
+    });
+
+    it("an unfoldable part becomes a HOLE, never a false marker", () => {
+      const [q] = scanSynthetic(
+        'declare function attrOf(x: unknown): string;\nexport const f = (x: unknown) => document.querySelector(`[${attrOf(x)}]`);',
+      );
+      expect(q.selector).toBe(`[${HOLE}]`);
+    });
   });
 
   it("the comment strip does not swallow the file (self-check)", () => {
@@ -246,11 +335,10 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
  * REASON or the leg fails. A newly stamped per-pane marker read globally now
  * fails on its first commit, with no list to remember to grow.
  *
- * STATED LIMIT (the same one `globalHits` carries): this sees the marker NAMES
- * a call spells literally. A selector assembled entirely from interpolated
- * constants (`` `[${ATTR}]` ``) mentions no literal `data-` and is invisible
- * here, as it is to every leg above. The idiom the repo actually uses spells
- * at least one name literally — measured: all eleven current hits do.
+ * STATED LIMIT (the same one every leg above carries — see
+ * `_document-query-scan.ts`): this sees the marker names a selector FOLDS to.
+ * Since task 600 that includes names reached through `const` bindings (local or
+ * imported) and concatenation; a selector computed at runtime is still unseen.
  */
 const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   // ── per-CARD, not per-PANE. The door's header scopes these OUT by name and
@@ -265,23 +353,29 @@ const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   "data-citation-id": "per-ATOM id inside a document — a marker-click jump, not pane chrome",
   "data-contains-active-card":
     "per-CARD state flag, read only alongside [data-floating-panel]",
+  // Task 600: these two were always read off `document` (the reconciler's
+  // panel-card sweep, through DATA_CARD_SELECTED / DATA_CARD_HOVERED); the
+  // regex needle never saw them because the selector spells only constants.
+  "data-card-selected":
+    "per-CARD state flag, swept alongside [data-card-key] in the anchor-highlight reconciler",
+  "data-card-hovered":
+    "per-CARD state flag, swept alongside [data-card-key] in the anchor-highlight reconciler",
 
   // ── genuinely DOCUMENT-level: one instance per window, by construction.
   "data-floating-panel":
     "floats portal to <body>, so the float layer is document-level — there is no per-pane set to pick from",
   "data-swiftlatex":
     "the <script> tag in the app shell — one per window, above every pane",
+  "data-virgil-drag-ghost":
+    "the drag ghost is appended to <body> — one live gesture per window, above every pane (task 600: GHOST_ATTR-built, invisible to the regex needle)",
 };
 
-/** Every `data-*` name a document-global selector spells literally. */
-function globalMarkerNames(code: string): Array<{ name: string; hit: string }> {
-  const re =
-    /document(?:\s*\.\s*body)?\s*\.\s*querySelector(?:All)?\s*(?:<[^>]*>)?\s*\(([^)]*)\)/g;
+/** Every `data-*` name a document-global selector folds to. */
+function globalMarkerNames(queries: DocumentQuery[]): Array<{ name: string; hit: string }> {
   const out: Array<{ name: string; hit: string }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(code))) {
-    for (const n of m[1].match(/data-[a-z0-9-]+/g) ?? []) {
-      out.push({ name: n, hit: m[0].trim().replace(/\s+/g, " ") });
+  for (const q of queries) {
+    for (const n of q.selector.match(/data-[a-z0-9-]+/g) ?? []) {
+      out.push({ name: n, hit: q.hit });
     }
   }
   return out;
@@ -293,10 +387,10 @@ describe("pane-dom census, derived — any document-global data-* read is listed
   /** Every production hit, once, with the file that spells it. */
   function survey() {
     const hits: Array<{ file: string; name: string; hit: string }> = [];
-    for (const [file, code] of CODE) {
+    for (const file of CODE.keys()) {
       const r = rel(file);
       if (DOORS.has(r)) continue;
-      for (const { name, hit } of globalMarkerNames(code)) {
+      for (const { name, hit } of globalMarkerNames(SCANNER.documentQueries(file))) {
         hits.push({ file: r, name, hit });
       }
     }
@@ -327,8 +421,8 @@ describe("pane-dom census, derived — any document-global data-* read is listed
   });
 
   it("the derived census can see a NEW marker nobody listed (canary)", () => {
-    const synthetic = commentsStripped(
-      'const el = document.querySelector<HTMLElement>("[data-brand-new-pane-thing]");',
+    const synthetic = scanSynthetic(
+      'export const el = document.querySelector<HTMLElement>("[data-brand-new-pane-thing]");',
     );
     const names = globalMarkerNames(synthetic).map((h) => h.name);
     expect(names).toEqual(["data-brand-new-pane-thing"]);
@@ -336,14 +430,14 @@ describe("pane-dom census, derived — any document-global data-* read is listed
     // …and the relative form, which is legal, is still invisible to it.
     expect(
       globalMarkerNames(
-        commentsStripped('root.querySelector("[data-brand-new-pane-thing]");'),
+        scanSynthetic('export const f = (root: Element) => root.querySelector("[data-brand-new-pane-thing]");'),
       ),
     ).toEqual([]);
   });
 
   it("the derived census would have caught task 597's actual line", () => {
-    const synthetic = commentsStripped(
-      "const editorPage = document.querySelector<HTMLElement>('[data-editor-page]');",
+    const synthetic = scanSynthetic(
+      "export const editorPage = document.querySelector<HTMLElement>('[data-editor-page]');",
     );
     const names = globalMarkerNames(synthetic).map((h) => h.name);
     expect(names).toEqual(["data-editor-page"]);
