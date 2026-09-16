@@ -22,6 +22,22 @@ CI: [dropctx-multipane-registry.test.tsx](../../../src/components/drop-mode/__te
 
 **Verification, honestly:** this class masks in the dev preview (multi-pane + FSA), so the durable proof is the unit contract above and a real-app eyeball is *owed*, not claimed.
 
+### The LISTENER half: every per-pane listener declares its scope (task 598)
+
+The rule above was written for ONE handler, and one handler obeyed it. A sweep of the pane's subtree found the rest of the family:
+
+- **The pristine-card discard.** `usePristineCardManager` put a capture-phase `pointerdown` on `document`, once per pane. A hidden pane's blank card is still in the DOM under `display:none`, so a click in the visible paper was "outside" it — switch papers with the keyboard, click once, and the other paper's blank note was gone.
+- **The orphan events.** `virgil-anchor-orphaned` / `virgil-textobject-orphaned` carried no `docId`. The anchorId or uuid tells one document's cards apart, but it cannot tell two documents apart: open the same paper as a document and in the Reader (or open a duplicated folder) and every pane cleared its own card and wrote its own sidecar for a deletion that happened in one of them.
+- **The hover bridge, the resize followers (scrollbar, pending-change pill, selection bolt, grab handle), and margin-edit's Escape**: work (or a cancel) in panes nobody can see.
+
+The fix is two doors and a census:
+
+1. **`usePaneScopedListener(target, type, handler, { capture, passive, enabled })`** in [visibility-context.tsx](../../../src/lib/keep-alive/visibility-context.tsx) (with `useIsVisibleRef()` for handlers inside a larger effect). It reads visibility through a REF at event time, and gets the latest handler through a ref too, so an inline closure never re-registers. A follower that skips its work while hidden must also catch up when the pane is shown again. The pill and the selection bolt re-run their placement when `isVisible` turns true. The scrollbar needs nothing extra: its ResizeObserver fires when the row gets its size back.
+2. **[orphan-events.ts](../../../src/lib/tiptap/orphan-events.ts)** owns both orphan events. `dispatch*` stamps the `docId` of the editor whose transaction removed the anchor (from the `docIdRef` in the extension ctx, the same way `Footnote` gets it), and `useAnchorOrphaned` / `useTextObjectOrphaned` answer only their own doc. The rule is STRICT on `docId: null`: a surface that knows no document is nobody's orphan. Floats pass the host doc's `docIdRef`, so they are heard as the main editor.
+3. **The census**, [pane-scoped-listener-census.test.ts](../../../src/lib/keep-alive/__tests__/pane-scoped-listener-census.test.ts). It follows the import closure of `EditorPane.tsx`. Every `window`/`document` `addEventListener` in that closure with a literal or CONSTANT event name needs a LEDGER row naming its scope: `visible`, `doc`, `target`, `gesture`, `open-state`, `by-design`, `shared-state` or `singleton`. Each scope comes with a source check the file must pass, and the event lists must match exactly in both directions. A registration whose event name is a lower-case variable is allowed only inside the two doors. A separate leg rejects any raw orphan-event literal outside `orphan-events.ts`. Neutering it against the pre-598 sources fails 3 of its 9 legs.
+
+Residual, stated: the Reader's pane sits outside any keep-alive provider and reads `visible = true` always, so a Reader pane and a shown document pane both answer a pane-scoped listener. That was the behaviour before this change as well. A two-paper real-FSA eyeball of the pristine and orphan legs is owed.
+
 ### The DOM half: a per-PANE MARKER is resolved the same way
 
 Same law, other medium (task 438) — and the case where the ladder existed, was
