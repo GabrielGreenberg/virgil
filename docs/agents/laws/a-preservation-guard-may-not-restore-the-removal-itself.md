@@ -205,3 +205,33 @@ is untouched, and whether an empty trailing paragraph inside an item should be
 normalized away at all is a product call (it is also a legitimate mid-typing
 state), deliberately left alone: this task fixes DELETION and leaves the model
 alone.
+
+### The undo half: a stand-in is part of the removal's history event
+
+*(Task 605.)* `MarginaliaAnchorGuard`'s empty stand-in used to be written with
+`addToHistory: false`. So Undo of the deletion restored the original paragraph
+NEXT TO the stand-in — two blocks answering to one uuid — and the uuid net
+re-minted the restored TEXT. The card stayed on a blank line that no Undo would
+ever remove: the guard's preservation outlived the removal it was preserving
+against, which is this law's failure from the other side.
+
+**Rule.** A guard's remedy is part of the edit it answers, so it rides that
+edit's history event. The guard's appended transaction no longer opts out of
+history; prosemirror-history groups an appended transaction with its root (and
+drops it when the root is itself outside history, e.g. a sync). Undo now removes
+the stand-in in the same step that restores the paragraph; Redo replays both.
+
+**Same principle, in the net.** `BlockUuidBackfill` decides which of two holders
+of one uuid is its successor. It used document order, which is wrong for Enter at
+the START of a paragraph (the old node becomes the blank line, the text sits in
+the copy). The successor now follows the CONTENT for the split shape — adjacent
+halves, the first emptied by this batch, the second holding text
+(`contentVacatedHolder`) — and because that fix MOVES an identity, it too rides
+the edit's history event, so Undo rejoins the halves under the original id. A line
+that was already blank keeps its id; a copy placed elsewhere is a relocation, and
+`node-identity.ts` still decides it.
+
+**CI:** `block-identity-follows-content.test.ts` (4 member legs fail against the
+pre-fix sources; 2 controls pass either way). **Owed:** a real-PWA eyeball —
+anchor movement is FSA-masked in the dev preview: press Enter at the start of a
+paragraph that has a note, and delete-then-undo an anchored paragraph.
