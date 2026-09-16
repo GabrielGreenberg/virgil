@@ -1,6 +1,8 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
 import { isLabelTaken } from "@/lib/labels";
+import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 
 /**
  * LABEL RENAME — the ONE door every rename of a `\label{…}` declaration enters
@@ -41,6 +43,14 @@ import { isLabelTaken } from "@/lib/labels";
  *     has a producer at the one `<VirgilEditor>` mount — so the default is a
  *     statement about harnesses and about what a missing wire must COST.
  *
+ *   • "every ref" means every ref the PAPER holds — including a `\ref` inside
+ *     a footnote body, which lives in the footnote's `attrs.content` literal
+ *     where `doc.descendants` never looks (task 606). The census and the
+ *     rewrite are the SAME walk (`rewriteInlineAtomsDeep`, count mode then
+ *     write mode), so the number the confirm states is the number moved; and
+ *     the write walk runs against the POST-confirm doc, so an edit made while
+ *     the modal was up cannot strand a shifted ref.
+ *
  * What the door deliberately does NOT do: touch a ref's `displayText`. The
  * heading/figure/example NUMBERER (`editor-extensions.ts`) re-derives every
  * `labelRef`'s display on any structural change — and a label rename IS one
@@ -77,13 +87,23 @@ export interface LabelRenameOptions {
   confirm?: LabelRenameConfirm | null;
 }
 
-/** Every `labelRef` in `doc` that names `label`, by position. */
-export function collectLabelRefPositions(doc: PMNode, label: string): number[] {
-  const out: number[] = [];
-  doc.descendants((nd, pos) => {
-    if (nd.type.name === "labelRef" && nd.attrs.label === label) out.push(pos);
-  });
-  return out;
+/** Retarget every `labelRef` naming `oldLabel` — top-level AND inside a
+ *  footnote body — into `tr`; with `tr: null`, only COUNT them. One walk for
+ *  both, so the confirm's number and the rewrite cannot drift. */
+export function carryLabelRefs(
+  doc: PMNode,
+  tr: Transaction | null,
+  oldLabel: string,
+  newLabel: string,
+): number {
+  return rewriteInlineAtomsDeep({ doc, tr }, "labelRef", (attrs) =>
+    attrs.label === oldLabel ? { ...attrs, label: newLabel } : null,
+  );
+}
+
+/** How many `labelRef`s in `doc` name `label`, footnote bodies included. */
+export function countLabelRefs(doc: PMNode, label: string): number {
+  return carryLabelRefs(doc, null, label, label);
 }
 
 /** The value a CLEARED label takes on this node — the schema's own default
@@ -114,17 +134,17 @@ export async function renameLabelWithRefs(
 
   // Refs are carried only for a rename between two non-empty keys: an ADD has
   // no refs yet, and a CLEAR has nowhere to point them.
-  const refPositions =
-    oldLabel && newLabel ? collectLabelRefPositions(target.state.doc, oldLabel) : [];
+  const refCount = oldLabel && newLabel ? countLabelRefs(target.state.doc, oldLabel) : 0;
 
-  let carryRefs = refPositions.length > 0;
+  let carryRefs = refCount > 0;
   if (carryRefs && oldLabel && newLabel && opts.confirm) {
-    carryRefs = await opts.confirm(oldLabel, newLabel, refPositions.length);
+    carryRefs = await opts.confirm(oldLabel, newLabel, refCount);
   }
 
-  // Re-resolve after the await — the modal is blocking, but a stale position
-  // is cheap insurance and the second resolve is what a uuid-addressed caller
-  // (a float, the Outline) relies on.
+  // Re-resolve after the await — the declaration by `locate`, the refs by a
+  // fresh walk below. Nothing positional survives the modal: the doc may have
+  // moved under it, and the second resolve is also what a uuid-addressed
+  // caller (a float, the Outline) relies on.
   const after = opts.locate();
   if (!after) return "unresolved";
 
@@ -135,14 +155,10 @@ export async function renameLabelWithRefs(
   });
 
   if (carryRefs && oldLabel && newLabel) {
-    // labelRef is an inline ATOM of fixed size, so an attr write keeps every
-    // other collected position valid inside the same transaction.
-    for (const rPos of refPositions) {
-      const rNode = target.state.doc.nodeAt(rPos);
-      if (rNode && rNode.type.name === "labelRef" && rNode.attrs.label === oldLabel) {
-        tr.setNodeMarkup(rPos, undefined, { ...rNode.attrs, label: newLabel });
-      }
-    }
+    // Attr-only writes on fixed-size nodes (a ref, or a footnote host whose
+    // body literal changed): the declaration write above shifts nothing, so
+    // the walk over the live doc stays valid inside the same transaction.
+    carryLabelRefs(target.state.doc, tr, oldLabel, newLabel);
   }
 
   target.view.dispatch(tr);

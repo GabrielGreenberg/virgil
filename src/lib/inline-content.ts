@@ -30,6 +30,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor, JSONContent } from "@tiptap/react";
+import type { Transaction } from "@tiptap/pm/state";
 // Task 230: the footnote/citation → id-attr map is the registry's `idAttr`
 // facet — read it off ATOM_REGISTRY rather than re-encoding the ternary here, so
 // this by-id resolver shares the single source of truth (peer: stack-pull.ts,
@@ -564,4 +565,134 @@ export function remintNestedAtomIds(
   };
 
   return { content: walk(blob), remapped };
+}
+
+// ---------------------------------------------------------------------------
+// rewriteInlineAtomsDeep — the WRITE-side door over both hiding places
+// ---------------------------------------------------------------------------
+
+/**
+ * The atom kinds whose `attrs.content` literal is a nested document — the
+ * `descendInto` default, published so a caller that must ask "does this node
+ * hide a body?" reads the same answer every walker here reads (task 606).
+ */
+export const BODY_BEARING_ATOMS: readonly string[] = DEFAULT_DESCEND;
+
+/** The nested body a live node hides in `attrs.content`, or null when the
+ *  node is not a body-bearing kind (or its body is empty / a legacy string —
+ *  the pre-JSON HTML bodies predate every atom a walker here looks for). */
+export function nestedBodyOf(
+  node: PMNode,
+  opts?: InlineContentOpts,
+): JSONContent | null {
+  const descendInto = opts?.descendInto ?? DEFAULT_DESCEND;
+  if (!descendInto.includes(node.type.name)) return null;
+  const body = (node.attrs as Record<string, unknown>).content;
+  return body && typeof body === "object" ? (body as JSONContent) : null;
+}
+
+/**
+ * Map every node of a JSONContent tree — its `content` children AND any
+ * body-bearing atom's own `attrs.content` literal, to any depth. Pure and
+ * identity-preserving: a subtree `fn` left alone keeps its reference, so an
+ * untouched body compares `===` and the caller skips the write.
+ */
+export function mapJsonDeep(
+  json: JSONContent,
+  fn: (node: JSONContent) => JSONContent,
+  opts?: InlineContentOpts,
+): JSONContent {
+  const descendInto = opts?.descendInto ?? DEFAULT_DESCEND;
+  const walk = (node: JSONContent): JSONContent => {
+    let out = fn(node);
+    const nested = out.attrs?.content;
+    if (out.type && descendInto.includes(out.type) && nested && typeof nested === "object") {
+      const rewritten = walk(nested as JSONContent);
+      if (rewritten !== nested) out = { ...out, attrs: { ...out.attrs, content: rewritten } };
+    }
+    if (Array.isArray(out.content)) {
+      const kids = out.content.map(walk);
+      if (kids.some((k, i) => k !== (out.content as JSONContent[])[i])) {
+        out = { ...out, content: kids };
+      }
+    }
+    return out;
+  };
+  return walk(json);
+}
+
+/** Visit every node of a JSONContent tree, body literals included — the
+ *  read-only face of {@link mapJsonDeep}. */
+export function forEachJsonDeep(
+  json: JSONContent,
+  visit: (node: JSONContent) => void,
+  opts?: InlineContentOpts,
+): void {
+  mapJsonDeep(json, (n) => {
+    visit(n);
+    return n;
+  }, opts);
+}
+
+/**
+ * Rewrite every inline atom of `typeName` in `tr.doc` — the ones
+ * `doc.descendants` reaches AND the ones hidden in a body-bearing atom's
+ * `attrs.content` literal — into `tr`. `rewrite` answers the atom's new attrs,
+ * or null to leave it. Returns the number of ATOMS rewritten (not hosts), which
+ * is the number a user is told about.
+ *
+ * Pass `tr: null` to COUNT without writing — the same walk, so a count shown
+ * before a confirm and the rewrite after it can never disagree about which
+ * atoms qualify.
+ *
+ * Every write is an attr-only `setNodeMarkup` on a fixed-size node (the atom
+ * itself, or the host whose body literal changed), so no position shifts and
+ * the positions of the snapshot taken at entry stay valid for the whole walk.
+ * A nested hit is written through the host's `content` attr — the one place
+ * the body lives, the same write a footnote card edit makes — so the `.tex`
+ * `\footnote{}` serializes the rewritten body with no re-parse.
+ *
+ * Not keystroke-path: one O(doc) walk per explicit rename gesture.
+ */
+export function rewriteInlineAtomsDeep(
+  target: { doc: PMNode; tr: Transaction | null },
+  typeName: string,
+  rewrite: (attrs: Record<string, unknown>) => Record<string, unknown> | null,
+  opts?: InlineContentOpts,
+): number {
+  const { doc, tr } = target;
+  let count = 0;
+  doc.descendants((node, pos) => {
+    let attrs = node.attrs as Record<string, unknown>;
+    let changed = false;
+    if (node.type.name === typeName) {
+      const next = rewrite(attrs);
+      if (next) {
+        attrs = next;
+        changed = true;
+        count += 1;
+      }
+    }
+    const body = nestedBodyOf(node, opts);
+    if (body) {
+      const nextBody = mapJsonDeep(
+        body,
+        (j) => {
+          if (j.type !== typeName || !j.attrs) return j;
+          const next = rewrite(j.attrs as Record<string, unknown>);
+          if (!next) return j;
+          count += 1;
+          return { ...j, attrs: next };
+        },
+        opts,
+      );
+      if (nextBody !== body) {
+        attrs = { ...attrs, content: nextBody };
+        changed = true;
+      }
+    }
+    if (changed && tr) tr.setNodeMarkup(pos, undefined, attrs);
+    return true;
+  });
+  return count;
 }

@@ -34,7 +34,8 @@
  * of typing.
  */
 
-import type { Editor, JSONContent } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
+import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 import { wholeWordPatternFor } from "@/lib/whole-word";
 
 /**
@@ -59,46 +60,10 @@ export function rewriteCiteCommandString(
   return command.replace(re, newKey);
 }
 
-/** Recursively rewrite citekeys inside a JSONContent literal (a footnote body).
- *  Returns `{ content, changed }`; `content` is a fresh tree only when a cite
- *  command actually changed (so an unchanged body keeps reference identity and
- *  the caller skips the `setNodeMarkup`). */
-function rewriteCitesInJson(
-  json: JSONContent,
-  oldKey: string,
-  newKey: string,
-): { content: JSONContent; changed: boolean } {
-  let changed = false;
-
-  const visit = (node: JSONContent): JSONContent => {
-    let next = node;
-
-    if (node.type === "citation" && node.attrs) {
-      const cmd = (node.attrs.command as string) || "";
-      const rewritten = rewriteCiteCommandString(cmd, oldKey, newKey);
-      if (rewritten !== cmd) {
-        changed = true;
-        next = { ...node, attrs: { ...node.attrs, command: rewritten } };
-      }
-    }
-
-    if (Array.isArray(next.content)) {
-      const children = next.content.map(visit);
-      // Only allocate a new node if a child changed.
-      const childChanged = children.some((c, i) => c !== next.content![i]);
-      if (childChanged) next = { ...next, content: children };
-    }
-    return next;
-  };
-
-  const content = visit(json);
-  return { content, changed };
-}
-
 /**
  * Rewrite every `\cite{oldKey}` → `\cite{newKey}` in the live editor doc —
  * top-level citation atoms AND footnote-nested ones — in ONE atomic
- * transaction. Returns the number of host nodes rewritten (0 → no dispatch).
+ * transaction. Returns the number of cite ATOMS rewritten (0 → no dispatch).
  *
  * A top-level citation is rewritten by editing its own `command` attr; a
  * footnote-nested citation is rewritten by rewriting the host footnote's
@@ -110,38 +75,14 @@ export function rewriteCiteKeyInDoc(
   newKey: string,
 ): number {
   if (!oldKey || oldKey === newKey) return 0;
-  let tr = editor.state.tr;
-  let touched = 0;
-
-  // Safe to walk the ORIGINAL doc while accumulating into `tr`: every op is an
-  // attr-only setNodeMarkup that never shifts positions (the
-  // stripFootnoteNestedCitation invariant). Do NOT add a size-changing op here
-  // without re-reading positions from the running tr.
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "citation") {
-      const cmd = (node.attrs.command as string) || "";
-      const rewritten = rewriteCiteCommandString(cmd, oldKey, newKey);
-      if (rewritten !== cmd) {
-        tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, command: rewritten });
-        touched += 1;
-      }
-      return false; // citation is an atom — nothing to descend into here
-    }
-    if (node.type.name === "footnote" && node.attrs.content) {
-      const { content, changed } = rewriteCitesInJson(
-        node.attrs.content as JSONContent,
-        oldKey,
-        newKey,
-      );
-      if (changed) {
-        tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, content });
-        touched += 1;
-      }
-      return true;
-    }
-    return true;
+  const tr = editor.state.tr;
+  // The deep door (task 606) — the same walk the label rename uses, so the two
+  // key renames reach exactly the same hiding places.
+  const touched = rewriteInlineAtomsDeep({ doc: tr.doc, tr }, "citation", (attrs) => {
+    const cmd = (attrs.command as string) || "";
+    const rewritten = rewriteCiteCommandString(cmd, oldKey, newKey);
+    return rewritten !== cmd ? { ...attrs, command: rewritten } : null;
   });
-
   if (touched > 0) editor.view.dispatch(tr);
   return touched;
 }

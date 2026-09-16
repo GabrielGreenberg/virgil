@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { LABEL_DECLARING_NODE_TYPES } from "@/lib/node-attr-sets";
+import { forEachJsonDeep, nestedBodyOf } from "@/lib/inline-content";
 
 /**
  * Central label registry utilities.
@@ -54,6 +55,14 @@ export function collectLabelKeysIn(doc: PMNode): Set<string> {
     }
     if (nd.isText && nd.text && nd.text.includes("\\label{")) {
       scanRaw(nd.text, keys);
+    }
+    // A footnote body keeps a `\label{…}` as raw command text inside its
+    // `attrs.content` literal, where `descendants` never looks (task 606).
+    const body = nestedBodyOf(nd);
+    if (body) {
+      forEachJsonDeep(body, (j) => {
+        if (j.type === "text" && j.text?.includes("\\label{")) scanRaw(j.text, keys);
+      });
     }
     return true;
   });
