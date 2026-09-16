@@ -98,7 +98,12 @@ function setup() {
   return { onCommit, onClose };
 }
 
-const okButton = () => screen.getByRole("button", { name: "Insert citation" });
+// Named by its visible text; what it does is its description (task 609).
+const okButton = () => {
+  const ok = screen.getByRole("button", { name: "OK" });
+  expect(ok.getAttribute("aria-description")).toBe("Insert citation");
+  return ok;
+};
 
 describe("CitationCreatePopover — deferred commit", () => {
   it("OK with no staged keys is disabled and creates nothing", () => {

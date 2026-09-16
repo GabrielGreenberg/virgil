@@ -24,6 +24,7 @@ import { useFieldEditSession } from "@/lib/field-edit-session";
 import { resolveBlockFrame } from "@/text-objects/block-frame";
 import FigureAnnotation from "./FigureAnnotation";
 import { chromeOnly } from "@/lib/view-only-chrome";
+import { iconHint } from "@/components/Hint";
 
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
@@ -978,7 +979,7 @@ export function FigureChrome({
       <div
         className="figure-scale"
         data-disabled={canScale ? undefined : "true"}
-        data-hint={canScale ? undefined : "Width uses absolute units — edit in code to adjust"} aria-label={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
+        data-hint={canScale ? undefined : "Width uses absolute units — edit in code to adjust"} aria-description={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
       >
         <button
           type="button"
@@ -1067,9 +1068,9 @@ function ChromeIconButton({
       // census resolves coverage by JSX subtree, and this component's JSX
       // sits outside every row that renders it.
       className={chromeOnly(`figure-chrome-btn${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
-      data-hint={title}
+      {...iconHint({ label: title })}
       onMouseDown={(e) => e.stopPropagation()}
-      onClick={onClick} aria-label={title}
+      onClick={onClick}
     >
       {children}
     </button>

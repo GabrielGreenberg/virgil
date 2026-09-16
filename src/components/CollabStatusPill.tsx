@@ -249,10 +249,10 @@ function CollabStatusPill({
       <div
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] text-ink-body bg-surface border border-edge-subtle max-w-[260px] truncate"
         style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
-        data-hint="Collaborator pen status" aria-label="Collaborator pen status"
+        data-hint="Collaborator pen status" aria-description="Collaborator pen status"
       >
         {/* Decorative: the pill's own text label states the pen state, and the
-            wrapper already carries an aria-label + hint. */}
+            wrapper carries the hint as its description. */}
         <StatusDot tone={PEN_TONE[pen.status]} size="md" className="shrink-0" />
         <span className="truncate">{label}</span>
         {myRequestPending && !iHavePen && (

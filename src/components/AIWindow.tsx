@@ -894,7 +894,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       <span
         className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
         style={{ background: chip.badgeBg, color: chip.badgeColor }}
-        data-hint={meta.description} aria-label={meta.description}
+        data-hint={meta.description} aria-description={meta.description}
       >
         {meta.label}
       </span>

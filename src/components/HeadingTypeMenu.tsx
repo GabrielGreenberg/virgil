@@ -110,7 +110,7 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
       aria-checked={showCheckGutter ? current : undefined}
       data-current={current ? "" : undefined}
       data-hint={hint}
-      aria-label={hint}
+      aria-description={hint}
       className={
         disabled
           ? "w-full flex items-center gap-2 px-3 text-sm text-left"

@@ -14,6 +14,7 @@ import {
 } from "@/lib/pane-resize/pointer-invariants";
 import type { SelectionsContextValue } from "./contexts/selections";
 import { getPanelSelection } from "./panel-selection";
+import { iconHint } from "@/components/Hint";
 
 /**
  * Strip-icon click + move handlers.
@@ -535,8 +536,7 @@ export function StripButton({
       aria-pressed={active}
       // `data-hint` drives the CSS tooltip; `aria-label` gives the icon-only
       // button an accessible name (the SVG carries no title/text of its own).
-      aria-label={label}
-      data-hint={label}
+      {...iconHint({ label })}
     >
       {/* Decorative: the button's name comes from `aria-label` above. */}
       <span aria-hidden="true" className="contents">

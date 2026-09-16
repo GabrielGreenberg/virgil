@@ -63,7 +63,7 @@ function DocumentFolderTabImpl({ fill, onClick, title, children }: Props) {
       }}
       onClick={onClick}
       data-hint={title}
-      aria-label={title}
+      aria-description={title}
     >
       <FolderTabChrome variant="topbar" fill={fill} />
       {/* Tab content sits over the narrow tab portion, vertically centered.

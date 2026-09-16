@@ -614,7 +614,7 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
     <span
       className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-xs"
       style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
-      data-hint="No anchor in document" aria-label="No anchor in document"
+      role="img" {...iconHint({ label: "No anchor in document" })}
     />
   );
 }
@@ -1784,7 +1784,7 @@ export function EditableCard({
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
             : null),
         }}
-        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-label={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
+        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-description={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
         {aboveBody}
         {onBodyTitleChange && (

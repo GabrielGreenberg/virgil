@@ -144,7 +144,7 @@ export function AuthorChip({ author }: { author: SuggestionAuthor }) {
           : "bg-surface-muted-strong text-ink-body"
       }`}
       data-hint={isAi ? "AI-authored" : "Human-authored"}
-      aria-label={isAi ? "AI-authored" : "Human-authored"}
+      aria-description={isAi ? "AI-authored" : "Human-authored"}
     >
       {isAi ? "AI" : "Human"}
     </span>
@@ -166,7 +166,7 @@ export function SuggestionTrailing({
       <span
         className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[status]}`}
         data-hint={STATUS_LABEL[status]}
-        aria-label={STATUS_LABEL[status]}
+        aria-hidden="true"
       />
       <AuthorChip author={author} />
       <span className="text-[10px] text-ink-muted">{STATUS_LABEL[status]}</span>

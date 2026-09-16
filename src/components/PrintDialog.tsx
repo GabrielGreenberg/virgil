@@ -122,7 +122,7 @@ export default function PrintDialog({
                     checked={options.elements[row.key]}
                     onChange={(v) => setElement(row.key, v)}
                     disabled={disabled}
-                    title={
+                    hint={
                       disabled
                         ? "Enable marginalia in the editor first."
                         : undefined
@@ -159,6 +159,7 @@ export default function PrintDialog({
                 <button
                   key={size}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => setFontSize(size)}
                   className={`px-2 py-1 text-xs rounded border transition-colors ${
                     active
@@ -188,30 +189,42 @@ export default function PrintDialog({
   );
 }
 
+/**
+ * One print option. It IS a checkbox, so it says so: `role="checkbox"` +
+ * `aria-checked` — the dialog's whole content is on/off state, and a bare
+ * button announces none of it. Its accessible name is its VISIBLE label (the
+ * text inside); a `hint` explaining why the row is unavailable is the tooltip
+ * and the accessible DESCRIPTION, never the name (STYLE_GUIDE "Accessible
+ * names" — task 609).
+ */
 function PrintCheckbox({
   label,
   checked,
   onChange,
   disabled,
-  title,
+  hint,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
-  title?: string;
+  hint?: string;
 }) {
   return (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={checked}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
-      data-hint={title}
+      data-hint={hint}
+      aria-description={hint}
       className={`flex items-center gap-2 text-xs text-left w-full px-1 py-0.5 rounded ${
         disabled ? "opacity-40 cursor-not-allowed" : "hover-on-light"
-      }`} aria-label={title}
+      }`}
     >
       <span
+        aria-hidden
         className={`flex items-center justify-center w-4 h-4 rounded border ${
           checked
             ? "bg-[var(--accent)] border-[var(--accent)]"

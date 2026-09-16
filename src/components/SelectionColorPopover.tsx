@@ -246,8 +246,7 @@ function CustomColorInput({ onPickCustom }: CustomColorInputProps) {
       ref={ref}
       id={id}
       type="color"
-      data-hint="Pick a custom color"
-      aria-label="Pick a custom color"
+      {...iconHint({ label: "Pick a custom color" })}
       onChange={(e) => {
         const c = e.target.value;
         if (c) onPickCustom(c);

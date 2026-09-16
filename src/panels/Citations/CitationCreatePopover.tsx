@@ -167,7 +167,7 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
         onClick={onOk}
         disabled={staged.length === 0}
         data-hint="Insert citation"
-        aria-label="Insert citation"
+        aria-description="Insert citation"
       >
         OK
       </Button>

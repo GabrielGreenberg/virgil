@@ -117,7 +117,7 @@ describe("CitationCard +range trails the citation display line (task 010)", () =
 
     // (2) The bibkey metadata row (the citekey change button) no longer
     //     carries the +range affordance.
-    const citekeyBtn = screen.getByLabelText("Click to change");
+    const citekeyBtn = document.querySelector<HTMLButtonElement>('button[aria-description="Click to change"]')!;
     const metaRow = citekeyBtn.parentElement!;
     expect(metaRow.textContent).toContain("xenakis2020");
     expect(metaRow.textContent).not.toContain("+range");

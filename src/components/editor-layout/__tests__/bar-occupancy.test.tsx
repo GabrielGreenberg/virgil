@@ -608,7 +608,14 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
     document.querySelector<HTMLElement>('[data-bar-occupant="tab-strip"]')!;
   const rowEl = () => document.querySelector<HTMLElement>('[data-bar-occupant="tabs"]')!;
   /** The per-tab wrapper the strip keys `outerTabRefs` by. */
-  const wrapperOf = (label: string) => screen.getByLabelText(label).parentElement!;
+  /** A tab by its tooltip — the one string both tab renderers (the active
+   *  folder tab and an inactive inline label) carry for the same tab. */
+  const tabByHint = (hint: string) => {
+    const hits = document.querySelectorAll<HTMLElement>(`[data-hint="${hint}"]`);
+    expect(hits, `exactly one element hinted "${hint}"`).toHaveLength(1);
+    return hits[0];
+  };
+  const wrapperOf = (label: string) => tabByHint(label).parentElement!;
 
   it("inactive tabs COMPRESS (`shrink`), the active tab RESISTS (`shrink-0`), the pinned Library root never compresses", () => {
     crowded();
@@ -627,7 +634,7 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
 
   it("an inactive LABEL ellipsizes to the shared floor and no further, under the shared cap", () => {
     crowded();
-    const label = screen.getByLabelText("Doc Two: main.tex").querySelector<HTMLElement>(`[${TAB_LABEL_ATTR}]`)!;
+    const label = tabByHint("Doc Two: main.tex").querySelector<HTMLElement>(`[${TAB_LABEL_ATTR}]`)!;
     expect(label.className).toMatch(/\btruncate\b/);
     expect(label.style.minWidth).toBe(TAB_LABEL_FLOOR_MIN_WIDTH);
     expect(label.style.maxWidth).toBe(`${TAB_LABEL_MAX_PX}px`);
@@ -659,7 +666,7 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
     crowded();
     const plus = screen.getByRole("button", { name: "Open paper or create new" });
     expect(scrollerEl().contains(plus)).toBe(false);
-    expect(screen.getByLabelText("Library").closest('[data-bar-occupant="tab-strip"]')).not.toBeNull();
+    expect(tabByHint("Library").closest('[data-bar-occupant="tab-strip"]')).not.toBeNull();
   });
 
   it("activating an off-screen tab scrolls it into view by the MINIMUM delta — through the real strip", () => {

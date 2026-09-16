@@ -95,7 +95,7 @@ function renderCard(overrides: Partial<CitationCardProps> = {}) {
 describe("citation card — citekey meta row overflow contract (task 270)", () => {
   it("citekey button truncates and can shrink (truncate + min-w-0)", () => {
     renderCard();
-    const keyBtn = screen.getByRole("button", { name: "Click to change" });
+    const keyBtn = document.querySelector<HTMLButtonElement>('button[aria-description="Click to change"]')!;
     const cls = keyBtn.className;
     expect(cls).toContain("truncate");
     expect(cls).toContain("min-w-0");
@@ -103,7 +103,7 @@ describe("citation card — citekey meta row overflow contract (task 270)", () =
 
   it("the citekey meta row can shrink below its content (min-w-0 on the row)", () => {
     renderCard();
-    const keyBtn = screen.getByRole("button", { name: "Click to change" });
+    const keyBtn = document.querySelector<HTMLButtonElement>('button[aria-description="Click to change"]')!;
     const row = keyBtn.parentElement as HTMLElement;
     // The immediate parent is the meta row div; it must carry min-w-0 so the
     // whole row can shrink within the card and let its children truncate.

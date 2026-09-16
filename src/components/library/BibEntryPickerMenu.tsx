@@ -639,7 +639,6 @@ function BibEntryPickerRow({
           <div
             className="text-[11.5px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
             data-hint={title}
-            aria-label={title}
           >
             {title}
           </div>
@@ -763,7 +762,7 @@ function VerifiedPill({ bibState }: { bibState: LibraryBibState | undefined }) {
         borderColor: `var(--pill-${bibStateTone(state)}-edge)`,
       }}
       data-hint={tooltip}
-      aria-label={tooltip}
+      aria-description={tooltip}
     >
       {text}
     </span>
@@ -781,8 +780,7 @@ function AddButton({
     return (
       <span
         className="w-5 h-5 flex items-center justify-center rounded-full text-positive-ink"
-        data-hint="Already available here"
-        aria-label="Already available here"
+        role="img" {...iconHint({ label: "Already available here" })}
       >
         <svg
           width="11"
