@@ -19,7 +19,7 @@
  *     basePath, so handles do not survive a deploy URL change.
  */
 
-import { get, set, del, keys, createStore } from "idb-keyval";
+import { get, set, del, keys, update, createStore } from "idb-keyval";
 
 import { isDevStorage } from "@/lib/storage-mode";
 
@@ -99,18 +99,21 @@ export interface TabsState {
   currentLibraryOuterId?: string | null;
 }
 
-const EMPTY_INDEX: FsaDocIndex = { docs: [] };
-const EMPTY_TABS: TabsState = {
+// Defaults are FACTORIES, never shared constants: callers mutate what a
+// reader hands them (`idx.docs.push(…)`), so a module-level default would be
+// silently edited in place and handed to the next caller.
+const emptyIndex = (): FsaDocIndex => ({ docs: [] });
+const emptyTabs = (): TabsState => ({
   openTabIds: [],
   currentDocId: null,
   activePane: "doc",
-};
+});
 
 // --- Index ---------------------------------------------------------------
 
-export async function readIndex(): Promise<FsaDocIndex> {
-  const idx = await get<FsaDocIndex>(INDEX_KEY, store);
-  if (!idx) return EMPTY_INDEX;
+/** Fill in fields older rows predate. Mutates and returns `idx`. */
+function normalizeIndex(idx: FsaDocIndex | undefined): FsaDocIndex {
+  if (!idx) return emptyIndex();
   // Backfill lastAccessedAt for entries created before the field existed,
   // defaulting to lastModifiedAt so old papers still sort sensibly.
   for (const doc of idx.docs) {
@@ -119,17 +122,55 @@ export async function readIndex(): Promise<FsaDocIndex> {
   return idx;
 }
 
-export async function writeIndex(idx: FsaDocIndex): Promise<void> {
-  await set(INDEX_KEY, idx, store);
+/** A fresh snapshot of the index. Editing it changes nothing on disk —
+ *  every change goes through `mutateIndex`. */
+export async function readIndex(): Promise<FsaDocIndex> {
+  return normalizeIndex(await get<FsaDocIndex>(INDEX_KEY, store));
+}
+
+/**
+ * THE ONE MUTATION DOOR for the paper index (task 601).
+ *
+ * The index is a single IndexedDB value edited from many places — every
+ * landed save bumps a timestamp, every open bumps an access time, and
+ * create / register / rename / remove / the example seeder add or drop
+ * rows. A hand-written `readIndex()` … `await` … `write` lets two of those
+ * interleave (in one window or across windows) so the later write erases
+ * the earlier one — a just-registered paper's row vanishes and every save
+ * of it then throws "not in index".
+ *
+ * Here the read and the write run inside ONE readwrite IndexedDB
+ * transaction (idb-keyval `update`), which IndexedDB serializes against
+ * every other readwrite transaction on the store, in every tab. `fn`
+ * therefore MUST be synchronous and must not await: it edits the index it
+ * is handed in place and may return a value, which `mutateIndex` resolves
+ * with. Async work (storing a folder handle, purging keys) goes OUTSIDE.
+ *
+ * `writeIndex` no longer exists; `doc-index-mutation-door.test.ts` holds
+ * the census.
+ */
+export async function mutateIndex<R>(
+  fn: (idx: FsaDocIndex) => R,
+): Promise<R> {
+  let result: R | undefined;
+  await update<FsaDocIndex>(
+    INDEX_KEY,
+    (old) => {
+      const idx = normalizeIndex(old);
+      result = fn(idx);
+      return idx;
+    },
+    store,
+  );
+  return result as R;
 }
 
 /** Bump `lastAccessedAt` to now for the given doc, if it exists in the index. */
 export async function touchDocAccessed(id: string): Promise<void> {
-  const idx = await readIndex();
-  const doc = idx.docs.find((d) => d.id === id);
-  if (!doc) return;
-  doc.lastAccessedAt = new Date().toISOString();
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    const doc = idx.docs.find((d) => d.id === id);
+    if (doc) doc.lastAccessedAt = new Date().toISOString();
+  });
 }
 
 // --- My Papers (global curated list) ------------------------------------
@@ -140,10 +181,8 @@ export interface MyPapersState {
   ids: string[];
 }
 
-const EMPTY_MY_PAPERS: MyPapersState = { ids: [] };
-
 export async function readMyPapers(): Promise<MyPapersState> {
-  return (await get<MyPapersState>(MY_PAPERS_KEY, store)) ?? EMPTY_MY_PAPERS;
+  return (await get<MyPapersState>(MY_PAPERS_KEY, store)) ?? { ids: [] };
 }
 
 export async function writeMyPapers(state: MyPapersState): Promise<void> {
@@ -192,7 +231,7 @@ export async function readTabs(windowId: string): Promise<TabsState> {
     } catch {
       // fall through to empty
     }
-    return EMPTY_TABS;
+    return emptyTabs();
   }
 
   // Migration: if this window has no per-window record but the legacy
@@ -207,7 +246,7 @@ export async function readTabs(windowId: string): Promise<TabsState> {
     await del(TABS_KEY, store);
     return legacy;
   }
-  return EMPTY_TABS;
+  return emptyTabs();
 }
 
 export async function writeTabs(
@@ -223,11 +262,8 @@ export async function readWindowsRegistry(): Promise<WindowsRegistry> {
   return (await get<WindowsRegistry>(WINDOWS_REGISTRY_KEY, store)) ?? {};
 }
 
-export async function writeWindowsRegistry(
-  reg: WindowsRegistry,
-): Promise<void> {
-  await set(WINDOWS_REGISTRY_KEY, reg, store);
-}
+// Shared by every window, so — like the paper index — each change is ONE
+// readwrite transaction (`update`), never a read … await … write.
 
 /** Stamp this window as alive in the registry with `now` and the
  *  current open tab ids. Called on mount and on a heartbeat. */
@@ -235,19 +271,25 @@ export async function touchWindow(
   windowId: string,
   openTabIds: string[],
 ): Promise<void> {
-  const reg = await readWindowsRegistry();
-  reg[windowId] = { lastSeen: Date.now(), openTabIds };
-  await writeWindowsRegistry(reg);
+  await update<WindowsRegistry>(
+    WINDOWS_REGISTRY_KEY,
+    (reg = {}) => ({ ...reg, [windowId]: { lastSeen: Date.now(), openTabIds } }),
+    store,
+  );
 }
 
 /** Remove a window from the registry and drop its tabs record. Called
  *  on `pagehide` so a clean close doesn't leave orphan state. */
 export async function forgetWindow(windowId: string): Promise<void> {
-  const reg = await readWindowsRegistry();
-  if (windowId in reg) {
-    delete reg[windowId];
-    await writeWindowsRegistry(reg);
-  }
+  await update<WindowsRegistry>(
+    WINDOWS_REGISTRY_KEY,
+    (reg = {}) => {
+      const next = { ...reg };
+      delete next[windowId];
+      return next;
+    },
+    store,
+  );
   await del(TABS_WINDOW_PREFIX + windowId, store);
 }
 

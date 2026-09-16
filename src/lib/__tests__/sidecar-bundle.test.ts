@@ -70,7 +70,7 @@ vi.mock("@/lib/doc-index", () => ({
   setDocHandle: vi.fn(async () => {}),
   purgeDoc: vi.fn(async () => {}),
   readIndex: vi.fn(async () => ({ docs: [] })),
-  writeIndex: vi.fn(async () => {}),
+  mutateIndex: vi.fn(async () => undefined),
 }));
 
 import {

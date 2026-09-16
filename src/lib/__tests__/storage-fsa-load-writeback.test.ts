@@ -142,9 +142,7 @@ vi.mock("@/lib/doc-index", () => ({
   setDocHandle: vi.fn(async () => {}),
   purgeDoc: vi.fn(async () => {}),
   readIndex: vi.fn(async () => index),
-  writeIndex: vi.fn(async (idx: typeof index) => {
-    index.docs = idx.docs;
-  }),
+  mutateIndex: vi.fn(async (fn: (idx: typeof index) => unknown) => fn(index)),
 }));
 
 import type { JSONContent } from "@tiptap/react";

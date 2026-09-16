@@ -70,9 +70,10 @@ import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
 import {
   readIndex,
-  writeIndex,
+  mutateIndex,
   getDocHandle,
   setDocHandle,
+  deleteDocHandle,
   purgeDoc,
   type FsaDocMeta,
 } from "@/lib/doc-index";
@@ -2080,9 +2081,9 @@ export async function createDocFromPicker(
   };
 
   await setDocHandle(meta.id, docHandle);
-  const idx = await readIndex();
-  idx.docs.push(meta);
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    idx.docs.push(meta);
+  });
 
   return meta;
 }
@@ -2126,9 +2127,9 @@ export async function createDocInFolder(
   };
 
   await setDocHandle(meta.id, handle);
-  const idx = await readIndex();
-  idx.docs.push(meta);
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    idx.docs.push(meta);
+  });
 
   return meta;
 }
@@ -2175,17 +2176,17 @@ export async function registerDocInFolder(
 ): Promise<FsaDocMeta> {
   await handle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
 
-  const idx = await readIndex();
-  const existing = idx.docs.find(
-    (d) => d.folderName === handle.name && d.texFilename === texFilename,
-  );
-  if (existing) {
-    await setDocHandle(existing.id, handle);
-    return existing;
+  const sameFile = (d: FsaDocMeta) =>
+    d.folderName === handle.name && d.texFilename === texFilename;
+
+  const known = (await readIndex()).docs.find(sameFile);
+  if (known) {
+    await setDocHandle(known.id, handle);
+    return known;
   }
 
   const now = new Date().toISOString();
-  const meta: FsaDocMeta = {
+  const candidate: FsaDocMeta = {
     id: generateEntityId().slice(0, 8),
     name: handle.name,
     texFilename,
@@ -2195,9 +2196,21 @@ export async function registerDocInFolder(
     lastAccessedAt: now,
   };
 
-  await setDocHandle(meta.id, handle);
-  idx.docs.push(meta);
-  await writeIndex(idx);
+  // The handle is stored BEFORE the row appears, so no reader ever finds a
+  // row without its handle. Find-or-insert runs inside the index
+  // transaction: a concurrent register of the same file (another window, a
+  // double click) that landed since our read wins, and we adopt its row.
+  await setDocHandle(candidate.id, handle);
+  const meta = await mutateIndex((idx) => {
+    const raced = idx.docs.find(sameFile);
+    if (raced) return raced;
+    idx.docs.push(candidate);
+    return candidate;
+  });
+  if (meta.id !== candidate.id) {
+    await setDocHandle(meta.id, handle);
+    await deleteDocHandle(candidate.id);
+  }
   return meta;
 }
 
@@ -2269,12 +2282,12 @@ async function getDocMetaOrThrow(docId: string): Promise<FsaDocMeta> {
 }
 
 export async function renameDoc(id: string, newName: string): Promise<void> {
-  const idx = await readIndex();
-  const doc = idx.docs.find((d) => d.id === id);
-  if (!doc) return;
-  doc.name = newName;
-  doc.lastModifiedAt = new Date().toISOString();
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    const doc = idx.docs.find((d) => d.id === id);
+    if (!doc) return;
+    doc.name = newName;
+    doc.lastModifiedAt = new Date().toISOString();
+  });
 }
 
 /**
@@ -2282,18 +2295,17 @@ export async function renameDoc(id: string, newName: string): Promise<void> {
  * on disk — the user's files stay where they put them.
  */
 export async function deleteDocFromIndex(id: string): Promise<void> {
-  const idx = await readIndex();
-  idx.docs = idx.docs.filter((d) => d.id !== id);
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    idx.docs = idx.docs.filter((d) => d.id !== id);
+  });
   await purgeDoc(id);
 }
 
 async function touchDocTimestamp(id: string): Promise<void> {
-  const idx = await readIndex();
-  const doc = idx.docs.find((d) => d.id === id);
-  if (!doc) return;
-  doc.lastModifiedAt = new Date().toISOString();
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    const doc = idx.docs.find((d) => d.id === id);
+    if (doc) doc.lastModifiedAt = new Date().toISOString();
+  });
 }
 
 // ---------------------------------------------------------------------------
