@@ -68,6 +68,7 @@ import { resolveDomForUuid } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
 import { type EditorViewportFrame } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
+import { useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import {
@@ -784,6 +785,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // effect below.
   const scheduleRefRef = useRef<() => void>(() => {});
 
+  const visibleRef = useIsVisibleRef();
   const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
@@ -1187,13 +1189,22 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // ghost, so re-resolving per frame is pure waste" — and `globals.css`
       // has additionally made this chrome `pointer-events: none` for the
       // session since task 351. The end edge re-seats it once.
+      //
+      // PANE-SCOPED (task 598): this is a window CAPTURE listener, so it hears
+      // the visible pane's scrolls too — a hidden pane has nothing to re-seat.
+      if (!visibleRef.current) return;
       gesturePark.fire();
     };
     const onResize = () => {
+      if (!visibleRef.current) return;
       gesturePark.fire();
     };
     // A declaration for the same hoisting reason as `onDocUpdate` above.
     function onMouseMove(e: MouseEvent) {
+      // PANE-SCOPED (task 598): one handle per pane, one document listener
+      // each. A hidden pane's hover zone is not under the pointer, whatever its
+      // last-measured frame says.
+      if (!visibleRef.current) return;
       // A REAL pointer event: restore pointer modality, so the hover branch
       // becomes answerable again after a typing burst (task 336). Reported
       // BEFORE the hover-zone check — a move that leaves the zone is pointer
@@ -1304,7 +1315,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }
     };
-  }, [editorRef]);
+  }, [editorRef, visibleRef]);
 
   // Recompute placement when the viewport cache version bumps (editor
   // resize, sidebar toggle). The portal target is resolved inline at

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import {
   hasActiveLayoutGesture,
   onLayoutGestureSetChange,
@@ -105,6 +106,9 @@ export function EditorScrollbar({
       fadeTimer.current = null;
     }, FADE_DELAY);
   }, []);
+
+  // A warm pane's scrollbar stays mounted under `display:none` (task 598).
+  const visibleRef = useIsVisibleRef();
 
   useEffect(() => {
     const row = rowRef.current;
@@ -256,7 +260,12 @@ export function EditorScrollbar({
       refreshScrollOnly();
       scheduleFade();
     };
-    const onWindowResize = () => park.fire();
+    // PANE-SCOPED (task 598): a hidden row measures as zero, so a resize there
+    // is a forced layout for nothing. Showing the pane resizes the row, and
+    // the RO above re-measures it then.
+    const onWindowResize = () => {
+      if (visibleRef.current) park.fire();
+    };
 
     measureAndApply();
     // Initial mount flash: start visible, then fade so the user gets a
@@ -276,7 +285,7 @@ export function EditorScrollbar({
         fadeTimer.current = null;
       }
     };
-  }, [rowRef, editorColRef, topInset, bottomInset, width, rightInset, scheduleFade]);
+  }, [rowRef, editorColRef, topInset, bottomInset, width, rightInset, scheduleFade, visibleRef]);
 
   const scrollable = scroll.height > scroll.client + 1;
   const thumbRatio = scrollable ? scroll.client / scroll.height : 1;

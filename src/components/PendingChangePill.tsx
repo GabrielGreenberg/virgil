@@ -58,6 +58,7 @@ import {
   type EditorViewportFrame,
 } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
+import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
   opticalCenterY,
@@ -339,6 +340,9 @@ export function PendingChangePill({
   // trigger effect just pokes it. The `placementsEqual` bail keeps a
   // structurally-null keystroke from re-rendering the portal.
   const scheduleRef = useRef<() => void>(() => {});
+  // Mounted once per pane; a warm pane's pill is `display:none` (task 598).
+  const isVisible = useIsVisible();
+  const visibleRef = useIsVisibleRef();
   useEffect(() => {
     let rafId = 0;
     const run = () => {
@@ -403,20 +407,25 @@ export function PendingChangePill({
     waitForEditor();
     const scrollParent = findEditorScrollFor(editorRef.current?.view.dom ?? null);
     scrollParent?.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
+    // PANE-SCOPED (task 598): a hidden pane has no placement to re-solve. The
+    // poke on the visibility edge below settles it when the pane is shown.
+    const onResize = () => {
+      if (visibleRef.current) update();
+    };
+    window.addEventListener("resize", onResize);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       if (readyRaf) cancelAnimationFrame(readyRaf);
       unsubscribe();
       scrollParent?.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", onResize);
     };
     // `cacheVersion` is deliberately NOT a dep — it used to tear down and
     // re-register this whole effect (4× `editor.on` + scroll + resize) on every
     // viewport-cache bump, and re-ran `run()` synchronously in the effect body,
     // bypassing the RAF coalescing above. It pokes the shared scheduler below
     // instead (task 317).
-  }, [editorRef, cacheRef]);
+  }, [editorRef, cacheRef, visibleRef]);
 
   // Re-run placement when the hovered/selected card or the applied index
   // changes — these are cardStore/React changes, NOT editor events, so they
@@ -431,6 +440,11 @@ export function PendingChangePill({
   useEffect(() => {
     scheduleRef.current();
   }, [hover, selected, index, cacheVersion]);
+
+  // Shown again → settle the placement a hidden-pane resize skipped.
+  useEffect(() => {
+    if (isVisible) scheduleRef.current();
+  }, [isVisible]);
 
   // SUPPRESSED for the duration of a pane-divider drag / OS window resize:
   // hidden while the gesture runs, recomputed exactly once on the end edge.

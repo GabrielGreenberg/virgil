@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useAnchorOrphaned, useTextObjectOrphaned } from "@/lib/tiptap/orphan-events";
+import { useCallback, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import {
@@ -300,53 +301,45 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   // todo stays in the panel (Mode-A paragraph links, if any, are preserved
   // by `clearTextAnchorLink`). Mirrors `useNotes`'s `virgil-anchor-orphaned`
   // listener. O(todos) per event, never per-keystroke.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      // No kind gate: a reloaded orphan event carries the parser-default
-      // `kind:"note"`, so gating on `kind === "todo"` made this panel ignore
-      // its own orphaned todo mark (BUG1). The sweep below self-filters by
-      // anchorId membership (no-match early-return) — the owning panel decides.
-      const { anchorId } = (e as CustomEvent).detail || {};
-      if (!anchorId) return;
-      update((prev) => {
-        if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
-          return prev;
-        }
-        return {
-          items: prev.items.map((i) =>
-            getTextAnchor(i)?.anchorId === anchorId
-              ? clearTextAnchorLink(i, "todo")
-              : i,
-          ),
-        };
-      });
-    };
-    window.addEventListener("virgil-anchor-orphaned", handler);
-    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
-  }, [update]);
+  // Gated on `docId` by the door (task 598) — membership decides WITHIN a
+  // document, the event's docId decides ACROSS documents.
+  useAnchorOrphaned(docId, ({ anchorId }) => {
+    // No kind gate: a reloaded orphan event carries the parser-default
+    // `kind:"note"`, so gating on `kind === "todo"` made this panel ignore
+    // its own orphaned todo mark (BUG1). The sweep below self-filters by
+    // anchorId membership (no-match early-return) — the owning panel decides.
+    if (!anchorId) return;
+    update((prev) => {
+      if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
+        return prev;
+      }
+      return {
+        items: prev.items.map((i) =>
+          getTextAnchor(i)?.anchorId === anchorId
+            ? clearTextAnchorLink(i, "todo")
+            : i,
+        ),
+      };
+    });
+  });
 
   // Mode A orphan sweep — when a text-object block is removed from the
   // doc (e.g. by Delete or Archive on a paragraph / heading / list / etc.),
   // strip the dead uuid from any todo's Mode A links. Pairs with the
   // `TextObjectOrphanGuard` PM plugin. See ACTION-MENU-DIAGNOSIS.md C3.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const uuid = (e as CustomEvent).detail?.uuid;
-      if (typeof uuid !== "string" || !uuid) return;
-      update((prev) => {
-        let changed = false;
-        const next = prev.items.map((i) => {
-          if (!getLinkedTextObjectIds(i).includes(uuid)) return i;
-          changed = true;
-          return removeTextObjectLink(i, uuid);
-        });
-        return changed ? { items: next } : prev;
+  // Gated on `docId` by the door (task 598).
+  useTextObjectOrphaned(docId, ({ uuid }) => {
+    if (typeof uuid !== "string" || !uuid) return;
+    update((prev) => {
+      let changed = false;
+      const next = prev.items.map((i) => {
+        if (!getLinkedTextObjectIds(i).includes(uuid)) return i;
+        changed = true;
+        return removeTextObjectLink(i, uuid);
       });
-    };
-    window.addEventListener("virgil-textobject-orphaned", handler);
-    return () =>
-      window.removeEventListener("virgil-textobject-orphaned", handler);
-  }, [update]);
+      return changed ? { items: next } : prev;
+    });
+  });
 
   /**
    * Drop todos that were created via `addItem()` but never edited. Call

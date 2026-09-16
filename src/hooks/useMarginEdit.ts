@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import type React from "react";
 
 import type { ViewPrefs } from "./useViewPrefs";
@@ -331,18 +332,20 @@ export function useMarginEdit({
     setMarginEditMode(false);
   }, [viewPrefs, liveMargins]);
 
-  // Escape mirrors the Cancel button.
-  useEffect(() => {
-    if (!marginEditMode) return;
-    const onKey = (e: KeyboardEvent) => {
+  // Escape mirrors the Cancel button — for the SHOWN pane only (task 598): a
+  // warm pane left in margin-edit mode must not cancel on an Escape typed in
+  // the paper the user is looking at.
+  usePaneScopedListener(
+    "window",
+    "keydown",
+    (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
         cancel();
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [marginEditMode, cancel]);
+    },
+    { enabled: marginEditMode },
+  );
 
   // Single 4-sided drag handler.
   //

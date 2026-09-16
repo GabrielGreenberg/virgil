@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useMemo } from "react";
+import { useRef, useCallback, useMemo } from "react";
+import { usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import type { PanelKind } from "@/panels/_shared/types";
 
 /**
@@ -59,8 +60,17 @@ export function usePristineCardManager(): PristineCardManager {
     return s;
   }, []);
 
-  useEffect(() => {
-    const handler = (e: PointerEvent) => {
+  // PANE-SCOPED (task 598). This manager is mounted once per `EditorPane`, and
+  // a warm pane's cards stay in the DOM under `display:none` — so a click in
+  // the VISIBLE paper is "outside" every hidden paper's blank card, and an
+  // app-global listener discarded them all. A pane the user cannot see cannot
+  // have been clicked away from: its sweep does not run while it is hidden.
+  // (A switch that is itself a click still discards the outgoing pane's card —
+  // that pointerdown lands while the pane is still the shown one.)
+  usePaneScopedListener(
+    "document",
+    "pointerdown",
+    (e) => {
       const target = e.target as Element | null;
       if (!target) return;
       const pending: Array<{ kind: PristineBucket; id: string }> = [];
@@ -100,10 +110,9 @@ export function usePristineCardManager(): PristineCardManager {
           if (discard) discard(id);
         }
       }, 0);
-    };
-    document.addEventListener("pointerdown", handler, true);
-    return () => document.removeEventListener("pointerdown", handler, true);
-  }, [getSet]);
+    },
+    { capture: true },
+  );
 
   const forKind = useCallback(
     (kind: PristineBucket): PristineKindApi => ({
