@@ -249,3 +249,79 @@ fails its own legs.
 pane, then drag a note float onto the Stack icon and confirm the ring lights and
 the item lands. Multi-pane + FSA is the masked class; the durable proof is the
 unit contract above.
+
+### The WINDOW half: releasing ownership is a WRITE-ORDERED event
+
+> **A window drops a doc's cross-window hold only after that doc's pending
+> writes have drained — and `releaseDoc` owns the ordering, no caller
+> re-derives it.**
+
+The multi-pane law's sibling across windows. `withDocLock(docId, fn)`
+short-circuits (`heldReleasers.has(docId)`) whenever *this* window owns the doc —
+`storage-fsa.ts` states the same fact from the other side, calling "every Virgil
+write is excluded by `withDocLock`" **false in the ordinary case**. So the hold is
+not merely a claim about who may write; it is the thing that makes this window's
+own writes cheap and unordered against peers. Drop it first and every remaining
+write becomes a *real* `navigator.locks.request`, with two outcomes:
+
+- **Dominant.** Web Locks refuses a grant while an EARLIER conflicting request is
+  merely PENDING — not only while a lock is held. So one queued write is enough to
+  make the peer's `{ ifAvailable: true }` claim return `null`. The user clicks
+  "Move it here", the claim comes back `{owned:false}`, and (before task 596) both
+  call sites answered that with `if (!result.owned) return;`. Nothing happened,
+  no error, no dialog.
+- **Tail.** If the peer's claim lands first it parks on `releaseSignal` and holds
+  the doc for its whole open lifetime; the old owner's write queues behind it,
+  lands late, and clobbers the new owner.
+
+Note the shape, which is why it survived: the barrier was correct exactly when
+there was nothing to protect (an idle doc drains to a no-op) and failed exactly
+when there were unsaved edits.
+
+**Half 1 — the ordering is inside the door.** `releaseDoc` awaits a registered
+drain hook, *then* deletes `heldReleasers`. Four call sites used to hand-order
+this and only `deleteFile` got it right. The hook is **injected**
+(`registerDocDrain`, called once by `@/lib/storage`) rather than imported,
+because `drainDoc` lives in storage and storage's FSA backend imports
+`withDocLock` — importing it back closes the cycle. A drain that throws still
+releases: a doc nobody can claim is worse than a write that already failed.
+
+**Half 2 — one handoff door, and every failure speaks.**
+`claimDocWithHandoff` ([src/lib/multi-window/handoff.ts](../../../src/lib/multi-window/handoff.ts))
+is the whole conversation — claim, confirm, `requestHandoff`, re-claim — written
+once, with the dialog injected as a narrow structural interface so it is a plain
+module a test can drive. Only a *declined* confirm returns quietly; declining is
+the answer. Every other false arm tells the user, including the post-confirm
+re-claim failure, which stays reachable after the race is fixed (a third window
+can win the doc in between).
+
+**Half 3 — `pagehide` decides rather than inherits.** `releaseAll` drains like
+every other release. A `pagehide` handler cannot await, so the drain may not
+finish — but on a real unload the browser frees the lock anyway, and in the cases
+where the page does NOT go away (a BFCache freeze, a `pagehide` no unload
+follows) the hold is exactly what keeps those queued writes exclusive.
+
+CI:
+[doc-ownership-release-ordering.test.ts](../../../src/lib/multi-window/__tests__/doc-ownership-release-ordering.test.ts)
+— jsdom has no `navigator.locks`, so `withDocLock` is a passthrough in the entire
+existing suite and this class was structurally invisible to it. The suite installs
+a **fake lock manager implementing the grantability rule** (a pending earlier
+conflicting request disqualifies an `ifAvailable` grant) and runs two module
+instances as two windows. Legs: the drain sees `ownsDoc === true` and issues zero
+lock requests; a throwing drain does not strand the hold; a handoff of a doc with
+an unsaved 20 ms write succeeds on the FIRST claim, with the write ordered before
+the release; a refutation leg proving the fake really refuses a claim against a
+pending request; `releaseAll` drains every held doc; and a CENSUS that
+`@/lib/storage` is the ONE registrant — an unregistered hook drains nothing,
+silently, which is the same bug in a different hat (the needle strips comments, so
+a commented-out registration does not count).
+Plus [handoff.test.ts](../../../src/lib/multi-window/__tests__/handoff.test.ts)
+— already-owned takes no dialog; a declined confirm is silent and asks no peer; a
+release timeout alerts; a post-confirm re-claim failure alerts. Neutered in four
+cuts (drain after the delete, drop the registration, restore the silent return,
+`releaseAll` bypassing `releaseDoc`), each of which fails its own legs.
+
+**Owed, not claimed:** a real two-window FSA eyeball — type in window A, then in
+window B open the same paper and click "Move it here"; it must move on the FIRST
+click and A's last keystrokes must be on disk. Multi-window + FSA is the masked
+class.

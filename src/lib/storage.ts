@@ -16,6 +16,7 @@
 
 export { isDevStorage } from "@/lib/storage-mode";
 import { isDevStorage } from "@/lib/storage-mode";
+import { registerDocDrain } from "@/lib/multi-window/doc-ownership";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 
 // Pick the right backend at module load. On the client this runs after
@@ -83,6 +84,14 @@ export async function drainDoc(docId: string): Promise<void> {
   await flushPendingForDoc(docId);
   await backend.flushDoc(docId);
 }
+
+// Releasing cross-window ownership is a WRITE-ORDERED event: `releaseDoc`
+// awaits this drain before it drops the hold, so the drain's own writes still
+// take `withDocLock`'s owner short-circuit instead of queueing a real lock
+// request behind the peer that is trying to claim (task 596). Registered here
+// rather than imported there because `doc-ownership` is below storage in the
+// import graph — `storage-fsa` takes `withDocLock` from it.
+registerDocDrain(drainDoc);
 export const detectBibPackage = backend.detectBibPackage;
 export const readPaperFolder = backend.readPaperFolder;
 export const getTexFilename = backend.getTexFilename;

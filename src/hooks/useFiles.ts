@@ -41,8 +41,11 @@ import {
   ownsDoc,
   releaseAll,
   releaseDoc,
-  requestHandoff,
 } from "@/lib/multi-window/doc-ownership";
+import {
+  claimDocWithHandoff,
+  type HandoffTarget,
+} from "@/lib/multi-window/handoff";
 import { subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { useSystemDialog } from "@/components/system-dialog-host";
 
@@ -313,6 +316,17 @@ export function useFiles() {
     setOuterOrder((prev) => prev.filter((t) => t !== id));
   }, []);
 
+  /** Acquire the cross-window lock for a doc, prompting handoff if it
+   *  is currently owned by a peer window. Returns true when this
+   *  window owns the doc afterward. Brand-new docs always succeed
+   *  immediately because nobody else can know their id yet. The
+   *  sequence itself lives in `@/lib/multi-window/handoff` — this is
+   *  only the binding of that door to this window's dialog host. */
+  const claimWithHandoff = useCallback(
+    (target: HandoffTarget): Promise<boolean> => claimDocWithHandoff(target, dialog),
+    [dialog],
+  );
+
   const openFile = useCallback(
     async (id: string) => {
       // Re-opening the example from recents self-heals the OPFS sandbox:
@@ -339,40 +353,19 @@ export function useFiles() {
         setActivePaneState("doc");
         return;
       }
-      // Try to acquire the cross-window lock. If it's held elsewhere,
-      // confirm handoff with the user, then ask the other window to
-      // release before claiming.
-      let result = await claimDoc(id);
-      if (!result.owned) {
-        const meta = docs.find((d) => d.id === id);
-        const docLabel = meta?.name ?? meta?.folderName ?? "this document";
-        const ok = await dialog.confirm({
-          title: "Document is open elsewhere",
-          message: `${docLabel} is open in another Virgil window. Move it here?`,
-          confirmLabel: "Move it here",
-          cancelLabel: "Keep it there",
-        });
-        if (!ok) return;
-        const released = await requestHandoff(id);
-        if (!released) {
-          await dialog.alert({
-            title: "Couldn't move the document",
-            message:
-              "The other window didn't release the document in time. Try again, or close it there first.",
-            tone: "danger",
-          });
-          return;
-        }
-        result = await claimDoc(id);
-        if (!result.owned) return;
-      }
+      // Acquire the cross-window lock through the ONE handoff door
+      // (`claimDocWithHandoff`) — it prompts, asks the peer to release,
+      // re-claims, and tells the user about every failure. Both open
+      // paths take it, so neither re-derives the sequence.
+      const owned = await claimWithHandoff(docs.find((d) => d.id === id) ?? { id });
+      if (!owned) return;
       setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       appendToOuterOrder(id);
       setCurrentDocId(id);
       setActivePaneState("doc");
       bumpAccessed(id);
     },
-    [appendToOuterOrder, bumpAccessed, dialog, docs],
+    [appendToOuterOrder, bumpAccessed, claimWithHandoff, docs],
   );
 
   const closeTab = useCallback(
@@ -398,22 +391,20 @@ export function useFiles() {
   );
 
   // Listen for handoff requests from peer windows. When another window
-  // wants a doc we own, close its tab gracefully (write queue + lock
-  // serialize together, so any in-flight save finishes before release).
+  // wants a doc we own, drop its tab from this window and release the
+  // doc. `releaseDoc` is what makes the release write-ordered.
   useEffect(() => {
     const onEvent = (e: BusEvent) => {
       if (e.type !== "doc-handoff-request") return;
       if (e.toWindowId !== getWindowId()) return;
       if (!ownsDoc(e.docId)) return;
-      // Reuse closeTab to update UI + release the lock.
-      // closeTab reads currentDocId from closure, but the dependency
-      // array on this effect intentionally excludes it — closing the
-      // tab is correct regardless of which doc is active.
-      // Peer wants this doc — drain its pending writes before we
-      // release. withDocLock holds the cross-window lock until the
-      // active task completes, so this also serializes against the
-      // peer's claim.
-      drainDoc(e.docId).catch(() => {});
+      // Update the UI here, then release. The DRAIN is `releaseDoc`'s
+      // (task 596): it awaits this doc's pending writes before dropping
+      // the hold, which is the only ordering under which those writes
+      // still take `withDocLock`'s owner short-circuit. This handler
+      // used to fire `drainDoc` un-awaited beside the release and lean
+      // on a comment claiming the lock serialized them — the claim
+      // `storage-fsa.ts` itself documents as false in the ordinary case.
       setOpenTabIds((prev) => {
         const next = prev.filter((t) => t !== e.docId);
         if (e.docId === currentDocIdRef.current) {
@@ -499,39 +490,6 @@ export function useFiles() {
       return "library-outer";
     });
   }, [currentDocId]);
-
-  /** Acquire the cross-window lock for a doc, prompting handoff if it
-   *  is currently owned by a peer window. Returns true when this
-   *  window owns the doc afterward. Brand-new docs always succeed
-   *  immediately because nobody else can know their id yet. */
-  const claimWithHandoff = useCallback(
-    async (meta: FsaDocMeta): Promise<boolean> => {
-      if (ownsDoc(meta.id)) return true;
-      let result = await claimDoc(meta.id);
-      if (result.owned) return true;
-      const docLabel = meta.name || meta.folderName || "this document";
-      const ok = await dialog.confirm({
-        title: "Document is open elsewhere",
-        message: `${docLabel} is open in another Virgil window. Move it here?`,
-        confirmLabel: "Move it here",
-        cancelLabel: "Keep it there",
-      });
-      if (!ok) return false;
-      const released = await requestHandoff(meta.id);
-      if (!released) {
-        await dialog.alert({
-          title: "Couldn't move the document",
-          message:
-            "The other window didn't release the document in time. Try again, or close it there first.",
-          tone: "danger",
-        });
-        return false;
-      }
-      result = await claimDoc(meta.id);
-      return result.owned;
-    },
-    [dialog],
-  );
 
   /**
    * Create a new paper. In FSA mode this prompts for a parent folder —
