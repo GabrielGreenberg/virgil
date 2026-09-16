@@ -4094,3 +4094,32 @@ density is not a pin.** CI:
 vs roofs"). Measured by neutering each half in turn: the memo's fixture as the
 corpus member takes 3 legs, a roof-height drift 1, and a hypothetical routing
 change 4.
+
+### The liveness half: a page event is not a window event, and "who is alive" is the browser's to say (task 603)
+
+`pagehide` fires on every RELOAD and on entry to the back/forward cache, so a
+handler that deletes per-window state on it races the very reader that state
+exists for (the reload's tab restore, keyed by a sessionStorage window id that
+survives the reload by design). And the old windows registry — a heartbeat
+record every window rewrote every 30 s — had no reader at all. Both retired:
+
+- **No page event deletes the tab record** (`tabs/<windowId>`). `writeTabs`
+  stamps `savedAt`; the startup `sweepTabRecords` (doc-index.ts) deletes a
+  record only when its window is not alive AND it is older than
+  `TAB_RECORD_MAX_AGE_MS` (30 days, so a browser-restored window still gets
+  its tabs). A pre-603 record without a stamp is stamped, not deleted.
+- **Liveness is a Web Lock, not a heartbeat.** Each window holds
+  `virgil-window/<id>` for the page's life
+  ([window-liveness.ts](../../../src/lib/multi-window/window-liveness.ts));
+  `navigator.locks.query()` is the reader. An idle live window is never swept.
+- **A persisted `pagehide` still releases doc locks** (a frozen page must not
+  keep a paper from its peers); the matching persisted `pageshow` awaits that
+  release, then re-claims the shown papers through `claimEach` — the same
+  claim-or-drop rule as the session restore — and a paper a peer took leaves
+  through `retireOpenDoc`.
+
+CI: [tab-record-lifetime.test.ts](../../../src/lib/__tests__/tab-record-lifetime.test.ts)
+(sweep + census: no `touchWindow`/`forgetWindow`/windows registry) and
+[useFiles-page-lifecycle.test.tsx](../../../src/hooks/__tests__/useFiles-page-lifecycle.test.tsx)
+(reload restores; bfcache re-claim ordering and drop). Neutered against the
+pre-603 hook + doc-index: 10 of 12 legs fail, the reload leg with the lost tabs.

@@ -62,11 +62,10 @@ vi.mock("@/lib/storage", () => ({
 }));
 vi.mock("@/lib/doc-index", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/doc-index")>()),
-  forgetWindow: vi.fn(async () => {}),
   getDocHandle: vi.fn(async (id: string) => h.handles.get(id)),
   readTabs: vi.fn(async () => h.tabs),
   touchDocAccessed: vi.fn(async () => {}),
-  touchWindow: vi.fn(async () => {}),
+  sweepTabRecords: vi.fn(async () => []),
   writeTabs: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/sync-conflict-scan", () => ({

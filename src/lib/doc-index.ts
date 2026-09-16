@@ -28,7 +28,9 @@ const store = createStore("virgil", "kv");
 const INDEX_KEY = "index";
 const TABS_KEY = "tabs";
 const TABS_WINDOW_PREFIX = "tabs/";
-const WINDOWS_REGISTRY_KEY = "windows-registry";
+/** Retired (task 603): a per-window heartbeat registry nobody read. The
+ *  startup sweep deletes the orphan value; nothing writes it any more. */
+const RETIRED_WINDOWS_REGISTRY_KEY = "windows-registry";
 const DOC_HANDLE_PREFIX = "doc-handle/";
 const GENERAL_BIB_HANDLE_PREFIX = "general-bib-handle/";
 const MY_PAPERS_KEY = "my-papers";
@@ -97,6 +99,10 @@ export interface TabsState {
   /** Library id of the currently active library outer tab, when
    *  `activePane === "library-outer"`. */
   currentLibraryOuterId?: string | null;
+  /** `Date.now()` of the last `writeTabs` — the age the startup sweep
+   *  (`sweepTabRecords`) judges a closed window's record by. Absent on
+   *  records written before task 603. */
+  savedAt?: number;
 }
 
 // Defaults are FACTORIES, never shared constants: callers mutate what a
@@ -191,15 +197,6 @@ export async function writeMyPapers(state: MyPapersState): Promise<void> {
 
 // --- Tabs ----------------------------------------------------------------
 
-/** Per-window record of open tabs and the active pane. Keyed by the
- *  window's sessionStorage UUID (see `multi-window/window-id.ts`). */
-export interface WindowsRegistry {
-  [windowId: string]: {
-    lastSeen: number;
-    openTabIds: string[];
-  };
-}
-
 export async function readTabs(windowId: string): Promise<TabsState> {
   // In dev-storage mode, auto-open the most recent local doc so the
   // editor renders without any user interaction. Per-window keys still
@@ -253,44 +250,66 @@ export async function writeTabs(
   windowId: string,
   t: TabsState,
 ): Promise<void> {
-  await set(TABS_WINDOW_PREFIX + windowId, t, store);
+  await set(TABS_WINDOW_PREFIX + windowId, { ...t, savedAt: Date.now() }, store);
 }
 
-// --- Windows registry ---------------------------------------------------
+// --- Tab-record lifetime (task 603) --------------------------------------
+//
+// A window's tab record (`tabs/<windowId>`) must outlive the PAGE: the
+// window id sits in sessionStorage precisely so a reload — or a browser
+// session restore of a closed window — reads its tabs back. So no page
+// event deletes it (`pagehide` fires on every reload and cannot tell a
+// reload from a close). Records are instead retired here, at startup, by
+// two facts that CAN be known: the window is not alive (it holds no
+// liveness lock — see `multi-window/window-liveness.ts`) and it has not
+// written for `TAB_RECORD_MAX_AGE_MS`.
 
-export async function readWindowsRegistry(): Promise<WindowsRegistry> {
-  return (await get<WindowsRegistry>(WINDOWS_REGISTRY_KEY, store)) ?? {};
+/** How long a closed window's tabs stay restorable. Records are tiny. */
+export const TAB_RECORD_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface TabRecordSweep {
+  /** Windows known to be alive right now (always includes the caller).
+   *  Their records are never touched, however old. */
+  liveWindowIds: ReadonlySet<string>;
+  now?: number;
+  maxAgeMs?: number;
 }
 
-// Shared by every window, so — like the paper index — each change is ONE
-// readwrite transaction (`update`), never a read … await … write.
-
-/** Stamp this window as alive in the registry with `now` and the
- *  current open tab ids. Called on mount and on a heartbeat. */
-export async function touchWindow(
-  windowId: string,
-  openTabIds: string[],
-): Promise<void> {
-  await update<WindowsRegistry>(
-    WINDOWS_REGISTRY_KEY,
-    (reg = {}) => ({ ...reg, [windowId]: { lastSeen: Date.now(), openTabIds } }),
-    store,
-  );
-}
-
-/** Remove a window from the registry and drop its tabs record. Called
- *  on `pagehide` so a clean close doesn't leave orphan state. */
-export async function forgetWindow(windowId: string): Promise<void> {
-  await update<WindowsRegistry>(
-    WINDOWS_REGISTRY_KEY,
-    (reg = {}) => {
-      const next = { ...reg };
-      delete next[windowId];
-      return next;
-    },
-    store,
-  );
-  await del(TABS_WINDOW_PREFIX + windowId, store);
+/**
+ * Delete the tab records of windows that are neither alive nor recent,
+ * and the retired windows-registry value. A record with no `savedAt`
+ * (written before task 603) is stamped `now` instead of deleted, so it
+ * gets a full grace period from the first sweep that sees it. Returns
+ * the window ids whose records were deleted.
+ */
+export async function sweepTabRecords({
+  liveWindowIds,
+  now = Date.now(),
+  maxAgeMs = TAB_RECORD_MAX_AGE_MS,
+}: TabRecordSweep): Promise<string[]> {
+  await del(RETIRED_WINDOWS_REGISTRY_KEY, store);
+  const swept: string[] = [];
+  for (const key of await keys(store)) {
+    if (typeof key !== "string" || !key.startsWith(TABS_WINDOW_PREFIX)) continue;
+    const windowId = key.slice(TABS_WINDOW_PREFIX.length);
+    if (liveWindowIds.has(windowId)) continue;
+    const rec = await get<TabsState>(key, store);
+    if (!rec) continue;
+    if (typeof rec.savedAt !== "number") {
+      // One transaction, so a write that landed since the read wins.
+      await update<TabsState | undefined>(
+        key,
+        (cur) =>
+          cur && typeof cur.savedAt !== "number" ? { ...cur, savedAt: now } : cur,
+        store,
+      );
+      continue;
+    }
+    if (now - rec.savedAt <= maxAgeMs) continue;
+    await del(key, store);
+    swept.push(windowId);
+  }
+  return swept;
 }
 
 // --- Per-doc folder handle ----------------------------------------------

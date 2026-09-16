@@ -13,14 +13,13 @@ import {
   type FolderPickResult,
 } from "@/lib/storage";
 import {
-  forgetWindow,
   getDocHandle,
   OUTER_LIBRARY_PREFIX,
   OUTER_LIBRARY_ROOT_ID,
   OUTER_PAPER_PREFIX,
   readTabs,
+  sweepTabRecords,
   touchDocAccessed,
-  touchWindow,
   writeTabs,
   type ActivePaneKind,
   type FsaDocMeta,
@@ -36,6 +35,10 @@ import {
 } from "@/lib/example-doc/example-seeder";
 import { ensureRW, queryRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
+import {
+  holdWindowLiveness,
+  liveWindowIds,
+} from "@/lib/multi-window/window-liveness";
 import {
   claimDoc,
   ownsDoc,
@@ -71,6 +74,17 @@ export interface SkillSyncNotice {
 function describeSyncError(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   return String(err);
+}
+
+/** Claim each doc for this window, in order; the ids this window owns
+ *  afterward. The ONE claim-or-drop rule for re-entering a workspace —
+ *  the session restore and the back/forward-cache return (task 603). */
+async function claimEach(ids: readonly string[]): Promise<string[]> {
+  const claimed: string[] = [];
+  for (const id of ids) {
+    if ((await claimDoc(id)).owned) claimed.push(id);
+  }
+  return claimed;
 }
 
 /**
@@ -120,6 +134,13 @@ export function useFiles() {
   // (the user can reopen via the handoff flow).
   useEffect(() => {
     const windowId = getWindowId();
+    // Mark this window alive before anything else, then retire the tab
+    // records of windows that are gone and stale (task 603 — no page
+    // event deletes them; see `sweepTabRecords`).
+    holdWindowLiveness();
+    liveWindowIds()
+      .then((live) => sweepTabRecords({ liveWindowIds: live }))
+      .catch(() => {});
     (async () => {
       try {
         const [docList, tabs] = await Promise.all([
@@ -130,11 +151,7 @@ export function useFiles() {
         const candidates = tabs.openTabIds.filter((id) =>
           docList.some((d) => d.id === id),
         );
-        const claimed: string[] = [];
-        for (const id of candidates) {
-          const result = await claimDoc(id);
-          if (result.owned) claimed.push(id);
-        }
+        const claimed = await claimEach(candidates);
         setOpenTabIds(claimed);
         setCurrentDocId(
           tabs.currentDocId && claimed.includes(tabs.currentDocId)
@@ -184,10 +201,7 @@ export function useFiles() {
     })();
   }, []);
 
-  // Persist tab state on every change after initial hydration. Also
-  // refresh this window's entry in the windows registry so other
-  // windows can see what we have open (and so a stale window gets
-  // detected if it stops heartbeating).
+  // Persist tab state on every change after initial hydration.
   useEffect(() => {
     if (!hydratedRef.current) return;
     const windowId = getWindowId();
@@ -199,7 +213,6 @@ export function useFiles() {
       currentPaperCitekey,
       currentLibraryOuterId,
     }).catch(() => {});
-    touchWindow(windowId, openTabIds).catch(() => {});
   }, [
     openTabIds,
     currentDocId,
@@ -209,8 +222,8 @@ export function useFiles() {
     currentLibraryOuterId,
   ]);
 
-  // Mirror openTabIds in a ref so the heartbeat interval reads the
-  // latest set without having to re-arm the timer on every change.
+  // Mirror openTabIds so the back/forward-cache re-claim reads the set the
+  // window is showing without re-binding its listeners.
   const openTabIdsRef = useRef(openTabIds);
   useEffect(() => {
     openTabIdsRef.current = openTabIds;
@@ -222,27 +235,6 @@ export function useFiles() {
   useEffect(() => {
     currentDocIdRef.current = currentDocId;
   }, [currentDocId]);
-
-  // Register this window in the registry on mount, heartbeat every 30s,
-  // and forget it on `pagehide` so a clean close doesn't leave orphan
-  // tabs records behind. Also release every held doc lock so peer
-  // windows see availability immediately.
-  useEffect(() => {
-    const windowId = getWindowId();
-    touchWindow(windowId, openTabIdsRef.current).catch(() => {});
-    const heartbeat = window.setInterval(() => {
-      touchWindow(windowId, openTabIdsRef.current).catch(() => {});
-    }, 30_000);
-    const onHide = () => {
-      forgetWindow(windowId).catch(() => {});
-      releaseAll().catch(() => {});
-    };
-    window.addEventListener("pagehide", onHide);
-    return () => {
-      window.clearInterval(heartbeat);
-      window.removeEventListener("pagehide", onHide);
-    };
-  }, []);
 
   const bumpAccessed = useCallback((id: string) => {
     const now = new Date().toISOString();
@@ -469,6 +461,41 @@ export function useFiles() {
       retireOpenDoc(e.docId);
     };
     return subscribe(onEvent);
+  }, [retireOpenDoc]);
+
+  // ── Page lifecycle (task 603) ────────────────────────────────────────────
+  // `pagehide` releases every doc lock so peer windows see availability at
+  // once. It does NOT touch the tab record: `pagehide` fires on every
+  // reload, and the reload is exactly the reader that record exists for.
+  //
+  // A `pagehide` with `persisted` is an entry into the back/forward cache —
+  // the page may come back. The release still runs (a frozen page must not
+  // keep a paper from its peers); the matching `pageshow` with `persisted`
+  // then re-claims what this window still shows, through the same
+  // claim-or-drop rule as the session restore: a paper a peer took while
+  // we were frozen leaves this window like any other departing doc.
+  useEffect(() => {
+    let releasing: Promise<void> = Promise.resolve();
+    const onHide = () => {
+      releasing = releaseAll().catch(() => {});
+    };
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      void (async () => {
+        await releasing;
+        const shown = openTabIdsRef.current;
+        const claimed = await claimEach(shown);
+        for (const id of shown) {
+          if (!claimed.includes(id)) retireOpenDoc(id);
+        }
+      })();
+    };
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("pageshow", onShow);
+    };
   }, [retireOpenDoc]);
 
   // ── Sync-conflict scan (task 363) ────────────────────────────────────────
