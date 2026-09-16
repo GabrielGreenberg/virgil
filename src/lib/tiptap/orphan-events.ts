@@ -23,7 +23,7 @@
 // and are heard as the main editor.
 //
 // Dispatch and subscription both live here so the field cannot be dropped on
-// one side: `orphan-events-door.test.ts` refuses a raw `"virgil-*-orphaned"`
+// one side: `pane-scoped-listener-census.test.ts` refuses a raw `"virgil-*-orphaned"`
 // literal anywhere else in production code.
 
 import { useEffect, useRef } from "react";

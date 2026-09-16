@@ -37,6 +37,7 @@ import {
   type EditorViewportFrame,
 } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
+import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
@@ -215,6 +216,8 @@ export function SelectionActionsMenu({
   // RO-detected layout changes — ONE engine per pane now, not a private
   // observer per consumer. `version` participates in the poke effect below
   // so the compute re-runs when the frame changes (e.g., sidebar toggle).
+  const isVisible = useIsVisible();
+  const visibleRef = useIsVisibleRef();
   const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
@@ -356,7 +359,13 @@ export function SelectionActionsMenu({
     // ONE-SHOT resize (maximize, zoom, DPR change) must still reposition
     // immediately — during a continuous gesture `update()` hits the
     // `gestureActive` suppression above and returns before scheduling a RAF.
-    window.addEventListener("resize", update);
+    //
+    // PANE-SCOPED (task 598): one menu per pane; a hidden pane has no bolt to
+    // re-seat, and the re-show poke below settles it when the pane is shown.
+    const onResize = () => {
+      if (visibleRef.current) update();
+    };
+    window.addEventListener("resize", onResize);
     const offGesture = onLayoutGestureChange((active) => {
       gestureActive = active;
       if (active) suppress();
@@ -371,15 +380,20 @@ export function SelectionActionsMenu({
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp, true);
       scrollParent?.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", onResize);
     };
-  }, [editorRef, cacheRef]);
+  }, [editorRef, cacheRef, visibleRef]);
 
   // Recompute at the settled viewport-cache geometry. Out of the effect above
   // on purpose — see `updateRef`.
   useEffect(() => {
     updateRef.current();
   }, [cacheVersion]);
+
+  // Shown again → settle the placement a hidden-pane resize skipped (task 598).
+  useEffect(() => {
+    if (isVisible) updateRef.current();
+  }, [isVisible]);
 
   // Close the menu when the anchored *identity* changes — selection moved,
   // paragraph changed, mode flipped. `left/top` excluded so scroll re-positions
