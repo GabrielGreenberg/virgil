@@ -50,8 +50,13 @@ export interface UseDocProductsHostOptions {
   docId: string;
   /** True while the code view owns the sourceText feed. */
   codeViewActive: boolean;
-  getBibFamily: () => BibFamily | null;
-  /** Keep-alive visibility — hidden panes mark dirty but schedule nothing. */
+  /** Serialize input — a VALUE, not a getter, because the pipeline's idle
+   *  tier has to be re-armed when it changes and a package switch fires no
+   *  editor transaction (task 592). Declared here, watched by the one effect
+   *  below, read through a ref at serialize time. */
+  bibFamily: BibFamily | null;
+  /** Keep-alive visibility — hidden panes stay stale but schedule nothing;
+   *  the false→true edge re-arms them through the same door. */
   isVisible: boolean;
   /** Master gate — when false (flag off / legacy path) no pipeline mounts. */
   enabled: boolean;
@@ -68,7 +73,7 @@ export function useDocProductsHost({
   editor,
   docId,
   codeViewActive,
-  getBibFamily,
+  bibFamily,
   isVisible,
   enabled,
 }: UseDocProductsHostOptions): UseDocProductsHost {
@@ -77,8 +82,8 @@ export function useDocProductsHost({
   // Live-read refs so config getters never force a pipeline re-create.
   const codeViewActiveRef = useRef(codeViewActive);
   codeViewActiveRef.current = codeViewActive;
-  const getBibFamilyRef = useRef(getBibFamily);
-  getBibFamilyRef.current = getBibFamily;
+  const bibFamilyRef = useRef(bibFamily);
+  bibFamilyRef.current = bibFamily;
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
 
@@ -86,7 +91,7 @@ export function useDocProductsHost({
     if (!enabled || !editor) return;
     const products = createDocProducts(editor, {
       docId,
-      getBibFamily: () => getBibFamilyRef.current(),
+      getBibFamily: () => bibFamilyRef.current,
       isSuppressed: () => codeViewActiveRef.current,
       isVisible: () => isVisibleRef.current,
     });
@@ -96,6 +101,16 @@ export function useDocProductsHost({
       products.destroy();
     };
   }, [enabled, editor, docId]);
+
+  // THE INPUT-CHANGE DOOR (task 592). Every tier input that can move without
+  // an editor transaction is a dependency here: the bib family (a user control
+  // that fires no edit yet can inject a \usepackage line and shift every body
+  // line), the keep-alive visibility edge (a pane edited while hidden had
+  // nothing watching for it to come back), and the code view handing the
+  // sourceText feed back. The pipeline decides what that made stale.
+  useEffect(() => {
+    productsRef.current?.revalidate();
+  }, [bibFamily, isVisible, codeViewActive, enabled, editor, docId]);
 
   const snapshot = useSyncExternalStore(
     (fn) => productsRef.current?.subscribe(fn) ?? (() => {}),

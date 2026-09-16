@@ -2223,7 +2223,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     editor,
     docId,
     codeViewActive: codeView,
-    getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+    bibFamily: asBibFamily(citationsHook.bibPackage),
     isVisible,
     enabled: docProductsEnabled,
   });
