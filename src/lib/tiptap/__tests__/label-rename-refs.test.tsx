@@ -57,7 +57,7 @@ import {
 } from "@/lib/editor-extensions";
 import {
   renameLabelWithRefs,
-  collectLabelRefPositions,
+  countLabelRefs,
   labelRenameConfirmCopy,
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
@@ -161,7 +161,7 @@ const BASE_REFS = ["sec:old", "fig:a", "sec:old", "ex:one", "ex:one-a"];
 
 type ConfirmRef = MutableRefObject<LabelRenameConfirm | undefined>;
 
-function mount(confirmRef?: ConfirmRef) {
+function mount(confirmRef?: ConfirmRef, doc: Content = content()) {
   const ctx: EditorExtensionsCtx = {
     surface: "main",
     editableRef: { current: true },
@@ -178,7 +178,7 @@ function mount(confirmRef?: ConfirmRef) {
     element: el,
     editable: true,
     extensions: buildEditorExtensions(ctx),
-    content: content(),
+    content: doc,
   });
   return { editor, el, cleanup: () => { editor.destroy(); el.remove(); } };
 }
@@ -335,7 +335,7 @@ describe("the door — renameLabelWithRefs", () => {
       expect(outcome).toBe("renamed");
       expect(labelOf(editor, FIG)).toBe("fig:b");
       expect(refLabels(editor)).toEqual(["sec:old", "fig:b", "sec:old", "ex:one", "ex:one-a"]);
-      expect(collectLabelRefPositions(editor.state.doc, "fig:a")).toEqual([]);
+      expect(countLabelRefs(editor.state.doc, "fig:a")).toBe(0);
     } finally { c(); }
   });
 
@@ -790,5 +790,139 @@ describe("the live warning snapshots the key set once (task 553)", () => {
     const typed = await countWalks((el) => { typeN(openPodInput(el, uuid, kind), 12); });
     expect(opened).toBeGreaterThanOrEqual(1);
     expect(typed).toBe(opened);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK 606 — "every ref" means every ref the PAPER holds. A footnote is an
+// inline atom whose body lives as JSON in `attrs.content`, where
+// `doc.descendants` never looks: pre-606 a `\ref` there was neither counted
+// nor rewritten, and compiled to `??` after the rename.
+const FN_FIG = "uuid-fn-fig";
+
+function footnoteBody(...inline: Record<string, unknown>[]) {
+  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+}
+
+function footnoteContent(): Content {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "figureBlock",
+        attrs: { uuid: FN_FIG, label: "fig:a", numbered: true },
+        content: [{ type: "figureCaption", content: [{ type: "text", text: "A figure" }] }],
+      },
+      {
+        type: "paragraph",
+        attrs: { uuid: "p-fn" },
+        content: [
+          { type: "text", text: "See " },
+          { type: "labelRef", attrs: { label: "fig:a", displayText: "1", refCommand: "ref" } },
+          {
+            type: "footnote",
+            attrs: {
+              footnoteId: "fn-1",
+              linkId: "fn-1",
+              content: footnoteBody(
+                { type: "text", text: "see " },
+                { type: "labelRef", attrs: { label: "fig:a", displayText: "1", refCommand: "ref" } },
+                { type: "text", text: " and " },
+                { type: "labelRef", attrs: { label: "fig:other", displayText: "", refCommand: "ref" } },
+                { type: "text", text: " \\label{fn:x}", marks: [{ type: "latexCommand" }] },
+              ),
+            },
+          },
+          { type: "text", text: "." },
+        ],
+      },
+    ],
+  };
+}
+
+/** The labels of every labelRef inside every footnote body, in order. */
+function footnoteRefLabels(editor: Editor): string[] {
+  const out: string[] = [];
+  const visit = (j: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) => {
+    if (j.type === "labelRef") out.push(j.attrs?.label as string);
+    for (const c of (j.content ?? []) as typeof j[]) visit(c);
+  };
+  editor.state.doc.descendants((nd) => {
+    if (nd.type.name === "footnote" && nd.attrs.content) visit(nd.attrs.content);
+  });
+  return out;
+}
+
+describe("task 606 — refs held inside footnote bodies", () => {
+  it("counts a footnote-held ref in the confirm and rewrites it in the same transaction", async () => {
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      const confirm = vi.fn(async () => true);
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const outcome = await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm,
+      });
+      expect(outcome).toBe("renamed");
+      expect(confirm).toHaveBeenCalledWith("fig:a", "fig:b", 2);
+      expect(refLabels(editor)).toEqual(["fig:b"]);
+      expect(footnoteRefLabels(editor)).toEqual(["fig:b", "fig:other"]);
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    } finally { c(); }
+  });
+
+  it("the rewritten footnote body serializes the new key", async () => {
+    const { serializeToLatex } = await import("@/lib/latex-serializer");
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => true,
+      });
+      const tex = serializeToLatex(editor.getJSON());
+      expect(tex).toContain("\\ref{fig:b}");
+      expect(tex).not.toContain("\\ref{fig:a}");
+    } finally { c(); }
+  });
+
+  it("leaves footnote-held refs alone when the confirm says no", async () => {
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fig:b", confirm: async () => false,
+      });
+      expect(footnoteRefLabels(editor)).toEqual(["fig:a", "fig:other"]);
+    } finally { c(); }
+  });
+
+  it("an edit made while the confirm is up still carries EVERY ref (positions re-read after the await)", async () => {
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      const outcome = await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, FN_FIG),
+        newLabel: "fig:b",
+        confirm: async () => {
+          // Text typed ahead of every ref shifts all their positions.
+          editor.commands.insertContentAt(
+            findNodeByUuid(editor, "p-fn")!.pos + 1,
+            "Inserted words ahead of the refs. ",
+          );
+          return true;
+        },
+      });
+      expect(outcome).toBe("renamed");
+      expect(labelOf(editor, FN_FIG)).toBe("fig:b");
+      expect(refLabels(editor)).toEqual(["fig:b"]);
+      expect(footnoteRefLabels(editor)).toEqual(["fig:b", "fig:other"]);
+    } finally { c(); }
+  });
+
+  it("a label declared inside a footnote body is TAKEN — the rename door refuses it", async () => {
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      expect(isLabelTaken(editor, "fn:x")).toBe(true);
+      expect(await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, FN_FIG), newLabel: "fn:x", confirm: async () => true,
+      })).toBe("conflict");
+    } finally { c(); }
   });
 });
