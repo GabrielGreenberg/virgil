@@ -111,8 +111,63 @@ export async function claimDoc(
   return { owned: true };
 }
 
-/** Release this window's hold on `docId`. Safe to call when not held. */
+/**
+ * The doc DRAIN hook (task 596).
+ *
+ * Releasing ownership is not a UI event — it is a **write-ordered**
+ * event: this window's queued writes must reach disk while the hold is
+ * still valid, because `withDocLock` only short-circuits
+ * (`heldReleasers.has`) while we own the doc. Drop the hold first and
+ * every drain write issues a REAL `navigator.locks.request` instead —
+ * which (a) disqualifies the peer's `ifAvailable` claim, because Web
+ * Locks refuses a grant while an earlier conflicting request is merely
+ * PENDING, so the handoff the user just confirmed silently does
+ * nothing; or (b) queues behind the peer's new hold and lands late,
+ * clobbering what the new owner has been writing.
+ *
+ * `releaseDoc` therefore drains BEFORE it drops the hold — and it owns
+ * that ordering so no caller has to re-derive it (four call sites
+ * today, one of which got it right). The hook is injected rather than
+ * imported because `drainDoc` lives in `@/lib/storage`, whose FSA
+ * backend imports `withDocLock` from this module: importing it back
+ * would close the cycle. `@/lib/storage` registers itself at module
+ * load; a window where nothing ever imported storage has nothing to
+ * drain, so a null hook is a correct no-op rather than a failure.
+ */
+let drainHook: ((docId: string) => Promise<void>) | null = null;
+
+/** Register the pending-write drain `releaseDoc` awaits. Called once,
+ *  at module load, by `@/lib/storage`. */
+export function registerDocDrain(fn: (docId: string) => Promise<void>): void {
+  drainHook = fn;
+}
+
+/** Test seam: forget the registered drain. */
+export function __resetDocDrainForTest(): void {
+  drainHook = null;
+}
+
+/**
+ * Release this window's hold on `docId`. Safe to call when not held.
+ *
+ * Awaits the doc's pending writes first (see `registerDocDrain`), so
+ * the caller's `await releaseDoc(id)` means "this doc is on disk AND
+ * available to peers", not just the second half. A drain that throws
+ * does not strand the hold — we still release, because a doc nobody
+ * can claim is worse than a write we already failed to make.
+ */
 export async function releaseDoc(docId: string): Promise<void> {
+  if (!heldReleasers.has(docId)) return;
+  if (drainHook) {
+    try {
+      await drainHook(docId);
+    } catch {
+      /* a failed write must not strand the lock */
+    }
+  }
+  // Re-read after the await: a concurrent release may have won while
+  // the drain was in flight, and releasing twice would publish two
+  // handoff-released events for one hold.
   const release = heldReleasers.get(docId);
   if (!release) return;
   heldReleasers.delete(docId);
@@ -177,9 +232,20 @@ export async function withDocLock<T>(
   return navigator.locks.request(lockName(docId), { mode: "exclusive" }, fn) as Promise<T>;
 }
 
-/** Release every held doc on this window. Call from `pagehide` so a
- *  clean close advertises availability before the lock would expire
- *  on its own. */
+/**
+ * Release every held doc on this window. Call from `pagehide` so a
+ * clean close advertises availability before the lock would expire
+ * on its own.
+ *
+ * DECIDED, not inherited (task 596): these releases drain like every
+ * other one. A `pagehide` handler cannot await, so the drain may not
+ * finish — but the ordering still matters in the two cases where the
+ * page does NOT go away: a BFCache freeze (the page may be restored
+ * with those writes still queued, and the hold is what keeps them
+ * exclusive) and a `pagehide` that no unload follows. On a real
+ * unload the browser releases the lock itself, so an unfinished drain
+ * cannot strand a peer either way.
+ */
 export async function releaseAll(): Promise<void> {
   const ids = [...heldReleasers.keys()];
   await Promise.all(ids.map((id) => releaseDoc(id)));
