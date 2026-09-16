@@ -454,3 +454,19 @@ neutering each half in turn: no gate at all takes 4 legs, rung 2 alone 1, rung
 **Owed, not claimed:** the preview minute. NOT FSA-masked (a live editor
 gesture, no disk), so the check is cheap and real — type `teh ` in prose, then
 `\label{teh}` and edit inside it.
+
+### The paint half: the grey command span is a prose reader too (task 607)
+
+The `.latex-cmd` DECORATION (`latex-command.ts`, `decorateBlock` /
+`decorateTextNode`) answers "is this `\foo` LaTeX-in-prose?" — the same
+question, so it asks this index's two predicates instead of its own: a block
+that fails `blockCarriesProse` (`codeBlock`, `latexComment` — anything
+`marks: ""`) gets no span, and neither does text failing `inlineIsProse`
+(any raw-LaTeX mark: the command mark and verbatim carrier already render
+their own span, and a `%` comment tail is never read as a command). Before,
+the plugin skipped only `latexCommand`-marked text, so a command in a listing
+or a comment block shrank to `0.9em` grey, and one inside a verbatim run
+nested a second span (`0.81em`). Both checks are O(1) per block / per text
+node, so the per-block rebuild's cost is unchanged.
+CI: `latex-cmd-prose-only.test.ts` (real main stack; cold build + typed rebuild).
+**Owed:** a preview glance at a listing containing `\foo` — not FSA-masked.
