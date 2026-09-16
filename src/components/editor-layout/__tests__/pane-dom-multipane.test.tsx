@@ -558,9 +558,9 @@ describe("M5 — print isolation anchors on the visible pane", () => {
     });
     expect(panePrintPage()).toBeNull();
     const cleanup = applyPrintAttrs(DEFAULT_PRINT_OPTIONS);
-    // No anchor ⇒ no walk. `@media print` falls back to the plain document,
-    // the same posture the browser's own File → Print door takes — never the
-    // inversion a fail-open answer would have produced.
+    // No anchor ⇒ no walk. `@media print` falls back to the plain document —
+    // never the inversion a fail-open answer would have produced. (Both print
+    // doors run this same walk since task 608.)
     expect(only.pane.dataset.printAncestor).toBeUndefined();
     expect(only.pane.dataset.printHide).toBeUndefined();
     expect(document.body.dataset.printAncestor).toBeUndefined();

@@ -3112,10 +3112,13 @@ conditions, not transients. Four rules:
   `display: none`, and the membership is CI-enforced from the plugins' own
   stamped class literals.
 - **The mechanism is a media query, never an attribute.** `html[data-printing]`
-  and the `data-print-e-*` toggles are stamped only by `runPrint`; the browser's
-  own File → Print stamps nothing, so a posture keyed on any of them silently
-  fails for the door most people use. This is a constraint on every future print
-  change, not a note about one fix.
+  and the `data-print-e-*` toggles are STAMPS, made by `enterPrintPosture`
+  (`src/lib/print.ts`). Both print doors — Cmd+P and the browser's own
+  File → Print — call it synchronously with the user's saved options (task 608),
+  so a user's print CHOICE belongs behind an attribute. A posture the LAW
+  mandates does not: the File → Print door went months stamping nothing, and a
+  posture keyed on a stamp fails silently the day a door forgets. This is a
+  constraint on every future print change, not a note about one fix.
 - **The print block may not restate `display` for a folded block.** There is no
   value it could restate: `revert` discards the whole author origin for the
   property, so an `.expex-block` (grid) or a `.latex-comment` (flex) that

@@ -16,7 +16,8 @@
  * appendix tree.
  *
  * The browser's native File→Print (no Cmd+P interception) is covered by a
- * best-effort `beforeprint` listener in print.ts — the mount races the
+ * `beforeprint` listener in print.ts that prints with the user's SAVED
+ * options (`getSavedPrintOptions` below, task 608) — the mount races the
  * browser's snapshot there, which is the documented trade for not keeping
  * hundreds of hidden editors alive full-time. Kill-switch:
  * `localStorage["virgil:print-gate"] = "off"` restores the always-mounted
@@ -90,4 +91,29 @@ export function releaseAppendices(): void {
   state = { active: false, options: null };
   readyResolvers = [];
   emit();
+}
+
+// ── The user's saved print options, for the door React cannot reach ──────
+// The browser's own File → Print fires `beforeprint` in print.ts, which has no
+// React state to read. The owner of `viewPrefs.prefs.printOptions`
+// (EditorLayout — the same value it hands PrintDialog) publishes it here.
+//
+// ONE slot, not a per-pane registry, and that is deliberate under the
+// per-doc-services law: `printOptions` is a GLOBAL view pref (one value per
+// profile, synced across windows), not a per-document fact, so every pane in
+// this window would publish the same value. A departing owner clears only its
+// own value (`clearSavedPrintOptions` compares identity).
+let savedOptions: PrintOptions | null = null;
+
+export function setSavedPrintOptions(options: PrintOptions): void {
+  savedOptions = options;
+}
+
+export function clearSavedPrintOptions(options: PrintOptions): void {
+  if (savedOptions === options) savedOptions = null;
+}
+
+/** `null` when no owner is mounted — the caller falls back to the shipped defaults. */
+export function getSavedPrintOptions(): PrintOptions | null {
+  return savedOptions;
 }

@@ -474,11 +474,11 @@ describe("the print block carries ONE rule for the marker", () => {
 });
 
 describe("the mechanism is path-independent", () => {
-  // `html[data-printing]` and every `data-print-e-*` are stamped ONLY by
-  // `runPrint`. The browser's own File → Print reaches the `beforeprint`
-  // listener and nothing else, so a posture keyed on either silently fails for
-  // the door most people use. 408 states this as a constraint on every future
-  // print change; it is a leg here for the same reason.
+  // `html[data-printing]` and every `data-print-e-*` are STAMPS. Both print
+  // doors make them since task 608, but a law-mandated posture keyed on a stamp
+  // fails silently the day a door forgets (File → Print forgot for months).
+  // 408 states this as a constraint on every future print change; it is a leg
+  // here for the same reason.
   it("no view-only posture is keyed on `data-printing` or a print-element toggle", () => {
     for (const m of CSS.matchAll(/\[data-print(?:ing|-e-)[^\]]*\][^{]*\{[^}]*\}/g)) {
       expect(

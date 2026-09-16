@@ -674,9 +674,9 @@ describe("the print block carries ONE rule for the marker", () => {
 
 describe("the mechanism is path-independent", () => {
   it("no chrome-only posture is keyed on `data-printing` or a print-element toggle", () => {
-    // `html[data-printing]` and every `data-print-e-*` are stamped ONLY by
-    // `runPrint`; the browser's own File → Print stamps nothing (408's
-    // constraint on every future print change).
+    // `html[data-printing]` and every `data-print-e-*` are STAMPS; a
+    // law-mandated posture may not depend on every print door making them
+    // (408's constraint on every future print change; task 608).
     for (const m of CSS.matchAll(/\[data-print(?:ing|-e-)[^\]]*\][^{]*\{[^}]*\}/g)) {
       expect(m[0]).not.toMatch(new RegExp(`${CHROME_ONLY_CLASS}|figure-annotation|figure-chrome|figure-empty`));
     }
