@@ -2663,8 +2663,7 @@ stated once in `src/links/_shared/archived-anchor-chrome.ts`; see docs/agents/la
 
 Three decisions worth keeping:
 
-- **A decoration, not a mark.** It is a VIEW (AGENTS.md, "Transient state is
-  never document content"), so it never enters history, never arms the
+- **A decoration, not a mark.** It is a VIEW ([docs/agents/laws/transient-state-is-never-document-content.md](../docs/agents/laws/transient-state-is-never-document-content.md)), so it never enters history, never arms the
   autosaver, and is never captured when the paragraph is archived.
 - **`text-decoration`, not a background or a recoloured word.** It has to
   compose with every mark the prose already carries — bold, italic, a colour, an

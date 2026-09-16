@@ -1,4 +1,4 @@
-<!-- last-verified: 3b09f304 2026-09-15 -->
+<!-- last-verified: 6786d17d 2026-09-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -149,7 +149,7 @@ then decides WHERE the atom lands, because un-gating without it appended a
 phantom trailing block (a marker in a new bullet, a new paragraph, a torn
 figure). `NO_INLINE_LANDING_INSIDE` (`exampleGloss`, `figureCaption`) is the one
 set all three read — editorial facts the schema cannot express. Full write-up:
-`AGENTS.md` → "The premise half".
+[The premise half](../agents/laws/a-registry-earns-its-name-by-being-read.md).
 
 ### The formatting vocabulary: the 4×4 grid
 

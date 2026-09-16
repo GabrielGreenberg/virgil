@@ -1,4 +1,4 @@
-<!-- last-verified: 3a8f4892 2026-09-15 -->
+<!-- last-verified: 6786d17d 2026-09-16 -->
 <!-- derives-from: AGENTS.md#laws -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -269,6 +269,36 @@ Tasks 593 / 594 / 595, all in [src/lib/doc-products/pipeline.ts](../../../src/li
 Falls out: `externalFed` was left write-only and is deleted — the code view's deferral is stated once, by `isSuppressed()` plus the `sourceFresh = null` the external feed writes ([a registry earns its name by being read](a-registry-earns-its-name-by-being-read.md)).
 
 CI: [pipeline.test.ts](../../../src/lib/doc-products/__tests__/pipeline.test.ts) — `docJson` is non-null before the attach promise is flushed and `sourceText` is still null; a never-settling read still yields `docJson` + counts; a forced Tier B over an unmodified doc publishes nothing and notifies nobody; an edit that moves the doc but not the tally keeps the `wordCounts` object identity; a delimiters read that STARTED second wins over an attach read that resolves last. Four neuters.
+
+### The memo-key half: `version` bumps per keystroke, `structuralVersion` does not
+
+> **`DocStructure.version` is NOT a structural key.** It bumps on every
+> non-empty diff, *including* the content-only diff a plain keystroke inside a
+> uuid'd block produces. A cache keyed on it is therefore re-derived per
+> character — which is the law's whole subject wearing the costume of a
+> memoization key. Anything only a STRUCTURAL change can alter keys on
+> **`structuralVersion`** ([doc-structure/types.ts](../../../src/lib/tiptap/doc-structure/types.ts), task 585): it moves only when the index is
+> built fresh or a structural diff is folded (block add/remove/reorder, a
+> `parTitle` flip, heading/footnote/citation/label changes), never on a
+> content-only keystroke and never on a position-only remap
+> (`mapStructurePositions` carries the value through). It is drawn from ONE
+> module-wide monotonic sequence, so a value is unique across editors and
+> plugin-state re-inits and a per-editor cache can never collide with a fresh
+> index that happens to restart the count.
+
+The found instance: the breadcrumb's par-titled vocabulary and the
+active-block probe's anchorable vocabulary were both cached on `version`, so
+the RAF-coalesced section-path recompute rebuilt an O(blocks) list **plus a
+sort** on every frame while typing — against the very claim
+[editor-geometry](editor-geometry.md) makes for that path ("ONE `posAtCoords`
++ a binary search"). Both now share ONE cache,
+`createBlockVocabCache` ([editor-geometry/block-vocab.ts](../../../src/lib/editor-geometry/block-vocab.ts)),
+which states the rule the two copies each had to re-derive: **cache the ORDER,
+read positions FRESH.** Order is structural-version-stable; positions are not
+(a keystroke shifts every position after it without changing any order), so
+probes read `structure.blocks.get(uuid).pos` off the materialized snapshot
+rather than off the cache. CI: keying the vocabulary on `version` fails two
+legs.
 
 ### Why this exists
 

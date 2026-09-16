@@ -1,4 +1,4 @@
-<!-- last-verified: 3b09f304 2026-09-15 -->
+<!-- last-verified: 6786d17d 2026-09-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -55,7 +55,7 @@ complete write vocabulary — and what each file is WORTH — is declared once i
 (recomputable UI state; coalesced hard) or `"content"` (the user's writing; prompt
 cadence), plus whether the doc-mount bundle pre-reads it. That table drives the
 write cadence AND how a cloud-sync "conflicted copy" fork of the file is
-reported — AGENTS.md, "The daemon half".
+reported — [The daemon half](../agents/laws/cross-window-store-stability.md).
 
 - **Infrastructure** (shared app state): `virgil.json` (paragraph titles +
   fingerprints), `editor-state.json` (last paragraph + folds),
