@@ -49,7 +49,8 @@ import { generateShortId } from "@/lib/uuid";
 //
 // LOOP SAFETY
 // The backfill is one size-stable `setNodeMarkup` per fixed block,
-// `addToHistory:false`, tagged with `BACKFILL_META`. The plugin skips any
+// `addToHistory:false` (unless it MOVED an identity — see "THE SUCCESSOR
+// FOLLOWS THE CONTENT"), tagged with `BACKFILL_META`. The plugin skips any
 // transaction carrying that meta, and returns null when nothing needs fixing
 // (mirrors MarginaliaAnchorGuard). After the backfill every touched block holds
 // a unique id, so a re-walk finds no genuine duplicate either way → no loop.
@@ -62,6 +63,18 @@ import { generateShortId } from "@/lib/uuid";
 // exempts it — and a float↔main `setContent` re-sync (every synced block is
 // both removed and re-inserted with its main uuid) keeps every uuid too. Only
 // real copies (e.g. an Enter-split's cloned half) get a fresh id.
+//
+// THE SUCCESSOR FOLLOWS THE CONTENT (task 605)
+// Which copy is the "real" one is decided by CONTENT, with document order only
+// the tiebreak. Enter at the START of a paragraph leaves the original node as
+// the new blank line and puts the text in the clone; keeping the first
+// occurrence moved every card onto the blank line. So when the batch EMPTIED
+// the block that held an id and the copy right after it carries the text, the
+// text keeps the id and the blank line is minted (`contentVacatedHolder`).
+// Split-shaped only: a copy placed elsewhere is a relocation, whose identity
+// its mechanism declares (`node-identity.ts`). A block
+// that was already blank keeps its id. That fix moves an identity, so it rides
+// the edit's history event: Undo rejoins the halves under the original id.
 //
 // A NET, NOT A MECHANISM (task 320)
 // This plugin can see that two blocks collide; it cannot see which one the user
@@ -640,7 +653,7 @@ function planBackfill(
   transactions: readonly Transaction[],
   oldState: EditorState,
   newState: EditorState,
-): BackfillFix[] {
+): BackfillPlan {
   const newDoc = newState.doc;
   // uuids whose owning block left the doc somewhere in this batch. A re-inserted
   // copy of such a uuid is a move / re-sync, not a duplicate → keep it.
@@ -765,7 +778,7 @@ function planBackfill(
   // but because a batch that creates the duplicate and inserts nothing MINTABLE
   // would otherwise leave it standing. Both empty is the typing path, and it
   // still returns before any doc-sized read (review-caught latent trap).
-  if (candidates.length === 0 && duplicateClears.size === 0) return [];
+  if (candidates.length === 0 && duplicateClears.size === 0) return NO_PLAN;
 
   // ── direction 1: a container that DISSOLVED hands its id to its successor ──
   // One pass over the re-parenting steps, through the shared door, so the net
@@ -835,6 +848,11 @@ function planBackfill(
     const dup = newDoc.nodeAt(pos);
     if (dup) fixes.push({ pos, attrs: { ...dup.attrs, uuid: null } });
   }
+  // Where each kept identity sits this pass (for the successor rule below).
+  const keptAt = new Map<string, number>();
+  // True once a fix MOVES an identity from one block to another. Such a batch
+  // must ride the edit's own history event (see the plugin).
+  let movedIdentity = false;
   for (const { pos, node } of candidates) {
     const u = node.attrs?.uuid;
     const hasId = typeof u === "string" && u.length > 0;
@@ -846,8 +864,32 @@ function planBackfill(
       // Legitimate identity (pre-existing-and-moved, freshly minted upstream, or
       // the first occurrence of a uuid this pass). Register and keep.
       keptThisPass.add(u as string);
+      keptAt.set(u as string, pos);
       usedIds.add(u as string);
       continue;
+    }
+    // THE SUCCESSOR RULE (task 605): a duplicated identity follows the CONTENT.
+    // Document order is only the tiebreak. When the batch EMPTIED the block
+    // that held this id before it, and this copy carries text, the text is the
+    // block the id's cards point at — Enter at the start of a paragraph leaves
+    // the old node as the new blank line and the text in the copy. Keep the id
+    // here and mint for the blank line instead. O(1): one entry lookup, one
+    // mapped `nodeAt`, no walk.
+    if (hasId && !removedUuids.has(u as string)) {
+      const holderPos = contentVacatedHolder(
+        u as string, pos, node, known, keptAt, transactions, oldState, newDoc,
+      );
+      if (holderPos !== null) {
+        const holder = newDoc.nodeAt(holderPos)!;
+        const fresh = generateShortId(usedIds);
+        usedIds.add(fresh);
+        keptThisPass.add(fresh);
+        keptThisPass.add(u as string);
+        keptAt.set(u as string, pos);
+        fixes.push({ pos: holderPos, attrs: { ...holder.attrs, uuid: fresh } });
+        movedIdentity = true;
+        continue;
+      }
     }
     // A CONSERVED identity beats a fresh one: this block is the successor of a
     // container the same transaction dissolved (or the container that just
@@ -875,7 +917,78 @@ function planBackfill(
     keptThisPass.add(fresh);
     fixes.push({ pos, attrs: { ...node.attrs, uuid: fresh } });
   }
-  return fixes;
+  return { fixes, movedIdentity };
+}
+
+/**
+ * `movedIdentity`: some fix MOVES an identity rather than only minting one.
+ * The plugin records such a batch with the edit's own history event, so its
+ * steps are inverted together with the edit — Undo of an Enter-at-start
+ * rejoins the two halves under the id the paragraph had. Outside history, the
+ * join would keep the blank line's fresh id and the paragraph's own id would
+ * be gone.
+ */
+interface BackfillPlan {
+  fixes: BackfillFix[];
+  movedIdentity: boolean;
+}
+const NO_PLAN: BackfillPlan = { fixes: [], movedIdentity: false };
+
+/** A block with nothing in it: an empty textblock, or a container whose only
+ *  child is one (an empty list item). O(1). */
+function isContentFree(node: PMNode): boolean {
+  if (node.isTextblock) return node.content.size === 0;
+  if (node.isLeaf) return false;
+  if (node.childCount === 0) return true;
+  if (node.childCount > 1) return false;
+  const only = node.firstChild!;
+  return only.isTextblock && only.content.size === 0;
+}
+
+/**
+ * The successor test (task 605). For a candidate at `pos` that duplicates the
+ * pre-batch id `u`, return the position of the id's OTHER holder iff that
+ * holder is the block the id lived on before the batch, sits immediately
+ * before the candidate, the batch left it content-free although it had
+ * content, and the candidate carries content — i.e. a split sent all the
+ * content to the second half. `null` otherwise, and the ordinary
+ * rule (first holder keeps it) stands.
+ *
+ * A block that was ALREADY blank keeps its id (a card on an empty line stays
+ * there when the user presses Enter on it), and a text copy of a block whose
+ * text is still there is a stranger, as before.
+ */
+function contentVacatedHolder(
+  u: string,
+  pos: number,
+  node: PMNode,
+  known: ReadonlyMap<string, { pos: number }>,
+  keptAt: ReadonlyMap<string, number>,
+  transactions: readonly Transaction[],
+  oldState: EditorState,
+  newDoc: PMNode,
+): number | null {
+  if (isContentFree(node)) return null;
+  const entry = known.get(u);
+  if (!entry) return null;
+  const was = oldState.doc.nodeAt(entry.pos);
+  if (!was || was.attrs?.uuid !== u || isContentFree(was)) return null;
+  // Old start → final doc. A node START moves with the content after it.
+  let holderPos = entry.pos;
+  for (const t of transactions) holderPos = t.mapping.map(holderPos, 1);
+  if (holderPos === pos) return null;
+  // If this pass already kept the id, it must have kept it on that same holder.
+  const kept = keptAt.get(u);
+  if (kept !== undefined && kept !== holderPos) return null;
+  const holder = newDoc.nodeAt(holderPos);
+  if (!holder || holder.attrs?.uuid !== u || !isContentFree(holder)) return null;
+  if (holder.type !== node.type) return null;
+  // The two must be the halves of ONE block: adjacent, blank one first. That
+  // is the split shape. A copy placed ELSEWHERE while its source was emptied
+  // is a relocation, and relocations declare their own identity
+  // (`node-identity.ts`: the surviving source shell keeps it).
+  if (holderPos + holder.nodeSize !== pos) return null;
+  return holderPos;
 }
 
 /**
@@ -887,14 +1000,18 @@ export function blockUuidBackfillPlugin(): Plugin {
     key: new PluginKey("blockUuidBackfill"),
     appendTransaction(transactions, oldState, newState) {
       if (!transactions.some((tr) => tr.docChanged)) return null;
-      const fixes = planBackfill(transactions, oldState, newState);
+      const { fixes, movedIdentity } = planBackfill(transactions, oldState, newState);
       if (fixes.length === 0) return null;
       const tr = newState.tr;
       for (const { pos, attrs } of fixes) {
         tr.setNodeMarkup(pos, undefined, attrs);
       }
       tr.setMeta(BACKFILL_META, true);
-      tr.setMeta("addToHistory", false);
+      // A mint is bookkeeping and stays out of history. A MOVED identity is
+      // part of the edit's meaning: appended to the edit, it joins the edit's
+      // event (prosemirror-history groups an appended transaction with its
+      // root, and ignores it when the root itself is outside history).
+      if (!movedIdentity) tr.setMeta("addToHistory", false);
       return tr.steps.length > 0 ? tr : null;
     },
   });
