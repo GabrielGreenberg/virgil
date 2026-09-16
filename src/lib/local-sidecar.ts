@@ -146,7 +146,8 @@ export async function mutateLocalSidecar<T>(
   });
 }
 
-/** Drop a doc's local-store sidecar (a doc removed from the index). */
+/** Drop a doc's local-store sidecar. Called by `purgeDoc` (doc-index.ts) when
+ *  a doc id is retired or reset. */
 export async function deleteLocalSidecar(
   docId: string,
   filename: string,

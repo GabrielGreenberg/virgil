@@ -16,6 +16,19 @@ import { join } from "node:path";
 const mockState = vi.hoisted(() => ({
   index: { docs: [] as Array<Record<string, unknown>> },
   handles: new Map<string, unknown>(),
+  // The one origin IndexedDB kv store, in memory — so the REAL `purgeDoc`
+  // (and the real mirror / local-sidecar modules) run against it.
+  idb: new Map<string, unknown>(),
+}));
+
+vi.mock("idb-keyval", () => ({
+  createStore: () => ({}),
+  get: async (k: string) => mockState.idb.get(k),
+  set: async (k: string, v: unknown) => void mockState.idb.set(k, v),
+  del: async (k: string) => void mockState.idb.delete(k),
+  keys: async () => [...mockState.idb.keys()],
+  update: async (k: string, fn: (v: unknown) => unknown) =>
+    void mockState.idb.set(k, fn(mockState.idb.get(k))),
 }));
 
 // Defuse the `@/lib/storage` barrel (top-level require of storage-fsa breaks
@@ -37,6 +50,9 @@ vi.mock("@/lib/doc-index", () => ({
   getDocHandle: vi.fn(async (id: string) => mockState.handles.get(id)),
   purgeDoc: vi.fn(async (id: string) => {
     mockState.handles.delete(id);
+    const actual =
+      await vi.importActual<typeof import("@/lib/doc-index")>("@/lib/doc-index");
+    await actual.purgeDoc(id);
   }),
 }));
 
@@ -46,6 +62,17 @@ import {
   EXAMPLE_DOC_ID,
   EXAMPLE_FOLDER_NAME,
 } from "../example-seeder";
+import {
+  readMirror,
+  writeMirror,
+  type EmergencyMirrorEntry,
+} from "@/lib/emergency-mirror";
+import {
+  getRecoveryOffer,
+  offerMirrorRecovery,
+} from "@/lib/mirror-recovery";
+import { readLocalSidecar, writeLocalSidecar } from "@/lib/local-sidecar";
+import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
 
 // ── In-memory OPFS fake ─────────────────────────────────────────────────────
 type Payload = string | Uint8Array;
@@ -211,6 +238,7 @@ beforeEach(() => {
   setBundle("v1");
   mockState.index.docs = [];
   mockState.handles.clear();
+  mockState.idb.clear();
 });
 
 function fetchedPaths(): string[] {
@@ -287,6 +315,40 @@ describe("resetExample", () => {
     expect(await readFile("document.tex")).toBe(PRISTINE_TEX);
     expect(await readMarker()).toBe("v1");
     expect(mockState.index.docs).toHaveLength(1);
+  });
+
+  // Task 604 — the example's id is FIXED, so docId-keyed state that survives
+  // the reset is read back by the pristine re-seed as its own. A surviving
+  // mirror differs from the pristine model and raises "restore unsaved work"
+  // — offering to undo the reset the user just confirmed.
+  it("retires the id's durable state: mirror, recovery offer, local sidecars", async () => {
+    await ensureExampleSeeded();
+    const entry: EmergencyMirrorEntry = {
+      docId: EXAMPLE_DOC_ID,
+      content: { type: "doc", content: [] },
+      savedAt: Date.now(),
+      lastLandedAt: null,
+      reason: null,
+      windowId: "w1",
+      hash: "pre-reset-edits",
+    };
+    await writeMirror(entry);
+    offerMirrorRecovery(entry);
+    expect(LOCAL_SIDECAR_FILENAMES.length).toBeGreaterThan(0);
+    for (const f of LOCAL_SIDECAR_FILENAMES) {
+      await writeLocalSidecar(EXAMPLE_DOC_ID, f, { stale: true });
+    }
+    expect(await readMirror(EXAMPLE_DOC_ID)).not.toBeNull();
+
+    await resetExample();
+
+    expect(await readMirror(EXAMPLE_DOC_ID)).toBeNull();
+    expect(getRecoveryOffer(EXAMPLE_DOC_ID)).toBeNull();
+    for (const f of LOCAL_SIDECAR_FILENAMES) {
+      expect(await readLocalSidecar(EXAMPLE_DOC_ID, f)).toBeNull();
+    }
+    // The re-seed still landed its handle (purge ran BEFORE the seed).
+    expect(mockState.handles.get(EXAMPLE_DOC_ID)).toBeTruthy();
   });
 });
 
