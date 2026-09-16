@@ -28,9 +28,9 @@ vi.mock("@/lib/storage", () => ({
 vi.mock("@/lib/storage-mode", () => ({ isDevStorage: false }));
 vi.mock("@/lib/doc-index", () => ({
   readIndex: vi.fn(async () => mockState.index),
-  writeIndex: vi.fn(async (idx: typeof mockState.index) => {
-    mockState.index.docs = idx.docs;
-  }),
+  mutateIndex: vi.fn(
+    async (fn: (idx: typeof mockState.index) => unknown) => fn(mockState.index),
+  ),
   setDocHandle: vi.fn(async (id: string, h: unknown) => {
     mockState.handles.set(id, h);
   }),

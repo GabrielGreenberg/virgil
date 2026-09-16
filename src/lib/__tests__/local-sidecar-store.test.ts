@@ -154,7 +154,7 @@ vi.mock("@/lib/doc-index", () => ({
   setDocHandle: vi.fn(async () => {}),
   purgeDoc: vi.fn(async () => {}),
   readIndex: vi.fn(async () => ({ docs: [META] })),
-  writeIndex: vi.fn(async () => {}),
+  mutateIndex: vi.fn(async () => undefined),
 }));
 
 import {

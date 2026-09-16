@@ -31,10 +31,9 @@
 
 import {
   type FsaDocMeta,
+  mutateIndex,
   purgeDoc,
-  readIndex,
   setDocHandle,
-  writeIndex,
 } from "@/lib/doc-index";
 import { drainDoc } from "@/lib/storage";
 import { publicAssetUrl } from "@/lib/public-asset-url";
@@ -183,11 +182,15 @@ async function ensureIndexRowAndHandle(
   dir: FileSystemDirectoryHandle,
   texFilename: string,
 ): Promise<FsaDocMeta> {
-  const idx = await readIndex();
-  let meta = idx.docs.find((d) => d.id === EXAMPLE_DOC_ID);
-  if (!meta) {
+  // Always (re)store the handle — before the row, so no reader finds a row
+  // without one. Heals the "IndexedDB cleared / dead handle" cases and is
+  // cheap when unchanged.
+  await setDocHandle(EXAMPLE_DOC_ID, dir);
+  return mutateIndex((idx) => {
+    const existing = idx.docs.find((d) => d.id === EXAMPLE_DOC_ID);
+    if (existing) return existing;
     const now = new Date().toISOString();
-    meta = {
+    const meta: FsaDocMeta = {
       id: EXAMPLE_DOC_ID,
       name: EXAMPLE_DOC_NAME,
       texFilename: texFilename || EXAMPLE_TEX_FILENAME,
@@ -197,12 +200,8 @@ async function ensureIndexRowAndHandle(
       lastAccessedAt: now,
     };
     idx.docs.push(meta);
-    await writeIndex(idx);
-  }
-  // Always (re)store the handle: heals the "IndexedDB cleared / dead handle"
-  // cases and is cheap when unchanged.
-  await setDocHandle(EXAMPLE_DOC_ID, dir);
-  return meta;
+    return meta;
+  });
 }
 
 /**
@@ -219,9 +218,9 @@ export async function resetExample(): Promise<FsaDocMeta> {
   inflight = null;
   await drainDoc(EXAMPLE_DOC_ID);
   await removeOpfsDocDir(EXAMPLE_FOLDER_NAME);
-  const idx = await readIndex();
-  idx.docs = idx.docs.filter((d) => d.id !== EXAMPLE_DOC_ID);
-  await writeIndex(idx);
+  await mutateIndex((idx) => {
+    idx.docs = idx.docs.filter((d) => d.id !== EXAMPLE_DOC_ID);
+  });
   await purgeDoc(EXAMPLE_DOC_ID);
   return ensureExampleSeeded();
 }

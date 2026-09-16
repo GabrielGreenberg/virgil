@@ -102,7 +102,7 @@ vi.mock("@/lib/doc-index", () => ({
   readIndex: vi.fn(async () => ({
     docs: [{ id: DOC_ID, name: "Test", texFilename: TEX }],
   })),
-  writeIndex: vi.fn(async () => {}),
+  mutateIndex: vi.fn(async () => undefined),
 }));
 
 import { snapshotConflictSides } from "@/lib/storage-fsa";
