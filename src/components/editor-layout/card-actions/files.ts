@@ -9,6 +9,11 @@ type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
  * native picker, and promoting the permission gate to "granted" once
  * the user clicks through.
  *
+ * The grant is also reported to `useFiles` (`noteDocAccessGranted`) —
+ * the one way the current doc becomes writable without `currentDocId`
+ * changing — so its skill-bundle auto-sync, skipped while the folder
+ * was ungranted, runs now (task 602).
+ *
  * Promoting `docPermState` to "granted" causes the EditorPane branch
  * to render and the surrounding `<DocPipeline>` to mount, which in
  * turn fires `useDocument`'s load effect — no explicit refetch is
@@ -23,12 +28,14 @@ type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
 export function useFileActions(deps: {
   openExistingFile: () => Promise<FsaDocMeta | null | undefined>;
   setDocPermState: Dispatch<SetStateAction<DocPermState>>;
+  noteDocAccessGranted: () => void;
 }) {
-  const { openExistingFile, setDocPermState } = deps;
+  const { openExistingFile, setDocPermState, noteDocAccessGranted } = deps;
 
   const handleDocPermissionGranted = useCallback(() => {
     setDocPermState("granted");
-  }, [setDocPermState]);
+    noteDocAccessGranted();
+  }, [setDocPermState, noteDocAccessGranted]);
 
   const handleNativeOpen = useCallback(async (): Promise<FsaDocMeta | null> => {
     try {

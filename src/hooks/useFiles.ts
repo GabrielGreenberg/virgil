@@ -34,7 +34,7 @@ import {
   ensureExampleSeeded,
   resetExample,
 } from "@/lib/example-doc/example-seeder";
-import { ensureRW } from "@/lib/fsa-permissions";
+import { ensureRW, queryRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import {
   claimDoc,
@@ -216,6 +216,13 @@ export function useFiles() {
     openTabIdsRef.current = openTabIds;
   }, [openTabIds]);
 
+  // Mirror currentDocId so the bus handler and the async open doors read the
+  // latest value without re-subscribing / re-binding on every change.
+  const currentDocIdRef = useRef(currentDocId);
+  useEffect(() => {
+    currentDocIdRef.current = currentDocId;
+  }, [currentDocId]);
+
   // Register this window in the registry on mount, heartbeat every 30s,
   // and forget it on `pagehide` so a clean close doesn't leave orphan
   // tabs records behind. Also release every held doc lock so peer
@@ -313,8 +320,47 @@ export function useFiles() {
   /** Remove `id` from outerOrder, refusing to remove the Library root. */
   const removeFromOuterOrder = useCallback((id: string) => {
     if (id === OUTER_LIBRARY_ROOT_ID) return;
-    setOuterOrder((prev) => prev.filter((t) => t !== id));
+    setOuterOrder((prev) =>
+      prev.includes(id)
+        ? [
+            OUTER_LIBRARY_ROOT_ID,
+            ...prev.filter((t) => t !== id && t !== OUTER_LIBRARY_ROOT_ID),
+          ]
+        : prev,
+    );
   }, []);
+
+  /**
+   * "An open doc leaves this window" — the ONE answer for close, forget
+   * (delete) and a peer window's handoff (task 602). Drops `id` from the
+   * open set and the tab order; when it was the ACTIVE doc, activity passes
+   * to its neighbour (the tab that slides into its slot, else the one
+   * before it), never to "nothing" while other tabs are open. Then
+   * releases the cross-window lock — `releaseDoc` drains the doc's
+   * pending writes before dropping the hold (task 596).
+   *
+   * Draining an ACTIVE doc's in-debounce edits is the caller's first step
+   * where the caller has one to take (close flushes, delete awaits); the
+   * helper deliberately does not re-drain.
+   */
+  const retireOpenDoc = useCallback(
+    (id: string) => {
+      setOpenTabIds((prev) => {
+        const next = prev.filter((t) => t !== id);
+        if (id === currentDocIdRef.current) {
+          const idx = prev.indexOf(id);
+          const successor =
+            idx < 0 ? null : (next[Math.min(idx, next.length - 1)] ?? null);
+          currentDocIdRef.current = successor;
+          setCurrentDocId(successor);
+        }
+        return next;
+      });
+      removeFromOuterOrder(id);
+      releaseDoc(id).catch(() => {});
+    },
+    [removeFromOuterOrder],
+  );
 
   /** Acquire the cross-window lock for a doc, prompting handoff if it
    *  is currently owned by a peer window. Returns true when this
@@ -325,6 +371,42 @@ export function useFiles() {
   const claimWithHandoff = useCallback(
     (target: HandoffTarget): Promise<boolean> => claimDocWithHandoff(target, dialog),
     [dialog],
+  );
+
+  /**
+   * The ONE post-claim open sequence (task 602). Every door that makes a
+   * paper the active doc — Recents / tab "+" (`openFile`), the folder
+   * picker and its follow-ups (`activateDoc`), a brand-new paper
+   * (`createFile`) — has already taken this window's claim, and then
+   * runs exactly this, in this order:
+   *
+   *   1. drain the OUTGOING doc's pending writes before its pipeline ends
+   *      (see `flushOutgoing` for why this is load-bearing under keep-alive);
+   *   2. register the meta in `docs` if it is new to this window;
+   *   3. add the tab (open set + outer order), make it current, show the doc;
+   *   4. bump its recents timestamp.
+   *
+   * What happens BECAUSE a doc became current (the skill-bundle sync, the
+   * sync-conflict watcher) is not a step here: it is keyed on
+   * `currentDocId` below, so the session-restore effect — which sets the
+   * current doc without passing through any door — gets it too, and a new
+   * door cannot forget it.
+   */
+  const admitDoc = useCallback(
+    async (id: string, meta?: FsaDocMeta) => {
+      const prev = currentDocIdRef.current;
+      if (prev && prev !== id) await drainDoc(prev);
+      if (meta) {
+        setDocs((ds) => (ds.some((d) => d.id === id) ? ds : [...ds, meta]));
+      }
+      setOpenTabIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
+      appendToOuterOrder(id);
+      currentDocIdRef.current = id;
+      setCurrentDocId(id);
+      setActivePaneState("doc");
+      bumpAccessed(id);
+    },
+    [appendToOuterOrder, bumpAccessed],
   );
 
   const openFile = useCallback(
@@ -343,29 +425,18 @@ export function useFiles() {
           }
         }
       }
-      // Drain pending writes for the doc we're switching away from
-      // BEFORE its pipeline ends, so its autosave isn't lost.
-      const prev = currentDocIdRef.current;
-      if (prev && prev !== id) await drainDoc(prev);
-      // Already open in this window — no claim needed, just activate.
-      if (ownsDoc(id)) {
-        setCurrentDocId(id);
-        setActivePaneState("doc");
-        return;
-      }
-      // Acquire the cross-window lock through the ONE handoff door
+      const meta = docs.find((d) => d.id === id);
+      // Already open in this window — no claim needed. Otherwise acquire the
+      // cross-window lock through the ONE handoff door
       // (`claimDocWithHandoff`) — it prompts, asks the peer to release,
-      // re-claims, and tells the user about every failure. Both open
-      // paths take it, so neither re-derives the sequence.
-      const owned = await claimWithHandoff(docs.find((d) => d.id === id) ?? { id });
-      if (!owned) return;
-      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-      appendToOuterOrder(id);
-      setCurrentDocId(id);
-      setActivePaneState("doc");
-      bumpAccessed(id);
+      // re-claims, and tells the user about every failure.
+      if (!ownsDoc(id)) {
+        const owned = await claimWithHandoff(meta ?? { id });
+        if (!owned) return;
+      }
+      await admitDoc(id, meta);
     },
-    [appendToOuterOrder, bumpAccessed, claimWithHandoff, docs],
+    [admitDoc, claimWithHandoff, docs],
   );
 
   const closeTab = useCallback(
@@ -374,20 +445,10 @@ export function useFiles() {
       // pending writes first. Fire-and-forget; the storage layer's
       // pipeline check still prevents any cross-doc corruption even
       // if a write lands after the unmount.
-      if (id === currentDocId) flushOutgoing(id, null);
-      setOpenTabIds((prev) => {
-        const next = prev.filter((t) => t !== id);
-        if (id === currentDocId) {
-          const idx = prev.indexOf(id);
-          const newActive = next[Math.min(idx, next.length - 1)] || null;
-          setCurrentDocId(newActive);
-        }
-        return next;
-      });
-      removeFromOuterOrder(id);
-      releaseDoc(id).catch(() => {});
+      if (id === currentDocIdRef.current) flushOutgoing(id, null);
+      retireOpenDoc(id);
     },
-    [currentDocId, flushOutgoing, removeFromOuterOrder],
+    [flushOutgoing, retireOpenDoc],
   );
 
   // Listen for handoff requests from peer windows. When another window
@@ -398,38 +459,17 @@ export function useFiles() {
       if (e.type !== "doc-handoff-request") return;
       if (e.toWindowId !== getWindowId()) return;
       if (!ownsDoc(e.docId)) return;
-      // Update the UI here, then release. The DRAIN is `releaseDoc`'s
+      // Update the UI, then release (both in `retireOpenDoc`). The DRAIN is `releaseDoc`'s
       // (task 596): it awaits this doc's pending writes before dropping
       // the hold, which is the only ordering under which those writes
       // still take `withDocLock`'s owner short-circuit. This handler
       // used to fire `drainDoc` un-awaited beside the release and lean
       // on a comment claiming the lock serialized them — the claim
       // `storage-fsa.ts` itself documents as false in the ordinary case.
-      setOpenTabIds((prev) => {
-        const next = prev.filter((t) => t !== e.docId);
-        if (e.docId === currentDocIdRef.current) {
-          const idx = prev.indexOf(e.docId);
-          const newActive = next[Math.min(idx, next.length - 1)] || null;
-          setCurrentDocId(newActive);
-        }
-        return next;
-      });
-      setOuterOrder((prev) =>
-        prev.filter((t) => t !== e.docId && t !== OUTER_LIBRARY_ROOT_ID).length === 0
-          ? [OUTER_LIBRARY_ROOT_ID]
-          : prev.filter((t) => t !== e.docId),
-      );
-      releaseDoc(e.docId).catch(() => {});
+      retireOpenDoc(e.docId);
     };
     return subscribe(onEvent);
-  }, []);
-
-  // Mirror currentDocId so the bus handler reads the latest value
-  // without re-subscribing on every change.
-  const currentDocIdRef = useRef(currentDocId);
-  useEffect(() => {
-    currentDocIdRef.current = currentDocId;
-  }, [currentDocId]);
+  }, [retireOpenDoc]);
 
   // ── Sync-conflict scan (task 363) ────────────────────────────────────────
   // Notice what a cloud-sync daemon did to this paper's `virgil/` folder. Keyed
@@ -503,15 +543,7 @@ export function useFiles() {
         const meta = await createDocFromPicker(name, templateId);
         // Brand-new doc — claim is uncontested.
         await claimDoc(meta.id);
-        // Drain pending writes for the doc we're switching away from
-        // before its pipeline ends.
-        const prev = currentDocIdRef.current;
-        if (prev && prev !== meta.id) await drainDoc(prev);
-        setDocs((prev) => [...prev, meta]);
-        setOpenTabIds((prev) => [...prev, meta.id]);
-        appendToOuterOrder(meta.id);
-        setCurrentDocId(meta.id);
-        setActivePaneState("doc");
+        await admitDoc(meta.id, meta);
         return meta;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return null;
@@ -519,7 +551,7 @@ export function useFiles() {
         throw err;
       }
     },
-    [appendToOuterOrder],
+    [admitDoc],
   );
 
   // De-dup paper-folder skill syncs across StrictMode double-mounts and
@@ -598,6 +630,48 @@ export function useFiles() {
   const dismissSkillSyncError = useCallback(() => setSkillSyncError(null), []);
   const dismissSkillSyncNotice = useCallback(() => setSkillSyncNotice(null), []);
 
+  // Bumped when the user grants folder access to the CURRENT doc through the
+  // permission gate — the one way a doc becomes writable without
+  // `currentDocId` changing (a relaunch whose grant did not persist).
+  const [docAccessEpoch, setDocAccessEpoch] = useState(0);
+  const noteDocAccessGranted = useCallback(
+    () => setDocAccessEpoch((n) => n + 1),
+    [],
+  );
+
+  // ── Skill-bundle auto-sync (task 602) ────────────────────────────────────
+  // Write the Virgil skill bundle into the paper folder so a cowork session
+  // opened against it sees current /editor:* and /library:* commands. Keyed
+  // on `currentDocId` — the ONE chokepoint every open funnels through,
+  // exactly as the sync-conflict watcher above is, and for the same reason:
+  // wired into `activateDoc` it fired only for the folder picker, never for
+  // a paper reopened from Recents, restored on launch, or newly created.
+  //
+  // Auto path, so it never prompts: a folder whose readwrite grant is not
+  // live yet (a relaunch before the gate's click) is skipped WITHOUT being
+  // marked, and the gate's grant (`noteDocAccessGranted`) re-runs this.
+  // No handle (dev backend) → nothing to sync. Once per doc per session
+  // (`syncedDocIdsRef`); the version stamp in skill-sync makes even that a
+  // single FSA stat in the steady state. Failures surface via runSkillSync.
+  useEffect(() => {
+    const docId = currentDocId;
+    if (!docId || syncedDocIdsRef.current.has(docId)) return;
+    let cancelled = false;
+    (async () => {
+      const handle = await getDocHandle(docId);
+      if (!handle || cancelled) return;
+      if ((await queryRW(handle)) !== "granted" || cancelled) return;
+      if (syncedDocIdsRef.current.has(docId)) return;
+      syncedDocIdsRef.current.add(docId);
+      await runSkillSync(docId);
+    })().catch((err) => {
+      console.error("[skill-sync] could not check the paper folder", err);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDocId, docAccessEpoch, runSkillSync]);
+
   /** Helper: register a doc and activate its tab. Re-opens of an
    *  existing doc go through the handoff flow when it's owned by
    *  another window. */
@@ -605,31 +679,9 @@ export function useFiles() {
     async (meta: FsaDocMeta) => {
       const owned = await claimWithHandoff(meta);
       if (!owned) return;
-      // Drain pending writes for the doc we're switching away from
-      // before its pipeline ends.
-      const prev = currentDocIdRef.current;
-      if (prev && prev !== meta.id) await drainDoc(prev);
-      setDocs((prev) =>
-        prev.some((d) => d.id === meta.id) ? prev : [...prev, meta],
-      );
-      setOpenTabIds((prev) =>
-        prev.includes(meta.id) ? prev : [...prev, meta.id],
-      );
-      appendToOuterOrder(meta.id);
-      setCurrentDocId(meta.id);
-      setActivePaneState("doc");
-      bumpAccessed(meta.id);
-      // Fire-and-forget: write the Virgil skill bundle into this paper
-      // folder so any cowork session opened against it sees /editor:*
-      // and /library:* commands. Idempotent — the version-stamp dedup
-      // in skill-sync makes the steady-state cost a single FSA stat.
-      // Failures are surfaced (not swallowed) via runSkillSync.
-      if (!syncedDocIdsRef.current.has(meta.id)) {
-        syncedDocIdsRef.current.add(meta.id);
-        void runSkillSync(meta.id);
-      }
+      await admitDoc(meta.id, meta);
     },
-    [appendToOuterOrder, bumpAccessed, claimWithHandoff, runSkillSync],
+    [admitDoc, claimWithHandoff],
   );
 
   /**
@@ -667,8 +719,8 @@ export function useFiles() {
     closeTab(EXAMPLE_DOC_ID);
     try {
       const meta = await resetExample();
-      // activateDoc's per-session skill-sync dedup (syncedDocIdsRef) still has
-      // this id, so the bundle won't re-sync after a same-session reset — safe,
+      // The per-session skill-sync dedup (syncedDocIdsRef) still has this id,
+      // so the bundle won't re-sync after a same-session reset — safe,
       // since the bundle is idempotent + version-gated (and re-syncs on reload).
       await activateDoc(meta);
     } catch (err) {
@@ -705,7 +757,7 @@ export function useFiles() {
     if (!pendingFolderPick) return null;
     try {
       const meta = await registerDocInFolder(pendingFolderPick.handle, texFilename);
-      activateDoc(meta);
+      await activateDoc(meta);
       setPendingFolderPick(null);
       return meta;
     } catch (err) {
@@ -757,15 +809,12 @@ export function useFiles() {
         await drainDoc(id);
         await deleteDocFromIndex(id);
         setDocs((prev) => prev.filter((d) => d.id !== id));
-        setOpenTabIds((prev) => prev.filter((t) => t !== id));
-        removeFromOuterOrder(id);
-        setCurrentDocId((prev) => (prev === id ? null : prev));
-        releaseDoc(id).catch(() => {});
+        retireOpenDoc(id);
       } catch (err) {
         console.error("Failed to remove file from workspace:", err);
       }
     },
-    [removeFromOuterOrder],
+    [retireOpenDoc],
   );
 
   const renameFile = useCallback(async (id: string, name: string) => {
@@ -918,5 +967,6 @@ export function useFiles() {
     resyncSkills,
     dismissSkillSyncError,
     dismissSkillSyncNotice,
+    noteDocAccessGranted,
   };
 }

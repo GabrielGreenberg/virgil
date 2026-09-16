@@ -344,6 +344,7 @@ export default function EditorLayout() {
     resyncSkills,
     dismissSkillSyncError,
     dismissSkillSyncNotice,
+    noteDocAccessGranted,
   } = useFiles();
   const libraryRegistry = useLibraryRegistry();
   const { myPaperIds, addMyPaper, removeMyPaper } = useMyPapers();
@@ -2756,6 +2757,7 @@ export default function EditorLayout() {
   } = useFileActions({
     openExistingFile,
     setDocPermState,
+    noteDocAccessGranted,
   });
 
   // "+ Add paper" variants for the Library pod — these wrap the same
