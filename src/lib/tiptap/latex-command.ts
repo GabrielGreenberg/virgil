@@ -23,6 +23,7 @@ import {
   touchedTextblocks,
 } from "./changed-ranges";
 import { forEachBareCommand } from "./cmd-only-paragraph";
+import { blockCarriesProse, inlineIsProse } from "@/lib/prose-index";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -568,18 +569,23 @@ export const LatexCommandMark = Mark.create({
     const markType = this.type;
 
     /** Paint `.latex-cmd` inline decos over the bare-text commands in one
-     *  text node (skips text already carrying the latexCommand mark, which
-     *  renders its own `.latex-cmd` span). The scanner is the SAME
-     *  `forEachBareCommand` the `p-cmd-only` stamp counts with
-     *  (`cmd-only-paragraph.ts`), so the grey span and the rhythm class can
-     *  never disagree about what a command run is. */
+     *  PROSE text node. The scanner is the SAME `forEachBareCommand` the
+     *  `p-cmd-only` stamp counts with (`cmd-only-paragraph.ts`), so the grey
+     *  span and the rhythm class can never disagree about what a command run
+     *  is.
+     *
+     *  "Is this text LaTeX-in-prose?" has ONE answer — the prose index's
+     *  (task 607). `inlineIsProse` refuses text wearing ANY raw-LaTeX mark:
+     *  the `latexCommand` mark (it renders its own `.latex-cmd` span), the
+     *  verbatim carrier (likewise — a second span inside it compounds the
+     *  `0.9em` to `0.81em`), and the `%` comment tail (LaTeX never reads a
+     *  command there, so painting one misstates the source). */
     function decorateTextNode(
       decos: Decoration[],
       node: any,
       pos: number,
     ): void {
-      if (!node.isText || !node.text) return;
-      if (node.marks.some((m: any) => m.type === markType)) return;
+      if (!node.text || !inlineIsProse(node)) return;
       forEachBareCommand(node.text as string, (off, len) => {
         decos.push(Decoration.inline(pos + off, pos + off + len, { class: "latex-cmd" }));
       });
@@ -604,6 +610,13 @@ export const LatexCommandMark = Mark.create({
       node: any,
       pos: number,
     ): void {
+      // A BYTE-LITERAL block (`codeBlock`, a `%` comment block — anything the
+      // schema declares `marks: ""`) is source, not prose: a `\foo` in a
+      // listing is just characters, and painting it shrank and greyed it
+      // against its neighbours (task 607). The block half of the prose
+      // index's vocabulary, read off the live schema, so a new verbatim node
+      // kind is excluded by declaration. O(1).
+      if (!blockCarriesProse(node)) return;
       node.forEach((child: any, offset: number) => {
         decorateTextNode(decos, child, pos + 1 + offset);
       });
