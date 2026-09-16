@@ -14,17 +14,25 @@
  * locked band printed ONLY the band with the rest of the document silently
  * absent, and a collapsed pod printed a two-line truncated stub (task 408).
  *
- * This module OWNS print state and deliberately implements none of it, because
- * it cannot: **there are two print doors and this module is only on one.**
- * `runPrint` below stamps `html[data-printing]` + the `data-print-e-*` toggles;
- * the browser's own File → Print reaches nothing but the `beforeprint` listener
- * at the bottom of this file, which never calls `applyPrintAttrs`. So ANY
- * future print behaviour keyed on `data-printing` (or on any attribute stamped
- * here) silently does nothing for the door most people use. That is the reason
- * the fold posture lives in media queries in globals.css — `@media screen`
- * around the two hide-class declarations, `@media print` for the pod's paper
- * body — and it is a constraint on every future print change, not a note about
- * one fix. Contract: src/lib/__tests__/print-fold-posture.test.ts.
+ * This module OWNS print state, and it implements the law in none of it — the
+ * law lives in media queries in globals.css (`@media screen` around the two
+ * hide-class declarations, `@media print` for the pod's paper body). Two kinds
+ * of print state, two mechanisms:
+ *
+ *   - a user's print CHOICE (the `data-print-e-*` element toggles, the font
+ *     size, the appendix set) is stamped by `enterPrintPosture` below, and
+ *     BOTH print doors call it synchronously (task 608) — Cmd+P → PrintDialog
+ *     → `runPrint`, and the browser's own File → Print → the `beforeprint`
+ *     listener at the bottom of this file. Before 608 the second door stamped
+ *     nothing, so every toggle printed ALL-ON (a writer's `%` comments reached
+ *     paper) and the saved appendix set was replaced by the shipped defaults.
+ *   - a posture the LAW mandates (what prints is the document) is keyed on no
+ *     attribute at all. A stamp is only as good as every door remembering to
+ *     call it — the second door went without one for months — and a media
+ *     query needs no door. So a posture keyed on `data-printing` or on any
+ *     attribute stamped here is still refused for the law's postures. That is
+ *     a constraint on every future print change, not a note about one fix.
+ *     Contract: src/lib/__tests__/print-fold-posture.test.ts.
  *
  * The law has a second half, and it is the same law: a decoration that PAINTS
  * editor state (a spelling squiggle, a card selection ring, a search band) is a
@@ -45,6 +53,7 @@ import {
   requestAppendices,
   releaseAppendices,
   getPrintIntent,
+  getSavedPrintOptions,
 } from "@/lib/print-intent";
 import { panePrintPage } from "@/components/editor-layout/pane-dom";
 
@@ -188,61 +197,78 @@ export function applyPrintAttrs(options: PrintOptions): () => void {
   };
 }
 
-export async function runPrint(options: PrintOptions): Promise<void> {
-  // Mount the appendix tree first and wait for its post-commit ack — the
-  // appendices exist only during an active print since perf Wave 0
-  // (print-intent.ts has the full story). Falls through on timeout so a
-  // doc-less window still prints.
-  await requestAppendices(options);
-
+/**
+ * THE ONE "enter print posture" door, shared by both print doors (task 608).
+ * Synchronous on purpose: DOM attribute + CSS-var writes made inside
+ * `beforeprint` land before the browser lays out for print (only React commits
+ * race it), so the native door gets the same element posture, font size and
+ * page isolation as `runPrint`. Mounts the appendices for `options` (the
+ * caller decides whether to await the ack) and arms the ONE cleanup path —
+ * `afterprint` OR a matchMedia change, since Safari and some Chromium builds
+ * skip the former. Cleanup runs once.
+ */
+function enterPrintPosture(options: PrintOptions): Promise<void> {
+  const mounted = requestAppendices(options);
   const cleanup = applyPrintAttrs(options);
 
-  if (document.fonts?.ready) {
-    try { await document.fonts.ready; } catch {}
-  }
-
   let done = false;
+  const mql = typeof window.matchMedia === "function" ? window.matchMedia("print") : null;
+  const onMqlChange = (e: MediaQueryListEvent) => {
+    if (!e.matches) finish();
+  };
   const finish = () => {
     if (done) return;
     done = true;
     cleanup();
     releaseAppendices();
     window.removeEventListener("afterprint", finish);
-    mql.removeEventListener("change", onMqlChange);
-  };
-  const mql = window.matchMedia("print");
-  const onMqlChange = (e: MediaQueryListEvent) => {
-    if (!e.matches) finish();
+    mql?.removeEventListener("change", onMqlChange);
   };
   window.addEventListener("afterprint", finish);
-  mql.addEventListener("change", onMqlChange);
+  mql?.addEventListener("change", onMqlChange);
+  return mounted;
+}
+
+/** The options the native door prints with: what the user saved in the print
+ *  dialog, published by the owner of that pref (EditorLayout). The shipped
+ *  defaults only when nothing is published — no editor mounted. */
+export function resolveNativePrintOptions(): PrintOptions {
+  return getSavedPrintOptions() ?? DEFAULT_PRINT_OPTIONS;
+}
+
+export async function runPrint(options: PrintOptions): Promise<void> {
+  // Mount the appendix tree and wait for its post-commit ack — the appendices
+  // exist only during an active print since perf Wave 0 (print-intent.ts has
+  // the full story). Falls through on timeout so a doc-less window still
+  // prints. The attrs are stamped in the same synchronous step; they are
+  // print-media-only, so stamping them before the ack paints nothing.
+  await enterPrintPosture(options);
+
+  if (document.fonts?.ready) {
+    try { await document.fonts.ready; } catch {}
+  }
 
   window.print();
 }
 
 // ── Native File→Print fallback ─────────────────────────────────────────
-// THE SECOND DOOR. Everything `applyPrintAttrs` stamps is absent here — no
-// `data-printing`, no `data-print-e-*` element toggles, no print-ancestor /
-// print-hide walk — so this path prints with the DEFAULT element posture and
-// no page isolation. Anything that must hold on paper regardless of door
-// therefore belongs in a media query, not behind an attribute stamped above
-// (see the module docstring; task 408).
+// THE SECOND DOOR — the browser's own File → Print (and the PWA window menu's
+// Print), which reaches this `beforeprint` listener and nothing else. It
+// enters the SAME posture `runPrint` does, synchronously: `data-printing`, the
+// `data-print-e-*` toggles, `--print-font-size` and the print-ancestor /
+// print-hide isolation walk, all from the user's SAVED options (task 608).
+// Both doors apply the saved options synchronously; the one door-specific
+// residual is the appendix mount below.
 //
-// Cmd+P is intercepted (EditorLayout → PrintDialog → runPrint), but the
-// browser's own menu item fires `beforeprint` with no chance to await a
-// mount. Best-effort: activate the appendices synchronously so React can
-// often commit them before the snapshot (Chromium yields between
-// beforeprint and rasterization more often than not); release on
-// afterprint. A missed race prints without appendices — the documented
-// trade for not keeping hundreds of hidden card editors alive full-time.
+// Cmd+P is intercepted (EditorLayout → PrintDialog → runPrint), but the menu
+// item fires `beforeprint` with no chance to await a mount. Best-effort: the
+// appendices activate synchronously so React can often commit them before the
+// snapshot (Chromium yields between beforeprint and rasterization more often
+// than not); a missed race prints without appendices — the documented trade
+// for not keeping hundreds of hidden card editors alive full-time.
 if (typeof window !== "undefined") {
   window.addEventListener("beforeprint", () => {
     if (getPrintIntent().active) return; // runPrint owns this cycle
-    void requestAppendices(DEFAULT_PRINT_OPTIONS);
-    const off = () => {
-      releaseAppendices();
-      window.removeEventListener("afterprint", off);
-    };
-    window.addEventListener("afterprint", off);
+    void enterPrintPosture(resolveNativePrintOptions());
   });
 }

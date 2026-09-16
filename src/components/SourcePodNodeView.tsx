@@ -486,9 +486,9 @@ export default function SourcePodNodeView({
         {/* PAPER body of a collapsed pod (task 408, decision 2). Rendered
             UNCONDITIONALLY and hidden by the `.print-only` idiom, so the pod
             carries no React dependency on print state — which is the whole
-            requirement: `html[data-printing]` is stamped only by `runPrint`
-            (src/lib/print.ts), so anything keyed on it silently fails for the
-            browser's own File → Print, the door most people use. Its screen
+            requirement: `html[data-printing]` is a stamp (src/lib/print.ts,
+            made by both print doors since task 608), and a posture the law
+            mandates may not depend on every door remembering it. Its screen
             twin `.source-pod-preview` below is the one dropped in print media.
 
             The SOURCE, not the derived picture: a tree mounted while the pod is

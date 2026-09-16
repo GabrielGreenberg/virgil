@@ -273,8 +273,8 @@ const LEDGER: Record<string, Row> = {
   },
   "lib/print.ts": {
     scope: "singleton",
-    events: ["window.afterprint", "window.beforeprint", "window.afterprint"],
-    why: "module-level browser-menu print hook + the print door's one-shot afterprint; the door resolves the VISIBLE pane itself (task 597)",
+    events: ["window.afterprint", "window.beforeprint"],
+    why: "module-level browser-menu print hook + the ONE print-posture door's one-shot afterprint, shared by both print doors (task 608); the door resolves the VISIBLE pane itself (task 597)",
   },
   "lib/scroll-reposition-probe.ts": {
     scope: "singleton",

@@ -123,8 +123,9 @@ describe.each([
   });
 
   it("renders it with no print-state condition — both print doors, one answer", async () => {
-    // `runPrint` stamps `html[data-printing]`; the browser's own File → Print
-    // stamps nothing. So the paper body must be present with the flag ABSENT,
+    // `html[data-printing]` is a stamp — both print doors make it since task
+    // 608, but a posture the law mandates may not depend on any door
+    // remembering to. So the paper body must be present with the flag ABSENT,
     // which is the state every one of these mounts is already in — asserted
     // explicitly, because "we never read the flag" is exactly the claim.
     expect(document.documentElement.dataset.printing).toBeUndefined();

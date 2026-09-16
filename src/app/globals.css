@@ -1623,9 +1623,10 @@ textarea,
    with its layout destroyed — silently, on paper, with no error. The only
    exact answer is for the declaration to be ABSENT in paged media, and the
    only CSS mechanism for absence is a media query around it. Path-independent
-   like an `@media print` rule, and unlike `html[data-printing]`, which only
-   `runPrint` stamps (`src/lib/print.ts`) — the browser's own File → Print
-   never sets it.
+   like an `@media print` rule, and unlike `html[data-printing]`, which is a
+   STAMP (`enterPrintPosture`, `src/lib/print.ts`): both print doors make it
+   since task 608, but the browser's own File → Print went months without it,
+   and a posture the law mandates may not depend on every door remembering.
 
    A third hiding decoration joins by adding its class HERE, not by declaring
    its own `display: none`. That membership is CI-enforced from the plugins'

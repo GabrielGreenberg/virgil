@@ -135,11 +135,11 @@ describe("the print block does not restate `display` for a folded block", () => 
 });
 
 describe("the mechanism is path-independent", () => {
-  // `html[data-printing]` is stamped ONLY by `runPrint` (applyPrintAttrs). The
-  // browser's own File → Print reaches the `beforeprint` listener and nothing
-  // else, so a posture keyed on that attribute silently fails for the door most
-  // people use. This is a constraint on every future print change, which is why
-  // it is a leg and not a comment.
+  // `html[data-printing]` is a STAMP (applyPrintAttrs via enterPrintPosture).
+  // Both print doors make it since task 608, but the browser's own File → Print
+  // went months making none, and a posture keyed on a stamp fails silently the
+  // day a door forgets. A media query needs no door. This is a constraint on
+  // every future print change, which is why it is a leg and not a comment.
   it("no fold/collapse posture is keyed on `data-printing`", () => {
     for (const m of CSS.matchAll(/\[data-printing[^\]]*\][^{]*\{[^}]*\}/g)) {
       expect(
@@ -152,8 +152,8 @@ describe("the mechanism is path-independent", () => {
   it("`print.ts` records the two-door constraint where print state is owned", () => {
     const src = readFileSync(join(ROOT, "src/lib/print.ts"), "utf8");
     expect(src).toMatch(/what prints is the DOCUMENT/i);
-    // The native door must SAY that applyPrintAttrs never runs for it — that
-    // sentence is the whole reason the mechanism is a media query.
+    // The native door must SAY which stamps it makes — the stamp/media-query
+    // split is the whole reason the law's mechanism is a media query.
     const at = src.indexOf("Native File→Print fallback");
     expect(at).toBeGreaterThan(-1);
     expect(src.slice(at, at + 900)).toMatch(/data-printing/);

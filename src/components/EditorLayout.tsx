@@ -62,6 +62,7 @@ import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import type { ErrorJump } from "@/panels/Errors";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
+import { setSavedPrintOptions, clearSavedPrintOptions } from "@/lib/print-intent";
 import BugReportWindow from "./BugReportWindow";
 import FontsDialog from "./FontsDialog";
 import { SpellSuggestionMenu } from "./SpellSuggestionMenu";
@@ -670,6 +671,16 @@ export default function EditorLayout() {
   } = viewPrefsResult;
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+
+  // Publish the saved print options for the browser's own File → Print, which
+  // reaches only print.ts's `beforeprint` listener and has no React state to
+  // read (task 608). The same value PrintDialog prints with; one global pref,
+  // so one slot. Re-runs only when the print options change.
+  const savedPrintOptions = prefs.printOptions;
+  useEffect(() => {
+    setSavedPrintOptions(savedPrintOptions);
+    return () => clearSavedPrintOptions(savedPrintOptions);
+  }, [savedPrintOptions]);
 
 
   // Editor column ref — kept here as a placeholder; the actual
