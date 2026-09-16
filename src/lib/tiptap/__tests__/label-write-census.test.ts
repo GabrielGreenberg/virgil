@@ -133,8 +133,13 @@ describe("label write census (task 553)", () => {
 
   it("the door writes the attr (the census can see the one legitimate writer)", () => {
     const door = productionSites().filter((s) => s.rel === DOOR);
-    // The declaration and — on a carried rename — each ref: two write sites.
-    expect(door.length).toBeGreaterThanOrEqual(2);
+    // The declaration is a direct write site. The refs (task 606) are carried
+    // through the deep atom door, which also reaches refs inside footnote
+    // bodies — its generic `setNodeMarkup` names no `label` key, so pin the
+    // route instead: the door hands `labelRef` to `rewriteInlineAtomsDeep`.
+    expect(door.length).toBeGreaterThanOrEqual(1);
+    const src = fs.readFileSync(path.join(REPO_ROOT, DOOR), "utf8");
+    expect(src).toMatch(/rewriteInlineAtomsDeep\([^)]*"labelRef"/);
   });
 
   it("the exemptions are an EXACT set — each a write that is not a rename of a declaration", () => {

@@ -200,3 +200,33 @@ missing flat sub-item claim 6.
 **Owed, not claimed:** the preview eyeball. NOT FSA-masked (a live editor
 gesture, no disk): two refs to one section, click the SECOND, change its
 target — only it changes, and the popover sat beside it.
+
+### The body half: "every ref" includes the refs a footnote hides (task 606)
+
+**A key rename that walks `doc.descendants` has not visited the paper.** A
+footnote is an inline ATOM whose body lives as JSON in `attrs.content`, and
+`descendants` never enters an attr — so `renameLabelWithRefs` neither counted
+nor rewrote a `\ref` inside a footnote (the confirm undercounted; the footnote
+compiled to `??`), and `collectLabelKeysIn` could not see a `\label{}` a
+footnote body declares. The citekey rename had already learned this and carried
+a PRIVATE body rewriter; the label rename had not. Now both go through ONE
+write door, [`rewriteInlineAtomsDeep`](../../../src/lib/inline-content.ts) —
+the write-side twin of `inlineAtoms`, reading the same `BODY_BEARING_ATOMS`
+descend set — which rewrites top-level and body-held atoms into one
+transaction (a body hit is an attr-only `setNodeMarkup` on the host's
+`content`, the write a footnote card edit makes, so the `.tex` serializes the
+new key with no re-parse). With `tr: null` it only COUNTS, so the number the
+confirm states and the set the rewrite moves are one walk.
+
+**And nothing positional crosses the confirm.** The door collected ref
+positions before `await confirm(...)` and reused them after it: the `nodeAt`
+guard prevented a wrong write, but a ref shifted by an edit made while the
+modal was up was silently skipped while the door still answered `"renamed"`.
+The rewrite walk now runs against the post-confirm doc; only the COUNT is
+taken before the await.
+
+Contract: [label-rename-refs.test.tsx](../../../src/lib/tiptap/__tests__/label-rename-refs.test.tsx)
+("task 606" block) — 4 legs fail pre-fix (footnote ref counted + rewritten,
+serialized key, an edit during the confirm, a footnote-declared key refused),
+1 control. Owed, not claimed: the preview eyeball — rename a figure label
+that a footnote `\ref`s and check the footnote's `.tex`.
