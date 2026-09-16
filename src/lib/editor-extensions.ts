@@ -1877,11 +1877,15 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
         ]
       : []),
     LinkedAnchor,
-    LinkedAnchorGuard,
+    // `docIdRef` rides onto both orphan events so only the ORIGINATING doc's
+    // card hooks strip the dead link (task 598 — `orphan-events.ts`). A card
+    // body with no docIdRef announces `docId: null`, which no document hears.
+    LinkedAnchorGuard.configure({ docIdRef: ctx.docIdRef ?? null }),
     ...(isMain
       ? [
           TextObjectOrphanGuard.configure({
             onBlockAbsorbedRef: ctx.onBlockAbsorbedRef ?? null,
+            docIdRef: ctx.docIdRef ?? null,
           }),
         ]
       : []),

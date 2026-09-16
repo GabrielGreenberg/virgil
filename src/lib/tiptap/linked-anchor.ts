@@ -2,7 +2,11 @@ import { Mark, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
+import {
+  dispatchAnchorOrphaned,
+  dispatchTextObjectOrphaned,
+} from "@/lib/tiptap/orphan-events";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 import {
   classifyBlockDepartures,
@@ -127,10 +131,19 @@ export const LinkedAnchor = Mark.create({
 // slices to prevent duplicate-id collisions via copy-paste.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const LinkedAnchorGuard = Extension.create({
+export const LinkedAnchorGuard = Extension.create<{
+  docIdRef: RefObject<string | null> | null;
+}>({
   name: "linkedAnchorGuard",
 
+  addOptions() {
+    return { docIdRef: null };
+  },
+
   addProseMirrorPlugins() {
+    // The document this editor edits rides onto every orphan event, so only
+    // that document's hooks answer it (task 598 — see `orphan-events.ts`).
+    const { docIdRef } = this.options;
     // Capture the live view so the deferred dispatch can re-check anchor
     // liveness against the FINAL, fully-committed doc — the mark-level twin of
     // TextObjectOrphanGuard's settled-doc recheck below. The root-cause fix
@@ -187,11 +200,11 @@ export const LinkedAnchorGuard = Extension.create({
             }
             for (const a of diff.removedAnchors) {
               if (liveAnchorIds && liveAnchorIds.has(a.id)) continue; // survived
-              window.dispatchEvent(
-                new CustomEvent("virgil-anchor-orphaned", {
-                  detail: { anchorId: a.id, kind: a.kind },
-                }),
-              );
+              dispatchAnchorOrphaned({
+                docId: docIdRef?.current ?? null,
+                anchorId: a.id,
+                kind: a.kind,
+              });
             }
           }, 0);
           return null;
@@ -296,15 +309,16 @@ export type BlockAbsorbedHandlerRef = MutableRefObject<
 
 export const TextObjectOrphanGuard = Extension.create<{
   onBlockAbsorbedRef: BlockAbsorbedHandlerRef | null;
+  docIdRef: RefObject<string | null> | null;
 }>({
   name: "textObjectOrphanGuard",
 
   addOptions() {
-    return { onBlockAbsorbedRef: null };
+    return { onBlockAbsorbedRef: null, docIdRef: null };
   },
 
   addProseMirrorPlugins() {
-    const { onBlockAbsorbedRef } = this.options;
+    const { onBlockAbsorbedRef, docIdRef } = this.options;
     // Capture the live view so the deferred dispatch can re-check liveness
     // against the FINAL, fully-committed doc — after every appendTransaction,
     // crucially MarginaliaAnchorGuard's resurrection (it re-inserts a same-uuid
@@ -384,11 +398,11 @@ export const TextObjectOrphanGuard = Extension.create<{
                 handler({ absorbed: block, survivor });
                 continue;
               }
-              window.dispatchEvent(
-                new CustomEvent("virgil-textobject-orphaned", {
-                  detail: { uuid: block.uuid, typeName: block.typeName },
-                }),
-              );
+              dispatchTextObjectOrphaned({
+                docId: docIdRef?.current ?? null,
+                uuid: block.uuid,
+                typeName: block.typeName,
+              });
             }
           }, 0);
           return null;

@@ -33,26 +33,26 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 
-function mainCtx(anchored: Set<string>): EditorExtensionsCtx {
+function mainCtx(anchored: Set<string>, docId: string | null = null): EditorExtensionsCtx {
   return {
     surface: "main",
     editableRef: { current: true },
     cardContext: false,
     callbacks: {},
-    docIdRef: { current: null },
+    docIdRef: { current: docId },
     texBlockIsPoppedRef: { current: undefined },
     anchoredUuidsRef: { current: anchored },
     host: null,
   };
 }
 
-function mountThreeDoc(anchored: Set<string>): Editor {
+function mountThreeDoc(anchored: Set<string>, docId: string | null = null): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   return new Editor({
     element,
     editable: true,
-    extensions: buildEditorExtensions(mainCtx(anchored)),
+    extensions: buildEditorExtensions(mainCtx(anchored, docId)),
     content: {
       type: "doc",
       content: [
@@ -122,6 +122,63 @@ describe("TextObjectOrphanGuard — resurrection awareness", () => {
     expect(liveUuids(editor).has("P3")).toBe(false);
     await flushMacrotask();
     expect(received).toContain("P3");
+    editor.destroy();
+  });
+});
+
+// Task 598: both orphan events carry the docId of the editor whose transaction
+// removed the anchor, so only that document's card hooks answer.
+describe("orphan guards stamp the ORIGINATING docId", () => {
+  it("a removed block's event carries the editor's docId", async () => {
+    const got: unknown[] = [];
+    const h = (e: Event) => got.push((e as CustomEvent).detail);
+    window.addEventListener("virgil-textobject-orphaned", h);
+    const editor = mountThreeDoc(new Set(), "doc-origin");
+    deleteParagraphByUuid(editor, "P3");
+    await flushMacrotask();
+    window.removeEventListener("virgil-textobject-orphaned", h);
+    expect(got).toContainEqual(
+      expect.objectContaining({ docId: "doc-origin", uuid: "P3" }),
+    );
+    editor.destroy();
+  });
+
+  it("a removed linkedAnchor mark's event carries the editor's docId", async () => {
+    const got: unknown[] = [];
+    const h = (e: Event) => got.push((e as CustomEvent).detail);
+    window.addEventListener("virgil-anchor-orphaned", h);
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions(mainCtx(new Set(), "doc-origin")),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { uuid: "P1" },
+            content: [
+              { type: "text", text: "lead " },
+              {
+                type: "text",
+                text: "marked",
+                marks: [{ type: "linkedAnchor", attrs: { anchorId: "anc-1", kind: "note" } }],
+              },
+              { type: "text", text: " tail" },
+            ],
+          },
+        ],
+      },
+    });
+    // Delete the whole marked run (positions: 1 + "lead ".length).
+    editor.view.dispatch(editor.state.tr.delete(6, 12));
+    await flushMacrotask();
+    window.removeEventListener("virgil-anchor-orphaned", h);
+    expect(got).toContainEqual(
+      expect.objectContaining({ docId: "doc-origin", anchorId: "anc-1" }),
+    );
     editor.destroy();
   });
 });

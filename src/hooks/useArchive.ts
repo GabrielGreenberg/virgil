@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useTextObjectOrphaned } from "@/lib/tiptap/orphan-events";
+import { useCallback, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
@@ -172,24 +173,19 @@ export function useArchive(docId: string | null) {
   // snippet's Mode A links. For paragraph × Archive this is the
   // common case: the source paragraph is the snippet's anchor, gets
   // deleted, the link is now stale. See ACTION-MENU-DIAGNOSIS.md C3.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const uuid = (e as CustomEvent).detail?.uuid;
-      if (typeof uuid !== "string" || !uuid) return;
-      update((prev) => {
-        let changed = false;
-        const next = prev.snippets.map((s) => {
-          if (!getLinkedTextObjectIds(s).includes(uuid)) return s;
-          changed = true;
-          return removeTextObjectLink(s, uuid);
-        });
-        return changed ? { snippets: next } : prev;
+  // Gated on `docId` by the door (task 598).
+  useTextObjectOrphaned(docId, ({ uuid }) => {
+    if (typeof uuid !== "string" || !uuid) return;
+    update((prev) => {
+      let changed = false;
+      const next = prev.snippets.map((s) => {
+        if (!getLinkedTextObjectIds(s).includes(uuid)) return s;
+        changed = true;
+        return removeTextObjectLink(s, uuid);
       });
-    };
-    window.addEventListener("virgil-textobject-orphaned", handler);
-    return () =>
-      window.removeEventListener("virgil-textobject-orphaned", handler);
-  }, [update]);
+      return changed ? { snippets: next } : prev;
+    });
+  });
 
   /**
    * Un-archive: hand the snippet's content back to the document and retire the

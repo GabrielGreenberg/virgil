@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useAnchorOrphaned } from "@/lib/tiptap/orphan-events";
+import { useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import type {
@@ -498,19 +499,16 @@ export function useReports(
   );
 
   // Orphan listener — clears dead anchorId on the matching report card.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      // No kind gate: a reloaded orphan event carries the parser-default
-      // `kind:"note"`, so gating made this panel ignore its own orphaned
-      // report mark (BUG1). `clearCardAnchor` self-filters by anchorId
-      // membership (no-match early-return) — the owning panel decides.
-      const { anchorId } = (e as CustomEvent).detail || {};
-      if (!anchorId) return;
-      clearCardAnchor(anchorId);
-    };
-    window.addEventListener("virgil-anchor-orphaned", handler);
-    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
-  }, [clearCardAnchor]);
+  // Gated on `docId` by the door (task 598): a sibling pane holding the same
+  // anchorId must not strip its own card for a deletion in another document.
+  useAnchorOrphaned(docId, ({ anchorId }) => {
+    // No kind gate: a reloaded orphan event carries the parser-default
+    // `kind:"note"`, so gating made this panel ignore its own orphaned
+    // report mark (BUG1). `clearCardAnchor` self-filters by anchorId
+    // membership (no-match early-return) — the owning panel decides.
+    if (!anchorId) return;
+    clearCardAnchor(anchorId);
+  });
 
   return useMemo(
     () => ({

@@ -41,6 +41,7 @@ vi.mock("@/lib/storage", () => {
 
 import { useRevisions } from "@/hooks/useRevisions";
 import { getTextAnchor } from "@/links/links";
+import { dispatchAnchorOrphaned } from "@/lib/tiptap/orphan-events";
 import {
   beginDocPipeline,
   __resetForTests,
@@ -83,6 +84,45 @@ function seedRevisionWithAnchor() {
   });
 }
 
+describe("orphan events are DOC-scoped (task 598)", () => {
+  it("an orphan in doc A leaves doc B's card untouched when both hold the anchorId", async () => {
+    beginDocPipeline("scope-A");
+    beginDocPipeline("scope-B");
+    seedRevisionWithAnchor();
+
+    const a = renderHook(() => useRevisions("scope-A"));
+    const b = renderHook(() => useRevisions("scope-B"));
+    await waitFor(() => expect(a.result.current.cards.length).toBe(1));
+    await waitFor(() => expect(b.result.current.cards.length).toBe(1));
+    mockWrite.mockClear();
+
+    act(() => {
+      dispatchAnchorOrphaned({ docId: "scope-A", anchorId: "anc-rev", kind: "note" });
+    });
+
+    await waitFor(() =>
+      expect(getTextAnchor(a.result.current.cards[0])).toBeNull(),
+    );
+    expect(getTextAnchor(b.result.current.cards[0])?.anchorId).toBe("anc-rev");
+    // B never wrote a sidecar for a deletion that happened in A.
+    await new Promise((r) => setTimeout(r, 20));
+    for (const call of mockWrite.mock.calls) expect(call[0]).not.toBe("scope-B");
+  });
+
+  it("an orphan from a surface with no document (docId null) is heard by nobody", async () => {
+    beginDocPipeline("scope-null");
+    seedRevisionWithAnchor();
+    const { result } = renderHook(() => useRevisions("scope-null"));
+    await waitFor(() => expect(result.current.cards.length).toBe(1));
+
+    act(() => {
+      dispatchAnchorOrphaned({ docId: null, anchorId: "anc-rev", kind: "note" });
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getTextAnchor(result.current.cards[0])?.anchorId).toBe("anc-rev");
+  });
+});
+
 describe("orphan kind-gate dropped — owning panel clears regardless of event kind", () => {
   it("a revision mark reloaded/orphaned as kind:'note' still clears the revision card's textRange", async () => {
     beginDocPipeline("kgd-rev");
@@ -97,7 +137,7 @@ describe("orphan kind-gate dropped — owning panel clears regardless of event k
     act(() => {
       window.dispatchEvent(
         new CustomEvent("virgil-anchor-orphaned", {
-          detail: { anchorId: "anc-rev", kind: "note" },
+          detail: { docId: "kgd-rev", anchorId: "anc-rev", kind: "note" },
         }),
       );
     });
@@ -119,7 +159,7 @@ describe("orphan kind-gate dropped — owning panel clears regardless of event k
     act(() => {
       window.dispatchEvent(
         new CustomEvent("virgil-anchor-orphaned", {
-          detail: { anchorId: "some-other-id", kind: "note" },
+          detail: { docId: "kgd-rev2", anchorId: "some-other-id", kind: "note" },
         }),
       );
     });
