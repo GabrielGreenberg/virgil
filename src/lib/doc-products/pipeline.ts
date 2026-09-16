@@ -43,6 +43,20 @@
  * text and the pipeline's own serialize is suppressed — byte-preserving
  * useLatexSource's contract.
  *
+ * EVERY DEPENDENCY IS STATED, NOT INHERITED FROM WHERE THE CODE SITS
+ * (tasks 593/595). The preamble lifecycle used to be a linear script — read
+ * the disk, then do whatever came next — so `docJson` and the word counts,
+ * which are pure functions of the live PM doc, waited on a fetch they do not
+ * depend on (an empty Outline and "0 words" for the whole read, and forever
+ * if it never settled). They are SEEDED at creation now; the disk read gates
+ * only `preambleReady`, and therefore only `sourceText`, which is the one
+ * product whose contract (line-number parity) actually names it. And the
+ * preamble itself — the one state TWO readers write, the attach read and
+ * every delimiters re-read — has a monotonic owner: a read captures the
+ * `preambleEpoch` it started at and may only assign while it is still the
+ * newest, so an earlier read resolving last can no longer overwrite a fresher
+ * extraction with a stale disk snapshot.
+ *
  * KEYSTROKE SANCTITY: the `editor.on('update')` handler below is O(1) per
  * transaction (one timer reset). Every O(doc)/O(changed)
  * product refresh runs in Tier A/B callbacks, off the keystroke path. This
@@ -56,7 +70,11 @@ import {
   collectPreambleTitleFields,
   type AssembleLatexOptions,
 } from "@/lib/latex-serializer";
-import { computeCategoryCounts, type CategoryCounts } from "@/lib/word-count-core";
+import {
+  categoryCountsEqual,
+  computeCategoryCounts,
+  type CategoryCounts,
+} from "@/lib/word-count-core";
 import { readTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 import type { BibFamily } from "@/lib/bib-family";
@@ -182,10 +200,6 @@ export function createDocProducts(
   let preamble: string | undefined;
   let postamble: string | undefined;
   let preambleReady = false;
-  // Once the code view has fed us raw text, the pipeline's own serialize
-  // defers to it until the next visual-editor edit re-serializes (the same
-  // hasExternalFeed contract useLatexSource had).
-  let externalFed = false;
 
   function publish(next: Partial<ProductsSnapshot>) {
     snapshot = { ...snapshot, ...next, generation: snapshot.generation + 1 };
@@ -294,9 +308,13 @@ export function createDocProducts(
     // degrade, it may never escape, and one product's refusal may not take the
     // others down with it.
     try {
-      // sourceText: suppressed while the code view owns the feed. A visual
-      // edit reaching here means the code view is closed (or never opened),
-      // so the pipeline reclaims the feed — clearing the external latch.
+      // sourceText: suppressed while the code view owns the feed. Reaching
+      // here means the code view is closed (or never opened), so the pipeline
+      // reclaims the feed. The deferral is stated ONCE — `isSuppressed()` here
+      // and in `isTierBStale`, plus the `sourceFresh = null` the external feed
+      // writes — so there is no second latch to keep in step with it (the
+      // `externalFed` boolean was the hasExternalFeed contract's last reader,
+      // and it gated a schedule the seed now owns).
       if (!config.isSuppressed()) {
         const bibFamily = config.getBibFamily() ?? null;
         const built = buildSourceText(bibFamily);
@@ -304,7 +322,6 @@ export function createDocProducts(
           sourceFresh = { doc, preamble, postamble, bibFamily };
         }
         if (built.state === "built" && built.text !== snapshot.sourceText) {
-          externalFed = false;
           next.sourceText = built.text;
         }
       }
@@ -312,16 +329,37 @@ export function createDocProducts(
       /* source degraded to the last good text — see above. */
     }
     try {
-      const docJson = refreshDocJson();
-      tierADoc = doc;
-      if (docJson !== snapshot.docJson) next.docJson = docJson;
-      if (docJson) {
-        next.wordCounts = computeCategoryCounts(docJson);
+      // Each half asks its OWN record first. The counts are not a free rider
+      // on the source half: a Tier B armed because the preamble landed (or
+      // because the bib family moved) must not re-walk a doc the tally is
+      // already current with.
+      let docJson = snapshot.docJson;
+      if (tierADoc !== doc || !docJson) {
+        docJson = refreshDocJson();
+        tierADoc = doc;
+        if (docJson !== snapshot.docJson) next.docJson = docJson;
+      }
+      if (docJson && countsDoc !== doc) {
+        const wordCounts = computeCategoryCounts(docJson);
         countsDoc = doc;
+        // EQUALITY BAIL (task 594). `computeCategoryCounts` allocates a fresh
+        // object every call, so writing it unconditionally made the publish
+        // guard below unfalsifiable: every Tier B bumped `generation` and
+        // notified every subscriber, denying `useSyncExternalStore` the
+        // reference bail this snapshot's own doc comment promises. An edit
+        // that moves the doc without moving a tally (a mark, a typed-then-
+        // deleted character) now keeps the previous object.
+        const prev = snapshot.wordCounts;
+        if (!prev || !categoryCountsEqual(prev, wordCounts)) {
+          next.wordCounts = wordCounts;
+        }
       }
     } catch {
       /* counts degraded to the last good tally — see above. */
     }
+    // An HONEST no-op test, now that all three products bail: a run that
+    // changed nothing publishes nothing, and `generation` answers the
+    // staleness question it exists for.
     if (Object.keys(next).length > 0) publish(next);
     pipelineStats.lastTierBMs = performance.now() - t0;
   }
@@ -371,48 +409,67 @@ export function createDocProducts(
   };
   editor.on("update", onUpdate);
 
+  // ── Initial seed (task 593) ────────────────────────────────────────────
+  // `docJson` and the word counts are pure functions of the live PM doc —
+  // the Outline's content, EditorLayout's `latestDoc`, the word-count panel.
+  // They used to be produced inside the attach read's `.then` for no reason
+  // but the order the script was written in, so all three were EMPTY for the
+  // whole disk fetch (a permission prompt under real FSA) and permanently if
+  // that promise never settled, with no error anywhere. The mount is the one
+  // place a whole-doc walk is unavoidable — it is what legacy `useWordCount`
+  // and the legacy outline memo each did on their own mount — so this is a
+  // restoration, not a new cost.
+  runTierA();
+  if (config.isVisible()) scheduleTierB();
+
   // ── Preamble/postamble lifecycle (lifted from useLatexSource) ──────────
-  let attachCancelled = false;
-  readTex(config.docId)
-    .then((diskText) => {
-      if (attachCancelled || destroyed) return;
-      const extracted = extractPreambleAndPostamble(diskText);
-      preamble = extracted?.preamble;
-      postamble = extracted?.postamble;
-      preambleReady = true;
-      // Initial population: seed docJson now, products on the idle tier —
-      // unless the code view already fed fresher raw text.
-      runTierA();
-      if (!externalFed) scheduleTierB();
-    })
-    .catch(() => {
-      if (attachCancelled || destroyed) return;
-      // Disk read failed — default-preamble serialize so lint still runs
-      // (the useLatexSource fallback contract).
-      preamble = undefined;
-      postamble = undefined;
-      preambleReady = true;
-      runTierA();
-      if (!externalFed) scheduleTierB();
-    });
+  // ONE OWNER, ONE ORDERING (task 595). Two readers write this state — the
+  // attach read below and every TEX_DELIMITERS_CHANGED — and neither knew
+  // about the other, so a style switch or code-pane preamble commit arriving
+  // during the open window could be silently overwritten by the older attach
+  // read resolving last: a preamble off by one line sends every diagnostic to
+  // the wrong paragraph, and it reads as a lint bug rather than a stale read.
+  // The epoch is the discipline the file already used for `destroyed`,
+  // extended to the state the readers SHARE: a read captures the epoch it
+  // started at and may only assign while it is still the newest. A third
+  // reader inherits the ordering by going through this door.
+  let preambleEpoch = 0;
+
+  /** `initial` = the attach read, the one that OPENS the line-number-parity
+   *  gate: any settled outcome sets `preambleReady`, a failure meaning "no
+   *  disk preamble" so lint still runs (the useLatexSource fallback). A
+   *  re-read is best-effort and keeps the current preamble unless it has a
+   *  better one. */
+  function readPreamble(initial: boolean) {
+    const epoch = ++preambleEpoch;
+    const owns = () => !destroyed && epoch === preambleEpoch;
+    readTex(config.docId)
+      .then((diskText) => {
+        if (!owns()) return;
+        const extracted = extractPreambleAndPostamble(diskText);
+        if (!extracted && !initial) return;
+        preamble = extracted?.preamble;
+        postamble = extracted?.postamble;
+        preambleReady = true;
+        // The preamble/postamble ARE Tier B inputs, and the freshness record
+        // says so — so neither door decides for itself what went stale.
+        revalidate();
+      })
+      .catch(() => {
+        if (!owns() || !initial) return;
+        preamble = undefined;
+        postamble = undefined;
+        preambleReady = true;
+        revalidate();
+      });
+  }
+
+  readPreamble(true);
 
   const onDelimitersChanged = (e: Event) => {
     const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
     if (!detail || detail.docId !== config.docId) return;
-    readTex(config.docId)
-      .then((diskText) => {
-        if (destroyed) return;
-        const extracted = extractPreambleAndPostamble(diskText);
-        if (!extracted) return;
-        preamble = extracted.preamble;
-        postamble = extracted.postamble;
-        // The preamble/postamble ARE Tier B inputs, and the record says so —
-        // so this door no longer decides for itself what has gone stale.
-        revalidate();
-      })
-      .catch(() => {
-        /* best-effort — keep the current preamble */
-      });
+    readPreamble(false);
   };
   if (typeof window !== "undefined") {
     window.addEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);
@@ -435,7 +492,6 @@ export function createDocProducts(
     },
     revalidate,
     setExternalSourceFeed(text: string) {
-      externalFed = true;
       // The code view owns the feed now, so whatever the pipeline last
       // serialized no longer describes `snapshot.sourceText`: the source half
       // of the idle tier is stale by construction, and stays stale until the
@@ -462,7 +518,6 @@ export function createDocProducts(
     },
     destroy() {
       destroyed = true;
-      attachCancelled = true;
       editor.off("update", onUpdate);
       if (typeof window !== "undefined") {
         window.removeEventListener(

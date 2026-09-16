@@ -97,6 +97,32 @@ export const EMPTY_CATEGORY_COUNTS: CategoryCounts = Object.freeze({
   characters: Object.freeze(zeroByCategory()),
 });
 
+/** Structural equality over a tally — the shared predicate for "did this
+ *  recount actually change anything?" (task 594).
+ *
+ *  `computeCategoryCounts` allocates a fresh object every call, so a consumer
+ *  that stores its result denies `useSyncExternalStore` (and every downstream
+ *  memo) the reference-equality bail they are built on: an unchanged tally
+ *  re-renders every word-count host. The comparison itself is bounded and
+ *  allocation-free — `words` and `characters` are flat records over the fixed
+ *  `ALL_CATEGORIES` list, never a deep walk — so the cheap answer is simply to
+ *  ask, and keep the previous object when nothing moved.
+ *
+ *  It lives here, beside `EMPTY_CATEGORY_COUNTS`, because the tally's shape is
+ *  this module's fact: the selection-counts path and the outline's per-section
+ *  counts inherit one predicate rather than growing a second. */
+export function categoryCountsEqual(
+  a: CategoryCounts,
+  b: CategoryCounts,
+): boolean {
+  if (a === b) return true;
+  for (const cat of ALL_CATEGORIES) {
+    if (a.words[cat] !== b.words[cat]) return false;
+    if (a.characters[cat] !== b.characters[cat]) return false;
+  }
+  return true;
+}
+
 export function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;

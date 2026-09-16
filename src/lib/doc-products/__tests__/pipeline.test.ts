@@ -13,12 +13,25 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const DISK_TEX =
+  "\\documentclass{article}\n\\begin{document}\n\nbody\n\n\\end{document}\n";
+
+/** Per-call `readTex` script (tasks 593/595 need a read that never settles,
+ *  and a pair of reads that resolve out of start order). Default: the plain
+ *  disk text, resolved immediately. */
+let readTexImpl: (call: number) => Promise<string> = () =>
+  Promise.resolve(DISK_TEX);
+let readTexCalls = 0;
+
+/** The same document with a preamble line added — the shape a style
+ *  switch or a code-pane preamble commit leaves on disk. */
+const FRESH_TEX = DISK_TEX.replace(
+  "\\begin{document}",
+  "\\usepackage{fresh}\n\\begin{document}",
+);
+
 vi.mock("@/lib/storage", () => ({
-  readTex: vi.fn(() =>
-    Promise.resolve(
-      "\\documentclass{article}\n\\begin{document}\n\nbody\n\n\\end{document}\n",
-    ),
-  ),
+  readTex: vi.fn(() => readTexImpl(readTexCalls++)),
 }));
 
 /** Flipped by the 592 refusal leg: `assembleLatex` sits OUTSIDE
@@ -47,6 +60,7 @@ import {
 } from "../pipeline";
 import { blockCacheStats } from "../block-caches";
 import type { BibFamily } from "@/lib/bib-family";
+import { TEX_DELIMITERS_CHANGED_EVENT } from "@/lib/tex-delimiters-event";
 
 let editor: Editor | null = null;
 let products: DocProducts | null = null;
@@ -72,6 +86,8 @@ let visible = true;
 let bibFamily: BibFamily | null = null;
 
 beforeEach(() => {
+  readTexImpl = () => Promise.resolve(DISK_TEX);
+  readTexCalls = 0;
   suppressed = false;
   visible = true;
   bibFamily = null;
@@ -283,6 +299,103 @@ describe("doc-products pipeline", () => {
     await vi.advanceTimersByTimeAsync(350);
     await settle();
     expect(p.snapshot().sourceText).toContain("alpha typed more");
+  });
+
+  it("seeds docJson at creation — before the preamble read settles (593)", async () => {
+    const ed = makeEditor("<p>alpha</p><p>beta</p>");
+    const p = attach(ed);
+    // NO settle(): the attach readTex promise has not been flushed. The
+    // Outline, latestDoc and the word-count panel all read products that are
+    // pure functions of the live PM doc, and none of them depends on the disk
+    // preamble — so none of them may wait on it.
+    expect(p.snapshot().docJson).not.toBeNull();
+    expect(p.snapshot().docJson).toEqual(ed.getJSON());
+    // The gate that REMAINS is the one the parity contract names.
+    expect(p.snapshot().sourceText).toBeNull();
+  });
+
+  it("a preamble read that never settles still yields docJson + counts, and only holds sourceText (593)", async () => {
+    readTexImpl = () => new Promise<string>(() => {});
+    const ed = makeEditor("<p>alpha beta</p>");
+    const p = attach(ed);
+    await settle();
+    await vi.advanceTimersByTimeAsync(2000);
+    // Before, this pane sat with an empty Outline, a null latestDoc and "0
+    // words" permanently, with no error anywhere.
+    expect(JSON.stringify(p.snapshot().docJson)).toContain("alpha beta");
+    expect(p.snapshot().wordCounts?.words.mainText).toBe(2);
+    // Line-number parity is untouched: no preamble, no serialize.
+    expect(p.snapshot().sourceText).toBeNull();
+  });
+
+  it("a Tier B run whose products are all identical publishes NOTHING (594)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const gen = p.snapshot().generation;
+    const counts = p.snapshot().wordCounts;
+    const sourceText = p.snapshot().sourceText;
+    const notified = vi.fn();
+    const unsub = p.subscribe(notified);
+
+    // Force a Tier B over an unmodified doc: the code view takes the feed and
+    // hands back byte-identical text, which makes the source half stale by
+    // construction (sourceFresh = null) without changing a single product.
+    suppressed = true;
+    p.setExternalSourceFeed(sourceText!);
+    suppressed = false;
+    p.revalidate();
+    const tierB = pipelineStats.tierBRuns;
+    await settle();
+
+    expect(pipelineStats.tierBRuns).toBe(tierB + 1); // it really ran
+    expect(p.snapshot().generation).toBe(gen); // and published nothing
+    expect(notified).not.toHaveBeenCalled();
+    expect(p.snapshot().wordCounts).toBe(counts); // whole-object identity
+    unsub();
+  });
+
+  it("an edit that moves the doc but not the tally keeps the wordCounts identity (594)", async () => {
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    await settle();
+    const counts = p.snapshot().wordCounts;
+
+    // Bold the paragraph: the doc changes, the .tex changes, the tally cannot.
+    ed.commands.selectAll();
+    ed.commands.toggleBold();
+    await vi.advanceTimersByTimeAsync(350);
+    await settle();
+
+    expect(p.snapshot().sourceText).toContain("\\textbf{alpha}");
+    expect(p.snapshot().wordCounts).toBe(counts);
+  });
+
+  it("a later-started preamble read wins over an earlier one that resolves last (595)", async () => {
+    let resolveAttach!: (text: string) => void;
+    readTexImpl = (call) =>
+      call === 0
+        ? new Promise<string>((resolve) => {
+            resolveAttach = resolve;
+          })
+        : Promise.resolve(FRESH_TEX);
+
+    const ed = makeEditor("<p>alpha</p>");
+    const p = attach(ed);
+    // A style switch / code-pane preamble commit lands during the open window.
+    window.dispatchEvent(
+      new CustomEvent(TEX_DELIMITERS_CHANGED_EVENT, {
+        detail: { docId: "test-doc" },
+      }),
+    );
+    await settle();
+    expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
+
+    // ...and only NOW does the attach read — started first — answer, with the
+    // older disk snapshot. It no longer owns the preamble.
+    resolveAttach(DISK_TEX);
+    await settle();
+    expect(p.snapshot().sourceText).toContain("\\usepackage{fresh}");
   });
 
   it("destroy unregisters and stops all work", async () => {
