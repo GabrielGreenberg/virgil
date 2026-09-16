@@ -145,7 +145,14 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
             docJson.content.length > 0
               ? (docJson.content[0] as Record<string, unknown>)
               : (content as Record<string, unknown>);
-          addStackItem({
+          // The add REPORTS (task 591) and this door has no surface to say
+          // it on — an HTML5 drop leaves no float open and tears nothing
+          // down, so a refusal here costs the user only the drop itself.
+          // Named rather than discarded so the swallow is a decision, not an
+          // oversight; if `MIME_TEXT_INSERT` ever regains a producer
+          // (task 590 — it has had none since ec382103), this is where a
+          // notice belongs.
+          const landed = addStackItem({
             id: crypto.randomUUID(),
             capturedAt: new Date().toISOString(),
             source: terminal.getSource(),
@@ -154,6 +161,7 @@ export function StackIcon({ open, onToggle }: StackIconProps) {
               node: node as unknown as import("@tiptap/react").JSONContent,
             },
           }, terminal.getBibCtx());
+          if (!landed) console.warn("[stack] HTML5 drop: the Stack is full");
         }
       } catch {
         /* ignore */

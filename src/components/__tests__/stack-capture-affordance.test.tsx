@@ -223,10 +223,19 @@ describe("the host closes the float only on a capture that landed", () => {
     ).toBe(-1);
   });
 
-  it("the shared terminal is the capture door, and it reports", () => {
+  /** The terminal's own body — anchored on the callback and its dep array,
+   *  whose CONTENTS are free to grow (they did, when the refusal notice
+   *  arrived), so the needle stops at the bracket rather than a whole list. */
+  function terminalBody(): string {
     const at = src.indexOf("const captureKeyToStack = useCallback(");
     expect(at, "the shared stack terminal moved — re-aim this census").toBeGreaterThan(0);
-    const body = src.slice(at, src.indexOf("[popoutsDeps],", at));
+    const end = src.indexOf("[popoutsDeps", at);
+    expect(end, "the terminal's dep array moved — re-aim this census").toBeGreaterThan(at);
+    return src.slice(at, end);
+  }
+
+  it("the shared terminal is the capture door, and it reports", () => {
+    const body = terminalBody();
 
     const capture = body.indexOf("captureFloatToStack(");
     const refuse = body.indexOf("if (!item) return false;");
@@ -238,6 +247,26 @@ describe("the host closes the float only on a capture that landed", () => {
     // reach the Stack around it.
     expect(add, "and a capture that landed enters the ONE add door").toBeGreaterThan(refuse);
     expect(body.includes("return true;"), "…and reports that it landed").toBe(true);
+  });
+
+  it("…and the report it gives is the ADD's, not the capture's (task 591)", () => {
+    // The leg with teeth for 591. `addStackItem` used to return `void`, so the
+    // terminal reported `true` for an item that never persisted — and this
+    // terminal's report is what closes the float and tears down the lift. The
+    // persistence door now answers, so the terminal must ASK: the add is
+    // inside the guard, the refusal is surfaced rather than swallowed, and the
+    // strip opens only past it (opening on nothing is the visible half of the
+    // same lie).
+    const body = terminalBody();
+    const guard = body.indexOf("if (!addStackItem(item, stackBibCtxRef.current)) {");
+    const notice = body.indexOf("dragHandleNotify(");
+    const strip = body.indexOf("openStackStrip()");
+    expect(guard, "the terminal must gate on the add's report").toBeGreaterThan(-1);
+    expect(notice, "a Stack that is genuinely full is said out loud")
+      .toBeGreaterThan(guard);
+    expect(body.indexOf("return false;", guard), "…and the terminal reports the refusal")
+      .toBeGreaterThan(notice);
+    expect(strip, "the strip opens only on an add that landed").toBeGreaterThan(notice);
   });
 
   it("the content lift enters that SAME terminal (task 456)", () => {

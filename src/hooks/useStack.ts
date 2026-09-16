@@ -7,17 +7,25 @@
  * BroadcastChannel needed; the bus is reserved for typed pref events).
  *
  * The store is intentionally simple: a sorted array (newest first) with
- * FIFO eviction at `STACK_MAX_ITEMS`. Pulls do NOT remove items — the
+ * FIFO eviction at the cap — which is `STACK_MAX_ITEMS` *and*
+ * `STACK_MAX_CHARS`, applied together by `fitStackItems`
+ * ([budget.ts](../lib/stack/budget.ts)), because the count alone never
+ * measured the thing that actually runs out. Pulls do NOT remove items — the
  * Stack is one-way. Removal is explicit via the per-thumbnail X.
+ *
+ * Every write REPORTS (task 591): the persistence door returns whether it
+ * landed, and nothing above it — not the hook's state, not the add door, not
+ * the capture terminal that closes a float on the answer — updates on a write
+ * that did not.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  STACK_MAX_ITEMS,
   STACK_STORAGE_KEY,
   type StackEnvelope,
   type StackItem,
 } from "@/lib/stack/types";
+import { fitStackItems, serializeStackEnvelope } from "@/lib/stack/budget";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 import {
   normalizeStackItemBib,
@@ -51,13 +59,33 @@ function readEnvelope(): StackEnvelope {
   }
 }
 
-function writeEnvelope(env: StackEnvelope) {
-  if (typeof window === "undefined") return;
+/**
+ * **THE persistence door, and it REPORTS** (task 591).
+ *
+ * It used to swallow every `setItem` throw into a `console.error` and return
+ * `void`, so `addStackItem` returned `void` too, so `captureKeyToStack`
+ * returned `true` unconditionally — and the float producer closed its popout
+ * and the lift producer tore down its overlay on a capture that had never
+ * landed. THE REPORT IS THE PERMISSION (task 332): a door that cannot fail is
+ * a door whose report means nothing. So the one thing that can actually fail
+ * says so, and every caller above it carries the answer up.
+ *
+ * `false` is also the honest answer on the server (no `localStorage`): nothing
+ * was persisted there either.
+ */
+function writeSerialized(json: string): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    localStorage.setItem(STACK_STORAGE_KEY, JSON.stringify(env));
+    localStorage.setItem(STACK_STORAGE_KEY, json);
+    return true;
   } catch (err) {
     console.error("[stack] persist failed", err);
+    return false;
   }
+}
+
+function writeEnvelope(env: StackEnvelope): boolean {
+  return writeSerialized(serializeStackEnvelope(env.items));
 }
 
 // ── Same-window listeners ──────────────────────────────────────────────
@@ -71,8 +99,11 @@ function notifySameWindow() {
 
 export interface UseStackValue {
   items: StackItem[];
-  remove: (id: string) => void;
-  clear: () => void;
+  /** `true` iff the removal actually persisted; state follows storage, never
+   *  leads it (task 591). */
+  remove: (id: string) => boolean;
+  /** `true` iff the clear actually persisted. */
+  clear: () => boolean;
   /** Look up a stack item by id — used by the stack-pull drop spec. */
   getItem: (id: string) => StackItem | null;
 }
@@ -96,25 +127,27 @@ export function useStack(): UseStackValue {
     };
   }, []);
 
-  const persist = useCallback((next: StackItem[]) => {
-    writeEnvelope({ version: 1, items: next });
+  // State follows the WRITE, never leads it: a failed persist used to leave
+  // React holding a list storage does not have, so the strip showed the
+  // removal and the next cross-window re-read undid it (task 591).
+  const persist = useCallback((next: StackItem[]): boolean => {
+    if (!writeEnvelope({ version: 1, items: next })) return false;
     setItems(next);
     notifySameWindow();
+    return true;
   }, []);
 
   const remove = useCallback(
     (id: string) => {
       const cur = readEnvelope().items;
       const next = cur.filter((it) => it.id !== id);
-      if (next.length === cur.length) return;
-      persist(next);
+      if (next.length === cur.length) return false;
+      return persist(next);
     },
     [persist],
   );
 
-  const clear = useCallback(() => {
-    persist([]);
-  }, [persist]);
+  const clear = useCallback(() => persist([]), [persist]);
 
   const getItem = useCallback(
     (id: string) => items.find((it) => it.id === id) ?? null,
@@ -141,6 +174,10 @@ export function readStackItem(id: string): StackItem | null {
  * than given the same signature: it had no caller, and a second add door is a
  * door someone reaches for without the obligation below.
  *
+ * Returns whether the item actually LANDED. `false` means the envelope could
+ * not be persisted even after FIFO-evicting everything older — the caller must
+ * not report a capture (task 591).
+ *
  * `bib` is REQUIRED (task 235). The referenced bibliography is resolved HERE,
  * once, for every payload family, so a producer cannot land an item without
  * answering the question — including producers that never touch
@@ -148,9 +185,25 @@ export function readStackItem(id: string): StackItem | null {
  * ctx parameter. A doc with no bibliography answers with resolvers that return
  * undefined, which is an answer; there is no default to omit.
  */
-export function addStackItem(item: StackItem, bib: StackBibCtx): void {
+export function addStackItem(item: StackItem, bib: StackBibCtx): boolean {
   const cur = readEnvelope().items;
-  const next = [withBibCarry(item, bib), ...cur].slice(0, STACK_MAX_ITEMS);
-  writeEnvelope({ version: 1, items: next });
-  notifySameWindow();
+  let candidate = [withBibCarry(item, bib), ...cur];
+  // The cap is applied here, once, in BOTH its halves — count then the real
+  // localStorage budget, FIFO, never at the expense of the item being added
+  // ([budget.ts](../lib/stack/budget.ts)).
+  for (;;) {
+    const fitted = fitStackItems(candidate);
+    if (writeSerialized(fitted.serialized)) {
+      notifySameWindow();
+      return true;
+    }
+    // Our own budget is a share of the origin's, not the whole of it — every
+    // `virgil:*` pref key spends from the same ~5 MB — so a write can still
+    // throw well inside it. Make room the same way and try again. When only
+    // the new item is left there is nothing further to give, and the add
+    // REFUSES: a failed write is never reported as a capture, because its
+    // report is what closes the float and tears down the lift.
+    if (fitted.items.length <= 1) return false;
+    candidate = fitted.items.slice(0, fitted.items.length - 1);
+  }
 }

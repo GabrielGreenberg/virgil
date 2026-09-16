@@ -159,9 +159,24 @@ export interface StackEnvelope {
   items: StackItem[];
 }
 
-/** Hard cap on stack size. localStorage limit is small (~5MB per origin);
- *  200 items × a few KB stays comfortably within budget. FIFO eviction. */
+/** Hard cap on stack ITEM COUNT. A sanity bound on the strip, not a budget:
+ *  it was written as "200 items × a few KB stays comfortably within budget",
+ *  which a `heading` payload — the whole dominated section as node JSON, plus
+ *  its bib carry — falsifies on its own. What the origin actually rations is
+ *  CHARACTERS, so the count cap is only the first half of the rule; see
+ *  {@link STACK_MAX_CHARS} and `fitStackItems` in
+ *  [budget.ts](budget.ts), which apply both in one place. FIFO eviction. */
 export const STACK_MAX_ITEMS = 200;
+
+/** Hard cap on the SERIALIZED envelope, in UTF-16 code units — which is what
+ *  a browser's ~5 MB-per-origin localStorage quota actually counts. Held well
+ *  under that ceiling because the Stack shares the origin with every
+ *  `virgil:*` pref key (view prefs, panel themes, the style library, …), and
+ *  exceeding the quota fails the NEXT writer, whoever that is. Enforced by
+ *  `fitStackItems`, in FIFO order, and never at the expense of the item being
+ *  added — an add that still cannot land REFUSES rather than reporting a
+ *  capture that did not happen (task 591). */
+export const STACK_MAX_CHARS = 2_000_000;
 
 /** localStorage key for the Stack envelope. Window-scoped: every Virgil
  *  window has its own. */
