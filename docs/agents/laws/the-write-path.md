@@ -1733,6 +1733,28 @@ The door is `mutateIndex(fn)` in [doc-index.ts](../../../src/lib/doc-index.ts), 
 
 CI: [doc-index-mutation-door.test.ts](../../../src/lib/__tests__/doc-index-mutation-door.test.ts) — a fake store whose transactions read when they run; interleaved register-vs-access-bump, rename-vs-remove, and double-register legs; the fresh-snapshot leg; and a census (no `writeIndex` anywhere, `INDEX_KEY` written once, through `update`). Neutered against the pre-601 `doc-index.ts` + `storage-fsa.ts`: all six legs fail, the race legs with exactly the production symptoms (row lost, removal undone, two rows). **Owed, not claimed:** a real two-window eyeball (autosave in one, open a folder in the other).
 
+### The retirement half: a doc id that is RETIRED takes its durable state with it
+
+Task 604. The emergency mirror is keyed by doc id, and the example paper's id is
+FIXED — so a mirror left behind by "Reset example document" was read by the
+pristine re-seed as its own unsaved work, and the recovery badge offered to
+restore exactly the edits the user had just chosen to throw away.
+
+- **One door.** `purgeDoc` (`src/lib/doc-index.ts`) is the single place a doc id's
+  durable identity is retired; `deleteDocFromIndex` and `resetExample` both call
+  it. It deletes every docId-keyed store this browser holds — the folder and
+  legacy-bib handles, the emergency mirror plus its in-memory recovery offer, and
+  every `LOCAL_SIDECAR_FILENAMES` slot — and its doc comment lists what it
+  deliberately leaves (`doc-owner/<id>`, owned by the live Web Lock; tab records,
+  owned by task 603's sweep; the shared `tex-asset/*` cache; the in-memory
+  unsaved-work alarm). A new docId-keyed store must be added to that list.
+- **A third mirror ending.** Besides `landed` and `discarded` (task 557), the
+  mirror may be cleared because the identity is gone. The mirror census admits
+  that one `clearMirror` call, inside `purgeDoc`, and nowhere else below the hook.
+- CI: `example-seeder.test.ts` (a mirror, offer and local sidecars written, then
+  `resetExample()` — all gone; fails against the pre-fix `purgeDoc`),
+  `mirror-evidence-census.test.ts`.
+
 ### CI, and the limits stated rather than implied
 
 Suites: [save-state-census](../../../src/lib/__tests__/save-state-census.test.ts),
