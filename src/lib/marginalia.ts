@@ -139,14 +139,6 @@ export const MIME_BIB_MERGE = "application/x-virgil-bib-merge";
 export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 /** Drag a footnote to move it to a new position. */
 export const MIME_FOOTNOTE = "application/x-virgil-footnote";
-/** Drag raw text content for inline insertion (no entity identity). */
-export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
-/**
- * Drag the floating "selection chip" into a side panel (Notes / Revisions /
- * Cutter) to create a linked-margin item anchored to the selected range.
- * Panel-level drop, not margin-level — intentionally not in ANCHOR_DRAG_TYPES.
- */
-export const MIME_SELECTION_ANCHOR = "application/x-virgil-selection-anchor";
 
 /**
  * All MIME types that represent paragraph-level anchor/link operations.
@@ -175,7 +167,6 @@ export function isAnchorDrag(dt: DataTransfer | null): boolean {
  */
 export const EDITOR_INSERT_DRAG_TYPES: readonly string[] = [
   MIME_CITATION,
-  MIME_TEXT_INSERT,
   MIME_FOOTNOTE,
 ];
 
@@ -185,6 +176,86 @@ export function isEditorInsertDrag(dt: DataTransfer | null): boolean {
     dt != null && EDITOR_INSERT_DRAG_TYPES.some((t) => dt.types.includes(t))
   );
 }
+
+// ---------------------------------------------------------------------------
+// Which of these MIMEs anyone actually WRITES (task 590)
+// ---------------------------------------------------------------------------
+
+/**
+ * **A drag MIME's liveness is DATA, not prose.**
+ *
+ * Every custom `application/x-virgil-*` type above is half a contract: a
+ * PRODUCER somewhere calls `dataTransfer.setData(MIME, …)` and a READER
+ * somewhere calls `getData` / tests `types`. When a producer is deleted the
+ * reader keeps type-checking, keeps rendering, and keeps looking live — and the
+ * only record of which half survives is a hand-written comment beside the
+ * reader. Those comments rot in the one direction that matters: `StackIcon`'s
+ * said "today the only live HTML5 producer is `MIME_TEXT_INSERT`" for three
+ * months after `ec382103` deleted the last `setData` for it, and the handler it
+ * described would have been WRONG if revived (it bypassed `lib/stack/snapshot`
+ * entirely). `MIME_SELECTION_ANCHOR` went further still — no producer, no
+ * reader, just an exported string and a paragraph describing a gesture that was
+ * never built.
+ *
+ * So each surviving MIME states its own answer here, and
+ * [drag-mime-production.test.ts](__tests__/drag-mime-production.test.ts) checks
+ * the statement against the two silos' actual `setData` call sites:
+ *
+ * - `produced: true` must have at least one real producer — delete the last one
+ *   and the suite fails rather than leaving a reader to rot.
+ * - `produced: false` must have NONE — add a producer and the suite makes you
+ *   come here and say so, which is where the reader's own comment gets fixed.
+ * - Either way, a MIME must have a READER outside this module. A constant
+ *   nobody writes and nobody reads is not a residual, it is litter, and the
+ *   registry is where that gets decided out loud instead of by a grep three
+ *   months later ("a registry earns its name by being read").
+ *
+ * A `produced: false` row is therefore not a bug — `MIME_MARGINALIA_MOVE` and
+ * `MIME_FOOTNOTE` are deliberate ARMED readers, latent traps that close the
+ * moment their gesture returns. The rule is only that the deliberateness is
+ * written down where the check can see it.
+ */
+export type DragMimeProduction = {
+  /** The exported constant's NAME — what a `setData(…)` call site spells. */
+  readonly constant: string;
+  /** Its value, so the census can also catch a raw-string producer. */
+  readonly mime: string;
+} & (
+  | { readonly produced: true }
+  /** No `setData` anywhere: why the reader is kept anyway. */
+  | { readonly produced: false; readonly retainedBecause: string }
+);
+
+export const DRAG_MIME_PRODUCTION: readonly DragMimeProduction[] = [
+  {
+    constant: "MIME_MARGINALIA_MOVE",
+    mime: MIME_MARGINALIA_MOVE,
+    produced: false,
+    retainedBecause:
+      "the lone ANCHOR_DRAG_TYPES member, so isAnchorDrag stays a live " +
+      "dropcursor suppressor for any future native paragraph-anchor drag",
+  },
+  { constant: "MIME_CITATION", mime: MIME_CITATION, produced: true },
+  { constant: "MIME_BIB_MERGE", mime: MIME_BIB_MERGE, produced: true },
+  {
+    constant: "MIME_ARCHIVE",
+    mime: MIME_ARCHIVE,
+    produced: false,
+    retainedBecause:
+      "the archive-card restore drag is read by EditorLayout's drop and " +
+      "RichTextField's drop/dragover; the card-side drag handle is owed, and " +
+      "its drop path is the one that already works",
+  },
+  {
+    constant: "MIME_FOOTNOTE",
+    mime: MIME_FOOTNOTE,
+    produced: false,
+    retainedBecause:
+      "Editor.tsx's footnote-move drop is deliberately retained behind the " +
+      "task-396 container gate — an armed latent-trap closure for the moment " +
+      "a footnote-card drag returns",
+  },
+];
 
 export interface MarginaliaMarker {
   /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */

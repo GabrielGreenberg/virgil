@@ -3,7 +3,6 @@ import {
   EDITOR_INSERT_DRAG_TYPES,
   isEditorInsertDrag,
   MIME_CITATION,
-  MIME_TEXT_INSERT,
   MIME_FOOTNOTE,
   MIME_MARGINALIA_MOVE,
 } from "@/lib/marginalia";
@@ -16,6 +15,12 @@ import {
  * setting `dropEffect`. The fix routes the editor's inline-insert drags through
  * a single canonical set (`EDITOR_INSERT_DRAG_TYPES`) that the `dragover`
  * handler uses to give them a clean `"move"` affordance.
+ *
+ * Membership shrank in task 590: `MIME_TEXT_INSERT` was deleted outright (no
+ * `setData` for it survived `ec382103`), leaving the citation drag and the
+ * deliberately-armed footnote-move drop. Which MIMEs still have a producer is
+ * now stated as data in `DRAG_MIME_PRODUCTION` and checked by
+ * [drag-mime-production.test.ts](drag-mime-production.test.ts).
  *
  * These tests lock the SSOT membership + the recognizer. The affordance itself
  * (`dropEffect = "move"`) is applied in `Editor.tsx`'s `handleDOMEvents.dragover`
@@ -31,7 +36,7 @@ function dtWith(...types: string[]): DataTransfer {
 describe("EDITOR_INSERT_DRAG_TYPES (editor inline-insert drag SSOT)", () => {
   it("contains exactly the MIMEs the editor's handleDrop accepts", () => {
     expect([...EDITOR_INSERT_DRAG_TYPES].sort()).toEqual(
-      [MIME_CITATION, MIME_TEXT_INSERT, MIME_FOOTNOTE].sort(),
+      [MIME_CITATION, MIME_FOOTNOTE].sort(),
     );
   });
 
@@ -49,9 +54,16 @@ describe("isEditorInsertDrag", () => {
     expect(isEditorInsertDrag(dtWith("text/plain", MIME_CITATION))).toBe(true);
   });
 
-  it("recognizes panel text-insert and footnote-move drags", () => {
-    expect(isEditorInsertDrag(dtWith(MIME_TEXT_INSERT))).toBe(true);
+  it("recognizes the footnote-move drag", () => {
     expect(isEditorInsertDrag(dtWith(MIME_FOOTNOTE))).toBe(true);
+  });
+
+  it("does not recognize the deleted text-insert MIME (task 590)", () => {
+    // `MIME_TEXT_INSERT` had no producer from `ec382103` onward; its two
+    // readers and the constant itself are gone. A resurrected string must not
+    // quietly regain the inline-insert affordance without a registry row.
+    expect(isEditorInsertDrag(dtWith("application/x-virgil-text-insert")))
+      .toBe(false);
   });
 
   it("ignores unrelated drags (plain text, anchor move, null)", () => {

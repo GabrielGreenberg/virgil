@@ -42,11 +42,15 @@
  * - **The carry is attached at the stack-ADD door, not inside each snapshot
  *   helper.** `addStackItem` takes a {@link StackBibCtx} as a REQUIRED
  *   argument, so a producer cannot land an item without answering the bib
- *   question — including the hand-built payloads that never went through
- *   `lib/stack/snapshot.ts` at all (`StackIcon`'s HTML5 `MIME_TEXT_INSERT`
- *   drop). That is the half a per-helper `ctx` parameter would have missed:
- *   the original defect was not a wrong snapshot helper, it was a producer that
- *   never asked.
+ *   question — the float drag (`FloatingPanel`'s `virgil-stack-drop`) and the
+ *   content lift (`LiftHost`'s stack terminal) alike, and equally any future
+ *   producer that hand-builds a payload instead of going through
+ *   `lib/stack/snapshot.ts`. That is the half a per-helper `ctx` parameter
+ *   would have missed: the original defect was not a wrong snapshot helper, it
+ *   was a producer that never asked. (The hand-built payload this paragraph
+ *   used to name — `StackIcon`'s HTML5 `MIME_TEXT_INSERT` drop — was itself a
+ *   reader with no producer, and task 590 deleted it; the door's shape is what
+ *   made its absence costless.)
  */
 
 import { parseCiteCommand } from "@/lib/bib-parser";

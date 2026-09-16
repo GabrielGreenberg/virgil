@@ -6,9 +6,11 @@
  * it travel?" — is answered at `addStackItem`, once, for every payload family.
  * That placement is the whole fix: a per-helper `CardSnapshotCtx` (the pre-235
  * shape) is answered only by producers that go through `lib/stack/snapshot.ts`,
- * and `StackIcon`'s HTML5 `MIME_TEXT_INSERT` drop hand-builds its payload and
- * never does. The original defect was not a wrong snapshot helper; it was a
- * producer that never asked.
+ * and a producer that hand-builds its payload never does. The original defect
+ * was not a wrong snapshot helper; it was a producer that never asked. (The
+ * hand-built payload this once named — `StackIcon`'s HTML5 `MIME_TEXT_INSERT`
+ * drop — turned out to be a reader with no producer at all, deleted by task
+ * 590. The door's shape is what made removing it costless.)
  *
  * So the leg with teeth here is the CENSUS: the door was never the part that
  * could misbehave — a second write door that bypasses it is. `addStackItem`'s
