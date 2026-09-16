@@ -167,7 +167,6 @@ export function BibEntryChrome({
           className="flex-1 min-w-0 leading-snug text-[13px]"
           style={{ overflowWrap: "anywhere" }}
           data-hint={headerText}
-          aria-label={headerText}
         >
           {apaOnly ? (
             <div

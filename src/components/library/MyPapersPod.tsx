@@ -353,7 +353,7 @@ function PaperRow({
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
-        data-hint={label} aria-label={label}
+        data-hint={label}
       >
         {label}
       </span>

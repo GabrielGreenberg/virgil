@@ -515,7 +515,7 @@ export default function SourcePodNodeView({
             e.stopPropagation();
             toggleCollapsed();
           }}
-          data-hint="Click to expand" aria-label="Click to expand"
+          data-hint="Click to expand" aria-description="Click to expand"
         >
           {previewLines.length > 0 ? (
             previewLines.map((line, i) => (
@@ -577,7 +577,7 @@ export default function SourcePodNodeView({
             setShowSource(true);
           }}
           data-hint={`Click to edit ${config.kindLabel} source`}
-          aria-label={`Click to edit ${config.kindLabel} source`}
+          aria-description={`Click to edit ${config.kindLabel} source`}
         >
           {/* The tree scrolls INSIDE this; the corner does not. An absolutely
               positioned child of a scroll container is positioned against its

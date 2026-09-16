@@ -1946,6 +1946,17 @@ redundant `aria-label` (an `aria-label` that disagrees with visible text is a
 worse defect than a missing one). A tooltip that must say more than the name
 passes `hint` beside the label; it is still one call, so the two can't drift.
 
+**A hint is never a name by hand** (task 609, leg E of the guardrail below): no
+element may carry `data-hint={X}` and `aria-label={X}` from one value. On an
+icon that pair is `iconHint({ label })`; on anything showing text it REPLACES
+the visible name with the tooltip (the print dialog's marginalia row announced
+"Enable marginalia in the editor first."), so the hint goes to
+`aria-description` and the text stays the name. Leg E reads every opening tag
+and needs no icon/text classifier — computed children (`{label}`,
+`{children}`) had walked past both of the older legs. A control whose content
+IS state says so: a checkbox row is `role="checkbox"` + `aria-checked`, a
+segmented choice is `aria-pressed`.
+
 That rule is CI-enforced over both silos by
 [icon-button-a11y-guardrail.test.ts](components/__tests__/icon-button-a11y-guardrail.test.ts),
 which reads markup and fails an icon-only `<button>` that announces nothing, or

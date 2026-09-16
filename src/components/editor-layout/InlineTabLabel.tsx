@@ -85,7 +85,12 @@ function InlineTabLabelImpl({
       // from also ACTIVATING the tab by bubbling.
       {...activatableProps(() => onActivate(id))}
       data-hint={title}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default focus-ring`} aria-label={title}
+      // Named by its VISIBLE label — spelled out because the nested close
+      // button would otherwise join the name computed from content; the
+      // tooltip (often the fuller path) is the description (task 609).
+      aria-label={label}
+      aria-description={title}
+      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default focus-ring`}
     >
       <div
         aria-hidden

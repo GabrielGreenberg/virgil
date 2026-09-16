@@ -53,6 +53,7 @@ import {
   useIsSelected,
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
+import { iconHint } from "@/components/Hint";
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -358,7 +359,7 @@ export function MarkerButton({
         padding: 0,
         lineHeight: 1,
       }}
-      data-hint={m.title || meta.label}
+      {...iconHint({ label: m.title || meta.label })}
       onMouseDown={reanchorKey ? (e) => {
         // Primary button only — a right/middle press passes through to native
         // behavior. The predicate is the engine's SSOT
@@ -431,7 +432,6 @@ export function MarkerButton({
           (e.target as HTMLElement).blur();
         }
       }}
-      aria-label={m.title || meta.label}
     >
       {meta.icon}
     </button>
@@ -493,8 +493,7 @@ function OverflowPill({
           lineHeight: 1,
           padding: 0,
         }}
-        data-hint={label}
-        aria-label={label}
+        {...iconHint({ label })}
         aria-haspopup="true"
         aria-expanded={open}
         onClick={(e) => {

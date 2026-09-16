@@ -60,7 +60,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         cursor: "grab",
         color: "var(--ink-body, #1c1917)",
         userSelect: "none",
-      }} aria-label={`${kindLabel} · ${time}`}
+      }} aria-description={`${kindLabel} · ${time}`}
     >
       <div
         style={{

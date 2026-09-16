@@ -40,6 +40,7 @@ import {
   unsupportedSectioningFor,
 } from "@/lib/document-class";
 import { DOC_TYPES } from "@/lib/doc-types";
+import { iconHint } from "@/components/Hint";
 
 /**
  * The distinct `\documentclass` names offered by the doc-type control,
@@ -430,7 +431,7 @@ export default function ManageStylesModal({
                         {isActive ? (
                           <span
                             className="inline-flex items-center gap-1 text-[var(--accent)]"
-                            data-hint={drifted ? "Active — preamble has drifted from this style" : "Active style for this doc"} aria-label={drifted ? "Active — preamble has drifted from this style" : "Active style for this doc"}
+                            role="img" {...iconHint({ label: drifted ? "Active — preamble has drifted from this style" : "Active style for this doc" })}
                           >
                             <span aria-hidden>✓</span>
                             {drifted && (

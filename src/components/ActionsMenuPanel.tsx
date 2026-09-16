@@ -63,6 +63,7 @@ import {
   type DecoratedMenuRow,
 } from "./menu/MenuItemsFromRegistry";
 import { useMenuItem } from "./menu/useMenuItem";
+import { iconHint } from "@/components/Hint";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -913,7 +914,7 @@ function FmtBtn({
     <button
       {...itemProps}
       type="button"
-      data-hint={title}
+      {...iconHint({ label: title })}
       disabled={disabled}
       className={gridCellClassName(disabled)}
       style={{
@@ -931,7 +932,6 @@ function FmtBtn({
         }),
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
       }}
-      aria-label={title}
     >
       {children}
     </button>
@@ -979,7 +979,7 @@ function ColorGridCell({
         itemProps.ref(el);
       }}
       type="button"
-      data-hint="Text color"
+      {...iconHint({ label: "Text color" })}
       disabled={disabled}
       onClick={
         disabled
@@ -997,7 +997,6 @@ function ColorGridCell({
         padding: 0,
         lineHeight: 1,
       }}
-      aria-label="Text color"
     >
       <span style={{ fontFamily: "var(--font-serif, serif)", fontWeight: 600, fontSize: 14 }}>
         A

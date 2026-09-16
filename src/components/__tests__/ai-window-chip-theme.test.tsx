@@ -103,7 +103,7 @@ function props(): AIWindowProps {
  *  from the row rather than by a test-only hook. */
 function chips(): Map<string, { bg: string; fg: string }> {
   const out = new Map<string, { bg: string; fg: string }>();
-  for (const el of document.querySelectorAll<HTMLElement>("li span[aria-label]")) {
+  for (const el of document.querySelectorAll<HTMLElement>("li span[aria-description]")) {
     const bg = el.style.background;
     const fg = el.style.color;
     if (!bg || !fg) continue;
@@ -184,7 +184,7 @@ describe("AI-request chips derive from the panel-theme SSOT", () => {
     render(<AIWindow {...props()} />);
     // Two rows share the "Suggestion" label; the cutter-linked one must paint
     // the cut accent and the revision-linked one the revision accent.
-    const pairs = [...document.querySelectorAll<HTMLElement>("li span[aria-label]")]
+    const pairs = [...document.querySelectorAll<HTMLElement>("li span[aria-description]")]
       .filter((el) => el.textContent?.trim() === "Suggestion")
       .map((el) => ({ bg: el.style.background, fg: el.style.color }));
 

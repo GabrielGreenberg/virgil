@@ -10,6 +10,7 @@ import {
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
 import { canJumpToError, type ErrorJumpMode } from "./error-jump";
+import { iconHint } from "@/components/Hint";
 
 const theme = CARD_THEMES.error;
 
@@ -61,7 +62,7 @@ function ErrorBadge({ severity }: { severity: LatexErrorSeverity }) {
   return (
     <span
       className="inline-flex items-center justify-center w-[18px] h-[18px] shrink-0"
-      data-hint={severity} aria-label={severity}
+      role="img" {...iconHint({ label: severity })}
     >
       <svg
         width="16"
@@ -204,7 +205,7 @@ export function ErrorCard({
         <div
           className="text-[0.78rem] font-medium mb-1"
           style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-          data-hint={title} aria-label={title}
+          data-hint={title}
         >
           {title}
         </div>

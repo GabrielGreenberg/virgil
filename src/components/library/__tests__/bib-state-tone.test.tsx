@@ -98,7 +98,7 @@ function paperTierChip(tier: (typeof INDEX_TIERS)[number]) {
   const { container } = render(
     <LibraryStatusRow indexTier={tier} citekey="k" inLibrary />,
   );
-  return container.querySelector("span[data-hint][aria-label]");
+  return container.querySelector("span[data-hint][aria-description]");
 }
 
 /** The bib-entry PICKER's per-row auth pill — the surface the census found
@@ -121,7 +121,7 @@ function pickerAuthChip(state: (typeof BIB_STATES)[number]) {
   // token the fix happens to write — a selector keyed on the mechanism returns
   // null under a neuter, and every leg that reads `chip?.textContent ?? ""`
   // then passes vacuously. Measured: the first draft did exactly that.
-  const hinted = [...document.querySelectorAll("span[data-hint][aria-label]")];
+  const hinted = [...document.querySelectorAll("span[data-hint][aria-description]")];
   expect(hinted.length, "exactly one hinted status span per picker row").toBe(1);
   return hinted[0];
 }
@@ -227,7 +227,7 @@ describe("bib-auth state resolves ONE tone that both silos read", () => {
         `${s} must not read "unverified" in the picker`,
       ).not.toContain("unverified");
       // …and its tooltip must say what it IS, not "has not been authenticated".
-      expect(chip?.getAttribute("aria-label") ?? "").not.toContain(
+      expect(chip?.getAttribute("aria-description") ?? "").not.toContain(
         "has not been authenticated",
       );
       cleanup();

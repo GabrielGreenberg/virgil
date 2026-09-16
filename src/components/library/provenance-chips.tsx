@@ -90,7 +90,7 @@ function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
           <span
             key={provenanceChipKey(c)}
             className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${style.className}`}
-            data-hint={style.tooltip} aria-label={style.tooltip}
+            data-hint={style.tooltip} aria-description={style.tooltip}
           >
             {style.text}
           </span>

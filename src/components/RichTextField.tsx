@@ -180,7 +180,7 @@ function FormatToolbar({
         onMouseDown={(e) => { e.preventDefault(); runWrapper("orderedList"); }}
         className={btnClass}
         disabled={!orderedOk}
-        data-hint="Numbered list" aria-label="Numbered list"
+        {...iconHint({ label: "Numbered list" })}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text>

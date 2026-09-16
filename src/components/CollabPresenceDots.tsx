@@ -1,5 +1,7 @@
 "use client";
 
+import { iconHint } from "@/components/Hint";
+
 /**
  * Small stacked color dots used to show partner presence (selection /
  * cursor focus) on cards and paragraphs. Different visual from the
@@ -15,16 +17,17 @@ interface PresenceDotsProps {
 
 export default function CollabPresenceDots({ presences, withTooltip = true }: PresenceDotsProps) {
   if (presences.length === 0) return null;
-  const title = withTooltip
-    ? presences.length === 1
+  // The name is for assistive tech whether or not the hover tooltip shows —
+  // `withTooltip` gates only the visual hint.
+  const name =
+    presences.length === 1
       ? `${presences[0].name} is here`
-      : `${presences.map((p) => p.name).join(", ")} are here`
-    : undefined;
+      : `${presences.map((p) => p.name).join(", ")} are here`;
   return (
     <span
       className="inline-flex items-center gap-[1px] shrink-0"
-      data-hint={title}
-      aria-label={title}
+      role="img"
+      {...(withTooltip ? iconHint({ label: name }) : { "aria-label": name })}
     >
       {presences.slice(0, 4).map((p) => (
         <span

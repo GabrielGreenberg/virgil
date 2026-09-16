@@ -756,17 +756,7 @@ export function CitationCard({
               )
               .join("\n")
           : "Citation"
-      } aria-label={
-                  hasAnyHeaderKey
-                    ? headerRowData
-                        .map((r) =>
-                          [r.author || r.key, r.year, r.title]
-                            .filter(Boolean)
-                            .join(" · "),
-                        )
-                        .join("\n")
-                    : "Citation"
-                }
+      }
     >
       {hasAnyHeaderKey ? (
         headerRowData.map((r) => (
@@ -1490,7 +1480,7 @@ function CitationKeyRow({
               onOpenPicker();
             }}
             className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2 truncate min-w-0"
-            data-hint="Click to change" aria-label="Click to change"
+            data-hint="Click to change" aria-description="Click to change"
           >
             {trimmed}
           </button>

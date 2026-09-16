@@ -147,7 +147,7 @@ function indexTierChip(tier: LibraryIndexTier) {
       className={CHIP_BASE}
       style={toneStyle(indexTierTone(tier))}
       data-hint={TIER_HINT[tier]}
-      aria-label={TIER_HINT[tier]}
+      aria-description={TIER_HINT[tier]}
     >
       {indexTierLabel(tier)}
     </span>

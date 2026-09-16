@@ -464,6 +464,83 @@ describe("a button with visible text does not override it with an aria-label", (
   });
 });
 
+/* ── Leg E: no element hand-pairs its hint and its name (task 609) ──── */
+
+/**
+ * The value of attribute `name` on an opening tag — a `{…}` expression or a
+ * quoted string, whitespace-normalised — or null when the tag has none.
+ */
+export function attrValue(tag: string, name: string): string | null {
+  const m = new RegExp(`(?<![\\w-])${name}\\s*=\\s*`).exec(tag);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  const end = tag[at] === "{" ? skipBraces(tag, at) : tag[at] === '"' ? tag.indexOf('"', at + 1) + 1 : -1;
+  return end > at ? tag.slice(at, end).replace(/\s+/g, "") : null;
+}
+
+/** An opening tag whose `data-hint` and `aria-label` are ONE value spelled twice. */
+export const handPaired = (tag: string): boolean => {
+  const hint = attrValue(tag, "data-hint");
+  return hint !== null && hint === attrValue(tag, "aria-label");
+};
+
+/**
+ * Legs B and D judge a `<button>` by what it RENDERS, and a computed child
+ * (`{label}`, `{children}`) is neither provably an icon nor provably text — so
+ * `data-hint={title} aria-label={title}` walked past both, on buttons and on
+ * every non-button element alike. The pair is wrong whichever it turns out to
+ * be: on an icon it is `iconHint({ label })` spelled by hand; on text it
+ * REPLACES the visible name with the tooltip (the print dialog's marginalia row
+ * announced "Enable marginalia in the editor first." instead of "Marginalia
+ * markers"), where the hint belongs in `aria-description`. So this leg asks
+ * only the syntactic question, over EVERY opening tag, and needs no classifier.
+ */
+describe("no element hand-pairs data-hint and aria-label from one value", () => {
+  const OPEN = /<[A-Za-z][\w.]*(?=[\s/>])/g;
+  const sites: string[] = [];
+  let tags = 0;
+  for (const { file, src, raw } of sources()) {
+    OPEN.lastIndex = 0;
+    // Located by the tag's FIRST line, advancing a cursor: the stripper drops
+    // comments INSIDE a tag, so the whole tag is often not byte-equal in raw.
+    let cursor = 0;
+    let m: RegExpExecArray | null;
+    while ((m = OPEN.exec(src))) {
+      const end = tagEnd(src, m.index);
+      if (end < 0) continue;
+      const tag = src.slice(m.index, end + 1);
+      tags++;
+      const rawAt = raw.indexOf(tag.split("\n")[0], cursor);
+      if (rawAt >= 0) cursor = rawAt + 1;
+      if (handPaired(tag)) {
+        sites.push(`${file}:${(rawAt >= 0 ? raw.slice(0, rawAt) : src.slice(0, m.index)).split("\n").length}`);
+      }
+      OPEN.lastIndex = end;
+    }
+  }
+
+  it("sees a population worth censusing (self-check)", () => {
+    expect(tags).toBeGreaterThan(3000);
+  });
+
+  it("no opening tag spells one value as both its hint and its name", () => {
+    // Allowlist EMPTY: an icon takes `iconHint({ label })`; a text-bearing
+    // element keeps its text as the name and moves the hint to
+    // `aria-description`.
+    expect(sites).toEqual([]);
+  });
+
+  it("reads the pair through expressions, strings and whitespace (self-check)", () => {
+    expect(handPaired(`<button data-hint={title} aria-label={title}>`)).toBe(true);
+    expect(handPaired(`<span data-hint="No anchor" className="x"\n aria-label="No anchor" />`)).toBe(true);
+    expect(handPaired(`<div data-hint={a ? "x" : "y"} aria-label={a ? "x" :\n "y"}>`)).toBe(true);
+    expect(handPaired(`<button {...iconHint({ label: title })}>`)).toBe(false);
+    expect(handPaired(`<button data-hint={hint} aria-description={hint}>`)).toBe(false);
+    expect(handPaired(`<button data-hint={hint} aria-label={name}>`)).toBe(false);
+    expect(handPaired(`<button data-hint-keys={k} aria-label={k}>`)).toBe(false);
+  });
+});
+
 describe("the icon-only classifier (self-check)", () => {
   const hit = (subtree: string): JsxElementHit => ({ tag: "<button>", subtree, index: 0 });
 
