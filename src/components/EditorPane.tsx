@@ -5206,11 +5206,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       if (!item) return false;
       // The bib carry is resolved at the ADD door for every payload family
       // alike (task 235) — a card, a text slice, a paragraph, a heading.
-      addStackItem(item, stackBibCtxRef.current);
+      //
+      // And the ADD reports too (task 591). It used to return `void`, so this
+      // terminal returned `true` for a capture that never persisted: the float
+      // closed, the lift tore down, and the strip opened on nothing. A Stack
+      // that cannot make room by FIFO eviction is genuinely full, which is a
+      // fact only the user can act on — so it is said out loud, through the
+      // same single-button surface the drag-handle refusals use, and the
+      // terminal reports the refusal so each producer keeps its own source
+      // surface exactly as it was.
+      if (!addStackItem(item, stackBibCtxRef.current)) {
+        dragHandleNotify({
+          title: "The Stack is full",
+          message:
+            "This capture could not be saved — the Stack has run out of room. " +
+            "Remove some items from the Stack strip and try again.",
+          tone: "danger",
+        });
+        return false;
+      }
       openStackStrip();
       return true;
     },
-    [popoutsDeps],
+    [popoutsDeps, dragHandleNotify],
   );
 
   // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
