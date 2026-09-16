@@ -647,7 +647,15 @@ export const MarginaliaAnchorGuard = Extension.create<{
               }
             }
           }
-          tr.setMeta("addToHistory", false);
+          // The stand-in is part of the deletion's history event, NOT outside
+          // history (task 605). prosemirror-history groups an appended
+          // transaction with its root (and skips it when the root is itself
+          // outside history), so Undo removes the stand-in in the same step
+          // that restores the original paragraph — one holder of the id, the
+          // text. Outside history, Undo put the original back NEXT TO the
+          // stand-in and the uuid net re-minted the restored text: the card
+          // stayed on a blank line and Undo did not undo. Redo replays both
+          // halves together, so the guard does not need to fire again.
           return tr.steps.length > 0 ? tr : null;
         },
       }),
