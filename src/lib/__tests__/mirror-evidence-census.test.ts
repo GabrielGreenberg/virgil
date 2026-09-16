@@ -240,7 +240,9 @@ describe("census · a landed write is CLAIMED in exactly one place", () => {
       const src = commentsStripped(read(abs));
       if (
         /\bclearMirror\s*\(/.test(src) &&
-        !["src/lib/emergency-mirror.ts", DOC_HOOK].includes(rel(abs))
+        !["src/lib/emergency-mirror.ts", DOC_HOOK, "src/lib/doc-index.ts"].includes(
+          rel(abs),
+        )
       )
         offenders.push(`${rel(abs)} · clears the mirror outside the door`);
       for (const m of src.matchAll(/\bdropMirror\s*\(([\s\S]*?)\)/g)) {
@@ -252,6 +254,17 @@ describe("census · a landed write is CLAIMED in exactly one place", () => {
       offenders,
       "a mirror drop rests on evidence, and the caller names which it holds",
     ).toEqual([]);
+
+    // The one door BELOW the hook: `purgeDoc` retires a doc id (delete, or the
+    // example's reset — task 604). Its evidence is that the IDENTITY is gone,
+    // so the clear may sit in that function and nowhere else in the file.
+    const docIndex = commentsStripped(read(path.join(REPO_ROOT, "src/lib/doc-index.ts")));
+    const clears = [...docIndex.matchAll(/\bclearMirror\s*\(/g)];
+    expect(clears, "doc-index clears the mirror once, in purgeDoc").toHaveLength(1);
+    const purgeAt = docIndex.indexOf("export async function purgeDoc(");
+    expect(purgeAt, "purgeDoc must exist").toBeGreaterThanOrEqual(0);
+    const purge = docIndex.slice(purgeAt, docIndex.indexOf("\n}\n", purgeAt));
+    expect(purge).toMatch(/\bclearMirror\s*\(/);
 
     // `landed` is the STRONG claim — this model reached disk — so only the
     // branch that read a landed receipt may make it.

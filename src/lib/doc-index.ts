@@ -21,6 +21,10 @@
 
 import { get, set, del, keys, update, createStore } from "idb-keyval";
 
+import { clearMirror } from "@/lib/emergency-mirror";
+import { deleteLocalSidecar } from "@/lib/local-sidecar";
+import { clearRecoveryOffer } from "@/lib/mirror-recovery";
+import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
 import { isDevStorage } from "@/lib/storage-mode";
 
 const store = createStore("virgil", "kv");
@@ -344,11 +348,38 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
 // --- Cleanup -------------------------------------------------------------
 
 /**
- * Remove every key associated with a doc id (handle, general-bib handle).
- * Called from `deleteDocFromIndex` in storage-fsa.
+ * Retire a doc id's durable state — the ONE door for "this document's
+ * identity is being removed or reset". Called by `deleteDocFromIndex`
+ * (storage-fsa) and by the example's `resetExample` (example-seeder), whose
+ * FIXED id is reused by the pristine re-seed: anything left behind here is
+ * read back as if it belonged to the new document (task 604 — a surviving
+ * emergency mirror offered to "restore" the edits the reset discarded).
+ *
+ * Every docId-keyed store this browser holds, and what happens to it:
+ *   - `doc-handle/<id>`, `general-bib-handle/<id>` (here) — deleted.
+ *   - `emergency-mirror/<id>` (emergency-mirror.ts) — deleted, together with
+ *     its in-memory recovery offer (mirror-recovery.ts).
+ *   - `local-sidecar/<id>/<file>` (local-sidecar.ts), one per
+ *     `LOCAL_SIDECAR_FILENAMES` entry — deleted.
+ *
+ * Deliberately NOT touched:
+ *   - `doc-owner/<id>` (multi-window/doc-ownership.ts) — it shadows a live
+ *     Web Lock and is cleared by that lock's own release; deleting it here
+ *     could erase a peer window's claim.
+ *   - `tabs/<window>` records — they name ids, and a missing doc is dropped
+ *     by the restore (task 603's sweep owns their lifetime).
+ *   - `tex-asset/*` — keyed by package cache key, shared by every paper.
+ *   - The in-memory unsaved-work channel — the caller closes/drains the
+ *     doc's tab first, and that channel is the "you have unsaved work" alarm.
  */
 export async function purgeDoc(id: string): Promise<void> {
-  await Promise.all([deleteDocHandle(id), deleteGeneralBibHandle(id)]);
+  clearRecoveryOffer(id);
+  await Promise.all([
+    deleteDocHandle(id),
+    deleteGeneralBibHandle(id),
+    clearMirror(id),
+    ...LOCAL_SIDECAR_FILENAMES.map((f) => deleteLocalSidecar(id, f)),
+  ]);
 }
 
 /**

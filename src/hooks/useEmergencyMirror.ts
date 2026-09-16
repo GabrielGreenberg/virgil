@@ -99,6 +99,12 @@ export function useEmergencyMirror(opts: {
  *   mirror alive would offer to restore, on the next open, exactly the version
  *   they just discarded.
  *
+ * A third ending lives below this hook, not in it: `purgeDoc` (doc-index.ts)
+ * clears the slot when the doc id itself is RETIRED — removed from the index,
+ * or the example reset under its fixed id (task 604). No editor is mounted
+ * there, so there is no ticker to reset; the census admits that one call, in
+ * that one function.
+ *
  * The reason has a READER — the task-557 census, which lets only `save()`'s
  * receipt-landed branch say `landed`. Until 557 both callers spelled
  * `dropMirrorAfterLandedSave` and one of them was on a path where nothing had
