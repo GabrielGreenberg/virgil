@@ -35,6 +35,10 @@ import { extFromMime, writeBugReport } from "@/lib/bug-report";
 import { imagesFromClipboard } from "@/lib/transfer-files";
 import { useBugReportFolder } from "@/hooks/useBugReportFolder";
 import { ensureReadWritePermission } from "@library/lib/library-folder";
+import {
+  useStorageKeySync,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
 
 const DRAFT_KEY = "virgil:bug-report-draft";
 const MACHINE_KEY = "virgil:bug-report-machine";
@@ -63,10 +67,11 @@ function readLocal(key: string): string {
   }
 }
 
+// Idempotent: the draft mirror persists from an EFFECT that watches state, so
+// a peer sync (below) re-renders into that effect — an unconditional write
+// would bounce back to the peer as a storage event (task 599).
 function writeLocal(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
+  writeStorageIfChanged(key, value);
 }
 
 function describeError(err: unknown): string {
@@ -122,6 +127,14 @@ export default function BugReportWindow({
   // Mirror of `images` for the unmount-only object-URL cleanup.
   const imagesRef = useRef<PastedImage[]>([]);
   imagesRef.current = images;
+
+  // Cross-window: a second window's bug report must not overwrite the prose
+  // typed here from a stale mount-time snapshot (task 599). Re-read through
+  // the same `readLocal` path; the idempotent write keeps the echo silent.
+  useStorageKeySync([DRAFT_KEY, MACHINE_KEY], () => {
+    setDraftText(readLocal(DRAFT_KEY));
+    setMachineLabel(readLocal(MACHINE_KEY));
+  });
 
   // Debounced draft mirror — a reload keeps the prose.
   useEffect(() => {

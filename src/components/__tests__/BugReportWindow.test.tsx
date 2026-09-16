@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 
 // The storage barrel `require`s its backend at module scope and cannot
 // resolve under vitest (the standing gotcha).
@@ -336,5 +336,40 @@ describe("always-mounted draft survival", () => {
       target: { value: "from the empty state" },
     });
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("cross-window draft (task 599)", () => {
+  const DRAFT_KEY = "virgil:bug-report-draft";
+  const peerWrite = (value: string) => {
+    localStorage.setItem(DRAFT_KEY, value);
+    window.dispatchEvent(new StorageEvent("storage", { key: DRAFT_KEY }));
+  };
+
+  it("adopts a peer window's draft instead of overwriting it from a stale mount-time copy", () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem(DRAFT_KEY, "old");
+      mount();
+      expect((textarea() as HTMLTextAreaElement).value).toBe("old");
+
+      act(() => peerWrite("typed in the other window"));
+      expect((textarea() as HTMLTextAreaElement).value).toBe("typed in the other window");
+
+      // The debounced mirror fires: storage keeps the peer's prose, and the
+      // echo is silent (no write → no storage event bounced back to the peer).
+      const spy = vi.spyOn(Storage.prototype, "setItem");
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(localStorage.getItem(DRAFT_KEY)).toBe("typed in the other window");
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+
+      // Typing here still persists.
+      fireEvent.change(textarea(), { target: { value: "typed in the other window + more" } });
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(localStorage.getItem(DRAFT_KEY)).toBe("typed in the other window + more");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -7,6 +7,10 @@ import type { PanelKind } from "@/panels/_shared/types";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import {
+  subscribeToStorageKey,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
+import {
   deriveCategorySides,
   hiddenFromLegacySides,
   omniCategoriesOnSide,
@@ -1056,9 +1060,20 @@ export function useViewPrefs(opts?: {
       rereadGlobal();
     };
     const unsubBus = subscribe(onEvent);
+    // The FLOOR under the bus (task 599). The bus is the fast path — it carries
+    // the changed key, which the ephemeral filter above needs — but it is a
+    // BroadcastChannel, which `bus.ts` documents as absent on older Safari /
+    // Firefox, where `publish` silently no-ops. The native `storage` event needs
+    // no feature support: without it, a peer's change never arrives there and
+    // this window's next `persist` serializes its stale global blob over it.
+    // Where both channels fire, the second re-read is an idempotent merge. It
+    // never writes: `rereadGlobal` only `setPrefs`, and only `update` arms
+    // `pendingPersist` — so a peer sync cannot bounce back as a write.
+    const unsubStorage = subscribeToStorageKey(GLOBAL_STORAGE_KEY, rereadGlobal);
     sameWindowListeners.add(rereadGlobal);
     return () => {
       unsubBus();
+      unsubStorage();
       sameWindowListeners.delete(rereadGlobal);
     };
   }, [ephemeral]);
@@ -1077,8 +1092,9 @@ export function useViewPrefs(opts?: {
           if (GLOBAL_PREF_SET.has(k)) globalSlice[k] = v;
           else windowSlice[k] = v;
         }
-        localStorage.setItem(windowStorageKey(), JSON.stringify(windowSlice));
-        localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
+        // Idempotent: a persist whose slice matches disk wakes no peer.
+        writeStorageIfChanged(windowStorageKey(), JSON.stringify(windowSlice));
+        writeStorageIfChanged(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
         // Notify peers when any global key changed. Cheap shallow
         // compare on the global keys is enough — values are JSON-serializable
         // primitives, arrays, or plain objects. We fan out twice: the bus
