@@ -1,0 +1,117 @@
+{
+  "_doc": "Task 614 — WHERE DOES A BIB ENTRY END? Both Python silos answer this corpus: editor/scripts/bib_resolve.find_entry_span (editor/scripts/tests/test_bib_entry_span_parity.py) and library/scripts/_bib_parse.find_entry_span (library/scripts/tests/test_bib_entry_span_parity.py). `expect` is the verbatim entry text, null (no such entry), or \"refuse\" (the entry exists but its extent can't be trusted, so a splice must not happen).",
+  "cases": [
+    {
+      "name": "umlaut-quote-in-braces/zermelo1908",
+      "why": "a \" inside {…} is a literal (German \"u) — it must not open a string (task 614)",
+      "bib": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "zermelo1908",
+      "expect": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}"
+    },
+    {
+      "name": "umlaut-quote-in-braces/smith2020",
+      "why": "a \" inside {…} is a literal (German \"u) — it must not open a string (task 614)",
+      "bib": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "smith2020",
+      "expect": "@article{smith2020,\n  title = {Plain},\n}"
+    },
+    {
+      "name": "umlaut-quote-in-braces/hausdorff1914",
+      "why": "a \" inside {…} is a literal (German \"u) — it must not open a string (task 614)",
+      "bib": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "hausdorff1914",
+      "expect": "@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}"
+    },
+    {
+      "name": "umlaut-quote-in-braces/jones2001",
+      "why": "a \" inside {…} is a literal (German \"u) — it must not open a string (task 614)",
+      "bib": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "jones2001",
+      "expect": "@article{jones2001,\n  author = {Jones, J.},\n}"
+    },
+    {
+      "name": "quoted-value-with-braces",
+      "why": "a \"-quoted value holding {…} and a braced \" still ends at the entry's own }",
+      "bib": "@article{smith2020,\n  title = {Plain},\n}\n\n@article{quoted,\n  title = \"A {B} C\",\n  note = \"x {\"} y\",\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "quoted",
+      "expect": "@article{quoted,\n  title = \"A {B} C\",\n  note = \"x {\"} y\",\n}"
+    },
+    {
+      "name": "quoted-value-neighbour",
+      "why": "the entry after a quoted value is located intact",
+      "bib": "@article{smith2020,\n  title = {Plain},\n}\n\n@article{quoted,\n  title = \"A {B} C\",\n  note = \"x {\"} y\",\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "jones2001",
+      "expect": "@article{jones2001,\n  author = {Jones, J.},\n}"
+    },
+    {
+      "name": "missing-key",
+      "why": "an absent key is null, not a refusal",
+      "bib": "@book{zermelo1908,\n  title = {Untersuchungen \"uber die Grundlagen der Mengenlehre},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@book{hausdorff1914,\n  title = {Grundz\"uge der Mengenlehre},\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "nobody",
+      "expect": null
+    },
+    {
+      "name": "unbalanced-target",
+      "why": "braces never balance — the extent is a guess",
+      "bib": "@article{smith2020,\n  title = {Plain},\n}\n\n@article{broken,\n  title = {Open,\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "broken",
+      "expect": "refuse"
+    },
+    {
+      "name": "after-unbalanced-neighbour",
+      "why": "one malformed entry is contained; the next is still found",
+      "bib": "@article{broken,\n  title = {Open,\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "jones2001",
+      "expect": "@article{jones2001,\n  author = {Jones, J.},\n}"
+    },
+    {
+      "name": "late-balance-covers-neighbour",
+      "why": "a { surplus balanced by a later } runs the span through smith2020",
+      "bib": "@article{late,\n  title = {Surplus {open},\n}\n\n@article{smith2020,\n  title = {Plain},\n}\n\n@article{closer,\n  title = {Closes}},\n}\n",
+      "key": "late",
+      "expect": "refuse"
+    },
+    {
+      "name": "column0-opener-in-value/outer",
+      "why": "a column-0 opener inside a value is indistinguishable from late balance — refuse, don't guess",
+      "bib": "@misc{outer,\n  note = {quoted text:\n@article{fake,\n  title = {x}}\n  },\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "outer",
+      "expect": "refuse"
+    },
+    {
+      "name": "column0-opener-in-value/fake",
+      "why": "an opener inside a balanced entry is a value, not an entry",
+      "bib": "@misc{outer,\n  note = {quoted text:\n@article{fake,\n  title = {x}}\n  },\n}\n\n@article{jones2001,\n  author = {Jones, J.},\n}\n",
+      "key": "fake",
+      "expect": null
+    },
+    {
+      "name": "duplicate-key-last-wins",
+      "why": "LAST wins, matching read_master_bib",
+      "bib": "@article{smith2020,\n  title = {Plain},\n}\n\n@article{smith2020,\n  title = {Second},\n}\n",
+      "key": "smith2020",
+      "expect": "@article{smith2020,\n  title = {Second},\n}"
+    },
+    {
+      "name": "indented-opener-not-an-entry",
+      "why": "openers are line-anchored (column 0)",
+      "bib": "  @article{smith2020,\n  title = {Plain},\n}\n",
+      "key": "smith2020",
+      "expect": null
+    },
+    {
+      "name": "bom-first-entry",
+      "why": "a leading BOM does not hide the first entry",
+      "bib": "﻿@article{smith2020,\n  title = {Plain},\n}\n",
+      "key": "smith2020",
+      "expect": "@article{smith2020,\n  title = {Plain},\n}"
+    },
+    {
+      "name": "nfd-key-found-by-nfc",
+      "why": "lookup tries NFC then NFD",
+      "bib": "@book{müller2001,\n  title = {T},\n}\n",
+      "key": "müller2001",
+      "expect": "@book{müller2001,\n  title = {T},\n}"
+    }
+  ]
+}
