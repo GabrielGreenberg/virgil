@@ -2,20 +2,32 @@
 """List every card across panel sidecars anchored to a paragraph UUID.
 
 Directly answers "what cards live around this paragraph?" — the question
-editor skills ask before drafting a response. Walks all panel sidecars
-in one pass; on a paper with hundreds of cards this still completes in
-~10 ms because each file is small.
+editor skills ask before drafting a response. Walks every card-hosting
+sidecar through `card_by_id.iter_cards` (the one reader of which list lives
+inside which sidecar, driven by `apply_response.ALL_CARD_SIDECARS`), so a new
+panel is covered without touching this script.
+
+A card is on the paragraph when:
+  - its `links` anchor names the paragraph (link-anchored panels), or
+  - its `.tex` atom marker (`\\vfid` / `\\vcid` / `\\vexid`) sits inside the
+    paragraph (marker-anchored panels — `card_by_id.MARKER_ANCHORED_PANELS`).
 
 Usage:  python3 cards_for_paragraph.py <docPath> <uuid>
 
 Emits one JSON line per matched card:
-  { "panel": "notes" | "todos" | "cutter" | "revisions" | "citations" |
-             "reports" | "footnotes" | "examples",
+  { "panel": <ALL_CARD_SIDECARS key — "notes" | "todos" | "cutter" |
+             "revisions" | "reports" | "footnotes" | "citations" |
+             "examples" | "archive">,
     "cardId": "...",
-    "kind":  <card kind>,
+    "kind":  <on-disk kind — the card's `kind` field, or the single kind its
+              panel holds: "note" | "highlight" | "todo" | "comment" |
+              "suggestion" | "report" | "report-request" | "footnote" |
+              "citation" | "example" | "archive">,
+    "cardKind": <registry CardKind — card_by_id.card_kind>,
     "summary": <short text of the card body>,
-    "aiRequest": <bool, only on flag-bearing kinds>?,
-    "status": <if applicable, e.g. suggestion status>?
+    "aiRequest": <bool — false when unflagged>,
+    "archived": <bool — true for an archived snippet>,
+    "status": <todos: "done" | "open"; suggestions: their status>?
   }
 
 Plus a `# matched <N> in <doc>` summary line on stderr.
@@ -26,143 +38,72 @@ from __future__ import annotations
 import json
 import sys
 
-from _common import card_paragraph_ids, die, read_json, resolve_doc, sidecar
+from _common import (
+    card_paragraph_ids,
+    card_text_anchor,
+    die,
+    find_tex_file,
+    marker_paragraph_ids,
+    resolve_doc,
+    rich_json_to_text,
+)
+from card_by_id import MARKER_ANCHORED_PANELS, _SINGLE_KIND_PANEL, card_kind, iter_cards
+
+# Body fields to summarize from, in preference order. `content` is a rich
+# TipTap body (footnotes, archive snippets) and is flattened.
+SUMMARY_FIELDS = ("title", "text", "explanation", "original_text", "notes",
+                  "command", "label", "tag", "content")
 
 
 def emit(row: dict) -> None:
     print(json.dumps(row, ensure_ascii=False))
 
 
-def matches(card: dict, uuid: str) -> bool:
-    return uuid in card_paragraph_ids(card)
-
-
-def summarize(card: dict, fields: list[str]) -> str:
-    for f in fields:
+def summarize(card: dict) -> str:
+    for f in SUMMARY_FIELDS:
         v = card.get(f)
-        if isinstance(v, str) and v.strip():
-            return v.strip()[:140]
-    return ""
+        text = rich_json_to_text(v) if isinstance(v, (str, dict, list)) else ""
+        if text:
+            return text[:140]
+    # A highlight carries no body — its text is the quoted range.
+    return (card_text_anchor(card) or "")[:140]
+
+
+def _marker_maps(doc) -> dict[str, dict[str, str]]:
+    """{panel: {marker id: paragraph uuid}} for every marker-anchored panel,
+    from ONE read of the .tex. A paper with no .tex maps nothing."""
+    if not any(f.suffix == ".tex" for f in doc.iterdir()):
+        return {panel: {} for panel in MARKER_ANCHORED_PANELS}
+    text = find_tex_file(doc).read_text(encoding="utf-8")
+    return {panel: marker_paragraph_ids(text, cmd) for panel, cmd in MARKER_ANCHORED_PANELS.items()}
 
 
 def walk(doc, uuid: str) -> int:
     matched = 0
-
-    # Notes
-    notes = read_json(sidecar(doc, "notes.json"), default={"notes": []})
-    if isinstance(notes, dict):
-        for n in notes.get("notes", []) or []:
-            if matches(n, uuid):
-                emit(
-                    {
-                        "panel": "notes",
-                        "cardId": n.get("id"),
-                        "kind": "note",
-                        "summary": summarize(n, ["title", "text"]),
-                        "aiRequest": bool(n.get("aiRequest")),
-                    }
-                )
-                matched += 1
-
-    # Todos
-    todos = read_json(sidecar(doc, "todos.json"), default={"items": []})
-    if isinstance(todos, dict):
-        for t in todos.get("items", []) or []:
-            if matches(t, uuid):
-                emit(
-                    {
-                        "panel": "todos",
-                        "cardId": t.get("id"),
-                        "kind": "todo",
-                        "summary": summarize(t, ["text", "notes"]),
-                        "aiRequest": bool(t.get("aiRequest")),
-                        "status": "done" if t.get("done") else "open",
-                    }
-                )
-                matched += 1
-
-    # Cutter (comments + suggestions)
-    cutter = read_json(sidecar(doc, "cutter.json"), default={"cards": []})
-    if isinstance(cutter, dict):
-        for c in cutter.get("cards", []) or []:
-            if matches(c, uuid):
-                row = {
-                    "panel": "cutter",
-                    "cardId": c.get("id"),
-                    "kind": c.get("kind"),
-                    "summary": summarize(c, ["text", "explanation", "original_text"]),
-                }
-                if c.get("kind") == "comment":
-                    row["aiRequest"] = bool(c.get("aiRequest"))
-                if c.get("kind") == "suggestion":
-                    row["status"] = c.get("status", "pending")
-                emit(row)
-                matched += 1
-
-    # Revisions (comments + suggestions)
-    revs = read_json(sidecar(doc, "revisions.json"), default={"cards": []})
-    if isinstance(revs, dict):
-        for c in revs.get("cards", []) or []:
-            if matches(c, uuid):
-                row = {
-                    "panel": "revisions",
-                    "cardId": c.get("id"),
-                    "kind": c.get("kind"),
-                    "summary": summarize(c, ["text", "explanation", "original_text"]),
-                }
-                if c.get("kind") == "comment":
-                    row["aiRequest"] = bool(c.get("aiRequest"))
-                if c.get("kind") == "suggestion":
-                    row["status"] = c.get("status", "pending")
-                emit(row)
-                matched += 1
-
-    # Reports (reports + report-requests)
-    reports = read_json(sidecar(doc, "reports.json"), default={"cards": []})
-    if isinstance(reports, dict):
-        for c in reports.get("cards", []) or []:
-            if matches(c, uuid):
-                row = {
-                    "panel": "reports",
-                    "cardId": c.get("id"),
-                    "kind": c.get("kind"),
-                    "summary": summarize(c, ["title", "text"]),
-                }
-                if c.get("kind") == "report-request":
-                    row["aiRequest"] = bool(c.get("aiRequest"))
-                emit(row)
-                matched += 1
-
-    # Citations (atoms — pos-anchored, but some carry links via migrations)
-    cits = read_json(sidecar(doc, "citations.json"), default={"citations": []})
-    if isinstance(cits, dict):
-        for c in cits.get("citations", []) or []:
-            if matches(c, uuid):
-                emit(
-                    {
-                        "panel": "citations",
-                        "cardId": c.get("id"),
-                        "kind": "citation",
-                        "summary": (c.get("command") or "")[:140],
-                    }
-                )
-                matched += 1
-
-    # Examples (also have anchor links in some migrations)
-    exs = read_json(sidecar(doc, "examples.json"), default={"examples": []})
-    if isinstance(exs, dict):
-        for e in exs.get("examples", []) or []:
-            if matches(e, uuid):
-                emit(
-                    {
-                        "panel": "examples",
-                        "cardId": e.get("id"),
-                        "kind": "example",
-                        "summary": summarize(e, ["title", "tag", "label"]),
-                    }
-                )
-                matched += 1
-
+    markers = _marker_maps(doc)
+    for hit in iter_cards(doc):
+        card = hit.card
+        on_para = uuid in card_paragraph_ids(card)
+        if not on_para and hit.panel in markers:
+            on_para = markers[hit.panel].get(card.get("id")) == uuid
+        if not on_para:
+            continue
+        disk_kind = card.get("kind") or _SINGLE_KIND_PANEL.get(hit.panel) or hit.panel
+        row = {
+            "panel": hit.panel,
+            "cardId": card.get("id"),
+            "kind": disk_kind,
+            "cardKind": card_kind(hit),
+            "summary": summarize(card),
+            "aiRequest": bool(card.get("aiRequest")),
+            "archived": hit.archived,
+        }
+        if hit.panel == "todos":
+            row["status"] = "done" if card.get("done") else "open"
+        elif disk_kind == "suggestion":
+            row["status"] = card.get("status", "pending")
+        emit(row)
+        matched += 1
     return matched
 
 

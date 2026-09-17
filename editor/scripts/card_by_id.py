@@ -35,6 +35,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 from _common import die, read_json, resolve_doc, sidecar
 
@@ -81,8 +82,23 @@ class CardHit:
         return self.panel == "archive"
 
 
-def find_card(doc: Path, card_id: str) -> CardHit | None:
-    """Return the CardHit for `card_id`, or None if no sidecar holds it."""
+# Panels whose cards are anchored by an atom MARKER in the .tex rather than a
+# `links` array: the card id equals the marker id, and the card sits in whatever
+# paragraph holds the marker (`_common.marker_paragraph_ids`). Every other panel
+# in ALL_CARD_SIDECARS is link-anchored (`_common.card_paragraph_ids`).
+# test_cards_for_paragraph.py pins this against ALL_CARD_SIDECARS,
+# ATOM_BEARING_PANELS and VIRGIL_MARKER_COMMANDS.
+MARKER_ANCHORED_PANELS = {
+    "footnotes": "vfid",
+    "citations": "vcid",
+    "examples": "vexid",
+}
+
+
+def iter_cards(doc: Path) -> Iterator[CardHit]:
+    """Yield every card in every card-hosting sidecar, in ALL_CARD_SIDECARS
+    order — the ONE reader of "which list inside which sidecar". Each sidecar is
+    read fresh; a missing / malformed file (or list) yields nothing."""
     for panel, (filename, list_key) in ALL_CARD_SIDECARS.items():
         state = read_json(sidecar(doc, filename), default=None)
         if not isinstance(state, dict):
@@ -91,8 +107,15 @@ def find_card(doc: Path, card_id: str) -> CardHit | None:
         if not isinstance(items, list):
             continue
         for i, c in enumerate(items):
-            if isinstance(c, dict) and c.get("id") == card_id:
-                return CardHit(card=c, panel=panel, filename=filename, list_key=list_key, index=i)
+            if isinstance(c, dict):
+                yield CardHit(card=c, panel=panel, filename=filename, list_key=list_key, index=i)
+
+
+def find_card(doc: Path, card_id: str) -> CardHit | None:
+    """Return the CardHit for `card_id`, or None if no sidecar holds it."""
+    for hit in iter_cards(doc):
+        if hit.card.get("id") == card_id:
+            return hit
     return None
 
 
