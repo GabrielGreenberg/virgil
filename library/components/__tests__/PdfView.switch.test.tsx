@@ -13,6 +13,7 @@
  * run pdf.js); `readFile` is a deferred mock so each read resolves on cue.
  */
 import { act, render } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const reads = new Map<string, (file: Blob | null) => void>();
@@ -79,6 +80,49 @@ async function resolveRead(citekey: string, file: Blob | null) {
 }
 
 describe("PdfView — an in-place paper switch (task 612)", () => {
+  it("DEFECT LEG, real scheduler: the switch never re-opens the previous (revoked) URL as the new paper", async () => {
+    // Outside act() on purpose: act flushes the old `setUrl(null)` re-render
+    // before the eager open's microtask resumes, which MASKS the pre-fix bug.
+    // Under React's own scheduler the pre-fix code recorded
+    // `{ url: <A's revoked blob>, originalUrl: "B.pdf" }` here.
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const prevAct = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    const tick = () => new Promise((r) => setTimeout(r, 10));
+    // React's passive-effect flush is not on a fixed clock here: poll.
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 400 && !cond(); i++) await tick();
+      expect(cond()).toBe(true);
+    };
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    try {
+      root.render(<PdfView handle={handle} citekey="A" />);
+      await until(() => reads.has(pathOf("A")));
+      const iframe = el.querySelector("iframe")!;
+      installViewer(iframe);
+      reads.get(pathOf("A"))!(new Blob(["a"]));
+      await until(() => opens.length === 1);
+      root.render(<PdfView handle={handle} citekey="B" />);
+      await until(() => reads.has(pathOf("B")));
+      // The pre-fix stale open fired within a microtask of this commit.
+      await tick();
+      reads.get(pathOf("B"))!(new Blob(["b"]));
+      await until(() => opens.some((o) => o.url === "blob:fake/2"));
+      await tick();
+      expect(opens).toEqual([
+        { url: "blob:fake/1", originalUrl: "A.pdf", revokedAtCall: false },
+        { url: "blob:fake/2", originalUrl: "B.pdf", revokedAtCall: false },
+      ]);
+      expect(el.querySelector("iframe")).toBe(iframe);
+    } finally {
+      root.unmount();
+      el.remove();
+      g.IS_REACT_ACT_ENVIRONMENT = prevAct;
+    }
+  });
+
   it("never opens a URL under another paper's title, nor a revoked URL, and keeps ONE iframe", async () => {
     const { container, rerender } = render(<PdfView handle={handle} citekey="A" />);
     const iframe = container.querySelector("iframe")!;

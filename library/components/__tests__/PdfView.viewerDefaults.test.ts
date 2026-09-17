@@ -73,8 +73,9 @@ describe("applyViewerDefaults — the sidebar opens CLOSED", () => {
   });
 
   it("closes an already-open sidebar — the warm-iframe carryover", () => {
-    // PdfView keeps ONE iframe across paper switches and nothing in pdf.js
-    // closes an open sidebar on re-open (`reset()` switches to THUMBS without
+    // A PdfView whose citekey changes in place (the standalone paper tab)
+    // switches papers in ONE iframe (task 612 made that real — the element
+    // survives the switch) and nothing in pdf.js closes an open sidebar on re-open (`reset()` switches to THUMBS without
     // forceOpen; `setInitialView(NONE)` early-returns). Without this half a
     // sidebar opened on paper A stays open on B, C, D… for the life of the tab.
     const { win, close } = fakeWindow();
