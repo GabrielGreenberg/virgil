@@ -403,6 +403,9 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
                 citekey, "--entry-type", "book",
                 "--fields-file", fields_file,
                 "--bib-state", POLICY_BIB_STATE,
+                # A deliberate downgrade: the policy's whole point is that the
+                # entry's metadata no longer matches, settled or not.
+                "--allow-downgrade",
                 "--merge-existing",
             ],
             check=True,

@@ -2186,6 +2186,13 @@ def _seed_from_master_bib(library: Path, citekey: str) -> tuple[Optional[dict], 
     entries = read_master_bib(master)
     entry = entries.get(citekey)
     if entry is None:
+        # NFC/NFD fold (task 621): the parser keys entries by the file's own
+        # spelling, and macOS hands us keys in either form.
+        import unicodedata
+        want = unicodedata.normalize("NFC", citekey)
+        entry = next((v for k, v in reversed(list(entries.items()))
+                      if unicodedata.normalize("NFC", k) == want), None)
+    if entry is None:
         return None, f"{citekey} is not in {master}"
     return entry, ""
 

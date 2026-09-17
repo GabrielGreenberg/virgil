@@ -53,7 +53,8 @@ from _tools import (
     detect,
     lock_catalog,
     read_catalog,
-    read_master_bib,
+    is_terminal_bib_state,
+    master_entry_for,
     resolve_paper_source,
     update_master_bib_entry,
     upsert_catalog_entry,
@@ -116,8 +117,7 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
     paper_dir = library / "papers" / citekey
     if not paper_dir.exists():
         return False
-    master = read_master_bib(library / "master.bib")
-    entry = master.get(citekey)
+    entry = master_entry_for(library, citekey)
     if not entry:
         return False
     write_paper_bib_entry(paper_dir, citekey, entry["type"], entry["fields"])
@@ -146,8 +146,7 @@ def _sync_catalog_entry_from_master(library: Path, citekey: str,
     to do here. For a real holding it answers True and the row is written
     exactly as before.
     """
-    master = read_master_bib(library / "master.bib")
-    entry = master.get(citekey)
+    entry = master_entry_for(library, citekey)
     if not entry:
         return
     fields = entry["fields"]
@@ -243,6 +242,100 @@ def _fuse_pgmark_from_alternate(
     else:
         log_fn(f"  Fusion aborted: {result.aborted_reason}")
     return result
+
+
+def _unauthenticated_bib_status(bib_entry: dict) -> dict:
+    """The row's `bib` block when no auth pass runs: a settled entry keeps its
+    state (task 621), anything else reads `unverified`."""
+    state = bib_entry.get("state", "")
+    return {"state": state if is_terminal_bib_state(state) else "unverified"}
+
+
+def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
+                               fields: dict, log) -> dict:
+    """Step 7: authenticate `citekey`'s master.bib entry and write it back.
+
+    Returns the row's `bib` status block. Mutates `fields` (field changes,
+    title hygiene) and `bib_entry["type"]` (a DOI-verified type conversion) in
+    place, exactly as the inline step did; the caller re-derives its
+    title/authors/year from `fields`.
+    """
+    title = fields.get("title", "")
+    authors = fields.get("author", "")
+    # A SETTLED entry is not re-authenticated (task 621). Indexing is how a
+    # held source arrives for a reference the library already vetted — an
+    # imported `canonical` entry, an `authenticated` one whose PDF the user
+    # just dropped — and a fresh fuzzy lookup is lower evidence than the
+    # verdict already on file: its `field_changes` would overwrite vetted
+    # fields and its `unverified` would stamp the state back down. The write
+    # door holds the state regardless; skipping here is what keeps the
+    # FIELDS. The row carries the settled state rather than a default.
+    bib_status = _unauthenticated_bib_status(bib_entry)
+    if is_terminal_bib_state(bib_status["state"]):
+        log(f"Step 7: skipped (bib.state={bib_status['state']} is settled; "
+            "not re-authenticating)")
+    else:
+        log("Step 7: authenticate bib entry against external sources")
+        seed_authors = [a.strip() for a in authors.split(" and ") if a.strip()]
+        try:
+            result = authenticate(title, seed_authors, fields,
+                                  entry_type=bib_entry["type"],
+                                  library=library, citekey=citekey)
+            bib_status = {
+                "state": result.state,
+                "doiVerified": result.doi_verified,
+                "sources": result.sources,
+                "fieldChanges": result.field_changes,
+                "score": result.score,
+                "note": result.note,
+            }
+            if result.proposed_type:
+                bib_status["proposedType"] = result.proposed_type
+            if result.state == "authenticated":
+                bib_status["authenticatedAt"] = _now()
+            # Honor type auto-conversion (only set when DOI-verified).
+            effective_type = result.proposed_type or bib_entry["type"]
+            if result.proposed_type:
+                # @article → @incollection: journal becomes booktitle.
+                if (bib_entry["type"] == "article"
+                        and result.proposed_type == "incollection"
+                        and "journal" in fields):
+                    if "booktitle" not in fields:
+                        fields["booktitle"] = fields["journal"]
+                    fields.pop("journal", None)
+                # any → @unpublished: drop publication-only fields.
+                if result.proposed_type == "unpublished":
+                    for k in ("journal", "booktitle", "volume", "number", "pages"):
+                        fields.pop(k, None)
+                bib_entry["type"] = effective_type
+                log(f"  Bib type rewritten: {result.proposed_type}")
+            # Merge field changes and write back to master.bib.
+            if result.state in ("authenticated", "unverified", "manuscript", "failed"):
+                if result.field_changes:
+                    for fc in result.field_changes:
+                        fields[fc["field"]] = fc["to"]
+                # P15: title hygiene check post-merge — flag (don't reject)
+                # junk titles that slipped through. Mutates `fields` in place
+                # to apply normalizations (ALL-CAPS → title case, strip
+                # trailing footnote markers).
+                clean, reason = assert_title_clean(fields)
+                if not clean:
+                    log(f"  TITLE-SUSPECT: {reason}")
+                    bib_status["titleSuspect"] = reason
+                update_master_bib_entry(
+                    library,
+                    citekey,
+                    effective_type,
+                    fields,
+                    bib_state=result.state,
+                )
+                log(f"  Updated master.bib ({len(result.field_changes)} field changes, state={result.state})")
+            log(f"  bib state: {result.state}, score={result.score:.2f}, sources={result.sources}")
+        except Exception as e:
+            log(f"  bib auth FAILED: {e}")
+            bib_status = {"state": "failed", "note": str(e)}
+
+    return bib_status
 
 
 def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
@@ -368,8 +461,9 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
 
     # 4. Read .bib entry to get title/authors/year for emission.
     log("Step 4: read master.bib for metadata")
-    master = read_master_bib(library / "master.bib")
-    bib_entry = master.get(citekey)
+    # The one read door (task 621): NFC/NFD-folded, and a master.bib that
+    # cannot be read raises rather than reading as "no entry".
+    bib_entry = master_entry_for(library, citekey)
     if not bib_entry:
         raise KeyError(f"{citekey} not found in master.bib — add an entry before indexing")
     fields = bib_entry["fields"]
@@ -444,71 +538,14 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     log(f"  Wrote {paper_dir}")
 
     # 7. Bib authentication (optional, may make external HTTP calls).
-    bib_status: dict = {"state": "unverified"}
     if authenticate_bib:
-        log("Step 7: authenticate bib entry against external sources")
-        seed_authors = [a.strip() for a in authors.split(" and ") if a.strip()]
-        try:
-            result = authenticate(title, seed_authors, fields,
-                                  entry_type=bib_entry["type"],
-                                  library=library, citekey=citekey)
-            bib_status = {
-                "state": result.state,
-                "doiVerified": result.doi_verified,
-                "sources": result.sources,
-                "fieldChanges": result.field_changes,
-                "score": result.score,
-                "note": result.note,
-            }
-            if result.proposed_type:
-                bib_status["proposedType"] = result.proposed_type
-            if result.state == "authenticated":
-                bib_status["authenticatedAt"] = _now()
-            # Honor type auto-conversion (only set when DOI-verified).
-            effective_type = result.proposed_type or bib_entry["type"]
-            if result.proposed_type:
-                # @article → @incollection: journal becomes booktitle.
-                if (bib_entry["type"] == "article"
-                        and result.proposed_type == "incollection"
-                        and "journal" in fields):
-                    if "booktitle" not in fields:
-                        fields["booktitle"] = fields["journal"]
-                    fields.pop("journal", None)
-                # any → @unpublished: drop publication-only fields.
-                if result.proposed_type == "unpublished":
-                    for k in ("journal", "booktitle", "volume", "number", "pages"):
-                        fields.pop(k, None)
-                bib_entry["type"] = effective_type
-                log(f"  Bib type rewritten: {result.proposed_type}")
-            # Merge field changes and write back to master.bib.
-            if result.state in ("authenticated", "unverified", "manuscript", "failed"):
-                if result.field_changes:
-                    for fc in result.field_changes:
-                        fields[fc["field"]] = fc["to"]
-                    title = fields.get("title", title)
-                    authors = fields.get("author", authors)
-                    year = fields.get("year", year)
-                # P15: title hygiene check post-merge — flag (don't reject)
-                # junk titles that slipped through. Mutates `fields` in place
-                # to apply normalizations (ALL-CAPS → title case, strip
-                # trailing footnote markers).
-                clean, reason = assert_title_clean(fields)
-                if not clean:
-                    log(f"  TITLE-SUSPECT: {reason}")
-                    bib_status["titleSuspect"] = reason
-                    title = fields.get("title", title)
-                update_master_bib_entry(
-                    library,
-                    citekey,
-                    effective_type,
-                    fields,
-                    bib_state=result.state,
-                )
-                log(f"  Updated master.bib ({len(result.field_changes)} field changes, state={result.state})")
-            log(f"  bib state: {result.state}, score={result.score:.2f}, sources={result.sources}")
-        except Exception as e:
-            log(f"  bib auth FAILED: {e}")
-            bib_status = {"state": "failed", "note": str(e)}
+        bib_status = _authenticate_master_entry(library, citekey, bib_entry,
+                                                fields, log)
+        title = fields.get("title", title)
+        authors = fields.get("author", authors)
+        year = fields.get("year", year)
+    else:
+        bib_status = _unauthenticated_bib_status(bib_entry)
 
     # 8. Stamp this paper's own row into references.bib (post-auth fields).
     # An UPSERT, not a re-emit: on a first index the file doesn't exist yet

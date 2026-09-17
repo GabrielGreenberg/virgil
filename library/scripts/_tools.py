@@ -1535,6 +1535,46 @@ def locate_master_entry(text: str, citekey: str) -> "MasterEntrySpan | None":
                            block_start=block_start, state=state)
 
 
+def master_entry_for(
+    library: Path, citekey: str, *, text: str | None = None,
+) -> "dict | None":
+    """WHAT DOES master.bib SAY ABOUT THIS ONE CITEKEY? — the one read door.
+
+    Returns `{type, fields, raw, key, state}` for `citekey`'s entry, or None
+    when master.bib has no entry for it (or does not exist). `key` is the
+    citekey as the FILE spells it; `state` is its `% bib.state` comment ("").
+
+    Every single-entry reader goes through here instead of
+    `read_master_bib(...).get(citekey)` (task 621). The raw dict lookup had two
+    silent failure modes, and both ended in a WRITE against nothing:
+
+    - it keys entries byte-for-byte, so an NFC query missed an NFD-spelled
+      entry (macOS keys arrive NFD) — a bib-drop then "merged" against an
+      empty entry and the whole-block write dropped pages/doi/publisher;
+    - callers wrapped the read in `except Exception: {}`, so an unreadable
+      master.bib looked exactly like "no such entry".
+
+    So this door locates through `locate_master_entry` — the writers' own
+    locator (NFC then NFD, LAST entry wins) — and never swallows: an I/O or
+    decode error propagates, and an entry whose braces never balance raises
+    `BibEntryUnbalanced`, because its fields are a guess. A caller that then
+    merges and writes can only do so against what the writer will replace.
+    """
+    if text is None:
+        path = library / "master.bib"
+        if not path.exists():
+            return None
+        text = path.read_text()
+    span = locate_master_entry(text, citekey)
+    if span is None:
+        return None
+    raw = text[span.start:span.end]
+    entry = read_master_bib(Path("master.bib"), text=raw).get(span.key)
+    if entry is None:  # unreachable: the span IS an entry the reader yields
+        return None
+    return {**entry, "key": span.key, "state": span.state}
+
+
 class BibKeyTaken(Exception):
     """A rename's target citekey already has an entry — renaming would mint a
     duplicate that every reader silently collapses (last-wins)."""
@@ -1710,8 +1750,23 @@ def update_master_bib_entry(
     entry_type: str,
     fields: dict[str, str],
     bib_state: str = "",
-) -> None:
+    *,
+    allow_downgrade: bool = False,
+) -> str:
     """Replace (or append) one entry in master.bib. Self-locks.
+
+    Returns the `% bib.state` the entry carries after the write ("" for none).
+
+    **A settled state is never lowered here** (task 621). When the entry's
+    existing state is terminal (`TERMINAL_BIB_STATES`) and `bib_state` is a
+    non-terminal one, the existing state is HELD — the fields still land, only
+    the state stays. The rule used to live in each caller
+    (`merge_paper_references._write_master`, the `triage_apply` drop guard) and
+    the next caller forgot it: every re-index of a held paper re-authenticated
+    and stamped `unverified` over `authenticated`/`canonical`. A deliberate
+    downgrade (the metadata-mismatch policy's `needs-reauth`) passes
+    `allow_downgrade=True`; compare the return value with `bib_state` to learn
+    whether the door held.
 
     Finds the @type{citekey, ...} block, replaces it (and any
     preceding `% bib.state = ...` comment line) with a freshly emitted
@@ -1744,6 +1799,10 @@ def update_master_bib_entry(
             # so a fields-only writeback (no `bib_state` arg) must NOT erase it.
             existing_comment_state = span.state
             effective_bib_state = bib_state or existing_comment_state
+            if (not allow_downgrade
+                    and is_terminal_bib_state(existing_comment_state)
+                    and not is_terminal_bib_state(effective_bib_state)):
+                effective_bib_state = existing_comment_state
             replacement = ""
             if effective_bib_state:
                 replacement += f"% bib.state = {effective_bib_state}\n"
@@ -1759,6 +1818,7 @@ def update_master_bib_entry(
                 replacement = replacement[:-1]
             text = text[:entry_start] + replacement + text[entry_end:]
         else:
+            effective_bib_state = bib_state
             replacement = ""
             if bib_state:
                 replacement += f"% bib.state = {bib_state}\n"
@@ -1790,6 +1850,7 @@ def update_master_bib_entry(
         if text != original_text:
             _atomic_write_text(master_path, text)
     _mark_bib_index_dirty(library)
+    return effective_bib_state
 
 
 # ── F#4 holdings model ────────────────────────────────────────────────
@@ -2045,13 +2106,11 @@ def admit_catalog_row(
     `bib_state` falsy or `"none"` discharges NOTHING. "I have no state to
     record" must never overwrite a state some earlier run authenticated —
     `update_master_bib_entry` writes `% bib.state = none` verbatim, so passing
-    it through would be a silent downgrade rather than a no-op. **That is the
-    whole of the guard, and the wider rule is deliberately NOT here:** a
-    weaker CANONICAL state (an `unverified` over an `authenticated`) still
-    lands, because deciding whether re-authentication may downgrade is a
-    question about the auth pipeline, not about this gate.
-    `merge_paper_references._write_master` holds its own no-downgrade guard
-    for the case it owns.
+    it through would be a silent downgrade rather than a no-op. The wider rule
+    — a weaker canonical state (`unverified` over `authenticated`) never
+    lowers a settled entry — is not this gate's either: it lives in the write
+    door itself, `update_master_bib_entry` (task 621), so it holds here and
+    for every other writer alike.
     """
     if paper_has_holdings(library, citekey):
         return True
