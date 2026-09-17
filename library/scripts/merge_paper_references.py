@@ -403,6 +403,10 @@ def _write_master(library: Path, citekey: str, entry_type: str,
                   fields: dict, state: str) -> None:
     """Write the entry, but NEVER downgrade a settled one.
 
+    The write door now holds a settled `% bib.state` itself (task 621); this
+    caller-side resolve stays because `resolve_bib_state` also honours a
+    pre-F#4 catalog row's terminal state, which the door cannot see.
+
     Belt and braces beside the read fix (task 442): with `bib_state` resolved
     from its F#4 home, a terminal master entry is deferred to and this path is
     not reached for it at all. It is reached legitimately when an entry that

@@ -37,7 +37,9 @@ values, e.g.:
   }
 
 If `--bib-state` is given, the existing `% bib.state = ...` comment
-line (if any) is replaced with the new value.
+line (if any) is replaced with the new value — unless that would LOWER a
+settled state (authenticated / manuscript / canonical), which is held
+(and noted on stderr) without `--allow-downgrade` (task 621).
 
 Replaces an existing @<type>{<citekey>, ...} block in place, or
 appends at the end if no such block exists.
@@ -97,7 +99,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import citekey_matches, read_master_bib, update_master_bib_entry
+from _tools import citekey_matches, master_entry_for, update_master_bib_entry
 
 
 def main() -> int:
@@ -163,6 +165,13 @@ def main() -> int:
         "--merge-existing, which re-adds every current field — name the field with "
         "--drop-field instead.",
     )
+    ap.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="Permit --bib-state to LOWER a settled state (authenticated / "
+        "manuscript / canonical → anything else). Without it the settled state "
+        "is held and only the fields are written.",
+    )
     args = ap.parse_args()
 
     library = _resolve_library(args.library)
@@ -174,20 +183,14 @@ def main() -> int:
     # Coerce all values to str — bib fields are textual.
     fields = {k: str(v) for k, v in fields.items() if v not in (None, "")}
 
-    existing = read_master_bib(library / "master.bib")
-    # Resolve the STORED spelling of the citekey. `read_master_bib` keys entries
-    # byte-for-byte as the file spells them and never normalizes, while the
-    # writer normalizes to NFC and then searches under BOTH NFC and NFD (the
-    # 1976-Tichý memo: master.bib genuinely carries either form). A raw
-    # `args.citekey in existing` test therefore disagrees with the writer on any
-    # diacritic citekey stored in the other normalization — it would report
-    # "append", skip this whole guard, and then let the writer find and
-    # whole-block-replace the entry anyway. That is precisely the silent data
-    # loss the guard exists to prevent, so match the writer's normalization.
-    stored_key = next(
-        (k for k in existing if citekey_matches(k, args.citekey)), None,
-    )
-    is_append = stored_key is None
+    # The one read door (`_tools.master_entry_for`, task 621): the writer's
+    # own locator — NFC then NFD, last entry wins — so the guard below judges
+    # exactly the entry the write will replace. A raw `args.citekey in
+    # read_master_bib(...)` disagreed with the writer on a diacritic citekey
+    # stored in the other normalization: it reported "append", skipped the
+    # guard, and the writer whole-block-replaced the entry anyway.
+    existing_entry = master_entry_for(library, args.citekey)
+    is_append = existing_entry is None
 
     # Field-preservation guard — only for a REPLACE. The write below is a
     # whole-block replacement, so any currently-non-empty field missing from
@@ -197,7 +200,7 @@ def main() -> int:
     # ways through. Mirrors the append-side duplicate guard: neither half of
     # the upsert may silently lose data.
     if not is_append:
-        current = existing[stored_key].get("fields") or {}
+        current = existing_entry.get("fields") or {}
         drop_names = {d.lower() for d in args.drop_field}
         if args.merge_existing:
             # Incoming wins per field; everything else survives.
@@ -258,11 +261,19 @@ def main() -> int:
             )
             return 3
 
-    update_master_bib_entry(
+    written_state = update_master_bib_entry(
         library, args.citekey, args.entry_type, fields,
         bib_state=args.bib_state,
+        allow_downgrade=args.allow_downgrade,
     )
     print(f"updated master.bib entry for {args.citekey} in {library}")
+    if args.bib_state and written_state != args.bib_state:
+        print(
+            f"note: {args.citekey} is settled (bib.state={written_state}); "
+            f"--bib-state {args.bib_state} was not applied. Pass "
+            "--allow-downgrade for a deliberate downgrade.",
+            file=sys.stderr,
+        )
     return 0
 
 

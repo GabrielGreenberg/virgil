@@ -43,6 +43,7 @@ from _tools import (
     citekey_matches,
     is_terminal_bib_state,
     lock_catalog,
+    master_entry_for,
     read_catalog,
     RelocateCollision,
     read_master_bib,
@@ -415,6 +416,23 @@ def apply_bib_row(
             # relation == "uncertain": mint the row, but flag it for review.
             row.setdefault("_possibleDuplicateOf", match.citekey)
 
+    # ── Read the existing entry through the ONE door (task 621). ───────
+    # NFC/NFD-folded — a raw dict lookup missed an NFD-spelled entry — and it
+    # RAISES on an unreadable master.bib. The old `except Exception: {}` made
+    # "cannot read" look like "no such entry", so the merge below ran against
+    # nothing and the whole-block write replaced the entry with only the
+    # incoming fields. A row that cannot see what it would replace is not
+    # applied: any status but imported/ignored parks the source file.
+    try:
+        existing_entry = master_entry_for(library, citekey)
+    except Exception as e:
+        return {
+            "status": "bib-master-unreadable",
+            "summary": f"{citekey}: master.bib could not be read ({e}); row not applied",
+        }
+    if existing_entry and is_terminal_bib_state(existing_entry.get("state", "")):
+        existing_state = existing_entry["state"]
+
     # ── A SETTLED entry stays put. ────────────────────────────────────
     # The set is `TERMINAL_BIB_STATES`, not a hand pair: `canonical` is
     # terminal too, and naming only authenticated/manuscript here let a drop
@@ -440,12 +458,6 @@ def apply_bib_row(
     # a hand list of states (the pre-442 `unverified/failed/none`) dropped the
     # existing fields wholesale for any state the list forgot — `needs-reauth`
     # was one, and its whole meaning is "these fields are not yet trusted".
-    try:
-        from _bib_parse import read_master_bib
-        existing_master = read_master_bib(library / "master.bib")
-    except Exception:
-        existing_master = {}
-    existing_entry = existing_master.get(citekey)
     if existing_entry:
         merged_fields, field_changes = _merge_bib_fields(
             existing_entry["fields"], incoming_fields,
