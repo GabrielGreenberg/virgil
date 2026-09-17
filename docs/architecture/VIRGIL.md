@@ -1,4 +1,4 @@
-<!-- last-verified: 6786d17d 2026-09-16 -->
+<!-- last-verified: 29eab4cd 2026-09-17 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
@@ -218,7 +218,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ## Code organization
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
-*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 6786d17d`).*
+*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 29eab4cd`).*
 
 ### `src/` top-level map
 
@@ -255,8 +255,8 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 ### Persistence
 
 - **Disk (File System Access API):** the single boundary is [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) — every read/write routes through it. On disk per paper: `<name>.tex` (source of truth), optional `<name>.bib`, and the `virgil/` sidecar folder. **A write the user did not ask for cannot lose content:** `readDocBundle` re-serializes and writes back on OPEN, and a bundle write can also land on a bare anchor-UUID mint, so both are measured against what was read (word tokens, Virgil's own markers projected away) and a shrink is a loud **refusal** with the file left byte-identical — `tex-preservation.ts` / `write-preservation.ts`, published to the user through `preservation-notice.ts` (tasks 350-D, 357). After a real user edit the model is theirs and the gate steps aside. Every state that pauses or refuses a write — a cowork pen hold, an external change, a preservation refusal — is presented in ONE voice: `document-interruption.ts` (task 545) derives what happened (naming the writer where the pen's release trace allows), what Virgil is doing about it, and ONE recommended door phrased as an outcome; `DocumentInterruptionBanner` renders it inside the paper's card and the badges read the same vocabulary, with `interruption-log.ts` recording each presentation for provenance.
-- **IndexedDB:** preferences, tab state, folder handles, doc index — never paper content.
-- **localStorage + the cross-window rule:** multi-window is first-class (`openNewVirgilWindow`), so any store that caches a `localStorage` snapshot must re-hydrate on the native `storage` event or its next write silently clobbers a peer window's change from a stale base. The contract has exactly one encoding — [src/lib/cross-window-storage.ts](../../src/lib/cross-window-storage.ts) — and every snapshot-caching store rides it (tasks 177 + 179 drained the census). Detail: `docs/agents/architecture.md` → "localStorage stores + the cross-window rule".
+- **IndexedDB:** preferences, tab state, folder handles, doc index — never paper content. The doc index has one mutation door (`mutateIndex`) and one retirement door (`purgeDoc`) in [src/lib/doc-index.ts](../../src/lib/doc-index.ts) (tasks 601, 604); tab records outlive the page and are swept only when their window's liveness lock is gone (task 603).
+- **localStorage + the cross-window rule:** multi-window is first-class (`openNewVirgilWindow`), so any store that caches a `localStorage` snapshot must re-hydrate on the native `storage` event or its next write silently clobbers a peer window's change from a stale base. The contract has exactly one encoding — [src/lib/cross-window-storage.ts](../../src/lib/cross-window-storage.ts) — and every snapshot-caching store rides it (tasks 177 + 179 drained the census; task 599 added a store-shape census that also catches a store subscribing to nothing). Detail: `docs/agents/architecture.md` → "localStorage stores + the cross-window rule".
 
 ### LaTeX round-trip
 

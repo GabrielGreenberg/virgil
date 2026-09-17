@@ -1,4 +1,4 @@
-<!-- last-verified: 6786d17d 2026-09-16 -->
+<!-- last-verified: 29eab4cd 2026-09-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -81,7 +81,8 @@ key renders `??`.
 Re-pointing an existing chip addresses it by **identity** — the click carries the
 chip's `pos` plus its owning editor, re-checked at commit and refused on mismatch
 — so a paper that cites one label several times no longer edits the first chip in
-document order (task 550).
+document order (task 550). A label rename carries every `labelRef` naming the
+old key — including one inside a footnote body's `attrs.content` (task 606).
 
 ## inlineMath
 
@@ -109,7 +110,8 @@ not Atoms, but a skill editing inline content meets them:
   `src/lib/node-attr-sets.ts`, task 553) — or, where Virgil models nothing, left
   as literal `\label{}` bytes in raw text or in a `displayMath` `latex` source.
   All of those are what `collectLabelKeys` ([src/lib/labels.ts](../../src/lib/labels.ts))
-  walks, so every "is this key already claimed?" check sees the same set. Since
+  walks — footnote bodies included (task 606) — so every "is this key already
+  claimed?" check sees the same set. Since
   553 that includes EXAMPLE keys, which the pre-553 registry (`heading` +
   `figureBlock` only) could not see.
 - **`latexCommentTail`** — a `%` comment tail and the rest of its source line

@@ -1,4 +1,4 @@
-<!-- last-verified: 3b09f304 2026-09-15 -->
+<!-- last-verified: 29eab4cd 2026-09-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -131,6 +131,7 @@ Each flavor breaks differently, and different machinery catches each
 | The anchored **block's `%!v:` uuid is re-minted** (the `.tex` reload race — the `%!v:` write lost to a reload, so the paragraph parsed back with a fresh uuid and the card's stored uuid matches nothing) | anchor (A) | — (no guard; caught on the next load) | The reload reconcile re-finds the block by `paragraphSnapshot` (snapshot rung of the resolver ladder) and rewrites `textObjectIds[0]` to the live uuid — see the unified resolver below |
 | The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot`; on **load** the once-per-doc re-apply pass restamps every Mode-B mark (below) |
 | The mark **reloads mislabeled** — the serializer drops the mark `kind`, and the parser's `applyLinkedAnchorBoundaries` resurrects every `\vlid` pair as a hardcoded `kind:"note"`/`linkCard:""` (the schema default in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)), so a revision/cutter/todo/report/highlight span reloads painted as a note | anchor (B) | — (caught on the next load) | The load reconcile (`applyLinkedAnchorsImpl`, below) is **authoritative**: it re-stamps each present-but-disagreeing mark's `kind`/`linkCard`/`tintColor` from the owning sidecar card over the parser default |
+| The anchored **block is split** (Enter at its very start) | anchor (A) | uuid backfill: the id follows the CONTENT — the text half keeps it and the new blank line is minted (task 605); the fix and `MarginaliaAnchorGuard`'s stand-in both ride the edit's undo event, so Undo restores one holder | — |
 | The **`\vfid` / `\vcid` marker** (or the whole `\footnote{}`/`\cite{}`) is removed | atom-link | — (deleting the Atom is a normal edit) | `recoverOrphanedUuids` by fingerprint; a footnote whose marker vanished becomes an in-memory `OrphanedFootnote` the panel still hosts |
 
 ### The unified recovery owner (resolver SSOT)

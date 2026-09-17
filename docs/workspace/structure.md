@@ -1,4 +1,4 @@
-<!-- last-verified: 6786d17d 2026-09-16 -->
+<!-- last-verified: 29eab4cd 2026-09-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -205,7 +205,16 @@ splice narrowly and never rewrite the whole file.
   `rename_citekey.py`'s rewriters; it rides the same atomic commit as a `bibEdit`
   `replace` so a library-swap of one entry is one all-or-nothing op. It cannot
   co-occur with `texEdit` — both rewrite the `.tex` from independent reads, so the
-  contract refuses the combination.)
+  contract refuses the combination.) Every `bibEdit` mode is measured before it
+  writes: an edit that would drop any OTHER entry from the `.bib` dies unwritten,
+  and an entry whose braces don't balance is refused (`BibSpliceRefused`) rather
+  than spliced at a guessed end (task 614).
+- **`texEdit` modes** (`apply_response.py`): `end-of-paragraph` (default),
+  `after-selected`, `replace-span` search only the anchored paragraph's LIVE text
+  (previous `%!v:` marker → this one; comment-only hits miss — task 613);
+  `after-paragraph` lands a block after the paragraph's marker (examples);
+  `region-replace` replaces everything up to the first live `endMarker` (default
+  `\begin{document}` — the preamble rewrite).
 - **Never hand-edit:** `version.txt`, `notifications.json`, `collab.json`,
   `ai-requests.json` (the writeback owns these), or the invisible `.tex` markers
   ([identity.md](identity.md)). The full never-touch deny-list is
@@ -235,7 +244,8 @@ mechanism. Two pieces:
 The content-addressed version stamp + refresh-toast mechanism
 (`.virgil/.skill-bundle-version.json`) covers the manifest automatically: edit a
 `docs/workspace/*.md`, rebuild, and the meta-version changes, so the next
-doc-open re-syncs and toasts the refresh — no separate signal. (This realizes the
+time a paper becomes the current doc (open, tab switch, session restore, or a
+folder-access grant — task 602) re-syncs and toasts the refresh — no separate signal. (This realizes the
 design intent in `EDITOR_SKILLS_BRAINSTORM.html` §2 "Where the manifest lives" and
 the editor `AGENTS.md` "Future work → End-user folder sync" note.) The builder
 output and the `diskPathFor` routing are unit-tested

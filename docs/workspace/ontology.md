@@ -1,4 +1,4 @@
-<!-- last-verified: 6786d17d 2026-09-16 -->
+<!-- last-verified: 29eab4cd 2026-09-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -61,7 +61,7 @@ yield their identity to the container above them, and `LABEL_DECLARING_NODE_TYPE
 (task 553, schema-pinned like the rest) answers *which node types absorb a
 `\label{}` into a `label` attr* — `heading`, `figureBlock`, `exampleBlock`,
 `exampleItem`. That set is what the label registry (`collectLabelKeys`) and the
-rename door walk, so a fifth declaring kind joins both by declaring itself here.
+rename door walk (both also reach into footnote bodies, task 606), so a fifth declaring kind joins both by declaring itself here.
 
 Each node member carries a `%!v:` block id; the LaTeX form of each is in
 [latex.md](latex.md), the marker rules in [identity.md](identity.md).
