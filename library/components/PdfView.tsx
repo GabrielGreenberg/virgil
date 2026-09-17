@@ -112,12 +112,15 @@ const SIDEBAR_VIEW_NONE = 0;
  * half of that same stored-history restore is untouched: it is read outside the
  * `sidebarView === UNKNOWN` guard.
  *
- * The `close()` is the second half and is NOT redundant. `PdfView` keeps ONE
- * warm iframe across paper switches, and nothing in pdf.js ever closes an open
- * sidebar on a re-open: `reset()` switches to THUMBS without `forceOpen`, and
- * `setInitialView(NONE)` early-returns. So a sidebar opened on paper A would
- * otherwise stay open on B, C, D… for the life of the tab. The option stops the
- * OPEN; `close()` retires an open one.
+ * The `close()` is the second half and is NOT redundant. A `PdfView` whose
+ * `citekey` changes in place — the standalone paper tab — switches papers in
+ * ONE warm iframe (the lifetime note on the component, task 612), and nothing
+ * in pdf.js ever closes an open sidebar on a re-open: `reset()` switches to
+ * THUMBS without `forceOpen`, and `setInitialView(NONE)` early-returns. So a
+ * sidebar opened on paper A would otherwise stay open on B, C, D… for the life
+ * of the tab. The option stops the OPEN; `close()` retires an open one. (The
+ * Library Reader keeps one instance PER PAPER in a keyed keep-alive slot, so
+ * there no viewer is shared between papers; `close()` is a no-op there.)
  *
  * The two halves are guarded SEPARATELY, on purpose: they answer different
  * paths (a fresh open vs. a carried-over one), so a vendored surface that has
@@ -144,7 +147,7 @@ export function applyViewerDefaults(win: PdfViewerWindow | null | undefined): vo
     win?.PDFViewerApplicationOptions?.set("sidebarViewOnLoad", SIDEBAR_VIEW_NONE);
   } catch {
     // A re-vendor that renamed/removed the option: the `close()` below still
-    // covers the warm-iframe carryover, so fall through rather than bail.
+    // covers the warm-switch carryover, so fall through rather than bail.
   }
   try {
     win?.PDFViewerApplication?.pdfSidebar?.close();
@@ -170,6 +173,14 @@ export function pdfOpenArgs(
     : { url: objectUrl };
 }
 
+/** One PDF source: the blob object URL and the citekey that minted it. They are
+ *  ONE fact (task 612) — kept as two states, a paper switch let the open effect
+ *  pair the previous paper's (already revoked) URL with the new citekey. */
+interface PdfDoc {
+  citekey: string;
+  url: string;
+}
+
 /**
  * Renders the source PDF for a paper inline via the **vendored pdf.js prebuilt
  * viewer** (F#10), restyled to Virgil tokens. Loads
@@ -179,13 +190,33 @@ export function pdfOpenArgs(
  *
  * If no PDF exists on disk (e.g., a paper indexed from a .docx with no PDF
  * alternate), shows a friendly message instead of an empty frame.
+ *
+ * **Viewer lifetime (task 612).** The `<iframe>` stays mounted for as long as
+ * this instance has a citekey; "Loading PDF…" and "No PDF on disk" are OVERLAYS
+ * over a hidden viewer, never a swap of the element. So an instance whose
+ * `citekey` changes in place switches papers in ONE warm viewer — pdf.js boots
+ * once per instance, not once per paper. The two real mounts:
+ *   - **standalone paper tab** (`PaperOuterView` → `RightDetail`, un-keyed): the
+ *     citekey changes in place, so this is the warm-switch path — and the one
+ *     `applyViewerDefaults`'s `close()` half exists for;
+ *   - **Library Reader** (`ReaderLRU`): each paper sits in its own keyed
+ *     keep-alive slot, so each paper has its own instance and its citekey never
+ *     changes; the viewer stays warm for THAT paper only.
  */
 export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [missing, setMissing] = useState(false);
+  // The last source read. It is NOT nulled on a citekey change — the previous
+  // paper stays in the (hidden) viewer until the next one replaces it — so
+  // everything that drives the viewer reads `liveDoc`, the source only while it
+  // belongs to the current citekey.
+  const [doc, setDoc] = useState<PdfDoc | null>(null);
+  // The citekey whose read found no PDF (derived against the prop, so a switch
+  // away clears it without a reset write).
+  const [missingFor, setMissingFor] = useState<string | null>(null);
+  const liveDoc = doc && doc.citekey === citekey ? doc : null;
+  const missing = citekey !== null && missingFor === citekey;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Keep the latest callback in a ref so the page-state effect (which depends
-  // on the blob URL + citekey, not the callback identity) doesn't re-subscribe
+  // on the live source, not the callback identity) doesn't re-subscribe
   // when the parent re-renders with a fresh closure.
   const onPageStateRef = useRef(onPdfPageStateChange);
   // Sync the latest callback into the ref AFTER render (an effect, not a
@@ -197,38 +228,49 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
     onPageStateRef.current = onPdfPageStateChange;
   });
 
-  // Read the PDF bytes off disk -> mint a blob object URL (unchanged FSA plumbing).
+  // Read the PDF bytes off disk -> mint the source (URL + citekey, together).
+  // This effect only MINTS; the URL's lifetime is owned by the effect below.
   useEffect(() => {
-    setUrl(null);
-    setMissing(false);
     if (!handle || !citekey) return;
     let cancelled = false;
-    let createdUrl: string | null = null;
     (async () => {
       const file = await readFile(handle, `papers/${citekey}/${citekey}.pdf`);
       if (cancelled) return;
       if (!file) {
-        setMissing(true);
+        // Drop the previous source too: nothing should keep driving (or
+        // reporting page state for) a paper that is no longer the one shown.
+        setDoc(null);
+        setMissingFor(citekey);
         return;
       }
-      createdUrl = URL.createObjectURL(file);
-      setUrl(createdUrl);
+      setDoc({ citekey, url: URL.createObjectURL(file) });
+      setMissingFor(null);
     })();
     return () => {
       cancelled = true;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
   }, [handle, citekey]);
 
-  // Drive the vendored viewer: await its initializedPromise, then open the blob.
-  // Re-runs whenever the blob URL changes (new paper or re-read). We do NOT
-  // revoke the blob URL here — the read effect above owns its lifecycle and
-  // revokes on unmount/change, after the viewer has already buffered the bytes.
+  // A source's URL lives exactly as long as it is THE source: revoked when a
+  // new source replaces it, or on unmount — never while it can still be opened.
+  // (React runs this cleanup in the same commit that runs the open effect's
+  // cleanup, before the open effect re-runs with the replacement.)
   useEffect(() => {
-    if (!url) return;
+    if (!doc) return;
+    return () => URL.revokeObjectURL(doc.url);
+  }, [doc]);
+
+  // Drive the vendored viewer: await its initializedPromise, then open the blob.
+  // Re-runs whenever the live source changes (new paper or re-read) — and only
+  // ever opens a URL under the citekey that minted it.
+  useEffect(() => {
+    if (!liveDoc) return;
     const iframe = iframeRef.current;
     if (!iframe) return;
     let cancelled = false;
+    // Single-flight: the eager attempt and the `load` handler can both clear
+    // `initializedPromise`; only the first may reach `app.open()`.
+    let opened = false;
 
     const openInViewer = async () => {
       const win = iframe.contentWindow as PdfViewerWindow | null;
@@ -236,43 +278,44 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
       if (!app) return; // viewer script not ready yet; the onLoad handler retries
       try {
         await app.initializedPromise;
-        if (cancelled) return;
+        if (cancelled || opened) return;
+        opened = true;
         // Virgil's own viewer defaults, per open — see applyViewerDefaults.
         // AFTER init (the option can no longer be clobbered by the preference
         // read, and pdfSidebar exists) and BEFORE open (the option is read
         // while the document opens, and the close must precede the re-open).
         applyViewerDefaults(win);
-        await app.open(pdfOpenArgs(url, citekey));
+        await app.open(pdfOpenArgs(liveDoc.url, liveDoc.citekey));
       } catch {
         // Swallow: a cancelled/replaced open (rapid paper switches) or a
         // mid-teardown viewer throws; the next effect run re-opens cleanly.
       }
     };
 
-    // If the iframe already loaded (warm viewer, blob changed), open now.
-    // Otherwise wait for load. Cover both via an onLoad listener + an eager try.
+    // Warm viewer (a paper switch in place): the iframe loaded long ago, so the
+    // eager attempt opens now. Cold mount: the viewer script is not up yet, so
+    // the eager attempt returns and the `load` handler opens.
     const onLoad = () => {
       void openInViewer();
     };
     iframe.addEventListener("load", onLoad);
-    // Eager attempt in case the iframe finished loading before this effect ran.
     void openInViewer();
 
     return () => {
       cancelled = true;
       iframe.removeEventListener("load", onLoad);
     };
-  }, [url, citekey]);
+  }, [liveDoc]);
 
   // F#11(a) — lift the viewer's live page state UP. Subscribe to the viewer's
   // OWN eventBus (`pagesinit` → pagesCount known; `pagechanging` → current page
   // moved). This is the pdf.js viewer's internal bus, fully independent of the
   // TipTap editor — no `editor.on(...)` subscription, no keystroke-path work.
-  // Re-runs per blob URL / citekey (= per paper). Cleans up its listeners on
+  // Re-runs per live source (= per paper). Cleans up its listeners on
   // unmount / paper switch / mode toggle (PdfView unmounts) via the return
   // block + a `cancelled` flag, so nothing leaks across the keep-alive app.
   useEffect(() => {
-    if (!url) return;
+    if (!liveDoc) return;
     const iframe = iframeRef.current;
     if (!iframe) return;
     let cancelled = false;
@@ -333,7 +376,8 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
       // synchronously above, before the slow `app.open()` parse completes, so
       // it reliably catches the new document's count. Eagerly emitting
       // `a.pagesCount` here would instead surface the PREVIOUS document's stale
-      // count on a warm switch (the iframe persists, and `app.open(newBlob)` —
+      // count on a warm switch (the iframe persists across an in-place citekey
+      // change — see the lifetime note on the component — and `app.open(newBlob)` —
       // kicked off by the separate open effect — has not finished yet), causing
       // a brief wrong "p. N / OLD_TOTAL" flash before `pagesinit` corrects it.
     };
@@ -355,54 +399,56 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
       // previous paper can't briefly show against the next paper's viewer.
       onPageStateRef.current?.({ pagesCount: 0, currentPage: 1 }, () => {});
     };
-  }, [url, citekey]);
+  }, [liveDoc]);
 
   if (!citekey) return null;
 
-  if (missing) {
-    return (
-      <div
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--muted)",
-          fontStyle: "italic",
-          padding: 24,
-          textAlign: "center",
-        }}
-      >
-        No PDF on disk for <code style={{ marginLeft: 4 }}>{citekey}</code>.
-      </div>
-    );
-  }
-
-  if (!url) {
-    return (
-      <div
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--muted)",
-        }}
-      >
-        Loading PDF…
-      </div>
-    );
-  }
+  // Nothing to show yet (still reading) or nothing on disk: an OVERLAY over the
+  // hidden viewer, so the iframe — and the booted pdf.js inside it — survives.
+  const notice = missing ? (
+    <span style={{ fontStyle: "italic" }}>
+      No PDF on disk for <code style={{ marginLeft: 4 }}>{citekey}</code>.
+    </span>
+  ) : !liveDoc ? (
+    "Loading PDF…"
+  ) : null;
 
   return (
-    <iframe
-      ref={iframeRef}
-      src={VIEWER_SRC}
-      title={`${citekey}.pdf`}
-      // borderRadius matches the framed-viewer pod so the iframe corners are
-      // clipped to the rounded surface (parity with the docs compiled-PDF
-      // iframe — some browsers don't clip iframe content to a parent's radius).
-      style={{ width: "100%", height: "100%", border: "none", borderRadius: "var(--pod-radius)" }}
-    />
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <iframe
+        ref={iframeRef}
+        src={VIEWER_SRC}
+        title={`${citekey}.pdf`}
+        aria-hidden={notice ? true : undefined}
+        // borderRadius matches the framed-viewer pod so the iframe corners are
+        // clipped to the rounded surface (parity with the docs compiled-PDF
+        // iframe — some browsers don't clip iframe content to a parent's radius).
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          borderRadius: "var(--pod-radius)",
+          // Hidden, not unmounted: it may still hold the previous paper.
+          visibility: notice ? "hidden" : "visible",
+        }}
+      />
+      {notice && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--muted)",
+            padding: 24,
+            textAlign: "center",
+          }}
+        >
+          {notice}
+        </div>
+      )}
+    </div>
   );
 }

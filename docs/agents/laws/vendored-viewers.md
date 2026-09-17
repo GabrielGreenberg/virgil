@@ -15,16 +15,34 @@ trees, and only one of them was censused.
 
 Three rules it earned:
 
-- **Per OPEN, not per MOUNT — because the iframe is WARM.** `PdfView` keeps ONE
-  viewer iframe across paper switches, and nothing in pdf.js closes an open
-  sidebar on a re-open: `reset()` switches to THUMBS without `forceOpen` and
-  `setInitialView(NONE)` early-returns. So a sidebar opened on paper A stayed
-  open on B, C, D… for the life of the tab — a fourth path, invisible to any
-  reading of the vendored resolution ladder alone. The door therefore does two
-  things ([`applyViewerDefaults`](../../../library/components/PdfView.tsx)): it un-defaults
+- **Per OPEN, not per MOUNT — because the iframe is WARM.** A `PdfView` whose
+  `citekey` changes in place — the standalone paper tab (`PaperOuterView` →
+  `RightDetail`, un-keyed) — switches papers in ONE viewer iframe, and nothing in
+  pdf.js closes an open sidebar on a re-open: `reset()` switches to THUMBS without
+  `forceOpen` and `setInitialView(NONE)` early-returns. So a sidebar opened on
+  paper A stayed open on B, C, D… for the life of the tab — a fourth path,
+  invisible to any reading of the vendored resolution ladder alone. The door
+  therefore does two things ([`applyViewerDefaults`](../../../library/components/PdfView.tsx)): it un-defaults
   the option that would OPEN one, and it CLOSES one carried over. The two halves
   are guarded separately, because they answer different paths and a renamed
-  vendored surface under one must not take the other down.
+  vendored surface under one must not take the other down. (The Library Reader
+  is the other lifetime: `ReaderLRU` gives each paper its own keyed keep-alive
+  slot, so each paper has its own warm `PdfView` and no viewer is shared between
+  papers — there the `close()` half is a harmless no-op.)
+- **The warm switch is real only if the element SURVIVES it (task 612).** Until
+  612 the rule above described a mount the code never built: the wrapper's
+  "Loading PDF…" was an early RETURN that unmounted the iframe on every switch,
+  so each paper booted a fresh pdf.js and the `close()` half guarded a race. And
+  the blob URL and its citekey were two states, so the commit that revoked A's URL
+  then re-ran the open with that dead URL titled `B.pdf` — pdf.js closed the
+  document on screen to fail a fetch. Now the source is ONE state value
+  (`{ citekey, url }`, minted together; the effects read it only while its citekey
+  is the prop's), its URL is revoked only when a new source replaces it or on
+  unmount, "Loading PDF…" / "No PDF on disk" are OVERLAYS over a hidden viewer,
+  and the open is single-flight (eager attempt + `load` handler). Pinned by
+  [`PdfView.switch.test.tsx`](../../../library/components/__tests__/PdfView.switch.test.tsx),
+  whose defect leg runs OUTSIDE `act()`: `act` flushes the reset re-render before
+  the stale open's microtask and so masks the pre-612 bug.
 - **Un-default; do not bypass.** pdf.js resolves "sidebar view on load" in three
   tiers, and its stock `sidebarViewOnLoad` of `-1` (UNKNOWN) is precisely what
   unlocks the other two — a per-fingerprint `localStorage` restore and the PDF's
@@ -55,3 +73,6 @@ Three rules it earned:
 works in the dev preview — so the check is cheap and real: open a paper whose PDF
 carries `/PageMode /UseOutlines` (or open the sidebar by hand and switch papers)
 and confirm it is closed on every open, and that the toggle still opens it.
+And for 612: in the standalone paper tab, switch between two papers with PDFs —
+no pdf.js loading error in the console, the title names the right paper, the
+viewer is not re-booted (no blank flash beyond the overlay).
