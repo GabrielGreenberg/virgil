@@ -154,6 +154,8 @@ def _link_then_unlink(src: Path, dest: Path) -> bool:
     except OSError:
         return False
     try:
+        # unlink-exempt: the second half of a MOVE, not cleanup — a refusal
+        # must be seen (the caller falls back to a rename), not warned past.
         src.unlink()
     except OSError:
         # A mount that links but refuses deletes (task 496): undo the link

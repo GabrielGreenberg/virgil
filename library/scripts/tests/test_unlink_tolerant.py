@@ -188,7 +188,7 @@ def test_census_no_raw_delete_in_the_library_silo():
     lo = src_tools.count("\n", 0, src_tools.index("# --- BEGIN MIRRORED")) + 1
     hi = src_tools.count("\n", 0, src_tools.index("# --- END MIRRORED")) + 1
 
-    offenders, exempt, seen = [], 0, 0
+    offenders, exempt, seen = [], [], 0
     for p in sorted(SCRIPTS.rglob("*.py")):
         rel = p.relative_to(ROOT).as_posix()
         if "/tests/" in rel or p.name.startswith("test_") or "__pycache__" in rel:
@@ -203,12 +203,16 @@ def test_census_no_raw_delete_in_the_library_silo():
             if p.name == "_tools.py" and lo <= idx <= hi:
                 continue
             if EXEMPT.search("\n".join(raw_lines[max(0, idx - 9):idx])):
-                exempt += 1
+                exempt.append(p.name)
                 continue
             offenders.append(f"{rel}:{idx}  {raw_lines[idx - 1].strip()}")
     assert offenders == [], "raw delete outside the helper:\n  " + "\n  ".join(offenders)
     assert seen >= 3, f"canary: the needle matched only {seen} line(s)"
-    assert exempt == 1, f"exactly one stated exemption survives (found {exempt})"
+    # The stated exemptions, by file: triage_apply's inbox-reported source
+    # .bib cleanup (task 496) and safe_move's link-then-unlink, the second
+    # half of a MOVE whose refusal must be seen, not warned past (task 619).
+    assert sorted(exempt) == ["_tools.py", "triage_apply.py"], (
+        f"stated exemptions changed: {exempt}")
 
 
 def test_the_helper_is_actually_reached():
