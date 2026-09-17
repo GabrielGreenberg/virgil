@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,8 +44,10 @@ from _tools import (
     is_terminal_bib_state,
     lock_catalog,
     read_catalog,
+    RelocateCollision,
     read_master_bib,
     resolve_bib_state,
+    safe_move,
     update_master_bib_entry,
     write_catalog,
     write_paper_bib_entry,
@@ -512,6 +513,16 @@ def apply_bib_row(
     return result
 
 
+def _park(src: Path, dst_dir: Path, library: Path) -> tuple[str, str]:
+    """Move a source file into a holding folder without replacing a same-named
+    earlier drop (task 619). Returns (library-relative landed path, a summary
+    note naming the landed file when it had to be renamed)."""
+    dest = safe_move(src, dst_dir)
+    rel = dest.relative_to(library).as_posix()
+    note = f" as {dest.name}" if dest.name != src.name else ""
+    return rel, note
+
+
 def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[str, str]:
     """Apply one triage row. Returns a result dict with `status` and `summary`.
 
@@ -534,30 +545,30 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     # ── Whole-handbook: park in _pending, notify, no queue ─────────────
     if "whole-handbook" in flags:
         pending = library / "unsorted" / "_pending"
-        pending.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(pending / filename))
+        parked, note = _park(src, pending, library)
         append_inbox_item(library, {
             "kind": "triage-needs-chapter-info",
             "filename": filename,
+            "parkedAs": parked,
             "candidateAuthor": row.get("filenameAuthor", ""),
             "handbookTitle": next((n for n in row.get("notes", []) if "handbook" in n.lower() or "edited volume" in n.lower()), ""),
             "at": _now(),
         })
-        return {"status": "needs-chapter-info", "summary": f"{filename}: parked in _pending/"}
+        return {"status": "needs-chapter-info", "summary": f"{filename}: parked in _pending/{note}"}
 
     # ── Variant-copy: archive under existing citekey ───────────────────
     if "variant-copy" in flags:
         existing = row.get("existingCitekey", "")
         if existing:
             variants_dir = library / "papers" / existing / "variants"
-            variants_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(variants_dir / filename))
+            parked, note = _park(src, variants_dir, library)
             append_inbox_item(library, {
                 "kind": "triaged",
-                "summary": f"Kept {filename} as variant archive of {existing}",
+                "summary": f"Kept {filename} as variant archive of {existing}{note}",
+                "parkedAs": parked,
                 "at": _now(),
             })
-            return {"status": "variant", "summary": f"{filename} → papers/{existing}/variants/"}
+            return {"status": "variant", "summary": f"{filename} → papers/{existing}/variants/{note}"}
         # Fall through with a citekey suffix bump if no existingCitekey.
 
     # ── Skip rows the batch script flagged as unprocessable ────────────
@@ -567,33 +578,33 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     # ── Needs-title: park in _pending, notify, no queue ──────────────
     if "needs-title" in flags:
         pending = library / "unsorted" / "_pending"
-        pending.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(pending / filename))
+        parked, note = _park(src, pending, library)
         append_inbox_item(library, {
             "kind": "triage-needs-title",
             "filename": filename,
+            "parkedAs": parked,
             "proposedCitekey": row.get("proposedCitekey", ""),
             "at": _now(),
         })
-        return {"status": "needs-title", "summary": f"{filename}: parked in _pending/ (no title extracted)"}
+        return {"status": "needs-title", "summary": f"{filename}: parked in _pending/{note} (no title extracted)"}
 
     # ── Needs-metadata: quarantine to _needs-metadata/ instead of
     # minting `papers/unnamed-N/` garbage directories. See
     # 2026-05-16-triage-no-name-pdfs.md.
     if "needs-metadata" in flags or not row.get("proposedCitekey"):
         quarantine = library / "unsorted" / "_needs-metadata"
-        quarantine.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(quarantine / filename))
+        parked, note = _park(src, quarantine, library)
         append_inbox_item(library, {
             "kind": "triage-needs-metadata",
             "filename": filename,
+            "parkedAs": parked,
             "byline": row.get("byline", []),
             "at": _now(),
         })
         return {
             "status": "needs-metadata",
             "summary": (
-                f"{filename}: quarantined to _needs-metadata/ "
+                f"{filename}: quarantined to _needs-metadata/{note} "
                 f"(heuristic could not derive citekey)"
             ),
         }
@@ -654,10 +665,11 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     paper_dir = library / "papers" / citekey
     paper_dir.mkdir(parents=True, exist_ok=True)
     dest = paper_dir / f"{citekey}.{ext}"
-    if dest.exists():
+    try:
         # Don't overwrite — return a clear error so the operator can resolve.
+        dest = safe_move(src, paper_dir, dest.name, on_collision="refuse")
+    except RelocateCollision:
         return {"status": "collision", "summary": f"{filename}: {dest.name} already exists in papers/{citekey}/"}
-    shutil.move(str(src), str(dest))
 
     # Write queue entry. The file has already moved, so a refused request
     # must be SAID — otherwise the paper sits in papers/ never indexed while
@@ -830,14 +842,15 @@ def main() -> int:
         else:
             # Park unparseable / partially-failed files for human review.
             pending = library / "unsorted" / "_pending"
-            pending.mkdir(parents=True, exist_ok=True)
             try:
-                shutil.move(str(src), str(pending / fn))
-            except Exception:
-                pass
+                parked, _ = _park(src, pending, library)
+            except OSError as e:
+                # Left in unsorted/ — say so rather than claim it was parked.
+                parked = f"unsorted/{fn} (not moved: {e})"
             append_inbox_item(library, {
                 "kind": "triage-bib-parse-failed",
                 "filename": fn,
+                "parkedAs": parked,
                 "imported": stats["ok"],
                 "failed": stats["failed"],
                 "at": _now(),

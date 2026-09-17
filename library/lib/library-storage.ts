@@ -508,29 +508,142 @@ async function ensureNestedDir(
 // Layout migration: pdfs/ → papers/<citekey>/<citekey>.<ext> + unsorted/
 // ---------------------------------------------------------------------------
 
-async function moveFile(
+// The relocate contract (task 619): a MOVE never destroys a file. The copy
+// refuses an occupied destination, a failed copy removes only the partial it
+// created, and a source directory is removed only once it is EMPTY — never
+// a RECURSIVE removeEntry, which took every file the
+// migration did not recognise (and every file whose copy threw) with it.
+// Pinned by `library-relocate.test.ts`, which also forbids a recursive remove
+// anywhere under `library/` outside its allowlist.
+
+/** Thrown by `moveFile` when the destination name is already taken. */
+export class RelocateCollisionError extends Error {
+  constructor(readonly dstName: string) {
+    super(`${dstName} already exists`);
+    this.name = "RelocateCollisionError";
+  }
+}
+
+async function entryExists(
+  dir: FileSystemDirectoryHandle,
+  name: string,
+): Promise<boolean> {
+  try {
+    await dir.getFileHandle(name);
+    return true;
+  } catch {
+    // not a file
+  }
+  try {
+    await dir.getDirectoryHandle(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Copy `src/srcName` to `dst/dstName`, then remove the source. Never
+ *  overwrites (`RelocateCollisionError`). Resolves `true` when the source is
+ *  gone, `false` when the copy landed but the platform refused the delete
+ *  (both copies kept — nothing lost). Throws when the copy failed, after
+ *  removing the partial destination it created; the source is untouched. */
+export async function moveFile(
   src: FileSystemDirectoryHandle,
   srcName: string,
   dst: FileSystemDirectoryHandle,
   dstName: string,
-): Promise<void> {
-  const fh = await src.getFileHandle(srcName);
-  const file = await fh.getFile();
+): Promise<boolean> {
+  if (await entryExists(dst, dstName)) throw new RelocateCollisionError(dstName);
+  const file = await (await src.getFileHandle(srcName)).getFile();
   const outFh = await dst.getFileHandle(dstName, { create: true });
-  const writable = await outFh.createWritable();
-  await writable.write(file);
-  await writable.close();
+  try {
+    const writable = await outFh.createWritable();
+    await writable.write(file);
+    await writable.close();
+  } catch (err) {
+    try {
+      await dst.removeEntry(dstName);
+    } catch {
+      // The partial stays; the source is intact either way.
+    }
+    throw err;
+  }
   try {
     await src.removeEntry(srcName);
+    return true;
   } catch {
-    // Best effort — the copy succeeded; leave the original if removal fails.
+    return false;
   }
+}
+
+/** OS litter a directory may hold that is safe to delete with it. */
+const DIR_LITTER = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
+
+/** Remove `parent/name` only if nothing but OS litter is left in it.
+ *  Resolves `true` when the directory is gone (or was never there). */
+export async function removeDirIfEmpty(
+  parent: FileSystemDirectoryHandle,
+  name: string,
+): Promise<boolean> {
+  let dir: FileSystemDirectoryHandle;
+  try {
+    dir = await parent.getDirectoryHandle(name);
+  } catch {
+    return true;
+  }
+  const left: { name: string; kind: string }[] = [];
+  for await (const [n, h] of dir.entries()) left.push({ name: n, kind: h.kind });
+  if (left.some((e) => e.kind !== "file" || !DIR_LITTER.has(e.name))) return false;
+  for (const e of left) {
+    try {
+      await dir.removeEntry(e.name);
+    } catch {
+      return false;
+    }
+  }
+  try {
+    await parent.removeEntry(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listEntries(
+  dir: FileSystemDirectoryHandle,
+): Promise<{ name: string; kind: "file" | "directory" }[]> {
+  // Snapshot first; mutating during async iteration is unreliable.
+  const out: { name: string; kind: "file" | "directory" }[] = [];
+  for await (const [name, h] of dir.entries()) out.push({ name, kind: h.kind });
+  return out;
+}
+
+/** Move every FILE of `src` into `dst` (same names); logs and leaves any file
+ *  that cannot move. Returns how many moved. */
+async function moveFilesOf(
+  src: FileSystemDirectoryHandle,
+  dst: FileSystemDirectoryHandle,
+  label: string,
+): Promise<number> {
+  let moved = 0;
+  for (const c of await listEntries(src)) {
+    if (c.kind !== "file" || DIR_LITTER.has(c.name)) continue;
+    try {
+      await moveFile(src, c.name, dst, c.name);
+      moved++;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[library] migrate: left ${label}/${c.name} in place`, err);
+    }
+  }
+  return moved;
 }
 
 /** Two idempotent migrations, run in order:
  *  1. `pdfs/<citekey>.{pdf,docx}` + `pdfs/unsorted/` → `papers/<citekey>/<citekey>.<ext>` + top-level `unsorted/`
  *  2. Root infra files/folders → `.virgil/` (and `CLAUDE.md` → `.claude/CLAUDE.md`)
- *  Either step is a no-op if its source state isn't present. */
+ *  Either step is a no-op if its source state isn't present. Anything step 1
+ *  does not recognise, or cannot move, stays in `pdfs/`, which is then kept. */
 export async function migrateLayoutIfNeeded(
   root: FileSystemDirectoryHandle,
 ): Promise<void> {
@@ -550,86 +663,47 @@ async function migratePdfsIntoPapersIfNeeded(
 
   const papersDir = await ensureDir(root, SUBDIRS.papers);
   const unsortedDir = await ensureDir(root, SUBDIRS.unsorted);
+  let moved = 0;
 
-  // Snapshot entries first; mutating during async iteration is unreliable.
-  const entries: { name: string; kind: "file" | "directory" }[] = [];
-  for await (const [name, h] of pdfsDir.entries()) {
-    entries.push({ name, kind: h.kind });
-  }
-
-  for (const e of entries) {
+  for (const e of await listEntries(pdfsDir)) {
     try {
       if (e.kind === "file") {
         const m = /^(.+)\.(pdf|docx)$/i.exec(e.name);
-        if (!m) continue;
+        if (!m) continue; // Not ours to place — it stays in pdfs/.
         const citekey = m[1];
         const ext = m[2].toLowerCase();
         const paperDir = await papersDir.getDirectoryHandle(citekey, { create: true });
         await moveFile(pdfsDir, e.name, paperDir, `${citekey}.${ext}`);
-      } else if (e.kind === "directory" && e.name === "unsorted") {
+        moved++;
+      } else if (e.name === "unsorted") {
         const oldUnsorted = await pdfsDir.getDirectoryHandle("unsorted");
-        const childEntries: { name: string; kind: "file" | "directory" }[] = [];
-        for await (const [n, h] of oldUnsorted.entries()) {
-          childEntries.push({ name: n, kind: h.kind });
-        }
-        for (const c of childEntries) {
-          try {
-            if (c.kind === "file") {
-              await moveFile(oldUnsorted, c.name, unsortedDir, c.name);
-            } else if (c.kind === "directory" && c.name === "_pending") {
-              const oldPending = await oldUnsorted.getDirectoryHandle("_pending");
-              const dstPending = await unsortedDir.getDirectoryHandle("_pending", {
-                create: true,
-              });
-              const pendingEntries: { name: string; kind: "file" | "directory" }[] = [];
-              for await (const [n, h] of oldPending.entries()) {
-                pendingEntries.push({ name: n, kind: h.kind });
-              }
-              for (const p of pendingEntries) {
-                if (p.kind === "file") {
-                  try {
-                    await moveFile(oldPending, p.name, dstPending, p.name);
-                  } catch (err) {
-                    // eslint-disable-next-line no-console
-                    console.warn(`[library] migrate: failed to move pdfs/unsorted/_pending/${p.name}`, err);
-                  }
-                }
-              }
-              try {
-                await oldUnsorted.removeEntry("_pending");
-              } catch {
-                // Leave behind if non-empty or platform refuses.
-              }
-            }
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn(`[library] migrate: failed to move pdfs/unsorted/${c.name}`, err);
-          }
-        }
+        moved += await moveFilesOf(oldUnsorted, unsortedDir, "pdfs/unsorted");
         try {
-          await pdfsDir.removeEntry("unsorted");
+          const oldPending = await oldUnsorted.getDirectoryHandle("_pending");
+          const dstPending = await unsortedDir.getDirectoryHandle("_pending", {
+            create: true,
+          });
+          moved += await moveFilesOf(oldPending, dstPending, "pdfs/unsorted/_pending");
+          await removeDirIfEmpty(oldUnsorted, "_pending");
         } catch {
-          // Leave behind if non-empty or platform refuses.
+          // No _pending/ — nothing to do.
         }
+        await removeDirIfEmpty(pdfsDir, "unsorted");
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(`[library] migrate: failed on pdfs/${e.name}`, err);
+      console.warn(`[library] migrate: left pdfs/${e.name} in place`, err);
     }
   }
 
-  // Try to remove the now-empty pdfs/ folder. Some FSA implementations don't
-  // support `recursive: true`; if removal fails, the empty directory is
-  // harmless — no read paths point at it post-migration.
-  try {
-    await root.removeEntry("pdfs", { recursive: true });
-  } catch {
-    try {
-      await root.removeEntry("pdfs");
-    } catch {
-      // Leave behind.
-    }
+  // Removed only if every entry actually moved; otherwise pdfs/ stays with
+  // whatever the migration could not place, and nothing is lost.
+  const gone = await removeDirIfEmpty(root, "pdfs");
+  if (!gone) {
+    // eslint-disable-next-line no-console
+    console.warn("[library] migrate: pdfs/ kept — it still holds files the migration did not move");
   }
+  if (moved === 0) return;
 
   // Bump catalog-version.txt so the UI re-reads after migration.
   // Use the legacy path here because catalog-version.txt may not yet have
@@ -653,10 +727,10 @@ async function migratePdfsIntoPapersIfNeeded(
 // Root-cleanup migration: tuck infra files/folders into .virgil/ + .claude/
 // ---------------------------------------------------------------------------
 
-/** Recursively copy the contents of `src` into `dst`, then remove `src`.
- *  Best-effort: if any single child fails, the failure is logged but other
- *  children continue. Idempotent: re-running over a partially-moved dir
- *  resumes where it left off. */
+/** Move the contents of `src` into `dst` (recursively), then remove `src` if
+ *  that left it empty. Best-effort: a child that fails (or whose name is taken
+ *  at the destination) is logged and LEFT in `src`, which is then kept.
+ *  Idempotent: re-running over a partially-moved dir resumes. */
 async function moveDir(
   parentSrc: FileSystemDirectoryHandle,
   srcName: string,
@@ -670,11 +744,7 @@ async function moveDir(
     return; // Source doesn't exist — nothing to move.
   }
   const dst = await parentDst.getDirectoryHandle(dstName, { create: true });
-  const entries: { name: string; kind: "file" | "directory" }[] = [];
-  for await (const [name, h] of src.entries()) {
-    entries.push({ name, kind: h.kind });
-  }
-  for (const e of entries) {
+  for (const e of await listEntries(src)) {
     try {
       if (e.kind === "file") {
         await moveFile(src, e.name, dst, e.name);
@@ -683,20 +753,10 @@ async function moveDir(
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(`[library] moveDir: failed on ${srcName}/${e.name}`, err);
+      console.warn(`[library] moveDir: left ${srcName}/${e.name} in place`, err);
     }
   }
-  // Remove the now-empty source. Try recursive first in case macOS left a
-  // .DS_Store behind that we don't want to surface again.
-  try {
-    await parentSrc.removeEntry(srcName, { recursive: true });
-  } catch {
-    try {
-      await parentSrc.removeEntry(srcName);
-    } catch {
-      // Leave behind if non-empty or platform refuses.
-    }
-  }
+  await removeDirIfEmpty(parentSrc, srcName);
 }
 
 /** Tuck all non-user-facing files and folders at the library root into

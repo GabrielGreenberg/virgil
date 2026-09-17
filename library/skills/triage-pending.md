@@ -194,7 +194,9 @@ directory).
      ignored kind names the SETTLED state that won — `authenticated`,
      `manuscript` or `canonical`), and the three that park a file
      (`triage-needs-title`, `triage-needs-metadata`,
-     `triage-needs-chapter-info`). Three are per SOURCE FILE, emitted in
+     `triage-needs-chapter-info`; a park never replaces an earlier
+     same-named drop — it lands as `name (2).ext` and the notification's
+     `parkedAs` names where it went). Three are per SOURCE FILE, emitted in
      a post-loop after every row of that file is applied:
      `triage-bib-summary`, `triage-bib-parse-failed`,
      `triage-bib-cleanup-failed` — so a count of notifications is not a
