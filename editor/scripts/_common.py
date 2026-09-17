@@ -863,6 +863,26 @@ TASKS_DIRNAME = "virgil-tasks"
 # to collide with.
 TASK_ID_DIRS = ("incoming", "in-progress", "blocked", "done")
 
+# THE task-id grammar, the one parser every scanner uses (task 617). An id is
+# `YYYY-MM-DD-NNN`, and `NNN` is the GLOBAL counter (queue README `id:` rule):
+# the date is only the mint date, and minters disagree about it (the dream mints
+# in UTC, a hand minter in local time), so identity is the NUMBER, never the
+# whole prefix. `NNN` is zero-padded to three digits but not capped at three —
+# `\d{3,}` so task 1000 is visible, and the trailing `(?!\d)` so `…-100` never
+# reads as a prefix of `…-1000`.
+TASK_ID_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{3,})(?!\d)")
+
+
+def parse_task_id(name: str) -> tuple[str, int] | None:
+    """`(date, nnn)` for a task filename or bare id, or None if it carries none."""
+    m = TASK_ID_RE.match(name)
+    return (m.group(1), int(m.group(2))) if m else None
+
+
+def format_task_id(date_str: str, nnn: int) -> str:
+    """The inverse of `parse_task_id`: `NNN` zero-padded to (at least) three."""
+    return f"{date_str}-{nnn:03d}"
+
 
 def tasks_root() -> Path | None:
     """The task queue `~/virgil-tasks/`, or None when the loop may not file.
