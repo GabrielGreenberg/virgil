@@ -167,9 +167,9 @@ export default function PaperHeader({
         await req.cancel(ctx);
         flashFor("cancelled");
       }
-      // Re-read the queue rather than trusting our own write: index/bib share
-      // `queue/<citekey>.json`, so a toggle on one can implicitly clear the
-      // other, and a deep-index request can plant a companion index entry.
+      // Re-read the queue rather than trusting our own write: a deep-index
+      // request can plant a companion index entry, and a write can migrate a
+      // legacy request into its own slot.
       // Pushing it through the shared store also updates the list's row dot
       // (and any other open reader) in the same beat.
       await refreshQueueState();

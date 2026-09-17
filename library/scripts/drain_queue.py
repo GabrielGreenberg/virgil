@@ -28,6 +28,7 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import unlink_tolerant  # noqa: E402
+from queue_slot import done_retires, retire_done  # noqa: E402
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -96,26 +97,18 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
     for p in sorted(qdir.glob("*.json")):
         if p.name.endswith(".done.json"):
             continue
-        # P8: kind-aware .done skip. A stale .done from a prior `index` run
-        # should NOT block a new `authenticate` queue entry for the same
-        # citekey. Rotate the stale .done out of the way so this entry
-        # gets processed.
+        # A `.done` sibling is either the retirement of THIS request (its
+        # entry unlink was refused — genuinely done) or a stale marker from an
+        # EARLIER request in the same slot, which must never hide a new one
+        # (task 618). Writers retire stale markers on write (`queue_slot`);
+        # this is the belt for any file that arrived another way.
         done_sibling = p.with_suffix(".done")
         if done_sibling.exists():
-            done_kind = _peek_kind(done_sibling)
-            new_kind = _peek_kind(p)
-            if done_kind and new_kind and done_kind == new_kind:
-                # Same kind already done — genuinely already processed.
+            if done_retires(p, done_sibling):
                 skip_counts["already-done"] = skip_counts.get("already-done", 0) + 1
                 continue
-            # Different kind (or unparseable .done) — rotate.
-            rotated = qdir / f"{p.stem}.{done_kind or 'unknown'}.done"
-            try:
-                done_sibling.rename(rotated)
-            except OSError:
-                # A fallback that can itself raise is not a fallback (496).
-                unlink_tolerant(done_sibling, what="superseded .done")
-            skip_counts["rotated-done"] = skip_counts.get("rotated-done", 0) + 1
+            if retire_done(qdir, p.stem):
+                skip_counts["rotated-done"] = skip_counts.get("rotated-done", 0) + 1
         # Skip if .lock sibling is fresh.
         lock_sibling = p.with_suffix(".lock")
         if lock_sibling.exists() and not _is_lock_stale(lock_sibling):
@@ -159,12 +152,14 @@ def _mark_done(entry_path: Path) -> None:
     """Replace queue file with `.done` sibling.
 
     The `.done` WRITE is what retires the entry — `_list_pending` skips a
-    queue file whose same-kind `.done` sibling exists — so the unlink is
+    queue file whose `.done` sibling records this very request
+    (`queue_slot.done_retires`) — so the unlink is
     tidiness, and a mount that refuses it must not raise out of a drain that
     has already completed the work (task 496). Left behind, the entry file is
     inert: the `.done` sibling keeps it out of the next pass.
     """
     done = entry_path.with_suffix(".done")
+    retire_done(entry_path.parent, entry_path.stem)
     try:
         done.write_text(entry_path.read_text())
     except Exception:
@@ -282,7 +277,7 @@ def main() -> int:
     if not pending:
         already_done = skip_counts.get("already-done", 0)
         if already_done:
-            print(f"queue empty ({already_done} entries skipped — same kind already done)")
+            print(f"queue empty ({already_done} entries skipped — already done)")
         else:
             print("queue empty")
         return 0
@@ -348,7 +343,7 @@ def main() -> int:
     print(f"Drained {total} entries: " + ", ".join(bits) + ".")
     skip_extras = []
     if skip_counts.get("already-done"):
-        skip_extras.append(f"{skip_counts['already-done']} same-kind already done")
+        skip_extras.append(f"{skip_counts['already-done']} already done")
     if skip_counts.get("locked"):
         skip_extras.append(f"{skip_counts['locked']} locked (in-flight elsewhere)")
     if skip_counts.get("poisoned"):

@@ -11,10 +11,11 @@ Reads JSONL from --input (or stdin) where each line is one row produced by
 - `flags: ["unsupported-ext"]` / `flags: ["error"]` → skip (logged)
 - otherwise                    → append @<type>{<citekey>, ...} to master.bib,
                                   move file to papers/<citekey>/<citekey>.<ext>,
-                                  write queue/<citekey>.json (kind=index)
+                                  queue an index request (queue_slot contract)
 
 Bumps catalog-version.txt once at the end so the frontend re-renders. Designed
-to be idempotent on the queue side — if the queue file already exists, leaves it.
+to be idempotent on the queue side — a pending request of the same kind is left
+alone, a stale `.done` is retired, and a refused write is reported per row.
 
 Usage:
   python3 triage_apply.py --input triage.jsonl [--library ~/Virgil-Library]
@@ -34,6 +35,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from queue_slot import ALREADY_QUEUED, REFUSED_RESULTS, WRITTEN, write_request  # noqa: E402
 from _tools import (
     TERMINAL_BIB_STATES,
     admit_catalog_row,
@@ -96,21 +98,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> bool:
-    """Write queue/<citekey>.json. Returns False if already present."""
-    qdir = library / ".virgil" / "queue"
-    qdir.mkdir(parents=True, exist_ok=True)
-    qf = qdir / f"{citekey}.json"
-    if qf.exists():
-        return False
-    qf.write_text(json.dumps({
-        "kind": kind,
-        "status": "requested",
-        "citekey": citekey,
-        "requestedAt": _now(),
-        "attempts": 0,
-    }, indent=2) + "\n")
-    return True
+def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> str:
+    """Queue a `kind` request for `citekey` through the slot contract
+    (`queue_slot.write_request`). Returns its result — WRITTEN,
+    ALREADY_QUEUED, or a refusal in `queue_slot.REFUSED_RESULTS` that the
+    caller MUST report (task 618: a refused write once read as "triaged")."""
+    result, _path = write_request(library, kind, citekey)
+    return result
 
 
 def _master_has_citekey(library: Path, citekey: str) -> bool:
@@ -477,9 +471,9 @@ def apply_bib_row(
     )
 
     # Queue authentication unless this is an explicit manuscript.
-    queued = False
+    queue_result = ""
     if final_state != "manuscript":
-        queued = _write_queue_entry(library, citekey, kind="authenticate")
+        queue_result = _write_queue_entry(library, citekey, kind="authenticate")
 
     possible_dup = row.get("_possibleDuplicateOf")
 
@@ -488,10 +482,12 @@ def apply_bib_row(
         summary_bits.append(f"merged {len(field_changes)} field(s)")
     if final_state == "manuscript":
         summary_bits.append("manuscript — no auth queued")
-    elif queued:
+    elif queue_result == WRITTEN:
         summary_bits.append("queued authenticate")
-    else:
+    elif queue_result == ALREADY_QUEUED:
         summary_bits.append("authenticate already queued")
+    else:
+        summary_bits.append(f"authenticate NOT queued ({queue_result})")
     if possible_dup:
         summary_bits.append(f"possibleDuplicateOf {possible_dup}")
 
@@ -663,9 +659,18 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
         return {"status": "collision", "summary": f"{filename}: {dest.name} already exists in papers/{citekey}/"}
     shutil.move(str(src), str(dest))
 
-    # Write queue entry.
-    _write_queue_entry(library, citekey, kind="index")
+    # Write queue entry. The file has already moved, so a refused request
+    # must be SAID — otherwise the paper sits in papers/ never indexed while
+    # the run reports success (task 618).
+    queue_result = _write_queue_entry(library, citekey, kind="index")
     triaged_summary = f"Triaged {filename} → {citekey} ({entry_type})"
+    queue_note = ""
+    if queue_result in REFUSED_RESULTS:
+        queue_note = (
+            f" — index NOT queued (slot {queue_result}); "
+            f"re-queue {citekey} for indexing once the slot is free"
+        )
+        triaged_summary += queue_note
     if duplicate_of:
         triaged_summary += f" [duplicateOf {duplicate_of} — flagged for review]"
     append_inbox_item(library, {
@@ -674,7 +679,10 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
         "at": _now(),
         **({"duplicateOf": duplicate_of} if duplicate_of else {}),
     })
-    result = {"status": "triaged", "summary": f"{filename} → {citekey} ({entry_type})"}
+    result = {
+        "status": "triaged-unqueued" if queue_note else "triaged",
+        "summary": f"{filename} → {citekey} ({entry_type}){queue_note}",
+    }
     if duplicate_of:
         result["duplicateOf"] = duplicate_of
         result["summary"] += f" [duplicateOf {duplicate_of}]"

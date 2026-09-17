@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { queueFilename, type QueueEntry } from "../queue";
 
 // Pins the import-bib queue slot: it must get its OWN file so it can coexist
-// with an in-flight index / bib-review on the shared `<citekey>.json` slot
+// with an in-flight index / bib-review (each of which has its own slot too)
 // (mirrors bib-edit / paper-review / deepIndex).
 describe("queueFilename — import-bib", () => {
   const base = { status: "requested", requestedAt: "2026-01-01T00:00:00Z", attempts: 0 } as const;
@@ -12,7 +12,7 @@ describe("queueFilename — import-bib", () => {
     expect(queueFilename(entry)).toBe("smith2020-importbib.json");
   });
 
-  it("keeps a slot distinct from the shared index/authenticate <citekey>.json", () => {
+  it("keeps a slot distinct from the index <citekey>.json", () => {
     const imp: QueueEntry = { kind: "import-bib", citekey: "x", ...base };
     const idx: QueueEntry = { kind: "index", citekey: "x", ...base };
     expect(queueFilename(idx)).toBe("x.json");

@@ -111,8 +111,9 @@ export function hasQueuedRequest(
 /** One directory listing → the per-(citekey, kind) requested map.
  *
  *  Filename-agnostic BY DESIGN: the kind is read from the entry's own `kind`
- *  field, not inferred from the path. That's what makes `index` and
- *  `authenticate` — which SHARE `queue/<citekey>.json` — separable, and what
+ *  field, not inferred from the path. That's what keeps a pre-618
+ *  `authenticate` still sitting in the bare `queue/<citekey>.json` separable
+ *  from an `index`, and what
  *  makes the legacy `<citekey>-richindex.json` spelling resolve to `deepIndex`
  *  through `normalizeQueueEntry` with no second filename table to keep in
  *  sync with `queueFilename`. */

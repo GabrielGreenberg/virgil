@@ -489,11 +489,17 @@ log the issue but don't try to patch it inline.
 
 ## Queue-file lifecycle
 
-If `.virgil/queue/<citekey>.json` exists when the run completes
-successfully, rename it to `<citekey>.done` (matching the convention
-used by the rest of the queue dir; `index_paper.py` itself does NOT
-manage the queue when invoked directly — that's `drain_queue.py`'s
-job, but this skill is often invoked outside that path).
+When the run completes successfully, retire the queued request (if any)
+through the queue-slot door — `index_paper.py` itself does NOT manage the
+queue when invoked directly (that's `drain_queue.py`'s job), but this skill
+is often invoked outside that path:
+
+```bash
+python3 .virgil/scripts/library/queue_slot.py retire --kind index --citekey <citekey>
+```
+
+It moves `.virgil/queue/<citekey>.json` to `<citekey>.done`, first rotating
+any older `.done` out of the way, and is a no-op when nothing is queued.
 
 ## Reply format
 

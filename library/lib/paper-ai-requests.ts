@@ -48,9 +48,8 @@ export interface PaperRequestDescriptor {
   /** Menu label. */
   label: string;
   /** The on-disk queue kind whose `requested` entry means "this box is
-   *  checked". Note `index` and `bib` (→ `authenticate`) SHARE
-   *  `queue/<citekey>.json`; they are told apart by this field, never by
-   *  filename. */
+   *  checked". Read from the entry's own `kind` field, never the filename
+   *  (a pre-618 `authenticate` may still sit in the bare `<citekey>.json`). */
   queueKind: QueueKind;
   /** When set, the request needs an indexed paper; the string is the
    *  disabled-state tooltip. */

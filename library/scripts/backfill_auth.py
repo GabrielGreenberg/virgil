@@ -2,7 +2,8 @@
 
 Scans master.bib for entries that lack a `% bib.state = ...` comment,
 cross-references catalog.json (skips entries already authenticated there),
-and writes queue/<citekey>.json files with kind="authenticate" for each.
+and queues a kind="authenticate" request for each through the
+`queue_slot` door (its own `<citekey>-auth.json` slot).
 
 The existing /index-pending skill dispatches deferred "authenticate"
 entries to /authenticate-bib, so the queue is drained by the normal
@@ -23,11 +24,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from queue_slot import REFUSED_RESULTS, find_request, slot_filename, write_request  # noqa: E402
 from _tools import (
     catalog_row_bib_state,
     read_catalog,
     read_master_bib,
-    unlink_tolerant,
     update_master_bib_entry,
 )
 
@@ -60,26 +61,6 @@ def _parse_citekeys_with_state(master_path: Path) -> dict[str, str]:
                     state = prev[eq + 1:].strip()
         result[citekey] = state
     return result
-
-
-def _rotate_stale_done(qdir: Path, citekey: str) -> str:
-    """If queue/<ck>.done exists, rename it out of the way so a new
-    queue/<ck>.json doesn't get silently skipped by drain_queue. Returns
-    the kind that was rotated (or '' if nothing to rotate)."""
-    done = qdir / f"{citekey}.done"
-    if not done.exists():
-        return ""
-    try:
-        old_kind = json.loads(done.read_text()).get("kind", "unknown")
-    except Exception:
-        old_kind = "unknown"
-    rotated = qdir / f"{citekey}.{old_kind}.done"
-    try:
-        done.rename(rotated)
-    except OSError:
-        # A fallback that can itself raise is not a fallback (496).
-        unlink_tolerant(done, what="superseded .done")
-    return old_kind
 
 
 def _restamp_from_catalog(library: Path, master_states: dict[str, str],
@@ -167,7 +148,6 @@ def main() -> int:
     bucket_other_state: dict[str, int] = {}
     bucket_already_queued = 0
     bucket_catalog_authenticated = 0
-    rotated_done: list[tuple[str, str]] = []  # (citekey, old_kind)
 
     for citekey, state in entries.items():
         if state in ("authenticated", "manuscript"):
@@ -179,8 +159,7 @@ def main() -> int:
         if state not in requeue_states:
             bucket_other_state[state] = bucket_other_state.get(state, 0) + 1
             continue
-        qf = qdir / f"{citekey}.json"
-        if qf.exists():
+        if find_request(library, "authenticate", citekey) is not None:
             bucket_already_queued += 1
             continue
         to_queue.append((citekey, state))
@@ -189,21 +168,16 @@ def main() -> int:
     queued = 0
     for citekey, state in to_queue:
         if args.dry_run:
-            done_present = (qdir / f"{citekey}.done").exists()
+            done_present = (qdir / slot_filename("authenticate", citekey)).with_suffix(".done").exists()
             extra = " (will rotate stale .done)" if done_present else ""
             print(f"  [dry-run] would queue {citekey} (current state: {state or 'none'}){extra}")
         else:
-            old_kind = _rotate_stale_done(qdir, citekey)
-            if old_kind:
-                rotated_done.append((citekey, old_kind))
-            qf = qdir / f"{citekey}.json"
-            qf.write_text(json.dumps({
-                "kind": "authenticate",
-                "status": "requested",
-                "citekey": citekey,
-                "requestedAt": _now(),
-                "attempts": 0,
-            }, indent=2) + "\n")
+            # The slot door retires a stale `.done` and refuses to clobber an
+            # in-flight entry (task 618).
+            result, _qf = write_request(library, "authenticate", citekey)
+            if result in REFUSED_RESULTS:
+                print(f"  [not queued] {citekey} (slot {result})")
+                continue
             print(f"  [queued] {citekey} (was: {state or 'none'})")
         queued += 1
 
@@ -223,8 +197,6 @@ def main() -> int:
     if restamped:
         verb = "to re-stamp" if args.dry_run else "re-stamped"
         print(f"  {restamped} {verb} from catalog (master.bib comment missing/stale)")
-    if rotated_done:
-        print(f"  {len(rotated_done)} stale .done sibling(s) rotated out of the way")
     if bucket_terminal:
         print(f"  {bucket_terminal} terminal (authenticated/manuscript) — left alone")
     if bucket_catalog_authenticated:

@@ -245,9 +245,12 @@ All paths below are relative to the library root.
    (The `authenticated` kind is reused — the frontend renders it as a
    neutral toast and we don't want to expand the kind enum just for this.)
 
-7. **Mark the queue entry done** by renaming
-   `.virgil/queue/<citekey>-bibedit.json` → `.virgil/queue/<citekey>-bibedit.done`
-   (or deleting it — both are fine).
+7. **Mark the queue entry done** through the queue-slot door:
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py retire --kind bib-edit --citekey <citekey>
+   ```
+   (It moves `<citekey>-bibedit.json` → `<citekey>-bibedit.done`, rotating an
+   older `.done` out of the way first. Deleting the `.json` is also fine.)
 
 ## Reply format
 

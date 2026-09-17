@@ -41,6 +41,7 @@ from typing import Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from queue_slot import slot_suffixes  # noqa: E402
 from _tools import (  # noqa: E402
     append_inbox_item,
     bump_catalog_version,
@@ -57,7 +58,9 @@ _CITEKEY_STOPWORDS = frozenset({
     "is", "are", "was", "were",
 })
 
-_QUEUE_SUFFIXES = (".done", ".json", "-bibedit.json", "-deepindex.json", "-richindex.json")
+# Every per-citekey queue file — derived from the slot table, so a new slot
+# kind is renamed with the rest (task 618).
+_QUEUE_SUFFIXES = slot_suffixes()
 
 
 def _resolve_library_root() -> Path:

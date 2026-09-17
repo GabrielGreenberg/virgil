@@ -220,7 +220,11 @@ def _papers(library: Path) -> list[str]:
 
 def _queued(library: Path) -> list[str]:
     q = library / ".virgil" / "queue"
-    return sorted(p.stem for p in q.glob("*.json")) if q.exists() else []
+    # The citekey a request is FOR, read from the entry — each kind has its
+    # own slot filename since task 618 (`<ck>-auth.json`, …).
+    if not q.exists():
+        return []
+    return sorted(json.loads(p.read_text())["citekey"] for p in q.glob("*.json"))
 
 
 def test_only_run_leaves_the_bystander_untouched_through_apply(tmp_path):

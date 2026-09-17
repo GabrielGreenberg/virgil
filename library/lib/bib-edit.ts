@@ -6,6 +6,7 @@
 // counter so other clients reload.
 
 import {
+  findQueuedRequest,
   writeQueueEntry,
   addPendingReview,
   removePendingReview,
@@ -82,10 +83,10 @@ export async function queuePaperReview(
   return writeQueueEntry(root, entry);
 }
 
-/** Enqueue a standard index request. Shares `queue/<citekey>.json` with
- *  `authenticate` (the bib review), so whichever was written last owns the
- *  slot — which is why every writer re-reads the queue afterwards instead of
- *  assuming its own write is the whole truth. */
+/** Enqueue a standard index request (`queue/<citekey>.json`). Every kind has
+ *  its own slot (task 618), so this never replaces a bib review; writers
+ *  still re-read the queue afterwards (`refreshQueueState`) rather than
+ *  assume their own write is the whole truth. */
 export async function queueIndex(
   root: FileSystemDirectoryHandle,
   citekey: string,
@@ -104,9 +105,9 @@ export async function queueIndex(
 }
 
 /** Cancel a queued index request by deleting its queue file — but only while
- *  the shared slot still holds a pending `index`. Refuses to touch an
- *  in-flight entry or an `authenticate` that took the slot (the mirror of
- *  `cancelBibReview`'s guard). */
+ *  the slot still holds a pending `index`. Refuses to touch an in-flight
+ *  entry or a legacy `authenticate` still sitting in the bare slot (the
+ *  mirror of `cancelBibReview`'s guard). */
 export async function cancelIndex(
   root: FileSystemDirectoryHandle,
   citekey: string,
@@ -198,12 +199,11 @@ export async function cancelBibReview(
   root: FileSystemDirectoryHandle,
   citekey: string,
 ): Promise<boolean> {
-  const path = `${SUBDIRS.queue}/${citekey}.json`;
-  const cur = await readJsonFile<QueueEntry>(root, path);
-  if (!cur) return false;
-  if (cur.kind !== "authenticate") return false;
-  if (cur.status !== "requested") return false;
-  await deleteFile(root, path);
+  // Its own `<citekey>-auth.json` slot, or the pre-618 shared `<citekey>.json`.
+  const found = await findQueuedRequest(root, citekey, "authenticate");
+  if (!found) return false;
+  if (found.entry.status !== "requested") return false;
+  await deleteFile(root, found.path);
   await removePendingReview(root, citekey);
   return true;
 }
@@ -219,13 +219,17 @@ export async function queueDeepIndex(
   note?: string,
   alsoIndex?: boolean,
 ): Promise<string> {
-  if (alsoIndex) {
+  // The companion index is planted only into an EMPTY index slot: an index
+  // the user already queued (or one in flight) is left exactly as it is, and
+  // is therefore never removed by `cancelDeepIndex` either.
+  if (alsoIndex && !(await findQueuedRequest(root, citekey, "index"))) {
     const indexEntry: QueueEntry = {
       kind: "index",
       status: "requested",
       citekey,
       requestedAt: new Date().toISOString(),
       attempts: 0,
+      companionOf: "deepIndex",
     };
     await writeQueueEntry(root, indexEntry);
   }
@@ -240,8 +244,9 @@ export async function queueDeepIndex(
   return writeQueueEntry(root, entry);
 }
 
-/** Cancel a queued deep-index request. Also cancels a companion index
- *  entry if it was queued alongside (for un-indexed papers). Removes
+/** Cancel a queued deep-index request. Also cancels the companion index
+ *  entry `queueDeepIndex` planted for an un-indexed paper — only that one
+ *  (`companionOf: "deepIndex"`), never an index queued on its own. Removes
  *  whichever filename variant is present (legacy `-richindex.json` or
  *  current `-deepindex.json`). */
 export async function cancelDeepIndex(
@@ -262,7 +267,12 @@ export async function cancelDeepIndex(
   if (removed) {
     const companionPath = `${SUBDIRS.queue}/${citekey}.json`;
     const companion = await readJsonFile<QueueEntry>(root, companionPath);
-    if (companion && companion.kind === "index" && companion.status === "requested") {
+    if (
+      companion &&
+      companion.kind === "index" &&
+      companion.status === "requested" &&
+      companion.companionOf === "deepIndex"
+    ) {
       await deleteFile(root, companionPath);
     }
   }

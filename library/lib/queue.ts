@@ -2,7 +2,15 @@
 // Claude skills. The skill drains the queue, processes, then rewrites
 // .virgil/catalog.json.
 
-import { readJsonFile, writeJsonFile, writeBinaryFile, SUBDIRS } from "./library-storage";
+import {
+  deleteFile,
+  readJsonFile,
+  readTextFile,
+  writeBinaryFile,
+  writeJsonFile,
+  writeTextFile,
+  SUBDIRS,
+} from "./library-storage";
 
 export type QueueKind =
   | "triage"
@@ -43,6 +51,10 @@ export interface QueueEntry {
   // user opened the note panel before submitting. The /ai-requests skill
   // surfaces these prominently and acts on them specifically.
   note?: string;
+  // Set on an `index` entry that `queueDeepIndex` planted for an un-indexed
+  // paper, so cancelling the deep index removes ONLY that companion — never
+  // an index the user queued on its own (task 618).
+  companionOf?: "deepIndex";
 }
 
 export interface BibEditPayload {
@@ -50,21 +62,140 @@ export interface BibEditPayload {
   fields: Record<string, string>;     // title, author, year, ...
 }
 
-/** Write a queue entry. Path naming:
- *   queue/<citekey>.json            for index/authenticate/reindex
- *   queue/<citekey>-bibedit.json    for bib-edit (separate file so it can
- *                                   coexist with an in-flight index)
- *   queue/_triage-<slug>.json       for triage entries
- */
+/** Thrown when a slot refuses a write: the request already there is being
+ *  worked (`status: "running"`), or a legacy occupant of another kind holds
+ *  the bare slot and could not be moved aside. The message is user-facing
+ *  (PaperHeader flashes it). */
+export class QueueSlotBusyError extends Error {
+  constructor(
+    readonly filename: string,
+    readonly reason: "in-flight" | "occupied",
+  ) {
+    super(
+      reason === "in-flight"
+        ? "this request is already being processed — try again when it finishes"
+        : "another request for this paper is still queued in the old shared slot",
+    );
+    this.name = "QueueSlotBusyError";
+  }
+}
+
+/** Write a queue entry under the SLOT LIFECYCLE contract (task 618) — the TS
+ *  half of `library/scripts/queue_slot.py`, which states it in full:
+ *
+ *   1. one slot per kind (`queueFilename`);
+ *   2. retire-on-write: a `<slot>.done` left by an earlier run is rotated to
+ *      `<slot>.<kind>.<stamp>.done` first, so the drain can never mistake a
+ *      new request for finished work;
+ *   3. a `running` entry is never overwritten (`QueueSlotBusyError`);
+ *   4. a legacy `authenticate` request in the bare `<citekey>.json` slot is
+ *      moved to its own slot before anything else is written there.
+ *
+ *  A pending request of the same kind IS replaced — that is a re-request
+ *  from the app (e.g. with an edited note). */
 export async function writeQueueEntry(
   root: FileSystemDirectoryHandle,
   entry: QueueEntry,
 ): Promise<string> {
   const filename = queueFilename(entry);
-  await writeJsonFile(root, `${SUBDIRS.queue}/${filename}`, entry);
+  const path = `${SUBDIRS.queue}/${filename}`;
+  if (entry.kind !== "triage" && filename === `${entry.citekey}.json`) {
+    if (!(await migrateLegacyOccupant(root, entry.citekey!, entry.kind))) {
+      throw new QueueSlotBusyError(filename, "occupied");
+    }
+  }
+  const cur = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, path));
+  if (cur?.status === "running") {
+    throw new QueueSlotBusyError(filename, "in-flight");
+  }
+  await retireDone(root, slotStem(filename));
+  await writeJsonFile(root, path, entry);
   return filename;
 }
 
+/** Kinds whose requests lived in the bare `<citekey>.json` slot before each
+ *  kind got its own (task 618). Mirrors `LEGACY_BARE_SLOT_KINDS`. */
+export const LEGACY_BARE_SLOT_KINDS: readonly QueueKind[] = ["authenticate"];
+
+function slotStem(filename: string): string {
+  return filename.replace(/\.json$/, "");
+}
+
+/** Rotate `<stem>.done` out of its slot. A refused delete leaves the old
+ *  marker in place; the drain's belt (`done_retires`: same kind AND same
+ *  `requestedAt`) still tells it apart from the new request. */
+export async function retireDone(
+  root: FileSystemDirectoryHandle,
+  stem: string,
+): Promise<void> {
+  const donePath = `${SUBDIRS.queue}/${stem}.done`;
+  const text = await readTextFile(root, donePath);
+  if (text === undefined) return;
+  let kind = "unknown";
+  try {
+    const parsed = JSON.parse(text) as { kind?: unknown };
+    if (typeof parsed?.kind === "string" && parsed.kind) kind = parsed.kind;
+  } catch {
+    // An empty / unparseable marker (the drain's fallback) rotates as unknown.
+  }
+  const stamp = new Date().toISOString().replace(/[-:.]/g, "");
+  await writeTextFile(root, `${SUBDIRS.queue}/${stem}.${kind}.${stamp}.done`, text);
+  await deleteFile(root, donePath);
+}
+
+/** Move a legacy occupant of the bare slot to its own per-kind slot. Returns
+ *  false when it could not be moved without losing a request. */
+async function migrateLegacyOccupant(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+  targetKind: QueueKind,
+): Promise<boolean> {
+  const barePath = `${SUBDIRS.queue}/${citekey}.json`;
+  const cur = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, barePath));
+  if (!cur || cur.kind === targetKind || !LEGACY_BARE_SLOT_KINDS.includes(cur.kind)) {
+    return true;
+  }
+  const destName = queueFilename({ ...cur, citekey });
+  const destPath = `${SUBDIRS.queue}/${destName}`;
+  const dest = await readJsonFile<QueueEntry>(root, destPath);
+  if (dest) {
+    if (dest.status !== "requested") return false;
+    // The per-kind slot already carries the pending request; drop the copy.
+    await deleteFile(root, barePath);
+    return true;
+  }
+  if (cur.status === "running") return false;
+  await retireDone(root, slotStem(destName));
+  await writeJsonFile(root, destPath, cur);
+  await deleteFile(root, barePath);
+  return true;
+}
+
+/** The file that holds a live (`requested`/`running`) request of `kind` for
+ *  `citekey`, looking in its own slot and — for legacy kinds — the bare slot.
+ *  The CANCEL half's reader, so a cancel finds a pre-618 request too. */
+export async function findQueuedRequest(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+  kind: QueueKind,
+): Promise<{ path: string; entry: QueueEntry } | null> {
+  const names = [queueFilename({ kind, citekey, status: "requested", requestedAt: "", attempts: 0 })];
+  if (LEGACY_BARE_SLOT_KINDS.includes(kind)) names.push(`${citekey}.json`);
+  if (kind === "deepIndex") names.push(`${citekey}-richindex.json`);
+  for (const name of names) {
+    const path = `${SUBDIRS.queue}/${name}`;
+    const entry = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, path));
+    if (entry && entry.kind === kind) return { path, entry };
+  }
+  return null;
+}
+
+/** The queue filename for an entry — ONE SLOT PER KIND (task 618). `index`
+ *  and `reindex` share `<citekey>.json` (the same work); every other kind
+ *  has its own file, so two requests for one paper can never overwrite each
+ *  other. Mirrors `SLOT_SUFFIX` in `library/scripts/queue_slot.py`, pinned by
+ *  `queue-slot-parity.test.ts`. Triage entries live at
+ *  `_triage-<slug>.json`. */
 export function queueFilename(entry: QueueEntry): string {
   if (entry.kind === "triage") {
     const slug = (entry.filename ?? "unknown")
@@ -76,24 +207,21 @@ export function queueFilename(entry: QueueEntry): string {
   if (!entry.citekey) {
     throw new Error("citekey required for non-triage queue entry");
   }
-  if (entry.kind === "bib-edit") {
-    return `${entry.citekey}-bibedit.json`;
-  }
-  if (entry.kind === "paper-review") {
-    return `${entry.citekey}-paperreview.json`;
-  }
-  if (entry.kind === "deepIndex") {
-    return `${entry.citekey}-deepindex.json`;
-  }
-  if (entry.kind === "import-bib") {
-    // Own slot so it can coexist with an in-flight index / bib-review.
-    return `${entry.citekey}-importbib.json`;
-  }
-  if (entry.kind === "delete") {
-    return `${entry.citekey}-delete.json`;
-  }
-  return `${entry.citekey}.json`;
+  const suffix = QUEUE_SLOT_SUFFIX[entry.kind];
+  return `${entry.citekey}${suffix}.json`;
 }
+
+/** kind → filename suffix after the citekey ("" = the bare slot). */
+export const QUEUE_SLOT_SUFFIX: Record<Exclude<QueueKind, "triage">, string> = {
+  index: "",
+  reindex: "",
+  authenticate: "-auth",
+  "bib-edit": "-bibedit",
+  "paper-review": "-paperreview",
+  deepIndex: "-deepindex",
+  "import-bib": "-importbib",
+  delete: "-delete",
+};
 
 /** Sanitize a user-provided filename so the File System Access API will
  *  accept it. FSA forbids `< > : " / \ | ? *` plus control characters,

@@ -39,7 +39,7 @@ describe("paper AI requests — one declaration per kind", () => {
     expect(new Set(queueKinds).size).toBe(queueKinds.length);
   });
 
-  it("index and bib SHARE one queue file — which is why the kind, not the filename, is the read key", () => {
+  it("every paper request has its OWN queue file — no two kinds can overwrite each other (task 618)", () => {
     const filenameFor = (queueKind: QueueEntry["kind"]) =>
       queueFilename({
         kind: queueKind,
@@ -48,12 +48,8 @@ describe("paper AI requests — one declaration per kind", () => {
         requestedAt: "2026-01-01T00:00:00Z",
         attempts: 0,
       });
-    expect(filenameFor(PAPER_REQUESTS_BY_KIND.index.queueKind)).toBe(
-      filenameFor(PAPER_REQUESTS_BY_KIND.bib.queueKind),
-    );
-    // …and every other pair is separable by filename alone.
-    const others = KINDS.filter((k) => k !== "index" && k !== "bib");
-    const names = others.map((k) =>
+    // Index and bib review used to SHARE `<citekey>.json` (last writer won).
+    const names = KINDS.map((k) =>
       filenameFor(PAPER_REQUESTS_BY_KIND[k].queueKind),
     );
     expect(new Set(names).size).toBe(names.length);
