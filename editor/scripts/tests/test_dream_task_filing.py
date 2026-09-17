@@ -328,6 +328,79 @@ class Filing(_QueueCase):
         ids = sorted(n[:14] for n in names)
         self.assertEqual(ids, ["2026-09-01-001", "2026-09-01-002"])
 
+    def _file_with_a_lying_prescan(self, title: str) -> None:
+        real_scan = dream._minted_ids
+        try:
+            dream._minted_ids = lambda root: set()   # the lie
+            spec = self.spec(title=title)
+            self.assertEqual(dream.cmd_file_task(["--task", json.dumps(spec)]), 0)
+        finally:
+            dream._minted_ids = real_scan
+
+    def test_a_racer_with_a_DIFFERENT_DATE_is_still_a_collision(self):
+        """Task 617. `NNN` is the identity; the date is only the mint date, and
+        minters disagree about it (the dream mints in UTC, a hand minter in local
+        time). Pre-617 the re-verify compared the whole date-prefixed id, so a
+        racer's `2026-08-31-001` survived beside our `2026-09-01-001`."""
+        (self.queue / "blocked" / "2026-08-31-001-a-local-time-racer.md").write_text("x")
+        self._file_with_a_lying_prescan("A finding minted across midnight")
+        names = self.listing("incoming")
+        self.assertEqual(len(names), 1, names)
+        self.assertTrue(names[0].startswith("2026-09-01-002-"), names)
+
+    def test_NNN_past_999_is_visible_to_the_scan(self):
+        """Task 617. The grammar is `\\d{3,}`, not `\\d{3}`: pre-617 a `…-1000-x`
+        file was invisible, so every later mint reissued 1000."""
+        (self.queue / "done" / "2026-09-01-1000-x.md").write_text("x")
+        out = self.file_task(self.spec())
+        self.assertEqual(out["id"], "2026-09-01-1001")
+        out = self.file_task(self.spec(title="And one more"))
+        self.assertEqual(out["id"], "2026-09-01-1002")
+
+    def test_a_1000_file_is_not_a_collision_for_100(self):
+        """The re-verify pre-617 was `startswith(task_id)`, so `…-100` matched
+        `…-1000-…`. By number, they are different ids."""
+        (self.queue / "done" / "2026-09-01-099-x.md").write_text("x")
+        (self.queue / "blocked" / "2026-09-01-1000-y.md").write_text("x")
+        real_scan = dream._minted_ids
+        try:
+            dream._minted_ids = lambda root: {99}   # chooses 100
+            spec = self.spec(title="The hundredth")
+            self.assertEqual(dream.cmd_file_task(["--task", json.dumps(spec)]), 0)
+        finally:
+            dream._minted_ids = real_scan
+        names = self.listing("incoming")
+        self.assertEqual(len(names), 1, names)
+        self.assertTrue(names[0].startswith("2026-09-01-100-"), names)
+
+
+class TaskIdGrammar(unittest.TestCase):
+    """`_common.parse_task_id` — the one parser every id scanner reads."""
+
+    def test_parses_date_and_number(self):
+        self.assertEqual(_common.parse_task_id("2026-09-17-617-slug.md"),
+                         ("2026-09-17", 617))
+        self.assertEqual(_common.parse_task_id("2026-09-17-007"), ("2026-09-17", 7))
+
+    def test_four_or_more_digits(self):
+        self.assertEqual(_common.parse_task_id("2026-09-17-1000-x.md"),
+                         ("2026-09-17", 1000))
+        self.assertEqual(_common.parse_task_id("2026-09-17-12345.md"),
+                         ("2026-09-17", 12345))
+
+    def test_non_ids(self):
+        for name in ("README.md", "2026-09-17-61-x.md", "2026-09-17-slug.md",
+                     "x-2026-09-17-617.md", ".DS_Store"):
+            self.assertIsNone(_common.parse_task_id(name), name)
+
+    def test_format_round_trips_and_pads_to_three(self):
+        self.assertEqual(_common.format_task_id("2026-09-17", 7), "2026-09-17-007")
+        self.assertEqual(_common.format_task_id("2026-09-17", 1000), "2026-09-17-1000")
+        for n in (1, 99, 617, 1000, 20000):
+            self.assertEqual(
+                _common.parse_task_id(_common.format_task_id("2026-01-02", n)),
+                ("2026-01-02", n))
+
 
 # ---------------------------------------------------------------------------
 # NEXT-ID — the rule as a door a hand minter can ask
@@ -353,6 +426,12 @@ class NextIdDoor(_QueueCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.strip(), "2026-09-01-538")
         self.assertEqual(len(r.stdout.strip().splitlines()), 1)
+
+    def test_it_sees_a_four_digit_NNN(self):
+        (self.queue / "done" / "2026-08-31-1000-x.md").write_text("x")
+        r = self.next_id(dev="1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "2026-09-01-1001")
 
     def test_it_agrees_with_what_file_task_then_mints(self):
         (self.queue / "in-progress" / "2026-08-31-537-x.md").write_text("x")

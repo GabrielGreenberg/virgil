@@ -88,9 +88,11 @@ from _common import (
     die,
     digests_root as _shared_digests_root,
     extra_memos_roots,
+    format_task_id,
     is_sync_conflict_name,
     memo_sink_kind,
     memos_root as _shared_memos_root,
+    parse_task_id,
     source_repo_root,
     synced_reports_root,
     tasks_root,
@@ -1453,8 +1455,6 @@ def cmd_digest(argv: list[str]) -> int:
 # `source: dream` provenance — so none of them can drift from run to run or be
 # forgotten at 4am.
 
-_TASK_ID_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{3})\b")
-
 # The schema bar, made structural. `README.md`'s own rule is "Always set a real
 # `## Done when`. A task with no acceptance criteria is one the worker can't
 # safely finish — it'll just get parked", and a blocked task with no question is
@@ -1492,20 +1492,29 @@ def _minted_ids(root: Path) -> set[int]:
     its filename everywhere in the pipeline, the id is its prefix, and reading N
     hundred files to answer a question their names already carry would make the
     immediately-before-each-write rescan too expensive to actually do twice."""
-    used: set[int] = set()
+    return {nnn for _, nnn in _queue_task_files(root)}
+
+
+def _queue_task_files(root: Path) -> list[tuple[Path, int]]:
+    """Every id-bearing file in the four queue dirs, with its parsed `NNN`.
+
+    The one walk both `_minted_ids` and `_find_conflict` read, through the one
+    grammar (`_common.parse_task_id`), so the scan that CHOOSES an id and the
+    re-check that VERIFIES it can never disagree about what an id is."""
+    out: list[tuple[Path, int]] = []
     for sub in TASK_ID_DIRS:
         d = root / sub
         if not d.is_dir():
             continue
         try:
-            names = [f.name for f in d.iterdir()]
+            entries = list(d.iterdir())
         except OSError:
             continue
-        for name in names:
-            m = _TASK_ID_RE.match(name)
-            if m:
-                used.add(int(m.group(2)))
-    return used
+        for f in entries:
+            parsed = parse_task_id(f.name)
+            if parsed:
+                out.append((f, parsed[1]))
+    return out
 
 
 def _next_id(used: set[int]) -> int:
@@ -1521,20 +1530,16 @@ def _next_id(used: set[int]) -> int:
     return max(used) + 1 if used else 1
 
 
-def _find_conflict(root: Path, task_id: str, mine: Path) -> bool:
-    """Did somebody else land the same id while we were writing?"""
-    for sub in TASK_ID_DIRS:
-        d = root / sub
-        if not d.is_dir():
-            continue
-        try:
-            entries = list(d.iterdir())
-        except OSError:
-            continue
-        for f in entries:
-            if f.name.startswith(task_id) and f.resolve() != mine.resolve():
-                return True
-    return False
+def _find_conflict(root: Path, nnn: int, mine: Path) -> bool:
+    """Did somebody else land the same `NNN` while we were writing?
+
+    Compared by NUMBER, whatever the other file's date (task 617): `NNN` is the
+    global counter and minters disagree about the date (UTC here, local time by
+    hand), so `2026-09-16-613-a.md` collides with our `2026-09-17-613-b.md` even
+    though neither name is a prefix of the other."""
+    mine = mine.resolve()
+    return any(n == nnn and f.resolve() != mine
+               for f, n in _queue_task_files(root))
 
 
 def _render_task(fm: dict, sections: dict, order: list[str]) -> str:
@@ -1629,7 +1634,7 @@ def cmd_file_task(argv: list[str]) -> int:
     task_id = ""
     for _ in range(50):
         nnn = _next_id(used)
-        task_id = f"{date_str}-{nnn:03d}"
+        task_id = format_task_id(date_str, nnn)
         target = queue_dir / f"{task_id}-{slug}.md"
         fm = {
             "id": task_id,
@@ -1654,7 +1659,7 @@ def cmd_file_task(argv: list[str]) -> int:
         if written is not None and written != target:
             atomic_write([(written, None)])
         written = target
-        if not _find_conflict(root, task_id, target):
+        if not _find_conflict(root, nnn, target):
             break
         used.add(nnn)
     else:  # pragma: no cover — 50 straight collisions is not a race, it's a bug
@@ -1759,7 +1764,7 @@ def cmd_next_id(argv: list[str]) -> int:
               file=sys.stderr)
         return 1
     _, date_str = _now_iso_date()
-    print(f"{date_str}-{_next_id(_minted_ids(root)):03d}")
+    print(format_task_id(date_str, _next_id(_minted_ids(root))))
     return 0
 
 
