@@ -21,6 +21,12 @@ import {
 const SW_URL = publicAssetUrl("/sw.js");
 const SW_SCOPE = publicAssetUrl("/");
 
+// Task 611 — the browser re-checks `sw.js` only on a navigation (and a
+// throttled few other events). A Virgil window stays open for days without
+// navigating, so it would never learn that a deploy happened. Ask again when
+// the window comes back into view, and hourly while it is visible.
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
 export default function ServiceWorkerRegistration() {
   // Task 610 — every window answers other windows' "is your work on disk?"
   // before one of them posts SKIP_WAITING (which reloads all of them).
@@ -31,6 +37,7 @@ export default function ServiceWorkerRegistration() {
 
     let cancelled = false;
     let reloadOnControllerChange = false;
+    let stopUpdateChecks: (() => void) | null = null;
 
     // The SW deliberately does NOT call skipWaiting()/clients.claim()
     // (see public/sw.js). We detect the waiting state and surface an
@@ -66,6 +73,19 @@ export default function ServiceWorkerRegistration() {
           });
         };
         reg.addEventListener("updatefound", onUpdateFound);
+
+        const checkForUpdate = () => {
+          if (document.hidden) return;
+          reg.update().catch(() => {
+            // Offline or the server is unreachable — the next check retries.
+          });
+        };
+        const timer = window.setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
+        document.addEventListener("visibilitychange", checkForUpdate);
+        stopUpdateChecks = () => {
+          window.clearInterval(timer);
+          document.removeEventListener("visibilitychange", checkForUpdate);
+        };
 
         // When the user accepts the update and the waiting SW activates,
         // navigator.serviceWorker.controller changes. Reload exactly once.
@@ -104,6 +124,7 @@ export default function ServiceWorkerRegistration() {
 
     return () => {
       cancelled = true;
+      stopUpdateChecks?.();
       navigator.serviceWorker.removeEventListener(
         "controllerchange",
         onControllerChange,

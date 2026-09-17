@@ -335,10 +335,6 @@ async function main() {
     afterClear.filter((r) => !targets.includes(r.family)).map((r) => r.cacheKey),
   );
   for (const name of targets) await vendor(name, { dryRun, claimed });
-
-  console.log("");
-  console.log("NEXT: bump CACHE_NAME in public/sw.js so a warm service-worker cache");
-  console.log("      does not shadow the new texbundle.");
 }
 
 // Run only when invoked as a script — `referencesIn` is imported by its

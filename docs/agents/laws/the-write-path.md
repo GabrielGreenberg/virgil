@@ -435,6 +435,37 @@ in `reload-door.test.ts` (the handler's self-initiated split, and the banner
 asking every window). **Owed, not claimed:** a real-PWA two-window drill. The
 service worker is disabled on localhost (`IS_DEV` in `public/sw.js`).
 
+#### The build-stamp half: the worker's version is the BUILD's, never a hand-bumped literal
+
+Task 611 (audit tick 107). The banner above only appears when the browser
+installs a new worker, and it does that only when `sw.js`'s BYTES change. The
+worker carried `CACHE_NAME = "virgil-v9"`, bumped by hand 9 times in ~100
+releases, so most deploys reached no open window. Network-first also returned a
+404 for a chunk the deploy had deleted, even when the cache held it, and every
+build's chunks piled into one cache.
+
+> **Every build ships a worker whose bytes identify that build.**
+
+- `postbuild` (`scripts/stamp-service-worker.mjs`) replaces `BUILD_STAMP` in
+  `out/sw.js` with a content hash of the whole export, and `BUILD_PRECACHE` with
+  the shell plus the hashed `_next/static/**` files (scope-relative, task 365).
+  A missing placeholder fails the build. Any build path that skips npm's hooks
+  ships an unstamped worker, so nothing may call `next build` except `build`.
+- Hashed chunks are served cache-first. Anything else is network-first, but a
+  non-ok answer yields to a held copy. Install precaches the build, copying
+  chunks an older cache already holds.
+- Activate keeps this build, the fonts cache, and ONE predecessor (the newest
+  other cache). That predecessor is what makes "stays on the old page under the
+  new worker" (the multi-window half) safe: the old page's lazy chunks are still
+  held. At most two builds are cached.
+- `ServiceWorkerRegistration` calls `reg.update()` when the window becomes
+  visible and hourly while it is, because a long-open window never navigates.
+
+CI: [sw-build-stamp.test.ts](../../../src/lib/__tests__/sw-build-stamp.test.ts)
+(the stamper on a fixture export, the wiring census, and the stamped worker
+driven in a VM against fake caches). **Owed:** a real deploy showing the banner,
+and an old tab lazily opening a surface after the deploy.
+
 #### The population half: a door flushes what is REGISTERED, and one registrant of twenty was
 
 Same door, the half its own docblock claimed (task 559, an audit finding). Step 1
