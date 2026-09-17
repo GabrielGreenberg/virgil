@@ -1433,27 +1433,9 @@ def read_master_bib(path: Path, *, text: str | None = None) -> dict[str, dict]:
             return {}
         text = path.read_text()
     entries: dict[str, dict] = {}
-    starts = list(_BIB_ENTRY_START_RE.finditer(text))
-    consumed_until = 0  # end offset of the last brace-balanced entry
-    for idx, m in enumerate(starts):
-        # Hazard 5(b): skip a `@type{key,` that sits inside a prior BALANCED
-        # entry's brace span — it was a value (e.g. a column-0 `@article{...}`
-        # inside a `note = {...}`), not a real entry. Capping at the next opener
-        # (the old behavior) would have truncated the enclosing entry, dropping
-        # its remaining fields (its doi) and minting a phantom. Containment for
-        # genuinely malformed (unbalanced) entries is preserved below.
-        if m.start() < consumed_until:
-            continue
+    for m, citekey, j, balanced in _iter_master_entry_spans(text):
         entry_type = m.group(1).lower()
-        citekey = m.group(2).strip()
         brace = text.find("{", m.start())
-        # ONE extent rule, shared with `update_master_bib_entry` — see
-        # `bib_entry_extent`. Uncapped first (so a value holding a column-0
-        # `@type{...}` still balances), capped at the next opener only when it
-        # never balances (so one bad entry can't swallow the rest).
-        j, balanced = bib_entry_extent(text, m.start())
-        if balanced:
-            consumed_until = j
         raw = text[m.start():j]
         body_start = text.find(",", brace) + 1
         body = text[body_start:(j - 1) if balanced else j]
@@ -1461,6 +1443,153 @@ def read_master_bib(path: Path, *, text: str | None = None) -> dict[str, dict]:
         if citekey:
             entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
     return entries
+
+
+def _iter_master_entry_spans(text: str):
+    """Yield `(opener_match, citekey, end, balanced)` for every REAL entry.
+
+    THE enumeration of master.bib entries — `read_master_bib` reads through it
+    and `locate_master_entry` (every writer's locator) searches it, so a writer
+    can never act on an entry the reader does not see (task 620).
+
+    Hazard 5(b): an opener that sits inside a prior BALANCED entry's brace span
+    is skipped — it was a value (a column-0 `@article{...}` inside a
+    `note = {...}`), not a real entry. Containment for genuinely malformed
+    (unbalanced) entries comes from `bib_entry_extent`'s capped pass.
+    """
+    consumed_until = 0  # end offset of the last brace-balanced entry
+    for m in _BIB_ENTRY_START_RE.finditer(text):
+        if m.start() < consumed_until:
+            continue
+        citekey = m.group(2).strip()
+        # ONE extent rule — see `bib_entry_extent`.
+        j, balanced = bib_entry_extent(text, m.start())
+        if balanced:
+            consumed_until = j
+        if citekey:
+            yield m, citekey, j, balanced
+
+
+@dataclass(frozen=True)
+class MasterEntrySpan:
+    """Where one master.bib entry lives: `text[start:end]` is `@type{key, … }`.
+
+    `block_start` is `start`, or the start of the entry's leading
+    `% bib.state = …` comment line when it has one (a removal or whole-block
+    replace takes the comment with it). `state` is that comment's value, "".
+    `key` is the citekey as the FILE spells it (NFC or NFD).
+    """
+
+    key: str
+    start: int
+    end: int
+    block_start: int
+    state: str
+
+
+def locate_master_entry(text: str, citekey: str) -> "MasterEntrySpan | None":
+    """WHERE IS THIS master.bib ENTRY? — the one locator every writer uses.
+
+    Before task 620 each writer (rename, update, the merge rollback, the et-al
+    merge, `rename_citekeys`) spelled this privately with an UNANCHORED
+    `pattern.search`: it acted on the FIRST `@type{key,` anywhere — even
+    column-0 text inside a `note = {…}` — while every reader takes the LAST
+    line-anchored one. With a duplicate key an update edited the invisible copy.
+    Two of them also walked braces with no cap and no balance check, so one
+    extra `{` deleted every later entry.
+
+    Rules, all shared with `read_master_bib` by construction
+    (`_iter_master_entry_spans`): line-anchored openers, Hazard-5(b) skip,
+    LAST match wins, NFC tried before NFD, extent from `bib_entry_extent`.
+    Returns None when the key has no entry. Raises `BibEntryUnbalanced` when
+    the entry exists but its braces never balance — its extent is a guess, and
+    a writer may not act on a guess.
+    """
+    import unicodedata
+
+    spans = list(_iter_master_entry_spans(text))
+    target = None
+    for form in ("NFC", "NFD"):
+        key_form = unicodedata.normalize(form, citekey)
+        hits = [s for s in spans if s[1] == key_form]
+        if hits:
+            target = hits[-1]
+            break
+    if target is None:
+        return None
+    m, key, end, balanced = target
+    if not balanced:
+        raise BibEntryUnbalanced(unicodedata.normalize("NFC", citekey))
+    start = m.start()
+    line_start = text.rfind("\n", 0, start) + 1
+    prev_start = text.rfind("\n", 0, max(0, line_start - 1)) + 1
+    prev_line = text[prev_start:line_start].strip() if line_start > 0 else ""
+    block_start, state = start, ""
+    if prev_line.startswith("% bib.state"):
+        block_start = prev_start
+        # `[\w-]+` so hyphenated states (needs-reauth) survive.
+        cm = re.match(r"%\s*bib\.state\s*=\s*([\w-]+)", prev_line)
+        if cm:
+            state = cm.group(1)
+    return MasterEntrySpan(key=key, start=start, end=end,
+                           block_start=block_start, state=state)
+
+
+class BibKeyTaken(Exception):
+    """A rename's target citekey already has an entry — renaming would mint a
+    duplicate that every reader silently collapses (last-wins)."""
+
+    def __init__(self, old: str, new: str):
+        self.old, self.new = old, new
+        super().__init__(
+            f"refusing to rename {old!r} to {new!r}: {new!r} already has an "
+            "entry — merge the two instead"
+        )
+
+
+def remove_master_entry_text(text: str, citekey: str) -> tuple[str, bool]:
+    """`text` without `citekey`'s entry (and its `% bib.state` line).
+
+    Returns `(new_text, removed)`. One newline after the entry goes with it, so
+    stacked entries don't accumulate blank gaps. Raises `BibEntryUnbalanced`
+    (text untouched) when the entry's extent can't be trusted.
+    """
+    span = locate_master_entry(text, citekey)
+    if span is None:
+        return text, False
+    end = span.end
+    if text[end:end + 1] == "\n":
+        end += 1
+    return text[:span.block_start] + text[end:], True
+
+
+def rename_master_entry_text(text: str, old: str, new: str) -> tuple[str, bool]:
+    """`text` with `old`'s entry opener rewritten to `new` (NFC), body untouched.
+
+    Returns `(new_text, renamed)`. Raises `BibEntryUnbalanced` on an entry
+    whose extent can't be trusted and `BibKeyTaken` when `new` already has an
+    entry (a rename onto oneself, or an NFC/NFD respelling, is allowed).
+    """
+    import unicodedata
+
+    span = locate_master_entry(text, old)
+    if span is None:
+        return text, False
+    new_nfc = unicodedata.normalize("NFC", new)
+    if not citekey_matches(old, new):
+        if locate_existing_key(text, new_nfc):
+            raise BibKeyTaken(old, new_nfc)
+    opener = _BIB_ENTRY_START_RE.match(text, span.start)
+    a, b = opener.span(2)
+    return text[:a] + new_nfc + text[b:], True
+
+
+def locate_existing_key(text: str, citekey: str) -> bool:
+    """Does `citekey` (either normalization) have a real entry in `text`?"""
+    import unicodedata
+
+    forms = {unicodedata.normalize(f, citekey) for f in ("NFC", "NFD")}
+    return any(s[1] in forms for s in _iter_master_entry_spans(text))
 
 
 def bib_entry_extent(text: str, opener_start: int) -> tuple[int, bool]:
@@ -1519,29 +1648,39 @@ def rename_master_bib_entry(library: Path, old: str, new: str) -> bool:
     found and rewritten, False otherwise. No-op (returns False) if the
     file is missing.
 
-    Citekeys with diacritics are looked up under both NFC and NFD
-    forms; the rewrite writes the NFC form (1976-Tichý memo).
+    Located through `locate_master_entry` (task 620): the LAST line-anchored
+    entry, NFC then NFD — the one every reader sees. Raises
+    `BibEntryUnbalanced` / `BibKeyTaken` with the file untouched.
+    The rewrite writes the NFC form (1976-Tichý memo).
     """
-    import unicodedata
     master_path = library / "master.bib"
-    new_nfc = unicodedata.normalize("NFC", new)
     with lock_master_bib(library):
         if not master_path.exists():
             return False
         text = master_path.read_text()
-        new_text = text
-        n = 0
-        for form in ("NFC", "NFD"):
-            old_form = unicodedata.normalize(form, old)
-            pattern = re.compile(
-                r"(@\w+\s*\{\s*)" + re.escape(old_form) + r"(\s*,)"
-            )
-            new_text, n = pattern.subn(
-                rf"\g<1>{new_nfc}\g<2>", new_text, count=1,
-            )
-            if n > 0:
-                break
-        if n == 0:
+        new_text, renamed = rename_master_entry_text(text, old, new)
+        if not renamed:
+            return False
+        _atomic_write_text(master_path, new_text)
+    _mark_bib_index_dirty(library)
+    return True
+
+
+def remove_master_bib_entry(library: Path, citekey: str) -> bool:
+    """Delete one entry (and its `% bib.state` line) from master.bib. Self-locks.
+
+    Returns True if removed. Raises `BibEntryUnbalanced` with the file
+    untouched when the entry's extent can't be trusted — the private brace
+    walks this replaced ran to EOF on one stray `{` and deleted every later
+    entry (task 620).
+    """
+    master_path = library / "master.bib"
+    with lock_master_bib(library):
+        if not master_path.exists():
+            return False
+        text = master_path.read_text()
+        new_text, removed = remove_master_entry_text(text, citekey)
+        if not removed:
             return False
         _atomic_write_text(master_path, new_text)
     _mark_bib_index_dirty(library)
@@ -1590,55 +1729,20 @@ def update_master_bib_entry(
             master_path.write_text("")
         text = master_path.read_text()
         original_text = text
-        # Try NFC first, then NFD if NFC isn't present.
-        m = None
-        for form in ("NFC", "NFD"):
-            key_form = unicodedata.normalize(form, citekey)
-            pattern = re.compile(
-                r"@\w+\s*\{\s*" + re.escape(key_form) + r"\s*,"
-            )
-            m = pattern.search(text)
-            if m:
-                break
-        if m:
-            entry_start = m.start()
-            # ONE extent rule, shared with `read_master_bib` — see
-            # `bib_entry_extent`. This walk used to be UNCAPPED here while the
-            # reader was capped, so a brace-unbalanced entry was walked to EOF
-            # and the splice below replaced every following entry with one
-            # emitted block: silent, unbounded entry loss on a file the reader
-            # reports perfectly.
-            entry_end, balanced = bib_entry_extent(text, m.start())
-            if not balanced:
-                # The extent is a GUESS about malformed bytes. A reader may act
-                # on a guess (it only mis-reports one entry); a writer may not
-                # (it destroys whatever the guess got wrong). Leave the file
-                # exactly as it is — a malformed entry needs a human repair,
-                # and losing its neighbours is never the fallback.
-                raise BibEntryUnbalanced(citekey)
-            at_line_start = text.rfind("\n", 0, entry_start)
-            if at_line_start == -1:
-                at_line_start = 0
-            else:
-                at_line_start += 1
-            prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
-            if prev_line_start == -1:
-                prev_line_start = 0
-            else:
-                prev_line_start += 1
-            prev_line = text[prev_line_start:at_line_start].strip()
+        # ONE locator, shared with every reader (task 620): the LAST
+        # line-anchored entry, NFC then NFD, extent from `bib_entry_extent`.
+        # An unanchored search used to edit the FIRST `@type{key,` anywhere —
+        # with a duplicate key, the copy no reader sees — while the caller's
+        # field-drop guard compared against the other copy. An unbalanced
+        # entry raises `BibEntryUnbalanced` here, file untouched: its extent
+        # is a GUESS about malformed bytes, and a writer may not act on one.
+        span = locate_master_entry(text, citekey)
+        if span:
+            entry_start = span.block_start
+            entry_end = span.end
             # F#4: the `% bib.state` comment is the authoritative state home,
             # so a fields-only writeback (no `bib_state` arg) must NOT erase it.
-            # When we're swallowing an existing comment, carry its state forward
-            # unless the caller passed an explicit new state.
-            existing_comment_state = ""
-            if prev_line.startswith("% bib.state"):
-                entry_start = prev_line_start
-                # `[\w-]+` so hyphenated states (needs-reauth) survive a
-                # fields-only writeback instead of truncating to "needs".
-                cm = re.match(r"%\s*bib\.state\s*=\s*([\w-]+)", prev_line)
-                if cm:
-                    existing_comment_state = cm.group(1)
+            existing_comment_state = span.state
             effective_bib_state = bib_state or existing_comment_state
             replacement = ""
             if effective_bib_state:

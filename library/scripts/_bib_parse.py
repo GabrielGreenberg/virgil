@@ -434,3 +434,51 @@ def find_entry_span(text: str, citekey: str) -> Optional[tuple[int, int, Optiona
     prev_line = text[prev_line_start:at_line_start].strip()
     state_start = prev_line_start if prev_line.startswith("% bib.state") else None
     return (entry_start, entry_end, state_start)
+
+
+def remove_entry_text(text: str, citekey: str) -> tuple[str, bool]:
+    """`text` without `citekey`'s entry — the references.bib removal door.
+
+    Located by `find_entry_span` (LAST line-anchored match, NFC then NFD, a
+    leading `% bib.state` line included), so it raises `BibSpliceRefused` with
+    `text` untouched whenever the entry's extent can't be trusted. One newline
+    after the entry goes with it. Returns `(new_text, removed)`.
+    """
+    span = find_entry_span(text, citekey)
+    if span is None:
+        return text, False
+    start = span[2] if span[2] is not None else span[0]
+    end = span[1]
+    if text[end:end + 1] == "\n":
+        end += 1
+    elif text[end:end + 2] == "\r\n":
+        end += 2
+    return text[:start] + text[end:], True
+
+
+def rename_entry_text(text: str, old: str, new: str) -> tuple[str, bool]:
+    """`text` with `old`'s entry opener rewritten to `new` (NFC).
+
+    The references.bib rename door (task 620). Only the key inside the opener
+    changes; the body is byte-identical. When `new` ALREADY has an entry (a
+    merge of `old` into an existing key), `old`'s entry is REMOVED instead —
+    two entries under one key would collapse last-wins in every reader.
+    Raises `BibSpliceRefused` (text untouched) on an untrustworthy extent.
+    Returns `(new_text, changed)`.
+    """
+    import unicodedata
+
+    from _tools import citekey_matches  # lazy: sibling, avoids an import cycle
+
+    bom = 1 if text.startswith("\ufeff") else 0
+    span = locate_entry_for_splice(text[bom:], old)
+    if span is None:
+        return text, False
+    new_nfc = unicodedata.normalize("NFC", new)
+    if not citekey_matches(old, new_nfc) and locate_entry_for_splice(text[bom:], new_nfc) is not None:
+        return remove_entry_text(text, old)
+    opener = _BIB_ENTRY_START_RE.match(text, span[0] + bom)
+    a, b = opener.span(2)
+    if text[a:b] == new_nfc:
+        return text, False
+    return text[:a] + new_nfc + text[b:], True

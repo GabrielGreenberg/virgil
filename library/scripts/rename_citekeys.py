@@ -25,13 +25,13 @@ def _forms(k):
 
 
 def rename_in_master_text(text, old, new):
-    """Rewrite the first `@type{old,` opener to `@type{new,`. Returns (text, ok)."""
-    for of in _forms(old):
-        pat = re.compile(r"(@\w+\s*\{\s*)" + re.escape(of) + r"(\s*,)")
-        m = pat.search(text)
-        if m:
-            return text[:m.start()] + m.group(1) + unicodedata.normalize("NFC", new) + m.group(2) + text[m.end():], True
-    return text, False
+    """Rewrite `old`'s entry opener to `@type{new,`. Returns (text, ok).
+
+    Through the ONE master.bib locator (`_tools.rename_master_entry_text`,
+    task 620): the LAST line-anchored entry — the one every reader sees — not
+    the first `@type{old,` anywhere. Raises `BibEntryUnbalanced` /
+    `BibKeyTaken` rather than guess."""
+    return _tools.rename_master_entry_text(text, old, new)
 
 
 def apply_all(library, renames, dry_run, backup_dir):
@@ -76,11 +76,20 @@ def apply_all(library, renames, dry_run, backup_dir):
     # 1. master.bib — all renames, one locked read->write
     with _tools.lock_master_bib(library):
         text = master_path.read_text()
+        refused = []
         for r in renames:
-            text, ok = rename_in_master_text(text, r["old"], r["new"])
+            try:
+                text, ok = rename_in_master_text(text, r["old"], r["new"])
+            except (_tools.BibEntryUnbalanced, _tools.BibKeyTaken) as exc:
+                # The master.bib half can't be done safely — so NO half is:
+                # a folder/catalog rename without its entry is a split identity.
+                print(f"  REFUSED {r['old']} -> {r['new']}: {exc}")
+                refused.append(r)
+                continue
             if ok:
                 done.append(r)
         _tools._atomic_write_text(master_path, text)
+    renames = [r for r in renames if r not in refused]
     _tools._mark_bib_index_dirty(library)
 
     # 2. catalog + filesystem
@@ -153,14 +162,23 @@ def apply_all(library, renames, dry_run, backup_dir):
 
     print(f"renamed {len(done)} master keys; folders moved {moved_folders}, files {moved_files}, "
           f"aliases now {len(new_aliases)}")
-    # warn on residual old-citekey references inside renamed folders
-    for r in renames:
-        d = papers / r["new"]
-        if d.is_dir():
-            for probe in ("main.tex", "references.bib"):
-                p = d / probe
-                if p.exists() and r["old"] in p.read_text(errors="ignore"):
-                    print(f"  NOTE: {r['new']}/{probe} still contains the old citekey {r['old']!r}")
+    # 5. carry each rename through EVERY paper folder — \cite keys, the
+    #    references.bib entry, the citekey-keyed sidecars (task 620; the one
+    #    door `_citekey_rename`). This used to only PRINT a note when the
+    #    renamed paper still held the old key, and never looked at the others.
+    from _citekey_rename import rename_citekey_in_paper
+    if papers.is_dir():
+        for paper in sorted(papers.iterdir()):
+            if not paper.is_dir():
+                continue
+            for r in renames:
+                try:
+                    steps = rename_citekey_in_paper(paper, r["old"], r["new"])
+                except Exception as exc:  # one paper's refusal must not stop the rest
+                    print(f"  REFUSED {paper.name}: {r['old']} -> {r['new']}: {exc}")
+                    continue
+                for st in steps:
+                    print(f"  {paper.name}/{st}")
     return 0
 
 

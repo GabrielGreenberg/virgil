@@ -50,7 +50,6 @@ from _tools import (  # noqa: E402
     citekey_matches,
     lock_catalog,
     is_terminal_bib_state,
-    lock_master_bib,
     mark_bib_imported,
     master_bib_state_map,
     normalize_citekey,
@@ -58,6 +57,7 @@ from _tools import (  # noqa: E402
     read_master_bib,
     resolve_bib_state,
     update_master_bib_entry,
+    remove_master_bib_entry,
     upsert_catalog_entry,
     write_catalog,
     _atomic_write_text,
@@ -422,51 +422,15 @@ def _write_master(library: Path, citekey: str, entry_type: str,
 def _remove_master_entry(library: Path, citekey: str) -> bool:
     """Delete one entry from master.bib (including its `% bib.state` line).
     Returns True if removed. Self-locks.
+
+    The rollback of a write this run made — through the ONE removal door
+    (`_tools.remove_master_bib_entry`, task 620). The private brace walk this
+    replaced had no cap and no balance check, and the master lock is released
+    during network authentication, so a parallel worker's appended entries
+    after an unbalanced one were deleted with it. An entry the door cannot
+    delimit raises `BibEntryUnbalanced` with master.bib untouched.
     """
-    master_path = library / "master.bib"
-    citekey_nfc = unicodedata.normalize("NFC", citekey)
-    with lock_master_bib(library):
-        if not master_path.exists():
-            return False
-        text = master_path.read_text()
-        # Match in NFC then NFD.
-        m = None
-        for form in ("NFC", "NFD"):
-            key_form = unicodedata.normalize(form, citekey_nfc)
-            pat = re.compile(r"@\w+\s*\{\s*" + re.escape(key_form) + r"\s*,")
-            m = pat.search(text)
-            if m:
-                break
-        if not m:
-            return False
-        # Find the matching closing brace.
-        brace_pos = text.index("{", m.start())
-        depth = 1
-        j = brace_pos + 1
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        entry_start = m.start()
-        entry_end = j
-        # Include the `% bib.state` comment line if present.
-        at_line_start = text.rfind("\n", 0, entry_start)
-        at_line_start = at_line_start + 1 if at_line_start != -1 else 0
-        prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
-        prev_line_start = prev_line_start + 1 if prev_line_start != -1 else 0
-        prev_line = text[prev_line_start:at_line_start].strip()
-        if prev_line.startswith("% bib.state"):
-            entry_start = prev_line_start
-        # Also strip a single trailing blank line so we don't leave double
-        # gaps when entries are stacked.
-        end = entry_end
-        if end < len(text) and text[end] == "\n":
-            end += 1
-        new_text = text[:entry_start] + text[end:]
-        _atomic_write_text(master_path, new_text)
-        return True
+    return remove_master_bib_entry(library, citekey)
 
 
 def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
