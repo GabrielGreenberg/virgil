@@ -78,10 +78,8 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
-      # Same set the deploy gate runs — kept in both so a python red is
+      # Same runner the deploy gate runs (task 622: every python suite in
+      # editor/scripts + library/scripts) — kept in both so a python red is
       # visible on this reporting workflow too, not only as a blocked deploy.
-      - name: Editor script suites (python)
-        run: |
-          for f in editor/scripts/tests/test_*.py; do
-            python3 "$f" || exit 1
-          done
+      - name: Python script suites
+        run: node scripts/lib/python-suites.mjs

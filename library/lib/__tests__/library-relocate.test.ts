@@ -10,11 +10,10 @@
  *  - Guardrail: no `removeEntry(…, { recursive: true })` anywhere under
  *    `library/` outside the allowlist.
  *  - Python half: `library/scripts/tests/test_safe_move.py` (triage parks keep
- *    same-named drops), which nothing else in `npm test` runs. FAILS rather
- *    than skips without `python3`.
+ *    same-named drops), driven by the python-suites census
+ *    (`scripts/__tests__/python-suites.test.ts`).
  */
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -268,27 +267,5 @@ describe("guardrail: no recursive removeEntry under library/", () => {
       if (/removeEntry\([^)]*recursive\s*:\s*true/.test(src)) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
-  });
-});
-
-// ── Python half ─────────────────────────────────────────────────────────
-
-describe("triage parks never replace a same-named drop (Python)", () => {
-  it("passes library/scripts/tests/test_safe_move.py", () => {
-    let output: string;
-    try {
-      output = execFileSync(
-        "python3",
-        [path.join(LIBRARY, "scripts/tests/test_safe_move.py")],
-        { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-    } catch (err) {
-      const e = err as { stdout?: string; stderr?: string; message: string };
-      throw new Error(`python3 failed:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`);
-    }
-    const both = output.match(/(\d+)\/(\d+) passed/);
-    expect(both, `no pass tally in output:\n${output}`).not.toBeNull();
-    expect(Number(both![2])).toBeGreaterThan(0);
-    expect(both![1]).toBe(both![2]);
   });
 });

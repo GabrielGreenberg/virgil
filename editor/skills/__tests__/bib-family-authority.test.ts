@@ -30,9 +30,8 @@
 //
 // The BEHAVIOURAL half lives in `editor/scripts/tests/test_bib_family_slice.py`
 // (the ladder, the six preamble spellings, the real `create_card.py` CLI into a
-// real `.tex`, the rename vocabulary) and is run from here, because nothing
-// else in CI runs Python — the same arrangement, and the same reason, as
-// `preservation-measure-python.test.ts`.
+// real `.tex`, the rename vocabulary) and is run by the python-suites census
+// (`scripts/__tests__/python-suites.test.ts`).
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
@@ -248,32 +247,6 @@ describe("bib-family authority — the allowlist include states the rule", () =>
   });
 });
 
-describe("bib-family authority — the behavioural half (Python)", () => {
-  // If `python3` is genuinely unavailable this FAILS rather than skips: a guard
-  // that quietly opts out of the environment it protects is the thing this file
-  // exists to stop (`preservation-measure-python.test.ts`'s own rule).
-  it(
-    "passes editor/scripts/tests/test_bib_family_slice.py",
-    { timeout: 120_000 },
-    () => {
-      let output: string;
-      try {
-        output = execFileSync(
-          "python3",
-          [join(REPO, "editor/scripts/tests/test_bib_family_slice.py")],
-          { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-        );
-      } catch (err) {
-        const e = err as { stdout?: string; stderr?: string; message: string };
-        throw new Error(
-          `Python bib-family suite failed:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`,
-        );
-      }
-      const m = output.match(/(\d+)\/(\d+) passed/);
-      expect(m, `no pass tally in output:\n${output}`).not.toBeNull();
-      const [, passed, total] = m!;
-      expect(Number(total)).toBeGreaterThan(40);
-      expect(passed).toBe(total);
-    },
-  );
-});
+// The behavioural half — `editor/scripts/tests/test_bib_family_slice.py` — is
+// driven by the python-suites census (`scripts/__tests__/python-suites.test.ts`),
+// which holds its floor of 41 legs.

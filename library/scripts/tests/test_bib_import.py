@@ -53,7 +53,7 @@ def _bib(lib: Path) -> dict:
     return T.read_catalog(lib)["entries"][0]["bib"]
 
 
-def main() -> int:
+def test_bib_import() -> None:
     lib = Path(tempfile.mkdtemp())
     try:
         (lib / ".virgil").mkdir(parents=True)
@@ -104,11 +104,14 @@ def main() -> int:
         # Sweep with nothing imported → empty, no error.
         assert T.invalidate_changed_imports(lib) == []
 
-        print("OK test_bib_import")
-        return 0
     finally:
         shutil.rmtree(lib, ignore_errors=True)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # The shared runner (task 622): it prints the `<n>/<n> passed` tally the
+    # repo's python-suite census reads. The leg used to be a bare `main()`,
+    # which pytest never collected at all.
+    from _standalone import main
+
+    sys.exit(main(globals()))

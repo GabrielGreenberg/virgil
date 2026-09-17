@@ -1850,9 +1850,9 @@ Suites: [save-state-census](../../../src/lib/__tests__/save-state-census.test.ts
 [tex-write-accountability](../../../src/lib/__tests__/tex-write-accountability.test.ts),
 [write-tex-forensic-snapshot](../../../src/lib/__tests__/write-tex-forensic-snapshot.test.ts),
 [preservation-measure-parity](../../../src/lib/__tests__/preservation-measure-parity.test.ts),
-[preservation-measure-python](../../../src/lib/__tests__/preservation-measure-python.test.ts),
+[python-suites](../../../scripts/__tests__/python-suites.test.ts),
 [per-file-write-gate](../../../src/lib/__tests__/per-file-write-gate.test.ts)
-+ `editor/scripts/tests/test_preservation_measure.py`.
++ `editor/scripts/tests/test_preservation_measure.py` (driven by the python-suites census).
 
 **The legs with teeth are the censuses, every time** — the gates were never the
 part that could misbehave; a WRITER or a DOOR that never asks is, and such a
