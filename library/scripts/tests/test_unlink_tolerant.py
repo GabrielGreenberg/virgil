@@ -212,7 +212,7 @@ def test_census_no_raw_delete_in_the_library_silo():
 
 
 def test_the_helper_is_actually_reached():
-    for name in ("drain_queue.py", "backfill_auth.py", "merge_bibs_preflight.py",
+    for name in ("drain_queue.py", "queue_slot.py", "merge_bibs_preflight.py",
                  "apply_metadata_mismatch_policy.py", "rename_citekeys.py"):
         src = _strip_strings_and_comments((SCRIPTS / name).read_text(encoding="utf-8"))
         assert "unlink_tolerant" in src or "rmtree_tolerant" in src, name

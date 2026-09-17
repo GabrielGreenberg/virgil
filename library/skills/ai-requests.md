@@ -72,7 +72,9 @@ A queue entry is an AI request when **any** of these is true:
    Always has a `note`.
 2. `kind == "authenticate"` and the entry has a non-empty `note` field
    — produced by the AI request button on the bib card when the user
-   typed a note before submitting. File: `.virgil/queue/<citekey>.json`.
+   typed a note before submitting. File: `.virgil/queue/<citekey>-auth.json`
+   (an older request may still sit in `.virgil/queue/<citekey>.json` —
+   read the `kind` field, never infer it from the filename).
    (`authenticate` entries **without** a note are vanilla auth requests
    and should be left for `/library/index-pending` / `/library/authenticate-bib` to
    handle on the regular path. Skip them here.)

@@ -322,9 +322,13 @@ export default function LibraryView({
       },
     ]);
   }, [lastSync]);
+  // A row action whose queue write the slot REFUSED (task 618 — e.g. the
+  // request is already being processed) says so instead of vanishing into an
+  // unhandled rejection.
+  const [queueToasts, setQueueToasts] = useState<NotificationItem[]>([]);
   const allToasts = useMemo(
-    () => [...syncToasts, ...setupStatus.notice, ...notifications],
-    [syncToasts, setupStatus.notice, notifications],
+    () => [...syncToasts, ...queueToasts, ...setupStatus.notice, ...notifications],
+    [syncToasts, queueToasts, setupStatus.notice, notifications],
   );
 
   // Selection drives row-highlighting only — opening a paper now spawns
@@ -579,20 +583,28 @@ export default function LibraryView({
   // `refreshQueueState()` — the queue's one notification channel — so the row
   // dot and any OPEN reader header for that paper see the request immediately
   // instead of waiting out a 6 s poll (or, for a kept-alive header, forever).
+  const fileRequest = useCallback((citekey: string, write: Promise<unknown>) => {
+    void write
+      .catch((e: unknown) => {
+        setQueueToasts((cur) => [
+          ...cur,
+          {
+            kind: "failed",
+            citekey,
+            at: new Date().toISOString(),
+            summary: `${citekey}: request not queued — ${(e as Error).message}`,
+          },
+        ]);
+      })
+      .then(() => refreshQueueState());
+  }, []);
   const entryActions = useMemo<EntryActions>(
     () => ({
-      queueDelete: (citekey: string) => {
-        void queueDelete(handle, citekey).then(() => refreshQueueState());
-      },
-      queueBibReview: (citekey: string) => {
-        void queueBibReview(handle, citekey).then(() => refreshQueueState());
-      },
-      queuePaperReview: (citekey: string) => {
-        void queuePaperReview(handle, citekey).then(() => refreshQueueState());
-      },
-      queueImportBib: (citekey: string) => {
-        void queueImportBib(handle, citekey).then(() => refreshQueueState());
-      },
+      queueDelete: (citekey: string) => fileRequest(citekey, queueDelete(handle, citekey)),
+      queueBibReview: (citekey: string) => fileRequest(citekey, queueBibReview(handle, citekey)),
+      queuePaperReview: (citekey: string) =>
+        fileRequest(citekey, queuePaperReview(handle, citekey)),
+      queueImportBib: (citekey: string) => fileRequest(citekey, queueImportBib(handle, citekey)),
       // Custom-library memberships are tracked in registry.libraries;
       // project-library "memberships" are entries in the open doc's
       // references.bib. The library subsystem can't import `@/lib/storage`,
@@ -613,7 +625,7 @@ export default function LibraryView({
         libraryTabs.removeEntryFromLibrary(libId, entryKey);
       },
     }),
-    [handle, libraryTabs.removeEntryFromLibrary],
+    [handle, libraryTabs.removeEntryFromLibrary, fileRequest],
   );
 
   // "+ Add from .bib" — open the system file picker, parse the chosen

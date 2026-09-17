@@ -650,6 +650,12 @@ directory).
        p.write_text(json.dumps(d, indent=2) + "\n")
    '
    ```
+   Then retire the queued request itself, so the next drain does not
+   dispatch it again (it finds the request in `<citekey>-auth.json` or in
+   an older shared `<citekey>.json`; a no-op when nothing is queued):
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
+   ```
 
 10. **(No-op.)** The `% bib.state = <X>` marker comment is updated as
    part of step 5 via `update_master_bib_entry.py --bib-state`. No

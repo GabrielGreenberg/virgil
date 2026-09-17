@@ -167,15 +167,18 @@ directory).
      row for it is refreshed rather than removed, and a citekey that IS held
      on disk still gets its real holdings row — the `.bib` bullet in
      `/library/triage-pdf` states the full outcome), and queues
-     `kind: "authenticate"` (skipped for `proposedBibState == "manuscript"`,
-     and skipped when `.virgil/queue/<citekey>.json` already exists for any
-     kind). After all rows from one `.bib` file have been applied, the source
+     `kind: "authenticate"` in `.virgil/queue/<citekey>-auth.json` (skipped
+     for `proposedBibState == "manuscript"`; a pending authenticate already
+     there is left alone). After all rows from one `.bib` file have been applied, the source
      `.bib` is deleted from `unsorted/` — but only when EVERY row came back
      `bib-imported` or `bib-ignored`; any other status (a `bib-folded`
      duplicate, a missing citekey, a parse error) parks the whole file under
      `_pending/`.
    - **otherwise** → appends a stub to `master.bib`, moves the file to
-     `papers/<citekey>/<citekey>.<ext>`, writes `.virgil/queue/<citekey>.json` (kind=index)
+     `papers/<citekey>/<citekey>.<ext>`, queues `.virgil/queue/<citekey>.json` (kind=index)
+     through the queue-slot door (`queue_slot.py`). A row whose request the
+     slot refused (it is being processed) comes back `triaged-unqueued` with
+     "index NOT queued" in its summary — report it; the paper is not indexed
    - emits notifications from an **OPEN** vocabulary the script declares
      once (`triage_apply.NOTIFICATION_KINDS`, with the
      `triage-bib-ignored-<state>` family derived from

@@ -79,7 +79,7 @@ Supported source kinds:
 - **`.bib`** — multi-entry fan-out. **This bullet is the one statement of what a `.bib` entry becomes; everything else in this family points here.** The ordinary outcome (`status: bib-imported`) is three things:
   1. its block in `master.bib`, carrying `% bib.state = unverified` (`manuscript` when the row proposes it). That comment is the F#4 **home** for the auth state; `build_bib_index` projects it into `bib-index.json` — *at process exit*, so the file is stale for the whole apply run and is not a way to check your own work mid-run.
   2. a **bib-only paper folder** — `papers/<citekey>/references.bib` + empty `virgil/` sidecars, no source file and no `main.tex`.
-  3. a queued `kind: "authenticate"` — skipped for an explicit `manuscript`, and also skipped when `.virgil/queue/<citekey>.json` already exists for ANY kind (an entry whose citekey is already queued for `index` never gets an authenticate request, and the summary line still says "authenticate already queued").
+  3. a queued `kind: "authenticate"` in its own slot `.virgil/queue/<citekey>-auth.json` — skipped for an explicit `manuscript`. Every request goes through the queue-slot door (`queue_slot.py`): a pending authenticate already there is left alone (summary: "authenticate already queued"), one being processed refuses the write (summary: "authenticate NOT queued (…)"), and a queued `index` for the same citekey no longer blocks it.
 
   **The catalog row.** The write gate is the shared `_tools.admit_catalog_row`, and it asks about the PAPER FOLDER, not about the drop — `paper_has_holdings(papers/<citekey>/<citekey>.{tex,docx,pdf})`:
   - **No source document on disk** (the normal `.bib` case — a *reference-only* entry, cited but not held): the gate answers **no**, and under F#4 **no row is minted**. Before answering it discharges the state to the `% bib.state` comment and REFRESHES an already-existing row for that citekey without minting one. Such rows are real and common — a pre-F#4 library still carries them (the reporting library: 3 722 rows against 24 082 master entries) and **nothing in the shipped flow prunes them** (`prune_catalog_present_false --apply` has no caller). So do not assume the row is absent either: assume only that a `.bib` import never CREATES one.
@@ -376,19 +376,18 @@ directory).
    overwrite or delete a same-citekey source of a different format
    (case 4d) — both files coexist on disk.
 
-9. **Enqueue indexing**: write `.virgil/queue/<citekey>.json`. Use
-   `kind: "index"` for new papers (cases 4a, 4b) and `kind: "reindex"`
-   for supersede (case 4d, higher-priority new source). Skip enqueueing
-   entirely for case 4d when the new source is lower-priority.
-   ```json
-   {
-     "kind": "index",
-     "status": "requested",
-     "citekey": "<citekey>",
-     "requestedAt": "<ISO>",
-     "attempts": 0
-   }
+9. **Enqueue indexing** through the queue-slot door — never by writing the
+   JSON yourself. Use `--kind index` for new papers (cases 4a, 4b) and
+   `--kind reindex` for supersede (case 4d, higher-priority new source).
+   Skip enqueueing entirely for case 4d when the new source is lower-priority.
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py write --kind index --citekey <citekey>
    ```
+   The door retires a `.virgil/queue/<citekey>.done` left by an earlier run
+   (otherwise the drain would skip the new request as already done) and
+   refuses to overwrite a request that is being processed. It prints
+   `{"result": ..., "file": ...}`; exit code **3** means the request was
+   **not** queued — say so in your reply instead of reporting success.
 
 10. **Delete** the old triage queue entry (`.virgil/queue/_triage-*.json`).
 
