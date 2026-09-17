@@ -1,0 +1,49 @@
+{
+  "_doc": [
+    "Which virgil/*.json sidecars hold a CITEKEY (task 615) — the census a citekey rename fans out over.",
+    "The app's rename owner is src/lib/identity/identity-cascade.ts; the skill-side owner is",
+    "apply_response.py's renameCitekey op, which re-keys EVERY file under `rekey` (one rule each,",
+    "rename_citekey.CITEKEY_REKEYERS) in the same atomic pen commit as the .tex + .bib writes.",
+    "`rekey` ∪ `notCitekeyKeyed` must equal the app's sidecar SSOT (SIDECAR_VALUE in",
+    "src/lib/sidecar-value.ts) — src/lib/identity/__tests__/citekey-keyed-sidecars-census.test.ts",
+    "fails when a new sidecar is added without deciding which list it belongs to, and",
+    "editor/scripts/tests/test_rename_citekey_cascade.py fails when a rule has no Python re-keyer."
+  ],
+  "rekey": [
+    {
+      "file": "citations.json",
+      "rule": "citation-refs",
+      "shape": "{ citations: [{ keys: string[], command: string }] } — keys[] and the \\cite command text"
+    },
+    {
+      "file": "annotations.json",
+      "rule": "annotations",
+      "shape": "V1 flat { citekey: html } (identity-cascade flag OFF, the default) or V2 { v: 2, byUid, orphanByKey } — byUid is rename-proof; orphanByKey is citekey-keyed"
+    },
+    {
+      "file": "bib-review-requests.json",
+      "rule": "bib-review",
+      "shape": "{ requests: [{ bibKey, entryUid? }] } — bibKey is the identity when entryUid is absent, and the human-readable mirror when present"
+    }
+  ],
+  "notCitekeyKeyed": {
+    "editor-state.json": "view state (scroll, caret paragraph, folds)",
+    "focus.json": "focus-mode band, block-addressed",
+    "collab.json": "presence/pen heartbeats",
+    "ai-requests.json": "request inbox, paragraph-anchored; bib reviews live in bib-review-requests.json",
+    "archive.json": "archived panel cards; citation/footnote cards are refused by archive-card",
+    "bib-settings.json": "entryRequests[].resolvedKey is a display-only history label of what a past request produced, not an identity",
+    "cutter.json": "panel cards, paragraph-anchored",
+    "dictionary.json": "spelling words",
+    "document-settings.json": "per-paper settings",
+    "examples.json": "example cards, paragraph-anchored",
+    "footnotes.json": "footnote cards keyed by footnote id; a \\cite inside a footnote body lives in the .tex, which the rename rewrites",
+    "notes.json": "note/highlight cards, paragraph-anchored",
+    "orphaned-footnotes.json": "footnote bodies keyed by footnote id. RESIDUAL (task 615): a body's TipTap JSON may hold a citation node whose command names a citekey; neither the app cascade nor this rename re-keys it yet",
+    "reports.json": "report cards, paragraph-anchored",
+    "revisions.json": "revision cards, paragraph-anchored",
+    "suggestions.json": "suggestion cards, paragraph-anchored",
+    "todos.json": "todo cards, paragraph-anchored",
+    "virgil.json": "paragraph titles/fingerprints"
+  }
+}

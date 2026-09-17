@@ -85,7 +85,7 @@ Schema (v1 superset — every field optional unless noted):
                    "entry":   "@article{key, …}",         // append / replace
                    "citekey": "key",                      // set-fields / replace
                    "fields":  { "doi": "…", "pages": "…" } }, // set-fields
-    "renameCitekey":  { "oldKey": "smith99", "newKey": "smith1999" }, // rewrite \\cite*{} in .tex + citations.json
+    "renameCitekey":  { "oldKey": "smith99", "newKey": "smith1999" }, // rewrite \\cite*{} in .tex + re-key every citekey-keyed sidecar
     "settingsEdit":   { "set": { "styleId": "…" } },      // → virgil/document-settings.json
     "annotationEdit": { "bibKey": "key", "text": "…" },   // → virgil/annotations.json
     "bibReviewType":  "fields" | "notes",                 // disambiguate the row to flip
@@ -105,10 +105,12 @@ back on a Level-3 proposal):
                     this script just places it.
   - `bibEdit`     — append a new entry, set fields on an existing citekey, or
                     replace an entry block, in `references.bib` (find_bib_file).
-  - `renameCitekey` — rewrite every natbib `\\cite*{}` in the .tex AND every
-                    `citations.json` card (its `keys` + `command`) from `oldKey` →
-                    `newKey`, reusing rename_citekey.py's pure rewriters (no regex
-                    duplicated here). Bundles with a `bibEdit` `replace` so a
+  - `renameCitekey` — rewrite every `\\cite*{}` in the .tex AND re-key every
+                    citekey-keyed sidecar named in citekey_keyed_sidecars.json
+                    (`citations.json` keys + command, `annotations.json` in both
+                    shapes, `bib-review-requests.json` rows) from `oldKey` →
+                    `newKey`, reusing rename_citekey.py / citekey_sidecars.py (no
+                    regex duplicated here; task 615). Bundles with a `bibEdit` `replace` so a
                     library-swap of one entry — new .bib body + retargeted cites +
                     retargeted cards — is ONE all-or-nothing op (sync-bib-to-library
                     via answer-bib-review --library-sync). Idempotent: oldKey absent
@@ -123,9 +125,10 @@ A write subcommand commits, atomically and under the pen:
   - the root .tex              (texEdit spliced/region-replaced, or renameCitekey's
                                 \\cite*{} retargeted — apply_writes only)
   - references.bib             (bibEdit append/set-fields/replace — apply_writes only)
-  - virgil/citations.json      (renameCitekey: cards' keys + command retargeted —
-                                apply_writes only; composes if a citation card also
-                                lands in the same op)
+  - virgil/citations.json, annotations.json, bib-review-requests.json
+                               (renameCitekey: every citekey-keyed sidecar re-keyed —
+                                apply_writes only; each composes with any other edit
+                                to the same file in the op)
   - virgil/document-settings.json (settingsEdit — apply_writes only)
   - virgil/annotations.json    (annotationEdit — apply_writes only)
   - virgil/<comment-panel>.json (sibling comment — write-with-comment only)
@@ -1286,9 +1289,14 @@ def _settings_apply(doc: Path, txn: "_Txn", se: dict) -> None:
 
 
 def _annotation_apply(doc: Path, txn: "_Txn", ae: dict) -> None:
-    """Set the per-bibKey annotation in virgil/annotations.json (AnnotationsState
-    = { [bibKey]: string } — flat strings). Tolerates a legacy
-    { annotations: {…} } wrapper if a paper happens to carry one."""
+    """Set the per-bibKey annotation in virgil/annotations.json, in the SHAPE THE
+    APP READS (task 615): a V1 flat `{ citekey: html }` file (the default) gets a
+    citekey entry; a V2 `{ v: 2, byUid, orphanByKey }` file gets the entry's
+    `\\vbid` uid (or, with none, the orphan bucket the app re-homes). Writing the
+    flat key at the top of a V2 file — what this did before — lands where the
+    panel never looks. The shape rules live in citekey_sidecars."""
+    import citekey_sidecars as CS
+
     bibkey = ae.get("bibKey")
     text = ae.get("text")
     if not bibkey or text is None:
@@ -1297,14 +1305,18 @@ def _annotation_apply(doc: Path, txn: "_Txn", ae: dict) -> None:
     state = txn.jget(path, {})
     if not isinstance(state, dict):
         die("annotations.json malformed (expected an object)")
-    target = state["annotations"] if isinstance(state.get("annotations"), dict) else state
-    target[bibkey] = text
+    uid = None
+    if CS.is_annotations_v2(state):
+        bib = find_bib_file(doc)
+        if bib is not None:
+            uid = CS.vbid_uid_for(bib.read_text(encoding="utf-8", errors="replace"), bibkey)
+    CS.set_annotation(state, bibkey, uid, text)
     txn.mark(path)
 
 
 def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
-    r"""Rewrite a citekey across the `.tex` `\cite*{}` commands and the
-    virgil/citations.json cards, folding BOTH into the txn so the rename rides the
+    r"""Rewrite a citekey across the `.tex` `\cite*{}` commands and every
+    citekey-keyed sidecar (citekey_keyed_sidecars.json), folding ALL into the txn so the rename rides the
     SAME atomic pen commit as any bibEdit in the op. A library-swap of one entry
     becomes one all-or-nothing op: its new `.bib` body + every retargeted
     `\cite*{}` + every retargeted citation card land together-or-not-at-all — a
@@ -1314,6 +1326,7 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
     import-light) — the contract owns the atomic write, not a second copy of the
     natbib regex. Idempotent: `oldKey` absent from the doc → 0 changes, nothing
     queued, so a sync entry whose key the doc never used doesn't fail the run."""
+    import citekey_sidecars as CS
     import rename_citekey as RC
 
     old = rc.get("oldKey")
@@ -1334,18 +1347,23 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
         txn.add_raw(tex_path, new_tex)
     summary["texCommandsChanged"] = n_tex
 
-    # 2) virgil/citations.json cards (keys + command) — loaded THROUGH the txn
-    #    (jget/mark) so that if a citation card ALSO lands in this op (panel:
-    #    citations), both edits compose on the one loaded dict instead of racing
-    #    two writes to the same file. Optional sidecar: absent / no match → no-op
+    # 2) EVERY citekey-keyed sidecar (task 615) — the list is the shared
+    #    manifest citekey_keyed_sidecars.json, which CI holds total against the
+    #    app's sidecar SSOT, so a rename can no longer strand an annotation or a
+    #    pending bib review. Each file loads THROUGH the txn (jget/mark), so an
+    #    edit to the same file elsewhere in this op composes on the one loaded
+    #    dict instead of racing a second write. Absent file / no match → no-op
     #    (jget caches the default but writes() only emits it once marked dirty).
-    cites_path = sidecar(doc, "citations.json")
-    data = txn.jget(cites_path, {"citations": []})
-    if isinstance(data, dict):
-        _, n_cards = RC.rewrite_citations_json(data, old, new)
-        if n_cards:
-            txn.mark(cites_path)
-        summary["citationCardsChanged"] = n_cards
+    changed: dict[str, int] = {}
+    for name, rule in CS.rekey_plan():
+        path = sidecar(doc, name)
+        data = txn.jget(path, CS.EMPTY_STATE[rule]())
+        n = CS.REKEYERS[rule](data, old, new)
+        if n:
+            txn.mark(path)
+        changed[name] = n
+    summary["citationCardsChanged"] = changed.get("citations.json", 0)
+    summary["sidecarsChanged"] = changed
     return summary
 
 

@@ -395,12 +395,13 @@ check(not any("grafton1997" in (c.get("command") or "") and "graftonAnthony1997"
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped (writes-only swap audits)")
 check(pen_gone(sb), "pen released")
 
-# ----- ATOMICITY: a fault mid-write rolls back .bib + .tex + citations.json TOGETHER
-# Commit order is [citations.json, references.bib, document.tex, notifications, version].
-# A fault BETWEEN the .bib and the .tex (K=2) must leave all three byte-identical;
-# a fault AFTER all three paper files commit (K=3) must still restore all three.
+# ----- ATOMICITY: a fault mid-write rolls back .bib + .tex + sidecars TOGETHER
+# The commit carries the re-keyed sidecars (citations.json, and — since task 615 —
+# bib-review-requests.json, which holds a grafton1997 row), references.bib,
+# document.tex, notifications, version. A fault after ANY prefix of those
+# (K=2..4) must leave every file byte-identical.
 print("\n=== renameCitekey + bibEdit ATOMICITY: a fault leaves .bib + .tex + citations ALL untouched ===")
-for K in (2, 3):
+for K in (2, 3, 4):
     sb = sandbox()
     before = snapshot(sb)
     r = run(APPLY, str(sb), "complete-only", json.dumps(swap),

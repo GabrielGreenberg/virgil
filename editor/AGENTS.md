@@ -151,6 +151,10 @@ editor/
 │   ├── cite_commands.py        the cite-command VOCABULARY + family buckets —
 │   │                           ported twin of src/lib/cite-commands.ts (pinned by
 │   │                           the bib-family-authority parity leg)
+│   ├── citekey_sidecars.py     which sidecars a citekey rename re-keys (task 615):
+│   │                           the rules for citekey_keyed_sidecars.json (the
+│   │                           manifest CI pins to SIDECAR_VALUE) + the ONE
+│   │                           annotations.json shape door (V1 flat / V2 byUid)
 │   ├── reflect.py              dev-loop memo writer (chip 17): gated on
 │   │                           VIRGIL_DEV; reads the Task result, derives the
 │   │                           tier, writes editor/dev/memos/ (no paper write)
@@ -746,7 +750,9 @@ landing modes + boundaries, and the unified engine, is
   - `bibEdit` — append / set-fields / replace in `references.bib`
     (find-citation, answer-bib-review, library-sync).
   - `renameCitekey` — rewrite a citekey across the `.tex` `\cite*{}` commands +
-    `virgil/citations.json` cards (reusing `rename_citekey.py`'s pure rewriters);
+    every citekey-keyed sidecar in `citekey_keyed_sidecars.json` (citation cards,
+    annotations, bib-review rows — task 615; a rename that forgot one stranded
+    the user's annotation);
     bundles with a `bibEdit` `replace` for the one-atomic-op library-sync swap.
   - `settingsEdit` / `annotationEdit` — the two non-panel JSON sidecars
     (style-merge's styleId flip; answer-bib-review's annotation).

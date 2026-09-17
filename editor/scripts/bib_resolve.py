@@ -359,18 +359,13 @@ def main(argv: list[str]) -> int:
         if entry:
             out["fields"] = parse_fields(entry)
 
-    # Annotations.json is keyed by bibKey -> { text } (per
-    # src/lib/types.ts AnnotationsState).
+    # annotations.json has two live shapes (V1 flat citekey map, V2 uid-keyed);
+    # read it the way the app's panel does (citekey_sidecars, task 615).
+    import citekey_sidecars as CS
+
     ann = read_json(sidecar(doc, "annotations.json"), default=None)
-    if isinstance(ann, dict):
-        # Tolerate either { annotations: { key: {text} } } or flat.
-        flat = ann.get("annotations") if "annotations" in ann else ann
-        if isinstance(flat, dict):
-            v = flat.get(key)
-            if isinstance(v, str):
-                out["annotation"] = v
-            elif isinstance(v, dict) and isinstance(v.get("text"), str):
-                out["annotation"] = v["text"]
+    uid = CS.vbid_uid_for(text, key) if bib and CS.is_annotations_v2(ann) else None
+    out["annotation"] = CS.get_annotation(ann, key, uid)
 
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
