@@ -21,8 +21,8 @@
 // src/lib/example-doc/example-seeder.ts.
 //
 // NOTE: when the example CONTENT changes, the seedVersion changes
-// automatically; for returning users with a warm service-worker cache, also
-// bump CACHE_NAME in public/sw.js so the new asset isn't shadowed.
+// automatically, and the build's service-worker stamp changes with it
+// (scripts/stamp-service-worker.mjs), so no cache needs a manual bump.
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";

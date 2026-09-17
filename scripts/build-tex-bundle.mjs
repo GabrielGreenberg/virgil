@@ -143,8 +143,6 @@ async function main() {
   console.log(`build-tex-bundle: total captured ${fmtBytes(totalBytes)}`);
   console.log(`build-tex-bundle: regenerated ${manifestTsPath.replace(repoRoot + "/", "")}`);
   console.log(`build-tex-bundle: wrote ${bundleManifestJsonPath.replace(repoRoot + "/", "")}`);
-  console.log("");
-  console.log("NEXT: bump CACHE_NAME in public/sw.js so the new texbundle isn't shadowed by a warm SW cache.");
 }
 
 main().catch((err) => fail(err.stack || err.message));
