@@ -14,15 +14,50 @@
  * > one that must never be skipped, because the states in which a write cannot
  * > land are exactly the states in which a reload is most expensive.
  *
- * Two entry points, because the two callers can do different amounts about it:
+ * The entry points, by how much the caller can do about unsaved work:
  *
  * - {@link prepareForReload} — flush, then mirror, then REPORT what still has
  *   not landed. An affordance (the banner) calls this and decides: nothing
  *   unlanded ⇒ proceed; something unlanded ⇒ say so, name the blocking flow,
  *   and let the user choose knowing the mirror is taken.
- * - {@link reloadNow} — the same preparation, then the reload, unconditionally.
- *   For the paths with no user in the loop (a `controllerchange` Virgil did not
- *   initiate). It cannot ask, so it guarantees instead.
+ * - {@link prepareAllWindowsForReload} — the same question asked of EVERY
+ *   live Virgil window (see "The multi-window half" below). The banner asks
+ *   this one before `SKIP_WAITING`, because that reload is app-wide.
+ * - {@link reloadNow} — the same preparation, then the reload, regardless.
+ *   Only for a reload the user in THIS window already chose (their own update
+ *   click, clean or confirmed "Update anyway").
+ * - {@link reloadIfClean} — the same preparation, then the reload ONLY when
+ *   nothing is unlanded. For every reload this window did NOT ask for (a
+ *   `controllerchange` started from another window). It has no user to ask,
+ *   so it does not act: it reports `false` and the caller defers to the
+ *   banner.
+ *
+ * ## The multi-window half (task 610)
+ *
+ * The unsaved-work channel is a module-level map, so it is PER WINDOW. The
+ * reload `SKIP_WAITING` causes is not: activation moves every controlled
+ * client to the new worker and fires `controllerchange` in each. Pre-610 the
+ * banner in a clean window A said "safe", posted `SKIP_WAITING`, and window B
+ * — autosave paused behind the clobber guard — reloaded unconditionally, its
+ * work surviving only in the mirror. The 391 incident, one window over.
+ *
+ * > **Every path by which one window reloads another passes the same gate.**
+ *
+ * 1. **Ask every window before `SKIP_WAITING`.** The banner asks the bus;
+ *    each window's {@link installReloadReadinessResponder} answers with its
+ *    own `prepareForReload()`. The set of windows to wait for comes from the
+ *    browser (`liveWindowIds`, Web Locks). A window that does not answer in
+ *    time is UNKNOWN, and unknown is a block the user must confirm, never
+ *    clean.
+ * 2. **A reload a window did not ask for defers.** Step 1 leaves a race (B
+ *    can go dirty between answering and activation), so B's own
+ *    `controllerchange` goes through {@link reloadIfClean}. When B still holds
+ *    work it stays open on the old page under the new worker — safe, because
+ *    the worker is network-first, the same situation as any tab left open
+ *    across a deploy — and its banner says "updated in another window".
+ *
+ * Step 2 alone is a full safety net; step 1 is what lets A's banner tell the
+ * truth before the click instead of after it.
  *
  * ## Why the flush is verified rather than awaited
  *
@@ -38,6 +73,16 @@ import {
 } from "@/lib/unsaved-work";
 import { flushAllPendingDocs } from "@/lib/multi-window/pending-saves";
 import { mirrorAllNow } from "@/lib/emergency-mirror";
+import {
+  publish as busPublish,
+  subscribe as busSubscribe,
+  type BusEvent,
+} from "@/lib/multi-window/bus";
+import { getWindowId } from "@/lib/multi-window/window-id";
+import {
+  holdWindowLiveness,
+  liveWindowIds,
+} from "@/lib/multi-window/window-liveness";
 
 export interface UnlandedDoc {
   docId: string;
@@ -104,9 +149,10 @@ export async function prepareForReload(): Promise<ReloadReadiness> {
 }
 
 /**
- * Prepare, then reload regardless. The last-resort path: a `controllerchange`
- * Virgil did not ask for has no user to consult and no way to defer, so the
- * only thing it can do is make sure the mirror is taken first.
+ * Prepare, then reload regardless. Only for a reload THIS window's user chose
+ * (task 610): their update click already consulted every window and, if
+ * anything was unlanded, got an explicit "Update anyway". The preparation
+ * still runs, because the window can have gone dirty since.
  *
  * `reload` is REQUIRED rather than defaulted, and that is the census's doing
  * as much as the caller's: a default would make this module itself a speller
@@ -116,4 +162,181 @@ export async function prepareForReload(): Promise<ReloadReadiness> {
 export async function reloadNow(reload: () => void): Promise<void> {
   await prepareForReload();
   reload();
+}
+
+/**
+ * Prepare, then reload only if nothing is unlanded (task 610). For a reload
+ * this window did not ask for: there is no user to consult, so a window
+ * holding work does not reload — it resolves `false` (its mirror taken) and
+ * the caller hands the decision to the banner.
+ */
+export async function reloadIfClean(reload: () => void): Promise<boolean> {
+  const readiness = await prepareForReload();
+  if (readiness.unlanded.length > 0) return false;
+  reload();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// The multi-window half (task 610)
+// ---------------------------------------------------------------------------
+
+/** How one window reaches the others. The real one is the BroadcastChannel
+ *  bus + Web Locks liveness; tests pass a pair of in-memory ones. */
+export interface ReadinessTransport {
+  selfId: string;
+  publish(e: BusEvent): void;
+  subscribe(fn: (e: BusEvent) => void): () => void;
+  /** Ids of every live window (including self), or `null` when the browser
+   *  cannot say — then replies are collected for a fixed window instead. */
+  liveIds(): Promise<Set<string> | null>;
+}
+
+function busTransport(): ReadinessTransport {
+  return {
+    selfId: getWindowId(),
+    publish: busPublish,
+    subscribe: busSubscribe,
+    liveIds: async () => {
+      if (typeof navigator === "undefined" || !navigator.locks) return null;
+      return liveWindowIds();
+    },
+  };
+}
+
+/** An unlanded document, and which window holds it. */
+export interface WindowUnlandedDoc extends UnlandedDoc {
+  /** `null` = this window. */
+  windowId: string | null;
+}
+
+export interface AppReloadReadiness {
+  unlanded: WindowUnlandedDoc[];
+  /** Every window that reported unlanded work took its mirror. */
+  mirrored: boolean;
+  /** Live windows that did not answer — their state is UNKNOWN, which the
+   *  caller must treat as a block. */
+  unresponsive: string[];
+}
+
+/** Long enough for a peer to flush its writes to disk; the same budget as a
+ *  doc handoff (`awaitRelease`). */
+export const READINESS_TIMEOUT_MS = 4000;
+/** Without Web Locks nobody can name the live windows, so take whatever
+ *  answers inside this window. */
+export const READINESS_BLIND_WAIT_MS = 750;
+
+/**
+ * `prepareForReload`, asked of every live Virgil window at once. Resolves
+ * when every window the browser knows of has answered, or at the timeout.
+ */
+export async function prepareAllWindowsForReload(
+  opts: {
+    transport?: ReadinessTransport;
+    timeoutMs?: number;
+    blindWaitMs?: number;
+  } = {},
+): Promise<AppReloadReadiness> {
+  const t = opts.transport ?? busTransport();
+  const timeoutMs = opts.timeoutMs ?? READINESS_TIMEOUT_MS;
+  const blindWaitMs = opts.blindWaitMs ?? READINESS_BLIND_WAIT_MS;
+  const requestId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`;
+
+  const live = await t.liveIds();
+  const expected = new Set(live ?? []);
+  expected.delete(t.selfId);
+
+  const replies = new Map<
+    string,
+    Extract<BusEvent, { type: "reload-readiness-reply" }>
+  >();
+  let settle: () => void = () => {};
+  const allIn = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  const unsub = t.subscribe((e) => {
+    if (e.type !== "reload-readiness-reply" || e.requestId !== requestId) return;
+    if (e.windowId === t.selfId) return;
+    replies.set(e.windowId, e);
+    if (live && [...expected].every((id) => replies.has(id))) settle();
+  });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    t.publish({
+      type: "reload-readiness-request",
+      requestId,
+      fromWindowId: t.selfId,
+    });
+    const local = prepareForReload();
+    if (live && expected.size === 0) settle();
+    const wait = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, live ? timeoutMs : blindWaitMs);
+    });
+    const [mine] = await Promise.all([local, Promise.race([allIn, wait])]);
+
+    const unlanded: WindowUnlandedDoc[] = mine.unlanded.map((d) => ({
+      ...d,
+      windowId: null,
+    }));
+    let mirrored = mine.unlanded.length === 0 || mine.mirrored;
+    for (const r of replies.values()) {
+      for (const d of r.unlanded) unlanded.push({ ...d, windowId: r.windowId });
+      if (r.unlanded.length > 0 && !r.mirrored) mirrored = false;
+    }
+    const unresponsive = [...expected].filter((id) => !replies.has(id));
+    return { unlanded, mirrored, unresponsive };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    unsub();
+  }
+}
+
+let responderInstalled = false;
+
+/**
+ * Answer other windows' readiness requests with this window's own
+ * `prepareForReload()`. Every Virgil window installs it once (from
+ * `ServiceWorkerRegistration`, mounted by the root layout), and takes its
+ * liveness lock at the same time, so the asker knows to wait for it.
+ */
+export function installReloadReadinessResponder(
+  opts: {
+    transport?: ReadinessTransport;
+    prepare?: () => Promise<ReloadReadiness>;
+  } = {},
+): () => void {
+  const real = !opts.transport;
+  if (real) {
+    if (responderInstalled) return () => {};
+    responderInstalled = true;
+    holdWindowLiveness();
+  }
+  const t = opts.transport ?? busTransport();
+  const prepare = opts.prepare ?? prepareForReload;
+  const unsub = t.subscribe((e) => {
+    if (e.type !== "reload-readiness-request") return;
+    if (e.fromWindowId === t.selfId) return;
+    // A preparation that THROWS sends no reply: the asker then counts this
+    // window as unknown (a block), never as clean.
+    void prepare()
+      .catch(() => null)
+      .then((r) => {
+        if (!r) return;
+        t.publish({
+          type: "reload-readiness-reply",
+          requestId: e.requestId,
+          windowId: t.selfId,
+          unlanded: r.unlanded,
+          mirrored: r.mirrored,
+        });
+      });
+  });
+  return () => {
+    unsub();
+    if (real) responderInstalled = false;
+  };
 }

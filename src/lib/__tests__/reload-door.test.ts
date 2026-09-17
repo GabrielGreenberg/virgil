@@ -235,14 +235,48 @@ describe("census — every reload enters the door", () => {
     expect(hits.sort()).toEqual(["components/ServiceWorkerRegistration.tsx"]);
   });
 
-  it("the SW registration's reload is the ARGUMENT to reloadNow, not a bare call", () => {
+  it("the SW registration's reload is only ever an ARGUMENT to the door, never a bare call", () => {
     // Literals are KEPT here: the needle IS a quoted module specifier, and
     // `codeOnly` blanks string bodies (which would make this unfalsifiable).
     const code = commentsStripped(
       readFileSync(join(SRC, "components/ServiceWorkerRegistration.tsx"), "utf8"),
     );
-    expect(code).toContain("reloadNow(() => window.location.reload())");
+    // Spelled once, as a value …
+    expect(code.match(/location\s*\.\s*reload\s*\(/g)).toHaveLength(1);
+    expect(code).toContain("const reload = () => window.location.reload();");
+    // … and `reload` is only ever handed to the door, or called by nothing.
+    // (String bodies blanked for this scan: the module specifier spells
+    // "reload-door".)
+    const bare = codeOnly(code);
+    const uses = [...bare.matchAll(/\breload\b(?!\s*=)/g)].map((m) =>
+      bare.slice(Math.max(0, m.index! - 16), m.index! + 8),
+    );
+    expect(uses.length).toBeGreaterThanOrEqual(3);
+    for (const u of uses) {
+      expect(u).toMatch(/(reloadNow\(|reloadIfClean\(|location\.)reload/);
+    }
     expect(code).toContain('from "@/lib/reload-door"');
+  });
+
+  it("task 610 — only a SELF-initiated controllerchange reloads regardless; any other waits for clean", () => {
+    const code = codeOnly(
+      readFileSync(join(SRC, "components/ServiceWorkerRegistration.tsx"), "utf8"),
+    );
+    const handler = code.slice(code.indexOf("const onControllerChange"));
+    const gate = handler.indexOf("consumeSelfInitiatedUpdate()");
+    expect(gate).toBeGreaterThan(-1);
+    expect(handler.indexOf("reloadNow(reload)")).toBeGreaterThan(gate);
+    expect(handler).toContain("reloadIfClean(reload)");
+    expect(handler).toContain("setActivatedElsewhere(");
+    // Every window answers the readiness question.
+    expect(code).toContain("installReloadReadinessResponder()");
+  });
+
+  it("task 610 — the banner asks EVERY window before it can post SKIP_WAITING", () => {
+    const code = codeOnly(readFileSync(join(SRC, "components/SoftwareUpdateBanner.tsx"), "utf8"));
+    expect(code).toContain("prepareAllWindowsForReload()");
+    // An unanswered window blocks the quiet path just as unlanded work does.
+    expect(code).toMatch(/unresponsive\.length === 0\)\s*\{\s*applyUpdate\(\)/);
   });
 
   it("the update banner never calls applyUpdate without asking prepareForReload first", () => {
