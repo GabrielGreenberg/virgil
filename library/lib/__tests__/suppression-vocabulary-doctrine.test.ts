@@ -29,8 +29,8 @@
  * prefix would put one of them in the wrong table and pass, which is why the
  * SSOT publishes the split rather than each consumer re-deriving it.
  *
- * Shells out to `python3` for the same reason `references-bib-upsert-python`
- * and `warning-recompute-merge-python` do: `npm test` is vitest-only, so a
+ * Shells out to `python3` for the same reason the python-suites census
+ * (`scripts/__tests__/python-suites.test.ts`) does: `npm test` is vitest-only, so a
  * Python-side vocabulary is advisory unless something runs it. If `python3` is
  * unavailable this FAILS rather than skips — a guard that quietly opts out of
  * the environment it protects is worthless.

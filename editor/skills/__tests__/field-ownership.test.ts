@@ -275,27 +275,6 @@ describe("field ownership — the table is DERIVED, and its owners exist", () =>
   });
 });
 
-describe("field ownership — the behavioural half (Python)", () => {
-  // If `python3` is genuinely unavailable this FAILS rather than skips: a guard
-  // that quietly opts out of the environment it protects is the thing this file
-  // exists to stop.
-  it("passes editor/scripts/tests/test_field_policy_slice.py", { timeout: 240_000 }, () => {
-    let output: string;
-    try {
-      output = execFileSync(
-        "python3",
-        [join(REPO, "editor/scripts/tests/test_field_policy_slice.py")],
-        { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-    } catch (err) {
-      const e = err as { stdout?: string; stderr?: string; message: string };
-      throw new Error(
-        `Python field-policy suite failed:\n${e.stdout ?? ""}\n${e.stderr ?? e.message}`,
-      );
-    }
-    const m = output.match(/=====\s+(\d+) passed,\s+(\d+) failed\s+=====/);
-    expect(m, `no pass tally in output:\n${output.slice(-2000)}`).not.toBeNull();
-    expect(Number(m![2])).toBe(0);
-    expect(Number(m![1])).toBeGreaterThan(100);
-  });
-});
+// The behavioural half — `editor/scripts/tests/test_field_policy_slice.py` —
+// is driven by the python-suites census (`scripts/__tests__/python-suites.test.ts`),
+// which holds its floor of 100 legs.

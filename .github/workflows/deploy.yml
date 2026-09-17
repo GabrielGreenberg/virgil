@@ -52,16 +52,15 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
-      # The editor-script suites are stdlib-only python and run nowhere else
-      # in CI — which is how a silently disarmed drift detector sat red for
-      # three days (2026-08-16..19) while every deploy stayed green. The
-      # dev-dream and the task worker run these locally before merging; this
-      # step is the same rule held at the last door.
-      - name: Editor script suites (python)
-        run: |
-          for f in editor/scripts/tests/test_*.py; do
-            python3 "$f" || exit 1
-          done
+      # EVERY stdlib-python suite (editor/scripts + library/scripts), through
+      # the same runner `npx vitest run` drives (task 622). This step used to
+      # loop editor/scripts/tests only — which is how half the Library suites
+      # ran nowhere — and a bare exit-code loop passes a suite that ran
+      # nothing; the runner refuses both. It stays a separate step so the
+      # per-suite log is readable at the last door (a silently disarmed drift
+      # detector once sat red for three days while every deploy stayed green).
+      - name: Python script suites
+        run: node scripts/lib/python-suites.mjs
 
   build:
     runs-on: ubuntu-latest

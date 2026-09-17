@@ -522,9 +522,9 @@ def test_census_allowlist_entries_still_excuse_something():
 def _run_standalone() -> int:
     """Run the suite without pytest (it isn't installed everywhere).
 
-    Same shape as `test_references_bib_upsert.py`'s runner — the TS shim in
-    `library/lib/__tests__/bib-state-read-door-python.test.ts` drives this so
-    the contract is gated by the same `npx vitest run` as everything else.
+    Same shape as `test_references_bib_upsert.py`'s runner — the repo's one
+    python-suite census (`scripts/lib/python-suites.mjs`) drives this so the
+    contract is gated by the same `npx vitest run` as everything else.
     """
     import inspect
     import tempfile

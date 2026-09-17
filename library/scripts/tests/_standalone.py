@@ -100,7 +100,7 @@ def main(namespace: dict[str, Any], argv: list[str] | None = None) -> int:
     """The `__main__` shape the rest of this directory already uses.
 
     `--standalone` forces the built-in runner regardless of whether pytest is
-    installed. The vitest shells pass it, because they assert on the
+    installed. The python-suite census passes it, because it reads the
     "<n>/<n> passed" tally this runner prints — under pytest that tally is
     absent, and a JS guard that failed on a machine where the Python actually
     PASSED would be failing for a reason unrelated to what it guards.
@@ -108,9 +108,9 @@ def main(namespace: dict[str, Any], argv: list[str] | None = None) -> int:
     spell their own `"--standalone" in sys.argv` branch and their own
     `_run_standalone` — `test_validate_bib_coherence.py`,
     `test_warning_recompute_merge.py`, `test_synthesize_canonical_entries.py`
-    — and two of them state this same reason in their own words. They are not
-    adopters, so the discovery-based vitest shell correctly leaves them to the
-    per-suite shells they already have; converting them is a separate pass.
+    — and two of them state this same reason in their own words. The census
+    passes `--standalone` to them too (it looks for the flag, not the import),
+    so they are driven either way; converting them is a separate pass.
     """
     argv = sys.argv if argv is None else argv
     if "--standalone" in argv:
@@ -125,8 +125,8 @@ def main(namespace: dict[str, Any], argv: list[str] | None = None) -> int:
 def run_standalone(namespace: dict[str, Any]) -> int:
     """Run every `test_*` in `namespace`; print a `<n>/<n> passed` tally.
 
-    The tally format is load-bearing: the vitest shells that drive these
-    suites assert on it (`f4-write-gate-python.test.ts` and its siblings), so
+    The tally format is load-bearing: the repo's python-suite census
+    (`scripts/lib/python-suites.mjs`, task 622) reads it, so
     a runner that printed something else would fail those guards on a machine
     where the Python actually passed.
     """

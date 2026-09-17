@@ -16,7 +16,8 @@ The guard refuses that write and names the three ways through:
 It is the replace-side twin of the append-side duplicate-work guard, so neither
 half of the upsert can lose data.
 
-Run: python3 -m pytest library/scripts/tests/test_master_bib_field_preservation.py -v
+Run: python3 library/scripts/tests/test_master_bib_field_preservation.py
+(pytest when installed, the shared `_standalone` runner otherwise).
 """
 import subprocess
 import sys
@@ -216,3 +217,11 @@ def test_empty_valued_field_is_not_a_silent_clear(tmp_path):
     assert r.returncode == 4
     assert "doi" in r.stderr
     assert _fields(lib, "smith2020")["doi"] == "10.1234/example.2020"
+
+
+if __name__ == "__main__":
+    # Without this block `python3 <this file>` exited 0 having run NOTHING —
+    # the task-164 guard ran nowhere, pytest not being installed (task 622).
+    from _standalone import main
+
+    sys.exit(main(globals()))

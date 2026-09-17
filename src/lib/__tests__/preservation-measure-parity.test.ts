@@ -15,7 +15,7 @@
 // which is exactly what a "port the rule" commit is most likely to do.
 //
 // The Python reader is `editor/scripts/tests/test_preservation_measure.py`,
-// driven in CI by `preservation-measure-python.test.ts`. If you change the rule,
+// driven in CI by the python-suites census (`scripts/__tests__/python-suites.test.ts`). If you change the rule,
 // change it in both languages, regenerate the `expected` blocks, and say in the
 // commit why the numbers moved.
 //

@@ -11,6 +11,18 @@ from _pen_state import pen_released
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _common as C
 
+# Each leg below is a straight run of asserts that raises on failure; `_leg`
+# records the ones that got through so the file ends on a `<n>/<n> passed`
+# tally the repo's ONE python-suite runner can read (task 622 —
+# scripts/lib/python-suites.mjs fails a suite that exits 0 printing none).
+_legs: list[str] = []
+
+
+def _leg(name: str) -> None:
+    _legs.append(name)
+    print(f"{name} OK")
+
+
 d = Path(tempfile.mkdtemp())
 (d / "virgil").mkdir()
 collab0 = {
@@ -30,7 +42,7 @@ b = d / "virgil" / "b.json"
 C.atomic_write([(a, C.json_dumps({"x": 1})), (b, C.json_dumps({"y": 2}))])
 assert json.loads(a.read_text()) == {"x": 1}
 assert json.loads(b.read_text()) == {"y": 2}
-print("atomic happy OK")
+_leg("atomic happy")
 
 # --- rollback on injected mid-commit fault ---
 c = d / "virgil" / "c.json"
@@ -45,7 +57,7 @@ assert json.loads(a.read_text()) == {"x": 1}, "a must roll back"
 assert json.loads(b.read_text()) == {"y": 2}, "b untouched"
 assert not c.exists(), "c must not exist"
 assert not any(p.name.endswith(".tmp") for p in (d / "virgil").iterdir()), "no leftover temps"
-print("atomic rollback OK")
+_leg("atomic rollback")
 
 # --- pen acquire flips collab.json + writes pen-context ---
 ctx = C.acquire_pen(d)
@@ -61,7 +73,7 @@ assert collab_now["pen"]["holder"] == "Claude", collab_now["pen"]
 assert collab_now["pen"]["since"] is not None
 assert collab_now["pen"]["lastHeartbeat"] is not None
 assert len(collab_now["participants"]) == 2, "participants preserved"
-print("pen acquire OK")
+_leg("pen acquire")
 
 # --- pen release restores collab + REWRITES pen-context as released ---
 #
@@ -83,7 +95,7 @@ collab_after = json.loads((d / "virgil" / "collab.json").read_text())
 assert collab_after["enabled"] is False, "collab must be restored to off"
 assert collab_after["pen"]["holder"] is None, collab_after["pen"]
 assert len(collab_after["participants"]) == 2
-print("pen release OK")
+_leg("pen release")
 
 # --- pen on a doc WITHOUT collab.json: no fabrication ---
 d2 = Path(tempfile.mkdtemp())
@@ -93,7 +105,7 @@ assert C.pen_context_path(d2).exists()
 assert not (d2 / "virgil" / "collab.json").exists(), "must NOT fabricate collab.json"
 C.release_pen(d2)
 assert pen_released(d2)  # renegotiated with the leg above (task 496)
-print("pen no-collab OK")
+_leg("pen no-collab")
 
 # --- commit_under_pen happy: write lands, pen released, collab restored ---
 e = d / "virgil" / "e.json"
@@ -101,7 +113,7 @@ C.commit_under_pen(d, [(e, C.json_dumps({"e": 1}))])
 assert json.loads(e.read_text()) == {"e": 1}
 assert pen_released(d), "pen released after commit"  # 496: released ≠ deleted
 assert json.loads((d / "virgil" / "collab.json").read_text())["enabled"] is False
-print("commit_under_pen OK")
+_leg("commit_under_pen")
 
 # --- commit_under_pen fault: main write rolls back, pen STILL released ---
 f = d / "virgil" / "f.json"
@@ -116,8 +128,9 @@ assert json.loads(e.read_text()) == {"e": 1}, "e must roll back"
 assert not f.exists(), "f must not exist"
 assert pen_released(d), "pen released even on failure"  # 496: released ≠ deleted
 assert json.loads((d / "virgil" / "collab.json").read_text())["enabled"] is False, "collab restored even on failure"
-print("commit_under_pen rollback OK")
+_leg("commit_under_pen rollback")
 
 shutil.rmtree(d)
 shutil.rmtree(d2)
 print("ALL PEN/ATOMIC TESTS PASSED")
+print(f"{len(_legs)}/{len(_legs)} passed")
