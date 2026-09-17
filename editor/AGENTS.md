@@ -679,10 +679,10 @@ python3 editor/scripts/list_requests.py samples/annotation-history
 # expect: 6 open
 
 # paragraph context
-python3 editor/scripts/get_para_context.py samples/annotation-history f1c5
+python3 editor/scripts/get_para_context.py samples/annotation-history 2201
 
 # adjacent cards
-python3 editor/scripts/cards_for_paragraph.py samples/annotation-history f1c5
+python3 editor/scripts/cards_for_paragraph.py samples/annotation-history 2201
 
 # bib resolution
 python3 editor/scripts/bib_resolve.py samples/annotation-history grafton1997

@@ -345,6 +345,54 @@ def card_paragraph_ids(card: dict) -> list[str]:
     return out
 
 
+_BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
+
+
+def marker_paragraph_ids(text: str, command: str) -> dict[str, str]:
+    r"""Map every `\<command>{<id>}` atom marker in `text` to the paragraph that
+    holds it: `{marker id: paragraph uuid}`.
+
+    Atom-bearing cards (footnotes `\vfid`, citations `\vcid`, …) carry no
+    `links` array — their anchor is WHERE their marker sits in the .tex. The
+    owning paragraph is the first `%!v:<uuid>` at or after the marker within
+    the same blank-line-delimited slab (a slab can hold several markered
+    blocks, and a footnote's marker precedes its paragraph's trailing
+    `%!v:`). A marker in a slab with no following `%!v:` (e.g. an example
+    block, which carries no paragraph uuid) maps to nothing."""
+    marker_re = re.compile(r"\\" + re.escape(command) + r"\{([^}]*)\}")
+    out: dict[str, str] = {}
+    for m in marker_re.finditer(text):
+        blank = _BLANK_LINE_RE.search(text, m.end())
+        slab_end = blank.start() if blank else len(text)
+        u = NODE_UUID_REGEX.search(text, m.end(), slab_end)
+        if u and m.group(1) not in out:
+            out[m.group(1)] = u.group(1)
+    return out
+
+
+def rich_json_to_text(value) -> str:
+    """Flatten a TipTap JSONContent body (or a plain string) into plain text.
+    Mirrors `richJsonToPlainText` in src/lib/footnote-content.ts just enough to
+    produce a legible summary for a rich body (footnote `content`, archive
+    snippet `content`)."""
+    if isinstance(value, str):
+        return value.strip()
+    out: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            if isinstance(node.get("text"), str):
+                out.append(node["text"])
+            for child in node.get("content", []) or []:
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    return " ".join(s for s in (t.strip() for t in out) if s).strip()
+
+
 def card_text_anchor(card: dict) -> str | None:
     """Mode B text snapshot if any."""
     for link in card.get("links", []) or []:

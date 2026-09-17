@@ -114,7 +114,8 @@ def _snippet(s: str | None, n: int = 60) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _sidecar_ids(doc: Path, filename: str, list_key: str) -> set[str]:
+def _sidecar_ids(doc: Path, panel: str) -> set[str]:
+    filename, list_key = AR.ALL_CARD_SIDECARS[panel]
     st = read_json(sidecar(doc, filename), default={list_key: []})
     out: set[str] = set()
     if isinstance(st, dict):
@@ -217,7 +218,7 @@ def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     r"""footnote — atom-bearing. id == \vfid marker (footnotes.json · footnotes,
     FootnoteRef {id, content, createdAt}; no links — the tie is id equality)."""
     body = _require_body(a, "footnote")
-    fid = _gen_marker_id(doc, "vfid", _sidecar_ids(doc, "footnotes.json", "footnotes"))
+    fid = _gen_marker_id(doc, "vfid", _sidecar_ids(doc, "footnotes"))
     return KindBuild(
         panel="footnotes",
         card={"id": fid, "content": _jsoncontent(body), "createdAt": now_iso()},
@@ -264,7 +265,7 @@ def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
     else:
         cmd = cite_command_for(family, "textual")
     command = "\\" + cmd + "{" + ",".join(keys) + "}"
-    cid = _gen_marker_id(doc, "vcid", _sidecar_ids(doc, "citations.json", "citations"))
+    cid = _gen_marker_id(doc, "vcid", _sidecar_ids(doc, "citations"))
     return KindBuild(
         panel="citations",
         card={"id": cid, "command": command, "keys": keys, "createdAt": now_iso()},
@@ -632,7 +633,7 @@ def _create_example(doc: Path, a: argparse.Namespace) -> dict:
         die("--anchor <uuid> is required for --kind=example")
     _require_anchor(doc, anchor)
 
-    exid = _gen_marker_id(doc, "vexid", _sidecar_ids(doc, "examples.json", "examples"))
+    exid = _gen_marker_id(doc, "vexid", _sidecar_ids(doc, "examples"))
     label = ("\\label{" + a.label + "}") if a.label else ""
     if items:
         allocated: set[str] = set()

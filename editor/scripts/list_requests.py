@@ -52,8 +52,10 @@ from _common import (
     die,
     read_json,
     resolve_doc,
+    rich_json_to_text,
     sidecar,
 )
+from card_by_id import ALL_CARD_SIDECARS
 
 
 def emit(row: dict) -> None:
@@ -167,8 +169,8 @@ _ROUTING: dict[str, dict[str, str]] = json.loads(
 # The on-disk shape each flag-bearing card kind lives in — the storage half the
 # registry doesn't (and shouldn't) hold. Keyed by the SAME card kinds as the
 # manifest; `list_unbridged_card_flags` joins the two. Each row:
-#   file        the sidecar filename under virgil/
-#   list_key    the array key inside it
+#   panel       the ALL_CARD_SIDECARS key — `file` (the sidecar filename under
+#               virgil/) and `list_key` (the array inside it) are derived from it
 #   match       (field, allowed_values, allow_absent) to select THIS kind's rows
 #               from a shared file (notes.json holds note+highlight; cutter/
 #               revisions hold comment+suggestion; reports hold report+
@@ -177,33 +179,33 @@ _ROUTING: dict[str, dict[str, str]] = json.loads(
 #   rich        True → `summary` is a rich JSONContent body to flatten, not a
 #               plain field.
 # The `_ROUTING`-vs-adapter key parity is pinned by test_unbridged_flag_fallback.py.
-STORAGE_ADAPTER: dict[str, dict] = {
+_STORAGE_ROWS: dict[str, dict] = {
     # notes.json holds BOTH note and highlight cards under `cards`, discriminated
     # by `kind`. (The pre-manifest table read the wrong list_key "notes" and
     # emitted every row as "note" — the note/highlight fallback was DEAD and
     # highlights never surfaced with their own wire kind.)
     "note": {
-        "file": "notes.json", "list_key": "cards",
+        "panel": "notes",
         "match": ("kind", ("note",), True), "summary": "title", "rich": False,
     },
     "highlight": {
-        "file": "notes.json", "list_key": "cards",
+        "panel": "notes",
         "match": ("kind", ("highlight",), False), "summary": "title", "rich": False,
     },
     "todo": {
-        "file": "todos.json", "list_key": "items",
+        "panel": "todos",
         "match": None, "summary": "text", "rich": False,
     },
     "cutter-comment": {
-        "file": "cutter.json", "list_key": "cards",
+        "panel": "cutter",
         "match": ("kind", ("comment",), False), "summary": "text", "rich": False,
     },
     "revision-comment": {
-        "file": "revisions.json", "list_key": "cards",
+        "panel": "revisions",
         "match": ("kind", ("comment",), False), "summary": "text", "rich": False,
     },
     "report-request": {
-        "file": "reports.json", "list_key": "cards",
+        "panel": "reports",
         "match": ("kind", ("report-request",), False), "summary": "text", "rich": False,
     },
     # #55b: footnotes' flag lives in footnotes.json (FootnoteRef.aiRequest); the
@@ -214,9 +216,21 @@ STORAGE_ADAPTER: dict[str, dict] = {
     # so the request still surfaces (paragraphIds may be empty in that degraded
     # case — the skill then re-derives an anchor rather than losing the request).
     "footnote": {
-        "file": "footnotes.json", "list_key": "footnotes",
+        "panel": "footnotes",
         "match": None, "summary": "content", "rich": True,
     },
+}
+
+
+# The file + list key come from the ONE panel table (ALL_CARD_SIDECARS), never
+# hand-copied here — the copy is what once read notes.json under "notes".
+STORAGE_ADAPTER: dict[str, dict] = {
+    kind: {
+        **row,
+        "file": ALL_CARD_SIDECARS[row["panel"]][0],
+        "list_key": ALL_CARD_SIDECARS[row["panel"]][1],
+    }
+    for kind, row in _STORAGE_ROWS.items()
 }
 
 
@@ -230,28 +244,6 @@ def _card_matches(card: dict, match: tuple | None) -> bool:
     if v is None:
         return allow_absent
     return v in values
-
-
-def _rich_json_to_text(value) -> str:
-    """Flatten a TipTap JSONContent body (or a plain string) into plain text.
-    Mirrors `richJsonToPlainText` in src/lib/footnote-content.ts just enough to
-    produce a legible inbox summary for a footnote's rich `content`."""
-    if isinstance(value, str):
-        return value.strip()
-    out: list[str] = []
-
-    def walk(node) -> None:
-        if isinstance(node, dict):
-            if isinstance(node.get("text"), str):
-                out.append(node["text"])
-            for child in node.get("content", []) or []:
-                walk(child)
-        elif isinstance(node, list):
-            for child in node:
-                walk(child)
-
-    walk(value)
-    return " ".join(s for s in (t.strip() for t in out) if s).strip()
 
 
 def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
@@ -301,7 +293,7 @@ def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
                 continue
             raw_summary = c.get(adapter["summary"])
             summary = (
-                _rich_json_to_text(raw_summary) if adapter["rich"] else raw_summary
+                rich_json_to_text(raw_summary) if adapter["rich"] else raw_summary
             )
             rows.append(
                 {
