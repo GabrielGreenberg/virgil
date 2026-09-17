@@ -225,9 +225,12 @@ Three modes:
      in ONE atomic op.** `bibEdit` **replace** finds the `<bibKey>` block and
      swaps in the library entry text (keyed `<libraryCitekey>`); and — when the
      library uses a different citekey — `renameCitekey` retargets every
-     `\cite*{...}` in `document.tex` AND every `virgil/citations.json` card in
-     the **same commit**, so the entry's `.bib` body, its in-text cites, and its
-     citation cards land together-or-not-at-all (a crash can't leave the bib
+     `\cite*{...}` in `document.tex` AND re-keys every citekey-keyed sidecar
+     (`citations.json` cards, the entry's `annotations.json` note, its
+     `bib-review-requests.json` rows — the list is
+     `citekey_keyed_sidecars.json`) in the **same commit**, so the entry's
+     `.bib` body, its in-text cites, its citation cards and its annotation land
+     together-or-not-at-all (a crash can't leave the bib
      swapped but the cites dangling). This is a *writes-only* op (no `requestId`
      — library-sync isn't bib-review-driven), so the contract also writes the
      notification + version bump. Never hand-edit the `.bib`, the `.tex`, or

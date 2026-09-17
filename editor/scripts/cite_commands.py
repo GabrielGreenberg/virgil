@@ -129,8 +129,24 @@ def bucket_pattern(names) -> re.Pattern[str]:
 # the argument run IS the name boundary, which is also why no trailing
 # `(?![a-zA-Z])` guard is needed: `\citeauthorX{k}` matches nothing).
 #
+# TeX skips spaces, a single line break and `%` comments between a command and
+# its arguments, and biblatex's multi-cite scanner does the same between its
+# groups — so `\citep [p.~4]{k}` and `\textcites{a}⏎ {k}` are the same cites as
+# their tight spellings (task 615: the rename reported 0 changes on them while
+# the same op swapped the `.bib` key → dangling cites). `_GAP` is that filler; a
+# BLANK line is a paragraph break and ends the command. The gap is kept inside
+# the matched run, so a rewrite preserves it byte-for-byte.
+#
+# DIVERGENCE from `matchCiteCommandAt` (src/lib/cite-commands.ts), stated on
+# purpose: the editor's parser still reads a gapped spelling as prose, not as a
+# citation atom. Widening THAT grammar changes what a load turns into an atom
+# and what a save writes back — a write-path-law change that needs its own
+# measured task — whereas here the only question is "does this text name the
+# key?", and the answer for a gapped spelling is yes.
+#
 # Read the three parts through `cite_match_parts` rather than by group number.
-_ARG_GROUP = r"(?:\[[^\]]*\]){0,2}\{[^{}]*\}"
+_GAP = r"(?:[ \t]+|%[^\n]*\n|\n(?![ \t]*\n))*"
+_ARG_GROUP = _GAP + r"(?:\[[^\]]*\]" + _GAP + r"){0,2}\{[^{}]*\}"
 _SINGULAR_NAMES = [c for c in KNOWN_CITE_COMMANDS if c not in MULTI_CITE_NAMES]
 
 CITE_COMMAND_RE: re.Pattern[str] = re.compile(
@@ -144,7 +160,10 @@ CITE_COMMAND_RE: re.Pattern[str] = re.compile(
 )
 
 #: One `[pre][post]{keys}` group inside a matched argument run.
-CITE_ARG_GROUP_RE: re.Pattern[str] = re.compile(r"((?:\[[^\]]*\]){0,2})\{([^{}]*)\}")
+#: Group 1 is everything before the key brace (gaps + `[pre][post]`), verbatim.
+CITE_ARG_GROUP_RE: re.Pattern[str] = re.compile(
+    r"(" + _GAP + r"(?:\[[^\]]*\]" + _GAP + r"){0,2})\{([^{}]*)\}"
+)
 
 
 def cite_match_parts(m: re.Match[str]) -> tuple[str, str, str]:

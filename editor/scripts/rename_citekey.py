@@ -50,23 +50,58 @@ import re
 from cite_commands import CITE_ARG_GROUP_RE, CITE_COMMAND_RE, cite_match_parts
 
 
-def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
-    r"""Replace `old` with `new` inside a CSV `\citet{a, b, c}` key list.
+def split_key_list(keys_blob: str) -> list[tuple[int, int]]:
+    r"""The `(start, end)` span of every KEY in a `\cite{a, b,%…⏎ c}` list.
 
-    Returns (new_blob, changed).
+    A key list is TeX: whitespace around a key is skipped and a `%` runs to the
+    end of its line — so `{jones,%⏎  smith2020}` names `smith2020`, not
+    `"%\n  smith2020"` (task 615). A comma inside a comment does not split.
+    Spans point into `keys_blob`, so a rewrite can swap one key and keep every
+    other byte — spacing, line breaks, comments — exactly as the author wrote it.
     """
-    parts = [k.strip() for k in keys_blob.split(",")]
-    changed = False
+    spans: list[tuple[int, int]] = []
+    i, n = 0, len(keys_blob)
+    seg_start: int | None = None  # first key char of the current item
+    seg_end = 0                   # just past its last key char
+    while i <= n:
+        ch = keys_blob[i] if i < n else ","
+        if ch == "%" and (i == 0 or keys_blob[i - 1] != "\\"):
+            nl = keys_blob.find("\n", i)
+            i = n if nl == -1 else nl + 1
+            continue
+        if ch == ",":
+            if seg_start is not None:
+                spans.append((seg_start, seg_end))
+            seg_start = None
+            i += 1
+            continue
+        if not ch.isspace():
+            if seg_start is None:
+                seg_start = i
+            seg_end = i + 1
+        i += 1
+    return spans
+
+
+def split_keys(keys_blob: str) -> list[str]:
+    """The keys a key list names, comments and whitespace stripped."""
+    return [keys_blob[a:b] for a, b in split_key_list(keys_blob)]
+
+
+def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
+    r"""Replace `old` with `new` inside a `\citet{a, b, c}` key list, touching
+    nothing but the key itself. Returns (new_blob, changed)."""
     out: list[str] = []
-    for p in parts:
-        if p == old:
+    pos = 0
+    changed = False
+    for a, b in split_key_list(keys_blob):
+        if keys_blob[a:b] == old:
+            out.append(keys_blob[pos:a])
             out.append(new)
+            pos = b
             changed = True
-        else:
-            out.append(p)
-    # Preserve user's spacing style: rejoin with ", " (matches `citations.json`
-    # rendering and is the conventional way natbib examples are written).
-    return ", ".join(out), changed
+    out.append(keys_blob[pos:])
+    return "".join(out), changed
 
 
 def _rewrite_arg_run(arg_run: str, old: str, new: str) -> tuple[str, bool]:
