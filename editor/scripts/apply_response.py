@@ -76,8 +76,8 @@ Schema (v1 superset — every field optional unless noted):
     "card":      { ...full card object to insert into <panel>.json },
     "texEdit":   { "anchorUuid": "3301",                 // paragraph %!v: marker
                    "insert": "\\vfid{f8}\\footnote{…}",  // text to splice
-                   "mode": "end-of-paragraph" | "after-selected" | "region-replace" | "replace-span",
-                   "selectedText": "…",                  // for after-selected
+                   "mode": "end-of-paragraph" | "after-selected" | "after-paragraph" | "region-replace" | "replace-span",
+                   "selectedText": "…",                  // after-selected: searched in the anchored paragraph only
                    "replacement": "…\\begin{document}\n\n", // region-replace / replace-span substitute
                    "match": "<verbatim span>",            // replace-span: swap this span at anchorUuid (stale-guarded)
                    "endMarker": "\\begin{document}" },   // region-replace boundary
@@ -152,8 +152,10 @@ from typing import NamedTuple
 from _common import (
     DOCUMENT_MARKER,
     count_live_document_begins,
+    find_document_boundary,
     first_live_index_of,
     NODE_UUID_REGEX,
+    project_structural_latex,
     check_tex_preservation,
     commit_under_pen,
     die,
@@ -958,8 +960,11 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
     Modes:
       end-of-paragraph (default) — splice `insert` just before the paragraph's
         `%!v:<anchorUuid>` marker.
-      after-selected — splice `insert` immediately after `selectedText` (falls
-        back to end-of-paragraph if the selection isn't found verbatim).
+      after-selected — splice `insert` immediately after the first LIVE
+        occurrence of `selectedText` inside the anchored paragraph (falls back
+        to end-of-paragraph if it isn't found there verbatim).
+      after-paragraph — splice `insert` just past the `%!v:<anchorUuid>` marker
+        token (a block that follows the paragraph, e.g. an example).
       region-replace — replace everything from the file start up to and including
         `endMarker` (default `\\begin{document}`) and its trailing newlines with
         `replacement`. The whole-preamble rewrite (style-merge): the consumer's
@@ -1003,27 +1008,95 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
     if not insert:
         die("texEdit.insert is required")
 
-    if mode == "after-selected" and te.get("selectedText"):
-        sel = te["selectedText"]
-        i = text.find(sel)
-        if i != -1:
-            pos = i + len(sel)
-            return tex_path, text[:pos] + insert + text[pos:]
-        # Selected text not found verbatim → fall back to end-of-paragraph.
-
     anchor = te.get("anchorUuid")
     if not anchor:
-        die("texEdit.anchorUuid is required for an end-of-paragraph splice")
-    marker = f"%!v:{anchor}"
-    i = text.find(marker)
-    if i == -1:
-        die(f"anchor marker not found in .tex: {marker}")
-    # Splice immediately after the paragraph's terminal token, before the
-    # trailing whitespace + marker (house style: anchor adjacent to a token).
+        die(f"texEdit.anchorUuid is required for mode={mode} — the insert belongs to "
+            "the anchored paragraph, whichever branch places it")
+    region = _anchored_paragraph(text, anchor)
+    if region is None:
+        die(f"anchor marker not found in .tex: %!v:{anchor}")
+    region_start, i = region
+
+    if mode == "after-selected" and te.get("selectedText"):
+        sel = te["selectedText"]
+        # Scoped to the anchored paragraph and LIVE-only (task 613): the same
+        # words in the title, an earlier paragraph or a `%` comment are not
+        # where the card is anchored, and an insert inside a comment is lost.
+        hit = _find_in_paragraph(text, sel, region_start, i, live_only=True)
+        if hit != -1:
+            pos = hit + len(sel)
+            return tex_path, text[:pos] + insert + text[pos:]
+        # Selected text not found verbatim in the paragraph → end-of-paragraph.
+
+    if mode == "after-paragraph":
+        # A block that belongs AFTER the paragraph (an example): just past the
+        # marker token, so the paragraph and its anchor stay whole.
+        pos = i + len(f"%!v:{anchor}")
+        return tex_path, text[:pos] + insert + text[pos:]
+
+    if mode not in ("end-of-paragraph", "after-selected"):
+        die(f"unknown texEdit.mode: {mode}")
+
+    # Splice immediately after the paragraph's terminal LIVE token (house style:
+    # anchor adjacent to a token). Backing over the projection's blanks steps
+    # over trailing whitespace AND a trailing `% comment` on the marker line, so
+    # `…prose. % TODO cite %!v:3301` gets the atom after `prose.`, not inside
+    # the comment where LaTeX would never typeset it (task 613).
+    live = project_structural_latex(text)
     j = i
-    while j > 0 and text[j - 1] in " \t":
+    while j > region_start and live[j - 1] in " \t":
         j -= 1
     return tex_path, text[:j] + insert + text[j:]
+
+
+def _anchored_paragraph(text: str, anchor: str) -> tuple[int, int] | None:
+    r"""The ONE answer to "which bytes are the anchored paragraph?" (task 613):
+    `(region_start, marker_index)` — from just past the previous `%!v:` marker
+    (never earlier than the document body, so the first paragraph's region does
+    not reach back into `\title{}` and the preamble) up to this paragraph's own
+    `%!v:<anchor>` marker. None when the marker is absent.
+
+    Every texEdit mode that searches for words "in the anchored paragraph"
+    (after-selected, replace-span) scopes through here, so an identically worded
+    span elsewhere in the paper is out of range by construction.
+    """
+    mi = -1
+    region_start = 0
+    for m in NODE_UUID_REGEX.finditer(text):
+        if m.group(1) == anchor:
+            mi = m.start()
+            break
+        region_start = m.end()
+    if mi == -1:
+        return None
+    _, body_start, _ = find_document_boundary(text)
+    if body_start != -1 and body_start <= mi:
+        region_start = max(region_start, body_start)
+    return region_start, mi
+
+
+def _find_in_paragraph(text: str, needle: str, start: int, end: int, *,
+                       live_only: bool) -> int:
+    """First occurrence of `needle` in `text[start:end]`, preferring a LIVE hit
+    (one not inside a `%` comment or verbatim run). With `live_only=False` a raw
+    hit is the fallback — a reviewed span may legitimately straddle a comment —
+    but only when at least one of its non-space characters is live, so a span
+    that sits wholly inside a comment is still a miss. -1 when absent."""
+    live = project_structural_latex(text)
+    hit = live.find(needle, start, end)
+    while hit != -1:
+        if text[hit:hit + len(needle)] == needle:
+            return hit
+        hit = live.find(needle, hit + 1, end)
+    if live_only:
+        return -1
+    pos = text.find(needle, start, end)
+    while pos != -1:
+        if any(live[k] == text[k] and not text[k].isspace()
+               for k in range(pos, pos + len(needle))):
+            return pos
+        pos = text.find(needle, pos + 1, end)
+    return -1
 
 
 def _replace_span_in_tex(text: str, te: dict) -> str:
@@ -1054,18 +1127,11 @@ def _replace_span_in_tex(text: str, te: dict) -> str:
         die("texEdit.replacement is required for mode=replace-span (may be empty to delete the span)")
 
     marker = f"%!v:{anchor}"
-    mi = text.find(marker)
-    if mi == -1:
+    region = _anchored_paragraph(text, anchor)
+    if region is None:
         die(f"replace-span: anchor marker {marker} not found in .tex — the anchored paragraph "
             f"was removed since the proposal was drafted (stale proposal); refusing to splice")
-    # Scope the search to the anchor paragraph: [end of the previous %!v: marker,
-    # this marker). Keeps an identically worded span elsewhere out of range.
-    region_start = 0
-    for m in NODE_UUID_REGEX.finditer(text):
-        if m.start() >= mi:
-            break
-        region_start = m.end()
-    idx = text.find(match, region_start, mi)
+    idx = _find_in_paragraph(text, match, *region, live_only=False)
     if idx == -1:
         die(f"replace-span: the proposal's original_text no longer matches the .tex at anchor "
             f"{marker} — the paragraph changed since the proposal was drafted (stale proposal); "
