@@ -113,6 +113,89 @@ def rmtree_tolerant(path, *, what: str = "directory") -> bool:
 # --- END MIRRORED ----------------------------------------------------------
 
 
+# ── the relocate door (task 619) ──────────────────────────────────────
+# A MOVE of a user's file must never destroy another one. `shutil.move` onto
+# an existing path is a POSIX rename, which replaces the destination silently:
+# two different `download.pdf` drops parked in `_pending/` left one. Every
+# move onto a user-visible path goes through here.
+
+
+class RelocateCollision(Exception):
+    """`safe_move(..., on_collision="refuse")` found the destination taken."""
+
+    def __init__(self, dest: Path):
+        super().__init__(f"{dest} already exists")
+        self.dest = dest
+
+
+def free_name(dst_dir: Path, name: str) -> Path:
+    """The first of `name`, `stem (2).ext`, `stem (3).ext`, … not in `dst_dir`."""
+    candidate = dst_dir / name
+    if not os.path.lexists(candidate):
+        return candidate
+    p = Path(name)
+    stem, suffix = (p.stem, p.suffix) if p.suffix else (name, "")
+    n = 2
+    while True:
+        candidate = dst_dir / f"{stem} ({n}){suffix}"
+        if not os.path.lexists(candidate):
+            return candidate
+        n += 1
+
+
+def _link_then_unlink(src: Path, dest: Path) -> bool:
+    """Atomic no-clobber move of a FILE via hard link. False when the
+    filesystem cannot link (cross-device, cloud mount, exFAT) — the caller
+    falls back. Raises FileExistsError when `dest` is taken."""
+    try:
+        os.link(src, dest)
+    except FileExistsError:
+        raise
+    except OSError:
+        return False
+    try:
+        # unlink-exempt: the second half of a MOVE, not cleanup — a refusal
+        # must be seen (the caller falls back to a rename), not warned past.
+        src.unlink()
+    except OSError:
+        # A mount that links but refuses deletes (task 496): undo the link
+        # and let the caller rename instead — a rename may still be allowed.
+        unlink_tolerant(dest, what="provisional link")
+        return False
+    return True
+
+
+def safe_move(src, dst_dir, name: str | None = None, *,
+              on_collision: str = "suffix") -> Path:
+    """Move `src` into `dst_dir` as `name` (default: its own name) WITHOUT
+    replacing anything already there. Returns the path it landed at.
+
+    on_collision="suffix" picks the next free `stem (n).ext`;
+    on_collision="refuse" raises `RelocateCollision` instead.
+    """
+    src = Path(src)
+    dst_dir = Path(dst_dir)
+    name = name or src.name
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for _ in range(100):
+        dest = dst_dir / name
+        if os.path.lexists(dest):
+            if on_collision == "refuse":
+                raise RelocateCollision(dest)
+            dest = free_name(dst_dir, name)
+        if src.is_file() and not src.is_symlink():
+            try:
+                if _link_then_unlink(src, dest):
+                    return dest
+            except FileExistsError:
+                continue  # raced — pick again
+        if os.path.lexists(dest):
+            continue
+        shutil.move(str(src), str(dest))
+        return dest
+    raise RelocateCollision(dst_dir / name)
+
+
 # ── work-identity guard error ─────────────────────────────────────────
 
 

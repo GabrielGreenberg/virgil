@@ -423,8 +423,10 @@ def test_census():
         tail = "\n".join(lines[idx - 1: idx + 6])
         check("except" in tail and "raise" not in tail,
               f"exempt site {rel}:{idx} is hand-tolerant (try/except, no re-raise)")
-    check(len(exempt_sites) == 2,
-          f"exactly the two stated exemptions survive (found {len(exempt_sites)})")
+    # The third (task 619) is library `_tools.safe_move`'s link-then-unlink:
+    # the second half of a MOVE, whose refusal falls back to a rename.
+    check(len(exempt_sites) == 3,
+          f"exactly the three stated exemptions survive (found {len(exempt_sites)}: {exempt_sites})")
 
     # The helper must be REACHED, not merely defined: the headline site is
     # `atomic_write`'s content-None arm, which is what the pen release rides.
