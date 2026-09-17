@@ -47,9 +47,12 @@ from _tools import (  # noqa: E402
     bump_catalog_version,
     read_catalog,
     read_master_bib,
+    locate_master_entry,
     rename_catalog_entry,
     rename_master_bib_entry,
+    remove_master_bib_entry,
 )
+from _citekey_rename import rename_citekey_in_paper  # noqa: E402
 
 _CITEKEY_STOPWORDS = frozenset({
     "the", "a", "an",
@@ -286,21 +289,6 @@ def _title_words(title: str) -> list[str]:
     return out
 
 
-def _rewrite_cite_args(text: str, old: str, new: str) -> tuple[str, int]:
-    """Rewrite any \\cite-family arg containing `old` to use `new`.
-    Preserves other keys in multi-key args. Mirrors fuzzy_citekey_disambiguate.
-    """
-    pattern = re.compile(
-        rf"(\\cite[a-zA-Z]*(?:\[[^\]]*\])?\{{[^}}]*?)\b{re.escape(old)}\b"
-    )
-    return pattern.subn(rf"\g<1>{new}", text)
-
-
-def _rewrite_bib_entry_opener(text: str, old: str, new: str) -> tuple[str, int]:
-    pattern = re.compile(r"(@\w+\s*\{\s*)" + re.escape(old) + r"(\s*,)")
-    return pattern.subn(rf"\g<1>{new}\g<2>", text)
-
-
 def apply_merge_duplicate(library: Path, old: str, canonical: str) -> dict:
     """Merge a buggy `old` citekey into the existing `canonical` one.
 
@@ -312,67 +300,36 @@ def apply_merge_duplicate(library: Path, old: str, canonical: str) -> dict:
     status: dict = {"steps": [], "kind": "merge"}
     from _tools import citekey_matches  # noqa: PLC0415
 
-    # 1. Rewrite cross-paper \cite{old} to \cite{canonical}.
+    # 0. Refuse up front — before ANY write — when master.bib cannot delimit
+    #    the entry this merge removes (task 620: the private brace walk here ran
+    #    to EOF on one stray `{` and deleted every later entry).
+    master_path = library / "master.bib"
+    if master_path.exists():
+        locate_master_entry(master_path.read_text(), old)  # raises BibEntryUnbalanced
+
+    # 1. Carry old → canonical through every OTHER paper: its \cite keys, its
+    #    references.bib entry (removed when canonical is already there), and its
+    #    citekey-keyed sidecars — the shared door (`_citekey_rename`).
     cross_count = 0
     papers_dir = library / "papers"
     if papers_dir.exists():
-        for paper in papers_dir.iterdir():
+        for paper in sorted(papers_dir.iterdir()):
             # NFC-insensitive (the `citekey_matches` SSOT): macOS hands back
             # decomposed directory names, so a raw compare fails to recognise
             # the buggy paper's OWN folder and rewrites its cites too.
             if not paper.is_dir() or citekey_matches(paper.name, old):
                 continue
-            for fname in ("main.tex", "references.bib"):
-                f = paper / fname
-                if not f.exists():
-                    continue
-                txt = f.read_text(encoding="utf-8")
-                if old not in txt:
-                    continue
-                new_txt, n = _rewrite_cite_args(txt, old, canonical)
-                if n:
-                    f.write_text(new_txt, encoding="utf-8")
-                    cross_count += n
-                    status["steps"].append(f"cite:{paper.name}/{fname}:{n}")
+            for step in rename_citekey_in_paper(paper, old, canonical):
+                status["steps"].append(f"{paper.name}/{step}")
+                if step.startswith("cite:"):
+                    cross_count += int(step.rsplit(":", 1)[1])
     status["cross_refs"] = cross_count
 
-    # 2. Remove the buggy entry from master.bib.
-    master_path = library / "master.bib"
-    if master_path.exists():
-        from _tools import lock_master_bib, _atomic_write_text  # noqa
-        with lock_master_bib(library):
-            text = master_path.read_text()
-            pattern = re.compile(
-                r"(?:^|\n)(@\w+\s*\{\s*" + re.escape(old) + r"\s*,)",
-                re.MULTILINE,
-            )
-            m = pattern.search(text)
-            if m:
-                # Find end of this @entry by brace-balancing.
-                opener_start = m.start(1)
-                brace_pos = text.index("{", opener_start)
-                depth = 1
-                j = brace_pos + 1
-                while j < len(text) and depth > 0:
-                    if text[j] == "{":
-                        depth += 1
-                    elif text[j] == "}":
-                        depth -= 1
-                    j += 1
-                # Eat trailing newline.
-                while j < len(text) and text[j] in ("\n",):
-                    j += 1
-                # Also eat preceding `% bib.state` comment line, if present.
-                line_start = text.rfind("\n", 0, opener_start)
-                line_start = 0 if line_start < 0 else line_start + 1
-                prev_nl = text.rfind("\n", 0, max(0, line_start - 1))
-                prev_start = 0 if prev_nl < 0 else prev_nl + 1
-                if text[prev_start:line_start].strip().startswith("% bib.state"):
-                    opener_start = prev_start
-                _atomic_write_text(master_path, text[:opener_start] + text[j:])
-                status["steps"].append("master_bib:removed")
-            else:
-                status["steps"].append("master_bib:not_found")
+    # 2. Remove the buggy entry from master.bib (one door, one extent rule).
+    if remove_master_bib_entry(library, old):
+        status["steps"].append("master_bib:removed")
+    else:
+        status["steps"].append("master_bib:not_found")
 
     # 3. Remove the buggy catalog entry.
     from _tools import lock_catalog, read_catalog, write_catalog  # noqa
@@ -456,14 +413,6 @@ def apply_rename(library: Path, r: Rename) -> dict:
                 if src.exists():
                     src.rename(paper_new / f"{new}.{ext}")
                     status["steps"].append(f"source:{ext}:renamed")
-            # Local references.bib opener.
-            refs = paper_new / "references.bib"
-            if refs.exists():
-                txt = refs.read_text(encoding="utf-8")
-                new_txt, n = _rewrite_bib_entry_opener(txt, old, new)
-                if n:
-                    refs.write_text(new_txt, encoding="utf-8")
-                    status["steps"].append(f"references_bib:rewrote({n})")
     else:
         status["steps"].append("paper_dir:not_found")
 
@@ -487,30 +436,20 @@ def apply_rename(library: Path, r: Rename) -> dict:
         log_old.rename(log_new)
         status["steps"].append("logs:renamed")
 
-    # 6. Cross-paper \cite{old} rewrite across every other paper.
+    # 6. Carry old → new through EVERY paper folder (the renamed one
+    #    included — its own references.bib row and sidecars are keyed by it
+    #    too): \cite keys, the references.bib entry, the citekey-keyed
+    #    sidecars. One shared door (`_citekey_rename`, task 620).
     cross_count = 0
     papers_dir = library / "papers"
     if papers_dir.exists():
-        for paper in papers_dir.iterdir():
+        for paper in sorted(papers_dir.iterdir()):
             if not paper.is_dir():
                 continue
-            for fname in ("main.tex", "references.bib"):
-                f = paper / fname
-                if not f.exists():
-                    continue
-                txt = f.read_text(encoding="utf-8")
-                if old not in txt:
-                    continue
-                if fname == "references.bib":
-                    # Local references.bib in the renamed paper is already
-                    # handled above; here we only rewrite cross-references
-                    # by treating \cite forms.
-                    pass
-                new_txt, n = _rewrite_cite_args(txt, old, new)
-                if n:
-                    f.write_text(new_txt, encoding="utf-8")
-                    cross_count += n
-                    status["steps"].append(f"cite:{paper.name}/{fname}:{n}")
+            for step in rename_citekey_in_paper(paper, old, new):
+                status["steps"].append(f"{paper.name}/{step}")
+                if step.startswith("cite:"):
+                    cross_count += int(step.rsplit(":", 1)[1])
     status["cross_refs"] = cross_count
 
     # 7. Append an inbox event.

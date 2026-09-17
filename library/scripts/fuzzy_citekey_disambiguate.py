@@ -191,18 +191,14 @@ def disambiguate(paper_dir: Path, dry_run: bool = False) -> dict:
             new_bib,
         )
 
-    # Apply renames in tex (every \cite{}-family arg).
+    # Apply renames in tex (every \cite{}-family arg) through the library's ONE
+    # cite-key rewriter (task 620): keys are delimited the TeX way, so
+    # `smith2020` no longer rewrites `smith2020-2` (a `\b` regex did), every
+    # optional argument is walked, and the renames apply simultaneously.
     new_tex = tex_text
     if tex_text:
-        for old in sorted(renames, key=len, reverse=True):
-            new = renames[old]
-            # Match inside any \cite-family argument; preserve other
-            # keys in a multi-key argument.
-            new_tex = re.sub(
-                rf"(\\cite[a-zA-Z]*(?:\[[^\]]*\])?\{{[^}}]*?)\b{re.escape(old)}\b",
-                rf"\1{new}",
-                new_tex,
-            )
+        from _citekey_rename import rewrite_cite_keys_many  # noqa: PLC0415
+        new_tex, _ = rewrite_cite_keys_many(tex_text, renames)
 
     if not dry_run:
         bib_path.write_text(new_bib, encoding="utf-8")
