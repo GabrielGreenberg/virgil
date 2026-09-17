@@ -15,6 +15,8 @@
 
 import { useEffect } from "react";
 
+import type { UnsavedBlockReason } from "@/lib/unsaved-work";
+
 import { getWindowId } from "./window-id";
 
 export type BusEvent =
@@ -29,7 +31,18 @@ export type BusEvent =
   | { type: "doc-handoff-released"; docId: string; byWindowId: string }
   | { type: "global-pref-changed"; key: string; value: unknown }
   | { type: "window-registry-ping"; windowId: string }
-  | { type: "my-papers-changed"; windowId: string; ids: string[] };
+  | { type: "my-papers-changed"; windowId: string; ids: string[] }
+  /** Task 610 — "is any of your work off disk?", asked by the window about to
+   *  post `SKIP_WAITING`, whose activation reloads EVERY window. See
+   *  `reload-door.ts`, "The multi-window half". */
+  | { type: "reload-readiness-request"; requestId: string; fromWindowId: string }
+  | {
+      type: "reload-readiness-reply";
+      requestId: string;
+      windowId: string;
+      unlanded: { docId: string; reason: UnsavedBlockReason | null; ageMs: number }[];
+      mirrored: boolean;
+    };
 
 const CHANNEL_NAME = "virgil";
 

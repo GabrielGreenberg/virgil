@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { setUpdateAvailable } from "@/hooks/useUpdateAvailable";
+import {
+  consumeSelfInitiatedUpdate,
+  setActivatedElsewhere,
+  setUpdateAvailable,
+} from "@/hooks/useUpdateAvailable";
 import { publicAssetUrl } from "@/lib/public-asset-url";
-import { reloadNow } from "@/lib/reload-door";
+import {
+  installReloadReadinessResponder,
+  reloadIfClean,
+  reloadNow,
+} from "@/lib/reload-door";
 
 // The SW URL and its scope both honor the deploy-time prefix, through the ONE
 // door (task 365). The SW file itself must live inside its scope (GitHub Pages
@@ -14,6 +22,10 @@ const SW_URL = publicAssetUrl("/sw.js");
 const SW_SCOPE = publicAssetUrl("/");
 
 export default function ServiceWorkerRegistration() {
+  // Task 610 — every window answers other windows' "is your work on disk?"
+  // before one of them posts SKIP_WAITING (which reloads all of them).
+  useEffect(() => installReloadReadinessResponder(), []);
+
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
@@ -66,15 +78,24 @@ export default function ServiceWorkerRegistration() {
     const onControllerChange = () => {
       if (!reloadOnControllerChange) return;
       reloadOnControllerChange = false;
-      // TASK 391 — this is the app's ONLY programmatic reload, and it drops
-      // every mounted editor's memory. It is also reachable WITHOUT the user
-      // ever touching the update banner: `reloadOnControllerChange` is armed
-      // unconditionally at registration, so a controller change from any
-      // cause lands here. There is no user in the loop at this point and
-      // nothing to defer to, so the door does the one thing it can — flush,
-      // then mirror whatever still has not landed — before letting the page
-      // go. See `reload-door.ts`.
-      void reloadNow(() => window.location.reload());
+      // TASK 391 / 610 — this is the app's ONLY programmatic reload, and it
+      // drops every mounted editor's memory. `reloadOnControllerChange` is
+      // armed unconditionally at registration, and activation fires this in
+      // EVERY window, so most of the time the user who caused it is in some
+      // other window. See `reload-door.ts`.
+      const reload = () => window.location.reload();
+      if (consumeSelfInitiatedUpdate()) {
+        // This window's user chose it (clean, or "Update anyway" after every
+        // window was asked). Prepare, then go.
+        void reloadNow(reload);
+        return;
+      }
+      // Nobody here asked. Reload only if nothing is off disk; otherwise
+      // stay on this page (the worker is network-first — the same as a tab
+      // left open across a deploy) and let the banner offer the reload.
+      void reloadIfClean(reload).then((reloaded) => {
+        if (!reloaded) setActivatedElsewhere(() => void reloadNow(reload));
+      });
     };
     navigator.serviceWorker.addEventListener(
       "controllerchange",

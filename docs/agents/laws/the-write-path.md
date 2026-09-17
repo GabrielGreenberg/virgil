@@ -324,9 +324,11 @@ Four pieces, in the order a byte travels:
   doc, RE-READ the channel (a refused write resolves normally, so the flush
   resolving proves nothing), force-mirror what still has not landed, and only
   then report. `prepareForReload` is what the update banner asks before it
-  posts `SKIP_WAITING`; `reloadNow` is what the `controllerchange` handler —
-  which is armed unconditionally and reachable without the banner at all —
-  enters instead of calling `location.reload()` bare.
+  posts `SKIP_WAITING` (since task 610, asked of every window; see "The
+  multi-window half"). The `controllerchange` handler is armed unconditionally
+  and can be reached without the banner at all. It goes through `reloadNow`
+  when this window started the update, and through `reloadIfClean` otherwise.
+  It never calls `location.reload()` bare.
 - **The recovery.** [src/lib/mirror-recovery.ts](../../../src/lib/mirror-recovery.ts) +
   `MirrorRecoveryBadge`. A mirror is cleared by exactly one thing, so a mirror
   that SURVIVES to the next open is by construction work that never reached
@@ -387,6 +389,51 @@ before it nets 1, and a restore that ignores its report 1.
 two minutes, hard-reload → the offer restores within seconds of the last tick;
 and a real-Dropbox eyeball of the aged pause badge. This class masks in the dev
 preview, so the durable proof here is the unit contracts.
+
+#### The multi-window half: the channel is per WINDOW, the reload is app-wide
+
+Task 610 (audit tick 107). The unsaved-work channel is a module-level map, so
+each window sees only its own documents. `SKIP_WAITING` is not scoped like
+that: activating the waiting worker moves EVERY controlled client over and
+fires `controllerchange` in each. So the 391 gate protected the window it ran
+in and no other. A clean window A's banner said "safe" and posted
+`SKIP_WAITING`. Window B, whose autosave the clobber guard had paused, reloaded
+unconditionally, and its work survived only in the mirror.
+
+> **Every path by which one window reloads another passes the same gate.**
+
+- **Ask every window before `SKIP_WAITING`.** `prepareAllWindowsForReload`
+  sends a `reload-readiness-request` on the bus. Every window has
+  `installReloadReadinessResponder` installed (from `ServiceWorkerRegistration`,
+  which the root layout mounts), and each answers with its own
+  `prepareForReload()`, so each one flushes and mirrors too. The windows to wait
+  for come from the browser (`liveWindowIds`, Web Locks). The responder takes
+  the liveness lock itself, so no window goes uncounted. **A window that does
+  not answer is UNKNOWN, and unknown blocks like unlanded work does:** the
+  confirm names it. A responder whose preparation throws sends no reply, so it
+  can never report "clean" by accident. Without Web Locks, the asker takes
+  whatever replies arrive in a short fixed wait.
+- **A reload a window did not ask for defers.** Asking first still leaves a
+  race: B can become dirty between its reply and the activation. So the
+  `controllerchange` handler splits by who started the update. The window that
+  posted `SKIP_WAITING` (`consumeSelfInitiatedUpdate`) runs `reloadNow`, because
+  its user chose the reload. Every other window runs `reloadIfClean`, which
+  prepares and reloads only when nothing is unlanded. A window that holds work
+  stays on the old page under the new worker. That is safe because the worker
+  is network-first, the same as any tab left open across a deploy. Its banner
+  switches to "updated in another window", and clicking it reloads only that
+  window, behind the local check and the same confirm.
+
+Step 2 alone is a full safety net. Step 1 is what lets A's banner tell the
+truth before the click rather than after it.
+
+CI: [reload-door-multiwindow.test.ts](../../../src/lib/__tests__/reload-door-multiwindow.test.ts)
+(two in-memory transports: B's blocked work reaches A's answer, a silent or
+throwing window counts as unknown, `reloadIfClean` does not reload a dirty
+window, and the store records who posted `SKIP_WAITING`), plus the census legs
+in `reload-door.test.ts` (the handler's self-initiated split, and the banner
+asking every window). **Owed, not claimed:** a real-PWA two-window drill. The
+service worker is disabled on localhost (`IS_DEV` in `public/sw.js`).
 
 #### The population half: a door flushes what is REGISTERED, and one registrant of twenty was
 
