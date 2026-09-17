@@ -218,6 +218,9 @@ Three modes:
      '
      ```
      If the entry isn't found, fail with `library missing <libraryCitekey>`.
+     If it raises `BibSpliceRefused`, the library entry's braces don't balance
+     (its end is a guess) — stop and tell the user to repair that master.bib
+     entry; never swap in a guessed block.
    - Swap the paper's entry to the library's version **through the contract,
      in ONE atomic op.** `bibEdit` **replace** finds the `<bibKey>` block and
      swaps in the library entry text (keyed `<libraryCitekey>`); and — when the

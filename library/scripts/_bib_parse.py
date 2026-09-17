@@ -329,17 +329,9 @@ def upsert_entry_text(
     if "\r\n" in text:
         block = block.replace("\n", "\r\n")
 
-    entries = parse_bib_text(text) if text else []
-    target = None
-    for form in ("NFC", "NFD"):
-        key_form = unicodedata.normalize(form, citekey)
-        # LAST wins, matching `read_master_bib`'s dict build.
-        matches = [e for e in entries if e["citekey"] == key_form]
-        if matches:
-            target = matches[-1]
-            break
+    span = locate_entry_for_splice(text, citekey)
 
-    if target is None:
+    if span is None:
         if not text.strip():
             return bom + block
         # Append after exactly one blank line — normalising any trailing blank
@@ -347,55 +339,93 @@ def upsert_entry_text(
         nl = "\r\n" if "\r\n" in text else "\n"
         return bom + text.rstrip("\r\n") + nl + nl + block
 
+    # In-place replace. `end` sits just past the closing `}`, so drop the
+    # emitted block's trailing newline: the newline that followed the old block
+    # is part of the preserved tail.
+    return (
+        bom
+        + text[:span[0]]
+        + block.rstrip("\r\n")
+        + text[span[1]:]
+    )
+
+
+def locate_entry_for_splice(text: str, citekey: str) -> Optional[tuple[int, int]]:
+    """WHERE DOES THIS ENTRY END? — the one answer every splice writer uses.
+
+    Returns `(start, end)` offsets of the entry block for `citekey` in `text`
+    (`text[start:end]` is `@type{key, … }`), or None when the key has no
+    line-anchored entry. Raises `BibSpliceRefused` when the entry exists but its
+    extent cannot be trusted — a splice there would delete a neighbour:
+
+      1. its braces never balance (the extent is a guess, capped at the next
+         opener);
+      2. its balanced span covers another line-anchored `@type{key,` (a `{`
+         surplus in one value paired with a `}` surplus in a later one runs the
+         span straight through a real entry).
+
+    The scan is BRACE-ONLY by design, which is BibTeX's own rule: every field
+    value — braced or `"`-quoted — must have balanced braces, and a `"` inside
+    `{…}` is a literal character (`{Grundz"uge}`, the old German umlaut). A
+    scanner that toggles "in string" on every `"` walks past the entry's end on
+    such a value (task 614 — the editor twin of this function did exactly that
+    and a library-sync swap deleted the references after it).
+
+    Lookup is LAST-wins (matching `read_master_bib`) and tries NFC then NFD.
+    Offsets are into `text` as given (a leading BOM is simply not part of any
+    entry, so a column-0 opener after it is not line-anchored — callers that
+    may hold a BOM strip it first, as `upsert_entry_text` does).
+
+    The editor silo carries a port of this rule (`editor/scripts/bib_resolve.py`
+    → `find_entry_span`); the two cannot share code across the bundle seam, so
+    both answer `src/lib/__tests__/fixtures/bib-entry-span-corpus.json`.
+    """
+    import unicodedata
+
+    entries = parse_bib_text(text) if text else []
+    target = None
+    for form in ("NFC", "NFD"):
+        key_form = unicodedata.normalize(form, citekey)
+        matches = [e for e in entries if e["citekey"] == key_form]
+        if matches:
+            target = matches[-1]
+            break
+    if target is None:
+        return None
+    shown = unicodedata.normalize("NFC", citekey)
     if not target["balanced"]:
         raise BibSpliceRefused(
-            f"refusing to replace {citekey_nfc}: its braces are unbalanced, so "
+            f"refusing to replace {shown}: its braces are unbalanced, so "
             f"where the entry ends is a guess — repair the .bib by hand"
         )
     seg = text[target["start"]:target["end"]]
     strays = [m for m in _BIB_ENTRY_START_RE.finditer(seg) if m.start() != 0]
     if strays:
         raise BibSpliceRefused(
-            f"refusing to replace {citekey_nfc}: its parsed span also covers "
+            f"refusing to replace {shown}: its parsed span also covers "
             f"{', '.join(m.group(2) for m in strays)} — the file has an "
             f"unbalanced brace in a value; repair the .bib by hand"
         )
-
-    # In-place replace. `end` sits just past the closing `}`, so drop the
-    # emitted block's trailing newline: the newline that followed the old block
-    # is part of the preserved tail.
-    return (
-        bom
-        + text[:target["start"]]
-        + block.rstrip("\r\n")
-        + text[target["end"]:]
-    )
+    return target["start"], target["end"]
 
 
-# Regex used by triage_apply to find an existing entry block in master.bib.
-# Lifted out so callers don't all reinvent it.
 def find_entry_span(text: str, citekey: str) -> Optional[tuple[int, int, Optional[int]]]:
     """Return (entry_start, entry_end, prev_state_line_start_or_None) or None.
+
+    The extent comes from `locate_entry_for_splice` (so it raises
+    `BibSpliceRefused` on an entry whose end can't be trusted, rather than
+    returning a span that runs to the end of the file — the old private brace
+    scan here did, on master.bib's known unbalanced entry).
 
     If the entry has a leading `% bib.state = …` comment line, the third
     field is the start of that comment line (so callers can include it
     in a deletion span).
     """
-    pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
-    m = pattern.search(text)
-    if not m:
+    bom = 1 if text.startswith("\ufeff") else 0
+    span = locate_entry_for_splice(text[bom:], citekey)
+    if span is None:
         return None
-    entry_start = m.start()
-    brace_pos = text.index("{", m.start())
-    depth = 1
-    j = brace_pos + 1
-    while j < len(text) and depth > 0:
-        if text[j] == "{":
-            depth += 1
-        elif text[j] == "}":
-            depth -= 1
-        j += 1
-    entry_end = j
+    entry_start, entry_end = span[0] + bom, span[1] + bom
 
     at_line_start = text.rfind("\n", 0, entry_start)
     at_line_start = at_line_start + 1 if at_line_start != -1 else 0

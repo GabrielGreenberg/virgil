@@ -39,35 +39,128 @@ ENTRY_HEAD = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", re.MULTILINE)
 FIELD_LINE = re.compile(r",\s*([a-zA-Z][\w\-]*)\s*=\s*")
 
 
-def find_entry_span(text: str, key: str) -> tuple[int, int] | None:
-    """Return the `(start, end)` byte offsets of the `@type{key, …}` entry block
-    in `text`, or None. Brace-matched (string-aware), so a `{…}` group inside a
-    field value doesn't end the entry early. The single source of truth for
-    locating an entry; `find_entry_block` (verbatim text) and the surgical
-    editors (`set_fields` / `replace_entry`) all splice by these offsets."""
-    for m in ENTRY_HEAD.finditer(text):
-        if m.group(2) != key:
-            continue
-        start = m.start()
-        i = text.find("{", start)
-        if i < 0:
-            continue
-        depth = 0
-        in_string = False
-        for j in range(i, len(text)):
-            ch = text[j]
-            if ch == '"' and (j == 0 or text[j - 1] != "\\"):
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return start, j + 1
+# A real entry opener sits at column 0 (`@type{key,`). Line-anchoring is what
+# lets a malformed entry be CONTAINED (its extent can be checked against the
+# next opener) — the library's `_bib_parse._BIB_ENTRY_START_RE`, verbatim.
+_ENTRY_START = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+
+
+def _brace_end(text: str, brace: int) -> int | None:
+    """Index just past the `}` that closes the `{` at `brace`, or None if it
+    never closes. BRACE-ONLY — BibTeX's own rule: braces balance in every field
+    value, and a `"` inside `{…}` is a literal (`{Grundz"uge}`)."""
+    depth = 0
+    for j in range(brace, len(text)):
+        ch = text[j]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
     return None
+
+
+def find_entry_span(text: str, key: str) -> tuple[int, int] | None:
+    """Return the `(start, end)` offsets of the `@type{key, …}` entry block in
+    `text`, or None when the key has no entry. The single source of truth for
+    locating an entry; `find_entry_block` (verbatim text) and the surgical
+    editors (`set_fields` / `replace_entry`) all splice by these offsets.
+
+    The Python-editor port of the library's `_bib_parse.locate_entry_for_splice`
+    (the two silos can't share code across the bundle seam, so both answer
+    `src/lib/__tests__/fixtures/bib-entry-span-corpus.json` — task 614):
+
+    - openers are line-anchored; one that falls inside an earlier entry's
+      BALANCED span is a field value, not an entry;
+    - the extent is brace-matched with NO string tracking. The old scan here
+      toggled "in string" on every `"`, so a German `{Untersuchungen "uber}`
+      ran the span through the next entries and a library-sync swap deleted
+      them;
+    - LAST wins on a duplicated key (NFC, then NFD), matching the library;
+    - an entry whose extent can't be trusted DIES rather than returning a span
+      a splice would widen into a neighbour: its braces never balance, or its
+      balanced span covers another line-anchored opener."""
+    import unicodedata
+
+    bom = 1 if text.startswith("\ufeff") else 0
+    body = text[bom:]
+    entries: list[tuple[str, int, int | None]] = []  # (key, start, end|None)
+    consumed = 0
+    for m in _ENTRY_START.finditer(body):
+        if m.start() < consumed:
+            continue  # inside a prior balanced entry's value
+        end = _brace_end(body, body.index("{", m.start()))
+        if end is not None:
+            consumed = end
+        entries.append((m.group(2), m.start(), end))
+    target = None
+    for form in ("NFC", "NFD"):
+        k = unicodedata.normalize(form, key)
+        hits = [e for e in entries if e[0] == k]
+        if hits:
+            target = hits[-1]
+            break
+    if target is None:
+        return None
+    _, start, end = target
+    if end is None:
+        die(f"bib entry {key!r}: its braces are unbalanced, so where the entry "
+            f"ends is a guess — repair the .bib by hand")
+    strays = [m.group(2) for m in _ENTRY_START.finditer(body, start + 1, end)]
+    if strays:
+        die(f"bib entry {key!r}: its span also covers {', '.join(strays)} — the "
+            f"file has an unbalanced brace in a value; repair the .bib by hand")
+    return start + bom, end + bom
+
+
+def _quoted_end(text: str, quote: int) -> int:
+    """Index of the `"` that closes the quoted value opening at `quote`, or
+    len(text). The closer is the first `"` at brace depth 0 that isn't
+    backslash-escaped — `"Grundz{"u}ge"` is ONE value (the library's
+    `parse_fields` rule, Hazard 5(a))."""
+    j = quote + 1
+    depth = 0
+    while j < len(text):
+        c = text[j]
+        if c == "\\" and j + 1 < len(text):
+            j += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            if depth > 0:
+                depth -= 1
+        elif c == '"' and depth == 0:
+            return j
+        j += 1
+    return len(text)
+
+
+def assert_entries_preserved(old: str, new: str, replaced: str | None = None) -> None:
+    """Measure a `.bib` write before it lands: every entry the file held before
+    must still be there after — except ONE instance of `replaced`, the key a
+    `replace` swaps out (its successor may carry a different key). Dies naming
+    what vanished. The splicers are offset-exact by construction; this is the
+    check that doesn't trust the construction (the write-path law's rule:
+    measure an automatic write against what was read — task 614, where a
+    mis-scanned span silently deleted neighbouring references)."""
+    import unicodedata
+    from collections import Counter
+
+    def census(text: str) -> Counter:
+        return Counter(unicodedata.normalize("NFC", m.group(2))
+                       for m in _ENTRY_START.finditer(text.lstrip("\ufeff")))
+
+    before, after = census(old), census(new)
+    if replaced is not None:
+        replaced = unicodedata.normalize("NFC", replaced)
+        if before[replaced] > 0:
+            before[replaced] -= 1
+    lost = sorted(k for k, n in before.items() if after[k] < n)
+    if lost:
+        die(f"bibEdit refused: the edit would remove {', '.join(lost)} from the "
+            f".bib — nothing was written")
 
 
 def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
@@ -114,10 +207,7 @@ def _value_span(text: str, start: int) -> int:
                     return j + 1
         return len(text)
     if ch == '"':
-        j = i + 1
-        while j < len(text) and (text[j] != '"' or text[j - 1] == "\\"):
-            j += 1
-        return min(j + 1, len(text))
+        return min(_quoted_end(text, i) + 1, len(text))
     j = i
     while j < len(text) and text[j] not in ",\n":
         j += 1
@@ -228,9 +318,7 @@ def parse_fields(entry: str) -> dict:
             value = body[value_start + 1 : i - 1]
             pos = i
         elif ch == '"':
-            j = value_start + 1
-            while j < len(body) and (body[j] != '"' or body[j - 1] == "\\"):
-                j += 1
+            j = _quoted_end(body, value_start)
             value = body[value_start + 1 : j]
             pos = j + 1
         else:

@@ -1229,7 +1229,8 @@ def _bib_apply(doc: Path, be: dict) -> tuple[Path, str]:
     """Compute the new references.bib content for a `bibEdit`. Returns
     (bib_path, new_text). append / set-fields / replace are one parameterized
     capability; the serialization lives in bib_resolve (imported lazily so the
-    contract stays import-light)."""
+    contract stays import-light). Every mode is MEASURED before it returns: an
+    edit that would drop any other entry from the file dies unwritten."""
     import bib_resolve as BR
 
     mode = be.get("mode")
@@ -1241,7 +1242,9 @@ def _bib_apply(doc: Path, be: dict) -> tuple[Path, str]:
             die("bibEdit append requires op.bibEdit.entry")
         bib_path = _bib_path_for_write(doc)
         old = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
-        return bib_path, BR.append_entry(old, entry)
+        new = BR.append_entry(old, entry)
+        BR.assert_entries_preserved(old, new)
+        return bib_path, new
     bib_path = find_bib_file(doc)
     if bib_path is None:
         die(f"bibEdit {mode}: no references.bib found in the paper")
@@ -1253,12 +1256,16 @@ def _bib_apply(doc: Path, be: dict) -> tuple[Path, str]:
         fields = be.get("fields")
         if not isinstance(fields, dict) or not fields:
             die("bibEdit set-fields requires a non-empty op.bibEdit.fields object")
-        return bib_path, BR.set_fields(old, citekey, fields)
+        new = BR.set_fields(old, citekey, fields)
+        BR.assert_entries_preserved(old, new)
+        return bib_path, new
     if mode == "replace":
         entry = be.get("entry")
         if not entry:
             die("bibEdit replace requires op.bibEdit.entry")
-        return bib_path, BR.replace_entry(old, citekey, entry)
+        new = BR.replace_entry(old, citekey, entry)
+        BR.assert_entries_preserved(old, new, replaced=citekey)
+        return bib_path, new
     die(f"unknown bibEdit mode: {mode!r} (append | set-fields | replace)")
     return bib_path, old  # unreachable
 
