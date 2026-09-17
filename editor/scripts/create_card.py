@@ -608,12 +608,11 @@ def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
 # (docs/workspace/cards.md → lifecycle "none"), so the splice rides the
 # contract's virtual-requestId path and synthesizes no Task.
 #
-# Abstraction note (flagged, not fixed here — the contract is reused as-is): a
-# block-level TextObject wants to land *after* the anchor paragraph, but the
-# contract's texEdit splices inline. We place it via `after-selected` on the
-# paragraph's own `%!v:` marker (a placement landmark — not a hand-authored
-# marker). A dedicated `block-after-paragraph` texEdit mode, and a Task-less
-# tex-only subcommand, would be the cleaner long-term shape.
+# A block-level TextObject lands *after* the anchor paragraph through the
+# contract's dedicated `after-paragraph` texEdit mode (task 613 — it used to
+# borrow `after-selected` with the marker as the "selection", which broke once
+# that mode searched only live paragraph text). A Task-less tex-only
+# subcommand would still be the cleaner long-term shape.
 # ---------------------------------------------------------------------------
 
 
@@ -652,8 +651,7 @@ def _create_example(doc: Path, a: argparse.Namespace) -> dict:
         "texEdit": {
             "anchorUuid": anchor,
             "insert": insert,
-            "mode": "after-selected",
-            "selectedText": f"%!v:{anchor}",  # land the block AFTER the paragraph marker
+            "mode": "after-paragraph",  # land the block AFTER the paragraph marker
         },
         "summary": f"Inserted example {a.label or exid}",
         "clearSourceFlag": False,

@@ -38,18 +38,19 @@ the atom immediately after the paragraph's terminal token, before the trailing
 ```
 
 `apply_response.py`'s `texEdit` does this: `mode: "end-of-paragraph"` splices
-before the trailing marker (above); `mode: "after-selected"` splices right after a
-matched `selectedText` substring instead. The splice itself is kind-agnostic —
-`create_card.py` composes the `\vfid{<id>}\footnote{<body>}` insert string and the
-contract just places it.
+after the paragraph's last LIVE token, before the trailing marker (above);
+`mode: "after-selected"` splices right after a matched `selectedText` substring
+instead. The splice itself is kind-agnostic — `create_card.py` composes the
+`\vfid{<id>}\footnote{<body>}` insert string and the contract just places it.
 
-> **Caveat (task 347).** A `%` comment is now CONTENT that Virgil carries, and a
-> paragraph ending in one serializes with its anchor INSIDE the comment tail
-> (`…prose. % TODO cite %!v:3301`). `end-of-paragraph` finds the `%!v:` marker and
-> backs over whitespace only, so on such a paragraph it splices the atom **into the
-> comment**, where LaTeX will not typeset it. Prefer `after-selected` (anchored on a
-> real sentence-final substring) when the target paragraph carries a trailing
-> comment, and check the paragraph's last line before relying on the default mode.
+Both modes search only the **anchored paragraph** — from just past the previous
+`%!v:` marker (never before `\begin{document}`) up to this one — and only its
+live text (task 613, `_anchored_paragraph` / `_find_in_paragraph`). So the same
+words in the title, an earlier paragraph or a `%` comment are never the target,
+and a paragraph ending in a comment (`…prose. % TODO cite %!v:3301`, task 347)
+gets its atom after `prose.`, not inside the comment where LaTeX would not
+typeset it. If the selection is not found verbatim in the paragraph,
+`after-selected` falls back to end-of-paragraph.
 
 ## On-disk shape
 
