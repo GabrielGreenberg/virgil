@@ -42,6 +42,7 @@ vi.mock("@/lib/bug-report", async (importOriginal) => {
 // The folder state machine is the hook's own suite's business — here it's
 // held at "ready" (or overridden per test) so the window's panes drive.
 const refreshSpy = vi.fn(async () => {});
+const resetSpy = vi.fn(async () => {});
 const fakeHandle = {} as FileSystemDirectoryHandle;
 let folderState:
   | { kind: "ready"; handle: FileSystemDirectoryHandle }
@@ -52,7 +53,7 @@ vi.mock("@/hooks/useBugReportFolder", () => ({
     state: folderState,
     pick: vi.fn(),
     grant: vi.fn(),
-    reset: vi.fn(),
+    reset: resetSpy,
     refresh: refreshSpy,
     pickerError: null,
   }),
@@ -127,6 +128,7 @@ beforeEach(() => {
   ensurePermissionMock.mockClear();
   ensurePermissionMock.mockImplementation(async () => "granted");
   refreshSpy.mockClear();
+  resetSpy.mockClear();
   localStorage.clear();
   // jsdom has no object URLs; the tray only needs stable strings.
   let n = 0;
@@ -371,5 +373,115 @@ describe("cross-window draft (task 599)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the draft mirror's two guarantees (task 629)", () => {
+  const DRAFT_KEY = "virgil:bug-report-draft";
+  const MACHINE_KEY = "virgil:bug-report-machine";
+  const peerWrite = (key: string, value: string) => {
+    localStorage.setItem(key, value);
+    window.dispatchEvent(new StorageEvent("storage", { key }));
+  };
+
+  // THE DEFECT LEG for (a). The pre-629 mirror's effect cleanup was
+  // `clearTimeout(t)` — it CANCELLED the pending write — while the window's
+  // own `dismissIsFree` justification said "even a reload keeps it".
+  it("a teardown inside the debounce window writes the prose, not drops it", () => {
+    vi.useFakeTimers();
+    try {
+      const view = mount();
+      fireEvent.change(textarea(), { target: { value: "the last sentence I typed" } });
+      expect(localStorage.getItem(DRAFT_KEY)).toBeNull(); // still only in memory
+      act(() => view.unmount());
+      expect(localStorage.getItem(DRAFT_KEY)).toBe("the last sentence I typed");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reload edge (pagehide) inside the debounce window writes the prose", () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      fireEvent.change(textarea(), { target: { value: "typed, then reloaded" } });
+      act(() => void window.dispatchEvent(new Event("pagehide")));
+      expect(localStorage.getItem(DRAFT_KEY)).toBe("typed, then reloaded");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // THE DEFECT LEG for (b). The existing task-599 leg exercises only the case
+  // where the local buffer already EQUALS what is on disk, so the clobber is
+  // invisible to it. Here the local edit is NEWER than the mirror.
+  it("a peer's draft does not revert prose being composed here", () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem(DRAFT_KEY, "the older persisted draft");
+      mount();
+      fireEvent.change(textarea(), { target: { value: "a sentence I am still typing" } });
+      act(() => peerWrite(DRAFT_KEY, "the peer's draft"));
+      expect((textarea() as HTMLTextAreaElement).value).toBe("a sentence I am still typing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The cross-KEY coupling: one handler re-read BOTH keys, and the machine
+  // label is written per keystroke, undebounced. So a character typed into a
+  // second window's little "From:" field reverted this window's textarea.
+  it("a peer's machine-label keystroke cannot touch the report prose", () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem(DRAFT_KEY, "the older persisted draft");
+      mount();
+      fireEvent.change(textarea(), { target: { value: "half a paragraph, mid-thought" } });
+      act(() => peerWrite(MACHINE_KEY, "o"));
+      expect((textarea() as HTMLTextAreaElement).value).toBe("half a paragraph, mid-thought");
+      // …and the label itself still syncs, since that buffer IS clean.
+      expect((screen.getByPlaceholderText("machine") as HTMLInputElement).value).toBe("o");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the machine label writes through immediately (nothing to coalesce)", () => {
+    mount();
+    fireEvent.change(screen.getByPlaceholderText("machine"), {
+      target: { value: "office-imac" },
+    });
+    expect(localStorage.getItem(MACHINE_KEY)).toBe("office-imac");
+  });
+
+  it("a sent report clears the mirror NOW, not 400 ms from now", async () => {
+    // Seeded so the mirror genuinely HOLDS the report: no timer is advanced
+    // anywhere below, so the clear can only come from the explicit flush.
+    localStorage.setItem(DRAFT_KEY, "a report already mirrored");
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByText("Report written")).toBeTruthy());
+    expect(localStorage.getItem(DRAFT_KEY)).toBe("");
+  });
+
+  it("a never-mirrored draft leaves no empty key behind on send", async () => {
+    mount();
+    fireEvent.change(textarea(), { target: { value: "sent before the debounce" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByText("Report written")).toBeTruthy());
+    // Storage never held the draft, so there is nothing to clear — the door
+    // writes only when it is dirty.
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+});
+
+describe("the way back to the folder picker (task 629)", () => {
+  // `folder.reset` was a published export with no caller, and its absence was
+  // user-visible: the "Choose inbox folder…" pane is reachable only while IDB
+  // holds no handle, so a user who picked the wrong Dropbox folder was stuck.
+  it("the ready pane offers a way to change the inbox folder", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Change folder…" }));
+    expect(resetSpy).toHaveBeenCalledTimes(1);
   });
 });

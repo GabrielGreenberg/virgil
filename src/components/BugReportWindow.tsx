@@ -13,8 +13,11 @@
  * SystemDialog closes on Esc/outside-mousedown and a conditional mount
  * would destroy a half-written report on a stray click. All draft state
  * lives above the SystemDialog; hiding never resets it. The text draft
- * additionally mirrors to localStorage so a reload keeps the prose
- * (pasted images are session-only — stated limitation).
+ * additionally mirrors to localStorage through `useMirroredDraft` — the door
+ * that FLUSHES its debounce on teardown instead of cancelling it, so a reload
+ * inside the debounce window keeps the prose too, and that refuses a peer
+ * window's re-read while this buffer holds an unmirrored edit (task 629).
+ * Pasted images are session-only — stated limitation.
  */
 
 import {
@@ -35,10 +38,7 @@ import { extFromMime, writeBugReport } from "@/lib/bug-report";
 import { imagesFromClipboard } from "@/lib/transfer-files";
 import { useBugReportFolder } from "@/hooks/useBugReportFolder";
 import { ensureReadWritePermission } from "@library/lib/library-folder";
-import {
-  useStorageKeySync,
-  writeStorageIfChanged,
-} from "@/lib/cross-window-storage";
+import { useMirroredDraft } from "@/lib/cross-window-storage";
 
 const DRAFT_KEY = "virgil:bug-report-draft";
 const MACHINE_KEY = "virgil:bug-report-machine";
@@ -57,21 +57,6 @@ interface BugReportWindowProps {
   onClose: () => void;
   appVersion: string;
   currentDocName: string | null;
-}
-
-function readLocal(key: string): string {
-  try {
-    return localStorage.getItem(key) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-// Idempotent: the draft mirror persists from an EFFECT that watches state, so
-// a peer sync (below) re-renders into that effect — an unconditional write
-// would bounce back to the peer as a storage event (task 599).
-function writeLocal(key: string, value: string): void {
-  writeStorageIfChanged(key, value);
 }
 
 function describeError(err: unknown): string {
@@ -117,9 +102,17 @@ export default function BugReportWindow({
 }: BugReportWindowProps) {
   const folder = useBugReportFolder(open);
   const [phase, setPhase] = useState<"compose" | "sending" | "sent">("compose");
-  const [draftText, setDraftText] = useState(() => readLocal(DRAFT_KEY));
+  // Both mirrors ride the ONE door (task 629): it owns the debounce, FLUSHES
+  // it on unmount / tab-hidden / pagehide rather than cancelling it, and
+  // refuses a peer's re-read while this buffer holds an unmirrored edit. One
+  // instance per key, so a peer's keystroke in "From:" can no longer reach the
+  // report prose. The machine label writes through undebounced — a short field
+  // typed once per machine has nothing to coalesce.
+  const [draftText, setDraftText, flushDraft] = useMirroredDraft(DRAFT_KEY);
   const [images, setImages] = useState<PastedImage[]>([]);
-  const [machineLabel, setMachineLabel] = useState(() => readLocal(MACHINE_KEY));
+  const [machineLabel, setMachineLabel] = useMirroredDraft(MACHINE_KEY, {
+    debounceMs: 0,
+  });
   const [error, setError] = useState<string | null>(null);
   const [sentFolderName, setSentFolderName] = useState("");
   const sendingRef = useRef(false);
@@ -127,20 +120,6 @@ export default function BugReportWindow({
   // Mirror of `images` for the unmount-only object-URL cleanup.
   const imagesRef = useRef<PastedImage[]>([]);
   imagesRef.current = images;
-
-  // Cross-window: a second window's bug report must not overwrite the prose
-  // typed here from a stale mount-time snapshot (task 599). Re-read through
-  // the same `readLocal` path; the idempotent write keeps the echo silent.
-  useStorageKeySync([DRAFT_KEY, MACHINE_KEY], () => {
-    setDraftText(readLocal(DRAFT_KEY));
-    setMachineLabel(readLocal(MACHINE_KEY));
-  });
-
-  // Debounced draft mirror — a reload keeps the prose.
-  useEffect(() => {
-    const t = setTimeout(() => writeLocal(DRAFT_KEY, draftText), 400);
-    return () => clearTimeout(t);
-  }, [draftText]);
 
   // Revoke every thumbnail URL on unmount (removals revoke their own).
   useEffect(() => {
@@ -199,17 +178,12 @@ export default function BugReportWindow({
 
   const resetDraft = useCallback(() => {
     setDraftText("");
-    writeLocal(DRAFT_KEY, "");
+    flushDraft(); // a sent report clears the mirror NOW, not 400 ms from now
     setImages((prev) => {
       for (const img of prev) URL.revokeObjectURL(img.url);
       return [];
     });
-  }, []);
-
-  const handleMachineLabelChange = useCallback((value: string) => {
-    setMachineLabel(value);
-    writeLocal(MACHINE_KEY, value);
-  }, []);
+  }, [setDraftText, flushDraft]);
 
   const handleSend = useCallback(async () => {
     if (sendingRef.current) return;
@@ -301,7 +275,7 @@ export default function BugReportWindow({
             <span className="text-xs text-ink-muted whitespace-nowrap">This machine:</span>
             <Input
               value={machineLabel}
-              onChange={(e) => handleMachineLabelChange(e.target.value)}
+              onChange={(e) => setMachineLabel(e.target.value)}
               placeholder="e.g. office-imac"
               className="text-xs px-2 py-1.5 w-40"
             />
@@ -389,7 +363,7 @@ export default function BugReportWindow({
               <span className="whitespace-nowrap">From:</span>
               <Input
                 value={machineLabel}
-                onChange={(e) => handleMachineLabelChange(e.target.value)}
+                onChange={(e) => setMachineLabel(e.target.value)}
                 disabled={sending}
                 placeholder="machine"
                 density="dense"
@@ -398,6 +372,19 @@ export default function BugReportWindow({
               {currentDocName && (
                 <span className="truncate">about: {currentDocName}</span>
               )}
+              {/* The ONLY door back to the picker. `state.kind === "none"` —
+                  the pane that owns "Choose inbox folder…" — is reachable only
+                  while IDB holds no handle, so before this button a user who
+                  picked the wrong Dropbox folder had no way to change it and
+                  `folder.reset` was a published export with no caller. */}
+              <button
+                type="button"
+                onClick={() => void folder.reset()}
+                disabled={sending}
+                className="focus-ring rounded-[var(--radius-xs)] whitespace-nowrap underline decoration-dotted underline-offset-2 hover:text-ink-body disabled:opacity-50"
+              >
+                Change folder…
+              </button>
             </div>
             <SystemDialogButton
               variant="primary"

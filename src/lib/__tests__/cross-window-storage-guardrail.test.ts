@@ -395,3 +395,176 @@ describe("cross-window storage guardrail — store-shape census (task 599)", () 
     ]);
   });
 });
+
+// ── 4. The debounced-mirror census (task 629) ───────────────────────────────
+//
+// THE QUESTION sweep 3 cannot ask: a store may subscribe perfectly and still
+// lose the user's text, because SUBSCRIBING is only half the contract. A
+// `localStorage` mirror that DEFERS its write owes two more guarantees, and
+// `BugReportWindow` shipped with neither:
+//
+//   (a) the deferred write is FLUSHED on teardown, not cancelled — its effect
+//       cleanup was `clearTimeout(t)`, so a reload inside the 400 ms window
+//       dropped the last sentence typed;
+//   (b) the peer re-read is GATED on the buffer being clean — its handler
+//       re-read storage unconditionally, and was coupled across two keys, so a
+//       keystroke in a second window's unrelated field reverted the prose
+//       being composed here.
+//
+// Both now live in `useMirroredDraft`, which is the same answer the sidecar
+// family reached in tasks 392/559/569. So the population is every shipped file
+// that HOLDS A TIMER HANDLE and WRITES `localStorage` — a deferred, cancellable
+// write — and each member must either consume the door or carry a ledgered
+// argument that is CHECKED against its code, exactly like sweep 3's.
+
+/** A timer handle STORED somewhere — i.e. a deferred, cancellable write. */
+const HOLDS_TIMER_HANDLE = /=\s*(?:window\s*\.\s*)?setTimeout\s*\(/;
+const USES_MIRROR_DOOR = /\buseMirroredDraft\s*\(/;
+
+type MirrorLedgerEntry = { kind: "flushes-and-merges"; reason: string };
+
+const MIRROR_LEDGER: Record<string, MirrorLedgerEntry> = {
+  "src/lib/cross-window-storage.ts": {
+    kind: "flushes-and-merges",
+    reason:
+      "The door itself — where the flush edges and the one dirty predicate are stated.",
+  },
+  "library/lib/view-session-store.ts": {
+    kind: "flushes-and-merges",
+    reason:
+      "A module-global store, not hook state, so it cannot consume the React door — but it answers BOTH halves already and more strongly: its own pagehide + visibilitychange flush, and a three-way merge against `lastPersisted` on the peer path rather than a clean-gated skip.",
+  },
+};
+
+/** Why `entry` does NOT hold for `rel`, or null when it does. */
+export function mirrorLedgerViolation(
+  rel: string,
+  _entry: MirrorLedgerEntry,
+  read: (rel: string) => string,
+): string | null {
+  const code = read(rel);
+  // The door states its edges; a ledgered peer states its own. Either way the
+  // three markers must be present in the file that claims them.
+  const isDoor = USES_MIRROR_DOOR.test(code) || /export function useMirroredDraft/.test(code);
+  if (!/addEventListener\(\s*["']pagehide["']/.test(code))
+    return "no `pagehide` flush edge";
+  if (!isDoor && !/["']visibilitychange["']|onTabHidden\s*\(/.test(code))
+    return "no tab-hidden flush edge";
+  if (!isDoor && !/function\s+\w*merge\w*\s*\(/i.test(code))
+    return "peer path adopts rather than merges (no merge helper)";
+  return null;
+}
+
+export function mirrorCensus(
+  files: string[],
+  read: (rel: string) => string,
+  ledger: Record<string, MirrorLedgerEntry>,
+): { handRolled: string[]; staleLedger: string[]; badArguments: string[] } {
+  const handRolled: string[] = [];
+  const deferredWriters = new Set<string>();
+  for (const rel of files) {
+    const code = read(rel);
+    if (!HOLDS_TIMER_HANDLE.test(code) || !WRITES_LS.test(code)) continue;
+    if (USES_MIRROR_DOOR.test(code) && !(rel in ledger)) continue; // consumes the door
+    deferredWriters.add(rel);
+    if (!(rel in ledger)) handRolled.push(rel);
+  }
+  const staleLedger = Object.keys(ledger)
+    .filter((rel) => !deferredWriters.has(rel))
+    .sort();
+  const badArguments = Object.entries(ledger)
+    .filter(([rel]) => deferredWriters.has(rel))
+    .map(([rel, e]) => {
+      const why = mirrorLedgerViolation(rel, e, read);
+      return why ? `${rel} (${e.kind}): ${why}` : null;
+    })
+    .filter((x): x is string => x !== null);
+  return { handRolled: handRolled.sort(), staleLedger, badArguments };
+}
+
+describe("cross-window storage guardrail — debounced-mirror census (task 629)", () => {
+  it("no shipped file hand-rolls a debounced localStorage mirror", () => {
+    // A HAND-ROLLED entry: the file defers a `localStorage` write behind a
+    // timer it holds. It owes a flush on teardown and a dirty guard on the
+    // peer re-read — both of which `useMirroredDraft` already states. Consume
+    // the door; ledger it only if the checked argument truly holds.
+    const report = mirrorCensus(shippedSources(), codeOf, MIRROR_LEDGER);
+    expect(report).toEqual({ handRolled: [], staleLedger: [], badArguments: [] });
+  });
+
+  it("flags the exact pre-fix BugReportWindow shape, and clears the fixed one", () => {
+    const FIXTURES: Record<string, string> = {
+      // What shipped before task 629: cancel-on-teardown + a coupled,
+      // unguarded peer re-read.
+      "pre-629.tsx": `
+        const [draftText, setDraftText] = useState(() => readLocal(DRAFT_KEY));
+        useStorageKeySync([DRAFT_KEY, MACHINE_KEY], () => {
+          setDraftText(readLocal(DRAFT_KEY));
+        });
+        useEffect(() => {
+          const t = setTimeout(() => writeStorageIfChanged(DRAFT_KEY, draftText), 400);
+          return () => clearTimeout(t);
+        }, [draftText]);`,
+      // The same component after it consumed the door.
+      "post-629.tsx": `
+        const [draftText, setDraftText, flushDraft] = useMirroredDraft(DRAFT_KEY);`,
+      // A timer that has nothing to do with storage: not the population.
+      "unrelated-timer.tsx": `
+        const t = setTimeout(() => textareaRef.current?.focus(), 50);`,
+      // An UNDEFERRED write is outside the population — nothing to flush.
+      "eager-writer.ts": `
+        export function save(v) { localStorage.setItem("k", v); }`,
+      // A ledgered peer that really does flush and merge.
+      "self-flushing.ts": `
+        let writeTimer = null;
+        function scheduleWrite() { writeTimer = setTimeout(flushNow, 250); }
+        function flushNow() { writeStorageIfChanged(KEY, JSON.stringify(session)); }
+        function merge3(base, ours, theirs) { return ours; }
+        subscribeToStorageKey(KEY, () => { session = merge3(lastPersisted, session, peer); });
+        window.addEventListener("pagehide", () => { if (writeTimer) flushNow(); });
+        document.addEventListener("visibilitychange", () => { if (document.hidden) flushNow(); });`,
+      // …and one that claims the same and does neither.
+      "claims-too-much.ts": `
+        let writeTimer = null;
+        function scheduleWrite() { writeTimer = setTimeout(() => localStorage.setItem(KEY, blob), 250); }
+        subscribeToStorageKey(KEY, () => { session = readValidBlob(); });`,
+    };
+    const read = (rel: string) => {
+      if (!(rel in FIXTURES)) throw new Error(`no fixture ${rel}`);
+      return commentsStripped(FIXTURES[rel].replace(/^[ \t]+/gm, ""));
+    };
+
+    // Unledgered: every deferred writer is flagged — the pre-fix shape, the
+    // pretender, and the honest self-flusher alike. The population question is
+    // "does this file defer a storage write?", and the ARGUMENT for deferring
+    // it safely is the ledger's job, below. The three files that are not
+    // deferred writers at all never enter.
+    expect(mirrorCensus(Object.keys(FIXTURES), read, {}).handRolled).toEqual([
+      "claims-too-much.ts",
+      "pre-629.tsx",
+      "self-flushing.ts",
+    ]);
+
+    // Ledgered: the honest one clears, the pretender's argument is checked and
+    // rejected, and a ledger entry naming a file outside the population is stale.
+    const r = mirrorCensus(Object.keys(FIXTURES), read, {
+      "self-flushing.ts": { kind: "flushes-and-merges", reason: "true" },
+      "claims-too-much.ts": { kind: "flushes-and-merges", reason: "a lie" },
+      "post-629.tsx": { kind: "flushes-and-merges", reason: "stale — it uses the door" },
+    });
+    expect(r.handRolled).toEqual(["pre-629.tsx"]);
+    expect(r.staleLedger).toEqual(["post-629.tsx"]);
+    expect(r.badArguments).toEqual([
+      "claims-too-much.ts (flushes-and-merges): no `pagehide` flush edge",
+    ]);
+  });
+
+  it("the population is not vacuous", () => {
+    const deferred = shippedSources().filter(
+      (f) => HOLDS_TIMER_HANDLE.test(codeOf(f)) && WRITES_LS.test(codeOf(f)),
+    );
+    // The door + the one ledgered peer. A collapse here means the population
+    // query broke, not that the app stopped deferring storage writes.
+    expect(deferred.sort()).toEqual(Object.keys(MIRROR_LEDGER).sort());
+  });
+});

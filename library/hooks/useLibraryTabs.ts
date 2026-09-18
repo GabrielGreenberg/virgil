@@ -338,25 +338,33 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
   // from state-watching effects rather than from setters) is closed one level
   // down: `savePanelTabs`/`saveIdSet` route through `writeStorageIfChanged`,
   // so re-persisting an unchanged blob writes nothing and wakes nobody.
-  useStorageKeySync(
-    [
-      panelTabsStorageKey("left", scope),
-      panelTabsStorageKey("right", scope),
-      PROJECT_HIDDEN_KEY,
-      PROJECT_PINNED_KEY,
-      PAPER_PINNED_KEY,
-    ],
-    () => {
+  //
+  // PER-KEY (task 629): five independent keys, so a peer's pin toggle no
+  // longer re-parses and re-sets both tab rows in every other window — five
+  // setState calls where one was warranted. The `clear()` case, where all five
+  // go at once, is the door's.
+  useStorageKeySync({
+    [panelTabsStorageKey("left", scope)]: () => {
       if (!hydrated) return; // don't race the one-shot hydrate
       setLeftTabs(loadPanelTabs("left", { scope, fallback: seed?.left }));
-      setRightTabs(loadPanelTabs("right", { scope, fallback: seed?.right }));
-      if (projectsEnabled) {
-        setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
-        setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
-        setPaperPinnedIds(loadIdSet(PAPER_PINNED_KEY));
-      }
     },
-  );
+    [panelTabsStorageKey("right", scope)]: () => {
+      if (!hydrated) return;
+      setRightTabs(loadPanelTabs("right", { scope, fallback: seed?.right }));
+    },
+    [PROJECT_HIDDEN_KEY]: () => {
+      if (!hydrated || !projectsEnabled) return;
+      setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
+    },
+    [PROJECT_PINNED_KEY]: () => {
+      if (!hydrated || !projectsEnabled) return;
+      setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
+    },
+    [PAPER_PINNED_KEY]: () => {
+      if (!hydrated || !projectsEnabled) return;
+      setPaperPinnedIds(loadIdSet(PAPER_PINNED_KEY));
+    },
+  });
 
   useEffect(() => {
     if (!hydrated) return;

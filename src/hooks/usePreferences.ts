@@ -281,10 +281,14 @@ export function usePreferences() {
   // is merged onto the defaults exactly like a local one. Persistence lives in
   // the setters (not in a state-watching effect), so this sync can never echo
   // back out as a write — no two-window ping-pong.
-  useStorageKeySync([PREFS_KEY, TRANSFORMS_KEY, PRESETS_KEY], () => {
-    setPrefs(loadPrefs());
-    setTransforms(loadTransforms());
-    setPresets(loadPresets());
+  //
+  // PER-KEY (task 629): the three keys are independent, so a peer's preset
+  // save no longer re-parses prefs and transforms in every other window. The
+  // `clear()` case — where all three go at once — is the door's, not ours.
+  useStorageKeySync({
+    [PREFS_KEY]: () => setPrefs(loadPrefs()),
+    [TRANSFORMS_KEY]: () => setTransforms(loadTransforms()),
+    [PRESETS_KEY]: () => setPresets(loadPresets()),
   });
 
   const persistPrefs = useCallback((newPrefs: EditorPreferences) => {
