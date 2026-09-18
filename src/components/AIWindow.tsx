@@ -465,7 +465,15 @@ export interface AIWindowProps {
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   addEntryRequest: (description: string) => void;
   removeEntryRequest: (id: string) => void;
-  addComment: (opts: { text?: string }) => unknown;
+  // task 627: a PLAIN STRING, like its three siblings above
+  // (`addEntryRequest`, `requestBibReview`'s notes, `addPanelAiRequest`) — not
+  // an options bag with an optional field. The bag is what made the old
+  // host-side handler `(opts) => addComment(null, opts.text ? undefined :
+  // undefined)` type-check while dropping the user's question on the floor: an
+  // ignorable optional field and an `unknown` return leave nothing for the
+  // compiler to hold onto. A required positional `string` is the narrowest
+  // shape this prop can have, and it puts every composer kind on one contract.
+  addComment: (text: string) => unknown;
 
   // Refresh on open
   refreshAll: () => void;
@@ -556,7 +564,7 @@ export default function AIWindow({
     const text = composerText.trim();
     if (composerKind === "revision-general") {
       if (!text) return;
-      addComment({ text });
+      addComment(text);
     } else if (composerKind === "bib-entry") {
       if (!text) return;
       addEntryRequest(text);
