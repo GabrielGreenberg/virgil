@@ -11,10 +11,14 @@
  *   4. Free-floating comments / dialogue   (useRevisions.comments, no selectedText)
  *   5. Anchored text comments              (useRevisions.comments, selectedText set)
  *
- * Requests are bucketed into Open / Responded / Resolved. "Responded"
- * only really applies to revisions where Claude has added a turn but the
- * thread is not yet resolved — bib requests jump straight from Open to
- * Resolved when their backing JSON file flips status to "complete".
+ * Requests are bucketed into Open / Responded / Resolved by ONE derivation —
+ * the `FAMILY_STATE` table below, which both this list and the Virgil-bar dot
+ * read (task 628). "Responded" means Claude has answered but the thread is not
+ * finished: an L3 proposal is on the page and the USER owes accept/reject. It
+ * is reachable for every queue-backed family (panel requests, and revision
+ * comments through their bridged row); the two bib stores are strictly
+ * two-state, so those jump Open → Resolved when their backing JSON flips to
+ * "complete".
  *
  * Polling / freshness comes for free from the underlying hooks:
  *   - useBibReview polls every 10 s while any request is pending
@@ -42,8 +46,9 @@ import type {
   BibEntryRequest,
   BibReviewRequest,
   RevisionCard,
+  RevisionRequestCard,
 } from "@/lib/types";
-import { isRequestOpen } from "@/lib/ai-request-open";
+import { isRequestOpen, requestState } from "@/lib/ai-request-open";
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { linkedCardKindFrom } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -84,8 +89,17 @@ interface AIRequestVM {
   label: string;
   // Free-form preview text shown under the label.
   snippet: string;
-  // Number of dialogue turns, when applicable. 0 hides the badge.
-  turnCount: number;
+  /* NO `turnCount` (task 628). There was one, and every one of the four push
+   * sites set it to the literal `0` — under a badge that renders at `> 1`, so
+   * the badge was unreachable. It could not be otherwise: the per-card
+   * `turns[]` dialogue model this field was written for is RETIRED, and
+   * `migrateRequestRecord` (useRevisions) drops the legacy array on read. The
+   * replacement is sibling-card threading, which puts each reply in its OWN
+   * card — so a thread's depth is a fact about the panel's card list, not a
+   * number any single request record can report. Deleted rather than left as
+   * chrome nothing can fill; if a turn count is wanted later it must be
+   * DERIVED (count the cards sharing an anchor), and that is a Revisions-panel
+   * question, not a field. */
   // ISO timestamp used for sorting (newest first within each bucket).
   createdAt: string;
   // Optional: when the kind has a destructive cancel/clear action.
@@ -254,67 +268,208 @@ export interface BuildArgs {
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
 }
 
-// Exported for the inbox-open-derivation test (task 093): the panel-request
-// row's `status` must mirror the `isRequestOpen` SSOT, not a binary
-// `status === "complete"` check.
+/* ── The ONE state derivation (task 628) ────────────────────────────────
+ *
+ * Four families fold into this one list, and "what state is this request in?"
+ * is ONE question about all four. It used to be answered four times at four
+ * push sites, and the arm that answered with a LITERAL — `status: "open"` on
+ * the comment branch — was the arm that went wrong: the familiar shape of
+ * `a registry earns its name by being read`.
+ *
+ * So the answer is a TABLE, exhaustive over the family union. Adding a family
+ * is a compile error until it states how its state is derived, and a literal
+ * has nowhere to hide: `ai-window-request-state.test.ts` drives every arm with
+ * two records that differ in state and fails any arm that answers the same
+ * both times. `aiRequestDotStatus` reads the SAME table, so the dot and the
+ * buckets are two readers of ONE derivation instead of two hand-rolled copies
+ * that disagreed — and they did disagree, visibly: one `complete` comment
+ * request rendered as TWO rows, "Open" and "Resolved", side by side in the
+ * same window, and lit the inbox dot.
+ */
+type AIRequestFamily = "bib-review" | "bib-entry" | "revision-comment" | "panel";
+
+/** The record each family derives its state FROM. */
+interface FamilyRecord {
+  "bib-review": BibReviewRequest;
+  "bib-entry": BibEntryRequest;
+  /** A revision comment's own record carries NO state to read: `resolved` and
+   *  `turns[]` are LEGACY fields `migrateRequestRecord` DROPS on read (the
+   *  sibling-card threading model retired the per-card dialogue). Its state is
+   *  its BRIDGED `ai-requests.json` row's state — the row a skill actually
+   *  services — so the pair is the record. */
+  "revision-comment": { card: RevisionRequestCard; bridged: AiRequest | null };
+  panel: AiRequest;
+}
+
+const FAMILY_STATE: {
+  [F in AIRequestFamily]: (r: FamilyRecord[F]) => AIRequestStatus;
+} = {
+  // Both bib stores are strictly two-state (`"pending" | "complete"`), so
+  // `"responded"` is genuinely unreachable here. Stated, not smuggled.
+  "bib-review": (r) => (r.status === "complete" ? "resolved" : "open"),
+  "bib-entry": (r) => (r.status === "complete" ? "resolved" : "open"),
+  // `bridged: null` reaches this arm only for a legacy flag-on comment that
+  // predates the bridge — still unserved, hence "open". A *pristine* one never
+  // gets here at all: `commentInboxRequest` rules it out as a non-request.
+  "revision-comment": ({ bridged }) => (bridged ? requestState(bridged) : "open"),
+  panel: (r) => requestState(r),
+};
+
+/** How each family RETRACTS a request. The rule for *whether* it may be
+ *  retracted is not here and is not per-family — see `cancelFor`. */
+const FAMILY_CANCEL: {
+  [F in AIRequestFamily]: (r: FamilyRecord[F], args: BuildArgs) => () => void;
+} = {
+  "bib-review": (r, a) => () => a.cancelBibReview(r.bibKey, r.type),
+  "bib-entry": (r, a) => () => a.removeEntryRequest(r.id),
+  // A revision comment IS a card-linked request (it bridges under
+  // `(suggestion, revisions)`), so retracting it must clear BOTH faces — drop
+  // the queue row AND lower the card's `aiRequest` flag — exactly as task 222
+  // established for the panel leg below. The raw `deletePanelAiRequest` would
+  // leave the card's AI box lit over a request the drain never serves.
+  "revision-comment": ({ card }, a) => () =>
+    a.clearLinkedAiRequest("revision-comment", card.id),
+  panel: (r, a) => {
+    // Cancel routing (task 222). The owning `CardKind` resolves from the
+    // `(kind, linkPanel)` PAIR — `linkPanel` alone is ambiguous
+    // (note/highlight, cutter/revision). An UNLINKED composer row (or a corrupt
+    // link that can't resolve) keeps the raw delete.
+    const linkedKind = r.linkedTo
+      ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
+      : null;
+    const linkedCardId = r.linkedTo?.cardId;
+    return linkedKind && linkedCardId
+      ? () => a.clearLinkedAiRequest(linkedKind, linkedCardId)
+      : () => a.deletePanelAiRequest(r.id);
+  },
+};
+
+/** The ONE cancel-affordance rule, for every family: an **open** request can be
+ *  retracted. A `responded` one cannot — the user owns accept/reject on the
+ *  proposal now (task 093) — and a `resolved` one has nothing left to retract.
+ *  Each family used to restate this inline, and the comment branch restated it
+ *  as nothing at all: its row carried no cancel in any state. */
+function cancelFor<F extends AIRequestFamily>(
+  family: F,
+  status: AIRequestStatus,
+  record: FamilyRecord[F],
+  args: BuildArgs,
+): (() => void) | undefined {
+  return status === "open" ? FAMILY_CANCEL[family](record, args) : undefined;
+}
+
+/** The bridged `ai-requests.json` row for each revision-comment card, by card
+ *  id — the row whose state IS the comment's state (see `FamilyRecord`). */
+function bridgedRevisionCommentRows(
+  panelAiRequests: AiRequest[],
+): Map<string, AiRequest> {
+  const m = new Map<string, AiRequest>();
+  for (const r of panelAiRequests) {
+    if (!r.linkedTo) continue;
+    if (linkedCardKindFrom(r.kind, r.linkedTo.panel) !== "revision-comment") continue;
+    const prev = m.get(r.linkedTo.cardId);
+    // A card can legitimately carry TWO non-terminal linked rows — an
+    // answered-L3 plus a fresh re-toggled `pending` (task 043). The OPEN one is
+    // the live request, so it wins; otherwise first-seen stands.
+    if (!prev || (isRequestOpen(r) && !isRequestOpen(prev))) m.set(r.linkedTo.cardId, r);
+  }
+  return m;
+}
+
+/**
+ * Is this revision card an inbox request at all, and if so in what state?
+ * `null` ⇒ not a request — the gate the dot's comment branch never had, while
+ * all three of its siblings did.
+ *
+ * A revision comment is `aiRequest: true` BY DEFAULT and PRISTINE until its
+ * first edit (`useRevisions.addComment`): a pristine one is DISCARDED on
+ * click-away and was never bridged into `ai-requests.json`. So clicking "add
+ * comment" in the Revisions panel and clicking away lit the Virgil-bar AI dot
+ * for a card that was about to vanish and that no skill could ever see. An
+ * EMPTY BODY is exactly that state, and it is the honest predicate rather than a
+ * proxy for one: the bridge fires on first content, and an empty comment
+ * carries no question for a skill to serve.
+ */
+function commentInboxRequest(
+  card: RevisionCard,
+  bridged: Map<string, AiRequest>,
+): { record: FamilyRecord["revision-comment"]; status: AIRequestStatus } | null {
+  if (card.kind !== "comment") return null;
+  if (!card.aiRequest) return null;
+  if (!card.text.trim()) return null;
+  const record = { card, bridged: bridged.get(card.id) ?? null };
+  return { record, status: FAMILY_STATE["revision-comment"](record) };
+}
+
+// Exported for the inbox-state test (task 628) and the open-derivation test
+// (task 093): every family's `status` comes from the ONE `FAMILY_STATE` table
+// above, never from a literal at the push site, and the cancel affordance from
+// the ONE `cancelFor` rule.
 export function buildRequests(args: BuildArgs): AIRequestVM[] {
   const out: AIRequestVM[] = [];
 
   for (const r of args.bibReviewRequests) {
+    const status = FAMILY_STATE["bib-review"](r);
     out.push({
       id: `bibrev:${r.type}:${r.bibKey}`,
       kind: r.type === "fields" ? "bib-fields" : "bib-notes",
-      status: r.status === "complete" ? "resolved" : "open",
+      status,
       label: r.bibKey,
       snippet:
         r.requestNotes?.trim() ||
         (r.type === "fields"
           ? "Review the BibTeX fields for accuracy and completeness."
           : "Draft annotation notes for this entry."),
-      turnCount: 0,
       createdAt: r.requestedAt,
-      onCancel:
-        r.status === "pending"
-          ? () => args.cancelBibReview(r.bibKey, r.type)
-          : undefined,
+      onCancel: cancelFor("bib-review", status, r, args),
       hasUserText: !!r.requestNotes?.trim(),
     });
   }
 
   for (const r of args.bibEntryRequests) {
+    const status = FAMILY_STATE["bib-entry"](r);
     out.push({
       id: `bibent:${r.id}`,
       kind: "bib-entry",
-      status: r.status === "complete" ? "resolved" : "open",
+      status,
       label: r.resolvedKey || "—",
       snippet: r.description,
-      turnCount: 0,
       createdAt: r.createdAt,
       resolvedHint: r.resolvedKey ? `→ ${r.resolvedKey}` : undefined,
-      onCancel:
-        r.status === "pending"
-          ? () => args.removeEntryRequest(r.id)
-          : undefined,
+      onCancel: cancelFor("bib-entry", status, r, args),
       hasUserText: !!r.description.trim(),
     });
   }
 
+  // A revision comment's state lives in its BRIDGED queue row, so resolve the
+  // card→row map once for the whole list (O(n), no per-card scan).
+  const bridgedComments = bridgedRevisionCommentRows(args.panelAiRequests);
+  // The card ids the comment branch actually EMITS — the panel loop below skips
+  // their bridged rows so one request is not rendered twice (see there). Keyed
+  // on what was emitted, not on every comment: a comment the branch declines
+  // (an emptied-out body over a live bridged row) keeps its panel row, which is
+  // a real, servable request and should stay visible.
+  const emittedCommentCardIds = new Set<string>();
+
   for (const c of args.comments) {
-    if (c.kind !== "comment") continue;
-    if (!c.aiRequest) continue;
-    const isAnchored = !!c.selectedText;
+    const hit = commentInboxRequest(c, bridgedComments);
+    if (!hit) continue;
+    const { status } = hit;
+    const { card } = hit.record;
+    const isAnchored = !!card.selectedText;
+    emittedCommentCardIds.add(card.id);
     out.push({
-      id: `${isAnchored ? "txtrev" : "genrev"}:${c.id}`,
+      id: `${isAnchored ? "txtrev" : "genrev"}:${card.id}`,
       kind: isAnchored ? "revision-text" : "revision-general",
-      status: "open",
+      status,
       label: "Me",
       snippet: isAnchored
-        ? (c.selectedText ? `"${truncate(c.selectedText, 60)}" — ` : "") +
-          c.text
-        : c.text,
-      turnCount: 0,
-      createdAt: c.createdAt,
-      hasUserText: !!c.text.trim(),
+        ? (card.selectedText ? `"${truncate(card.selectedText, 60)}" — ` : "") +
+          card.text
+        : card.text,
+      createdAt: card.createdAt,
+      onCancel: cancelFor("revision-comment", status, hit.record, args),
+      hasUserText: !!card.text.trim(),
     });
   }
 
@@ -336,45 +491,40 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
 
   for (const r of args.panelAiRequests) {
     if (r.kind === "style-merge") continue;
-    // Openness is the `isRequestOpen` SSOT, NOT a binary `status === "complete"`
-    // check: an answered-L3 proposal (`in-progress`+`resultId`) is CLOSED — the
-    // user owns accept/reject now — so it must render "resolved" (and expose no
-    // cancel affordance), not "open" (task 093 GAP 1).
-    const open = isRequestOpen(r);
-    // Cancel routing (task 222): a CARD-LINKED row must clear BOTH faces — drop
-    // the queue row AND lower the owning card's `aiRequest` flag — via the
-    // card-flag-clearing path (the inverse of checking the card's AI box), NOT
-    // the raw `deletePanelAiRequest` filter that would orphan the flag lit (the
-    // queue→card twin of the delete-leg leak, task 219). The owning `CardKind`
-    // resolves from the `(kind, linkPanel)` PAIR — `linkPanel` alone is
-    // ambiguous (note/highlight, cutter/revision). An UNLINKED composer row (or
-    // a corrupt link that can't resolve) keeps the raw delete.
+    // DEDUP (task 628). A revision comment's bridged row is the SAME request the
+    // comment branch above just emitted — and the row it took its state FROM.
+    // Rendering it here too put one request in the window twice under two
+    // different answers ("Open" from the comment branch's literal, "Resolved"
+    // from this one), side by side. The comment branch wins: it knows the card,
+    // so it has the anchored snippet and the revision chip, where this branch
+    // could only say "suggestion".
+    if (
+      r.linkedTo &&
+      emittedCommentCardIds.has(r.linkedTo.cardId) &&
+      linkedCardKindFrom(r.kind, r.linkedTo.panel) === "revision-comment"
+    ) {
+      continue;
+    }
+    const status = FAMILY_STATE.panel(r);
+    // The chip follows the card, not the coarser display kind (task 178).
     const linkedKind = r.linkedTo
       ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
       : null;
-    const linkedCardId = r.linkedTo?.cardId;
     out.push({
       id: `panel:${r.id}`,
       kind: PANEL_KIND_MAP[r.kind],
-      // The chip follows the card, not the coarser display kind (task 178).
       themeKey: linkedKind ? CARD_REGISTRY[linkedKind].themeKey : undefined,
-      status: open ? "open" : "resolved",
+      status,
       label: r.kind,
       snippet: r.text || "(empty draft)",
-      turnCount: 0,
       createdAt: r.createdAt,
-      onCancel: open
-        ? linkedKind && linkedCardId
-          ? () => args.clearLinkedAiRequest(linkedKind, linkedCardId)
-          : () => args.deletePanelAiRequest(r.id)
-        : undefined,
+      onCancel: cancelFor("panel", status, r, args),
       hasUserText: !!r.text?.trim(),
     });
   }
 
   return out;
 }
-
 /* ── Notification dot helper (used by toolbar button) ─────────────── */
 
 /**
@@ -400,6 +550,23 @@ export type AiDotTone = Extract<StatusTone, "danger" | "ok" | "warn">;
  *   - "ok"     → AI has replied to one or more requests
  *   - "warn"   → user requests are pending an AI response
  *   - null     → nothing outstanding
+ *
+ * THE DOT AND THE BUCKETS ARE TWO READERS OF ONE DERIVATION (task 628). Every
+ * leg below asks `FAMILY_STATE` — the same table `buildRequests` asks — so the
+ * dot cannot say "something is waiting" about a row the window renders as
+ * finished, or stay dark over one it renders as open. It used to hand-roll a
+ * second copy per family, and three of the four copies drifted: the bib legs
+ * re-inlined `status === "pending"`, the comment leg had no gate at all (so a
+ * pristine, never-bridged comment — `aiRequest: true` by default and discarded
+ * on click-away — lit the dot), and the panel leg lacked the `style-merge`
+ * skip that `buildRequests` has, so a pending style merge lit a dot over a
+ * window with nothing in it.
+ *
+ * `"responded"` deliberately does NOT light the dot. Nothing is waiting on
+ * Claude there — the user owes the accept/reject — which is exactly task 093's
+ * ruling that an answered-L3 row must not light it. Whether that state should
+ * instead light `"ok"` ("AI has replied") is the product call the type's
+ * docstring above parks, and this is not the change that makes it.
  */
 export function aiRequestDotStatus(args: {
   bibReviewRequests: BibReviewRequest[];
@@ -408,29 +575,15 @@ export function aiRequestDotStatus(args: {
   panelAiRequests: AiRequest[];
 }): AiDotTone | null {
   const { bibReviewRequests, bibEntryRequests, comments, panelAiRequests } = args;
+  const bridgedComments = bridgedRevisionCommentRows(panelAiRequests);
 
-  let hasOpen = false;
-
-  for (const r of bibReviewRequests) {
-    if (r.status === "pending") { hasOpen = true; break; }
-  }
-  if (!hasOpen) {
-    for (const r of bibEntryRequests) {
-      if (r.status === "pending") { hasOpen = true; break; }
-    }
-  }
-  if (!hasOpen) {
-    for (const r of panelAiRequests) {
-      // Same SSOT as `buildRequests` above: an answered-L3 row is closed, so it
-      // must not light the inbox dot (task 093 GAP 1).
-      if (isRequestOpen(r)) { hasOpen = true; break; }
-    }
-  }
-  if (!hasOpen) {
-    for (const c of comments) {
-      if (c.kind === "comment" && c.aiRequest) { hasOpen = true; break; }
-    }
-  }
+  const hasOpen =
+    bibReviewRequests.some((r) => FAMILY_STATE["bib-review"](r) === "open") ||
+    bibEntryRequests.some((r) => FAMILY_STATE["bib-entry"](r) === "open") ||
+    panelAiRequests.some(
+      (r) => r.kind !== "style-merge" && FAMILY_STATE.panel(r) === "open",
+    ) ||
+    comments.some((c) => commentInboxRequest(c, bridgedComments)?.status === "open");
 
   if (hasOpen) return "warn";
   return null;
@@ -914,14 +1067,6 @@ function RequestCard({ req }: { req: AIRequestVM }) {
           {req.resolvedHint && (
             <span className="text-[10px] text-ink-muted truncate">
               {req.resolvedHint}
-            </span>
-          )}
-          {req.turnCount > 1 && (
-            <span
-              className="shrink-0 text-[9px] text-ink-subtle bg-surface-muted-strong px-1 rounded"
-              data-hint={`${req.turnCount} turns in this thread`}
-            >
-              {req.turnCount} turns
             </span>
           )}
           <span className="text-[10px] text-ink-muted ml-auto shrink-0">

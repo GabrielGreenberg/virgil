@@ -62,3 +62,35 @@ export function isRequestOpen(
   if (r.status === "in-progress" && r.resultId) return false;
   return true;
 }
+
+/**
+ * The UI-facing THREE-state view of the same two fields.
+ *
+ * `isRequestOpen` answers the DRAIN's binary question ("must a skill still
+ * serve this row?"). The inbox chrome asks a finer one, because it has three
+ * buckets and a user who owes an action in the middle state:
+ *
+ *   - `"open"`      — awaiting service.
+ *   - `"responded"` — Claude has answered but the thread is NOT finished: the
+ *     only state that is closed-to-the-drain yet non-terminal, i.e. an L3
+ *     proposal (`in-progress` + `resultId`). The user owns accept/reject.
+ *   - `"resolved"`  — terminal (`complete` / `failed`).
+ *
+ * It adds NO rule of its own — it is exactly the two predicates above,
+ * composed, so it cannot drift from the drain: `open` is `isRequestOpen`, and
+ * the closed side SPLITS on `isTerminalStatus`. Nothing here needs a Python
+ * twin, because the drain has no use for the split (both closed states are
+ * equally not-its-problem); the parity contract stays the two predicates.
+ *
+ * Before this existed, the AI window's panel branch wrote `open ? "open" :
+ * "resolved"` — folding the middle state onto the terminal one, which is why
+ * its "Responded" bucket, header count and palette row were all unreachable
+ * (task 628). A three-bucket chrome over a binary predicate is a bucket
+ * nothing can fill.
+ */
+export function requestState(
+  r: Pick<AiRequest, "status" | "resultId">,
+): "open" | "responded" | "resolved" {
+  if (isRequestOpen(r)) return "open";
+  return isTerminalStatus(r.status) ? "resolved" : "responded";
+}
