@@ -63,10 +63,10 @@
 //   • `Omni/omni-categories.ts::PANEL_TO_CATEGORY` — zero callers, tests
 //     included.
 //   • `card-lifecycle-registry.tsx::CardLifecycleProvider` + `::useCardLifecycle`
-//     — the context half of the lifecycle registry, unread because `EditorPane`
-//     builds the registry and calls `useCardLifecycleApi` directly. That is task
-//     635's subject (`assertLifecycleCoverage` is CI-tested against a synthetic
-//     registry, never the real one) and belongs with it, not here.
+//     — RETIRED by task 635, which deleted both (the context half of the
+//     lifecycle registry, unread because `EditorPane` builds the registry and
+//     calls `useCardLifecycleApi` directly) and put that module IN the population
+//     below, so its next unread door is refused rather than parked here.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -79,7 +79,21 @@ import {
   swallowedInCensusedFiles,
 } from "@/lib/__tests__/_export-census";
 
-const SPINE = censusFiles(["src/cards/predicates.ts", "src/panels/panel-registry.ts"], "src");
+const SPINE = censusFiles(
+  [
+    "src/cards/predicates.ts",
+    "src/panels/panel-registry.ts",
+    // Task 635. Admitted on the census's own terms — "widening is one line" —
+    // because this module had grown the same vestige: a React-context delivery
+    // half (`CardLifecycleProvider` + `useCardLifecycle`) published beside the
+    // direct `useCardLifecycleApi` door and called by nobody, with the module
+    // header still describing the context path in the present tense. Deleting
+    // the two exports is the easy half; being in the population is what stops
+    // the third door.
+    "src/panels/card-lifecycle-registry.tsx",
+  ],
+  "src",
+);
 
 /** Uncalled value exports deliberately kept, each with its reason.
  *
@@ -103,7 +117,7 @@ describe("the card spine's registry modules export nothing that nothing calls (t
   it("censuses real files", () => {
     // A census that silently scans nothing is compliance-shaped and worthless.
     const declared = declaredExports(SPINE);
-    expect(SPINE.length).toBe(2);
+    expect(SPINE.length).toBe(3);
     expect(declared.size).toBeGreaterThan(20);
   });
 

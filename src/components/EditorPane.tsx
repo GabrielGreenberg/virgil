@@ -3910,6 +3910,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // dispatcher's duplicate/delete walkers iterate the doc range and
   // call `cardLifecycle.get(kind)?.clone/.delete` without per-kind
   // branches. See `src/panels/card-lifecycle-registry.tsx`.
+  //
+  // THIS LITERAL IS READ BY CI. `lifecycle-coverage-assertion.test.ts` slices
+  // it out of this file by the name `cardLifecycleRegistry` and asserts every
+  // entry matches `CARD_REGISTRY[kind].lifecycle` in both directions — the
+  // build-time half of the dev-only `assertLifecycleCoverage` call below,
+  // whose subject (a component-local memo) CI cannot otherwise reach. Renaming
+  // the binding, or moving the ops out of a plain object literal, fails that
+  // leg with a message telling you to re-point it. Do that rather than
+  // loosening it.
   const cardLifecycleRegistry = useMemo<CardLifecycleRegistry>(
     () => ({
       footnote: {
