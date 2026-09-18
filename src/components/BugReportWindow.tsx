@@ -18,6 +18,13 @@
  * inside the debounce window keeps the prose too, and that refuses a peer
  * window's re-read while this buffer holds an unmirrored edit (task 629).
  * Pasted images are session-only — stated limitation.
+ *
+ * That always-mounted shape hands ONE lifetime to two groups, so the window
+ * says which is which: the DURABLE group (draft, images, machine label) is what
+ * `dismissIsFree` promises to keep, and the TRANSIENT group (`phase`, `error`,
+ * the last send's folder name, and the folder hook's `pickerError`) is cleared
+ * on the closing edge by `useClearedOnDismiss` — see the split beside the state
+ * below (task 631).
  */
 
 import {
@@ -29,6 +36,7 @@ import {
 } from "react";
 import SystemDialog, {
   SystemDialogButton,
+  useClearedOnDismiss,
   useSystemDialogDrag,
 } from "./system-dialog";
 import { Input, Textarea } from "./field-primitives";
@@ -116,6 +124,28 @@ export default function BugReportWindow({
   const [error, setError] = useState<string | null>(null);
   const [sentFolderName, setSentFolderName] = useState("");
   const sendingRef = useRef(false);
+
+  // The window's state is TWO groups with two lifetimes, and the always-mounted
+  // shape gives both the same one unless it is said out loud (task 631):
+  //
+  //   DURABLE   — `draftText`, `images`, `machineLabel`. What `dismissIsFree`
+  //               below promises to keep; the whole reason this window hides
+  //               instead of unmounting. Never reset here.
+  //   TRANSIENT — `phase`, `error`, `sentFolderName` (and, in the folder hook,
+  //               its `pickerError`). Each REPORTS A PAST MOMENT — a send that
+  //               finished, a write that failed, a picker that was busy — and a
+  //               dismissal ends that moment. Kept, they are replayed as though
+  //               current: before this, closing the window after a send and
+  //               reopening it showed the previous report's "Report written"
+  //               pane instead of a compose form.
+  //
+  // The door clears on the CLOSING edge, so this cannot race the focus effect
+  // just below (which is keyed on `phase`).
+  useClearedOnDismiss(open, () => {
+    setPhase("compose");
+    setError(null);
+    setSentFolderName("");
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Mirror of `images` for the unmount-only object-URL cleanup.
   const imagesRef = useRef<PastedImage[]>([]);
@@ -223,7 +253,10 @@ export default function BugReportWindow({
         setError(
           "Virgil lost permission to the inbox folder — grant access and press Send again.",
         );
-        void folder.refresh(); // flips to the needs-permission pane
+        // Flips the pane to `needs-permission` — which is exactly why the
+        // message above renders in the window's own notice row and not in the
+        // compose block this is about to unmount.
+        void folder.refresh();
       } else {
         setError(`Couldn't write the report: ${describeError(err)}`);
       }
@@ -235,6 +268,10 @@ export default function BugReportWindow({
   if (!open) return null;
 
   const state = folder.state;
+  // ONE notice line for the whole window. `error` first: it reports what the
+  // user's own last gesture did, and the picker's error is older by
+  // construction (it can only have been set by an earlier click).
+  const notice = error ?? folder.pickerError;
   const sending = phase === "sending";
   const canSend =
     state.kind === "ready" &&
@@ -247,17 +284,35 @@ export default function BugReportWindow({
       variant="draggable"
       onClose={onClose}
       ignoreOutsideSelector='[data-hint="Report a bug"]'
-      /* A dismissal is FREE, deliberately and by construction: EditorLayout
+      /* A dismissal is FREE, deliberately and by construction, and that is a
+         claim about BOTH groups above. The DURABLE one survives: EditorLayout
          mounts this window ALWAYS with an `open` prop precisely so "a
          conditional mount would destroy a half-written report on a stray
          click" — the comment at that mount is the prior art task 530
-         generalized. The text additionally mirrors to localStorage, so even a
-         reload keeps it. */
+         generalized — and the text additionally mirrors to localStorage
+         through a door that FLUSHES on teardown, so even a reload keeps it
+         (task 629). The TRANSIENT one is cleared, by `useClearedOnDismiss`
+         above (task 631); without that half, "free" quietly meant "and you get
+         the last send's confirmation back instead of a compose form". */
       dismissIsFree
       labelledBy="bug-report-title"
       frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
     >
       <BugReportHeader onClose={onClose} />
+
+      {/* The notice belongs to the WINDOW, not to a pane. Task 631: the
+          send-failure message used to render inside the compose block, and the
+          failure it most often reports — a lost folder permission — is answered
+          in the same breath by `folder.refresh()`, which flips the pane to
+          `needs-permission` and unmounted the instruction before anyone could
+          read it. The picker's own error joins it here for the matching reason:
+          it was written out twice, once per pane that happened to be showing,
+          and was unreadable from the third. */}
+      {notice && (
+        <p role="alert" className="px-5 pt-3 text-xs text-danger shrink-0">
+          {notice}
+        </p>
+      )}
 
       {state.kind === "loading" && (
         <div className="px-5 py-6 text-xs text-ink-muted">Checking inbox folder…</div>
@@ -285,9 +340,6 @@ export default function BugReportWindow({
               Choose inbox folder…
             </SystemDialogButton>
           </div>
-          {folder.pickerError && (
-            <p className="text-xs text-danger">{folder.pickerError}</p>
-          )}
         </div>
       )}
 
@@ -301,9 +353,6 @@ export default function BugReportWindow({
               Grant access
             </SystemDialogButton>
           </div>
-          {folder.pickerError && (
-            <p className="text-xs text-danger">{folder.pickerError}</p>
-          )}
         </div>
       )}
 
@@ -355,8 +404,6 @@ export default function BugReportWindow({
               )}
             </div>
           )}
-
-          {error && <p className="text-xs text-danger shrink-0">{error}</p>}
 
           <div className="flex items-center justify-between gap-3 pt-2 pb-1 border-t border-[var(--border)] shrink-0">
             <div className="flex items-center gap-2 min-w-0 text-[10px] text-ink-muted">

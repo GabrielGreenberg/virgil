@@ -40,24 +40,47 @@ vi.mock("@/lib/bug-report", async (importOriginal) => {
 });
 
 // The folder state machine is the hook's own suite's business — here it's
-// held at "ready" (or overridden per test) so the window's panes drive.
-const refreshSpy = vi.fn(async () => {});
+// held at "ready" (or seeded per test) so the window's panes drive.
+//
+// But the mock is STATEFUL, and that is load-bearing (task 631). The real
+// `refresh()` re-queries the handle and FLIPS the pane — that is precisely what
+// the send handler calls after a permission refusal. A no-op `refresh` spy left
+// the pane at "ready" forever, so the leg asserting the user can read "lost
+// permission…" passed over a build in which the message's own pane unmounted
+// the instant it was set. A mock that cannot reproduce the real door's effect
+// certifies whatever is in front of it.
+const refreshSpy = vi.fn();
 const resetSpy = vi.fn(async () => {});
 const fakeHandle = {} as FileSystemDirectoryHandle;
-let folderState:
+type FolderState =
   | { kind: "ready"; handle: FileSystemDirectoryHandle }
+  | { kind: "needs-permission"; handle: FileSystemDirectoryHandle }
   | { kind: "none" }
-  | { kind: "loading" } = { kind: "ready", handle: fakeHandle };
-vi.mock("@/hooks/useBugReportFolder", () => ({
-  useBugReportFolder: () => ({
-    state: folderState,
-    pick: vi.fn(),
-    grant: vi.fn(),
-    reset: resetSpy,
-    refresh: refreshSpy,
-    pickerError: null,
-  }),
-}));
+  | { kind: "loading" };
+/** Seed, read once per mount — the state the window opens on. */
+let folderState: FolderState = { kind: "ready", handle: fakeHandle };
+/** What a `refresh()` re-query resolves to. `null` = unchanged. */
+let refreshTo: FolderState | null = null;
+vi.mock("@/hooks/useBugReportFolder", async () => {
+  const { useCallback, useState } = await import("react");
+  return {
+    useBugReportFolder: () => {
+      const [state, setState] = useState<FolderState>(folderState);
+      const refresh = useCallback(async () => {
+        refreshSpy();
+        if (refreshTo) setState(refreshTo);
+      }, []);
+      return {
+        state,
+        pick: vi.fn(),
+        grant: vi.fn(),
+        reset: resetSpy,
+        refresh,
+        pickerError: null,
+      };
+    },
+  };
+});
 
 const ensurePermissionMock = vi.fn(async (): Promise<PermissionState> => "granted");
 vi.mock("@library/lib/library-folder", () => ({
@@ -121,6 +144,7 @@ function mount(over: Partial<React.ComponentProps<typeof BugReportWindow>> = {})
 
 beforeEach(() => {
   folderState = { kind: "ready", handle: fakeHandle };
+  refreshTo = null;
   writeBugReportMock.mockClear();
   writeBugReportMock.mockImplementation(async () => ({
     folderName: "2026-08-19-212205Z-imac-x7kq",
@@ -274,8 +298,12 @@ describe("send", () => {
     expect(writeBugReportMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a permission refusal keeps the draft, says so, and re-checks the folder", async () => {
+  // THE DEFECT LEG for the unreadable instruction (task 631). `refreshTo` makes
+  // the mock do what the real hook does — flip to `needs-permission` — which is
+  // what used to unmount the message in the same tick it was written.
+  it("a permission refusal keeps the draft, says so where it can be READ, and re-checks the folder", async () => {
     ensurePermissionMock.mockImplementation(async () => "denied");
+    refreshTo = { kind: "needs-permission", handle: fakeHandle };
     mount();
     const textarea = screen.getByPlaceholderText(/What went wrong/);
     fireEvent.change(textarea, { target: { value: "precious draft" } });
@@ -283,14 +311,36 @@ describe("send", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => {
-      expect(screen.getByText(/lost permission to the inbox folder/)).toBeTruthy();
+      expect(refreshSpy).toHaveBeenCalled();
     });
+    // The pane really did flip — the compose block is gone…
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Grant access" })).toBeTruthy();
+    });
+    expect(screen.queryByPlaceholderText(/What went wrong/)).toBeNull();
+    // …and the instruction survived the flip, because it is the WINDOW's
+    // notice rather than the compose pane's.
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /lost permission to the inbox folder/,
+    );
     expect(writeBugReportMock).not.toHaveBeenCalled();
-    // Draft intact — text AND images.
+  });
+
+  it("a permission refusal does not destroy the draft behind the flipped pane", async () => {
+    ensurePermissionMock.mockImplementation(async () => "denied");
+    // No flip this time: the same refusal, with the compose pane still up.
+    mount();
+    const textarea = screen.getByPlaceholderText(/What went wrong/);
+    fireEvent.change(textarea, { target: { value: "precious draft" } });
+    pasteImages(textarea, [pngFile("a.png")]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/lost permission/);
+    });
     expect((screen.getByPlaceholderText(/What went wrong/) as HTMLTextAreaElement).value)
       .toBe("precious draft");
     expect(screen.getByText("1 screenshot")).toBeTruthy();
-    expect(refreshSpy).toHaveBeenCalled();
   });
 
   it("a write failure surfaces the error and keeps the draft", async () => {
@@ -338,6 +388,75 @@ describe("always-mounted draft survival", () => {
       target: { value: "from the empty state" },
     });
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("a dismissal clears the TRANSIENT group (task 631)", () => {
+  const hide = (view: ReturnType<typeof mount>) =>
+    view.rerender(
+      <BugReportWindow open={false} onClose={() => {}} appVersion="0.1.94" currentDocName={null} />,
+    );
+  const show = (view: ReturnType<typeof mount>) =>
+    view.rerender(
+      <BugReportWindow open onClose={() => {}} appVersion="0.1.94" currentDocName={null} />,
+    );
+
+  // THE DEFECT LEG. `phase` had the draft's lifetime, so the window reopened
+  // on the PREVIOUS send's confirmation instead of a compose form.
+  it("reopening after a completed send shows the compose pane, not the last confirmation", async () => {
+    const view = mount();
+    fireEvent.change(textarea(), { target: { value: "the markers overlap" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByText("Report written")).toBeTruthy());
+
+    hide(view);
+    show(view);
+
+    expect(screen.queryByText("Report written")).toBeNull();
+    expect(screen.queryByText("2026-08-19-212205Z-imac-x7kq")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Write another" })).toBeNull();
+    expect((textarea() as HTMLTextAreaElement).value).toBe("");
+  });
+
+  // THE DEFECT LEG for the second half: a red string about a write that failed
+  // minutes ago, waiting on the next open.
+  it("a stale error does not survive a close/reopen — but the draft does", async () => {
+    writeBugReportMock.mockImplementation(async () => {
+      throw new Error("disk exploded");
+    });
+    const view = mount();
+    fireEvent.change(textarea(), { target: { value: "still here" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/disk exploded/),
+    );
+
+    hide(view);
+    show(view);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The DURABLE half is untouched — that is the window's whole design.
+    expect((textarea() as HTMLTextAreaElement).value).toBe("still here");
+  });
+
+  // The reset is on the CLOSING edge, so a window that has never been opened is
+  // not "reset" out from under a draft restored from the mirror at mount.
+  it("a mount that starts closed does not clear a mirrored draft", () => {
+    localStorage.setItem("virgil:bug-report-draft", "restored from the mirror");
+    const view = render(
+      <BugReportWindow open={false} onClose={() => {}} appVersion="0.1.94" currentDocName={null} />,
+    );
+    show(view);
+    expect((textarea() as HTMLTextAreaElement).value).toBe("restored from the mirror");
+  });
+
+  it("the sent pane's own 'Write another' still returns to compose without a dismissal", async () => {
+    mount();
+    fireEvent.change(textarea(), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByText("Report written")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Write another" }));
+    expect((textarea() as HTMLTextAreaElement).value).toBe("");
   });
 });
 
