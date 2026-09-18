@@ -80,6 +80,9 @@ export function subscribeToStorageKeys(
   return () => offs.forEach((off) => off());
 }
 
+/** Per-key handlers for {@link useStorageKeySync}'s map form. */
+export type StorageKeyHandlers = Readonly<Record<string, () => void>>;
+
 /**
  * React binding for the same contract, for the HOOK-STATE variant of the store
  * shape: state lives in `useState` rather than a module global, so the listener
@@ -100,9 +103,19 @@ export function subscribeToStorageKeys(
  * ping-pong that never settles. Persist from the SETTERS, or route the write
  * through {@link writeStorageIfChanged} so the echo write is a no-op and the
  * loop dies on its first bounce.
+ *
+ * ## Two forms
+ *
+ * - `useStorageKeySync(keys, onPeerChange)` — ONE handler for every key. Right
+ *   where the store re-reads its whole snapshot anyway.
+ * - `useStorageKeySync({ [KEY]: handler, … })` — PER-KEY handlers, so a write
+ *   to one key does not re-read the others. Use this whenever the keys are
+ *   independent: the one-handler form is cross-key COUPLED, and a coupled
+ *   handler over a key with an unsaved local buffer is how a keystroke in a
+ *   peer window's unrelated field reverted the prose being typed here (task
+ *   629). A store with a local buffer should not be reaching for either form
+ *   directly — see {@link useMirroredDraft}.
  */
-export type StorageKeyHandlers = Readonly<Record<string, () => void>>;
-
 export function useStorageKeySync(
   keys: string | readonly string[],
   onPeerChange: () => void,
