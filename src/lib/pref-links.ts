@@ -12,7 +12,10 @@
  */
 
 import type { EditorPreferences } from "@/hooks/usePreferences";
-import { DEFAULT_PREFS } from "@/hooks/usePreferences";
+// The VALUE comes from the leaf module, never from `usePreferences` itself:
+// that hook now consumes `propagate` below, and importing its re-export back
+// would close a runtime cycle (see `preferences-defaults.ts`).
+import { DEFAULT_PREFS } from "@/hooks/preferences-defaults";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 import { lightnessOf, withLightness } from "@/lib/color-math";
 
