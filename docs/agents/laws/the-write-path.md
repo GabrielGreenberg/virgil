@@ -1886,3 +1886,55 @@ Known limits, none of them papered over:
   a live style switch leaving a `virgil/.history/` slot behind. This class masks in
   the dev preview (see the FSA-masking note in the memory index), so the durable
   proof here is the unit contracts.
+
+---
+
+## The sidecar corollary (task 630)
+
+This law governs the `.tex` — the user's only copy. The paper's `virgil/`
+sidecars are not that, so a refused sidecar write is not a violation of it. It
+is the same DOCTRINE one layer over, and the inbox had neither half of it.
+
+> **A write the user did not ask for is measured before it lands; a shortfall
+> is a REFUSAL published to one channel that reaches the user.** For a sidecar
+> the measurement is trivial — did the write happen? — and the answer was being
+> thrown away.
+
+The inbox's writers are optimistic (React state first, the disk write
+fire-and-forget) and reconciled nothing when the write did not happen. Three
+things are now true of every `virgil/` sidecar writer:
+
+- **A door that cannot land answers WHICH outcome, not a sentinel.**
+  `mutateAiRequests` returns `AiRequestsWriteResult`
+  (`written | declined | stale | no-handle | read-only | failed`); one `null`
+  for five outcomes is why no caller could behave differently for them.
+  Telling a mutator that DECLINED from a host that REFUSED is observable only
+  from inside the mutator callback (`ran`) — not by re-asking
+  `libraryPaperSidecarWritable`, which would be a second speller of the
+  funnel's gate that answers only for the refusals it happens to know about.
+- **The refusal is PUBLISHED, to one channel**
+  ([sidecar-refusal.ts](../../../src/lib/sidecar-refusal.ts) — the
+  `preservation-notice.ts` shape, for the same "produced on a promise nobody
+  awaits, consumed by a surface with no call relationship to the producer"
+  reason), and presented by the interruption band as `sidecar-refused`. The
+  publisher supplies the NOUN and the reason; the sentences are composed once,
+  beside every other interruption's copy. It supplies no filename — the one
+  sidecar with a serialized authority keeps its name module-private, and the
+  user does not need it. A `console.error` is not a channel that reaches
+  anyone.
+- **Roll-back is a RECONCILE, not an inversion.** The refused mutation re-arms
+  the hook's existing deferred re-hydrate; mutators are not invertible and disk
+  is the only base true for all of them under concurrency. `stale` is the one
+  refusal that stays silent and un-rolled-back: the doc switched under the
+  write, the new owner is authoritative, and a banner about a paper the user
+  has already left is a lie rather than a warning.
+
+`sidecar-refused` sits LAST in the band's ladder — every state above it is
+about the `.tex` and asks the user to act on a document still at risk — and it
+is the band's ONE stated exception to "no dismiss", because its cause is a
+write that already failed rather than a condition still true.
+
+**Owed, not claimed:** the real-FSA eyeball (file a request on a read-only
+library paper and confirm it is refused visibly rather than appearing and
+vanishing). AI-request-inbox behaviour masks in the dev preview; the durable
+proof here is `src/hooks/__tests__/sidecar-refusal-reconcile.test.tsx`.
