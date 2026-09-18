@@ -184,6 +184,52 @@ export function useSystemDialogDrag(): {
   };
 }
 
+/**
+ * Clear an always-mounted dialog's TRANSIENT state on the CLOSING edge of
+ * `open` — the second half of the `dismissIsFree` declaration (task 631).
+ *
+ * An always-mounted window (the `open`-prop shape — `BugReportWindow`,
+ * `AIWindow` — which hides rather than unmounts, so a stray outside-mousedown
+ * cannot destroy a half-written report) hands ONE lifetime to two groups that
+ * want different ones:
+ *
+ *   - **DURABLE** — the draft the user typed, and anything that only makes
+ *     sense beside it. `dismissIsFree` is a promise to keep this group, and
+ *     keeping it is the entire reason the window is mounted while closed.
+ *   - **TRANSIENT** — what the window last DID: a terminal confirmation pane,
+ *     an error string, the name of the folder the previous send wrote. Each
+ *     reports a past moment, and a dismissal ends that moment. Kept, they are
+ *     replayed as if current — `BugReportWindow` reopened on the previous
+ *     send's "Report written" pane instead of a compose form, with a stale red
+ *     error beside it.
+ *
+ * So `dismissIsFree` asserts BOTH halves: the durable group survives AND the
+ * transient group is cleared. A dialog whose state is durable all the way
+ * through (`AIWindow`: its composer's text is the draft, and the composer's
+ * open/kind are how that draft stays reachable) simply never calls this.
+ *
+ * On the CLOSING edge rather than the opening one, deliberately: the reset
+ * then cannot race a dialog's own open-time work (`BugReportWindow` focuses
+ * its textarea on a 50 ms timer keyed on `phase`), and a reopen paints the
+ * cleared state on its FIRST frame rather than one commit later.
+ */
+export function useClearedOnDismiss(open: boolean, clear: () => void): void {
+  // The latest closure, read only at the edge — so a caller may pass an inline
+  // arrow (every one of these resets closes over setters) without the edge
+  // effect re-running, and without the edge firing on a mere re-render. Kept
+  // fresh in an effect of its own, declared FIRST so it has already committed
+  // by the time the edge below reads it.
+  const clearRef = useRef(clear);
+  useEffect(() => {
+    clearRef.current = clear;
+  });
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) clearRef.current();
+    wasOpen.current = open;
+  }, [open]);
+}
+
 /* ── SystemDialog ─────────────────────────────────────────────────── */
 
 export type SystemDialogVariant = "modal" | "draggable";

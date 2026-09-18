@@ -6,10 +6,13 @@
  * `refresh()` is gated on the window's `open` prop: BugReportWindow is
  * always-mounted (the PrintDialog pattern, so Esc/outside-click hide
  * rather than destroy a half-written report), and an unopened window must
- * cost zero IDB reads.
+ * cost zero IDB reads. `open` is read at BOTH edges — the opening one
+ * refreshes the durable folder state, the closing one clears the transient
+ * `pickerError` (task 631).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useClearedOnDismiss } from "@/components/system-dialog";
 import {
   getBugReportHandle,
   pickBugReportFolder,
@@ -55,6 +58,15 @@ export function useBugReportFolder(open: boolean) {
   useEffect(() => {
     if (open) void refresh();
   }, [open, refresh]);
+
+  // The two edges of `open`, and they are not the same question. OPENING
+  // re-reads the durable fact (is the handle still there, is it still
+  // permitted). CLOSING clears the transient one: `pickerError` reports what a
+  // past click did — a picker still open behind the window, a refused prompt —
+  // and a dismissal ends that moment, so it must not be waiting on the next
+  // open as if it were current. Same split, same door, as the window's own
+  // `phase`/`error` group (task 631).
+  useClearedOnDismiss(open, () => setPickerError(null));
 
   const pick = useCallback(async () => {
     if (pickerInFlightRef.current) {

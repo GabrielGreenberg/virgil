@@ -158,6 +158,13 @@ describe("every draft-holding dialog declares what a dismissal costs", () => {
     expect(hostsTextEntry(`<Textarea value={v} />`)).toBe(true);
   });
 
+  it("CANARY: an always-mounted file is recognized by its own hide door", () => {
+    expect(hidesWithoutUnmounting(`  if (!open) return null;`)).toBe(true);
+    // A conditional mount answers the question elsewhere — its state dies with
+    // it, so there is no second group to clear.
+    expect(hidesWithoutUnmounting(`  return open ? <Dialog /> : null;`)).toBe(false);
+  });
+
   it("CANARY: a declaration mentioned only in PROSE does not count", () => {
     const commentOnly = `
       // dismissIsFree would be the declaration here.
@@ -172,5 +179,78 @@ describe("every draft-holding dialog declares what a dismissal costs", () => {
     const [hit] = elementsNamed(commentsStripped(commentOnly), "SystemDialog");
     expect(declaresGuard(hit.tag)).toBe(false);
     expect(declaresFree(hit.tag)).toBe(false);
+  });
+});
+
+/* ── Task 631: the ALWAYS-MOUNTED members answer the SECOND question ──── */
+
+/**
+ * Does this file hide its dialog WITHOUT unmounting it — the `open`-prop shape,
+ * an early `return null` above the frame?
+ *
+ * That shape is what makes `dismissIsFree` a claim with two halves. A
+ * conditionally-mounted dialog's state dies with it, so "free" can only mean
+ * the draft is held somewhere else; an always-mounted one keeps EVERYTHING,
+ * including the things that report a past moment — a terminal confirmation
+ * pane, an error string — which a dismissal must end.
+ */
+function hidesWithoutUnmounting(src: string): boolean {
+  return /if\s*\(\s*!open\s*\)\s*return null\s*;/.test(src);
+}
+
+function alwaysMountedDrafts(): string[] {
+  const rels = new Set(draftHoldingDialogs().map((d) => d.rel));
+  return [...rels]
+    .filter((rel) =>
+      hidesWithoutUnmounting(
+        commentsStripped(readFileSync(join(ROOT, rel), "utf8")),
+      ),
+    )
+    .sort();
+}
+
+describe("an always-mounted dialog declares BOTH halves of a free dismissal", () => {
+  /**
+   * The population is PINNED, and that is the point of the leg rather than a
+   * convenience. A third always-mounted window is a decision — which of its
+   * state is the draft `dismissIsFree` promises to keep, and which of it merely
+   * reports what the window last DID — and the only way a census can force that
+   * decision is to fail when the set changes.
+   */
+  it("exactly two dialogs hide without unmounting", () => {
+    expect(alwaysMountedDrafts()).toEqual([
+      "components/AIWindow.tsx",
+      "components/BugReportWindow.tsx",
+    ]);
+  });
+
+  it("the shell publishes the door that clears the transient half", () => {
+    const shell = readFileSync(join(ROOT, "components/system-dialog.tsx"), "utf8");
+    expect(shell).toMatch(/export function useClearedOnDismiss\(/);
+  });
+
+  /**
+   * `BugReportWindow` is the member with a transient group: a `phase` that ends
+   * on a terminal "Report written" pane, an `error`, the last send's folder
+   * name. Before task 631 it cleared none of them, so a close-and-reopen
+   * replayed the previous send's confirmation instead of a compose form.
+   *
+   * `AIWindow` is deliberately absent: its composer's text IS the draft, and
+   * `composerOpen`/`composerKind` are how that draft stays reachable on reopen
+   * — clearing them would hide typed work behind a collapsed composer. A member
+   * with nothing transient declares that by never calling the door, which is
+   * why this leg names the file rather than quantifying over the population.
+   */
+  it("the member with a terminal pane routes it through that ONE door", () => {
+    const src = commentsStripped(
+      readFileSync(join(ROOT, "components/BugReportWindow.tsx"), "utf8"),
+    );
+    expect(src).toMatch(/useClearedOnDismiss\(\s*open\s*,/);
+    // And the folder hook it composes clears its own transient error the same
+    // way, rather than hand-rolling a second `!open` effect beside it.
+    const hook = commentsStripped(
+      readFileSync(join(ROOT, "hooks/useBugReportFolder.ts"), "utf8"),
+    );
+    expect(hook).toMatch(/useClearedOnDismiss\(\s*open\s*,/);
   });
 });
