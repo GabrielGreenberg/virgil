@@ -6,7 +6,16 @@
   Runs tools/sync-defaults.sh on a fixed Tue/Fri 11:00 schedule. The
   wrapper reads the latest tools/personal-snapshot.json (kept fresh by
   the dev preview), folds the changes into the *.defaults.json sidecars
-  + globals.css managed block, and commits + pushes if the diff is real.
+  + globals.css managed block, and commits the result if the diff is
+  real. It NEVER pushes (pushing = deploying, which belongs to the
+  release, /cleanup-virgil). Since task 623 the promotion happens in a
+  throwaway detached worktree of main, and the commit carries an
+  explicit pathspec of exactly the files the promoter wrote — this
+  checkout is live and shared, so foreign WIP, staged files and
+  whatever branch is checked out can never ride along. main is advanced
+  only by fast-forward, and only when this checkout is on a clean main;
+  otherwise the commit is parked on a prefs-promote-<date> branch and
+  the log says so.
 
   StartCalendarInterval (rather than StartInterval) so firing is
   deterministic: launchd waits until the next configured wall-clock

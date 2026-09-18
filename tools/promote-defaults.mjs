@@ -12,14 +12,48 @@
  * with the JS defaults.
  *
  * Idempotent. Safe to run any time. No deps.
+ *
+ * Flags (task 623 — the unattended wrapper promotes in an ISOLATED worktree
+ * and commits exactly what this script reports, never the live tree's diff):
+ *   --root <dir>         repo root to read the registry from and write into
+ *                        (default: this script's own repo)
+ *   --snapshot <file>    snapshot to read (default: <this script's repo>/
+ *                        tools/personal-snapshot.json — the snapshot is
+ *                        gitignored, so a fresh worktree has none of its own)
+ *   --dry-run            compute and report, write NOTHING; exit 1 on drift
+ *   --changed-out <file> write the changed files (root-relative, one per
+ *                        line) to <file> — the wrapper's commit pathspec
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SNAPSHOT_PATH = path.join(REPO_ROOT, "tools", "personal-snapshot.json");
+const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function parseArgs(argv) {
+  const opts = { root: SELF_ROOT, snapshot: null, dryRun: false, changedOut: null };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const val = () => {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${a} needs a value`);
+      return v;
+    };
+    if (a === "--root") opts.root = path.resolve(val());
+    else if (a === "--snapshot") opts.snapshot = path.resolve(val());
+    else if (a === "--dry-run") opts.dryRun = true;
+    else if (a === "--changed-out") opts.changedOut = path.resolve(val());
+    else throw new Error(`Unknown argument: ${a}`);
+  }
+  opts.snapshot ??= path.join(SELF_ROOT, "tools", "personal-snapshot.json");
+  return opts;
+}
+
+const OPTS = parseArgs(process.argv.slice(2));
+const REPO_ROOT = OPTS.root;
+const DRY_RUN = OPTS.dryRun;
+const SNAPSHOT_PATH = OPTS.snapshot;
 const REGISTRY_PATH = path.join(REPO_ROOT, "src", "lib", "dev-prefs-registry.json");
 const GLOBALS_CSS = path.join(REPO_ROOT, "src", "app", "globals.css");
 
@@ -36,7 +70,7 @@ function writeJson(file, value) {
   const next = JSON.stringify(value, null, 2) + "\n";
   const prev = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
   if (next === prev) return false;
-  fs.writeFileSync(file, next, "utf-8");
+  if (!DRY_RUN) fs.writeFileSync(file, next, "utf-8");
   return true;
 }
 
@@ -60,7 +94,7 @@ function applyWhitelist(target, source, whitelist) {
  * defaults on the next cron tick, which `check-prefs-coverage` cannot see (it
  * asserts interface ⊆ defaults, so an extra key in the JSON is not a failure)
  * and `sync-defaults.sh` cannot see (its gate is `JSON.parse`, deliberately no
- * tsc and no tests) — and it commits and pushes to main unattended.
+ * tsc and no tests) — and it commits to main unattended.
  *
  * That is not hypothetical: `aiMarkerText`/`aiMarkerBg`/`aiMarkerBorder` were
  * retired from `EditorPreferences` and from the defaults JSON in `1c0c52be`,
@@ -147,12 +181,15 @@ function extractSource(rawValue, subPath) {
 function main() {
   if (!fs.existsSync(SNAPSHOT_PATH)) {
     console.error(`No snapshot at ${SNAPSHOT_PATH} — nothing to promote.`);
+    if (OPTS.changedOut) fs.writeFileSync(OPTS.changedOut, "", "utf-8");
     process.exit(0);
   }
   const snapshot = readJson(SNAPSHOT_PATH);
   const registry = readJson(REGISTRY_PATH);
 
-  let changedFiles = 0;
+  /** Root-relative paths this run changed (or, dry, WOULD change). */
+  const changed = [];
+  const verb = DRY_RUN ? "Would update" : "Updated";
   /** Final shape of each defaults file after promotion, keyed by
    *  the registry's defaultsFile path. Used downstream to regenerate
    *  the CSS managed block from authoritative post-merge values. */
@@ -179,8 +216,8 @@ function main() {
     }
     finalByPath[entry.defaultsFile] = next;
     if (writeJson(target, next)) {
-      console.log("Updated", entry.defaultsFile);
-      changedFiles++;
+      if (!changed.includes(entry.defaultsFile)) changed.push(entry.defaultsFile);
+      console.log(verb, entry.defaultsFile);
     }
   }
 
@@ -190,11 +227,17 @@ function main() {
   const editorNext = finalByPath[EDITOR_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, EDITOR_PREFS_JSON_REL));
   const viewNext = finalByPath[VIEW_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, VIEW_PREFS_JSON_REL));
   if (rewriteCssBlock(registry.cssVarMap, { editor: editorNext, view: viewNext })) {
-    console.log("Updated", path.relative(REPO_ROOT, GLOBALS_CSS));
-    changedFiles++;
+    const rel = path.relative(REPO_ROOT, GLOBALS_CSS).split(path.sep).join("/");
+    changed.push(rel);
+    console.log(verb, rel);
   }
 
-  console.log(changedFiles === 0 ? "No changes." : `${changedFiles} file(s) updated.`);
+  if (OPTS.changedOut) {
+    fs.writeFileSync(OPTS.changedOut, changed.map((f) => f + "\n").join(""), "utf-8");
+  }
+  if (changed.length === 0) console.log("No changes.");
+  else console.log(`${changed.length} file(s) ${DRY_RUN ? "would be " : ""}updated.`);
+  if (DRY_RUN && changed.length > 0) process.exit(1);
 }
 
 function rewriteCssBlock(cssVarMap, values) {
@@ -234,7 +277,7 @@ function rewriteCssBlock(cssVarMap, values) {
   const block = "\n" + lines.join("\n") + "\n" + indent + END;
   const next = before + block + after;
   if (next === cur) return false;
-  fs.writeFileSync(GLOBALS_CSS, next, "utf-8");
+  if (!DRY_RUN) fs.writeFileSync(GLOBALS_CSS, next, "utf-8");
   return true;
 }
 
