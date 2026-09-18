@@ -49,6 +49,7 @@ import { BorrowedMainText } from "./BorrowedMainText";
 import { StaticBorrowedText } from "./StaticBorrowedText";
 import { useCardTier } from "@/cards/presence";
 import { useEditorChrome } from "./editor-layout/chrome-context";
+import { isCardMutationAllowed } from "./editor-layout/chrome-config";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { AnchoredMenu } from "./menu/AnchoredMenu";
 import { MenuActionRow } from "./menu/MenuActionRow";
@@ -153,6 +154,38 @@ export function useCardDeleteKey(
 }
 
 /**
+ * **May a DELETE of a card of this kind land on disk under the active host?**
+ * (Task 637.) One read of the host permit in `host-writability.ts` — the same
+ * derivation the storage funnels themselves ask — in the vocabulary a card
+ * surface has in hand.
+ *
+ * It is called from THREE places because a card's delete is reachable from
+ * three paths and no one of them can see the others: {@link PanelCard} renders
+ * the docked trash button (every card kind, `EditableCard`-built or
+ * `PanelCard`-direct); `EditableCard` renders the header menu item and arms the
+ * shell's Delete/Backspace key; and {@link usePanelCardTryDelete} is the
+ * keyboard + trash executor for the `PanelCard`-direct kinds, which have no
+ * `EditableCard` above them at all. Gating only one of the three is how this
+ * bug existed: `cardEditable` was threaded into the inner rich-text field and
+ * nothing else, so a Library Reader footnote or citation card showed a live
+ * trash whose press moved React state, wrote nothing, said nothing, and had both
+ * the footnote and its card back on the next reload.
+ *
+ * Hiding rather than reporting is the deliberate answer, and the one
+ * `EditorPane` already gives for the archive / restore-to-document verbs under
+ * the same chrome: the permit is a STANDING property of the host, known before
+ * the gesture, so there is nothing to find out by letting the user press it.
+ *
+ * `undefined` kind (a non-card `PanelCard` consumer) and a host with no
+ * `editableCardKinds` whitelist (`FULL_CHROME` — the whole main app) both
+ * answer `true`, so nothing outside the Library Reader changes.
+ */
+export function useCardDeleteAllowed(kind: CardKind | undefined): boolean {
+  const chrome = useEditorChrome();
+  return kind === undefined || isCardMutationAllowed(chrome, kind);
+}
+
+/**
  * The ONE content-aware delete flow for cards that render DIRECTLY via
  * {@link PanelCard} (not through {@link EditableCard}) and so bypass
  * EditableCard's built-in `cardHasContent` confirm. Three kinds do this —
@@ -184,8 +217,14 @@ export function usePanelCardTryDelete(
   const { confirm, dialog } = useConfirmDialog();
   const message = opts?.message ?? "This item has text. Delete it?";
   const confirmLabel = opts?.confirmLabel ?? "Delete";
+  // The host permit (task 637). `PanelCard` already withholds the trash button
+  // under a host that refuses this kind's sidecar, but this hook is ALSO the
+  // executor `useCardDeleteKey` arms for these kinds — a keyboard path with no
+  // button to hide — so the question is asked here too rather than trusted to
+  // the render above.
+  const deleteAllowed = useCardDeleteAllowed(kind);
   const tryDelete = useCallback(() => {
-    if (!onDelete) return;
+    if (!onDelete || !deleteAllowed) return;
     void (async () => {
       if (cardHasContent(kind, card)) {
         const ok = await confirm({ message, confirmLabel, tone: "danger" });
@@ -193,7 +232,7 @@ export function usePanelCardTryDelete(
       }
       onDelete(id);
     })();
-  }, [kind, card, id, onDelete, confirm, message, confirmLabel]);
+  }, [kind, card, id, onDelete, deleteAllowed, confirm, message, confirmLabel]);
   return { tryDelete, dialog };
 }
 
@@ -1430,6 +1469,27 @@ export function EditableCard({
     (!cardKind ||
     !chrome.editableCardKinds ||
     chrome.editableCardKinds.includes(cardKind));
+  // Task 637 — the DESTRUCTIVE half of the same host permit, and a DIFFERENT
+  // question from `cardEditable` above. That one asks whether this kind's
+  // rich-text editor mounts live; this one asks whether a mutation of this kind
+  // can reach DISK, which is `isCardMutationAllowed` → the one derivation in
+  // `host-writability.ts` that the storage funnel itself reads (task 556). Read
+  // here, at the shell, so EVERY card kind inherits it rather than each card
+  // component remembering: before this, `cardEditable` was threaded into the
+  // inner `RichTextField` only, and a Library Reader footnote or citation card
+  // rendered a live trash whose press wrote nothing, said nothing, and was undone
+  // by the next reload.
+  //
+  // Note it is NOT `cardEditable`: a Reader `highlight` is not editable (no body)
+  // yet shares the writable `notes.json`, so its delete genuinely lands and stays
+  // offered. `forceReadOnly` is deliberately absent too — it marks a card whose
+  // BODY is a borrowed record the user must not retype (the pending-changes
+  // "Applied" original), not one the host refuses to persist.
+  const deleteAllowed = useCardDeleteAllowed(kind);
+  // Everything downstream reads THIS, never the raw prop — the trash, the menu
+  // item and the shell delete key, so the affordance and the keyboard path can
+  // never disagree about whether the gesture is on offer.
+  const onDeleteAllowed = deleteAllowed ? onDelete : undefined;
   const compressedLines = useCompressedLines();
   const compressedBody = usePanelBodyStyle(panelKey);
   // A9 §C3: a "borrowed"-class kind (footnote/archive/example) with a resolved
@@ -1536,13 +1596,13 @@ export function EditableCard({
 
   /** Delete with confirmation if there is content. */
   const tryDelete = useCallback(() => {
-    if (!onDelete) return;
+    if (!onDeleteAllowed) return;
     if (hasContent()) {
       setConfirmOpen(true);
     } else {
-      onDelete();
+      onDeleteAllowed();
     }
-  }, [onDelete, hasContent]);
+  }, [onDeleteAllowed, hasContent]);
 
   /** The shell-level delete key. Retired onto the SHARED door in task 386: the
    *  bespoke copy that used to live here guarded only on `isFocused` — the BODY
@@ -1556,7 +1616,7 @@ export function EditableCard({
    *  event would not bubble through this shell at all). */
   const handleKeyDown = useCardDeleteKey(
     selected && !isFocused,
-    onDelete ? tryDelete : undefined,
+    onDeleteAllowed ? tryDelete : undefined,
   );
 
   const handleFocusChange = useCallback(
@@ -1608,12 +1668,12 @@ export function EditableCard({
               menu entirely — a menu item it can never reach would be exactly
               the dead affordance task 106 exists to kill. Add one WITH a
               surface that renders it, if a future excerpt kind needs it. */}
-          {menuContent ?? ((onDelete || doArchive) ? (
+          {menuContent ?? ((onDeleteAllowed || doArchive) ? (
             <ItemMenu>
               {doArchive && (
                 <MenuArchive onClick={doArchive} isArchived={cardArchived} />
               )}
-              {onDelete && <MenuDelete onClick={tryDelete} />}
+              {onDeleteAllowed && <MenuDelete onClick={tryDelete} />}
             </ItemMenu>
           ) : null)}
         </div>
@@ -1637,7 +1697,7 @@ export function EditableCard({
       isCollapsed={!!compressed}
       onToggleExpanded={onToggleExpanded}
       onHeaderActivate={onHeaderActivate}
-      onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
+      onTrashClick={inlineDelete && onDeleteAllowed ? tryDelete : undefined}
       onArchiveClick={inlineDelete ? doArchive : undefined}
       onRestoreClick={inlineDelete ? doRestore : undefined}
       isArchived={cardArchived}
@@ -1818,14 +1878,14 @@ export function EditableCard({
       {/* Optional footer (e.g. archive action buttons) */}
       {footer}
 
-      {onDelete && (
+      {onDeleteAllowed && (
         <ConfirmDialog
           open={confirmOpen}
           message="This item has text. Delete it?"
           confirmLabel="Delete"
           tone="danger"
           anchorRef={cardRef}
-          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onConfirm={() => { setConfirmOpen(false); onDeleteAllowed(); }}
           onCancel={() => setConfirmOpen(false)}
         />
       )}
@@ -2669,6 +2729,16 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   //    is "consulted only for a droppable kind, ignored otherwise", and a cue
   //    silently suppressed by an unset `dropDisabled` on some future kind would
   //    be a second question asked of one flag.
+  // The host permit for this kind's DESTRUCTIVE verb (task 637). Read HERE
+  // because PanelCard is the ONE element that renders the docked trash — so
+  // `EditableCard`-built cards and the `PanelCard`-direct kinds (citation, both
+  // twin suggestions, highlight, todo, error) inherit it by construction rather
+  // than each component remembering, and the next panel a read-mostly host
+  // mounts is correct without being told. Only the withheld BUTTON is this
+  // element's business; the header menu item and the shell delete key belong to
+  // `EditableCard`, and the executor to `usePanelCardTryDelete` — all three read
+  // {@link useCardDeleteAllowed}.
+  const deleteAllowed = useCardDeleteAllowed(kind);
   const cardKey = cardKeyProp ?? unanchored?.cardKey;
   const cardClass = unanchored
     ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
@@ -3123,7 +3193,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       {onArchiveClick && !isCollapsed && (
         <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />
       )}
-      {onTrashClick && !isCollapsed && <CardTrashButton onClick={onTrashClick} />}
+      {onTrashClick && deleteAllowed && !isCollapsed && (
+        <CardTrashButton onClick={onTrashClick} />
+      )}
     </div>
   );
 });

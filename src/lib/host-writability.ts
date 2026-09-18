@@ -85,27 +85,51 @@ export function libraryPaperCitekey(docId: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Map from a CARD-bearing `CardKind` → its per-doc sidecar filename. This is
- * the *card-content* sidecar set ONLY — it intentionally omits non-card state
- * (focus-mode, document-settings, bib-settings, dictionary, view-ui), which a
- * read-mostly host never persists at all (its view state is session-only, and
- * a paper's settings belong to the library).
+ * Map from a `CardKind` → the per-doc sidecar a MUTATION of that kind lands in.
+ * Total over the kind union by construction (`Record<CardKind, …>`, not a
+ * `Partial`), so a new card kind cannot be added without answering the
+ * question; `null` means the kind has no sidecar of its own to write.
  *
- * `highlight` shares `notes.json` with `note` (one hook owns both); kinds that
- * have no standalone editable sidecar (footnote/citation atoms, the
- * example/bib/error record kinds, the suggestion families) are omitted — a
- * read-mostly host has no editor for them and writes nothing for them.
+ * This is the *card-content* sidecar set ONLY — it intentionally omits non-card
+ * state (focus-mode, document-settings, bib-settings, dictionary, view-ui),
+ * which a read-mostly host never persists at all (its view state is
+ * session-only, and a paper's settings belong to the library).
+ *
+ * `highlight` shares `notes.json` with `note`, and each twin suggestion kind
+ * shares its panel's file with the comment kind beside it — one hook owns the
+ * pair in every case. The two `null`s are the SYSTEM kinds (`bib` is derived
+ * from the `.bib`, `error` from the linter), both of which declare
+ * `lifecycle.delete: false`: they have nothing of their own to write.
+ *
+ * WIDENED (task 637). It used to stop at the eight kinds whose sidecar the
+ * Reader's *editable* set could name, on the claim that footnote / citation /
+ * example "have no standalone editable sidecar … a read-mostly host has no
+ * editor for them and writes nothing for them." The first half was simply
+ * false (`footnotes.json` / `citations.json` / `examples.json` are three of the
+ * loudest content sidecars in the folder) and the second half described the
+ * TEXT BODY only: the Reader mounts those panels and offered every one of their
+ * cards a live trash button, whose press wrote nothing and said nothing. A map
+ * that answers for only the kinds one caller happened to ask about is a map the
+ * next caller reads a false `undefined` out of — so it is total now, and the
+ * second caller ({@link cardMutationWritable}) is what this file gained it for.
  */
-export const CARD_KIND_SIDECAR: Readonly<Partial<Record<CardKind, string>>> =
+export const CARD_KIND_SIDECAR: Readonly<Record<CardKind, string | null>> =
   Object.freeze({
     note: "notes.json",
     highlight: "notes.json",
+    footnote: "footnotes.json",
+    citation: "citations.json",
+    example: "examples.json",
     todo: "todos.json",
     report: "reports.json",
     "report-request": "reports.json",
     archive: "archive.json",
     "revision-comment": "revisions.json",
+    "revision-suggestion": "revisions.json",
     "cutter-comment": "cutter.json",
+    "cutter-suggestion": "cutter.json",
+    bib: null,
+    error: null,
   });
 
 /**
@@ -156,6 +180,41 @@ export function writableSidecarsFor(
  */
 export const LIBRARY_PAPER_WRITABLE_SIDECARS: ReadonlySet<string> =
   writableSidecarsFor(READER_EDITABLE_CARD_KINDS) ?? new Set();
+
+/**
+ * **May a MUTATION of a card of this kind land on disk under a host restricted
+ * to `editableCardKinds`?** The same question {@link writableSidecarsFor}
+ * answers for a filename, asked in the vocabulary a CARD surface has in hand.
+ *
+ * This is the derivation task 637 was missing. The permit reached the storage
+ * funnel but not the card's DELETE affordance: `cardEditable` in
+ * `panel-primitives.tsx` was threaded into the inner rich-text field only, so a
+ * Reader-mounted footnote or citation card rendered a live trash button whose
+ * press updated React state, wrote nothing, said nothing, and was undone by the
+ * next reload. One question had two answers at two layers — exactly the split
+ * this module exists to close, one affordance over.
+ *
+ * Note what it is NOT: `kind ∈ editableCardKinds`. Those coincide for most
+ * kinds and come apart on `highlight`, which is not editable in the Reader (it
+ * has no body to edit) yet shares the writable `notes.json` with `note` — so a
+ * Reader highlight's delete DOES land and must keep being offered. Whether a
+ * kind's EDITOR mounts live and whether its mutations reach DISK are two
+ * questions; this module owns only the second, and asking the first in its
+ * place would silently retire a working control.
+ *
+ * `undefined` kinds (no whitelist — the main app) → always writable. Under a
+ * whitelist a kind with no sidecar of its own fails CLOSED, matching
+ * `isSidecarWriteAllowed`'s answer for a filename nobody declared.
+ */
+export function cardMutationWritable(
+  editableCardKinds: readonly CardKind[] | undefined,
+  kind: CardKind,
+): boolean {
+  const writable = writableSidecarsFor(editableCardKinds);
+  if (writable === null) return true;
+  const file = CARD_KIND_SIDECAR[kind];
+  return file !== null && writable.has(file);
+}
 
 /**
  * May `filename` (a `virgil/` sidecar) be written for `docId`? A normal doc:
