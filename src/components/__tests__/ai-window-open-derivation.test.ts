@@ -80,10 +80,21 @@ describe("AI-inbox surface honors isRequestOpen (task 093 GAP 1)", () => {
     expect(dotOne(req({ status: "in-progress" }))).toBe("warn");
   });
 
-  it("answered-L3 (in-progress + resultId) → list 'resolved', NO cancel, NO dot", () => {
+  it("answered-L3 (in-progress + resultId) → list 'responded', NO cancel, NO dot", () => {
+    // SHARPENED by task 628, not relaxed. Task 093's two load-bearing halves
+    // are unchanged and re-asserted here: an answered-L3 row is NOT "open" and
+    // exposes NO cancel affordance (the user owns accept/reject now), and it
+    // does NOT light the inbox dot. What changed is the NAME of the closed
+    // state: "resolved" claimed the thread was finished while the user still
+    // owed a decision, and collapsing the middle state onto the terminal one is
+    // why the window's whole "Responded" bucket, its header count and its
+    // palette row were structurally unreachable. `requestState` splits the
+    // closed side on `isTerminalStatus`; `isRequestOpen` still draws the line
+    // that matters to the drain and to this dot.
     const answered = req({ status: "in-progress", resultId: "proposal-card-1" });
     const vm = listOne(answered);
-    expect(vm.status).toBe("resolved");
+    expect(vm.status).toBe("responded");
+    expect(vm.status).not.toBe("open");
     expect(vm.onCancel).toBeUndefined();
     expect(dotOne(answered)).toBeNull();
   });
