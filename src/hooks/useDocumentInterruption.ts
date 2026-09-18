@@ -2,8 +2,8 @@
 
 /**
  * React read of THE document-interruption view (task 545) — one hook, every
- * surface. Composes the four channels (`cowork-pen`, the `DiskWatcher` store,
- * `preservation-notice`, the save-state ladder) into
+ * surface. Composes the five channels (`cowork-pen`, the `DiskWatcher` store,
+ * `preservation-notice`, `sidecar-refusal`, the save-state ladder) into
  * `deriveDocumentInterruption` and records each new presentation on the
  * provenance log.
  *
@@ -33,6 +33,7 @@ import type { ExternalChangeState } from "@/lib/disk-watcher";
 import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { usePreservationNotice } from "@/hooks/usePreservationNotice";
+import { useSidecarRefusal } from "@/hooks/useSidecarRefusal";
 import { useSaveState } from "@/hooks/useSaveState";
 
 const CLEAN_EXTERNAL: ExternalChangeState = Object.freeze({
@@ -60,6 +61,7 @@ export function useDocumentInterruption(
   const external =
     docId && diskCtx && diskCtx.activeDocId === docId ? liveExternal : CLEAN_EXTERNAL;
   const preservation = usePreservationNotice(docId ?? null);
+  const sidecarRefusal = useSidecarRefusal(docId ?? null);
   const save = useSaveState(docId);
 
   const view = useMemo(
@@ -70,11 +72,22 @@ export function useDocumentInterruption(
         penLastReleasedAt,
         external,
         preservation,
+        sidecarRefusal,
         save,
       }),
     // `save` is re-derived per render; its fields are what the view reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [docId, pen, penLastReleasedAt, external, preservation, save.tier, save.ageMs, save.reason],
+    [
+      docId,
+      pen,
+      penLastReleasedAt,
+      external,
+      preservation,
+      sidecarRefusal,
+      save.tier,
+      save.ageMs,
+      save.reason,
+    ],
   );
 
   // Provenance, member 1: one entry per presentation. The log dedupes on

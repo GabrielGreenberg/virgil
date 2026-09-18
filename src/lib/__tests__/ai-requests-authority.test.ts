@@ -169,17 +169,22 @@ describe("ai-requests: one serialized read-modify-merge authority", () => {
     expect(onDisk().map((r) => r.id).sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("a declined mutation (null) writes nothing at all", async () => {
+  // Task 630 widened the door's report from `AiRequest[] | null` to a
+  // discriminated result, because that one `null` collapsed a mutator that
+  // DECLINED (nothing to change) with a write that was REFUSED (nothing
+  // reached disk and nothing will) — and no caller could roll back or speak up
+  // for the second while it looked like the first.
+  it("a declined mutation (null) writes nothing at all, and says DECLINED", async () => {
     seed([row({ id: "keep" })]);
     const result = await mutateAiRequests(DOC, () => null);
-    expect(result).toBeNull();
+    expect(result).toEqual({ kind: "declined" });
     expect(onDisk().map((r) => r.id)).toEqual(["keep"]);
   });
 
-  it("no doc / no active write handle persists nothing and reports null", async () => {
+  it("no doc / no active write handle persists nothing and says NO-HANDLE", async () => {
     seed([row({ id: "keep" })]);
     expect(await mutateAiRequests(null, (reqs) => [...reqs, row({ id: "x" })]))
-      .toBeNull();
+      .toEqual({ kind: "no-handle" });
     expect(onDisk().map((r) => r.id)).toEqual(["keep"]);
   });
 });

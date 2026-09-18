@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
+import { libraryPaperSidecarWritable } from "@/lib/host-writability";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import type { BibReviewState, BibReviewRequest, BibEntry } from "@/lib/types";
 import {
   getActiveHandle,
@@ -99,17 +101,55 @@ export function useBibReview(
     return () => clearInterval(interval);
   }, [docId, hasPending, fetchState]);
 
+  /**
+   * Persist the queue — and SAY SO when it does not land (task 630).
+   *
+   * This was the AI-request inbox's swallow one hook over: optimistic state
+   * first, a fire-and-forget write, and every path on which the write did not
+   * happen ending at a `console.error` the user never sees. All three of them
+   * leave a pending review showing in the panel that no skill will ever serve
+   * and that is gone on the next reload:
+   *
+   *   - no active write handle (a pipeline swap, or a paper not open for
+   *     writing);
+   *   - a host that refuses the file — a `library-paper:` doc may persist only
+   *     its derived writable set, and `bib-review-requests.json` is not in it,
+   *     so `writeSidecar` returns having written NOTHING and throws nothing.
+   *     Asked here through `libraryPaperSidecarWritable`, which is the funnel's
+   *     own exported question rather than a second copy of its rule, because a
+   *     void-returning door leaves no other way to see the refusal;
+   *   - a real write failure.
+   *
+   * A stale-pipeline throw stays silent and un-reconciled: the doc switched
+   * under the write and the new owner is authoritative.
+   *
+   * The roll-back is the same reconcile the inbox does — re-read the file, so
+   * the panel shows what is actually on disk. `fetchState` is safe to call with
+   * a doc that has since changed (it bails on `docIdRef`).
+   */
   const persist = useCallback(
     async (s: BibReviewState) => {
-      if (!handle) return;
+      const docId = docIdRef.current;
+      const refuse = (
+        reason: "no-handle" | "read-only" | "failed",
+        detail?: string,
+      ) => {
+        recordSidecarRefusal({ docId, what: "bibliography review", reason, detail });
+        if (docId) fetchState(docId);
+      };
+      if (!handle) return refuse("no-handle");
+      if (!libraryPaperSidecarWritable(handle.docId, "bib-review-requests.json")) {
+        return refuse("read-only");
+      }
       try {
         await writeSidecar(handle, "bib-review-requests.json", s);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to save bib review requests:", err);
+        refuse("failed", err instanceof Error ? err.message : undefined);
       }
     },
-    [handle],
+    [handle, fetchState],
   );
 
   /** Does a row target the same entry as `bibKey`? Under the flag, prefer the

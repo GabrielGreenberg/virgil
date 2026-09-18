@@ -32,7 +32,7 @@
  *   risk here).
  * - **`danger`** — the alarm ramp, reserved for a state in which the user's
  *   work is on no disk and nothing is coming to put it there (a preservation
- *   refusal, a failed write).
+ *   refusal, a failed write, a refused sidecar write).
  *
  * Import-free on purpose (the placement rule `latex-markers.ts` and
  * `node-attr-sets.ts` each earned): `save-state.ts` sits BELOW
@@ -58,6 +58,10 @@ export type InterruptionKind =
   | "conflict"
   /** The last write threw (permission, lock, quota). */
   | "save-error"
+  /** A write to one of the paper's `virgil/` sidecars (the AI-request inbox,
+   *  the bib-review queue, a card panel) did not land — task 630. The `.tex`
+   *  is fine; what the user just filed is not on disk. */
+  | "sidecar-refused"
   /** The file changed on disk; nothing unsaved here, nothing at risk. */
   | "disk-change";
 
@@ -65,7 +69,7 @@ export type InterruptionKind =
 export type InterruptionTone = "live" | "warning" | "info" | "danger";
 
 /**
- * Kind → tone. Exhaustive by the `Record`, so a sixth kind cannot ship without
+ * Kind → tone. Exhaustive by the `Record`, so a new kind cannot ship without
  * stating its register — and stated as DATA rather than inside each branch of
  * the derivation, so a reader (the save badge, a pill about ONE kind) can ask
  * without building the whole view.
@@ -76,6 +80,7 @@ export const INTERRUPTION_TONE: Readonly<Record<InterruptionKind, InterruptionTo
     preservation: "danger",
     conflict: "warning",
     "save-error": "danger",
+    "sidecar-refused": "danger",
     "disk-change": "info",
   });
 

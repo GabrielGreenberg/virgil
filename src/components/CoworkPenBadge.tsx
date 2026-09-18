@@ -102,6 +102,8 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
     penLastReleasedAt: null,
     external: NO_EXTERNAL,
     preservation: null,
+    // The pen outranks every other input, so this pill supplies none of them.
+    sidecarRefusal: null,
     save: deriveSaveState(null),
   });
   const label = view ? interruptionPillLabel(view, null) : "Virgil is editing this paper…";

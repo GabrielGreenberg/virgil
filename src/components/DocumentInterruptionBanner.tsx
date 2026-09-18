@@ -23,7 +23,9 @@
  * - review → `requestBlockingFlow` (task 392's routing channel, so the
  *   preservation badge's own acknowledge dialog opens — its danger confirm is
  *   the one place that decision is made);
- * - retry → `requestSaveNow`, routed on refusal like every other Save.
+ * - retry → `requestSaveNow`, routed on refusal like every other Save;
+ * - acknowledge → `clearSidecarRefusal` (task 630 — the one state whose cause
+ *   is already past, so "understood" is the only honest offer).
  *
  * ## The cowork hold's own identity
  *
@@ -37,13 +39,17 @@
  *
  * `live` / `warning` / `info` take the warm family (STYLE_GUIDE → "The
  * destructive / alarm family": nothing here destroys anything, every conflict
- * door is netted); `danger` is reserved for the two states in which the
- * user's work is on no disk and nothing is coming — the preservation refusal
- * and a failed write. Which kind takes which tone, and which tokens a tone
+ * door is netted); `danger` is reserved for the states in which the
+ * user's work is on no disk and nothing is coming — the preservation refusal,
+ * a failed write, and a sidecar write the paper's folder refused. Which kind
+ * takes which tone, and which tokens a tone
  * paints, are both stated in `interruption-tone.ts` and read here (task 571
  * retired this file's private copy of the palette). The recommended button is
  * the accented one; an alternative is a plain link-button. No dismiss: a state that is still true
- * cannot be hidden, and every state here clears itself when its cause does.
+ * cannot be hidden, and every state here clears itself when its cause does —
+ * with ONE stated exception, `sidecar-refused`, whose cause is a write that
+ * already failed rather than a condition that is still true, so there is
+ * nothing for it to clear itself from and its ONE action is "OK, got it".
  *
  * KEYSTROKE SANCTITY: reads state only through `useDocumentInterruption`
  * (store reads); no editor subscription, no timer of its own.
@@ -60,6 +66,7 @@ import {
   type InterruptionAction,
 } from "@/lib/document-interruption";
 import { paletteForTone } from "@/lib/interruption-tone";
+import { clearSidecarRefusal } from "@/lib/sidecar-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
 
@@ -199,6 +206,12 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
             requestBlockingFlow(docId, outcome.reason);
             return;
           }
+          case "acknowledge":
+            // The one state here whose cause is already PAST (task 630): the
+            // refused sidecar write is gone and its optimistic row has been
+            // reconciled off the screen, so acknowledging is the whole door.
+            clearSidecarRefusal(docId);
+            return;
         }
       } finally {
         setBusy(false);
