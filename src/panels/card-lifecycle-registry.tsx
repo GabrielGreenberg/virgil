@@ -8,17 +8,34 @@
  *
  * Unlike the float-body registry (module-global, single-shot at boot),
  * card lifecycle ops are PER-DOC — each sidecar hook is per-document, so
- * the registry flows through React context. The provider holds the live
- * map in a ref so consumers don't re-render when the underlying hook
- * returns change identity; the dispatcher reads `getCardLifecycle(kind)`
- * at click time, so it always sees the current document's ops.
+ * the registry is built per pane and handed in. It has exactly ONE door,
+ * `useCardLifecycleApi`: it holds the live map in a ref, so the API object
+ * is identity-stable while its payload moves, and the dispatcher reads
+ * `get(kind)` at click time and always sees the current document's ops.
+ *
+ * ONE DOOR, stated because there used to be two. A React-context half
+ * (`CardLifecycleProvider` + `useCardLifecycle`) shipped beside it and was
+ * never called — `EditorPane` builds the registry and constructs the API
+ * directly, since the only consumers are hooks it already owns, not a
+ * distant subtree. The header above described the context path in the
+ * present tense for months ("the registry flows through React context";
+ * "add one entry in EditorPane's `CardLifecycleProvider value={…}`") while
+ * no provider existed anywhere in the app — the same defect shape task 634
+ * killed on the panel registry. Both exports are gone (task 635), and this
+ * module is now in `card-spine-export-census.test.ts`'s population, so a
+ * second unread door cannot be re-published quietly. If a distant subtree
+ * ever needs the API, thread it or add a provider THEN.
  *
  * Adding a new card kind:
  *   1. Make sure the kind is in `CardKind` (it already is — this is just
  *      a behavior slot, not a type extension).
  *   2. Ensure the per-doc hook (e.g. `useFootnotes`) exposes a `clone(id)`
  *      and a `delete(id)`.
- *   3. Add one entry in EditorPane's `CardLifecycleProvider value={…}`.
+ *   3. Declare the ops on the kind's `CARD_REGISTRY` row (`lifecycle`), and
+ *      add one entry to EditorPane's `cardLifecycleRegistry` memo. The two
+ *      must agree exactly: `assertLifecycleCoverage` says so at dev runtime
+ *      and `lifecycle-coverage-assertion.test.ts` says so in CI, by reading
+ *      that memo's literal out of `EditorPane.tsx`.
  *
  * The drag-handle dispatcher's duplicate/delete walkers ([src/text-objects/duplicate-slice.ts](../text-objects/duplicate-slice.ts),
  * [src/text-objects/delete-range.ts](../text-objects/delete-range.ts)) iterate
@@ -26,13 +43,7 @@
  * zero per-kind branches; an unregistered kind is a silent no-op.
  */
 
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+import { useMemo, useRef } from "react";
 import type { CardKind } from "./_shared/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 
@@ -83,35 +94,6 @@ export interface CardLifecycleApi {
   get(kind: CardKind): CardLifecycle | null;
 }
 
-const EMPTY_API: CardLifecycleApi = { get: () => null };
-
-const Ctx = createContext<CardLifecycleApi>(EMPTY_API);
-
-export interface CardLifecycleProviderProps {
-  value: CardLifecycleRegistry;
-  children: ReactNode;
-}
-
-export function CardLifecycleProvider({
-  value,
-  children,
-}: CardLifecycleProviderProps) {
-  const ref = useRef<CardLifecycleRegistry>(value);
-  ref.current = value;
-  // `api` is identity-stable for the provider's lifetime; only the ref's
-  // payload moves. Consumers never re-render due to lifecycle churn.
-  const api = useMemo<CardLifecycleApi>(
-    () => ({ get: (kind) => ref.current[kind] ?? null }),
-    [],
-  );
-  return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
-}
-
-/** Hook for React-tree consumers. Returns the stable API. */
-export function useCardLifecycle(): CardLifecycleApi {
-  return useContext(Ctx);
-}
-
 /** Direct constructor for callers that own a registry but don't want the
  *  provider/consumer dance (e.g. `EditorPane` handing the API into a
  *  dispatcher hook). Identity is stable across renders; only the ref's
@@ -138,7 +120,15 @@ export function useCardLifecycleApi(
  *  and the two `origin:"system"` kinds `bib`/`error`, trivially all-false (no
  *  user clone/delete/anchor affordance). A3 DOCUMENTS the
  *  cascade-vs-UI-delete criterion (see `CardLifecycleCapability`); it does not
- *  fill them. The E-4 criterion test pins the gaps. Call from the provider site. */
+ *  fill them. The E-4 criterion test pins the gaps.
+ *
+ *  Call from the site that builds the registry (`EditorPane`), right beside
+ *  `useCardLifecycleApi`. This fires on every dev render, so drift is loud
+ *  within minutes of an author touching either side — but it is dev-only and
+ *  its subject is a component-local literal, so CI could never see it. That
+ *  half is `lifecycle-coverage-assertion.test.ts`'s "real registry" leg, which
+ *  reads the memo's literal out of `EditorPane.tsx` and runs the same
+ *  comparison at build time. */
 export function assertLifecycleCoverage(registry: CardLifecycleRegistry): void {
   if (process.env.NODE_ENV === "production") return;
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {

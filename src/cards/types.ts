@@ -81,7 +81,7 @@ export type MarkerType =
 export type CardOrigin = "user" | "system" | "derived";
 
 /** Declared lifecycle coverage. Booleans, not closures: the actual ops are
- *  per-doc hooks wired in `EditorPane`'s `CardLifecycleProvider`. The registry
+ *  per-doc hooks wired in `EditorPane`'s `cardLifecycleRegistry` memo. The registry
  *  declares INTENT; a dev assertion checks the provider satisfies exactly the
  *  declared ops, so a gap is intentional-and-visible, never silent.
  *
