@@ -1,4 +1,4 @@
-<!-- last-verified: 29eab4cd 2026-09-17 -->
+<!-- last-verified: a1b40bcc 2026-09-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -280,6 +280,15 @@ are the **identity-cascade** path (T1 Stage 1) — live behind `virgil:identity-
 remain the legacy/migration shape. `bib-uid.ts` mints the uid; `bib-cite-rewrite.ts`
 + `sidecar-uid-migrate.ts` (in [src/lib/identity/](../../src/lib/identity/)) carry
 the non-destructive migration.
+
+On the **legacy (live) citekey-keyed** path a rename has to fan out by hand, and
+which files it must touch is a manifest, not a memory: `editor/scripts/citekey_keyed_sidecars.json`
+names every citekey-keyed sidecar (citation cards, annotations, bib-review rows),
+CI pins it to `SIDECAR_VALUE`, and the skill-side `renameCitekey` op re-keys all of
+them atomically (task 615 — before it, a rename rewrote only the `.tex` and
+`citations.json`, stranding the user's annotation). `annotations.json` has ONE shape
+door (V1 flat / V2 `byUid`) shared by write, read and re-key. See
+[editor/AGENTS.md](../../editor/AGENTS.md).
 
 `bib-review-requests.json` is a **separate discovery path** (`list_requests.py`
 walks it directly) because reviews are per-bibkey, not per-paragraph.
