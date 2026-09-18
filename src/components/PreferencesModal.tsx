@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useRef } from "react";
 import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences";
+import { isReservedPresetName } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
@@ -86,13 +87,20 @@ function PresetBar({
 }) {
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
-  const [selected, setSelected] = useState("");
+  // The preset last PICKED — the delete affordance's target, not an "active
+  // preset" claim. The picker itself holds no selection (see below), so this is
+  // deliberately not fed back into the <select>.
+  const [target, setTarget] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const trimmedName = newName.trim();
+  const nameReserved = isReservedPresetName(trimmedName);
+  const canSaveName = trimmedName.length > 0 && !nameReserved;
 
   const handleSave = useCallback(() => {
     if (saving) {
       const name = newName.trim();
-      if (name) {
+      if (name && !isReservedPresetName(name)) {
         onSave(name);
         setNewName("");
         setSaving(false);
@@ -108,21 +116,30 @@ function PresetBar({
     if (e.key === "Escape") setSaving(false);
   }, [handleSave]);
 
+  // The picker is an ACTION, not a bound value: it applies the preset and
+  // immediately returns to its placeholder. Bound to a selection it lied twice —
+  // re-picking the preset you were already on fired no change event (so you
+  // could not revert your edits by re-applying it), and after "Reset to
+  // defaults" it went on naming a preset that was no longer in effect. The DOM
+  // reset is imperative because React re-renders on an UNCHANGED `target` are
+  // bailed out, which would leave the picked option stuck in the DOM.
   const handleSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const name = e.target.value;
-    setSelected(name);
-    if (name) onLoad(name);
+    const name = e.currentTarget.value;
+    e.currentTarget.value = "";
+    if (!name) return;
+    setTarget(name);
+    onLoad(name);
   }, [onLoad]);
 
-  const selectedPreset = presets.find((p) => p.name === selected);
-  const canDelete = selectedPreset && !selectedPreset.builtIn;
+  const targetPreset = presets.find((p) => p.name === target);
+  const canDelete = !!targetPreset && !targetPreset.builtIn;
 
   return (
     <div className="flex items-center gap-2">
       <Select
-        value={selected}
+        value=""
         onChange={handleSelectChange}
-        className="flex-1 text-xs px-2 py-1.5"
+        className="flex-1 min-w-0 text-xs px-2 py-1.5"
       >
         <option value="">Load preset...</option>
         {presets.map((p) => (
@@ -140,23 +157,29 @@ function PresetBar({
           onKeyDown={handleKeyDown}
           onBlur={() => { if (!newName.trim()) setSaving(false); }}
           placeholder="Preset name"
+          invalid={nameReserved}
+          aria-invalid={nameReserved || undefined}
+          title={nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
           className="text-xs px-2 py-1.5 w-28"
         />
       ) : null}
 
       <button
         onClick={handleSave}
-        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light whitespace-nowrap"
+        disabled={saving && !canSaveName}
+        title={saving && nameReserved ? `"${trimmedName}" is a built-in preset name` : undefined}
+        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {saving ? "OK" : "Save"}
       </button>
 
       {canDelete && (
         <button
-          onClick={() => { onDelete(selected); setSelected(""); }}
-          className="text-[11px] text-danger hover:text-red-600 border border-edge-subtle rounded px-2 py-1.5 hover:bg-danger-soft transition-colors"
+          onClick={() => { onDelete(target); setTarget(""); }}
+          title={`Delete preset "${target}"`}
+          className="text-[11px] text-danger hover:text-red-600 border border-edge-subtle rounded px-2 py-1.5 hover:bg-danger-soft transition-colors max-w-[9rem] truncate"
         >
-          Del
+          Del &ldquo;{target}&rdquo;
         </button>
       )}
     </div>

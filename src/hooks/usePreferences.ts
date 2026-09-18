@@ -134,6 +134,13 @@ const PREFS_KEY = "virgil-editor-prefs";
 const TRANSFORMS_KEY = "virgil-editor-transforms";
 const PRESETS_KEY = "virgil-editor-presets";
 
+// The built-in preset is DERIVED from the shipped defaults, never STORED.
+// It used to be persisted alongside the user's presets, which froze a copy of
+// whatever `DEFAULT_PREFS` happened to be the day the user first hit Save: once
+// the promote-defaults pipeline shipped new colours, picking "Default" applied
+// the OLD ones while "Reset to defaults" applied the new ones. A value that is
+// computed from source must not round-trip through localStorage — `loadPresets`
+// drops any stored built-in (migration) and `persistPresets` never writes one.
 const DEFAULT_PRESET: PreferencePreset = {
   name: "Default",
   prefs: DEFAULT_PREFS,
@@ -141,6 +148,58 @@ const DEFAULT_PRESET: PreferencePreset = {
   createdAt: 0,
   builtIn: true,
 };
+
+/** Every derived preset, in picker order. Prepended to the stored user list. */
+export const BUILT_IN_PRESETS: readonly PreferencePreset[] = [DEFAULT_PRESET];
+
+const RESERVED_PRESET_NAMES = new Set(
+  BUILT_IN_PRESETS.map((p) => p.name.trim().toLowerCase()),
+);
+
+/**
+ * A built-in name can never belong to a user preset: the two would collide in
+ * the picker (same option value), and every lookup — load, delete, the delete
+ * affordance — resolves by name and would find the built-in first, leaving the
+ * user's entry unloadable and undeletable. Saving one is refused, and a stored
+ * one is renamed on read (see `normalizeStoredPresets`).
+ */
+export function isReservedPresetName(name: string): boolean {
+  return RESERVED_PRESET_NAMES.has(name.trim().toLowerCase());
+}
+
+/** First free variant of `base` ("Warm" → "Warm 2" → "Warm 3"). */
+function uniquePresetName(base: string, taken: Set<string>): string {
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base} ${i}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return "";
+}
+
+/**
+ * The read half of the derive/store split: strip anything that is the app's to
+ * derive (built-ins), and make the remaining names unambiguous — a preset the
+ * user saved as "Default" before names were reserved is RENAMED, not dropped,
+ * so their work survives the migration.
+ */
+function normalizeStoredPresets(raw: unknown): PreferencePreset[] {
+  if (!Array.isArray(raw)) return [];
+  const taken = new Set(RESERVED_PRESET_NAMES);
+  const out: PreferencePreset[] = [];
+  for (const entry of raw as PreferencePreset[]) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.builtIn) continue;
+    const base = typeof entry.name === "string" ? entry.name.trim() : "";
+    if (!base) continue;
+    const name = uniquePresetName(base, taken);
+    if (!name) continue;
+    taken.add(name.toLowerCase());
+    const { builtIn: _derived, ...rest } = entry;
+    out.push({ ...rest, name });
+  }
+  return out;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -186,18 +245,13 @@ function loadTransforms(): GlobalTransforms {
 }
 
 function loadPresets(): PreferencePreset[] {
-  if (typeof window === "undefined") return [DEFAULT_PRESET];
+  if (typeof window === "undefined") return [...BUILT_IN_PRESETS];
   try {
     const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [DEFAULT_PRESET];
-    const parsed = JSON.parse(raw) as PreferencePreset[];
-    // Ensure Default preset is always present
-    if (!parsed.some((p) => p.builtIn)) {
-      parsed.unshift(DEFAULT_PRESET);
-    }
-    return parsed;
+    if (!raw) return [...BUILT_IN_PRESETS];
+    return [...BUILT_IN_PRESETS, ...normalizeStoredPresets(JSON.parse(raw))];
   } catch {
-    return [DEFAULT_PRESET];
+    return [...BUILT_IN_PRESETS];
   }
 }
 
@@ -206,7 +260,7 @@ function loadPresets(): PreferencePreset[] {
 export function usePreferences() {
   const [prefs, setPrefs] = useState<EditorPreferences>(DEFAULT_PREFS);
   const [transforms, setTransforms] = useState<GlobalTransforms>(DEFAULT_TRANSFORMS);
-  const [presets, setPresets] = useState<PreferencePreset[]>([DEFAULT_PRESET]);
+  const [presets, setPresets] = useState<PreferencePreset[]>([...BUILT_IN_PRESETS]);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -238,8 +292,12 @@ export function usePreferences() {
     try { localStorage.setItem(TRANSFORMS_KEY, JSON.stringify(newT)); } catch {}
   }, []);
 
+  // The write half of the derive/store split: only USER presets are persisted.
+  // Writing the built-in back out is what froze it against the shipped defaults.
   const persistPresets = useCallback((newP: PreferencePreset[]) => {
-    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(newP)); } catch {}
+    try {
+      localStorage.setItem(PRESETS_KEY, JSON.stringify(newP.filter((p) => !p.builtIn)));
+    } catch {}
   }, []);
 
   const updatePref = useCallback(<K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => {
@@ -265,10 +323,13 @@ export function usePreferences() {
     persistTransforms(DEFAULT_TRANSFORMS);
   }, [persistPrefs, persistTransforms]);
 
-  const savePreset = useCallback((name: string) => {
+  /** Returns false (and writes nothing) for an empty or reserved name. */
+  const savePreset = useCallback((name: string): boolean => {
+    const trimmed = name.trim();
+    if (!trimmed || isReservedPresetName(trimmed)) return false;
     setPresets((prev) => {
-      const existing = prev.findIndex((p) => p.name === name && !p.builtIn);
-      const preset: PreferencePreset = { name, prefs, transforms, createdAt: Date.now() };
+      const existing = prev.findIndex((p) => p.name === trimmed && !p.builtIn);
+      const preset: PreferencePreset = { name: trimmed, prefs, transforms, createdAt: Date.now() };
       let next: PreferencePreset[];
       if (existing >= 0) {
         next = [...prev];
@@ -279,6 +340,7 @@ export function usePreferences() {
       persistPresets(next);
       return next;
     });
+    return true;
   }, [prefs, transforms, persistPresets]);
 
   const loadPreset = useCallback((name: string) => {
