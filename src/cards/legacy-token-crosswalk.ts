@@ -1,6 +1,6 @@
 /**
- * Legacy-token crosswalk — the SINGLE-SOURCE declaration of the two on-disk /
- * CSS string namespaces a spine `CardKind` projects into:
+ * Legacy-token crosswalk — the SINGLE-SOURCE declaration of the on-disk / CSS /
+ * persisted string namespaces a spine `CardKind` projects into:
  *
  *   1. `legacyDataKind` — the `data-link-card="<token>:<id>"` attribute value
  *      stamped by `createLinkedAnchor` (`links.ts`). Read by the
@@ -8,6 +8,15 @@
  *   2. `cssToken` — the `data-paragraph-kind="<token>"` attribute value the
  *      anchor-highlight reconciler stamps on a Mode-A paragraph wrapper. Read
  *      by the `[data-paragraph-kind="<token>"]` CSS rules.
+ *   3. `legacyKeyPrefix` — the `<prefix>:<id>` popout key the pre-AF
+ *      `poppedOutCards` / `cardFloatPositions` prefs persisted. NOT the live key
+ *      grammar: the live one is `buildFloatKey` → `float:card:<kind>:<id>`, with
+ *      no prefix segment at all. This column exists because a stored pref
+ *      written before the AF flip still reads as `<prefix>:<id>` and
+ *      `migrateLegacyKeyToFloat` must keep converting it — and it lives HERE,
+ *      beside the other two frozen namespaces, rather than as a `keyPrefix`
+ *      facet on `CARD_REGISTRY`, where it read as the live grammar and invited
+ *      the next contributor to build a key from it (task 634).
  *
  * These two namespaces DIVERGE for some kinds (e.g. cutter: `legacyDataKind`
  * is `"cutter-comment"`/`"cutter-suggestion"` but `cssToken` is `"cut"`; and the
@@ -36,26 +45,35 @@ interface LegacyTokens {
   /** `data-paragraph-kind` token (Mode-A paragraph accent rail), or `null` if
    *  this kind paints no paragraph accent (tint-only or unanchored). */
   cssToken: string | null;
+  /** Pre-AF popout-key prefix — the `<prefix>` in the `<prefix>:<id>` key a
+   *  stored `poppedOutCards` / `cardFloatPositions` pref may still carry.
+   *  FROZEN: every value is byte-identical to the pre-A0 `CARD_KEY_PREFIXES`
+   *  table, and `migrateLegacyKeyToFloat` (registry-free by design, so a
+   *  registry edit can never change what an old pref means) is the only thing
+   *  that ever consumes the shape. Total over `CardKind`, so a new kind must
+   *  state its prefix even though a new kind has no legacy prefs — the answer is
+   *  then simply the kind's own name, which is what every non-revision row is. */
+  legacyKeyPrefix: string;
 }
 
 /** Per-`CardKind` legacy-token projection. Values are byte-identical to the
  *  pre-A2 literals — see the module docstring (R-C: no token migration). */
 export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
-  note:                  { legacyDataKind: "note",             cssToken: "note" },
-  highlight:             { legacyDataKind: "highlight",        cssToken: null },
-  footnote:              { legacyDataKind: null,               cssToken: null },
-  citation:              { legacyDataKind: null,               cssToken: null },
-  example:               { legacyDataKind: null,               cssToken: null },
-  todo:                  { legacyDataKind: "todo",             cssToken: "todo" },
-  archive:               { legacyDataKind: null,               cssToken: "archive" },
-  report:                { legacyDataKind: "report",           cssToken: "report" },
-  "report-request":      { legacyDataKind: "report-request",   cssToken: "report" },
-  "revision-comment":    { legacyDataKind: "revision-comment",    cssToken: "comment" },
-  "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment" },
-  "cutter-comment":      { legacyDataKind: "cutter-comment",   cssToken: "cut" },
-  "cutter-suggestion":   { legacyDataKind: "cutter-suggestion", cssToken: "cut" },
-  bib:                   { legacyDataKind: null,               cssToken: null },
-  error:                 { legacyDataKind: null,               cssToken: null },
+  note:                  { legacyDataKind: "note",                cssToken: "note",    legacyKeyPrefix: "note" },
+  highlight:             { legacyDataKind: "highlight",           cssToken: null,      legacyKeyPrefix: "highlight" },
+  footnote:              { legacyDataKind: null,                  cssToken: null,      legacyKeyPrefix: "footnote" },
+  citation:              { legacyDataKind: null,                  cssToken: null,      legacyKeyPrefix: "citation" },
+  example:               { legacyDataKind: null,                  cssToken: null,      legacyKeyPrefix: "example" },
+  todo:                  { legacyDataKind: "todo",                cssToken: "todo",    legacyKeyPrefix: "todo" },
+  archive:               { legacyDataKind: null,                  cssToken: "archive", legacyKeyPrefix: "archive" },
+  report:                { legacyDataKind: "report",              cssToken: "report",  legacyKeyPrefix: "report" },
+  "report-request":      { legacyDataKind: "report-request",      cssToken: "report",  legacyKeyPrefix: "report-request" },
+  "revision-comment":    { legacyDataKind: "revision-comment",    cssToken: "comment", legacyKeyPrefix: "revision" },
+  "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment", legacyKeyPrefix: "revision-suggestion" },
+  "cutter-comment":      { legacyDataKind: "cutter-comment",      cssToken: "cut",     legacyKeyPrefix: "cutter-comment" },
+  "cutter-suggestion":   { legacyDataKind: "cutter-suggestion",   cssToken: "cut",     legacyKeyPrefix: "cutter-suggestion" },
+  bib:                   { legacyDataKind: null,                  cssToken: null,      legacyKeyPrefix: "bib" },
+  error:                 { legacyDataKind: null,                  cssToken: null,      legacyKeyPrefix: "error" },
 };
 
 /**

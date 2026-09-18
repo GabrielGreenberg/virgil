@@ -884,6 +884,7 @@ const APPLY_PY = "editor/scripts/apply_response.py";
 const CREATE_PY = "editor/scripts/create_card.py";
 const CARDKIND_TS = "src/panels/_shared/types.ts";
 const PANELREG_TS = "src/panels/panel-registry.ts";
+const CARDREG_TSX = "src/cards/card-registry.tsx";
 
 // AiRequestLink.panel → PanelKind alias gap (the panel value "todos" vs the
 // PanelKind "todo"; see docs/workspace/sidecars.md → the Task store).
@@ -1202,50 +1203,74 @@ function parsePanelToSidecar(rel) {
 }
 
 /**
- * Parse PANEL_REGISTRY keys + whether each hosts a card. An entry hosts a
- * card if `card:` is a `{ … }` object, or it's polymorphic (`card: null`
- * but listed in POLYMORPHIC_CARD_PANEL).
+ * Parse PANEL_REGISTRY keys + whether each hosts a card.
+ *
+ * "Hosts a card" is asked of the SSOT that answers it: `CARD_REGISTRY`, where
+ * each kind declares its owning `panel:` and membership DERIVES (the app reads
+ * exactly this, as `cardKindsForPanel`). It used to be read off the shape of
+ * `PANEL_REGISTRY`'s own `card:` initializer — true when it was a `{ … }` object
+ * literal, plus a `POLYMORPHIC_CARD_PANEL` map for the `card: null` hosts. Both
+ * halves had rotted by the time task 634 looked: `POLYMORPHIC_CARD_PANEL` was
+ * deleted by the inversion, so that `Set` was always empty and notes/reports/
+ * cutter silently derived `hostsCard: false`; and `card:` is now
+ * `CardKind | null`, a STRING literal, which would have made every panel false.
+ * A checker whose answer is keyed on the syntax of a field is a checker one
+ * refactor from deriving `false` for everything, in a `warn`-only leg where
+ * nobody notices. Keyed on the declaration instead, it cannot.
  */
 function parsePanelRegistry() {
   if (!exists(PANELREG_TS)) return null;
+  const panels = new Set();
   const sf = tsSource(PANELREG_TS);
-  const out = {};
-  let polymorphic = new Set();
-
   sf.forEachChild((node) => {
     if (!ts.isVariableStatement(node)) return;
     for (const decl of node.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
-      if (decl.name.text === "PANEL_REGISTRY" && ts.isObjectLiteralExpression(decl.initializer)) {
-        for (const prop of decl.initializer.properties) {
-          if (!ts.isPropertyAssignment(prop)) continue;
-          const key = propKey(prop);
-          if (!key) continue;
-          let hostsCard = false;
-          if (ts.isObjectLiteralExpression(prop.initializer)) {
-            for (const inner of prop.initializer.properties) {
-              if (
-                ts.isPropertyAssignment(inner) &&
-                propKey(inner) === "card" &&
-                ts.isObjectLiteralExpression(inner.initializer)
-              )
-                hostsCard = true;
-            }
-          }
-          out[key] = { hostsCard };
-        }
+      if (decl.name.text !== "PANEL_REGISTRY") continue;
+      if (!ts.isObjectLiteralExpression(decl.initializer)) continue;
+      for (const prop of decl.initializer.properties) {
+        if (!ts.isPropertyAssignment(prop)) continue;
+        const key = propKey(prop);
+        if (key) panels.add(key);
       }
-      if (decl.name.text === "POLYMORPHIC_CARD_PANEL" && ts.isObjectLiteralExpression(decl.initializer)) {
-        for (const prop of decl.initializer.properties) {
-          if (ts.isPropertyAssignment(prop) && ts.isStringLiteralLike(prop.initializer))
-            polymorphic.add(prop.initializer.text);
+    }
+  });
+  if (!panels.size) return null;
+
+  const hosting = cardHostingPanels();
+  if (!hosting) return null;
+  const out = {};
+  for (const panel of panels) out[panel] = { hostsCard: hosting.has(panel) };
+  return out;
+}
+
+/** Every panel some `CARD_REGISTRY` kind declares as its owner, or null when the
+ *  registry can't be parsed (so the caller skips rather than deriving `false`
+ *  for everything — a silent all-false is the failure this replaced). */
+function cardHostingPanels() {
+  if (!exists(CARDREG_TSX)) return null;
+  const sf = tsSource(CARDREG_TSX);
+  const panels = new Set();
+  sf.forEachChild((node) => {
+    if (!ts.isVariableStatement(node)) return;
+    for (const decl of node.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || decl.name.text !== "CARD_REGISTRY") continue;
+      if (!decl.initializer || !ts.isObjectLiteralExpression(decl.initializer)) continue;
+      for (const kind of decl.initializer.properties) {
+        if (!ts.isPropertyAssignment(kind) || !ts.isObjectLiteralExpression(kind.initializer))
+          continue;
+        for (const facet of kind.initializer.properties) {
+          if (
+            ts.isPropertyAssignment(facet) &&
+            propKey(facet) === "panel" &&
+            ts.isStringLiteralLike(facet.initializer)
+          )
+            panels.add(facet.initializer.text);
         }
       }
     }
   });
-  // Mark polymorphic host panels as card-hosting.
-  for (const panel of polymorphic) if (out[panel]) out[panel].hostsCard = true;
-  return Object.keys(out).length ? out : null;
+  return panels.size ? panels : null;
 }
 
 function propKey(prop) {

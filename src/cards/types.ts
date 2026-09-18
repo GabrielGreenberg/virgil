@@ -175,13 +175,6 @@ export interface CardMeta {
   label: string;
   /** Auto-title prefix at creation, or `null` to opt out (was `CARD_TITLE_LABELS`). */
   titleLabel: string | null;
-  /** Popout-key prefix (was `CARD_KEY_PREFIXES`). **Preserved byte-for-byte**
-   *  from the legacy table — `popKey`/`cardPopKey`/omni-ids/persisted
-   *  `poppedOutCards` keys must not change. The revision pair's split
-   *  (`revision-comment` → `"revision"`, `revision-suggestion` →
-   *  `"revision-suggestion"`) is intentional drift that AF's `float:` grammar
-   *  normalizes; A0 does not touch persisted keys. */
-  keyPrefix: string;
   /** `CARD_THEMES` key (was the scattered per-card `themeKey` lookups). */
   themeKey: ThemeKey;
   /** Whether this kind participates in collab focus-claims (R28/D-2): its
@@ -256,15 +249,25 @@ export interface CardMeta {
    *  block content-MOVE, not a card re-anchor (drop-button SYNTHESIS §7 design
    *  call); `bib`/`error` are `false` (no spec at all). */
   droppable: boolean;
-  /** Where a (re)anchor drop for this kind LANDS — the declarative SSOT the drop
-   *  button + controller dispatch through, replacing `dropSpec.allowedPlacements`
-   *  introspection (drop-button SYNTHESIS §2). `"in-text"` = an inline caret /
+  /** Where a (re)anchor drop for this kind LANDS — `"in-text"` = an inline caret /
    *  `\cite`-`\footnote` atom position (footnote/citation); `"margin"` = the
    *  paragraph horizontal band (note/highlight/todo/archive/report/…); `null` for
    *  kinds that take no drop button (`bib`/`error`, and `example` whose drop
-   *  is a block move, not a re-anchor). DERIVED-CONSISTENT with the kind's
-   *  `dropSpec.allowedPlacements`; a dev assertion pins the two so the declared
-   *  policy can't drift from the mechanism. `droppable` ⇔ `dropPlacement !== null`. */
+   *  is a block move, not a re-anchor).
+   *
+   *  THE DECLARED HALF, and only that — stated precisely because the docstring
+   *  here used to claim "the declarative SSOT the drop button + controller
+   *  dispatch through" and neither does (task 634). The drop BUTTON gates on
+   *  `droppable` (`isDroppable`, read in `panel-primitives.tsx`); the per-move
+   *  dispatch resolves `spec.placementsFor?.(…) ?? spec.allowedPlacements` in
+   *  `drop-mode/placement-policy.ts` and never reads this field. Its readers are
+   *  the two things that CHECK it: `assertDropFacetCoverage` (card-registry.tsx),
+   *  which fails the declared policy against the real
+   *  `dropSpec.allowedPlacements`, and the `droppable ⇔ dropPlacement !== null`
+   *  assert in predicates.ts. That is its whole job — the declared policy a drift
+   *  is measured against — and it is worth having for exactly that: the spec is
+   *  registered by a boot-time side-effect import, so a static answer must exist
+   *  before any spec is folded on (see `droppable` above). */
   dropPlacement: "in-text" | "margin" | null;
   /** The morph target for the polymorphic kind-chevron (A9), or `null` for the
    *  non-morphing kinds. When set, this kind can convert *in place* into

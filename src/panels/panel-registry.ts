@@ -2,35 +2,40 @@
  * Single source of truth for panel↔card taxonomy.
  *
  * Every panel in the app is declared here. The registry maps `PanelKind`
- * to display label, optional card kind + popout-key prefix, and omni
- * eligibility. Other systems (`EditorLayout` chrome, `OmniViewPanel` filter,
- * `popKey()` helper) read from here instead of maintaining their own tables.
+ * to display label, its primary card kind (`card`), and omni eligibility.
+ * Other systems (`EditorLayout` chrome, `OmniViewPanel` filter, `popKey()`
+ * helper) read from here instead of maintaining their own tables.
  *
- * Popout key prefixes are intentionally the same strings used today by
- * `useViewPrefs.poppedOutCards` (persisted to localStorage). Don't
- * rename them without a migration.
+ * PANEL→KIND MEMBERSHIP IS NOT HERE. Each kind declares its own owning panel in
+ * `CARD_REGISTRY` and membership DERIVES — `cardKindsForPanel(panel)`
+ * (cards/predicates.ts). `card` below is the narrower fact `popKey` needs: the
+ * panel's PRIMARY kind, for the panels whose id-keyed surfaces name themselves by
+ * the panel rather than by the kind. It is `null` for a polymorphic panel with no
+ * primary (notes / reports / cutter) and for every card-less panel.
+ *
+ * The popout KEY grammar is not here either, and used to look as though it were:
+ * a `keyPrefix` + `themeKey` column per entry, 16 literals duplicating
+ * `CARD_REGISTRY`, read by nobody (task 634). The live grammar has no prefix
+ * segment at all — `buildFloatKey` → `float:<domain>:<kind>:<id>` — and the one
+ * reader of the legacy `<prefix>:<id>` shape is the deliberately registry-free
+ * `migrateLegacyKeyToFloat`. Those prefixes are frozen history and live with the
+ * other frozen legacy tokens, in `LEGACY_TOKEN_CROSSWALK.legacyKeyPrefix`.
  */
 
-import type { CARD_THEMES } from "@/components/panel-primitives";
 import type { PanelKind, CardKind } from "./_shared/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { buildFloatKey } from "@/floats/float-key";
 
-type ThemeKey = keyof typeof CARD_THEMES;
-
-export interface CardLink {
-  kind: CardKind;
-  /** Popout-key prefix. `${prefix}:${id}` is the persisted card key. */
-  keyPrefix: string;
-  /** `CARD_THEMES` key, or null when the card doesn't render through the
-   *  shared `themedCard` machinery. */
-  themeKey: ThemeKey | null;
-}
-
 export interface PanelRegistryEntry {
   kind: PanelKind;
   label: string;
-  card: CardLink | null;
+  /** The panel's PRIMARY card kind — what `popKey(panel, id)` builds its key
+   *  from — or `null` when the panel hosts no card, or hosts several with no
+   *  primary. NOT the panel's membership: that derives from `CARD_REGISTRY`
+   *  via `cardKindsForPanel`, which is why `revisions` can name a primary
+   *  (`revision-comment`, whose `RevisionRequestCard` keys by panel) while
+   *  `cutter` names none (both its cards key by kind). */
+  card: CardKind | null;
   /** Whether this panel's items appear in the Omni view. */
   omniEligible: boolean;
   /** Default sidebar strip side. Mirrors `useViewPrefs.DEFAULT_PREFS.placements`.
@@ -57,21 +62,21 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   footnotes: {
     kind: "footnotes",
     label: "Footnotes",
-    card: { kind: "footnote", keyPrefix: "footnote", themeKey: "footnote" },
+    card: "footnote",
     omniEligible: true,
     defaultStripSide: "left",
   },
   citations: {
     kind: "citations",
     label: "Citations",
-    card: { kind: "citation", keyPrefix: "citation", themeKey: "citation" },
+    card: "citation",
     omniEligible: true,
     defaultStripSide: "left",
   },
   bibliography: {
     kind: "bibliography",
     label: "Bibliography",
-    card: { kind: "bib", keyPrefix: "bib", themeKey: "bib" },
+    card: "bib",
     omniEligible: false,
     defaultStripSide: "left",
   },
@@ -95,38 +100,39 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   examples: {
     kind: "examples",
     label: "Examples",
-    card: { kind: "example", keyPrefix: "example", themeKey: "example" },
+    card: "example",
     omniEligible: true,
     defaultStripSide: "left",
   },
   todo: {
     kind: "todo",
     label: "Todo List",
-    card: { kind: "todo", keyPrefix: "todo", themeKey: "todo" },
+    card: "todo",
     omniEligible: true,
     defaultStripSide: "right",
   },
   archive: {
     kind: "archive",
     label: "Archived Text",
-    card: { kind: "archive", keyPrefix: "archive", themeKey: "archive" },
+    card: "archive",
     omniEligible: true,
     defaultStripSide: "right",
   },
   revisions: {
     kind: "revisions",
     label: "Revisions",
-    card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "revision" },
+    card: "revision-comment",
     omniEligible: true,
     defaultStripSide: "right",
   },
   cutter: {
     kind: "cutter",
     label: "Cutter",
-    // Polymorphic — hosts both `cutter-comment` and `cutter-suggestion`
-    // card kinds. The shared marker/theme/typography for the panel still
-    // live under the legacy "cut" keys (see CARD_KEY_PREFIXES below,
-    // MARKER_META["cut"], CARD_THEMES.cut, panel-typography "cut").
+    // Polymorphic with NO primary — hosts both `cutter-comment` and
+    // `cutter-suggestion`, and both cards key by kind, so nothing needs
+    // `popKey("cutter", …)`. The shared marker/theme/typography for the panel
+    // still live under the legacy "cut" keys (MARKER_META["cut"],
+    // CARD_THEMES.cut, panel-typography "cut").
     card: null,
     omniEligible: true,
     defaultStripSide: "right",
@@ -155,7 +161,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   errors: {
     kind: "errors",
     label: "Errors",
-    card: { kind: "error", keyPrefix: "error", themeKey: "error" },
+    card: "error",
     omniEligible: true,
     defaultStripSide: "right",
   },
@@ -167,13 +173,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     defaultStripSide: null,
   },
 };
-
-/** Canonical key-prefix per card kind. **DERIVED from `CARD_REGISTRY`**
- *  (`src/cards/card-registry`) — the single source of truth for popout keys
- *  and OmniView prefix taxonomy. Don't hand-edit; add a registry entry. */
-export const CARD_KEY_PREFIXES: Record<CardKind, string> = Object.fromEntries(
-  (Object.keys(CARD_REGISTRY) as CardKind[]).map((k) => [k, CARD_REGISTRY[k].keyPrefix]),
-) as Record<CardKind, string>;
 
 /** Display label for a card type, shown as a small uppercase overline
  *  in OmniView (and always shown for Comment / Suggestion families). The
@@ -295,11 +294,11 @@ export function resolveTitleAuto(
  *  `cardPopKey` via the panel's declared `card.kind` (so the revisions panel
  *  yields `revision-comment`; the suggestion card builds its own key directly). */
 export function popKey(panelKind: PanelKind, id: string): string {
-  const entry = PANEL_REGISTRY[panelKind];
-  if (!entry.card) {
+  const card = PANEL_REGISTRY[panelKind].card;
+  if (!card) {
     throw new Error(`Panel "${panelKind}" has no card kind`);
   }
-  return cardPopKey(entry.card.kind, id);
+  return cardPopKey(card, id);
 }
 
 /** `float:card:<kind>:<id>` — the unified popout key by card kind (AF grammar,

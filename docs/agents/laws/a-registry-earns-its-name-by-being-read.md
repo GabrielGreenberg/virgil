@@ -4123,3 +4123,76 @@ CI: [tab-record-lifetime.test.ts](../../../src/lib/__tests__/tab-record-lifetime
 [useFiles-page-lifecycle.test.tsx](../../../src/hooks/__tests__/useFiles-page-lifecycle.test.tsx)
 (reload restores; bfcache re-claim ordering and drop). Neutered against the
 pre-603 hook + doc-index: 10 of 12 legs fail, the reload leg with the lost tabs.
+
+### The census half: the guard that asks the law's own question has ONE implementation (task 634)
+
+> **A completed migration leaves a PREDECESSOR behind, and "did anything ever
+> call it?" is a question no reviewer runs.** So the law gets a MACHINE:
+> [`_export-census.ts`](../../../src/lib/__tests__/_export-census.ts) — a
+> source-reading census that names any value export in a censused module with no
+> NON-TEST caller, with re-export clauses stripped before counting, because *a
+> barrel entry proves the symbol was published, never that it was wanted.*
+
+The card spine's own vestiges are the case that forced the extraction, and their
+shape is the general one. Two migrations landed — the INVERSION (each kind
+declares its `panel:` in `CARD_REGISTRY`, so membership derives) and the AF KEY
+FLIP (`float:card:<kind>:<id>`, no prefix segment at all) — and `predicates.ts`
+recorded both in the present tense while what they replaced sat two files away,
+exported, derived, commented "Don't hand-edit", and read by nobody:
+`PANEL_REGISTRY.card`'s hand-written `keyPrefix` + `themeKey` columns (16 literals
+duplicating the registry), `CARD_KEY_PREFIXES`, and three predicates
+(`isSystemCardKind` / `stackableCardKinds` / `canMorph`) with zero callers of any
+kind, not even a test.
+
+Four rules the pass earned, each the half a plain deletion would have missed:
+
+- **A census catches an unread EXPORT; it cannot catch a hand-written DUPLICATE
+  of a derived fact.** `CardLink.keyPrefix` was read by nobody — but one reader
+  would have silenced the census while the two copies drifted, and
+  `themeKey: ThemeKey` is a 13-member union, so a wrong-but-valid value compiles
+  clean. So pair the census with the fix this codebase already prefers: **delete
+  the duplicate rather than pin it.** `PanelRegistryEntry.card` collapsed to
+  `CardKind | null` — the panel's PRIMARY kind, the one fact `popKey` reads — and
+  the whole `CardLink` interface went with the two dead columns.
+- **A test-only export is DEAD, but a PARITY ORACLE is not.** The census counts a
+  suite's hits separately for the reason task 202 found: a guard that treats a
+  suite as a consumer says "alive" about every dead export that was ever tested.
+  The exception is narrow and must be stated: where a LIVE legacy PARSER exists,
+  the frozen generator whose output it must keep matching is that parser's
+  specification, and deleting it moves the frozen shape into the suite with
+  nothing pinning the two together. `nextCardTitle` is allowlisted on exactly
+  that ground (`isAutoTitle`'s spec, via `resolveLoadedTitle`'s legacy fallback);
+  its retirement is the parser's.
+- **A frozen legacy token does not live on the LIVE spine.** `CardMeta.keyPrefix`
+  claimed to be "preserved byte-for-byte" for a key grammar that had since
+  changed, on the registry the next contributor reads to learn the current one.
+  It moved, byte-identical, to
+  [`LEGACY_TOKEN_CROSSWALK.legacyKeyPrefix`](../../../src/cards/legacy-token-crosswalk.ts)
+  beside `legacyDataKind` and `cssToken` — the module whose whole promise is that
+  its values are frozen namespaces no live grammar reads. `Record<CardKind, …>`,
+  so a new kind still cannot skip the question.
+- **A checker keyed on the SYNTAX of a field is one refactor from deriving
+  `false` for everything.** `check-coherence.mjs` asked "does this panel host a
+  card?" by testing whether `card:` was an object literal, plus a
+  `POLYMORPHIC_CARD_PANEL` map the inversion had already deleted — so that `Set`
+  was always empty, notes/reports/cutter silently answered `false`, and three
+  `warn`-only findings had been wrong for months. It now asks `CARD_REGISTRY`'s
+  `panel:` declarations, the same SSOT the app reads, and FAILS OPEN (skip, never
+  all-false) when the registry cannot be parsed.
+
+Scope is a DECISION, not a discovery. The census takes any file list, so widening
+is one line — and the suite header names the five members a spine-wide scope
+flags today (`accentTokenFromTint`, `cardKindsForMarkerType`,
+`PANEL_TO_CATEGORY`, and the `CardLifecycleProvider` / `useCardLifecycle` context
+half that is task 635's subject), each needing its own disposition. A census that
+lands with a five-entry allowlist is weaker than one that lands with the
+deletions done.
+
+CI: [card-spine-export-census.test.ts](../../../src/cards/__tests__/card-spine-export-census.test.ts)
+(the verdict + the allowlist-staleness leg + a code-only pin on the retired
+vocabulary) and [link-surface-honesty.test.ts](../../../src/links/__tests__/link-surface-honesty.test.ts),
+now reading the same machinery — its own `readdirSync` population (the pre-429
+gitignored-scratch bug) and five-stage regex chain (the task-202b runaway that
+ate 7 kB of a live file) both retired onto `_source-scan`'s `trackedFiles` and
+one-pass scanner. Teeth: a re-added dead export fails the census, and so does one
+"referenced" only by a barrel re-export.
