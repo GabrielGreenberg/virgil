@@ -14,6 +14,7 @@
 
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import {
+  cardMutationWritable,
   READER_EDITABLE_CARD_KINDS,
   writableSidecarsFor,
 } from "@/lib/host-writability";
@@ -173,4 +174,28 @@ export function isSidecarWriteAllowed(
 ): boolean {
   const writable = writableSidecarsFor(chrome.editableCardKinds);
   return writable === null || writable.has(filename);
+}
+
+/**
+ * The UI-layer permit for a CARD MUTATION: may a change to a card of this kind
+ * reach disk under this chrome? Asked by `EditableCard` before it offers a
+ * DELETE affordance — the trash, the menu item and the shell's delete key.
+ *
+ * The companion of {@link isSidecarWriteAllowed}, over the same derivation and
+ * for the same reason (task 637). That permit governed the *write*; the card
+ * chrome governed the *editor*; nothing governed the *destructive control*, so
+ * a Library Reader footnote card offered a live trash button that updated React
+ * state, wrote nothing, said nothing, and had both the footnote and its card
+ * back on the next reload. A control the host was never going to honour is not
+ * a control — and hiding it is the answer `EditorPane` already gives for the
+ * archive / restore-to-document verbs under the same chrome.
+ *
+ * `editableCardKinds` undefined (FULL_CHROME / main app) → every kind mutable,
+ * so no card anywhere in the main app changes.
+ */
+export function isCardMutationAllowed(
+  chrome: EditorChromeConfig,
+  kind: CardKind,
+): boolean {
+  return cardMutationWritable(chrome.editableCardKinds, kind);
 }

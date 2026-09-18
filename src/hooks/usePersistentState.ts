@@ -12,6 +12,7 @@ import {
 import { readSidecarIfExists, writeSidecar } from "@/lib/storage";
 import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
 import { onTabHidden } from "@/lib/tab-hidden";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -389,6 +390,17 @@ export function usePersistentState<S>(
       // dropped here — the in-memory state still updated, only the disk write
       // is suppressed — which is what keeps the `hasMutatedRef` stamp below
       // honest: it is never set for a write the layer below would refuse.
+      //
+      // NOT published to the refusal channel, deliberately (task 637): under a
+      // read-mostly host this branch is reached by ORDINARY, DESIGNED churn —
+      // `focus.json`, `document-settings.json`, `editor-state.json` are
+      // session-only in the Reader BY DECISION (`library/READER_INHERITANCE.md`),
+      // so a band raised here would be permanently lit by the user simply
+      // reading. The card-mutation half of this defect is answered where it can
+      // be answered honestly: BEFORE the gesture, by withholding the affordance
+      // (`useCardDeleteAllowed`, `panel-primitives.tsx`) — a standing host
+      // property needs no runtime discovery. What is published below is the
+      // `failed` case, which is not designed and not knowable in advance.
       if (!writeAllowedRef.current) return;
       const h = resolveHandle();
       if (!h) return;
@@ -410,6 +422,24 @@ export function usePersistentState<S>(
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error(`Failed to save ${errorLabel ?? filename}:`, err);
+        // … and SAY so (task 637, over task 630's channel). A `console.error`
+        // is not a report: this primitive owns fifteen sidecars, thirteen of
+        // them CONTENT tier, and a throw here means the user's writing is in
+        // memory only — gone at the next reload, with the panel still showing
+        // it as saved. That is precisely the swallow `sidecar-refusal.ts` was
+        // built for; it just had no publisher on the panel path.
+        //
+        // The noun is the hook's own `errorLabel` ("notes", "revisions", …),
+        // which every content consumer already declares for the log line. NEVER
+        // the filename — the channel deliberately does not carry one, and a
+        // consumer with no label gets the generic phrase rather than a leaked
+        // one.
+        recordSidecarRefusal({
+          docId: h.docId,
+          what: errorLabel ?? "document annotation",
+          reason: "failed",
+          detail: err instanceof Error ? err.message : undefined,
+        });
       } finally {
         inFlightRef.current -= 1;
       }
