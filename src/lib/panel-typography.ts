@@ -394,15 +394,11 @@ export function getPanelTypography(key: PanelBodyKey): PanelTypography {
 }
 
 /** Return the user-overridden fields for `key`, verbatim. Returns `{}` when
- *  the user has not set any override for this panel — that empty object is
- *  what lets `usePanelBodyStyle` skip applying inline styles and preserve
- *  the panel's default visual (theme-derived colors etc).
+ *  the user has set no override for this panel.
  *
- *  Crucially we do NOT filter out fields that happen to equal the registry
- *  default: the per-panel text-size stepper writes explicit values, and
- *  the rendered size must match the slider value step-for-step (the
- *  registry default doesn't always match the underlying CSS default — see
- *  `.tiptap p { font-size: 1.05rem }` in globals.css). */
+ *  No filtering happens here: `setPanelTypographyField` is the door that keeps
+ *  an at-default value from ever being STORED (see its snap-to-clear below), so
+ *  whatever survives in `overrides` is a real override by construction. */
 export function getPanelTypographyOverrides(key: PanelBodyKey): Partial<PanelTypography> {
   const o = overrides[key];
   if (!o) return {};
@@ -413,20 +409,63 @@ export function getPanelTypographyOverrides(key: PanelBodyKey): Partial<PanelTyp
   return out;
 }
 
+/** Is `field` a value that DEPARTS from what the panel would render with no
+ *  override at all? Compared against the LIVE doc-relative default
+ *  (`getPanelDefault`), never the frozen `BODY_CLASS_TYPOGRAPHY` literal — a
+ *  stored 15px while the borrowed tier base is 13px is an override, and a
+ *  stored 15px once the tier base has itself moved to 15px is not. */
 export function isPanelTypographyFieldOverridden<F extends keyof PanelTypography>(
   key: PanelBodyKey,
   field: F,
 ): boolean {
   const o = overrides[key];
   if (!o) return false;
-  return o[field] !== undefined && o[field] !== DEFAULT_PANEL_TYPOGRAPHY[key][field];
+  return o[field] !== undefined && !fieldEqualsDefault(key, field, o[field]!);
 }
 
+/** Field-wise "is this the default?" — the ONE comparison the snap-to-clear
+ *  door and the is-overridden predicate share. `color` compares
+ *  case-insensitively (hex casing is not a preference). */
+function fieldEqualsDefault<F extends keyof PanelTypography>(
+  key: PanelBodyKey,
+  field: F,
+  value: PanelTypography[F],
+): boolean {
+  const def = getPanelDefault(key)[field];
+  if (field === "color") {
+    return String(value).toLowerCase() === String(def).toLowerCase();
+  }
+  return value === def;
+}
+
+/** Write one typography override field for `key`.
+ *
+ *  **Snap-to-clear (task 626).** A value equal to the LIVE doc-relative default
+ *  is not an override, so it is CLEARED rather than stored. Storing it would
+ *  look identical today and silently pin the panel tomorrow: the whole point of
+ *  the doc-relative default (BUG #30) is that an un-overridden body tracks the
+ *  document's body size, and a stored-but-equal value freezes it at today's
+ *  number. Stepping a size away and back (13 → 14 → 13) must therefore leave no
+ *  trace, not a pin that reads as "at default" while behaving as a lock.
+ *
+ *  The rule lives HERE, in the single door every write goes through, rather
+ *  than in each prefs surface — the Smart-preferences grid, the Fonts… dialog
+ *  and the per-panel three-dots stepper used to disagree about it, one door
+ *  each. (Same shape as task 625's link cascade moving into `updatePref`.)
+ *
+ *  It is deliberately NOT applied when HYDRATING from storage: at load the
+ *  tier bases have not been pushed yet (`setTierBaseFontSizes` runs from
+ *  EditorLayout), so `getPanelDefault` would still be answering with the frozen
+ *  literal and a legitimate override equal to that literal would be dropped. */
 export function setPanelTypographyField<F extends keyof PanelTypography>(
   key: PanelBodyKey,
   field: F,
   value: PanelTypography[F],
 ): void {
+  if (fieldEqualsDefault(key, field, value)) {
+    clearPanelTypographyField(key, field);
+    return;
+  }
   const o: TypoOverride = { ...(overrides[key] ?? {}) };
   o[field] = value;
   overrides[key] = o;

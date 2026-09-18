@@ -117,18 +117,19 @@ function PanelColorRow({
 
 function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
   const typo = usePanelTypography(panelKey)!;
-  // Doc-relative default (BUG #30): so "reset"/at-default and the snap-to-clear
-  // in `setField` track the live tier base, not the frozen literal.
+  // Doc-relative default (BUG #30): so "reset"/at-default tracks the live tier
+  // base, not the frozen literal.
   const def = usePanelDefault(panelKey);
   const isDefault =
     typo.fontFamily === def.fontFamily &&
     typo.fontSize === def.fontSize &&
     typo.color.toLowerCase() === def.color.toLowerCase();
 
-  const setField = <F extends keyof typeof typo>(field: F, value: typeof typo[F]) => {
-    if (value === def[field]) clearPanelTypographyField(panelKey, field);
-    else setPanelTypographyField(panelKey, field, value);
-  };
+  // Plain write: snap-to-clear at the doc-relative default now lives in
+  // `setPanelTypographyField` itself (task 626), so this row, the Fonts…
+  // dialog and the per-panel stepper can no longer disagree about it.
+  const setField = <F extends keyof typeof typo>(field: F, value: typeof typo[F]) =>
+    setPanelTypographyField(panelKey, field, value);
 
   const resetAll = () => {
     (Object.keys(def) as (keyof typeof def)[]).forEach((f) => clearPanelTypographyField(panelKey, f));

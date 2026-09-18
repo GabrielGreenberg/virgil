@@ -452,6 +452,10 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
             />
           </FieldRow>
           <FieldRow label="Size">
+            {/* No at-default branch here: `setPanelTypographyField` is the one
+                door and it clears rather than stores a value equal to the live
+                doc-relative default (task 626), so stepping the size away and
+                back leaves footnotes tracking the body size, not pinned. */}
             <SizeStepper
               value={footnoteSize}
               onChange={(v) => setPanelTypographyField("footnote", "fontSize", Math.round(v))}

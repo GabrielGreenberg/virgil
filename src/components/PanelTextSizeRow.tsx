@@ -14,11 +14,12 @@ const MAX = 32;
 
 function commit(key: PanelBodyKey, raw: number) {
   const clamped = Math.max(MIN, Math.min(MAX, Math.round(raw)));
-  // Always store the explicit value (no auto-clear at the default). This
-  // guarantees the slider is monotonic across panels: the rendered
-  // font-size matches the slider value step-for-step instead of snapping
-  // back to whatever the underlying CSS default happens to be when the
-  // override is dropped.
+  // One door: `setPanelTypographyField` stores the explicit value, except at
+  // the live doc-relative default, where it clears instead (task 626). The
+  // stepper stays monotonic either way — `usePanelBodyStyle` always ships an
+  // inline `font-size`, so a cleared field renders at exactly the default the
+  // stepper is showing; what changes is that the panel goes back to TRACKING
+  // the document's body size instead of being pinned at today's number.
   setPanelTypographyField(key, "fontSize", clamped);
 }
 
@@ -28,12 +29,11 @@ function commit(key: PanelBodyKey, raw: number) {
  *  Layout:  [ 14 ] pts
  *
  *  Uses the native number-input spinner (forced always-visible via
- *  `panel-text-size-input` styles in globals.css). Every step/typed value is
- *  stored as an explicit override (see `commit` — no auto-clear at the
- *  default), so the rendered size matches the stepper value step-for-step and
- *  the stepper stays monotonic. The override survives even when it equals the
- *  default; clearing it (to track the doc-relative default again, BUG #30) is
- *  done from the Fonts… dialog / Smart Preferences reset, not here. */
+ *  `panel-text-size-input` styles in globals.css). Every step/typed value goes
+ *  through `setPanelTypographyField`, which stores it as an explicit override
+ *  unless it equals the live doc-relative default — in which case it clears,
+ *  so the panel tracks the document's body size again (BUG #30 / task 626).
+ *  Stepping away and back therefore leaves no pin behind. */
 export default function PanelTextSize({ panelKey }: { panelKey: PanelBodyKey }) {
   const typo = usePanelTypography(panelKey);
   const current = typo?.fontSize ?? DEFAULT_PANEL_TYPOGRAPHY[panelKey].fontSize;
