@@ -4196,3 +4196,62 @@ gitignored-scratch bug) and five-stage regex chain (the task-202b runaway that
 ate 7 kB of a live file) both retired onto `_source-scan`'s `trackedFiles` and
 one-pass scanner. Teeth: a re-added dead export fails the census, and so does one
 "referenced" only by a barrel re-export.
+
+### The reachability half: a checker whose subject is a component-local literal is not checked at all (task 635)
+
+> **A coverage assertion is only as good as CI's ability to reach its SUBJECT.**
+> Where the thing declared lives in a module, a suite can call the checker and be
+> done. Where it is built inside a component — a `useMemo` closing over per-doc
+> hooks — the checker can only ever fire at dev runtime, and the suite that
+> "arms" it ends up building a FIXTURE derived from the declaration it is meant
+> to be measured against. That suite verifies the checker, not the thing checked,
+> and the gap is invisible precisely because the file is green.
+
+The card spine has seven `assert*Coverage` functions. Six take no argument: their
+subject is a module-level registry (or one a boot-time registrar mutates), so a
+CI leg that calls them checks the real thing.
+[`assertLifecycleCoverage`](../../../src/panels/card-lifecycle-registry.tsx) is
+the one that takes its subject as a parameter, and that parameter is
+`EditorPane`'s `cardLifecycleRegistry` memo. So the census question the law asks
+of exports — *does anything read this?* — has a sibling for GUARDS: **does
+anything run this against the value it is about?** For months the answer was no,
+and three things each looked like they covered it and did not:
+`lifecycle-coverage-assertion.test.ts` (synthetic fixture, and honest enough to
+say so in its own header), the type system (`Partial<Record<CardKind, …>>`, so
+dropping a declared op typechecks and ships), and the assertion itself (`return`
+on `NODE_ENV === "production"`).
+
+**The remedy is the SOURCE-READING LEG, and it is already this repo's idiom** —
+`card-anchor-authority-census`'s `marginaliaMarkers` slice,
+`confirm-suppression`, `stack-pull-content-fidelity`, `marginalia-lane-regime`:
+name the binding, slice its literal out of the component, assert on it, and fail
+with *"renamed? re-point this leg"*. Preferred over exporting the builder for a
+test to call, which drags every per-doc hook into a fixture surface and reshapes
+production to suit a suite.
+
+**Four properties such a leg needs, because one that parses nothing passes
+forever.** A source-reading guard is compliance-shaped by default: it must pin
+(1) that it parsed something AND that what it parsed is well-typed against the
+real vocabulary (every key a real `CardKind`) — an empty map and a garbled parse
+fail differently; (2) that every member it found is one the leg MODELS, failing
+OPEN on an unknown (task 634's rule 4 again — a fourth lifecycle op must stop the
+file, not be silently dropped from the comparison); (3) that the scanner did not
+swallow a line INSIDE the slice (`swallowedLines` — corruption is confined to one
+line and survivable everywhere else, but here it would report a capability gap
+that does not exist); and (4) that the literal it read is the value actually
+handed to the consumer — else the leg is itself an unread registry, one level up.
+Parse inside a leg, never in the `describe` body: a collection-time throw makes
+vitest report *"no tests"* with the message buried, and a guardrail should name
+the leg it broke.
+
+**And the corollary about DOORS.** This registry shipped two delivery halves —
+a React-context provider and a direct API constructor — and only the second was
+ever called, because its consumers are hooks the building component already owns.
+The module header described the dead path in the present tense for months. One
+construction site is what makes a source-reading leg TOTAL rather than a sample,
+so the unread door was deleted and the module added to the export census's
+population in the same pass: the deletion is the easy half, and the population
+entry is what refuses the third door.
+
+CI: [lifecycle-coverage-assertion.test.ts](../../../src/panels/__tests__/lifecycle-coverage-assertion.test.ts),
+[card-spine-export-census.test.ts](../../../src/cards/__tests__/card-spine-export-census.test.ts).
