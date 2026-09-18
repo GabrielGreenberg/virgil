@@ -259,10 +259,27 @@ export function appliedSpliceSettleMessage(
 }
 
 /**
- * Obligation 2 — SETTLE. Returns false when the event must NOT proceed, which
- * cancels it whole (nothing mutated, nothing signalled). Two ways that happens,
- * and they are the same judgement: the splice is still live and we are not
- * allowed to end the record over it.
+ * What ONE card's settle actually did — three outcomes, not a boolean, because
+ * the two non-declining ones are genuinely different facts and a caller outside
+ * this module needs to tell them apart. A RANGE gesture (task 636) asks this of
+ * every card inside the passage it is about to delete, and must know whether the
+ * DOCUMENT MOVED — a `"revert"` splices the pre-suggestion original back in,
+ * which shifts every position after it — before it computes what to delete.
+ *
+ *   - `"none"`    — nothing to settle (no ops bag, a kind that can't own a
+ *                   splice, or a card that owns none right now). Document
+ *                   untouched.
+ *   - `"settled"` — the user answered and `settle` landed it. Document MOVED.
+ *   - `"declined"` — the event must NOT proceed. Document untouched.
+ */
+export type AppliedSpliceSettleOutcome = "none" | "settled" | "declined";
+
+/**
+ * Obligation 2 — SETTLE, for ONE card, as a door any lifecycle surface can
+ * knock on. `"declined"` means the event must NOT proceed, which cancels it
+ * whole (nothing mutated, nothing signalled). Two ways that happens, and they
+ * are the same judgement: the splice is still live and we are not allowed to
+ * end the record over it.
  *
  *   - the user CANCELLED the prompt ("I don't want to decide yet"), or
  *   - `settle` REFUSED — it could not act (no editor mounted), so proceeding
@@ -271,22 +288,47 @@ export function appliedSpliceSettleMessage(
  * Skipped in three ways, each a genuine no-op rather than a silent pass:
  * no ops bag injected, a kind that can't own a splice (`ownsAppliedSplice`), or
  * a card that owns none right now (never applied / already kept or reverted).
+ *
+ * EXPORTED BECAUSE THERE ARE TWO KINDS OF CALLER, NOT TWO IMPLEMENTATIONS
+ * (task 636). The executor below asks it for the ONE card whose record is
+ * ending. A destructive RANGE gesture — the drag handle's Delete / Archive —
+ * ends every card record inside a passage at once, and has to ask BEFORE it
+ * touches the document rather than card-by-card in the middle of deleting it.
+ * That second caller must run the same prompt, over the same membership
+ * predicate, with the same refusal semantics; the only way to guarantee that is
+ * for it to call this function rather than re-spell it. See
+ * `settleRangeCardObligations` in `src/text-objects/delete-range.ts`.
  */
+export async function settleAppliedSpliceForCard(
+  eventType: LifecycleEvent["type"],
+  kind: CardKind,
+  id: string,
+  ops: AppliedSpliceOps | undefined,
+): Promise<AppliedSpliceSettleOutcome> {
+  if (!ops) return "none";
+  if (!ownsAppliedSplice(kind)) return "none";
+  const splice = ops.get(kind, id);
+  if (!splice) return "none";
+  const resolution = await ops.ask(
+    appliedSpliceSettleMessage(eventType, kind, splice),
+  );
+  if (!resolution) return "declined";
+  return (await ops.settle(kind, id, resolution)) ? "settled" : "declined";
+}
+
+/** The executor's view of the door above: proceed, or don't. */
 async function settleAppliedSplice(
   ev: LifecycleEvent,
   deps: CardLifecycleDeps,
 ): Promise<boolean> {
-  const ops = deps.appliedSplice;
-  if (!ops) return true;
   const kind = ev.type === "morph" ? ev.fromKind : ev.kind;
-  if (!ownsAppliedSplice(kind)) return true;
-  const splice = ops.get(kind, ev.id);
-  if (!splice) return true;
-  const resolution = await ops.ask(
-    appliedSpliceSettleMessage(ev.type, kind, splice),
+  const outcome = await settleAppliedSpliceForCard(
+    ev.type,
+    kind,
+    ev.id,
+    deps.appliedSplice,
   );
-  if (!resolution) return false;
-  return await ops.settle(kind, ev.id, resolution);
+  return outcome !== "declined";
 }
 
 /**

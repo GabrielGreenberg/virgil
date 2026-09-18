@@ -164,6 +164,14 @@ function makeHarness(editor: Editor) {
     cardCreation,
     cardLifecycle: { get: () => undefined } as unknown as DragHandleActionsDeps["cardLifecycle"],
     anchorRetarget: { retarget: () => 0 },
+    // task 636: the range legs' SETTLE bag. Inert here — no card in these
+    // fixtures owns a live applied splice, so `get` answers null and the ask
+    // phase is a no-op (which is an ANSWER, not an omission).
+    appliedSplice: {
+      get: () => null,
+      ask: async () => null,
+      settle: () => true,
+    },
     confirm: async () => true,
     notify,
     prefs: { placements: [], activeLeft: null, activeRight: null } as never,

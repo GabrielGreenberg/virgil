@@ -41,8 +41,17 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
  *  `clone(sourceId)` returns the new id, or null if the source id was
  *  not found (or the kind opts out of clone).
  *
- *  `delete(id)` is fire-and-forget — sidecar hooks already handle
- *  missing ids gracefully (filter is a no-op if nothing matches).
+ *  `delete(id)` REPORTS WHETHER IT COMMITTED (task 636). It used to be
+ *  declared `void` and documented as fire-and-forget, which was true until the
+ *  SETTLE obligation made a delete declinable: `makeUnbridgingDelete` returns
+ *  `Promise<boolean>`, and `Promise<boolean>` is assignable wherever `void`
+ *  was, so the registry went on promising a delete that always happens while
+ *  wiring five kinds whose delete can refuse. The range walker believed the
+ *  declaration and deleted the user's text beside a prompt that had not been
+ *  answered yet. The type now says the truth; the walkers' actual guarantee is
+ *  structural — `settleRangeCardObligations` discharges every declinable
+ *  obligation over a range BEFORE the walk fires any delete (see
+ *  [delete-range.ts](../text-objects/delete-range.ts)).
  *
  *  `bindAnchor(id, paragraphId, anchorId, anchorText)` re-attaches a
  *  Mode B text-range anchor to a card. The duplicate dispatcher calls
@@ -56,7 +65,7 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
  *  cluster C2. */
 export interface CardLifecycle {
   clone(sourceId: string): string | null;
-  delete(id: string): void;
+  delete(id: string): void | Promise<boolean>;
   bindAnchor?(
     id: string,
     paragraphId: string,

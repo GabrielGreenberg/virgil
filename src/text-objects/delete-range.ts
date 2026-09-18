@@ -1,9 +1,22 @@
 /**
- * Sidecar-cleanup walker for the drag-handle Delete action. Walks a doc
- * range and, for every sidecar-bearing element inside it, calls the
+ * Sidecar-cleanup walker for the drag-handle Delete / Archive actions. Walks a
+ * doc range and, for every sidecar-bearing element inside it, calls the
  * registered lifecycle's `delete` op. The actual `tr.delete` of the
  * range is the dispatcher's job — this helper just makes sure no
  * sidecar entry survives the deletion as an orphan.
+ *
+ * TWO PHASES, AND THE ORDER IS THE WHOLE POINT (task 636).
+ *
+ *   1. ASK — `settleRangeCardObligations`. Async, declinable, mutates only what
+ *      the user explicitly answers for. Every declinable obligation a card in
+ *      the range carries is discharged HERE, before anything is destroyed, and
+ *      a decline aborts the entire gesture with the document untouched.
+ *   2. DO — `cleanupAndComputeDeleteRange` (→ `cleanupLinksInRange`) and the
+ *      caller's `tr.delete`. Synchronous and unconditional; nothing in it can
+ *      refuse, because phase one already asked.
+ *
+ * Both phases enumerate the SAME population through `collectRangeCardTargets`,
+ * so the gesture can never ask about one set of cards and destroy another.
  *
  * Same registry-driven discipline as [duplicate-slice.ts](./duplicate-slice.ts):
  *
@@ -29,6 +42,8 @@ import type { Editor } from "@tiptap/react";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { parseLinkCardKey } from "@/links/link-dom-contract";
+import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
+import { settleAppliedSpliceForCard } from "@/cards/lifecycle/run-event";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -146,6 +161,34 @@ export function expandCascadeRange(
 // ---------------------------------------------------------------------------
 
 /**
+ * Correct a range for a mutation the gesture ITSELF performed strictly inside
+ * that range. The one arithmetic, shared by the two steps that mutate inside a
+ * range before deleting it:
+ *
+ *   • the cleanup walk's inline-atom strips (the F2 case above) — `delta < 0`;
+ *   • a SETTLE's `revert`, which splices the pre-suggestion original back over
+ *     the applied text (task 636) — `delta` of either sign, since the original
+ *     may be longer than what replaced it.
+ *
+ * Both are, by construction, strictly INSIDE `[from, to)`: the walk only ever
+ * touches atoms/marked text it found within the range, and a settle only ever
+ * rewrites the anchor range of a card the walk found there. So `from` never
+ * moves and `to` shifts by exactly the document-size delta. Clamped at both
+ * ends so a degenerate input can only ever shrink the range, never grow it into
+ * a neighbour.
+ */
+export function correctRangeForInnerDelta(
+  from: number,
+  to: number,
+  delta: number,
+  docSize: number,
+): { from: number; to: number } {
+  const lowered = Math.max(from, to + delta);
+  const shifted = Math.min(lowered, docSize);
+  return { from: Math.min(from, shifted), to: shifted };
+}
+
+/**
  * Run `cleanupLinksInRange` over `[from, to)` and return the range corrected
  * for any doc mutation the cleanup's card-lifecycle deletes performed. The
  * returned `{ from, to }` is valid against the POST-cleanup `editor.state.doc`
@@ -154,6 +197,15 @@ export function expandCascadeRange(
  * `from` is returned unchanged: cleanup never touches positions at or before
  * the block's opening boundary. `to` is reduced by the doc-size delta, since
  * every cleanup removal lands strictly inside the range.
+ *
+ * IT IS THE SECOND HALF OF A TWO-PHASE GESTURE (task 636). Everything it does
+ * is UNCONDITIONAL — the lifecycle deletes it fires cannot be refused by the
+ * time it runs, because `settleRangeCardObligations` has already asked every
+ * declinable question over this range and the caller has already aborted on a
+ * decline. Calling it without that first phase is the bug task 636 fixed: the
+ * card delete was asynchronous and declinable while the text delete on the next
+ * statement was synchronous and unconditional, so the paragraph vanished while
+ * the user was still being asked what to do about it.
  */
 export function cleanupAndComputeDeleteRange(
   editor: Editor,
@@ -163,24 +215,41 @@ export function cleanupAndComputeDeleteRange(
 ): { from: number; to: number } {
   const sizeBefore = editor.state.doc.content.size;
   cleanupLinksInRange(editor.state.doc, from, to, lifecycle);
-  const removed = sizeBefore - editor.state.doc.content.size;
-  // Clamp defensively: a removed count outside [0, to-from) would mean cleanup
-  // touched content outside the range (it never does), so guard against an
-  // inverted or out-of-doc range rather than trust the arithmetic blindly.
-  const safeRemoved = Math.max(0, Math.min(removed, to - from));
-  const correctedTo = Math.min(to - safeRemoved, editor.state.doc.content.size);
-  return { from: Math.min(from, correctedTo), to: correctedTo };
+  const delta = editor.state.doc.content.size - sizeBefore;
+  return correctRangeForInnerDelta(
+    from,
+    to,
+    delta,
+    editor.state.doc.content.size,
+  );
 }
 
-export function cleanupLinksInRange(
+/** One sidecar-bearing card the walk found inside a range. */
+export interface RangeCardTarget {
+  kind: CardKind;
+  id: string;
+}
+
+/**
+ * The READ-ONLY half of the walk: every sidecar-bearing card inside
+ * `[from, to)`, in document order, deduplicated. Dispatches nothing and
+ * mutates nothing.
+ *
+ * It exists because the walk has two callers with opposite obligations, and
+ * they must see exactly the same population or the gesture asks about one set
+ * of cards and destroys another: `settleRangeCardObligations` ASKS about these
+ * cards before anything moves, and `cleanupLinksInRange` DELETES them after.
+ * One enumeration, two phases.
+ */
+export function collectRangeCardTargets(
   doc: PMNode,
   from: number,
   to: number,
-  lifecycle: CardLifecycleApi,
-): void {
-  if (to <= from) return;
-  // Track ids already passed to delete so a mark spanning multiple text
-  // nodes doesn't fire delete() N times for the same card.
+): RangeCardTarget[] {
+  const targets: RangeCardTarget[] = [];
+  if (to <= from) return targets;
+  // Track ids already collected so a mark spanning multiple text nodes doesn't
+  // yield the same card N times.
   const seenAnchors = new Set<string>();
   doc.nodesBetween(from, to, (node) => {
     // Inline-atom card cleanup
@@ -188,7 +257,7 @@ export function cleanupLinksInRange(
     if (atom) {
       const id = node.attrs?.[atom.idAttr];
       if (typeof id === "string" && id) {
-        lifecycle.get(atom.cardKind)?.delete(id);
+        targets.push({ kind: atom.cardKind, id });
       }
     }
     // linkedAnchor mark cleanup — one mark can cover several text nodes,
@@ -202,8 +271,128 @@ export function cleanupLinksInRange(
       const linkCard =
         typeof mark.attrs.linkCard === "string" ? mark.attrs.linkCard : "";
       const parsed = parseLinkCardKey(linkCard);
-      if (parsed) lifecycle.get(parsed.kind)?.delete(parsed.id);
+      if (parsed) targets.push({ kind: parsed.kind, id: parsed.id });
     }
     return true;
   });
+  return targets;
+}
+
+/**
+ * The answer `settleRangeCardObligations` gives a destructive range gesture:
+ * every declinable question over this passage has been asked and answered, and
+ * `{from, to}` is the range corrected for whatever those answers moved.
+ *
+ * It is a PRECONDITION IN VALUE FORM. A caller can only reach the unconditional
+ * second phase (`cleanupAndComputeDeleteRange` + the `tr.delete`) by holding one
+ * of these, and the only way to hold one is to have awaited the ask.
+ */
+export interface RangeSettlement {
+  /** Every sidecar-bearing card inside the range, as the ask saw it. */
+  readonly targets: readonly RangeCardTarget[];
+  /** The deletion range, corrected for any settlement that moved the document. */
+  readonly from: number;
+  readonly to: number;
+  /** True iff at least one settlement actually landed — i.e. the document has
+   *  moved since the caller computed its range, and anything the caller derived
+   *  from the pre-settle doc (an archive capture, a displaced-anchor sweep) must
+   *  be re-derived. */
+  readonly docMoved: boolean;
+}
+
+/**
+ * PHASE ONE of a destructive range gesture: ask, before anything is destroyed.
+ *
+ * THE BUG THIS EXISTS FOR (task 636). A card delete is ASYNCHRONOUS and
+ * DECLINABLE — `makeUnbridgingDelete` routes through the lifecycle executor,
+ * whose SETTLE obligation raises a three-way keep/revert/cancel prompt whenever
+ * the card owns a live in-document splice. The Delete / Archive dispatch called
+ * it bare from inside the synchronous cleanup walk and deleted the text on the
+ * very next statement, so the two raced: the paragraph was gone before the user
+ * answered, `Cancel` left a card whose text had already vanished, and — worst —
+ * `Revert` could no longer resolve the range it was meant to restore, so the
+ * pre-suggestion original was lost silently and irrecoverably.
+ *
+ * THE SHAPE OF THE FIX IS THE ONE THIS GESTURE ALREADY USES ELSEWHERE. Archive
+ * runs `prepareCardBodyCapture` BEFORE any mutation precisely so "an abort
+ * leaves the document and every sidecar completely untouched" (the
+ * capture/schema-symmetry law). This is that same law's other half: a second
+ * declinable question was being asked AFTER the point of no return instead of
+ * before it. So the question is hoisted — every applied splice inside the
+ * passage is settled first, the whole gesture aborts if any answer declines, and
+ * only then does the unconditional half run.
+ *
+ * Returns `null` when the gesture must abort. The document is then exactly as
+ * the user left it for a cancel; for a decline that follows an earlier
+ * settlement in the same range, those earlier answers stand — they were
+ * explicit user decisions about the document, not steps of the deletion.
+ *
+ * KIND-AGNOSTIC BY CONSTRUCTION: it asks `settleAppliedSpliceForCard` about
+ * EVERY card in the range, and that door gates on `ownsAppliedSplice`. There is
+ * no per-kind wiring here to forget when a kind later joins the pending-change
+ * family.
+ */
+export async function settleRangeCardObligations(
+  editor: Editor,
+  from: number,
+  to: number,
+  ops: AppliedSpliceOps | undefined,
+): Promise<RangeSettlement | null> {
+  const targets = collectRangeCardTargets(editor.state.doc, from, to);
+  const unmoved: RangeSettlement = { targets, from, to, docMoved: false };
+  if (!ops || targets.length === 0) return unmoved;
+  const sizeBefore = editor.state.doc.content.size;
+  let settledAny = false;
+  for (const target of targets) {
+    const outcome = await settleAppliedSpliceForCard(
+      "delete",
+      target.kind,
+      target.id,
+      ops,
+    );
+    if (outcome === "declined") return null;
+    if (outcome === "settled") settledAny = true;
+  }
+  if (!settledAny) return unmoved;
+  // A settlement rewrote text strictly inside the range (a revert restores the
+  // original over the applied text); correct `to` by the delta, exactly as the
+  // cleanup's own strips are corrected.
+  const delta = editor.state.doc.content.size - sizeBefore;
+  const corrected = correctRangeForInnerDelta(
+    from,
+    to,
+    delta,
+    editor.state.doc.content.size,
+  );
+  return { targets, from: corrected.from, to: corrected.to, docMoved: true };
+}
+
+/**
+ * PHASE TWO's card half — fire each kind's lifecycle `delete` for every card in
+ * the range. Unconditional: by the time this runs, `settleRangeCardObligations`
+ * has discharged every declinable obligation over the same target list, so no
+ * delete here can refuse. A delete that refuses anyway is a contract breach (a
+ * new declinable obligation the ask does not know about), and says so in dev
+ * rather than silently mutilating a card the user chose to keep.
+ */
+export function cleanupLinksInRange(
+  doc: PMNode,
+  from: number,
+  to: number,
+  lifecycle: CardLifecycleApi,
+): void {
+  for (const target of collectRangeCardTargets(doc, from, to)) {
+    const committed = lifecycle.get(target.kind)?.delete(target.id);
+    if (process.env.NODE_ENV === "production") continue;
+    void Promise.resolve(committed).then((ok) => {
+      if (ok === false) {
+        console.error(
+          `[delete-range] the lifecycle delete for ${target.kind}:${target.id} ` +
+            `DECLINED after the range gesture had already committed. Every ` +
+            `declinable obligation must be discharged by ` +
+            `settleRangeCardObligations before this walk runs (task 636).`,
+        );
+      }
+    });
+  }
 }
