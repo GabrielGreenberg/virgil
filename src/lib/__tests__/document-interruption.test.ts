@@ -69,7 +69,7 @@ function notice(over: Partial<PreservationNotice> = {}): PreservationNotice {
   };
 }
 function inputs(over: Partial<InterruptionInputs> = {}): InterruptionInputs {
-  return { docId: "doc-1", pen: null, penLastReleasedAt: null, external: clean, preservation: null, save: save(), now: NOW, ...over };
+  return { docId: "doc-1", pen: null, penLastReleasedAt: null, external: clean, preservation: null, sidecarRefusal: null, save: save(), now: NOW, ...over };
 }
 
 afterEach(() => clearCoworkPen());
@@ -294,12 +294,14 @@ describe("the tone register · ONE table for the band and the save badge", () =>
   });
 
   it("every kind has a tone, and the register is what STYLE_GUIDE says it is", () => {
-    const kinds: InterruptionKind[] = ["cowork-hold", "preservation", "conflict", "save-error", "disk-change"];
+    const kinds: InterruptionKind[] = ["cowork-hold", "preservation", "conflict", "save-error", "disk-change", "sidecar-refused"];
     for (const k of kinds) expect(toneForInterruptionKind(k), k).toBe(INTERRUPTION_TONE[k]);
-    // The alarm ramp is reserved for the two states in which the user's work
-    // is on no disk and nothing is coming to put it there.
+    // The alarm ramp is reserved for the states in which the user's work is on
+    // no disk and nothing is coming to put it there — including task 630's
+    // refused SIDECAR write, where the paper is safe but what the user just
+    // filed never reached the folder.
     expect(Object.entries(INTERRUPTION_TONE).filter(([, t]) => t === "danger").map(([k]) => k).sort())
-      .toEqual(["preservation", "save-error"]);
+      .toEqual(["preservation", "save-error", "sidecar-refused"]);
     expect(INTERRUPTION_TONE["cowork-hold"]).toBe("live");
     expect(INTERRUPTION_TONE.conflict).toBe("warning");
     expect(INTERRUPTION_TONE["disk-change"]).toBe("info");

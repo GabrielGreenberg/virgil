@@ -11,10 +11,12 @@ import type {
 import { subscribeAiRequests } from "@/lib/ai-request-events";
 import {
   isAiRequestsFile,
+  isAiRequestsWriteRefused,
   mutateAiRequests,
   readAiRequests,
   type AiRequestsMutator,
 } from "@/lib/ai-requests-store";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -147,9 +149,10 @@ export function useAiRequests(docId: string | null) {
       // DIRTY GUARD: a mutation in flight is about to publish a list computed
       // from a base at least as fresh as this read — defer to it, and REMEMBER
       // (see above). Note the deferred-to mutation is not guaranteed to publish:
-      // a declined mutator, a missing handle, a library paper and a failed write
-      // all resolve `null` without publishing, which is exactly why the pending
-      // flag replays on drain rather than trusting the mutation to cover us.
+      // every result but `written` publishes nothing (a declined mutator, a
+      // missing handle, a read-only paper, a failed write, a stale pipeline),
+      // which is exactly why the pending flag replays on drain rather than
+      // trusting the mutation to cover us.
       if (inFlight.current > 0) {
         rehydratePending.current = true;
         return;
@@ -181,9 +184,29 @@ export function useAiRequests(docId: string | null) {
    * (and a peer window's) from a stale base. `mutate` must therefore be PURE
    * and stable across two different bases: mint ids and timestamps OUTSIDE it.
    *
-   * With no doc / no active write handle the store persists nothing and
-   * publishes nothing; the optimistic state stands, exactly as the old
-   * handle-less persist behaved.
+   * ## When the write does NOT happen (task 630)
+   *
+   * Optimism is only honest if it is TAKEN BACK when the disk disagrees. The
+   * store used to answer `null` for five different outcomes and this hook
+   * inspected none of them, so a request filed with no write handle, onto a
+   * read-only library paper, or into a folder whose write threw, sat in the
+   * Open bucket with the inbox dot lit, reached no skill, and vanished on the
+   * next reload with nothing said. Now the store answers
+   * {@link AiRequestsWriteResult} and this door branches on it:
+   *
+   * - `written` / `declined` — nothing to do (a `written` result has already
+   *   published the merged truth, which the subscription above adopts; a
+   *   `declined` mutator returned the same `prev` optimistically too).
+   * - `stale` — SILENT and NOT rolled back. The doc switched under the write
+   *   and the new owner is authoritative; this window's state is about to be
+   *   replaced wholesale, so a notice would be about a paper the user has left.
+   * - refused (`no-handle` / `read-only` / `failed`) — publish ONE refusal to
+   *   the sidecar channel (the band says it in plain words) and RECONCILE:
+   *   re-arm the pending re-hydrate so the drain below re-reads the file and
+   *   the optimistic row goes. Reconciling from disk rather than "undoing"
+   *   `mutate` is what makes this correct under concurrent mutations — the
+   *   mutators are not invertible, and disk is the only base that is true for
+   *   all of them.
    *
    * Known, accepted transient: two mutations issued inside ONE disk round-trip
    * (a double-click on two different rows) adopt the FIRST one's published list
@@ -205,16 +228,34 @@ export function useAiRequests(docId: string | null) {
         return next === null ? prev : { requests: next };
       });
       inFlight.current += 1;
-      void mutateAiRequests(docId, mutate).finally(() => {
-        inFlight.current -= 1;
-        // DRAIN: replay an external change deferred while this write was in
-        // flight. The watcher will not tell us again — and this mutation may
-        // have resolved `null` without publishing anything, so nothing else
-        // would have carried the peer's change.
-        if (inFlight.current === 0 && rehydratePending.current) {
-          rehydrateRef.current?.();
-        }
-      });
+      void mutateAiRequests(docId, mutate)
+        .then((result) => {
+          if (!isAiRequestsWriteRefused(result)) return;
+          recordSidecarRefusal({
+            docId,
+            what: "AI request",
+            reason: result.kind === "failed" ? "failed" : result.kind,
+            detail:
+              result.kind === "failed" && result.error instanceof Error
+                ? result.error.message
+                : undefined,
+          });
+          // ROLL BACK by reconciling, not by inverting: arm the same deferral
+          // the external-change guard uses, and let the drain below re-read the
+          // file once every in-flight mutation has settled.
+          rehydratePending.current = true;
+        })
+        .finally(() => {
+          inFlight.current -= 1;
+          // DRAIN: replay an external change deferred while this write was in
+          // flight — or this write's OWN roll-back. The watcher will not tell
+          // us again, and this mutation may have published nothing at all, so
+          // nothing else would have carried the peer's change (or undone the
+          // phantom row).
+          if (inFlight.current === 0 && rehydratePending.current) {
+            rehydrateRef.current?.();
+          }
+        });
     },
     [docId],
   );

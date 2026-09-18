@@ -58,6 +58,7 @@ import {
   type ExternalWriter,
 } from "./cowork-pen";
 import type { PreservationNotice } from "./preservation-notice";
+import type { SidecarRefusal } from "./sidecar-refusal";
 import {
   describeAge,
   UNSAVED_WARN_MS,
@@ -87,7 +88,10 @@ export type InterruptionActionId =
   | "reload"
   | "dismiss"
   | "review"
-  | "retry";
+  | "retry"
+  /** "Understood" — the one honest offer for a state whose cause is already
+   *  past and whose retry is the user redoing the edit (task 630). */
+  | "acknowledge";
 
 export interface InterruptionAction {
   id: InterruptionActionId;
@@ -127,6 +131,10 @@ export interface InterruptionInputs {
   penLastReleasedAt: number | null;
   external: ExternalChangeState;
   preservation: PreservationNotice | null;
+  /** From `getSidecarRefusal(docId)` — a `virgil/` sidecar write that did not
+   *  land (task 630). Independent of the `.tex` channels above: the paper's
+   *  own bytes can be perfectly saved while an AI request is not. */
+  sidecarRefusal: SidecarRefusal | null;
   save: SaveStateView;
   now?: number;
 }
@@ -178,6 +186,11 @@ const RETRY: InterruptionAction = {
   label: "Try saving again",
   detail: "Attempts the write again now.",
 };
+const ACKNOWLEDGE: InterruptionAction = {
+  id: "acknowledge",
+  label: "OK, got it",
+  detail: "Closes this message. Nothing else changes.",
+};
 
 /** The one sentence about the net, shared by every conflict door. */
 const NET_SENTENCE =
@@ -218,6 +231,45 @@ export function describePreservation(n: PreservationNotice): {
   }
 }
 
+/**
+ * The sidecar refusal's words, per REASON (task 630). Beside the other copy
+ * rather than in the publishing hook, for the same reason
+ * {@link describePreservation} is here: three writers publish to that channel
+ * (the AI-request inbox, the card-flag bridge, the bib-review queue) and they
+ * must not each compose their own sentence about the same event.
+ *
+ * `what` is the publisher's noun ("AI request"), because only the writer knows
+ * what it was writing; every word around it is decided once, here.
+ */
+export function describeSidecarRefusal(r: SidecarRefusal): {
+  title: string;
+  body: string;
+} {
+  const title = `Virgil couldn't save your ${r.what}`;
+  switch (r.reason) {
+    case "read-only":
+      return {
+        title,
+        body:
+          `This paper is open for reading only, so Virgil could not write your ${r.what} into its folder. The paper itself is untouched, and what you just filed has been taken back off the screen because it is not on disk. Open the paper in Virgil's editor to make it there.`,
+      };
+    case "failed":
+      return {
+        title,
+        body:
+          `The write to this paper's folder failed, so your ${r.what} was not saved` +
+          (r.detail ? ` (${r.detail})` : "") +
+          `. The paper's own text is unaffected. Check that Virgil still has access to the folder, then make it again.`,
+      };
+    default:
+      return {
+        title,
+        body:
+          `Virgil does not have write access to this paper's folder right now, so your ${r.what} was not saved. The paper's own text is unaffected. Reopen the paper, then make it again.`,
+      };
+  }
+}
+
 /* ── The derivation ─────────────────────────────────────────────────── */
 
 /**
@@ -227,7 +279,8 @@ export function describePreservation(n: PreservationNotice): {
 export function deriveDocumentInterruption(
   input: InterruptionInputs,
 ): DocumentInterruption | null {
-  const { docId, pen, penLastReleasedAt, external, preservation, save } = input;
+  const { docId, pen, penLastReleasedAt, external, preservation, sidecarRefusal, save } =
+    input;
   if (!docId) return null;
   const now = input.now ?? Date.now();
 
@@ -361,6 +414,27 @@ export function deriveDocumentInterruption(
     };
   }
 
+  // 6. A sidecar write did not land (task 630). LAST, and deliberately so: the
+  //    four states above are all about the `.tex`, which is the user's only
+  //    copy, and each of them asks the user to DO something about a document
+  //    that is still at risk. This one is about apparatus around the document
+  //    (an AI request, a bib review, a card flag), the loss has already
+  //    happened, and the only offer is "understood" — so it must not stand in
+  //    front of a state the user can still act on.
+  if (sidecarRefusal) {
+    const { title, body } = describeSidecarRefusal(sidecarRefusal);
+    return {
+      kind: "sidecar-refused",
+      tone: toneForInterruptionKind("sidecar-refused"),
+      writer: "unknown",
+      title,
+      body,
+      recommended: ACKNOWLEDGE,
+      alternatives: [],
+      detectedAt: null,
+    };
+  }
+
   return null;
 }
 
@@ -414,5 +488,7 @@ export function interruptionPillLabel(v: DocumentInterruption, unsavedAge: strin
       return "Not saving";
     case "save-error":
       return "Not saving — the last save failed";
+    case "sidecar-refused":
+      return "Something you filed didn't save";
   }
 }

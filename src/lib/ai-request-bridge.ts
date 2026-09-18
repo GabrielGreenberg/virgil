@@ -19,7 +19,11 @@
 
 import { generateEntityId } from "@/lib/uuid";
 import type { AiRequest, AiRequestLink } from "@/lib/types";
-import { mutateAiRequests } from "@/lib/ai-requests-store";
+import {
+  isAiRequestsWriteRefused,
+  mutateAiRequests,
+} from "@/lib/ai-requests-store";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
@@ -150,7 +154,7 @@ export async function bridgeCardAiRequestFlag(
   // inside the write critical section, hands it to this mutator, persists the
   // result and publishes it. A `null` return means "nothing to change" — no
   // write, no publish, no spurious ledger stamp.
-  await mutateAiRequests(docId, (requests) => {
+  const result = await mutateAiRequests(docId, (requests) => {
     // Archive intent (task 093): the card is gone, so terminate EVERY linked
     // non-terminal row — a plain-open row OR a 043-protected answered-L3
     // (`in-progress`+`resultId`) — to `complete`, regardless of current
@@ -208,4 +212,21 @@ export async function bridgeCardAiRequestFlag(
     if (existingIdx < 0) return null;
     return requests.filter((_, i) => i !== existingIdx);
   });
+
+  // The card flag is the panel's source of truth and it has already persisted,
+  // so there is nothing here to roll back — but a bridged request that never
+  // reached the inbox is the same silent loss the inbox's own writer had
+  // (task 630): the user ticks "ask Virgil" on a note, the tick sticks, and no
+  // skill will ever serve it. One channel, one voice.
+  if (isAiRequestsWriteRefused(result)) {
+    recordSidecarRefusal({
+      docId,
+      what: "request for Virgil",
+      reason: result.kind === "failed" ? "failed" : result.kind,
+      detail:
+        result.kind === "failed" && result.error instanceof Error
+          ? result.error.message
+          : undefined,
+    });
+  }
 }

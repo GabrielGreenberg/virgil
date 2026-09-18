@@ -109,25 +109,76 @@ export async function readAiRequests(docId: string): Promise<AiRequest[]> {
 }
 
 /**
+ * What a mutation DID (task 630) — a discriminated result, not a sentinel.
+ *
+ * The door used to resolve `AiRequest[] | null`, and that single `null`
+ * collapsed five outcomes that call for three different behaviours:
+ *
+ *   - `declined` — the mutator itself said "nothing to change" (the row is
+ *     already gone, the toggle is idempotent). The optimistic apply returned
+ *     the same `prev`, so there is nothing to undo and nothing to say.
+ *   - `stale` — the doc switched under the write and the NEW owner is
+ *     authoritative. Silent, and NOT rolled back: this window's state is about
+ *     to be replaced wholesale anyway, and a notice here would be a lie about a
+ *     document the user has already left.
+ *   - `no-handle` / `read-only` / `failed` — nothing reached disk and nothing
+ *     will. The optimistic row is a PHANTOM: it shows in the panel, lights the
+ *     inbox dot, and is gone on the next reload with no explanation. These are
+ *     the three the caller must roll back and SAY.
+ *
+ * Collapsing them is why no caller could behave differently for them, which is
+ * the whole defect. The shape is the house one — the same discriminated result
+ * the FSA picker door takes (`PickFolderResult`, chosen so a caller "can
+ * surface a stuck-picker state instead of silently no-op'ing").
+ */
+export type AiRequestsWriteResult =
+  | { kind: "written"; requests: AiRequest[] }
+  | { kind: "declined" }
+  | { kind: "stale" }
+  | { kind: "no-handle" }
+  | { kind: "read-only" }
+  | { kind: "failed"; error: unknown };
+
+/** Did this result mean the user's change is NOT on disk and never will be? */
+export function isAiRequestsWriteRefused(
+  r: AiRequestsWriteResult,
+): r is { kind: "no-handle" } | { kind: "read-only" } | { kind: "failed"; error: unknown } {
+  return r.kind === "no-handle" || r.kind === "read-only" || r.kind === "failed";
+}
+
+/**
  * Apply `mutate` to the inbox through the serialized read-modify-write door and
  * announce the result.
  *
- * Resolves the authoritative post-write list, or `null` when nothing was
- * persisted — a declined mutation (`mutate` returned `null`), no doc, no active
- * write handle, a read-only library paper, or a failed write. Best-effort by
- * contract: this never throws (its callers are UI event handlers and a
- * fire-and-forget bridge), and it publishes ONLY after a write that actually
- * landed, so the in-memory inbox can never diverge from the on-disk queue in
- * the direction that matters.
+ * Resolves {@link AiRequestsWriteResult}. Best-effort by contract: this never
+ * throws (its callers are UI event handlers and a fire-and-forget bridge), and
+ * it publishes ONLY after a write that actually landed, so the in-memory inbox
+ * can never diverge from the on-disk queue in the direction that matters.
+ *
+ * ## Telling a DECLINED mutation from a REFUSED one
+ *
+ * `mutateSidecar` answers `null` both ways — the mutator returned `null`, or
+ * the host refused the file before the mutator ever ran (a `library-paper:` doc
+ * may persist only its derived writable set; the funnel short-circuits on the
+ * same question one layer down). The difference is observable from inside the
+ * mutator callback and nowhere else, so that is where it is taken: `ran` is set
+ * the moment the mutator is invoked. `null` with `ran` is the mutator's own
+ * "nothing to change"; `null` WITHOUT it means the write never got that far.
+ *
+ * Deliberately not re-asked as `libraryPaperSidecarWritable(...)` here: that
+ * would be a second speller of the funnel's own gate, and it would answer only
+ * for the refusal reason it happens to know about — `ran` is true of every
+ * refusal the funnel has now or grows later.
  */
 export async function mutateAiRequests(
   docId: string | null,
   mutate: AiRequestsMutator,
-): Promise<AiRequest[] | null> {
-  if (!docId) return null;
+): Promise<AiRequestsWriteResult> {
+  if (!docId) return { kind: "no-handle" };
   const handle = getActiveHandle(docId);
-  if (!handle) return null;
+  if (!handle) return { kind: "no-handle" };
 
+  let ran = false;
   let next: AiRequestsState | null;
   try {
     next = await mutateSidecar<AiRequestsState>(
@@ -135,21 +186,22 @@ export async function mutateAiRequests(
       AI_REQUESTS_FILE,
       EMPTY,
       (current) => {
+        ran = true;
         const updated = mutate(requestsOf(current));
         return updated === null ? null : { requests: updated };
       },
     );
   } catch (err) {
-    if (isStalePipelineError(err)) return null;
+    if (isStalePipelineError(err)) return { kind: "stale" };
     console.error("Failed to persist ai requests:", err);
-    return null;
+    return { kind: "failed", error: err };
   }
-  if (next === null) return null;
+  if (next === null) return ran ? { kind: "declined" } : { kind: "read-only" };
 
   // Announce the authoritative post-write list so every live reader in THIS
   // window (the inbox hook) adopts it without a disk round-trip. Only after a
   // successful persist — a failed write leaves the on-disk queue unchanged, so
   // the in-memory inbox must not diverge from it.
   publishAiRequests(docId, next.requests);
-  return next.requests;
+  return { kind: "written", requests: next.requests };
 }
