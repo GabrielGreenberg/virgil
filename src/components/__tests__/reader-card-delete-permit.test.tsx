@@ -161,10 +161,19 @@ describe("EditableCard under a host that refuses the kind's sidecar", () => {
     // The button is hidden, so the keyboard is the only remaining way in — and
     // a gate that stops at the render is a gate the keyboard walks around.
     const onDelete = renderEditable("footnote");
-    const card = document.querySelector("[data-card-kind]") ?? document.body.firstElementChild!;
-    fireEvent.keyDown(card, { key: "Backspace" });
-    fireEvent.keyDown(card, { key: "Delete" });
+    const shell = document.querySelector<HTMLElement>("[data-card]")!;
+    expect(shell).toBeTruthy();
+    fireEvent.keyDown(shell, { key: "Backspace" });
+    fireEvent.keyDown(shell, { key: "Delete" });
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it("… while the SAME key on a writable note card still deletes", () => {
+    // The other half, so the leg above cannot pass by the key path being dead.
+    const onDelete = renderEditable("note");
+    const shell = document.querySelector<HTMLElement>("[data-card]")!;
+    fireEvent.keyDown(shell, { key: "Backspace" });
+    expect(onDelete).toHaveBeenCalled();
   });
 });
 

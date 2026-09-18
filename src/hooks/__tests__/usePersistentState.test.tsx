@@ -31,6 +31,10 @@ import {
   READER_CHROME,
   type EditorChromeConfig,
 } from "@/components/editor-layout/chrome-config";
+import {
+  getSidecarRefusal,
+  resetSidecarRefusals,
+} from "@/lib/sidecar-refusal";
 
 interface Shape {
   items: string[];
@@ -44,6 +48,7 @@ beforeEach(() => {
   mockWrite.mockResolvedValue(undefined);
   __resetForTests();
   resetFlushers();
+  resetSidecarRefusals();
 });
 
 // Unmount every rendered hook between tests so their window event listeners
@@ -519,5 +524,85 @@ describe("registers its debounce with the pending-flusher registry (task 559)", 
       await Promise.resolve();
     });
     expect(__registeredCountForTests("doc-1")).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 637 — a write that THREW is said, not logged
+// ---------------------------------------------------------------------------
+
+describe("usePersistentState — a failed write reaches the user", () => {
+  it("publishes a `failed` refusal carrying the hook's own noun", async () => {
+    // The swallow this closes: this primitive owns fifteen sidecars, thirteen
+    // of them CONTENT tier, and a throw here left the user's writing in memory
+    // only — gone at the next reload, with the panel still showing it as saved
+    // and a `console.error` as the entire report. Task 630 built the channel;
+    // the panel path had no publisher on it.
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    beginDocPipeline("doc-fail");
+    mockRead.mockResolvedValue(EMPTY);
+    mockWrite.mockRejectedValue(new Error("quota exceeded"));
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-fail", "notes.json", EMPTY, {
+        errorLabel: "notes",
+      }),
+    );
+    await waitFor(() => expect(result.current.state).toEqual(EMPTY));
+
+    act(() => {
+      result.current.update((prev) => ({ items: [...prev.items, "x"] }));
+    });
+
+    await waitFor(() => {
+      const r = getSidecarRefusal("doc-fail");
+      expect(r?.reason).toBe("failed");
+      // The NOUN is the hook's `errorLabel`, never the filename — the channel
+      // deliberately does not carry one.
+      expect(r?.what).toBe("notes");
+      expect(r?.detail).toBe("quota exceeded");
+    });
+    err.mockRestore();
+  });
+
+  it("says NOTHING when a read-mostly host refuses the file by design", async () => {
+    // The deliberate asymmetry. Under READER_CHROME this branch is reached by
+    // ordinary reading — `focus.json` / `document-settings.json` /
+    // `editor-state.json` are session-only BY DECISION — so a band raised here
+    // would be permanently lit by the user simply turning a page. The card half
+    // of the same defect is answered before the gesture instead, by withholding
+    // the affordance (`useCardDeleteAllowed`).
+    beginDocPipeline("doc-quiet");
+    mockRead.mockResolvedValue(EMPTY);
+    const { result } = renderHook(
+      () => usePersistentState<Shape>("doc-quiet", "todos.json", EMPTY, {
+        errorLabel: "todos",
+      }),
+      { wrapper: chromeWrapper(READER_CHROME) },
+    );
+    await waitFor(() => expect(result.current.state).toEqual(EMPTY));
+
+    act(() => {
+      result.current.update((prev) => ({ items: [...prev.items, "x"] }));
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(getSidecarRefusal("doc-quiet")).toBeNull();
+  });
+
+  it("says nothing on a write that LANDS", async () => {
+    beginDocPipeline("doc-ok");
+    mockRead.mockResolvedValue(EMPTY);
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-ok", "notes.json", EMPTY, {
+        errorLabel: "notes",
+      }),
+    );
+    await waitFor(() => expect(result.current.state).toEqual(EMPTY));
+    act(() => {
+      result.current.update((prev) => ({ items: [...prev.items, "x"] }));
+    });
+    await waitFor(() => expectWriteToDoc("doc-ok", "notes.json", { items: ["x"] }));
+    expect(getSidecarRefusal("doc-ok")).toBeNull();
   });
 });
