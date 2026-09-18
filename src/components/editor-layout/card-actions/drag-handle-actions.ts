@@ -33,7 +33,9 @@ import {
 import {
   cleanupAndComputeDeleteRange,
   expandCascadeRange,
+  settleRangeCardObligations,
 } from "@/text-objects/delete-range";
+import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import {
   collectRemovedAnchorUuids,
   resolveDisplacedAnchorTarget,
@@ -110,6 +112,24 @@ export interface DragHandleActionsDeps {
    * omission.
    */
   anchorRetarget: AnchorRetargetApi;
+  /**
+   * The SETTLE obligation's ops bag (task 238), for the RANGE legs (task 636).
+   *
+   * Archive and Delete end every card record inside a passage at once, and one
+   * of those records can own a LIVE in-document splice — a `status:"applied"`
+   * suggestion whose blue `pending-ai-change` range sits in the very text about
+   * to be deleted. That is a declinable question about the DOCUMENT, and it has
+   * to be asked before the document is mutated, not from inside the cleanup walk
+   * that mutates it. So the dispatcher settles the range's splices itself
+   * (`settleRangeCardObligations`) rather than letting each card's own delete
+   * raise the prompt mid-deletion.
+   *
+   * REQUIRED, not optional — same reasoning as `anchorRetarget` above. A bag
+   * that can be omitted silently reinstates the data loss for every host that
+   * forgets; a host with no pending-change wiring supplies a bag whose `get`
+   * answers null, which is an ANSWER rather than an omission.
+   */
+  appliedSplice: AppliedSpliceOps;
   /** In-app confirm dialog. Used to surface destructive-action warnings:
    *  • Heading × Duplicate (wide-scope whole-section copy)
    *  • Any kind × {Archive, Delete} that returns a `confirmDestructive`
@@ -148,6 +168,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     cardCreation,
     cardLifecycle,
     anchorRetarget,
+    appliedSplice,
     confirm,
     notify,
     prefs,
@@ -679,18 +700,27 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           //
           // Runs BEFORE `cleanupAndComputeDeleteRange`, so an abort leaves the
           // document and every sidecar completely untouched.
-          const capture = prepareCardBodyCapture(
-            { doc: ed.state.doc, from: extended.from, to: extended.to },
-            bodySchemaForCardKind("archive"),
-          );
-          if (!capture.ok) {
+          //
+          // It is also the FIRST of the two read-only questions this leg asks
+          // before it mutates anything (task 636): the schema probe below, then
+          // the SETTLE ask. Both must precede the first mutation, so the probe
+          // runs against the pre-settle doc for its VERDICT and the payload is
+          // re-derived after the settle only if a settlement actually moved the
+          // document. `prepareCardBodyCapture` is pure, so asking twice costs
+          // nothing but says the truth: the refusal leaves everything untouched.
+          const refuseCapture = (
+            refusal: Extract<
+              ReturnType<typeof prepareCardBodyCapture>,
+              { ok: false }
+            >,
+          ) => {
             console.warn(
               "[Archive] refused — the capture cannot mount in the archive card body; " +
                 "the document was NOT modified.",
               {
-                reason: capture.reason,
-                constructs: capture.constructs,
-                illFormed: capture.illFormed,
+                reason: refusal.reason,
+                constructs: refusal.constructs,
+                illFormed: refusal.illFormed,
                 ref,
               },
             );
@@ -699,8 +729,45 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             notify({
               message:
                 `Can't archive this — the Archive panel can't hold ` +
-                `${describeCardBodyRefusal(capture)}, so nothing was removed.`,
+                `${describeCardBodyRefusal(refusal)}, so nothing was removed.`,
             });
+          };
+          const probe = prepareCardBodyCapture(
+            { doc: ed.state.doc, from: extended.from, to: extended.to },
+            bodySchemaForCardKind("archive"),
+          );
+          if (!probe.ok) {
+            refuseCapture(probe);
+            break;
+          }
+          // ── ASK BEFORE YOU DESTROY (task 636) ──────────────────────────
+          // A card inside this passage can own a LIVE applied splice, and
+          // ending its record raises a three-way keep/revert/cancel prompt.
+          // That prompt used to be raised from inside `cleanupLinksInRange`,
+          // one statement before the `tr.delete` — so the text was gone before
+          // the user answered and `Revert` had nothing left to restore. Settle
+          // every splice in the range FIRST; a decline aborts the whole gesture
+          // with the document untouched. The returned range is corrected for
+          // whatever the settlements moved.
+          const settlement = await settleRangeCardObligations(
+            ed,
+            extended.from,
+            extended.to,
+            appliedSplice,
+          );
+          if (!settlement) break;
+          const settled = { from: settlement.from, to: settlement.to };
+          // A settlement rewrote text inside the passage (a revert restored the
+          // pre-suggestion original), so the archived copy must be taken from
+          // the document the user actually settled on — not the pre-settle one.
+          const capture = settlement.docMoved
+            ? prepareCardBodyCapture(
+                { doc: ed.state.doc, from: settled.from, to: settled.to },
+                bodySchemaForCardKind("archive"),
+              )
+            : probe;
+          if (!capture.ok) {
+            refuseCapture(capture);
             break;
           }
           const richContent = capture.content;
@@ -731,13 +798,13 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // construction rather than by racing.
           const displacedUuids = collectRemovedAnchorUuids(
             ed.state.doc,
-            extended.from,
-            extended.to,
+            settled.from,
+            settled.to,
           );
           const neighbour = resolveDisplacedAnchorTarget(
             ed.state.doc,
-            extended.from,
-            extended.to,
+            settled.from,
+            settled.to,
             displacedUuids,
           );
           anchorRetarget.retarget({
@@ -772,8 +839,8 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // archived copy still carries the atom. See delete-range.ts.
           const delRange = cleanupAndComputeDeleteRange(
             ed,
-            extended.from,
-            extended.to,
+            settled.from,
+            settled.to,
             cardLifecycle,
           );
           // Tag this as a deliberate lifecycle removal so
@@ -816,17 +883,34 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // include the wrapper so PM's content-rule auto-fill never
           // gets a chance to inject a placeholder.
           const extended = expandCascadeRange(ed.state.doc, outer);
-          // F2: cleanupLinksInRange may synchronously dispatch a doc tx
-          // (e.g. deleting a `\cite` atom inside the range), shrinking the
-          // block and making `extended.to` stale — the old code then deleted
-          // the stale range and swallowed the next sibling (a size-1
-          // graphicsBlock vanished silently). The helper runs the cleanup
-          // and returns a range corrected for that mutation, valid against
-          // the post-cleanup `ed.state`. See delete-range.ts.
-          const delRange = cleanupAndComputeDeleteRange(
+          // ── ASK BEFORE YOU DESTROY (task 636) ──────────────────────────
+          // Phase one: settle every live applied splice inside the passage,
+          // awaited, BEFORE a single character moves. The prompt this raises
+          // used to come from inside the cleanup walk, one statement before the
+          // `tr.delete` below — so the paragraph was already gone by the time
+          // the user answered, Cancel left a card whose text had vanished, and
+          // Revert could no longer resolve the range it existed to restore. A
+          // decline aborts the whole gesture with the document untouched.
+          const settlement = await settleRangeCardObligations(
             ed,
             extended.from,
             extended.to,
+            appliedSplice,
+          );
+          if (!settlement) break;
+          // F2: cleanupLinksInRange may synchronously dispatch a doc tx
+          // (e.g. deleting a `\cite` atom inside the range), shrinking the
+          // block and making the range stale — the old code then deleted
+          // the stale range and swallowed the next sibling (a size-1
+          // graphicsBlock vanished silently). The helper runs the cleanup
+          // and returns a range corrected for that mutation, valid against
+          // the post-cleanup `ed.state`. Its input is the SETTLED range, which
+          // is already corrected for anything phase one moved. See
+          // delete-range.ts.
+          const delRange = cleanupAndComputeDeleteRange(
+            ed,
+            settlement.from,
+            settlement.to,
             cardLifecycle,
           );
           // Deliberate lifecycle removal — tag so MarginaliaAnchorGuard
@@ -896,6 +980,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       cardCreation,
       cardLifecycle,
       anchorRetarget,
+      appliedSplice,
       confirm,
       notify,
       ensureOmniActiveForPanel,

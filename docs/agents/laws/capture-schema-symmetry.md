@@ -3211,3 +3211,100 @@ The direction is the whole fix, and the reason is about what each shape can be R
 CI: [pull-seed.test.ts](../../../src/lib/stack/__tests__/pull-seed.test.ts) pins the FLOOR (every field `CARD_REGISTRY[k].content` declares survives the strip — derived, so a new content field is covered by declaration alone) and the CEILING (no identity, binding or lifecycle survives), over fully-populated per-kind fixtures whose completeness is itself asserted, since a fixture that stopped populating `notes` would make the floor pass vacuously. [stack-pull-seed-doors.test.tsx](../../../src/hooks/__tests__/stack-pull-seed-doors.test.tsx) drives the REAL hooks, because three of the four losses were caused by hook behaviour no host could see from outside. And [stack-pull-content-fidelity.test.ts](../../../src/cards/__tests__/stack-pull-content-fidelity.test.ts) is the leg with teeth, aimed at the HOST — the factories were never the part that could misbehave, a call site that picks fields out of the seed instead of forwarding it is, and no type can see that (`notesHook.addNote(paragraphId, seed.content)` type-checks perfectly and IS the defect). Its census allows exactly two exempt lines, marked per LINE with their reason — footnote and citation, whose entire travelling set is one field the hook re-derives the rest from. Measured on the pre-fix shapes, the spec leg and the census each fail.
 
 **Stated limits.** A footnote's `title` cannot be pulled at all: it lives on the atom's node attrs and never reaches `FootnoteRef`, so the loss is at the CAPTURE, one layer before any of this — recorded as the fidelity suites' single `UNCARRIABLE_CONTENT_FIELDS` entry rather than relaxed inside an assertion, and closing it means teaching `snapshotCard` to take the atom's title, at which point the suites demand it back. And the revisions/cutter seed doors are twins, which is the pre-existing fork filed as task 201 — not something to unify inside this one.
+
+#### The ordering half: ask BEFORE the point of no return, not after it
+
+Same law, one clause further back (task 636). Everything above is about what a
+destructive action may DESTROY. This is about WHEN it is allowed to ask.
+
+Archive already had the answer written down, two cases up in its own dispatcher:
+`prepareCardBodyCapture` runs *before* `cleanupAndComputeDeleteRange` precisely
+so "an abort leaves the document and every sidecar completely untouched". What
+nobody noticed is that the same gesture asked a SECOND declinable question, and
+asked it on the far side of the mutation.
+
+Deleting or archiving a block through the drag handle runs a cleanup walk that
+deletes every card anchored inside the range, then deletes the text on the very
+next statement. The card delete is **asynchronous and declinable** — every panel
+hook's delete is a `makeUnbridgingDelete`, which routes through
+`runCardLifecycleEvent`, whose SETTLE obligation raises a three-way
+keep / revert / cancel prompt whenever the card owns a live in-document splice
+(a `status:"applied"` suggestion's blue `pending-ai-change` range). The text
+delete was **synchronous and unconditional**. Nothing awaited in between, so the
+two raced, and the document lost the text while the user was still being asked
+what to do about it:
+
+| Answer | What the user got |
+|---|---|
+| **Cancel** | The card survives over a paragraph that has already vanished — and on the archive leg the passage is also already captured into an archive card. |
+| **Revert** | `revertPendingChange` cannot resolve the anchor (its range is gone), so the **pre-suggestion original is never restored** — and the delete reports success, so the card goes too. Silent, unrecoverable loss of the user's own writing. |
+| **Keep** | The one consistent branch, by accident. |
+
+The type system could not see it and said so out loud: `CardLifecycle.delete` was
+declared `void`, `makeUnbridgingDelete` returns `Promise<boolean>`, and a
+`Promise<boolean>` is assignable wherever a `void` was — so the registry went on
+promising a delete that always happens while wiring five kinds whose delete can
+refuse. Its own header carried the warning as prose ("a caller that tears down
+something the card owns must await this"), which is exactly the kind of guard
+this law exists to replace with a shape.
+
+> **A destructive range gesture asks every declinable question over the passage
+> BEFORE it mutates anything, and computes the range it deletes only from what
+> those answers left behind.**
+
+[src/text-objects/delete-range.ts](../../../src/text-objects/delete-range.ts) is
+now two explicit phases, and the order is the whole content of the fix:
+
+- **ASK** — `settleRangeCardObligations`. Async, declinable, and the ONLY phase
+  that can refuse. It settles every applied splice inside the range through
+  `settleAppliedSpliceForCard`, the same door the single-card executor knocks on
+  — extracted rather than re-spelled, because a second settle implementation is a
+  second prompt to drift. A decline returns `null` and the whole gesture aborts
+  with the document untouched.
+- **DO** — `cleanupAndComputeDeleteRange` → `cleanupLinksInRange` → the caller's
+  `tr.delete`. Synchronous and unconditional. Nothing in it can refuse, *because*
+  phase one already asked; a delete that refuses anyway is a contract breach and
+  says so loudly in dev rather than mutilating a card the user chose to keep.
+
+Four rules it earned:
+
+- **ONE enumeration, two phases.** `collectRangeCardTargets` is the read-only
+  half of the walk, and both phases read it. A gesture that asked about one set
+  of cards and destroyed another would be the same bug wearing a fix's clothes.
+- **ONE correction, both directions.** The F2 range correction ("cleanup shrank
+  the block, so `to` is stale") only ever SUBTRACTED, because the only inner
+  mutation it knew about was an atom being stripped. A settle's `revert` splices
+  the pre-suggestion original back over the applied text and the original may be
+  LONGER, so `correctRangeForInnerDelta` is now the shared arithmetic for every
+  mutation the gesture performs strictly inside its own range — both signs, both
+  callers. The F2 scenario is byte-identical through it.
+- **The read-only question goes first, so a refusal still costs nothing.**
+  Archive's schema probe is pure, so it runs against the PRE-settle doc for its
+  verdict; the payload is re-derived after the settle only when a settlement
+  actually moved the document, so the archived copy is the text the user settled
+  on rather than the text they reverted. Two reads beat one mutation-then-refuse.
+- **The bag is REQUIRED on the dispatcher, like `anchorRetarget`.** A host with
+  no pending-change wiring supplies one whose `get` answers null — an ANSWER, not
+  an omission. `CardLifecycle.delete` is now `void | Promise<boolean>`, which is
+  merely the truth; the actual guarantee is structural, in the phase order.
+
+CI: [range-delete-settle-first.test.tsx](../../../src/components/editor-layout/card-actions/__tests__/range-delete-settle-first.test.tsx)
+is the leg with teeth — it drives the REAL dispatcher over the REAL extension
+stack with a lifecycle whose delete is FAITHFUL to production (it routes through
+`settleAppliedSpliceForCard` and can refuse), which is exactly what no existing
+suite had: `applied-splice-wiring-guardrail` greps that call sites *pass* the
+ops bag and never asserts a consumer honours the boolean it gets back, and every
+archive/delete fixture in the repo stubbed the walker's delete as a synchronous
+`push`. Five of its six legs fail with the ask phase neutered.
+[range-settlement.test.ts](../../../src/text-objects/__tests__/range-settlement.test.ts)
+pins the two pieces that make the ordering safe rather than merely earlier — the
+single enumeration and the both-directions correction.
+
+**Stated scope.** The only declining path today is `settleAppliedSplice`, gated
+on `ownsAppliedSplice` = `{revision-suggestion, cutter-suggestion}`;
+`makeUnbridgingDelete` passes `hasContent:false` and an always-true confirm, so
+`note` / `highlight` / the comment kinds are structurally undeclinable, and
+`footnote` / `citation` route through doors that skip the executor. That is the
+population the ask phase discharges — and because it asks the executor's own
+door about every card in the range, a kind that later joins the pending-change
+family is covered by declaration alone.

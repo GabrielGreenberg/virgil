@@ -17,6 +17,19 @@ import type { CardKind } from "../types";
  * ai-request-bridge-idempotency.test.ts).
  */
 
+/**
+ * Drain the executor's whole microtask chain. Counting `await Promise.resolve()`
+ * ticks was brittle by construction: the chain's LENGTH is an implementation
+ * detail of the executor, and task 636 changed it by one (the SETTLE step now
+ * delegates to the shared `settleAppliedSpliceForCard` door, which every
+ * lifecycle surface calls, so the executor awaits one level deeper). A macrotask
+ * boundary drains every pending microtask regardless of depth, which is what
+ * these assertions actually mean.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function makeSpies() {
   const order: string[] = [];
   const unbridge = vi.fn(async (_k: CardKind, _id: string) => {
@@ -77,8 +90,7 @@ describe("makeUnbridgingDelete", () => {
       del("card-1");
       // The wrapper is fire-and-forget over an async executor; let its
       // microtask chain (confirm → await unbridge → await mutate) drain.
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
 
       // …in TERMINATE mode, decided by the executor from the event (task 313).
       // A delete's row must close even when it is an answered-L3 proposal a
@@ -99,8 +111,7 @@ describe("makeUnbridgingDelete", () => {
         unbridge: spies.unbridge,
       });
       del("card-1");
-      await Promise.resolve();
-      await Promise.resolve();
+      await flush();
 
       expect(spies.unbridge).not.toHaveBeenCalled();
       expect(spies.rawDelete).toHaveBeenCalledWith("card-1");
@@ -115,8 +126,7 @@ describe("makeUnbridgingDelete", () => {
       unbridge: spies.unbridge,
     });
     del("ghost");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(spies.rawDelete).toHaveBeenCalledWith("ghost");
     expect(spies.unbridge).not.toHaveBeenCalled();

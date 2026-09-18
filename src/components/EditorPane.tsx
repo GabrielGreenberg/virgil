@@ -4001,6 +4001,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     cardCreation,
     cardLifecycle,
     anchorRetarget,
+    // The SETTLE obligation reaches the RANGE legs too (task 636): Archive and
+    // Delete end every card record inside the passage, so a live applied splice
+    // in that text must be settled BEFORE the text goes, not from inside the
+    // cleanup walk that removes it.
+    appliedSplice: appliedSpliceOps,
     confirm: confirmDragHandleAction,
     notify: dragHandleNotify,
     prefs: viewPrefs?.prefs ?? readerPrefs,
