@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { cardPopKey } from "@/panels/panel-registry";
 import { migrateLegacyKeyToFloat } from "@/floats/float-key";
-import { CARD_KINDS, cardKeyPrefix } from "@/cards/predicates";
+import { CARD_KINDS } from "@/cards/predicates";
+import { LEGACY_TOKEN_CROSSWALK } from "@/cards/legacy-token-crosswalk";
 
 /**
  * A3 Commit B pin-test (WS4). `popCardAtAnchor` was re-typed from
@@ -28,7 +29,15 @@ describe("popCardAtAnchor routing: cardPopKey ≡ legacy migrateLegacyKeyToFloat
       if (kind !== "example") {
         // The OLD popCardAtAnchor fed `${<legacy-prefix>}:${id}` through the
         // migrator. The new path builds `cardPopKey(kind, id)` directly.
-        const legacy = migrateLegacyKeyToFloat(`${cardKeyPrefix(kind)}:${id}`);
+        // The legacy `<prefix>:<id>` shape, built from the FROZEN prefix column
+        // (`LEGACY_TOKEN_CROSSWALK.legacyKeyPrefix`). It used to be read through
+        // `cardKeyPrefix(kind)` off a live `CARD_REGISTRY` facet, which read as
+        // the current key grammar and was nobody's (task 634): the live grammar
+        // has no prefix segment, and these strings exist only so this parity can
+        // be asked of stored pre-AF prefs.
+        const legacy = migrateLegacyKeyToFloat(
+          `${LEGACY_TOKEN_CROSSWALK[kind].legacyKeyPrefix}:${id}`,
+        );
         expect(cardPopKey(kind, id)).toBe(legacy);
       }
       expect(cardPopKey(kind, id)).toBe(`float:card:${kind}:${id}`);

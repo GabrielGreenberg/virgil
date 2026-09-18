@@ -20,22 +20,31 @@ import type { CardKind } from "../types";
  */
 describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
   it("matches the byte-identical legacy projection for every CardKind", () => {
+    // Three FROZEN columns. `legacyKeyPrefix` joined in task 634, moved
+    // byte-identical off `CARD_REGISTRY[kind].keyPrefix` — where it sat on the
+    // LIVE spine claiming to be "preserved byte-for-byte" for a key grammar that
+    // had since changed out from under it (`buildFloatKey` has no prefix segment
+    // at all). Its one consumer is the legacy-prefs parity in
+    // `pop-card-anchor-routing-contract`, against the deliberately registry-free
+    // `migrateLegacyKeyToFloat`. Every row equals the kind's own name except the
+    // revision pair's split, which is the one divergence that migrator
+    // canonicalizes.
     expect(LEGACY_TOKEN_CROSSWALK).toEqual({
-      note: { legacyDataKind: "note", cssToken: "note" },
-      highlight: { legacyDataKind: "highlight", cssToken: null },
-      footnote: { legacyDataKind: null, cssToken: null },
-      citation: { legacyDataKind: null, cssToken: null },
-      example: { legacyDataKind: null, cssToken: null },
-      todo: { legacyDataKind: "todo", cssToken: "todo" },
-      archive: { legacyDataKind: null, cssToken: "archive" },
-      report: { legacyDataKind: "report", cssToken: "report" },
-      "report-request": { legacyDataKind: "report-request", cssToken: "report" },
-      "revision-comment": { legacyDataKind: "revision-comment", cssToken: "comment" },
-      "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment" },
-      "cutter-comment": { legacyDataKind: "cutter-comment", cssToken: "cut" },
-      "cutter-suggestion": { legacyDataKind: "cutter-suggestion", cssToken: "cut" },
-      bib: { legacyDataKind: null, cssToken: null },
-      error: { legacyDataKind: null, cssToken: null },
+      note: { legacyDataKind: "note", cssToken: "note", legacyKeyPrefix: "note" },
+      highlight: { legacyDataKind: "highlight", cssToken: null, legacyKeyPrefix: "highlight" },
+      footnote: { legacyDataKind: null, cssToken: null, legacyKeyPrefix: "footnote" },
+      citation: { legacyDataKind: null, cssToken: null, legacyKeyPrefix: "citation" },
+      example: { legacyDataKind: null, cssToken: null, legacyKeyPrefix: "example" },
+      todo: { legacyDataKind: "todo", cssToken: "todo", legacyKeyPrefix: "todo" },
+      archive: { legacyDataKind: null, cssToken: "archive", legacyKeyPrefix: "archive" },
+      report: { legacyDataKind: "report", cssToken: "report", legacyKeyPrefix: "report" },
+      "report-request": { legacyDataKind: "report-request", cssToken: "report", legacyKeyPrefix: "report-request" },
+      "revision-comment": { legacyDataKind: "revision-comment", cssToken: "comment", legacyKeyPrefix: "revision" },
+      "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment", legacyKeyPrefix: "revision-suggestion" },
+      "cutter-comment": { legacyDataKind: "cutter-comment", cssToken: "cut", legacyKeyPrefix: "cutter-comment" },
+      "cutter-suggestion": { legacyDataKind: "cutter-suggestion", cssToken: "cut", legacyKeyPrefix: "cutter-suggestion" },
+      bib: { legacyDataKind: null, cssToken: null, legacyKeyPrefix: "bib" },
+      error: { legacyDataKind: null, cssToken: null, legacyKeyPrefix: "error" },
     });
   });
 

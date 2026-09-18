@@ -14,7 +14,7 @@
  * (cutter vs revision both carry `kind: "comment" | "suggestion"` on disk).
  */
 import { CARD_REGISTRY } from "./card-registry";
-import type { CardKind, CardMeta } from "./types";
+import type { CardKind } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { AiRequestKind, AiRequestLink } from "@/lib/types";
@@ -30,12 +30,9 @@ export const isCardKind = (s: string): s is CardKind => s in CARD_REGISTRY;
  *  and the polymorphic-panel anchor branches. */
 export const isAnchoredCardKind = (k: CardKind): boolean => CARD_REGISTRY[k].anchored;
 
-export const isSystemCardKind = (k: CardKind): boolean =>
-  CARD_REGISTRY[k].origin === "system";
-
 /** Whether a card of this kind can be ARCHIVED — set aside (reversibly) into its
  *  home panel's archive view instead of deleted. DERIVED from provenance (the
- *  complement of `isSystemCardKind`, also excluding the `origin: "derived"`
+ *  complement of `origin: "system"`, also excluding the `origin: "derived"`
  *  mirror): a kind is archivable IFF the user authored it (`origin === "user"`),
  *  minus the `highlight` exception below. That set is note/footnote/citation/
  *  archive/todo/report/report-request + the comment/suggestion pairs; `example`
@@ -70,9 +67,6 @@ export const isArchivable = (k: CardKind): boolean =>
 export const archiveRemovesAtom = (k: CardKind): boolean =>
   isInlineAtomCardKind(k);
 
-/** Replaces `CARD_KEY_PREFIXES` + the `popKey`/`cardPopKey` token lookup. */
-export const cardKeyPrefix = (k: CardKind): string => CARD_REGISTRY[k].keyPrefix;
-
 /** Replaces `getPanelByCardKind` + `POLYMORPHIC_CARD_PANEL`. */
 export const panelForCardKind = (k: CardKind): PanelKind | null =>
   CARD_REGISTRY[k].panel;
@@ -82,11 +76,6 @@ export const panelForCardKind = (k: CardKind): PanelKind | null =>
  *  the morph-set accessor A9's chevron consumes. */
 export const cardKindsForPanel = (p: PanelKind): CardKind[] =>
   CARD_KINDS.filter((k) => CARD_REGISTRY[k].panel === p);
-
-/** The set of kinds that can serialize onto the Stack. Replaces the hand-kept
- *  `StackCardKind` union. */
-export const stackableCardKinds = (): CardKind[] =>
-  CARD_KINDS.filter((k) => CARD_REGISTRY[k].stackable);
 
 /** Whether a kind can pop out into a `Floatable` window. Registry-derived SSOT
  *  for the docked one-click pop-out control (and `registerCardFloatable`'s
@@ -102,15 +91,6 @@ export const isPoppable = (k: CardKind): boolean => CARD_REGISTRY[k].poppable;
  *  card header first paints — see `CardMeta.droppable`. Pinned to the real spec
  *  registration by the dev assertion below + `drop-facet-contract.test.ts`. */
 export const isDroppable = (k: CardKind): boolean => CARD_REGISTRY[k].droppable;
-
-/** Where a (re)anchor drop for a kind LANDS — `"in-text"` (inline caret / atom
- *  position), `"margin"` (paragraph horizontal band), or `null` (no drop
- *  button). Registry-derived SSOT (mirrors `isAnchoredCardKind`); the drop
- *  button's grab handler + the controller dispatch through this instead of
- *  re-deriving from `dropSpec.allowedPlacements`. `cardDropPlacement(k) !== null`
- *  ⇔ `isDroppable(k)` (pinned by the assertion below). */
-export const cardDropPlacement = (k: CardKind): CardMeta["dropPlacement"] =>
-  CARD_REGISTRY[k].dropPlacement;
 
 /** Whether a kind participates in collab focus-claims (R28/D-2). Gates the
  *  claim-on-focus / release-on-blur wiring and the claim-pill/presence-dots
@@ -167,13 +147,6 @@ export const isExcerptCardKind = (k: CardKind): boolean =>
  *  — that pair is the never-delete-what-you-cannot-restore invariant. */
 export const excerptCardKinds = (): CardKind[] =>
   CARD_KINDS.filter(isExcerptCardKind);
-
-/** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
- *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,
- *  report↔report-request) are true; the 8 standalone kinds are false. The
- *  chevron's dropdown options are `cardKindsForPanel(panel)` — `morph.to`
- *  always shares the kind's panel (a dev assertion pins this). */
-export const canMorph = (k: CardKind): boolean => CARD_REGISTRY[k].morph !== null;
 
 /** Whether a kind renders as an in-text inline atom (footnote / citation),
  *  whose existence is the editor's job (not a sidecar collection). NOT cleanly

@@ -22,7 +22,7 @@
 // half") names outright — it would pin today's four labels and say nothing
 // about a fifth kind cloned from one of them. So twin-ness is read off the
 // registry's OWN structural facets, with the per-FAMILY identity fields
-// excluded (`panel`, `keyPrefix`, `themeKey`, `markerType`, `morph.to`, and
+// excluded (`panel`, `themeKey`, `markerType`, `morph.to`, and
 // `aiRequest.linkPanel` — each names WHICH family a kind belongs to, never what
 // ROLE it plays inside one). Two kinds that agree on everything else are the
 // same control in two panels and must be named the same thing.

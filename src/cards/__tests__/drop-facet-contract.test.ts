@@ -22,11 +22,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import {
-  CARD_KINDS,
-  isDroppable,
-  cardDropPlacement,
-} from "@/cards/predicates";
+import { CARD_KINDS, isDroppable } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
 // Side-effect: fold every card kind's DropSpec onto CARD_REGISTRY[kind].dropSpec.
 // Without this, the spec-keyed assertions below would see `null` specs.
@@ -34,7 +30,8 @@ import "@/cards/drop-specs";
 
 /**
  * The EXPECTED per-kind facets — the frozen policy. The drop button mounts iff
- * `droppable`; `dropPlacement` drives the in-text-vs-margin dispatch. Kept here
+ * `droppable`; `dropPlacement` is the DECLARED landing zone the spec is measured
+ * against (the dispatch itself reads `spec.allowedPlacements` — task 634). Kept here
  * as an independent literal so a registry edit that flips a kind trips a test
  * (the registry is one source; this table is the second, deliberately).
  */
@@ -65,20 +62,26 @@ describe("drop-facet contract (drop-button SYNTHESIS §2)", () => {
 
   it("dropPlacement matches the frozen policy table for every kind", () => {
     for (const k of CARD_KINDS) {
-      expect(cardDropPlacement(k)).toBe(EXPECTED[k]);
+      expect(CARD_REGISTRY[k].dropPlacement).toBe(EXPECTED[k]);
     }
   });
 
   it("predicates ≡ the registry facets (no second source)", () => {
+    // `isDroppable` is the LIVE gate — `panel-primitives.tsx` mounts the drop
+    // button on it. `dropPlacement` has no predicate accessor any more: the one
+    // that existed (`cardDropPlacement`) had zero non-test callers while its
+    // docstring claimed "the drop button's grab handler + the controller dispatch
+    // through this", and neither ever did (task 634). Its readers are the two
+    // things that CHECK it — `assertDropFacetCoverage` and the predicates assert
+    // block — so this suite reads the facet, like they do.
     for (const k of CARD_KINDS) {
-      expect(cardDropPlacement(k)).toBe(CARD_REGISTRY[k].dropPlacement);
       expect(isDroppable(k)).toBe(CARD_REGISTRY[k].droppable);
     }
   });
 
   it("droppable ⇔ dropPlacement !== null for every kind", () => {
     for (const k of CARD_KINDS) {
-      expect(isDroppable(k)).toBe(cardDropPlacement(k) !== null);
+      expect(isDroppable(k)).toBe(CARD_REGISTRY[k].dropPlacement !== null);
     }
   });
 
@@ -91,14 +94,14 @@ describe("drop-facet contract (drop-button SYNTHESIS §2)", () => {
 
     it("in-text kinds have a spec that allows inline-cursor", () => {
       for (const k of CARD_KINDS) {
-        if (cardDropPlacement(k) !== "in-text") continue;
+        if (CARD_REGISTRY[k].dropPlacement !== "in-text") continue;
         expect(allows(k, "inline-cursor")).toBe(true);
       }
     });
 
     it("margin kinds have a spec that allows paragraph-side", () => {
       for (const k of CARD_KINDS) {
-        if (cardDropPlacement(k) !== "margin") continue;
+        if (CARD_REGISTRY[k].dropPlacement !== "margin") continue;
         expect(allows(k, "paragraph-side")).toBe(true);
       }
     });
@@ -113,7 +116,7 @@ describe("drop-facet contract (drop-button SYNTHESIS §2)", () => {
           : allows(k, "paragraph-side")
             ? "margin"
             : null;
-        expect(cardDropPlacement(k)).toBe(derived);
+        expect(CARD_REGISTRY[k].dropPlacement).toBe(derived);
       }
     });
 
@@ -125,7 +128,7 @@ describe("drop-facet contract (drop-button SYNTHESIS §2)", () => {
       expect(allows("example", "inline-cursor")).toBe(false);
       expect(allows("example", "paragraph-side")).toBe(false);
       expect(isDroppable("example")).toBe(false);
-      expect(cardDropPlacement("example")).toBeNull();
+      expect(CARD_REGISTRY["example"].dropPlacement).toBeNull();
     });
 
     it("non-droppable kinds (bib/error) have no spec at all", () => {

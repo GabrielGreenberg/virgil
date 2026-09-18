@@ -3,9 +3,14 @@
  * `CardMeta` descriptor per `CardKind`, mirroring `TEXT_OBJECT_REGISTRY`
  * (`src/text-objects/text-object-registry.ts`). Adding a card kind = one entry
  * here (+ membership in the anchor list / lifecycle provider); the scattered
- * satellite tables (`CARD_KEY_PREFIXES`, `CARD_TYPE_LABELS`, `CARD_TITLE_LABELS`,
+ * satellite tables (`CARD_TYPE_LABELS`, `CARD_TITLE_LABELS`,
  * `POLYMORPHIC_CARD_PANEL`, …) are now registry-DERIVED (see `predicates.ts`
- * and `panel-registry.ts`).
+ * and `panel-registry.ts`). One is NOT here and deliberately so: the pre-AF
+ * popout-key prefixes. They are frozen legacy tokens the live key grammar does
+ * not use, and they live with the other two in
+ * `LEGACY_TOKEN_CROSSWALK.legacyKeyPrefix` (task 634) — a `keyPrefix` facet on
+ * THIS registry reads as the current grammar and is an invitation to build a key
+ * from it. The live one is `cardPopKey` → `buildFloatKey`.
  *
  * **This module is deliberately LIGHT** — it imports only `./types` and
  * type-only `Floatable`/`CardFloatCtx`. No card UI, no drop-specs, nothing that
@@ -435,7 +440,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   note: {
     label: "Note",
     titleLabel: "Note",
-    keyPrefix: "note",
     themeKey: "note",
     collabClaims: true,
     aiRequest: { kind: "note", linkPanel: "notes" }, // R29 — frozen wire contract
@@ -462,7 +466,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   highlight: {
     label: "Highlight",
     titleLabel: null,
-    keyPrefix: "highlight",
     themeKey: "highlight",
     collabClaims: false,
     aiRequest: { kind: "highlight", linkPanel: "notes" }, // R29 — frozen wire contract
@@ -494,7 +497,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   footnote: {
     label: "Footnote",
     titleLabel: "Footnote",
-    keyPrefix: "footnote",
     themeKey: "footnote",
     collabClaims: true,
     // BUG #55: footnotes join the per-card AI-request model. The bridge writes
@@ -526,7 +528,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   archive: {
     label: "Archive",
     titleLabel: "Archive Text",
-    keyPrefix: "archive",
     themeKey: "archive",
     collabClaims: true,
     panel: "archive",
@@ -556,7 +557,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   todo: {
     label: "Task",
     titleLabel: "Task",
-    keyPrefix: "todo",
     themeKey: "todo",
     collabClaims: false,
     aiRequest: { kind: "todo", linkPanel: "todos" }, // R29 — frozen wire contract
@@ -584,7 +584,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   bib: {
     label: "Bibliography",
     titleLabel: null,
-    keyPrefix: "bib",
     themeKey: "bib",
     collabClaims: false,
     panel: "bibliography",
@@ -607,7 +606,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   citation: {
     label: "Citation",
     titleLabel: null,
-    keyPrefix: "citation",
     themeKey: "citation",
     collabClaims: false,
     panel: "citations",
@@ -637,7 +635,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // pops under `revision:s:<id>`). Kept byte-for-byte; AF's float: grammar
     // normalizes the kind-in-key split. The float dispatch disambiguates from
     // the record's data kind (`cardKindForPopoutKey`).
-    keyPrefix: "revision",
     themeKey: "revision",
     collabClaims: true,
     aiRequest: { kind: "suggestion", linkPanel: "revisions" }, // R29 — frozen wire contract
@@ -675,7 +672,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   "cutter-comment": {
     label: "Request",
     titleLabel: null,
-    keyPrefix: "cutter-comment",
     themeKey: "cut",
     collabClaims: true,
     aiRequest: { kind: "suggestion", linkPanel: "cutter" }, // R29 — frozen wire contract
@@ -717,7 +713,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // from a hand list of kinds.
     label: "Revision",
     titleLabel: null,
-    keyPrefix: "cutter-suggestion",
     themeKey: "cut",
     collabClaims: false,
     panel: "cutter",
@@ -752,7 +747,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   "revision-suggestion": {
     label: "Revision",
     titleLabel: null,
-    keyPrefix: "revision-suggestion", // legacy keyPrefix preserved; the LIVE card key is float:card:revision-suggestion:<id> via cardPopKey (panel-registry)
     themeKey: "revision",
     collabClaims: false,
     panel: "revisions",
@@ -781,7 +775,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   report: {
     label: "Report",
     titleLabel: "Report",
-    keyPrefix: "report",
     themeKey: "report",
     collabClaims: true,
     panel: "reports",
@@ -810,7 +803,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   "report-request": {
     label: "Report Request",
     titleLabel: null,
-    keyPrefix: "report-request",
     themeKey: "report",
     collabClaims: true,
     aiRequest: { kind: "report", linkPanel: "reports" }, // R29 — frozen wire contract
@@ -839,7 +831,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   example: {
     label: "Example",
     titleLabel: "Example",
-    keyPrefix: "example",
     themeKey: "example",
     collabClaims: false,
     panel: "examples",
@@ -886,7 +877,6 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   error: {
     label: "Error",
     titleLabel: null,
-    keyPrefix: "error",
     themeKey: "error",
     collabClaims: false,
     panel: "errors",
