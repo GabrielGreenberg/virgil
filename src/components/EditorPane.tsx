@@ -190,6 +190,7 @@ import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { richFromPlainText } from "@/lib/footnote-content";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 import { panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
 import {
@@ -5964,8 +5965,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               cancelBibReview={bibReviewHook.cancelRequest}
               addEntryRequest={bibSettingsHook.addEntryRequest}
               removeEntryRequest={bibSettingsHook.removeEntryRequest}
-              addComment={(opts) =>
-                revisionsHook.addComment(null, opts.text ? undefined : undefined)
+              addComment={(text) =>
+                revisionsHook.addComment(null, richFromPlainText(text))
               }
               refreshAll={() => {
                 bibReviewHook.refresh();

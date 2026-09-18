@@ -64,6 +64,44 @@ export function emptyRichContent(): JSONContent {
 }
 
 /**
+ * The inverse of {@link richJsonToPlainText}: seed a card body from a plain
+ * string (task 627).
+ *
+ * This constructor was MISSING, and its absence is what let the AI window's
+ * "General dialogue" composer lose the user's question. The composer speaks
+ * `string`; the revisions store's `addComment` speaks `JSONContent`; with no
+ * published bridge, the call site papered the mismatch over with a ternary
+ * whose two arms were both `undefined` — a placeholder that type-checks, so
+ * neither `tsc` nor lint nor any test could see it, and the only witness was
+ * the runtime behaviour (the composer cleared, an empty pristine comment was
+ * minted, and the prose was gone).
+ *
+ * Deliberately NOT {@link normalizeRichContent}: that door sniffs its input
+ * with {@link looksLikeHtml} and hands anything angle-bracketed to the HTML
+ * walker. That is right for a STORED value of unknown provenance (a legacy
+ * footnote body), and wrong for text a human just typed — `a<b>c` is a
+ * comparison, not markup, and must not be silently eaten. Here the string is
+ * known-plain by construction, so it is wrapped verbatim.
+ *
+ * Newlines become sibling paragraphs, which is exactly what
+ * `richJsonToPlainText` joins back with "\n" — so the round trip is exact for
+ * prose without blank lines. It is a PROJECTION, not a bijection: the inverse
+ * collapses runs of newlines, so a blank line survives in the stored body (the
+ * card editor renders it) but not in a re-projection.
+ */
+export function richFromPlainText(text: string): JSONContent {
+  if (!text || !text.trim()) return emptyRichContent();
+  return {
+    type: "doc",
+    content: text.split(/\r?\n/).map((line) =>
+      line.length
+        ? { type: "paragraph", content: [{ type: "text", text: line }] }
+        : { type: "paragraph" },
+    ),
+  };
+}
+
+/**
  * Coerce whatever is currently stored on a footnote/note `content` attribute
  * into a Tiptap JSONContent doc. Handles four shapes:
  *   1. A JSONContent doc — used as-is
