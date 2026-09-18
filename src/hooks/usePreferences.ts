@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
-import defaultPrefsJson from "./usePreferences.defaults.json";
+import { DEFAULT_PREFS } from "./preferences-defaults";
+import { propagate, type LinkableKey } from "@/lib/pref-links";
 
 export interface EditorPreferences {
   // Editor > Body Text
@@ -116,9 +117,11 @@ export interface EditorPreferences {
   fontParTitleWeight: number;       // 100-900
 }
 
-// Shipped defaults are loaded from a JSON sidecar so the personal-prefs
-// promotion pipeline can rewrite them without touching TS source.
-export const DEFAULT_PREFS: EditorPreferences = defaultPrefsJson as EditorPreferences;
+// The shipped defaults live in a leaf module (`preferences-defaults.ts`) so
+// `pref-links` can derive its default deltas from them without importing this
+// one — see that file's header. Re-exported here: this is still the name every
+// consumer reaches for.
+export { DEFAULT_PREFS } from "./preferences-defaults";
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
@@ -300,9 +303,34 @@ export function usePreferences() {
     } catch {}
   }, []);
 
+  /**
+   * The ONE door that writes a single preference — and therefore the one place
+   * the locked-link cascade can live (task 625).
+   *
+   * It used to be a raw write, with the cascade bolted on by a wrapper
+   * (`useLinkAwareUpdater`) that exactly one of the dialog's sections applied.
+   * So "Top bar background" moved the linked tab/library shades when you edited
+   * it in the Smart section and left them behind when you edited the very same
+   * pref in the "All preferences" tree a few inches below — one preference, two
+   * behaviours, decided by which control you happened to reach for. A cascade
+   * that any door can forget to opt into is not a cascade; it belongs to the
+   * writer, so every existing door (Smart rows, the tree, FontsDialog) and every
+   * future one inherits it by construction.
+   *
+   * `propagate` walks only LOCKED outgoing links, transitively, and returns the
+   * empty map for an unlinked key — so an unlocked link, a non-colour pref, or a
+   * CHILD edit (which must leave its link alone) all take the raw-write path.
+   * The children land in the SAME state update as the parent, so one edit is one
+   * render and one localStorage write rather than 1 + N of each.
+   */
   const updatePref = useCallback(<K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
+      if (typeof value === "string") {
+        for (const [childKey, childValue] of Object.entries(propagate(key as LinkableKey, value))) {
+          (next as Record<string, unknown>)[childKey] = childValue;
+        }
+      }
       persistPrefs(next);
       return next;
     });

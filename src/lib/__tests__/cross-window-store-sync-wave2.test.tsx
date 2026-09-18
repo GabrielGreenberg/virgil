@@ -178,6 +178,11 @@ describe("usePreferences cross-window sync", () => {
   const PREFS = "virgil-editor-prefs";
   const TRANSFORMS = "virgil-editor-transforms";
 
+  // The witness for "the peer's change survived" must be a pref the local write
+  // does not legitimately touch. It used to be `tabBg` — which is a LOCKED CHILD
+  // of `topbarBackground` (see `pref-links`), so once the cascade moved into
+  // `updatePref` (task 625) the local write overwrote it ON PURPOSE and the
+  // assertion read that as a lost peer write. `topbarBorder` is uncoupled.
   it("re-syncs from a peer write, and the next local write preserves it", async () => {
     const { usePreferences } = await import("@/hooks/usePreferences");
     const { result } = renderHook(() => usePreferences());
@@ -185,13 +190,13 @@ describe("usePreferences cross-window sync", () => {
 
     act(() => peerWrite(PREFS, {
       topbarBackground: "#111111",
-      tabBg: "#222222",
+      topbarBorder: "#222222",
     }));
 
-    expect(result.current.prefs.tabBg).toBe("#222222");
+    expect(result.current.prefs.topbarBorder).toBe("#222222");
 
     act(() => result.current.updatePref("topbarBackground", "#333333"));
-    expect(read(PREFS).tabBg).toBe("#222222");       // peer's change survived
+    expect(read(PREFS).topbarBorder).toBe("#222222"); // peer's change survived
     expect(read(PREFS).topbarBackground).toBe("#333333");
   });
 

@@ -26,7 +26,6 @@ import {
 } from "@/lib/panel-typography";
 import { usePanelTypography, usePanelDefault } from "@/hooks/usePanelTypography";
 import {
-  useLinkAwareUpdater,
   useLinkState,
   setLinkLocked,
   setLinkDelta,
@@ -320,9 +319,9 @@ function Section({
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
 }) {
   const [open, setOpen] = useState(true);
-  // Any edit through a linked parent cascades to its locked children.
-  // Sections that don't use `link-edge` rows are unaffected.
-  const linkAwareUpdate = useLinkAwareUpdater(onUpdate);
+  // No link wrapper here any more (task 625): the locked-link cascade belongs to
+  // `usePreferences.updatePref`, so it reaches the "All preferences" tree — which
+  // renders the very same parent rows — instead of only this section.
   return (
     <div className="rounded-lg border border-edge-subtle bg-surface-muted/40 overflow-hidden">
       <button
@@ -350,7 +349,7 @@ function Section({
       {open && (
         <div className="px-3 pt-1 pb-2 bg-surface border-t border-edge-subtle">
           {section.items.map((item, i) => (
-            <ItemRow key={i} item={item} prefs={prefs} onUpdate={linkAwareUpdate} />
+            <ItemRow key={i} item={item} prefs={prefs} onUpdate={onUpdate} />
           ))}
         </div>
       )}

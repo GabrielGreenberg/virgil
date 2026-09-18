@@ -1,20 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   getAllLinkStates,
   getLinkState,
   getPrefLinksVersion,
   linkId,
   loadPrefLinks,
-  propagate,
   setLinkField,
   subscribePrefLinks,
   type LinkableKey,
   type LinkId,
   type LinkState,
 } from "@/lib/pref-links";
-import type { EditorPreferences } from "@/hooks/usePreferences";
 
 function useLinksVersion(): number {
   return useSyncExternalStore(
@@ -49,25 +47,11 @@ export function setLinkDelta(parent: LinkableKey, child: LinkableKey, deltaL: nu
   setLinkField(linkId(parent, child), "deltaL", deltaL);
 }
 
-/**
- * Wrap an `updatePref` callback so that writes to a linked parent also
- * update every locked descendant. When the key isn't linked, behaves
- * exactly like the raw updater.
+/*
+ * There is deliberately no `useLinkAwareUpdater` here any more (task 625).
+ * Wrapping the writer at the call site made the cascade OPT-IN, and only one of
+ * the preferences dialog's sections opted in — so the same preference cascaded
+ * or didn't depending on which control you edited it through. The cascade now
+ * lives inside `usePreferences.updatePref`, the single door that writes a
+ * preference, and `propagate` (in `lib/pref-links`) is its one implementation.
  */
-export function useLinkAwareUpdater(
-  rawUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void,
-) {
-  // Version subscription so the closure re-creates when link state changes.
-  useLinksVersion();
-  return useCallback(
-    <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => {
-      rawUpdate(key, value);
-      if (typeof value !== "string") return;
-      const cascades = propagate(key as LinkableKey, value as string);
-      for (const [k, v] of Object.entries(cascades)) {
-        rawUpdate(k as K, v as EditorPreferences[K]);
-      }
-    },
-    [rawUpdate],
-  );
-}
