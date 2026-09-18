@@ -228,8 +228,9 @@ const LEDGER: Record<string, Row> = {
   },
   "lib/cross-window-storage.ts": {
     scope: "shared-state",
-    events: ["window.storage"],
-    why: "one shared storage-event fan-out",
+    events: ["window.pagehide", "window.storage"],
+    why:
+      "one shared storage-event fan-out; plus `useMirroredDraft`'s pagehide flush — one per mirrored buffer (two today), and the edge exists precisely so a teardown SETTLES the debounced write instead of cancelling it (task 629)",
   },
   "lib/disk-watcher.ts": {
     scope: "singleton",
