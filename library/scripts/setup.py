@@ -23,7 +23,7 @@ so the arg can be omitted in normal use.
 Design notes:
 
 - Pip installs use `--user --break-system-packages`, matching the
-  convention in `library/CLAUDE.md`. This sidesteps the Homebrew
+  convention in `library/AGENTS.md`. This sidesteps the Homebrew
   Python "externally managed" guard without requiring a venv.
 - Tesseract is a system binary; we don't try to brew/apt it
   ourselves. We surface a clear install hint and continue — a

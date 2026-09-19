@@ -22,7 +22,7 @@ import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
 import PdfView from "./PdfView";
 // Drag-time followers of the app-wide pane-resize bus (sanctioned cross-silo
-// bridge, see library/CLAUDE.md "Don't"): PaneFreeze width-locks the reader
+// bridge, see library/AGENTS.md "Don't"): PaneFreeze width-locks the reader
 // subtree for the length of a gutter gesture; parkDuringLayoutGesture stashes the
 // two per-frame feedback paths below as defense-in-depth behind that freeze.
 import {
@@ -32,7 +32,7 @@ import {
 } from "@/lib/pane-resize";
 // Shared framed-viewer surface (inset + pod border/radius/shadow), the same
 // component the docs-side compiled-PDF pane renders through — sanctioned
-// cross-silo bridge (see library/CLAUDE.md "Don't"). Backdrop-parameterized:
+// cross-silo bridge (see library/AGENTS.md "Don't"). Backdrop-parameterized:
 // the Library PDF pane uses the warm "manila" backdrop.
 import FramedViewerSurface from "@/components/FramedViewerSurface";
 import { readerHostKind } from "@/components/editor-layout/reader-host";

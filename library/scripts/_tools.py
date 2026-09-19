@@ -441,7 +441,7 @@ def require_setup_or_die(library: Path, *, for_tool: str = "marker-pdf") -> None
 # "none" by the bib-index reader (the exact `needs-reauth` round-trip bug
 # F#4 fixes).
 #
-# Semantics (see library/CLAUDE.md §Bib states):
+# Semantics (see library/AGENTS.md §Bib states):
 #   none          — no state assigned yet (the implicit default; no comment)
 #   unverified    — single source matched at lower threshold (action needed)
 #   authenticated — DOI verified / ≥2 sources agreed (terminal)
