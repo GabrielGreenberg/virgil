@@ -1,4 +1,4 @@
-<!-- last-verified: 29eab4cd 2026-09-17 -->
+<!-- last-verified: 7c252262 2026-09-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -45,12 +45,13 @@ once below and the variants point at it.
 ### The action vocabulary: `VIRGIL_ACTION_REGISTRY`
 
 The SSOT for the action vocabulary is **`VIRGIL_ACTION_REGISTRY`** in
-[action-registry.ts:2959](../../src/lib/actions/action-registry.ts) — the single
+[action-registry.ts:3541](../../src/lib/actions/action-registry.ts) — the single
 registry every surface reads off (CHIP 3 inverted the old dependency: the array
 `MENU_ENTRIES` is **deleted**, and the two live menus now render FROM the
 registry via `cardActionRows("grab" | "lightning")`). Since task 260 the registry
-is a **total** `Readonly<Record<ActionId, ActionSpec>>` spread from six
-per-family `Record<<Family>ActionId, ActionSpec>` row tables, and
+is a **total** `Readonly<Record<ActionId, ActionSpec>>` spread from seven
+per-family `Record<<Family>ActionId, ActionSpec>` row tables (task 639 added
+`LATEX_COMMENT_ACTION_ROWS`, the seventh), and
 `EXPECTED_ACTION_IDS` + every `COVERED_*` slice are *derived* from those keys —
 so a new `ActionId` is a compile error at its family's table, not a hand-list to
 remember. (`assertActionCoverage`'s step-5 leg now compares two derived sets, so
@@ -85,8 +86,8 @@ a `cutter-comment`, and `report` → a `report-request` (the quick gesture files
 the ask). The authored `revision-suggestion` / `cutter-suggestion` / `report`
 kinds are AI/responder outputs (see [cards.md](cards.md)). Footnote and Citation
 collapse the selection to the passage end before inserting their atom
-([drag-handle-actions.ts:316](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
-[:343](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:390](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
+[:405](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the audit's CITE behavior, below.
 
 **No-scroll create (two halves).** Creating any card must NOT jump the viewport —
@@ -188,7 +189,22 @@ inserted block's `NodeType` and adds a schema-precise **container** layer: it gr
 insert whose containing block can't host that block as a sibling (via `canReplaceWith`),
 so a caret inside a `figureCaption` — whose non-isolating `figureBlock` parent hosts no
 block child, and would otherwise split into dup-uuid copies — is rejected too, name-
-agnostically (and type-precisely for `exampleItem`). `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
+agnostically (and type-precisely for `exampleItem`). **Task 641 widened it to the
+RANGE**: every block-level action mutates one (`deleteSelection` +
+`replaceSelectionWith`, `setBlockType(from, to)` on the heading CONVERT path) while
+the gate asked about the single position `from`. `blockRangeHostsBlockInsert` is the
+range form and `posHostsBlockInsert` its caret reduction (`from === to`), exactly as
+`posHostsInlineAtom` is of `inlineRangeAllowsAtom` — so the three families cannot
+disagree about which textblocks a range reaches. ProseMirror is no backstop here:
+`checkJoin` passes because `paragraph`'s `inline*` and the verbatim `text*` share
+`text`, and `setBlockType` converts every textblock whose parent can host a heading
+(for a top-level `latexComment` that parent is `doc`). The three WRAP paths, which
+delete the whole range after harvesting a lossy payload from it, now share ONE
+capture/schema-symmetry predicate asked of the SLICE
+([capture-symmetry.ts](../../src/lib/tiptap/capture-symmetry.ts)) rather than the
+"did the harvest come back empty?" proxy that waved through every MIXED selection;
+what a capture cannot carry reads from `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, hoisted
+into the registry it derives from. `posHostsInlineAtom` is the SSOT for INLINE-atom inserts (inline-math `$x$`, `\ref`,
 citation, footnote) — greying them inside the `text*` verbatim blocks only
 (`contentMatch.matchType`), leaving them valid in a `titleField`, which is a
 `content: "inline*"` node that legitimately hosts inline math. Its narrow type-only twin
@@ -259,12 +275,32 @@ were not universally consulted, which is the shape all three share:
 
 The registry is read off **four** surfaces (CHIP 3/4/5/6/7): the two React
 **menus** (below), plus **slash commands** ([commands.ts](../../src/lib/tiptap/commands.ts))
-and **typed-LaTeX input rules** (Family 3). The PM-plugin surfaces (slash /
-typed) cross into React-land via the **`editor-actions-bridge`**
-([editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts)): a
-plugin calls `getEditorActionsHandle()?.runAction(id, seed)`, the bridge supplies
-the React APIs (`cardCreation` / `cardLifecycle`) into the `ActionContext`, and
-invokes `spec.run()` in React-land. Pure-PM commands (`\chapter`…`\subsubsection`,
+and **typed-LaTeX input rules** (Family 3). The TYPED surface has **five**
+members — `\cite`, `\footnote`, `$`, `$$`, `%` — and its vocabulary is now a
+live SSOT, [typed-latex-input-rules.ts](../../src/lib/tiptap/typed-latex-input-rules.ts)
+(task 639, replacing the two-element hand `Set` that was missing three): each
+extension MATCHES with the object it reads from there, `typedOwners()` derives the
+guard's expectation from it, and a source census reconciles the key set against
+the collab-gated `handleTextInput` plugins so a sixth rule cannot ship uncensused.
+`latexComment` became a real registry row in its own family, sharing one creator
+with the typed rule via
+[latex-comment-convert.ts](../../src/lib/tiptap/latex-comment-convert.ts).
+
+The PM-plugin surfaces (slash / typed) cross into React-land via the
+**`editor-actions-bridge`**
+([editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts)).
+`runEditorAction(view, id, seed)` is the ONE plugin-land door (task 642; a census
+forbids any other production file from calling `.runAction(`). The bridge is a
+per-view registry, but only PANES are keys — every nested editor (card body,
+float, excerpt) resolves the active pane's handle deliberately — so the fallback
+supplies the **React APIs only** (`cardCreation` / `cardLifecycle`). The ORIGIN of
+the gesture is per-DOCUMENT and resolves by OWNER: `resolveActionOrigin` binds the
+FIRING view as `seed.origin` (via `owningEditor`, reading the back-pointer TipTap
+stamps in `createView`), and positions always come from `origin.state`. Before
+that, a typed `\cite{}` in a note's body built its `ref` from MAIN's caret in
+MAIN's pos-space. `runAction` now returns an `ActionDispatchOutcome` and the door
+warns in dev on anything but `ran`, since the atom lands before the card is asked
+for and every failure edge is an orphan. Pure-PM commands (`\chapter`…`\subsubsection`,
 `\tex`, `\title`/`\author`/`\date`) take the view-only `runViewOnlyAction` path
 instead. The deleted `command-input.ts` event-bridge and the scattered
 `virgil-*` `window` CustomEvents are all retired by this one typed seam.
@@ -306,9 +342,9 @@ whose value is wired in `EditorPane` as
 - `dispatch(action, ref)` runs an action with no popover step (the toolbar path; both `ActionsMenuPanel` triggers call it directly).
 
 `dispatch` is owned by **`useDragHandleActions`**
-([drag-handle-actions.ts:115](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:167](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the single `switch (action)` over all 11 actions
-([drag-handle-actions.ts:264](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
+([drag-handle-actions.ts:381](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
 It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 `notify`, view-prefs) and resolves the ref before acting:
 
@@ -338,10 +374,37 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
   Atom-only lines (math / `\ref` / figure / `\tex` / citation-only) now
   archive/delete cleanly AND surface the confirm — they were previously
   silently no-op'd or deletable (`f4c830f` / `80170b3` / `63ccace`).
-- **Uniform collab read-only gate** (CHIP 7b) — every card row's `applies()`
-  routes through the shared gate keyed on `ActionContext.canEdit` (the SSOT
-  mirror of `collab.canEditMainText` / `editor.isEditable`). When the partner
-  holds the pen, every action greys out declaratively across all surfaces.
+- **Collab read-only gate at the SEAMS** (CHIP 7b, re-sited by task 638) — the
+  `applies()` gate keyed on `ActionContext.canEdit` greys rows out, but it was
+  never the whole gate: both menus dispatch card rows through
+  `useDragHandleActions().dispatch` and never call `spec.run()`, and the deferred
+  create-popovers commit seconds after their OPEN was gated. The pen question is
+  now asked at the four seams every mutation actually crosses — the card
+  dispatcher, `insertInlineAtom` (beside task 396's container gate), the two slash
+  doors in `commands.ts`, and the five typed input rules — through one door,
+  `collabReadOnly` ([collab-read-only-gate.ts](../../src/lib/tiptap/collab-read-only-gate.ts)),
+  which generalizes the retired `typed-latex-read-only-gate.ts`. Each reads the
+  LIVE editor at the moment of the mutation, so no snapshot can go stale; the
+  `run()`-side gates stay as belt-and-suspenders. **It is not host writability**:
+  `view.editable` is the PEN, and the Reader's own editable-card axis has its own
+  SSOT (`writableSidecarsFor` / `isCardMutationAllowed`; `surfaceIsEditable` is
+  the conjunction the affordances ask). `insertTexBlock` and
+  `wrapSelectionInExample` — the two private `ActionContext` builders that could
+  forget — are DELETED; the `\tex` cell routes through `runGridAction("tex")`
+  like every other cell.
+- **Drop commits measure their own effect** (task 648) — `view.dispatch(tr)` is a
+  REQUEST: a `filterTransaction` veto drops it with no throw and no step, so a
+  cross-editor move could delete the source while its insert died (or duplicate
+  the atom, the veto being mounted on the `isMain` arm alone).
+  [commit-seam.ts](../../src/components/drop-mode/commit-seam.ts) is the one door
+  — ask `collabReadOnly` for BOTH ends before either is touched, dispatch, then
+  measure the EFFECT (`dispatchLanded`, on doc reference identity, the
+  post-dispatch twin of the pre-dispatch `insertLanded`), and refuse as a UNIT.
+  Routed through `commitCrossEditorMove`: the inline-atom move and both branches
+  of `text-range-move`. Atoms are named by DURABLE ID where `ATOM_REGISTRY.idAttr`
+  gives one (the captured position is only a hint, confirmed via `findAtomById`),
+  because kind is not identity and `\cite{a}\cite{b}` puts a valid impostor at
+  `pos ± 1`.
 
 The lower-level action hooks the dispatcher / `useCardCreation` compose live
 beside it in [editor-layout/card-actions/](../../src/components/editor-layout/card-actions):

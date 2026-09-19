@@ -1,4 +1,4 @@
-<!-- last-verified: a1b40bcc 2026-09-18 -->
+<!-- last-verified: 7c252262 2026-09-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 

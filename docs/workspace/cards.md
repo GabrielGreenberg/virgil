@@ -1,4 +1,4 @@
-<!-- last-verified: 29eab4cd 2026-09-17 -->
+<!-- last-verified: 7c252262 2026-09-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -44,7 +44,7 @@ in the AIWindow. The Task itself persists in `ai-requests.json` as an
 Every per-kind fact hangs off **one registry**: `CARD_REGISTRY`
 ([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a
 `Record<CardKind, CardMeta>` — one entry per kind carrying `panel` /
-`origin` / `keyPrefix` / `label` / `titleLabel` / `themeKey` / `collabClaims` /
+`origin` / `label` / `titleLabel` / `themeKey` / `collabClaims` /
 `anchored` / `markerType` / `lifecycle` / `content` / `dropSpec` / `droppable` /
 `dropPlacement` / `morph` / `stackable` / `poppable` / `bodyClass`. The
 formerly-parallel tables are **derived** from it, never extended by hand
@@ -54,7 +54,7 @@ formerly-parallel tables are **derived** from it, never extended by hand
 | Derived accessor / table | File | `CardKind` → |
 |---|---|---|
 | `panelForCardKind` / `cardKindsForPanel` | [predicates.ts](../../src/cards/predicates.ts) | the hosting `PanelKind` (`CardMeta.panel`) |
-| `CARD_KEY_PREFIXES` / `cardKeyPrefix` | [panel-registry.ts](../../src/panels/panel-registry.ts) / [predicates.ts](../../src/cards/predicates.ts) | LEGACY popout-key prefix (`${prefix}:${id}` — dual-read + migrated; live keys are `float:card:<kind>:<id>` via `cardPopKey`) |
+| `LEGACY_TOKEN_CROSSWALK.legacyKeyPrefix` | [legacy-token-crosswalk.ts](../../src/cards/legacy-token-crosswalk.ts) | LEGACY popout-key prefix (`${prefix}:${id}`), frozen history read ONLY by `migrateLegacyKeyToFloat`; live keys are `float:card:<kind>:<id>` via `cardPopKey`. The `CARD_KEY_PREFIXES` / `cardKeyPrefix` pair and `panel-registry`'s `keyPrefix`/`themeKey` columns are DELETED (task 634) |
 | `CARD_TYPE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | uppercase overline label (OmniView disambiguation; `CardMeta.label`) |
 | `CARD_TITLE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | auto-title prefix, or `null` if the kind doesn't auto-title (`CardMeta.titleLabel`) |
 | `CARD_THEMES` | [panel-primitives.tsx](../../src/components/panel-primitives.tsx) | accent theme, keyed by `CardMeta.themeKey` |
@@ -87,7 +87,7 @@ record in `cutter.json` is a `cutter-suggestion`; the same `kind: "suggestion"` 
 
 ## The per-kind table
 
-Grounded in `PANEL_REGISTRY` + `CARD_KEY_PREFIXES` + the card interfaces in
+Grounded in `PANEL_REGISTRY` + `CARD_REGISTRY` + the card interfaces in
 [src/lib/types.ts](../../src/lib/types.ts). **Linkage** is the *class* (the
 mechanism is [anchoring.md](anchoring.md)): **anchor** = a Card's paragraph
 pointer (Mode A) or text-range `linkedRange` pointer (Mode B), carried in
@@ -222,6 +222,28 @@ Archive PANEL (the `archive` CardKind, which *moves text objects*).
   ([card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)); the
   list applies `filterByArchiveView(items, view, getArchived)`.
 
+**The delete AFFORDANCE is derived from the host's write permit (task 637).** A
+`library-paper:` doc mounts under `READER_CHROME`, which allows only some kinds'
+sidecars to be written — yet the trash button, the header menu item and the delete
+key were drawn from the card component's own memory of what it could do, so the
+Reader offered a delete it would then refuse. `useCardDeleteAllowed`
+([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) asks the host
+permit instead — `isCardMutationAllowed(chrome, kind)`
+([chrome-config.ts](../../src/components/editor-layout/chrome-config.ts), over
+`writableSidecarsFor`) — and all three surfaces withhold together. A host with no
+`editableCardKinds` whitelist (`FULL_CHROME`, the whole main app) answers `true`,
+so nothing outside the Reader changes. This is the WRITABILITY axis, not the collab pen — see
+[actions.md](actions.md) → "Collab read-only gate at the SEAMS" for why the two
+cannot substitute for each other.
+
+**A sidecar write that does not land is rolled back and SAID (task 630).** Filing
+an AI request moved React state first and fired the disk write blind. The refusal
+channel is [sidecar-refusal.ts](../../src/lib/sidecar-refusal.ts) (read via
+`useSidecarRefusal`): a `mutateSidecar` that does not land reverts the optimistic
+state and surfaces, rather than leaving the panel showing a card that is not on
+disk. This is the sidecar corollary of the write-path law — see
+[laws/the-write-path.md](../agents/laws/the-write-path.md).
+
 ## Card-lifecycle reconciler — selection survives delete/morph
 
 A card's delete / morph incurs a cross-store obligation: the per-doc `cardStore`
@@ -243,7 +265,10 @@ keystroke sanctity or the +1-not-+3 invariant.
 
 ## Drop facets — the (re)anchor button
 
-Two `CardMeta` facets drive the **card drop button** — the neutral chevron glyph
+One `CardMeta` facet GATES the **card drop button** — `droppable`, read through
+`isDroppable` ([predicates.ts](../../src/cards/predicates.ts)); its partner
+`dropPlacement` is the DECLARED policy the coverage assertions check, and drives no
+dispatch. The button itself is the neutral chevron glyph
 ([DropChevrons.tsx](../../src/components/icons/DropChevrons.tsx)) that enters
 drop-mode to (re)anchor a card. It mounts on the docked card header
 (`CardDropButton`, [panel-primitives.tsx](../../src/components/panel-primitives.tsx))
@@ -260,7 +285,10 @@ native drag (`event-bridges/panel-drops.ts` + `anchor-rebind.ts`, both DELETED).
 - **`dropPlacement: "in-text" | "margin" | null`** — where a (re)anchor drop
   LANDS. `"in-text"` for the atom kinds (`footnote` / `citation` — inline caret /
   `\cite`-`\footnote` position); `"margin"` for the paragraph-anchored kinds;
-  `null` ⇔ `!droppable`. Read via `cardDropPlacement(k)`.
+  `null` ⇔ `!droppable`. Read only by `assertDropFacetCoverage` and that
+  biconditional assert (the `cardDropPlacement(k)` helper is deleted); per-move
+  dispatch resolves `spec.placementsFor?.(…) ?? spec.allowedPlacements` in
+  [placement-policy.ts](../../src/components/drop-mode/placement-policy.ts).
 
 These are **STATIC literals**, not derived from `dropSpec != null`: specs are
 folded onto the registry at boot by the `@/cards/drop-specs`
@@ -406,12 +434,12 @@ Worth knowing before you touch any key:
 - **System accents**: `aiRequest` (sky) and `error` (rust) are in
   `SYSTEM_THEME_KEYS` — non-overridable, so a user color-override can't
   re-tint them.
-- **Popout-prefix hazard**: the `keyPrefix` values are **preserved
+- **Popout-prefix hazard**: the legacy prefix values are **preserved
   byte-for-byte** from the legacy table because they're persisted
   (localStorage `poppedOutCards`, omni ids). The Revisions pair is the
   intentional drift: `revision-comment` → prefix `revision`,
   `revision-suggestion` → `revision-suggestion` (legacy persisted key `revision:s:<id>`, dual-read + migrated; live key `float:card:revision-suggestion:<id>`).
-  *Don't rename a prefix without a migration* (`card-registry.tsx`).
+  *Don't rename a prefix without a migration* (`legacy-token-crosswalk.ts`).
 
 ## Rules for skills
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 29eab4cd 2026-09-17 -->
+<!-- last-verified: 7c252262 2026-09-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -83,7 +83,9 @@ are detailed in [atoms.md](atoms.md). The ontological facts a skill needs:
   fresh top-level paragraph, which in a `latexComment` promotes a commented-out
   line into live printed prose. Every insert asks `posHostsInlineAtom` first
   (task 396), through the one door `insertInlineAtom`, and a refusal returns
-  `{ refused: true }` over an untouched document — so a caller that mints a Card
+  `{ refused: true }` over an untouched document — with TWO causes since task 638:
+  the container gate, and the collab read-only gate (`collabReadOnly`, asked at the
+  same seam so the deferred create-popover's commit cannot outrun it) — so a caller that mints a Card
   after the splice must READ that report, or it registers a Card with no Atom.
   This is a DIFFERENT question from the block gate: a `titleField` is
   `content: "inline*"` and legitimately hosts inline math.
