@@ -18,7 +18,7 @@ import {
   linkCardKey,
 } from "@/links/link-dom-contract";
 import { collabReadOnly } from "./collab-read-only-gate";
-import { setDataIfChanged } from "./idempotent-dom";
+import { setAttrIfChanged, setDataIfChanged } from "./idempotent-dom";
 // CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
 // the citation CARD (the atom is still inserted synchronously below). Replaces
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
@@ -318,7 +318,10 @@ export const Citation = Node.create<CitationOptions>({
       const dom = document.createElement("span");
       dom.className = CITATION_ATOM.domClass;
       dom.dataset.type = CITATION_ATOM.domType;
-      dom.dataset.citationId = node.attrs.citationId || "";
+      // The `data-citation-id` SPELLING comes from the row, like `data-type`
+      // and the class above (task 645) — it is what the drag ghost strips and
+      // the hover bridge reads, and both of those now read it from there too.
+      dom.setAttribute(CITATION_ATOM.domIdAttr, node.attrs.citationId || "");
       dom.contentEditable = "false";
       dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
       applyCitationContent(dom, node.attrs.displayText, node.attrs.command);
@@ -358,7 +361,7 @@ export const Citation = Node.create<CitationOptions>({
           if (updatedNode.type.name !== "citation") return false;
           // Idempotence-gated (task 551): O(changed atoms), and an unchanged
           // id must not invalidate style on a renumber / display pass.
-          setDataIfChanged(dom, "citationId", updatedNode.attrs.citationId || "");
+          setAttrIfChanged(dom, CITATION_ATOM.domIdAttr, updatedNode.attrs.citationId || "");
           applyCitationContent(dom, updatedNode.attrs.displayText, updatedNode.attrs.command);
           return true;
         },

@@ -6,6 +6,7 @@ import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-conten
 import { generateShortId } from "@/lib/uuid";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import {
+  setAttrIfChanged,
   setDataIfChanged,
   setTextIfChanged,
   setTitleIfChanged,
@@ -349,7 +350,10 @@ export const Footnote = Node.create<FootnoteOptions>({
       const dom = document.createElement("span");
       dom.className = FOOTNOTE_ATOM.domClass;
       dom.dataset.type = FOOTNOTE_ATOM.domType;
-      dom.dataset.footnoteId = node.attrs.footnoteId || "";
+      // The `data-footnote-id` SPELLING comes from the row, like `data-type`
+      // and the class above (task 645) — it is what the drag ghost strips and
+      // the hover bridge reads, and both of those now read it from there too.
+      dom.setAttribute(FOOTNOTE_ATOM.domIdAttr, node.attrs.footnoteId || "");
       dom.contentEditable = "false";
       // contenteditable=false islands are natively draggable inside a
       // contenteditable root; disable it so the InlineAtomGrab mousedown
@@ -382,7 +386,7 @@ export const Footnote = Node.create<FootnoteOptions>({
           // Idempotence-gated (task 551): the numberer touches every footnote
           // node after a structural change, and a marker whose number did not
           // move must not replace its text node or invalidate its style.
-          setDataIfChanged(dom, "footnoteId", updatedNode.attrs.footnoteId || "");
+          setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, updatedNode.attrs.footnoteId || "");
           setDataIfChanged(dom, "thanks", updatedNode.attrs.thanks ? "true" : null);
           setTextIfChanged(dom, updatedNode.attrs.thanks ? "A" : String(updatedNode.attrs.number || "1"));
           setTitleIfChanged(dom, richJsonToPlainText(updatedNode.attrs.content));

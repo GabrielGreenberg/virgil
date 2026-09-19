@@ -26,12 +26,22 @@
  */
 
 import type { Editor } from "@tiptap/react";
+import type { AtomKind } from "@/lib/tiptap/atom-registry";
 
 export interface CapturedAtomSource {
   /** Opaque token echoed in the cardKey (`atom-grab:<token>`). */
   token: string;
-  /** Atom-registry kind ("footnote" | "citation" | "ref" | "inline-math"). */
-  kind: string;
+  /** Atom-registry kind. TYPED from the registry (task 645) — it used to be a
+   *  plain `string` whose real vocabulary lived only in this doc-comment, so a
+   *  typo'd kind captured cleanly and failed at commit.
+   *
+   *  `nodeName` below stays `string` deliberately: `AtomMeta.nodeName` is
+   *  declared `string`, so a literal union for it could only come from the
+   *  registry OBJECT, and deriving it there while `AtomMeta` constrains that
+   *  same object is circular. A union nothing could flow into would be
+   *  vocabulary declared and unread — the drift this task is closing, one
+   *  level up. */
+  kind: AtomKind;
   /** Schema node name to verify at commit ("footnote" | "citation" | …). */
   nodeName: string;
   /** The editor the atom lives in (main or a card-body editor). */

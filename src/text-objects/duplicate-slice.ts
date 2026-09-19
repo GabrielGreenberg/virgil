@@ -10,8 +10,10 @@
  *   2. Remints every inline-atom card's id attr (`footnoteId`,
  *      `citationId`) and clones the matching sidecar entry via
  *      [card-lifecycle-registry](../panels/card-lifecycle-registry.tsx).
- *      `INLINE_ATOM_CARDS` is the only kind-aware data here — a 2-entry
- *      lookup table; adding a new inline-atom card kind is one line. This
+ *      There is no kind-aware data here at all: the `{nodeName, idAttr}`
+ *      pair comes from `cardAtomMetaForNodeName`, the ATOM_REGISTRY's own
+ *      Card-bearing narrowing (task 645), so adding a new inline-atom card
+ *      kind is one registry row and no edit here. This
  *      also descends into an atom's `attrs.content` JSONContent blob (the
  *      footnote body — a place PM's `node.content` traversal can't reach) and
  *      re-identifies the atoms nested there via the same rule, so a `\cite`
@@ -28,7 +30,7 @@
  * Zero per-kind switches. Adding a new TextObject kind = one
  * `TEXT_OBJECT_REGISTRY` entry. Adding a new sidecar-bearing card kind =
  * one `registerCardLifecycle` call (registry-side) + (for new inline-atom
- * kinds only) one entry in `INLINE_ATOM_CARDS` here.
+ * kinds only) an `idAttr`/`domIdAttr` on its `ATOM_REGISTRY` row.
  *
  * Diagnostics: pass an optional `DuplicateDiagnostics` collector. Each
  * silent-skip path now emits a tagged warning so the dispatcher can
@@ -40,23 +42,10 @@ import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { isTextObjectKind } from "./text-object-registry";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
-import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
 import { linkCardKey, parseLinkCardKey } from "@/links/link-dom-contract";
 import { remintNestedAtomIds } from "@/lib/inline-content";
-
-/** Inline-atom card lookup — node-type-name → { CardKind, id-attr-name }.
- *  Only the schema's sidecar-bearing inline atoms appear here. */
-const INLINE_ATOM_CARDS: Record<string, { cardKind: CardKind; idAttr: string }> = {
-  footnote: { cardKind: "footnote", idAttr: "footnoteId" },
-  citation: { cardKind: "citation", idAttr: "citationId" },
-};
-
-function inlineAtomCardEntry(
-  typeName: string,
-): { cardKind: CardKind; idAttr: string } | null {
-  return INLINE_ATOM_CARDS[typeName] ?? null;
-}
+import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 /** Remint a TextObject node's identity.
  *
@@ -218,21 +207,21 @@ function transformNode(
   // Attrs: remint inline-atom id (if applicable) + TextObject uuid.
   const newAttrs: Record<string, unknown> = { ...node.attrs };
 
-  const atom = inlineAtomCardEntry(node.type.name);
+  const atom = cardAtomMetaForNodeName(node.type.name);
   if (atom) {
     const oldId =
       typeof newAttrs[atom.idAttr] === "string"
         ? (newAttrs[atom.idAttr] as string)
         : "";
     if (oldId) {
-      const cloned = lifecycle.get(atom.cardKind)?.clone(oldId);
+      const cloned = lifecycle.get(atom.kind)?.clone(oldId);
       if (cloned == null) {
         // Card kind opted out or source id missing. Mint a placeholder
         // so the schema stays valid; surface via diagnostic. The
         // resulting atom is orphan (no sidecar) — visible as a
         // footnote/citation with no card behind it.
         diag?.warn("orphan-inline-atom", {
-          cardKind: atom.cardKind,
+          cardKind: atom.kind,
           sourceId: oldId,
         });
       }
@@ -255,15 +244,15 @@ function transformNode(
     const { content: reminted } = remintNestedAtomIds(
       contentBlob as JSONContent,
       (typeName, oldNestedId) => {
-        const nestedAtom = inlineAtomCardEntry(typeName);
+        const nestedAtom = cardAtomMetaForNodeName(typeName);
         // inlineMath / labelRef and the like carry no cloneable sidecar
         // identity — leave them untouched (their attrs are safe to share).
         if (!nestedAtom) return null;
         const clonedNested =
-          lifecycle.get(nestedAtom.cardKind)?.clone(oldNestedId) ?? null;
+          lifecycle.get(nestedAtom.kind)?.clone(oldNestedId) ?? null;
         if (clonedNested == null) {
           diag?.warn("orphan-inline-atom", {
-            cardKind: nestedAtom.cardKind,
+            cardKind: nestedAtom.kind,
             sourceId: oldNestedId,
           });
         }

@@ -20,6 +20,7 @@ import {
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
 import { graphicsCommandEnd } from "@/lib/figures/parse-attrs";
+import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import { headingTypeCommand } from "@/lib/heading-types";
 import {
   applyWrapperMarks,
@@ -2225,8 +2226,11 @@ export function assignUuids(doc: JSONContent): void {
     fillWalk(doc);
   }
 
-  dedupInlineId("citation", "citationId");
-  dedupInlineId("footnote", "footnoteId");
+  // Every Card-bearing atom's `{nodeName, idAttr}` pair comes from the
+  // registry (task 645) — a fifth kind is deduped without an edit here. The
+  // kinds are order-independent: each call owns its own `survivors`/`localSeen`
+  // sets, so the id spaces never interact (the React keys are namespaced too).
+  for (const atom of CARD_ATOMS) dedupInlineId(atom.nodeName, atom.idAttr);
 }
 
 /**
@@ -2352,7 +2356,9 @@ export function needsUuidWork(doc: JSONContent): boolean {
     walk(doc);
     return found;
   }
-  return inlineIdWork("citation", "citationId") || inlineIdWork("footnote", "footnoteId");
+  // Registry-driven twin of the mutating pass above. `.some` short-circuits
+  // exactly as the `||` chain did.
+  return CARD_ATOMS.some((atom) => inlineIdWork(atom.nodeName, atom.idAttr));
 }
 
 /** Recursively extract plain text from a JSONContent subtree. */

@@ -44,6 +44,18 @@ export interface AtomMeta {
    */
   idAttr: string | null;
   /**
+   * The DOM attribute the NodeView writes that id to (`data-footnote-id`),
+   * or `null` for the id-less kinds. Declared rather than derived from
+   * {@link AtomMeta.idAttr} by a camelCase→kebab transform: the transform is
+   * ungreppable and would silently mis-derive a future attr name (`refId2`,
+   * `bibTeXKey`), whereas this row entry is one string a `grep` finds.
+   *
+   * Every DOM read of an atom's id — the ghost's strip list, the hover
+   * bridge, the marker-click source lookup — spells THIS, so the DOM
+   * attribute and the node attr can't drift apart (task 645).
+   */
+  domIdAttr: string | null;
+  /**
    * The ProseMirror `NodeSpec.selectable` the atom's node MUST declare — the
    * SSOT for a per-kind behavioral facet that otherwise lives only as a
    * hand-set (or unset) flag in each node file, free to drift.
@@ -69,13 +81,14 @@ export interface AtomMeta {
   label: string;
 }
 
-export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
+export const ATOM_REGISTRY = {
   footnote: {
     kind: "footnote",
     nodeName: "footnote",
     domType: "footnote",
     domClass: "footnote-marker",
     idAttr: "footnoteId",
+    domIdAttr: "data-footnote-id",
     selectable: false,
     label: "Footnote",
   },
@@ -85,6 +98,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "citation",
     domClass: "citation-node",
     idAttr: "citationId",
+    domIdAttr: "data-citation-id",
     selectable: false,
     label: "Citation",
   },
@@ -94,6 +108,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "label-ref",
     domClass: "label-ref-node",
     idAttr: null,
+    domIdAttr: null,
     selectable: false,
     label: "Cross-reference",
   },
@@ -103,10 +118,16 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "inline-math",
     domClass: "inline-math",
     idAttr: null,
+    domIdAttr: null,
     selectable: true,
     label: "Inline math",
   },
-};
+  // `as const satisfies` rather than a plain `Record<AtomKind, AtomMeta>`
+  // annotation: the rows are still type-checked against `AtomMeta` (a typo'd
+  // or missing facet is a compile error, exactly as before), but the literal
+  // strings SURVIVE — which is what lets `CardAtomKind` below be DERIVED from
+  // `idAttr !== null` at the type level instead of re-listing the two kinds.
+} as const satisfies Record<AtomKind, AtomMeta>;
 
 const ALL: ReadonlyArray<AtomMeta> = Object.values(ATOM_REGISTRY);
 
@@ -136,6 +157,90 @@ export const CARD_ATOM_DOM_SELECTOR: string = ALL.filter(
 )
   .map((m) => `[data-type="${m.domType}"]`)
   .join(",");
+
+// ---------------------------------------------------------------------------
+// The CARD-BEARING half (task 645)
+//
+// Two of the four atoms own a Card, and the fact that makes them Card-bearing
+// is ONE predicate: `idAttr !== null`. Before this, that predicate's two
+// halves — the schema node name and the attr carrying the id — were
+// hand-PAIRED at seven consumer sites in four different shapes (two twin
+// `INLINE_ATOM_CARDS` tables, a literal `["citationId","footnoteId"]` array,
+// two `dedupInlineId("citation","citationId")` calls, a `data-*` strip list,
+// two drop specs). A fifth Card-bearing kind added tomorrow would have reached
+// none of them, with no compile error and no failing test — the drift surface
+// the registry's own doc-comment already claimed to have closed ("a future
+// Card-bearing atom kind is covered for free", task 256, which closed only the
+// domType/domClass facets).
+//
+// So the pair is published here, ONCE, and the consumers read it. The census
+// `card-atom-idattr-census.test.ts` pins the complement: no production file
+// outside this one hand-pairs an atom node name with its id attr.
+// ---------------------------------------------------------------------------
+
+/**
+ * The Atom kinds that own a Card — **derived**, not re-listed: a row whose
+ * `idAttr` is non-null is Card-bearing, which is the same predicate
+ * {@link CARD_ATOM_DOM_SELECTOR} filters on, lifted to the type level. Add a
+ * fifth row with an `idAttr` and it joins this union (and every derivation
+ * below) with no edit here; drop a row's `idAttr` and it leaves.
+ */
+export type CardAtomKind = {
+  [K in AtomKind]: (typeof ATOM_REGISTRY)[K]["idAttr"] extends null ? never : K;
+}[AtomKind];
+
+/** An {@link AtomMeta} row narrowed to the Card-bearing case: both id facets
+ *  are present, so a consumer needs no non-null assertion to use them. */
+export type CardAtomMeta = Omit<AtomMeta, "kind" | "idAttr" | "domIdAttr"> & {
+  kind: CardAtomKind;
+  idAttr: string;
+  domIdAttr: string;
+};
+
+/** The node attr carrying a Card-bearing atom's id (`"footnoteId" | "citationId"`). */
+export type CardAtomIdAttr = (typeof ATOM_REGISTRY)[CardAtomKind]["idAttr"];
+
+const isCardAtomMeta = (m: AtomMeta): m is CardAtomMeta =>
+  m.idAttr !== null && m.domIdAttr !== null;
+
+/** Every Card-bearing Atom's row, in registry order. The list form — iterate it
+ *  where a consumer must do the same work per kind (the serializer's id dedup,
+ *  the delete/duplicate card lookup). */
+export const CARD_ATOMS: ReadonlyArray<CardAtomMeta> = ALL.filter(isCardAtomMeta);
+
+/** The Card-bearing rows keyed by kind. The lookup form — index it where a
+ *  consumer names ONE kind (a drop spec, a marker-click bridge). */
+export const CARD_ATOM_REGISTRY = Object.fromEntries(
+  CARD_ATOMS.map((m) => [m.kind, m]),
+) as Record<CardAtomKind, CardAtomMeta>;
+
+/** The node attrs that carry a Card-bearing atom's entity id. */
+export const CARD_ATOM_ID_ATTRS: ReadonlyArray<CardAtomIdAttr> = CARD_ATOMS.map(
+  (m) => m.idAttr as CardAtomIdAttr,
+);
+
+/** The DOM attrs those ids are written to (`data-footnote-id`, …). */
+export const CARD_ATOM_DOM_ID_ATTRS: ReadonlyArray<string> = CARD_ATOMS.map(
+  (m) => m.domIdAttr,
+);
+
+/** A CSS selector matching any element carrying a Card-bearing atom's id attr.
+ *  The DOM-attribute twin of {@link CARD_ATOM_DOM_SELECTOR}, which matches on
+ *  `data-type` instead — both are needed because the id attr also rides the
+ *  ghost clone and the hover bridge's `closest()`, where `data-type` is absent
+ *  or already stripped. */
+export const CARD_ATOM_DOM_ID_SELECTOR: string = CARD_ATOM_DOM_ID_ATTRS.map(
+  (a) => `[${a}]`,
+).join(",");
+
+/** Resolve a **Card-bearing** Atom meta from a PM schema node name, or null for
+ *  an id-less atom / a non-atom. The narrowing twin of
+ *  {@link atomMetaForNodeName}: a caller that needs the `{nodeName, idAttr}`
+ *  pair asks this and gets both, non-null, or nothing. */
+export function cardAtomMetaForNodeName(nodeName: string): CardAtomMeta | null {
+  const m = BY_NODE_NAME.get(nodeName);
+  return m && isCardAtomMeta(m) ? m : null;
+}
 
 /** Resolve an Atom meta from a DOM `data-type` value (or null). */
 export function atomMetaForDomType(domType: string | null | undefined): AtomMeta | null {

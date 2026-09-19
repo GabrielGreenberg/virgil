@@ -24,16 +24,20 @@
  *     binding initialised to any of those, and a `x ?? document` / `x || document`
  *     / `c ? x : document` fallback (whose document arm is a global read).
  *  2. ARGUMENT — what TEXT does it fold to? String and template literals,
- *     `+` concatenation, and identifiers resolved to `const` string bindings —
+ *     `+` concatenation, identifiers resolved to `const` string bindings —
  *     local ones AND ones imported from another production module (relative or
- *     `@/` specifier, named or renamed). A part that cannot be folded (a call, a
- *     runtime value) contributes a placeholder, so the literal parts around it
- *     still count.
+ *     `@/` specifier, named or renamed) — and, since task 645, a PATH into a
+ *     `const` object literal (`ATOM_REGISTRY.footnote.domIdAttr`, dotted or
+ *     string-keyed, through an `as const satisfies …` declaration and across
+ *     module boundaries). A part that cannot be folded (a call, a runtime
+ *     value) contributes a placeholder, so the literal parts around it still
+ *     count.
  *
  * STATED LIMITS — what still passes, so an empty allowlist is not read as a
  * stronger claim than it is:
- *  - a selector computed at RUNTIME (a function's return value, a `let`, an
- *    object property, a parameter) contributes nothing;
+ *  - a selector computed at RUNTIME (a function's return value, a `let`, a
+ *    parameter, an object property reached through a NON-const binding or a
+ *    computed key) contributes nothing;
  *  - an alias is resolved per FILE by name, not by scope, and only through a
  *    `const`/`let`/`var` initialiser (a parameter named `doc` that is passed
  *    `document` is invisible);
@@ -199,17 +203,82 @@ export class DocumentQueryScanner {
       return this.fold(e.left, file, depth + 1) + this.fold(e.right, file, depth + 1);
     }
     if (ts.isIdentifier(e)) return this.foldName(e.text, file, depth + 1);
+    // `REGISTRY.footnote.domIdAttr` — a path into a `const` object literal
+    // (task 645). Without this, moving a selector's marker name from a literal
+    // into an SSOT row makes the read INVISIBLE to the census: the fix that
+    // kills one drift blinds the guard that watches another. The fold is the
+    // same question as an identifier's, asked one level deeper.
+    if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e)) {
+      const resolved = this.resolveAccess(e, file, depth + 1);
+      if (resolved) return this.fold(resolved.expr, resolved.file, depth + 1);
+    }
     return HOLE;
   }
 
-  private foldName(name: string, file: string, depth: number): string {
+  /** The `const` initialiser a NAME binds to, with the file it lives in (a
+   *  re-exported name resolves in its own module, so the file must travel). */
+  private resolveName(
+    name: string,
+    file: string,
+    depth: number,
+  ): { expr: ts.Expression; file: string } | null {
+    if (depth > 12) return null;
     const facts = this.factsFor(file);
-    if (!facts) return HOLE;
+    if (!facts) return null;
     const local = facts.consts.get(name);
-    if (local) return this.fold(local, file, depth);
+    if (local) return { expr: local, file };
     const imported = facts.imports.get(name);
-    if (imported) return this.foldName(imported[1], imported[0], depth + 1);
-    return HOLE;
+    if (imported) return this.resolveName(imported[1], imported[0], depth + 1);
+    return null;
+  }
+
+  /** Walk `A.b.c` / `A["b"]` down to the expression it names, or null if any
+   *  hop is not a `const` object literal with that key. `unwrap` already strips
+   *  the `as const satisfies …` an SSOT table is typically declared with. */
+  private resolveAccess(
+    e: ts.Expression,
+    file: string,
+    depth: number,
+  ): { expr: ts.Expression; file: string } | null {
+    if (depth > 12) return null;
+    e = unwrap(e);
+    if (ts.isIdentifier(e)) return this.resolveName(e.text, file, depth + 1);
+
+    let key: string | null = null;
+    let objExpr: ts.Expression | null = null;
+    if (ts.isPropertyAccessExpression(e)) {
+      key = e.name.text;
+      objExpr = e.expression;
+    } else if (ts.isElementAccessExpression(e)) {
+      const arg = unwrap(e.argumentExpression);
+      if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
+        key = arg.text;
+        objExpr = e.expression;
+      }
+    }
+    if (key === null || objExpr === null) return null;
+
+    const parent = this.resolveAccess(objExpr, file, depth + 1);
+    if (!parent) return null;
+    const obj = unwrap(parent.expr);
+    if (!ts.isObjectLiteralExpression(obj)) return null;
+    for (const prop of obj.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const n = prop.name;
+      // `footnote:` is an Identifier; `"inline-math":` a StringLiteral.
+      const propKey = ts.isIdentifier(n)
+        ? n.text
+        : ts.isStringLiteral(n) || ts.isNumericLiteral(n)
+          ? n.text
+          : null;
+      if (propKey === key) return { expr: prop.initializer, file: parent.file };
+    }
+    return null;
+  }
+
+  private foldName(name: string, file: string, depth: number): string {
+    const resolved = this.resolveName(name, file, depth);
+    return resolved ? this.fold(resolved.expr, resolved.file, depth) : HOLE;
   }
 
   /** Every call of a DOM query method on a document-valued receiver. */

@@ -36,13 +36,18 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { inlineAtomMoveSpec } from "@/components/drop-mode/util/inline-atom-move";
+import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+
+/** The footnote atom's own registry row — the `{nodeName, idAttr}` pair the
+ *  by-id resolver needs, read rather than re-spelled (task 645). */
+const ATOM = CARD_ATOM_REGISTRY.footnote;
 
 export const footnoteDropSpec = inlineAtomMoveSpec({
-  nodeName: "footnote",
-  idAttr: "footnoteId",
+  nodeName: ATOM.nodeName,
+  idAttr: ATOM.idAttr,
   cardApiKind: "footnote",
   createAtom: ({ id, schema, cardAttrs }): PMNode | null => {
-    const footnoteNodeType = schema.nodes.footnote;
+    const footnoteNodeType = schema.nodes[ATOM.nodeName];
     if (!footnoteNodeType) return null;
     // No accessor in this doc ⇒ refuse (see jsdoc). A card that HAS no text yet
     // still resolves — the accessor answers with the empty doc, which is a real
@@ -54,7 +59,7 @@ export const footnoteDropSpec = inlineAtomMoveSpec({
     // Carry the card's EXISTING footnoteId so the new marker stays coupled to
     // the card. `number: 0` lets the renumber pass assign the live number.
     return footnoteNodeType.create({
-      footnoteId: id,
+      [ATOM.idAttr]: id,
       content: cardAttrs.content,
       number: 0,
     });
