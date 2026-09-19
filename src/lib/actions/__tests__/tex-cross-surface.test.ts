@@ -12,12 +12,21 @@
 // RICHER behavior — **seed code from the selection** (the grid version). Both
 // surfaces now route through the registry's single `texRun`.
 //
+// TASK 638 — the grid no longer has a helper of its own. `insertTexBlock` was
+// the one grid cell not routed through `ActionsMenuPanel`'s `runGridAction`, and
+// its private `ActionContext` omitted `canEdit`, which `isCollabReadOnly` reads
+// as "not read-only" — so `texRun`'s collab gate silently no-opped for the grid.
+// The cell now calls `runGridAction("tex")` like every other cell, so the GRID
+// surface under test here is `gridTex` below: the ctx `runGridAction` builds,
+// spelled out. The parity this suite pins is unchanged; what it drives is the
+// shape the panel actually dispatches.
+//
 // WHAT IS PROVEN (driving the REAL editor stack — the actual `commands.ts` slash
-// action + the real `buildEditorExtensions` texBlock schema + the real grid
-// `insertTexBlock` + the real registry `texRun`):
+// action + the real `buildEditorExtensions` texBlock schema + the real registry
+// `texRun`):
 //   1. SLASH `\tex` (collapsed caret) inserts a `texBlock` with a FRESH uuid and
 //      EMPTY code.
-//   2. GRID `insertTexBlock` (collapsed caret) does the IDENTICAL thing.
+//   2. The GRID ctx (collapsed caret) does the IDENTICAL thing.
 //   3. With a SELECTION, the selected plain text SEEDS `code` on BOTH surfaces —
 //      and (the behavior fix) the SLASH surface NO LONGER discards it.
 //   4. The fresh uuid is collision-free against an EXISTING `texBlock` uuid in
@@ -54,7 +63,34 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { COMMAND_MAP } from "@/lib/tiptap/commands";
-import { insertTexBlock } from "@/lib/tiptap/tex-block";
+import { texRun, type ActionContext } from "@/lib/actions/action-registry";
+
+/**
+ * The LIGHTNING-GRID surface, exactly as `ActionsMenuPanel.runGridAction("tex")`
+ * builds it (task 638): focus the doc — the cell is a toolbar button, so focus
+ * may be on the button — then invoke the registry row with a selection ref off
+ * the live selection, the `"lightning"` surface, and `canEdit`.
+ *
+ * `canEdit` is a PARAMETER here because its absence is the defect this suite now
+ * guards: the deleted `insertTexBlock` left the field off entirely, and an absent
+ * field reads as "not read-only" (the no-over-gating rule), so the gate never
+ * fired. Passing it explicitly is what makes the read-only leg below falsifiable.
+ */
+function gridTex(editor: Editor, canEdit = true): void {
+  editor.chain().focus().run();
+  texRun({
+    editor,
+    view: editor.view,
+    ref: {
+      kind: "selection",
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+      paragraphId: "",
+    },
+    surface: "lightning",
+    canEdit,
+  } as ActionContext);
+}
 
 // ---------------------------------------------------------------------------
 // Real editor stack
@@ -144,14 +180,14 @@ describe("slash \\tex (collapsed caret)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (2) Grid `insertTexBlock` on a collapsed caret → IDENTICAL
+// (2) The grid ctx on a collapsed caret → IDENTICAL
 // ---------------------------------------------------------------------------
 
-describe("grid insertTexBlock (collapsed caret)", () => {
+describe("grid \\tex cell (collapsed caret)", () => {
   it("inserts a texBlock with a fresh uuid and empty code (same as slash)", () => {
     const editor = mountEditor([paragraph("Hello world")]);
     placeCaret(editor, 5);
-    insertTexBlock(editor);
+    gridTex(editor);
 
     const tex = firstTexBlock(editor);
     expect(tex).not.toBeNull();
@@ -179,10 +215,10 @@ describe("seed code from selection (both surfaces)", () => {
     expect(tex!.attrs.code).toBe("beta");
   });
 
-  it("grid insertTexBlock seeds code from the selected text", () => {
+  it("the grid \\tex cell seeds code from the selected text", () => {
     const editor = mountEditor([paragraph("alpha beta gamma")]);
     selectRange(editor, 6, 10);
-    insertTexBlock(editor);
+    gridTex(editor);
 
     const tex = firstTexBlock(editor);
     expect(tex).not.toBeNull();
@@ -197,7 +233,7 @@ describe("seed code from selection (both surfaces)", () => {
 
     const e2 = mountEditor([paragraph("alpha beta gamma")]);
     selectRange(e2, 0, 16);
-    insertTexBlock(e2);
+    gridTex(e2);
     const viaGrid = firstTexBlock(e2);
 
     expect(viaSlash!.attrs.code).toBe("alpha beta gamma");
@@ -237,10 +273,10 @@ describe("collision-free uuid (single scan path)", () => {
     expect(fresh).not.toBe("tex-EXISTING");
   });
 
-  it("grid insertTexBlock mints a uuid distinct from an existing texBlock", () => {
+  it("the grid \\tex cell mints a uuid distinct from an existing texBlock", () => {
     const editor = mountEditor(docWithExistingTex());
     placeCaret(editor, 4);
-    insertTexBlock(editor);
+    gridTex(editor);
 
     const uuids: string[] = [];
     editor.state.doc.descendants((node) => {
@@ -250,5 +286,34 @@ describe("collision-free uuid (single scan path)", () => {
     expect(uuids.length).toBe(2);
     const fresh = uuids.find((u) => u !== "tex-EXISTING");
     expect(fresh).not.toBe("tex-EXISTING");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (6) TASK 638 — the grid's ctx carries `canEdit`, so `texRun`'s collab gate
+//     actually fires. This is the leg the deleted `insertTexBlock` could never
+//     have passed: it built a ctx with no `canEdit` at all, and an ABSENT field
+//     reads as "not read-only", so the gate no-opped on every collaborator.
+// ---------------------------------------------------------------------------
+
+describe("task 638 — the grid \\tex cell honors the collab gate", () => {
+  it("inserts NOTHING when the partner holds the pen (canEdit: false)", () => {
+    const editor = mountEditor([paragraph("alpha beta gamma")]);
+    selectRange(editor, 6, 10);
+    const before = editor.state.doc.toJSON();
+
+    gridTex(editor, false);
+
+    expect(firstTexBlock(editor), "no texBlock may land while read-only").toBeNull();
+    expect(editor.state.doc.toJSON(), "the document is untouched").toEqual(before);
+  });
+
+  it("POSITIVE CONTROL: the identical call inserts when `canEdit` is true", () => {
+    // Without this the leg above would pass even if `gridTex` had stopped
+    // reaching `texRun` at all.
+    const editor = mountEditor([paragraph("alpha beta gamma")]);
+    selectRange(editor, 6, 10);
+    gridTex(editor, true);
+    expect(firstTexBlock(editor)!.attrs.code).toBe("beta");
   });
 });

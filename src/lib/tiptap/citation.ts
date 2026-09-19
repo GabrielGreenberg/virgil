@@ -10,7 +10,7 @@ import {
   DATA_LINK_KIND,
   linkCardKey,
 } from "@/links/link-dom-contract";
-import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { collabReadOnly } from "./collab-read-only-gate";
 import { setDataIfChanged } from "./idempotent-dom";
 // CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
 // the citation CARD (the atom is still inserted synchronously below). Replaces
@@ -160,7 +160,7 @@ export const Citation = Node.create<CitationOptions>({
             // typed-LaTeX surfaces (math ×2, footnote, `% ` comment) via the
             // shared SSOT — no synchronous atom insert when the partner holds
             // the pen.
-            if (refuseTypedInsertWhenReadOnly(view)) return false;
+            if (collabReadOnly(view)) return false;
             // Only check on characters that could complete a citation pattern
             if (text !== "}" && text !== " " && text !== "\n") return false;
 

@@ -43,7 +43,6 @@ import type { DragHandleAction } from "./DragHandleMenu";
 import type { TextObjectKind } from "@/text-objects/types";
 import {
   cardActionRows,
-  exampleRun,
   extractInlineFromSlice,
   VIRGIL_ACTION_REGISTRY,
   type ActionContext,
@@ -51,9 +50,9 @@ import {
 } from "@/lib/actions/action-registry";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
+import { useCollabContext } from "@/hooks/useCollab";
 import { BlockTypeDropdown } from "./MenuBar";
 import { IconExample } from "./editor-layout/panel-icons";
-import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
@@ -179,14 +178,28 @@ export function ActionsMenuPanel({
   onClose,
 }: ActionsMenuPanelProps) {
   const dragHandleMenu = useDragHandleMenu();
-  // CHIP 7b: the UNIFORM collab read-only signal for the lightning surface. The
-  // main editor is mounted `editable: true` always and flipped via
-  // `setEditable(collab.canEditMainText)` ([EditorLayout.tsx:946]) when the
-  // partner holds the pen, so `editor.isEditable` IS the in-editor mirror of the
-  // collab pen state (the `ActionContext.canEdit` SSOT). Threaded into every
-  // ctx the grid builds + the card-row grey-out below. `true` for a non-collab
-  // doc (editor always editable) → no over-gating.
-  const canEdit = editor.isEditable;
+  // CHIP 7b: the UNIFORM collab read-only signal for the lightning surface,
+  // threaded into every ctx the grid builds + the card-row grey-out below.
+  //
+  // Task 638 — REACTIVE, not a snapshot. This read `editor.isEditable` alone:
+  // the in-editor mirror is correct, but `editor` is not React state, so nothing
+  // re-rendered this panel when the pen changed hands. A hand-off while the
+  // lightning menu was open left every row lit and dispatchable, with a stale
+  // flag as its only gate — the `DragHandleMenu` twin has taken `canEdit` as a
+  // reactive PROP from `collab.canEditMainText` since CHIP 7b, and this is the
+  // same signal reached through the same SSOT, via the `CollabProvider` that
+  // already wraps this subtree (the established door for deep components —
+  // `panel-primitives`, `CollabStatusPill`).
+  //
+  // The CONJUNCTION with `editor.isEditable` is deliberate: `canEditMainText` is
+  // the pen, `isEditable` is any other surface-level read-only state, and either
+  // one false means no mutation. It also keeps the greying honest in the frame
+  // between the two mirrors flipping (they are driven by the same effect, one
+  // render apart) — it greys on the FIRST of them, never the second.
+  //
+  // No over-gating: `COLLAB_INERT.canEditMainText` is `true`, so a non-collab
+  // doc — and a panel mounted outside any provider — is un-gated.
+  const canEdit = useCollabContext().canEditMainText && editor.isEditable;
 
   // Color palette state (MRU-first, 7 slots).
   const [palette, setPalette] = useState<string[]>(() => loadPalette());
@@ -348,40 +361,6 @@ export function ActionsMenuPanel({
     // NOTE: like the prior format cells (and the prior `wrapSelectionInMath` /
     // `insertFigureBlock` direct calls), we do NOT auto-close the menu here —
     // it dismisses on click-outside. Faithful to pre-6a/6b behavior.
-  };
-
-  const wrapSelectionInExample = () => {
-    // CHIP 5c: the grid `ex` cell is now a THIN delegation to the canonical
-    // `exampleRun` in the action registry — the SAME implementation the slash
-    // `\ex` command calls — so the two surfaces share ONE creator
-    // (wrap-if-selection-else-insert; one template). The grid previously
-    // hand-rolled the wrap here (`extractInlineJSON` → splice into
-    // `buildExampleTemplate("single")` → deleteSelection().insertContent); that
-    // logic moved INTO `exampleRun` (with the SAME CHIP 0 DA-1 inline-only
-    // safety: only inline nodes ever reach the `inline*` item paragraph). The
-    // dual creators (grid here + slash `insertExample`) collapsed to one.
-    //
-    // `exampleRun` is pure ProseMirror (operates on `ctx.view`): it reads the
-    // live selection off `ctx.view.state` and dispatches there, so the
-    // grab-handle `cardCreation` slot is intentionally absent
-    // (a pure insert needs none) and `panelRouting` is omitted (the grid inserts
-    // inline without a panel hop — matching the grid's prior no-panel-select
-    // behavior). We `focus()` first so the doc is focused before the insert (the
-    // grid cell is a toolbar button — focus may be on the button, not the doc).
-    editor.chain().focus().run();
-    exampleRun({
-      editor,
-      view: editor.view,
-      ref: {
-        kind: "selection",
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-        paragraphId: "",
-      },
-      surface: "lightning",
-      // CHIP 7b: uniform collab gate — `exampleRun` no-ops when read-only.
-      canEdit,
-    });
   };
 
   const applyColor = (color: string) => {
@@ -657,7 +636,7 @@ export function ActionsMenuPanel({
             col={0}
             title="Wrap selection in example block"
             disabled={gridCellDisabled("example")}
-            run={() => wrapSelectionInExample()}
+            run={() => runGridAction("example")}
           >
             <IconExample size={16} />
           </FmtBtn>
@@ -702,7 +681,7 @@ export function ActionsMenuPanel({
             col={0}
             title="Insert raw LaTeX block"
             disabled={gridCellDisabled("tex")}
-            run={() => insertTexBlock(editor)}
+            run={() => runGridAction("tex")}
           >
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
               \tex
@@ -752,10 +731,13 @@ export function ActionsMenuPanel({
           </FmtBtn>
 
           {/* Row 4 — the `forest` syntax-tree block (task 385). Routed through
-              the SHARED `runGridAction` dispatch, NOT a private ctx-builder: the
-              `\tex` cell beside it still calls `insertTexBlock(editor)` directly
-              and so builds an ActionContext with no `canEdit` (the known task-228
-              member-5 trap). A new cell must never copy that. The tree glyph is
+              the SHARED `runGridAction` dispatch, like EVERY cell in this grid
+              since task 638: the `\tex` and `ex` cells were the last two with
+              private ctx-builders, and `\tex`'s omitted `canEdit` entirely — an
+              ABSENT field reads as "not read-only" (the no-over-gating rule), so
+              `texRun`'s gate silently no-opped (the task-228 member-5 trap). One
+              ctx-builder is what makes that unrepresentable rather than merely
+              fixed; `grid-cell-applicability-census` pins it. The tree glyph is
               a two-child syntax tree — the same shape the starter template
               inserts. */}
           <FmtBtn

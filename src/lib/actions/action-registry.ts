@@ -571,6 +571,27 @@ export interface ActionContext {
    * doesn't supply its collab state, or a NON-collab doc (the common case),
    * leaves this unset and NOTHING is gated, exactly as today. Only an explicit
    * `false` (collab on AND partner holds the pen) gates.
+   *
+   * TASK 638 — AND THE CORRECTIVE, because that default has a second edge. An
+   * ABSENT field reads as "not read-only", so a ctx-builder that forgets
+   * `canEdit` does not fail: it DISARMS the row's gate, silently, and the row
+   * goes on looking gated in this file. That is exactly what the lightning
+   * grid's private `\tex` ctx-builder did. The field stays optional (the
+   * view-only vocabulary depends on it); what changed is that it is no longer
+   * the ONLY thing between a read-only collaborator and a mutation:
+   *
+   *   - one grid ctx-builder (`ActionsMenuPanel.runGridAction`), so there is no
+   *     second site that can omit the field — pinned by
+   *     `grid-cell-applicability-census`;
+   *   - the gate asked AT THE MUTATION, through `collabReadOnly`
+   *     ([src/lib/tiptap/collab-read-only-gate.ts]), at each deepest seam: the
+   *     card dispatcher both menus use, `insertInlineAtom` (where the deferred
+   *     create-popover commit lands its atom, beside the container gate), the
+   *     slash doors, and the typed input rules. Those read the LIVE editor, not
+   *     a ctx field, so nothing can forget them and no snapshot can go stale.
+   *
+   * This field remains the DECLARATIVE half — what `applies()` greys out, and
+   * the `run()`-side belt-and-suspenders below.
    */
   canEdit?: boolean;
   /**
@@ -964,11 +985,21 @@ function refHasLiveRange(ref: ActionRef): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * The UNIFORM collab-read-only gate (CHIP 7b — the user-APPROVED new behavior).
- * When `ctx.canEdit === false` (collab on AND the partner holds the pen — see
- * the `ActionContext.canEdit` JSDoc for the authoritative signal) the action is
- * `"disabled"` on EVERY surface; no create / lifecycle / format action may run
- * while another collaborator holds the pen.
+ * The collab-read-only gate as this registry can ask it: from the ctx it was
+ * handed. When `ctx.canEdit === false` (collab on AND the partner holds the pen
+ * — see the `ActionContext.canEdit` JSDoc for the authoritative signal) the
+ * action is `"disabled"` on EVERY surface; no create / lifecycle / format
+ * action may run while another collaborator holds the pen.
+ *
+ * NOT the whole gate, and the word "uniform" used to live here (task 638).
+ * Three live invocation paths never enter a `run()` at all — both MENUS
+ * dispatch card rows through `useDragHandleActions().dispatch`, and the
+ * deferred create-popover COMMIT lands its atom long after the `run()` that
+ * opened the popover — so this check was unreachable from exactly the surfaces
+ * those rows exist on. The gate those paths cross is `collabReadOnly`
+ * ([src/lib/tiptap/collab-read-only-gate.ts]), asked of the LIVE editor at each
+ * deepest seam. What remains here is the declarative half (`applies()` greys
+ * the row) plus belt-and-suspenders inside `run()`.
  *
  * CRITICAL — no over-gating: `canEdit` is `undefined` for a non-collab doc or a
  * caller that doesn't supply collab state, so this returns `false` (not gated)
@@ -1009,7 +1040,7 @@ function gateApplies(
   base: "ok" | "disabled" | "absent",
 ): "ok" | "disabled" | "absent" {
   if (base !== "ok") return base; // already disabled/absent — nothing to tighten
-  if (isCollabReadOnly(ctx)) return "disabled"; // (1) uniform collab gate
+  if (isCollabReadOnly(ctx)) return "disabled"; // (1) the ctx-side collab gate
   if (selectionModeDisables(spec.selection, ctx)) return "disabled"; // (2) DA-5
   return "ok";
 }
@@ -1043,7 +1074,7 @@ function kindAllowsCardAction(ref: ActionRef, id: CardActionId): boolean {
  *
  * CHIP 7b: the highlight-needs-a-range check is NO LONGER special-cased here —
  * it is declared `selection: "required"` on the highlight row and resolved by
- * `gateApplies` (which also layers the uniform collab gate). The kind-allow-list
+ * `gateApplies` (which also layers the ctx-side collab gate). The kind-allow-list
  * is the row's per-context `base`; `gateApplies` only tightens it.
  */
 function cardApplies(
@@ -1214,7 +1245,8 @@ function cardResolveScope(
  * the dispatcher is the single source of behavior and we never re-implement it.
  */
 function cardRun(id: CardActionId, ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   if (ctx.ref.kind === "cursor") return; // not a grab-bar ref — no-op (see JSDoc)
   ctx.dispatch?.(id, ctx.ref);
 }
@@ -1267,7 +1299,7 @@ function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRoutin
  * may be invoked from any of the four surfaces.
  */
 function citationRun(ctx: ActionContext): void {
-  // CHIP 7b: uniform collab gate. When the partner holds the pen, the slash /
+  // CHIP 7b: the ctx-side collab gate. When the partner holds the pen, the slash /
   // typed callers ALSO no-op before inserting the synchronous atom (the PM
   // surfaces check `runAction`'s gate — see the bridge), so this guard covers
   // the grab/lightning path; it also fail-safes the PM path (the atom-insert tx
@@ -1386,7 +1418,7 @@ function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRoutin
  * may be invoked from any of the four surfaces.
  */
 function footnoteRun(ctx: ActionContext): void {
-  // CHIP 7b: uniform collab gate (same rationale as `citationRun`).
+  // CHIP 7b: the ctx-side collab gate (same rationale as `citationRun`).
   if (isCollabReadOnly(ctx)) return;
   // Surfaces 1 & 2 (grab / lightning): a `DragHandleRef`. Delegate to the
   // legacy dispatcher — its `case "footnote"` collapses the selection, inserts
@@ -1469,7 +1501,8 @@ const HEADING_ID_LEVEL: Readonly<Record<HeadingActionId, number>> = {
  */
 function headingRun(level: number): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
-    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
     const { state } = ctx.view;
     const heading = state.schema.nodes.heading;
     if (!heading) return;
@@ -1518,7 +1551,8 @@ function headingRun(level: number): (ctx: ActionContext) => void {
 // ---------------------------------------------------------------------------
 function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
-    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
     const view = ctx.view;
     const { state } = view;
     const titleFieldType = state.schema.nodes.titleField;
@@ -1695,7 +1729,8 @@ const TITLE_ACTION_ROWS: Readonly<Record<TitleActionId, ActionSpec>> = {
  * atom across an active range inside a paragraph.
  */
 export function texRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   const { state } = ctx.view;
   const texBlockType = state.schema.nodes.texBlock;
   if (!texBlockType) return;
@@ -1787,7 +1822,8 @@ const TEX_ACTION_ROW: ActionSpec = {
 // overwhelmingly common case — this is byte-identical to the siblings.
 // ---------------------------------------------------------------------------
 export function forestRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   const { state } = ctx.view;
   const forestType = state.schema.nodes.forestBlock;
   if (!forestType) return;
@@ -1854,7 +1890,8 @@ const FOREST_ACTION_ROW: ActionSpec = {
 // no-ops — there is no popover to open without React state.
 // ---------------------------------------------------------------------------
 export function refRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no popover
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no popover. The deferred COMMIT is
+  // gated separately, at `insertInlineAtom` (task 638).
   // `\ref` folds onto the SHARED create-popover controller (the same one
   // citation uses): open the create popover in ref mode at the caret. The
   // popover lists `\label{…}` sites and `useRefActions.handleInsertRef` lands the
@@ -2093,7 +2130,8 @@ function buildExampleNode(
  * `isolating` block.
  */
 export function exampleRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   const { state } = ctx.view;
   const exampleBlockType = state.schema.nodes.exampleBlock;
   if (!exampleBlockType) return;
@@ -2326,7 +2364,8 @@ function inlineAtomInsertApplies(
 // ---------------------------------------------------------------------------
 function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
-    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
     const editor = ctx.editor;
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, " ");
@@ -2426,7 +2465,8 @@ function openInsertPopover(
 }
 
 export function figureRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   const editor = ctx.editor;
   const figureType = editor.state.schema.nodes.figureBlock;
   if (!figureType) return;
@@ -2464,7 +2504,8 @@ export function figureRun(ctx: ActionContext): void {
 }
 
 export function graphicsRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: the ctx-side collab gate — no-op. Belt-and-suspenders, not the
+  // only gate: see `isCollabReadOnly` (task 638).
   const editor = ctx.editor;
   const graphicsType = editor.state.schema.nodes.graphicsBlock;
   if (!graphicsType) return;
@@ -2544,7 +2585,7 @@ interface PMNodeLike {
  * but seed a placeholder `latex` ("x" / "\int f(x)\,dx") when empty (`mathRun`),
  * and figure/graphics insert an opaque block at the caret. So a collapsed caret
  * is a valid invocation (no DA-5 grey); only the `isMeaningfulBlockAtom` kind-base + the
- * uniform collab gate can disable them.
+ * ctx-side collab gate can disable them.
  */
 const INLINE_MATH_ACTION_ROW: ActionSpec = {
   id: "inline-math",
@@ -2770,7 +2811,7 @@ function wrapperSafeHere(
  *
  * CHIP 7b: declares `selection: "ignored"` — a mark/list/quote toggle is valid
  * at a collapsed caret (it toggles the stored mark / wraps the block). The
- * `run()` GUARDS the uniform collab gate: when `ctx.canEdit === false` it
+ * `run()` GUARDS the ctx-side collab gate: when `ctx.canEdit === false` it
  * no-ops, so a stray invocation (e.g. a held keyboard shortcut) can't mutate the
  * doc while the partner holds the pen — belt-and-suspenders with the
  * `readOnlyEnforcer` plugin (which would reject the tx anyway).
@@ -2861,7 +2902,7 @@ function formatToggleRow(
         ? wrapperApplies(opts.wrapper)
         : formatApplies(opts.mark),
     run: (ctx) => {
-      if (isCollabReadOnly(ctx)) return; // uniform collab gate — no-op
+      if (isCollabReadOnly(ctx)) return; // the ctx-side collab gate — no-op (task 638)
       // Defense-in-depth (Bug #1 + task 397): a wrapper toggle on a block whose
       // IDENTITY the wrap destroys (titleField / heading / atom block) or in a
       // CONTAINER that cannot host the wrapper (an expex `exampleItem`, whose
@@ -2905,7 +2946,7 @@ const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) =>
  * StarterKit-style mark command, just deferred behind the popover's pick.
  */
 function textColorRun(ctx: ActionContext): void {
-  if (isCollabReadOnly(ctx)) return; // uniform collab gate — no popover, no-op
+  if (isCollabReadOnly(ctx)) return; // the ctx-side collab gate — no popover, no-op (task 638)
   const payload = ctx.payload ?? {};
   const anchorRect =
     payload.anchorRect instanceof DOMRect ? payload.anchorRect : undefined;
