@@ -9,6 +9,7 @@
  * Lives in its own module so both `storage.ts` and modules used by the
  * backends (e.g. `doc-index.ts`) can import it without cycles.
  */
+import { readFlag } from "./feature-flags";
 
 const devStorageAllowed = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
 
@@ -19,9 +20,7 @@ function detectDevStorage(): boolean {
   // (e.g. Claude Preview's headless Chromium loads pages with
   // `window.self === window.top`, which would otherwise force FSA mode
   // even though no real picker can run).
-  try {
-    if (window.localStorage.getItem("virgil:force-dev-storage") === "1") return true;
-  } catch {}
+  if (readFlag("virgil:force-dev-storage")) return true;
   const inIframe = window.self !== window.top;
   const fsaAvailable = "showDirectoryPicker" in window;
   return inIframe || !fsaAvailable;

@@ -4433,3 +4433,64 @@ PROFILE's refinement — "deep ≠ broadest blast radius" — applies: the class
 *hand-enumerated surface*, not *storage mock*.
 
 CI: [storage-mock-derivation.test.ts](../../../src/lib/__tests__/storage-mock-derivation.test.ts).
+
+---
+
+## The dialect half (task 2026-09-18-646 — the feature-flag registry)
+
+A convention nobody checks becomes whatever the last writer did. Virgil had
+sixteen `localStorage` switches and no list of them, so each reader invented its
+own answer to "what does ON look like": `=== "1"` in four clone modules,
+`=== "on"` in the two soak flags, `!== "0"` in pending-changes, `!== "off"` in
+the geometry kill-switches, and `v !== "0" && v !== "false"` in keep-alive.
+Setting `virgil:card-tiers = "1"` — the spelling every neighbouring flag used,
+and the obvious one to reach for — did nothing, silently, on a flag the perf
+program was actively waiting to soak-and-flip.
+
+**A per-row dialect is the drift. The dialect belongs to the READER, not the
+row.** `src/lib/feature-flags.ts` declares each flag's `default`, `status`,
+`requires`, an `ssr` value only where it deliberately differs, and a `legacy`
+sentinel; `readFlag(key)` decides everything else once. The vocabulary is
+universal in both directions (`1|true|on|yes` / `0|false|off|no`,
+case-insensitive), and every legacy sentinel is already a member of it — so the
+dialect only ever ADDS spellings, never retires one, and no switch a user has
+already set changes meaning. The row's `legacy` field is not documentation: the
+census asserts it parses to `!default`, so it cannot rot into a lie.
+
+**The failure branches are part of the dialect.** Every reader had *two* of
+them — no `window`, and `localStorage` throwing — and re-derived both. All
+sixteen already agreed that a throw means "the default", so that is now stated
+once. What genuinely differed was SSR: three default-ON flags deliberately
+report OFF server-side to avoid a hydration mismatch. That difference is real, so
+the row DECLARES it (`ssr`) and the census refuses a redundant one. The audit
+had read `pending-changes`' two branches as a flag "disagreeing with itself";
+they were two different questions wearing one shape, and the fix is to give each
+a name, not to make them agree.
+
+**`requires`: a flag combination can lose data.** `virgil:inline-atom-lifecycle`
+gates a reconciler that registers as a policy on the identity-bus consumer, and
+that consumer exists only when `virgil:identity-cascade` is on. The two were
+written as independent switches. Child ON + parent OFF disabled BOTH footnote
+orphan writers at once — the legacy event bridges bailed *because the child flag
+was on*, and the reconciler never registered *because there was no consumer* —
+so a deleted footnote was dropped instead of recorded. Nothing prevented,
+detected, or documented it. The fix is not a guard that reports the bad state
+but an edge that makes it **unrepresentable**: `readFlag` resolves `requires`
+transitively, so the child reads OFF unless its parent is on, and an override
+cannot escape it either — not even in a test. A dev `console.warn` fires once
+per unmet edge (a per-read warn on a hot path would be its own performance bug).
+
+**The census is TOTAL, which is what makes it hold.** Every `virgil:` string in
+`src/**` + `library/**` must be either a `FLAG_REGISTRY` row or a declared
+`NON_FLAG_VIRGIL_KEYS` row (stored data, a dismissal stamp, an event name) — a
+new key is classified or it fails. Leg 2 then asserts no production file reaches
+`localStorage` for a flag outside the reader. Both legs pass on "zero hits",
+which is exactly what a broken needle produces, so the five retired dialects are
+replayed as fixtures the needle must FIND — including the `const FLAG_KEY = "…"`
+indirection the four clone modules used, which a literal-only needle would have
+missed. The SSOT's own exemption is pinned to what it actually exempts: its one
+read now takes a VARIABLE key, so if it ever moves back to a literal the
+exemption would start hiding a real hit.
+
+CI: [feature-flag-registry.test.ts](../../../src/lib/__tests__/feature-flag-registry.test.ts),
+[footnote-orphan-flag-combination.test.tsx](../../../src/components/editor-layout/event-bridges/__tests__/footnote-orphan-flag-combination.test.tsx).

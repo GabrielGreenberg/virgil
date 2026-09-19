@@ -25,6 +25,7 @@
  */
 
 import type { PrintOptions } from "@/lib/print";
+import { readFlag } from "@/lib/feature-flags";
 
 interface PrintIntentState {
   active: boolean;
@@ -36,14 +37,7 @@ const subscribers = new Set<() => void>();
 let readyResolvers: (() => void)[] = [];
 
 /** Read once at module load — a pure kill-switch, not a live toggle. */
-export const printGateEnabled: boolean = (() => {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem("virgil:print-gate") !== "off";
-  } catch {
-    return true;
-  }
-})();
+export const printGateEnabled: boolean = readFlag("virgil:print-gate");
 
 function emit() {
   for (const fn of subscribers) fn();

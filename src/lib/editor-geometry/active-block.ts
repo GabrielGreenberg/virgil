@@ -37,6 +37,7 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { readFlag } from "@/lib/feature-flags";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { coordsAtPosCached } from "./registry";
 import { posAtViewportY } from "./viewport-probe";
@@ -46,14 +47,7 @@ import { createBlockVocabCache } from "./block-vocab";
 export const DOC_TOP_SENTINEL = "__DOC_TOP__";
 
 export function geomActiveBlockEnabled(): boolean {
-  try {
-    return (
-      typeof localStorage === "undefined" ||
-      localStorage.getItem("virgil:geom-active-block") !== "off"
-    );
-  } catch {
-    return true;
-  }
+  return readFlag("virgil:geom-active-block");
 }
 
 // Anchorable vocabulary — every tracked block's uuid in doc order, keyed on

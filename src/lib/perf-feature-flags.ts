@@ -17,23 +17,24 @@
  * Deliberately NOT here: the per-call kill-switches (`virgil:print-gate`,
  * `virgil:doc-products`, `virgil:geom-*`, `virgil:card-tiers`) — those gate
  * JS paths and are read where they gate. This module owns only flags whose
- * consumer is a stylesheet.
+ * consumer is a stylesheet. (Every one of them, this one included, is
+ * DECLARED in the flag SSOT and read through `readFlag`; what differs is
+ * only where the switch is consulted.)
  *
  * Flags are read at apply time; a flip takes effect on reload (the same
  * contract every other `virgil:*` switch has). No storage listener — this
  * is not a store with setters, and the cross-window-storage law governs
  * snapshot-caching stores, not boot-time reads.
+ *
+ * The switch itself — default, accepted spellings, failure branches — is
+ * declared on its row in `src/lib/feature-flags.ts`, the SSOT every
+ * `virgil:` flag is read through. This module owns only the body-class
+ * STAMPING; it no longer owns a dialect.
  */
+import { readFlag } from "./feature-flags";
 
 export function perfContainEnabled(): boolean {
-  try {
-    return (
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("virgil:perf-contain") === "on"
-    );
-  } catch {
-    return false;
-  }
+  return readFlag("virgil:perf-contain");
 }
 
 /** Stamp the body classes from the current flag values. Idempotent; call

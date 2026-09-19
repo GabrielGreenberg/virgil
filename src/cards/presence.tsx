@@ -35,7 +35,8 @@
  * Flag: `virgil:card-tiers`, DEFAULT OFF until soak. Off means every switch
  * site takes its legacy branch (tier 3 unconditionally) — zero new code on
  * the legacy path. Flip with
- * `localStorage.setItem("virgil:card-tiers","on")` + reload.
+ * `localStorage.setItem("virgil:card-tiers","on")` + reload (`"1"`/`"true"`/
+ * `"yes"` work too — the dialect is universal, per `src/lib/feature-flags.ts`).
  *
  * Keystroke sanctity: the provider subscribes to nothing on the editor; the
  * per-card hook subscribes to the shared-IO near-zone store only where the
@@ -54,6 +55,7 @@ import {
 } from "react";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
+import { readFlag } from "@/lib/feature-flags";
 import {
   readCardNearness,
   subscribeCardNearness,
@@ -64,14 +66,7 @@ export type CardTier = 0 | 1 | 2 | 3;
 /** Kill-switch/soak flag — default OFF. Read per call (two dictionary hits),
  *  so flipping it needs only a reload, not a rebuild. */
 export function cardTiersEnabled(): boolean {
-  try {
-    return (
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("virgil:card-tiers") === "on"
-    );
-  } catch {
-    return false;
-  }
+  return readFlag("virgil:card-tiers");
 }
 
 /** Ceiling context. Default 3 (no ceiling) so unwrapped consumers — tests,
