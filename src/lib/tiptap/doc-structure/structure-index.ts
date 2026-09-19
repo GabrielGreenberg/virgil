@@ -22,6 +22,7 @@ import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
+  citationEntryAt,
   deriveExampleIdentity,
   deriveParTitled,
   type DocStructure,
@@ -221,17 +222,18 @@ export function buildInitial(doc: PMNode): DocStructure {
       if (body && typeof body === "object") {
         for (const hit of inlineAtoms(body)) {
           if (hit.kind !== "citation" || !hit.id) continue;
-          citations.push({
-            id: hit.id,
-            pos,
-            command: hit.command ?? "",
-            displayText: hit.displayText ?? "",
-            // Keep the legacy field working byte-for-byte (every existing
-            // consumer reads it) AND populate the generalized container owner
-            // so the render-side nesting covers footnote + example uniformly.
-            nestedInFootnoteId: hostId,
-            nestedInContainerId: { kind: "footnote", id: hostId },
-          });
+          // The legacy `nestedInFootnoteId` (every existing consumer reads it)
+          // is mirrored from the container by `citationEntryAt`, so the
+          // render-side nesting covers footnote + example uniformly.
+          citations.push(
+            citationEntryAt({
+              id: hit.id,
+              pos,
+              command: hit.command,
+              displayText: hit.displayText,
+              container: { kind: "footnote", id: hostId },
+            }),
+          );
         }
       }
     }
@@ -251,15 +253,17 @@ export function buildInitial(doc: PMNode): DocStructure {
           exampleStack.length > 0
             ? exampleStack[exampleStack.length - 1].id
             : null;
-        citations.push({
-          id: attrs.citationId,
-          pos,
-          command: attrs.command ?? "",
-          displayText: attrs.displayText ?? "",
-          ...(enclosingExample
-            ? { nestedInContainerId: { kind: "example", id: enclosingExample } }
-            : {}),
-        });
+        citations.push(
+          citationEntryAt({
+            id: attrs.citationId,
+            pos,
+            command: attrs.command,
+            displayText: attrs.displayText,
+            container: enclosingExample
+              ? { kind: "example", id: enclosingExample }
+              : null,
+          }),
+        );
       }
     }
 
@@ -390,34 +394,36 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
       if (removedIds.has(c.id)) continue;
       const changed = changedById.get(c.id);
       if (changed) {
-        // The container-nesting tag (`nestedInContainerId` / `nestedInFootnoteId`)
-        // is stamped ONLY by the load-only `buildInitial` descend pass — it needs
-        // the enclosing example/footnote, which `applyDiff` can't see (it gets
-        // only `(prev, diff)`, no doc, and `ExampleEntry` has no end-extent). The
-        // step-inspector rebuilds a `changedCitations` entry from the citation
-        // node's attrs ALONE (`{id, pos, command, displayText}`), so it drops the
-        // tag. A `changedCitations` entry is an in-place attr edit (citekey edit)
-        // or an atom MOVE — neither removes the cite from its container in the
-        // common case — so carry the PRIOR entry's owner tag forward when the
-        // rebuilt entry lacks one, or an example/footnote-nested cite would
-        // visibly un-nest to a flat card on every edit until the next reload.
+        // The two container KINDS reach this point differently, so they are
+        // reconciled differently.
         //
-        // Accepted edge: a cite MOVED OUT of its example/footnote keeps a stale
-        // tag here (we can't detect the exit without container extents). It
-        // self-heals on the next reload, when `buildInitial` re-runs the descend
-        // pass and re-derives ownership — matching the Phase-1 footnote behavior.
-        // Low-severity + self-healing, so accepted.
+        //  - `"example"` is now derived on BOTH paths: the step-inspector
+        //    resolves the cite's ancestors and stamps the tag through the same
+        //    `citationEntryAt` the load walk uses. The rebuilt entry is
+        //    therefore AUTHORITATIVE about example nesting — carrying the prior
+        //    tag forward would resurrect it for a cite that genuinely moved OUT
+        //    of its example (the "accepted edge" this comment used to record;
+        //    it no longer needs accepting).
+        //  - `"footnote"` stays load-only: such a cite has no PM node of its
+        //    own (it is a JSONContent literal inside the host footnote's
+        //    `attrs.content`), so no step ever reaches it and the rebuilt entry
+        //    cannot know. Carry it forward, or a footnote-nested cite would
+        //    visibly un-nest to a flat card on every edit until the next
+        //    reload. Its stale-on-exit edge remains accepted and self-heals on
+        //    the next load.
+        const keepsFootnoteTag =
+          (c.nestedInFootnoteId || c.nestedInContainerId?.kind === "footnote") &&
+          !changed.nestedInFootnoteId &&
+          !changed.nestedInContainerId;
         next.push(
-          (c.nestedInContainerId || c.nestedInFootnoteId) &&
-            !changed.nestedInContainerId &&
-            !changed.nestedInFootnoteId
+          keepsFootnoteTag
             ? {
                 ...changed,
-                ...(c.nestedInContainerId
-                  ? { nestedInContainerId: c.nestedInContainerId }
-                  : {}),
                 ...(c.nestedInFootnoteId
                   ? { nestedInFootnoteId: c.nestedInFootnoteId }
+                  : {}),
+                ...(c.nestedInContainerId
+                  ? { nestedInContainerId: c.nestedInContainerId }
                   : {}),
               }
             : changed,

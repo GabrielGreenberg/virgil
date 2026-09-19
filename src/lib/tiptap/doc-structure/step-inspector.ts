@@ -37,6 +37,8 @@ import {
   type BlockEntry,
   type CitationEntry,
   type DocStructure,
+  type CitationContainer,
+  citationEntryAt,
   deriveExampleIdentity,
   deriveParTitled,
   EMPTY_DIFF,
@@ -98,8 +100,13 @@ function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry {
  * Inspect ONE node (including its own attrs/text and any linkedAnchor
  * marks if it's a text node). Does not recurse — the visitor below
  * handles recursion explicitly so position math stays correct.
+ *
+ * `doc` is the document `pos` addresses (the pre-step doc for the removed
+ * side, `newDoc` for the added side). It is needed for the ancestor-derived
+ * facts a single node cannot answer on its own — today a citation's
+ * enclosing container; see `enclosingCitationContainer`.
  */
-function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
+function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): void {
   const typeName = n.type.name;
     const attrs = (n.attrs ?? {}) as Record<string, unknown>;
     const uuid = (attrs.uuid as string | null | undefined) ?? null;
@@ -187,12 +194,21 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
     if (typeName === "citation") {
       const id = (attrs.citationId as string | undefined) ?? "";
       if (id) {
-        out.citations.set(id, {
+        // The container tag is ANCESTOR-derived, so it cannot come from the
+        // node's own attrs: resolve it here, through the SAME constructor
+        // `buildInitial` uses, or a cite inserted inside an example would
+        // reach the cards untagged and render as a flat top-level card until
+        // the next reload (the load path derives it; this one must too).
+        out.citations.set(
           id,
-          pos,
-          command: (attrs.command as string | undefined) ?? "",
-          displayText: (attrs.displayText as string | undefined) ?? "",
-        });
+          citationEntryAt({
+            id,
+            pos,
+            command: attrs.command as string | undefined,
+            displayText: attrs.displayText as string | undefined,
+            container: enclosingCitationContainer(doc, pos),
+          }),
+        );
       }
     }
 
@@ -239,12 +255,12 @@ function collectRange(doc: PMNode, from: number, to: number, out: EntityBundle):
   if (clampedTo <= clampedFrom) return;
   doc.nodesBetween(clampedFrom, clampedTo, (n, pos) => {
     if (n.isText) {
-      inspectNodeAt(n, pos, out);
+      inspectNodeAt(n, pos, out, doc);
     } else if (pos >= clampedFrom && pos < clampedTo) {
       // Block-level node that starts inside the range. Whether its
       // body extends past `to` doesn't matter — if its opening token
       // got deleted, its identity is gone in newDoc.
-      inspectNodeAt(n, pos, out);
+      inspectNodeAt(n, pos, out, doc);
     }
     return true;
   });
@@ -348,6 +364,44 @@ function nearestExampleBlockUuid(doc: PMNode, pos: number): string | null {
     if (node.type.name !== "exampleBlock") continue;
     const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
     if (uuid) return uuid;
+  }
+  return null;
+}
+
+/**
+ * The container tag a citation collected at `pos` should carry — the step
+ * path's answer to the question `buildInitial` answers with its exampleBlock
+ * STACK. Same rule, different mechanism: the innermost enclosing exampleBlock
+ * whose `deriveExampleIdentity` id is non-empty (`buildInitial` pushes only
+ * such blocks onto its stack, so an inner id-less example is skipped there
+ * too and an outer identified one wins on both paths).
+ *
+ * The `"footnote"` kind is deliberately NOT derivable here and never returned:
+ * a footnote-nested cite lives in the host footnote's `attrs.content`
+ * JSONContent literal, has no PM node of its own, and is therefore invisible
+ * to every step — it is stamped once by the load-only descend pass and carried
+ * forward by `applyDiff` (pinned by `step-inspector.test.ts`).
+ *
+ * Cost is the same O(depth) `$pos.resolve` ancestor walk `nearestAnchorableUuid`
+ * / `nearestExampleBlockUuid` already do, and it runs only when a citation NODE
+ * is actually collected — typing plain prose reaches it zero times, so nothing
+ * is added to the keystroke path.
+ */
+function enclosingCitationContainer(doc: PMNode, pos: number): CitationContainer | null {
+  if (pos < 0) pos = 0;
+  if (pos > doc.content.size) pos = doc.content.size;
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type.name !== "exampleBlock") continue;
+    const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+    const { id } = deriveExampleIdentity({
+      uuid: attrs.uuid as string | null | undefined,
+      tag: attrs.tag as string | null | undefined,
+      label: attrs.label as string | null | undefined,
+      number: attrs.number as string | number | null | undefined,
+    });
+    if (id) return { kind: "example", id };
   }
   return null;
 }

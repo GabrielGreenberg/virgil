@@ -433,6 +433,63 @@ the two cannot agree only in the test. Its four defect legs — the renumber, th
 `buildRefTargetIndexPM` — all fail on the pre-fix collector, while the
 already-captioned CONTROL passes on it.
 
+### The ancestor-derived half: one entry type, one constructor
+
+The load walk and the step path derive the **same entry types** from different
+inputs, and that asymmetry has its own bug class. `buildInitial` descends the
+whole document, so it has an ANCESTOR STACK for free; `inspectSteps` sees an
+isolated node inside a step range. **Every per-entry fact that depends on an
+ancestor is therefore structurally at risk on the incremental path** — the load
+path derives it, the step path silently omits it, and the entry is wrong until
+the next reload re-runs `buildInitial`. Reloading FIXES it, which is the tell.
+
+The reachable case (task 652) is a `\cite` typed or pasted inside an example
+block. `CitationEntry.nestedInContainerId` is what nests its card under the
+example's; the step path never stamped it, so the card rendered flat until
+reload. That symptom had already been found and fixed ONCE, on the CHANGED
+path, by a carry-the-prior-tag-forward workaround in `applyDiff` — under a
+comment saying the card "would visibly un-nest to a flat card on every edit
+until the next reload". The ADDED path was missed by that fix, so the sentence
+stayed true for a NEW cite. A workaround downstream of the omission does not
+retire the class; it hides one member of it.
+
+The fix is the same shape as the derived-facts half above: **one constructor,
+plus the ancestor walk that feeds it.** `citationEntryAt` (in `types.ts`, so
+both modules import it) is the ONE construction of a `CitationEntry`, read by
+`buildInitial`'s two sites and by `inspectNodeAt`; `inspectNodeAt` takes the
+`doc` its `pos` addresses and resolves the container itself
+(`enclosingCitationContainer`), under the same rule `buildInitial`'s stack
+applies — the innermost enclosing `exampleBlock` with a non-empty
+`deriveExampleIdentity` id. An ancestor-derived field can then no longer be
+present on one path and absent on the other. The constructor also owns the
+invariant that a `"footnote"` container mirrors into the legacy
+`nestedInFootnoteId`, so that pairing lives in one place rather than at each
+call site.
+
+**Deriving it makes the step path AUTHORITATIVE, which retires an accepted
+edge.** `applyDiff` no longer carries the EXAMPLE tag forward: an untagged
+rebuilt entry now MEANS "not in an example any more", so a cite moved out of
+its example un-nests in that transaction instead of keeping a stale tag until
+reload. The `"footnote"` kind still carries forward, and must: a
+footnote-nested cite is a JSONContent literal inside the host footnote's
+`attrs.content`, has no PM node of its own, and is invisible to every step — so
+the rebuilt entry genuinely cannot know, and the two kinds are reconciled by
+different rules for that stated reason.
+
+**Cost:** the same O(depth) `$pos.resolve` ancestor walk as the halves above,
+and it runs only when a citation NODE is collected. Typing plain prose reaches
+it zero times.
+
+**The guard is congruence, not the symptom.** A test for "a cite inside an
+example nests" would have passed before the twin was introduced and after this
+one was fixed, while the third instance sat waiting. CI:
+[citation-container-congruence.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/citation-container-congruence.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack over the REAL parse and,
+on every leg, compares the LIVE incremental entry to what `buildInitial` builds
+for the identical final document — field by field, for every citation in the
+doc, not just the one under test. Three of its five legs fail when the ancestor
+derivation is neutered; the flat-cite and footnote-nested CONTROLS pass on it.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).
