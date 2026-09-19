@@ -198,6 +198,37 @@ function emitSession() {
   sessionListeners.forEach((l) => l());
 }
 
+// ── End-of-session subscription ──────────────────────────────────────
+//
+// A producer that holds resources OUTSIDE the session — the in-text atom
+// grab's cursor ghost, its two window listeners, its "am I already armed?"
+// latch — must release them on EVERY terminal path, not only the one it can
+// see. A session ends four ways: the commit, Escape, this controller's own
+// missed-release failsafe, and a producer's teardown. `endDropSession` is the
+// single door all four funnel through, so it is the only place that can tell
+// a subscriber "your session is over" — and a producer that instead owns the
+// same lifetime in parallel releases on ONE of those paths and leaks on the
+// rest (task 644: a mouseup swallowed by the PDF pane stranded a ghost on the
+// cursor and left the latch set, permanently disabling the gesture for that
+// surface until reload).
+const sessionEndListeners = new Set<() => void>();
+
+/**
+ * Subscribe to the end of the CURRENT session, however it ends. Returns an
+ * unsubscribe for the producer that sees the ending itself (the atom grab's
+ * own mouseup) and so must not be called a second time.
+ *
+ * Fired from `endDropSession` after the session is already null and its
+ * listeners are down, so a callback observes a fully torn-down controller and
+ * may safely start a new gesture.
+ */
+export function onDropSessionEnd(cb: () => void): () => void {
+  sessionEndListeners.add(cb);
+  return () => {
+    sessionEndListeners.delete(cb);
+  };
+}
+
 export function getDropSession(): DropSession | null {
   return session;
 }
@@ -344,6 +375,10 @@ export function endDropSession() {
     if (!inPlace) markSourceFloat(key, false);
   }
   emitSession();
+  // Last, and over a COPY: a subscriber's release commonly unsubscribes
+  // itself (and may arm the next gesture), neither of which may mutate the
+  // set being walked.
+  for (const cb of Array.from(sessionEndListeners)) cb();
 }
 
 /** Public alias for cancellation paths (Escape, leave window, etc). */
