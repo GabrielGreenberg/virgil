@@ -25,6 +25,18 @@
  * no-drag press arms no suppressor, so the atom's own click handler fires
  * (opens the Card / edit popover). The shared drop-mode controller drives
  * the inline-cursor hit-test, the indicator, and Esc-to-cancel.
+ *
+ * Lifetime (task 644): once a session is underway the grab is a SUBSCRIBER to
+ * that session's end, never a second owner of the same lifetime. A session can
+ * end four ways — the commit, Escape, the controller's post-threshold
+ * missed-release failsafe, and this plugin view's own `destroy()` — and only
+ * `endDropSession` sees all four. Releasing on the mouseup alone meant a
+ * release the gesture never saw (over the PDF pane, another iframe, outside the
+ * window) left the ghost glued to the cursor and `pending` armed forever, and
+ * the `if (pending) return false` latch then turned that into a permanently
+ * dead grab for the whole surface. Everything that outlives a single call — the
+ * click suppressor's listener and its 500 ms clock — hangs off the view's ONE
+ * `ViewLifetime`, per `docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md`.
  */
 
 import { Extension } from "@tiptap/react";
@@ -44,8 +56,11 @@ import {
 } from "./atom-registry";
 import {
   beginDropSession,
+  cancelDropSession,
   commitDropSession,
+  onDropSessionEnd,
 } from "@/components/drop-mode/controller";
+import { createViewLifetime, type ViewLifetime } from "./view-lifetime";
 import {
   stashInlineAtomSource,
   clearInlineAtomSource,
@@ -160,9 +175,38 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         }
       | null = null;
 
+    /**
+     * The VIEW's lifetime (task 644), one per editor surface. Everything this
+     * gesture arms that outlives a single call — the click suppressor's
+     * capture-phase listener and its 500 ms wall clock — is registered here,
+     * so the plugin view's `destroy()` is a single `dispose()` and nothing
+     * the gesture armed can outlive the view that armed it
+     * (`docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md`). A
+     * scheduling call made after disposal arms nothing.
+     */
+    let lifetime: ViewLifetime = createViewLifetime();
+
+    /** Unsubscribe from the drop session's end, while one is subscribed. */
+    let offSessionEnd: (() => void) | null = null;
+    /** Retire the armed click suppressor (listener + its wall clock). */
+    let disposeSuppressor: (() => void) | null = null;
+
+    /**
+     * Release everything ONE grab armed. Idempotent, because it is now
+     * reachable from four places — the mouseup, the pre-threshold
+     * missed-release bail, the drop session's end (any route), and the view's
+     * `destroy()` — and each may follow another.
+     *
+     * The click suppressor is deliberately NOT released here: its whole job is
+     * to swallow the click that the browser emits AFTER the mouseup, so its
+     * outer bound is the view (`lifetime`), not the gesture.
+     */
     const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      const off = offSessionEnd;
+      offSessionEnd = null;
+      off?.();
       clearGhost();
       pending = null;
     };
@@ -173,19 +217,31 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     // stopPropagation; a no-drag press never arms this, so the click
     // reaches that handler and opens the Card.
     const armClickSuppressor = () => {
+      // A previous swallow still waiting on a click that never came is retired
+      // here rather than left to its own clock: two live guards would eat two
+      // clicks, and the second is a real one.
+      disposeSuppressor?.();
       const swallow = (e: MouseEvent) => {
         e.stopImmediatePropagation();
         e.preventDefault();
-        window.removeEventListener("click", swallow, true);
+        disposeSuppressor?.();
       };
       window.addEventListener("click", swallow, true);
       // Some platforms emit no click after a drag — drop the guard after a
       // tick so it can never swallow an unrelated later click (idempotent
-      // with the one-shot removal above).
-      window.setTimeout(
-        () => window.removeEventListener("click", swallow, true),
-        500,
+      // with the one-shot removal above). That 500 ms stays the INNER bound;
+      // the OUTER one is the view's teardown, which `lifetime.dispose()`
+      // enforces through both handles below.
+      const timer = lifetime.setTimeout(() => disposeSuppressor?.(), 500);
+      const offDispose = lifetime.onDispose(() =>
+        window.removeEventListener("click", swallow, true),
       );
+      disposeSuppressor = () => {
+        disposeSuppressor = null;
+        window.removeEventListener("click", swallow, true);
+        lifetime.clear(timer);
+        offDispose();
+      };
     };
 
     const onMove = (e: MouseEvent) => {
@@ -197,7 +253,10 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
       // session (ghost, click suppressor and all) from a press they had
       // already released. Post-threshold the drop-mode controller owns the
       // gesture and carries its OWN `isMissedRelease` bail — ending it from
-      // here would commit the drop at a stale coordinate.
+      // here would commit the drop at a stale coordinate. That window is no
+      // longer unowned: the controller's bail ends the SESSION, and this
+      // gesture is subscribed to that ending (`onDropSessionEnd` below), so
+      // the release it performs is the same `cleanup()` this branch runs.
       if (!pending.triggered && isMissedRelease(e)) {
         clearInlineAtomSource();
         cleanup();
@@ -241,6 +300,18 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         cleanup();
         return;
       }
+      // The grab SUBSCRIBES to its session's end rather than owning the same
+      // lifetime in parallel (task 644). Its own `onUp` sees exactly one of
+      // the four ways a session can end; the other three — Escape, the
+      // controller's post-threshold missed-release failsafe, and a teardown —
+      // used to leave the ghost glued to the cursor and `pending` armed, which
+      // the `if (pending) return false` latch in `mousedown` turns into a
+      // permanently dead grab gesture for that surface. One subscriber retires
+      // all three, and any exit path added later for free.
+      offSessionEnd = onDropSessionEnd(() => {
+        clearInlineAtomSource();
+        cleanup();
+      });
       armClickSuppressor();
       // Lift a translucent ghost of the atom that floats with the cursor (the
       // inline cousin of the block lift's <LiftedTextOverlay>). The grab
@@ -302,10 +373,30 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         // meta-only transaction that runs this `update()` — two TRIGGERS, one
         // WRITER, one PREDICATE.
         view(editorView) {
+          // A view re-created after a disposal gets a fresh lifetime — a
+          // disposed one refuses every later scheduling call by design.
+          if (lifetime.disposed) lifetime = createViewLifetime();
           stampAtomsGraspable(editorView, editableRef);
           return {
             update(updatedView) {
               stampAtomsGraspable(updatedView, editableRef);
+            },
+            /**
+             * The fourth exit path (task 644). Tearing an editor down mid-press
+             * used to leave `mousemove`/`mouseup` on `window` holding a
+             * destroyed editor and a detached node — the pane-scoped-leak shape
+             * under multi-doc keep-alive, where N panes mount this plugin.
+             *
+             * A session this grab started names the editor being destroyed, so
+             * it is CANCELLED first; that funnels through `endDropSession`,
+             * whose fan-out runs `cleanup()` above. The second `cleanup()` then
+             * sweeps a press that never reached the threshold (no session to
+             * end), and `dispose()` closes the click suppressor.
+             */
+            destroy() {
+              if (pending?.triggered) cancelDropSession();
+              cleanup();
+              lifetime.dispose();
             },
           };
         },
