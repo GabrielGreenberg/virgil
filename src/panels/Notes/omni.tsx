@@ -7,7 +7,10 @@ import type { OmniItem } from "@/panels/_shared/types";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
-import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
+import {
+  buildOmniAnchorRows,
+  type OmniAnchorRow,
+} from "@/panels/_shared/omni-anchor-rows";
 
 interface BuildArgs {
   cards: NoteCardItem[];
@@ -33,7 +36,14 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
     const isSelected = a.selectedNoteId === card.id;
     const baseId = cardPopKey(card.kind, card.id);
 
-    const renderCard = (omniId: string, withJump: boolean) => {
+    const renderCard = (row: OmniAnchorRow) => {
+      const omniId = row.omniId;
+      // The row's own gate (task 655) — never `row.anchorUuid != null`, which
+      // is true of a card whose anchor is DEAD and painted a Jump that
+      // `jumpToCard` resolves to nothing.
+      const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
+        a.jumpToCard(card, sourceEl),
+      );
       if (card.kind === "highlight") {
         return (
           <HighlightCard
@@ -44,7 +54,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
             onSetAiRequest={a.setHighlightAiRequest}
             onDelete={a.deleteNote}
             onSelect={a.setSelectedNoteId}
-            onJump={withJump ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined}
+            onJump={onJump}
             extraDataAttrs={{ "data-omni-entry": omniId }}
           />
         );
@@ -60,7 +70,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
           onSetAiRequest={a.setNoteAiRequest}
           onDelete={a.deleteNote}
           onSelect={a.setSelectedNoteId}
-          onJump={withJump ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined}
+          onJump={onJump}
           onEditorFocus={a.setOverrideEditor}
           getCitationDisplayText={a.getCitationDisplayText}
           onCitationCreated={a.onCitationCreated}
@@ -81,7 +91,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
         pos: row.pos,
         anchorUuid: row.anchorUuid,
         anchorState: row.anchorState,
-        content: renderCard(row.omniId, row.anchorUuid != null),
+        content: renderCard(row),
       });
     }
   }

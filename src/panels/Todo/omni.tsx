@@ -33,7 +33,13 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
     for (const row of buildOmniAnchorRows(item, baseId, a.resolveCardRows, {
       unanchored: true,
     })) {
-      const linked = row.anchorUuid != null;
+      // The row's own gate (task 655) — never `row.anchorUuid != null`, which
+      // is true of a card whose anchor is DEAD. `isAnchored` is the same
+      // question by another name (TodoRow reads it only alongside `onJump`),
+      // so it is derived from the gate's answer rather than asked twice.
+      const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
+        a.jumpToCard(item, sourceEl),
+      );
       items.push({
         id: row.omniId,
         pos: row.pos,
@@ -50,8 +56,8 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
             onSetAiRequest={a.setTodoAiRequest}
             onDelete={a.deleteTodo}
             onSelect={a.setSelectedTodoId}
-            isAnchored={linked}
-            onJump={linked ? (sourceEl) => a.jumpToCard(item, sourceEl) : undefined}
+            isAnchored={onJump != null}
+            onJump={onJump}
             extraDataAttrs={{ "data-omni-entry": row.omniId }}
           />
         ),

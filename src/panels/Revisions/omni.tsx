@@ -9,7 +9,10 @@ import type {
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import type { CardAnchorResolver } from "@/links/card-anchor-rows";
-import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
+import {
+  buildOmniAnchorRows,
+  type OmniAnchorRow,
+} from "@/panels/_shared/omni-anchor-rows";
 import { RevisionRequestCard } from "./RevisionRequestCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
 
@@ -56,10 +59,18 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
     const rows = buildOmniAnchorRows(card, baseId, a.resolveCardRows, {
       unanchored: true,
     });
-    const linked = rows.some((r) => r.anchorUuid != null);
 
-    const renderCard = (omniId: string) =>
-      card.kind === "suggestion" ? (
+    // The row's own gate (task 655) — never `rows.some((r) => r.anchorUuid !=
+    // null)`, which is true of a card whose stored anchor is DEAD and
+    // painted a Jump that `jumpToCard` resolves to nothing. It is per-ROW
+    // now: one card-level verdict could not say "this anchor is live and
+    // that one is not" even in principle.
+    const renderCard = (row: OmniAnchorRow) => {
+      const omniId = row.omniId;
+      const onJump = row.withJump((sourceEl?: HTMLElement | null) =>
+        a.jumpToCard(card, sourceEl),
+      );
+      return card.kind === "suggestion" ? (
         <RevisionSuggestionCard
           key={omniId}
           card={card as RevisionSuggestionCardData}
@@ -70,9 +81,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
           onConvert={a.convertCard}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
-          onJump={
-            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
-          }
+          onJump={onJump}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       ) : (
@@ -86,12 +95,11 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
           onConvert={a.convertCard}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
-          onJump={
-            linked ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
-          }
+          onJump={onJump}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       );
+    };
 
     for (const row of rows) {
       const omniId = row.omniId;
@@ -100,7 +108,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
         pos: row.pos,
         anchorUuid: row.anchorUuid,
         anchorState: row.anchorState,
-        content: renderCard(omniId),
+        content: renderCard(row),
       });
     }
   }
