@@ -490,6 +490,76 @@ for the identical final document — field by field, for every citation in the
 doc, not just the one under test. Three of its five legs fail when the ancestor
 derivation is neutered; the flat-cite and footnote-nested CONTROLS pass on it.
 
+### The coordinate half: a rule enforced in one branch is not enforced
+
+A step's positions are in the coordinate space of the document BEFORE THAT STEP
+(`tr.docs[i]`) — which equals the transaction's starting document only for the
+FIRST step. `inspectSteps` knew this. It said so in a long comment on its
+`Replace*` branch, and `pm-map-safety.ts` repeated the warning calling it
+CRITICAL and citing this module as the model. **Every other branch was free to
+forget it, and five of them did** (task 653): the `AttrStep` branch resolved
+`oldDoc.nodeAt(step.pos)` / `newDoc.nodeAt(step.pos)` with a step-local number
+and, in any multi-step transaction whose earlier step changed the document's
+size, found the wrong node — or `null`, and `continue`d, dropping a uuid
+re-mint or a heading level/label flip from the diff entirely; the mark branches
+stored `step.from`/`step.to` raw, so a `.chain().setMark().insertContent()`
+sequence landed the anchor span in the canonical index off by the later steps'
+delta and the linked card highlighted the wrong text.
+
+**A rule that lives in a comment is enforced wherever someone remembered it.**
+Make it structural instead: the loop resolves each step's spaces ONCE into a
+`StepCoords` (`stepDoc` / `newDoc` / `back` / `forward`) and hands a branch that
+and the sink — **nothing else** — so `oldDoc` is not in a branch's scope to
+reach for, and the two mappings are the only doors out.
+
+**There are exactly TWO contract spaces, decided by SIDE, not by step.**
+`added`/`changed` entries are in newDoc (`applyDiff` folds them verbatim);
+`removed` entries are in **oldDoc**, because that is where their consumers read
+them — `footnote.ts` does `oldState.doc.nodeAt(removed.pos)` to recover a
+vanished footnote's body, and `linked-anchor.ts`'s resurrection guard resolves
+`removedBlocks[].pos` there. So the removed side is mapped BACK, not forward;
+"put both sides in newDoc" would have been the tidy-looking fix and would have
+broken both. The contract is stated on `StructureDiff` itself, where those
+consumers read it. The two sides then still differ in space, so every same-key
+"did it MOVE?" comparison crosses at ONE door (`removedPosInNewDoc`) — comparing
+the raw numbers reported a move whenever an unrelated earlier edit changed the
+size ahead of the entity, waking position-keyed consumers and the O(doc)
+numberer on a non-event.
+
+**An unrecognised step FAILS SAFE.** The old comment described a conservative
+fallback and no code implemented one, so a `docChanged` transaction returned
+`EMPTY_DIFF` and every diff-gated plugin treated it as a non-event. The answer
+needs no new vocabulary: `changed-ranges.ts` already states the project's rule
+for a step that "could have reached anywhere" — **the touched range is the whole
+document** — so the same `collectRange` runs over both documents in full, with
+every block marked content-changed. O(doc), which is the right price for a step
+nothing can reason about, and unreachable from any current writer.
+
+**Folded in:** the `AttrStep` branch no longer hand-builds entries at all. It
+calls `inspectNodeAt` on both sides — the same constructor the range walk uses —
+and the existing per-kind reconcilers decide what changed. So there is no second
+table of "which attrs matter" to drift from them (an attr that changes nothing
+derives EQUAL entries and cancels), and a `label` flip now updates
+`added/removed.labels` — the table `\ref` display resolves against, which the
+hand-rolled branch synthesised headings and figures for and simply forgot.
+
+**Trap found while building the guard:** prosemirror's `Mapping.invert()`
+IGNORES a slice's `from`/`to` bounds (`appendMappingInverted` walks `maps` in
+full) while `map`/`mapResult` honour them. `tr.mapping.slice(0, i).invert()`
+therefore silently inverts the WHOLE transaction. Build the prefix as its own
+`Mapping` before inverting.
+
+**Cost:** one small `StepCoords` per step — O(steps), not O(doc). For a
+single-step transaction (every keystroke) `back` is `null` and the contract
+costs nothing beyond the forward slice the `Replace*` branch already built.
+
+CI:
+[step-coordinate-contract.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/step-coordinate-contract.test.ts)
+— every defect leg drives a MULTI-step transaction, because that is the only
+shape in which the two spaces come apart, and every pre-existing `AttrStep` test
+is single-step, which is exactly why this was invisible. Nine legs fail on the
+pre-fix inspector; the four single-step CONTROLS pass on it.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).

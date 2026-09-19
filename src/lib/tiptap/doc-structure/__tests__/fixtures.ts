@@ -9,7 +9,12 @@ import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 
 export const testSchema = new Schema({
   nodes: {
-    doc: { content: "block+" },
+    // `marks: "_"` — without it the top node forbids marks on its children and
+    // an `AddNodeMarkStep` on a BLOCK cannot even be applied, so the step
+    // inspector's node-mark branch would be untestable at any size but a leaf's
+    // (task 653). Widening the fixture lets the suite express the step the
+    // module claims to handle; it changes nothing about production behaviour.
+    doc: { content: "block+", marks: "_" },
     paragraph: {
       group: "block",
       content: "inline*",
