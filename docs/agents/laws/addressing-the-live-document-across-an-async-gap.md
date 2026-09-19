@@ -230,3 +230,28 @@ Contract: [label-rename-refs.test.tsx](../../../src/lib/tiptap/__tests__/label-r
 serialized key, an edit during the confirm, a footnote-declared key refused),
 1 control. Owed, not claimed: the preview eyeball — rename a figure label
 that a footnote `\ref`s and check the footnote's `.tex`.
+
+---
+
+## The grab half (task 648) — a gesture's own async gap is the COLLAB peer
+
+The in-text inline-atom grab captured its source as `{nodeName, pos}` at
+mousedown and re-read `doc.nodeAt(pos)` at commit, "verifying the node kind".
+Kind is not identity. Two adjacent same-kind atoms — `\cite{a}\cite{b}`, two
+footnote markers — put a valid impostor at `pos`, and one peer edit is enough to
+slide it there: the ghost then promises a move of the atom under the cursor and
+the commit moves its neighbour. The same hole sat one step earlier, in
+`resolveAtomPos`'s `pos, pos - 1, pos + 1` probe, which accepted the first node
+of the right KIND.
+
+Both ends now name the atom by its durable id where `ATOM_REGISTRY.idAttr` gives
+it one: the NodeView writes that id into `dataset[idAttr]`, so the DOM the user
+grabbed names the node the commit must find (`resolveAtomPos`), the capture
+carries `atomId`, and `resolveCapturedSource` treats the position as a HINT
+confirmed against the id — falling back to `findAtomById`, a scan of the LIVE
+document, when it fails. `ref` / `inline-math` own no Card and no id
+(`idAttr: null`), so for them the position + kind check IS the whole answer;
+that asymmetry is the registry's, and it is why this cannot be an unconditional
+id lookup.
+
+CI: `drop-commit-seam.test.ts`.

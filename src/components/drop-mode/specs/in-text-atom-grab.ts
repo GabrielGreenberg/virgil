@@ -14,25 +14,55 @@
  */
 
 import {
+  findAtomById,
   inlineAtomMoveSpec,
   type AtomLocation,
 } from "../util/inline-atom-move";
 import { readInlineAtomSource } from "../util/inline-atom-source";
+import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 /**
- * Resolve the grabbed atom from the source captured at mousedown.
- * Re-reads the node at the captured position and verifies its kind, so a
- * concurrent (collab) edit that shifted the atom degrades to a silent
- * no-op instead of moving the wrong node.
+ * Resolve the grabbed atom from the source captured at mousedown — by
+ * IDENTITY where the kind has one, by position otherwise.
+ *
+ * The captured `pos` is the FAST path and is right for every ordinary gesture
+ * (nothing mutates the document between mousedown and mouseup). It is not right
+ * across a collab peer's edit, which is an async gap the gesture does not own:
+ * the atom may have SHIFTED, and at the old position sits whatever the edit put
+ * there — including, in the shape that bites, a same-kind neighbour
+ * (`\cite{a}\cite{b}`, two footnote markers). A kind check alone accepts that
+ * neighbour and the commit moves the wrong atom.
+ *
+ * So the position is treated as a HINT and confirmed against the captured id;
+ * when it fails, the atom is re-found by that id (task 648 — the "addressing
+ * the live document across an async gap" law: name the target by durable
+ * identity, resolve it against the LIVE document at apply time). Only when the
+ * atom is genuinely gone does this refuse, and a refusal is a silent no-op.
+ *
+ * `ref` / `inline-math` carry no id (`ATOM_REGISTRY.idAttr: null`), so for them
+ * the position + kind check IS the whole answer — the asymmetry is the
+ * registry's, and it is why this cannot be an unconditional id lookup.
  */
 function resolveCapturedSource(cardKey: string): AtomLocation | null {
   const sep = cardKey.indexOf(":");
   const token = sep > 0 ? cardKey.slice(sep + 1) : "";
   const src = readInlineAtomSource(token);
   if (!src) return null;
+  const idAttr = atomMetaForNodeName(src.nodeName)?.idAttr ?? null;
   const node = src.editor.state.doc.nodeAt(src.pos);
-  if (!node || node.type.name !== src.nodeName) return null;
-  return { editor: src.editor, node, from: src.pos, to: src.pos + node.nodeSize };
+  if (node && node.type.name === src.nodeName) {
+    // The hint holds unless identity says otherwise.
+    if (!idAttr || !src.atomId || node.attrs?.[idAttr] === src.atomId) {
+      return {
+        editor: src.editor,
+        node,
+        from: src.pos,
+        to: src.pos + node.nodeSize,
+      };
+    }
+  }
+  if (!idAttr || !src.atomId) return null;
+  return findAtomById(src.editor, src.nodeName, idAttr, src.atomId);
 }
 
 // Invariant: this spec's `classifyDrop` (via inlineAtomMoveSpec) must only

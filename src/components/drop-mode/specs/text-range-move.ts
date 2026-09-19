@@ -79,6 +79,7 @@ import {
 } from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
 import { adoptSliceIntoSchema, insertLanded } from "../schema-adopt";
+import { commitCrossEditorMove } from "../commit-seam";
 import {
   insertNodesAdvancing,
   resolveInsertPos,
@@ -266,14 +267,25 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     selectInserted(insertTr, insertPos, slice.size);
     return {
       commit: () => {
-        targetEditor.view.dispatch(insertTr);
-        targetEditor.view.focus();
-        // Built HERE, after the target insert has landed: a transaction is bound
-        // to the doc it was built from, and this one is dispatched second (the
-        // pre-321 order). This is the one genuinely cross-editor spec — a
-        // main-doc selection released in a card body — so it is the one where
-        // the ordering is not merely theoretical.
-        sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
+        // ONE all-or-nothing commit (task 648) — the twin of the
+        // between-blocks branch below. `insertLanded` just above is the
+        // PRE-dispatch net; it asks what the built `Transform` kept, and a
+        // `filterTransaction` veto (`readOnlyEnforcer`, mounted on MAIN alone)
+        // happens strictly later. The source delete depends on the EFFECT, so
+        // it is conditioned on that, and both surfaces are asked for the collab
+        // pen before either is touched.
+        //
+        // The removal is still built INSIDE the commit, after the target insert
+        // has landed: a transaction is bound to the doc it was built from, and
+        // this one is dispatched second (the pre-321 order). This is the one
+        // genuinely cross-editor spec — a main-doc selection released in a card
+        // body — so it is the one where the ordering is not merely theoretical.
+        commitCrossEditorMove({
+          target: targetEditor,
+          insertTr,
+          source: sourceEditor,
+          remove: { from, to },
+        });
       },
     };
   },
@@ -408,18 +420,29 @@ function planRangeBetweenBlocks(
   placeCaretAtLanding(insertTr, span);
   return {
     commit: () => {
-      targetEditor.view.dispatch(insertTr);
-      targetEditor.view.focus();
-      // The source delete is built HERE, after the target insert landed — a
-      // transaction is bound to the doc it was built from and this one is
-      // dispatched second (the pre-321 order; see the inline-cursor twin).
+      // ONE all-or-nothing commit (task 648). `insertLanded` above is the
+      // PRE-dispatch net — it asks what the built `Transform` kept, which a
+      // `filterTransaction` veto (Virgil's `readOnlyEnforcer`, mounted on MAIN
+      // alone) happens strictly after. The source delete depends on the EFFECT
+      // of the insert, so it is conditioned on that, and both surfaces are
+      // asked for the collab pen before either is touched. The source delete is
+      // still built inside the commit, after the insert landed — a transaction
+      // is bound to the doc it was built from and this one is dispatched second
+      // (the pre-321 order; see the inline-cursor twin).
+      //
       // The source sheds its emptied shell too — but the freed uuid is NOT
       // transferred: the payload landed in a different document, where a
       // main-doc block id means nothing. Identity uniqueness is a per-document
       // invariant.
-      const deleteTr = sourceEditor.state.tr.delete(from, to);
-      dropEmptiedSourceBlock(deleteTr, from);
-      sourceEditor.view.dispatch(deleteTr);
+      commitCrossEditorMove({
+        target: targetEditor,
+        insertTr,
+        source: sourceEditor,
+        remove: { from, to },
+        extendRemoval: (tr, at) => {
+          dropEmptiedSourceBlock(tr, at);
+        },
+      });
     },
   };
 }

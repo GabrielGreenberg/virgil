@@ -150,6 +150,8 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
       | {
           meta: AtomMeta;
           pos: number;
+          /** The grabbed atom's entity id, or null for the id-less kinds. */
+          atomId: string | null;
           atomEl: HTMLElement;
           startX: number;
           startY: number;
@@ -216,6 +218,10 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         token: pending.token,
         kind: pending.meta.kind,
         nodeName: pending.meta.nodeName,
+        // The DURABLE address, for the kinds that have one (task 648). The
+        // captured `pos` is an address in a document that can move under the
+        // gesture; the id is the same atom whatever the document did.
+        atomId: pending.atomId,
         editor,
         pos: pending.pos,
       });
@@ -325,11 +331,12 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
               if (!atomEl) return false;
               const meta = atomMetaForDomType(atomEl.getAttribute("data-type"));
               if (!meta) return false;
-              const pos = resolveAtomPos(view, atomEl, meta.nodeName);
+              const pos = resolveAtomPos(view, atomEl, meta);
               if (pos == null) return false;
               pending = {
                 meta,
                 pos,
+                atomId: atomIdOf(view, pos, meta),
                 atomEl,
                 startX: event.clientX,
                 startY: event.clientY,
@@ -360,14 +367,29 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
   },
 });
 
-/** The doc position of the atom whose NodeView DOM is `atomEl`. posAtDOM
- *  on an inline leaf's NodeView lands at/adjacent to the node; verify by
- *  kind, checking the most-likely positions first. Null when it can't be
- *  resolved (the gesture then falls through to a normal click). */
-function resolveAtomPos(
+/**
+ * The doc position of the atom whose NodeView DOM is `atomEl`.
+ *
+ * `posAtDOM` on an inline leaf's NodeView lands at or adjacent to the node, so
+ * the candidates `pos`, `pos - 1`, `pos + 1` are probed in most-likely order.
+ * Null when none of them answers (the gesture then falls through to a normal
+ * click).
+ *
+ * The probe is disambiguated by IDENTITY where the kind has one (task 648).
+ * `\cite{a}\cite{b}` and two adjacent footnote markers put a SAME-KIND
+ * neighbour at `pos ± 1`, so a kind-only check could resolve the neighbour and
+ * the gesture would then promise a move of the atom under the cursor while
+ * committing a move of the one beside it. Every Card-bearing atom's NodeView
+ * writes its id into `dataset[idAttr]` (footnote.ts / citation.ts), spelled with
+ * exactly the `ATOM_REGISTRY.idAttr` key, so the DOM the user grabbed names the
+ * node the commit must find. `ref` / `inline-math` own no Card and no id
+ * (`idAttr: null`), so for them the kind check is the whole question — and that
+ * asymmetry is the registry's, stated there.
+ */
+export function resolveAtomPos(
   view: EditorView,
   atomEl: HTMLElement,
-  nodeName: string,
+  meta: AtomMeta,
 ): number | null {
   let pos: number;
   try {
@@ -375,11 +397,24 @@ function resolveAtomPos(
   } catch {
     return null;
   }
+  const domId = meta.idAttr ? (atomEl.dataset?.[meta.idAttr] ?? null) : null;
   const doc = view.state.doc;
   for (const p of [pos, pos - 1, pos + 1]) {
     if (p < 0 || p > doc.content.size) continue;
     const node = doc.nodeAt(p);
-    if (node && node.type.name === nodeName) return p;
+    if (!node || node.type.name !== meta.nodeName) continue;
+    // A DOM that states an id must match the node's; a DOM that states none
+    // (an older render, a kind with no id) falls back to the kind check rather
+    // than refusing the grab outright — no over-gating a working gesture.
+    if (domId && node.attrs?.[meta.idAttr as string] !== domId) continue;
+    return p;
   }
   return null;
+}
+
+/** The entity id of the atom at `pos`, or null for the id-less kinds. */
+function atomIdOf(view: EditorView, pos: number, meta: AtomMeta): string | null {
+  if (!meta.idAttr) return null;
+  const id = view.state.doc.nodeAt(pos)?.attrs?.[meta.idAttr];
+  return typeof id === "string" && id ? id : null;
 }

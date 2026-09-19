@@ -16,9 +16,13 @@
  *
  * The captured `pos` is valid for the gesture's lifetime because a
  * drop-mode gesture is synchronous (no typing mutates the doc between
- * grab and release). The spec re-reads `doc.nodeAt(pos)` at commit and
- * verifies the node kind, so a concurrent (collab) edit that shifted the
- * atom degrades to a silent no-op rather than moving the wrong node.
+ * grab and release) — but a COLLAB peer's edit is not the gesture's, and
+ * that is the async gap the position cannot survive. So the capture also
+ * carries the atom's durable `atomId` where its kind has one, and the spec
+ * re-resolves by IDENTITY at commit (task 648, the "addressing the live
+ * document across an async gap" law). The id-less kinds (`ref`,
+ * `inline-math` — no Card, `ATOM_REGISTRY.idAttr: null`) keep the position
+ * form with a node-kind check, which for them is the whole question.
  */
 
 import type { Editor } from "@tiptap/react";
@@ -34,6 +38,13 @@ export interface CapturedAtomSource {
   editor: Editor;
   /** Document position of the atom at grab time. */
   pos: number;
+  /**
+   * The atom's entity id (`footnoteId` / `citationId`) at grab time, or `null`
+   * for the id-less kinds. This — not `pos` — is what the commit resolves by
+   * when it is present: a position is an address in a document that may have
+   * moved under the gesture.
+   */
+  atomId: string | null;
 }
 
 let current: CapturedAtomSource | null = null;
