@@ -319,6 +319,27 @@ export const EMPTY_STRUCTURE: DocStructure = {
  * nothing else; if no float anchors to the typed block, all consumers
  * skip and the bus.emit can be elided as a future optimization.
  */
+/**
+ * What one transaction did to the document's structure.
+ *
+ * THE COORDINATE CONTRACT. Every `pos`/`from`/`to` in here belongs to one of
+ * two documents, decided by which SIDE the entry is on — never by which step
+ * produced it:
+ *
+ *   - `added*` / `changed*` → **newDoc** (`tr.doc`). `applyDiff` folds these
+ *     into the structure index verbatim, so they must address the document the
+ *     index now describes.
+ *   - `removed*` → **oldDoc** (`tr.before`). Their consumers read them against
+ *     the pre-transaction document: `footnote.ts` does
+ *     `oldState.doc.nodeAt(removed.pos)` to recover the vanished node's body,
+ *     and `linked-anchor.ts`'s resurrection guard resolves
+ *     `removedBlocks[].pos` there before mapping forward to place its insert.
+ *
+ * A step's OWN positions are in neither space unless it is the transaction's
+ * first step — they address `tr.docs[i]`. Crossing from there into the two
+ * spaces above is `step-inspector.ts`'s job and is enforced structurally there
+ * (see `StepCoords`); this comment is the contract those consumers rely on.
+ */
 export interface StructureDiff {
   // Block-level identity changes.
   addedBlocks: readonly BlockEntry[];

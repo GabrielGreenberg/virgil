@@ -20,6 +20,7 @@ import {
   AddMarkStep,
   AddNodeMarkStep,
   AttrStep,
+  Mapping,
   RemoveMarkStep,
   RemoveNodeMarkStep,
   ReplaceAroundStep,
@@ -27,11 +28,7 @@ import {
   type Step,
 } from "@tiptap/pm/transform";
 import { isAnchorableNode } from "@/lib/marginalia";
-import {
-  captionNodeHasContent,
-  figureEmitsCaption,
-  figureNodeEmitsCaption,
-} from "@/lib/figures/env-body";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
   type AnchorEntry,
   type BlockEntry,
@@ -79,6 +76,67 @@ function emptyBundle(): EntityBundle {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The coordinate contract.
+// ---------------------------------------------------------------------------
+
+/**
+ * THREE coordinate spaces meet in this module, and only one of them is the
+ * space a step's own positions are written in.
+ *
+ *   - `stepDoc`  — `tr.docs[i]`, the document THIS step's positions address.
+ *                  Equal to `oldDoc` only for the FIRST step of a transaction.
+ *   - `oldDoc`   — `tr.before`. The space every `removed.*` entry is RECORDED
+ *                  in, because that is the space its consumers read it in:
+ *                  `footnote.ts` does `oldState.doc.nodeAt(removed.pos)` and
+ *                  `linked-anchor.ts`'s resurrection guard says so out loud.
+ *   - `newDoc`   — `tr.doc`. The space every `added.*` / `changed.*` entry is
+ *                  recorded in, because `applyDiff` folds them into the index
+ *                  verbatim (`observer-plugin.ts`: "already in newDoc
+ *                  coordinates").
+ *
+ * The rule used to live in a COMMENT on the `Replace*` branch and was enforced
+ * only there; every other branch read `oldDoc`/`newDoc` directly for a
+ * step-local question and was silently wrong on any multi-step transaction
+ * (task 653). It is structural now: a branch is handed `StepCoords` and NOTHING
+ * ELSE, so `oldDoc` is not in its scope to reach for, and the two mappings that
+ * cross into the contract spaces are the only doors out.
+ */
+interface StepCoords {
+  /** `tr.docs[i]` — the document this step's own positions address. */
+  readonly stepDoc: PMNode;
+  /** `tr.doc` — the transaction's final document. */
+  readonly newDoc: PMNode;
+  /** `stepDoc` → `oldDoc`. `null` for the first step (the spaces coincide). */
+  readonly back: Mapping | null;
+  /** `stepDoc` → `newDoc` (this step plus every later one). */
+  readonly forward: Mapping;
+}
+
+/**
+ * Cross a position into the space an entry is recorded in. `null` means the
+ * walked document ALREADY is that space, which is the single-step case — so a
+ * keystroke pays nothing for the contract.
+ */
+function mapPos(m: Mapping | null, pos: number, assoc: number): number {
+  return m ? m.map(pos, assoc) : pos;
+}
+
+/**
+ * Everything a step branch may write to. Passing this (rather than closing over
+ * the whole `inspectSteps` body) is the other half of the enforcement: a branch
+ * has the two bundles and the two content sets, and no document at all beyond
+ * its `StepCoords`.
+ */
+interface DiffSink {
+  readonly removed: EntityBundle;
+  readonly added: EntityBundle;
+  readonly contentChangedUuids: Set<string>;
+  readonly exampleContentChangedUuids: Set<string>;
+  footnoteOrderChanged: boolean;
+  citationOrderChanged: boolean;
+}
+
 /**
  * The ONE construction of a `FigureEntry` from a live node. Read by
  * `inspectNodeAt` (the range walk) and by the body-derived-ancestor pass
@@ -97,6 +155,30 @@ function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry {
 }
 
 /**
+ * Record one `linkedAnchor` span into a bundle, MERGING with any span already
+ * recorded for that id — a mark rides several text runs, and a transaction may
+ * touch several of them. The ONE writer, so the mark-step branch and the text-
+ * node walk cannot disagree about what widening a span means (the remove branch
+ * used to overwrite rather than merge, so a two-run removal reported only the
+ * last run's extent).
+ */
+function noteAnchorRange(
+  out: EntityBundle,
+  id: string,
+  kind: string,
+  from: number,
+  to: number,
+): void {
+  const prev = out.anchors.get(id);
+  if (prev) {
+    prev.from = Math.min(prev.from, from);
+    prev.to = Math.max(prev.to, to);
+    return;
+  }
+  out.anchors.set(id, { id, from, to, kind });
+}
+
+/**
  * Inspect ONE node (including its own attrs/text and any linkedAnchor
  * marks if it's a text node). Does not recurse — the visitor below
  * handles recursion explicitly so position math stays correct.
@@ -105,20 +187,33 @@ function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry {
  * side, `newDoc` for the added side). It is needed for the ancestor-derived
  * facts a single node cannot answer on its own — today a citation's
  * enclosing container; see `enclosingCitationContainer`.
+ *
+ * `record` crosses `pos` from the walked document into the space the entry is
+ * RECORDED in (see `StepCoords`). The node is INSPECTED where it lives and
+ * RECORDED where its side's contract says — two different questions that the
+ * pre-task-653 code answered with one number.
  */
-function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): void {
+function inspectNodeAt(
+  n: PMNode,
+  pos: number,
+  out: EntityBundle,
+  doc: PMNode,
+  record: Mapping | null,
+): void {
   const typeName = n.type.name;
     const attrs = (n.attrs ?? {}) as Record<string, unknown>;
     const uuid = (attrs.uuid as string | null | undefined) ?? null;
+    // The entry's position, in the contract space of the side being filled.
+    const at = mapPos(record, pos, 1);
 
     if (uuid && isAnchorableNode(n.type)) {
-      out.blocks.set(uuid, { uuid, pos, typeName, parTitled: deriveParTitled(attrs) });
+      out.blocks.set(uuid, { uuid, pos: at, typeName, parTitled: deriveParTitled(attrs) });
     }
 
     if (typeName === "heading" && uuid) {
       out.headings.set(uuid, {
         uuid,
-        pos,
+        pos: at,
         level: (attrs.level as number | undefined) ?? 1,
         text: n.textContent,
         label: (attrs.label as string | null | undefined) ?? null,
@@ -129,19 +224,19 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
           id: attrs.label,
           owner: "heading",
           ownerUuid: uuid,
-          pos,
+          pos: at,
         });
       }
     }
 
     if (typeName === "figureBlock" && uuid) {
-      out.figures.set(uuid, figureEntryAt(n, pos, uuid));
+      out.figures.set(uuid, figureEntryAt(n, at, uuid));
       if (typeof attrs.label === "string" && attrs.label) {
         out.labels.set(attrs.label, {
           id: attrs.label,
           owner: "figure",
           ownerUuid: uuid,
-          pos,
+          pos: at,
         });
       }
     }
@@ -155,13 +250,13 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
         number: attrs.number as string | number | null | undefined,
       });
       if (id) {
-        out.examples.set(id, { id, uuid: exUuid, pos, tag, label, number });
+        out.examples.set(id, { id, uuid: exUuid, pos: at, tag, label, number });
         if (label) {
           out.labels.set(label, {
             id: label,
             owner: "example",
             ownerUuid: exUuid,
-            pos,
+            pos: at,
           });
         }
       }
@@ -174,7 +269,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
           id: label,
           owner: "exampleItem",
           ownerUuid: null,
-          pos,
+          pos: at,
         });
       }
     }
@@ -184,7 +279,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
       if (id) {
         out.footnotes.set(id, {
           id,
-          pos,
+          pos: at,
           thanks: !!attrs.thanks,
           number: (attrs.number as number | undefined) ?? 0,
         });
@@ -203,7 +298,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
           id,
           citationEntryAt({
             id,
-            pos,
+            pos: at,
             command: attrs.command as string | undefined,
             displayText: attrs.displayText as string | undefined,
             container: enclosingCitationContainer(doc, pos),
@@ -219,18 +314,13 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
         const mAttrs = mark.attrs as { anchorId?: string; kind?: string };
         const id = mAttrs.anchorId ?? "";
         if (!id) continue;
-        const prev = out.anchors.get(id);
-        if (prev) {
-          // Extend the right edge if the mark spans multiple text runs.
-          prev.to = pos + n.nodeSize;
-        } else {
-          out.anchors.set(id, {
-            id,
-            from: pos,
-            to: pos + n.nodeSize,
-            kind: mAttrs.kind ?? "note",
-          });
-        }
+        noteAnchorRange(
+          out,
+          id,
+          mAttrs.kind ?? "note",
+          mapPos(record, pos, -1),
+          mapPos(record, pos + n.nodeSize, 1),
+        );
       }
     }
 }
@@ -248,19 +338,25 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle, doc: PMNode): 
  * the touched portion (and its marks) still matters for linkedAnchor
  * tracking. For text, count any node whose extent overlaps the range.
  */
-function collectRange(doc: PMNode, from: number, to: number, out: EntityBundle): void {
+function collectRange(
+  doc: PMNode,
+  from: number,
+  to: number,
+  out: EntityBundle,
+  record: Mapping | null,
+): void {
   if (to <= from) return;
   const clampedTo = Math.min(to, doc.content.size);
   const clampedFrom = Math.max(from, 0);
   if (clampedTo <= clampedFrom) return;
   doc.nodesBetween(clampedFrom, clampedTo, (n, pos) => {
     if (n.isText) {
-      inspectNodeAt(n, pos, out, doc);
+      inspectNodeAt(n, pos, out, doc, record);
     } else if (pos >= clampedFrom && pos < clampedTo) {
       // Block-level node that starts inside the range. Whether its
       // body extends past `to` doesn't matter — if its opening token
       // got deleted, its identity is gone in newDoc.
-      inspectNodeAt(n, pos, out, doc);
+      inspectNodeAt(n, pos, out, doc, record);
     }
     return true;
   });
@@ -301,8 +397,12 @@ function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
  *  — the signature of an atom MOVE (delete+insert). `pos` is the load-
  *  bearing field for the structure index + renumber; thanks/number folded
  *  in so the snapshot stays exact. */
-function footnoteChanged(a: FootnoteEntry, b: FootnoteEntry): boolean {
-  return a.pos !== b.pos || a.thanks !== b.thanks || a.number !== b.number;
+function footnoteChanged(
+  aPosInNewDoc: number,
+  a: FootnoteEntry,
+  b: FootnoteEntry,
+): boolean {
+  return aPosInNewDoc !== b.pos || a.thanks !== b.thanks || a.number !== b.number;
 }
 
 /** An example that survived (same id) but whose position or displayed attrs
@@ -313,9 +413,13 @@ function footnoteChanged(a: FootnoteEntry, b: FootnoteEntry): boolean {
  *  re-seed the card. Mirrors `footnoteChanged`. A same-id re-scan with every
  *  field equal (an edit at the block boundary that touched nothing) returns
  *  false, so it never fires spuriously. */
-function exampleChanged(a: ExampleEntry, b: ExampleEntry): boolean {
+function exampleChanged(
+  aPosInNewDoc: number,
+  a: ExampleEntry,
+  b: ExampleEntry,
+): boolean {
   return (
-    a.pos !== b.pos ||
+    aPosInNewDoc !== b.pos ||
     a.number !== b.number ||
     a.tag !== b.tag ||
     a.label !== b.label
@@ -438,7 +542,12 @@ interface BodyDerivedFactKind {
    * FILL-IN ONLY: where the range walk already collected the node it saw
    * the identity change too, and stays authoritative.
    */
-  readonly collect: (node: PMNode, pos: number, out: EntityBundle) => void;
+  readonly collect: (
+    node: PMNode,
+    pos: number,
+    out: EntityBundle,
+    record: Mapping | null,
+  ) => void;
 }
 
 const BODY_DERIVED_FACT_KINDS: readonly BodyDerivedFactKind[] = [
@@ -448,10 +557,10 @@ const BODY_DERIVED_FACT_KINDS: readonly BodyDerivedFactKind[] = [
     // already compares it, so a filled-in pair reconciles to `changedFigures`
     // with no new branch downstream.
     typeName: "figureBlock",
-    collect: (node, pos, out) => {
+    collect: (node, pos, out, record) => {
       const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid ?? null;
       if (!uuid || out.figures.has(uuid)) return;
-      out.figures.set(uuid, figureEntryAt(node, pos, uuid));
+      out.figures.set(uuid, figureEntryAt(node, mapPos(record, pos, 1), uuid));
     },
   },
 ];
@@ -491,19 +600,188 @@ function nearestBodyDerivedAncestor(
  * is the range walk's question, not this one's.
  */
 function collectBodyDerivedAncestors(
-  beforeStepDoc: PMNode,
-  fromInOld: number,
-  newDoc: PMNode,
+  c: StepCoords,
+  fromInStepDoc: number,
   fromInNew: number,
-  removed: EntityBundle,
-  added: EntityBundle,
+  sink: DiffSink,
 ): void {
-  const after = nearestBodyDerivedAncestor(newDoc, fromInNew);
+  const after = nearestBodyDerivedAncestor(c.newDoc, fromInNew);
   if (!after) return;
-  const before = nearestBodyDerivedAncestor(beforeStepDoc, fromInOld);
+  const before = nearestBodyDerivedAncestor(c.stepDoc, fromInStepDoc);
   if (!before || before.uuid !== after.uuid) return;
-  before.kind.collect(before.node, before.pos, removed);
-  after.kind.collect(after.node, after.pos, added);
+  before.kind.collect(before.node, before.pos, sink.removed, c.back);
+  after.kind.collect(after.node, after.pos, sink.added, null);
+}
+
+// ---------------------------------------------------------------------------
+// The step branches. Each is handed its `StepCoords` and the sink — never a
+// document of its own — so the coordinate contract above is structural rather
+// than remembered.
+// ---------------------------------------------------------------------------
+
+/** Order flags are per-KIND facts about what a step touched, asked the same way
+ *  for every branch: if this kind entered or left a touched range, the document
+ *  order of that kind may have changed. */
+function noteOrderFlags(sink: DiffSink): void {
+  if (sink.removed.footnotes.size > 0 || sink.added.footnotes.size > 0) {
+    sink.footnoteOrderChanged = true;
+  }
+  if (sink.removed.citations.size > 0 || sink.added.citations.size > 0) {
+    sink.citationOrderChanged = true;
+  }
+}
+
+function inspectReplaceStep(
+  step: ReplaceStep | ReplaceAroundStep,
+  c: StepCoords,
+  sink: DiffSink,
+): void {
+  // `step.from`/`step.to` are in `c.stepDoc`. Map the range forward to `newDoc`
+  // through this step AND every later one (`c.forward`); using the FULL
+  // transaction mapping here mis-mapped every step past the first, so a
+  // multi-step tx such as an atom MOVE (delete + re-insert) left the
+  // re-inserted node undetected in `added` — the structure then dropped the
+  // moved footnote/citation and the renumber walked a stale snapshot.
+  //   fromInNew uses bias=-1 (stay left of the inserted content)
+  //   toInNew uses bias=+1 (stay right of the inserted content)
+  // so the resulting range covers everything that landed in newDoc.
+  const fromInNew = c.forward.map(step.from, -1);
+  const toInNew = c.forward.map(step.to, 1);
+
+  collectRange(c.stepDoc, step.from, step.to, sink.removed, c.back);
+  collectRange(c.newDoc, fromInNew, toInNew, sink.added, null);
+
+  // Attribute content-change to nearest anchorable ancestor in newDoc.
+  const uuid = nearestAnchorableUuid(c.newDoc, fromInNew);
+  if (uuid) sink.contentChangedUuids.add(uuid);
+
+  // Also attribute to the enclosing exampleBlock (if any) so the
+  // Examples-panel card — keyed by exampleBlock uuid, not the nearer
+  // anchorable exampleItem — can re-seed on a content-only edit. Same
+  // ancestor walk; no extra doc scan.
+  const exUuid = nearestExampleBlockUuid(c.newDoc, fromInNew);
+  if (exUuid) sink.exampleContentChangedUuids.add(exUuid);
+
+  // Facts derived from a node's BODY change without its opening token
+  // ever entering the step range, so `collectRange` cannot see them.
+  // Walk this edit point's ancestors for the kinds that carry such a
+  // fact and fill both sides in — see `BODY_DERIVED_FACT_KINDS`.
+  collectBodyDerivedAncestors(c, step.from, fromInNew, sink);
+
+  noteOrderFlags(sink);
+}
+
+/**
+ * The span a mark step names, in `c.stepDoc` coordinates.
+ *
+ * `AddMarkStep`/`RemoveMarkStep` carry a range. `AddNodeMarkStep`/
+ * `RemoveNodeMarkStep` name ONE node by position, and its extent is that node's
+ * own size — `pos + 1` was right only for a leaf of size 1, so a node mark on
+ * anything else recorded a one-token anchor span and the linked card
+ * highlighted a single character.
+ */
+function markStepSpan(step: Step, doc: PMNode): { from: number; to: number } {
+  const s = step as unknown as { from?: number; to?: number; pos?: number };
+  if (typeof s.from === "number" && typeof s.to === "number") {
+    return { from: s.from, to: s.to };
+  }
+  const pos = s.pos ?? 0;
+  return { from: pos, to: pos + (doc.nodeAt(pos)?.nodeSize ?? 1) };
+}
+
+function inspectMarkStep(
+  step: AddMarkStep | AddNodeMarkStep | RemoveMarkStep | RemoveNodeMarkStep,
+  c: StepCoords,
+  sink: DiffSink,
+  adding: boolean,
+): void {
+  if (step.mark.type.name !== "linkedAnchor") return;
+  const attrs = step.mark.attrs as { anchorId?: string; kind?: string };
+  const id = attrs.anchorId ?? "";
+  if (!id) return;
+  const { from, to } = markStepSpan(step, c.stepDoc);
+  // The span is in `c.stepDoc`; record it in the side's contract space. Stored
+  // raw, an added anchor whose transaction went on to edit EARLIER in the
+  // document landed in the canonical anchor index off by the later steps'
+  // delta — the linked card then highlighted and scrolled to the wrong text.
+  const record = adding ? c.forward : c.back;
+  noteAnchorRange(
+    adding ? sink.added : sink.removed,
+    id,
+    attrs.kind ?? "note",
+    mapPos(record, from, -1),
+    mapPos(record, to, 1),
+  );
+}
+
+/**
+ * An `AttrStep` asks the same question the range walk does — "what entities does
+ * this node contribute, before and after?" — about a single node rather than a
+ * range. So it ANSWERS it the same way: `inspectNodeAt` on both sides, and the
+ * existing per-kind reconcilers decide what actually changed. Two consequences
+ * worth naming:
+ *
+ *   - There is no second, hand-written table of "which attrs matter" to drift
+ *     from the reconcilers. An attr that changes nothing the diff reports
+ *     derives EQUAL entries on both sides and cancels in reconciliation — so
+ *     the branch stays silent without being told to.
+ *   - A `label` attr flip now updates `added/removed.labels` (the table `\ref`
+ *     display resolves against), because `inspectNodeAt` emits the label entry.
+ *     The hand-rolled branch synthesised headings and figures and forgot it.
+ *
+ * Nothing in `src` emits a raw `AttrStep` today — every writer goes through
+ * `setNodeMarkup`, which on a non-leaf node produces a `ReplaceAroundStep` and
+ * on a leaf a `ReplaceStep` (task 247). This branch is the defensive fallback
+ * that must be right on the day one finally fires; congruence with the live
+ * range path is what makes that checkable.
+ */
+function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
+  // `step.pos` is in `c.stepDoc` — NOT in `oldDoc`. Reading `oldDoc.nodeAt` /
+  // `newDoc.nodeAt` with it (the pre-task-653 code) found the wrong node in any
+  // multi-step transaction whose earlier step changed the document size, or
+  // `null`, in which case the whole attr change — a uuid re-mint, a heading
+  // level or label flip — was silently dropped from the diff.
+  const beforeNode = c.stepDoc.nodeAt(step.pos);
+  if (!beforeNode) return;
+  // An AttrStep moves nothing, so the node's final position is purely the later
+  // steps' delta. If a later step DELETED it, that step's own range walk
+  // reports the removal against the document it addresses — leave it there
+  // rather than synthesising a second, differently-coordinated account.
+  const res = c.forward.mapResult(step.pos, 1);
+  const afterNode = res.deleted ? null : c.newDoc.nodeAt(res.pos);
+  if (!afterNode || afterNode.type !== beforeNode.type) return;
+  inspectNodeAt(beforeNode, step.pos, sink.removed, c.stepDoc, c.back);
+  inspectNodeAt(afterNode, res.pos, sink.added, c.newDoc, null);
+  noteOrderFlags(sink);
+}
+
+/**
+ * A step kind this module does not recognise — a `DocAttrStep`, or a step type
+ * that did not exist when this was written.
+ *
+ * The comment that used to sit here described a conservative fallback and no
+ * code implemented one: the step contributed nothing, so a `docChanged`
+ * transaction returned `EMPTY_DIFF` and every diff-gated plugin — the section
+ * numberer, `label.ts`, `title.ts`, `expex.ts` — treated it as a NON-EVENT.
+ * That is the opposite of failing safe, and it contradicts the rule this
+ * project states in `changed-ranges.ts`: an unrecognised step "could have
+ * reached anywhere", and the extractor answers "the whole document".
+ *
+ * So: the touched range IS the whole document. No new vocabulary, no second
+ * notion of "structural" to keep in sync — the same `collectRange` the ordinary
+ * path uses, over everything, on both sides, with every block additionally
+ * marked content-changed so the gates that key off `contentChangedUuids` wake
+ * too. O(doc), which is the right price for a step nothing can reason about,
+ * and unreachable from any current writer.
+ */
+function inspectUnrecognisedStep(oldDoc: PMNode, newDoc: PMNode, sink: DiffSink): void {
+  collectRange(oldDoc, 0, oldDoc.content.size, sink.removed, null);
+  collectRange(newDoc, 0, newDoc.content.size, sink.added, null);
+  for (const uuid of sink.added.blocks.keys()) sink.contentChangedUuids.add(uuid);
+  for (const e of sink.added.examples.values()) {
+    if (e.uuid) sink.exampleContentChangedUuids.add(e.uuid);
+  }
+  noteOrderFlags(sink);
 }
 
 // ---------------------------------------------------------------------------
@@ -542,8 +820,6 @@ export function inspectSteps(
   const added = emptyBundle();
   const contentChangedUuids = new Set<string>();
   const exampleContentChangedUuids = new Set<string>();
-  let footnoteOrderChanged = false;
-  let citationOrderChanged = false;
   let blockOrderChanged = false;
   let blockParTitleChanged = false;
 
@@ -632,294 +908,73 @@ export function inspectSteps(
     return newDocAnchorIdsCache.has(anchorId);
   };
 
+  const sink: DiffSink = {
+    removed,
+    added,
+    contentChangedUuids,
+    exampleContentChangedUuids,
+    footnoteOrderChanged: false,
+    citationOrderChanged: false,
+  };
+
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
     const step = tr.steps[stepIndex] as Step;
+    // The ONE place a step's coordinate spaces are resolved. Every branch below
+    // gets this and nothing else — see `StepCoords`. For a single-step
+    // transaction (every keystroke) `back` is null and the contract costs
+    // nothing beyond the `forward` slice the Replace branch already built.
+    const coords: StepCoords = {
+      stepDoc: tr.docs[stepIndex] ?? oldDoc,
+      newDoc,
+      // NOT `tr.mapping.slice(0, stepIndex).invert()`: prosemirror's
+      // `appendMappingInverted` walks `mapping.maps` in full and IGNORES the
+      // slice's `from`/`to` bounds, so inverting a slice silently inverts the
+      // WHOLE transaction. `map`/`mapResult` do honour the bounds, which is why
+      // the forward slice below is fine — the asymmetry is the trap. Build the
+      // prefix as its own Mapping so there is nothing outside it to invert.
+      back:
+        stepIndex === 0
+          ? null
+          : new Mapping(tr.mapping.maps.slice(0, stepIndex)).invert(),
+      forward: tr.mapping.slice(stepIndex),
+    };
+
     if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
-      // Range-walk both states. The mapping for [step.from, step.to] in
-      // oldDoc → newDoc is obtained from `tr.mapping.slice(stepIndex, 1)`:
-      // the partial mapping of this step alone. The post-step state is
-      // then carried forward by `tr.mapping.slice(stepIndex + 1)` to
-      // map onto the final newDoc. We compose them implicitly by using
-      // `tr.mapping.map` with the proper bias.
-      // For mapping a range that's been changed by the step:
-      //   fromInNew uses bias=-1 (stay left of the inserted content)
-      //   toInNew uses bias=+1 (stay right of the inserted content)
-      // so the resulting range covers everything that landed in newDoc.
-      // `step.from`/`step.to` are in the coordinate space of the doc
-      // BEFORE this step (`tr.docs[stepIndex]`) — which equals `oldDoc`
-      // only for the first step. Walk `removed` against that before-step
-      // doc, and map the range forward to `newDoc` through the steps AFTER
-      // this one (`tr.mapping.slice(stepIndex)`). Using the FULL mapping
-      // here mis-mapped every step past the first, so a multi-step tx such
-      // as an atom MOVE (delete + re-insert) left the re-inserted node
-      // undetected in `added` — the structure then dropped the moved
-      // footnote/citation and the renumber walked a stale snapshot.
-      const beforeStepDoc = tr.docs[stepIndex] ?? oldDoc;
-      const mappingAfter = tr.mapping.slice(stepIndex);
-      const fromInNew = mappingAfter.map(step.from, -1);
-      const toInNew = mappingAfter.map(step.to, 1);
-
-      collectRange(beforeStepDoc, step.from, step.to, removed);
-      collectRange(newDoc, fromInNew, toInNew, added);
-
-      // Attribute content-change to nearest anchorable ancestor in newDoc.
-      const uuid = nearestAnchorableUuid(newDoc, fromInNew);
-      if (uuid) contentChangedUuids.add(uuid);
-
-      // Also attribute to the enclosing exampleBlock (if any) so the
-      // Examples-panel card — keyed by exampleBlock uuid, not the nearer
-      // anchorable exampleItem — can re-seed on a content-only edit. Same
-      // ancestor walk; no extra doc scan.
-      const exUuid = nearestExampleBlockUuid(newDoc, fromInNew);
-      if (exUuid) exampleContentChangedUuids.add(exUuid);
-
-      // Facts derived from a node's BODY change without its opening token
-      // ever entering the step range, so `collectRange` cannot see them.
-      // Walk this edit point's ancestors for the kinds that carry such a
-      // fact and fill both sides in — see `BODY_DERIVED_FACT_KINDS`.
-      collectBodyDerivedAncestors(
-        beforeStepDoc,
-        step.from,
-        newDoc,
-        fromInNew,
-        removed,
-        added,
-      );
-
-      // Footnotes whose pos changed need a renumber check too.
-      if (removed.footnotes.size > 0 || added.footnotes.size > 0) {
-        footnoteOrderChanged = true;
-      }
-      // Citations: any add/remove/move in a touched range may reorder the
-      // citation list (a pure move with unchanged attrs surfaces only here).
-      if (removed.citations.size > 0 || added.citations.size > 0) {
-        citationOrderChanged = true;
-      }
-      continue;
+      inspectReplaceStep(step, coords, sink);
+    } else if (step instanceof AddMarkStep || step instanceof AddNodeMarkStep) {
+      inspectMarkStep(step, coords, sink, true);
+    } else if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) {
+      inspectMarkStep(step, coords, sink, false);
+    } else if (step instanceof AttrStep) {
+      inspectAttrStep(step, coords, sink);
+    } else {
+      // Fail SAFE, not silent. The whole-document answer subsumes every other
+      // step in this transaction, so stop here rather than layering a partial
+      // per-step account on top of a total one. `oldDoc`/`newDoc` are passed
+      // explicitly because this branch's question is the only one in the loop
+      // that is NOT step-local.
+      inspectUnrecognisedStep(oldDoc, newDoc, sink);
+      break;
     }
-
-    if (step instanceof AddMarkStep || step instanceof AddNodeMarkStep) {
-      if (step.mark.type.name === "linkedAnchor") {
-        const attrs = step.mark.attrs as { anchorId?: string; kind?: string };
-        const id = attrs.anchorId ?? "";
-        if (id) {
-          const from = "from" in step ? step.from : (step as { pos: number }).pos;
-          const to = "to" in step ? step.to : (step as { pos: number }).pos + 1;
-          const prev = added.anchors.get(id);
-          if (prev) {
-            prev.from = Math.min(prev.from, from);
-            prev.to = Math.max(prev.to, to);
-          } else {
-            added.anchors.set(id, {
-              id,
-              from,
-              to,
-              kind: attrs.kind ?? "note",
-            });
-          }
-        }
-      }
-      continue;
-    }
-
-    if (step instanceof RemoveMarkStep || step instanceof RemoveNodeMarkStep) {
-      if (step.mark.type.name === "linkedAnchor") {
-        const attrs = step.mark.attrs as { anchorId?: string; kind?: string };
-        const id = attrs.anchorId ?? "";
-        if (id) {
-          const from = "from" in step ? step.from : (step as { pos: number }).pos;
-          const to = "to" in step ? step.to : (step as { pos: number }).pos + 1;
-          removed.anchors.set(id, {
-            id,
-            from,
-            to,
-            kind: attrs.kind ?? "note",
-          });
-        }
-      }
-      continue;
-    }
-
-    if (step instanceof AttrStep) {
-      // Find the affected node in both states. If it's a tracked node
-      // type and the attribute is one we care about, emit a change.
-      const oldNode = oldDoc.nodeAt(step.pos);
-      const newNode = newDoc.nodeAt(step.pos);
-      if (!oldNode || !newNode) continue;
-      const typeName = newNode.type.name;
-      const attr = step.attr;
-      const oldAttrs = (oldNode.attrs ?? {}) as Record<string, unknown>;
-      const newAttrs = (newNode.attrs ?? {}) as Record<string, unknown>;
-      const oldUuid = (oldAttrs.uuid as string | null | undefined) ?? null;
-      const newUuid = (newAttrs.uuid as string | null | undefined) ?? null;
-
-      // UUID transitions: lazy hydration of anchorable identity. Three
-      // cases — birth (null → uuid), death (uuid → null), and rename
-      // (uuid1 → uuid2). The "rename" case is the post-split hydration:
-      // the cloned block gets its duplicate UUID replaced with a fresh
-      // one, which we surface as remove-old + add-new so downstream
-      // consumers (in-text positions, marginalia registry) see a real
-      // block being born.
-      if (attr === "uuid" && isAnchorableNode(newNode.type)) {
-        if (oldUuid !== newUuid) {
-          // Only report the OLD uuid as removed if it did NOT survive elsewhere
-          // in the final doc. After a split, the re-minted CLONE sheds `oldUuid`
-          // here while the ORIGINAL half still carries it — emitting a removal
-          // would drop a still-live block from `structure.blocks` and strip its
-          // `data-uuid`. A genuine rename/death (uuid → null, or a true identity
-          // change) leaves `oldUuid` nowhere in the doc → removal still fires.
-          if (oldUuid && !uuidSurvivesRemoval(oldUuid)) {
-            removed.blocks.set(oldUuid, {
-              uuid: oldUuid,
-              pos: step.pos,
-              typeName,
-              parTitled: deriveParTitled(oldAttrs),
-            });
-          }
-          if (newUuid) {
-            added.blocks.set(newUuid, {
-              uuid: newUuid,
-              pos: step.pos,
-              typeName,
-              parTitled: deriveParTitled(newAttrs),
-            });
-          }
-        }
-      }
-
-      // `parTitle` transitions: the tracked datum is the BOOLEAN "renders a
-      // par-title" (`deriveParTitled`), so only a FLIP (null/"" ↔ non-empty)
-      // is structural. Typing inside an existing title changes the string but
-      // not the flag — both sides derive equal, nothing is synthesized, and
-      // the transaction stays structurally null (keystroke sanctity for
-      // title editing). A flip synthesizes same-uuid removed+added entries;
-      // the block reconciler below collapses them into `changedBlocks` +
-      // `blockParTitleChanged` (never `blockOrderChanged` — nothing moved).
-      // The other write path for this attr — `setNodeMarkup`, a
-      // ReplaceAroundStep on a non-leaf — needs no branch here: its range
-      // walk re-collects the block on both sides with `parTitled` derived
-      // fresh, and the same reconciler answers identically.
-      if (attr === "parTitle" && isAnchorableNode(newNode.type) && newUuid) {
-        const oldTitled = deriveParTitled(oldAttrs);
-        const newTitled = deriveParTitled(newAttrs);
-        if (oldTitled !== newTitled) {
-          if (oldUuid) {
-            removed.blocks.set(oldUuid, {
-              uuid: oldUuid,
-              pos: step.pos,
-              typeName,
-              parTitled: oldTitled,
-            });
-          }
-          added.blocks.set(newUuid, {
-            uuid: newUuid,
-            pos: step.pos,
-            typeName,
-            parTitled: newTitled,
-          });
-        }
-      }
-
-      if (typeName === "heading" && newUuid) {
-        // Build candidate entries for both states so the diff logic can
-        // distinguish text-only vs structural attrs cleanly.
-        if (attr === "level" || attr === "label" || attr === "numbered") {
-          // Synthesize old + new heading entries so the structural-change
-          // comparison can drive `changedHeadings` below.
-          if (oldUuid) {
-            removed.headings.set(oldUuid, {
-              uuid: oldUuid,
-              pos: step.pos,
-              level: (oldAttrs.level as number | undefined) ?? 1,
-              text: oldNode.textContent,
-              label: (oldAttrs.label as string | null | undefined) ?? null,
-              numbered: oldAttrs.numbered !== false,
-            });
-          }
-          added.headings.set(newUuid, {
-            uuid: newUuid,
-            pos: step.pos,
-            level: (newAttrs.level as number | undefined) ?? 1,
-            text: newNode.textContent,
-            label: (newAttrs.label as string | null | undefined) ?? null,
-            numbered: newAttrs.numbered !== false,
-          });
-        }
-      }
-
-      if (typeName === "figureBlock" && newUuid) {
-        // `hasCaption` joins the set because it decides NUMBERING (tasks
-        // 318/319); an AttrStep that flips it must reach the numberer exactly
-        // as a `numbered` flip does. The caption CONTENT is unchanged by an
-        // AttrStep, so both sides read it off the same live node.
-        if (attr === "label" || attr === "numbered" || attr === "hasCaption") {
-          const captionChild = newNode.firstChild;
-          const captionHasContent = captionNodeHasContent(
-            captionChild?.type.name === "figureCaption" ? captionChild : null,
-          );
-          if (oldUuid) {
-            removed.figures.set(oldUuid, {
-              uuid: oldUuid,
-              pos: step.pos,
-              label: (oldAttrs.label as string | undefined) ?? "",
-              numbered: oldAttrs.numbered !== false,
-              number: (oldAttrs.figureNumber as number | null | undefined) ?? null,
-              emitsCaption: figureEmitsCaption(
-                oldAttrs.hasCaption !== false,
-                captionHasContent,
-              ),
-            });
-          }
-          added.figures.set(newUuid, {
-            uuid: newUuid,
-            pos: step.pos,
-            label: (newAttrs.label as string | undefined) ?? "",
-            numbered: newAttrs.numbered !== false,
-            number: (newAttrs.figureNumber as number | null | undefined) ?? null,
-            emitsCaption: figureEmitsCaption(
-              newAttrs.hasCaption !== false,
-              captionHasContent,
-            ),
-          });
-        }
-      }
-
-      if (typeName === "footnote") {
-        // `thanks` flips affect numbering parity. `footnoteId` changes
-        // are renames — treat as remove+add.
-        if (attr === "footnoteId" || attr === "thanks") {
-          const oldId = (oldAttrs.footnoteId as string | undefined) ?? "";
-          const newId = (newAttrs.footnoteId as string | undefined) ?? "";
-          if (oldId) {
-            removed.footnotes.set(oldId, {
-              id: oldId,
-              pos: step.pos,
-              thanks: !!oldAttrs.thanks,
-              number: (oldAttrs.number as number | undefined) ?? 0,
-            });
-          }
-          if (newId) {
-            added.footnotes.set(newId, {
-              id: newId,
-              pos: step.pos,
-              thanks: !!newAttrs.thanks,
-              number: (newAttrs.number as number | undefined) ?? 0,
-            });
-          }
-          footnoteOrderChanged = true;
-        }
-      }
-      continue;
-    }
-
-    // Unknown step kind: conservatively bump version via contentChangedUuids
-    // for the nearest enclosing block, so consumers re-read if they need to.
-    // No bundled-entity adds/removes.
   }
+  const { footnoteOrderChanged, citationOrderChanged } = sink;
 
   // -------------------------------------------------------------------------
   // Reconcile added vs removed.
   // -------------------------------------------------------------------------
+
+  // The two sides are recorded in DIFFERENT spaces by contract (`StepCoords`):
+  // `removed.*` in oldDoc, `added.*` in newDoc. Every same-key comparison below
+  // asks "did this entity MOVE?", which is only answerable in ONE space — so
+  // cross at this single door rather than comparing the raw numbers, which
+  // reports a move whenever an unrelated earlier edit changed the document's
+  // size ahead of the entity (a spurious `blockOrderChanged` /
+  // `changedFootnotes` / `changedCitations` / `changedExamples` wakes
+  // position-keyed consumers and the O(doc) numberer walk on a non-event), and
+  // in principle misses a real one. For a single-step transaction the mapping
+  // is what already made the raw comparison work; for a multi-step one it is
+  // what was missing.
+  const removedPosInNewDoc = (pos: number): number => tr.mapping.map(pos, 1);
 
   // Blocks. Filter out duplicate-UUID adds: if a UUID is in added but
   // also already in prevStructure.blocks (and not in removed), it's a
@@ -944,7 +999,7 @@ export function inspectSteps(
       // rides `changedBlocks` too — the index must fold the new flag — but
       // wakes `blockParTitleChanged` instead of `blockOrderChanged`, since
       // nothing moved and position-keyed consumers must stay asleep.
-      if (wasRemoved.pos !== entry.pos) {
+      if (removedPosInNewDoc(wasRemoved.pos) !== entry.pos) {
         changedBlocks.push(entry);
         blockOrderChanged = true;
         if (wasRemoved.parTitled !== entry.parTitled) blockParTitleChanged = true;
@@ -1027,7 +1082,9 @@ export function inspectSteps(
   for (const [id, entry] of added.footnotes) {
     const wasRemoved = removed.footnotes.get(id);
     if (!wasRemoved) addedFootnotes.push(entry);
-    else if (footnoteChanged(wasRemoved, entry)) changedFootnotes.push(entry);
+    else if (footnoteChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
+      changedFootnotes.push(entry);
+    }
   }
   for (const [id, entry] of removed.footnotes) {
     if (!added.footnotes.has(id)) removedFootnotes.push(entry);
@@ -1044,7 +1101,10 @@ export function inspectSteps(
     const wasRemoved = removed.citations.get(id);
     if (!wasRemoved) {
       addedCitations.push(entry);
-    } else if (citationChanged(wasRemoved, entry) || wasRemoved.pos !== entry.pos) {
+    } else if (
+      citationChanged(wasRemoved, entry) ||
+      removedPosInNewDoc(wasRemoved.pos) !== entry.pos
+    ) {
       // attr edit in place OR an atom MOVE (delete+insert) — both must
       // refresh the structure entry's pos/attrs (an atom move's mapped
       // old position is stale; only the NEW entry carries the right pos).
@@ -1090,7 +1150,7 @@ export function inspectSteps(
     if (!wasRemoved) {
       addedExamples.push(entry);
       exampleStructureChanged = true;
-    } else if (exampleChanged(wasRemoved, entry)) {
+    } else if (exampleChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
       changedExamples.push(entry);
       exampleStructureChanged = true;
     }
