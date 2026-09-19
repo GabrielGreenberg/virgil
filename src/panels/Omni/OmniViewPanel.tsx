@@ -146,7 +146,18 @@ interface OmniViewPanelProps {
   side: "left" | "right";
   items: OmniItem[];
   editor: Editor | null;
+  /** The categories whose cards CASCADE on this side: placed here AND not
+   *  hidden in the filter menu (`omniCategoriesForSide` — one Set carrying two
+   *  independent facts). Everything that must survive the filter reads
+   *  `categorySides` below instead; see the no-anchor bin's memo. */
   enabledCategories: Set<OmniCategory>;
+  /** The derived category → strip-side map (`deriveCategorySides`, task 381) —
+   *  PLACEMENT alone, with no visibility folded in. The door for a surface that
+   *  is not hideable by a view preference but still belongs to exactly one
+   *  gutter: the no-anchor bin (task 654). Partial, like `appliedPendingSide`'s
+   *  argument — an absent category falls back to its registry default side, so
+   *  an omitted prop means "registry defaults", never "placed nowhere". */
+  categorySides?: Partial<Record<OmniCategory, "left" | "right">>;
   /** When true, suppresses all card rendering regardless of enabled
    *  categories. Driven by the per-side dashed-square button in the
    *  presentation-tools pod. */
@@ -178,6 +189,11 @@ interface OmniViewPanelProps {
   // Pin-driven per-card positioning replaces the old global `cardsOffset`
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
+
+/** A stable empty placement map, so an `OmniViewPanel` mounted without
+ *  `categorySides` (every category on its registry default side) does not mint
+ *  a fresh object per render and break the derived Set's memo. */
+const EMPTY_CATEGORY_SIDES: Partial<Record<OmniCategory, "left" | "right">> = {};
 
 /** Resolve the owning panel (filter category) from an OmniItem. Item ids are
  *  the canonical `float:card:<kind>:<id>` grammar (AF). Parse the kind, then map
@@ -675,6 +691,7 @@ function OmniViewPanel({
   items,
   editor,
   enabledCategories,
+  categorySides = EMPTY_CATEGORY_SIDES,
   hideAllCards,
   dimResting,
   onBackgroundClick,
@@ -693,6 +710,15 @@ function OmniViewPanel({
     root.addEventListener("focusin", handler);
     return () => root.removeEventListener("focusin", handler);
   }, [onCardFocus]);
+  // The categories this side OWNS, filter deliberately not consulted — the
+  // side scope for anything that must survive a view preference (the no-anchor
+  // bin below). Recomputed only on a placement drag; `categorySides` is
+  // host-memoized off `prefs.placements`, so plain typing never touches it.
+  const placedCategories = useMemo(
+    () => new Set(omniCategoriesOnSide(categorySides, side)),
+    [categorySides, side],
+  );
+
   const visibleItems = useMemo(() => {
     if (hideAllCards) return [];
     return items.filter((item) => {
@@ -751,14 +777,30 @@ function OmniViewPanel({
   }, [visibleItems, resolvePos]);
 
   // The NO-ANCHOR set (task 544) — the gutter bin's input, and the ONE owner
-  // of the affordance on a side that hosts a bin at all. Derived from the
-  // side's WHOLE item list, not from `visibleItems`: the "hide all cards"
-  // toggle and the category filter are preferences about the CASCADE — what
-  // is shown beside the text — and a card with no place in the text is not a
-  // cascade card. Task 410's rule for the pod-header chip, arriving at the
-  // surface that replaces it: an affordance that exists so a card cannot
-  // vanish must not itself be hideable by a layout preference, and the chip
-  // it stands in for never read the filter either.
+  // of the affordance on a side that hosts a bin at all. It asks the two
+  // questions `enabledCategories` fuses SEPARATELY, because it wants opposite
+  // answers to them:
+  //
+  //  • VISIBILITY — never consulted. The "hide all cards" toggle and the
+  //    category filter are preferences about the CASCADE (what is shown beside
+  //    the text), and a card with no place in the text is not a cascade card.
+  //    Task 410's rule for the pod-header chip, arriving at the surface that
+  //    replaces it: an affordance that exists so a card cannot vanish must not
+  //    itself be hideable by a layout preference, and the chip it stands in for
+  //    never read the filter either. So this walks the side's WHOLE item list
+  //    rather than `visibleItems`.
+  //  • PLACEMENT — always consulted, through `placedCategories`. Both hosts are
+  //    handed the same cross-panel item array, so reading neither Set binned
+  //    every parked card in BOTH gutters with identical counts, mounted one
+  //    card's body twice, and duplicated its `data-omni-entry` in the DOM (task
+  //    654). This is task 420's rule for the applied-pending navigator, which
+  //    also reads placement and never the hidden set: a fact about the DOCUMENT
+  //    is shown on the ONE side its category is placed on.
+  //
+  // An id whose category can't be resolved (`categoryOf` → null) is binned on
+  // both sides on purpose — the cascade's own filter passes it on both sides
+  // too, and a card visible nowhere is the one outcome this surface exists to
+  // prevent. Every real card key parses, so the two sides' bins are disjoint.
   //
   // Builders that resolve paragraph UUIDs return pos:null while the editor is
   // still mounting, so nothing is binned until the editor is live (the same
@@ -771,13 +813,15 @@ function OmniViewPanel({
     if (!editor) return { free, orphaned };
     for (const item of items) {
       if (item.outsideFocus) continue;
+      const cat = categoryOf(item);
+      if (cat != null && !placedCategories.has(cat)) continue;
       const pos = resolvePos(item.id) ?? item.pos;
       if (pos != null) continue;
       if (item.anchorState === "free") free.push(item);
       else orphaned.push(item);
     }
     return { free, orphaned };
-  }, [items, editor, resolvePos]);
+  }, [items, editor, resolvePos, placedCategories]);
 
   // Report "this side is showing something" up so the column can stay open
   // when the omni-view alone has content (no docked band) — the Reader's

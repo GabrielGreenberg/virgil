@@ -116,6 +116,11 @@ const ITEMS = [anchoredNote, freeNote, orphanFootnote];
 const CATS = new Set(["notes", "footnotes"] as const) as Set<
   "notes" | "footnotes"
 > as never;
+/** These legs are about free-vs-orphaned ROUTING, not about which strip owns
+ *  which panel — so they place both fixture categories on the strip they
+ *  render. Registry defaults would put the footnote on the LEFT, and since
+ *  task 654 the bin honours placement. */
+const BOTH_ON_RIGHT = { notes: "right", footnotes: "right" } as const;
 
 function renderPanel(editor: Editor | null) {
   return render(
@@ -124,6 +129,7 @@ function renderPanel(editor: Editor | null) {
       items={ITEMS}
       editor={editor}
       enabledCategories={CATS}
+      categorySides={BOTH_ON_RIGHT}
     />,
   );
 }
