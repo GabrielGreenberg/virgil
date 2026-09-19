@@ -374,6 +374,65 @@ on it, so the file cannot go green by the detector going silent.
 [merge-structure-diffs.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/merge-structure-diffs.test.ts)
 pins the composition table.
 
+### The derived-facts half: identity is not the same question as derivation
+
+`collectRange` counts a block-level node iff its **opening token** lies in the
+step range, under a stated rule — "if its opening token got deleted, its
+identity is gone in newDoc". That rule answers *did this node's IDENTITY
+change?*, and it was being used to answer *did this node's DERIVED FACTS
+change?* A fact derived from a node's **body** changes without its opening
+token ever being touched, so the second question got the first one's answer:
+silence.
+
+The reachable case (task 651) is the most ordinary figure gesture there is.
+Whether a figure takes a NUMBER is `emitsCaption` (tasks 318/319,
+`figureNodeEmitsCaption`), and the editor always renders an editable caption —
+so giving a captionless figure a caption by TYPING into it is expected, not an
+edge case. That keystroke's `ReplaceStep` lies strictly inside the caption; the
+figureBlock was collected on neither side, `changedFigures` stayed empty, the
+`sectionNumbers` structural gate never fired, and the figure stayed unnumbered
+— which put **every later figure's number, and every `\ref` resolving through
+them, off by one**, visible only in the compiled PDF. The `AttrStep` fallback
+could not catch it either: it compares `label | numbered | hasCaption`, and the
+caption's CONTENT is none of those.
+
+The fix is the ancestor walk, not a wider gate. `step-inspector.ts` now states
+ONCE, in `BODY_DERIVED_FACT_KINDS`, which entity kinds carry a fact derived
+from their body — today the single row `{ figureBlock: emitsCaption }` — and
+each `ReplaceStep`/`ReplaceAroundStep` walks its edit point's ancestors for
+exactly those kinds, filling both sides in so the existing per-kind reconciler
+(`figureStructurallyChanged`) answers with no new branch downstream. Adding the
+second member is then a ROW, not another missed case. Collection is FILL-IN
+ONLY and requires a matching-uuid PAIR: where the range walk saw the node it
+saw the identity change too and stays authoritative, and where the two sides
+disagree about which node encloses the edit, the identity changed — which is
+the range walk's question, not this one's.
+
+**Cost:** the same `$pos.resolve` ancestor walk `nearestAnchorableUuid` /
+`nearestExampleBlockUuid` already do per step — O(depth), no doc scan. Typing
+in ordinary prose finds no such ancestor and returns before the second walk.
+And because the fact is a BOOLEAN, typing the *second* character of a caption
+derives equal on both sides and wakes nothing: only the flip costs anything.
+
+**The surgical alternative is the bug class this law exists to prevent.**
+Widening the numberer's gate to fire on `contentChangedUuids` would run the
+O(doc) `buildRefTargetIndexPM` walk on every keystroke in the document.
+
+**The trustworthiness half.** `FigureEntry.emitsCaption` is carried in the
+snapshot but read by no consumer yet — only the diff's own freshly-collected
+copies were compared. That is why the wrongness was invisible rather than
+merely wrong, and it made the stored value a trap for the first consumer to
+read it. Fixing the derivation fixes both: `applyDiff` folds `changedFigures`,
+so the stored fact now tracks the document.
+
+CI: [figure-caption-body-derived.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/figure-caption-body-derived.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack over the REAL parse and
+asserts the rendered NUMBER and `\ref` display alongside the diff bucket, so
+the two cannot agree only in the test. Its four defect legs — the renumber, the
+`changedFigures` bucket, the delete round trip, and the invocation count of
+`buildRefTargetIndexPM` — all fail on the pre-fix collector, while the
+already-captioned CONTROL passes on it.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).
