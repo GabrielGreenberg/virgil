@@ -189,7 +189,7 @@ import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
 import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover";
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
-import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
@@ -2499,8 +2499,15 @@ export default function EditorLayout() {
       // Card registration is editor-independent — it lands a panel card keyed by
       // `citationId` (no second atom, no cursor read), so it works the same for
       // a footnote-nested cite (the `nestedInFootnoteId` machinery resolves its
-      // in-text position from the host footnote marker).
-      getEditorActionsHandle()?.runAction("citation", {
+      // in-text position from the host footnote marker). Task 642: dispatch
+      // through the ONE origin-carrying door anyway, naming `targetEd` — the
+      // editor we just inserted the atom into. With a `citationId` payload
+      // `citationRun` takes the COMMIT branch and reads no position, so this
+      // resolves identically to the bare active-handle call it replaces; going
+      // through the door keeps plugin-land's dispatch single, and a dropped
+      // registration here (the atom HAS landed, one line up) now warns in dev
+      // instead of vanishing into `?.`.
+      runEditorAction(targetEd.view, "citation", {
         surface: "slash",
         payload: { citationId, command },
       });

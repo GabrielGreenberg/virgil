@@ -43,7 +43,7 @@ import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 // Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
 // one typed entrypoint into the registry's `footnote.run`, which now applies
 // the SAME pristine + pinned lifecycle the menu's Footnote gets.
-import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
+import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // Task 061: the cross-surface applicability SSOT — the typed `\footnote{}`
 // input rule honors the SAME curated per-kind set the menus consult. Footnote
 // IS allowed in a `titleField` (see TITLE_FIELD_ACTIONS) but NOT in a non-prose
@@ -242,7 +242,14 @@ export const Footnote = Node.create<FootnoteOptions>({
             // body content, so we pass `pristine:false` — the click-away
             // discarder must NOT reap a footnote the user typed prose into.
             const pristine = match[1].trim().length === 0;
-            getEditorActionsHandleFor(view)?.runAction("footnote", {
+            // Task 642: origin-carrying dispatch. `Footnote` is opt-in in the
+            // borrowed schemas (footnotes cannot nest, so a default `"card"`
+            // body omits it), but an `"excerpt"` body forces it in — so this
+            // rule DOES fire inside a nested editor, where the pre-642 dispatch
+            // built the card against the active PANE's caret. The outcome is
+            // warned in dev: the atom above already landed and would otherwise
+            // be orphaned in silence.
+            runEditorAction(view, "footnote", {
               surface: "typed",
               payload: { footnoteId, pristine },
             });

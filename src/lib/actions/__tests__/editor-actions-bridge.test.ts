@@ -49,11 +49,12 @@ import {
   registerEditorActionsHandle,
   unregisterEditorActionsHandle,
   getEditorActionsHandleFor,
+  runEditorAction,
   __resetEditorActionsRegistry,
 } from "@/lib/actions/editor-actions-bridge";
+import { resolveActionOrigin } from "@/lib/actions/action-origin";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
-import { paragraphUuidAt } from "@/links/links";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -115,21 +116,20 @@ function buildHandle(
   return {
     runAction(id: ActionId, seed) {
       const spec = VIRGIL_ACTION_REGISTRY[id];
-      if (!spec) return; // unknown id → no-op (dev-warns in the real effect)
+      if (!spec) return "no-row"; // unknown id → no-op (dev-warns in the real effect)
       const ed = editor;
       // CHIP 7b: the uniform collab read-only gate — the bridge no-ops entirely
       // when the partner holds the pen (mirrors EditorPane's `if (!ed.isEditable)
       // return`). Treat a missing `isEditable` as editable (no over-gating).
-      if (ed.isEditable === false) return;
-      const pos = ed.state.selection.head;
-      const ref: CursorRef = {
-        kind: "cursor",
-        pos,
-        paragraphId: paragraphUuidAt(ed.state.doc, pos) ?? "",
-      };
+      if (ed.isEditable === false) return "read-only";
+      // Task 642: the document-local half comes from the invocation's ORIGIN —
+      // the view the gesture fired in — not from this pane's editor. Imported
+      // from the SSOT `EditorPane` itself calls, so this fixture cannot drift
+      // from production on the very thing the legs below pin.
+      const { view, editor: originEd, ref } = resolveActionOrigin(ed, seed.origin);
       const ctx: ActionContext = {
-        editor: ed,
-        view: ed.view,
+        editor: originEd,
+        view,
         ref,
         surface: seed.surface,
         canEdit: ed.isEditable,
@@ -138,6 +138,7 @@ function buildHandle(
         payload: seed.payload,
       };
       void spec.run(ctx);
+      return "ran";
     },
   };
 }
@@ -437,6 +438,91 @@ describe("editor-actions-bridge registry (multi-doc keep-alive)", () => {
     const strayView = makeFakeEditor().view;
     expect(getEditorActionsHandleFor(strayView)).toBe(handle);
     expect(getEditorActionsHandleFor(null)).toBe(handle);
+  });
+
+  // ── task 642: the fallback is for the REACT APIs, not the POSITION ──────────
+  // The leg above stays: an unregistered view still resolves the active pane's
+  // handle, deliberately, because `cardCreation` / panel routing are app-global
+  // and a nested editor needs them. What must NOT come with them is the pane's
+  // caret. These two legs are the other half of that sentence.
+
+  it("runEditorAction carries the FIRING view to the handle as the invocation's origin", () => {
+    const ed = makeFakeEditor({ focused: true, visible: true });
+    const runAction = vi.fn();
+    registerEditorActionsHandle(ed, { runAction });
+    const nested = makeFakeEditor().view; // a card body: never a registry key
+
+    runEditorAction(nested, "citation", { surface: "typed", payload: { k: 1 } });
+
+    expect(runAction).toHaveBeenCalledWith("citation", {
+      surface: "typed",
+      payload: { k: 1 },
+      origin: nested,
+    });
+  });
+
+  it("the ref handed to run() is the FIRING view's position, not the active pane's", () => {
+    // The pane's caret is at 3; the nested editor's is at 9. Pre-642 the bridge
+    // read the PANE's, so a card typed in a nested body was anchored against a
+    // foreign document's caret.
+    const { editor: paneEd } = makeEditor(3);
+    const { editor: nestedEd } = makeEditor(9);
+    expect(nestedEd.view).not.toBe(paneEd.view);
+
+    const runSpy = vi.fn();
+    const original = VIRGIL_ACTION_REGISTRY.citation;
+    (VIRGIL_ACTION_REGISTRY as Record<string, ActionSpec>).citation = {
+      id: "citation",
+      label: "Citation (test)",
+      category: "card",
+      surfaces: { slash: true, typed: true },
+      applies: () => "ok",
+      run: runSpy,
+    };
+    try {
+      registerEditorActionsHandle(paneEd, buildHandle(paneEd, {}));
+      runEditorAction(nestedEd.view, "citation", { surface: "typed" });
+
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      const ctx = runSpy.mock.calls[0][0] as ActionContext;
+      expect(ctx.view).toBe(nestedEd.view);
+      expect(ctx.ref).toEqual({ kind: "cursor", pos: 9, paragraphId: "para-A" });
+      // The pane's own caret — the number the bug handed over — is NOT it.
+      expect((ctx.ref as CursorRef).pos).not.toBe(paneEd.state.selection.head);
+    } finally {
+      (VIRGIL_ACTION_REGISTRY as Record<string, ActionSpec>).citation = original;
+    }
+  });
+
+  it("a view-less (legacy) invocation still resolves the pane's own caret", () => {
+    // No origin ⇒ pre-642 behaviour, exactly: the pane's view IS the origin.
+    const { editor: paneEd } = makeEditor(5);
+    const runSpy = vi.fn();
+    const original = VIRGIL_ACTION_REGISTRY.citation;
+    (VIRGIL_ACTION_REGISTRY as Record<string, ActionSpec>).citation = {
+      id: "citation",
+      label: "Citation (test)",
+      category: "card",
+      surfaces: { slash: true, typed: true },
+      applies: () => "ok",
+      run: runSpy,
+    };
+    try {
+      setEditorActionsHandle(buildHandle(paneEd, {}));
+      getEditorActionsHandle()!.runAction("citation", { surface: "slash" });
+      const ctx = runSpy.mock.calls[0][0] as ActionContext;
+      expect(ctx.view).toBe(paneEd.view);
+      expect(ctx.ref).toMatchObject({ pos: 5 });
+    } finally {
+      (VIRGIL_ACTION_REGISTRY as Record<string, ActionSpec>).citation = original;
+    }
+  });
+
+  it("no handle at all → the dispatch reports \"no-handle\" instead of vanishing", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stray = makeFakeEditor().view;
+    expect(runEditorAction(stray, "citation", { surface: "typed" })).toBe("no-handle");
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it("legacy setEditorActionsHandle still publishes a single default slot", () => {

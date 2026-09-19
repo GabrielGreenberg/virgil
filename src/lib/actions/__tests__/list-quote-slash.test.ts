@@ -193,7 +193,12 @@ describe("\\ref / \\ex uniform collab read-only gate (task 297)", () => {
     const runAction = publishSpyHandle();
     COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
     expect(runAction).toHaveBeenCalledTimes(1);
-    expect(runAction).toHaveBeenCalledWith("ref", { surface: "slash" });
+    // Task 642: the seed carries the firing view as the invocation's ORIGIN, so
+    // the bridge builds the action's `ref` from the document the command ran in.
+    expect(runAction).toHaveBeenCalledWith("ref", {
+      surface: "slash",
+      origin: editor.view,
+    });
   });
 
   it("editable view: \\ex DOES reach the bridge (positive control)", () => {
@@ -201,7 +206,10 @@ describe("\\ref / \\ex uniform collab read-only gate (task 297)", () => {
     const runAction = publishSpyHandle();
     COMMAND_MAP.get("ex")!.action(editor.view, "\\ex");
     expect(runAction).toHaveBeenCalledTimes(1);
-    expect(runAction).toHaveBeenCalledWith("example", { surface: "slash" });
+    expect(runAction).toHaveBeenCalledWith("example", {
+      surface: "slash",
+      origin: editor.view,
+    });
   });
 
   it("read-only view: \\ref does NOT reach the bridge (no runAction, no doc mutation)", () => {
