@@ -78,6 +78,23 @@ function emptyBundle(): EntityBundle {
 }
 
 /**
+ * The ONE construction of a `FigureEntry` from a live node. Read by
+ * `inspectNodeAt` (the range walk) and by the body-derived-ancestor pass
+ * below, so the two can never disagree about what a figure's facts are.
+ */
+function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry {
+  const attrs = (n.attrs ?? {}) as Record<string, unknown>;
+  return {
+    uuid,
+    pos,
+    label: (attrs.label as string | undefined) ?? "",
+    numbered: attrs.numbered !== false,
+    number: (attrs.figureNumber as number | null | undefined) ?? null,
+    emitsCaption: figureNodeEmitsCaption(n),
+  };
+}
+
+/**
  * Inspect ONE node (including its own attrs/text and any linkedAnchor
  * marks if it's a text node). Does not recurse — the visitor below
  * handles recursion explicitly so position math stays correct.
@@ -111,14 +128,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
     }
 
     if (typeName === "figureBlock" && uuid) {
-      out.figures.set(uuid, {
-        uuid,
-        pos,
-        label: (attrs.label as string | undefined) ?? "",
-        numbered: attrs.numbered !== false,
-        number: (attrs.figureNumber as number | null | undefined) ?? null,
-        emitsCaption: figureNodeEmitsCaption(n),
-      });
+      out.figures.set(uuid, figureEntryAt(n, pos, uuid));
       if (typeof attrs.label === "string" && attrs.label) {
         out.labels.set(attrs.label, {
           id: attrs.label,
@@ -343,6 +353,106 @@ function nearestExampleBlockUuid(doc: PMNode, pos: number): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Body-derived facts: the ancestor pass.
+// ---------------------------------------------------------------------------
+
+/**
+ * `collectRange`'s start-in-range rule answers "did this node's IDENTITY
+ * change?" — a node whose opening token survived still exists. It cannot
+ * answer "did this node's DERIVED FACTS change?", because a fact derived
+ * from a node's BODY changes without the opening token ever being touched.
+ *
+ * The canonical case (task 651): whether a figure takes a NUMBER is
+ * `emitsCaption`, derived from the caption's own content (tasks 318/319).
+ * The editor always renders an editable caption, so giving a captionless
+ * figure a caption by typing into it is an ordinary gesture — and its
+ * `ReplaceStep` range lies strictly inside the caption, well past the
+ * figureBlock's opening token. The block was collected on neither side,
+ * `changedFigures` stayed empty, the numberer's structural gate never
+ * fired, and the figure stayed unnumbered — taking every later figure's
+ * number, and every `\ref` that resolves through them, off by one.
+ *
+ * So state ONCE which entity kinds carry facts derived from their body,
+ * and walk each touched range's ancestors for exactly those kinds. Adding
+ * the second member is then a ROW here, not another missed case.
+ */
+interface BodyDerivedFactKind {
+  /** The node type whose BODY (not attrs) feeds a tracked fact. */
+  readonly typeName: string;
+  /**
+   * Collect this node's entry into `out` under its own identity key.
+   * FILL-IN ONLY: where the range walk already collected the node it saw
+   * the identity change too, and stays authoritative.
+   */
+  readonly collect: (node: PMNode, pos: number, out: EntityBundle) => void;
+}
+
+const BODY_DERIVED_FACT_KINDS: readonly BodyDerivedFactKind[] = [
+  {
+    // `FigureEntry.emitsCaption` = `hasCaption || captionNodeHasContent(caption)`.
+    // The second disjunct is the body-derived half; `figureStructurallyChanged`
+    // already compares it, so a filled-in pair reconciles to `changedFigures`
+    // with no new branch downstream.
+    typeName: "figureBlock",
+    collect: (node, pos, out) => {
+      const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid ?? null;
+      if (!uuid || out.figures.has(uuid)) return;
+      out.figures.set(uuid, figureEntryAt(node, pos, uuid));
+    },
+  },
+];
+
+/**
+ * Walks up from `pos` to the nearest ancestor of a body-derived-fact kind.
+ * Same `$pos.resolve` ancestor walk as `nearestAnchorableUuid` /
+ * `nearestExampleBlockUuid` — O(depth), no doc scan, so it stays on the
+ * keystroke path without cost.
+ */
+function nearestBodyDerivedAncestor(
+  doc: PMNode,
+  pos: number,
+): { kind: BodyDerivedFactKind; node: PMNode; pos: number; uuid: string } | null {
+  if (pos < 0) pos = 0;
+  if (pos > doc.content.size) pos = doc.content.size;
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth >= 1; depth--) {
+    const node = $pos.node(depth);
+    const kind = BODY_DERIVED_FACT_KINDS.find((k) => k.typeName === node.type.name);
+    if (!kind) continue;
+    const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid ?? null;
+    if (!uuid) continue;
+    return { kind, node, pos: $pos.before(depth), uuid };
+  }
+  return null;
+}
+
+/**
+ * Collect the body-derived-fact ancestor of one step's edit point on BOTH
+ * sides, so the existing per-kind reconciler can compare them. Costs one
+ * extra `resolve` per step on the ordinary-prose path (no such ancestor →
+ * return before the second walk).
+ *
+ * Only a matching-uuid PAIR is collected: if the two sides disagree about
+ * which node encloses the edit, the node's identity changed, and identity
+ * is the range walk's question, not this one's.
+ */
+function collectBodyDerivedAncestors(
+  beforeStepDoc: PMNode,
+  fromInOld: number,
+  newDoc: PMNode,
+  fromInNew: number,
+  removed: EntityBundle,
+  added: EntityBundle,
+): void {
+  const after = nearestBodyDerivedAncestor(newDoc, fromInNew);
+  if (!after) return;
+  const before = nearestBodyDerivedAncestor(beforeStepDoc, fromInOld);
+  if (!before || before.uuid !== after.uuid) return;
+  before.kind.collect(before.node, before.pos, removed);
+  after.kind.collect(after.node, after.pos, added);
+}
+
+// ---------------------------------------------------------------------------
 // Public entry point.
 // ---------------------------------------------------------------------------
 
@@ -508,6 +618,19 @@ export function inspectSteps(
       // ancestor walk; no extra doc scan.
       const exUuid = nearestExampleBlockUuid(newDoc, fromInNew);
       if (exUuid) exampleContentChangedUuids.add(exUuid);
+
+      // Facts derived from a node's BODY change without its opening token
+      // ever entering the step range, so `collectRange` cannot see them.
+      // Walk this edit point's ancestors for the kinds that carry such a
+      // fact and fill both sides in — see `BODY_DERIVED_FACT_KINDS`.
+      collectBodyDerivedAncestors(
+        beforeStepDoc,
+        step.from,
+        newDoc,
+        fromInNew,
+        removed,
+        added,
+      );
 
       // Footnotes whose pos changed need a renumber check too.
       if (removed.footnotes.size > 0 || added.footnotes.size > 0) {
