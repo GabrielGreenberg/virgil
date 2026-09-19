@@ -3308,3 +3308,98 @@ on `ownsAppliedSplice` = `{revision-suggestion, cutter-suggestion}`;
 population the ask phase discharges — and because it asks the executor's own
 door about every card in the range, a kind that later joins the pending-change
 family is covered by declaration alone.
+
+### The range half: the gate must cover everything the mutation TOUCHES
+
+> **A gate that answers about ONE position while its action mutates a RANGE has
+> not been asked about the content it destroys.** Both halves of this law — "may
+> this act here?" and "can the destination hold what I am about to delete?" —
+> are questions about `[from, to]`, and a predicate that reads `from` alone
+> answers neither for the part of the range it never reached.
+
+Task 641. Every block-level action in `ACTION_REGISTRY` mutates a range:
+`deleteSelection()` then `replaceSelectionWith(...)` on the insert paths,
+`setBlockType(from, to, …)` on the heading-CONVERT path. Each decided the
+mutation was safe by resolving `state.selection.from` and asking
+`posHostsBlockInsert` about that single position — and, on the wrap paths, by
+looking only at the TEXT the harvest returned.
+
+Task 428 had already fixed the range half for the INLINE sibling, and its own
+header records the hazard verbatim: *select from mid-paragraph INTO a
+`codeBlock` … the gate read the paragraph and said "ok", and the replace then
+destroyed the code block's text and merged the blocks.* The block twin twenty
+lines above was left as a single-position question, with no stated reason
+anywhere in the tree. The remedy is the twin: `blockRangeHostsBlockInsert`, with
+`posHostsBlockInsert` reduced to its caret form (`from === to`) exactly as
+`posHostsInlineAtom` is of `inlineRangeAllowsAtom` and `posBlockAllowsAction` of
+`blockRangeAllowsAction`, and all three reading ONE walk
+(`rangeTextblockTypes`) so they cannot come to disagree about what "the
+textblocks this range reaches" means.
+
+Three things this half turns on, each of which looked like a backstop and is
+not:
+
+- **ProseMirror does not refuse the join.** `deleteSelection` →
+  `replaceTwoWay`'s `checkJoin` PASSES across a prose→verbatim boundary, because
+  `paragraph`'s `inline*` and `codeBlock`/`latexComment`'s `text*` share `text`,
+  so `compatibleContent` is true. The verbatim block is merged away and its
+  commented-out source is PROMOTED into the typeset document — the corruption
+  tasks 146/150/396 exist to prevent, reached through the range instead of the
+  caret.
+- **Nor on the CONVERT path.** `setBlockType` converts every textblock in the
+  range whose parent can host the target. `latexComment` is `content: "text*"`,
+  a textblock whose parent is `doc`, and `doc` hosts a heading anywhere — so PM
+  greenlights it and Virgil's own predicate is the only protection there is.
+- **An EXISTENCE quantifier cannot express a universal one.** `applies()`'s
+  walker breaks on the first applicable block and skips a protected one with
+  `return undefined`, so `[paragraph … latexComment]` reported applicable. "Some
+  block here is convertible" and "nothing here is protected" are different
+  sentences; the walker could only ever say the first. The universal half is now
+  asked FIRST, by the same range predicate the INSERT gate uses, so the two
+  surfaces of one question cannot diverge — and the caret case is the degenerate
+  range.
+
+**The representability half in the same sentence.** The three WRAP paths
+(`texRun`, `mathRun`, `exampleRun`) harvest the selection into a payload their
+new node can hold — plain TEXT for the first two, INLINE leaves for the third —
+and then delete the whole range. That is this law's own shape, and the rule was
+written TWICE and forgotten ONCE: `texRun` and `mathRun` each carried a
+hand-rolled bail, `exampleRun` none, so `\ex` over a selected `displayMath` /
+`figureBlock` / `graphicsBlock` replaced it with an empty template and the block
+was simply gone. `sliceIsFullyCapturedBy`
+([src/lib/tiptap/capture-symmetry.ts](../../../src/lib/tiptap/capture-symmetry.ts))
+is the one predicate all three now ask. One predicate is not tidiness: it is
+what stops the FOURTH wrap path forgetting it again.
+
+**Ask about the slice, never about the harvest.** Both hand-rolled bails asked
+*"did the harvest come back empty?"* — a PROXY that is true only when the
+selection holds nothing BUT unrepresentable content. Every MIXED selection
+(`foo \cite{bar}`, prose plus a figure) passed it, and the delete destroyed the
+atom anyway. The literal question is whether the capture's vocabulary represents
+everything the slice HOLDS.
+
+**Read the loss set from the registry, not from the schema `group`.** What a
+flattening capture destroys is the set the repo already calls *non-trivial to
+lose*: `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, derived from
+`TEXT_OBJECT_REGISTRY.isMeaningfulBlockAtom` plus `figureBlock`. It was
+module-private to `drag-handle-actions.ts`; 641 HOISTED it into the registry it
+derives from rather than copy it, so the destructive-confirm probe and the wrap
+predicate read one list at two severities of the same judgement (confirm vs.
+refuse). The near-miss worth recording: `group: "block textObject"` reads like
+the distinguisher and is not — `paragraph` carries it too, and a predicate built
+on it refuses every ordinary multi-paragraph wrap.
+
+**The vacuity this uncovered.** `block-atom-cells.test.ts`'s atom-only fixture
+handed DOC POSITIONS to a helper that takes IN-PARAGRAPH OFFSETS, so it selected
+the zero-width tail AFTER the atom. All three legs were green because nothing
+was selected — not because the atom was protected — and the old guard's
+`slice.content.size > 0` is satisfied by an open slice's own paragraph tokens,
+which is what kept the accident invisible. A leg asserting a destructive action
+DID NOT HAPPEN must pin that its input is the shape it names; this one now
+asserts the selected slice's first child is the atom before running anything.
+
+CI: `block-insert-container-gate.test.ts` (the range + representability legs),
+`heading-convert-container-gate.test.ts` (the convert range),
+`block-atom-cells.test.ts`. Every leg asserts the DOCUMENT IS UNCHANGED, not
+that a command returned false; each half was verified load-bearing by neutering
+it and watching them fail.
