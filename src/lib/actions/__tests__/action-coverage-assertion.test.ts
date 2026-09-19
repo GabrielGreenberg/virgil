@@ -64,6 +64,10 @@ import {
   type ActionSpec,
 } from "@/lib/actions/action-registry";
 import {
+  TYPED_LATEX_ACTION_IDS,
+  TYPED_LATEX_INPUT_RULES,
+} from "@/lib/tiptap/typed-latex-input-rules";
+import {
   CARD_ACTION_PRESENTATION,
   CARD_ACTION_ORDER,
 } from "@/lib/actions/action-icons";
@@ -123,6 +127,11 @@ const FORMAT_IDS = [
 const ATOM_IDS = ["ref"] as const;
 const TITLE_IDS = ["title", "author", "date"] as const;
 
+// Task 639 — the typed-only `latex-comment` row, appended LAST. Its own family
+// (not a seventh non-heading block id) because every block row is a grid cell
+// and a comment has none; `category: "block"`, `surfaces: { typed: true }`.
+const LATEX_COMMENT_IDS = ["latex-comment"] as const;
+
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
   editable: true,
@@ -178,8 +187,8 @@ describe("card-action rows", () => {
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
     // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) + the 4 block-atom
     // rows (CHIP 6a) PLUS the 8 format rows (CHIP 6b) PLUS — as of CHIP 7a — the
-    // `ref` atom + the 3 title-field rows. This is the COMPLETE SSOT: no OTHER
-    // rows exist.
+    // `ref` atom + the 3 title-field rows PLUS — as of task 639 — the typed-only
+    // `latex-comment` row. This is the COMPLETE SSOT: no OTHER rows exist.
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
       [
         ...CARD_IDS,
@@ -188,6 +197,7 @@ describe("card-action rows", () => {
         ...FORMAT_IDS,
         ...ATOM_IDS,
         ...TITLE_IDS,
+        ...LATEX_COMMENT_IDS,
       ].sort(),
     );
   });
@@ -235,6 +245,7 @@ describe("card-action rows", () => {
       ...FORMAT_IDS,
       ...ATOM_IDS,
       ...TITLE_IDS,
+      ...LATEX_COMMENT_IDS,
     ]);
   });
 });
@@ -862,8 +873,10 @@ describe("card slash partition is DERIVED from the live vocabulary (task 399)", 
   });
 
   it("the TYPED half is still checked independently — dropping surfaces.typed on citation trips", () => {
-    // Splitting the set must not drop the typed obligation on the two cards that
-    // DO own an input rule (`CARD_IDS_WITH_TYPED_RULE`, declared).
+    // Splitting the set must not drop the typed obligation on the cards that DO
+    // own an input rule. Since task 639 the obligation is stated ONCE, by the
+    // whole-vocabulary typed arm reconciling against `TYPED_LATEX_INPUT_RULES`,
+    // rather than per-slice — so the message names the id, not the slice.
     const citation = VIRGIL_ACTION_REGISTRY["citation"]!;
     const original = citation.surfaces.typed;
     try {
@@ -872,8 +885,8 @@ describe("card slash partition is DERIVED from the live vocabulary (task 399)", 
       expect(
         problems.some(
           (p) =>
-            p.includes('card id "citation"') &&
-            p.includes("must set surfaces.typed"),
+            p.includes('"citation"') &&
+            p.includes("does not claim surfaces.typed"),
         ),
         `expected a typed-half problem for citation; got ${JSON.stringify(problems)}`,
       ).toBe(true);
@@ -881,5 +894,135 @@ describe("card slash partition is DERIVED from the live vocabulary (task 399)", 
       (citation as { surfaces: { typed?: boolean } }).surfaces.typed = original;
     }
     expect(assertActionCoverage()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 639 — the FOURTH surface is reconciled against a live vocabulary.
+//
+// The arming legs below are the ones that could not exist while the typed
+// surface was a hand set. The headline one is the INVERSION: before this task,
+// setting `surfaces.typed` on a math row (the TRUE flag) produced a problem and
+// leaving it off produced none — the guard defending the falsehood. Each leg
+// mutates the registry through the cast idiom the other reconciliation suites
+// use, and restores it in a `finally`.
+// ---------------------------------------------------------------------------
+
+describe("typed surface — reconciled against TYPED_LATEX_INPUT_RULES (task 639)", () => {
+  it("is green as shipped, with all five typed-LaTeX rules rowed", () => {
+    expect(assertActionCoverage()).toEqual([]);
+    for (const id of TYPED_LATEX_ACTION_IDS) {
+      const r = VIRGIL_ACTION_REGISTRY[id];
+      expect(r, `row for typed-LaTeX rule "${id}"`).toBeTruthy();
+      expect(r!.surfaces.typed, `${id}.typed`).toBe(true);
+      // IDENTITY, not just "a RegExp": the row records the very object the
+      // plugin matches with (leaf-sharing), so the two cannot drift.
+      expect(r!.inputRulePattern, `${id}.inputRulePattern`).toBe(
+        TYPED_LATEX_INPUT_RULES[id],
+      );
+    }
+  });
+
+  it("THE INVERSION: dropping surfaces.typed on a math row now TRIPS (it used to be setting it that tripped)", () => {
+    for (const id of ["inline-math", "display-math"] as const) {
+      const r = VIRGIL_ACTION_REGISTRY[id]!;
+      const original = r.surfaces.typed;
+      try {
+        (r as { surfaces: { typed?: boolean } }).surfaces.typed = false;
+        const problems = assertActionCoverage();
+        expect(
+          problems.some(
+            (p) => p.includes(`"${id}"`) && p.includes("does not claim surfaces.typed"),
+          ),
+          `expected a typed problem for ${id}; got ${JSON.stringify(problems)}`,
+        ).toBe(true);
+        // …and NOTHING tells the author to remove the correct flag. That
+        // message is the pre-639 block leg, and its absence is the fix.
+        expect(
+          problems.some((p) => p.includes(`block id "${id}"`) && p.includes("claims a grab")),
+          `${id} must not be told it claims a surface it does not expose`,
+        ).toBe(false);
+      } finally {
+        (r as { surfaces: { typed?: boolean } }).surfaces.typed = original;
+      }
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("a row that RE-SPELLS its rule's pattern trips (identity, not equality)", () => {
+    const r = VIRGIL_ACTION_REGISTRY["inline-math"]!;
+    const original = r.inputRulePattern;
+    try {
+      // Byte-identical source, different object — exactly the drift leaf-sharing
+      // exists to prevent, and the shape `toBeInstanceOf(RegExp)` could not see.
+      (r as { inputRulePattern?: RegExp }).inputRulePattern = new RegExp(
+        TYPED_LATEX_INPUT_RULES["inline-math"].source,
+      );
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) => p.includes('"inline-math"') && p.includes("TYPED_LATEX_INPUT_RULES"),
+        ),
+        `expected a pattern-identity problem; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (r as { inputRulePattern?: RegExp }).inputRulePattern = original;
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the RETURN leg: a row claiming typed that owns no input rule trips", () => {
+    const note = VIRGIL_ACTION_REGISTRY["note"]!;
+    try {
+      (note as { surfaces: { typed?: boolean } }).surfaces.typed = true;
+      const problems = assertActionCoverage();
+      expect(
+        problems.some((p) => p.includes('"note"') && p.includes("owns no input rule")),
+        `expected a return-leg problem for note; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      delete (note as { surfaces: { typed?: boolean } }).surfaces.typed;
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the markdown WRAPPERS stay legitimate typed owners (the surface's second provider)", () => {
+    for (const id of ["bullet-list", "ordered-list", "blockquote"] as const) {
+      const r = VIRGIL_ACTION_REGISTRY[id]!;
+      expect(r.surfaces.typed, `${id}.typed`).toBe(true);
+      expect(r.inputRulePattern, `${id}.inputRulePattern`).toBeInstanceOf(RegExp);
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("SYMMETRY: a pattern recorded without the flag trips too", () => {
+    const bold = VIRGIL_ACTION_REGISTRY["bold"]!;
+    try {
+      (bold as { inputRulePattern?: RegExp }).inputRulePattern = /nope/;
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) => p.includes('"bold"') && p.includes("without claiming surfaces.typed"),
+        ),
+        `expected a symmetry problem for bold; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      delete (bold as { inputRulePattern?: RegExp }).inputRulePattern;
+    }
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("`latex-comment` is a REAL row — typed-only, with a live creator", () => {
+    const r = VIRGIL_ACTION_REGISTRY["latex-comment"]!;
+    expect(r.category).toBe("block");
+    expect(r.surfaces.typed).toBe(true);
+    expect(r.surfaces.grab).toBeFalsy();
+    expect(r.surfaces.lightning).toBeFalsy();
+    expect(r.surfaces.slash).toBeFalsy();
+    expect(r.surfaces.keyboard).toBeFalsy();
+    // Not an inert placeholder: the row's `run` IS the creator the typed rule
+    // calls (`commentifyParagraph`), which is why the kind has one creator and
+    // not two.
+    expect(typeof r.run).toBe("function");
   });
 });

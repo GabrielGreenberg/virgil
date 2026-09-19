@@ -29,10 +29,13 @@ const FOOTNOTE_ATOM = ATOM_REGISTRY.footnote;
 // the delete-confirm (a title-only footnote counts), so the two never diverge.
 import { cardHasContent } from "@/cards/has-content";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
-// The shared `\footnote{…}` trigger regex — the SAME pattern the action
-// registry's footnote row references, so the typed surface and the registry can
-// never recognize a different footnote vocabulary.
-import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
+// The shared `\footnote{…}` trigger regex, read through the typed-LaTeX census
+// (task 639): the SAME object `footnote-commands` exports and the action
+// registry's footnote row records as its `inputRulePattern`, so the typed
+// surface and the registry can never recognize a different footnote vocabulary
+// — and the table `assertActionCoverage` reconciles against is the one this
+// rule actually matches with, not a description of it.
+import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
@@ -190,7 +193,7 @@ export const Footnote = Node.create<FootnoteOptions>({
               undefined,
               "\ufffc"
             ) + text;
-            const match = textBefore.match(FOOTNOTE_RE_FULL);
+            const match = textBefore.match(TYPED_LATEX_INPUT_RULES.footnote);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
             const existing = new Set<string>();

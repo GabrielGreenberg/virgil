@@ -200,6 +200,7 @@ describe("action registry — the completeness pin is union-exhaustive at compil
       ["COVERED_FORMAT_IDS", "keysOf(FORMAT_ACTION_ROWS"],
       ["COVERED_ATOM_IDS", "keysOf(ATOM_ACTION_ROWS"],
       ["COVERED_TITLE_IDS", "keysOf(TITLE_ACTION_ROWS"],
+      ["COVERED_LATEX_COMMENT_IDS", "keysOf(LATEX_COMMENT_ACTION_ROWS"],
     ];
     for (const [name, derivation] of DERIVED) {
       expect(squeezed, `${name} must be derived`).toContain(
@@ -212,15 +213,27 @@ describe("action registry — the completeness pin is union-exhaustive at compil
   });
 
   it("leaves NO hand-listed id manifest behind (the shape that made the old guard a tautology)", () => {
-    // Every id list in this file is now `keysOf(…)`. The three SLASH subsets are
-    // derived too (`slashOwnersAmong(…)` — the block + format halves in task
-    // 385, the card half in task 399), so the only set that remains literal is
-    // `CARD_IDS_WITH_TYPED_RULE`: `new Set<…>([…])`, saying something about a
-    // handful of rows that a Record over the family cannot AND that no live
-    // vocabulary can reconcile (input rules have no table — task 228). It is
-    // outside this needle by shape rather than by exemption, and its own doc
-    // states why it stays declared.
+    // Every id list in this file is now `keysOf(…)`, and every SURFACE subset is
+    // derived from a live vocabulary: the three SLASH subsets from
+    // `SLASH_NAME_TO_ACTION_ID` (`slashOwnersAmong(…)` — the block + format
+    // halves in task 385, the card half in task 399), and as of task 639 the
+    // TYPED subset from `TYPED_LATEX_INPUT_RULES` (`typedOwners()`). That
+    // retired `CARD_IDS_WITH_TYPED_RULE`, the last literal set in the file — the
+    // one whose own doc conceded it could "only be missing a name" and then was:
+    // the `$` / `$$` rules were missing from it, and the coverage assertion's
+    // block leg PINNED their absence.
     expect(handListedManifests(code)).toEqual([]);
+    // The retired set must not come back by name.
+    expect(squeezed).not.toContain("CARD_IDS_WITH_TYPED_RULE");
+  });
+
+  it("DERIVES the typed surface from the live input-rule census (task 639)", () => {
+    // The typed half of the four-surface claim. `typedOwners()` must union the
+    // census key set with the markdown wrappers, and the arm must reconcile
+    // against `TYPED_LATEX_INPUT_RULES` — not against a set spelled here.
+    expect(squeezed).toContain(squeeze("function typedOwners()"));
+    expect(squeezed).toContain(squeeze("...TYPED_LATEX_ACTION_IDS"));
+    expect(squeezed).toContain(squeeze("TYPED_LATEX_INPUT_RULES[id]"));
   });
 
   it("SELF-CHECK: the census needles really do fire on the pre-260 shapes", () => {

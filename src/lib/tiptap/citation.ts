@@ -1,6 +1,13 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
+import { CITE_RE_BARE } from "@/lib/cite-commands";
+// The FULL-form trigger is read from the typed-LaTeX census (task 639) — the
+// same object `cite-commands` exports and the `citation` registry row records
+// as its `inputRulePattern`. Reading it HERE is what makes the census live: the
+// table the coverage assertion reconciles against is the table this rule
+// matches with, not a description of it. (The bare `\cite ` soft-route stays on
+// its own `CITE_RE_BARE`; the row records the canonical full form.)
+import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
 import { generateShortId } from "@/lib/uuid";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
 // speller (task 202) — a hand-built `citation:${id}` here was a second copy.
@@ -190,7 +197,7 @@ export const Citation = Node.create<CitationOptions>({
 
             if (text === "}") {
               // Full citation command ending with } (e.g. `\cite{key}`).
-              const match = textBefore.match(CITE_RE_FULL);
+              const match = textBefore.match(TYPED_LATEX_INPUT_RULES.citation);
               if (match) {
                 const command = match[0];
                 const start = from + text.length - command.length;
