@@ -20,11 +20,32 @@
 // the only reader — the reachability half of "a registry earns its name by
 // being read": a derived stub is only worth anything if nothing else is allowed
 // to hand-copy the surface beside it.
+//
+// Task 643 — AND WHAT EACH DOOR ANSWERS. Deriving the names closed one axis of
+// the same defect and left the other open: every derived door was a bare
+// `vi.fn()` resolving `undefined`, a value NO door's contract admits.
+// `mutateSidecar` is `Promise<T | null>`, its one consumer narrowed on
+// `=== null`, and the stub's `undefined` sailed past that guard and
+// dereferenced — four unhandled rejections that made the whole suite exit 1
+// while printing "12493 passed". So the default RETURN is derived from the
+// backend's declared return type as well, and the last three legs below hold
+// that derivation to the same standard as the name set: it must be read from
+// real source, it must agree with the one place the gaps are declared, and no
+// door may answer `undefined` unless that declaration says so.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { commentsStripped, REPO_ROOT, trackedFiles } from "./_source-scan";
-import { storageExportNames, STORAGE_MODULE } from "./_mock-storage";
+import {
+  storageExportNames,
+  storageReturnTypes,
+  storageIdentityArgs,
+  defaultForReturnType,
+  mockStorageModule,
+  MISSING,
+  STORAGE_MODULE,
+  UNSYNTHESIZABLE_RETURNS,
+} from "./_mock-storage";
 
 const MOCK_TARGET = 'vi.mock("@/lib/storage"';
 /**
@@ -304,5 +325,90 @@ describe("the @/lib/storage stub is derived, and derived once", () => {
       }
     }
     expect(bad, `storage mocks naming non-exports:\n  ${bad.join("\n  ")}`).toEqual([]);
+  });
+});
+
+describe("…and what each door answers is derived too", () => {
+  it("reads a real return type for every door but the boolean", () => {
+    const types = storageReturnTypes();
+    // `isDevStorage` is a boolean re-export from `storage-mode`, not a door —
+    // `mockStorageModule` binds it to `false` after the derived loop.
+    const undeclared = storageExportNames().filter((n) => n !== "isDevStorage" && !types.has(n));
+    expect(
+      undeclared,
+      `no declared return type found for:\n  ${undeclared.join("\n  ")}`,
+    ).toEqual([]);
+    // Non-vacuity: a broken scan would report an empty or tiny map, and every
+    // door would silently fall back to `undefined` again.
+    expect(types.size).toBeGreaterThan(40);
+    // The shapes this task turned on, named: the crash's own door, the
+    // one-hop re-export (`getDocWriteHandle` lives in `doc-pipeline`), and the
+    // barrel's own locally-declared door.
+    expect(types.get("mutateSidecar")).toBe("Promise<T | null>");
+    expect(types.get("getDocWriteHandle")).toBe("DocWriteHandle | null");
+    expect(types.get("drainDoc")).toBe("Promise<void>");
+  });
+
+  it("declares exactly the doors whose return it cannot synthesize", () => {
+    // The gap is allowed; a SILENT gap is not. `UNSYNTHESIZABLE_RETURNS` is the
+    // declaration, and this is what makes it a declaration rather than a
+    // comment: a new object-returning door must be added to it deliberately,
+    // and a door that gains `| null` must be removed from it.
+    const types = storageReturnTypes();
+    const identity = storageIdentityArgs();
+    const derived = storageExportNames()
+      .filter((n) => n !== "isDevStorage" && !identity.has(n))
+      .filter((n) => defaultForReturnType(types.get(n)!) === MISSING)
+      .sort();
+    expect(derived).toEqual(Object.keys(UNSYNTHESIZABLE_RETURNS).sort());
+    // And each entry states the type that put it there, so the list explains
+    // itself to whoever next adds a door.
+    for (const [name, declared] of Object.entries(UNSYNTHESIZABLE_RETURNS)) {
+      expect(types.get(name), `${name}'s declared type moved`).toBe(declared);
+    }
+  });
+
+  it("no door answers a value its declared return type excludes", () => {
+    // The end-to-end leg: build the stub the 455 suites actually get, call
+    // every door, and hold each answer against its contract.
+    const mod = mockStorageModule() as Record<string, (...a: unknown[]) => unknown>;
+    const types = storageReturnTypes();
+    const identity = storageIdentityArgs();
+    const sentinel = { sentinel: true };
+    const offenders: string[] = [];
+    return Promise.all(
+      storageExportNames()
+        .filter((n) => n !== "isDevStorage")
+        .map(async (name) => {
+          const declared = types.get(name)!;
+          // The identity doors return an argument; hand them one to return.
+          const args = identity.has(name)
+            ? Array.from({ length: identity.get(name)! + 1 }, () => sentinel)
+            : [];
+          const answer = await mod[name](...args);
+          if (identity.has(name)) {
+            if (answer !== sentinel) offenders.push(`${name} did not answer its own argument`);
+            return;
+          }
+          const expected = defaultForReturnType(declared);
+          if (expected === MISSING) {
+            // Declared-unsynthesizable: `undefined` here is the known gap.
+            if (!(name in UNSYNTHESIZABLE_RETURNS)) {
+              offenders.push(`${name} answers undefined but is not declared unsynthesizable`);
+            }
+            return;
+          }
+          if (answer === undefined && expected !== undefined) {
+            offenders.push(`${name} answers undefined; declared ${declared}`);
+          }
+          if (expected !== undefined) expect(answer).toEqual(expected);
+        }),
+    ).then(() => {
+      expect(offenders, `stubs contradicting their contract:\n  ${offenders.join("\n  ")}`).toEqual(
+        [],
+      );
+      // The crash itself, in one line: the door whose `undefined` exited 1.
+      return expect(mod.mutateSidecar()).resolves.toBeNull();
+    });
   });
 });
