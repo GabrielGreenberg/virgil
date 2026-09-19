@@ -196,7 +196,17 @@ export async function mutateAiRequests(
     console.error("Failed to persist ai requests:", err);
     return { kind: "failed", error: err };
   }
-  if (next === null) return ran ? { kind: "declined" } : { kind: "read-only" };
+  // `== null`, not `=== null`: "nothing was written" is the ABSENCE of a next
+  // state, and absence has two runtime spellings. The declared contract says
+  // `T | null`, but a door is only ever as faithful as whatever is standing in
+  // for it, and the thing that answered here is not always the real door — a
+  // stub, a partial fake, a backend that grew a `return;` path. This narrowing
+  // sits AFTER the `try`, so the `undefined` spelling did not fall into the
+  // catch: it dereferenced, and with no caller awaiting it (task 643) surfaced
+  // as an unhandled rejection rather than a `failed` result. Asking the
+  // question that covers both spellings costs nothing and removes the only way
+  // this line can throw.
+  if (next == null) return ran ? { kind: "declined" } : { kind: "read-only" };
 
   // Announce the authoritative post-write list so every live reader in THIS
   // window (the inbox hook) adopts it without a disk round-trip. Only after a

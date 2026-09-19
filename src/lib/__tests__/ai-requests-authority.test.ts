@@ -181,6 +181,22 @@ describe("ai-requests: one serialized read-modify-merge authority", () => {
     expect(onDisk().map((r) => r.id)).toEqual(["keep"]);
   });
 
+  // Task 643 — the ABSENCE of a next state has two runtime spellings, and this
+  // narrowing sits after the `try`, so the second one did not fall into the
+  // catch: it dereferenced `.requests` on `undefined`. With no caller awaiting
+  // the bridge that reaches it, that surfaced as an unhandled rejection — four
+  // of them, enough to make the whole suite exit 1 while printing "12493
+  // passed". The door is only ever as faithful as whatever stands in for it,
+  // and what stood in for it here was the derived stub answering `undefined`.
+  it("a door that answers undefined is 'nothing written', not a dereference", async () => {
+    seed([row({ id: "keep" })]);
+    const { mutateSidecar } = await import("@/lib/storage");
+    vi.mocked(mutateSidecar).mockResolvedValueOnce(undefined as never);
+    const result = await mutateAiRequests(DOC, (reqs) => [...reqs, row({ id: "x" })]);
+    expect(result).toEqual({ kind: "read-only" });
+    expect(onDisk().map((r) => r.id)).toEqual(["keep"]);
+  });
+
   it("no doc / no active write handle persists nothing and says NO-HANDLE", async () => {
     seed([row({ id: "keep" })]);
     expect(await mutateAiRequests(null, (reqs) => [...reqs, row({ id: "x" })]))
