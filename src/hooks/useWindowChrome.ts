@@ -42,6 +42,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from "react";
+import { readFlag } from "@/lib/feature-flags";
 
 export type DisplayMode =
   | "browser"
@@ -97,11 +98,7 @@ function _wco(): WCOLike | null {
 
 function _debugOn(): boolean {
   if (typeof window === "undefined") return false;
-  try {
-    if (localStorage.getItem("virgil:wco-debug") === "1") return true;
-  } catch {
-    /* ignore */
-  }
+  if (readFlag("virgil:wco-debug")) return true;
   return typeof location !== "undefined" && location.search.includes("wco-debug");
 }
 

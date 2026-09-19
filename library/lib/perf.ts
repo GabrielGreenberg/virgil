@@ -6,16 +6,14 @@
 // master.bib parse, catalog read, and merge cost are visible on the real
 // FSA library (the dev preview can't load it; this is how you confirm the
 // browse-index win in production). See MEMO_LIBRARY_SCALE_RESEARCH.md.
+//
+// The switch itself is declared on its row in the flag SSOT.
+import { readFlag } from "@/lib/feature-flags";
 
 function enabled(): boolean {
-  try {
-    // A global escape hatch for non-DOM contexts / quick toggling.
-    if ((globalThis as { __VIRGIL_LIB_PERF?: boolean }).__VIRGIL_LIB_PERF) return true;
-    if (typeof localStorage === "undefined") return false;
-    return localStorage.getItem("virgil:lib-perf") === "1";
-  } catch {
-    return false;
-  }
+  // A global escape hatch for non-DOM contexts / quick toggling.
+  if ((globalThis as { __VIRGIL_LIB_PERF?: boolean }).__VIRGIL_LIB_PERF) return true;
+  return readFlag("virgil:lib-perf");
 }
 
 function report(label: string, deltaMs: number, extra?: string): void {

@@ -19,6 +19,7 @@
  */
 
 import { hasFsaSupport } from "@/lib/fsa-support";
+import { readFlag } from "@/lib/feature-flags";
 import type { PickedFigureFile } from "@/lib/storage";
 
 /** Mirror of `isDevStorage`'s detection, but framed as "can the FSA file
@@ -37,14 +38,9 @@ import type { PickedFigureFile } from "@/lib/storage";
 function canUseFsaFilePicker(): boolean {
   if (!hasFsaSupport()) return false;
   if (typeof window === "undefined") return false;
-  try {
-    if (window.localStorage.getItem("virgil:force-dev-storage") === "1") {
-      return false;
-    }
-  } catch {
-    // localStorage access can throw under sandboxed iframes; fall through
-    // to the iframe check.
-  }
+  // A throwing/blocked localStorage reads as the flag's default (OFF), so the
+  // iframe check below is still the fallback it always was.
+  if (readFlag("virgil:force-dev-storage")) return false;
   if (window.self !== window.top) return false;
   return true;
 }

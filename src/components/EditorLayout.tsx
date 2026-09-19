@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import { EditorHandle } from "./Editor";
+import { readFlag } from "@/lib/feature-flags";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
@@ -1015,9 +1016,7 @@ export default function EditorLayout() {
   useEffect(() => {
     try {
       setBugReportEnabled(
-        localStorage.getItem("virgil:bug-report") === "1" &&
-          hasFsaSupport() &&
-          !isDevStorage,
+        readFlag("virgil:bug-report") && hasFsaSupport() && !isDevStorage,
       );
     } catch {}
   }, []);

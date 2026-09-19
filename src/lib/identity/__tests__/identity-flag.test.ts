@@ -37,8 +37,19 @@ describe("identity-cascade flag", () => {
     expect(isIdentityCascadeOn()).toBe(true);
   });
 
-  it("any non-`1` localStorage value is OFF", () => {
-    window.localStorage.setItem("virgil:identity-cascade", "true");
+  // Task 646 replaced the per-flag dialect with one universal vocabulary
+  // (`1|true|on|yes` / `0|false|off|no`), so `"true"` now means what whoever
+  // typed it meant. `"1"` — this flag's documented sentinel — is unchanged, so
+  // no switch already set changed meaning; the dialect only ADDED spellings.
+  it("the whole ON vocabulary reads ON, not just `1`", () => {
+    for (const v of ["1", "true", "on", "yes"]) {
+      window.localStorage.setItem("virgil:identity-cascade", v);
+      expect(isIdentityCascadeOn(), v).toBe(true);
+    }
+  });
+
+  it("a value outside the vocabulary falls back to the default (OFF)", () => {
+    window.localStorage.setItem("virgil:identity-cascade", "maybe");
     expect(isIdentityCascadeOn()).toBe(false);
   });
 

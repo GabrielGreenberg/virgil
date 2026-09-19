@@ -45,6 +45,7 @@
 // consumer must never see an end edge while another gesture is still moving
 // its geometry.
 
+import { readFlag } from "@/lib/feature-flags";
 import {
   recordLayoutGestureEdge,
   recordLayoutGestureFrame,
@@ -206,14 +207,7 @@ let publisherInstalled = false;
  *  `localStorage['virgil:layout-gesture'] = 'off'`, then reload. Read once at
  *  install so the hot path stays a boolean. */
 function windowPublisherDisabled(): boolean {
-  try {
-    return (
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("virgil:layout-gesture") === "off"
-    );
-  } catch {
-    return false;
-  }
+  return !readFlag("virgil:layout-gesture");
 }
 
 function endWindowGesture(): void {

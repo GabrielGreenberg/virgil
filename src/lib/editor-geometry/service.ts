@@ -32,6 +32,7 @@
 
 import type { Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import { readFlag } from "@/lib/feature-flags";
 import {
   type AnchorNodeMetrics,
   resolveMarginaliaHost,
@@ -304,14 +305,7 @@ export interface BlockAtY {
  * whenever `blocksAtY` cannot answer).
  */
 export function geomHoverEnabled(): boolean {
-  try {
-    return (
-      typeof localStorage === "undefined" ||
-      localStorage.getItem("virgil:geom-hover") !== "off"
-    );
-  } catch {
-    return true;
-  }
+  return readFlag("virgil:geom-hover");
 }
 
 export interface EditorGeometryService {

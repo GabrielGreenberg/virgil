@@ -36,6 +36,7 @@ import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { readFlag } from "@/lib/feature-flags";
 import { SECTION_ACTIVE_LINE_FRACTION } from "@/components/editor-layout/layout-scroll";
 import { posAtViewportY } from "./viewport-probe";
 import { createBlockVocabCache } from "./block-vocab";
@@ -79,14 +80,7 @@ export interface SectionSkipBand {
  * a reload.
  */
 export function geomBreadcrumbEnabled(): boolean {
-  try {
-    return (
-      typeof localStorage === "undefined" ||
-      localStorage.getItem("virgil:geom-breadcrumb") !== "off"
-    );
-  } catch {
-    return true;
-  }
+  return readFlag("virgil:geom-breadcrumb");
 }
 
 // Par-titled vocabulary — uuids in doc order, rebuilt only when the

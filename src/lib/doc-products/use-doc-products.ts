@@ -20,6 +20,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { Editor } from "@tiptap/react";
 import type { BibFamily } from "@/lib/bib-family";
+import { readFlag } from "@/lib/feature-flags";
 import {
   createDocProducts,
   getDocProducts,
@@ -29,14 +30,7 @@ import {
 // Side-effect: installs window.__docProductsStats.
 import "./probe";
 
-export const docProductsEnabled: boolean = (() => {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem("virgil:doc-products") !== "off";
-  } catch {
-    return true;
-  }
-})();
+export const docProductsEnabled: boolean = readFlag("virgil:doc-products");
 
 const EMPTY_SNAPSHOT: ProductsSnapshot = {
   generation: 0,
