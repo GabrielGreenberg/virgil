@@ -123,6 +123,7 @@ import { TextSelection } from "@tiptap/pm/state";
 // (the CHIP 5c example-wrap harvest, SSOT for the grid + slash + the DA-1 test)
 // walks. No runtime — erased at compile time.
 import type { Slice, Fragment, Node as PMNode } from "@tiptap/pm/model";
+import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
 // VALUE import: the canonical collision-free short-id minter. `texRun` (the
 // raw-LaTeX block creator) mints a fresh `uuid` for the new `texBlock` the SAME
 // way every other node creator does (slash `\cite`/`\title`, the grid's
@@ -1580,13 +1581,17 @@ const HEADING_ID_LEVEL: Readonly<Record<HeadingActionId, number>> = {
 };
 
 /**
- * The canonical heading transform — always SET + `numbered:true`, on
- * `ctx.view`. Mirrors the slash command's `tr.setBlockType(from, to, heading,
- * { level, numbered:true })` VERBATIM so the four heading commands and the
- * dropdown can never diverge on the verb. Pure PM — no React, no bridge.
+ * The canonical heading transform — always SET, on `ctx.view`. The four slash
+ * commands and the BlockType dropdown's levels 1–4 both call this one `run()`,
+ * so they can never diverge on the verb. Pure PM — no React, no bridge.
  *
- * `numbered:true` is passed explicitly (it also IS the schema default, so this
- * is belt-and-suspenders, matching the slash command).
+ * The ATTRS are not this function's to decide: they come from
+ * {@link setHeadingLevelInRange} ([heading-level.ts]), the one door every
+ * heading-level write in the app now takes — the chip's type menu, these four
+ * commands, and the dropdown's out-of-scope levels 0/5/6. `numbered: true` is
+ * the CONVERSION default (a paragraph becoming a heading); an existing heading
+ * keeps its own `numbered`, its `\label{}`, its `\section[short]{…}`, its
+ * `sectionNumber` and — decisively — its `uuid`. See task 658.
  */
 function headingRun(level: number): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
@@ -1618,11 +1623,25 @@ function headingRun(level: number): (ctx: ActionContext) => void {
       )
     )
       return;
-    const tr = state.tr.setBlockType(
+    // Task 658: the range walk + attr rule live in ONE door
+    // (`setHeadingLevelInRange`), shared with the chip's type menu and the
+    // dropdown's out-of-scope levels. A LITERAL `{ level, numbered: true }`
+    // here was "rebuild this heading from scratch": `setBlockType` computes the
+    // new node's attrs from the object it is handed, so every heading attr not
+    // named fell back to its default — dropping the user's `\label{}` (dangling
+    // `\ref`s), their `\section[short]{…}`, their `\section*`'s unnumbered-ness,
+    // and the block's `uuid` (orphaning every card anchored to it). The door
+    // spreads the node's OWN attrs when the target is already a heading, so the
+    // next attr added to `MAIN_STARTERKIT_NODE_ATTRS.heading` is carried
+    // without an edit here — which is how `sectionNumber` and `shortTitle`
+    // came to be missing from the literal in the first place. A genuine
+    // paragraph→heading CONVERSION still gets the shipped defaults.
+    const tr = setHeadingLevelInRange(
+      state.tr,
       state.selection.from,
       state.selection.to,
       heading,
-      { level, numbered: true },
+      level,
     );
     ctx.view.dispatch(tr);
   };

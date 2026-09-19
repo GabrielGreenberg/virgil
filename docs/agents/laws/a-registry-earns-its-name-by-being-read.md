@@ -4579,3 +4579,68 @@ CI: [identity-surface-honesty.test.ts](../../../src/lib/identity/__tests__/ident
 (the collision branch — three of its four legs fail on the pre-fix loop),
 [useCitations-replace-bib.test.tsx](../../../src/hooks/__tests__/useCitations-replace-bib.test.tsx)
 (the retype pin renegotiated: the type lands on disk and NOTHING fans, on both flag paths).
+
+---
+
+## The attr-literal half — "rebuild from scratch" is the wrong verb for an edit (task 658)
+
+`MAIN_STARTERKIT_NODE_ATTRS.heading` declares what a heading carries: `label`
+(its `\label{}`), `uuid` (its IDENTITY), `numbered` (its `*`), `sectionNumber`,
+and `shortTitle` (its `\section[short]{…}`). Three write sites changed a
+heading's LEVEL, and only one of them had ever read that table:
+
+| surface | spelling | outcome |
+|---|---|---|
+| the heading-annotation chip's type menu | `setNodeMarkup(pos, undefined, { ...node.attrs, level })` | correct |
+| `headingRun` — the SSOT behind the BlockType dropdown levels 1–4 **and** the four slash `\chapter`/`\section`/… commands | `setBlockType(from, to, heading, { level, numbered: true })` | rebuilt |
+| the dropdown's out-of-scope levels 0/5/6, which skip the registry | `setNode("heading", { level, numbered: true })` | rebuilt |
+
+`setBlockType` / `setNode` compute the new node's attrs **from the object they
+are handed**, so every key it does not name falls back to its schema default.
+Demoting a `\section*[Short]{Introduction}\label{sec:intro}` from the dropdown
+therefore deleted the user's `\label` (every `\ref` to it left dangling in their
+`.tex`), deleted the `[short]` running head, forced the starred section numbered
+(renumbering every section after it), and re-minted the `uuid` — orphaning every
+card anchored to that heading. Silently, in the user's only copy.
+
+**The rule.** A literal attr object is the verb "rebuild this node from
+scratch." It is right for a genuine CONVERSION — a paragraph becoming a heading
+has no heading attrs to keep — and wrong whenever the node already exists and
+the user is changing ONE of its properties. Where both cases reach one call
+site, the decision is per-NODE, so it belongs in `setBlockType`'s attrs-FUNCTION
+form, not in a literal: a mixed range (a heading and a paragraph selected
+together) has no single correct literal, which is the structural proof that the
+literal was never expressible.
+
+**Preserve by CONSTRUCTION, not by remembering the list.** The door
+([heading-level.ts](../../../src/lib/tiptap/heading-level.ts) —
+`headingAttrsForLevel` / `setHeadingLevelInRange`) spreads `node.attrs` rather
+than enumerating keys, so the next attr added to the table is carried without an
+edit there. The enumerating alternative (hand the same `setBlockType` a merged
+literal) is a smaller diff that restates "which attrs matter" at a second site —
+the drift that caused this. `sectionNumber` and `shortTitle` were both added
+AFTER `headingRun` was written; that is exactly how the list came apart.
+
+**Identity is carried, not rescued.** `block-uuid-backfill`'s re-parent transfer
+REFUSES a same-type write by design (`if (oldParent.node.type ===
+newParent.node.type) return null;` — a same-type in-place write is the caller's
+own statement about that node, and honouring it would silently undo a deliberate
+`uuid: null`). So nothing downstream could have saved the heading's id; it had
+to ride in the spread attrs. The backfill then sees a uuid whose owner left the
+doc in the same batch (`removedUuids`) — a move, not a duplicate — and keeps it.
+
+**What is NOT preserved, on purpose.** `sectionNumber` is derived display state
+owned by the section numberer, which re-solves the whole document after any
+structural change; a heading that becomes a subsection genuinely gets a
+different number. The door carries the attr through the write and the numberer
+lands after it. Pinning the old number would assert a bug.
+
+CI: [heading-level-attr-preservation.test.ts](../../../src/lib/actions/__tests__/heading-level-attr-preservation.test.ts)
+— four surfaces over one fixture carrying a label, a `[short]` title,
+`numbered: false` and a uuid; a `.tex` leg (the `\label` and `[short]` survive
+and the section stays starred); the conversion and mixed-range legs; and a
+CENSUS that discovers the write population from the tree, so a fourth surface
+cannot slip the door. Pre-fix nine of its fourteen legs fail and the five chip /
+conversion legs pass — that asymmetry is the finding. Plus M8c in
+[reparent-identity-conservation.test.ts](../../../src/lib/tiptap/__tests__/reparent-identity-conservation.test.ts)
+(the same-type case, stated where M8/M8b would otherwise imply it was covered).

@@ -57,6 +57,7 @@ import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-ex
 import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids, serializeBodyOnly } from "@/lib/latex-serializer";
+import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -431,6 +432,42 @@ describe("499 — every container-changing surface conserves, not just Shift-Tab
     ed.chain().setParagraph().run();
     expect(ed.state.doc.child(0).type.name).toBe("paragraph");
     expect(idsByPath(ed)["0"], outline(ed)).toBe("P1");
+  });
+
+  it("M8c a heading changing LEVEL keeps its id — and does so WITHOUT a transfer", () => {
+    // Task 658. `setBlockType` on a node of the SAME type is the one RETYPE
+    // shape the transfer rule deliberately refuses
+    // (`if (oldParent.node.type === newParent.node.type) return null;` — a
+    // same-type in-place write is the caller's own statement about that node,
+    // and honouring it would silently undo a deliberate `uuid: null`). So the
+    // heading's identity cannot be RESCUED here; it has to be CARRIED, which is
+    // exactly what `setHeadingLevelInRange` does by spreading the node's attrs.
+    // The leg is here rather than only in the action suite because this is the
+    // file that states which shapes conserve and why, and a reader who found
+    // only M8/M8b would reasonably conclude the same-type case was covered.
+    const ed = mount([
+      {
+        type: "heading",
+        attrs: { uuid: "H1", level: 2, label: "sec:x", numbered: false },
+        content: [{ type: "text", text: "Heading" }],
+      },
+      P("P2", "x"),
+    ]);
+    caret(ed, "Heading");
+    const headingType = ed.schema.nodes.heading;
+    ed.view.dispatch(
+      setHeadingLevelInRange(
+        ed.state.tr,
+        ed.state.selection.from,
+        ed.state.selection.to,
+        headingType,
+        3,
+      ),
+    );
+    expect(ed.state.doc.child(0).attrs.level).toBe(3);
+    expect(idsByPath(ed)["0"], outline(ed)).toBe("H1");
+    // …and no husk was minted for it, because it never left.
+    expect(huskFor(ed, "H1"), outline(ed)).toBe(false);
   });
 });
 
