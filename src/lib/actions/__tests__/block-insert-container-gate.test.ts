@@ -61,6 +61,12 @@ import {
 } from "@/lib/editor-extensions";
 import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
 import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
+import {
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type ActionRef,
+  type ActionId,
+} from "@/lib/actions/action-registry";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack
@@ -363,6 +369,219 @@ describe("display-math $$ still fires in ordinary prose (task 229)", () => {
     fireDisplayMathDollar(editor, end);
 
     expect(countOfType(editor, "displayMath")).toBe(1);
+    editor.destroy();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Task 641 — the RANGE half. Every block action MUTATES `[from, to]`
+// (`deleteSelection()` then `replaceSelectionWith(...)`, or
+// `setBlockType(from, to, …)`), while the gate asked about ONE position,
+// `from`. Content the question never reached was destroyed: a selection running
+// from prose INTO a `codeBlock` / `latexComment` passed at `from` and the
+// delete merged the verbatim block away — commented-out source PROMOTED into
+// the typeset document, the corruption tasks 146/150/396 exist to prevent,
+// reached through the range instead of the caret.
+//
+// And the REPRESENTABILITY half (the capture/schema-symmetry law): the three
+// WRAP paths harvest the selection into a payload their new node can hold —
+// `\tex`/`$…$` keep plain TEXT, `\ex` keeps INLINE leaves — then delete the
+// whole range. `texRun` and `mathRun` each carried a hand-rolled bail for the
+// one shape that was reported (an atom alone, no text); `exampleRun` carried
+// none, so `\ex` over a selected `displayMath` / figure REPLACED it with an
+// empty template. One predicate (`sliceIsFullyCapturedBy`) now answers for all
+// three — and it asks about the SLICE, not about "did the harvest come back
+// empty?", which is a proxy that waves through every MIXED selection.
+//
+// Every leg asserts the DOCUMENT IS UNCHANGED (a JSON deep-equal against the
+// pre-action snapshot), not merely that a command returned false.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** prose → verbatim → block-atom fixture for the range legs. */
+function mountRangeFixture(): Editor {
+  return mount([
+    { type: "paragraph", attrs: { uuid: "p-lead" }, content: [{ type: "text", text: "Lead prose." }] },
+    { type: "codeBlock", attrs: { uuid: "code-A" }, content: [{ type: "text", text: "x = 1" }] },
+    { type: "latexComment", attrs: { uuid: "cmt-A" }, content: [{ type: "text", text: "a comment" }] },
+  ]);
+}
+
+/** prose → block atom fixture for the representability legs. */
+function mountAtomFixture(atom: Record<string, unknown>): Editor {
+  return mount([
+    { type: "paragraph", attrs: { uuid: "p-lead" }, content: [{ type: "text", text: "Lead prose." }] },
+    atom,
+    { type: "paragraph", attrs: { uuid: "p-tail" }, content: [{ type: "text", text: "Tail prose." }] },
+  ]);
+}
+
+const BLOCK_ATOMS: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+  ["displayMath", { type: "displayMath", attrs: { latex: "\\int f" } }],
+  [
+    "figureBlock",
+    {
+      type: "figureBlock",
+      attrs: { uuid: "fig-A", extras: "\\includegraphics{a.png}", label: "fig:a" },
+      content: [{ type: "figureCaption", content: [{ type: "text", text: "Cap." }] }],
+    },
+  ],
+  ["graphicsBlock", { type: "graphicsBlock", attrs: { uuid: "gfx-A", src: "a.png" } }],
+  ["texBlock", { type: "texBlock", attrs: { uuid: "tex-A", code: "\\foo" } }],
+];
+
+/** Select `[from, to]` on the live view. */
+function selectRange(editor: Editor, from: number, to: number): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+  );
+}
+
+/** Invoke a registry row's `run()` with the live selection, EditorPane-style. */
+function runRow(editor: Editor, id: ActionId): void {
+  const spec = VIRGIL_ACTION_REGISTRY[id];
+  if (!spec) throw new Error(`no registry row for ${id}`);
+  const { from, to } = editor.state.selection;
+  const ref: ActionRef =
+    from === to
+      ? { kind: "cursor", pos: from, paragraphId: "" }
+      : { kind: "selection", from, to, paragraphId: "" };
+  void spec.run({ editor, view: editor.view, ref, surface: "lightning" } as ActionContext);
+}
+
+/** The row's applies() verdict for the live selection. */
+function appliesForSelection(editor: Editor, id: ActionId): "ok" | "disabled" | "absent" {
+  const spec = VIRGIL_ACTION_REGISTRY[id];
+  if (!spec) throw new Error(`no registry row for ${id}`);
+  const { from, to } = editor.state.selection;
+  const ref: ActionRef =
+    from === to
+      ? { kind: "cursor", pos: from, paragraphId: "" }
+      : { kind: "selection", from, to, paragraphId: "" };
+  return spec.applies({ editor, view: editor.view, ref, surface: "lightning" } as ActionContext);
+}
+
+/** The block INSERT rows that mutate the whole selection. */
+const BLOCK_ROWS = ["tex", "example", "forest", "display-math"] as const;
+
+describe("the block gate covers the whole RANGE it mutates (task 641)", () => {
+  for (const id of BLOCK_ROWS) {
+    it(`${id}: a prose → codeBlock selection leaves the document byte-identical`, () => {
+      const editor = mountRangeFixture();
+      // From mid-paragraph INTO the codeBlock's text — the shape whose delete
+      // merged the verbatim block away under the `from`-only gate.
+      selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "codeBlock") + 3);
+      const before = JSON.stringify(editor.getJSON());
+
+      runRow(editor, id);
+
+      expect(JSON.stringify(editor.getJSON())).toBe(before);
+      editor.destroy();
+    });
+
+    it(`${id}: a prose → latexComment selection leaves the document byte-identical`, () => {
+      const editor = mountRangeFixture();
+      selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "latexComment") + 3);
+      const before = JSON.stringify(editor.getJSON());
+
+      runRow(editor, id);
+
+      expect(JSON.stringify(editor.getJSON())).toBe(before);
+      editor.destroy();
+    });
+
+    it(`${id}: the affordance greys for a prose → codeBlock selection`, () => {
+      const editor = mountRangeFixture();
+      selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "codeBlock") + 3);
+
+      expect(appliesForSelection(editor, id)).toBe("disabled");
+      editor.destroy();
+    });
+
+    it(`${id}: an all-prose selection still acts (no over-gating)`, () => {
+      const editor = mountRangeFixture();
+      selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "paragraph") + 6);
+      const before = JSON.stringify(editor.getJSON());
+
+      expect(appliesForSelection(editor, id)).toBe("ok");
+      runRow(editor, id);
+
+      expect(JSON.stringify(editor.getJSON())).not.toBe(before);
+      editor.destroy();
+    });
+  }
+
+  it("smartInsertBlock bails on a prose → codeBlock selection", () => {
+    const editor = mountRangeFixture();
+    selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "codeBlock") + 3);
+    const before = JSON.stringify(editor.getJSON());
+
+    const res = smartInsertBlock({
+      editor,
+      type: editor.state.schema.nodes.graphicsBlock,
+      attrs: { src: "" },
+    });
+
+    expect(res.pos).toBe(-1);
+    expect(JSON.stringify(editor.getJSON())).toBe(before);
+    editor.destroy();
+  });
+});
+
+describe("a WRAP path refuses content its capture cannot represent (task 641)", () => {
+  // `\ex` (inline capture), `\tex` and `$$` (text capture) all destroy the
+  // selection; none of the three can carry a block atom out of it.
+  for (const [name, atom] of BLOCK_ATOMS) {
+    for (const id of ["example", "tex", "display-math"] as const) {
+      it(`${id}: a selection containing a ${name} leaves the document byte-identical`, () => {
+        const editor = mountAtomFixture(atom);
+        // From mid-first-paragraph to mid-last — the range spans the block atom.
+        selectRange(
+          editor,
+          innerStart(editor, "paragraph") + 2,
+          innerEnd(editor, "paragraph") - 1 + 0,
+        );
+        // Re-anchor the tail end inside the TRAILING paragraph so the atom is
+        // strictly inside the range.
+        const tailStart = editor.state.doc.content.size - 2;
+        selectRange(editor, innerStart(editor, "paragraph") + 2, tailStart);
+        const before = JSON.stringify(editor.getJSON());
+
+        runRow(editor, id);
+
+        expect(JSON.stringify(editor.getJSON())).toBe(before);
+        editor.destroy();
+      });
+    }
+  }
+
+  it("example: a plain-prose selection still wraps (no over-gating)", () => {
+    const editor = mountRangeFixture();
+    selectRange(editor, innerStart(editor, "paragraph") + 2, innerStart(editor, "paragraph") + 6);
+
+    runRow(editor, "example");
+
+    expect(countOfType(editor, "exampleBlock")).toBe(1);
+    editor.destroy();
+  });
+
+  it("example: a selection carrying an INLINE atom still wraps (the inline capture CAN hold it)", () => {
+    const editor = mount([
+      {
+        type: "paragraph",
+        attrs: { uuid: "p-lead" },
+        content: [
+          { type: "text", text: "see " },
+          { type: "inlineMath", attrs: { latex: "x" } },
+          { type: "text", text: " here" },
+        ],
+      },
+    ]);
+    selectRange(editor, innerStart(editor, "paragraph"), innerEnd(editor, "paragraph"));
+
+    runRow(editor, "example");
+
+    expect(countOfType(editor, "exampleBlock")).toBe(1);
+    expect(countOfType(editor, "inlineMath")).toBe(1); // the atom SURVIVED into the example
     editor.destroy();
   });
 });

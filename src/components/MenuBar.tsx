@@ -31,7 +31,7 @@ import { paragraphUuidAt } from "@/links/links";
 // Task 153: the SAME 147/149 SSOT container predicate the registry `headingRun`
 // bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
 // `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
-import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
+import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
 import { iconHint } from "@/components/Hint";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
@@ -188,7 +188,19 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
   // Read via `editor.view.state` (identical to `editor.state`) to match the
   // levels-1–4 path above, which already works off `editor.view`.
   const { state } = editor.view;
-  if (!posHostsBlockInsert(state.doc, state.selection.from)) return;
+  // RANGE form (task 641): `setNode` below converts EVERY textblock in the
+  // selection, so the gate must cover the whole range — the same widening
+  // `headingRun` takes for levels 1–4. Asked only when the doc can answer
+  // (a live ProseMirror doc), matching the "no live view → allow" fallback the
+  // registry's own `applies()` factories take: a verdict is issued only when the
+  // question can actually be asked, never invented from a doc-less stub.
+  const doc = state.doc as typeof state.doc | undefined;
+  if (
+    doc &&
+    typeof doc.resolve === "function" &&
+    !blockRangeHostsBlockInsert(doc, state.selection.from, state.selection.to)
+  )
+    return;
   // Out-of-scope level (0/5/6, or a misconfigured value): SET directly +
   // numbered (NOT toggle — matches the SET decision for the whole dropdown).
   const level = parseInt(levelValue) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
