@@ -22,6 +22,19 @@
 //   • plain in-block typing fires NEITHER the gate nor a structural bus emit
 //     (keystroke sanctity).
 //
+// Task 657 — the SECOND member of the same class. The mirror named five
+// per-kind bus events by hand and `onHeadingsChanged` was not among them, so a
+// uuid-CONSERVING heading level flip (the heading annotation chip's type menu:
+// `setNodeMarkup`, whose diff carries `changedHeadings` and nothing else)
+// rebuilt the plugin's `hiddenIdx` — the fold stack keys on `attrs.level` —
+// while the mirror stayed silent: ghost cards beside folded prose, and dropped
+// cards beside prose that had just been un-folded. The fix retires the list:
+// the mirror asks the plugin's OWN predicate (`diffHasStructuralEntries`) over
+// the bus's generic structural channel. So this file gains a BEHAVIOURAL leg
+// per direction (demote-into-a-fold, promote-out-of-one) and a SOURCE CENSUS —
+// the census is the leg with the teeth, because no behavioural leg can see a
+// sixth hand-written event being added beside the fifth.
+//
 // Builds the REAL main editor stack (schema + section-folding plugin +
 // DocStructureObserver) so the plugin's cached `hiddenIdx` and the bus events
 // behave faithfully (the structural-edit.test.ts pattern).
@@ -43,7 +56,10 @@ import {
   getHiddenTopLevelIndices,
   sectionFoldingPluginKey,
 } from "@/lib/section-folding";
+import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
 import { subscribeFoldMirrorInvalidation } from "../omni-fold-mirror-invalidation";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -104,6 +120,37 @@ function hidden(editor: Editor): number[] {
   return [...getHiddenTopLevelIndices(editor.state)].sort((a, b) => a - b);
 }
 
+/** Locate a TOP-LEVEL heading by uuid: its child index, offset and node. */
+function findHeading(editor: Editor, uuid: string) {
+  let found: { index: number; pos: number; node: ReturnType<Editor["state"]["doc"]["child"]> } | null =
+    null;
+  editor.state.doc.forEach((node, offset, index) => {
+    if (node.type.name === "heading" && node.attrs?.uuid === uuid) {
+      found = { index, pos: offset, node };
+    }
+  });
+  if (!found) throw new Error(`heading ${uuid} not found`);
+  return found as { index: number; pos: number; node: ReturnType<Editor["state"]["doc"]["child"]> };
+}
+
+/**
+ * Change a heading's LEVEL exactly the way the heading annotation chip's type
+ * menu does (`editor-extensions.ts` → `applyLevelChange`): `setNodeMarkup` with
+ * the attrs door's spread, which CONSERVES the uuid. That conservation is the
+ * whole mechanism — a leg written with `setBlockType` re-mints the uuid,
+ * fires `onHeadingsRemoved`, and passes pre-fix while proving nothing.
+ */
+function setHeadingLevelLikeChip(editor: Editor, uuid: string, level: number) {
+  const { pos, node } = findHeading(editor, uuid);
+  editor.view.dispatch(
+    editor.state.tr.setNodeMarkup(
+      pos,
+      undefined,
+      headingAttrsForLevel(node, editor.schema.nodes.heading, level),
+    ),
+  );
+}
+
 describe("subscribeFoldMirrorInvalidation — the fold-mirror gate", () => {
   it("bumps AND shifts hiddenTopLevel when a block is INSERTED earlier while folded (task 126, insert direction)", () => {
     const { editor, cleanup } = mount();
@@ -147,6 +194,72 @@ describe("subscribeFoldMirrorInvalidation — the fold-mirror gate", () => {
 
         expect(bump).toHaveBeenCalled();
         expect(hidden(editor)).toEqual([1, 2]);
+      } finally {
+        unsub();
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("bumps AND extends hiddenTopLevel when a following heading is DEMOTED into the fold (task 657, uuid-conserving level flip)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      foldSection(editor, "sec-a");
+      expect(hidden(editor)).toEqual([2, 3]);
+
+      const bus = getBus(editor);
+      const bump = vi.fn();
+      const unsub = subscribeFoldMirrorInvalidation(editor, bump);
+      try {
+        const uuidBefore = findHeading(editor, "sec-b").node.attrs.uuid;
+        // The chip's own spelling — L2 → L3. sec-b now sits UNDER folded sec-a,
+        // so the plugin's fold stack swallows it and its body: {2,3} → {2,3,4,5}.
+        setHeadingLevelLikeChip(editor, "sec-b", 3);
+
+        // Non-vacuity: the uuid was CONSERVED, so this really is the
+        // `changedHeadings`-only diff — not a re-mint that any of the five
+        // legacy events would have caught.
+        const after = findHeading(editor, "sec-b");
+        expect(after.node.attrs.uuid).toBe(uuidBefore);
+        expect(after.node.attrs.level).toBe(3);
+
+        // THE BUG: pre-fix `bump` was never called here (no `onHeadingsChanged`
+        // in the hand-written list), so the consumer's memo kept serving {2,3}
+        // and the cards anchored at indices 4/5 stayed in the gutter beside
+        // prose that had just gone off screen.
+        expect(bump).toHaveBeenCalled();
+        expect(hidden(editor)).toEqual([2, 3, 4, 5]);
+        expect(bus!.emitCount).toBeGreaterThan(0);
+      } finally {
+        unsub();
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("bumps AND shrinks hiddenTopLevel when a swallowed heading is PROMOTED out of the fold (task 657, the mirror direction)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // Put sec-b at L3 FIRST (before subscribing), then fold sec-a — so the
+      // starting state is "sec-b and its body are hidden".
+      setHeadingLevelLikeChip(editor, "sec-b", 3);
+      foldSection(editor, "sec-a");
+      expect(hidden(editor)).toEqual([2, 3, 4, 5]);
+
+      const bump = vi.fn();
+      const unsub = subscribeFoldMirrorInvalidation(editor, bump);
+      try {
+        const uuidBefore = findHeading(editor, "sec-b").node.attrs.uuid;
+        // Promote back to L2: sec-b closes sec-a's fold, so it and its body
+        // come back on screen — {2,3,4,5} → {2,3}. Pre-fix the omni mirror kept
+        // DROPPING those cards from the cascade although their prose was visible.
+        setHeadingLevelLikeChip(editor, "sec-b", 2);
+
+        expect(findHeading(editor, "sec-b").node.attrs.uuid).toBe(uuidBefore);
+        expect(bump).toHaveBeenCalled();
+        expect(hidden(editor)).toEqual([2, 3]);
       } finally {
         unsub();
       }
@@ -226,5 +339,51 @@ describe("subscribeFoldMirrorInvalidation — the fold-mirror gate", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The leg with the teeth (task 657). Both members of this class were "the list
+// beside the predicate lost a member": task 126 added three events to it, 657
+// found a fourth missing. No behavioural leg can see a sixth being added, so
+// the census holds the SHAPE — the mirror asks the plugin's predicate, and
+// names no per-kind bus event at all.
+// ---------------------------------------------------------------------------
+describe("fold-mirror invalidation is DERIVED, not re-listed (task 657 census)", () => {
+  const ROOT = path.resolve(__dirname, "../../../..");
+  const MODULE_PATH = path.join(
+    ROOT,
+    "components/editor-layout/panels/omni-fold-mirror-invalidation.ts",
+  );
+
+  /** Source with comments stripped — the header legitimately NAMES the retired
+   *  events while explaining why they are gone; only executable code counts. */
+  function code(): string {
+    return readFileSync(MODULE_PATH, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+  }
+
+  it("subscribes to NO per-kind bus event — the only bus subscription is the generic structural channel", () => {
+    const methods = [...code().matchAll(/\.on([A-Z]\w*)\s*\(/g)].map((m) => `on${m[1]}`);
+    // If this fails, someone re-opened the hand-maintained list. The trigger
+    // set is `diffHasStructuralEntries`; extend THAT, not a list beside it.
+    expect([...new Set(methods)]).toEqual(["onAnyChange"]);
+  });
+
+  it("gates that channel on the section-folding plugin's own rebuild predicate", () => {
+    expect(code()).toContain("diffHasStructuralEntries");
+  });
+
+  it("still owns the fold-meta transaction subscriber (no bus event covers it)", () => {
+    expect(code()).toContain("sectionFoldingPluginKey");
+    expect(code()).toMatch(/editor\.on\(\s*["']transaction["']/);
+  });
+
+  it("the plugin it mirrors still rebuilds on that same predicate", () => {
+    const plugin = readFileSync(path.join(ROOT, "lib/section-folding.ts"), "utf8");
+    // If section-folding stops calling `diffHasStructuralEntries`, the mirror's
+    // derivation is no longer a derivation — it is a new hand-written guess.
+    expect(plugin).toContain("diffHasStructuralEntries(diff)");
   });
 });

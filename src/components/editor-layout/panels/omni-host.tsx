@@ -227,14 +227,15 @@ export function OmniHost(p: OmniHostProps) {
   // never re-derived per keystroke (keystroke sanctity).
   const rev = useStructuralRevisions(editorInstance);
 
-  // Re-derive `hiddenTopLevel` only on events that legitimately invalidate
-  // it: fold-state changes AND anything that shifts the absolute top-level
-  // child index map `getHiddenTopLevelIndices` reads — heading add/remove
-  // AND plain block add/remove/reorder. The invalidation set lives in
-  // `subscribeFoldMirrorInvalidation`, which MIRRORS the section-folding
-  // plugin's own `hiddenIdx`-rebuild triggers (task 126: bumping on
-  // "headings only" left the mirror stale after a block edit while a
-  // section was folded, mis-binning cards until the next fold toggle).
+  // Re-derive `hiddenTopLevel` only on transactions that legitimately
+  // invalidate it: a fold-state change, or any STRUCTURAL diff. The
+  // invalidation set lives in `subscribeFoldMirrorInvalidation`, which asks
+  // the section-folding plugin's OWN `hiddenIdx`-rebuild predicate
+  // (`diffHasStructuralEntries`) rather than re-listing per-kind bus events
+  // — the list drifted from the predicate twice (task 126: block
+  // add/remove/reorder; task 657: a uuid-conserving heading LEVEL flip), each
+  // time leaving the mirror stale and mis-binning cards until the next fold
+  // toggle.
   //
   // Ordinary typing inside any block — including a heading's text —
   // doesn't change which top-level indices are folded, and every source
@@ -745,9 +746,9 @@ export function OmniHost(p: OmniHostProps) {
   const hiddenTopLevel = useMemo<ReadonlySet<number>>(() => {
     if (!editorInstance) return EMPTY_HIDDEN;
     return getHiddenTopLevelIndices(editorInstance.state);
-    // editorTick forces a re-read on exactly the transactions that can shift
-    // the folded absolute-top-level-index set — fold toggles, heading
-    // add/remove, and block add/remove/reorder (see the editorTick effect
+    // editorTick forces a re-read on exactly the transactions that rebuild the
+    // folded absolute-top-level-index set — fold toggles plus every structural
+    // diff, asked of the plugin's own predicate (see the editorTick effect
     // above, via subscribeFoldMirrorInvalidation). editorInstance identity is
     // stable across those, so editorTick is the reactive dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -28,7 +28,7 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `EditorLayout.tsx` section-path recompute, main pane (`:~2019`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` + a perf-flag gate — and since Wave-2 C2 the DEFERRED compute's primary path is `computeSectionPathAt` (ONE `posAtCoords` + snapshot binary search, behind `geomBreadcrumbEnabled()`); the `coordsAtPos` doc-walk survives only as the `virgil:geom-breadcrumb` flag-off/service-null fallback, and the resize path is gesture-parked)
 - `SelectionActionsMenu.tsx` margin-bolt reposition (`:275`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
 - `PendingChangePill.tsx` pending-change margin-pill reposition (`:364`, `on('update')`; schedules a RAF and early-returns if one is pending, plus a `placementsEqual` bail on the single `coordsAtPos` placement — the same RAF-coalesced fixed portal recorded on the `PERMITTED_SCROLL_REPOSITIONERS` scroll allowlist)
-- `src/components/editor-layout/panels/omni-fold-mirror-invalidation.ts` fold-mirror invalidation SSOT (`subscribeFoldMirrorInvalidation`, `on('transaction')`; consumed by omni-host's `editorTick` effect). Its transaction handler is a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke. Its other sources are structural DocStructureBus events (headings/blocks added/removed/reordered) — it MIRRORS the section-folding plugin's own `hiddenIdx`-rebuild trigger set so the omni fold mirror never reads a stale absolute-top-level-index set after a block add/remove/reorder while a section is folded (task 126). None of these fire on a plain in-block keystroke, so `emitCount` stays flat.
+- `src/components/editor-layout/panels/omni-fold-mirror-invalidation.ts` fold-mirror invalidation SSOT (`subscribeFoldMirrorInvalidation`, `on('transaction')`; consumed by omni-host's `editorTick` effect). Its transaction handler is a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke. Its other source is the bus's ONE generic structural channel, `onAnyChange`, gated on the section-folding plugin's OWN rebuild predicate, `diffHasStructuralEntries` — so the mirror ASKS the trigger set rather than re-stating it as a list of per-kind events (task 657; see "The mirrored-predicate half" below). [cost: O(1)/emit] one predicate call over an already-built diff, and `onAnyChange` never fires for a content-only diff, so a plain in-block keystroke leaves `emitCount` flat and this gate silent.
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:470`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)
 - `lib/doc-products/pipeline.ts` — THE single DocProducts subscriber (perf Wave 1, flag `virgil:doc-products`): the update handler is a dirty flag + one timer reset (O(1)); every O(doc)/O(changed) product refresh (shared docJson, per-block-cached `.tex`, word counts) runs in the 300 ms interactive tier or the `requestLowPriority` idle tier, off the keystroke path. Flag-on it replaces the useLatexSource / useWordCount / EditorPane outline-tick / editor-ops latestDoc subscribers; derived doc products come from `getDocProducts(editor)`, never a private `getJSON` timer.
 - `lib/section-folding.ts` shared fold-chevron refresher (the `sectionFoldingPlugin` `view()`; ONE plugin-view per editor, not N per-heading subscribers — #29 nit-3). Its `update(view, prevState)` does an O(1) reference-compare of the `SectionFoldingState` (`sectionFoldingPluginKey.getState` old vs new) and bails on a plain keystroke — the apply reducer returns the SAME object on a structurally-null tx. Only on a real fold change does it `querySelectorAll('.heading-fold-chevron')` and resync each from live state via `closest('[data-uuid]')`, off the keystroke path. The per-NodeView `refreshFoldBtn()` at construction + in `update()` (editor-extensions.ts) is retained and is O(1)-per-affected-node — it is NOT an `on('transaction')` subscriber, so needs no list entry.
@@ -559,6 +559,69 @@ CI:
 shape in which the two spaces come apart, and every pre-existing `AttrStep` test
 is single-step, which is exactly why this was invisible. Nine legs fail on the
 pre-fix inspector; the four single-step CONTROLS pass on it.
+
+### The mirrored-predicate half: a mirror ASKS the predicate, it does not re-state it
+
+> **Where one consumer must invalidate on exactly the transactions another
+> component rebuilds on, it subscribes to the GENERIC structural channel and
+> calls that component's own predicate. A hand-written list of per-kind events
+> beside the predicate is not a mirror — it is a copy, and a copy drifts.**
+
+The omni fold mirror (`omni-fold-mirror-invalidation.ts`) re-derives
+`hiddenTopLevel` — the section-folding plugin's cached `hiddenIdx`, a set of
+ABSOLUTE top-level child indices — and must therefore bump on exactly the
+transactions that rebuild it. The plugin's own condition is one call:
+`diffHasStructuralEntries(diff)`. The mirror named five per-kind bus events
+instead, and asserted in its own docstring that the list WAS that set.
+
+It was not, twice. Task 126 found the first gap (block insert/delete/reorder
+while folded) and closed it by ADDING three events to the list. Task 657 found
+the second: `onHeadingsChanged` was still missing, so a uuid-CONSERVING heading
+level flip — the heading annotation chip's type menu, `setNodeMarkup`, whose
+diff carries `changedHeadings` and nothing else — rebuilt the plugin's
+`hiddenIdx` (`computeFoldedChildIndices` keys its fold stack on
+`node.attrs.level`) while the mirror stayed silent. Ghost cards rendered in the
+gutter beside prose that had just folded away; promoting a heading out of a fold
+left its cards DROPPED from the cascade beside prose that was on screen. Both
+until the next fold toggle or block add/remove.
+
+Note the shape of the first fix: extending the list is the move that guarantees
+a third member. The fix is to delete the list. The mirror now takes
+`bus.onAnyChange` and asks `diffHasStructuralEntries` — the same function the
+plugin's `apply` calls — so a bucket added to that predicate cannot be forgotten
+here again, because there is nowhere left to forget it.
+
+Two boundaries, both stated at the door rather than left as omissions:
+
+- `onAnyChange` fires on the bus's deliberately narrower wake predicate
+  (`diffWakesStructuralWatchers`), which omits exactly `changedBlocks` /
+  `changedFootnotes` / `changedExamples` — the three sets whose co-set
+  order/structure flag wakes the channel in their stead. That relationship is
+  pinned by `diff-predicate-congruence.test.ts`, which is what makes the
+  composition equivalent to asking the predicate directly.
+- The plugin's other rebuild trigger, `!txPreservesTopLevelNodeDecorations`, is
+  deliberately NOT mirrored: it asks whether a cached DECORATION set may be
+  `.map()`ed forward, not whether `hiddenIdx` changed, and any transaction that
+  genuinely moves a top-level node in or out of a fold also lands in the diff.
+  Taking it would mean walking every transaction's steps in a keystroke-path
+  handler for a rebuild the mirror does not need.
+
+Keystroke sanctity is unchanged and now holds by construction rather than by
+enumeration: both predicates exclude the two content-only sets, and a heading's
+TEXT edits route to `contentChangedUuids`, never `changedHeadings`.
+
+CI:
+[omni-fold-mirror-invalidation.test.ts](../../../src/components/editor-layout/panels/__tests__/omni-fold-mirror-invalidation.test.ts)
+— a behavioural leg per direction (demote into a fold, promote out of one), each
+driving the chip's real `setNodeMarkup` spelling and asserting the uuid was
+CONSERVED, because a leg written with `setBlockType` re-mints the uuid, fires
+`onHeadingsRemoved`, and passes pre-fix while proving nothing. The leg with the
+teeth is the CENSUS: the module may name NO per-kind bus event (its only
+`.on<Kind>(` call is `onAnyChange`) and must spell `diffHasStructuralEntries` —
+because no behavioural leg can see a sixth event being added beside the fifth,
+which is how this class survived 126. Pre-fix both behavioural legs and both
+census legs fail while all five legacy legs, the keystroke-silence one included,
+pass.
 
 ### Why this exists
 
