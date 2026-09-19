@@ -64,6 +64,7 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   blockRangeAllowsAction,
+  MEANINGFUL_BLOCK_ATOM_NODE_NAMES,
   inlineInsertPos,
   INLINE_INSERT_ACTIONS,
 } from "@/text-objects/text-object-registry";
@@ -1144,28 +1145,11 @@ function lifecycleLabel(action: DragHandleAction): string {
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
-/**
- * Block-atom / opaque-content node names whose presence makes a range
- * non-trivial to lose — even when its `textContent` is empty. Derived from
- * the SSOTs so a newly-added atom kind is recognized here for free:
- *
- *   • `isAtomNode` (ATOM_REGISTRY, the inline-Atom SSOT) covers the inline
- *     atoms: `footnote`, `citation`, `labelRef` (`\ref`), `inlineMath`.
- *   • This set covers the BLOCK atoms — every `TEXT_OBJECT_REGISTRY` kind
- *     flagged `isMeaningfulBlockAtom`, the kind name being the PM node name —
- *     PLUS `figureBlock`, which is NOT a schema atom (`content: figureCaption?`)
- *     but is still meaningful, destroy-with-a-confirm content.
- *
- * Keep both sourced from the registries; do not hard-code a parallel
- * inline list. If a new atom kind is added to either registry it must
- * either carry `isMeaningfulBlockAtom` (block) or be in ATOM_REGISTRY (inline)
- * for this gate to pick it up. */
-const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>([
-  ...Object.entries(TEXT_OBJECT_REGISTRY)
-    .filter(([, meta]) => meta.isMeaningfulBlockAtom)
-    .map(([kind]) => kind),
-  "figureBlock",
-]);
+// `MEANINGFUL_BLOCK_ATOM_NODE_NAMES` — the "non-trivial to lose" set — now
+// lives in `@/text-objects/text-object-registry` beside the registry it derives
+// from (task 641), because the capture/schema-symmetry predicate the WRAP paths
+// ask is its second consumer. `isAtomNode` (ATOM_REGISTRY) still covers the
+// INLINE atoms (`footnote` / `citation` / `\ref` / `inlineMath`) here.
 
 /** True iff `kind` carries the GATING facet `isMeaningfulBlockAtom` (task 066).
  *  Deliberately DISTINCT from `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, which also

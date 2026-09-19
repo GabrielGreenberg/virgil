@@ -1154,6 +1154,33 @@ function blockStyleElement(editor: Editor, pos: number): HTMLElement {
   return editor.view.dom as HTMLElement;
 }
 
+/**
+ * Block node names whose presence makes a range NON-TRIVIAL TO LOSE — content a
+ * destructive action must never silently destroy, even when its `textContent`
+ * is empty. Derived from the SSOTs so a newly-added kind is recognized for free:
+ * every `TEXT_OBJECT_REGISTRY` kind flagged `isMeaningfulBlockAtom` (the kind
+ * name IS the PM node name), PLUS `figureBlock`, which is not a schema atom
+ * (`content: "figureCaption?"`) but is still destroy-with-a-confirm content.
+ *
+ * Do not hard-code a parallel list anywhere. A new kind must either carry
+ * `isMeaningfulBlockAtom` (block) or sit in `ATOM_REGISTRY` (inline) to be seen.
+ *
+ * TWO consumers (task 641 hoisted it here from `drag-handle-actions.ts`, where
+ * it was module-private and the second consumer would have had to copy it):
+ *   1. `rangeHasAnchorsOrAtoms` — the destructive-confirm content probe, which
+ *      surfaces the "are you sure?" instead of silently dropping such a block;
+ *   2. `sliceIsFullyCapturedBy` (`@/lib/tiptap/capture-symmetry`) — the
+ *      capture/schema-symmetry predicate the three WRAP paths ask before
+ *      `deleteSelection()`, which refuses outright rather than confirming.
+ * One list, two severities of the same judgement about what may be lost.
+ */
+export const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>([
+  ...Object.entries(TEXT_OBJECT_REGISTRY)
+    .filter(([, meta]) => meta.isMeaningfulBlockAtom)
+    .map(([kind]) => kind),
+  "figureBlock",
+]);
+
 const KIND_SET = new Set<TextObjectKind>(
   Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[],
 );
@@ -1242,16 +1269,19 @@ const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every textblock TYPE an inline insert over `[from, to]` can reach, in
- * document order, deduplicated by type. Empty when the range holds no
- * textblock at all (a true block atom's node range, an empty container).
+ * Every textblock TYPE an insert over `[from, to]` can reach, in document
+ * order, deduplicated by type. Empty when the range holds no textblock at all
+ * (a true block atom's node range, an empty container).
  *
- * **ONE walk, two families** (task 428): `blockRangeAllowsAction` (the curated
- * per-kind POLICY, task 148) and `inlineRangeAllowsAtom` (the SCHEMA question,
- * task 150/396) both read this, so the two predicates cannot come to disagree
- * about what "the textblocks this range reaches" means — which is exactly how
- * the inline gate spent a year as a SINGLE-position question beside a block
- * twin that already asked the range.
+ * **ONE walk, THREE families** (task 428, widened by task 641):
+ * `blockRangeAllowsAction` (the curated per-kind POLICY, task 148),
+ * `inlineRangeAllowsAtom` (the inline-atom SCHEMA question, task 150/396) and
+ * `blockRangeHostsBlockInsert` (the block-atom / block-convert SCHEMA question,
+ * task 147/149/229) all read this, so the three predicates cannot come to
+ * disagree about what "the textblocks this range reaches" means — which is
+ * exactly how the inline gate spent a year as a SINGLE-position question beside
+ * a block twin that already asked the range, and then how the BLOCK gate spent
+ * a year as the single-position one after 428 widened only its inline sibling.
  *
  * The two seeds matter: a caret — and any range whose ends sit inside ONE
  * textblock — has nothing strictly BETWEEN its positions, so `nodesBetween`
@@ -1268,7 +1298,7 @@ const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
  *
  * `from`/`to` are clamped and ordered, so a stale or borderline ref can't throw.
  */
-function inlineInsertTargetTypes(doc: PMNode, from: number, to: number): NodeType[] {
+function rangeTextblockTypes(doc: PMNode, from: number, to: number): NodeType[] {
   const size = doc.content.size;
   const lo = Math.max(0, Math.min(Math.min(from, to), size));
   const hi = Math.max(0, Math.min(Math.max(from, to), size));
@@ -1331,7 +1361,7 @@ export function blockRangeAllowsAction(
     const lo = Math.max(0, Math.min(Math.min(from, to), size));
     return blockKindAllowsAction(doc.resolve(lo).parent.type.name, action);
   }
-  const targets = inlineInsertTargetTypes(doc, from, to);
+  const targets = rangeTextblockTypes(doc, from, to);
   if (targets.length === 0) return false;
   return targets.every((type) => blockKindAllowsAction(type.name, action));
 }
@@ -1530,6 +1560,13 @@ export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
  * input-rule surfaces whose ref is a bare caret. `pos` is clamped into the doc
  * so a stale caret can't throw.
  *
+ * **The CARET form of {@link blockRangeHostsBlockInsert}** (task 641) — a
+ * zero-width range, exactly as `posHostsInlineAtom` is the caret form of
+ * `inlineRangeAllowsAtom` and `posBlockAllowsAction` of
+ * `blockRangeAllowsAction`. A caller that acts over a SELECTION must take the
+ * range form instead: this one cannot see past `pos`, and every block action
+ * mutates `[from, to]`.
+ *
  * Two layers, both schema-precise:
  *   1. The caret's own TEXTBLOCK must survive the split — `blockTypeHostsBlockInsert`
  *      (titleField singleton / markless verbatim).
@@ -1558,9 +1595,59 @@ export function posHostsBlockInsert(
   pos: number,
   insertType?: NodeType,
 ): boolean {
-  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  return blockRangeHostsBlockInsert(doc, pos, pos, insertType);
+}
+
+/**
+ * **The RANGE form of the block container SSOT** (task 641) — the block twin of
+ * {@link inlineRangeAllowsAtom}, and the door every caller that acts over a
+ * SELECTION must enter. {@link posHostsBlockInsert} above is its caret form
+ * (`from === to`), so the two cannot disagree.
+ *
+ * Every block-level action MUTATES A RANGE — `deleteSelection()` then
+ * `replaceSelectionWith(...)` on the insert paths, `setBlockType(from, to, …)`
+ * on the heading-CONVERT path — while the pre-641 gate asked about a SINGLE
+ * position, `from`. Content the question never reached was destroyed: a
+ * selection running from prose INTO a `codeBlock` / `latexComment` passed the
+ * gate at `from`, and the delete then merged the verbatim block away, PROMOTING
+ * commented-out source into the typeset document — the exact corruption tasks
+ * 146/150/396 exist to prevent, reached through the range instead of the caret.
+ * ProseMirror contributes no protection of its own: `deleteSelection`'s
+ * `checkJoin` PASSES, because `paragraph`'s `inline*` and the verbatim `text*`
+ * share `text`, so `compatibleContent` is true.
+ *
+ * Two layers, the same two {@link posHostsBlockInsert} always had, each asked
+ * about the part of the mutation it governs:
+ *
+ *   1. SURVIVAL, over the whole range — EVERY textblock the range reaches must
+ *      survive (`blockTypeHostsBlockInsert`: the `titleField` preamble
+ *      singleton, the markless verbatim blocks). Fails CLOSED, matching the
+ *      inline twin and `blockRangeAllowsAction`'s `every`.
+ *   2. HOSTABILITY, at the LANDING position — after `deleteSelection` the range
+ *      has collapsed to `from`, which is where `replaceSelectionWith` puts the
+ *      block, so the container question (task 229's `figureCaption` in a
+ *      single-slot `figureBlock`) is asked exactly where the block lands.
+ *
+ * A range reaching NO textblock (a gap beside a block atom, a GapCursor, a
+ * container-level ref) contributes no layer-1 target and is answered by layer 2
+ * alone — byte-identical to the pre-641 caret behaviour, which resolved such a
+ * position to a non-textblock parent and let it through.
+ *
+ * `from`/`to` are clamped and ordered by the shared walk, so a stale or
+ * borderline ref can't throw.
+ */
+export function blockRangeHostsBlockInsert(
+  doc: PMNode,
+  from: number,
+  to: number,
+  insertType?: NodeType,
+): boolean {
+  // Layer 1 — survival of every textblock the mutation touches.
+  const targets = rangeTextblockTypes(doc, from, to);
+  if (!targets.every(blockTypeHostsBlockInsert)) return false;
+  // Layer 2 — hostability where the block actually lands (the range start).
+  const clamped = Math.max(0, Math.min(Math.min(from, to), doc.content.size));
   const $pos = doc.resolve(clamped);
-  if (!blockTypeHostsBlockInsert($pos.parent.type)) return false;
   if (insertType && $pos.depth > 0) {
     const container = $pos.node($pos.depth - 1);
     const idx = $pos.index($pos.depth - 1);
@@ -1667,7 +1754,7 @@ export function posHostsInlineAtom(
  * the blocks. Same shape task 148 closed on the block side, for the same
  * reason: a payload arrives in the target's vocabulary or not at all.
  *
- * Reads the SAME walk the block gate reads (`inlineInsertTargetTypes`), fails
+ * Reads the SAME walk the block gate reads (`rangeTextblockTypes`), fails
  * CLOSED (every reachable textblock must admit the atom), and keeps the one
  * permissive answer the caret form already gave: a range reaching NO textblock
  * (a gap beside a block atom, a GapCursor) is a place PM wraps rather than
@@ -1681,7 +1768,7 @@ export function inlineRangeAllowsAtom(
   to: number,
   atomType: NodeType,
 ): boolean {
-  const targets = inlineInsertTargetTypes(doc, from, to);
+  const targets = rangeTextblockTypes(doc, from, to);
   if (targets.length === 0) return true; // a gap — PM wraps, nothing to corrupt
   return targets.every((type) => blockTypeHostsInlineAtom(type, atomType));
 }

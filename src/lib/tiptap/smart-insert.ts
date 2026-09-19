@@ -57,7 +57,7 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import { generateShortId } from "@/lib/uuid";
-import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
+import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
 
 /** The outcome of a `smartInsertBlock` call. */
 export interface SmartInsertResult {
@@ -138,7 +138,20 @@ export function smartInsertBlock(args: SmartInsertBlockArgs): SmartInsertResult 
   // by `blockInsertApplies`); this guards the low-level primitive so ANY caller
   // (the standalone `insertFigureBlock`/`insertGraphicsBlock`, a future file
   // drop) can't corrupt. Returns the not-inserted sentinel.
-  if (!posHostsBlockInsert(state.doc, state.selection.from, type)) {
+  // RANGE form (task 641): the REPLACE policy below `deleteSelection()`s the
+  // whole selection before the atom lands, so a selection running from prose
+  // INTO a `codeBlock` / `latexComment` must be refused whole — asked at `from`
+  // alone it passed and the delete merged the verbatim block away, promoting
+  // commented-out source into the typeset document. A collapsed caret is the
+  // degenerate range.
+  if (
+    !blockRangeHostsBlockInsert(
+      state.doc,
+      state.selection.from,
+      state.selection.to,
+      type,
+    )
+  ) {
     return { uuid: "", pos: -1 };
   }
   const carriesUuid = "uuid" in type.spec.attrs!;

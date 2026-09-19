@@ -420,3 +420,131 @@ describe("BlockType dropdown out-of-scope levels honor the containing block (tas
     }
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Task 641 — the RANGE half of the convert path. `setBlockType(from, to, …)`
+// converts EVERY textblock in the range whose parent can host the target, and
+// `latexComment` / `codeBlock` are textblocks whose parent is `doc` — which
+// hosts a heading anywhere — so ProseMirror greenlights them and Virgil's own
+// predicate is the ONLY protection. Asked at `from` alone (task 149's caret
+// form) a [paragraph … latexComment] selection sailed through and the verbatim
+// block was CONVERTED, promoting commented-out source into the typeset
+// document; a [titleField … paragraph] selection converted the preamble
+// singleton away (silent \title{} loss on the next save).
+//
+// `applies()` could not veto either: its walker is an EXISTENCE quantifier
+// (`if (applicable) break`) that skips a protected block with `return
+// undefined` while `applicable` stays true from an earlier convertible one. The
+// universal half is now asked FIRST, by the same range predicate the block
+// INSERT gate uses, so the two surfaces of one question can't diverge.
+//
+// Every leg asserts the DOCUMENT IS UNCHANGED, not merely a false return.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Select `[from, to]` on the live view. */
+function selectRange(editor: Editor, from: number, to: number): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+  );
+}
+
+/** The doc position of the START of the first `nodeName`'s inner content. */
+function innerStartOf(editor: Editor, nodeName: string): number {
+  let pos: number | null = null;
+  editor.state.doc.descendants((node: PMNode, p: number) => {
+    if (pos !== null || node.type.name !== nodeName) return true;
+    pos = p + 1;
+    return false;
+  });
+  if (pos === null) throw new Error(`no ${nodeName} mounted`);
+  return pos;
+}
+
+/** The heading row's applies() verdict for the live selection. */
+function appliesForSelection(editor: Editor, id: ActionId): "ok" | "disabled" | "absent" {
+  const row = VIRGIL_ACTION_REGISTRY[id];
+  if (!row) throw new Error(`no registry row for ${id}`);
+  const { from, to } = editor.state.selection;
+  const ref: ActionRef = { kind: "selection", from, to, paragraphId: "" };
+  return row.applies({ ref, view: editor.view, editor } as ActionContext);
+}
+
+/** Run a heading row over the live selection, EditorPane-style. */
+function runHeadingRow(editor: Editor, id: ActionId): void {
+  const row = VIRGIL_ACTION_REGISTRY[id];
+  if (!row) throw new Error(`no registry row for ${id}`);
+  const { from, to } = editor.state.selection;
+  const ref: ActionRef = { kind: "selection", from, to, paragraphId: "" };
+  void row.run({ ref, view: editor.view, editor, surface: "lightning" } as ActionContext);
+}
+
+describe("heading convert covers the whole RANGE it sets (task 641)", () => {
+  for (const container of PROTECTED) {
+    it(`\\section over a [paragraph … ${container}] selection leaves the document byte-identical`, () => {
+      const editor = mountFixture();
+      // Order in the fixture is titleField, paragraph, codeBlock, latexComment:
+      // start at whichever of the two comes first so the range always spans both.
+      const a = innerStartOf(editor, "paragraph") + 2;
+      const b = innerStartOf(editor, container) + 2;
+      selectRange(editor, Math.min(a, b), Math.max(a, b));
+      const before = JSON.stringify(editor.getJSON());
+
+      runHeadingRow(editor, "heading-section");
+
+      expect(JSON.stringify(editor.getJSON())).toBe(before);
+      expect(countOfType(editor, container)).toBe(1);
+      editor.destroy();
+    });
+
+    it(`the heading affordance greys for a [paragraph … ${container}] selection`, () => {
+      const editor = mountFixture();
+      const a = innerStartOf(editor, "paragraph") + 2;
+      const b = innerStartOf(editor, container) + 2;
+      selectRange(editor, Math.min(a, b), Math.max(a, b));
+
+      expect(appliesForSelection(editor, "heading-section")).toBe("disabled");
+      editor.destroy();
+    });
+
+    it(`pickBlockType('5') over a [paragraph … ${container}] selection leaves the document byte-identical`, () => {
+      const editor = mountFixture();
+      const a = innerStartOf(editor, "paragraph") + 2;
+      const b = innerStartOf(editor, container) + 2;
+      selectRange(editor, Math.min(a, b), Math.max(a, b));
+      const before = JSON.stringify(editor.getJSON());
+
+      pickBlockType(editor, "5");
+
+      expect(JSON.stringify(editor.getJSON())).toBe(before);
+      editor.destroy();
+    });
+  }
+
+  it("serializer proof: after a [titleField … paragraph] \\section the full \\title{...} survives", () => {
+    const editor = mountFixture();
+    const a = innerStartOf(editor, "titleField") + 2;
+    const b = innerStartOf(editor, "paragraph") + 2;
+    selectRange(editor, a, b);
+
+    runHeadingRow(editor, "heading-section");
+
+    expect(countOfType(editor, "titleField")).toBe(1);
+    expect(countOfType(editor, "heading")).toBe(0);
+    expect(serializeToLatex(editor.getJSON())).toContain("\\title{My Paper Title}");
+    editor.destroy();
+  });
+
+  it("an all-prose multi-paragraph selection still converts EVERY paragraph (no over-gating)", () => {
+    const editor = mount([
+      { type: "paragraph", attrs: { uuid: "p-1" }, content: [{ type: "text", text: "First." }] },
+      { type: "paragraph", attrs: { uuid: "p-2" }, content: [{ type: "text", text: "Second." }] },
+    ]);
+    selectRange(editor, 2, editor.state.doc.content.size - 2);
+
+    expect(appliesForSelection(editor, "heading-section")).toBe("ok");
+    runHeadingRow(editor, "heading-section");
+
+    expect(countOfType(editor, "heading")).toBe(2);
+    editor.destroy();
+  });
+});

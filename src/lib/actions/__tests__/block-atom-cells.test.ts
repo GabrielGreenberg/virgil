@@ -470,12 +470,26 @@ describe("atom-only selection — math/tex preserve the atom (no data loss)", ()
     };
   }
   // A paragraph whose ONLY content is a pre-existing inlineMath atom, with that
-  // atom selected exactly ([1,2) — the atom's nodeSize is 1).
+  // atom selected exactly — doc positions [1,2), the atom's nodeSize being 1.
+  //
+  // `selectRange` takes IN-PARAGRAPH offsets (it adds the +1 for the paragraph
+  // open token itself), so the offsets here are 0→1, not the doc positions.
+  // Passing the doc positions selected [2,3) instead — the zero-width tail
+  // AFTER the atom — and every leg below then passed because nothing was
+  // selected at all rather than because the atom was protected (task 641: the
+  // pre-641 guard read `slice.content.size > 0`, which an OPEN slice satisfies
+  // with the empty paragraph's own tokens, so the vacuous selection bailed for
+  // the wrong reason). The assertion below pins the fixture so it can't drift
+  // back into vacuity.
   function mountAtomOnly(): Editor {
     const editor = mountEditor("");
     const im = editor.state.schema.nodes.inlineMath;
     editor.view.dispatch(editor.state.tr.insert(1, im.create({ latex: "\\lambda" })));
-    selectRange(editor, 1, 2);
+    selectRange(editor, 0, 1);
+    const { from, to } = editor.state.selection;
+    expect(editor.state.doc.slice(from, to).content.firstChild?.type.name).toBe(
+      "inlineMath",
+    );
     return editor;
   }
   const inlineRow = VIRGIL_ACTION_REGISTRY["inline-math"]!;

@@ -209,10 +209,11 @@ import {
   blockRangeAllowsAction,
   inlineRangeAllowsAtom,
   INLINE_INSERT_ACTIONS,
-  posHostsBlockInsert,
+  blockRangeHostsBlockInsert,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
+import { sliceIsFullyCapturedBy } from "@/lib/tiptap/capture-symmetry";
 // VALUE imports: the markdown triggers the three WRAPPER rows record as their
 // `inputRulePattern` (task 427) are the extension's OWN regexes, never a
 // re-spelling — the binding lives in StarterKit and the row only RECORDS it.
@@ -1514,7 +1515,21 @@ function headingRun(level: number): (ctx: ActionContext) => void {
     // corrupt a titleField / codeBlock / latexComment. The caret's own textblock
     // is the SET's source: bail when it can't host a heading. Uses the SAME 147
     // SSOT predicate as the `applies()` gate above, so the two can never diverge.
-    if (!posHostsBlockInsert(state.doc, state.selection.from)) return;
+    // RANGE form (task 641): `setBlockType` below converts EVERY textblock in
+    // `[from, to]` whose parent can host a heading — and `latexComment` /
+    // `codeBlock` are textblocks whose parent is `doc`, which hosts a heading
+    // anywhere, so ProseMirror greenlights them and this predicate is the ONLY
+    // protection. Asked at `from` alone, a [paragraph … latexComment] selection
+    // passed and the verbatim block was converted away. The caret case is the
+    // degenerate range (`from === to`).
+    if (
+      !blockRangeHostsBlockInsert(
+        state.doc,
+        state.selection.from,
+        state.selection.to,
+      )
+    )
+      return;
     const tr = state.tr.setBlockType(
       state.selection.from,
       state.selection.to,
@@ -1741,20 +1756,23 @@ export function texRun(ctx: ActionContext): void {
   // parent can't re-host — task 229) would SPLIT it — two `\title{}` (silent
   // data-loss), two verbatim blocks, or two dup-uuid figures. Bail so NO surface
   // can corrupt.
-  if (!posHostsBlockInsert(state.doc, from, texBlockType)) return;
+  if (!blockRangeHostsBlockInsert(state.doc, from, to, texBlockType)) return;
   const seedCode = empty
     ? ""
     : state.doc.textBetween(from, to, "\n", (node) =>
         node.type.name === "hardBreak" ? "\n" : "",
       );
-  // DATA-LOSS GUARD: a non-empty selection that carries an inline atom but no
-  // text (a citation pill / `$\lambda$` / `\ref` selected alone) has
-  // `seedCode === ""` yet a non-empty slice — the `deleteSelection()` /
-  // `replaceSelectionWith` below would DESTROY the atom and drop a placeholder
-  // texBlock in its place. Preserve the atom: a `\tex` block is a caret-insert
-  // gesture; selecting an atom to convert is not supported. (Same content-aware
-  // emptiness as the archive fix — atoms count as content.)
-  if (!empty && seedCode.length === 0 && state.doc.slice(from, to).content.size > 0) {
+  // DATA-LOSS GUARD (task 641: the ONE capture/schema-symmetry predicate, shared
+  // with `mathRun` and `exampleRun`): the `deleteSelection()` /
+  // `replaceSelectionWith` below destroys everything in `[from, to]`, and the
+  // seed above carries only plain TEXT out. A citation pill / `$\lambda$` /
+  // `\ref` / a `displayMath` / a figure in the selection is content this
+  // capture cannot represent — preserve it and refuse. (Pre-641 this asked the
+  // PROXY question "did the seed come back empty?", which waved through every
+  // MIXED selection: `foo \cite{bar}` seeded `"foo "` and the citation was
+  // destroyed anyway.) A `\tex` block is a caret-insert gesture; selecting
+  // content to convert is not supported.
+  if (!empty && !sliceIsFullyCapturedBy(state.doc.slice(from, to), "text")) {
     return;
   }
   // The ONE uuid-collision scan (was duplicated across slash + grid).
@@ -1827,13 +1845,18 @@ export function forestRun(ctx: ActionContext): void {
   const { state } = ctx.view;
   const forestType = state.schema.nodes.forestBlock;
   if (!forestType) return;
-  const { from, empty } = state.selection;
+  const { from, to, empty } = state.selection;
   // CONTAINER GUARD (task 147/229, defense-in-depth — the same bail `texRun`
   // and `smartInsertBlock` take): a block atom inserted at a caret inside a
   // block that can't host a block child (titleField / codeBlock /
   // latexComment, or a figureCaption whose figureBlock parent can't re-host)
   // would SPLIT it. Bail so NO surface can corrupt.
-  if (!posHostsBlockInsert(state.doc, from, forestType)) return;
+  // RANGE form (task 641): forest COLLAPSES rather than deletes, so it destroys
+  // no text — but a selection reaching into a verbatim block is a gesture whose
+  // stated target the gate never saw, and answering it at `from` alone would
+  // leave this row the one block insert with a narrower question than its
+  // siblings. One predicate, one answer, every block row.
+  if (!blockRangeHostsBlockInsert(state.doc, from, to, forestType)) return;
   const attrs = {
     uuid: generateShortId(collectUuids(state.doc, "forestBlock")),
     source: freshForestSource(),
@@ -2140,7 +2163,22 @@ export function exampleRun(ctx: ActionContext): void {
   // an `exampleBlock` insert at a caret inside a block that can't host a block
   // child (titleField / codeBlock / latexComment, OR a figureCaption — task 229)
   // would SPLIT it. Bail so NO surface can corrupt (mirrors the texRun guard).
-  if (!posHostsBlockInsert(state.doc, from, exampleBlockType)) return;
+  // RANGE form (task 641): the WRAP path `deleteSelection()`s the whole range,
+  // so a selection running from prose INTO a `codeBlock` / `latexComment` must
+  // be refused whole — asked at `from` alone it passed and the delete merged the
+  // verbatim block away.
+  if (!blockRangeHostsBlockInsert(state.doc, from, to, exampleBlockType)) return;
+
+  // DATA-LOSS GUARD (task 641) — the SAME capture/schema-symmetry predicate
+  // `texRun` and `mathRun` ask, which this path was the one to omit. The
+  // harvest below keeps INLINE leaves only, so a selected `displayMath` /
+  // `figureBlock` / `graphicsBlock` / `texBlock` contributes nothing, the
+  // harvest reads as "empty", and the empty-template fallback then
+  // `deleteSelection()`s the block out of existence and drops a blank example
+  // in its place. Refuse instead: `\ex` wraps inline content.
+  if (!empty && !sliceIsFullyCapturedBy(state.doc.slice(from, to), "inline")) {
+    return;
+  }
 
   // Harvest inline-only content from the selection (the WRAP path) via the SSOT
   // `extractInlineFromSlice` — a bounded walk over the selection slice (never the
@@ -2297,9 +2335,14 @@ function blockInsertApplies(
     if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
     const doc = ctx.view?.state?.doc;
     if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
-    const pos = ref.kind === "cursor" ? ref.pos : ref.from;
     const insertType = doc.type.schema.nodes[nodeName];
-    return posHostsBlockInsert(doc, pos, insertType) ? "ok" : "disabled";
+    // RANGE form (task 641 — the block twin of the 428 widening its inline
+    // sibling below already has): a selection ref is DELETED before the block
+    // lands, so every textblock it reaches must survive — a selection running
+    // from prose into a `codeBlock` / `latexComment` greys the cell. A cursor
+    // ref is the caret form (from === to).
+    const [from, to] = ref.kind === "cursor" ? [ref.pos, ref.pos] : [ref.from, ref.to];
+    return blockRangeHostsBlockInsert(doc, from, to, insertType) ? "ok" : "disabled";
   };
 }
 
@@ -2375,7 +2418,12 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // and drop a placeholder math node in its place. Preserve the atom: math-
     // wrap needs real selected text (or a collapsed caret to insert a
     // placeholder). Atoms count as content (mirrors the archive fix).
-    if (from < to && text.length === 0 && editor.state.doc.slice(from, to).content.size > 0) {
+    // Task 641: the ONE capture/schema-symmetry predicate, shared with `texRun`
+    // and `exampleRun`. `latex` carries plain TEXT out, so an inline atom, a
+    // `displayMath`, a figure — anything in the slice this capture cannot
+    // represent — refuses the wrap. (Pre-641 this asked the PROXY "did the
+    // harvest come back empty?", which waved through every MIXED selection.)
+    if (from < to && !sliceIsFullyCapturedBy(editor.state.doc.slice(from, to), "text")) {
       return;
     }
     const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
@@ -2406,7 +2454,16 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     // this guard (task 396; it is NOT exempt, as this comment used to claim).
     // display-math is lightning-only (greyed by blockInsertApplies);
     // this is the belt-and-suspenders on the run itself.
-    if (!posHostsBlockInsert(editor.state.doc, from, editor.state.schema.nodes.displayMath))
+    // RANGE form (task 641): the `deleteSelection()` below destroys `[from, to]`,
+    // so every textblock the range reaches must survive — not just `from`'s.
+    if (
+      !blockRangeHostsBlockInsert(
+        editor.state.doc,
+        from,
+        to,
+        editor.state.schema.nodes.displayMath,
+      )
+    )
       return;
     // `displayMath` is a BLOCK atom — bringing the freshly inserted block into
     // view IS intended (and now lands below the sticky chrome via the editor's
@@ -3017,6 +3074,20 @@ function selectionCanHostHeading(view: EditorView): boolean {
   const { state } = view;
   const heading = state.schema.nodes.heading;
   if (!heading) return true; // defensive: no heading node → don't over-grey
+  // Task 641 — the UNIVERSAL half, asked FIRST. The walk below is an EXISTENCE
+  // quantifier (`if (applicable) break`): it skips a protected block with
+  // `return undefined` while `applicable` stays true from an earlier
+  // convertible one, so a [paragraph … latexComment] selection reported
+  // applicable and `setBlockType` — which converts EVERY textblock in the range
+  // its parent can host a heading at, and `doc` hosts a heading anywhere —
+  // destroyed the verbatim block's role. Existence alone cannot express
+  // "…and nothing in the range is protected"; the range predicate does, in the
+  // same words the block-INSERT gate uses, so the two surfaces of this one
+  // question can't diverge. Task 149 hardened the CARET case; this is its range.
+  if (
+    !blockRangeHostsBlockInsert(state.doc, state.selection.from, state.selection.to)
+  )
+    return false;
   let applicable = false;
   for (const range of state.selection.ranges) {
     if (applicable) break;
