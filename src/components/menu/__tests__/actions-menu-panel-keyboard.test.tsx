@@ -37,7 +37,29 @@ class ResizeObserverStub {
 vi.mock("../../MenuBar", () => ({
   BlockTypeDropdown: () => <button data-hint="Block type">¶</button>,
 }));
-vi.mock("@/lib/tiptap/tex-block", () => ({ insertTexBlock: vi.fn() }));
+// Task 638: `ActionsMenuPanel` now reads the collab pen through
+// `useCollabContext`, and `@/hooks/useCollab` transitively imports `@/lib/storage`
+// — whose `require("@/lib/storage-fsa")` does not resolve under vitest (the
+// extension-barrel gotcha). Stub it; nothing here touches disk. The former
+// `vi.mock("@/lib/tiptap/tex-block", …)` that used to sever this chain is gone
+// with the panel's direct `insertTexBlock` import (the `	ex` cell routes
+// through `runGridAction` now).
+vi.mock("@/lib/storage", () => {
+  const STORAGE_FNS = [
+    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
+    "readDocBundle", "writeDocBundle", "readBib", "mutateBib", "mutateSidecar",
+    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  const mod: Record<string, unknown> = { isDevStorage: false };
+  for (const name of STORAGE_FNS) mod[name] = vi.fn();
+  return mod;
+});
 
 import { ActionsMenuPanel } from "../../ActionsMenuPanel";
 import { DragHandleMenuProvider } from "../../editor-layout/card-actions/drag-handle-menu-context";

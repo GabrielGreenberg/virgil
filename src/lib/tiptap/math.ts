@@ -8,7 +8,7 @@ import {
   posHostsBlockInsert,
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
-import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { collabReadOnly } from "./collab-read-only-gate";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
 // from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
@@ -228,7 +228,7 @@ export const InlineMath = Node.create<MathOptions>({
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/display-math/comment).
-            if (refuseTypedInsertWhenReadOnly(view)) return false;
+            if (collabReadOnly(view)) return false;
             if (text !== "$") return false;
             const { state } = view;
             // Container gate (task 150): an inline-math atom is valid in a
@@ -327,7 +327,7 @@ export const DisplayMath = Node.create<MathOptions>({
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/inline-math/comment).
-            if (refuseTypedInsertWhenReadOnly(view)) return false;
+            if (collabReadOnly(view)) return false;
             if (text !== "$") return false;
             const { state } = view;
             // Container gate (task 150 / 147): a `displayMath` BLOCK atom splits

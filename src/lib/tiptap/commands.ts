@@ -1,5 +1,6 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { generateShortId } from "@/lib/uuid";
+import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 // CHIP 4a-ii: the PM→React bridge the slash `\cite` uses to register the
 // citation CARD (the atom is still inserted synchronously below). Replaces the
 // `virgil-citation-create` CustomEvent — one typed entrypoint into the
@@ -77,8 +78,7 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
   // non-editable view, so the slash popup won't even fire; this makes the refusal
   // EXPLICIT + uniform with the other surfaces.) No over-gating: a non-collab
   // editor is always editable.
-  const canEdit = view.editable;
-  if (!canEdit) return;
+  if (collabReadOnly(view)) return;
   // Task 398: ONE ctx constructor, shared with the popup's OFFER. It was inline
   // here; the popup then had no way to ask the same question without re-deriving
   // it, which is exactly how the offer and the commit came to disagree.
@@ -114,7 +114,7 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
  *      no-ops. The bridge's own `runAction` ALSO no-ops on `!isEditable`
  *      (`EditorPane.tsx`), so this is an EXPLICIT, uniform early refusal — not
  *      the only guard — mirroring `runViewOnlyAction`'s gate for the pure-PM
- *      commands and the typed surface's `refuseTypedInsertWhenReadOnly`. No
+ *      commands and the typed surface's `collabReadOnly`. No
  *      over-gating: a non-collab editor is always editable.
  *   2. the bridge dispatch itself — `getEditorActionsHandleFor(view)?.runAction`,
  *      routed via the EXACT live `view` so it reaches THIS pane's handle under
@@ -131,7 +131,7 @@ function runBridgeAction(
   view: EditorView,
   payload?: Record<string, unknown>,
 ): void {
-  if (!view.editable) return;
+  if (collabReadOnly(view)) return;
   getEditorActionsHandleFor(view)?.runAction(id, {
     surface: "slash",
     ...(payload ? { payload } : {}),

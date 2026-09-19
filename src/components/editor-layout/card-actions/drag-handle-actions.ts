@@ -68,6 +68,7 @@ import {
   INLINE_INSERT_ACTIONS,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
+import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import {
   describeCardBodyRefusal,
   prepareCardBodyCapture,
@@ -210,6 +211,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       const handle = editorRef.current;
       const ed = handle?.getEditor();
       if (!handle || !ed) return;
+
+      // ── COLLAB GATE (task 638) — the DEEPEST point, and the only one BOTH
+      // menus pass through. Every card row declares `surfaces: { grab: true,
+      // lightning: true }` and every `run()` in `ACTION_REGISTRY` opens with the
+      // collab check — but neither menu ever calls `spec.run()` for a card row:
+      // `DragHandleMenu` and `ActionsMenuPanel` both dispatch HERE, to the legacy
+      // dispatcher, so the run-side gate was unreachable from exactly the two
+      // surfaces those rows exist on. The only thing left was a `disabled` flag
+      // computed once at menu-build time, which a pen hand-off while the menu is
+      // open makes stale.
+      //
+      // `readOnlyEnforcer` is not the backstop: it rejects doc-changing PM
+      // transactions, which covers `delete` / `archive`, but `note` / `todo` /
+      // `report` / `cutter` / `suggest-edit` REGISTER A CARD — React state plus a
+      // sidecar write, which never passes through ProseMirror. Those sailed past.
+      //
+      // Asked through the ONE door (`collabReadOnly`) and asked LIVE, at the
+      // moment of the mutation, so no snapshot can go stale between menu-build
+      // and click. This is the collab/pen axis ONLY: the Library Reader's
+      // host-writability axis is a different question with its own SSOT
+      // (`isSidecarWriteAllowed` / `isCardMutationAllowed`), and the Reader
+      // deliberately keeps writing note cards while its React `editable` prop is
+      // false — see `collab-read-only-gate.ts` ("What this is NOT").
+      if (collabReadOnly(ed)) return;
 
       // Destructive-action warnings:
       //

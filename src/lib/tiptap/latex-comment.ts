@@ -4,7 +4,7 @@ import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
-import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
+import { collabReadOnly } from "./collab-read-only-gate";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
@@ -196,7 +196,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
             // typed-LaTeX surfaces — cite/footnote/inline-math/display-math).
-            if (refuseTypedInsertWhenReadOnly(view)) return false;
+            if (collabReadOnly(view)) return false;
             // Only trigger on "%" or " " after "%"
             if (text !== "%" && text !== " ") return false;
             const { state } = view;

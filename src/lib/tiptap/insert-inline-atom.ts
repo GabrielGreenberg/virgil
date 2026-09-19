@@ -57,6 +57,7 @@ import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { inlineRangeAllowsAtom } from "@/text-objects/text-object-registry";
+import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 
 export interface InsertInlineAtomArgs {
   /** The live editor. The insert runs through its command chain. */
@@ -89,11 +90,18 @@ export interface InsertInlineAtomResult {
    *  container gate REFUSED (see `refused`). */
   pos: number;
   /**
-   * True when the CONTAINER GATE declined the insert and the document was left
-   * **completely untouched** (task 396). A caller that mints an id / registers a
-   * card before calling can read this to know its atom never landed. `false` on
-   * every insert that ran — including the pre-396 shape, so no existing caller
-   * changes behaviour by ignoring it.
+   * True when a DOOR GATE declined the insert and the document was left
+   * **completely untouched** — the CONTAINER gate (task 396: this position
+   * cannot host this atom) or the COLLAB gate (task 638: the partner holds the
+   * pen). A caller that mints an id / registers a card before calling can read
+   * this to know its atom never landed. `false` on every insert that ran —
+   * including the pre-396 shape, so no existing caller changes behaviour by
+   * ignoring it.
+   *
+   * The two gates share one flag on purpose: the caller's obligation is
+   * identical either way — do not register the card whose atom is not in the
+   * document — and a caller that had to enumerate the REASONS would be one
+   * reason behind the next gate.
    */
   refused: boolean;
 }
@@ -129,6 +137,26 @@ function clampToTextRange(editor: Editor, at: number): number {
  */
 export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomResult {
   const { editor, type, attrs, at } = args;
+
+  // ── COLLAB GATE (task 638) — at the same seam, for the same reason the
+  // CONTAINER gate below is here: this is the DEEPEST point, and the only one
+  // the DEFERRED create-popover commit passes through. `refRun` / `citationRun`
+  // gate the popover's OPEN; the atom lands on COMMIT, which can be many seconds
+  // later — long enough for the collab pen to change hands while the user is
+  // picking citekeys in a portal `<input>`. Task 396 gave the container question
+  // this treatment and wrote down why; the collab question was left in `run()`,
+  // where the commit never goes.
+  //
+  // Per-EDITOR, deliberately: a footnote-card / float owner answers for ITSELF
+  // (each surface owns its own `setEditable`), so an atom committed into a card
+  // body is judged by that body's editability, not MAIN's.
+  //
+  // Refusing leaves the doc COMPLETELY untouched and reports it, so
+  // `commitCitationCreate`'s "THE REPORT IS THE PERMISSION" bail already covers
+  // the card half for free — no citation card without its atom.
+  if (collabReadOnly(editor)) {
+    return { pos: -1, refused: true };
+  }
 
   // ── CONTAINER GATE (task 396) — the DEEPEST point, and the only one the
   // deferred create-popover commit passes through. `handleInsertRef` /
