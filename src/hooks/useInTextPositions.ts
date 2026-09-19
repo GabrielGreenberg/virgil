@@ -331,6 +331,23 @@ export interface NaturalEntry {
  * chrome's last painted pixel, and the pass adds the deck's own `MIN_GAP` so
  * the first card clears the bins by exactly what it would clear a card.
  */
+/**
+ * WHICH entry point is asking to run a measure pass. The two are not
+ * interchangeable and the difference is stated once, at {@link passGate}:
+ * `"chain"` is a SPECULATIVE pass (some trigger thinks the world may have
+ * moved), `"rebuild"` is a pass the item set has already earned.
+ */
+type PassEntry = "chain" | "rebuild";
+
+/**
+ * WHICH gate, if any, holds a pass. `null` means run it. The gate names a
+ * reason rather than returning a boolean, because the two callers translate the
+ * same verdict differently — the convergence chain PARKS on `"hidden"` and
+ * RETRIES on the rest, the companion one-shot marks the hook dirty on
+ * `"hidden"` and otherwise simply skips.
+ */
+type PassBlock = "hidden" | "suppressed" | "typing" | null;
+
 export interface CascadeFloor {
   /** Observed by the per-card ResizeObserver: a size change here is a floor
    *  change, and enters the settle door like a card resize. */
@@ -648,12 +665,13 @@ export function useInTextPositions(
   // card "jumping" — worst in focus mode, where the cascade has too few items
   // to absorb one card's wobble.
   //
-  // Hoisted to hook scope by task 370 so it gates EVERY pass, not just the
-  // per-card ResizeObserver's. It is a `deferred`, never an `inert`: a cold
-  // load that happens to coincide with card typing must still converge, so the
-  // chain retries — and the `focusout` handler re-arms, which is what keeps a
-  // long typing session from outliving the deadline and stranding a
-  // half-settled deck.
+  // Hoisted to hook scope by task 370 so it is one predicate rather than the
+  // per-card ResizeObserver's private rule. WHICH passes it holds is not stated
+  // here — it is stated once, in `passGate` below. It is a `deferred`, never an
+  // `inert`: a cold load that happens to coincide with card typing must still
+  // converge, so the chain retries — and the `focusout` handler re-arms, which
+  // is what keeps a long typing session from outliving the deadline and
+  // stranding a half-settled deck.
   const isTypingInPanel = useCallback(() => {
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof document === "undefined") return false;
@@ -664,6 +682,52 @@ export function useInTextPositions(
       active.getAttribute("contenteditable") === "true"
     );
   }, []);
+
+  /**
+   * THE MEASURE-PASS POLICY — which gates hold a pass, stated ONCE, for BOTH
+   * the entry points that can run one.
+   *
+   * > **A gate is read by every pass only if every pass reads it from the same
+   * > place.** Task 370 hoisted `isTypingInPanel` to hook scope and three
+   * > comments then claimed it gated "EVERY pass". It did not: the convergence
+   * > controller's closure asked hidden / suppressed / typing, and the
+   * > companion one-shot asked `canMeasureNow()` alone. Two entry points, two
+   * > hand-written gate lists, and prose asserting they were one list.
+   *
+   * The two entry points, and why they are NOT gated identically:
+   *
+   *  • `"chain"` — the convergence controller's closure, i.e. every
+   *    "the world may have moved" trigger (cold mount, font-ready, the editor
+   *    RO, the per-card RO, the structural bus, the scroll-idle refinement, a
+   *    re-show). These are SPECULATIVE: nothing has told the hook that the deck
+   *    it already published is wrong, so a pass that would commit per-keystroke
+   *    sub-pixel jitter is pure cost, and TYPING holds it.
+   *  • `"rebuild"` — the companion one-shot, which fires because `items` /
+   *    `resolvePos` actually changed identity. That is not speculation: a card
+   *    was added, removed or re-anchored, and until this pass commits, a new
+   *    card has NO position and the consumer renders no wrapper for it
+   *    (`OmniViewPanel`: `if (top === undefined) return null`). Holding it on
+   *    typing would leave a card the user just created invisible until blur —
+   *    so the typing gate is DELIBERATELY EXEMPT here, and this is the one
+   *    place that says so. Its risk is bounded by the same hysteresis
+   *    everything else uses: a rebuild that moves nothing commits nothing
+   *    (`HEIGHT_EPSILON_PX` swallows glyph jitter), and the card being typed
+   *    into cannot move — its top derives from its anchor and the cards ABOVE
+   *    it, neither of which a card-body edit touches.
+   *
+   * `hidden` and `suppressed` hold BOTH, and the callers translate the verdict
+   * into their own vocabulary (the chain parks on `hidden` and retries on
+   * anything else; the one-shot marks the hook dirty on `hidden`).
+   */
+  const passGate = useCallback(
+    (via: PassEntry): PassBlock => {
+      if (!isVisibleRef.current) return "hidden";
+      if (!canMeasureNow()) return "suppressed";
+      if (via === "chain" && isTypingInPanel()) return "typing";
+      return null;
+    },
+    [canMeasureNow, isTypingInPanel],
+  );
 
   // Visibility flip detector — the FIRST effect to run on a flip (declared before
   // the wiring + re-show effects), so the suppression window is already open by
@@ -1093,9 +1157,12 @@ export function useInTextPositions(
       //    until the window closes (and the DIRTY re-show closes it early,
       //    because a dirty verdict voids the window's own premise).
       //  • TYPING into a card body in this pod ⇒ `deferred`, the hoisted gate.
-      if (!isVisibleRef.current) return "inert";
-      if (!canMeasureNow()) return "deferred";
-      if (isTypingInPanel()) return "deferred";
+      //
+      // All three are `passGate("chain")`'s answer — this closure states the
+      // POLICY's consequences (park vs retry), never the policy itself.
+      const blocked = passGate("chain");
+      if (blocked === "hidden") return "inert";
+      if (blocked) return "deferred";
       return measureRef.current();
     });
     convergeRef.current = converge;
@@ -1224,15 +1291,20 @@ export function useInTextPositions(
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       scrollEl?.removeEventListener("scroll", onScrollForRefine);
     };
-  }, [editor, enabledProp, canMeasureNow, isTypingInPanel, requestSettle]);
+  }, [editor, enabledProp, passGate, requestSettle]);
 
   // Companion one-shot: an items/resolvePos rebuild (fresh `measure`
   // identity) re-measures ONCE — the behavior the wiring effect's re-run
   // used to provide, without the teardown/re-arm (settle loop, observers,
   // park) that came with it.
+  //
+  // It asks the SAME door every pass asks (`passGate`), as `"rebuild"` — which
+  // is where the typing exemption is declared and argued, rather than being an
+  // omission readable only by diffing this gate list against the chain's.
   useLayoutEffect(() => {
     if (!enabledProp) return;
-    if (canMeasureNow()) {
+    const blocked = passGate("rebuild");
+    if (!blocked) {
       measure();
       convergeRef.current?.request();
       return;
@@ -1243,8 +1315,8 @@ export function useInTextPositions(
     // republish and the re-show must not take its CLEAN branch. Pre-370 this
     // case had no marker at all and the new cards simply never got positions
     // until some unrelated trigger happened by.
-    if (!isVisibleRef.current) dirtyWhileHiddenRef.current = true;
-  }, [measure, enabledProp, canMeasureNow]);
+    if (blocked === "hidden") dirtyWhileHiddenRef.current = true;
+  }, [measure, enabledProp, passGate]);
 
   // Keep-alive re-show effect — the heart of the instant-switch fix. Fires ONLY
   // on a genuine hidden→visible transition (a tab switch back to this doc), never
@@ -1325,23 +1397,69 @@ export function useInTextPositions(
     });
   }, [editor, enabledProp, isVisible]);
 
-  // Observe card-size changes (e.g. bibliography pod expanding) so the
-  // cascade reflows correctly. Dep on `measureVersion` so we re-observe
-  // whenever cards mount/unmount.
+
+  // Pure-JS resolution. On a pin change, this is the ONLY thing that
+  // re-runs — no DOM reads, no layout flush, no second commit. The floor is
+  // read through `measureVersion` like the naturals: the pass that commits a
+  // new one bumps the version.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const positions = useMemo(
+    () => resolveCascade(naturalRef.current, items, pinned, floorRef.current),
+    [measureVersion, items, pinned],
+  );
+
+  // Exposed because a pin is stored ANCHOR-RELATIVE (task 362) and the
+  // publish site therefore needs the card's natural top; the pod hands it on
+  // through `data-omni-natural-top`.
   //
-  // Important: skip the recompute while the user is actively typing into
-  // a card editor inside this panel. Per-keystroke sub-pixel height jitter
-  // (different glyph widths) would otherwise tick `setMeasureVersion` and
-  // re-position every card every frame — visually the typed card "jumps"
-  // as the cascade reflows, which the user perceives as carriage-return
-  // behavior in the edit view. The effect is especially visible in focus
-  // mode where the cascade has few items and a single card's wobble isn't
-  // absorbed by neighbors. That gate is now `isTypingInPanel` at hook scope,
-  // read by EVERY pass inside the controller's measure closure (task 370) — so
-  // a font-ready ping or a structural event during card typing can no longer
-  // walk around it either. On blur the focusout handler re-arms convergence, so
-  // positions snap to truth (and a typing session that outran the deadline gets
-  // a fresh budget rather than a stranded deck).
+  // Keyed on `measureVersion` alone — a NARROWER dep list than `positions`
+  // (which also depends on `items` and `pinned`), because neither of those
+  // can change a natural. The invariant the wrapper's render relies on
+  // (`positions.get(id) !== undefined ⇒ naturals.get(id) !== undefined`)
+  // therefore does NOT rest on the two memos sharing a trigger; it rests on
+  // `measure()` being the only writer of `naturalRef` and bumping the
+  // version whenever it commits a change — so a pass held by hysteresis
+  // republishes nothing, which is correct, and any pass that ADDS an entry
+  // bumps. Worth writing down: widen either memo's deps and this argument,
+  // not a dep-list equality, is what has to keep holding.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const naturals = useMemo(
+    () => naturalRef.current as ReadonlyMap<string, NaturalEntry>,
+    [measureVersion],
+  );
+
+  // The identity of the set this pod actually RENDERS a wrapper for — the
+  // per-card ResizeObserver's true dependency (see the effect below). Rebuilt
+  // whenever `positions` is, which is O(items) string work against the O(items)
+  // `coordsAtPos` sweep the old key bought instead; a pin change rebuilds the
+  // same string and the effect does not re-run.
+  const observedIdsKey = useMemo(
+    () => Array.from(positions.keys()).join("\u0000"),
+    [positions],
+  );
+
+  // Observe card-size changes (e.g. bibliography pod expanding) so the
+  // cascade reflows correctly.
+  //
+  // KEYED ON THE OBSERVED SET, NOT ON GEOMETRY. This effect binds one observer
+  // per rendered card wrapper, so the only thing that can make its bindings
+  // wrong is a change to WHICH WRAPPERS EXIST — and that set is exactly
+  // `positions`' key set, by construction at the one place a wrapper is
+  // rendered (`OmniViewPanel`: `const top = positions.get(item.id); if (top ===
+  // undefined) return null`). It used to be keyed on `measureVersion` with the
+  // reason given as "so we re-observe whenever cards mount/unmount" — but
+  // `measureVersion` bumps on ANY committed geometry change, so a document
+  // keystroke that re-wraps one line paid a `disconnect()`, a pod-wide
+  // `querySelectorAll` and an O(deck) `observe()` over an item set that had not
+  // changed at all. `observedIdsKey` is that stated purpose expressed as a
+  // value: a mount/unmount moves it, a card that merely got taller or slid down
+  // does not.
+  //
+  // The typing gate is NOT here. It lives in `passGate` with every other
+  // pass gate, and this effect's two handlers are bare `requestSettle()` calls
+  // that enter the same door (see below). On blur the focusout handler re-arms
+  // convergence, so positions snap to truth (and a typing session that outran
+  // the deadline gets a fresh budget rather than a stranded deck).
   useEffect(() => {
     if (!enabledProp) return;
     const panelEl = panelScrollRef.current;
@@ -1384,37 +1502,7 @@ export function useInTextPositions(
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabledProp, entry, requestSettle, noteObservedHeights, floor]);
-
-  // Pure-JS resolution. On a pin change, this is the ONLY thing that
-  // re-runs — no DOM reads, no layout flush, no second commit. The floor is
-  // read through `measureVersion` like the naturals: the pass that commits a
-  // new one bumps the version.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const positions = useMemo(
-    () => resolveCascade(naturalRef.current, items, pinned, floorRef.current),
-    [measureVersion, items, pinned],
-  );
-
-  // Exposed because a pin is stored ANCHOR-RELATIVE (task 362) and the
-  // publish site therefore needs the card's natural top; the pod hands it on
-  // through `data-omni-natural-top`.
-  //
-  // Keyed on `measureVersion` alone — a NARROWER dep list than `positions`
-  // (which also depends on `items` and `pinned`), because neither of those
-  // can change a natural. The invariant the wrapper's render relies on
-  // (`positions.get(id) !== undefined ⇒ naturals.get(id) !== undefined`)
-  // therefore does NOT rest on the two memos sharing a trigger; it rests on
-  // `measure()` being the only writer of `naturalRef` and bumping the
-  // version whenever it commits a change — so a pass held by hysteresis
-  // republishes nothing, which is correct, and any pass that ADDS an entry
-  // bumps. Worth writing down: widen either memo's deps and this argument,
-  // not a dep-list equality, is what has to keep holding.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const naturals = useMemo(
-    () => naturalRef.current as ReadonlyMap<string, NaturalEntry>,
-    [measureVersion],
-  );
+  }, [observedIdsKey, enabledProp, entry, requestSettle, noteObservedHeights, floor]);
 
   return { positions, naturals, editorContentHeight, panelScrollRef };
 }

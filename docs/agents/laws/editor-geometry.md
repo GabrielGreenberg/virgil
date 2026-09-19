@@ -1456,11 +1456,67 @@ folds verdicts. Five rules it earned:
 The task-328 policy is untouched and does the visual work: corrections land
 through the hysteresis (sub-ε commits nothing, so `measureVersion` never bumps)
 and the `.omni-entry-slide` transition, so convergence is a calm glide rather
-than the first-scroll SNAP. The typing gate is hoisted to hook scope and read by
-EVERY pass now, not just the per-card observer's — so a font-ready ping during
-card typing can no longer walk around it — and `focusout` re-arms, which is what
-keeps a long typing session from outliving the budget and stranding a
-half-settled deck.
+than the first-scroll SNAP. The typing gate is hoisted to hook scope, so a
+font-ready ping during card typing can no longer walk around it, and `focusout`
+re-arms, which is what keeps a long typing session from outliving the budget and
+stranding a half-settled deck.
+
+### The two-entry-point half (task 656)
+
+> **A gate is read by every pass only if every pass reads it from the same
+> place.** Where two entry points each carry their own hand-written list of
+> gates, the prose that calls them one list is a wish, and the drift is
+> invisible in review because each list reads correct on its own.
+
+This paragraph used to say the typing gate was "read by EVERY pass". It was not.
+Two entry points can run a measure pass, and each stated its own gates: the
+convergence controller's closure asked hidden / suppressed / typing, and the
+companion one-shot (an items/`resolvePos` rebuild) asked `canMeasureNow()`
+alone. A card-body edit mints a fresh `items` identity every 250 ms through the
+`RichTextField` debounce, so each flush took one ungated synchronous pass — and
+a repo-wide grep over the suites returned **zero** references to
+`isTypingInPanel`. The gate this doc calls the fix for the "typed card jumps /
+reads as carriage-return" report was held by nothing.
+
+Neither half of task 656 was a user-visible defect on the day it was filed, and
+that is the point worth recording: the pass a flush took committed nothing,
+because `HEIGHT_EPSILON_PX` swallows glyph jitter and a card-body edit dispatches
+no document transaction, so every `naturalTop` was byte-identical. What was
+defective was three emphatic comments and this doc describing behaviour the code
+did not have, on the keystroke-adjacent path, with no cover — which is how a real
+regression lands here unnoticed.
+
+The fix is not the wording. `passGate(via)` in `useInTextPositions.ts` is ONE
+statement of the policy, asked by both entry points, and the asymmetry is
+expressed as a parameter rather than as an omission:
+
+- **`"chain"`** — every "the world may have moved" trigger. SPECULATIVE: nothing
+  has told the hook the deck it already published is wrong, so typing holds it.
+- **`"rebuild"`** — the companion one-shot. NOT speculative: a card was added,
+  removed or re-anchored, and until a pass commits, a new card has no position
+  and the pod renders **no wrapper** for it (`OmniViewPanel`: `if (top ===
+  undefined) return null`). Gating this on typing would leave a card the user
+  just created invisible until blur, so the typing exemption is **declared here
+  and argued**, not diffed out of two lists.
+
+Same shape, one lane over: the per-card ResizeObserver effect stated its purpose
+narrowly — *"Dep on `measureVersion` so we re-observe whenever cards
+mount/unmount"* — and then keyed on a value that bumps on ANY committed geometry
+change, so a wrap-changing document keystroke paid `disconnect()` + a pod-wide
+`querySelectorAll` + an O(deck) `observe()` over an item set that had not moved.
+It is keyed on `observedIdsKey` now — the identity of the set the pod actually
+renders a wrapper for, which is `positions`' key set by construction at the one
+place a wrapper is rendered. The stated purpose, expressed as a value.
+
+Teeth: [useInTextPositions-pass-gates.test.tsx](../../../src/hooks/__tests__/useInTextPositions-pass-gates.test.tsx)
+drives a real chain trigger during card-body focus (nothing commits; blur snaps
+the deck to truth), pins the rebuild exemption so a future "completion" of the
+fix fails rather than hiding a new card, counts observer rebinds across a
+committed geometry change with an unchanged item set (pre-fix all three counters
+move) with a mount control that still rebinds — and CENSUSES the gate: outside
+its own declaration `isTypingInPanel` may be read in exactly one place, because
+what caused the finding was a second hand-written gate list and no behavioural
+leg can see one of those being added.
 
 **The law has a census, and it earned one the hard way.** Every door law in this
 file ships one on the stated ground that *the door was never the part that could

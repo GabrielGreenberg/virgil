@@ -56,7 +56,7 @@ const PERMITTED_MEASURE_CALLS: Record<string, string> = {
   "return measureRef.current();":
     "THE DOOR. The convergence controller's measure closure — the only place a settle pass runs, and where the hidden / suppression / typing policy gates sit.",
   "measure();":
-    "The companion one-shot's SYNCHRONOUS pass on an items/resolvePos rebuild, so a newly-added card paints at its position in this commit rather than a frame later. It is followed on the very next line by `convergeRef.current?.request()`, which the paired leg below enforces — the synchronous pass is an addition to the door, never a substitute for it.",
+    "The companion one-shot's SYNCHRONOUS pass on an items/resolvePos rebuild, so a newly-added card paints at its position in this commit rather than a frame later. It is followed on the very next line by `convergeRef.current?.request()`, which the paired leg below enforces — the synchronous pass is an addition to the door, never a substitute for it. Task 656: it asks the SAME policy door every pass asks (`passGate` as `rebuild`), which is where its deliberate exemption from the typing gate is declared.",
 };
 
 function measureCallLines(src: string): { line: number; text: string }[] {
