@@ -77,8 +77,27 @@ export interface AtomMeta {
    * effective selectability matches this facet for every kind, so it can't drift.
    */
   selectable: boolean;
-  /** Human label (confirm copy / future UI). */
-  label: string;
+  // NO `label` FIELD, deliberately (task 647). A `label` ("Footnote",
+  // "Citation", "Cross-reference", "Inline math") rode here from the start,
+  // read by nothing, its own comment conceding why ("confirm copy / future
+  // UI"). The tempting fix was to point the three surfaces that hand-spell
+  // those words at this row; the tempting fix was wrong, and the evidence is
+  // one row over. Human names for these concepts live in THREE registries
+  // that deliberately disagree:
+  //
+  //   CARD_REGISTRY.label          — the card overline / kind chevron
+  //   CARD_ACTION_PRESENTATION     — the grab-bar + lightning menu entries
+  //   ActionSpec.label             — a VIRGIL_ACTION_REGISTRY row
+  //
+  // and `todo` is "Task" in the first while being "Todo" in the other two,
+  // `report` is "Report" against "Request report". They coincide on
+  // "Footnote"/"Citation" and nowhere else, so an SSOT spanning them would
+  // assert an identity their own neighbouring rows falsify — and would couple
+  // menu copy to the atom taxonomy, so renaming an atom silently renamed a
+  // menu entry. An Atom has no naming surface of its own (nothing in the grab
+  // gesture, the ghost or the drop specs shows a kind to the user), so there
+  // is no fourth vocabulary for this registry to own. If one ever appears,
+  // that surface's registry is where its copy goes.
 }
 
 export const ATOM_REGISTRY = {
@@ -90,7 +109,6 @@ export const ATOM_REGISTRY = {
     idAttr: "footnoteId",
     domIdAttr: "data-footnote-id",
     selectable: false,
-    label: "Footnote",
   },
   citation: {
     kind: "citation",
@@ -100,7 +118,6 @@ export const ATOM_REGISTRY = {
     idAttr: "citationId",
     domIdAttr: "data-citation-id",
     selectable: false,
-    label: "Citation",
   },
   ref: {
     kind: "ref",
@@ -110,7 +127,6 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: false,
-    label: "Cross-reference",
   },
   "inline-math": {
     kind: "inline-math",
@@ -120,7 +136,6 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: true,
-    label: "Inline math",
   },
   // `as const satisfies` rather than a plain `Record<AtomKind, AtomMeta>`
   // annotation: the rows are still type-checked against `AtomMeta` (a typo'd
@@ -224,14 +239,19 @@ export const CARD_ATOM_DOM_ID_ATTRS: ReadonlyArray<string> = CARD_ATOMS.map(
   (m) => m.domIdAttr,
 );
 
-/** A CSS selector matching any element carrying a Card-bearing atom's id attr.
- *  The DOM-attribute twin of {@link CARD_ATOM_DOM_SELECTOR}, which matches on
- *  `data-type` instead — both are needed because the id attr also rides the
- *  ghost clone and the hover bridge's `closest()`, where `data-type` is absent
- *  or already stripped. */
-export const CARD_ATOM_DOM_ID_SELECTOR: string = CARD_ATOM_DOM_ID_ATTRS.map(
-  (a) => `[${a}]`,
-).join(",");
+// NO joined id-attr SELECTOR (task 647). Task 645 published a
+// `CARD_ATOM_DOM_ID_SELECTOR` — `CARD_ATOM_DOM_ID_ATTRS` joined into
+// `[data-footnote-id],[data-citation-id]` — justified by the two surfaces that
+// read an atom's id off the DOM. Neither could ever have used it, and that is
+// the interesting part: the ghost (`inline-atom-ghost.ts`) REMOVES each attr,
+// so it needs the list, not a selector; and the hover bridge
+// (`useTextHoverBridge.ts`) climbs the ancestor chain asking each row in turn
+// because it must answer WHICH KIND matched, which a joined selector erases by
+// construction. So it shipped with zero callers — not even a test — alongside a
+// comment naming consumers that structurally cannot be its consumers. Add the
+// selector back the day a surface asks "is this element any Card-bearing atom?"
+// and does not care which; until then the two derivations above are the whole
+// need.
 
 /** Resolve a **Card-bearing** Atom meta from a PM schema node name, or null for
  *  an id-less atom / a non-atom. The narrowing twin of

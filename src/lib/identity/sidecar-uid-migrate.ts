@@ -7,11 +7,14 @@
  * fix re-keys both onto the durable {@link BibEntry.uid}.
  *
  * The migration bar for a DATA-LOSS-class sidecar is **never a silent delete**
- * (PLAN D4). When a legacy citekey can't be resolved to a live entry's uid —
- * because the entry was renamed/removed *before* the upgrade, or the `.bib`
- * isn't loaded yet — the annotation is bucketed under `orphanByKey` (or the
- * review row keeps its bare `bibKey` with no `entryUid`), recoverable later,
- * not lost. The migration is additive + idempotent: re-running it over an
+ * (PLAN D4). When a legacy citekey can't be routed to a FREE uid — because the
+ * entry was renamed/removed *before* the upgrade, the `.bib` isn't loaded yet,
+ * or the uid it resolves to is already occupied — the annotation is bucketed
+ * under `orphanByKey` (or the review row keeps its bare `bibKey` with no
+ * `entryUid`), recoverable later, not lost. The occupied-uid case is the one
+ * the first cut got wrong: it resolved, so it took the write branch, and the
+ * write branch declined to overwrite and then dropped what it declined to
+ * write. `placeAnnotation` is now the single statement of that policy. The migration is additive + idempotent: re-running it over an
  * already-migrated state is a no-op.
  *
  * Pure functions, no React / storage — unit-tested directly. A `keyToUid`
@@ -51,9 +54,54 @@ export function isAnnotationsV2(raw: unknown): raw is AnnotationsStateV2 {
 const EMPTY_V2: AnnotationsStateV2 = { v: 2, byUid: {}, orphanByKey: {} };
 
 /**
+ * Place ONE annotation body into the v2 shape — the single statement of what
+ * happens when a resolved uid is ALREADY occupied.
+ *
+ * Insert-if-absent, and the loser is KEPT in `orphanByKey` rather than dropped.
+ * That second half is what makes the module header's "NEVER dropped" literally
+ * true (task 647): the re-home loop used to write `if (!(uid in byUid))
+ * byUid[uid] = html;` with no `else`, so an orphan whose citekey resolved onto
+ * an occupied uid had its HTML discarded — and because the loop set its
+ * `rehomed` flag regardless, the caller persisted the object the annotation had
+ * just vanished from. A shadowed bucket is recoverable (it re-homes the moment
+ * the occupant is cleared, and a human can still read it out of the sidecar); a
+ * discarded one is not. This is the DATA-LOSS-class bar from PLAN D4: never a
+ * silent delete, even on a path only a machine can reach.
+ *
+ * Returns whether anything actually MOVED into `byUid` — which is the v2
+ * branch's `rehomed` signal, and is deliberately false for a shadowed orphan:
+ * nothing changed, so the caller hands the input straight back and the
+ * same-reference no-op contract below holds exactly as before.
+ *
+ * Both call sites route through here: the legacy-record branch faces the same
+ * collision the moment two citekeys resolve to one uid, and re-deriving the
+ * policy per branch is how the two halves drift apart.
+ */
+function placeAnnotation(
+  byUid: Record<string, string>,
+  orphanByKey: Record<string, string>,
+  key: string,
+  uid: string | undefined,
+  html: string,
+): boolean {
+  if (!uid) {
+    orphanByKey[key] = html; // unresolvable — recoverable, never dropped
+    return false;
+  }
+  if (uid in byUid) {
+    orphanByKey[key] = html; // SHADOWED — kept, not discarded
+    return false;
+  }
+  byUid[uid] = html;
+  return true;
+}
+
+/**
  * Migrate a legacy citekey-keyed annotations record to the uid-keyed v2 shape.
- * Each citekey that resolves to a uid moves to `byUid[uid]`; the rest land in
- * `orphanByKey` (NEVER dropped). Idempotent: a v2 input that still has
+ * Each citekey that resolves to a FREE uid moves to `byUid[uid]`; everything
+ * else — unresolvable, or resolving onto an already-occupied uid — lands in
+ * `orphanByKey` (NEVER dropped; see {@link placeAnnotation}). Idempotent: a v2
+ * input that still has
  * `orphanByKey` entries gets another pass at re-homing them against the current
  * resolver, so an orphan recovers the moment its entry re-appears.
  *
@@ -80,12 +128,8 @@ export function migrateAnnotationsToV2(
     const orphanByKey: Record<string, string> = {};
     let rehomed = false;
     for (const [key, html] of Object.entries(raw.orphanByKey ?? {})) {
-      const uid = keyToUid.get(key);
-      if (uid) {
-        if (!(uid in byUid)) byUid[uid] = html;
+      if (placeAnnotation(byUid, orphanByKey, key, keyToUid.get(key), html)) {
         rehomed = true;
-      } else {
-        orphanByKey[key] = html;
       }
     }
     // Nothing re-homed → hand the input straight back so an effect-driven
@@ -99,9 +143,7 @@ export function migrateAnnotationsToV2(
   const orphanByKey: Record<string, string> = {};
   for (const [key, html] of Object.entries(legacy)) {
     if (typeof html !== "string" || !html) continue;
-    const uid = keyToUid.get(key);
-    if (uid) byUid[uid] = html;
-    else orphanByKey[key] = html; // recoverable, never dropped
+    placeAnnotation(byUid, orphanByKey, key, keyToUid.get(key), html);
   }
   return { v: 2, byUid, orphanByKey };
 }

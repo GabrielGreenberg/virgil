@@ -84,6 +84,71 @@ describe("migrateAnnotationsToV2", () => {
   });
 });
 
+// ── The COLLISION branch: a resolved uid that is already occupied (task 647) ──
+//
+// The header promised orphaned annotations are "NEVER dropped" and the re-home
+// loop implemented insert-if-absent: an orphan whose citekey resolved onto an
+// occupied uid was neither written nor carried forward, and `rehomed` was set
+// regardless, so the caller PERSISTED the object the annotation had vanished
+// from. One state transition, silent, irreversible.
+//
+// These pin the corrected policy — shadowed means KEPT — and they are written
+// so each fails on the pre-fix code: the first on the orphan being gone, the
+// second on the same-reference contract, which the pre-fix loop broke by
+// reporting a re-home it had not performed.
+describe("migrateAnnotationsToV2 — uid collision", () => {
+  const keyToUid = buildKeyToUid([entry("u-smith", "smith2020"), entry("u-alias", "alias")]);
+
+  it("CARRIES FORWARD an orphan whose resolved uid is already occupied", () => {
+    // `old_key` resolves to nothing; `smith2020` resolves to u-smith, which the
+    // byUid side already holds. The occupant wins the slot — and the loser stays
+    // readable in the bucket instead of being discarded.
+    const v2 = migrateAnnotationsToV2(
+      {
+        v: 2,
+        byUid: { "u-smith": "<p>the occupant</p>" },
+        orphanByKey: { smith2020: "<p>the shadowed orphan</p>", old_key: "<p>unresolvable</p>" },
+      },
+      keyToUid,
+    );
+    expect(v2.byUid["u-smith"]).toBe("<p>the occupant</p>"); // not overwritten
+    expect(v2.orphanByKey.smith2020).toBe("<p>the shadowed orphan</p>"); // NOT dropped
+    expect(v2.orphanByKey.old_key).toBe("<p>unresolvable</p>");
+  });
+
+  it("a shadowed-only pass is a NO-OP: same reference, nothing persisted", () => {
+    // Nothing MOVED, so there is nothing to write. The pre-fix loop set
+    // `rehomed = true` here and handed back a fresh object missing the orphan —
+    // which is precisely how the drop reached disk.
+    const input = {
+      v: 2 as const,
+      byUid: { "u-smith": "<p>occupant</p>" },
+      orphanByKey: { smith2020: "<p>shadowed</p>" },
+    };
+    expect(migrateAnnotationsToV2(input, keyToUid)).toBe(input);
+  });
+
+  it("re-homes the shadowed orphan once the occupant is cleared (recoverable)", () => {
+    // The whole reason keeping beats dropping: the bucket is not a graveyard.
+    const v2 = migrateAnnotationsToV2(
+      { v: 2, byUid: {}, orphanByKey: { smith2020: "<p>shadowed</p>" } },
+      keyToUid,
+    );
+    expect(v2.byUid["u-smith"]).toBe("<p>shadowed</p>");
+    expect(v2.orphanByKey.smith2020).toBeUndefined();
+  });
+
+  it("applies the SAME policy to a legacy flat record (one statement, both branches)", () => {
+    // Two citekeys resolving to one uid is reachable on the legacy path the
+    // moment a `.bib` carries a duplicated uid. The second must be bucketed,
+    // not silently overwrite the first.
+    const dupUid = buildKeyToUid([entry("u-dup", "a"), entry("u-dup", "b")]);
+    const v2 = migrateAnnotationsToV2({ a: "<p>first</p>", b: "<p>second</p>" }, dupUid);
+    expect(v2.byUid["u-dup"]).toBe("<p>first</p>");
+    expect(v2.orphanByKey.b).toBe("<p>second</p>"); // kept, not clobbered away
+  });
+});
+
 describe("migrateBibReviewToUid", () => {
   const keyToUid = buildKeyToUid([entry("u-smith", "smith2020")]);
 

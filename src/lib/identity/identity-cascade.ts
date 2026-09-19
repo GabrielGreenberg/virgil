@@ -23,7 +23,7 @@
  * a migrator registry and runs the fan-out. The editor `\cite{}` doc-rewrite is
  * itself a migrator the citation hook registers, passing the live editor — so
  * the cascade module never depends on TipTap. Keystroke sanctity is unaffected:
- * `runIdentityChange` fires only on an explicit rename/retype (a panel action),
+ * `runIdentityChange` fires only on an explicit rename (a panel action),
  * never on a keystroke, and walks nothing proportional to the doc on type.
  *
  * Rollout: gated behind `virgil:identity-cascade` (identity-flag.ts) — flag-off
@@ -51,13 +51,6 @@ export interface RenameCitekeyChange {
   newType?: string;
 }
 
-/** A bib type retype with NO identity move (same uid, same key) — routed
- *  through the same atomic writer for consistency. */
-export interface RetypeChange {
-  uid: string;
-  newType: string;
-}
-
 /**
  * An id-regen reconciliation after a markerless re-parse (the Axis-A case,
  * T1 §3.2(c) / PLAN D1.2). The remap is `oldId -> newId` for inline atoms whose
@@ -69,9 +62,36 @@ export interface RegenIdsChange {
   remap: ReadonlyMap<string, string>;
 }
 
+/**
+ * Every identity move this cascade fans out. TWO arms, and the count is the
+ * point: each one has a registered production migrator, so no dispatch through
+ * this union is a guaranteed no-op.
+ *
+ * THE THIRD ARM, AND WHY IT IS GONE (task 647). A `{ kind: "bibEntry"; retype }`
+ * arm rode here from D3, carrying `{ uid, newType }` and dispatched by
+ * `replaceBibEntry` on every real `.bib` type change. Both registered
+ * `bibEntry` migrators open with `if (!isRenameCitekey(change)) return;`, so
+ * every one of those dispatches was a guaranteed no-op — a fan-out whose
+ * declared purpose was "single-writer discipline" and whose measured effect was
+ * nothing at all, for three months, with a suite pinning it green.
+ *
+ * It was retired rather than given a consumer, on the module's OWN definition:
+ * this is "the single writer for any identity-CHANGING operation", and the
+ * retype arm's own doc-comment conceded "NO identity move (same uid, same
+ * key)". A retype changes a field of an entry whose identity is untouched; it
+ * is not a member of this vocabulary, and folding it in "for consistency" is
+ * what bought a dead arm plus a runtime bail in every consumer forever.
+ *
+ * What was checked before deleting, so a future reinstatement knows: the `.bib`
+ * write itself never depended on the fan-out (`replaceBibEntry` / `applyBibKeyType`
+ * own it and still do, on both flag paths), and no surface was found that keys
+ * on an entry's TYPE — package requirements key on emitted commands, not on bib
+ * types. If one ever appears, the honest move is to re-add the arm WITH its
+ * migrator in the same commit; an arm that lands ahead of its consumer is the
+ * exact shape this note exists to prevent.
+ */
 export type IdentityChange =
   | { kind: "bibEntry"; renameCitekey: RenameCitekeyChange }
-  | { kind: "bibEntry"; retype: RetypeChange }
   | { kind: "inlineAtom"; regenIds: RegenIdsChange };
 
 /**
@@ -164,10 +184,6 @@ export function renameCitekeyChange(
   return { kind: "bibEntry", renameCitekey: c };
 }
 
-export function retypeChange(c: RetypeChange): IdentityChange {
-  return { kind: "bibEntry", retype: c };
-}
-
 export function regenIdsChange(remap: ReadonlyMap<string, string>): IdentityChange {
   return { kind: "inlineAtom", regenIds: { remap } };
 }
@@ -180,12 +196,6 @@ export function isRenameCitekey(
   change: IdentityChange,
 ): change is { kind: "bibEntry"; renameCitekey: RenameCitekeyChange } {
   return change.kind === "bibEntry" && "renameCitekey" in change;
-}
-
-export function isRetype(
-  change: IdentityChange,
-): change is { kind: "bibEntry"; retype: RetypeChange } {
-  return change.kind === "bibEntry" && "retype" in change;
 }
 
 export function isRegenIds(

@@ -24,7 +24,6 @@ import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
 import {
   IdentityCascade,
   renameCitekeyChange,
-  retypeChange,
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
 import { mintBibUid } from "@/lib/bib-uid";
@@ -420,13 +419,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * untouched (this is not an identity move — a rename routes through
    * `updateBibKeyAndType`/the cascade).
    *
-   * Single-writer discipline (D3): under the `virgil:identity-cascade` flag the
-   * cascade is the canonical writer for every bib-entry mutation, so a `retype`
-   * (type changed) is fanned through `runIdentityChange` so any registered
-   * `bibEntry` migrator observes it. The `.bib`-side set-all + persist is done
-   * here regardless (it owns the entries array). Flag OFF: the cascade is never
-   * invoked — the on-disk write is byte-identical to a direct set-all, so the
-   * existing suite is unaffected.
+   * NO CASCADE FAN-OUT, deliberately (task 647). D3 dispatched a `retype`
+   * identity change from here whenever `type` really changed, for "single-writer
+   * discipline". Both registered `bibEntry` migrators narrow to a rename, so
+   * that dispatch never reached a line of code — and the cascade is defined as
+   * the writer for identity CHANGES, which a retype (same uid, same citekey) is
+   * not. The arm is retired; the `.bib`-side set-all + persist below is, and
+   * always was, the whole of what a retype does. Both flag paths are now the
+   * same code, so there is no longer a flag-parity question to answer here.
    */
   const replaceBibEntry = useCallback(
     (key: string, fields: Record<string, string>, type?: string) => {
@@ -441,20 +441,8 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           return updated;
         });
       });
-      // Fan a REAL type change through the single writer so any registered
-      // migrator observes it. Resolve the retype decision from the live
-      // `bibEntries` (hook scope) — NOT from inside the state updater, whose
-      // run timing isn't synchronous under concurrent React.
-      if (isIdentityCascadeOn() && type !== undefined) {
-        const entry = bibEntries.find((e) => e.key === key);
-        if (entry?.uid && entry.type !== type) {
-          void identityCascade.runIdentityChange(
-            retypeChange({ uid: entry.uid, newType: type }),
-          );
-        }
-      }
     },
-    [runBibMutation, bibEntries, identityCascade],
+    [runBibMutation],
   );
 
   /** Apply the `.bib`-side `key`+`type` mutation for the entry currently

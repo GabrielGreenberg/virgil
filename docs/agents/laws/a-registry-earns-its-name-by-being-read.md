@@ -4494,3 +4494,88 @@ exemption would start hiding a real hit.
 
 CI: [feature-flag-registry.test.ts](../../../src/lib/__tests__/feature-flag-registry.test.ts),
 [footnote-orphan-flag-combination.test.tsx](../../../src/components/editor-layout/event-bridges/__tests__/footnote-orphan-flag-combination.test.tsx).
+
+---
+
+## The over-declaring half (task 647)
+
+**A surface can go dead in two directions, and only one of them stalls.**
+`src/links/` (task 202) went dead by STALLING: a phased migration landed its read
+half, its write half never arrived, and the barrel kept every grep green. The
+identity cascade went dead the opposite way — by **over-declaring**. Each of its
+rollout stages published the vocabulary for the stage after it, and the consumer
+either never came or came in a different shape. Nothing was abandoned; everything
+was written slightly too early, which looks like diligence and reads like drift.
+
+**A dispatched arm can still be dead, and the CONSTRUCTOR will not say so.**
+`IdentityChange` carried a third arm, `{ kind: "bibEntry"; retype }`, dispatched
+by `replaceBibEntry` on every real `.bib` type change. So `retypeChange` had a
+production caller and read alive. Both registered `bibEntry` migrators open with
+`if (!isRenameCitekey(change)) return;`, so every one of those dispatches reached
+no line of code — for three months, with a suite pinning the fan-out green. The
+only symbol that could have told anyone was the NARROWER, `isRetype`, whose
+callers were all tests. **On a fan-out bus, the live/dead question is asked at the
+consumer's narrower, never at the producer's constructor** — a constructor proves
+something is sent, a narrower proves something is received.
+
+**Retire it, don't feed it — when the arm is a category error.** The cascade
+documents itself as the single writer for any identity-CHANGING operation, and
+the retype arm's own comment conceded "NO identity move (same uid, same key)". A
+retype changes a field of an entry whose identity is untouched; folding it in
+"for consistency" bought a dead arm plus a defensive bail in every consumer
+forever. The union is now two arms, each with a registered production migrator.
+What was checked before deleting, recorded so a reinstatement knows: the `.bib`
+write never depended on the fan-out, and no surface keys on an entry's TYPE. An
+arm that lands ahead of its consumer is the shape being retired — re-add it WITH
+its migrator or not at all.
+
+**The census found a name the audit did not, one commit old.** Task 645 published
+`CARD_ATOM_DOM_ID_SELECTOR` with zero callers — not even a test — under a
+doc-comment naming the ghost clone and the hover bridge as its reason to exist.
+Neither could ever have used it: the ghost REMOVES each attr (it needs the list),
+and the hover bridge must answer WHICH KIND matched, which a joined selector
+erases by construction. **A justification that names consumers is not evidence
+they can consume it**; the census asks the only question that is.
+
+**Prefer deleting a name to inventing a reader for it — check whether the
+"duplication" is one.** `ATOM_REGISTRY.label` had four values and no reader, and
+three surfaces hand-spell "Footnote"/"Citation" nearby. Pointing them here would
+have been the larger-looking fix and the wrong one: human names live in three
+registries that deliberately DISAGREE (`CARD_REGISTRY.label` says "Task" where
+`CARD_ACTION_PRESENTATION` and `AIWindow` say "Todo"; "Report" against "Request
+report"). They coincide on two English words and nowhere else, so an SSOT
+spanning them asserts an identity their own neighbouring rows falsify, and
+couples menu copy to the atom taxonomy. An Atom has no naming surface of its own,
+so there was no fourth vocabulary to own. *Deep ≠ broadest blast radius:* verify
+the phenomenon is general before generalising the fix.
+
+**What the shared machinery cannot see, at its widest.** The census reads
+`export function|class|const|let NAME`, so it covers neither CLASS METHODS
+(`IdentityCascade.migratorCount`, `IdentityBusConsumer.policyCount` — the same
+audit called both uncalled; both in fact carry registration assertions, which is
+how a bare-name grep gets a method wrong in the other direction) nor REGISTRY
+FIELDS. The field case is not merely unbuilt but unbuildable here: `callSites` is
+a bare-name grep and `label` occurs hundreds of times across both silos as a node
+attr, a menu string and a dataset key, so such a leg would read alive whatever
+the truth. Stated, not papered over — a guard that overstates its reach is the
+failure mode this law is about.
+
+**And a "NEVER dropped" header the loop did not keep.**
+`sidecar-uid-migrate.ts` promised orphaned annotations are never dropped while
+implementing insert-if-absent: an orphan whose citekey resolved onto an
+already-occupied uid was neither written nor carried forward, and `rehomed` was
+set regardless, so the caller PERSISTED the object it had vanished from. One
+silent, irreversible transition. The policy is now stated ONCE
+(`placeAnnotation`) and used by both the v2 re-home loop and the legacy branch —
+shadowed means KEPT, and a shadow-only pass reports no re-home, which restores
+the same-reference no-op contract the old flag was quietly breaking. A preserved
+bucket re-homes the moment the occupant clears; a discarded one is gone. **A
+doc-comment stating a guarantee is part of the contract: make it true or correct
+it — a later reader will rely on it, and here the code was one line away.**
+
+CI: [identity-surface-honesty.test.ts](../../../src/lib/identity/__tests__/identity-surface-honesty.test.ts)
+(third caller of [_export-census.ts](../../../src/lib/__tests__/_export-census.ts)),
+[sidecar-uid-migrate.test.ts](../../../src/lib/identity/__tests__/sidecar-uid-migrate.test.ts)
+(the collision branch — three of its four legs fail on the pre-fix loop),
+[useCitations-replace-bib.test.tsx](../../../src/hooks/__tests__/useCitations-replace-bib.test.tsx)
+(the retype pin renegotiated: the type lands on disk and NOTHING fans, on both flag paths).

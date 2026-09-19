@@ -8,9 +8,19 @@
 //  - `replaceBibEntry` is SET-ALL: a field the user cleared (absent from the
 //    new field map) is DELETED, not retained (BIB-A3-02 / BIB-F5-04 — "I
 //    cleared the field but it came back").
-//  - a `replaceBibEntry` that changes the `type` fans a `retype` through the
-//    IdentityCascade under the flag (single-writer discipline); flag OFF it
-//    does not.
+//  - a `replaceBibEntry` that changes the `type` writes the new type to the
+//    `.bib` and fans NOTHING through the IdentityCascade, on EITHER flag path.
+//
+// That last pin is renegotiated, not dropped (task 647). It used to read "fans
+// a `retype` through the cascade under the flag, and not when it is off" — a
+// green pin on a fan-out that could not reach a line of production code, since
+// both registered `bibEntry` migrators narrow to a rename and bail. The arm is
+// retired (a retype moves no identity), so the contract to hold is the one the
+// user can actually observe: the type lands on disk, and no migrator runs. The
+// flag-ON and flag-OFF legs are kept BOTH ways round precisely because they now
+// assert the same thing — that is what "this seam no longer branches on the
+// flag" looks like as a test, and it is what would fail if a future change
+// quietly re-introduced a fan-out here.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -28,7 +38,6 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { useCitations } from "../useCitations";
-import { isRetype } from "@/lib/identity/identity-cascade";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
 
@@ -98,41 +107,43 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
     });
   });
 
-  it("fans a real type change through the cascade when the flag is ON", async () => {
+  it("a real type change writes the type and fans NOTHING (flag ON)", async () => {
     setIdentityCascadeFlag(true);
     const result = await mountWithFoo("doc-retype-on");
-    const retypes: string[] = [];
+    // A migrator that records EVERY change it is handed — no narrowing, so it
+    // cannot bail the way the two production migrators did. If any arm is ever
+    // dispatched from this seam again, this sees it.
+    const fanned: string[] = [];
     act(() => {
       result.current.identityCascade.registerMigrator("bibEntry", (c) => {
-        if (isRetype(c)) retypes.push(c.retype.newType);
+        fanned.push(JSON.stringify(c));
       });
     });
     act(() => {
       result.current.replaceBibEntry("foo", { title: "T" }, "book");
     });
     await waitFor(() => {
-      expect(retypes).toEqual(["book"]);
       expect(result.current.bibEntries.find((e) => e.key === "foo")!.type).toBe("book");
     });
+    expect(fanned).toEqual([]);
   });
 
-  it("does NOT fan through the cascade when the flag is OFF (parity)", async () => {
+  it("a real type change writes the type and fans NOTHING (flag OFF — same seam)", async () => {
     setIdentityCascadeFlag(false);
     const result = await mountWithFoo("doc-retype-off");
-    const retypes: string[] = [];
+    const fanned: string[] = [];
     act(() => {
       result.current.identityCascade.registerMigrator("bibEntry", (c) => {
-        if (isRetype(c)) retypes.push(c.retype.newType);
+        fanned.push(JSON.stringify(c));
       });
     });
     act(() => {
       result.current.replaceBibEntry("foo", { title: "T" }, "book");
     });
     await waitFor(() => {
-      // The .bib-side write still happened; only the fan-out is gated.
       expect(result.current.bibEntries.find((e) => e.key === "foo")!.type).toBe("book");
     });
-    expect(retypes).toEqual([]);
+    expect(fanned).toEqual([]);
   });
 
   it('"Replace with library" drops a local-only field the library version lacks (BIB-A3-02)', async () => {
@@ -154,13 +165,13 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
     });
   });
 
-  it("a same-type replace does NOT emit a retype (no spurious fan-out)", async () => {
+  it("a same-type replace fans nothing either (no spurious fan-out)", async () => {
     setIdentityCascadeFlag(true);
     const result = await mountWithFoo("doc-same-type");
     const retypes: string[] = [];
     act(() => {
       result.current.identityCascade.registerMigrator("bibEntry", (c) => {
-        if (isRetype(c)) retypes.push(c.retype.newType);
+        retypes.push(JSON.stringify(c));
       });
     });
     act(() => {
