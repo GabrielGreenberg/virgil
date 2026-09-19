@@ -490,3 +490,251 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.removedLabels.length === 0
   );
 }
+
+// ---------------------------------------------------------------------------
+// Composing diffs — one DISPATCH can carry several transactions.
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE dispatch is not one transaction. ProseMirror runs the whole
+ * `appendTransaction` loop inside a single `state.applyTransaction`, so a
+ * plugin's `apply` runs once per TRANSACTION while its view hook runs once per
+ * DISPATCH. Anything the observer stores per-apply and drains per-update
+ * therefore has to be a fold, not a slot — a single slot holds only the LAST
+ * transaction's diff, and the structural work of every earlier one is applied
+ * to the index and then silently discarded (task 650: deleting a paragraph that
+ * contains a footnote provokes the footnote renumber appender, and the delete's
+ * own `removedBlocks`/`removedFootnotes` never reached a single subscriber).
+ *
+ * `mergeStructureDiffs` is that fold. It composes `a` THEN `b` into the diff a
+ * single transaction doing both would have produced, so a dispatch stays ONE
+ * bus emit (`emitCount` is defined per user gesture — see the keystroke-sanctity
+ * law — and emitting per transaction would quietly redefine it).
+ *
+ * Positions in `a` must already be in `b`'s coordinate space; the observer runs
+ * `mapStructureDiffPositions` before merging.
+ */
+export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): StructureDiff {
+  if (a === EMPTY_DIFF) return b;
+  if (b === EMPTY_DIFF) return a;
+
+  const blocks = foldKeyed(byUuid, a.addedBlocks, a.removedBlocks, a.changedBlocks, b.addedBlocks, b.removedBlocks, b.changedBlocks);
+  const headings = foldKeyed(byUuid, a.addedHeadings, a.removedHeadings, a.changedHeadings, b.addedHeadings, b.removedHeadings, b.changedHeadings);
+  const footnotes = foldKeyed(byId, a.addedFootnotes, a.removedFootnotes, a.changedFootnotes, b.addedFootnotes, b.removedFootnotes, b.changedFootnotes);
+  const citations = foldKeyed(byId, a.addedCitations, a.removedCitations, a.changedCitations, b.addedCitations, b.removedCitations, b.changedCitations);
+  const examples = foldKeyed(byId, a.addedExamples, a.removedExamples, a.changedExamples, b.addedExamples, b.removedExamples, b.changedExamples);
+  const figures = foldKeyed(byUuid, a.addedFigures, a.removedFigures, a.changedFigures, b.addedFigures, b.removedFigures, b.changedFigures);
+  // Anchors and labels have no `changed` bucket: their add/remove means "this
+  // id ENTERED / LEFT the document". A `changed` verdict (removed by one tx,
+  // re-added by a later one) therefore reports nothing — the id was present
+  // before the dispatch and is present after, so nothing entered or left.
+  const anchors = foldKeyed(byId, a.addedAnchors, a.removedAnchors, EMPTY_LIST, b.addedAnchors, b.removedAnchors, EMPTY_LIST);
+  const labels = foldKeyed(byId, a.addedLabels, a.removedLabels, EMPTY_LIST, b.addedLabels, b.removedLabels, EMPTY_LIST);
+
+  // A block deleted later in the dispatch must not also be reported as having
+  // had its content edited — a single transaction attributes content changes to
+  // the nearest anchorable ancestor in its NEW doc, where a deleted block isn't.
+  const contentChangedUuids = unionMinus(
+    a.contentChangedUuids,
+    b.contentChangedUuids,
+    blocks.removed.map(byUuid),
+  );
+  const exampleContentChangedUuids = unionMinus(
+    a.exampleContentChangedUuids,
+    b.exampleContentChangedUuids,
+    examples.removed.map((e) => e.uuid ?? ""),
+  );
+
+  const merged: StructureDiff = {
+    addedBlocks: blocks.added,
+    removedBlocks: blocks.removed,
+    changedBlocks: blocks.changed,
+    blockOrderChanged: a.blockOrderChanged || b.blockOrderChanged,
+    blockParTitleChanged: a.blockParTitleChanged || b.blockParTitleChanged,
+    addedHeadings: headings.added,
+    removedHeadings: headings.removed,
+    changedHeadings: headings.changed,
+    addedFootnotes: footnotes.added,
+    removedFootnotes: footnotes.removed,
+    changedFootnotes: footnotes.changed,
+    footnoteOrderChanged: a.footnoteOrderChanged || b.footnoteOrderChanged,
+    addedCitations: citations.added,
+    removedCitations: citations.removed,
+    changedCitations: citations.changed,
+    citationOrderChanged: a.citationOrderChanged || b.citationOrderChanged,
+    addedAnchors: anchors.added,
+    removedAnchors: anchors.removed,
+    addedExamples: examples.added,
+    removedExamples: examples.removed,
+    changedExamples: examples.changed,
+    exampleStructureChanged: a.exampleStructureChanged || b.exampleStructureChanged,
+    addedFigures: figures.added,
+    removedFigures: figures.removed,
+    changedFigures: figures.changed,
+    addedLabels: labels.added,
+    removedLabels: labels.removed,
+    contentChangedUuids,
+    exampleContentChangedUuids,
+  };
+  // Two non-empty diffs can still compose to nothing (a block born by one
+  // transaction and deleted by the next). Route through the SSOT predicate so
+  // the `=== EMPTY_DIFF` identity check stays meaningful for every consumer.
+  return isEmptyDiff(merged) ? EMPTY_DIFF : merged;
+}
+
+const EMPTY_LIST: readonly never[] = [];
+const byUuid = (e: { uuid: string | null }): string => e.uuid ?? "";
+const byId = (e: { id: string }): string => e.id;
+
+/** What `a`-then-`b` says about one entity id. */
+type DiffVerdict = "added" | "removed" | "changed";
+
+/**
+ * Compose one entity category's three buckets across two diffs.
+ *
+ * The composition table is the sequential reading of the buckets' meanings
+ * ("did not exist before / does now", "existed before / does not now",
+ * "existed on both sides, entry refreshed"):
+ *
+ *   added   ∘ removed → neither  (born and died inside the dispatch)
+ *   added   ∘ changed → added    (still a birth; take the fresher entry)
+ *   removed ∘ added   → changed  (existed before AND after — a move/replace,
+ *                                 exactly what `inspectSteps` collapses a
+ *                                 same-transaction delete+insert into)
+ *   removed ∘ removed → removed  (keep the entry that recorded the death)
+ *   changed ∘ removed → removed
+ *   changed ∘ added   → changed
+ *   x       ∘ (absent)→ x
+ */
+function foldKeyed<T>(
+  key: (entry: T) => string,
+  aAdded: readonly T[],
+  aRemoved: readonly T[],
+  aChanged: readonly T[],
+  bAdded: readonly T[],
+  bRemoved: readonly T[],
+  bChanged: readonly T[],
+): { added: T[]; removed: T[]; changed: T[] } {
+  const acc = new Map<string, { verdict: DiffVerdict; entry: T }>();
+  const seed = (bucket: readonly T[], verdict: DiffVerdict) => {
+    for (const entry of bucket) acc.set(key(entry), { verdict, entry });
+  };
+  seed(aRemoved, "removed");
+  seed(aChanged, "changed");
+  seed(aAdded, "added");
+
+  const fold = (bucket: readonly T[], incoming: DiffVerdict) => {
+    for (const entry of bucket) {
+      const k = key(entry);
+      const prior = acc.get(k);
+      if (!prior) {
+        acc.set(k, { verdict: incoming, entry });
+        continue;
+      }
+      if (prior.verdict === "added") {
+        if (incoming === "removed") acc.delete(k);
+        else acc.set(k, { verdict: "added", entry });
+      } else if (prior.verdict === "removed") {
+        // A death already recorded stays a death unless the id came BACK.
+        if (incoming !== "removed") acc.set(k, { verdict: "changed", entry });
+      } else {
+        acc.set(k, { verdict: incoming === "added" ? "changed" : incoming, entry });
+      }
+    }
+  };
+  fold(bRemoved, "removed");
+  fold(bChanged, "changed");
+  fold(bAdded, "added");
+
+  const added: T[] = [];
+  const removed: T[] = [];
+  const changed: T[] = [];
+  for (const { verdict, entry } of acc.values()) {
+    if (verdict === "added") added.push(entry);
+    else if (verdict === "removed") removed.push(entry);
+    else changed.push(entry);
+  }
+  return { added, removed, changed };
+}
+
+/** Union two id sets, then drop ids the composed diff reports as removed. */
+function unionMinus(
+  a: ReadonlySet<string>,
+  b: ReadonlySet<string>,
+  drop: readonly string[],
+): ReadonlySet<string> {
+  if (a.size === 0 && b.size === 0) return a.size === 0 ? a : b;
+  const out = new Set(a);
+  for (const id of b) out.add(id);
+  for (const id of drop) out.delete(id);
+  return out;
+}
+
+/**
+ * Carry a diff's LIVE positions forward through a later transaction's mapping.
+ *
+ * The observer accumulates a dispatch's diffs as it goes, so an earlier
+ * transaction's entries are expressed in a document that a later transaction may
+ * have since shifted. The `added` / `changed` buckets describe content that is
+ * still in the document, so their positions must be remapped or the emitted diff
+ * points a position-keyed consumer at the wrong place.
+ *
+ * The `removed` buckets are deliberately NOT remapped: `inspectSteps` collects
+ * them against the doc BEFORE the deleting step, so their positions are
+ * historical by construction (`footnote.ts` resolves `removed.pos` against
+ * `oldState.doc`). Mapping them forward would express them in a coordinate space
+ * their content no longer occupies.
+ */
+export function mapStructureDiffPositions(
+  diff: StructureDiff,
+  mapping: { map(pos: number, assoc?: number): number },
+): StructureDiff {
+  if (diff === EMPTY_DIFF) return diff;
+  let moved = false;
+  const remap = <T extends { pos: number }>(list: readonly T[]): readonly T[] => {
+    if (list.length === 0) return list;
+    let touched = false;
+    const next = list.map((entry) => {
+      const pos = mapping.map(entry.pos);
+      if (pos === entry.pos) return entry;
+      touched = true;
+      return { ...entry, pos };
+    });
+    if (!touched) return list;
+    moved = true;
+    return next;
+  };
+  const remapAnchors = (list: readonly AnchorEntry[]): readonly AnchorEntry[] => {
+    if (list.length === 0) return list;
+    let touched = false;
+    const next = list.map((entry) => {
+      const from = mapping.map(entry.from, -1);
+      const to = mapping.map(entry.to, 1);
+      if (from === entry.from && to === entry.to) return entry;
+      touched = true;
+      return { ...entry, from, to };
+    });
+    if (!touched) return list;
+    moved = true;
+    return next;
+  };
+
+  const next: StructureDiff = {
+    ...diff,
+    addedBlocks: remap(diff.addedBlocks),
+    changedBlocks: remap(diff.changedBlocks),
+    addedHeadings: remap(diff.addedHeadings),
+    changedHeadings: remap(diff.changedHeadings),
+    addedFootnotes: remap(diff.addedFootnotes),
+    changedFootnotes: remap(diff.changedFootnotes),
+    addedCitations: remap(diff.addedCitations),
+    changedCitations: remap(diff.changedCitations),
+    addedExamples: remap(diff.addedExamples),
+    changedExamples: remap(diff.changedExamples),
+    addedFigures: remap(diff.addedFigures),
+    changedFigures: remap(diff.changedFigures),
+    addedLabels: remap(diff.addedLabels),
+    addedAnchors: remapAnchors(diff.addedAnchors),
+  };
+  return moved ? next : diff;
+}

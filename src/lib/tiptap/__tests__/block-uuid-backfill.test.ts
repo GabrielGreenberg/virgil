@@ -6,49 +6,20 @@ import { Schema } from "@tiptap/pm/model";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { blockUuidBackfillPlugin } from "@/lib/tiptap/block-uuid-backfill";
 import {
-  applyDiff,
-  buildInitial,
   docStructureKey,
-  EMPTY_DIFF,
-  inspectSteps,
-  type DocStructure,
-  type StructureDiff,
+  docStructureStateSpec,
+  type DocStructurePluginState,
 } from "@/lib/tiptap/doc-structure";
 import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures";
 
-// Mirrors the real observer's plugin-state shape (observer-plugin.ts). The
-// explicit `Plugin<PluginState>` generic is load-bearing: without it the state
-// type is inferred from `init`'s return, narrowing `pendingDiff` to the literal
-// `null` so `apply` can't return a `StructureDiff`.
-interface PluginState {
-  structure: DocStructure;
-  pendingMaps: readonly never[];
-  pendingDiff: StructureDiff | null;
-}
-
-// A faithful stand-in for DocStructureObserver's PM plugin, built from the same
-// exported primitives the real observer uses (`buildInitial` / `inspectSteps` /
-// `applyDiff`). It populates the exact plugin state `readDocStructure` /
-// `readPendingDiff` read, so the backfill sees a real known-uuid set — without
-// needing a full TipTap Editor + view. Position-mapping is the only omission;
-// the backfill never reads structure positions (only uuid keys), so it's
-// irrelevant here.
-function observerPlugin(): Plugin<PluginState> {
-  return new Plugin<PluginState>({
+// The observer stand-in mounts the REAL plugin-state spec
+// (`docStructureStateSpec`, observer-plugin.ts) rather than a hand-copy of it,
+// so `readDocStructure` / `readPendingDiff` see exactly what production writes
+// and this file cannot drift from the shape it is emulating (task 650).
+function observerPlugin(): Plugin<DocStructurePluginState> {
+  return new Plugin<DocStructurePluginState>({
     key: docStructureKey,
-    state: {
-      init: (_c, state) => ({ structure: buildInitial(state.doc), pendingMaps: [], pendingDiff: null }),
-      apply: (tr, prev) => {
-        if (!tr.docChanged) {
-          return prev.pendingDiff !== null
-            ? { structure: prev.structure, pendingMaps: [], pendingDiff: null }
-            : prev;
-        }
-        const diff = inspectSteps(tr, tr.before, tr.doc, prev.structure);
-        if (diff === EMPTY_DIFF) return { structure: prev.structure, pendingMaps: [], pendingDiff: null };
-        return { structure: applyDiff(prev.structure, diff), pendingMaps: [], pendingDiff: diff };
-      },
-    },
+    state: docStructureStateSpec(),
   });
 }
 

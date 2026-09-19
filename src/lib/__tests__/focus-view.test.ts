@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EditorState, Plugin } from "@tiptap/pm/state";
 import {
-  buildInitial,
-  applyDiff,
   docStructureKey,
-  EMPTY_DIFF,
-  inspectSteps,
+  docStructureStateSpec,
+  type DocStructurePluginState,
 } from "@/lib/tiptap/doc-structure";
 import {
   __getFocusRebuildCount,
@@ -118,33 +116,14 @@ describe("isPosInFocusBand / isUuidInFocusBand", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * A minimal observer plugin mirroring the real one's STATE spec (init +
- * apply) using the same exported pieces, so `readPendingDiff` returns real
- * diffs. We don't need the bus/view side or position remapping here — the
- * focus plugin reads only `pendingDiff` and resolves the band off the live doc.
+ * Observer stand-in for the focus tests — the REAL plugin-state spec
+ * (`docStructureStateSpec`), not a hand-copy, so `readPendingDiff` returns
+ * exactly what production writes (task 650).
  */
 function minimalObserverPlugin() {
-  return new Plugin({
+  return new Plugin<DocStructurePluginState>({
     key: docStructureKey,
-    state: {
-      init: (_c: unknown, state: EditorState) => ({
-        structure: buildInitial(state.doc),
-        pendingMaps: [],
-        pendingDiff: null,
-      }),
-      apply(tr: import("@tiptap/pm/state").Transaction, prev: { structure: ReturnType<typeof buildInitial>; pendingMaps: readonly unknown[]; pendingDiff: unknown }) {
-        if (!tr.docChanged) {
-          return prev.pendingDiff !== null
-            ? { structure: prev.structure, pendingMaps: [], pendingDiff: null }
-            : prev;
-        }
-        const diff = inspectSteps(tr, tr.before, tr.doc, prev.structure);
-        if (diff === EMPTY_DIFF) {
-          return { structure: prev.structure, pendingMaps: [], pendingDiff: null };
-        }
-        return { structure: applyDiff(prev.structure, diff), pendingMaps: [], pendingDiff: diff };
-      },
-    },
+    state: docStructureStateSpec(),
   });
 }
 
