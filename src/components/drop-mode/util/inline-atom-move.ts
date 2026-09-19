@@ -42,6 +42,11 @@ import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
 import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
+import {
+  commitCrossEditorMove,
+  commitSurfacesWritable,
+  dispatchLanded,
+} from "../commit-seam";
 import { insertNodesAdvancing } from "./mapped-insert";
 import { refuseOnThrow } from "../planned-spec";
 import { inlineCursorHostsNode, type InlineDropPayload } from "../inline-host";
@@ -339,8 +344,29 @@ export function inlineAtomMoveSpec<
       // always built against the state it lands in.
       const plan = resolveDrop(placement, cardKey, ctx);
       if (!plan || placement.kind !== "inline-cursor") return;
+      // ── COMMIT SEAM (task 648), obligation 1: ask editability HERE, for
+      // every surface this compound will mutate. The grab gesture asked at
+      // mousedown (`inline-atom-grab.ts`) and the float-header path never asked
+      // at all; the collab pen can pass to the partner while the ghost is in
+      // flight, and `readOnlyEnforcer` is mounted on MAIN alone, so the veto
+      // that follows is ASYMMETRIC across a cross-editor move. Both ends are
+      // asked before either is touched: a move whose source cannot be emptied
+      // must not deposit a copy in the target. See `commit-seam.ts`.
+      const sourceEditorOf = plan.kind === "create" ? null : plan.src.editor;
+      if (!commitSurfacesWritable(placement.editor, sourceEditorOf)) return;
       if (plan.kind === "create") {
-        insertNewAtom(placement.editor, placement.pos, plan.node, opts.select);
+        const landed = insertNewAtom(
+          placement.editor,
+          placement.pos,
+          plan.node,
+          opts.select,
+        );
+        // Obligation 2: the sidecar reconcile below is NOT a ProseMirror
+        // effect, so nothing can filter it — it must be conditioned on the
+        // insert having actually landed. Before task 648 it fired regardless,
+        // and a vetoed insert left the card in NEITHER panel list: no marker
+        // for the anchored list, no flags for the atomless one.
+        if (!landed) return;
         // The OTHER half of anchoring (task 233): the card is now in the
         // prose, so its own "parked, re-placeable" intent must clear.
         // Without this the sidecar keeps `unanchored` (and, for a card that
@@ -365,7 +391,10 @@ export function inlineAtomMoveSpec<
         return;
       }
       if (plan.kind === "move-within") {
-        // Single transaction: delete + adjusted insert (see helper).
+        // Single transaction: delete + adjusted insert (see helper) — one
+        // dispatch, so there is no second phase to condition. The commit-seam
+        // gate above still covers it: a vetoed move is now a no-op rather than
+        // a no-op that stole focus.
         const { node, from, to } = plan.src;
         moveInlineAtomWithin(placement.editor, node, from, to, placement.pos, opts.select);
         return;
@@ -375,17 +404,26 @@ export function inlineAtomMoveSpec<
       // paragraphs because PM positions are decoupled across editors.
       // (Unreachable when sameEditorOnly — `resolveDrop` already refused.)
       // The insert transaction was BUILT in the resolution, where its adoption
-      // and its landed-check could still turn into a refusal; here it is only
-      // dispatched, and the source delete happens on its strength alone.
-      const { editor: sourceEditor, from, to } = plan.src;
-      placement.editor.view.dispatch(plan.insertTr);
-      placement.editor.view.focus();
+      // and its landed-check could still turn into a refusal. Those are
+      // PRE-dispatch nets: they ask what the built `Transform` kept, and a
+      // `filterTransaction` veto happens strictly later. `commitCrossEditorMove`
+      // is the post-dispatch one — it deletes from the source only once the
+      // target's document has actually advanced (obligations 2 and 3). A
+      // refusal here leaves BOTH documents untouched, which for a footnote is
+      // the difference between a declined drag and a destroyed body.
+      //
       // Park a caret at the atom's home in the SOURCE editor before the delete,
       // so that editor's undo `selectionBefore` is on-screen (same #8 rationale
-      // as the same-editor path). Selection-only, addToHistory:false.
-      parkCaretBeforeChange(sourceEditor, from);
-      const deleteTr = sourceEditor.state.tr.delete(from, to);
-      sourceEditor.view.dispatch(deleteTr);
+      // as the same-editor path). Selection-only, addToHistory:false — and now
+      // it, too, only happens on a landed insert.
+      const { editor: sourceEditor, from, to } = plan.src;
+      commitCrossEditorMove({
+        target: placement.editor,
+        insertTr: plan.insertTr,
+        source: sourceEditor,
+        remove: { from, to },
+        beforeRemove: parkCaretBeforeChange,
+      });
     },
     postDrop: "keep",
   };
@@ -473,7 +511,7 @@ function insertNewAtom(
   insertPos: number,
   node: PMNode,
   select: "node" | "caret-after" = "node",
-): void {
+): boolean {
   // Park a caret at the insert pos so the insert's `selectionBefore` (captured
   // by prosemirror-history) is on-screen where the atom appears — see jsdoc.
   parkCaretBeforeChange(editor, insertPos);
@@ -495,8 +533,11 @@ function insertNewAtom(
   } catch {
     /* position couldn't host the selection — skip silently */
   }
-  editor.view.dispatch(tr);
-  editor.view.focus();
+  // Measured, not assumed (task 648): the caller's sidecar reconcile does not
+  // pass through ProseMirror, so it must hang off the EFFECT of this dispatch.
+  const landed = dispatchLanded(editor, tr);
+  if (landed) editor.view.focus();
+  return landed;
 }
 
 /**
@@ -525,7 +566,7 @@ function moveInlineAtomWithin(
   to: number,
   insertPos: number,
   select: "node" | "caret-after" = "node",
-): void {
+): boolean {
   // Park a caret at the atom's original home so the move's `selectionBefore`
   // (captured by prosemirror-history) is on-screen — see helper jsdoc.
   parkCaretBeforeChange(editor, from);
@@ -557,8 +598,11 @@ function moveInlineAtomWithin(
   } catch {
     /* position couldn't host the selection — skip silently */
   }
-  editor.view.dispatch(tr);
-  editor.view.focus();
+  // One dispatch, nothing after it — but a vetoed move must not steal focus,
+  // and reporting the effect keeps every dispatch on this path measured.
+  const landed = dispatchLanded(editor, tr);
+  if (landed) editor.view.focus();
+  return landed;
 }
 
 /**
@@ -618,17 +662,40 @@ function locateAtom(
     if (e !== mainEditor) editors.push(e);
   }
   for (const editor of editors) {
-    let found: AtomLocation | null = null;
-    editor.state.doc.descendants((node, pos) => {
-      if (found) return false;
-      if (node.type.name !== nodeName) return true;
-      if (node.attrs?.[idAttr] !== id) return true;
-      found = { editor, node, from: pos, to: pos + node.nodeSize };
-      return false;
-    });
+    const found = findAtomById(editor, nodeName, idAttr, id);
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * The atom with this durable id, in THIS editor's document — the one scan for
+ * "where is it now?", published so the in-text grab's commit can re-resolve by
+ * IDENTITY instead of by the position it captured at mousedown (task 648, the
+ * "addressing the live document across an async gap" law). A position captured
+ * at mousedown is an address in a document that may have moved under the
+ * gesture; the id is the same atom whatever the document did.
+ *
+ * Only the Card-bearing kinds have an id to ask by (`ATOM_REGISTRY.idAttr` —
+ * footnote / citation). `ref` and `inline-math` own no Card and no id, so their
+ * only address IS the captured position, and their callers keep the position
+ * form with a node-kind check. That asymmetry is the registry's, not a gap here.
+ */
+export function findAtomById(
+  editor: Editor,
+  nodeName: string,
+  idAttr: string,
+  id: string,
+): AtomLocation | null {
+  let found: AtomLocation | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (node.type.name !== nodeName) return true;
+    if (node.attrs?.[idAttr] !== id) return true;
+    found = { editor, node, from: pos, to: pos + node.nodeSize };
+    return false;
+  });
+  return found;
 }
 
 function extractId(cardKey: string): string | null {

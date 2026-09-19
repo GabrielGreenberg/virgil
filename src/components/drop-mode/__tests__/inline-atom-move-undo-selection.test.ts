@@ -116,6 +116,10 @@ function liveEditor(doc: PMNode, initialSelection: (s: EditorState) => TextSelec
       return state;
     },
     view: {
+      // A real `EditorView` always carries this boolean, and the drop commit
+      // seam asks it through `collabReadOnly` (task 648) — a double that omits
+      // it would read as read-only and refuse every gesture here.
+      editable: true,
       get state() {
         return state;
       },

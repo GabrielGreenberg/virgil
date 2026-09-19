@@ -3403,3 +3403,57 @@ CI: `block-insert-container-gate.test.ts` (the range + representability legs),
 `block-atom-cells.test.ts`. Every leg asserts the DOCUMENT IS UNCHANGED, not
 that a command returned false; each half was verified load-bearing by neutering
 it and watching them fail.
+
+---
+
+## The commit-seam half (task 648) — measure the EFFECT, not the intent
+
+> **A gesture that dispatches and then performs a SECOND effect on the strength
+> of the first has an unchecked two-phase commit, and the second phase can land
+> on a first phase that never happened.**
+
+`view.dispatch(tr)` is a REQUEST. Every plugin's `filterTransaction` runs first,
+and a veto — `readOnlyEnforcer` is one — drops the transaction with no throw, no
+step, and the state object unchanged. `readOnlyEnforcer` is mounted on the
+`isMain` arm only, so the veto is **asymmetric across a cross-editor move**:
+main as TARGET ⇒ the insert dies and the source delete still lands, taking a
+footnote's BODY with it (the body IS the atom's `content` attr); main as SOURCE
+⇒ the insert lands and the delete dies ⇒ a duplicate atom. And the create-drop's
+`onAnchored(id)` is a SIDECAR write that never passes through ProseMirror at
+all, so nothing could filter it: a vetoed insert left the card in NEITHER panel
+list (no marker for the anchored one, no flags for the atomless one).
+
+`src/components/drop-mode/commit-seam.ts` is the one door, and it states three
+obligations in order:
+
+1. **Ask editability at the COMMIT**, through `collabReadOnly` — for EVERY
+   surface the compound will mutate, and for both ends BEFORE either is touched
+   (a move whose source cannot be emptied must not deposit a copy). Task 638 put
+   this gate at the deepest point a deferred commit passes through; a drop's
+   deepest point is here, not at the mousedown that armed the ghost.
+2. **Dispatch, then measure the EFFECT.** `insertLanded` (`schema-adopt.ts`) is
+   the PRE-dispatch net — it asks what the built `Transform` kept, which is a
+   different question from what ProseMirror ACCEPTED, and it cannot see a veto
+   because the veto happens strictly later. `dispatchLanded` is its post-dispatch
+   twin: `editor.state.doc !== before`, reference identity, no doc walk.
+3. **Refuse as a UNIT** — either refusal leaves BOTH documents byte-untouched,
+   which is this law's direction (never delete what you cannot restore).
+
+Three cross-editor commit sites route through `commitCrossEditorMove`: the
+inline-atom move (`util/inline-atom-move.ts`) and BOTH branches of
+`specs/text-range-move.ts` — the second of which the census found rather than
+the audit. The census is what keeps it at three: no cross-editor site may
+dispatch its own `sourceEditor.view.dispatch(`.
+
+**The failure modes are two, not one.** A READ-ONLY surface is caught before
+anything is dispatched; a VETOED dispatch on a surface whose `view.editable`
+says nothing is wrong is caught only by measuring the effect. A fix for one is
+not a fix for the other, and the suite keeps them as separate legs.
+
+**The sibling gap it closed:** `RichTextField`'s card-body citation drop stated
+no editability gate at all while every sibling drop handler did — and card
+bodies mount no `readOnlyEnforcer` arm to catch it either. The gate is asked
+BEFORE `onCitationCreated`, which is the only order that helps: that mint
+persists a card through a sidecar write no filter can reach.
+
+CI: `drop-commit-seam.test.ts`.

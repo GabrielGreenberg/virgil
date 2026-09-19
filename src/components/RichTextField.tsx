@@ -37,6 +37,7 @@ import { useCitationDisplayContextOrNull } from "@/components/editor-layout/cont
 import { iconHint } from "@/components/Hint";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
+import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -385,6 +386,14 @@ function RichTextFieldImpl({
         const citData = event.dataTransfer?.getData(MIME_CITATION);
         if (citData) {
           event.preventDefault();
+          // COLLAB GATE (task 648) — asked BEFORE the mint below, which is the
+          // only order that helps: `onCitationCreated` persists a card through
+          // a SIDECAR write, which never passes through ProseMirror and so can
+          // never be filtered. Every sibling drop handler states this gate; this
+          // one stated none, and card bodies mount no `readOnlyEnforcer` arm to
+          // catch it either. Swallowing the drop (return true) rather than
+          // letting the browser insert the raw `\cite{}` text is the refusal.
+          if (collabReadOnly(view)) return true;
           try {
             const { command, citationId } = JSON.parse(citData);
             const coords = { left: event.clientX, top: event.clientY };
