@@ -28,6 +28,7 @@ import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
+import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
 import { renameLabelWithRefs } from "@/lib/tiptap/label-rename";
 import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
@@ -1295,10 +1296,19 @@ export function createHeadingWithLabel(
           const resolved = resolveHeadingInTarget(target);
           if (!resolved) return;
           if (resolved.node.attrs.level === newLevel) return;
-          const tr = target.state.tr.setNodeMarkup(resolved.pos, undefined, {
-            ...resolved.node.attrs,
-            level: newLevel,
-          });
+          // Task 658: the attr rule is stated ONCE, in `heading-level.ts`, and
+          // this surface reads it rather than restating it — it is the surface
+          // that always had it right (spread, don't enumerate), and the
+          // dropdown / slash paths have now been brought onto the same door.
+          const tr = target.state.tr.setNodeMarkup(
+            resolved.pos,
+            undefined,
+            headingAttrsForLevel(
+              resolved.node,
+              resolved.node.type,
+              newLevel,
+            ),
+          );
           target.view.dispatch(tr);
         }
 

@@ -32,6 +32,7 @@ import { paragraphUuidAt } from "@/links/links";
 // bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
 // `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
 import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
+import { setHeadingLevelInRange } from "@/lib/tiptap/heading-level";
 import { iconHint } from "@/components/Hint";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
@@ -203,8 +204,36 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
     return;
   // Out-of-scope level (0/5/6, or a misconfigured value): SET directly +
   // numbered (NOT toggle — matches the SET decision for the whole dropdown).
+  //
+  // Task 658: through the SAME door `headingRun` takes, so the two halves of
+  // ONE dropdown cannot disagree about what a heading carries. `setNode` (a
+  // literal `{ level, numbered: true }`) rebuilt the node from defaults, so
+  // picking 'Part' on an existing `\section*{Foo}\label{sec:foo}` dropped the
+  // label, the `\section[short]` title and the block's uuid, and forced it
+  // numbered. `setHeadingLevelInRange` spreads the node's own attrs when the
+  // target is already a heading and falls back to the conversion defaults only
+  // for a genuine type change.
   const level = parseInt(levelValue) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
-  editor.chain().focus().setNode("heading", { level, numbered: true }).run();
+  editor
+    .chain()
+    .focus()
+    .command(({ tr, dispatch }) => {
+      const headingType = editor.schema.nodes.heading;
+      if (!headingType) return false;
+      // `.focus()` has already restored the ProseMirror selection, so `tr`'s
+      // own selection is the SET's source — the same range the gate above
+      // tested.
+      if (dispatch)
+        setHeadingLevelInRange(
+          tr,
+          tr.selection.from,
+          tr.selection.to,
+          headingType,
+          level,
+        );
+      return true;
+    })
+    .run();
 }
 
 /** Apply a BlockType row's pick — the shared verb behind a click AND an

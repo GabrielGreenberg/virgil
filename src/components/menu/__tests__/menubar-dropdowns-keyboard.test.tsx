@@ -72,7 +72,19 @@ interface FakeChain {
   focus: () => FakeChain;
   setParagraph: () => FakeChain;
   setNode: (name: string, attrs: unknown) => FakeChain;
+  // Task 658: the out-of-scope levels (0/5/6) no longer call `setNode` with a
+  // literal attr object (which rebuilt the heading from defaults, dropping the
+  // user's `\label`, `[short]` title, `numbered` and uuid). They route through
+  // `setHeadingLevelInRange` inside a `.command()`, the SAME door the registry's
+  // `headingRun` takes — so the stub grows the one link it was missing.
+  command: (fn: (props: FakeCommandProps) => boolean) => FakeChain;
   run: () => boolean;
+}
+
+/** Just enough of TipTap's CommandProps for the heading pick's callback. */
+interface FakeCommandProps {
+  tr: { selection: { from: number; to: number }; setBlockType: (...a: unknown[]) => unknown };
+  dispatch: (() => void) | undefined;
 }
 
 /** A minimal editor stub: `isActive("heading", {level})` reflects `currentLevel`
@@ -85,10 +97,21 @@ function makeEditor(currentLevel: number | null) {
     focus: () => chain,
     setParagraph: vi.fn(() => chain) as unknown as () => FakeChain,
     setNode: vi.fn(() => chain) as unknown as (name: string, attrs: unknown) => FakeChain,
+    command: vi.fn((fn: (props: FakeCommandProps) => boolean) => {
+      fn(commandProps);
+      return chain;
+    }) as unknown as (fn: (props: FakeCommandProps) => boolean) => FakeChain,
     run,
   };
+  const setBlockType = vi.fn();
+  const commandProps: FakeCommandProps = {
+    tr: { selection: { from: 1, to: 1 }, setBlockType },
+    dispatch: () => {},
+  };
+  const headingType = { name: "heading" };
   const editor = {
     isEditable: true,
+    schema: { nodes: { heading: headingType } },
     isActive: (name: string, attrs?: { level?: number }) => {
       if (name !== "heading") return false;
       if (attrs && typeof attrs.level === "number") return currentLevel === attrs.level;
@@ -97,7 +120,7 @@ function makeEditor(currentLevel: number | null) {
     chain: () => chain,
     view: { state: { selection: { head: 1 }, doc: {} } },
   } as unknown as Editor;
-  return { editor, chain, run };
+  return { editor, chain, run, setBlockType, headingType };
 }
 
 function blockButtons(): HTMLButtonElement[] {
@@ -156,12 +179,42 @@ describe("BlockTypeDropdown — docked render + click selection", () => {
     expect(document.querySelector('[role="menu"]')).toBeNull(); // closed
   });
 
-  it("clicking 'Part' (an out-of-scope level) sets the heading node directly", () => {
-    const { editor, chain } = makeEditor(null); // paragraph
+  it("clicking 'Part' (an out-of-scope level) sets the level through the ONE door", () => {
+    // Task 658. The pick used to be `setNode("heading", { level, numbered: true })`
+    // — a LITERAL attr object, i.e. "rebuild this heading from scratch", which
+    // silently deleted an existing heading's `\label`, its `\section[short]`
+    // title and its uuid and forced a `\section*` numbered. It now goes through
+    // `setHeadingLevelInRange`, whose attrs argument is a FUNCTION asked once
+    // per node — so the same pick is a conversion for a paragraph and a
+    // level-only change for a heading. Preservation end-to-end over the real
+    // schema is heading-level-attr-preservation.test.ts; what belongs HERE is
+    // that the dropdown's out-of-scope half reaches that door at all.
+    const { editor, chain, setBlockType, headingType } = makeEditor(null); // paragraph
     const { container } = render(<BlockTypeDropdown editor={editor} />);
     fireEvent.click(container.querySelector("button")!);
     fireEvent.click(blockButtonByLabel("Part")!);
-    expect(chain.setNode).toHaveBeenCalledWith("heading", { level: 0, numbered: true });
+
+    expect(chain.setNode).not.toHaveBeenCalled();
+    expect(chain.command).toHaveBeenCalledTimes(1);
+    expect(setBlockType).toHaveBeenCalledTimes(1);
+    const [from, to, type, attrs] = setBlockType.mock.calls[0] as [
+      number, number, unknown, (n: unknown) => Record<string, unknown>,
+    ];
+    expect(from).toBe(1);
+    expect(to).toBe(1);
+    expect(type).toBe(headingType);
+    // A FUNCTION, not a literal — that is the whole of the fix at this seam.
+    expect(typeof attrs).toBe("function");
+    const existingHeading = {
+      type: headingType,
+      attrs: { level: 2, label: "sec:x", numbered: false, uuid: "H1", shortTitle: "S" },
+    };
+    expect(attrs(existingHeading)).toEqual({
+      level: 0, label: "sec:x", numbered: false, uuid: "H1", shortTitle: "S",
+    });
+    expect(attrs({ type: { name: "paragraph" }, attrs: {} })).toEqual({
+      level: 0, numbered: true,
+    });
   });
 
   it("a read-only editor makes the pick inert (no chain call)", () => {
