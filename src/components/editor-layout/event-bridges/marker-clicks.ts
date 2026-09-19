@@ -317,7 +317,7 @@ export function useMarkerClickBridges(deps: {
       );
       if (typeof clickY === "number") {
         const sourceEl = document.querySelector(
-          `.${ATOM_REGISTRY.footnote.domClass}[data-footnote-id="${detail.footnoteId}"]`,
+          `.${ATOM_REGISTRY.footnote.domClass}[${ATOM_REGISTRY.footnote.domIdAttr}="${detail.footnoteId}"]`,
         ) as HTMLElement | null;
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF later if the panel
@@ -367,7 +367,7 @@ export function useMarkerClickBridges(deps: {
       // recomputed card positions.
       if (typeof clickY === "number") {
         const sourceEl = document.querySelector(
-          `.${ATOM_REGISTRY.citation.domClass}[data-citation-id="${detail.citationId}"]`,
+          `.${ATOM_REGISTRY.citation.domClass}[${ATOM_REGISTRY.citation.domIdAttr}="${detail.citationId}"]`,
         ) as HTMLElement | null;
         alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY, sourceEl);
       }

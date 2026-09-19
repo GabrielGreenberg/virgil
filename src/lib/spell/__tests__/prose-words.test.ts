@@ -233,7 +233,13 @@ describe("nothing inside a carrier or an atom is ever a word", () => {
     const doc = mount(
       "Prose $x^2$ around \\footnote{aaa} the \\citep{k} atoms \\ref{sec:a} here.",
     ).state.doc;
-    const atomNames = new Set(Object.values(ATOM_REGISTRY).map((a) => a.nodeName));
+    // `Set<string>` explicitly: the registry's rows are `as const` (task 645
+    // derives `CardAtomKind` from their literal `idAttr`s), so an inferred set
+    // would be keyed to the four literal node names and reject the `string`
+    // this loop probes it with.
+    const atomNames = new Set<string>(
+      Object.values(ATOM_REGISTRY).map((a) => a.nodeName),
+    );
     let seen = 0;
     for (const { node, contentStart } of proseBlocks(doc)) {
       const tokens = tokenizeBlock(node, contentStart);

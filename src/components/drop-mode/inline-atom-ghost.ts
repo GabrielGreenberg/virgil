@@ -30,6 +30,7 @@ import {
   DATA_LINK_ID,
   DATA_LINK_KIND,
 } from "@/links/link-dom-contract";
+import { CARD_ATOM_DOM_ID_ATTRS } from "@/lib/tiptap/atom-registry";
 
 export interface InlineAtomGhostState {
   /** Sanitized, detached clone of the grabbed atom's NodeView DOM. */
@@ -76,8 +77,10 @@ const STRIP_ATTRS = [
   "data-tint-color",
   "data-card-hovered",
   "data-card-selected",
-  "data-footnote-id",
-  "data-citation-id",
+  // The Card-bearing atoms' id attrs, READ from `ATOM_REGISTRY` (task 645) —
+  // a fifth Card-bearing kind is stripped from the ghost for free instead of
+  // silently riding into the clone with a live id.
+  ...CARD_ATOM_DOM_ID_ATTRS,
 ];
 
 function sanitizeClone(src: HTMLElement): HTMLElement {

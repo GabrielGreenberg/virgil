@@ -20,10 +20,12 @@
  *
  * Same registry-driven discipline as [duplicate-slice.ts](./duplicate-slice.ts):
  *
- *   • Inline atoms (`footnote`, `citation`) — looked up via the same
- *     `INLINE_ATOM_CARDS` map literal as the duplicator. Adding a new
- *     inline-atom kind is one entry there (kept in the duplicator
- *     module to avoid an extra shared-state file).
+ *   • Inline atoms (`footnote`, `citation`) — resolved through
+ *     `cardAtomMetaForNodeName`, the ATOM_REGISTRY's own Card-bearing
+ *     narrowing (task 645). Adding a new inline-atom kind is one registry
+ *     row; this walker needs no edit. (It used to be a hand-copied
+ *     `INLINE_ATOM_CARDS` map literal, twinned with the duplicator's — the
+ *     duplication its own comment conceded.)
  *
  *   • `linkedAnchor` marks — the mark's `linkCard` attr names the
  *     `CardKind:cardId`; we delegate to `getCardLifecycle(kind).delete(id)`
@@ -44,17 +46,11 @@ import type { CardKind } from "@/panels/_shared/types";
 import { parseLinkCardKey } from "@/links/link-dom-contract";
 import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import { settleAppliedSpliceForCard } from "@/cards/lifecycle/run-event";
+import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
 } from "./text-object-registry";
-
-/** Same inline-atom lookup as the duplicator. Kept in sync by colocation;
- *  if these grow further, lift into a shared module. */
-const INLINE_ATOM_CARDS: Record<string, { cardKind: CardKind; idAttr: string }> = {
-  footnote: { cardKind: "footnote", idAttr: "footnoteId" },
-  citation: { cardKind: "citation", idAttr: "citationId" },
-};
 
 // ---------------------------------------------------------------------------
 // Cascade — when the deletion would leave a structural wrapper empty,
@@ -253,11 +249,11 @@ export function collectRangeCardTargets(
   const seenAnchors = new Set<string>();
   doc.nodesBetween(from, to, (node) => {
     // Inline-atom card cleanup
-    const atom = INLINE_ATOM_CARDS[node.type.name];
+    const atom = cardAtomMetaForNodeName(node.type.name);
     if (atom) {
       const id = node.attrs?.[atom.idAttr];
       if (typeof id === "string" && id) {
-        targets.push({ kind: atom.cardKind, id });
+        targets.push({ kind: atom.kind, id });
       }
     }
     // linkedAnchor mark cleanup — one mark can cover several text nodes,

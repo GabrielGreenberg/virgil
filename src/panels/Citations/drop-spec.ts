@@ -23,13 +23,18 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { inlineAtomMoveSpec } from "@/components/drop-mode/util/inline-atom-move";
 import { citationCommandOrNull } from "@/lib/bib-parser";
+import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+
+/** The citation atom's own registry row — the `{nodeName, idAttr}` pair the
+ *  by-id resolver needs, read rather than re-spelled (task 645). */
+const ATOM = CARD_ATOM_REGISTRY.citation;
 
 export const citationDropSpec = inlineAtomMoveSpec({
-  nodeName: "citation",
-  idAttr: "citationId",
+  nodeName: ATOM.nodeName,
+  idAttr: ATOM.idAttr,
   cardApiKind: "citation",
   createAtom: ({ id, schema, cardAttrs }): PMNode | null => {
-    const citationNodeType = schema.nodes.citation;
+    const citationNodeType = schema.nodes[ATOM.nodeName];
     if (!citationNodeType) return null;
     // The serializable `\cite{…}` command lives in the citations panel hook,
     // keyed by the card id (the unanchored card has no marker to read it from);
@@ -47,6 +52,6 @@ export const citationDropSpec = inlineAtomMoveSpec({
     // but carry the card's EXISTING citationId so the new atom stays coupled
     // to the card. displayText is empty — the panel/renderer fills it from the
     // command + bib on next derive.
-    return citationNodeType.create({ citationId: id, command, displayText: "" });
+    return citationNodeType.create({ [ATOM.idAttr]: id, command, displayText: "" });
   },
 });

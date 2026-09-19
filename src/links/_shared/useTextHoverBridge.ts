@@ -28,7 +28,7 @@ import type { Editor } from "@tiptap/react";
 import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types";
 import { getTextAnchor } from "../links";
 import { cardKindFromRecord } from "@/cards/predicates";
-import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import {
   DATA_LINK_CARD,
   DATA_LINK_ID,
@@ -113,20 +113,31 @@ export function useTextHoverBridge({
         }
       }
 
-      // Citation atom (`<span class="citation-node" data-citation-id=...>`).
-      const citation = el.closest<HTMLElement>("[data-citation-id]");
-      if (citation) {
-        const id = citation.getAttribute("data-citation-id");
-        if (id) return { entityId: id, kind: "citation" };
-      }
-
-      // Footnote atom (`<sup class="footnote-marker" data-footnote-id=...>`).
-      const footnote = el.closest<HTMLElement>(
-        `[data-footnote-id], .${ATOM_REGISTRY.footnote.domClass}`,
-      );
-      if (footnote) {
-        const id = footnote.getAttribute("data-footnote-id");
-        if (id) return { entityId: id, kind: "footnote" };
+      // The Card-bearing atoms, swept from the registry rather than one
+      // hand-written branch per kind (task 645): each row supplies its own
+      // `data-*` id attr, its class and its kind, so a fifth Card-bearing atom
+      // is hovered for free.
+      //
+      // NEAREST-first, not registry-order-first. Two `closest()` calls, one per
+      // kind, answer "which kind did I list first?" — this climbs ONCE and
+      // answers "which atom is actually closest to the pointer?", which is the
+      // question a hover is asking. The two agree on every shape the schema can
+      // produce today (an atom is a leaf, so one can't nest inside another), so
+      // this is behaviour-identical AND immune to the ordering question a new
+      // registry row would otherwise raise.
+      for (
+        let node: Element | null = el;
+        node;
+        node = node.parentElement
+      ) {
+        for (const atom of CARD_ATOMS) {
+          // The class is a second selector, not a second answer: a marker
+          // rendered before its id landed matches it, `getAttribute` then says
+          // null, and the climb continues — exactly the old behaviour.
+          if (!node.matches(`[${atom.domIdAttr}], .${atom.domClass}`)) continue;
+          const id = node.getAttribute(atom.domIdAttr);
+          if (id) return { entityId: id, kind: atom.kind };
+        }
       }
 
       // Generic data-link-card fallback (covers any future link atom that

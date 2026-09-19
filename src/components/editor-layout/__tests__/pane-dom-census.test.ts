@@ -304,6 +304,44 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
       );
     });
 
+    it("a marker name reached through a `const` object literal (task 645)", () => {
+      // The move this fold exists for: a selector stops spelling its marker
+      // and reads it off an SSOT row instead. Before the fold, that turned a
+      // SEEN global read into a HOLE — the census went quiet about a read that
+      // had not gone anywhere, and the exemption that named it rotted. Dotted
+      // and string-keyed, and through the `as const satisfies …` an SSOT table
+      // is declared with.
+      flags(
+        'const R = { footnote: { domIdAttr: "data-dock-slot" } } as const satisfies Record<string, { domIdAttr: string }>;\n' +
+          "export const f = (id: string) => document.querySelector(`[${R.footnote.domIdAttr}=\"${id}\"]`);",
+        "data-dock-slot",
+      );
+      flags(
+        'const R = { "inline-math": { a: "data-strip-side" } } as const;\n' +
+          'export const f = () => document.querySelector(`[${R["inline-math"].a}]`);',
+        "data-strip-side",
+      );
+      // …and it must still be a HOLE where the path is NOT a const object
+      // literal, so the fold cannot invent coverage it does not have.
+      const [q] = scanSynthetic(
+        "declare const R: { a: { b: string } };\n" +
+          "export const f = () => document.querySelector(`[${R.a.b}]`);",
+      );
+      expect(q.selector).toBe(`[${HOLE}]`);
+    });
+
+    it("the real registry path folds — the two atom markers stay SEEN", () => {
+      // Not synthetic: `marker-clicks.ts` reads `ATOM_REGISTRY.<kind>.domIdAttr`
+      // across a module boundary (task 645), and the two `data-*-id` entries in
+      // EXEMPT_GLOBAL_MARKERS below are earned by exactly those two calls. If
+      // this fold regresses, the rot leg fails rather than the coverage going
+      // silent — which is the whole point.
+      const file = path.join(SRC, "components/editor-layout/event-bridges/marker-clicks.ts");
+      const selectors = SCANNER.documentQueries(file).map((q) => q.selector);
+      expect(selectors.some((sel) => sel.includes("data-footnote-id"))).toBe(true);
+      expect(selectors.some((sel) => sel.includes("data-citation-id"))).toBe(true);
+    });
+
     it("an unfoldable part becomes a HOLE, never a false marker", () => {
       const [q] = scanSynthetic(
         'declare function attrOf(x: unknown): string;\nexport const f = (x: unknown) => document.querySelector(`[${attrOf(x)}]`);',
@@ -349,8 +387,14 @@ const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   //    DIFFERENT door's business, and moving them here would hide that.
   "data-card-key": "per-CARD lookup — owned by the card-placement door, not this one",
   "data-pristine-card-id": "per-CARD sweep (drop-mode) — same family as data-card-key",
-  "data-footnote-id": "per-ATOM id inside a document — a marker-click jump, not pane chrome",
-  "data-citation-id": "per-ATOM id inside a document — a marker-click jump, not pane chrome",
+  // Task 645: these two are no longer spelled as literals — `marker-clicks.ts`
+  // reads them off `ATOM_REGISTRY.<kind>.domIdAttr`. They stay VISIBLE here
+  // because the scanner now folds a path into a `const` object literal; the leg
+  // above pins that, so an SSOT read can never quietly become a blind spot.
+  "data-footnote-id":
+    "per-ATOM id inside a document — a marker-click jump, not pane chrome (registry-templated since task 645)",
+  "data-citation-id":
+    "per-ATOM id inside a document — a marker-click jump, not pane chrome (registry-templated since task 645)",
   "data-contains-active-card":
     "per-CARD state flag, read only alongside [data-floating-panel]",
   // Task 600: these two were always read off `document` (the reconciler's
