@@ -369,15 +369,19 @@ describe("applyDiff", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Phase 2a regression — example-nested cite must keep its container tag across
-  // an in-place edit / move. `buildInitial` stamps `nestedInContainerId` from
-  // the enclosing exampleBlock, but the step-inspector rebuilds a
-  // `changedCitations` entry from node attrs ALONE (no enclosing container), so
-  // `applyDiff` must carry the prior owner tag forward — else the cite un-nests
-  // to a flat card on every citekey edit / move until reload.
+  // Phase 2a — an example-nested cite must keep its container tag across an
+  // in-place edit / move. The step-inspector now DERIVES the tag from the
+  // cite's ancestors on every path (task 652), through the same
+  // `citationEntryAt` the load walk uses, so a rebuilt `changedCitations` entry
+  // is AUTHORITATIVE about example nesting: it arrives carrying the tag while
+  // the cite is still inside the example, and arrives WITHOUT it once the cite
+  // has left — which is why `applyDiff` no longer carries the example tag
+  // forward (that workaround would resurrect a stale tag on a move-out). The
+  // footnote kind, which no step can see, is still carried forward — the test
+  // below this one.
   // ---------------------------------------------------------------------------
 
-  it("changedCitations on an example-nested cite KEEPS nestedInContainerId (core regression)", () => {
+  it("changedCitations on a still-nested cite KEEPS nestedInContainerId (core regression)", () => {
     const ex = exampleBlock("ex1", { tag: "myex" }, [
       exampleItemWith({}, [
         testSchema.text("see "),
@@ -389,11 +393,18 @@ describe("applyDiff", () => {
     const before = prev.citations.find((c) => c.id === "c-in-ex");
     expect(before?.nestedInContainerId).toEqual({ kind: "example", id: "ex1" });
 
-    // A citekey edit AND a new position — the rebuilt entry carries NO tag.
+    // A citekey edit AND a new position, still inside the example — the
+    // rebuilt entry derives the same tag the load walk did.
     const change: StructureDiff = {
       ...EMPTY_DIFF,
       changedCitations: [
-        { id: "c-in-ex", pos: 999, command: "\\cite{e2}", displayText: "E2" },
+        {
+          id: "c-in-ex",
+          pos: 999,
+          command: "\\cite{e2}",
+          displayText: "E2",
+          nestedInContainerId: { kind: "example", id: "ex1" },
+        },
       ],
     };
     const after = applyDiff(prev, change);
@@ -401,8 +412,37 @@ describe("applyDiff", () => {
     // The attr edit + new pos took effect…
     expect(cit?.command).toBe("\\cite{e2}");
     expect(cit?.pos).toBe(999);
-    // …but the container tag SURVIVED (the regression being fixed).
+    // …and the cite stayed nested.
     expect(cit?.nestedInContainerId).toEqual({ kind: "example", id: "ex1" });
+  });
+
+  it("changedCitations on a cite that LEFT its example un-nests it immediately (no stale tag)", () => {
+    // The move-out case the pre-task-652 carry-forward had to accept as stale
+    // until the next reload. The step path now answers the containment question
+    // itself, so an untagged rebuilt entry MEANS "not in an example any more"
+    // and must be honored.
+    const ex = exampleBlock("ex1", { tag: "myex" }, [
+      exampleItemWith({}, [
+        testSchema.text("see "),
+        citationNode("c-moved", "\\cite{e}", "E"),
+      ]),
+    ]);
+    const prev = buildInitial(doc(paragraph("p1", "before"), ex));
+    expect(
+      prev.citations.find((c) => c.id === "c-moved")?.nestedInContainerId,
+    ).toEqual({ kind: "example", id: "ex1" });
+
+    // Dragged out into the paragraph: same id, new pos, NO container tag.
+    const change: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedCitations: [
+        { id: "c-moved", pos: 4, command: "\\cite{e}", displayText: "E" },
+      ],
+    };
+    const after = applyDiff(prev, change);
+    const cit = after.citations.find((c) => c.id === "c-moved");
+    expect(cit?.pos).toBe(4);
+    expect(cit?.nestedInContainerId).toBeUndefined();
   });
 
   it("changedCitations carries a footnote-nested cite's owner tag forward too (defensive)", () => {
@@ -440,10 +480,12 @@ describe("applyDiff", () => {
     expect(cit?.nestedInContainerId).toEqual({ kind: "footnote", id: "fn1" });
   });
 
-  it("addedCitations with NO nestedInContainerId folds in as a FLAT top-level cite (graceful-degradation contract for the live-add limitation)", () => {
-    // A cite ADDED live inside an example mid-session has no tag on the live
-    // `addedCitations` path (the tag is load-only). It must degrade to a flat
-    // top-level card — never be dropped — until reload re-runs buildInitial.
+  it("addedCitations with NO nestedInContainerId folds in as a FLAT top-level cite (graceful-degradation contract)", () => {
+    // An untagged added entry means "not inside any container" — since task
+    // 652 that is what the step path actually derives for a top-level cite
+    // (a cite added inside an example arrives tagged; see the step-inspector
+    // congruence suite). `applyDiff` must fold it in as a flat top-level card
+    // — never drop it.
     const prev = buildInitial(doc(paragraph("p1", "body")));
     const add: StructureDiff = {
       ...EMPTY_DIFF,

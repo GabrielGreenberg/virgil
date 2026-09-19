@@ -105,9 +105,46 @@ export interface CitationEntry {
    *      position (unlike a footnote-nested cite — example children are real PM
    *      nodes `descendants()` reaches), so a position-keyed jump still lands on
    *      the cite.
-   *  Absent for a top-level citation. Populated only by the load-only
-   *  `buildInitial` pass; `applyDiff` does NOT touch it. */
-  nestedInContainerId?: { kind: "footnote" | "example"; id: string };
+   *  Absent for a top-level citation. Derived on BOTH derivation paths — the
+   *  load-only `buildInitial` descend (which has an ancestor stack for free)
+   *  and the per-transaction `inspectNodeAt` range walk (which resolves the
+   *  ancestors of the one collected node) — through the single constructor
+   *  `citationEntryAt` below, so the two cannot disagree about it. The
+   *  `"footnote"` kind stays load-only: a footnote-nested cite is a
+   *  JSONContent literal, not a PM node, so no step ever reaches it. */
+  nestedInContainerId?: CitationContainer;
+}
+
+/** The innermost card-bearing block that OWNS a citation, if any. `id` is the
+ *  container's own card address — a footnote's raw `footnoteId`, or an
+ *  example's `ExampleEntry.id` (`deriveExampleIdentity`). */
+export type CitationContainer = { kind: "footnote" | "example"; id: string };
+
+/**
+ * The ONE construction of a `CitationEntry`. Read by `buildInitial`'s descend
+ * walk (both the real-PM-node and the footnote-body-literal sites) and by the
+ * step path's `inspectNodeAt`, so an ancestor-derived field cannot be present
+ * on one path and absent on the other — the asymmetry that un-nested an
+ * example-nested cite's card on the CHANGED path once and on the ADDED path
+ * again. A container of kind `"footnote"` also mirrors itself into the legacy
+ * `nestedInFootnoteId`, so that invariant lives here rather than at each site.
+ */
+export function citationEntryAt(input: {
+  id: string;
+  pos: number;
+  command?: string | null;
+  displayText?: string | null;
+  container?: CitationContainer | null;
+}): CitationEntry {
+  const container = input.container ?? null;
+  return {
+    id: input.id,
+    pos: input.pos,
+    command: input.command ?? "",
+    displayText: input.displayText ?? "",
+    ...(container?.kind === "footnote" ? { nestedInFootnoteId: container.id } : {}),
+    ...(container ? { nestedInContainerId: container } : {}),
+  };
 }
 
 export interface AnchorEntry {
