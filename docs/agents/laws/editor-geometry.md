@@ -860,7 +860,11 @@ Measured on the pre-369 tree, the legs name six builders twice, `EditorPane`, bo
 
 Same pass deleted `getParagraphAnchorPositions` — an EXPORTED helper resolving `pids[0]` with zero production callers, stating a different rule from the live one (`jumpToCard` uses "first RESOLVABLE link"): the task-202 dead-SSOT shape, WIRE-it-or-DELETE-it.
 
-**Residual, stated rather than implied.** `OmniAnchorRow` publishes both `anchored` (the authority's verdict + a resolved position) and `anchorUuid` (the card stores an anchor), and only Archive gates its Jump on the first — the other five builders gate on the second, which is each panel's own pre-369 rule, kept byte-for-byte. They differ for a card whose anchor is UNRECOVERABLE: those five still render a Jump that `jumpToCard` cannot resolve, which is the false-affordance class ("what the hover OFFERS is what the commit ACCEPTS") in a surface this task did not set out to renegotiate. Unifying it is a visible product change in five panels, so it is recorded here and at the field rather than made silently under a refactor.
+**The residual this left, and its retirement (task 655).** 369 recorded — here and at the field — that `OmniAnchorRow` published TWO facts and the six builders picked between them: `anchored` (the authority's verdict + a resolved position) and `anchorUuid` (merely "the card stores an anchor"). Only Archive gated its Jump on the first; the other five kept their own pre-369 rule byte-for-byte, so a card whose anchor was UNRECOVERABLE rendered, in five panels, a Jump that `jumpToCard` resolves to nothing — the false-affordance class ("what the hover OFFERS is what the commit ACCEPTS"). Declining to renegotiate an affordance inside a refactor was right; leaving it unfiled for a month was not.
+
+> **Where a surface publishes a predicate for each renderer to choose from, the renderers WILL choose differently — so publish the DECISION, not the predicate.** The row now carries `withJump(handler)`, which returns the handler or `undefined`; a builder hands its callback over and never sees a boolean. Five wrong call sites were the symptom; a builder being handed a choice at all was the defect.
+
+Archive's rule is what ships for all six (WITHDRAW the control), because it was already the behaviour in one of the six and so is not a new idea in the product. The alternative — keeping the control and routing it to the margin's re-pin gesture (`UnanchoredCardsChip`'s "click to re-pin") — is a real feature and belongs to its own task, not to a correctness fix. `omni-jump-gate.test.tsx` holds it: the behavioural sweep drives ELEVEN card kinds through the six REAL builders (dead anchor ⇒ no handler; live anchor ⇒ a handler, so nothing real is withdrawn), and the census DISCOVERS the builder population from the tree (every `src/panels/*/omni.tsx` that imports `buildOmniAnchorRows`) and pins that each routes its `onJump` through `row.withJump` and re-derives no predicate — `anchorUuid !=`, `rows.some(`, and Archive's own restated `row.anchored ?` all banned. Pre-fix the dead-anchor sweep fails on five panels and passes on Archive; that asymmetry is the finding.
 
 **Verification, honestly:** this class is FSA-masked (anchor recovery only reproduces under real prod File System Access — the dev preview's uuids round-trip), so the durable proof is the unit contract above and a real-FSA eyeball is *owed*, not claimed.
 
@@ -884,8 +888,14 @@ contradiction is visible on screen:
   having done nothing. Archive's other three renderers all gate correctly — the
   docked card on `!orphaned`, the omni card on `row.anchorState`, the margin
   marker on the authority itself — so the float was the ONE surface out of step.
-  (This is not the residual "The resolution half" records: that names the five
-  builders gating on `anchorUuid` and explicitly EXEMPTS Archive.)
+  (This is not the residual "The resolution half" records: that named the five
+  OMNI builders gating on `anchorUuid` and explicitly EXEMPTED Archive — task
+  655 has since retired it. The float surface below is a SEPARATE copy of the
+  same fork and is not covered by that fix: `ctx.anchoredIds` is an
+  archive-only fold, so the other five float builders still gate `canJump` on
+  `getLinkedTextObjectIds(card).length > 0` — "the card stores an anchor," the
+  predicate 655 banned one surface over. Giving the float ctx a
+  kind-independent fold is the next member of this cluster.)
 - **`textobject`** — a text-object float OUTLIVES its source, the body already
   detects that (`useFloatMainSync` → `sourceMissing`) and already announces it
   ("Source paragraph deleted — float is disconnected"), and the chrome above the

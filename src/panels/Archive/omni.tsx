@@ -37,6 +37,11 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
     // could not see it, so a clip the margin RECOVERED was binned into the
     // orphan strip with its marker still painted beside the live paragraph.
     //
+    // The Jump gate is the ROW's (task 655) — this builder was the only one of
+    // the six that already gated on the resolution rather than on "the card
+    // stores an anchor", and it now says so through the shared door instead of
+    // restating the predicate, so the five that were wrong cannot drift back.
+    //
     // Free-vs-orphaned still splits on the clip's OWN recorded intent
     // (`unanchored`, set at born-free creation) — not a link-presence proxy
     // (task 104, Defect A) — and stays inside `resolveAnchorState` (SSOT).
@@ -58,9 +63,9 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
             onEdit={(id, content) => a.updateArchiveSnippet(id, content)}
             onUpdateTitle={a.updateArchiveSnippetTitle}
             onDelete={a.handleDeleteArchive}
-            onJump={
-              row.anchored ? (sourceEl) => a.jumpToCard(snippet, sourceEl) : undefined
-            }
+            onJump={row.withJump((sourceEl?: HTMLElement | null) =>
+              a.jumpToCard(snippet, sourceEl),
+            )}
             onEditorFocus={a.setOverrideEditor}
             getCitationDisplayText={a.getCitationDisplayText}
             onCitationCreated={a.onCitationCreated}
