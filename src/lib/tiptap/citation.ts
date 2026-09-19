@@ -24,7 +24,7 @@ import { setDataIfChanged } from "./idempotent-dom";
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
 // previously made NO card at all — this is the bug fix: both the full and the
 // bare branch now land at the SAME registry `citation.run` as menu + slash.
-import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
+import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // Task 061: the cross-surface applicability SSOT — the typed `\cite{}` input
 // rule must honor the SAME curated per-kind action set the menus consult, so a
 // citation atom can't land in a `titleField` / non-prose block where the
@@ -225,7 +225,17 @@ export const Citation = Node.create<CitationOptions>({
                 // `citation.run` (surface "typed"), the SAME destination as
                 // menu + slash. Keeps the FULL typed command on the card so
                 // the card renders the keys instead of an empty `\cite{}`.
-                getEditorActionsHandleFor(view)?.runAction("citation", {
+                //
+                // Task 642: `runEditorAction` carries THIS view as the
+                // invocation's origin, so the card is built against the
+                // document the user typed in. `Citation` mounts unconditionally
+                // in card-body schemas, so this rule fires inside a note /
+                // footnote body too — where the pre-642 dispatch read the
+                // active PANE's caret instead. The outcome is warned in dev
+                // when the card half does not run: the atom above is already in
+                // the doc (durable on purpose) and would otherwise be orphaned
+                // in silence.
+                runEditorAction(view, "citation", {
                   surface: "typed",
                   payload: { citationId, command },
                 });
@@ -262,7 +272,8 @@ export const Citation = Node.create<CitationOptions>({
                 // Register the panel card via the registry's `citation.run`
                 // (surface "typed"). Replaces the retired
                 // `virgil-citation-create` CustomEvent + its two listeners.
-                getEditorActionsHandleFor(view)?.runAction("citation", {
+                // Task 642: origin-carrying dispatch — see the full branch above.
+                runEditorAction(view, "citation", {
                   surface: "typed",
                   payload: { citationId, command },
                 });

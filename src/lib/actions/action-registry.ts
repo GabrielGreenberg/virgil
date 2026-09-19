@@ -955,9 +955,61 @@ export interface EditorActionsHandle {
     seed: {
       surface: "slash" | "typed";
       payload?: Record<string, unknown>;
+      /**
+       * The ORIGIN of the invocation — the live `EditorView` the gesture
+       * actually fired in (task 642). Supplied by `runEditorAction`, the one
+       * plugin-land dispatch door, which always has it.
+       *
+       * THE SPLIT THIS ENCODES. A handle carries two different kinds of thing:
+       * app-global React APIs (`cardCreation`, panel routing, the popover
+       * seams) and the DOCUMENT-LOCAL origin of the gesture (which doc, which
+       * caret, which block). Only the pane editors are registry keys, so a
+       * nested editor — a card body, a float, an excerpt — resolves the ACTIVE
+       * pane's handle. Falling back for the React APIs is right; falling back
+       * for the POSITION is not, and reading the active pane's
+       * `selection.head` anchored a card-body `\cite{}` against a foreign
+       * document's caret (and let a caret parked in MAIN's `codeBlock`
+       * suppress the card entirely). So the bridge builds `view` / `editor` /
+       * `ref` from THIS view, and supplies the React half from itself.
+       *
+       * Absent only for a legacy view-less caller; the bridge then falls back
+       * to its own pane editor, which is exactly the pre-642 behavior.
+       */
+      origin?: EditorView;
     },
-  ): void;
+  ): ActionDispatchOutcome | void;
 }
+
+/**
+ * Why a dispatch through the bridge did (or did not) reach `spec.run(ctx)`.
+ *
+ * The typed-LaTeX surfaces insert their inline atom SYNCHRONOUSLY and only then
+ * ask for the card — a deliberate durability decision (the atom must land even
+ * if React is unmounted). That makes every early return on the card half an
+ * ORPHAN: a citation pill or footnote marker in the text with no panel card and
+ * nothing to tell the user. Before task 642 every one of those edges was silent
+ * — `getEditorActionsHandleFor(view)?.runAction(...)` swallowed a null handle
+ * whole, and `runAction`'s own four early returns said nothing. This is the
+ * vocabulary that makes the drop legible; `runEditorAction` warns on it in dev.
+ *
+ * A `void` return is tolerated (legacy view-less handles and test doubles) and
+ * read as `"ran"`.
+ */
+export type ActionDispatchOutcome =
+  /** `spec.run(ctx)` was invoked. The only non-drop. */
+  | "ran"
+  /** No `EditorActionsHandle` is registered at all (React unmounted, or a brief
+   *  HMR remount window between publish and call). */
+  | "no-handle"
+  /** A handle is live but its pane's editor is gone (mid-remount). */
+  | "no-editor"
+  /** The collab read-only gate: the partner holds the pen. */
+  | "read-only"
+  /** `VIRGIL_ACTION_REGISTRY` has no row for the id (unreachable through the
+   *  typed door; defence for a caller arriving through a cast). */
+  | "no-row"
+  /** `spec.applies(ctx)` returned `"disabled"` for the ORIGIN's caret. */
+  | "disabled";
 
 // ---------------------------------------------------------------------------
 // CHIP 2 — the 11 card-action rows, as DELEGATING wrappers.

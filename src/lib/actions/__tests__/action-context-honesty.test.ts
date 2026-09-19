@@ -101,6 +101,27 @@ const LIBRARY = "library";
  */
 const PERMITTED_DEAD_CONTEXT_FIELDS = new Set<string>(["surface"]);
 
+/**
+ * Seed members that are NOT carried into the context verbatim but are the
+ * SOURCE the bridge DERIVES context fields from, with the fields each one
+ * derives (task 642).
+ *
+ * The seed rule below is "a seed member can only carry what the context can
+ * hold". `origin` — the live `EditorView` the gesture fired in — is the one
+ * member that is a different kind of thing: nothing named `ctx.origin` exists,
+ * because the bridge consumes it and publishes `view` / `editor` / `ref` built
+ * from THAT document instead of from whichever pane is active. Left
+ * unaccounted, the census would read it as a free-floating seed member; stated
+ * here, it still cannot float — every name in the value list must be a real
+ * `ActionContext` field, and the bridge must be seen to read `seed.<member>`.
+ */
+const SEED_DERIVATION_SOURCES: Readonly<Record<string, readonly string[]>> = {
+  origin: ["view", "editor", "ref"],
+};
+
+/** The bridge implementation — the one place a derivation source is consumed. */
+const BRIDGE_IMPL = "src/components/EditorPane.tsx";
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === "__tests__" || name === "node_modules") continue;
@@ -157,7 +178,7 @@ describe("action-context honesty — a declared context field nobody reads is de
     const fields = actionContextFields();
     expect(fields).toEqual(expect.arrayContaining(["editor", "view", "ref"]));
     expect(fields.length).toBeGreaterThanOrEqual(10);
-    expect(runActionSeedFields()).toEqual(["surface", "payload"]);
+    expect(runActionSeedFields()).toEqual(["surface", "payload", "origin"]);
     // And the read needle must actually find something through the real
     // pipeline — a stripper that blanked the file would report zero for all.
     expect(readSites("cardCreation").length).toBeGreaterThan(0);
@@ -176,10 +197,35 @@ describe("action-context honesty — a declared context field nobody reads is de
     expect(stale).toEqual([]);
   });
 
-  it("every runAction seed member names an ActionContext field", () => {
+  it("every runAction seed member names an ActionContext field, or declares what it derives", () => {
     const ctxFields = new Set(actionContextFields());
-    const orphaned = runActionSeedFields().filter((f) => !ctxFields.has(f));
+    const orphaned = runActionSeedFields().filter(
+      (f) => !ctxFields.has(f) && !(f in SEED_DERIVATION_SOURCES),
+    );
     expect(orphaned).toEqual([]);
+  });
+
+  it("every declared derivation source is real: live seed member, real target fields, consumed by the bridge", () => {
+    // Task 642. The escape hatch above must not become a place to park a dead
+    // seed member. Three obligations, all of which fail LOUD:
+    //   (1) the member is still ON the seed (a retired one must leave here too);
+    //   (2) every field it claims to derive is a real `ActionContext` field;
+    //   (3) the bridge actually reads `seed.<member>` — a declaration alone
+    //       proves nothing.
+    const seedFields = new Set(runActionSeedFields());
+    const ctxFields = new Set(actionContextFields());
+    const bridge = codeOnly(readFileSync(BRIDGE_IMPL, "utf8"));
+    for (const [member, derives] of Object.entries(SEED_DERIVATION_SOURCES)) {
+      expect({ member, onSeed: seedFields.has(member) }).toEqual({ member, onSeed: true });
+      expect({ member, unknownTargets: derives.filter((d) => !ctxFields.has(d)) }).toEqual({
+        member,
+        unknownTargets: [],
+      });
+      expect({ member, consumedByBridge: new RegExp(`\\bseed\\.${member}\\b`).test(bridge) }).toEqual({
+        member,
+        consumedByBridge: true,
+      });
+    }
   });
 
   it("the two retired fields stay retired (task 227)", () => {
@@ -189,6 +235,43 @@ describe("action-context honesty — a declared context field nobody reads is de
     expect(REGISTRY_CODE).not.toMatch(/\bActionPosition\b/);
     expect(REGISTRY_CODE).not.toMatch(/^ {2}position\??\s*:/m);
     expect(REGISTRY_CODE).not.toMatch(/^ {2}cardLifecycle\??\s*:/m);
+  });
+
+  // ── task 642: ONE dispatch door, and it carries the origin ────────────────
+  it("nothing in src/ calls `.runAction(` except the bridge's own door", () => {
+    // `runEditorAction(view, id, seed)` is the one place the firing view is
+    // bound to the invocation. A caller that reaches past it — back to
+    // `getEditorActionsHandleFor(view)?.runAction(...)` — silently reintroduces
+    // the foreign-caret bug, because the handle it gets on a miss belongs to
+    // another document. The rule is mechanical: the only `.runAction(` call in
+    // production `src/` is inside the bridge module itself.
+    const DOOR = "src/lib/actions/editor-actions-bridge.ts";
+    const callers = PROD_SOURCES.filter(
+      ([f, code]) => f !== DOOR && /\.runAction\s*\(/.test(code),
+    ).map(([f]) => f);
+    expect(callers).toEqual([]);
+    // Anti-vacuity, both directions: the door really does call it, and the
+    // detector really does fire on that shape.
+    const door = PROD_SOURCES.find(([f]) => f === DOOR);
+    expect(door).toBeDefined();
+    expect(/\.runAction\s*\(/.test(door![1])).toBe(true);
+  });
+
+  it("the plugin-land surfaces reach the bridge THROUGH that door", () => {
+    // The complement of the leg above: if every caller were simply deleted it
+    // would also go green. Pin the live population — the typed-LaTeX rules, the
+    // slash helper, and the popover commit — as real `runEditorAction` callers.
+    const byDoor = PROD_SOURCES.filter(([, code]) =>
+      /\brunEditorAction\s*\(/.test(code),
+    ).map(([f]) => f.replaceAll("\\", "/"));
+    expect(byDoor).toEqual(
+      expect.arrayContaining([
+        "src/lib/tiptap/citation.ts",
+        "src/lib/tiptap/footnote.ts",
+        "src/lib/tiptap/commands.ts",
+        "src/components/EditorLayout.tsx",
+      ]),
+    );
   });
 
   it("the library silo has no ActionContext consumer (so skipping it is sound)", () => {

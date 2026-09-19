@@ -6,7 +6,7 @@ import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 // `virgil-citation-create` CustomEvent — one typed entrypoint into the
 // registry's `citation.run`. CHIP 7a: `\ref` rides the same bridge (the
 // `LabelRef` create-mode popover is the creator → `refRun` → `openRefPopover`).
-import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
+import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // CHIP 5a: the canonical heading transform lives in the action registry
 // (`headingRun` → SET + numbered:true). The 4 `\chapter`/`\section`/
 // `\subsection`/`\subsubsection` slash commands call the registry row's `run()`
@@ -116,9 +116,11 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
  *      the only guard — mirroring `runViewOnlyAction`'s gate for the pure-PM
  *      commands and the typed surface's `collabReadOnly`. No
  *      over-gating: a non-collab editor is always editable.
- *   2. the bridge dispatch itself — `getEditorActionsHandleFor(view)?.runAction`,
- *      routed via the EXACT live `view` so it reaches THIS pane's handle under
- *      multi-doc keep-alive, not a hidden keep-alive pane's.
+ *   2. the bridge dispatch itself — `runEditorAction(view, …)`, routed via the
+ *      EXACT live `view` so it reaches THIS pane's handle under multi-doc
+ *      keep-alive, not a hidden keep-alive pane's — and (task 642) carries that
+ *      view as the invocation's ORIGIN, so the action's `ref` is built from the
+ *      document the command fired in rather than from whichever pane is active.
  *
  * This folds the seven byte-near-identical `if (!view.editable) return; getEditor
  * ActionsHandleFor(view)?.runAction(<id>, { surface: "slash" })` closures onto
@@ -132,7 +134,7 @@ function runBridgeAction(
   payload?: Record<string, unknown>,
 ): void {
   if (collabReadOnly(view)) return;
-  getEditorActionsHandleFor(view)?.runAction(id, {
+  runEditorAction(view, id, {
     surface: "slash",
     ...(payload ? { payload } : {}),
   });

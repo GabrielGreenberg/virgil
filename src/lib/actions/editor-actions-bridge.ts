@@ -61,11 +61,11 @@
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
-import type { EditorActionsHandle } from "./action-registry";
+import type { ActionDispatchOutcome, EditorActionsHandle } from "./action-registry";
 
 // Re-export so a PM-plugin consumer (4a-ii) can import the contract type from
 // the same module it imports the getter from — one import site for the seam.
-export type { EditorActionsHandle } from "./action-registry";
+export type { EditorActionsHandle, ActionDispatchOutcome } from "./action-registry";
 
 /** A registered handle plus the live editor that owns it (for active-resolution). */
 interface HandleEntry {
@@ -125,6 +125,16 @@ export function setEditorActionsHandle(handle: EditorActionsHandle | null): void
  * rule) calls — it always has the live `view` it fired in:
  *
  *   getEditorActionsHandleFor(view)?.runAction("citation", { surface: "typed", payload });
+ *
+ * ── THE FALLBACK IS FOR THE REACT APIs ONLY (task 642) ──
+ * When the exact lookup misses, the handle you get back belongs to ANOTHER
+ * document. Its `cardCreation` / panel routing are app-global and are exactly
+ * what a nested editor needs; its SELECTION is not — that is per-document, and
+ * the per-doc-services law says a per-document value resolves by OWNER, never
+ * by "whichever is active". So a plugin-land caller must not call `runAction`
+ * off this handle directly: use {@link runEditorAction}, which carries the
+ * firing view as the invocation's ORIGIN so the bridge builds every
+ * document-local field of the `ActionContext` from THAT document.
  */
 export function getEditorActionsHandleFor(
   view: EditorView | null | undefined,
@@ -134,6 +144,44 @@ export function getEditorActionsHandleFor(
     if (exact) return exact.handle;
   }
   return getEditorActionsHandle();
+}
+
+/**
+ * THE plugin-land dispatch door (task 642). Resolves the handle for `view` and
+ * invokes it with `view` as the invocation's ORIGIN, returning why it did or
+ * did not run.
+ *
+ * Every ProseMirror-land caller goes through here rather than
+ * `getEditorActionsHandleFor(view)?.runAction(...)`, for two reasons that are
+ * the same reason twice:
+ *
+ *  1. **The origin cannot be forgotten.** The lookup already has the firing
+ *     view; binding it to the invocation at the same seam removes the class of
+ *     bug where a nested editor's action reads the active pane's caret.
+ *  2. **The drop cannot be silent.** A null handle is a `?.` no-op at a call
+ *     site and an explicit, named outcome here — warned once in dev, naming the
+ *     action and the reason, so an orphaned atom is never a mystery.
+ *
+ * A caller that has already placed an atom should treat anything but `"ran"` as
+ * "the card half did not happen". We surface rather than roll back: the insert
+ * is durable on purpose.
+ */
+export function runEditorAction(
+  view: EditorView | null | undefined,
+  id: Parameters<EditorActionsHandle["runAction"]>[0],
+  seed: Omit<Parameters<EditorActionsHandle["runAction"]>[1], "origin">,
+): ActionDispatchOutcome {
+  const handle = getEditorActionsHandleFor(view);
+  const outcome: ActionDispatchOutcome = handle
+    ? (handle.runAction(id, { ...seed, ...(view ? { origin: view } : {}) }) ?? "ran")
+    : "no-handle";
+  if (outcome !== "ran" && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[editor-actions-bridge] runEditorAction("${id}", surface="${seed.surface}") did not run — ${outcome}. ` +
+        `Any atom the caller already inserted is now without its card.`,
+    );
+  }
+  return outcome;
 }
 
 /**

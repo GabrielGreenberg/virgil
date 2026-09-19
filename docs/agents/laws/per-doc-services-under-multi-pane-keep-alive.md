@@ -415,3 +415,86 @@ cuts (drain after the delete, drop the registration, restore the silent return,
 window B open the same paper and click "Move it here"; it must move on the FIRST
 click and A's last keystrokes must be on disk. Multi-window + FSA is the masked
 class.
+
+### The ORIGIN half: a fallback may supply the app-global APIs, never the POSITION (task 642)
+
+The rule above closed the registry: `editor-actions-bridge` is a real
+`Map<EditorView, Entry>` with per-key unregister, so neither MIS-ROUTE nor CLOBBER
+can happen between panes. What it did not close is the **fallback** — and what the
+fallback then handed over.
+
+`registerEditorActionsHandle` has exactly ONE production call site, `EditorPane`. So
+only PANES are registry keys, and every NESTED editor — a card body, a float, an
+excerpt — misses the exact lookup and resolves the ACTIVE pane's handle. That is
+deliberate and documented ("a nested sub-editor"). The consequence was not: the
+handle then built the action's `ref` from **its own** `ed.state.selection.head`.
+
+**A handle carries two different kinds of thing, and only one of them may fall
+back.** App-global React APIs (`cardCreation`, panel routing, the create-popover
+seams) belong to any live pane — falling back for those is the whole point. The
+ORIGIN of the gesture (which document, which caret, which containing block) is
+per-DOCUMENT, and this law's first sentence is that a per-document value resolves
+by OWNER. Conflating them produced two symptoms from one cause:
+
+- `Citation` mounts **unconditionally** in the borrowed card-body schema
+  ([borrowed-schema.ts](../../../src/lib/tiptap/borrowed-schema.ts)) and
+  `RichTextField` builds an editable body at the default `"card"` scope, so the
+  typed `\cite{}` rule fires inside a note's body — and registered its card against
+  MAIN's caret, in MAIN's pos-space, in a different document. (`\footnote` reaches
+  the same path only at `"excerpt"` scope, where `includeLabelRefFootnote` is
+  forced; at `"card"` scope the extension is deliberately absent, since footnotes
+  cannot nest, and the rule is inert.)
+- `citationRun` **re-gates** on `posBlockAllowsAction(doc, ctx.ref.pos, …)`. With a
+  foreign `ref.pos` that gate asks the wrong document: a main caret parked in a
+  `codeBlock` SUPPRESSED the card for a cite typed inside a card body — an orphan
+  produced not by a race but by where an unrelated cursor happened to be sitting.
+
+**The shape of the fix.** `getEditorActionsHandleFor(view)` already holds the firing
+view one line before the dispatch, so the origin is never missing — only dropped.
+[`runEditorAction(view, id, seed)`](../../../src/lib/actions/editor-actions-bridge.ts)
+is the ONE plugin-land door: it resolves the handle and binds `view` to the
+invocation as `seed.origin`, and the bridge derives every document-local field from
+it through
+[`resolveActionOrigin`](../../../src/lib/actions/action-origin.ts) — the SSOT the
+bridge's own test imports rather than re-deriving, so fixture and production cannot
+drift on the thing under test. The `Editor` for a nested view needs no new registry:
+TipTap stamps `view.dom.editor = this` in `createView` for every editor it makes, so
+[`owningEditor`](../../../src/lib/tiptap/owning-editor.ts) reads the back-pointer the
+framework already publishes. Note the asymmetry in its fallback — a raw ProseMirror
+view (test harnesses) substitutes the pane's `Editor` for the `editor` field ONLY;
+positions always come from `origin.state`, which is the whole point of carrying it.
+
+**The atom lands first, so every drop is an ORPHAN — and must say so.** The typed
+rules `view.dispatch(tr)` the atom before asking for the card, on purpose (it must
+land even if React is unmounted). Pre-642 every failure edge was silent: a null
+handle vanished into `?.`, and `runAction`'s four early returns returned `void`.
+`runAction` now returns an `ActionDispatchOutcome`
+(`ran` / `no-handle` / `no-editor` / `read-only` / `no-row` / `disabled`) and the
+door warns in dev on anything but `ran`, naming the action and the reason. We
+surface rather than roll back — the insert is durable by design. The return value is
+the seam a user-facing notice can hang off later.
+
+CI:
+[bridge-origin-nested-editor.test.ts](../../../src/lib/actions/__tests__/bridge-origin-nested-editor.test.ts)
+drives the REAL typed `\cite{}` rule inside a REAL card-body editor (the extension
+stack `RichTextField` builds) with a REAL registered pane handle: the atom lands in
+the body, the `ActionContext` names the body's view and a position in the body's
+doc, and the card is still registered with main's caret inside a `codeBlock` — plus
+the non-regression pin that a cite typed in main's OWN `codeBlock` is still refused,
+because 642 moved WHICH document the gate reads, not whether there is one. Neutering
+`resolveActionOrigin` to ignore the origin fails exactly the two load-bearing legs.
+[editor-actions-bridge.test.ts](../../../src/lib/actions/__tests__/editor-actions-bridge.test.ts)
+keeps the fallback leg (it is still wanted, for the React APIs) and gains its
+siblings: the origin reaches the handle, the `ref` is the firing view's position, and
+a view-less legacy invocation still resolves the pane's own caret.
+The leg with teeth is the CENSUS in
+[action-context-honesty.test.ts](../../../src/lib/actions/__tests__/action-context-honesty.test.ts):
+no production file but the bridge module may call `.runAction(` — a caller that
+reaches past the door silently reinstates the foreign caret — with the complement
+pinned so deleting every caller cannot go green, and the seed's `origin` member
+declared as a DERIVATION SOURCE whose targets must be real `ActionContext` fields
+and whose consumption by the bridge is checked.
+
+**Owed, not claimed:** FSA-masking applies (anchor / AI-request-inbox). A real-prod
+eyeball is owed — type `\cite{` inside a note card's body and confirm the citation
+card anchors to the card, not to the main text.

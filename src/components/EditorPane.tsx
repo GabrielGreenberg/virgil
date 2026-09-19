@@ -222,13 +222,17 @@ import {
   VIRGIL_ACTION_REGISTRY,
   type ActionContext,
   type ActionId,
-  type CursorRef,
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import {
   registerEditorActionsHandle,
   unregisterEditorActionsHandle,
 } from "@/lib/actions/editor-actions-bridge";
+// Task 642: the document-local half of an action invocation, derived from the
+// ORIGIN view. The bridge's fallback hands a nested editor (card body / float /
+// excerpt) the ACTIVE pane's handle; the React APIs on it are app-global and
+// right, its document is not.
+import { resolveActionOrigin } from "@/lib/actions/action-origin";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
@@ -4124,12 +4128,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               `[editor-actions-bridge] runAction("${id}") — no registry row; ignoring`,
             );
           }
-          return;
+          return "no-row";
         }
         // The live editor at call time (not the closed-over reactive value)
         // — robust to an HMR remount between publish and call.
         const ed = innerRef.current?.getEditor();
-        if (!ed) return;
+        if (!ed) return "no-editor";
         // CHIP 7b: the UNIFORM collab read-only gate for the PM-land surfaces
         // (slash / typed). `ed.isEditable` is the in-editor mirror of
         // `collab.canEditMainText` (EditorLayout flips it via `setEditable` when
@@ -4140,21 +4144,39 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // commands.ts / citation.ts / footnote.ts — and would be rejected by the
         // `readOnlyEnforcer` regardless.) No over-gating: a non-collab editor is
         // always editable, so this is inert outside collaborator read-only.
-        if (!ed.isEditable) return;
+        if (!ed.isEditable) return "read-only";
         const deps = bridgeDepsRef.current;
-        // Synthesize a `CursorRef` from the editor's current selection head
-        // for the collapsed-caret surfaces (slash / typed). `paragraphUuidAt`
-        // walks ancestors up from the caret for the containing block's uuid
-        // (Mode-A anchor); "" when the caret isn't inside an anchorable block.
-        const pos = ed.state.selection.head;
-        const ref: CursorRef = {
-          kind: "cursor",
-          pos,
-          paragraphId: paragraphUuidAt(ed.state.doc, pos) ?? "",
-        };
+        // ── THE ORIGIN (task 642) ──────────────────────────────────────────
+        // `ed` is THIS PANE's editor — the source of the app-global React APIs
+        // below. It is NOT necessarily the document the gesture fired in: only
+        // panes are registry keys, so a typed `\cite{}` inside a CARD BODY (or
+        // a float, or an excerpt) misses the exact lookup and reaches this
+        // handle through the active-pane fallback. Everything DOCUMENT-LOCAL —
+        // which doc, which caret, which containing block — must therefore come
+        // from the firing view, not from `ed`; the per-doc-services law is
+        // exactly that a per-document value resolves by OWNER, never by
+        // "whichever is active". Reading `ed.state.selection.head` here
+        // anchored a card-body citation against MAIN's caret, and let a main
+        // caret parked in a `codeBlock` suppress the card altogether via the
+        // `applies()` gate below.
+        //
+        // `originView` is the firing view (the pane's own for every non-nested
+        // caller, so this is inert there); `originEd` is the TipTap `Editor`
+        // that owns it — TipTap stamps that back-pointer on every view it
+        // creates, nested ones included (`owningEditor`). A raw ProseMirror
+        // view (test harnesses) has no owner, and falls back to `ed` for the
+        // `Editor` half only — positions still come from `originView.state`,
+        // which is always the right document.
+        // `resolveActionOrigin` is the SSOT for that derivation — it also
+        // synthesizes the collapsed-caret `CursorRef` the slash / typed
+        // surfaces act on, from the ORIGIN's selection head.
+        const { view: originView, editor: originEd, ref } = resolveActionOrigin(
+          ed,
+          seed.origin,
+        );
         const ctx: ActionContext = {
-          editor: ed,
-          view: ed.view,
+          editor: originEd,
+          view: originView,
           ref,
           surface: seed.surface,
           // CHIP 7b: thread the collab gate into the ctx too (the early-return
@@ -4174,24 +4196,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           // selection drift while the modal-ish popover is open.
           openAtomCreate: (kind, opts) => {
             if (typeof window === "undefined") return;
-            const pos = opts?.pos ?? ed.state.selection.from;
-            const coords = ed.view.coordsAtPos(pos);
+            const pos = opts?.pos ?? originView.state.selection.from;
+            const coords = originView.coordsAtPos(pos);
             const rect = new DOMRect(
               coords.left,
               coords.top,
               0,
               coords.bottom - coords.top,
             );
-            // Carry the OWNING editor (`ed` — the one whose pos-space `pos`/`rect`
-            // we just captured) into the event detail, so the commit inserts the
-            // atom back into THIS editor and never mis-targets MAIN. Mirrors the
-            // math/figure click bridges threading `activeMath.editor` /
-            // `activeFigure.editor` (CHIP 5). Here `ed` is the registry bridge's
-            // MAIN editor; the lightning/footnote surface threads its own editor
-            // from ActionsMenuPanel below.
+            // Carry the OWNING editor (`originEd` — the one whose pos-space
+            // `pos`/`rect` we just captured) into the event detail, so the commit
+            // inserts the atom back into THAT editor and never mis-targets MAIN.
+            // Mirrors the math/figure click bridges threading `activeMath.editor` /
+            // `activeFigure.editor` (CHIP 5). Task 642: this is the ORIGIN's editor,
+            // not unconditionally the pane's — for every pane-fired action they are
+            // the same object, and for a nested editor the pane's would be the wrong
+            // document, which is the same mis-target this line already forbids.
             window.dispatchEvent(
               new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-                detail: { kind, rect, pos, refCommand: opts?.refCommand, editor: ed },
+                detail: { kind, rect, pos, refCommand: opts?.refCommand, editor: originEd },
               }),
             );
           },
@@ -4228,8 +4251,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // cursor refs (`cardActionAllowedForCtx`), the cross-surface enforcement
         // point. Non-card actions (ref / example / wrappers) return "ok" for a
         // caret, so they're unaffected.
-        if (spec.applies(ctx) === "disabled") return;
+        if (spec.applies(ctx) === "disabled") return "disabled";
         void spec.run(ctx);
+        return "ran";
       },
     };
     // Register THIS pane's handle keyed by its live `EditorView` (multi-doc
