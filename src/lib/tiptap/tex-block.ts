@@ -1,5 +1,4 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
-import type { Editor } from "@tiptap/react";
 import type { RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";

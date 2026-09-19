@@ -138,6 +138,56 @@ describe("task 397 — every grid cell asks its own row", () => {
     expect(SRC).not.toMatch(/\bwrappersDisabled\b/);
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // TASK 638 — and every cell DISPATCHES through the one ctx-builder.
+  //
+  // The sibling half of the rule above. `disabled` asks the row; `run` must
+  // reach it through `runGridAction`, the grid's single `ActionContext`
+  // constructor. Two cells had private ones — `\tex` called
+  // `insertTexBlock(editor)` and `ex` called a local `wrapSelectionInExample()`
+  // — and `insertTexBlock`'s ctx omitted `canEdit` entirely. `isCollabReadOnly`
+  // is `ctx.canEdit === false`, so an ABSENT field reads as "not read-only" (the
+  // no-over-gating rule that keeps a non-collab doc un-gated), and `texRun`'s
+  // collab gate silently no-opped for every collaborator while its container
+  // gate went on working. Nothing but source can see that: the row was right,
+  // the cell rendered, the ctx type-checked (`canEdit` is optional, and must
+  // stay optional — the whole vocabulary of view-only callers depends on it).
+  //
+  // So the guard is structural rather than a fix: a private ctx-builder is the
+  // defect, whatever it remembers to pass today.
+  // ─────────────────────────────────────────────────────────────────────────
+  it("every FmtBtn cell's `run` dispatches through runGridAction with its OWN id", () => {
+    const offenders: string[] = [];
+    for (const hit of fmtBtns) {
+      const id = /\bid="([a-z-]+)"/.exec(hit.tag)?.[1];
+      if (!id) {
+        offenders.push(`a FmtBtn with no literal id: ${hit.tag.slice(0, 80)}`);
+        continue;
+      }
+      if (!new RegExp(`run=\\{\\(\\) => runGridAction\\("${id}"\\)\\}`).test(hit.tag)) {
+        offenders.push(`${id}: ${(/run=\{[^\n]*/.exec(hit.tag) ?? ["(no run= prop)"])[0]}`);
+      }
+    }
+    expect(
+      offenders,
+      "a grid cell that builds its own ActionContext can omit `canEdit`, and an absent `canEdit` disarms the collab gate (task 638). Route it through runGridAction.",
+    ).toEqual([]);
+  });
+
+  it("canary — the census can SEE a private ctx-builder (synthetic)", () => {
+    // Written here, never read from the file the leg above drains.
+    const fixture = `
+      <FmtBtn id="tex" row={3} col={0} disabled={gridCellDisabled("tex")} run={() => insertTexBlock(editor)}>
+      </FmtBtn>
+    `;
+    const hit = elementsNamed(fixture, "FmtBtn").filter((h) => /\bid="/.test(h.tag))[0]!;
+    expect(/run=\{\(\) => runGridAction\("tex"\)\}/.test(hit.tag)).toBe(false);
+    // …and the accepting control, so a needle that matches nothing can't pass.
+    const good = `<FmtBtn id="tex" row={3} col={0} disabled={gridCellDisabled("tex")} run={() => runGridAction("tex")}>\n</FmtBtn>`;
+    const goodHit = elementsNamed(good, "FmtBtn")[0]!;
+    expect(/run=\{\(\) => runGridAction\("tex"\)\}/.test(goodHit.tag)).toBe(true);
+  });
+
   it("canary — the census can SEE a shared probe (synthetic, not the drained line)", () => {
     // A canary must not stand on the defect: this fixture is written here, never
     // read from the file the allowlist drains.
