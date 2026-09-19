@@ -4255,3 +4255,92 @@ entry is what refuses the third door.
 
 CI: [lifecycle-coverage-assertion.test.ts](../../../src/panels/__tests__/lifecycle-coverage-assertion.test.ts),
 [card-spine-export-census.test.ts](../../../src/cards/__tests__/card-spine-export-census.test.ts).
+
+---
+
+## The FOURTH-SURFACE half (task 639)
+
+> **A surface a registry claims to cover is covered only when the registry
+> reconciles it against a vocabulary that is ALIVE — one the surface's own code
+> reads, not a hand list describing it.** Where no such vocabulary exists, the
+> honest move is to BUILD one and make it load-bearing, not to declare the
+> membership and add a doc-comment conceding the hazard.
+
+`ACTION_REGISTRY` calls itself the SSOT for "every editing action Virgil exposes
+across its FOUR action surfaces". Three were reconciled against something live:
+slash against `VIRGIL_COMMANDS` → `SLASH_NAME_TO_ACTION_ID` (forward, return and
+map-key legs), and both MENUS by *rendering from the rows*. The fourth,
+typed-LaTeX input, was `CARD_IDS_WITH_TYPED_RULE` — a two-element `Set` whose own
+doc stated the hazard plainly: *"a hand list whose hazard ('it can only be
+missing a name') is real and accepted."*
+
+**What that cost, measured at `88044ee9`.** The live typed surface had FIVE
+members, exactly enumerable because each one calls the shared collab gate
+(`grep -rn collabReadOnly src/lib/tiptap`): `\cite{}`, `\footnote{}`, `$`, `$$`,
+`% `. The registry accounted for TWO. Both math rows read `surfaces: { lightning:
+true }` while `math.ts` installed live `handleTextInput` plugins two files away —
+the registry and the extension contradicting each other *in writing*. And
+`latex-comment` had no row at all.
+
+**The guard was not failing to catch the drift; it was ENFORCING it.** The block
+leg forbade exactly what was true (`row.surfaces.grab || row.surfaces.typed ||
+row.surfaces.keyboard` → *"claims a surface it does not expose"*), so correcting
+a math row's flag turned `assertActionCoverage` RED. This is the shape to watch
+for: when a guard's *complement* arm is a hand-written forbid-list, a correction
+and a regression are indistinguishable to it, and the file teaches the next
+author to re-introduce the falsehood.
+
+**The remedy is a census that the surface itself reads.**
+[`typed-latex-input-rules.ts`](../../../src/lib/tiptap/typed-latex-input-rules.ts)
+holds id → trigger pattern for all five rules, and each extension MATCHES with
+the object it reads from there. That makes the table load-bearing in three
+directions at once, which is what separates a registry from a description:
+
+1. **Extension → census.** Delete an entry and its rule stops compiling
+   (leaf-sharing, the `CITE_RE_FULL` / `FOOTNOTE_RE_FULL` idiom generalized).
+2. **Census ↔ rows.** `typedOwners()` replaces the hand set, and the
+   reconciliation arm runs the slash arm's legs: forward (every census id has a
+   row claiming `typed`), return (every `typed`-claiming row is a live owner),
+   and **regex IDENTITY** — `row.inputRulePattern === TYPED_LATEX_INPUT_RULES[id]`,
+   because `/a/ !== /a/` and a re-spelling is precisely the drift leaf-sharing
+   exists to prevent. A shape check (`toBeInstanceOf(RegExp)`) cannot see it.
+3. **Census ↔ SOURCE.** The table still could not see a SIXTH rule added
+   tomorrow. So `typed-latex-census.test.ts` reconciles the key set against the
+   property that made the surface enumerable in the first place: a file under
+   `src/lib/tiptap` pairing `handleTextInput(` with `collabReadOnly(` IS a typed
+   member. It leans on `typed-latex-collab-gate.test.ts` deliberately — a rule
+   skipping the gate escapes this census and trips that one, so neither can be
+   satisfied by weakening the other.
+
+**Two corollaries worth carrying.**
+
+*The typed question belongs to ONE arm, not to six slices.* It had been asked
+per-slice (the card leg declared, the heading/block/atom/title legs
+blanket-forbade, the format leg partitioned), which is exactly how the six came
+to answer it differently. Duplicating a cross-cutting question per slice is the
+mechanism by which slices disagree.
+
+*A surface with two PROVIDERS is still one surface.* The typed flag is also
+legitimately owned by the three markdown WRAPPERS, whose rules are StarterKit's
+(task 427) and which no Virgil census can scan. `typedOwners()` unions the two
+halves rather than carving an exemption, so the return leg stays total.
+
+**And the delegation corollary, for the census that catches you.** Giving
+`latex-comment` a real row meant giving the kind a second creator — so the
+paragraph→comment mutation moved into a shared plain-PM leaf
+([`latex-comment-convert.ts`](../../../src/lib/tiptap/latex-comment-convert.ts)),
+with the task-578 markless-`text*` refusal travelling INSIDE it, where a third
+surface cannot omit it. That immediately broke `input-rule-atom-census.test.ts`,
+whose needle is body-scoped: the handler no longer spelled a replace verb, so it
+silently stopped being a member. **A census that loses members silently is how a
+census rots.** The fix is to FOLLOW the hop, never to exempt it — the census now
+carries a `DELEGATED_CREATORS` table and verifies both halves (the caller really
+calls it; the callee really asks the door before replacing). The obligation moves;
+it is never dropped.
+
+CI: [action-coverage-assertion.test.ts](../../../src/lib/actions/__tests__/action-coverage-assertion.test.ts)
+(the INVERSION leg: dropping `surfaces.typed` on a math row must trip, where
+setting it used to),
+[typed-latex-census.test.ts](../../../src/lib/tiptap/__tests__/typed-latex-census.test.ts),
+[action-union-exhaustiveness.test.ts](../../../src/lib/actions/__tests__/action-union-exhaustiveness.test.ts),
+[input-rule-atom-census.test.ts](../../../src/lib/tiptap/__tests__/input-rule-atom-census.test.ts).

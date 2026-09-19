@@ -239,6 +239,24 @@ import { CITE_RE_FULL } from "@/lib/cite-commands";
 // to `FOOTNOTE_INPUT_RULE_PATTERN` locally only to set the footnote row's
 // `inputRulePattern` below.
 import { FOOTNOTE_RE_FULL as FOOTNOTE_INPUT_RULE_PATTERN } from "@/lib/footnote-commands";
+// VALUE import: THE typed-LaTeX input-rule census (task 639) — the live
+// vocabulary of the FOURTH surface, and the thing that finally lets
+// `assertActionCoverage` reconcile `surfaces.typed` in BOTH directions instead
+// of trusting a hand set. Every id below is required to have a row recording
+// THIS EXACT regex object, and every typed-claiming row is required to be a
+// live typed owner. A plain regex leaf (no React/TipTap barrel), so importing
+// the value here is free for every consumer.
+import {
+  TYPED_LATEX_ACTION_IDS,
+  TYPED_LATEX_INPUT_RULES,
+} from "@/lib/tiptap/typed-latex-input-rules";
+// VALUE import: the ONE paragraph→`latexComment` creator, leaf-shared with
+// `latex-comment.ts`'s input rule so the typed surface and `latexCommentRun`
+// cannot diverge (task 639). Plain `@tiptap/pm`, no React.
+import {
+  commentifyParagraph,
+  stripCommentPrefix,
+} from "@/lib/tiptap/latex-comment-convert";
 // VALUE import: the canonical float-key builder. The citation soft-route
 // focuses the new card's library-picker input via the SAME key the card
 // itself stamps — `cardPopKey("citation", id)` === `buildFloatKey({domain:
@@ -341,12 +359,30 @@ export type FormatActionId =
   | "blockquote"
   | "text-color";
 
+/** The LaTeX-comment tool (`% ` → a `latexComment` block). A family of one, and
+ *  a deliberate one (task 639): `latexComment` is a live member of the TYPED
+ *  surface — `latex-comment.ts` installs a `handleTextInput` rule behind the
+ *  same `collabReadOnly` gate as `\cite` / `\footnote` / `$` / `$$` — and had
+ *  no registry row at all, so the file that calls itself the SSOT for all four
+ *  surfaces was missing a fifth of the fourth one.
+ *
+ *  Why its OWN family rather than a seventh `NonHeadingBlockActionId`: every
+ *  member of that family is a lightning GRID cell and its coverage leg says so
+ *  ("every block row is a grid cell"). A comment has no grid cell, so folding it
+ *  in would have falsified that leg and forced a hand-listed exception back into
+ *  a file whose whole direction is deriving them away. `TitleActionId` is the
+ *  established shape for exactly this — `category: "block"`, ONE surface, no
+ *  menu twin, its own slice and its own leg (there it is slash-only; here,
+ *  typed-only). */
+export type LatexCommentActionId = "latex-comment";
+
 /** The closed union of every action id. */
 export type ActionId =
   | CardActionId
   | AtomActionId
   | BlockActionId
   | TitleActionId
+  | LatexCommentActionId
   | FormatActionId;
 
 // ---------------------------------------------------------------------------
@@ -2649,7 +2685,13 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   label: "Inline math",
   category: "block",
   selection: "optional",
-  surfaces: { lightning: true },
+  // TYPED is not a new surface here — it is one this row RENDERED ON and denied
+  // (task 639). `math.ts`'s `inlineMathInput` plugin has always turned a typed
+  // `$x$` into this node, behind the same `collabReadOnly` gate as the other
+  // typed-LaTeX rules, while the row said `{ lightning: true }` and nothing
+  // else. The pattern is the census object the plugin itself matches with.
+  surfaces: { lightning: true, typed: true },
+  inputRulePattern: TYPED_LATEX_INPUT_RULES["inline-math"],
   // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
   // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
   applies: inlineAtomInsertApplies("inlineMath"),
@@ -2660,7 +2702,9 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   label: "Display math",
   category: "block",
   selection: "optional",
-  surfaces: { lightning: true },
+  // Same correction as its inline twin above: `displayMathInput` owns `$$`.
+  surfaces: { lightning: true, typed: true },
+  inputRulePattern: TYPED_LATEX_INPUT_RULES["display-math"],
   applies: blockInsertApplies("displayMath"),
   run: mathRun("display"),
 };
@@ -3285,6 +3329,107 @@ const CARD_ACTION_ROWS: Readonly<Record<CardActionId, ActionSpec>> = mapRecord(
   (_presentation, id) => cardRow(id),
 );
 
+// ---------------------------------------------------------------------------
+// latexCommentRun (task 639) — the canonical paragraph → `latexComment`
+// transform, and the row that finally puts the `%` typed surface inside the
+// SSOT.
+//
+// `latex-comment.ts` has always installed a `handleTextInput` rule for `% `,
+// behind the SAME `collabReadOnly` gate as `\cite` / `\footnote` / `$` / `$$`.
+// It was the one member of the typed surface with no registry row at all, so
+// the "complete SSOT for all four surfaces" was missing a fifth of the fourth.
+//
+// The row could have been given an inert `run` — it has no menu twin, so
+// nothing calls it today. That would have been a new falsehood in the file
+// whose defect is falsehoods. Instead it gets the REAL creator, and the typed
+// rule was rewired to call it: `commentifyParagraph`
+// (`tiptap/latex-comment-convert.ts`) is a plain-PM leaf both import, so the
+// two surfaces cannot diverge on what a comment conversion does — the very
+// condition the registry exists to end, fixed at the moment the second surface
+// appears rather than left to be discovered later (as it was for math, whose
+// typed rules build their own transaction and never reach `mathRun`; those two
+// are genuinely different operations — extract-the-matched-body vs
+// wrap-or-seed-the-selection — so the row below RECORDS the typed pattern and
+// the divergence note stays honest rather than being forced into a false
+// unification).
+//
+// The markless-`text*` capture refusal (task 578: a paragraph holding a
+// footnote / citation / inline-math atom must never be rebuilt as a comment,
+// which would DELETE it) travels INSIDE the shared creator, so this second
+// surface could not have shipped without it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert the caret's paragraph into a `latexComment` holding its text (with
+ * any leading `% ` marker stripped, so converting an already-`%`-prefixed line
+ * is idempotent rather than doubling the marker). Operates purely on `ctx.view`
+ * — no React, no bridge — like `texRun` / `titleFieldRun`.
+ *
+ * No-ops when the pen is held by a collaborator, when the ref is not a
+ * caret/selection inside a paragraph, or when the shared creator REFUSES (an
+ * inline atom the comment could not carry).
+ */
+export function latexCommentRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // the ctx-side collab gate (task 638).
+  const view = ctx.view;
+  if (!view) return;
+  const { state } = view;
+  const $from = state.doc.resolve(state.selection.from);
+  if ($from.parent.type.name !== "paragraph") return;
+  const paragraphPos = $from.before($from.depth);
+  const tr = commentifyParagraph(
+    state,
+    paragraphPos,
+    stripCommentPrefix($from.parent.textContent),
+  );
+  if (!tr) return; // refused — the paragraph holds something a comment can't carry
+  view.dispatch(tr.scrollIntoView());
+}
+
+/**
+ * The single LATEX-COMMENT row. `category: "block"` (a structural node
+ * conversion; there is no dedicated comment category and it behaves like the
+ * other pure-PM block transforms), TYPED-ONLY — the `% ` input rule is its one
+ * live surface, and the row says exactly that rather than claiming a menu
+ * presence it does not have. The `titleField` rows are the established shape
+ * for a singleton with one surface and no menu twin; this is their typed twin.
+ *
+ * `selection: "ignored"` — the transform converts the caret's BLOCK, never a
+ * range, so a collapsed caret is a full invocation (no DA-5 grey).
+ */
+const LATEX_COMMENT_ACTION_ROW: ActionSpec = {
+  id: "latex-comment",
+  label: "LaTeX comment",
+  category: "block",
+  selection: "ignored",
+  surfaces: { typed: true },
+  inputRulePattern: TYPED_LATEX_INPUT_RULES["latex-comment"],
+  // A comment can only be MADE from a paragraph — inside a verbatim block, a
+  // title field or an atom block there is nothing to convert. Reported as
+  // "disabled" (present, greyed) rather than "absent", matching every other
+  // block row's container refusal.
+  applies: (ctx) => {
+    const base = blockApplies(ctx);
+    if (base !== "ok") return base;
+    const doc = ctx.view?.state?.doc;
+    if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
+    const ref = ctx.ref;
+    if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
+    const pos = ref.kind === "cursor" ? ref.pos : ref.from;
+    return doc.resolve(pos).parent.type.name === "paragraph" ? "ok" : "disabled";
+  },
+  run: latexCommentRun,
+};
+
+/** The single LATEX-COMMENT row's family table. Exhaustive over
+ *  `LatexCommentActionId` — a second comment-shaped tool (`%%`, a block
+ *  comment) stops compiling until it has a row. */
+const LATEX_COMMENT_ACTION_ROWS: Readonly<
+  Record<LatexCommentActionId, ActionSpec>
+> = {
+  "latex-comment": LATEX_COMMENT_ACTION_ROW,
+};
+
 /** The single ATOM row — `ref`. Exhaustive over `AtomActionId` (task 260 — the
  *  family the old `COVERED_ATOM_IDS = ["ref"]` hand-list could not pin: adding
  *  `eqref` to the union shipped it row-less, `tsc` green, assertion green). */
@@ -3337,8 +3482,9 @@ const NON_HEADING_BLOCK_ACTION_ROWS: Readonly<
  * completeness the compiler now owns.
  *
  * Key order (pinned by `action-coverage-assertion.test.ts`): cards in menu
- * order, then headings by level, the block slice, the 8 format grid cells, then
- * the CHIP 7a `ref` + the 3 title fields last.
+ * order, then headings by level, the block slice, the 8 format grid cells, the
+ * CHIP 7a `ref` + the 3 title fields, and the typed-only `latex-comment` row
+ * (task 639) last.
  */
 export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = {
   ...CARD_ACTION_ROWS,
@@ -3347,6 +3493,7 @@ export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = {
   ...FORMAT_ACTION_ROWS,
   ...ATOM_ACTION_ROWS,
   ...TITLE_ACTION_ROWS,
+  ...LATEX_COMMENT_ACTION_ROWS,
 };
 
 /**
@@ -3372,7 +3519,8 @@ type _FamilyCoveredActionId =
   | keyof typeof NON_HEADING_BLOCK_ACTION_ROWS
   | keyof typeof FORMAT_ACTION_ROWS
   | keyof typeof ATOM_ACTION_ROWS
-  | keyof typeof TITLE_ACTION_ROWS;
+  | keyof typeof TITLE_ACTION_ROWS
+  | keyof typeof LATEX_COMMENT_ACTION_ROWS;
 type _MissingFromFamilyTables = Exclude<ActionId, _FamilyCoveredActionId>;
 type _ForeignInFamilyTables = Exclude<_FamilyCoveredActionId, ActionId>;
 const _ACTION_ID_PARTITION_PROOF: [
@@ -3605,24 +3753,49 @@ const COVERED_ATOM_IDS: readonly AtomActionId[] = keysOf(ATOM_ACTION_ROWS);
 const COVERED_TITLE_IDS: readonly TitleActionId[] = keysOf(TITLE_ACTION_ROWS);
 
 /**
- * The card ids that own the TYPED surface — a LaTeX-shaped ProseMirror input
- * rule (`citation`, CHIP 4a-ii; `footnote`, CHIP 4b). Each must claim
- * `surfaces.typed` and carry an `inputRulePattern`; the other 9 card actions
- * have no typed vocabulary and must claim none.
- *
- * DECLARED, not derived — and that asymmetry with its slash twin
- * (`slashOwnersAmong(COVERED_CARD_IDS)`, below) is the point rather than an
- * omission. The slash surface HAS a live vocabulary to reconcile against
- * (`VIRGIL_COMMANDS` → `SLASH_NAME_TO_ACTION_ID`), so its partition is exact in
- * both directions. The typed surface has none: input rules are registered
- * inside their own extensions with no table this registry can read, which is
- * precisely task 228's un-reconciled `typed` surface. Until that table exists,
- * an explicit member list is the honest statement — a hand list whose hazard
- * ("it can only be missing a name") is real and accepted, not one hiding a
- * derivation nobody wrote.
+ * The single LATEX-COMMENT id — the typed-only slice (task 639). `category:
+ * "block"`, `surfaces: { typed: true }` and nothing else: the `% ` input rule is
+ * its one live surface and it has no menu twin, the typed mirror of the
+ * slash-only `TITLE` slice above.
  */
-const CARD_IDS_WITH_TYPED_RULE: ReadonlySet<CardActionId> =
-  new Set<CardActionId>(["citation", "footnote"]);
+const COVERED_LATEX_COMMENT_IDS: readonly LatexCommentActionId[] = keysOf(
+  LATEX_COMMENT_ACTION_ROWS,
+);
+
+/**
+ * THE typed-surface partition — which ids own an input rule, DERIVED from live
+ * vocabularies in both of the surface's halves (task 639).
+ *
+ * This replaces `CARD_IDS_WITH_TYPED_RULE`, the last hand list in this file.
+ * Its own doc conceded the hazard ("it can only be missing a name") and
+ * accepted it on the ground that the typed surface had no live table to
+ * reconcile against — true when it was written, and it cost exactly what a hand
+ * list costs: `inline-math` / `display-math` owned the `$` / `$$` rules and
+ * declared no typed surface, `latex-comment` had no row at all, and the block
+ * leg's blanket forbid PINNED the falsehood, so correcting a row made the
+ * assertion go red. `TYPED_LATEX_INPUT_RULES` is that missing table, and it is
+ * load-bearing: each extension MATCHES against the regex it reads from there.
+ *
+ * Two PROVIDERS, unioned:
+ *   - Virgil's own typed-LaTeX rules — `TYPED_LATEX_ACTION_IDS`, the census key
+ *     set (`\cite` / `\footnote` / `$` / `$$` / `% `), each reconciled below
+ *     down to REGEX IDENTITY, so a row cannot record a re-spelling of its rule.
+ *   - StarterKit's markdown WRAPPER rules (`- ` / `1. ` / `> `, task 427),
+ *     which are the three structural format rows — exactly the format ids the
+ *     live slash vocabulary maps a command onto. The rows RECORD the
+ *     extension's own exported regexes; there is no Virgil plugin to census, so
+ *     this half is reconciled by MEMBERSHIP only.
+ *
+ * Called per assertion run, like `slashOwnersAmong`: the claim is that the set
+ * tracks the LIVE vocabulary, and a module-scope snapshot is derived-once,
+ * which is a different thing.
+ */
+function typedOwners(): ReadonlySet<ActionId> {
+  return new Set<ActionId>([
+    ...TYPED_LATEX_ACTION_IDS,
+    ...slashOwnersAmong(COVERED_FORMAT_IDS),
+  ]);
+}
 
 /**
  * DEV-ONLY coverage assertion — row SHAPE + cross-surface reconciliation.
@@ -3690,6 +3863,7 @@ export function assertActionCoverage(): string[] {
     ...COVERED_FORMAT_IDS,
     ...COVERED_ATOM_IDS,
     ...COVERED_TITLE_IDS,
+    ...COVERED_LATEX_COMMENT_IDS,
   ]);
 
   // ── The three SLASH partitions, all derived from the live vocabulary. Each
@@ -3744,9 +3918,15 @@ export function assertActionCoverage(): string[] {
       problems.push(`[actions] card id "${id}" is missing its menu letter`);
     }
     // The two PM-land surfaces are partitioned INDEPENDENTLY (task 399): slash
-    // against the live command vocabulary, typed against the declared set. A
-    // card owning one and not the other is a legitimate shape the single
-    // pre-399 set could not express.
+    // here, against the live command vocabulary; TYPED by the whole-vocabulary
+    // reconciliation at the end of this function, against
+    // `TYPED_LATEX_INPUT_RULES` (task 639). A card owning one and not the other
+    // is a legitimate shape the single pre-399 set could not express — and the
+    // typed half moved OUT of this loop because it was never a card-slice
+    // question: the same partition governs the two math rows and the
+    // `latex-comment` row, and duplicating it per slice is what let each slice
+    // answer it differently (the card leg declared, the block/heading/atom/title
+    // legs blanket-FORBADE).
     if (cardIdsWithSlash.has(id)) {
       // This card owns a live `\<name>` (CHIP 4a-ii `\cite`, 4b `\footnote`).
       // It MUST claim the surface and carry the join key, or the bridge's
@@ -3769,33 +3949,13 @@ export function assertActionCoverage(): string[] {
         `[actions] card id "${id}" sets surfaces.slash but has no slash command (this card is menu-only by design)`,
       );
     }
-
-    if (CARD_IDS_WITH_TYPED_RULE.has(id)) {
-      // This card owns a LaTeX-shaped input rule (`citation.ts` / `footnote.ts`)
-      // — it must claim the surface and carry the pattern the rule joins on.
-      if (!row.surfaces.typed) {
-        problems.push(
-          `[actions] card id "${id}" must set surfaces.typed (it owns the typed input rule)`,
-        );
-      }
-      if (!row.inputRulePattern) {
-        problems.push(
-          `[actions] card id "${id}" sets surfaces.typed but is missing inputRulePattern`,
-        );
-      }
-    } else if (row.surfaces.typed) {
-      // The remaining card actions are menu-only BY DESIGN — highlight / note /
-      // todo / … never became input rules.
-      problems.push(
-        `[actions] card id "${id}" sets surfaces.typed but has no typed-LaTeX input rule (this card is menu-only by design)`,
-      );
-    }
   }
 
   // (3b) the HEADING slice (CHIP 5a) is fully + correctly covered. Each heading
   // row must be `category: "block"`, claim the slash AND lightning surfaces, and
   // carry a `slashName` (the PM-land join key reconciled below against
-  // `VIRGIL_COMMAND_NAMES`). Headings have NO grab/typed/keyboard surface.
+  // `VIRGIL_COMMAND_NAMES`). Headings have NO grab surface; the TYPED question
+  // is the whole-vocabulary arm's (task 639), not a per-slice forbid.
   for (const id of COVERED_HEADING_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) {
@@ -3815,9 +3975,9 @@ export function assertActionCoverage(): string[] {
         `[actions] heading id "${id}" must set surfaces.slash AND surfaces.lightning`,
       );
     }
-    if (row.surfaces.grab || row.surfaces.typed) {
+    if (row.surfaces.grab) {
       problems.push(
-        `[actions] heading id "${id}" claims a grab/typed surface it does not expose`,
+        `[actions] heading id "${id}" claims a grab surface it does not expose`,
       );
     }
     if (!row.slashName) {
@@ -3830,8 +3990,13 @@ export function assertActionCoverage(): string[] {
   // (3c) the non-heading BLOCK slice (CHIP 5b: `tex`; 5c: `example`; 6a: the 4
   // block-ATOM rows) is fully + correctly covered. Each block row must be
   // `category: "block"`, claim `surfaces.lightning` (every block row is on the
-  // grid), and never claim grab/typed (a block insert is not a grab-handle
-  // action and has no `\block{}`-style input rule). The SLASH surface is
+  // grid), and never claim grab/keyboard (a block insert is not a grab-handle
+  // action). The TYPED forbid that used to sit here was the bug task 639 fixed:
+  // `inline-math` / `display-math` DO own input rules (`$` / `$$`), so this leg
+  // was not merely failing to catch the drift — it ENFORCED it, turning a
+  // corrected flag red. The typed question now belongs to the whole-vocabulary
+  // arm at the end of this function, which reconciles against the live census.
+  // The SLASH surface is
   // PARTITIONED: tex/example/forest (in `blockIdsWithSlash`) MUST claim
   // `surfaces.slash` + a `slashName` (reconciled below against
   // `VIRGIL_COMMAND_NAMES`); the CHIP 6a block-atom rows are GRID-ONLY and must
@@ -3855,9 +4020,9 @@ export function assertActionCoverage(): string[] {
         `[actions] block id "${id}" must set surfaces.lightning (every block row is a grid cell)`,
       );
     }
-    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
+    if (row.surfaces.grab || row.surfaces.keyboard) {
       problems.push(
-        `[actions] block id "${id}" claims a grab/typed/keyboard surface it does not expose`,
+        `[actions] block id "${id}" claims a grab/keyboard surface it does not expose`,
       );
     }
     if (blockIdsWithSlash.has(id)) {
@@ -3934,20 +4099,18 @@ export function assertActionCoverage(): string[] {
       );
     }
     if (formatIdsWithSlash.has(id)) {
-      // the structural WRAPPERS own the chord + the markdown input rule (task 427).
-      if (!row.surfaces.typed || !row.inputRulePattern) {
-        problems.push(
-          `[actions] format id "${id}" must set surfaces.typed + inputRulePattern (the wrapper owns a markdown input rule)`,
-        );
-      }
+      // the structural WRAPPERS own the StarterKit chord (task 427). Their
+      // markdown INPUT RULE is the typed arm's, below — the wrappers are the
+      // typed surface's second PROVIDER and are reconciled there with the
+      // typed-LaTeX census in one place.
       if (!row.surfaces.keyboard || !row.keybinding) {
         problems.push(
           `[actions] format id "${id}" must set surfaces.keyboard + keybinding (the wrapper owns a StarterKit chord)`,
         );
       }
-    } else if (row.surfaces.typed || row.surfaces.keyboard || row.inputRulePattern || row.keybinding) {
+    } else if (row.surfaces.keyboard || row.keybinding) {
       problems.push(
-        `[actions] format id "${id}" claims a typed/keyboard surface it does not expose (a mark's bindings are StarterKit's)`,
+        `[actions] format id "${id}" claims a keyboard surface it does not expose (a mark's bindings are StarterKit's)`,
       );
     }
     if (formatIdsWithSlash.has(id)) {
@@ -3995,9 +4158,9 @@ export function assertActionCoverage(): string[] {
         `[actions] atom id "${id}" must set surfaces.slash AND surfaces.lightning`,
       );
     }
-    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
+    if (row.surfaces.grab || row.surfaces.keyboard) {
       problems.push(
-        `[actions] atom id "${id}" claims a grab/typed/keyboard surface it does not expose`,
+        `[actions] atom id "${id}" claims a grab/keyboard surface it does not expose`,
       );
     }
     if (!row.slashName) {
@@ -4033,19 +4196,49 @@ export function assertActionCoverage(): string[] {
         `[actions] title id "${id}" must set surfaces.slash (it owns the slash surface)`,
       );
     }
-    if (
-      row.surfaces.grab ||
-      row.surfaces.lightning ||
-      row.surfaces.typed ||
-      row.surfaces.keyboard
-    ) {
+    if (row.surfaces.grab || row.surfaces.lightning || row.surfaces.keyboard) {
       problems.push(
-        `[actions] title id "${id}" claims a grab/lightning/typed/keyboard surface it does not expose (slash-only by design)`,
+        `[actions] title id "${id}" claims a grab/lightning/keyboard surface it does not expose (slash-only by design)`,
       );
     }
     if (!row.slashName) {
       problems.push(
         `[actions] title id "${id}" sets surfaces.slash but is missing slashName`,
+      );
+    }
+  }
+
+  // (3g) the LATEX-COMMENT slice (task 639: `latex-comment`) is fully +
+  // correctly covered — the typed mirror of the title slice. `category:
+  // "block"`, TYPED-ONLY: the `% ` input rule is its one live surface, so it
+  // must claim NO menu surface and no slash/keyboard twin. The positive half
+  // (it claims typed + records the census regex) is the whole-vocabulary typed
+  // arm's, below, so it is stated once for all five typed-LaTeX rules rather
+  // than re-spelled here.
+  for (const id of COVERED_LATEX_COMMENT_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(
+        `[actions] missing registry row for covered latex-comment id "${id}"`,
+      );
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "block") {
+      problems.push(
+        `[actions] latex-comment id "${id}" has category "${row.category}" (expected "block")`,
+      );
+    }
+    if (
+      row.surfaces.grab ||
+      row.surfaces.lightning ||
+      row.surfaces.slash ||
+      row.surfaces.keyboard
+    ) {
+      problems.push(
+        `[actions] latex-comment id "${id}" claims a grab/lightning/slash/keyboard surface it does not expose (typed-only by design)`,
       );
     }
   }
@@ -4188,6 +4381,70 @@ export function assertActionCoverage(): string[] {
     if (!liveSlashNames.has(name)) {
       problems.push(
         `[actions] SLASH_NAME_TO_ACTION_ID key "\\${name}" has no matching VIRGIL_COMMANDS entry (dead mapping)`,
+      );
+    }
+  }
+
+  // ── (typed reconciliation) THE FOURTH SURFACE, reconciled at last (task 639).
+  //
+  // Until now this file's four-surface claim rested on three reconciled
+  // surfaces and one DECLARED flag: `CARD_IDS_WITH_TYPED_RULE` said which cards
+  // owned an input rule, and each other slice blanket-forbade the flag. What
+  // that cost, measured: the `$` and `$$` rules in `math.ts` had always created
+  // `inlineMath` / `displayMath` nodes, the rows said `{ lightning: true }` and
+  // nothing else, and the BLOCK leg reported a corrected flag as a problem — the
+  // guard enforcing the falsehood rather than catching it. `latex-comment`'s
+  // rule was outside the vocabulary entirely.
+  //
+  // Now the surface has a live table (`TYPED_LATEX_INPUT_RULES`, read by the
+  // extensions themselves) and the reconciliation mirrors the slash arm's three
+  // legs:
+  //   - FORWARD (rule → row): every census id has a row that claims
+  //     `surfaces.typed` and records THIS EXACT regex object. Identity, not
+  //     equality: a row that re-spells its rule's pattern is the drift the whole
+  //     leaf-sharing idiom exists to prevent, and `/a/ !== /a/` catches it.
+  //   - RETURN (row → rule): every row claiming `surfaces.typed` is a live typed
+  //     owner — a census member, or one of the three markdown WRAPPERS whose
+  //     rules are StarterKit's. A flag on anything else advertises a surface no
+  //     plugin reads.
+  //   - SYMMETRY: `surfaces.typed` and `inputRulePattern` stand or fall
+  //     together, in BOTH directions, so a pattern can neither be recorded
+  //     without the flag nor promised without the pattern.
+  const typedOwnerIds = typedOwners();
+  for (const id of TYPED_LATEX_ACTION_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(
+        `[actions] typed-LaTeX input rule "${id}" has no registry row (the typed surface is not in the SSOT)`,
+      );
+      continue;
+    }
+    if (!row.surfaces.typed) {
+      problems.push(
+        `[actions] id "${id}" owns a live typed-LaTeX input rule but does not claim surfaces.typed`,
+      );
+    }
+    if (row.inputRulePattern !== TYPED_LATEX_INPUT_RULES[id]) {
+      problems.push(
+        `[actions] id "${id}" must record TYPED_LATEX_INPUT_RULES["${id}"] as its inputRulePattern (the row and the plugin must share ONE pattern object, not two spellings)`,
+      );
+    }
+  }
+  for (const row of Object.values(VIRGIL_ACTION_REGISTRY)) {
+    if (!row) continue;
+    if (row.surfaces.typed && !typedOwnerIds.has(row.id)) {
+      problems.push(
+        `[actions] row "${row.id}" claims surfaces.typed but owns no input rule (not in TYPED_LATEX_INPUT_RULES, and not a markdown wrapper)`,
+      );
+    }
+    if (row.surfaces.typed && !row.inputRulePattern) {
+      problems.push(
+        `[actions] row "${row.id}" sets surfaces.typed but is missing inputRulePattern`,
+      );
+    }
+    if (!row.surfaces.typed && row.inputRulePattern) {
+      problems.push(
+        `[actions] row "${row.id}" records an inputRulePattern without claiming surfaces.typed`,
       );
     }
   }

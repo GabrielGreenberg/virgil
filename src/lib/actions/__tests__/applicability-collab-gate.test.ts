@@ -174,6 +174,8 @@ describe("DA-5 selection-mode taxonomy — the declarative `selection` field", (
     title: "ignored",
     author: "ignored",
     date: "ignored",
+    // typed-only (task 639) — a block CONVERSION at the caret, never a range.
+    "latex-comment": "ignored",
     // format marks/lists/quote/color — toggles, valid at a caret
     bold: "ignored",
     italic: "ignored",

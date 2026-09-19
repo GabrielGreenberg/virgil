@@ -34,6 +34,7 @@ import type { JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TextSelection, NodeSelection } from "@tiptap/pm/state";
 import { LatexComment } from "@/lib/tiptap/latex-comment";
+import { latexCommentRun } from "@/lib/actions/action-registry";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 
@@ -289,5 +290,118 @@ describe("latexComment — native selection + no-reflow (task 024)", () => {
     ed.commands.setTextSelection(pos + 1);
     const spanAfter = ed.view.dom.querySelector(".latex-comment-editable");
     expect(spanAfter?.getAttribute("contenteditable")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 639 — ONE creator, two surfaces.
+//
+// Giving `latexComment` a registry row meant giving the kind a SECOND creator —
+// the condition `ACTION_REGISTRY` exists to end. So the mutation moved into a
+// shared plain-PM leaf (`latex-comment-convert.ts`) that the typed rule calls
+// and `latexCommentRun` calls, with the task-578 markless-`text*` refusal
+// travelling INSIDE it: a surface cannot be added without it.
+//
+// The typed half is already pinned by the `% ` legs above (unchanged by the
+// refactor — that they still pass IS the behaviour-preservation proof). These
+// legs pin the SECOND surface and the shared refusal.
+// ---------------------------------------------------------------------------
+describe("latexComment — the shared paragraph→comment creator (task 639)", () => {
+  let editor: Editor | null = null;
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  function mount(content: JSONContent): Editor {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    editor = new Editor({
+      element,
+      extensions: [StarterKit, LatexComment],
+      content,
+    });
+    return editor;
+  }
+
+  /** The minimal `ActionContext` the row's pure-PM `run` reads. */
+  function ctxFor(ed: Editor, canEdit = true) {
+    return {
+      ref: { kind: "cursor" as const, pos: ed.state.selection.from },
+      view: ed.view,
+      editor: ed,
+      canEdit,
+    };
+  }
+
+  it("`latexCommentRun` converts the caret's paragraph and lands the caret inside", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "a note to self" }] }],
+    });
+    ed.commands.setTextSelection(3);
+    latexCommentRun(ctxFor(ed) as never);
+    const json = ed.getJSON();
+    // The prose is now the COMMENT's content — no paragraph still carries it.
+    // (An empty trailing paragraph may remain: PM keeps the doc enterable after
+    // an `isolating` last block, which is chrome, not the converted text.)
+    expect(allOfType(json, "paragraph").map(commentText)).toEqual(
+      allOfType(json, "paragraph").map(() => ""),
+    );
+    expect(commentText(findNode(json, "latexComment"))).toBe("a note to self");
+    expect(ed.state.selection instanceof TextSelection).toBe(true);
+    expect(ed.state.selection.$from.parent.type.name).toBe("latexComment");
+  });
+
+  it("is idempotent about the `% ` marker — converting an already-prefixed line does not double it", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "% already marked" }] }],
+    });
+    ed.commands.setTextSelection(3);
+    latexCommentRun(ctxFor(ed) as never);
+    expect(commentText(findNode(ed.getJSON(), "latexComment"))).toBe("already marked");
+  });
+
+  it("REFUSES a paragraph holding an inline atom — the 578 door travels with the mutation", () => {
+    const ed = mount({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "see " },
+            { type: "hardBreak" },
+            { type: "text", text: " there" },
+          ],
+        },
+      ],
+    });
+    ed.commands.setTextSelection(2);
+    latexCommentRun(ctxFor(ed) as never);
+    // Nothing converted, nothing deleted: a comment cannot carry the break, so
+    // the creator declines rather than silently dropping it.
+    expect(findNode(ed.getJSON(), "latexComment")).toBeNull();
+    expect(findNode(ed.getJSON(), "hardBreak")).not.toBeNull();
+  });
+
+  it("no-ops when the collab partner holds the pen, and outside a paragraph", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "held" }] }],
+    });
+    ed.commands.setTextSelection(3);
+    latexCommentRun(ctxFor(ed, false) as never); // canEdit === false
+    expect(findNode(ed.getJSON(), "latexComment")).toBeNull();
+
+    // Caret already inside a comment — there is no paragraph to convert.
+    const ed2 = mount({
+      type: "doc",
+      content: [{ type: "latexComment", content: [{ type: "text", text: "x" }] }],
+    });
+    ed2.commands.setTextSelection(1);
+    const before = JSON.stringify(ed2.getJSON());
+    latexCommentRun(ctxFor(ed2) as never);
+    expect(JSON.stringify(ed2.getJSON())).toBe(before);
   });
 });

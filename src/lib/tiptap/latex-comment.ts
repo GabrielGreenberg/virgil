@@ -1,11 +1,21 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
-import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
 import { collabReadOnly } from "./collab-read-only-gate";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
+// Leaf-shared with the registry row (task 639): the ONE paragraph→comment
+// creator + the `% ` marker rule, so the typed surface and `latexCommentRun`
+// can never diverge on what a comment conversion does.
+import {
+  commentifyParagraph,
+  makeComment,
+  stripCommentPrefix,
+} from "./latex-comment-convert";
+// The typed-LaTeX census (task 639) — this rule's trigger pattern is READ from
+// the table the action registry reconciles its `surfaces.typed` flags against.
+import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -36,12 +46,6 @@ export interface LatexCommentOptions {
    *  MAIN document surface carries the attributes (decorator parity). */
   surface: "main" | "float";
   cardContext: boolean;
-}
-
-/** Build a latexComment node holding `text` as native inline content (empty
- *  content when text is ""). The text lives IN the node, not an attr. */
-function makeComment(nodeType: NodeType, schema: Schema, text: string) {
-  return nodeType.create(null, text ? schema.text(text) : null);
 }
 
 export const LatexComment = Node.create<LatexCommentOptions>({
@@ -212,29 +216,28 @@ export const LatexComment = Node.create<LatexCommentOptions>({
               "￼",
             );
             const combined = textBefore + text;
-            if (!combined.match(/^% ?$/)) return false;
+            // The trigger pattern is READ from the typed-LaTeX census (task
+            // 639), which is the same object the `latex-comment` registry row
+            // records as its `inputRulePattern` — the two surfaces cannot
+            // recognize a different `%` vocabulary.
+            if (!combined.match(TYPED_LATEX_INPUT_RULES["latex-comment"])) {
+              return false;
+            }
 
             const blockStart = $from.start();
             const blockEnd = $from.end();
-            // Task 578: a comment is markless `text*`, so converting a paragraph
-            // that holds an inline atom (a footnote, a citation, inline math,
-            // a hard break) would DELETE it. The `%` stays a literal character.
-            if (!rangeHoldsOnlyText(state.doc, blockStart, blockEnd)) return false;
+            // The TRIGGER-SPECIFIC harvest: the typed character has not landed
+            // in the doc yet, so it is folded in here. The MUTATION (and the
+            // task-578 markless-`text*` refusal that must travel with it) is
+            // the shared creator's.
             const fullText = state.doc.textBetween(blockStart, blockEnd, "", "");
-            const commentText = (fullText.startsWith("%")
-              ? fullText
-              : text + fullText.slice($from.parentOffset)
-            ).replace(/^% ?/, "");
-            const tr = state.tr.replaceWith(
-              blockStart - 1,
-              blockEnd + 1,
-              makeComment(nodeType, state.schema, commentText),
+            const commentText = stripCommentPrefix(
+              fullText.startsWith("%")
+                ? fullText
+                : text + fullText.slice($from.parentOffset),
             );
-            // Land the caret INSIDE the new comment (native TextSelection), at
-            // the start of its content — no auto-focus hack, no lost keystroke.
-            // The comment node now sits at (blockStart - 1); its content
-            // interior starts one position in, i.e. at blockStart.
-            tr.setSelection(TextSelection.create(tr.doc, blockStart));
+            const tr = commentifyParagraph(state, blockStart - 1, commentText);
+            if (!tr) return false; // refused (an inline atom would be deleted)
             view.dispatch(tr);
             return true;
           },
@@ -271,7 +274,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             // text-only comment.
             if (!rangeHoldsOnlyText(newState.doc, block.pos + 1, block.pos + node.nodeSize - 1)) continue;
             if (text.startsWith("% ") || text === "%") {
-              const commentText = text.replace(/^% ?/, "");
+              const commentText = stripCommentPrefix(text);
               changes.push({ pos: block.pos, size: node.nodeSize, text: commentText });
             }
           }

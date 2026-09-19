@@ -13,9 +13,20 @@
 // literal unbalances the brace walk and truncates the handler body (measured —
 // footnote.ts's `text !== "}"` hid its replace verb from the first draft).
 //
-// Stated limit: a handler that DELEGATES (wrapper-gate's `rule.handler(props)`)
-// spells no replace verb and so is not a member — the upstream rules it wraps
-// are covered by the core matcher patch, pinned below.
+// Stated limit: a handler that DELEGATES to an UPSTREAM rule (wrapper-gate's
+// `rule.handler(props)`) spells no replace verb and so is not a member — the
+// rules it wraps are covered by the core matcher patch, pinned below.
+//
+// ── DELEGATION TO A VIRGIL CREATOR (task 639) ─────────────────────────────
+// A handler may also hand the replace to a NAMED SHARED CREATOR — which is
+// STRONGER than spelling it inline, because the door then travels WITH the
+// mutation and a second surface (a registry `run()`, a menu) cannot omit it.
+// A body-scoped needle cannot see that: the member simply vanishes, and a
+// census that loses members silently is how this one would rot. So the hop is
+// FOLLOWED rather than exempted — `DELEGATED_CREATORS` below names each one,
+// and for each the creator's own body must spell BOTH the replace verb and the
+// door, and the handler must actually call it. The obligation moves; it is
+// never dropped.
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
@@ -31,6 +42,33 @@ const REPLACE_VERB = /\.(?:replaceWith|replaceRangeWith|insertText|delete|replac
 const DOOR = /\brangeHoldsOnlyText\(/;
 
 interface Site { file: string; line: number; body: string }
+
+/**
+ * Input-rule handlers that hand their replace to a shared creator. Each entry
+ * is verified in BOTH halves below: the caller really calls it, and the callee
+ * really asks the door before replacing.
+ */
+const DELEGATED_CREATORS = [
+  {
+    // task 639 — the `% ` rule and the `latex-comment` registry row share ONE
+    // paragraph→comment creator, so the markless-`text*` refusal cannot be
+    // omitted by whichever surface is added next.
+    caller: "src/lib/tiptap/latex-comment.ts",
+    call: "commentifyParagraph(",
+    declFile: "src/lib/tiptap/latex-comment-convert.ts",
+    fn: "commentifyParagraph",
+  },
+] as const;
+
+/** The body of a top-level `export function <name>` — sliced to the next
+ *  top-level `export` (or EOF). Exports are top-level by definition, so this
+ *  isolates one declaration without a second brace walker. */
+function exportedFnBody(src: string, name: string): string {
+  const start = src.indexOf(`export function ${name}(`);
+  if (start < 0) return "";
+  const next = src.indexOf("\nexport ", start + 1);
+  return next < 0 ? src.slice(start) : src.slice(start, next);
+}
 
 function sitesIn(src: string, file: string): Site[] {
   const out: Site[] = [];
@@ -77,14 +115,42 @@ describe("every replacing input-rule handler asks the atom door", () => {
       "src/lib/tiptap/footnote.ts",
       "src/lib/tiptap/citation.ts",
       "src/lib/tiptap/smart-quotes.ts",
-      "src/lib/tiptap/latex-comment.ts",
     ]) {
       expect(memberFiles, f).toContain(f);
     }
+    // `latex-comment.ts` is the DELEGATING member (task 639): its handler no
+    // longer replaces inline, so it is correctly absent from `members` — and
+    // the obligation it carried is discharged by the leg below, not dropped.
+    expect(memberFiles).not.toContain("src/lib/tiptap/latex-comment.ts");
     const offenders = members
       .filter((s) => !DOOR.test(s.body))
       .map((s) => `${s.file}:${s.line}`);
     expect(offenders).toEqual([]);
+  });
+
+  it("a handler that DELEGATES its replace hands the door to the creator, which asks it", () => {
+    expect(DELEGATED_CREATORS.length, "the delegation table is populated").toBeGreaterThan(0);
+    for (const d of DELEGATED_CREATORS) {
+      const callerSrc = strip(
+        readFileSync(path.join(REPO_ROOT, d.caller), "utf8"),
+        false,
+      );
+      expect(callerSrc, `${d.caller} must call ${d.fn}`).toContain(d.call);
+      const declSrc = strip(
+        readFileSync(path.join(REPO_ROOT, d.declFile), "utf8"),
+        false,
+      );
+      const body = exportedFnBody(declSrc, d.fn);
+      expect(body, `${d.declFile} must export ${d.fn}`).not.toBe("");
+      expect(
+        REPLACE_VERB.test(body),
+        `${d.fn} must be the one that replaces (else the delegation is mis-declared)`,
+      ).toBe(true);
+      expect(
+        DOOR.test(body),
+        `${d.fn} replaces a range and must ask rangeHoldsOnlyText`,
+      ).toBe(true);
+    }
   });
 
   it("the door has one implementation", () => {
