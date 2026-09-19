@@ -46,7 +46,7 @@ import { codeOnly, strip } from "@/lib/__tests__/_source-scan";
 // barrel; the barrel `require`s its backend at module scope and cannot
 // resolve under vitest (the standing gotcha).
 vi.mock("@/lib/storage", () => ({
-  isDevStorage: () => true,
+  isDevStorage: true,
   readSidecar: vi.fn(),
   writeSidecar: vi.fn(),
   readTex: vi.fn(),

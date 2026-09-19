@@ -33,22 +33,9 @@ import { describe, it, expect, vi, afterEach, type Mock } from "vitest";
 
 // `panel-primitives` pulls the storage barrel transitively; stub it so the
 // render needs no FSA. (Same shape `todo-count-semantics` uses.)
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "mutateSidecar", "readTex", "writeTex", "readDocBundle", "writeDocBundle",
-    "readBib", "mutateBib", "createDocFromPicker", "createDocInFolder",
-    "pickProjectFolder", "registerDocInFolder", "openExistingDocFromPicker",
-    "listDocs", "renameDoc", "deleteDocFromIndex", "flushDoc", "drainDoc",
-    "detectBibPackage", "readPaperFolder", "getTexFilename", "writePdf",
-    "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster",
-    "readFigureIndex", "writeFigureIndex", "getDocWriteHandle",
-    "importFigureFile",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 class ResizeObserverStub {
   observe() {}

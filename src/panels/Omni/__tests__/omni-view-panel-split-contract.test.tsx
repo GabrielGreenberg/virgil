@@ -24,22 +24,9 @@ import type { Editor } from "@tiptap/react";
 // Importing OmniViewPanel pulls panel-registry → card components, whose barrel
 // transitively `require()`s `@/lib/storage` (an unaliasable path under
 // vitest). Stub it. (memory: vitest_extension_barrel_storage_mock.md)
-vi.mock("@/lib/storage", () => {
-  const stub = () => undefined;
-  const names = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib", "createDocFromPicker",
-    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
-    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
-    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder", "getTexFilename",
-    "writePdf", "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: () => false };
-  for (const n of names) mod[n] = stub;
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 // The cascade hook does layout measurement (coordsAtPos / ResizeObserver) —
 // meaningless in jsdom. The mock echoes each item's pos as its translateY and

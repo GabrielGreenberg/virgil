@@ -59,7 +59,7 @@ import {
 } from "@/components/editor-layout/bar-occupancy";
 
 vi.mock("@/lib/storage", () => ({
-  isDevStorage: () => true,
+  isDevStorage: true,
   readSidecar: vi.fn(),
   writeSidecar: vi.fn(),
   readTex: vi.fn(),

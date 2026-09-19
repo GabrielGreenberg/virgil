@@ -38,22 +38,9 @@ import { createElement } from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-vi.mock("@/lib/storage", () => {
-  const stub = () => undefined;
-  const names = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib", "createDocFromPicker",
-    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
-    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
-    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder", "getTexFilename",
-    "writePdf", "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: () => false };
-  for (const n of names) mod[n] = stub;
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import { OmniBinStack, OmniUnanchoredBin, OmniOutsideFocusBin } from "@/panels/Omni/OmniViewPanel";
 import type { OmniItem } from "@/panels/_shared/types";

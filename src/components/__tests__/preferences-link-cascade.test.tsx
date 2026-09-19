@@ -6,22 +6,9 @@ import type { EditorPreferences } from "@/hooks/usePreferences";
 // Something in the dialog's import graph reaches `@/lib/storage`, whose backend
 // is picked with a bare `require` vitest can't resolve (the known barrel gotcha)
 // — stub it wholesale; nothing here calls a storage fn.
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = {};
-  for (const name of STORAGE_FNS) mod[name] = name === "isDevStorage" ? false : vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 /**
  * The locked-link cascade belongs to the WRITER, not to a call site (task 625).

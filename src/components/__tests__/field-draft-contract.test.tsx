@@ -18,23 +18,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 // `panel-primitives` reaches the card stack, which reaches `@/lib/storage` —
 // whose backend `require` cannot resolve under vitest. The standing stub every
 // suite that mounts a card carries.
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "mutateSidecar", "readTex", "writeTex", "readDocBundle", "writeDocBundle",
-    "readBib", "mutateBib", "createDocFromPicker", "createDocInFolder",
-    "pickProjectFolder", "registerDocInFolder", "openExistingDocFromPicker",
-    "listDocs", "renameDoc", "deleteDocFromIndex", "flushDoc", "drainDoc",
-    "detectBibPackage", "readPaperFolder", "getTexFilename", "writePdf",
-    "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster",
-    "readFigureIndex", "writeFigureIndex", "getDocWriteHandle",
-    "importFigureFile", "deleteSidecarSiblings", "snapshotPriorBundle",
-    "snapshotConflictSides", "listSidecarSiblings",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 class ResizeObserverStub {
   observe() {}

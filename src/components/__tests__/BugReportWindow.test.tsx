@@ -17,7 +17,7 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-libra
 // The storage barrel `require`s its backend at module scope and cannot
 // resolve under vitest (the standing gotcha).
 vi.mock("@/lib/storage", () => ({
-  isDevStorage: () => true,
+  isDevStorage: true,
   readSidecar: vi.fn(),
   writeSidecar: vi.fn(),
   readTex: vi.fn(),

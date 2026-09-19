@@ -4344,3 +4344,92 @@ setting it used to),
 [typed-latex-census.test.ts](../../../src/lib/tiptap/__tests__/typed-latex-census.test.ts),
 [action-union-exhaustiveness.test.ts](../../../src/lib/actions/__tests__/action-union-exhaustiveness.test.ts),
 [input-rule-atom-census.test.ts](../../../src/lib/tiptap/__tests__/input-rule-atom-census.test.ts).
+
+### The stub half: a MOCK is a copy of a surface, and a copy needs a reader (task 640)
+
+> **`vi.mock` with a factory replaces a module WHOLESALE, so a hand-written
+> factory is a full copy of another module's export surface — with the property
+> that every name it omits becomes `undefined` in that suite, silently, and the
+> suite stays GREEN.** A copy of a surface is the same object this law is about:
+> it earns its name only if something reads the original. Nothing did, in 298
+> files.
+
+The subject was `@/lib/storage`, which every suite reaching the tiptap extension
+barrel must stub (`storage.ts` picks its backend with a raw
+`require("@/lib/storage-fsa")`, and vitest's alias applies only to ESM `import`,
+so the real module cannot load under the runner). Measured at `88044ee9`, with
+44 value exports: **298 files hand-enumerated that surface in FOUR idioms** —
+`STORAGE_FNS` (202), `names` + `Object.fromEntries` (80), `names` + a `stub`
+loop (15), `FNS` (1) — and a dozen distinct name sets among them. Every one
+omitted `listSidecarNames` and `deleteSidecarSiblings`. **183 omitted
+`mutateSidecar`**, the serialized read-modify-write door the write-path law is
+built on. Fourteen stubbed `enqueueDocWrite` or `snapshotPriorBundle`, names the
+module does not export — the fossil of a rename that reached most copies and not
+all. And **96 bound `isDevStorage` to a FUNCTION** where the real export is the
+boolean `false`: a truthy value, so every `if (isDevStorage)` in those suites'
+graphs silently took the dev branch.
+
+**Both failure directions are invisible from the test file**, which is the point.
+An omitted export means either the suite never reaches that door (so the mock is
+concealing that a whole write door is untested there) or a `?.` swallows the miss
+and the test passes while proving nothing; the file cannot tell you which. A
+phantom name means nothing at all — `mod.enqueueDocWrite = vi.fn()` is a property
+on an object, and no type checks it. Task 558 had already hand-edited 25 of these
+in one commit to retire `writeBib` for `mutateBib`; the result was MORE variants,
+not fewer, because a fix applied file-by-file to a copied surface can only
+re-partition it.
+
+**The remedy is derivation, and the constraint is that the obvious derivation is
+unavailable.** `vi.importActual("@/lib/storage")` inside the factory is the
+textbook answer and it cannot be used here: importing the real module is the
+exact failure the stub exists to avoid. The next single source is the module's
+own SOURCE TEXT, which is this repo's census idiom already
+([_source-scan.ts](../../../src/lib/__tests__/_source-scan.ts)) — so
+[_mock-storage.ts](../../../src/lib/__tests__/_mock-storage.ts) reads
+`storage.ts`'s value exports and builds one `vi.fn()` per name.
+`mockStorageModule(overrides?)` THROWS on an override naming a non-export,
+because a silently-ignored typo is how a suite comes to prove nothing.
+
+**Three mechanics worth stating, because each one cost a run.**
+
+1. **`vi.mock` hoists above the imports, so the factory may not DEREFERENCE an
+   outer binding — only close over one.** `vi.mock("@/lib/storage", mockStorageModule)`
+   throws `Cannot access 'mockStorageModule' before initialization`: the argument
+   is evaluated at hoist time. The 18 pre-existing suites that close over a local
+   `mockRead` work for the mirror-image reason — their `(...a) => mockRead(...a)`
+   wrapper only dereferences when CALLED. The form that is order-safe regardless
+   of where the helper import sits is the async dynamic import *inside* the
+   factory: `async () => (await import("@/lib/__tests__/_mock-storage")).mockStorageModule()`.
+2. **A census detector must not be able to HANG.** The first cut asked for "an
+   array of string literals" with a repeated group around a quantified
+   alternation; on the first unclosed bracket in a 2 kB region it backtracked
+   catastrophically and the suite ran for minutes instead of failing. Innermost
+   bracket spans (`\[[^[\]]*\]`) plus a linear scan inside them answers the same
+   question in linear time. A guard that hangs is worse than one that is wrong:
+   the wrong one tells you something.
+3. **The anti-vacuity leg must quote the idioms it retired.** After a complete
+   migration the detector's population is empty, so "zero offenders" and "my
+   regex stopped matching" look identical. The census feeds itself one sample per
+   retired idiom and asserts the detector still fires, and asserts the population
+   it swept is > 1000 files with > 100 storage mockers in it. (This is why the
+   census file exempts ITSELF from the offender sweep — its samples are hand
+   lists on purpose.)
+
+**The leg that stays alive after the migration** is the one worth copying
+elsewhere: *no storage mock binds a name the module does not export*, asked of
+ALL ~455 files that mock the barrel — including the ~120 bespoke per-suite
+fixtures that legitimately keep their own object literals, which the migration
+did not touch. A completeness census goes vacuous the moment it succeeds; a
+**validity** census over the same population does not, and it is what catches the
+next rename leaving a stale stub in a fixture. Paired with an independent route
+on the other side — every `export const x = backend.x` in `storage.ts` must
+exist on BOTH `storage-fsa.ts` and `storage-dev.ts` — the phantom class is closed
+at its source as well as at its copies.
+
+What was deliberately NOT generalized: 34 suites stub the barrel with a `Proxy`
+catch-all, which is complete by construction and has never drifted, and ~120
+carry bespoke fixtures with real behaviour. Neither is a copy of the surface.
+PROFILE's refinement — "deep ≠ broadest blast radius" — applies: the class is
+*hand-enumerated surface*, not *storage mock*.
+
+CI: [storage-mock-derivation.test.ts](../../../src/lib/__tests__/storage-mock-derivation.test.ts).

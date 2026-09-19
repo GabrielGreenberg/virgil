@@ -12,22 +12,9 @@ import { describe, it, expect, vi } from "vitest";
 // `@/lib/storage`, which `require()`s `@/lib/storage-fsa` — a path vitest's
 // resolver can't alias. Stub the storage module so the import graph loads.
 // (See memory: vitest_extension_barrel_storage_mock.md)
-vi.mock("@/lib/storage", () => {
-  const stub = () => undefined;
-  const names = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib", "createDocFromPicker",
-    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
-    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
-    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder", "getTexFilename",
-    "writePdf", "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: () => false };
-  for (const n of names) mod[n] = stub;
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import type { Link } from "@/links/_shared/types";
 import { resolveCardAnchorRows, type CardAnchorResolver } from "@/links/card-anchor-rows";
