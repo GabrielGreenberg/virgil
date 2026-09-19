@@ -161,8 +161,18 @@ export function appliedPendingSide(categorySides: Partial<Record<OmniCategory, S
  * This is the single combination point — both hosts (`EditorLayout` and the
  * Reader's `reader-view-prefs`) call it, so a card's column and its filter
  * chip are answered from one place. The Set is what `OmniViewPanel` filters
- * its items by and what the filter menu shows as checked, so a category
+ * its CASCADE by and what the filter menu shows as checked, so a category
  * "enabled" on a side is exactly "visible AND placed here".
+ *
+ * ## Two facts, fused — so a consumer that wants only ONE must not read this
+ *
+ * Because the Set carries both halves, dropping it is not "unfiltering": it
+ * discards the PLACEMENT half along with the visibility half. A surface that
+ * must ignore the filter but still belongs to one side — the no-anchor bin
+ * (task 544/654), the applied-pending navigator (`appliedPendingSide`, task
+ * 420) — reads the placement door instead: `omniCategoriesOnSide` below, or
+ * the derived `categorySides` map itself. Reading neither is how the bin came
+ * to render in BOTH gutters with identical counts (task 654).
  */
 export function omniCategoriesForSide(
   categorySides: Record<OmniCategory, Side>,
@@ -179,9 +189,14 @@ export function omniCategoriesForSide(
 }
 
 /** The categories this side owns, ignoring visibility — the filter menu's row
- *  list, and the set "reset to default" makes visible again. */
+ *  list, the set "reset to default" makes visible again, and the side scope of
+ *  every affordance that must survive the filter (the no-anchor bin, task 654).
+ *
+ *  Takes a PARTIAL map, like `appliedPendingSide`: an absent category falls
+ *  back to its registry `defaultStripSide`, so `{}` means "registry defaults"
+ *  rather than "placed nowhere". */
 export function omniCategoriesOnSide(
-  categorySides: Record<OmniCategory, Side>,
+  categorySides: Partial<Record<OmniCategory, Side>>,
   side: Side,
 ): OmniCategory[] {
   return OMNI_CATEGORIES.filter((c) => (categorySides[c] ?? defaultPanelSide(c)) === side);

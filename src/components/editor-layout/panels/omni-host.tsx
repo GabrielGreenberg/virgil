@@ -179,7 +179,10 @@ export interface OmniHostProps {
   getOmniHideAll: (side: Side) => boolean;
   /** Each omni category's LIVE strip side (`deriveCategorySides`, task 381) —
    *  the PLACEMENT fact, independent of the filter menu's hidden set. Read only
-   *  by the applied-pending header gate (`appliedPendingSide`, task 420). */
+   *  by the applied-pending header gate (`appliedPendingSide`, task 420) and,
+   *  forwarded to `OmniViewPanel`, by the no-anchor bin's side scope (task
+   *  654) — the two surfaces that must survive the filter menu and so cannot
+   *  read `getOmniEnabled`, which fuses placement with visibility. */
   categorySides: Partial<Record<OmniCategory, Side>>;
   /** When true, omni cards rest dimmed and brighten on hover (the
    *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
@@ -790,6 +793,7 @@ export function OmniHost(p: OmniHostProps) {
       items={displayedItems}
       editor={editorInstance}
       enabledCategories={enabledForSide}
+      categorySides={p.categorySides}
       hideAllCards={p.getOmniHideAll(p.side)}
       dimResting={p.omniDimResting}
       onBackgroundClick={handleBackgroundClick}

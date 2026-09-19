@@ -18,6 +18,14 @@
 //    still showed the card was the chip. With the chip gone, the bin inherits
 //    task 410's rule: an affordance that exists so a card cannot vanish is
 //    not hideable by a layout preference.
+//  • …but the side's item list is the side's (leg 2c, task 654). Both hosts are
+//    handed the same cross-panel array, and `enabledCategories` fuses TWO facts
+//    — placed here AND not hidden — so bypassing it to escape the filter also
+//    bypassed the PLACEMENT, and every parked card was counted and listed in
+//    BOTH gutters. Legs 1 and 2 said "this side" while rendering a LEFT-placed
+//    footnote in the right strip, so they asserted the defect; they now state
+//    their placement out loud (`categorySides`) and keep their own claim, and
+//    leg 2c pins the disjointness they could not see.
 //  • A column PUBLISHES whether it hosts a bin surface (leg 3), on the EDGE
 //    where its slot mounts / unmounts. The pane does not re-derive the four
 //    render gates the slot sits behind.
@@ -32,7 +40,7 @@
 // the whole set is, and it type-checks and renders perfectly.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup, act } from "@testing-library/react";
+import { render, cleanup, act, fireEvent } from "@testing-library/react";
 import { createElement } from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -110,6 +118,10 @@ const orphanFootnote: OmniItem = {
 };
 const NOTES_ONLY = new Set(["notes"]) as never;
 const NOTHING = new Set([]) as never;
+/** Placement, stated: a leg that wants BOTH fixture cards on the strip it
+ *  renders says so, rather than leaning on a bin that ignored placement.
+ *  Registry defaults put notes on the right and footnotes on the left. */
+const BOTH_ON_RIGHT = { notes: "right", footnotes: "right" } as const;
 
 // ===========================================================================
 // The bin reads the WHOLE side, not the view-filtered set
@@ -123,6 +135,7 @@ describe("the no-anchor bin is not hideable by a layout preference", () => {
         items={[anchoredNote, freeNote, orphanFootnote]}
         editor={liveEditor}
         enabledCategories={NOTES_ONLY}
+        categorySides={BOTH_ON_RIGHT}
         hideAllCards
       />,
     );
@@ -134,15 +147,18 @@ describe("the no-anchor bin is not hideable by a layout preference", () => {
     expect(bin!.textContent).toContain("2 unanchored");
   });
 
-  it("leg 2: a category filtered OUT of the cascade is still binned", () => {
-    // The footnote category is not enabled on this side: the orphaned
-    // footnote may not cascade, but it has nowhere else to be.
+  it("leg 2: a category the user HID is still binned on its own side", () => {
+    // Footnotes are PLACED on this strip and HIDDEN in its filter menu: the
+    // orphaned footnote may not cascade, but this is its side and it has
+    // nowhere else to be. (Pre-654 this leg passed for the wrong reason — the
+    // footnote was on the OTHER strip and the bin could not tell.)
     const { container } = render(
       <OmniViewPanel
         side="right"
         items={[anchoredNote, orphanFootnote]}
         editor={liveEditor}
         enabledCategories={NOTES_ONLY}
+        categorySides={BOTH_ON_RIGHT}
       />,
     );
     expect(
@@ -151,6 +167,50 @@ describe("the no-anchor bin is not hideable by a layout preference", () => {
     const bin = container.querySelector("[data-omni-unanchored-bin]");
     expect(bin).not.toBeNull();
     expect(bin!.textContent).toContain("1 unanchored");
+  });
+
+  it("leg 2c: the two strips' bins are DISJOINT — a card is binned on the one side its category is placed on", () => {
+    // Registry defaults: notes right, footnotes left. One parked note and one
+    // orphaned footnote, the same cross-panel array both hosts are handed.
+    const items = [freeNote, orphanFootnote];
+    const left = render(
+      <OmniViewPanel
+        side="left"
+        items={items}
+        editor={liveEditor}
+        enabledCategories={NOTHING}
+      />,
+    ).container;
+    const right = render(
+      <OmniViewPanel
+        side="right"
+        items={items}
+        editor={liveEditor}
+        enabledCategories={NOTHING}
+      />,
+    ).container;
+
+    const binOf = (c: HTMLElement) =>
+      c.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
+    // Each pill counts exactly its own side's card. Pre-654 BOTH read "2".
+    expect(binOf(left).textContent).toContain("1 unanchored");
+    expect(binOf(right).textContent).toContain("1 unanchored");
+
+    // Expand both pills (they rest collapsed) and read the rows: the footnote
+    // left, the note right. Pre-654 each body was mounted TWICE — the same
+    // card editable in two places.
+    for (const c of [left, right]) {
+      fireEvent.click(binOf(c).querySelector("button.omni-bin-pill")!);
+    }
+    expect(binOf(left).querySelector('[data-test-card="orphan-1"]')).not.toBeNull();
+    expect(binOf(left).querySelector('[data-test-card="free-1"]')).toBeNull();
+    expect(binOf(right).querySelector('[data-test-card="free-1"]')).not.toBeNull();
+    expect(binOf(right).querySelector('[data-test-card="orphan-1"]')).toBeNull();
+    // Member 3: one card, one node in the whole document — a find-first lookup
+    // (findOmniEntry, the jump/align path) cannot resolve to the wrong strip.
+    for (const card of ["orphan-1", "free-1"]) {
+      expect(document.querySelectorAll(`[data-test-card="${card}"]`).length).toBe(1);
+    }
   });
 
   it("leg 2b (control): with the editor still mounting nothing is binned — the mount-race guard survives", () => {
