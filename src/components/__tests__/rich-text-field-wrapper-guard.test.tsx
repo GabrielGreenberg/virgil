@@ -13,22 +13,9 @@
 // the document after a click (the commit), so a fix to either alone fails.
 import { describe, expect, it, vi, afterEach } from "vitest";
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 // Capture the card-body editor `useEditor` mints, so the leg can place the
 // caret and read the document back — the component exposes no handle.

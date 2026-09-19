@@ -31,21 +31,9 @@ import type { Editor } from "@tiptap/react";
 // The float-body/header chrome pulls panel-primitives → `@/lib/storage`, whose
 // backend pick is a raw require the vitest resolver can't follow (the known
 // barrel gotcha). Nothing here touches a sidecar.
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 // The overlay's popout-mode header renders the shared `FloatChromeContent`
 // for real (task 437) — the motion channel writes to the header NODE, not to

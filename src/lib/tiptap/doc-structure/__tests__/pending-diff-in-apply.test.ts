@@ -23,22 +23,9 @@ import { describe, it, expect, vi } from "vitest";
 // Same storage stub as editor-extensions.test.ts — the extension barrel
 // transitively imports `@/lib/storage` via the figure/tex NodeView components,
 // and storage.ts picks its backend with a raw require vitest can't follow.
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import { Editor, Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";

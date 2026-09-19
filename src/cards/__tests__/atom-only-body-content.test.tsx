@@ -44,23 +44,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // `panel-primitives` transitively imports `@/lib/storage` (card body surfaces →
 // figure/graphics NodeViews). Same stub the sibling schema suites use — nothing
 // here calls a storage function.
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "mutateSidecar", "readTex",
-    "writeTex", "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-    "snapshotPriorBundle", "snapshotConflictSides",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 import fs from "node:fs";
 import path from "node:path";
 import { renderHook, render, screen, act, cleanup, fireEvent } from "@testing-library/react";

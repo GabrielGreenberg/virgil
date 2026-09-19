@@ -21,22 +21,9 @@ import { render, cleanup, fireEvent } from "@testing-library/react";
 import { createElement } from "react";
 import type { Editor } from "@tiptap/react";
 
-vi.mock("@/lib/storage", () => {
-  const stub = () => undefined;
-  const names = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib", "createDocFromPicker",
-    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
-    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
-    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder", "getTexFilename",
-    "writePdf", "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: () => false };
-  for (const n of names) mod[n] = stub;
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 vi.mock("@/hooks/useInTextPositions", () => ({
   useInTextPositions: (_editor: unknown, items: Array<{ id: string; pos: number }>) => ({

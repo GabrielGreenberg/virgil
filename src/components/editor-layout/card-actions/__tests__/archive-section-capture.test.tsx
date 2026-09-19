@@ -30,22 +30,9 @@
 //      be tested against a hypothetical rather than a live gap.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 vi.mock("@/lib/focus-new-card", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/focus-new-card")>();

@@ -17,15 +17,9 @@
 // barrel/storage gotcha pulled in transitively.)
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";

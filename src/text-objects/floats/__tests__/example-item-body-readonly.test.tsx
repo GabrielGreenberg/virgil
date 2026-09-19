@@ -15,22 +15,9 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = {};
-  for (const name of STORAGE_FNS) mod[name] = name === "isDevStorage" ? false : vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 // jsdom has no ResizeObserver; some chrome paths measure with one.
 class ResizeObserverStub {

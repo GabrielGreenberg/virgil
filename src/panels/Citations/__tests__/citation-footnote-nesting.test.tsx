@@ -22,21 +22,9 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 
 // storage.ts eagerly `require`s the FSA backend at import time (absent in
 // jsdom). Stub the whole barrel — none of its functions are exercised here.
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 // Thin CitationCard stub — surfaces the wrapper class + nested data-attr the
 // panel applies, plus the cite id, so the test can assert indent + suppression.

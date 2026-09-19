@@ -10,21 +10,9 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 
 // BorrowedMainText imports the tiptap extension barrel, which transitively
 // pulls `@/lib/storage` (the known barrel/storage gotcha) — stub it.
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import { render, waitFor, cleanup } from "@testing-library/react";
 import { BorrowedMainText } from "@/components/BorrowedMainText";

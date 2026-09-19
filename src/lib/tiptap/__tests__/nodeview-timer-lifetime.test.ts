@@ -57,22 +57,9 @@ import * as path from "node:path";
 import { REPO_ROOT, codeOnly, trackedFiles } from "@/lib/__tests__/_source-scan";
 import { braceBody, nodeViewRegions, nodeViewPopulation } from "./_nodeview-census";
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = {};
-  for (const name of STORAGE_FNS) mod[name] = name === "isDevStorage" ? false : vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 class ResizeObserverStub {
   observe() {}

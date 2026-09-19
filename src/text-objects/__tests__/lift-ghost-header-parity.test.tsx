@@ -40,21 +40,9 @@ import { join } from "node:path";
 // The shared float chrome pulls panel-primitives → `@/lib/storage`, whose
 // backend pick is a raw `require` the vitest resolver can't follow (the known
 // barrel gotcha). A RESOLVER workaround; nothing under test is stubbed.
-vi.mock("@/lib/storage", () => {
-  const noop = () => undefined;
-  const names = [
-    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
-    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
-    "mutateBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  return Object.fromEntries(names.map((n) => [n, noop]));
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 import { LiftedTextOverlay } from "@/text-objects/LiftedTextOverlay";
 import { FloatChrome, FLOAT_CHROME_CONTAINER_CLASS } from "@/floats/FloatChrome";

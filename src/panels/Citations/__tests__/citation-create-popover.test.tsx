@@ -17,23 +17,9 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 // panel-primitives barrel, which transitively pulls in `@/lib/storage`
 // (whose FSA backend `require` can't resolve under vitest). Stub it — the
 // popover exercises none of these I/O paths. (vitest_extension_barrel gotcha.)
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readSidecarBundle",
-    "invalidateSidecarBundle", "readTex", "writeTex", "readDocBundle",
-    "writeDocBundle", "readBib", "mutateBib", "createDocFromPicker",
-    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
-    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
-    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder",
-    "getTexFilename", "getBibFilename", "statFiles", "readTextFile", "writePdf",
-    "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
-    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster",
-    "readFigureIndex", "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 
 vi.mock("@/panels/Citations/CitekeyPicker", () => ({
   CitekeyPicker: (props: {

@@ -16,25 +16,13 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 const mockRead = vi.fn();
 const mockWrite = vi.fn();
 
-vi.mock("@/lib/storage", () => {
-  const STORAGE_FNS = [
-    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
-    "readDocBundle", "writeDocBundle", "readBib", "mutateBib",
-    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
-    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
-    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
-    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
-    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
-    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
-    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
-  ];
-  const mod: Record<string, unknown> = { isDevStorage: false };
-  for (const name of STORAGE_FNS) mod[name] = vi.fn();
-  mod.readSidecar = (...a: unknown[]) => mockRead(...a);
-  mod.readSidecarIfExists = (...a: unknown[]) => mockRead(...a);
-  mod.writeSidecar = (...a: unknown[]) => mockWrite(...a);
-  return mod;
-});
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
+    readSidecar: (...a: unknown[]) => mockRead(...a),
+    readSidecarIfExists: (...a: unknown[]) => mockRead(...a),
+    writeSidecar: (...a: unknown[]) => mockWrite(...a),
+  }),
+);
 
 import { useRevisions } from "../useRevisions";
 import { useCutter } from "../useCutter";
