@@ -15,7 +15,7 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { Extension } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type StateField } from "@tiptap/pm/state";
 import { Mapping, type StepMap } from "@tiptap/pm/transform";
 import { asMutable, attachBus, detachBus, type DocStructureBus } from "./bus";
 import { inspectSteps } from "./step-inspector";
@@ -24,6 +24,8 @@ import {
   EMPTY_DIFF,
   EMPTY_STRUCTURE,
   diffHasStructuralEntries,
+  mapStructureDiffPositions,
+  mergeStructureDiffs,
   type BlockEntry,
   type DocStructure,
   type StructureDiff,
@@ -42,7 +44,7 @@ const MAX_PENDING_MAPS = 32;
  *  materialization); it bumps once per consumer read after edits. */
 let materializeCount = 0;
 
-interface PluginState {
+export interface PluginState {
   /** Base snapshot. Positions are valid AS OF the last materialization —
    *  `pendingMaps` holds the StepMaps accumulated since. The object itself
    *  is immutable; identity changes on every docChanged tx (consumer
@@ -54,19 +56,39 @@ interface PluginState {
    *  zero Map clones — and the O(entities) remap runs lazily at
    *  consumer-read time (`readDocStructure`), which is RAF/user-paced,
    *  never keystroke-paced. Mutated in place by the materialize-on-read
-   *  cache (same precedent as the `pendingDiff` clear in the view hook);
+   *  cache (same precedent as the transient-diff clear in the view hook);
    *  safe because every `apply` builds a NEW array, so materializing an
    *  old state can't corrupt a newer one. */
   pendingMaps: readonly StepMap[];
-  /** Diff produced by the most recently applied transaction. Null when
-   *  the most recent apply was a no-op (selection-only). The shared
-   *  `EMPTY_DIFF` reference when the tx changed the doc but was
+  /** ONE dispatch, TWO questions — and they have different answers, which is
+   *  why they are two fields (task 650). ProseMirror runs the whole
+   *  `appendTransaction` loop inside a single `state.applyTransaction`, so
+   *  `apply` runs once per TRANSACTION while the view hook below runs once per
+   *  DISPATCH.
+   *
+   *  `txDiff` answers the SAME-TRANSACTION question: "what did the transaction
+   *  I am being applied alongside report?" That is what `readPendingDiff`
+   *  returns, and it must stay per-transaction: the appendTransaction loop
+   *  re-invokes each appender with only the transactions it has not seen, and
+   *  those appenders gate their own re-dispatch on the diff they read. Handing
+   *  round 2 the accumulated diff would re-report round 1's removals to the
+   *  footnote/orphan appenders and they would append again, forever.
+   *
+   *  Null when no transaction in this dispatch has produced a diff yet. The
+   *  shared `EMPTY_DIFF` reference when the tx changed the doc but was
    *  structurally AND content null (attr-only steps, e.g. a uuid mint or
-   *  footnote renumber) — readable by same-tx `apply` consumers via
-   *  `readPendingDiff` so they can take their cheap incremental path
-   *  instead of the observer-absent full-rebuild fallback; the view
-   *  hook skips the bus emit for it. */
-  pendingDiff: StructureDiff | null;
+   *  footnote renumber) — that lets a same-tx consumer tell "observer present,
+   *  nothing changed" from "no observer" (null), so it takes its cheap
+   *  incremental path instead of the observer-absent full-doc-walk fallback. */
+  txDiff: StructureDiff | null;
+  /** `dispatchDiff` answers the EMIT question: "what did this whole dispatch
+   *  do to the document?" It is the fold of every transaction's diff
+   *  (`mergeStructureDiffs`), drained once by the view hook. A single slot here
+   *  was the bug: the last transaction's diff overwrote every earlier one, so a
+   *  deletion that provoked the footnote renumber applied its diff to the index
+   *  and then published nothing at all. Null when nothing in the dispatch
+   *  carried entries. */
+  dispatchDiff: StructureDiff | null;
 }
 
 export const docStructureKey = new PluginKey<PluginState>("docStructureObserver");
@@ -85,16 +107,22 @@ function makeViewSpec(editor: Editor) {
     return {
       update(view: EditorView) {
         const state = docStructureKey.getState(view.state);
-        if (!state || !state.pendingDiff) return;
-        const diff = state.pendingDiff;
-        // Clear the pending flag synchronously so a re-render doesn't
-        // re-fire. Mutating plugin state outside an apply() is normally
-        // a no-no, but here we're only nulling a transient field; the
-        // next apply() will write a fresh PluginState anyway.
-        state.pendingDiff = null;
-        // EMPTY_DIFF is stored only so same-tx `apply` readers can see
-        // "observer present, nothing changed" — nothing to fan out.
-        if (diff === EMPTY_DIFF) return;
+        if (!state) return;
+        const diff = state.dispatchDiff;
+        // The dispatch is over: drain BOTH transient fields, unconditionally.
+        // Mutating plugin state outside an apply() is normally a no-no, but
+        // here we're only nulling transient fields; the next apply() will
+        // write a fresh PluginState anyway. `txDiff` must be cleared even when
+        // there is nothing to emit (a dispatch of nothing but EMPTY_DIFF
+        // transactions) — outliving its dispatch would hand the NEXT
+        // dispatch's appendTransaction consumers a diff describing work they
+        // have already done.
+        state.dispatchDiff = null;
+        state.txDiff = null;
+        // Null when nothing in the dispatch carried entries — EMPTY_DIFF is
+        // stored only so same-tx `apply` readers can see "observer present,
+        // nothing changed", and never accumulates.
+        if (!diff) return;
         if (diffHasStructuralEntries(diff)) {
           // Structural tx: apply() already materialized (applyDiff needs
           // coherent positions) — state.structure is concrete, pass it.
@@ -174,6 +202,97 @@ function mapStructurePositions(
 }
 
 /**
+ * The observer's plugin-state spec — the SSOT for how a transaction becomes a
+ * structure index plus the two transient diffs.
+ *
+ * Exported because headless tests need a stand-in observer (a real `Editor` +
+ * view is more than they can mount), and two of them had hand-copied this
+ * `apply` body out of `buildInitial` / `inspectSteps` / `applyDiff`. A copy of
+ * a state machine is a copy that drifts: each carried its own `pendingDiff`
+ * field, so this task's split into `txDiff` / `dispatchDiff` would have left
+ * them silently answering `readPendingDiff` with `null` — a fallback path,
+ * green and vacuous. Mount THIS instead:
+ *
+ *     new Plugin<PluginState>({ key: docStructureKey, state: docStructureStateSpec() })
+ */
+export function docStructureStateSpec(): StateField<PluginState> {
+  return {
+    init(_config, state) {
+      return {
+        structure: buildInitial(state.doc),
+        pendingMaps: [],
+        txDiff: null,
+        dispatchDiff: null,
+      };
+    },
+    apply(tr, prev, _oldState, _newState) {
+      if (!tr.docChanged) {
+        // Selection-only / mark-only-no-doc / meta-only. Such a
+        // transaction PRODUCES no diff — it does not ERASE one. Nulling
+        // here was the latent half of task 650: an appended meta-only
+        // transaction would wipe the structural diff of the doc-changing
+        // transaction it followed, so the dispatch published nothing and
+        // every same-dispatch `readPendingDiff` consumer read `null` and
+        // took its observer-absent full-doc-walk fallback. Carrying the
+        // state through unchanged is also the cheapest possible answer:
+        // zero allocation on the selection path.
+        return prev;
+      }
+      const oldDoc = tr.before;
+      const newDoc = tr.doc;
+      // `inspectSteps` consults prev.structure for uuid MEMBERSHIP
+      // only (mapping-invariant), so the un-materialized base is
+      // correct to pass even with pendingMaps outstanding.
+      const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure);
+      if (diff === EMPTY_DIFF || !diffHasStructuralEntries(diff)) {
+        // Structurally-null tx (plain typing, attr-only steps):
+        // the O(entities) remap is DEFERRED — just accumulate the
+        // tx's StepMaps (O(steps), zero iteration, zero clones)
+        // and bump snapshot identity so identity-keyed consumer
+        // caches (useLivePosResolver) can't serve stale positions.
+        // Version semantics preserved: content-only diffs bump
+        // (applyDiff did), EMPTY_DIFF doesn't (mapStructurePositions
+        // didn't). Materialization happens at consumer-read time
+        // (readDocStructure) or at the MAX_PENDING_MAPS cap.
+        let maps: readonly StepMap[] = [
+          ...prev.pendingMaps,
+          ...tr.mapping.maps,
+        ];
+        let base = prev.structure;
+        if (maps.length > MAX_PENDING_MAPS) {
+          base = materializeStructure(base, maps);
+          maps = [];
+        }
+        const structure =
+          diff === EMPTY_DIFF
+            ? { ...base }
+            : { ...base, version: base.version + 1 };
+        return {
+          structure,
+          pendingMaps: maps,
+          txDiff: diff,
+          dispatchDiff: accumulate(prev.dispatchDiff, diff, tr.mapping),
+        };
+      }
+      // Structural tx: materialize (fold any accumulated maps plus
+      // this tx's), then apply the diff — its entries are already
+      // in newDoc coordinates.
+      const mapped = materializeStructure(prev.structure, [
+        ...prev.pendingMaps,
+        ...tr.mapping.maps,
+      ]);
+      const next = applyDiff(mapped, diff);
+      return {
+        structure: next,
+        pendingMaps: [],
+        txDiff: diff,
+        dispatchDiff: accumulate(prev.dispatchDiff, diff, tr.mapping),
+      };
+    },
+  };
+}
+
+/**
  * The TipTap extension. The `editor` instance isn't available at
  * extension-creation time, so we close over it via `Extension.create`'s
  * `addProseMirrorPlugins(this)` body — `this.editor` is set by the time
@@ -199,83 +318,43 @@ export const DocStructureObserver = Extension.create({
     return [
       new Plugin<PluginState>({
         key: docStructureKey,
-        state: {
-          init(_config, state) {
-            return {
-              structure: buildInitial(state.doc),
-              pendingMaps: [],
-              pendingDiff: null,
-            };
-          },
-          apply(tr, prev, _oldState, _newState) {
-            if (!tr.docChanged) {
-              // Selection-only / mark-only-no-doc / meta-only — same state.
-              if (prev.pendingDiff !== null) {
-                return {
-                  structure: prev.structure,
-                  pendingMaps: prev.pendingMaps,
-                  pendingDiff: null,
-                };
-              }
-              return prev;
-            }
-            const oldDoc = tr.before;
-            const newDoc = tr.doc;
-            // `inspectSteps` consults prev.structure for uuid MEMBERSHIP
-            // only (mapping-invariant), so the un-materialized base is
-            // correct to pass even with pendingMaps outstanding.
-            const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure);
-            if (diff === EMPTY_DIFF || !diffHasStructuralEntries(diff)) {
-              // Structurally-null tx (plain typing, attr-only steps):
-              // the O(entities) remap is DEFERRED — just accumulate the
-              // tx's StepMaps (O(steps), zero iteration, zero clones)
-              // and bump snapshot identity so identity-keyed consumer
-              // caches (useLivePosResolver) can't serve stale positions.
-              // Version semantics preserved: content-only diffs bump
-              // (applyDiff did), EMPTY_DIFF doesn't (mapStructurePositions
-              // didn't). Materialization happens at consumer-read time
-              // (readDocStructure) or at the MAX_PENDING_MAPS cap.
-              let maps: readonly StepMap[] = [
-                ...prev.pendingMaps,
-                ...tr.mapping.maps,
-              ];
-              let base = prev.structure;
-              if (maps.length > MAX_PENDING_MAPS) {
-                base = materializeStructure(base, maps);
-                maps = [];
-              }
-              const structure =
-                diff === EMPTY_DIFF
-                  ? { ...base }
-                  : { ...base, version: base.version + 1 };
-              return {
-                structure,
-                pendingMaps: maps,
-                pendingDiff: diff === EMPTY_DIFF ? EMPTY_DIFF : diff,
-              };
-            }
-            // Structural tx: materialize (fold any accumulated maps plus
-            // this tx's), then apply the diff — its entries are already
-            // in newDoc coordinates.
-            const mapped = materializeStructure(prev.structure, [
-              ...prev.pendingMaps,
-              ...tr.mapping.maps,
-            ]);
-            const next = applyDiff(mapped, diff);
-            return { structure: next, pendingMaps: [], pendingDiff: diff };
-          },
-        },
+        state: docStructureStateSpec(),
         view: makeViewSpec(editor),
         props: {
           // Expose the diff via tr.meta for any appendTransaction
           // consumers that need it synchronously (e.g. label-handler).
           // We piggyback on plugin state since meta is per-transaction;
-          // consumers use `docStructureKey.getState(state).pendingDiff`.
+          // consumers use `readPendingDiff(state)`.
         },
       }),
     ];
   },
 });
+
+/**
+ * Fold one transaction's diff into the dispatch's accumulation.
+ *
+ * The single-transaction dispatch — every plain keystroke, every ordinary edit
+ * with no appender behind it — returns the diff BY IDENTITY: no merge call, no
+ * allocation, nothing added to the keystroke path. A merge happens only when a
+ * dispatch genuinely carries a second doc-changing transaction, and costs
+ * O(entries in the diffs), which is O(edit-size).
+ *
+ * `prev` is expressed in the document before `mapping` (the accumulation was
+ * built by earlier transactions in this same dispatch), so it is carried
+ * forward through this transaction's mapping before the two are composed.
+ */
+function accumulate(
+  prev: StructureDiff | null,
+  diff: StructureDiff,
+  mapping: { map(pos: number, assoc?: number): number },
+): StructureDiff | null {
+  // EMPTY_DIFF carries no entries — it exists only as the same-tx "observer
+  // present, nothing changed" signal, so it never joins the accumulation.
+  if (diff === EMPTY_DIFF) return prev;
+  if (prev === null) return diff;
+  return mergeStructureDiffs(mapStructureDiffPositions(prev, mapping), diff);
+}
 
 /**
  * Fold accumulated StepMaps into a base snapshot. O(entities) — runs at
@@ -293,7 +372,7 @@ function materializeStructure(
 /**
  * Read the latest structure snapshot from an editor state, materializing
  * any deferred position maps on first read (then cached in place — the
- * same transient-field mutation precedent as the view hook's pendingDiff
+ * same transient-field mutation precedent as the view hook's transient-diff
  * clear; safe because each apply() builds a fresh pendingMaps array, so
  * materializing an old state can't corrupt a newer one).
  */
@@ -354,12 +433,17 @@ export function __resetMaterializeCountForTest(): void {
 }
 
 /**
- * Read the diff produced by the most recent transaction. Only valid
- * within `appendTransaction` — `view.update` clears it post-dispatch.
+ * Read the diff produced by the most recent transaction that produced one.
+ * Only valid within the current dispatch — `view.update` clears it afterwards.
+ *
+ * This is deliberately NOT the dispatch-wide accumulation the bus emits: an
+ * `appendTransaction` consumer asks this question to decide whether to append
+ * a transaction of its own, and re-reporting an earlier transaction's work
+ * would make it append again. See `PluginState.txDiff`.
  */
 export function readPendingDiff(state: Parameters<typeof docStructureKey.getState>[0]): StructureDiff | null {
   const s = docStructureKey.getState(state);
-  return s?.pendingDiff ?? null;
+  return s?.txDiff ?? null;
 }
 
 // Re-export the bus type so consumers can do `import { DocStructureBus } from "@/lib/tiptap/doc-structure"`.

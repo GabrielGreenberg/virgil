@@ -300,6 +300,80 @@ probes read `structure.blocks.get(uuid).pos` off the materialized snapshot
 rather than off the cache. CI: keying the vocabulary on `version` fails two
 legs.
 
+### The dispatch half: one dispatch is not one transaction
+
+**A field written per `apply` and read per `view.update` is a FOLD, not a slot.**
+ProseMirror runs the whole `appendTransaction` loop inside a single
+`state.applyTransaction`, so the observer's `apply` runs once per TRANSACTION
+while its view hook runs once per DISPATCH. `pendingDiff` was one slot, so the
+last transaction's diff overwrote every earlier one — folded into the index
+(which stayed correct, and is why nothing crashed) and then silently discarded.
+The reachable case was the most ordinary edit in a paper with footnotes:
+deleting a paragraph that contains footnote #1 provokes the flag-agnostic
+footnote renumber appender, so the deletion's own `removedBlocks` /
+`removedFootnotes` / `removedAnchors` reached **no subscriber at all** — cards,
+geometry entries, in-text positions and the omni mirror kept believing in a
+block that was gone until some later structural edit happened to re-wake them
+(task 650).
+
+The plugin now keeps **two** fields because a dispatch is asked two different
+questions, and giving them one name is what let the answers collide
+([observer-plugin.ts](../../../src/lib/tiptap/doc-structure/observer-plugin.ts)):
+
+- `dispatchDiff` — the EMIT question, "what did this whole gesture do?". Every
+  transaction's diff is composed into it by `mergeStructureDiffs`
+  ([types.ts](../../../src/lib/tiptap/doc-structure/types.ts)) and the view hook
+  drains it ONCE. Merge-and-emit-once, never emit-per-transaction: `emitCount`
+  is defined per USER GESTURE by this law's probe, so fanning out N times would
+  quietly redefine the measurement the law is stated in.
+- `txDiff` — the SAME-TRANSACTION question, what `readPendingDiff` returns. It
+  must stay per-transaction: PM re-invokes each appender with only the
+  transactions it has not yet seen, and appenders gate their own re-dispatch on
+  the diff they read, so handing round 2 the accumulation would make the
+  footnote appender append again, forever.
+
+**A transaction that produced no diff does not ERASE one.** The `!tr.docChanged`
+branch used to null the slot; a doc-unchanged appended transaction therefore
+wiped the structural diff of the transaction it followed, and made a
+same-dispatch `readPendingDiff` consumer read `null` — the signal reserved for
+"no observer installed", whose fallback is a full doc walk. That half stayed
+latent only by luck: all five `readPendingDiff` callers open with
+`transactions.some((tr) => tr.docChanged)` (or `if (!tr.docChanged)` in an
+`apply`), so a meta-only appended transaction returns them early before the
+read. It is pinned at the contract rather than at today's callers.
+
+**Composition is sequential, and the entries must be re-coordinated.**
+`mergeStructureDiffs(a, b)` reads "a THEN b": added∘removed cancels (a block
+born and deleted inside one dispatch never existed), removed∘added collapses to
+`changed` (the same id leaving and re-entering is a MOVE — exactly what
+`inspectSteps` already does for a same-transaction delete+insert), and anchors
+and labels, having no `changed` bucket, report silence there. An earlier
+transaction's `added`/`changed` entries are expressed in a document a later
+transaction may have shifted, so they are carried through its mapping first
+(`mapStructureDiffPositions`); `removed` entries deliberately are NOT — the
+inspector collects them against the doc BEFORE the deleting step, and
+`footnote.ts` resolves `removed.pos` against `oldState.doc`.
+
+**Cost:** the single-transaction dispatch — every keystroke, every edit with no
+appender behind it — returns the diff BY IDENTITY. No merge call, no
+allocation, nothing added to the typing path; a merge happens only when a
+dispatch genuinely carries a second doc-changing transaction, and costs
+O(edit-size).
+
+**The stand-in half.** The observer's plugin-state spec is now exported as
+`docStructureStateSpec()`, because two headless tests had hand-copied its
+`apply` body. A copy of a state machine is a copy that drifts: each carried its
+own `pendingDiff` field, so this split would have left them answering
+`readPendingDiff` with `null` — a fallback path, green and vacuous.
+
+CI: [dispatch-diff-accumulation.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/dispatch-diff-accumulation.test.ts)
+drives the REAL `buildEditorExtensions("main")` stack; its footnote-deletion,
+doc-unchanged-appender, `EMPTY_DIFF`-appender and `readPendingDiff`-never-null
+legs all fail on the pre-fix single slot, while the no-footnote CONTROL passes
+on it, so the file cannot go green by the detector going silent.
+[merge-structure-diffs.test.ts](../../../src/lib/tiptap/doc-structure/__tests__/merge-structure-diffs.test.ts)
+pins the composition table.
+
 ### Why this exists
 
 Memo: [docs/perf/keystroke-sanctity-findings.md](../../../docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](../../../docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](../../../docs/perf/reactor-sweep-followup-findings.md).

@@ -38,6 +38,8 @@
 export {
   DocStructureObserver,
   docStructureKey,
+  docStructureStateSpec,
+  type PluginState as DocStructurePluginState,
   readDocStructure,
   readPendingDiff,
   resolveTouchedBlock,
