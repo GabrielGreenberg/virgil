@@ -15,17 +15,24 @@
  * `useViewPrefs` (`import type`), so there is no runtime import cycle
  * (`useViewPrefs` imports the runtime artifacts here, not vice-versa).
  */
-import type {
-  DividerLevel,
-  HighlightType,
-} from "@/hooks/useViewPrefs";
+import type { DividerLevel } from "@/hooks/useViewPrefs";
 import type { MarkerType } from "@/cards/types";
+// Runtime import of the HIGHLIGHT vocabulary, from the zero-import leaf it was
+// moved to (task 677) precisely so this module can read it without importing
+// `useViewPrefs` (which imports this one). It is the declared value DOMAIN of
+// `hiddenHighlightTypes`, and a domain that is not the live union is not a
+// validator.
+import {
+  ALL_HIGHLIGHT_TYPES,
+  type HighlightType,
+} from "@/lib/view-prefs/highlight-types";
 // Runtime import, and cycle-safe: `marker-meta` imports only the runtime-leaf
 // `card-registry` (itself type-only apart from the zero-import
 // `stack/card-kinds`), and nothing in that graph imports view-prefs. The
 // module header's "dependency-light" promise is about `useViewPrefs`, which
 // stays type-only.
 import {
+  ALL_MARKER_TYPES,
   HIDEABLE_MARKER_TYPES,
   type HideableMarkerType,
 } from "@/cards/marker-meta";
@@ -77,7 +84,22 @@ interface SetDef<E extends string | number> {
   kind: "set";
   scope: ViewPrefScope;
   default: readonly E[];
+  /** The MENU vocabulary: the members this pref renders a row for. NOT a
+   *  validator — see `domain`. */
   members: readonly E[];
+  /** The stored VALUE domain: every member a saved blob may legitimately
+   *  carry. Defaults to `members` when omitted, which is right only where the
+   *  two coincide (`dividerLevels`).
+   *
+   *  They are two different jobs, and conflating them silently deletes live
+   *  state. `hiddenMarginaliaTypes` may legitimately hold the `error` marker
+   *  type, which is deliberately NOT hideable and so absent from `members`
+   *  (`NON_HIDEABLE_MARKER_TYPES`); `hiddenHighlightTypes` may hold `report`,
+   *  which the menu likewise does not render. Validating either against
+   *  `members` would drop exactly those — which is why
+   *  `toggleViewPrefMember` refuses to validate against `members` at all.
+   *  `coerceRegistryPrefs` reads THIS. */
+  domain?: readonly E[];
   polarity: "present" | "hidden";
   label: string;
   menu?: ViewPrefMenuGroup;
@@ -141,11 +163,13 @@ export const VIEW_PREF_REGISTRY = {
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarkerType[], members: HIDEABLE_MARKER_TYPES,
+                          domain: ALL_MARKER_TYPES,
                           polarity: "hidden", label: "Marginalia types", menu: "marginalia",
                           memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
   hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
+                          domain: ALL_HIGHLIGHT_TYPES,
                           polarity: "hidden", label: "Highlight types", menu: "highlights",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
   // Dividers
@@ -241,4 +265,55 @@ export function toggleRowsInMenuGroup(
       const def = d as ToggleDef;
       return { key: key as ToggleViewPrefKey, id: def.menuRowId, label: def.label };
     });
+}
+
+/* ── Value coercion: the registry as a VALIDATOR (task 677) ────────────── */
+
+/**
+ * Coerce a raw stored slice's registry-owned fields to their declared domains.
+ *
+ * WHY. `VIEW_PREF_REGISTRY` declares each pref's `kind`, its `values` (enums)
+ * and its `domain` (sets) — and until this function existed, nothing read any
+ * of them at load. A stored blob could carry `dividerWidth: "gigantic"` or
+ * `showMarginalia: "yes"` and the app adopted it verbatim, then re-persisted
+ * it as its own. The rare path validated (the legacy standalone
+ * `virgil-divider-width` key did check its three spellings); the common path
+ * trusted. "A registry earns its name by being read" — AGENTS.md.
+ *
+ * WHAT. Only keys PRESENT in `slice` are answered for, so the caller keeps
+ * ownership of "absent means default": `loadPrefs` fills from `DEFAULT_PREFS`,
+ * `normalizeGlobalSlice` from `REGISTRY_DEFAULTS`.
+ *
+ *  - `toggle` → must be a `boolean`, else the registry default.
+ *  - `enum`   → must be one of `values`, else the registry default.
+ *  - `set`    → must be an array, filtered to `domain ?? members`; a non-array
+ *               falls back to a fresh copy of the registry default.
+ *
+ * A `set` is FILTERED rather than reset because it is a list of independent
+ * answers: one unrecognised member must not cost the user the others. A
+ * toggle or enum has one answer, so an unrecognised one leaves nothing to keep.
+ */
+export function coerceRegistryPrefs(
+  slice: Record<string, unknown>,
+): Partial<RegistryPrefs> {
+  const out: Record<string, unknown> = {};
+  for (const key of VIEW_PREF_KEYS) {
+    if (!(key in slice)) continue;
+    const def = VIEW_PREF_REGISTRY[key] as ViewPrefDef;
+    const raw = slice[key];
+    if (def.kind === "toggle") {
+      out[key] = typeof raw === "boolean" ? raw : def.default;
+    } else if (def.kind === "enum") {
+      out[key] =
+        typeof raw === "string" && (def.values as readonly string[]).includes(raw)
+          ? raw
+          : def.default;
+    } else {
+      const allowed = new Set<unknown>(def.domain ?? def.members);
+      out[key] = Array.isArray(raw)
+        ? raw.filter((m) => allowed.has(m))
+        : [...def.default];
+    }
+  }
+  return out as Partial<RegistryPrefs>;
 }

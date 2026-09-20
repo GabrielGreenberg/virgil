@@ -4884,3 +4884,46 @@ Reader, compressed split, toggle off} with BOTH gates asserted per cell;
 `EditorPane` holds exactly one `resolveMarginaliaLane(` call and each gate reads
 one half; and a docstring census that nothing still claims the Reader hides
 markers or spells `no menuBar` to mean "the Reader".
+
+---
+
+## The value-domain half (task 677)
+
+> **A registry that declares a pref's legal VALUES is a validator only if the
+> load path asks it. And `members` — the vocabulary a menu RENDERS — is not
+> that validator.**
+
+`VIEW_PREF_REGISTRY` has always declared `values` for its enums and `members`
+for its sets, and until task 677 nothing read either at load. A stored blob
+could carry `dividerWidth: "gigantic"` or `showMarginalia: "yes"` and the app
+adopted it verbatim, then re-persisted it. The app validated the RARE path and
+trusted the common one: the legacy standalone `virgil-divider-width` key did
+check its three spellings.
+
+The trap in fixing it is the one the registry itself warns about: a naive
+`members` filter is WRONG. `members` is the MENU vocabulary — the rows the
+View menu draws — and a stored set may legitimately hold members the menu does
+not render (`hiddenMarginaliaTypes` may hold `error`, which is deliberately
+not hideable; `hiddenHighlightTypes` may hold `report`). Validating against
+`members` silently deletes exactly those, which is why
+`toggleViewPrefMember` refuses to validate against it at all.
+
+So `SetDef` gained a separate optional `domain` — the stored VALUE domain,
+pointed at the live union (`ALL_MARKER_TYPES`, `ALL_HIGHLIGHT_TYPES`), falling
+back to `members` only where the two coincide (`dividerLevels`) — and
+[`coerceRegistryPrefs`](../../../src/lib/view-prefs/registry.ts) reads it:
+toggles must be boolean, enums must be in `values`, sets are FILTERED to
+`domain ?? members`. A set is filtered rather than reset because it is a list
+of independent answers — one unrecognised member must not cost the user the
+others; a toggle or enum has one answer, so an unrecognised one leaves nothing
+to keep.
+
+Reading the live union at runtime meant the highlight vocabulary had to leave
+`useViewPrefs` (which imports the registry) for the zero-import leaf
+[`view-prefs/highlight-types.ts`](../../../src/lib/view-prefs/highlight-types.ts),
+re-exported from its old home. The alternative was a hand copy of the union
+inside the registry — the fourth-hand-list shape task 672 deleted one field
+over.
+
+CI: [view-prefs-peer-sync-normalization.test.tsx](../../../src/hooks/__tests__/view-prefs-peer-sync-normalization.test.tsx)
+(the domain legs, including the two `members`-would-have-dropped-it cases).
