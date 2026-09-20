@@ -291,6 +291,11 @@ const DEFAULT_TRACK_WIDTH_PX = 20;
  *  globals.css. See {@link resolveChevronColumnRight}. */
 const DEFAULT_CHEVRON_OFFSET_PX = -44;
 const DEFAULT_CHEVRON_WIDTH_PX = 14;
+/** Em base a caller that supplies none falls back to — the editor's nominal
+ *  font-size. Unused while both chevron tokens are px literals; it exists so a
+ *  direct caller (the hover-zone suite) need not invent a font for a token
+ *  whose shipped spelling has no em rung. */
+const DEFAULT_CHEVRON_EM_BASE_PX = 16;
 
 /** Document-root font-size in px — the base a `rem`-authored token resolves
  *  against (CSS `rem` = root em). Falls back to the editor's nominal 16px when
@@ -302,38 +307,83 @@ function rootFontSizePx(): number {
 }
 
 /**
- * Resolve a margin length custom property to px. The tokens are authored in `em`
+ * Which values a given `--margin-*` token may legitimately take. It is a
+ * property OF THE TOKEN, not of the rung its author happened to write it on,
+ * which is why it is a parameter rather than a hardcoded guard:
+ *
+ * - `"positive"` — a DISTANCE (a gap, a width, an inset). Zero or negative is
+ *   not a narrow distance, it is an unreadable token, so it falls back.
+ * - `"signed"` — an OFFSET from an origin, which is meaningfully negative.
+ *   `--margin-col-chevron` is authored `-44px` (leftward of the block's own
+ *   left edge); only `NaN` is unreadable there.
+ *
+ * Stated once and applied on EVERY rung (px, em, rem). Before task 661 the
+ * `> 0` test lived on the px rung alone, so a negative `em` factor sailed
+ * through on a positive-only token while a negative px fell back — one token,
+ * two policies, decided by its spelling. That fork is what sent
+ * `--margin-col-chevron` to a second hand-parse in the first place.
+ */
+export type MarginTokenSign = "positive" | "signed";
+
+/**
+ * Resolve a margin length custom property to px — the ONE interpreter for every
+ * `--margin-*` token (task 661). The tokens are authored in `em`
  * (`--margin-handle-gap` / `--margin-track-width`) so they scale with the labeled
  * text; `getComputedStyle` does NOT resolve a custom property's `em` to px (it
  * returns the literal "0.625em"), so we resolve it here against the block's own
  * `font-size`. A `rem` token resolves against the DOCUMENT-ROOT font-size instead
  * (CSS semantics) — and MUST be matched before the `em` branch, since
  * `"1.25rem".endsWith("em")` is `true` and would otherwise mis-scale a rem token
- * against the block font-size. A px value passes through (forward-compat). O(1) —
- * reads an already-fetched computed style (+ one root read only for the rem path).
+ * against the block font-size. A px value passes through. O(1) — reads an
+ * already-fetched computed style (+ one root read only for the rem path).
+ *
+ * The RESOLVED px is what `sign` validates, not the authored factor: the number
+ * the caller is about to use is the number that has to be legal.
+ *
+ * Every reader of a `--margin-*` token comes through this door, so a token's
+ * SPELLING is a free variable — `globals.css` can move `--margin-col-handle-inset`
+ * from `22px` to `1.375em` without a code change. A hand `parseFloat` cannot say
+ * that: it returns `1.375` for `"1.375em"`, which passes a `> 0` guard and
+ * silently collapses the distance to a rounding error (task 661 — that number is
+ * the grab-handle placement FLOOR *and* the left edge of the hover zone that
+ * reveals the handle, so both land on top of the prose).
  *
  * Exported for the geometry-SSOT interpreter-hardening regression test (it asserts
  * a `rem` token resolves against root font-size, not the block font-size — the same
- * "for-test" export convention as {@link resolveMarkerGeometry}). Otherwise an internal
- * of `resolveBlockFrame`.
+ * "for-test" export convention as {@link resolveMarkerGeometry}).
  */
 export function resolveMarginEm(
   cs: CSSStyleDeclaration,
   fontSizePx: number,
   varName: string,
   fallbackPx: number,
+  sign: MarginTokenSign = "positive",
 ): number {
+  const legal = (px: number) =>
+    Number.isFinite(px) && (sign === "signed" || px > 0);
   const raw = cs.getPropertyValue(varName).trim();
   if (raw.endsWith("rem")) {
-    const factor = parseFloat(raw);
-    return Number.isFinite(factor) ? factor * rootFontSizePx() : fallbackPx;
+    const px = parseFloat(raw) * rootFontSizePx();
+    return legal(px) ? px : fallbackPx;
   }
   if (raw.endsWith("em")) {
-    const factor = parseFloat(raw);
-    return Number.isFinite(factor) ? factor * fontSizePx : fallbackPx;
+    const px = parseFloat(raw) * fontSizePx;
+    return legal(px) ? px : fallbackPx;
   }
   const px = parseFloat(raw);
-  return Number.isFinite(px) && px > 0 ? px : fallbackPx;
+  return legal(px) ? px : fallbackPx;
+}
+
+/**
+ * Does this row reserve a fold-chevron column? The ONE membership test over
+ * {@link FOLD_CHEVRON_NODE_TYPES} — written here so the caller that decides
+ * whether to MEASURE and the resolver that decides what to RETURN cannot come
+ * to different answers (task 662: the test was spelled out at both, and the
+ * outer copy was the kind that drifts). The type predicate is what lets the
+ * caller gate its rect read without re-asking.
+ */
+export function reservesChevronColumn(kind: string | null): kind is string {
+  return kind !== null && FOLD_CHEVRON_NODE_TYPES.has(kind);
 }
 
 /**
@@ -341,12 +391,22 @@ export function resolveMarginEm(
  * row — the left margin's outboard occupant (task 526) — or `null` when the
  * row's kind renders no chevron.
  *
- * Deliberately NOT {@link resolveMarginEm}: that resolver treats a
- * non-positive px value as unreadable and falls back, and
- * `--margin-col-chevron` is authored NEGATIVE (a CSS-negative offset from the
- * block's own left edge). Both tokens are px literals, so no em/rem rung is
- * needed here; a future em spelling would want the shared resolver's ladder
- * and a signed px branch, not a second copy of it.
+ * Both tokens go through {@link resolveMarginEm} like every other `--margin-*`
+ * length (task 661). `--margin-col-chevron` is an OFFSET, authored NEGATIVE (a
+ * CSS-negative distance from the block's own left edge), so it asks for
+ * `"signed"`; `--margin-col-chevron-width` is a distance and stays
+ * `"positive"`. That sign difference used to be the whole argument for a second
+ * hand-parse here — it is now a parameter of the shared interpreter, which also
+ * buys these two tokens the em/rem ladder they never had.
+ *
+ * `cs` and `blockLeft` MUST come from the SAME element. The offset is measured
+ * from the block's own border-box left, so a per-block override of either token
+ * has to be read off that block — not off a descendant that merely inherits it.
+ * {@link resolveBlockFrame} honors this by reading the block's own style on the
+ * one kind where the frame's text `target` is a descendant (`heading`), and
+ * reusing the style it already holds on the kinds where `target === el`
+ * (`texBlock` / `forestBlock`), so the extra read is paid only where the
+ * elements actually differ.
  *
  * `blockLeft` is the block's own border-box left, which is the origin the two
  * chevron renderers position against (see {@link BlockFrame.chevronRight}).
@@ -355,19 +415,22 @@ export function resolveChevronColumnRight(
   cs: CSSStyleDeclaration,
   kind: string | null,
   blockLeft: number,
+  fontSizePx: number = DEFAULT_CHEVRON_EM_BASE_PX,
 ): number | null {
-  if (kind === null || !FOLD_CHEVRON_NODE_TYPES.has(kind)) return null;
-  const rawOffset = parseFloat(cs.getPropertyValue("--margin-col-chevron"));
-  const offset = Number.isFinite(rawOffset)
-    ? rawOffset
-    : DEFAULT_CHEVRON_OFFSET_PX;
-  const rawWidth = parseFloat(
-    cs.getPropertyValue("--margin-col-chevron-width"),
+  if (!reservesChevronColumn(kind)) return null;
+  const offset = resolveMarginEm(
+    cs,
+    fontSizePx,
+    "--margin-col-chevron",
+    DEFAULT_CHEVRON_OFFSET_PX,
+    "signed",
   );
-  const width =
-    Number.isFinite(rawWidth) && rawWidth > 0
-      ? rawWidth
-      : DEFAULT_CHEVRON_WIDTH_PX;
+  const width = resolveMarginEm(
+    cs,
+    fontSizePx,
+    "--margin-col-chevron-width",
+    DEFAULT_CHEVRON_WIDTH_PX,
+  );
   return blockLeft + offset + width;
 }
 
@@ -784,11 +847,21 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
   // ---- The target's computed style: read ONCE, used twice ----
   // Both the vertical axis (via `capBandCenterOffset`'s font metrics) and the
   // em margin tokens below read `target`'s computed style. Reading it here and
-  // threading it into the metrics primitive halves this resolve's
-  // computed-style count for EVERY block kind (task 336; before the fix the
+  // threading it into the metrics primitive saves this resolve ONE
+  // computed-style read on every block kind (task 336; before the fix the
   // optical-center line issued its own `getComputedStyle` on the same element
-  // one line above the read below).
+  // one line above the read below). It does not make the resolve's total ONE:
+  // a list kind pays a second read inside `listBandGeometry` (the list box's
+  // own style), and a heading pays one for the block element below.
   const cs = getComputedStyle(target);
+  // Does the frame's text target descend below the block element? For a source
+  // pod (`texBlock` / `forestBlock`) and for the bare-`<li>` fallback shapes,
+  // `resolveFirstLineTarget` finds no wrapper to descend and answers `el`
+  // itself — in which case `el`'s border box has ALREADY been measured (it IS
+  // `firstLineRect`) and its computed style is ALREADY in hand. Asked once,
+  // here, so the chevron branch below can reuse both instead of re-taking them
+  // (task 662: `el` was measured twice per resolve on every pod hover).
+  const targetIsBlock = target === el;
 
   // ---- Vertical axis (chip 1) ----
   // Composed from the shared `capBandCenterOffset` primitive (one
@@ -823,14 +896,31 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
     contentLeft,
     trackWidthPx,
   );
-  // Task 526 — the margin's outboard occupant. The rect read is paid ONLY on a
-  // chevron-bearing row (the kind gate answers first), so a prose hover costs
-  // nothing; `el` is the `[data-uuid]` block element, which for both renderers
-  // is the chevron's positioning origin.
-  const chevronRight =
-    kind !== null && FOLD_CHEVRON_NODE_TYPES.has(kind)
-      ? resolveChevronColumnRight(cs, kind, el.getBoundingClientRect().left)
-      : null;
+  // Task 526 — the margin's outboard occupant. `el` is the `[data-uuid]` block
+  // element, which for both renderers is the chevron's positioning origin, so
+  // the offset's ORIGIN and the style the offset is read from must both be
+  // `el`'s (task 662). On a source pod they already are — `targetIsBlock`, so
+  // the rect is `firstLineRect` and the style is `cs`, and the branch costs
+  // NOTHING beyond the arithmetic. Only a heading (whose target is the inner
+  // `<hN>` inside `.heading-wrapper`) pays the extra rect + style, and only
+  // because for a heading they are genuinely different boxes. Gated by the one
+  // membership predicate, so a prose hover still pays neither.
+  let chevronRight: number | null = null;
+  if (reservesChevronColumn(kind)) {
+    const blockCs = targetIsBlock ? cs : getComputedStyle(el);
+    const blockLeft = targetIsBlock
+      ? firstLineRect.left
+      : el.getBoundingClientRect().left;
+    chevronRight = resolveChevronColumnRight(
+      blockCs,
+      kind,
+      blockLeft,
+      // The em base comes from the SAME element as the style and the origin —
+      // `el`'s font, never the heading's inner display font. A gutter column
+      // shared by every row cannot scale with one row's type size.
+      parseFloat(blockCs.fontSize) || DEFAULT_CHEVRON_EM_BASE_PX,
+    );
+  }
 
   return {
     el,

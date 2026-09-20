@@ -1723,3 +1723,90 @@ level and no layout read.
 doc, put a card on a bulleted list and on a `%` comment and confirm both markers
 sit where their grab handles do; make a pending change inside a nested list and
 confirm the pill clears the handle at two font-size notches.
+
+### The one-interpreter half: a token's SPELLING is the stylesheet's business, not the reader's (tasks 661, 662)
+
+> **Every `--margin-*` length is resolved by ONE function —
+> `resolveMarginEm` (`src/text-objects/block-frame.ts`) — which knows the px /
+> em / rem ladder and takes the token's SIGN POLICY as an argument.** No caller
+> may hand-`parseFloat` a margin custom property. And wherever a resolve reads
+> a token whose geometry is relative to an element, the STYLE, the ORIGIN and
+> the em BASE all come from that same element.
+
+`getComputedStyle` does not resolve a custom property's `em`: it returns the
+literal `"1.375em"`. That is the whole hazard, and it is a SILENT one —
+`parseFloat("1.375em")` is `1.375`, a finite positive number that passes every
+naive guard, so a token re-authored in `em` does not throw, does not fall back,
+and does not read as wrong anywhere. It just collapses to a rounding error.
+
+Two readers had drifted out from under the shared door, each for a reason that
+looked local and sufficient:
+
+- **`viewport-frame.ts` never came through it at all.** It hand-parsed
+  `--margin-col-handle-inset`, correct only because the token happens to be
+  authored `22px` — three lines below two siblings (`--margin-handle-gap`,
+  `--margin-track-width`) authored in `em` precisely because margin distances
+  should scale with the labeled text, and inside a comment block presenting all
+  of them as one coordinate system. That number is read by exactly two
+  consumers and they are the two that matter most: `handleLaneFloor` (task 526)
+  makes it BOTH the grab handle's placement floor AND the left edge of the
+  hover zone that reveals the handle. An `em` spelling would clamp handles onto
+  the prose *and* make the strip that keeps them alive vanish as the user
+  reached for one — from a stylesheet edit, with no code change to blame.
+- **`resolveChevronColumnRight` kept a second copy on purpose**, and its
+  docstring argued the exemption honestly: the shared resolver rejects
+  non-positive px, and `--margin-col-chevron` is authored NEGATIVE. But that
+  was never a fact about the token — it was a missing parameter. The `> 0` test
+  lived on the px rung ALONE, so a negative `em` factor sailed through on a
+  distance token while a negative px fell back: **one token, two policies,
+  decided by its spelling.** Lifting the sign to a stated `MarginTokenSign`
+  applied on every rung retires the fork and the exemption together, and the
+  two chevron tokens gain the em/rem ladder they never had. The exemption's own
+  docstring had named this as the right eventual move.
+
+The shape to look for: *an exemption argued at its door in terms of a
+limitation of the shared door*. That is a feature request on the shared door,
+not a reason for a second one — and while it stands, the next reader written
+somewhere else (here, `viewport-frame.ts`) copies the hand-parse without ever
+reading the argument.
+
+**Provenance (task 662).** `resolveBlockFrame` handed the chevron resolver the
+TARGET's computed style while taking the offset's ORIGIN from `el`'s rect. Same
+element for a source pod (`texBlock` / `forestBlock` — the `[data-uuid]` node
+DOM is the `.react-renderer` wrapper, which matches no descent branch, so
+`target === el`), different elements for a heading (`.heading-wrapper` vs the
+inner `<hN>`). It worked only because the shipped tokens are `:root` px
+literals and custom properties inherit — a fact about the stylesheet, not a
+contract the function stated. Now the style, the origin and the em base are
+taken from one element, and the extra read is paid ONLY where the boxes
+genuinely differ: a pod reuses the `cs` and `firstLineRect` the frame already
+holds. That also retires a real duplicate — `el` was measured twice per
+resolve, on the hover/scroll/RAF placement path, on every pod hover, in the
+module whose header sells it as the resolve that stopped affordances measuring
+independently. The em base is deliberately `el`'s font and never the heading's
+inner display font: a gutter column shared by every row cannot scale with one
+row's type size.
+
+Membership in `FOLD_CHEVRON_NODE_TYPES` was also stated twice — the caller's
+gate and the resolver's own guard. It is now one predicate,
+`reservesChevronColumn`, called by both, so the caller can still skip its rect
+read without re-asking. (A duplicated *test* is the kind that drifts; the SET
+was never duplicated — it lives in `node-attr-sets.ts`.)
+
+**Teeth.** `resolve-margin-em.test.ts` gains the sign-policy legs (non-positive
+is unreadable on EVERY rung by default; `"signed"` admits a negative offset on
+every rung; `NaN` is still unreadable either way) and the chevron-through-the-
+door legs including an `em` spelling of both chevron tokens.
+`viewport-frame.test.ts` gains the `1.375em` leg the finding names, asserting
+`marginInset` is `1.375 × fontSize` and explicitly **not** `1.375`, plus the
+lane edge that follows from it. `block-frame-chevron-read-budget.test.ts`
+counts rect reads PER ELEMENT (the convention `grab-handle-typing-cost.test.tsx`
+set) for both pod kinds, for a heading, and for a chevron-less row, and pins the
+provenance with an override on the `<h2>` that must NOT move the column. Five
+of those legs fail against the reverted source; the two that pass pre-fix are
+labelled NETS in the file rather than presented as the proof. Cost: strictly
+fewer DOM reads than before — one fewer rect on every source-pod hover, none
+added anywhere.
+
+**Not owed:** no preview eyeball. The shipped token values are unchanged, so
+every number this produces today is identical; the legs are the proof.

@@ -2730,6 +2730,21 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
   the shipped defaults every `\section` heading's hit target already reached
   ~7px outside the strip that keeps the handle alive — and hovering it made
   the handle vanish.
+
+**Every one of these tokens is read through ONE interpreter** —
+`resolveMarginEm` in
+[src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) — which
+knows the px / em / rem ladder and takes the token's SIGN POLICY as an argument
+(`"signed"` for the chevron OFFSET, which is legitimately negative;
+`"positive"` for every distance). So a token's **spelling is a free variable**:
+re-author `--margin-col-handle-inset` as `1.375em` and the JS follows, no code
+change. Never hand-`parseFloat` a `--margin-*` property — `getComputedStyle`
+returns the LITERAL `"1.375em"` and `parseFloat` answers `1.375`, a finite
+positive number that passes any `> 0` guard and silently collapses the distance
+(task 661). And where a token's geometry is relative to an element, read the
+style, the origin and the em base from that SAME element — not from a
+descendant that merely inherits it (task 662). Full doctrine:
+docs/agents/laws/editor-geometry.md → "The one-interpreter half".
 - `--margin-handle-gap` (default `0.625em`) — the **one uniform GAP** every
   margin affordance leaves between its RIGHT edge and its block's marker.
   em-based so it scales with the labeled text; resolved PER BLOCK in

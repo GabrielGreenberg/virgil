@@ -9,7 +9,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveMarginEm } from "@/text-objects/block-frame";
+import {
+  resolveChevronColumnRight,
+  resolveMarginEm,
+} from "@/text-objects/block-frame";
 
 /** A minimal computed-style stand-in returning a fixed token for any property. */
 function fakeCs(tokenValue: string): CSSStyleDeclaration {
@@ -64,5 +67,98 @@ describe("resolveMarginEm — em vs rem input domain", () => {
   it("falls back when the token is missing / unparseable", () => {
     expect(resolveMarginEm(fakeCs(""), 16, VAR, FALLBACK)).toBe(FALLBACK);
     expect(resolveMarginEm(fakeCs("junk"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+  });
+});
+
+/**
+ * Task 661 — the sign policy is a property OF THE TOKEN, stated once and
+ * applied on EVERY rung. Before, the `> 0` test lived on the px rung alone: a
+ * negative `em` factor sailed through on a distance token while a negative px
+ * fell back. One token, two policies, decided by its spelling — and that fork
+ * is exactly what sent `--margin-col-chevron` (legitimately negative) to a
+ * second hand-parse rather than through this door.
+ */
+describe("resolveMarginEm — sign policy", () => {
+  // The rem rung reads the live root font-size; pin it ≠ the block font-size
+  // below so a rem leg is about the ROOT, not about 16 twice.
+  let priorRootFontSize: string;
+  beforeEach(() => {
+    priorRootFontSize = document.documentElement.style.fontSize;
+    document.documentElement.style.fontSize = `${ROOT_FONT_SIZE}px`;
+  });
+  afterEach(() => {
+    document.documentElement.style.fontSize = priorRootFontSize;
+  });
+
+  it('defaults to "positive": a non-positive value is unreadable on EVERY rung', () => {
+    expect(resolveMarginEm(fakeCs("-18px"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+    expect(resolveMarginEm(fakeCs("0px"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+    // The rung that used to leak: a negative em resolved to a negative px.
+    expect(resolveMarginEm(fakeCs("-1.25em"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+    expect(resolveMarginEm(fakeCs("-1.25rem"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+  });
+
+  it('"signed" admits a negative OFFSET — on every rung, not just px', () => {
+    expect(resolveMarginEm(fakeCs("-44px"), 16, VAR, FALLBACK, "signed")).toBeCloseTo(-44, 5);
+    expect(
+      resolveMarginEm(fakeCs("-2.75em"), 16, VAR, FALLBACK, "signed"),
+    ).toBeCloseTo(-44, 5);
+    expect(
+      resolveMarginEm(fakeCs("-2.2rem"), 16, VAR, FALLBACK, "signed"),
+    ).toBeCloseTo(-2.2 * ROOT_FONT_SIZE, 5);
+  });
+
+  it('"signed" still rejects an UNREADABLE token (NaN is not a sign question)', () => {
+    expect(resolveMarginEm(fakeCs("junk"), 16, VAR, FALLBACK, "signed")).toBe(FALLBACK);
+    expect(resolveMarginEm(fakeCs(""), 16, VAR, FALLBACK, "signed")).toBe(FALLBACK);
+  });
+});
+
+/**
+ * The chevron column's two tokens now come through the SAME door (task 661) —
+ * the last `--margin-*` hand-parse in `block-frame.ts`. Its own docstring named
+ * this as the right eventual move: the exemption it argued for was never "these
+ * tokens are different", it was "the shared resolver has no signed rung".
+ */
+describe("resolveChevronColumnRight — through the one interpreter", () => {
+  /** Distinct values per property, so a leg can tell which rung ran. */
+  function tokenCs(map: Record<string, string>): CSSStyleDeclaration {
+    return {
+      getPropertyValue: (name: string) => map[name] ?? "",
+      fontSize: "16px",
+    } as unknown as CSSStyleDeclaration;
+  }
+
+  it("resolves the shipped px literals exactly as before", () => {
+    const cs = tokenCs({
+      "--margin-col-chevron": "-44px",
+      "--margin-col-chevron-width": "14px",
+    });
+    expect(resolveChevronColumnRight(cs, "heading", 200)).toBeCloseTo(170, 5);
+  });
+
+  it("now resolves an `em` spelling of either token (the ladder it never had)", () => {
+    const cs = tokenCs({
+      "--margin-col-chevron": "-2.75em",
+      "--margin-col-chevron-width": "0.875em",
+    });
+    // Hand-parsed, these were -2.75 and 0.875 — a 14px column at 186.125
+    // instead of the 170 the stylesheet asked for.
+    expect(resolveChevronColumnRight(cs, "heading", 200, 16)).toBeCloseTo(170, 5);
+  });
+
+  it("falls back per token: the offset keeps its sign, the width its floor", () => {
+    const cs = tokenCs({
+      "--margin-col-chevron": "junk",
+      "--margin-col-chevron-width": "-9px", // a negative WIDTH is unreadable
+    });
+    // DEFAULT_CHEVRON_OFFSET_PX (-44) + DEFAULT_CHEVRON_WIDTH_PX (14).
+    expect(resolveChevronColumnRight(cs, "heading", 200)).toBeCloseTo(170, 5);
+  });
+
+  it("answers null for a kind that reserves no column", () => {
+    const cs = tokenCs({ "--margin-col-chevron": "-44px" });
+    expect(resolveChevronColumnRight(cs, "paragraph", 200)).toBeNull();
+    expect(resolveChevronColumnRight(cs, null, 200)).toBeNull();
   });
 });
