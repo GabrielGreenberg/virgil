@@ -505,6 +505,11 @@ const MARKER_TRAIL_EM = 0.25;
  * authors exactly `disc` and `decimal`; any other counter style (including
  * `decimal-leading-zero`, whose padded form this deliberately does not model)
  * falls through to the conservative answer.
+ *
+ * `list` is the real `<ul>`/`<ol>` — {@link listBoxOf} guarantees it, and the
+ * `decimal` branch depends on that: handed a `.list-title-wrapper` it would
+ * read `start` off a `<div>` (`NaN` → 1) and count the par-title annotation
+ * as a row (task 659).
  */
 function markerProbeText(type: string, list: HTMLElement): string | null {
   if (type === "disc" || type === "circle" || type === "square") {
@@ -548,6 +553,38 @@ function measuredMarkerInkLeft(
 }
 
 /**
+ * The LIST BOX of a list block — the `<ul>`/`<ol>` element whose own CSS
+ * carries the two facts a marker band is made of: the band width
+ * (`padding-left`) and the counter style (`list-style-type`).
+ *
+ * It is **not** always the `[data-uuid]` element, and that gap is why this
+ * function exists. A NESTED list's NodeView is the bare `<ul>`/`<ol>` with the
+ * uuid/kind stamped straight onto it, so block box and list box coincide. A
+ * TOP-LEVEL list's NodeView (`createListTitleNodeView`) wraps the list in a
+ * `.list-title-wrapper` div — it has to, to host the par-title annotation above
+ * it — and stamps the uuid/kind on that WRAPPER. The wrapper carries neither
+ * fact: its `padding-left` is `0`, and `list-style-type` falls back to the
+ * inherited initial `disc`, because `.tiptap ol { list-style-type: decimal }`
+ * matches the `<ol>` alone. Reading the band off the wrapper therefore answered
+ * "a 0px band around a bullet" for every top-level NUMBERED list — the ink
+ * boundary landed ~16px RIGHT of the real counter glyph, i.e. wrong in the
+ * unsafe direction, with the task-382 guard ("chrome never paints on the ink it
+ * labels") switched off for the most common list in an academic paper.
+ *
+ * `text-metrics.ts` has known this since its `.list-title-wrapper` branch
+ * (`resolveInlineContextElement`); this module did not. Task 660 is the
+ * vertical-axis half of the same wrapper-vs-semantic-element gap.
+ *
+ * Two cheap DOM reads, no layout and no computed style: `matches()` plus one
+ * child-scoped `querySelector`. The hover/placement path's read budget is
+ * unchanged.
+ */
+function listBoxOf(el: HTMLElement): HTMLElement | null {
+  if (el.matches("ul, ol")) return el;
+  return el.querySelector<HTMLElement>(":scope > ul, :scope > ol");
+}
+
+/**
  * The marker-band geometry for a list row, given the list element and the
  * item's measured left edge. The ANCHOR and the INK are ONE number here: the
  * left edge of where the row's marker string actually starts.
@@ -574,8 +611,28 @@ function measuredMarkerInkLeft(
  * ONE `getComputedStyle` for the list (padding, counter style and font all read
  * from it) — the same single read this had before task 382, so the hover
  * placement path's cost class is unchanged.
+ *
+ * Takes the BLOCK element and resolves its LIST BOX itself
+ * ({@link listBoxOf}) rather than trusting a caller to hand one over. That is
+ * the whole of task 659: the container branch handed it the `[data-uuid]`
+ * element, which for a top-level list is the `.list-title-wrapper` and not the
+ * list. Asking the question here means no caller — including a third one added
+ * later — can answer it differently, which is the only version of this
+ * invariant that is structural rather than remembered.
  */
-function listBandGeometry(list: HTMLElement, liLeft: number): MarkerGeometry {
+function listBandGeometry(el: HTMLElement, liLeft: number): MarkerGeometry {
+  const list = listBoxOf(el);
+  // No list box under this block at all. Nothing here is evidence of a band:
+  // there is no `padding-left` to read and no counter style to model, so the
+  // honest ink is the item's own content edge — the same answer
+  // `list-style-type: none` gets below, and for the same reason (nothing
+  // renders left of the text). Unreachable through either production caller
+  // (the `listItem` branch arrives via `closest("ul, ol")`, the container
+  // branch via a list NodeView that always builds one); it is the floor that
+  // makes "the band is measured on the ul/ol" true by construction.
+  if (!list) {
+    return { markerLeft: liLeft, inkLeft: liLeft, columnRight: null };
+  }
   const cs = getComputedStyle(list);
   const padLeft = parseFloat(cs.paddingLeft) || 0;
   const bandMiddle = liLeft - padLeft / 2;
@@ -689,10 +746,22 @@ export function resolveMarkerGeometry(
       //
       // Its INK boundary is its first item's marker: they share the row, so
       // they share the line neither may cross.
-      const listLeft = el.getBoundingClientRect().left;
+      //
+      // TWO ROLES, deliberately named apart (task 659). `blockLeft` is the
+      // BLOCK BOX — this `[data-uuid]` element's own border box, the thing the
+      // handle is placed beside. The band below is measured on the LIST BOX,
+      // the `<ul>`/`<ol>` that actually carries `padding-left` and
+      // `list-style-type` ({@link listBoxOf}), which for a TOP-LEVEL list is a
+      // child of the block box rather than the block box itself. The two
+      // numbers happen to coincide — `.list-title-wrapper` has no horizontal
+      // padding, border or margin, so its left IS its `<ol>`'s — but they are
+      // different questions, and merging them back is exactly how the band came
+      // to be measured on a div.
+      const blockLeft = el.getBoundingClientRect().left;
       const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
-      // `el` IS the list, so the band resolves with no `closest()` walk and ONE
-      // rect read for the child (task 336 — the pre-fix line read it twice).
+      // ONE rect read for the child (task 336 — the pre-fix line read it
+      // twice); the list box resolves with no `closest()` walk and no extra
+      // layout read.
       const inkLeft = child
         ? listBandGeometry(el, child.getBoundingClientRect().left).inkLeft
         : contentLeft;
@@ -700,9 +769,9 @@ export function resolveMarkerGeometry(
         // Used only when there is no column to occupy (below): the list then
         // reads as an ordinary markerless block whose content edge is its own
         // left, so its handle takes the same gutter slot every paragraph takes.
-        markerLeft: listLeft,
+        markerLeft: blockLeft,
         inkLeft,
-        columnRight: parentMarkerColumnHost(el) ? listLeft : null,
+        columnRight: parentMarkerColumnHost(el) ? blockLeft : null,
       };
     }
     default:

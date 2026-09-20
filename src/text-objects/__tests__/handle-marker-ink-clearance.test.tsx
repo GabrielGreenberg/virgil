@@ -189,6 +189,68 @@ function buildList(
   return { list, items };
 }
 
+/**
+ * The REAL top-level list shape, as `createListTitleNodeView`
+ * (`src/lib/editor-extensions.ts`) renders it: the uuid/kind live on a
+ * `.list-title-wrapper` **div**, which hosts the par-title annotation and the
+ * `<ul>`/`<ol>`. The band (`padding-left`) and the counter (`list-style-type`)
+ * are on the LIST, not on the wrapper — the wrapper's padding is `0` and its
+ * `list-style-type` is the inherited initial `disc`, exactly as in the browser.
+ *
+ * `buildList` above stamps the kind on the `<ul>`/`<ol>` directly, which is the
+ * NESTED shape — and is why the top-level one had never been exercised (task
+ * 659). Do not collapse the two.
+ */
+function buildTopLevelList(
+  tag: "ul" | "ol",
+  padLeftPx: number,
+  fontSizePx: number,
+  itemCount = 1,
+  start?: number,
+): { wrapper: HTMLElement; list: HTMLElement; items: HTMLElement[] } {
+  const wrapper = document.createElement("div");
+  wrapper.className = "list-title-wrapper has-text";
+  wrapper.setAttribute("data-uuid", "list1");
+  wrapper.setAttribute("data-text-object-kind", tag === "ul" ? "bulletList" : "orderedList");
+  // The wrapper's own box: no horizontal padding, border or margin, so its left
+  // IS the list's — the block box and the list box coincide numerically and
+  // still answer different questions.
+  wrapper.style.paddingLeft = "0px";
+  wrapper.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
+
+  const annot = document.createElement("div");
+  annot.className = "par-title-annotation";
+  wrapper.appendChild(annot);
+
+  const list = document.createElement(tag);
+  list.style.paddingLeft = `${padLeftPx}px`;
+  list.style.fontSize = `${fontSizePx}px`;
+  list.style.listStyleType = tag === "ul" ? "disc" : "decimal";
+  if (start !== undefined) list.setAttribute("start", String(start));
+  list.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
+  wrapper.appendChild(list);
+
+  const liLeft = EDITOR_LEFT + padLeftPx;
+  const items: HTMLElement[] = [];
+  for (let i = 0; i < itemCount; i++) {
+    const li = document.createElement("li");
+    li.setAttribute("data-uuid", `li${i + 1}`);
+    li.setAttribute("data-text-object-kind", "listItem");
+    li.getBoundingClientRect = () => rect(ROW_TOP + i * 40, ROW_BOTTOM + i * 40, liLeft);
+    const para = document.createElement("p");
+    para.textContent = `item ${i + 1}`;
+    para.style.fontSize = `${fontSizePx}px`;
+    para.style.setProperty("--margin-handle-gap", `${GAP_EM}em`);
+    para.style.setProperty("--margin-track-width", `${TRACK_EM}em`);
+    para.getBoundingClientRect = () => rect(ROW_TOP + 2 + i * 40, ROW_BOTTOM - 2 + i * 40, liLeft);
+    li.appendChild(para);
+    list.appendChild(li);
+    items.push(li);
+  }
+  editorEl.appendChild(wrapper);
+  return { wrapper, list, items };
+}
+
 /** A bullet list nested `depth` levels deep, each level ONE item whose first
  *  child is its paragraph and whose second child is the next level's list —
  *  the schema's own shape. Every level's content edge is one marker band
@@ -780,6 +842,178 @@ describe("resolveMarkerGeometry — the anchor and the ink boundary", () => {
     const g = resolveMarkerGeometry(items[0], "listItem", EDITOR_LEFT + 38, 0);
     expect(g.inkLeft).toBe(g.markerLeft);
   });
+});
+
+describe("task 659 — a top-level list's band is on the LIST, not on the wrapper", () => {
+  // The whole finding: `block-frame.ts` assumed the `[data-uuid]` element is the
+  // element whose CSS carries the block's semantics. For a top-level list that
+  // element is `.list-title-wrapper` — `padding-left: 0`, `list-style-type`
+  // inherited `disc` — so the band was measured as a 0px band around a bullet,
+  // and a numbered list's `inkLeft` landed ~16px RIGHT of the real counter ink:
+  // wrong in the UNSAFE direction, with the task-382 guard switched off for the
+  // most common list in an academic paper.
+  //
+  // Every leg here drives the REAL NodeView shape (`buildTopLevelList`), and
+  // states its expectation as the NESTED list's answer for the same counter —
+  // "the same number it returns for the equivalent nested list" is the contract,
+  // and pinning it to a literal would let both sides drift together.
+  const BAND = 38;
+  const FS = 19;
+  const LI_LEFT = EDITOR_LEFT + BAND;
+
+  it("an ORDERED list: the ink is the `12.` counter, not a bullet", () => {
+    const { wrapper } = buildTopLevelList("ol", BAND, FS, 12);
+    const g = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    // The independent reality: where this fixture paints "12.".
+    expect(g.inkLeft).toBe(fixtureGlyphLeft(LI_LEFT, "12.", FS));
+    // …which is materially LEFT of the bullet the wrapper's own style claimed.
+    expect(g.inkLeft).toBeLessThan(fixtureGlyphLeft(LI_LEFT, "\u2022", FS));
+  });
+
+  it("…and it equals the equivalent NESTED list's answer, element for element", () => {
+    const { wrapper } = buildTopLevelList("ol", BAND, FS, 12);
+    const top = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    cleanup();
+    document.body.innerHTML = "";
+    buildEditor();
+    const { list } = buildList("ol", BAND, FS, 12);
+    const nested = resolveMarkerGeometry(list, "orderedList", LI_LEFT, 24);
+    expect(top.inkLeft).toBe(nested.inkLeft);
+    // The BLOCK box is a separate question and is unchanged: the wrapper has no
+    // horizontal padding or border, so its left is the list's.
+    expect(top.markerLeft).toBe(nested.markerLeft);
+    expect(top.columnRight).toBe(nested.columnRight);
+  });
+
+  it("a BULLET list agrees too — it was right only by luck", () => {
+    // The wrapper's inherited `list-style-type` HAPPENS to be `disc`, so this
+    // one matched before the fix. It matches now for a reason: the style is read
+    // off the `<ul>`. Its `padding-left` never matched, which is what the
+    // no-canvas leg below catches.
+    const { wrapper } = buildTopLevelList("ul", BAND, FS, 3);
+    const g = resolveMarkerGeometry(wrapper, "bulletList", LI_LEFT, 24);
+    expect(g.inkLeft).toBe(fixtureGlyphLeft(LI_LEFT, "\u2022", FS));
+  });
+
+  it("no canvas ⇒ the band MIDDLE, derived from the real 2.5em band (not from 0)", () => {
+    // Member 3. With `padLeft` read off the wrapper this collapsed to `liLeft`
+    // — the text edge itself — putting the ink boundary ON the prose.
+    vi.restoreAllMocks(); // drop the canvas stub: `measureTextWidth` has no opinion
+    clearCapTopCache();
+    const { wrapper } = buildTopLevelList("ol", BAND, FS, 12);
+    const g = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    expect(g.inkLeft).toBe(LI_LEFT - BAND / 2);
+    expect(g.inkLeft).toBeLessThan(LI_LEFT);
+  });
+
+  it("an un-modeled counter style assumes the WHOLE band — which needs the band", () => {
+    // Member 2. `liLeft - padLeftPx` is the conservative answer for a counter
+    // this build does not model; with `padLeft === 0` it collapsed to the
+    // item's own content edge, i.e. to no allowance at all.
+    const { wrapper, list } = buildTopLevelList("ol", BAND, FS, 3);
+    list.style.listStyleType = "lower-roman";
+    const g = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    expect(g.inkLeft).toBe(EDITOR_LEFT); // the band's left edge
+  });
+
+  it("the counter is read off the real `<ol>`: `start` and the item count both", () => {
+    // Member 4. Handed the wrapper, `markerProbeText`'s decimal branch read
+    // `start` off a `<div>` (`NaN` → 1) and counted `children.length === 2` —
+    // the par-title annotation plus the list. Masked only because the wrapper
+    // never computed `decimal` in the first place.
+    const { wrapper } = buildTopLevelList("ol", BAND, FS, 3, 5);
+    const g = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    expect(g.inkLeft).toBe(fixtureGlyphLeft(LI_LEFT, "7.", FS)); // start 5 + 3 items − 1
+  });
+
+  it("the ITEM's own answer was already right — and the container still shares it", () => {
+    // The `listItem` branch reaches the list through `closest("ul, ol")`, so it
+    // never saw the wrapper. The container sharing its first item's ink is the
+    // invariant that was BROKEN by the wrapper read, and it is restored here
+    // rather than merely asserted somewhere else.
+    const { wrapper, items } = buildTopLevelList("ol", BAND, FS, 12);
+    const item = resolveMarkerGeometry(items[0], "listItem", LI_LEFT, 0);
+    const container = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    expect(container.inkLeft).toBe(item.inkLeft);
+  });
+
+  it("a list box with no `<ul>`/`<ol>` under it claims no band at all", () => {
+    // The structural floor. Unreachable through either production caller; it is
+    // what makes "the band is measured on the ul/ol" true by construction
+    // rather than by every caller remembering to resolve one.
+    const bare = document.createElement("div");
+    bare.setAttribute("data-uuid", "list1");
+    bare.setAttribute("data-text-object-kind", "orderedList");
+    bare.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
+    const li = document.createElement("li");
+    li.setAttribute("data-uuid", "li1");
+    li.setAttribute("data-text-object-kind", "listItem");
+    li.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, LI_LEFT);
+    bare.appendChild(li);
+    editorEl.appendChild(bare);
+    const g = resolveMarkerGeometry(bare, "orderedList", LI_LEFT, 24);
+    expect(g.inkLeft).toBe(LI_LEFT);
+  });
+
+  it("the CAP the guard is made of clears the real counter — the bound itself", () => {
+    // Where the fix actually shows. `applySameRowSeparation` never pushes a
+    // TOP-LEVEL container inboard — the 425 hover set is [item, list] and the
+    // list is the OUTER of the two, so only the item is pushed, and the item's
+    // own lane was always right (`closest("ul, ol")` never saw the wrapper).
+    // The defect on this shape is therefore a BOUND STATED WRONGLY rather than
+    // a handle currently painted on a counter: the container's `maxLeft` sat
+    // ~16px right of where "12." begins, i.e. it permitted exactly what task
+    // 382 forbids. Asserting it here says so at the level the guard lives at,
+    // instead of asserting a composed position that happens not to reach it.
+    const { wrapper, items } = buildTopLevelList("ol", BAND, FS, 12);
+    const container = resolveMarkerGeometry(wrapper, "orderedList", LI_LEFT, 24);
+    const lane = resolveHandleLane({
+      gapPx: 12,
+      editorColumnLeft: EDITOR_LEFT,
+      baselineInset: MARGIN_INSET,
+      chevronRight: null,
+      markerLeft: container.markerLeft,
+      columnRight: container.columnRight,
+      inkLeft: container.inkLeft,
+    });
+    const glyphLeft = fixtureGlyphLeft(LI_LEFT, "12.", FS);
+    expect(lane.maxLeft + HANDLE_WIDTH).toBeLessThan(glyphLeft);
+    // …and it is the ITEM's bound, because they share the row and the line.
+    const item = resolveMarkerGeometry(items[0], "listItem", LI_LEFT, 0);
+    expect(container.inkLeft).toBe(item.inkLeft);
+  });
+
+  for (const fontSizePx of [19, 28]) {
+    it(`the composed hover @${fontSizePx}px still clears a top-level \`12.\``, () => {
+      // A NET, not the finding — it passes pre-fix, for the reason the leg
+      // above states (the container is the outer handle on this row). It is
+      // here so the descent cannot break the shape it fixes: the frame for a
+      // `.list-title-wrapper` must still resolve, both handles must still
+      // paint, and both must still clear the counter and stay on screen.
+      const bandPx = fontSizePx * BAND_EM;
+      const liLeft = EDITOR_LEFT + bandPx;
+      const { wrapper, items } = buildTopLevelList("ol", bandPx, fontSizePx, 12);
+      const ink = resolveMarkerGeometry(items[0], "listItem", liLeft, 0).inkLeft;
+      const painted = hover([
+        { uuid: "li1", el: items[0] },
+        { uuid: "list1", el: wrapper },
+      ]);
+      expect(painted.map((pp) => pp.uuid).sort()).toEqual(["li1", "list1"]);
+      const glyphLeft = fixtureGlyphLeft(liLeft, "12.", fontSizePx);
+      const minClearance = fontSizePx * GAP_EM * INK_CLEARANCE_FACTOR;
+      for (const pp of painted) {
+        expect(
+          clearance(pp.left, ink),
+          `${pp.uuid}'s handle crosses the resolved ink boundary (left ${pp.left}, ink ${ink})`,
+        ).toBeGreaterThanOrEqual(minClearance);
+        expect(
+          clearance(pp.left, glyphLeft),
+          `${pp.uuid}'s handle is on the painted "12." (left ${pp.left}, glyph ${glyphLeft})`,
+        ).toBeGreaterThan(0);
+        expect(pp.left).toBeGreaterThanOrEqual(FLOOR);
+      }
+    });
+  }
 });
 
 describe("resolveHandleLane — the three bounds and their precedence", () => {
