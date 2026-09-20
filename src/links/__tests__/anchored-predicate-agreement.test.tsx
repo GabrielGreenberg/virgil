@@ -161,6 +161,39 @@ describe("task 665 M2 — a recovered clip sorts where its badge says it is", ()
     expect(sorted.map((s) => s.id)).toEqual(["c", "b", "a", "d"]);
   });
 
+  it("the DEFECT leg — the retired live-uuid-only walk disagrees with the badge", () => {
+    // Reimplements `sortedArchiveSnippets`' pre-665 rule locally (an ordinal
+    // `descendants` walk keyed on the live uuid, positions read from the card's
+    // FIRST STORED pid) rather than re-parameterising the live one, so it fails
+    // for exactly the reason it names. Without this leg the M2 fix could be
+    // "verified" by a helper that never had a wrong answer to be right about.
+    const editor = mountDoc();
+    const pass = buildCardAnchorPass(editor);
+    const order = new Map<string, number>();
+    let i = 0;
+    editor.state.doc.descendants((node) => {
+      const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
+      if (uuid) order.set(uuid, i++);
+      return true;
+    });
+    const legacyPos = (c: ArchivedSnippet) =>
+      order.get(((c.links ?? [])[0]?.anchor as { textObjectIds?: string[] })?.textObjectIds?.[0] ?? "");
+
+    const recovered = clip("recovered", paraLink("DEAD", P1_TEXT));
+    const onP3 = clip("onP3", paraLink("P3"));
+
+    // The badge calls `recovered` anchored …
+    expect(pass.resolve(recovered).anchored).toBe(true);
+    // … and the retired walk has no position for it, so it tails BEHIND a clip
+    // anchored three paragraphs lower. That is the disagreement, in one row.
+    expect(legacyPos(recovered)).toBeUndefined();
+    expect(legacyPos(onP3)).toBe(2);
+    // The live rule does not.
+    expect(
+      sortCardsByResolvedAnchor([onP3, recovered], pass.resolve).map((s) => s.id),
+    ).toEqual(["recovered", "onP3"]);
+  });
+
   it("orphans keep their original relative order (the sort is stable)", () => {
     const editor = mountDoc();
     const pass = buildCardAnchorPass(editor);
