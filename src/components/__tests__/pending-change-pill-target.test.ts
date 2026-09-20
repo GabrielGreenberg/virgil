@@ -19,10 +19,12 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import {
+  pillRightEdge,
   pillVerticalSeat,
   resolveTargetKey,
   type PendingChangeIndex,
 } from "@/components/PendingChangePill";
+import { resolveHandleLane } from "@/text-objects/handle-layout";
 import { clearCapTopCache, opticalCenterY } from "@/lib/text-metrics";
 
 function makeIndex(): PendingChangeIndex {
@@ -150,5 +152,82 @@ describe("pillVerticalSeat (optical cap-band center, not geometric center)", () 
 
   it("falls back to the line-box geometric center when no target element resolves", () => {
     expect(pillVerticalSeat(100, 124, null)).toBeCloseTo(112, 5);
+  });
+});
+
+// ── Task 660 — the pill's HORIZONTAL seat ──────────────────────────────────
+//
+// Task 266 gave this file's VERTICAL axis the shared primitive. Its horizontal
+// axis kept a hardcoded `GRAB_BAR_CLEARANCE = 28`: a pre-em px stand-in for a
+// lane whose real width is the block's resolved `gapPx`
+// (`--margin-handle-gap: 0.625em`) plus the 12px handle box. Two consequences,
+// one leg each.
+describe("pillRightEdge — the pill clears the handle's own resolved lane", () => {
+  /** A block frame with no marker column and no chevron — a plain paragraph or
+   *  a top-level list row. `markerLeft` is the only thing the two rows of a
+   *  nested list differ in. */
+  function frame(markerLeft: number, gapPx: number) {
+    return {
+      markerLeft,
+      gapPx,
+      inkLeft: markerLeft,
+      columnRight: null,
+      chevronRight: null,
+    };
+  }
+
+  const COLUMN_LEFT = 100;
+  const INSET = 24;
+
+  it("tracks the block's marker, so an indented row's pill steps inboard with its handle", () => {
+    const gap = 9.5; // 0.625em at the 15.2px prose default
+    const outer = pillRightEdge(frame(200, gap), COLUMN_LEFT, INSET);
+    const nested = pillRightEdge(frame(240, gap), COLUMN_LEFT, INSET);
+    // The pre-fix seat read `blockEl.getBoundingClientRect().left − 28` off the
+    // TOP-LEVEL block, so every row of a list — however deeply nested — got the
+    // same x while the handle it was clearing stepped inboard by the full
+    // indent. Stated as the delta rather than as two literals.
+    expect(nested - outer).toBeCloseTo(40, 6);
+  });
+
+  it("never covers the handle BOX — including one notch up the font-size slider, where the 28px constant did", () => {
+    const markerLeft = 300;
+    for (const fontPx of [15.2, 20.8, 28]) {
+      const gap = 0.625 * fontPx;
+      const lane = resolveHandleLane({
+        markerLeft,
+        gapPx: gap,
+        editorColumnLeft: COLUMN_LEFT,
+        baselineInset: INSET,
+        inkLeft: markerLeft,
+        columnRight: null,
+        chevronRight: null,
+      });
+      // The pill is right-anchored and carries a higher z-order, so its right
+      // edge crossing the handle's left edge is the handle losing its clicks.
+      expect(pillRightEdge(frame(markerLeft, gap), COLUMN_LEFT, INSET)).toBeLessThanOrEqual(
+        lane.left,
+      );
+      // Why this is a leg and not a tautology: the constant it replaces IS
+      // inside the box at the top of that range.
+      if (fontPx === 28) expect(markerLeft - 28).toBeGreaterThan(lane.left);
+    }
+  });
+
+  it("stays a fixed em void outboard of the handle rather than collapsing onto the lane floor", () => {
+    const gap = 9.5;
+    const lane = resolveHandleLane({
+      markerLeft: 300,
+      gapPx: gap,
+      editorColumnLeft: COLUMN_LEFT,
+      baselineInset: INSET,
+      inkLeft: 300,
+      columnRight: null,
+      chevronRight: null,
+    });
+    expect(lane.left - pillRightEdge(frame(300, gap), COLUMN_LEFT, INSET)).toBeCloseTo(
+      gap,
+      6,
+    );
   });
 });

@@ -191,6 +191,72 @@ export const FOLD_CHEVRON_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * "Where is this block's FIRST TEXT LINE?" — the two node-type vocabularies
+ * that answer it, stated ONCE here so every silo that asks reads the same
+ * list (task 660).
+ *
+ * The question has exactly three answers, and every block the editor renders
+ * takes one of them:
+ *
+ *   • **none** — {@link TEXTLESS_BLOCK_NODE_TYPES}. A framed visual kind (tex
+ *     pod, `%` comment, display math, forest, figure, graphic) renders no text
+ *     line at all, so chrome anchors on its BORDER BOX.
+ *   • **a descendant's** — {@link TEXT_LINE_CONTAINER_NODE_TYPES}. A container
+ *     has no line of its own; its first line IS its first grabbable child's.
+ *   • **its own** — everything else, after the wrapper descent walks any
+ *     wrapper NodeView down to the element that carries the line box.
+ *
+ * Both sets live in this import-free leaf for the reason every other set here
+ * does: `text-metrics.ts` (which performs the resolve) and
+ * `text-object-registry.ts` (which declares each kind's `chromeAnchor`) cannot
+ * import each other — the registry already reaches text-metrics — and a facet
+ * the layer that needs it cannot import is a facet that gets re-copied. Both
+ * are pinned to the registry by `first-line-target-census.test.ts`, so a new
+ * kind cannot be added there without declaring its answer here.
+ */
+
+/**
+ * Node types that render NO first text line: chrome (grab handle, marginalia
+ * marker, pending-change pill) anchors on the element's own border box.
+ *
+ * This is the registry's `chromeAnchor: "block-top"` set, stated in the leaf
+ * both layers can read. It is NOT the schema's `isAtom` set, and the gap
+ * between the two is the whole of task 660: `latexComment` (`content:
+ * "text*"`) and `figureBlock` (`content: "figureCaption?"`) are NOT atoms, so
+ * a measurement that forks on `isAtom` alone put those two on the prose
+ * branch — seating a `%` comment's marker ~4.8px above its real cap-band and a
+ * figure's on an imaginary line at the frame's top edge, while the grab handle
+ * for the same block sat on the border box. Two surfaces, two answers, one
+ * block.
+ */
+export const TEXTLESS_BLOCK_NODE_TYPES: ReadonlySet<string> = new Set([
+  "displayMath",
+  "latexComment",
+  "texBlock",
+  "forestBlock",
+  "figureBlock",
+  "graphicsBlock",
+]);
+
+/**
+ * Container kinds whose own first visual line lives in their first grabbable
+ * child rather than in any text of their own: a `<ul>`/`<ol>` has no text
+ * line, and an `.expex-block`'s only direct text is the `(n)` chip (rendered
+ * at `0.95em` — the wrong metrics to anchor chrome to). Resolving THROUGH to
+ * the first child's first line makes a container and its first item produce
+ * the SAME anchor by construction.
+ *
+ * Mirrors the sub-object `parentKind`s in `TEXT_OBJECT_REGISTRY`
+ * (`listItem`→`bulletList`, `exampleItem`→`exampleBlock`), plus `orderedList`,
+ * which is structurally identical to `bulletList`.
+ */
+export const TEXT_LINE_CONTAINER_NODE_TYPES: ReadonlySet<string> = new Set([
+  "bulletList",
+  "orderedList",
+  "exampleBlock",
+]);
+
+/**
  * Container kinds whose DIRECT-child `paragraph` DEFERS its anchor identity to
  * the container — the container is the real text object, and the inner
  * paragraph must carry no uuid of its own.
