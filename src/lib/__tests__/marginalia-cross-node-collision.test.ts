@@ -17,6 +17,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
+import { PREFERENCES_TREE, isLeaf, type PrefNode } from "@/lib/preferences-tree";
 import {
   MARGINALIA_ICON_SIZE,
   MARGINALIA_MAX_MARKER_DRIFT,
@@ -405,47 +406,100 @@ describe("past the drift bound the crowd folds into ONE '+K' pill", () => {
     // below its own block, then short blocks underneath that fold while sliding
     // past the open pill's anchor — which `crowdOf` (one line per node) cannot
     // produce, since there the frontier only ever runs ~50px ahead.
-    const nodes = [
-      block("a-tall", 0, 10, 6),
-      ...Array.from({ length: 7 }, (_, i) => block(`b${i}`, 60 + i * 10, 10)),
+    //
+    // TWO fixtures, because the first one alone made this leg VACUOUS for the
+    // case that actually broke it (task 673). Its blocks all share a 10px
+    // pitch, so their anchors run strictly downward and the restart test
+    // (`anchoredTop > crowdAnchorY + DRIFT`) — which is ONE-SIDED — is always
+    // asked of the larger value. The second fixture breaks that: a textless
+    // block measures with `lineHeight` = its full height (`measureBlock`), so
+    // a figure anchors at its vertical CENTRE, BELOW the caption that prints
+    // under it. Ordering by raw `node.top` then hands the walk a non-monotone
+    // anchor sequence and a node whose anchor lands ABOVE the open pill's
+    // joins unconditionally: one pill at y=283 keyed on "fig", standing in for
+    // anchors 169, 101 and 117 — a span of 68 against a bound of 44.
+    const fixtures: Array<{ nodes: AnchorNodeMetrics[]; markers: MarginaliaMarker[] }> = [
+      (() => {
+        const nodes = [
+          block("a-tall", 0, 10, 6),
+          ...Array.from({ length: 7 }, (_, i) => block(`b${i}`, 60 + i * 10, 10)),
+        ];
+        return {
+          nodes,
+          markers: [
+            ...Array.from({ length: 6 }, (_, i) => marker(`t${i}`, "a-tall")),
+            ...Array.from({ length: 7 }, (_, i) => marker(`m${i}`, `b${i}`)),
+          ],
+        };
+      })(),
+      (() => {
+        const nodes = [
+          block("p-tight", 0, 12, 12),
+          block("fig", 100, 160, 1), // textless: lineHeight = full height
+          block("cap", 104, 16),
+          block("p2", 120, 16),
+        ];
+        return {
+          nodes,
+          markers: [
+            ...Array.from({ length: 12 }, (_, i) => marker(`t${i}`, "p-tight")),
+            ...["fig", "cap", "p2"].flatMap((id) => [
+              marker(`${id}-1`, id),
+              marker(`${id}-2`, id),
+            ]),
+          ],
+        };
+      })(),
     ];
-    const markers = [
-      ...Array.from({ length: 6 }, (_, i) => marker(`t${i}`, "a-tall")),
-      ...Array.from({ length: 7 }, (_, i) => marker(`m${i}`, `b${i}`)),
-    ];
-    const { positioned, overflowGroups } = computeMarkerPositions(
-      lookup(nodes),
-      markers,
-      {},
-      { left: 1, right: 1 },
-    );
 
-    expect(overflowGroups.length).toBeGreaterThan(1); // the restart fired
-    expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
-
-    const anchorOf = new Map(
-      nodes.map((n) => [n.id, n.top + (n.lineHeight - MARGINALIA_ICON_SIZE) / 2]),
-    );
-    for (const g of overflowGroups) {
-      const tops = g.hidden.map((m) => anchorOf.get(m.textObjectId)!);
-      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(
-        MARGINALIA_MAX_MARKER_DRIFT,
+    for (const [i, { nodes, markers }] of fixtures.entries()) {
+      const { positioned, overflowGroups } = computeMarkerPositions(
+        lookup(nodes),
+        markers,
+        {},
+        { left: 1, right: 1 },
       );
+
+      expect(overflowGroups.length).toBeGreaterThan(1);
+      expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
+
+      const anchorOf = new Map(
+        nodes.map((n) => [n.id, n.top + (n.lineHeight - MARGINALIA_ICON_SIZE) / 2]),
+      );
+      for (const g of overflowGroups) {
+        const tops = g.hidden.map((m) => anchorOf.get(m.textObjectId)!);
+        expect(
+          `fixture ${i} · ${g.textObjectId} span ${Math.max(...tops) - Math.min(...tops)}`,
+        ).toBe(
+          `fixture ${i} · ${g.textObjectId} span ${Math.min(
+            Math.max(...tops) - Math.min(...tops),
+            MARGINALIA_MAX_MARKER_DRIFT,
+          )}`,
+        );
+      }
     }
   });
 });
 
-// ── Stated limit (a passing leg that documents the bound's scope) ───────────
+// ── The bound is asked at EVERY row, not only at row 0 (task 673) ──────────
 
-describe("the drift bound is measured at a grid's FIRST row", () => {
-  it("a tall node with a tight line pitch walks its own lower rows past the bound, and does NOT fold", () => {
-    // 8 lines at a 14px pitch, one marker per line: rows re-settle against the
-    // frontier one at a time, so the last one ends up 60px below its own line
-    // — past MARGINALIA_MAX_MARKER_DRIFT (44). Deliberate: it is still beside
-    // its OWN block, which is what the bound protects, and folding a whole
-    // multi-line node because its last row drifted would hide markers the
-    // reader can see perfectly well. This leg documents the limit; it is not a
-    // defect leg, and it says so.
+describe("the drift bound is measured at EVERY row", () => {
+  it("a tall node with a tight line pitch ENDS its grid at the bound and rides its own +K pill", () => {
+    // 8 lines at a 14px pitch, one marker per line. Each row is displaced a
+    // further (24 − 14) = 10px, so rows 0..4 land within
+    // MARGINALIA_MAX_MARKER_DRIFT (44) and row 5 would not.
+    //
+    // Pre-673 the bound was asked at row 0 only: all 8 rows placed, the last
+    // one 60px below its own line, and the frontier left 60px below the
+    // block's bottom where it pushed (or folded) the node next door. The
+    // reasoning was that a lower row is "still beside its own block" — which
+    // stops being true exactly when the cumulative displacement outruns the
+    // block, i.e. below a 24px pitch, which the preference sliders reach.
+    //
+    // Now the grid simply ENDS at the last row it can place on its own line
+    // and the surplus rides the node's OWN "+K" pill — the R16 affordance,
+    // not a folded crowd: nothing the reader can see beside its line is
+    // hidden, and the grid stops overstating its capacity.
     const nodes = [block("p1", 0, 14, 8)];
     const markers = Array.from({ length: 8 }, (_, i) => marker(`m${i}`, "p1"));
     const { positioned, overflowGroups } = computeMarkerPositions(
@@ -455,11 +509,205 @@ describe("the drift bound is measured at a grid's FIRST row", () => {
       { left: 1, right: 1 },
     );
 
-    expect(overflowGroups).toEqual([]); // nothing folded
     expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
-    const last = positioned[positioned.length - 1];
-    const itsLine = 7 * 14 + (14 - MARGINALIA_ICON_SIZE) / 2;
-    expect(last.cell.y - itsLine).toBeGreaterThan(MARGINALIA_MAX_MARKER_DRIFT);
+    // Its OWN pill (R16), keyed on the node — not a crowd pill standing in
+    // for a node that could not be placed at all.
+    expect(overflowGroups).toHaveLength(1);
+    expect(overflowGroups[0].textObjectId).toBe("p1");
+    expect(positioned).toHaveLength(4); // rows 0..3; row 4 carries the pill
+    expect(overflowGroups[0].hidden).toHaveLength(4);
+    // and every marker that DID place is within the bound of its own line.
+    for (const pm of positioned) {
+      const r = pm.cell.row;
+      const itsLine = r * 14 + (14 - MARGINALIA_ICON_SIZE) / 2;
+      expect(pm.cell.y - itsLine).toBeLessThanOrEqual(
+        MARGINALIA_MAX_MARKER_DRIFT,
+      );
+    }
+  });
+});
+
+// ── The pitch the byte-identity claim holds at (task 673) ──────────────────
+
+describe("the walk is total over the pitches the preference sliders allow", () => {
+  /** The tightest body pitch a user can dial in, derived from the preference
+   *  SSOT rather than hand-copied — if a slider's floor moves, this sweep
+   *  moves with it (and the module's stated 24px threshold is re-judged). */
+  function minBodyPitchPx(): number {
+    const sliders = new Map<string, number>();
+    const walk = (nodes: PrefNode[]) => {
+      for (const n of nodes) {
+        if (!isLeaf(n)) walk(n.children);
+        else if (n.type === "slider") sliders.set(n.key, n.min);
+      }
+    };
+    walk(PREFERENCES_TREE);
+    const remPx = 16;
+    return sliders.get("editorFontSize")! * remPx * sliders.get("editorLineHeight")!;
+  }
+
+  it("the minimum the sliders allow really is below the 24px threshold", () => {
+    // The premise of this whole describe: if it ever stops holding, the
+    // module's byte-identity claim is unconditional again and these legs are
+    // documenting a shape the app can no longer reach.
+    expect(minBodyPitchPx()).toBeLessThan(
+      MARGINALIA_ICON_SIZE + MARGINALIA_ROW_MIN_GAP,
+    );
+    expect(minBodyPitchPx()).toBeCloseTo(19.04, 5);
+  });
+
+  it("no marker drifts past the bound at any pitch in the slider band", () => {
+    for (const lh of [minBodyPitchPx(), 21, 23, 24]) {
+      const nodes = [block("p1", 0, lh, 10)];
+      const markers = Array.from({ length: 10 }, (_, i) => marker(`m${i}`, "p1"));
+      const { positioned, overflowGroups } = computeMarkerPositions(
+        lookup(nodes),
+        markers,
+        {},
+        { left: 1, right: 1 },
+      );
+      expect(overlaps(boxes(positioned, overflowGroups, "right"))).toEqual([]);
+      for (const pm of positioned) {
+        const itsLine = pm.cell.row * lh + (lh - MARGINALIA_ICON_SIZE) / 2;
+        expect(
+          `lh=${lh} row=${pm.cell.row} drift=${pm.cell.y - itsLine}`,
+        ).toBe(
+          `lh=${lh} row=${pm.cell.row} drift=${Math.min(
+            pm.cell.y - itsLine,
+            MARGINALIA_MAX_MARKER_DRIFT,
+          )}`,
+        );
+      }
+      // Every marker still comes back exactly once — placed, or named by the
+      // node's own pill.
+      const seen = [
+        ...positioned.map((pm) => pm.entityId),
+        ...overflowGroups.flatMap((g) => g.hidden.map((m) => m.entityId)),
+      ];
+      expect(new Set(seen).size).toBe(10);
+    }
+  });
+
+  it("a 24px pitch is still byte-identical: the walk is a no-op", () => {
+    const nodes = [block("p1", 0, 24, 10)];
+    const markers = Array.from({ length: 10 }, (_, i) => marker(`m${i}`, "p1"));
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      lookup(nodes),
+      markers,
+      {},
+      { left: 1, right: 1 },
+    );
+    expect(overflowGroups).toEqual([]);
+    expect(positioned.map((pm) => pm.cell.y)).toEqual(
+      Array.from({ length: 10 }, (_, r) => r * 24 + (24 - MARGINALIA_ICON_SIZE) / 2),
+    );
+  });
+
+  it("a tight block does not fold the block BELOW it — the frontier stays near its own bottom", () => {
+    // The user-visible half of member (1): pre-673 the tight block's frontier
+    // ran ~50px past its own bottom, so the next paragraph's row 0 failed the
+    // bound and its markers disappeared into a crowd pill.
+    const lh = minBodyPitchPx();
+    const nodes = [block("p1", 0, lh, 10), block("p2", 10 * lh, lh, 1)];
+    const markers = [
+      ...Array.from({ length: 10 }, (_, i) => marker(`m${i}`, "p1")),
+      marker("next", "p2"),
+    ];
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      lookup(nodes),
+      markers,
+      {},
+      { left: 1, right: 1 },
+    );
+    const next = positioned.find((pm) => pm.entityId === "next");
+    expect(next).toBeDefined();
+    expect(
+      overflowGroups.some((g) =>
+        g.hidden.some((m) => m.entityId === "next"),
+      ),
+    ).toBe(false);
+    const itsLine = 10 * lh + (lh - MARGINALIA_ICON_SIZE) / 2;
+    expect(next!.cell.y - itsLine).toBeLessThanOrEqual(
+      MARGINALIA_MAX_MARKER_DRIFT,
+    );
+  });
+});
+
+// ── The walk is TOTAL over its declared input type (task 673) ──────────────
+
+describe("one unusable measurement costs one node, never the side", () => {
+  for (const bad of [NaN, Infinity, -Infinity] as const) {
+    it(`a ${bad} lineHeight on one node leaves every other node on the side finite`, () => {
+      const nodes = [
+        block("b0", 0, 24),
+        { ...block("bad", 100, 24), lineHeight: bad },
+        block("b2", 200, 24),
+      ];
+      const markers = [
+        marker("m0", "b0"),
+        marker("mbad", "bad"),
+        marker("m2", "b2"),
+      ];
+      const { positioned, overflowGroups } = computeMarkerPositions(
+        lookup(nodes),
+        markers,
+        {},
+        { left: 1, right: 1 },
+      );
+      for (const pm of positioned) expect(Number.isFinite(pm.cell.y)).toBe(true);
+      for (const g of overflowGroups) expect(Number.isFinite(g.cell.y)).toBe(true);
+      // The healthy neighbours keep their own anchored rows, unmoved.
+      const y = (id: string) => positioned.find((pm) => pm.entityId === id)?.cell.y;
+      expect(y("m0")).toBe(0 + (24 - MARGINALIA_ICON_SIZE) / 2);
+      expect(y("m2")).toBe(200 + (24 - MARGINALIA_ICON_SIZE) / 2);
+      // The unusable node's marker is simply not placed — the same treatment
+      // as a block the registry has not measured.
+      expect(y("mbad")).toBeUndefined();
+    });
+  }
+
+  it("a NaN top on one node does not reorder or poison the rest of the side", () => {
+    const nodes = [
+      block("b0", 0, 24),
+      { ...block("bad", 100, 24), top: NaN },
+      block("b2", 200, 24),
+    ];
+    const markers = [marker("m0", "b0"), marker("mbad", "bad"), marker("m2", "b2")];
+    const { positioned } = computeMarkerPositions(
+      lookup(nodes),
+      markers,
+      {},
+      { left: 1, right: 1 },
+    );
+    expect(positioned.map((pm) => pm.entityId)).toEqual(["m0", "m2"]);
+    for (const pm of positioned) expect(Number.isFinite(pm.cell.y)).toBe(true);
+  });
+
+  it("a fractional lineCount never renders a marker twice, nor a pill at a fractional column", () => {
+    // `lineCount` is integral today only because `measureBlock` rounds it.
+    // Un-rounded, capacity 1.6 gave visibleCount 0.6 — one marker positioned
+    // at row 0, a pill at COLUMN 0.6 on top of it, and `items.slice(0.6)`
+    // listing that same marker again in the pill's popover.
+    const nodes = [{ ...block("p1", 0, 24, 1), lineCount: 1.6 }];
+    const markers = [marker("a", "p1"), marker("b", "p1")];
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      lookup(nodes),
+      markers,
+      {},
+      { left: 1, right: 1 },
+    );
+    const placed = positioned.map((pm) => pm.entityId);
+    const hidden = overflowGroups.flatMap((g) => g.hidden.map((m) => m.entityId));
+    expect(placed.filter((id) => hidden.includes(id))).toEqual([]);
+    expect([...placed, ...hidden].sort()).toEqual(["a", "b"]);
+    for (const g of overflowGroups) {
+      expect(Number.isInteger(g.cell.col)).toBe(true);
+      expect(Number.isInteger(g.cell.row)).toBe(true);
+    }
+    for (const pm of positioned) {
+      expect(Number.isInteger(pm.cell.col)).toBe(true);
+      expect(Number.isInteger(pm.cell.row)).toBe(true);
+    }
   });
 });
 
