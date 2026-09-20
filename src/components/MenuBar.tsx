@@ -48,7 +48,7 @@ import { iconHint } from "@/components/Hint";
 
 // Types moved to useViewPrefs (the schema home for view-level prefs).
 // Re-exported here for back-compat with existing consumers.
-export type { MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
+export type { DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 
 // Row labels, member/value vocabularies AND stable row ids are all sourced from
 // VIEW_PREF_REGISTRY (the single source of truth), never re-declared here. Since

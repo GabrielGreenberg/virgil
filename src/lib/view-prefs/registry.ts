@@ -16,10 +16,19 @@
  * (`useViewPrefs` imports the runtime artifacts here, not vice-versa).
  */
 import type {
-  MarginaliaType,
   DividerLevel,
   HighlightType,
 } from "@/hooks/useViewPrefs";
+import type { MarkerType } from "@/cards/types";
+// Runtime import, and cycle-safe: `marker-meta` imports only the runtime-leaf
+// `card-registry` (itself type-only apart from the zero-import
+// `stack/card-kinds`), and nothing in that graph imports view-prefs. The
+// module header's "dependency-light" promise is about `useViewPrefs`, which
+// stays type-only.
+import {
+  HIDEABLE_MARKER_TYPES,
+  type HideableMarkerType,
+} from "@/cards/marker-meta";
 
 export type ViewPrefScope = "global" | "window";
 export type ViewPrefMenuGroup = "display" | "marginalia" | "highlights" | "dividers";
@@ -84,8 +93,30 @@ export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
  * (the promotion pipeline is byte-stable against that JSON). The `set` defaults
  * use an `as <ElementType>[]` cast so the generated value type yields the FULL
  * element type — the menu may render only a subset of `members`, but the stored
- * value can include extra members (e.g. a "report" marginalia type).
+ * value can include extra members (e.g. the `error` marginalia type, which is
+ * deliberately not hideable — `NON_HIDEABLE_MARKER_TYPES`).
  */
+/**
+ * Menu labels for the per-type marginalia hide rows. The ANNOTATION is the
+ * coverage assertion task 672 asked for: `Record<HideableMarkerType, string>`
+ * is exhaustive, so a marker type added to `MarkerType` and not opted out in
+ * `NON_HIDEABLE_MARKER_TYPES` fails to compile here until it is given a row
+ * label — it can no longer ship invisible.
+ *
+ * Declared rather than derived from `MARKER_META.label`: those are singular
+ * marker names ("Note", "Archived") and reading them would make this
+ * dependency-light module import the marginalia UI lib. Menu plurals are a
+ * menu concern.
+ */
+const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = {
+  note: "Notes",
+  archive: "Archive",
+  revision: "Revisions",
+  cut: "Cuts",
+  todo: "Todo",
+  report: "Reports",
+};
+
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
   // promote:false — ship default frozen at the registry value (task 057). A prior
@@ -109,9 +140,9 @@ export const VIEW_PREF_REGISTRY = {
   autocorrectTypos:     { kind: "toggle", scope: "global", default: true, label: "Autocorrect typos",   menu: "display", menuRowId: "autocorrect-typos" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
-  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: (["note", "archive", "todo"] as const) satisfies readonly MarginaliaType[],
+  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarkerType[], members: HIDEABLE_MARKER_TYPES,
                           polarity: "hidden", label: "Marginalia types", menu: "marginalia",
-                          memberLabels: { note: "Notes", archive: "Archive", todo: "Todo" } },
+                          memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
   hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],

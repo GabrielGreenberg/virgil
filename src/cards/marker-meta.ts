@@ -58,6 +58,50 @@ void _markerTypeExhaustive;
 export const NON_REGISTRY_MARKER_TYPES: ReadonlySet<MarkerType> =
   new Set<MarkerType>();
 
+/**
+ * Marker types the user may NOT hide individually from the View menu's
+ * "Marginalia types" block — the DECLARED opt-out that, subtracted from
+ * `ALL_MARKER_TYPES`, yields `HIDEABLE_MARKER_TYPES` below.
+ *
+ * It lives here, beside `NON_REGISTRY_MARKER_TYPES`, because this module is
+ * already the one that owns "which marker types exist, and why one might be
+ * exempt". Before task 672 the answer was three hand lists (`MarginaliaType`,
+ * `hiddenMarginaliaTypes.members`, `memberLabels`) that between them covered
+ * three of the seven types — so `revision`, `cut` and `report` icons could not
+ * be turned off at all, and only an `as MarginaliaType` cast at the single
+ * reader kept the mismatch from being a type error. Now a new `MarkerType`
+ * cannot ship without an answer: it is hideable by default, and opting it out
+ * is an edit HERE with a stated reason.
+ *
+ * `error` is the one opt-out. Error markers are compile/lint DIAGNOSTICS tied
+ * to the Errors panel rather than user-authored marginalia: they carry no
+ * `entityKind`, they are already exempt from the user-color override path
+ * (`SYSTEM_THEME_KEYS`), and silently hiding a compile error is the wrong
+ * default. The Errors panel's own visibility is the control that exists for it.
+ */
+export const NON_HIDEABLE_MARKER_TYPES = [
+  "error",
+] as const satisfies readonly MarkerType[];
+
+/** A marker type the View menu offers an individual hide row for. */
+export type HideableMarkerType = Exclude<
+  MarkerType,
+  (typeof NON_HIDEABLE_MARKER_TYPES)[number]
+>;
+
+/**
+ * `ALL_MARKER_TYPES` minus the declared opt-out, in `MARKER_META` order — the
+ * SSOT `VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members` (and therefore the
+ * View menu's per-type rows) is derived from. Note the STORED pref value stays
+ * the full `MarkerType[]`: the storage door deliberately tolerates a member the
+ * menu doesn't render, exactly as it does for highlights.
+ */
+export const HIDEABLE_MARKER_TYPES: readonly HideableMarkerType[] =
+  ALL_MARKER_TYPES.filter(
+    (t): t is HideableMarkerType =>
+      !(NON_HIDEABLE_MARKER_TYPES as readonly MarkerType[]).includes(t),
+  );
+
 /* ── Eager derivation tables ──────────────────────────────────────────
  * Built once at module init. `CARD_REGISTRY` is a fully-initialized const
  * by the time this module evaluates (no import cycle), and the tables are
