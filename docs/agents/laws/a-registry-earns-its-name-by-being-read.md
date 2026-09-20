@@ -4778,3 +4778,48 @@ dialect", "a LOCAL declaration of an export's name is not a caller", and the
 legs: each fails against the pre-fix tree (4 promises, 21 hand-rolled
 deciders), because a leg that can only report what it already sees has no way
 to say it is blind.
+
+---
+
+## Task 669 — the row carries its own cohort
+
+A registry can be read by the RENDERER and still re-derived by the GESTURE the
+renderer arms. "Which paragraphs is this card on?" has an authority —
+`resolveCardAnchorRows` / `buildCardAnchorPass` (`src/links/card-anchor-rows.ts`),
+the four-rung resolver whose row set is deliberately seeded with
+`res.paragraphId` so a card recovered through its `linkedAnchor` mark or its
+`paragraphSnapshot` still paints a marker beside the paragraph it was recovered
+ON. The margin's marker builder read that authority. The marker's **Delete**
+did not: `deleteMarginItem` answered its one remaining question — *is this the
+card's LAST anchor?* — from `getLinkedTextObjectIds(card)`, the card's STORED
+pids.
+
+For a recovered card those two lists are **disjoint**, and disjoint is worse
+than merely different: the stored-pid diff removed nothing, reported a phantom
+sibling, and routed a single-anchor card into the MULTI-ANCHOR branch, whose
+`handlers.unanchor(cardId, <a pid the card does not store>)` is a no-op. Delete
+on such a marker did nothing at all — no confirm, no deletion, no feedback, no
+error — and only a reload healed it (the stored link is rewritten only by the
+load-only Mode-A reconcile). All six card-bearing marker kinds reach that one
+door, so a single fork was six kinds' worth of defect.
+
+**The half this adds.** Where a gesture is armed PER ROW, threading the answer
+as a separate argument is still a fork waiting to happen — the next kind's
+`onDelete` can simply not pass it. So the cohort ships **on the row**:
+`MarginMarkerRow.cardPids` is every pid the card draws a marker for, and
+`deleteMarginItem` takes a REQUIRED `anchorPids`. You cannot hold the pid you
+are deleting without the list it belongs to, and a new marker kind cannot
+compile without deciding. The mount-gap fallback is not a second answer either:
+with no index the authority's rows ARE the raw stored pids, so old rule and new
+rule agree there **by construction** rather than by coincidence.
+
+Corollary retired in the same change: the multi-anchor branch's comment "do NOT
+strip the text-range mark — it's still bound to the other paragraph(s)" was
+FALSE for exactly the recovered case (there were no other paragraphs), so a
+recovered card's `linkedAnchor` mark was never cleaned up either. Reaching that
+branch now means other markers really are painted.
+
+**CI:** `margin-delete-recovered-anchor.test.tsx` — real editor, real authority,
+real margin reader, real delete door, end to end; its two recovered-anchor legs
+fail against the restated stored-pid rule (planted-defect self-check), with the
+multi-anchor, ordinary-stored-pid and mount-gap controls beside them.
