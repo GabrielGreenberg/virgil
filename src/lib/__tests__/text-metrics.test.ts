@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __fontReadyPendingCount,
+  __textWidthCacheSize,
   capBandCenterOffset,
   capHeight,
   capTopOffset,
   clearCapTopCache,
   computeCapTopOffset,
+  measureTextWidth,
   onFontReady,
   opticalCenterY,
   resolveInlineContextElement,
@@ -147,6 +149,43 @@ describe("resolveInlineContextElement", () => {
     `);
     const target = resolveInlineContextElement(anchor);
     expect(target.tagName).toBe("P");
+  });
+
+  it("descends <pre> to its inner <code> — the 10px float it exists to prevent", () => {
+    // `<pre>` carries the code block's `padding-top`, so its border-box top is
+    // NOT the first line box's top; the inline `<code>` inside it is. Without
+    // this descent the handle floats a full padding above the cap-top, which is
+    // the regression the branch was written for and which nothing asserted.
+    const anchor = build(`<pre><code>const x = 1;</code></pre>`);
+    const target = resolveInlineContextElement(anchor);
+    expect(target.tagName).toBe("CODE");
+  });
+
+  it("falls back to the <pre> itself when it holds no <code>", () => {
+    const anchor = build(`<pre>raw</pre>`);
+    expect(resolveInlineContextElement(anchor)).toBe(anchor);
+  });
+
+  it("descends expex-item to .expex-item-body when the body has NO inner <p>", () => {
+    // The reason the `.expex-item` descent is TWO passes rather than one
+    // selector list: `querySelector(".expex-item-body p, .expex-item-body")`
+    // resolves in DOCUMENT ORDER, so the shallower container always wins and
+    // the inner `<p>` the first pass wants would never be reached. This leg is
+    // the second pass — body present, no paragraph in it — and the leg above
+    // ("descends expex-item to .expex-item-body inner paragraph") is the first.
+    // Together they pin the ordering; either alone passes on one selector list.
+    const anchor = build(`
+      <div class="expex-item">
+        <div class="expex-item-body">bare gloss text</div>
+      </div>
+    `);
+    const target = resolveInlineContextElement(anchor);
+    expect(target.classList.contains("expex-item-body")).toBe(true);
+  });
+
+  it("falls back to the expex-item itself when it has no body at all", () => {
+    const anchor = build(`<div class="expex-item"><span>x</span></div>`);
+    expect(resolveInlineContextElement(anchor)).toBe(anchor);
   });
 
   it("descends blockquote to its first paragraph", () => {
@@ -398,6 +437,140 @@ describe("capBandCenterOffset + opticalCenterY (with stubbed canvas)", () => {
       el.remove();
     }
   });
+
+  it("the `cs` parameter is `el`'s own style — a foreign one keys the cache on the wrong font", () => {
+    // The documented hazard on the parameter, made observable (task 663). `cs`
+    // exists so a caller that already read the style needn't read it twice
+    // (task 336); its whole correctness condition is that the style belongs to
+    // `el`. The metrics cache is keyed off `cs`, so handing over a DIFFERENT
+    // element's style caches this element's metrics under that element's font —
+    // silently, with a plausible number and no error.
+    //
+    // The evidence is the line-height, which a 2D-context stub cannot fake: an
+    // 80px-leading foreign style must not change what `el`'s own 24px line box
+    // measures. Stated as the CONTRACT (`capBandCenterOffset(el)` with no `cs`
+    // is the truth, and passing `el`'s own style must agree with it), so the
+    // hazard reads as "these two must be the same call" rather than as a
+    // description of the bug.
+    const el = attach();
+    const foreign = document.createElement("p");
+    foreign.style.fontFamily = "Serif";
+    foreign.style.fontSize = "16px";
+    foreign.style.fontWeight = "400";
+    foreign.style.lineHeight = "80px";
+    document.body.appendChild(foreign);
+    try {
+      const truth = capBandCenterOffset(el);
+      clearCapTopCache();
+      expect(capBandCenterOffset(el, getComputedStyle(el))).toBeCloseTo(truth, 5);
+      clearCapTopCache();
+      // The hazard itself: the foreign style yields a DIFFERENT answer, so the
+      // parameter is load-bearing and not merely a performance hint.
+      expect(
+        capBandCenterOffset(el, getComputedStyle(foreign)),
+      ).not.toBeCloseTo(truth, 1);
+    } finally {
+      el.remove();
+      foreign.remove();
+    }
+  });
+});
+
+describe("measureTextWidth (the measured alternative to a hardcoded glyph width)", () => {
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
+  let measured: string[];
+  let reportedWidth: number;
+
+  beforeEach(() => {
+    clearCapTopCache();
+    measured = [];
+    reportedWidth = 42;
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      font: "",
+      measureText: (t: string) => {
+        measured.push(t);
+        return { width: reportedWidth } as TextMetrics;
+      },
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+    clearCapTopCache();
+  });
+
+  function styleOf(css: Partial<Record<"fontSize" | "fontFamily" | "fontWeight" | "fontStyle", string>>) {
+    const el = document.createElement("p");
+    el.style.fontFamily = css.fontFamily ?? "Serif";
+    el.style.fontSize = css.fontSize ?? "16px";
+    el.style.fontWeight = css.fontWeight ?? "400";
+    if (css.fontStyle) el.style.fontStyle = css.fontStyle;
+    document.body.appendChild(el);
+    const cs = getComputedStyle(el);
+    el.remove();
+    return cs;
+  }
+
+  it("measures the string in the element's font", () => {
+    expect(measureTextWidth("10.", styleOf({}))).toBe(42);
+    expect(measured).toEqual(["10."]);
+  });
+
+  it("answers `null` — never a px guess — when the font-size is unreadable", () => {
+    // Every caller reads `null` as "no opinion" and falls back to a GEOMETRIC
+    // bound (the whole marker band), which is conservative; a guessed width
+    // would not be. So the degrade has to be `null`, and no measurement may be
+    // attempted against a font the spec can't be built from.
+    expect(measureTextWidth("10.", styleOf({ fontSize: "medium" }))).toBeNull();
+    expect(measureTextWidth("10.", styleOf({ fontSize: "0px" }))).toBeNull();
+    expect(measured).toEqual([]);
+  });
+
+  it("answers `null` when there is no canvas at all (SSR / a jsdom stub)", () => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(
+      () => null,
+    ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    expect(measureTextWidth("10.", styleOf({}))).toBeNull();
+  });
+
+  it("answers `null` for a non-finite or negative reported width, and caches neither", () => {
+    const cs = styleOf({});
+    reportedWidth = Number.NaN;
+    expect(measureTextWidth("nan", cs)).toBeNull();
+    reportedWidth = -5;
+    expect(measureTextWidth("neg", cs)).toBeNull();
+    expect(__textWidthCacheSize()).toBe(0);
+    // ...and a later good measurement of the same string is not poisoned.
+    reportedWidth = 7;
+    expect(measureTextWidth("nan", cs)).toBe(7);
+  });
+
+  it("caches per (font, text): a repeat measures ONCE, a different string does not hit", () => {
+    // The hover/placement path calls this per frame, so the cache is what keeps
+    // it one measurement per distinct marker per font rather than one per frame.
+    const cs = styleOf({});
+    measureTextWidth("10.", cs);
+    measureTextWidth("10.", cs);
+    expect(measured).toEqual(["10."]);
+    measureTextWidth("\u2022", cs);
+    expect(measured).toEqual(["10.", "\u2022"]);
+    expect(__textWidthCacheSize()).toBe(2);
+  });
+
+  it("keys the cache on the FONT too, so a resize re-measures the same string", () => {
+    measureTextWidth("10.", styleOf({ fontSize: "16px" }));
+    measureTextWidth("10.", styleOf({ fontSize: "24px" }));
+    expect(measured).toEqual(["10.", "10."]);
+    expect(__textWidthCacheSize()).toBe(2);
+  });
+
+  it("an italic element does not share a cache entry with its upright sibling", () => {
+    // `canvasFontSpec` prepends "italic ", so the measured face differs.
+    measureTextWidth("a.", styleOf({}));
+    measureTextWidth("a.", styleOf({ fontStyle: "italic" }));
+    expect(measured).toEqual(["a.", "a."]);
+  });
 });
 
 describe("listItem optical center reads the inner <p>'s metrics, not the <li>'s (task 217)", () => {
@@ -540,23 +713,50 @@ describe("onFontReady", () => {
       expect(mod.__fontReadyPendingCount()).toBe(2);
       expect(listeners.size).toBe(1); // armed exactly once
 
-      // Prime the cache so we can observe the invalidation.
+      // Prime BOTH caches so we can observe the invalidation. The width cache
+      // is dropped on the same wave and for the same reason — a width measured
+      // against a FOUT fallback face is wrong once the real face arrives — but
+      // until task 663 only the metrics half was observable, so the legs below
+      // could prove half of a two-line invalidation (`__textWidthCacheSize`).
       mod.__primeFontMetricsCache();
+      const widthCs = (() => {
+        const el = document.createElement("p");
+        el.style.fontFamily = "Serif";
+        el.style.fontSize = "16px";
+        el.style.fontWeight = "400";
+        document.body.appendChild(el);
+        const cs = getComputedStyle(el);
+        el.remove();
+        return cs;
+      })();
+      const primeWidthCache = () => {
+        HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+          font: "",
+          measureText: () => ({ width: 11 }) as TextMetrics,
+        })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+        mod.measureTextWidth("\u2022", widthCs);
+      };
+      primeWidthCache();
       expect(mod.__fontMetricsCacheSize()).toBe(1);
+      expect(mod.__textWidthCacheSize()).toBe(1);
 
-      // WAVE 1 (the initial FOUT wave): cache cleared, both callbacks fire,
-      // and — unlike the old one-shot — the Set is NOT emptied.
+      // WAVE 1 (the initial FOUT wave): BOTH caches cleared, both callbacks
+      // fire, and — unlike the old one-shot — the Set is NOT emptied.
       dispatchLoadingDone();
       expect(mod.__fontMetricsCacheSize()).toBe(0);
+      expect(mod.__textWidthCacheSize()).toBe(0);
       expect(fired).toEqual(["a", "b"]);
       expect(mod.__fontReadyPendingCount()).toBe(2);
 
       // Re-prime, then WAVE 2 (a runtime font switch): the still-registered
-      // callbacks fire AGAIN and the cache clears AGAIN.
+      // callbacks fire AGAIN and both caches clear AGAIN.
       mod.__primeFontMetricsCache();
+      primeWidthCache();
       expect(mod.__fontMetricsCacheSize()).toBe(1);
+      expect(mod.__textWidthCacheSize()).toBe(1);
       dispatchLoadingDone();
       expect(mod.__fontMetricsCacheSize()).toBe(0);
+      expect(mod.__textWidthCacheSize()).toBe(0);
       expect(fired).toEqual(["a", "b", "a", "b"]);
 
       // Disposer unregisters A; a THIRD wave fires only B → leak-safety kept.
