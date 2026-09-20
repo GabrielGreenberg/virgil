@@ -328,6 +328,7 @@ import {
   type AnchorIntent,
 } from "@/links/anchor-state";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
+import type { ModeBBag } from "@/cards/mode-b-collections";
 import {
   reapplyPendingMarks,
   pendingMarkAnchorIds,
@@ -734,6 +735,13 @@ export interface PaneState {
   notes: ReturnType<typeof useNotes>["notes"];
   cutterCards: ReturnType<typeof useCutter>["cards"];
   todoItems: ReturnType<typeof useTodos>["items"];
+  /** The pane's ONE Mode-B card bag (task 666). The shell resolves a hovered
+   *  card's text anchor through `entityToAnchorId`, which needs EVERY Mode-B
+   *  collection; before this it assembled its own literal from the four slices
+   *  bubbled above, so hovering a highlight's or a report's card lit no text.
+   *  Bubbling the bag (rather than two more parallel slices) is what keeps the
+   *  shell's set equal to the pane's by construction. */
+  modeBCards: ModeBBag;
   archiveSnippets: ReturnType<typeof useArchive>["snippets"];
   deleteArchiveSnippet: ReturnType<typeof useArchive>["deleteSnippet"];
   addRequest: ReturnType<typeof useAiRequests>["addRequest"];
@@ -1785,6 +1793,43 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
     [todosHookRaw, deleteTodoItem],
   );
+
+  // ── The ONE Mode-B card bag (task 666) ────────────────────────────────────
+  // "Which collections carry a Mode-B (`linkedRange`) text anchor?" used to be
+  // asked by four consumers as four hand-kept lists that did not agree — the
+  // in-text hover bridge knew four of six, so a highlight's tinted span and a
+  // selection-created todo's span were painted but INERT (nothing on hover,
+  // nothing on click) while the panel→text direction worked. The membership
+  // fact now lives in ONE registry-derived SSOT
+  // (`@/cards/mode-b-collections`), and its `ModeBBag` type is TOTAL over the
+  // slot union — so this bag is the only place the arrays are named, and a
+  // consumer cannot be written narrow and still compile. Memoized on the six
+  // array identities: the reaper's alive-set and the hover bridge's anchor map
+  // both memoize on this object's identity, and the wrappers above rebuild
+  // every render (the arrays themselves change only on real data change).
+  const modeBCards = useMemo<ModeBBag>(
+    () => ({
+      notes: notesHookRaw.notes,
+      todoItems: todosHookRaw.items,
+      comments: revisionsHookRaw.cards,
+      cutterCards: cutterHookRaw.cards,
+      reportCards: reportsHookRaw.cards,
+      highlights: notesHookRaw.highlights,
+    }),
+    [
+      notesHookRaw.notes,
+      notesHookRaw.highlights,
+      todosHookRaw.items,
+      revisionsHookRaw.cards,
+      cutterHookRaw.cards,
+      reportsHookRaw.cards,
+    ],
+  );
+  // The load-time mark re-apply (RC-B) runs inside the ONE-SHOT-per-doc
+  // reconcile effect (`modeAReconciledDocRef`), so the bag must not join that
+  // effect's dep list — read it through a ref.
+  const modeBCardsRef = useRef(modeBCards);
+  modeBCardsRef.current = modeBCards;
   // BUG #55b (part b): subsume any pre-existing UNLINKED note/todo AI request
   // into a real card with the per-card `aiRequest` flag (re-bridged via
   // `linkedTo`), so retiring the legacy `"ai"` CardKind / `AiRequestCard`
@@ -2059,14 +2104,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // re-anchored-hybrid exclusion.
     const handle = innerRef.current;
     if (handle) {
-      reapplyModeBAnchors((records) => handle.applyLinkedAnchors(records), {
-        notes: notesHookRaw.notes,
-        todoItems: todosHook.items,
-        comments: revisionsHookRaw.cards,
-        cutterCards: cutterHookRaw.cards,
-        reports: reportsHookRaw.cards,
-        highlights: notesHookRaw.highlights,
-      });
+      reapplyModeBAnchors(
+        (records) => handle.applyLinkedAnchors(records),
+        modeBCardsRef.current,
+      );
     }
     // Pending-AI-changes: re-stamp the light-blue `pending-ai-change` mark for
     // every applied-but-not-yet-kept revision/cutter suggestion from its
@@ -5382,6 +5423,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       todoItems: todosHook.items,
+      modeBCards,
       archiveSnippets: archiveHook.snippets,
       deleteArchiveSnippet: archiveHook.deleteSnippet,
       addRequest: aiRequestsHook.addRequest,
@@ -5430,6 +5472,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     notesHook.notes,
     cutterHook.cards,
     todosHook.items,
+    modeBCards,
     archiveHook.snippets,
     archiveHook.deleteSnippet,
     aiRequestsHook.addRequest,
@@ -5476,12 +5519,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // re-pin chip and the omni filter read.
     archivedCardIds: archivedIds,
     collections: {
-      notes: notesHook.notes,
-      cutterCards: cutterHook.cards,
+      // Every Mode-B collection from the ONE bag, plus the two Mode-A-only
+      // slots. Spreading is not shorthand: it is how a sixth Mode-B collection
+      // reaches this consumer without an edit here (task 666).
+      ...modeBCards,
       archiveSnippets: archiveHook.snippets,
-      todoItems: todosHook.items,
-      comments: revisionsHook.cards,
-      reportCards: reportsHook.cards,
       // EntityCollectionSlots reads `exampleId ?? id`, so ExampleInfo[] (which
       // keys on `exampleId`) resolves directly — no boundary adapter.
       examples,
@@ -5498,13 +5540,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // loaded as the empty default, so its anchors are missing from the alive-set
     // — forcing `ready:false` keeps the reaper holding until a clean reload, the
     // EditorPane-level mirror of the reaper stand-down in that reconcile pass.
-    ready:       allCardSidecarsLoaded && docContentReady && !anyCardSidecarLoadError,
-    notes:       notesHook.notes,
-    highlights:  notesHook.highlights,
-    cutterCards: cutterHook.cards,
-    comments:    revisionsHook.cards,
-    reportCards: reportsHook.cards,
-    todos:       todosHook.items,
+    ready: allCardSidecarsLoaded && docContentReady && !anyCardSidecarLoadError,
+    // The alive-set is built from the ONE Mode-B bag: a collection omitted here
+    // is a collection whose marks the next sweep reaps as orphans, so totality
+    // is a data-loss guard, not tidiness.
+    cards: modeBCards,
   });
 
   // ── Open-AI-request text highlight (task 021) ──────────────────────────────
@@ -5572,10 +5612,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   useTextHoverBridge({
     editor,
-    notes: notesHook.notes,
-    cutterCards: cutterHook.cards,
-    comments: revisionsHook.cards,
-    reportCards: reportsHook.cards,
+    // The ONE Mode-B bag — all six collections, not the four this hook used to
+    // list for itself (task 666). Highlights and selection-created todos are
+    // the two spans that were painted but inert before it read the SSOT.
+    cards: modeBCards,
     setHoveredEntity: _setHoveredEntity,
   });
   usePanelCardHoverBridge(_setHoveredEntity);
@@ -5588,11 +5628,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     editor,
     store: cardStoreInst,
     collections: {
-      notes: notesHook.notes,
-      cutterCards: cutterHook.cards,
-      comments: revisionsHook.cards,
-      reportCards: reportsHook.cards,
-      todoItems: todosHook.items,
+      // Same ONE bag as the hover bridge and the reaper — placement for a
+      // highlight used to be unreachable because this literal omitted the slot.
+      ...modeBCards,
       archiveSnippets: archiveHook.snippets,
       examples,
     },

@@ -110,6 +110,7 @@ import {
   getLinkedTextObjectIds,
 } from "@/links/links";
 import type { LinkedAnchorKind } from "@/links/links";
+import type { ModeBBag } from "@/cards/mode-b-collections";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -226,6 +227,14 @@ const EMPTY_NOTES: PaneState["notes"] = [];
 const EMPTY_CUTTER: PaneState["cutterCards"] = [];
 const EMPTY_TODOS: PaneState["todoItems"] = [];
 const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
+const EMPTY_MODE_B_CARDS: ModeBBag = {
+  notes: [],
+  todoItems: [],
+  comments: [],
+  cutterCards: [],
+  reportCards: [],
+  highlights: [],
+};
 const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
 // Stable empty for the archived-anchor sweep's `paneState?.X ?? …` read — a
 // fresh `new Set()` per render would re-fire the sweep effect every render.
@@ -550,6 +559,10 @@ export default function EditorLayout() {
   // Archive: only `snippets` (panel/hover/anchor-sync) + `deleteSnippet` (the two
   // data-desync bridges: footnote-consumes-archive + drop-restore) are live.
   const archiveSnippets = paneState?.archiveSnippets ?? EMPTY_ARCHIVE;
+  // The active pane's Mode-B card bag — the ONE registry-derived set (task
+  // 666), read whole rather than re-listed here. Inert empty bag until a pane
+  // bubbles, which is correct: with no pane there is no card to hover.
+  const modeBCards = paneState?.modeBCards ?? EMPTY_MODE_B_CARDS;
   const deleteSnippet = paneState?.deleteArchiveSnippet ?? noop;
 
   // Citations bubble up from EditorPane — see PaneState in EditorPane.tsx.
@@ -1301,15 +1314,24 @@ export default function EditorLayout() {
     out.add("archive");
     return out;
   }, [prefs.showHighlights, hiddenHighlightTypes]);
-  // Derive Mode B text-range anchor id from the central hovered-entity
-  // state. Generic — works for note / revision / cut without per-kind code.
+  // Derive Mode B text-range anchor id from the central hovered-entity state.
+  // Genuinely generic since task 666: the Mode-B half of this bag is the ACTIVE
+  // PANE's own `modeBCards` (the one registry-derived set), not a literal
+  // assembled here from whichever slices the shell happened to bubble. The old
+  // literal listed four Mode-B collections and silently omitted `highlights`
+  // and `reportCards` — so hovering a highlight's or a report's card resolved
+  // no anchor and lit no text, the panel→text mirror of the dead hover the same
+  // task fixed in the other direction. `archiveSnippets` is NOT a fifth Mode-B
+  // member: archive is Mode-A (`legacyDataKind: null`), so it resolves no text
+  // anchor — it rides along because `findEntity` is generic over ALL anchored
+  // kinds, not because the anchor lookup needs it.
   const hoveredAnchorId = useMemo(() => {
     if (!hoveredEntityId || !hoveredEntityKind) return null;
     return entityToAnchorId(
       { id: hoveredEntityId, kind: hoveredEntityKind },
-      { notes, cutterCards, comments, todoItems, archiveSnippets, examples: [] },
+      { ...modeBCards, archiveSnippets, examples: [] },
     );
-  }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets]);
+  }, [hoveredEntityId, hoveredEntityKind, modeBCards, archiveSnippets]);
 
   useLinkHighlight({
     editor: editorInstance,

@@ -22,19 +22,22 @@ import type { Link } from "@/links/_shared/types";
  */
 export interface EntityCollectionSlots {
   notes: ReadonlyArray<{ id: string; links?: Link[] }>;
-  /** Highlights live alongside notes in the Notes panel. Optional so legacy
-   *  callers (e.g. Reader paths without a highlights hook, or the bag-less
-   *  EditorLayout anchor literals) still compile. */
-  highlights?: ReadonlyArray<{ id: string; links?: Link[] }>;
+  /** Highlights live alongside notes in the Notes panel. REQUIRED since task
+   *  666: optionality is what let the shell's hovered-anchor literal omit it
+   *  silently, so hovering a highlight's card resolved no anchor and the tint
+   *  never lit. A caller with no highlights passes `[]` — explicitly. */
+  highlights: ReadonlyArray<{ id: string; links?: Link[] }>;
   cutterCards: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   comments: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   /** Renamed from the old `EntityCollections.todos` to match `CardFloatCtx`. */
   todoItems: ReadonlyArray<{ id: string; links?: Link[] }>;
   archiveSnippets: ReadonlyArray<{ id: string; links?: Link[] }>;
   /** Reports panel hosts both `report` + `report-request`; split on `kind`.
-   *  Renamed from the old `EntityCollections.reports`. Optional so bag-less
-   *  callers still compile. */
-  reportCards?: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
+   *  Renamed from the old `EntityCollections.reports`. REQUIRED since task 666
+   *  — same reason as `highlights`: an omitted Mode-B slot is an entity that
+   *  resolves to nothing, which looks like "the feature is off" rather than an
+   *  error. Pass `[]` when you genuinely have none. */
+  reportCards: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   /** `ExampleInfo` keys on `exampleId`, not `id` (the documented one-example
    *  carve-out); `findEntity` reads `e.exampleId ?? e.id` so both shapes
    *  resolve without a boundary adapter. */

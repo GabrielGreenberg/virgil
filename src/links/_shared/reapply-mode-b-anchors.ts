@@ -51,6 +51,12 @@
 
 import { getTextAnchor, type CardWithLinks, type LinkedAnchorKind } from "../links";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import {
+  MODE_B_COLLECTIONS,
+  markKindForCardKind,
+  type ModeBBag,
+  type ModeBRecord,
+} from "@/cards/mode-b-collections";
 
 /** One re-apply instruction: re-stamp `kind`'s `linkedAnchor` mark with
  *  `anchorId` over the doc text `text`. Matches the `EditorHandle`'s
@@ -80,18 +86,14 @@ export interface ModeBReapplyRecord {
  *  Structural so the leaf module never imports the heavy Editor component. */
 export type ApplyLinkedAnchorsFn = (records: ModeBReapplyRecord[]) => void;
 
-export interface ModeBCardArrays {
-  notes: readonly CardWithLinks[];
-  todoItems: readonly CardWithLinks[];
-  comments: readonly CardWithLinks[];
-  cutterCards: readonly CardWithLinks[];
-  /** Report + report-request cards. `report-request` mints a real Mode-B
-   *  `linkedAnchor` (`drag-handle-actions.createAnchor(ed,"report-request")`),
-   *  so reports must be re-applied like every other Mode-B kind — omitting them
-   *  was a latent BUG1 instance. Collected BEFORE highlights (highlights LAST). */
-  reports: readonly CardWithLinks[];
-  highlights: readonly CardWithLinks[];
-}
+/** The Mode-B card bag this writer re-applies from. Was a hand-written
+ *  six-field interface whose membership had to be kept in sync by eye with the
+ *  orphan reaper's and the hover bridge's own lists — the drift that left the
+ *  hover bridge knowing four of six (task 666). It is now the ONE total bag
+ *  (`ModeBBag`), so the slot set here is the slot set everywhere. The old
+ *  `reports` field is now `reportCards`, matching `CardFloatCtx` /
+ *  `EntityCollectionSlots`. */
+export type ModeBCardArrays = ModeBBag;
 
 /** A Mode-B card carries a separate clean Mode-A link iff the drop re-anchor
  *  relocated it (the double-link hybrid). Such a card must be excluded from the
@@ -138,10 +140,10 @@ function modeBParagraphId(card: CardWithLinks): string | undefined {
  *  the owning `cardId` (carried but not stamped into `linkCard` — see the type
  *  doc) — so the reconcile re-stamp is faithful (BUG1). */
 function collectModeBRecords(
-  cards: readonly CardWithLinks[],
-  kindFor: (card: CardWithLinks) => LinkedAnchorKind,
+  cards: ReadonlyArray<ModeBRecord>,
+  kindFor: (card: ModeBRecord) => LinkedAnchorKind,
   out: ModeBReapplyRecord[],
-  textFor: (card: CardWithLinks, anchorText: string) => string = (_c, t) => t,
+  textFor: (card: ModeBRecord, anchorText: string) => string = (_c, t) => t,
 ): void {
   for (const card of cards) {
     if (hasSeparateModeALink(card)) continue; // re-anchored hybrid → RC-A heals it
@@ -170,47 +172,41 @@ function collectModeBRecords(
 }
 
 /**
- * Build the Mode-B re-apply record set in the EXACT order and with the EXACT
- * inclusion rules of the retired `EditorLayout.applyLinkedAnchors` effect
- * (note → todo → revision → cutter → report → highlight LAST; reports added in
- * the BUG1 fix), plus the re-anchored-hybrid exclusion. Pure — separated from
- * the dispatch so tests can assert the record set without an editor.
+ * Build the Mode-B re-apply record set by walking the ONE Mode-B collection
+ * SSOT (`MODE_B_COLLECTIONS`), whose declared order IS the EXACT order of the
+ * retired `EditorLayout.applyLinkedAnchors` effect (note → todo → revision →
+ * cutter → report → highlight LAST; reports added in the BUG1 fix) — the
+ * highlights-last rationale now lives with the table. Inclusion rules
+ * (empty-text skip, the re-anchored-hybrid exclusion) are unchanged. Pure —
+ * separated from the dispatch so tests can assert the record set without an
+ * editor.
  */
 export function buildModeBReapplyRecords(
   arrays: ModeBCardArrays,
 ): ModeBReapplyRecord[] {
   const records: ModeBReapplyRecord[] = [];
-  collectModeBRecords(arrays.notes, () => "note", records);
-  collectModeBRecords(arrays.todoItems, () => "todo", records);
-  // Revisions: the retired effect fell back to `selectedText` when the
-  // textRange snapshot was empty (`ta.anchorText || (c.selectedText ?? "")`).
-  collectModeBRecords(
-    arrays.comments,
-    () => "revision",
-    records,
-    (c, anchorText) =>
-      anchorText || ((c as { selectedText?: string }).selectedText ?? ""),
-  );
-  collectModeBRecords(
-    arrays.cutterCards,
-    (c) =>
-      (c as { kind?: string }).kind === "suggestion"
-        ? "cutter-suggestion"
-        : "cutter-comment",
-    records,
-  );
-  // Reports: split report / report-request on the per-card `kind`. Placed
-  // AFTER cutters and BEFORE highlights (highlights stay strictly LAST).
-  collectModeBRecords(
-    arrays.reports,
-    (c) =>
-      (c as { kind?: string }).kind === "report-request"
-        ? "report-request"
-        : "report",
-    records,
-  );
-  // Highlights LAST — see the module header (overlap last-wins).
-  collectModeBRecords(arrays.highlights, () => "highlight", records);
+  for (const collection of MODE_B_COLLECTIONS) {
+    collectModeBRecords(
+      arrays[collection.slot],
+      // The mark's `kind` attr for this record — the spine kind resolved by the
+      // collection's own `kindOf` (the `cardKindFromRecord` SSOT for the
+      // polymorphic slots), then folded into the mark namespace. Byte-identical
+      // to the retired per-slot literals, including both revision kinds sharing
+      // the single `"revision"` mark. The `?? "note"` is unreachable-defensive:
+      // every kind bound to a Mode-B slot has a mark token by construction (the
+      // module's dev canary + the census pin it).
+      (card) => markKindForCardKind(collection.kindOf(card)) ?? "note",
+      records,
+      // Revisions ONLY: the retired effect fell back to `selectedText` when the
+      // textRange snapshot was empty (`ta.anchorText || (c.selectedText ?? "")`).
+      // This is a TEXT-resolution nuance of that one slot, not a membership
+      // fact — kept slot-scoped so the record set stays byte-identical.
+      collection.slot === "comments"
+        ? (c, anchorText) =>
+            anchorText || ((c as { selectedText?: string }).selectedText ?? "")
+        : undefined,
+    );
+  }
   return records;
 }
 
