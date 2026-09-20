@@ -34,12 +34,24 @@
  * a dead mutually-recursive cluster is caught at its entry point — which is
  * where deleting it starts anyway.
  *
- * AND ITS ONE REAL HOLE, stated rather than papered over: `callSites` is a
- * bare-name grep with no module resolution, so a dead export whose name collides
- * with a live symbol anywhere in the population reads ALIVE. That is not closed
- * here; the honest mitigation is that scaffolding usually gets a distinctive
- * name, and the alternative is a type-aware pass no suite in this repo can
- * afford.
+ * ITS ONE REAL HOLE, stated rather than papered over: `callSites` is a bare-name
+ * grep with no module resolution, so a dead export whose name collides with a
+ * live symbol anywhere in the population can read ALIVE. A type-aware pass is
+ * still out of reach for any suite in this repo.
+ *
+ * ONE SPELLING OF IT IS CLOSED (task 668), and it is the spelling that mattered:
+ * a hit that is itself a DECLARATION of the same name. `src/links/` published
+ * `isModeB` and never called it while twenty-three sites hand-wrote the
+ * comparison — and the four hits that scored it ALIVE included
+ * `resolve-card-anchor.ts`'s own `const isModeB = …`, a local re-derivation of
+ * exactly the predicate. So the hole was not merely failing to catch that
+ * defect: it was ANTI-correlated with it, because the duplication that proves an
+ * SSOT dead is the same text that alibis it. The header used to rest on the hope
+ * that "scaffolding usually gets a distinctive name"; a dead predicate's
+ * duplicate is guaranteed to share its name, which is the one case the hope
+ * cannot cover. {@link referenceHits} therefore discounts `const` / `let` /
+ * `var` / `function` / `class` declarations of the name — including the export's
+ * own, so no caller needs a "minus my own declaration" correction any more.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -93,9 +105,31 @@ export function censusPopulation(): Map<string, string> {
 export const isTestFile = (file: string): boolean =>
   file.includes("__tests__") || /\.test\.tsx?$/.test(file);
 
+/** Declaration forms of `name` — the hits that are the thing being defined
+ *  rather than a use of it. `const` / `let` / `var` / `function` / `class`,
+ *  which covers the export's OWN declaration and every local re-derivation of
+ *  the same name (see the header's "ONE SPELLING OF IT IS CLOSED"). */
+const DECLARATION_OF = (name: string) =>
+  new RegExp(`\\b(?:const|let|var|function|class)\\s+${name}\\b`, "g");
+
 /**
- * Uses of `name` across the population, not counting its own declaration, split
- * by whether the caller is a TEST.
+ * Uses of `name` in one file's census text that are NOT declarations of it.
+ *
+ * Exported for its own planted-defect self-check: a leg that feeds it
+ * `"const isModeB = link.anchor.targetKind === 'linkedRange';"` and demands
+ * ZERO is the only way this hole stays closed, because the hole is invisible
+ * from the verdict end (a dead export with a duplicate simply reads alive).
+ */
+export function referenceHits(text: string, name: string): number {
+  const all = (text.match(new RegExp(`\\b${name}\\b`, "g")) ?? []).length;
+  if (!all) return 0;
+  const declared = (text.match(DECLARATION_OF(name)) ?? []).length;
+  return Math.max(0, all - declared);
+}
+
+/**
+ * Uses of `name` across the population that are not DECLARATIONS of it, split by
+ * whether the caller is a TEST.
  *
  * The split is the whole point, and task 202's own deletion is the proof: run
  * the census against the pre-fix tree and `cardKindToLegacyAnchorKind` — which
@@ -103,14 +137,18 @@ export const isTestFile = (file: string): boolean =>
  * FOURTEEN callers, all of them in `anchor-kind-maps.test.ts`. A guard that
  * counts a suite as a consumer says "alive" about every dead export that was
  * ever tested, which in this repo is most of them.
+ *
+ * Takes no `declaredIn` (task 668). It used to, for a single purpose — subtract
+ * the export's own declaration in its own file — and that subtraction is now a
+ * special case of {@link referenceHits}, which discounts EVERY declaration of
+ * the name anywhere. Keeping the parameter would have left a second, weaker
+ * answer to "which hit is the definition?" in the signature.
  */
-export function callSites(name: string, declaredIn: string): { real: number; testOnly: number } {
-  const re = new RegExp(`\\b${name}\\b`, "g");
+export function callSites(name: string): { real: number; testOnly: number } {
   let real = 0;
   let testOnly = 0;
   for (const [file, text] of censusPopulation()) {
-    let hits = (text.match(re) ?? []).length;
-    if (file === declaredIn) hits = Math.max(0, hits - 1);
+    const hits = referenceHits(text, name);
     if (!hits) continue;
     if (isTestFile(file)) testOnly += hits;
     else real += hits;
@@ -169,7 +207,7 @@ export function deadExports(
       const name = m[1];
       const key = `${entry.rel}::${name}`;
       if (permitted[key]) continue;
-      const { real, testOnly } = callSites(name, entry.file);
+      const { real, testOnly } = callSites(name);
       if (real > 0) continue;
       dead.push(
         testOnly > 0
@@ -204,7 +242,7 @@ export function staleAllowlistEntries(
       stale.push(`${key} is allowlisted but no longer declared — drop the entry`);
       continue;
     }
-    const { real } = callSites(key.split("::")[1], entry.file);
+    const { real } = callSites(key.split("::")[1]);
     if (real > 0) {
       stale.push(`${key} is allowlisted as uncalled but now has ${real} caller(s) — drop the entry`);
     }

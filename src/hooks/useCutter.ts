@@ -21,6 +21,7 @@ import {
   clearTextAnchorLink,
   getLinkedTextObjectIds,
   getTextAnchor,
+  getTextAnchorFromLinks,
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
@@ -63,7 +64,6 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("cutter-comment", raw);
-  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
     kind: "comment",
     id: r.id,
@@ -74,7 +74,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     aiRequest: !!r.aiRequest,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     // Carried through unchanged (task 488). There is no snapshot fallback and
     // there must not be one: the link's `textSnapshot` is the PLAIN relocation
     // string, so synthesising a rich body from it would put a second, lossier
@@ -88,7 +88,6 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   const r = (raw ?? {}) as Partial<CutterSuggestionCard>;
   if (!r.id || !r.createdAt) return null;
   const links = migrateCardLinks("cutter-suggestion", raw);
-  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: CutterSuggestionCard["status"] =
     r.status === "accepted" ||
     r.status === "rejected" ||
@@ -113,7 +112,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     ...(r.appliedChange ? { appliedChange: r.appliedChange } : {}),
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     // Carried through unchanged (task 488). There is no snapshot fallback and
     // there must not be one: the link's `textSnapshot` is the PLAIN relocation
     // string, so synthesising a rich body from it would put a second, lossier
@@ -164,12 +163,6 @@ function migrateCutter(raw: unknown): CutterState {
       // LEGACY_TOKEN_TO_CARD_KIND crosswalk (src/cards/legacy-token-crosswalk.ts)
       // — this branch previously carried its own rewriteLinkTargetKind wrapper.
       const links = migrateCardLinks("cutter-comment", raw);
-      const ta = links.find(
-        (l) =>
-          l.anchor.type === "textObject" &&
-          l.anchor.targetKind === "linkedRange" &&
-          l.anchor.textRange,
-      );
       cards.push({
         kind: "comment",
         id: c.id,
@@ -178,7 +171,7 @@ function migrateCutter(raw: unknown): CutterState {
         content,
         aiRequest: false,
         selectedText:
-          ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined,
+          getTextAnchorFromLinks(links)?.anchorText,
         links,
       });
     }

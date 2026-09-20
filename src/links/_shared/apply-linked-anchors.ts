@@ -121,7 +121,7 @@ export function applyLinkedAnchorsImpl(
         rec.anchorId,
         undefined, // no cardId → linkCard "" (kind-fallback drives colour + consumer kind)
         rec.tintColor,
-        rec.paragraphId, // consumed in Chip 6 (uuid-scoped search)
+        rec.paragraphId, // scopes the search to the containing paragraph
       );
       continue;
     }

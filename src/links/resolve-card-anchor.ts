@@ -32,6 +32,7 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./_shared/types";
+import { isModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { paragraphUuidAt, type CardWithLinks } from "./links";
 
@@ -200,7 +201,7 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
  * Resolve where a card is anchored NOW, against a pre-built index.
  *
  * Priority ladder — **uuid STRICTLY before snapshot**:
- *   1. Any Mode-A link (`targetKind !== "linkedRange"`) ANY of whose
+ *   1. Any Mode-A link (`!isModeB`) ANY of whose
  *      `textObjectIds` is a live uuid → `{mode:'A', source:'uuid'}` on the
  *      first live one. A still-live UUID always wins, even over a snapshot
  *      that would match a different sibling. It reads EVERY id, not just
@@ -208,7 +209,7 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
  *      round-trip but whose `p2` is live is anchored, not orphaned — and
  *      rung 2b and `getLinkedTextObjectIds` already iterated, so `[0]`-only
  *      here was the odd one out.
- *   2. Else a Mode-B link (`targetKind === "linkedRange"`) whose
+ *   2. Else a Mode-B link (`isModeB`) whose
  *      `textRange.anchorId` resolves via `anchorIdToParagraph` →
  *      `{mode:'B', source:'mark'}`.
  *   2b. RC1 self-heal — Else a POISONED `linkedRange` link (mark dead, so
@@ -248,7 +249,7 @@ export function resolveCardAnchor(
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
     if (link.anchor.type !== "textObject") continue;
-    if (link.anchor.targetKind === "linkedRange") continue;
+    if (isModeB(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
       if (pid && index.uuidToParagraph.has(pid)) {
         return { paragraphId: pid, mode: "A", source: "uuid", linkIndex: i };
@@ -259,8 +260,7 @@ export function resolveCardAnchor(
   // --- Rung 2: Mode-B surviving mark --------------------------------------
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
-    if (link.anchor.type !== "textObject") continue;
-    if (link.anchor.targetKind !== "linkedRange") continue;
+    if (!isModeB(link)) continue;
     const anchorId = link.anchor.textRange?.anchorId;
     if (!anchorId) continue;
     const paragraphId = index.anchorIdToParagraph.get(anchorId);
@@ -277,8 +277,7 @@ export function resolveCardAnchor(
   // the snapshot rung (so uuid still beats snapshot).
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
-    if (link.anchor.type !== "textObject") continue;
-    if (link.anchor.targetKind !== "linkedRange") continue;
+    if (!isModeB(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
       if (pid && index.uuidToParagraph.has(pid)) {
         return { paragraphId: pid, mode: "A", source: "uuid", linkIndex: i };
@@ -290,8 +289,8 @@ export function resolveCardAnchor(
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
     if (link.anchor.type !== "textObject") continue;
-    const isModeB = link.anchor.targetKind === "linkedRange";
-    const rawSnapshot = isModeB
+    const modeB = isModeB(link);
+    const rawSnapshot = modeB
       ? link.anchor.textRange?.textSnapshot
       : link.anchor.paragraphSnapshot;
     if (!rawSnapshot) continue;
@@ -304,7 +303,7 @@ export function resolveCardAnchor(
       // with its own snapshot is never pointed at this paragraph.
       return {
         paragraphId,
-        mode: isModeB ? "B" : "A",
+        mode: modeB ? "B" : "A",
         source: "snapshot",
         linkIndex: i,
       };
@@ -433,7 +432,7 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
   const hasCleanModeAOnPid = links.some(
     (l) =>
       l.anchor.type === "textObject" &&
-      l.anchor.targetKind !== "linkedRange" &&
+      !isModeB(l) &&
       // EVERY id (task 664) — a legacy multi-id link that carries
       // `paragraphId` anywhere already owns this paragraph, so the dead
       // hybrid must be DROPPED rather than converted into a duplicate.
@@ -448,7 +447,7 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
       continue;
     }
 
-    const isModeBLink = link.anchor.targetKind === "linkedRange";
+    const isModeBLink = isModeB(link);
 
     // (B) HYBRID CLEANUP — a dead-mark linkedRange residue.
     if (isModeBLink && isAnchorIdLive) {
@@ -568,7 +567,7 @@ function relocateBySnapshot<T extends CardWithLinks>(
   }
   const link = links[idx];
   if (link.anchor.type !== "textObject") return { card, changed: false };
-  const isModeBLink = link.anchor.targetKind === "linkedRange";
+  const isModeBLink = isModeB(link);
 
   let rewritten: Link | null = null;
 

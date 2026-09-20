@@ -20,6 +20,7 @@ import {
   clearTextAnchorLink,
   getLinkedTextObjectIds,
   getTextAnchor,
+  getTextAnchorFromLinks,
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
@@ -47,12 +48,6 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("report", raw);
-  const ta = links.find(
-    (l) =>
-      l.anchor.type === "textObject" &&
-      l.anchor.targetKind === "linkedRange" &&
-      l.anchor.textRange,
-  );
   return {
     kind: "report",
     id: r.id,
@@ -68,7 +63,7 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
     content,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     links,
   };
 }
@@ -82,12 +77,6 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("report-request", raw);
-  const ta = links.find(
-    (l) =>
-      l.anchor.type === "textObject" &&
-      l.anchor.targetKind === "linkedRange" &&
-      l.anchor.textRange,
-  );
   return {
     kind: "report-request",
     id: r.id,
@@ -98,7 +87,7 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
     aiRequest: !!r.aiRequest,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     links,
   };
 }

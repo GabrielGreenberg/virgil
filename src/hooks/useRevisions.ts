@@ -21,6 +21,7 @@ import {
   clearTextAnchorLink,
   getLinkedTextObjectIds,
   getTextAnchor,
+  getTextAnchorFromLinks,
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
@@ -64,7 +65,6 @@ function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("revision-comment", raw);
-  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
     kind: "comment",
     id: r.id,
@@ -75,7 +75,7 @@ function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
     aiRequest: !!r.aiRequest,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     // Carried through unchanged (task 488). There is no snapshot fallback and
     // there must not be one: the link's `textSnapshot` is the PLAIN relocation
     // string, so synthesising a rich body from it would put a second, lossier
@@ -89,7 +89,6 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   const r = (raw ?? {}) as Partial<RevisionSuggestionCard>;
   if (!r.id || !r.createdAt) return null;
   const links = migrateCardLinks("revision-suggestion", raw);
-  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: RevisionSuggestionCard["status"] =
     r.status === "accepted" ||
     r.status === "rejected" ||
@@ -114,7 +113,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
     ...(r.appliedChange ? { appliedChange: r.appliedChange } : {}),
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
+      getTextAnchorFromLinks(links)?.anchorText,
     // Carried through unchanged (task 488). There is no snapshot fallback and
     // there must not be one: the link's `textSnapshot` is the PLAIN relocation
     // string, so synthesising a rich body from it would put a second, lossier

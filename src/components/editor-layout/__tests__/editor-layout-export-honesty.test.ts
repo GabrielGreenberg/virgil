@@ -47,6 +47,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { codeOnly, commentsStripped } from "../../../lib/__tests__/_source-scan";
+import { referenceHits } from "../../../lib/__tests__/_export-census";
 
 const SRC = path.resolve(__dirname, "../../..");
 const SILO = path.join(SRC, "components", "editor-layout");
@@ -97,17 +98,22 @@ const SILO_FILES = ALL_FILES.filter(
 const VALUE_EXPORT = /^export\s+(?:async\s+)?(?:function|class|const|let)\s+([A-Za-z0-9_]+)/gm;
 const isTest = (f: string) => f.includes("__tests__") || /\.test\.tsx?$/.test(f);
 
-/** Uses of `name` across both silos, not counting its own declaration, split by
+/** Uses of `name` across both silos that are not DECLARATIONS of it, split by
  *  whether the caller is a TEST. The split is the point: a guard that counts a
  *  suite as a consumer says "alive" about every dead export that was ever
- *  tested, which in this repo is most of them. */
-function callSites(name: string, declaredIn: string): { real: number; testOnly: number } {
-  const re = new RegExp(`\\b${name}\\b`, "g");
+ *  tested, which in this repo is most of them.
+ *
+ *  The per-file count is `referenceHits` from the shared census (task 668), not
+ *  a fourth private copy of the bare-name grep. That grep scored a LOCAL
+ *  `const <name>` — a hand-rolled re-derivation of the export — as a caller,
+ *  which is the one collision a dead SSOT is guaranteed to have. This silo's
+ *  population stays its own (a disk walk over two roots); only the question
+ *  "is this hit a use?" is shared, because that is where the hole was. */
+function callSites(name: string): { real: number; testOnly: number } {
   let real = 0;
   let testOnly = 0;
   for (const [file, text] of REFERENCES) {
-    let hits = (text.match(re) ?? []).length;
-    if (file === declaredIn) hits = Math.max(0, hits - 1);
+    const hits = referenceHits(text, name);
     if (!hits) continue;
     if (isTest(file)) testOnly += hits;
     else real += hits;
@@ -123,7 +129,7 @@ function uncalled(): string[] {
   const out: string[] = [];
   for (const file of SILO_FILES) {
     for (const name of valueExports(file)) {
-      if (callSites(name, file).real === 0) out.push(`${path.relative(SILO, file)}::${name}`);
+      if (callSites(name).real === 0) out.push(`${path.relative(SILO, file)}::${name}`);
     }
   }
   return out.sort();
