@@ -4644,3 +4644,76 @@ cannot slip the door. Pre-fix nine of its fourteen legs fail and the five chip /
 conversion legs pass — that asymmetry is the finding. Plus M8c in
 [reparent-identity-conservation.test.ts](../../../src/lib/tiptap/__tests__/reparent-identity-conservation.test.ts)
 (the same-type case, stated where M8/M8b would otherwise imply it was covered).
+
+## The narrowest-list half — N hand-kept lists lose a feature at the SHORTEST one (task 666)
+
+**Rule.** When several consumers need the same MEMBERSHIP answer ("which
+collections carry a Mode-B text anchor?"), the answer is derived ONCE from a
+declared facet and handed to every consumer as a TOTAL type. Not N lists kept
+in sync by eye — because N lists do not fail loudly when they disagree; the
+feature simply stops existing wherever the shortest list runs out.
+
+**The shape.** "Which card collections carry a Mode-B (`linkedRange`) anchor?"
+was asked in four places, as four hand-written lists:
+
+| site | count |
+|---|---|
+| `useLinkedAnchorReconciler` (the orphan reaper's alive-set) | 6 |
+| `reapply-mode-b-anchors` (the load-time mark re-apply) | 6 |
+| `EditorLayout`'s `hoveredAnchorId` literal | 4 |
+| `useTextHoverBridge` (the text→card direction) | 4 |
+
+The two short ones cost real features, in *opposite* directions. The hover
+bridge's omission made a **highlight's** and a selection-created **todo's**
+anchored text dead to hover AND click — painted, tinted, inert. The shell's
+omission made hovering a **highlight's** or a **report's** CARD light no text.
+Each direction alone reads as "that kind just doesn't do that"; together they
+were invisible.
+
+**Three things made it survivable, and each is a lesson.**
+
+1. **The membership fact was already written down — twice — and still not
+   read.** `reapply-mode-b-anchors` said reports "must be re-applied like every
+   other Mode-B kind — omitting them was a latent BUG1 instance";
+   `useLinkedAnchorReconciler` said todos "MUST be in the alive-set". Two
+   comments recording that the class had bitten before, on a list that could
+   still be written short. *A comment naming a bug class is evidence the class
+   needs a TYPE, not a better comment.*
+2. **A generic MECHANISM was mistaken for a generic ANSWER.** The hook's own
+   header claimed "One listener handles every kind generically." True of the
+   DOM read; false of the kind set, which was hardcoded in its argument list.
+   (Compare "The other half: a shared WALKER is not a shared ANSWER", above —
+   same confusion, mirrored.)
+3. **OPTIONALITY hid the shell's hole.** `EntityCollectionSlots.highlights` and
+   `.reportCards` were `?:` "so legacy callers still compile" — so the literal
+   that omitted them compiled, and the entity resolved to `undefined`, which
+   looks exactly like "no such card" rather than "you forgot a slot."
+
+**The fix, and what generalizes.** Membership is now DERIVED, from a facet that
+already existed: `LEGACY_TOKEN_CROSSWALK[kind].legacyDataKind`, whose own
+contract reads verbatim "`null` if this kind never carries a `linkedAnchor`
+mark". No new registry facet was added — *prefer reading a declared fact over
+declaring it a second time.* The slot BINDING (which bag array hosts which
+kind, and in what order — highlights must stay LAST for overlap last-wins) is
+declared in one table in `src/cards/mode-b-collections.ts`, CHECKED against the
+derived membership by a dev canary and by
+`src/links/_shared/__tests__/mode-b-collection-set.test.ts`.
+
+The forcing function is the TYPE, not the census: `ModeBBag` is
+`Record<ModeBSlot, …>`, total over the slot union, so **a narrow consumer no
+longer compiles.** The census is the second rung (every consumer imports the
+SSOT; none re-lists the names; allowlist EMPTY), and the two Mode-B slots on
+`EntityCollectionSlots` are now REQUIRED — a caller with none passes `[]`
+explicitly. A membership question whose wrong answer is *silence* must be made
+unrepresentable, not merely tested.
+
+**Residual, honestly stated.** The slot binding is a declared table, not a
+derivation: nothing in the registry answers "which array of the per-doc bag
+does this kind live in" (the `notes` panel hosts `note` AND `highlight` across
+two arrays, so the panel facet cannot answer it). Adding a Mode-B kind to an
+EXISTING slot costs zero edits; a kind that needs a NEW slot costs one row —
+and omitting it fails the census rather than losing a feature.
+
+CI: `mode-b-collection-set.test.ts` (the census + the derivation),
+`useTextHoverBridge-mode-b-kinds.test.tsx` (the first test that ever mounted
+this hook — its absence is how this shipped).

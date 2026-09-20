@@ -38,7 +38,7 @@ import {
 } from "@/lib/editor-extensions";
 import { useTextHoverBridge } from "../useTextHoverBridge";
 import { DATA_LINK_ID } from "@/links/link-dom-contract";
-import type { ModeBBag } from "@/cards/mode-b-collections";
+import type { ModeBBag, ModeBRecord } from "@/cards/mode-b-collections";
 import type { CardKind } from "@/cards/types";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -96,7 +96,7 @@ function mountDoc(
 }
 
 /** A card with one Mode-B (`linkedRange`) link over `anchorId`. */
-function modeBCard(id: string, anchorId: string, kind?: string) {
+function modeBCard(id: string, anchorId: string, kind?: string): ModeBRecord {
   return {
     id,
     ...(kind ? { kind } : {}),
@@ -114,7 +114,7 @@ function modeBCard(id: string, anchorId: string, kind?: string) {
         createdAt: "",
       },
     ],
-  };
+  } as ModeBRecord;
 }
 
 function emptyBag(): ModeBBag {
