@@ -58,7 +58,6 @@ function prefs(over: Partial<ViewPrefs> = {}): ViewPrefs {
     dockStack: { left: [], right: [] },
     panelMRU: { left: [], right: [] },
     poppedOutPanels: [],
-    poppedOutOrigins: {},
     poppedOutCards: [],
     floatPositions: {},
     panelModes: {},
@@ -224,7 +223,6 @@ describe("removeFromStack / closePanel — THE removal SSOTs", () => {
         dockStack: { left: [A], right: [B] },
         panelMRU: { left: [A], right: [B] },
         poppedOutPanels: [C],
-        poppedOutOrigins: { [C]: "top" },
         poppedOutCards: ["note:1"],
         collapsedLeft: true,
         blankRight: true,
@@ -233,7 +231,6 @@ describe("removeFromStack / closePanel — THE removal SSOTs", () => {
     expect(p.dockStack).toEqual({ left: [], right: [] });
     expect(p.panelMRU).toEqual({ left: [], right: [] });
     expect(p.poppedOutPanels).toEqual([]);
-    expect(p.poppedOutOrigins).toEqual({});
     // Card floats are a different axis; the sides keep their sentinels.
     expect(p.poppedOutCards).toEqual(["note:1"]);
     expect([p.collapsedLeft, p.blankRight]).toEqual([true, true]);

@@ -73,6 +73,8 @@ describe("loadPrefs — a retired panel id is RENAMED across every carrier", () 
         floatPositions: { comments: { x: 11, y: 22, width: 333, height: 444 } },
         cardArchiveView: { comments: "archived" },
         poppedOutPanels: ["comments"],
+        // A pre-678 blob still carries the write-only origins record; the
+        // retired-key scrub must drop it rather than rename it forward.
         poppedOutOrigins: { comments: "bottom" },
       },
     });
@@ -92,10 +94,12 @@ describe("loadPrefs — a retired panel id is RENAMED across every carrier", () 
     expect(loadCommentsEverywhere().dockStack).toEqual({ left: ["revisions"], right: [] });
   });
 
-  it("transfers the FLOAT state and its origin — was DROPPED by validPanelId", () => {
+  it("transfers the FLOAT state — was DROPPED by validPanelId", () => {
     const p = loadCommentsEverywhere();
     expect(p.poppedOutPanels).toEqual(["revisions"]);
-    expect(p.poppedOutOrigins).toEqual({ revisions: "bottom" });
+    // Task 678: the split-half ORIGIN that used to ride alongside is retired,
+    // so the stored record leaves the load entirely instead of being renamed.
+    expect("poppedOutOrigins" in p).toBe(false);
   });
 
   // Task 381 renegotiated the CARRIER, not the contract: omni membership is
@@ -133,7 +137,6 @@ describe("loadPrefs — a retired panel id is RENAMED across every carrier", () 
       p.panelModes,
       p.floatPositions,
       p.cardArchiveView,
-      p.poppedOutOrigins,
     ] as Record<string, unknown>[]) {
       expect(Object.keys(carrier)).not.toContain("comments");
     }

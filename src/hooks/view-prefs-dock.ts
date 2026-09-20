@@ -266,7 +266,6 @@ export function closeAllPanels(p: ViewPrefs): ViewPrefs {
     dockStack: { left: [], right: [] },
     panelMRU: { left: [], right: [] },
     poppedOutPanels: [],
-    poppedOutOrigins: {},
   };
 }
 

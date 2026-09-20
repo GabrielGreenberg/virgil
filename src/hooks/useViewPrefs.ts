@@ -93,8 +93,6 @@ export interface PanelPlacement {
   side: Side;
 }
 
-export type Half = "top" | "bottom";
-
 /** A panel can sit in the gutter dock (default) or as a free-floating
  *  window. The mode is per-panel and persists across reloads. */
 export type PanelMode = "docked" | "floating";
@@ -156,10 +154,6 @@ export interface ViewPrefs extends RegistryPrefs {
   codePaneRatio: number;
   /** Panels currently displayed as floating windows. */
   poppedOutPanels: PanelId[];
-  /** Which split half each popped-out panel came from, so un-popping
-   *  restores it to the same slot instead of always the top. Entries
-   *  are removed when a panel is un-popped. */
-  poppedOutOrigins: Partial<Record<PanelId, Half>>;
   /** Saved position/size of each floating panel, keyed by panel id.
    *  Persisted: a panel re-opens at its last floating rect even after a
    *  reload. Cleared only when the panel is moved back to docked mode
@@ -271,11 +265,21 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
  *    which is also a repair: this key was per-WINDOW, so the tick had to be
  *    made again in every window. Carried across once by the fold in
  *    `loadPrefs` below.
+ *  - `poppedOutOrigins`: "which split HALF a popped-out panel came from, so
+ *    un-popping restores it to the same slot". It named a position in the
+ *    ≤2-panel split model (`activeLeft` + `activeLeftBottom`) that task 273
+ *    replaced with the ordered `dockStack` — there is no half left to restore
+ *    to, and a re-docked panel goes to a stack INDEX, which `redockPanel(id,
+ *    side, index)` already takes. Nothing ever wrote an origin and nothing ever
+ *    read one; the field was only validated, renamed, reset and re-persisted,
+ *    always empty. Retired in task 678 along with the `Half` type it was the
+ *    sole referent of.
  */
 const RETIRED_PREF_KEYS = [
   "editorSplit",
   "editorSplitRatio",
   "suppressArchiveAtomWarning",
+  "poppedOutOrigins",
 ] as const;
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -1025,17 +1029,6 @@ export function loadPrefs(): ViewPrefs {
     const survivingPoppedPanels: PanelId[] = Array.isArray(parsed.poppedOutPanels)
       ? (parsed.poppedOutPanels as unknown[]).filter(validPanelId)
       : [];
-    const survivingPanelSet = new Set<PanelId>(survivingPoppedPanels);
-    const survivingOrigins: ViewPrefs["poppedOutOrigins"] = {};
-    if (parsed.poppedOutOrigins && typeof parsed.poppedOutOrigins === "object") {
-      for (const [k, v] of Object.entries(
-        parsed.poppedOutOrigins as Record<string, unknown>,
-      )) {
-        if (survivingPanelSet.has(k as PanelId) && (v === "top" || v === "bottom")) {
-          survivingOrigins[k as PanelId] = v;
-        }
-      }
-    }
 
     // Open layout (dockStack) + per-band heights (panelHeights) persist
     // per-window so a reload restores the open panels and their sizes;
@@ -1061,7 +1054,6 @@ export function loadPrefs(): ViewPrefs {
       blankLeft,
       blankRight,
       poppedOutPanels: survivingPoppedPanels,
-      poppedOutOrigins: survivingOrigins,
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
       panelWidths: parsed.panelWidths ?? {},
@@ -1689,14 +1681,10 @@ export function useViewPrefs(opts?: {
    * dockSlots happens in loadPrefs, not here.
    */
   const closePopout = useCallback((id: PanelId) => {
-    update((p) => {
-      const { [id]: _droppedOrigin, ...remainingOrigins } = p.poppedOutOrigins;
-      // `closePanel` drops the band, its recency and the float;
-      // floatPositions + panelHeights intentionally unchanged (the user's
-      // pinned size sticks across close/open cycles). Only the split-half
-      // ORIGIN is forgotten, which is this setter's own business.
-      return { ...closePanel(p, id), poppedOutOrigins: remainingOrigins };
-    });
+    // `closePanel` drops the band, its recency and the float;
+    // floatPositions + panelHeights intentionally unchanged (the user's
+    // pinned size sticks across close/open cycles).
+    update((p) => closePanel(p, id));
   }, [update]);
 
   /**

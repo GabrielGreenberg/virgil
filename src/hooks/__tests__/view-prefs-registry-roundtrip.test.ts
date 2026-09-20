@@ -149,6 +149,7 @@ describe("Bug 5 — popped-out PANELS re-float on reload (validated)", () => {
     // `omni` is never a float; `bibliography` is placed too.
     writeBlob(WINDOW_KEY, {
       poppedOutPanels: ["notes", "quotations", "omni", "bibliography"],
+      // A pre-678 blob still carries the write-only origins record.
       poppedOutOrigins: { notes: "top", quotations: "bottom" },
       // Placements must carry `notes` + `bibliography` for them to survive.
       placements: [
@@ -164,16 +165,18 @@ describe("Bug 5 — popped-out PANELS re-float on reload (validated)", () => {
     expect(popped).not.toContain("quotations"); // unknown id dropped
     expect(popped).not.toContain("omni"); // never a float
 
-    const origins = loaded.poppedOutOrigins as Record<string, string>;
-    expect(origins.notes).toBe("top");
-    expect("quotations" in origins).toBe(false); // origin for a dropped panel pruned
+    // Task 678: `poppedOutOrigins` is RETIRED, so the stored record does not
+    // survive the load at all — it can neither reach the live prefs object
+    // nor round-trip back to disk on the next write.
+    expect("poppedOutOrigins" in loaded).toBe(false);
   });
 
   it("empty/missing poppedOutPanels loads as an empty array", () => {
     writeBlob(WINDOW_KEY, {});
     const loaded = loadPrefs() as unknown as Record<string, unknown>;
     expect(loaded.poppedOutPanels).toEqual([]);
-    expect(loaded.poppedOutOrigins).toEqual({});
+    // Retired (task 678): absent from the loaded object, not defaulted to `{}`.
+    expect("poppedOutOrigins" in loaded).toBe(false);
   });
 });
 

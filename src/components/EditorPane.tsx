@@ -2806,7 +2806,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         blankRight: false,
         panelWidths: {},
         poppedOutPanels: [],
-        poppedOutOrigins: {},
         floatPositions: {},
         panelModes: {},
         poppedOutCards: [],
