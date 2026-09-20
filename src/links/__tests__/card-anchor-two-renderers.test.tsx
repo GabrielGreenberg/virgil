@@ -208,7 +208,9 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
       unanchored: false,
     });
 
-    expect(marginRows).toEqual([{ pid: "P2", unanchored: false }]);
+    expect(marginRows).toEqual([
+      { pid: "P2", unanchored: false, cardPids: ["P2"] },
+    ]);
     expect(omniRows).toHaveLength(1);
     expect(omniRows[0].anchorUuid).toBe("P2");
     expect(omniRows[0].anchorState).toBe("anchored");
@@ -242,7 +244,9 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
       unanchored: false,
     });
 
-    expect(marginRows).toEqual([{ pid: "GONE", unanchored: true }]);
+    expect(marginRows).toEqual([
+      { pid: "GONE", unanchored: true, cardPids: ["GONE"] },
+    ]);
     expect(omniRows).toHaveLength(1);
     expect(omniRows[0].anchorState).toBe("orphaned");
     expect(omniRows[0].pos).toBeNull();
@@ -288,7 +292,7 @@ describe("card anchor: both renderers read ONE authority (task 369)", () => {
     const pass = buildCardAnchorPass(null);
     const card = snippet("s4", [paraLink("P1")]);
     expect(buildMarginMarkerRows(card, pass.resolve)).toEqual([
-      { pid: "P1", unanchored: false },
+      { pid: "P1", unanchored: false, cardPids: ["P1"] },
     ]);
     // The omni half keeps its pre-369 gap answer: no index ⇒ no position ⇒
     // `orphaned`, no Jump — which never reaches the user, because

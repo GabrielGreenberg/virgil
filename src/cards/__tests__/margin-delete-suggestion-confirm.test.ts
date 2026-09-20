@@ -64,6 +64,8 @@ async function runMarginDelete(author: "human" | "ai", confirmAnswer: boolean) {
     kind: "revision",
     cardId: "c1",
     paragraphId: "P1",
+    // The marker's own row cohort (task 669): a single-anchor card.
+    anchorPids: ["P1"],
     anchorId: "anc-a",
     editor,
     handlers: handlers(suggestion(author), del),

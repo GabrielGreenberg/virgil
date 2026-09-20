@@ -33,11 +33,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import {
-  getLinkedTextObjectIds,
-  removeLinkedAnchor,
-  type CardWithLinks,
-} from "@/links/links";
+import { removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   cardHasContent,
@@ -101,6 +97,27 @@ export interface DeleteMarginItemArgs {
   cardId: string;
   /** Paragraph UUID the deleted marker was anchored to. */
   paragraphId: string;
+  /**
+   * The card's RESOLVED anchor cohort — every pid it draws a marker for,
+   * `paragraphId` included. Required, and it must be the `cardPids` carried by
+   * the very row the deleted marker was built from
+   * ({@link import("@/links/card-anchor-rows").buildMarginMarkerRows}).
+   *
+   * This is the door's ONLY input for "is this the card's last anchor?". It
+   * used to be re-derived here from `getLinkedTextObjectIds(card)` — the
+   * card's STORED pids — while the marker carried a pid the four-rung resolver
+   * had RECOVERED through the `linkedAnchor` mark or the text snapshot. For
+   * such a card the two lists are disjoint: the diff removed nothing, reported
+   * a phantom sibling, and routed a single-anchor card into the multi-anchor
+   * branch, whose `unanchor` names a pid the card does not store. That is a
+   * no-op with no confirm, no deletion and no feedback — the card was simply
+   * undeletable from the margin until a reload (task 669).
+   *
+   * Passing the cohort makes the two answers ONE answer. In the mount gap the
+   * authority's rows are the raw stored pids, so this degrades to exactly the
+   * old list where the old list was right.
+   */
+  anchorPids: readonly string[];
   /** Inline text-range anchor id, if the card carried a `linkedAnchor`
    *  mark. Set for notes / cuts / revisions; absent for paragraph-only
    *  anchored cards. */
@@ -117,18 +134,28 @@ export interface DeleteMarginItemArgs {
 /** See file header for the behavior contract. Pure async function — no
  *  React coupling, easy to unit-test. */
 export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void> {
-  const { cardId, paragraphId, anchorId, handlers, confirm, editor } = args;
+  const { cardId, paragraphId, anchorPids, anchorId, handlers, confirm, editor } =
+    args;
   const card = handlers.findCard(cardId);
   if (!card) return;
 
   // Compute remaining paragraph anchors after we drop this one. Cards
   // can be anchored to multiple paragraphs (`links[]` with N entries);
   // we only escalate to a card-delete when this was the LAST one.
-  const remaining = getLinkedTextObjectIds(card).filter((p) => p !== paragraphId);
+  //
+  // The cohort comes FROM the row this marker was drawn from — the four-rung
+  // authority's answer — not from the card's stored pids, which say something
+  // different for every mark-/snapshot-recovered card. See `anchorPids`.
+  const remaining = anchorPids.filter((p) => p !== paragraphId);
 
   if (remaining.length > 0) {
     // Multi-anchor: just remove this paragraph link. Do NOT strip the
-    // text-range mark — it's still bound to the other paragraph(s).
+    // text-range mark — it's still bound to the other paragraph(s), which is
+    // now a TRUE statement of this branch: `remaining` is the authority's
+    // cohort, so reaching here means other markers really are painted for
+    // this card. Read off the stored pids it was merely a hope, and for a
+    // recovered card a false one — the branch fired with nothing else
+    // anchored, so the mark was never cleaned up either (task 669 M3).
     handlers.unanchor(cardId, paragraphId);
     return;
   }
