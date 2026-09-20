@@ -7,10 +7,14 @@
 // the deferred inner paragraph (resolveAnchorableNode / `@/lib/anchor-uuid`).
 // `reanchorByText`'s uuid-scoped path must therefore map the char hit over the
 // container's TEXT DESCENDANTS — its direct children are block paragraphs, not
-// text, so the old per-CHILD `forEach` never advanced and returned null. And
-// `reconcileRequestMarks`' PRESENT scan must resolve the mark's position to the
-// same CONTAINER uuid (deferral-aware climb), or the freshly-stamped mark is
-// stripped-and-restamped every reconcile (thrash).
+// text, so the old per-CHILD `forEach` never advanced and returned null.
+//
+// The open-AI-request wash used to share that path (it stamped a
+// `pending-ai-request` mark through `reanchorByText`) and needed a deferral-
+// aware PRESENT scan to avoid strip/re-stamp thrash. Task 667 made the wash a
+// DECORATION, so it asks for the container's RANGE instead of searching for its
+// TEXT — the container case is now correct by construction and there is no
+// mark to thrash. The legs below survive as that claim's proof.
 //
 // Storage stub: the extension barrel transitively imports `@/lib/storage`,
 // whose `require("@/lib/storage-fsa")` vitest can't resolve.
@@ -27,10 +31,9 @@ import {
 } from "@/lib/editor-extensions";
 import { reanchorByText, type Link } from "@/links/links";
 import {
-  reconcileRequestMarks,
-  requestAnchorId,
-  type RequestMarkCardLike,
-} from "@/links/_shared/request-marks";
+  requestWashTargets,
+  type RequestWashCardLike,
+} from "@/links/_shared/request-wash";
 import type { TextObjectKind } from "@/text-objects/types";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -238,12 +241,12 @@ describe("reanchorByText — bare-paragraph + codeBlock unchanged (no-regression
   });
 });
 
-// ── reconcileRequestMarks: the open-AI-request blue wash for a container card ──
+// ── the open-AI-request wash for a CONTAINER-anchored card (tasks 271 + 667) ──
 function modeARequestCard(
   id: string,
   containerUuid: string,
   kind = "note",
-): RequestMarkCardLike {
+): RequestWashCardLike {
   const link: Link = {
     id: `lnk-${id}`,
     kind: "anchor",
@@ -259,38 +262,40 @@ function modeARequestCard(
   return { id, kind, aiRequest: true, links: [link] };
 }
 
-describe("reconcileRequestMarks — container-anchored wash paints + survives (task 271)", () => {
-  it("stamps the pending-ai-request mark on the inner text of a listItem card", () => {
+/** The document text every wash band covers, concatenated. */
+function washedText(editor: Editor, cards: RequestWashCardLike[]): string {
+  return requestWashTargets(editor, cards)
+    .map((t) => editor.state.doc.textBetween(t.from, t.to, "\n"))
+    .join("");
+}
+
+describe("the open-AI-request wash covers a container card's inner text (tasks 271 + 667)", () => {
+  it("washes the inner text of a listItem-anchored card", () => {
     const editor = mountDoc(listItemDoc("LI", "hello world"));
     const card = modeARequestCard("card-1", "LI");
-    const anchorId = requestAnchorId("card-1");
-
-    reconcileRequestMarks(editor, [card]);
-    // The blue wash is painted on the inner text — previously null → never painted.
-    expect(markedText(editor, anchorId)).toBe("hello world");
+    expect(washedText(editor, [card])).toBe("hello world");
     editor.destroy();
   });
 
-  it("does NOT thrash: the mark survives a SECOND reconcile (present-scan climbs to the container uuid)", () => {
+  it("is a pure derivation: the same cards give the same band twice, and the doc is untouched", () => {
     const editor = mountDoc(listItemDoc("LI", "hello world"));
     const card = modeARequestCard("card-1", "LI");
-    const anchorId = requestAnchorId("card-1");
+    const before = JSON.stringify(editor.state.doc.toJSON());
 
-    reconcileRequestMarks(editor, [card]);
-    expect(markedText(editor, anchorId)).toBe("hello world");
-
-    // Second pass: PRESENT resolves the mark to "LI" === desired → skip, not
-    // strip+restamp. If the scan read the immediate (deferred, uuid-less) inner
-    // paragraph, present would be "" ≠ "LI" → the mark would be stripped here.
-    reconcileRequestMarks(editor, [card]);
-    expect(markedText(editor, anchorId)).toBe("hello world");
+    expect(washedText(editor, [card])).toBe("hello world");
+    // The mark carrier could strip-and-restamp here (its PRESENT scan resolved
+    // the mark to the DEFERRED inner paragraph's absent uuid, never equal to
+    // the container `desired`). A derivation has no such failure mode — and it
+    // cannot have mutated the document to find out.
+    expect(washedText(editor, [card])).toBe("hello world");
+    expect(JSON.stringify(editor.state.doc.toJSON())).toBe(before);
     editor.destroy();
   });
 
   it("deferral-explicit: a STRAY uuid on the inner paragraph does not break the container match", () => {
-    // Anomaly guard — even if the deferred inner paragraph carries a uuid, the
-    // present scan must skip it (isDeferredInnerParagraph) and climb to the
-    // container, matching `desired`. A plain first-uuid climb would bind "STRAY".
+    // Anomaly guard — the card anchors to the CONTAINER uuid, so the band must
+    // come from the container's range even when the deferred inner paragraph
+    // carries a uuid of its own.
     const editor = mountDoc({
       type: "doc",
       content: [
@@ -314,15 +319,11 @@ describe("reconcileRequestMarks — container-anchored wash paints + survives (t
       ],
     });
     const card = modeARequestCard("card-1", "LI");
-    const anchorId = requestAnchorId("card-1");
-
-    reconcileRequestMarks(editor, [card]);
-    reconcileRequestMarks(editor, [card]); // must not thrash despite the stray uuid
-    expect(markedText(editor, anchorId)).toBe("hello world");
+    expect(washedText(editor, [card])).toBe("hello world");
     editor.destroy();
   });
 
-  it("bare-paragraph card still paints + survives (no-regression)", () => {
+  it("bare-paragraph card still washes (no-regression)", () => {
     const editor = mountDoc({
       type: "doc",
       content: [
@@ -334,11 +335,7 @@ describe("reconcileRequestMarks — container-anchored wash paints + survives (t
       ],
     });
     const card = modeARequestCard("card-2", "P1");
-    const anchorId = requestAnchorId("card-2");
-
-    reconcileRequestMarks(editor, [card]);
-    reconcileRequestMarks(editor, [card]);
-    expect(markedText(editor, anchorId)).toBe("top level para");
+    expect(washedText(editor, [card])).toBe("top level para");
     editor.destroy();
   });
 });

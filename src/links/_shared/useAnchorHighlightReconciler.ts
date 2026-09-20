@@ -89,7 +89,6 @@ import {
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
-import { requestHighlightLink } from "./request-marks";
 import {
   setAnchorHighlightTargets,
   selectedAttrs,
@@ -214,13 +213,12 @@ function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
   if (!entity) return [];
   const applied = appliedChangeLink(ref, entity);
   if (applied) return [applied];
-  // Open AI request: a Mode-A `aiRequest` card lights its persistent request
-  // wash (the blue `pending-ai-request` mark) on hover/select, via a synthesized
-  // Mode-B link at the request mark's anchorId — the request-open twin of the
-  // applied-change synthesis above. Non-request / Mode-B cards fall through to
-  // their persisted links (null return).
-  const request = requestHighlightLink(ref, entity);
-  if (request) return [request];
+  // (No open-AI-request branch. A second synthesis used to sit here, pointing
+  // at the `pending-ai-request` MARK's anchorId so hovering a request card lit
+  // the wash — and SUPPRESSING the card's real links to do it. Task 667 made
+  // the wash a decoration, so there is no mark to point at and no reason to
+  // suppress: a request card now lights exactly the way its own anchor does,
+  // like every other card.)
   return entity.links ? [...entity.links] : [];
 }
 

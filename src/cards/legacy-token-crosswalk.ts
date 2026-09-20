@@ -307,6 +307,16 @@ export function accentTokenFromTint(tint: string | null | undefined): string | n
 }
 
 /**
+ * The one light-blue every PENDING-AI signal paints in, applied and open alike
+ * (Gabriel, 2026-07-03: two distinct signals, deliberately the same colour).
+ * Read by the applied-change mark's tint (below) and by the open-request wash
+ * (`src/links/_shared/request-wash.ts`), which is a DECORATION and so has no
+ * mark kind to ask about — which is exactly why the hue is a named constant
+ * here rather than a second `kind ===` branch.
+ */
+export const PENDING_AI_TINT = "#bfdbfe";
+
+/**
  * The persistent highlight TINT a `linkedAnchor` of the given kind paints, or
  * `null` for every non-highlight kind. The SINGLE source for the Adobe-style
  * highlight band: the three create sites (the drag-handle Highlight action, the
@@ -335,14 +345,7 @@ export function defaultTintForLinkedAnchorKind(kind: string): string | null {
   // paints over an applied-but-not-yet-kept suggestion (Phase 0). A
   // pending-DELETE variant renders the struck text differently in a later UI
   // phase; the tint string is what the Phase 0 unit tests assert.
-  if (kind === "pending-ai-change") return "#bfdbfe";
-  // `pending-ai-request`: the SAME light-blue band, painted over the anchored
-  // text of an OPEN AI request (a note/todo/report-request/revision-comment/
-  // cutter-comment card whose `aiRequest` flag is set) — the request-open twin
-  // of `pending-ai-change`. A DISTINCT kind (independent lifecycle: request
-  // marks clear on flag-off, applied marks clear on Keep/Revert) mapped to the
-  // identical hex so the two look the same (Gabriel, 2026-07-03).
-  if (kind === "pending-ai-request") return "#bfdbfe";
+  if (kind === "pending-ai-change") return PENDING_AI_TINT;
   // `highlight`: the theme-derived band. The token is read off the crosswalk
   // (not written as a literal) so the sentinel, the `data-link-card` selector
   // and the `--link-anchor-accent-<token>` var can never name three different

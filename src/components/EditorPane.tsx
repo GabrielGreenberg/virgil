@@ -335,10 +335,11 @@ import {
   type PendingMarkCardLike,
 } from "@/links/_shared/reapply-pending-marks";
 import {
-  reconcileRequestMarks,
-  isModeARequestCard,
-  type RequestMarkCardLike,
-} from "@/links/_shared/request-marks";
+  paintRequestWash,
+  requestWashKey,
+  isRequestCard,
+  type RequestWashCardLike,
+} from "@/links/_shared/request-wash";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
   keepSuggestion,
@@ -5547,68 +5548,59 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     cards: modeBCards,
   });
 
-  // ── Open-AI-request text highlight (task 021) ──────────────────────────────
-  // Persist the light-blue `pending-ai-request` wash over the anchored text of
-  // every open request (a Mode-A card whose `aiRequest` flag is set), and light
-  // it on hover/select through the reconciler above (`requestHighlightLink`).
-  // ONE idempotent reconcile (`reconcileRequestMarks`) is the mark's sole
-  // lifecycle owner — it serves flag-on, flag-off, delete, AND reload
-  // (the serializer strips the mark, so the reactive reconcile re-stamps it once
-  // the sidecars load). The reconcile is DESTRUCTIVE (strips stale marks), so it
-  // rides the SAME load-order DATA-LOSS gate as the orphan reaper.
-  const requestMarkCards = useMemo<RequestMarkCardLike[]>(() => {
-    // Only the paragraph-anchored margin kinds carry an `aiRequest` flag; the
-    // reconcile filters to the Mode-A subset. Highlights are Mode-B (their own
-    // span mark) — excluded to avoid clobbering it.
+  // ── Open-AI-request wash (task 021; re-carried as a decoration, task 667) ──
+  // Paint the light-blue wash over the anchored region of every open request (a
+  // card whose `aiRequest` flag is set). ONE idempotent repaint
+  // (`paintRequestWash`) owns the whole lifecycle — flag-on, flag-off, delete,
+  // re-anchor AND reload — because the wash is DERIVED from the card records
+  // and nothing about it is stored.
+  //
+  // The card source is the ONE Mode-B bag (task 666), not a hand-kept list:
+  // every collection that can carry an anchor can carry an `aiRequest`, and a
+  // shorter list is how a feature goes missing for whichever collection was
+  // left off. Both anchor modes are in scope now — a mark carrier had to skip
+  // Mode-B cards to avoid clobbering their own `linkedAnchor`; a decoration
+  // cannot collide with one.
+  //
+  // No load-order gate. Its predecessor STRIPPED marks and so needed the
+  // reaper's data-loss gate; a repaint against transiently-empty collections
+  // paints nothing and the next repaint paints it back.
+  const requestWashCards = useMemo<RequestWashCardLike[]>(() => {
     const all = [
-      ...notesHook.notes,
-      ...todosHook.items,
-      ...revisionsHook.cards,
-      ...reportsHook.cards,
-      ...cutterHook.cards,
-    ] as RequestMarkCardLike[];
-    return all.filter((c) => c.aiRequest === true);
-  }, [
-    notesHook.notes,
-    todosHook.items,
-    revisionsHook.cards,
-    reportsHook.cards,
-    cutterHook.cards,
-  ]);
-  // Keystroke-sanctity key: the reconcile must fire only when the DESIRED mark
-  // set changes — the Mode-A request cards' ids + their anchor paragraphs — not
-  // on every unrelated card edit (or ever on a keystroke: typing changes neither
-  // the card set nor its anchors). Read the live cards through a ref so the
-  // effect body isn't in the dep list.
-  const requestMarkKey = useMemo(
-    () =>
-      requestMarkCards
-        .filter(isModeARequestCard)
-        .map((c) => `${c.id}@${getLinkedTextObjectIds(c)[0] ?? ""}`)
-        .sort()
-        .join("|"),
-    [requestMarkCards],
+      ...modeBCards.notes,
+      ...modeBCards.todoItems,
+      ...modeBCards.comments,
+      ...modeBCards.reportCards,
+      ...modeBCards.cutterCards,
+      ...modeBCards.highlights,
+    ] as RequestWashCardLike[];
+    // `isRequestCard`, not a raw `aiRequest === true`: a flagged card with no
+    // anchor left has nothing to wash, and the module owns that judgement.
+    return all.filter(isRequestCard);
+  }, [modeBCards]);
+  // Keystroke-sanctity key: the repaint must fire only when the DESIRED band
+  // set changes — the request cards' ids + the anchor each one washes — not on
+  // every unrelated card edit (and never on a keystroke: typing changes neither
+  // the card set nor its anchors; the decorations forward-map instead). Read
+  // the live cards through a ref so the effect body isn't in the dep list.
+  const requestWashDesired = useMemo(
+    () => requestWashKey(requestWashCards),
+    [requestWashCards],
   );
-  const requestMarkCardsRef = useRef(requestMarkCards);
-  requestMarkCardsRef.current = requestMarkCards;
+  const requestWashCardsRef = useRef(requestWashCards);
+  requestWashCardsRef.current = requestWashCards;
   useEffect(() => {
     if (!editor) return;
-    // SAME gate as the orphan reaper — never strip against transiently-empty or
-    // load-errored collections.
-    if (!(allCardSidecarsLoaded && docContentReady && !anyCardSidecarLoadError)) {
-      return;
-    }
-    reconcileRequestMarks(editor, requestMarkCardsRef.current);
-    // `requestMarkKey` gates re-runs to genuine desired-set changes; the cards
-    // themselves are read via the ref. `editor`/gate flips also (re)run it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    editor,
-    allCardSidecarsLoaded,
-    docContentReady,
-    anyCardSidecarLoadError,
-    requestMarkKey,
-  ]);
+    // Still gated on the doc being ready: an anchor cannot resolve against a
+    // document that has not parsed. Unlike the old reconcile this is a
+    // CORRECTNESS gate, not a data-loss one — nothing is destroyed by running
+    // early, the bands just would not resolve.
+    if (!docContentReady) return;
+    // `requestWashDesired` gates re-runs to genuine desired-set changes; the
+    // cards themselves are read via the ref, so an unrelated card edit that
+    // leaves the desired set alone costs nothing. `editor`/gate flips re-run it.
+    paintRequestWash(editor, requestWashCardsRef.current);
+  }, [editor, docContentReady, requestWashDesired]);
 
   useTextHoverBridge({
     editor,

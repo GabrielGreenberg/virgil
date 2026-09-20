@@ -8,9 +8,11 @@ import { viewOnly } from "@/lib/view-only-chrome";
 /**
  * TransientHighlightDecorator — the ONE carrier for every *transient* (view-only,
  * never-persisted) text-range highlight the app paints over the main document:
- * the search-result band, the diagnostics error range, and the
- * revision/suggestion text band. (The linked-anchor hover/click band is NOT
- * here — it is painted on the anchor mark itself by `useLinkHighlight`'s
+ * the search-result band, the diagnostics error range, the
+ * revision/suggestion text band, and the persistent light-blue wash over the
+ * anchored region of an OPEN AI request (task 667 — which arrived carried as a
+ * real `linkedAnchor` mark and is now a band on the `ai-request` channel).
+ * (The linked-anchor hover/click band is NOT here — it is painted on the anchor mark itself by `useLinkHighlight`'s
  * `data-link-highlight` coupling plus `AnchorHighlightDecorator`. A fourth
  * branch of `applyHighlight` claimed it via an `activeAnchorId` prop that no
  * caller ever passed; task 120 deleted that orphan.)
@@ -79,16 +81,70 @@ export type TransientHighlightTarget = {
   /** Any CSS color. Callers pass {@link TRANSIENT_HIGHLIGHT_COLOR} unless they
    *  carry a tint of their own. */
   color: string;
+  /** Grow with text typed at either edge. Default FALSE — a band handed a
+   *  RANGE tracks that range and does not accrete text (the search hit, the
+   *  diagnostics span). TRUE only for a band that stands for a whole LIVE
+   *  REGION rather than a range: the AI-request wash means "this card's
+   *  anchored paragraph", so text typed into that paragraph is part of what
+   *  the band denotes. `inclusive:true` reproduces, on the decoration
+   *  carrier, exactly the edge behaviour a mark carrier got for free. */
+  inclusive?: boolean;
 };
 
-/** Meta payload: the COMPLETE desired band list for this frame. The plugin
- *  replaces its whole set from it — callers are idempotent and always send the
- *  full picture, exactly like the anchor-highlight sibling. */
+/**
+ * WHO is painting — one independent band set per channel.
+ *
+ * A single shared set would make every consumer a clobberer: the payload is
+ * the COMPLETE desired list, so the search band's clear-on-close would erase
+ * the AI-request wash and vice versa. That is precisely the pressure that sent
+ * the request wash to a MARK carrier in the first place ("no carrier admits a
+ * second reason, so take a document one") — the violation the law names. A
+ * channel is therefore its own PLUGIN INSTANCE with its own key and its own
+ * DecorationSet: a dispatch replaces only its channel, costs only its own
+ * bands, and cannot see another's.
+ *
+ *   - `search`    — the search-hit / diagnostics / revision band
+ *                   (`Editor.applyHighlight`), at most one at a time.
+ *   - `ai-request`— the persistent light-blue wash over the anchored region of
+ *                   every open AI request (`src/links/_shared/request-wash.ts`).
+ */
+export type TransientHighlightChannel = "search" | "ai-request";
+
+/** The channel a caller gets when it does not name one. */
+export const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
+
+/** Every channel, in ONE place: the plugin list is built from this, so a new
+ *  channel is a single union member + a key, never a second plugin to remember
+ *  to mount. */
+const TRANSIENT_CHANNELS: readonly TransientHighlightChannel[] = [
+  "search",
+  "ai-request",
+];
+
+const CHANNEL_KEYS: Record<
+  TransientHighlightChannel,
+  PluginKey<DecorationSet>
+> = {
+  search: new PluginKey<DecorationSet>("transientHighlightDeco"),
+  "ai-request": new PluginKey<DecorationSet>("transientHighlightDeco:aiRequest"),
+};
+
+/** Meta payload: the COMPLETE desired band list for this channel, this frame.
+ *  The channel's plugin replaces its whole set from it — callers are idempotent
+ *  and always send the full picture, exactly like the anchor-highlight
+ *  sibling. */
 type TransientHighlightMeta = { targets: TransientHighlightTarget[] };
 
-export const transientHighlightKey = new PluginKey<DecorationSet>(
-  "transientHighlightDeco",
-);
+/** The DEFAULT channel's key, kept under its original name for the callers and
+ *  guards that predate channels. */
+export const transientHighlightKey = CHANNEL_KEYS[DEFAULT_TRANSIENT_CHANNEL];
+
+/** The plugin key for an explicit channel (test/inspection door). */
+export function transientHighlightKeyFor(
+  channel: TransientHighlightChannel,
+): PluginKey<DecorationSet> {
+  return CHANNEL_KEYS[channel];
+}
 
 function buildSet(
   doc: EditorState["doc"],
@@ -124,10 +180,14 @@ function buildSet(
           class: viewOnly(TRANSIENT_HIGHLIGHT_CLASS),
           style: `background-color:${t.color}`,
         },
-        // Typing at either edge must NOT grow the band — a transient signal
-        // tracks the range it was given, it doesn't accrete text. (Both are
-        // PM's defaults; stated explicitly because it is the contract.)
-        { inclusiveStart: false, inclusiveEnd: false },
+        // Typing at either edge must NOT grow a RANGE band — a transient
+        // signal tracks the range it was given, it doesn't accrete text.
+        // (Both are PM's defaults; stated explicitly because it is the
+        // contract.) A REGION band (`inclusive`) opts into the opposite: see
+        // the field's note on `TransientHighlightTarget`.
+        t.inclusive === true
+          ? { inclusiveStart: true, inclusiveEnd: true }
+          : { inclusiveStart: false, inclusiveEnd: false },
       ),
     );
   }
@@ -148,51 +208,60 @@ function buildSet(
 export function setTransientHighlights(
   view: EditorView,
   targets: TransientHighlightTarget[],
+  channel: TransientHighlightChannel = DEFAULT_TRANSIENT_CHANNEL,
 ): void {
+  const key = CHANNEL_KEYS[channel];
   if (targets.length === 0) {
-    const current = transientHighlightKey.getState(view.state);
+    const current = key.getState(view.state);
     if (!current || current === DecorationSet.empty) return;
   }
   const meta: TransientHighlightMeta = { targets };
-  view.dispatch(view.state.tr.setMeta(transientHighlightKey, meta));
+  view.dispatch(view.state.tr.setMeta(key, meta));
 }
 
-/** Clear every transient band. Sugar for `setTransientHighlights(view, [])`. */
-export function clearTransientHighlights(view: EditorView): void {
-  setTransientHighlights(view, []);
+/** Clear one channel's bands. Sugar for `setTransientHighlights(view, [])`. */
+export function clearTransientHighlights(
+  view: EditorView,
+  channel: TransientHighlightChannel = DEFAULT_TRANSIENT_CHANNEL,
+): void {
+  setTransientHighlights(view, [], channel);
 }
 
 export const TransientHighlightDecorator = Extension.create({
   name: "transientHighlightDecorator",
 
   addProseMirrorPlugins() {
-    return [
-      new Plugin<DecorationSet>({
-        key: transientHighlightKey,
+    // One plugin per channel, all from the same factory — the channels differ
+    // only in which key their meta rides.
+    return TRANSIENT_CHANNELS.map((channel) => {
+      const key = CHANNEL_KEYS[channel];
+      return new Plugin<DecorationSet>({
+        key,
         state: {
           init() {
             return DecorationSet.empty;
           },
-          // [cost: O(#bands)/tx — DecorationSet.map only (at most one band); O(targets) buildSet + DecorationSet.create only on this plugin's own meta, never on a keystroke] (task 433 census)
+          // [cost: O(#bands in THIS channel)/tx — DecorationSet.map only; O(targets) buildSet + DecorationSet.create only on this channel's own meta, never on a keystroke] (task 433 census)
           apply(tr: Transaction, value: DecorationSet) {
+            const meta = tr.getMeta(key) as TransientHighlightMeta | undefined;
+            // Nothing painted and nothing to paint: the common case on a
+            // keystroke. Cost zero, not even a map.
+            if (!meta && value === DecorationSet.empty) return value;
             // KEYSTROKE SANCTITY: forward-map on every transaction
-            // (O(#bands) — at most one), never a doc walk.
+            // (O(#bands in this channel)), never a doc walk.
             let set = value.map(tr.mapping, tr.doc);
-            const meta = tr.getMeta(transientHighlightKey) as
-              | TransientHighlightMeta
-              | undefined;
-            // Rebuild ONLY when a consumer pushed a new frame. A plain
-            // keystroke carries no meta → keep the mapped set and return.
+            // Rebuild ONLY when this channel's consumer pushed a new frame. A
+            // plain keystroke carries no meta → keep the mapped set and return.
             if (meta) set = buildSet(tr.doc, meta.targets);
             return set;
           },
         },
         props: {
           decorations(state) {
-            return transientHighlightKey.getState(state) ?? DecorationSet.empty;
+            return key.getState(state) ?? DecorationSet.empty;
           },
         },
-      }),
-    ];
+      });
+    });
   },
 });

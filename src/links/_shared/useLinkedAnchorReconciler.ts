@@ -67,17 +67,14 @@ export function reapOrphanLinkedAnchors(
       // stamped mark (the fresh-apply blue vanished while a reload re-stamp
       // stuck — that asymmetry was the bug). Skip by kind so protection is
       // timing-independent; Revert removes the mark explicitly, so none leak.
-      // `pending-ai-request` is the request-open twin (task 021): same
-      // rationale — it is lifecycle-owned by `reconcileRequestMarks` (stamped on
-      // flag-on, stripped on flag-off / delete), NOT by a card text-anchor, so
-      // its id is never in the card-derived alive-set. Skip the whole
-      // pending-ai-* family.
-      if (
-        m.attrs.kind === "pending-ai-change" ||
-        m.attrs.kind === "pending-ai-request"
-      ) {
-        continue;
-      }
+      //
+      // This exemption is ONE kind, not a family. It used to also name
+      // `pending-ai-request`, the open-request wash — a mark with no card
+      // text-anchor, hence an orphan by every honest test this sweep applies.
+      // Task 667 made that wash a DECORATION, so there is no mark to reap and
+      // no second name to exempt: the general anchor lifecycle stopped carrying
+      // a special case for a signal that was never document content.
+      if (m.attrs.kind === "pending-ai-change") continue;
       const id = m.attrs.anchorId as string | undefined;
       if (id && !alive.has(id)) orphans.add(id);
     }

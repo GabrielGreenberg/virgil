@@ -623,19 +623,31 @@ function findParagraphByUuid(editor: Editor, uuid: string): number | null {
 }
 
 /**
- * The live plain-text content of the paragraph node carrying `uuid`, or null if
- * no such node exists. Used by the open-AI-request highlight (request-marks.ts)
- * to stamp a whole-paragraph `pending-ai-request` mark: it feeds this text back
- * into `reanchorByText` as the uuid-scoped snapshot, so a Mode-A card's WHOLE
- * anchored paragraph gets the persistent blue wash (no sub-range). `textContent`
- * excludes inline atoms (footnote/citation), which is fine — `reanchorByText`'s
- * per-child offset walk maps the char span back across any interleaved atoms.
+ * The INNER content range `[pos+1, pos+nodeSize-1)` of the anchorable node
+ * carrying `uuid` — i.e. everything the block holds, with its own open/close
+ * tokens excluded — or null if no such node exists.
+ *
+ * The door the open-AI-request wash (`_shared/request-wash.ts`) paints
+ * through, and the replacement for the `paragraphTextByUuid` it retired (that
+ * one existed only to feed a text SNAPSHOT to `reanchorByText`). Asking for
+ * the RANGE rather than the TEXT is what lets the wash be a decoration instead
+ * of a mark: there is nothing to search for and nothing to stamp, so no
+ * selection is moved and no document content is touched. It is also correct by
+ * construction for a CONTAINER anchor (listItem / blockquote / exampleBlock,
+ * whose uuid sits on the container, not the inner paragraph) — the inner range
+ * covers every child block, where the text-snapshot route had to re-find a
+ * string inside them. Empty blocks yield `from === to` and are dropped by the
+ * decoration builder, matching the old "no text → no wash" no-op.
  */
-export function paragraphTextByUuid(editor: Editor, uuid: string): string | null {
+export function paragraphRangeByUuid(
+  editor: Editor,
+  uuid: string,
+): { from: number; to: number } | null {
   const pos = findParagraphByUuid(editor, uuid);
   if (pos == null) return null;
   const node = editor.state.doc.nodeAt(pos);
-  return node ? node.textContent : null;
+  if (!node) return null;
+  return { from: pos + 1, to: pos + node.nodeSize - 1 };
 }
 
 /**
@@ -689,15 +701,12 @@ export type LinkedAnchorKind =
   // `revision-suggestion` spine kind so the data-link-card token, jump-to, and
   // float plumbing reuse the suggestion machinery — the only thing distinct is
   // the tint (`#bfdbfe`, see `defaultTintForLinkedAnchorKind`).
-  | "pending-ai-change"
-  // The light-blue marker stamped over the anchored text of an OPEN AI request
-  // (the request-open twin of `pending-ai-change`). Same `#bfdbfe` tint, but a
-  // DISTINCT kind so request marks and applied-change marks keep independent
-  // lifecycles. Lifecycle-owned by `reconcileRequestMarks` (request-marks.ts),
-  // NOT by a card text-anchor — so the orphan reapers skip it by kind and its
-  // `linkCard` token is always threaded explicitly by the reconcile (never
-  // kind-derived, which is why the fold below maps it to a placeholder).
-  | "pending-ai-request";
+  | "pending-ai-change";
+// (There is no `pending-ai-request` member. The OPEN-request wash used to be a
+// mark of that kind; task 667 made it a decoration — see
+// `_shared/request-wash.ts` — so nothing stamps one, and a kind no producer
+// writes is a kind the reapers, the token fold and the tint SSOT would each
+// have to keep a dead branch for.)
 
 export interface LinkedAnchorRecord {
   anchorId: string;
@@ -722,16 +731,11 @@ export interface LinkedAnchorRecord {
 /** `LinkedAnchorKind` (the legacy mark-attr namespace) → spine `CardKind`. The
  *  one many-to-one fold is `revision` → `revision-comment` (the canonical
  *  comment spine kind for the shared `revision` marker). The eight real mark
- *  kinds route through the crosswalk SSOT (`legacyMarkKindToCardKind`); the two
- *  `pending-ai-*` render sentinels — which are NOT card marker kinds and so are
- *  absent from the crosswalk — are folded here. */
+ *  kinds route through the crosswalk SSOT (`legacyMarkKindToCardKind`); the one
+ *  `pending-ai-change` render sentinel — which is NOT a card marker kind and so
+ *  is absent from the crosswalk — is folded here. */
 function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
   if (kind === "pending-ai-change") return "revision-suggestion";
-  // Placeholder fold: the request reconcile ALWAYS threads an explicit
-  // `linkCardToken` (the owning card's real kind), so this fallback is never
-  // consulted for a `pending-ai-request` mark's stamped token — it exists only
-  // to keep the switch exhaustive. `note` is an arbitrary safe CardKind.
-  if (kind === "pending-ai-request") return "note";
   // The remaining LinkedAnchorKinds are exactly the crosswalk's mark kinds, so
   // the `?? "note"` is unreachable-defensive (every real mark kind resolves).
   return legacyMarkKindToCardKind(kind) ?? "note";
