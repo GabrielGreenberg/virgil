@@ -43,7 +43,11 @@ import { ReportCard, ReportRequestCard } from "@/panels/Reports";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "@/components/BibEntryCard";
 import { CardChromeTrailing } from "@/components/panel-primitives";
-import { getLinkedTextObjectIds } from "@/links/links";
+import {
+  cardJumpGate,
+  staticJumpGate,
+  type CardJumpGate,
+} from "@/links/card-anchor-rows";
 import type {
   ReportCard as ReportCardData,
   ReportRequestCard as ReportRequestCardData,
@@ -72,11 +76,26 @@ import { CardKindHeader } from "@/components/panel-primitives";
  *  literal exists. A builder's own `trailing` (status dot / done toggle) rides
  *  in `CardChromeTrailing`'s `headerTrailing` slot for claim-bearing kinds and
  *  passes through untouched for the rest. */
+/** The inert stand-in a withdrawn `jumpToSource` falls back to — `Floatable`
+ *  requires the field, and a gate that says "no" must leave nothing callable. */
+const NO_JUMP_TO_SOURCE = () => {};
+
 function cardFloatable(
   kind: CardKind,
   id: string,
   opts: {
-    canJump: boolean;
+    /** **The ONE Jump gate** (task 665). A builder no longer states an anchor
+     *  verdict: it hands over the gate the authority produced
+     *  (`cardJumpGate(card, ctx.resolveCardRows)` for a paragraph-anchored
+     *  kind, `staticJumpGate(...)` for a kind whose reachability is resolved
+     *  elsewhere — a footnote's atom, a citation's position, an example's
+     *  block) and the shell derives BOTH halves of task 136's rule from it:
+     *  the affordance (`canJump`) and the handler (`jumpToSource`). There is no
+     *  boolean left in a builder's hand, which is the point — nine of them held
+     *  one and nine of them derived it from
+     *  `getLinkedTextObjectIds(card).length > 0`, i.e. from "the card STORES an
+     *  anchor", which is equally true of a card whose anchor is dead. */
+    jump: CardJumpGate;
     jumpToSource: () => void;
     renderBody: () => ReactNode;
     /** Serialize this card onto the Stack on a drop gesture. Each stackable
@@ -122,8 +141,11 @@ function cardFloatable(
     // baked hex here is a value that can only go stale.
     themeKey: CARD_REGISTRY[kind].themeKey,
     title: opts.title ?? CARD_REGISTRY[kind].label,
-    canJump: opts.canJump,
-    jumpToSource: opts.jumpToSource,
+    // BOTH halves of task 136's rule, from the one gate: the chevron is
+    // painted only when the act can work, and a keyboard/programmatic path
+    // that reaches `jumpToSource` anyway lands on the inert stand-in.
+    canJump: opts.jump.anchored,
+    jumpToSource: opts.jump.withJump(opts.jumpToSource) ?? NO_JUMP_TO_SOURCE,
     // (Re)anchor drop button gate (chip D): read the STATIC per-kind
     // `droppable` facet here — the ONE place the card-side registry meets the
     // neutral `Floatable`. FloatChrome stays card-blind: it only sees the
@@ -140,7 +162,7 @@ function cardFloatable(
 registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   const note = ctx.notes.find((n) => n.id === id);
   if (!note) return null;
-  const canJump = getLinkedTextObjectIds(note).length > 0;
+  const jump = cardJumpGate(note, ctx.resolveCardRows);
   return cardFloatable("note", id, {
     chromeSlots: {
       // WS7 (A6): the kind-chevron title slot is gated off for
@@ -160,7 +182,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
           }
         : {}),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),
     snapshotForStack: (source) => snapshotCard("note", note, source),
     renderBody: () => (
@@ -173,7 +195,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setNoteAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(note, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(note, sourceEl))}
         onEditorFocus={ctx.setOverrideEditor}
         getCitationDisplayText={ctx.getCitationDisplayText}
         onCitationCreated={ctx.handleCitationCreated}
@@ -186,7 +208,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
   const hl = ctx.highlights.find((h) => h.id === id);
   if (!hl) return null;
-  const canJump = getLinkedTextObjectIds(hl).length > 0;
+  const jump = cardJumpGate(hl, ctx.resolveCardRows);
   return cardFloatable("highlight", id, {
     chromeSlots: {
       title: (
@@ -199,7 +221,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(hl, null),
     snapshotForStack: (source) => snapshotCard("highlight", hl, source),
     renderBody: () => (
@@ -210,7 +232,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setHighlightAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(hl, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(hl, sourceEl))}
         isPoppedOut
       />
     ),
@@ -251,7 +273,7 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
   if (!fn) return unanchoredFootnoteFloatable(id, ctx);
   const isSelected = ctx.selectedFootnoteId === fn.footnoteId;
   return cardFloatable("footnote", id, {
-    canJump: true,
+    jump: staticJumpGate(true),
     jumpToSource: () => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, null),
     // R1 (Option B): build a FootnoteRef-shaped record from the FootnoteInfo
     // already in hand. The stack payload only consumes `content`; `id` /
@@ -299,7 +321,7 @@ function unanchoredFootnoteFloatable(id: string, ctx: CardFloatCtx): Floatable |
   if (!ref) return null;
   const isSelected = ctx.selectedFootnoteId === ref.id;
   return cardFloatable("footnote", id, {
-    canJump: false,
+    jump: staticJumpGate(false),
     jumpToSource: () => {},
     // The ref IS the snapshot shape — no synthesized `createdAt` needed, unlike
     // the anchored branch, which has only a doc-derived `FootnoteInfo` in hand.
@@ -339,23 +361,21 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   //
   // Gate BOTH the affordance and the handler (136's own rule) so a keyboard or
   // programmatic path can't reach the dead call.
-  const anchored = ctx.anchoredIds.has(snippet.id);
+  const jump = cardJumpGate(snippet, ctx.resolveCardRows);
   return cardFloatable("archive", id, {
-    canJump: anchored,
-    jumpToSource: anchored
-      ? () => ctx.editorRef.current?.jumpToCard(snippet, null)
-      : () => {},
+    jump,
+    jumpToSource: () => ctx.editorRef.current?.jumpToCard(snippet, null),
     snapshotForStack: (source) => snapshotCard("archive", snippet, source),
     renderBody: () => (
       <ArchiveCard
         snippet={snippet}
         selected={ctx.selectedArchiveId === snippet.id}
-        orphaned={!anchored}
+        orphaned={!jump.anchored}
         onSelect={ctx.setSelectedArchiveId}
         onEdit={ctx.updateArchiveSnippet}
         onUpdateTitle={ctx.updateArchiveSnippetTitle}
         onDelete={ctx.handleDeleteArchive}
-        onJump={(sourceEl) => ctx.editorRef.current?.jumpToCard(snippet, sourceEl)}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(snippet, sourceEl))}
         onEditorFocus={ctx.setOverrideEditor}
         getCitationDisplayText={ctx.getCitationDisplayText}
         onCitationCreated={ctx.handleCitationCreated}
@@ -368,7 +388,7 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
   const card = ctx.cutterCards.find((c) => c.id === id && c.kind === "comment");
   if (!card || card.kind !== "comment") return null;
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("cutter-comment", id, {
     chromeSlots: {
       // Restore the comment↔suggestion morph control on popout (the docked
@@ -383,7 +403,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: (source) => snapshotCard("cutter-comment", card, source),
     renderBody: () => (
@@ -395,7 +415,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setCutterCommentAiRequest}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
@@ -405,7 +425,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
   const card = ctx.cutterCards.find((c) => c.id === id && c.kind === "suggestion");
   if (!card || card.kind !== "suggestion") return null;
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("cutter-suggestion", id, {
     chromeSlots: {
       trailing: <CutterSuggestionTrailing card={card} />,
@@ -419,7 +439,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: (source) => snapshotCard("cutter-suggestion", card, source),
     renderBody: () => (
@@ -432,7 +452,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
         onReject={(cid) => ctx.setCutterSuggestionStatus(cid, "rejected")}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
@@ -444,7 +464,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
     (c): c is ReportCardData => c.id === id && c.kind === "report",
   );
   if (!card) return null;
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("report", id, {
     chromeSlots: {
       title: (
@@ -457,7 +477,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
     renderBody: () => (
@@ -469,7 +489,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
         onConvert={ctx.convertReportCard}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
@@ -481,7 +501,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
     (c): c is ReportRequestCardData => c.id === id && c.kind === "report-request",
   );
   if (!card) return null;
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("report-request", id, {
     chromeSlots: {
       title: (
@@ -494,7 +514,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
     renderBody: () => (
@@ -506,7 +526,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setRequestAiRequest}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
         isPoppedOut
       />
     ),
@@ -516,10 +536,10 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("todo", (id, ctx: CardFloatCtx) => {
   const item = ctx.todoItems.find((t) => t.id === id);
   if (!item) return null;
-  const canJump = getLinkedTextObjectIds(item).length > 0;
+  const jump = cardJumpGate(item, ctx.resolveCardRows);
   return cardFloatable("todo", id, {
     chromeSlots: { trailing: <TodoDoneToggle item={item} onToggle={ctx.toggleTodo} /> },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(item, null),
     snapshotForStack: (source) => snapshotCard("todo", item, source),
     renderBody: () => (
@@ -532,8 +552,8 @@ registerCardFloatable("todo", (id, ctx: CardFloatCtx) => {
         onSetAiRequest={ctx.setTodoAiRequest}
         onDelete={ctx.deleteTodo}
         onSelect={ctx.setSelectedTodoId}
-        isAnchored={canJump}
-        onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(item, sourceEl) : undefined}
+        isAnchored={jump.anchored}
+        onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(item, sourceEl))}
         isPoppedOut
       />
     ),
@@ -546,7 +566,7 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
   const isCited = ctx.allEditorCitations.some((c) => c.keys.includes(entry.key));
   return cardFloatable("bib", id, {
     bareWindow: true, // bespoke in-body header until Stage 6
-    canJump: false,
+    jump: staticJumpGate(false),
     jumpToSource: () => {},
     // No bib resolution here (task 235): the entry's own annotation, and any
     // entry a payload merely REFERENCES, ride `StackItem.bib`, resolved once
@@ -592,10 +612,8 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
     // the omni card, and the in-body chevron (all gate on `pos !== null` /
     // `isAnchored`). An unanchored citation's `scrollToCitation` resolves no
     // in-text atom and is a dead control, so gate `jumpToSource` the same way.
-    canJump: isAnchored,
-    jumpToSource: isAnchored
-      ? () => ctx.editorRef.current?.scrollToCitation(cit.id, null)
-      : () => {},
+    jump: staticJumpGate(isAnchored),
+    jumpToSource: () => ctx.editorRef.current?.scrollToCitation(cit.id, null),
     // No bib sidecars here (task 235). The cited entries + their annotations
     // ride `StackItem.bib`, resolved at the single stack-add door — the same
     // seam that gives a `\cite` inside a TEXT slice the same guarantee.
@@ -637,7 +655,7 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
   const card = ctx.comments.find((c) => c.id === id);
   if (!card || card.kind !== "comment") return null; // data discriminator stays
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("revision-comment", id, {
     snapshotForStack: (source) => snapshotCard("revision-comment", card, source),
     chromeSlots: {
@@ -653,7 +671,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
       <RevisionRequestCard
@@ -673,7 +691,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
 registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
   const card = ctx.comments.find((c) => c.id === id);
   if (!card || card.kind !== "suggestion") return null;
-  const canJump = getLinkedTextObjectIds(card).length > 0;
+  const jump = cardJumpGate(card, ctx.resolveCardRows);
   return cardFloatable("revision-suggestion", id, {
     snapshotForStack: (source) => snapshotCard("revision-suggestion", card, source),
     chromeSlots: {
@@ -689,7 +707,7 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
         />
       ),
     },
-    canJump,
+    jump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
       <RevisionSuggestionCard
@@ -711,7 +729,7 @@ registerCardFloatable("example", (id, ctx: CardFloatCtx) => {
   const ex = ctx.examples.find((e) => e.exampleId === id);
   if (!ex) return null;
   return cardFloatable("example", id, {
-    canJump: true,
+    jump: staticJumpGate(true),
     jumpToSource: () => ctx.editorRef.current?.scrollToExample(ex.exampleId),
     // Not stackable (`CARD_REGISTRY.example.stackable === false` since task
     // 259). An example's content is the in-text `\ex{…}` block; this panel ref

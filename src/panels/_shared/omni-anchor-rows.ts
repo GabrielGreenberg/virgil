@@ -22,7 +22,12 @@
 
 import type { CardWithLinks } from "@/links/links";
 import type { OmniItem } from "@/panels/_shared/types";
-import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import {
+  PASS_JUMP,
+  NO_JUMP,
+  type CardAnchorResolver,
+  type WithJump,
+} from "@/links/card-anchor-rows";
 import { resolveAnchorState, type AnchorIntent } from "@/links/anchor-state";
 
 /**
@@ -75,14 +80,14 @@ export interface OmniAnchorRow
    * re-pin gesture (`UnanchoredCardsChip`'s "click to re-pin") is a real
    * feature and belongs to its own task, not to a correctness fix.
    */
-  withJump: <H>(handler: H) => H | undefined;
+  withJump: WithJump;
 }
 
-/** The two `withJump` implementations. Module-level constants rather than a
- *  per-row closure: a pass rebuilds every row on each structural revision, and
- *  the gate has no per-row state to capture. */
-const PASS_JUMP = <H>(handler: H): H | undefined => handler;
-const NO_JUMP = <H>(_handler: H): H | undefined => undefined;
+// The two `withJump` implementations live beside the AUTHORITY
+// (`@/links/card-anchor-rows`), not here: since task 665 the popped-float
+// surface runs the same gate, and one pair of implementations is what makes
+// "the omni row and the float agree" true by construction rather than by two
+// copies staying in step.
 
 /**
  * Build a card's omni rows from the ONE anchor authority.

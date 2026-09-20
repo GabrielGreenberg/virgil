@@ -492,7 +492,12 @@ describe("task 655 — census: the gate is decided in ONE file", () => {
 
   it("the row module decides it, from the RESOLVED witness", () => {
     const src = codeOnly(read("src/panels/_shared/omni-anchor-rows.ts"));
-    expect(src).toMatch(/withJump:\s*<H>\(handler: H\) => H \| undefined/);
+    // The row's gate is the AUTHORITY's `WithJump`, imported — since task 665
+    // the popped float runs the same one, and a second local copy is exactly
+    // how two surfaces come to disagree.
+    expect(src).toMatch(/withJump: WithJump;/);
+    expect(src).toMatch(/PASS_JUMP,\s*\n\s*NO_JUMP,/);
+    expect(src).not.toMatch(/const (PASS_JUMP|NO_JUMP)\s*=/);
     // Eligibility is the resolved witness — never the stored pid.
     expect(src).toMatch(/const canJump = witness != null;/);
     expect(src).toMatch(/withJump: canJump \? PASS_JUMP : NO_JUMP/);

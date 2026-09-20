@@ -96,10 +96,45 @@ import {
   type SourceRange,
 } from "@/lib/float-sync";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
+import type { Link } from "@/links/_shared/types";
+import {
+  resolveCardAnchorRows,
+  type CardAnchorResolver,
+} from "@/links/card-anchor-rows";
+import type { ResolveIndex } from "@/links/resolve-card-anchor";
+import type { CardKind } from "@/cards/types";
 
 const REPO_SRC = join(process.cwd(), "src");
 
 afterEach(cleanup);
+
+// ── Shared fixtures: the REAL authority over a synthetic live-uuid set ──────
+
+/** A Mode-A paragraph link on `uuid`. */
+function paraLink(uuid: string): Link {
+  return {
+    id: `link-${uuid}`,
+    kind: "anchor",
+    anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: [uuid] },
+    target: { type: "card", ref: { kind: "note", id: "x" } },
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+/** Adapt a synthetic live-uuid→pos map onto the REAL card-anchor authority, so
+ *  a "dead" anchor below is dead by the four-rung ladder's own verdict rather
+ *  than by a stub hard-coding the answer the test wants. (Same adapter the
+ *  omni-side census uses — the two surfaces are being held to ONE authority,
+ *  so they must be driven by it.) */
+function resolverWithLive(live: Record<string, number>): CardAnchorResolver {
+  const index: ResolveIndex = {
+    uuidToParagraph: new Set(Object.keys(live)),
+    uuidToPos: new Map(Object.entries(live)),
+    anchorIdToParagraph: new Map(),
+    snapshotToParagraph: () => null,
+  };
+  return (card) => resolveCardAnchorRows(card, null, index);
+}
 
 // ── (A) archive: the builder reads the authority it already computed ────────
 
@@ -108,8 +143,10 @@ const richDoc = (text: string) => ({
   content: [{ type: "paragraph", content: [{ type: "text", text }] }],
 });
 
-/** Build the REAL archive `Floatable` through `CARD_REGISTRY`, with an
- *  `anchoredIds` set that either holds the clip's id or doesn't. */
+/** Build the REAL archive `Floatable` through `CARD_REGISTRY`, against the REAL
+ *  card-anchor authority (task 665) — a clip anchored to a paragraph that is
+ *  either live or not, resolved by the four-rung ladder itself rather than by a
+ *  hand-set boolean. */
 function archiveFloatable(anchored: boolean, jump = vi.fn()) {
   const ctx = {
     archiveSnippets: [
@@ -118,10 +155,10 @@ function archiveFloatable(anchored: boolean, jump = vi.fn()) {
         title: "Arch",
         content: richDoc("arch body"),
         createdAt: "t",
-        links: [],
+        links: [paraLink("p-arch")],
       },
     ],
-    anchoredIds: anchored ? new Set(["arch-1"]) : new Set<string>(),
+    resolveCardRows: resolverWithLive(anchored ? { "p-arch": 7 } : {}),
     selectedArchiveId: null,
     editorRef: { current: { jumpToCard: jump } },
   } as unknown as CardFloatCtx;
@@ -240,13 +277,24 @@ describe("task 435 census — no builder states an anchor answer it already reso
     expect(/canJump:\s*true\b/.test(region!.text)).toBe(false);
   });
 
-  it("`anchoredIds` is REQUIRED on the deps bag (an optional field makes the answer silently undefined)", () => {
+  it("the card-anchor AUTHORITY is REQUIRED on the deps bag, and it is the GENERAL door", () => {
     const src = readFileSync(
       join(REPO_SRC, "components/editor-layout/floating-cards.tsx"),
       "utf8",
     );
-    expect(src).toMatch(/^\s*anchoredIds: Set<string>;/m);
-    expect(src).not.toMatch(/anchoredIds\?:/);
+    // Task 665: the bag used to carry `anchoredIds` — the ARCHIVE-specific
+    // fold — so the nine other card-anchored builders had no resolver to ask
+    // and each invented a weaker predicate. The door is the general resolver,
+    // spelled exactly as the omni host spells it.
+    expect(src).toMatch(/^\s*resolveCardRows: CardAnchorResolver;/m);
+    expect(src).not.toMatch(/resolveCardRows\?:/);
+    // The archive-only fold is GONE from the bag. Code only — the field's
+    // doc-comment names the retired spelling, which is the record of why.
+    const code = src
+      .split("\n")
+      .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+      .join("\n");
+    expect(code).not.toMatch(/anchoredIds/);
   });
 });
 
@@ -430,5 +478,212 @@ describe("task 435 (B) — a text-object float's header agrees with its body", (
       </PoppedCardsContext.Provider>,
     );
     expect(screen.queryByLabelText("Jump to paragraph")).toBeNull();
+  });
+});
+
+// ── Task 665 — the nine builders 435 never swept in ─────────────────────────
+//
+// Task 435 fixed `archive`, whose builder had the authority's verdict in hand
+// and threw it away. The other nine card-anchored kinds never had a verdict to
+// throw away: `PoppedCardDeps` carried only the archive-specific
+// `anchoredIds`, so each computed `getLinkedTextObjectIds(card).length > 0` —
+// "the card STORES an anchor", which is equally true of a card whose anchor is
+// dead. The two predicates differ for exactly one card: one whose stored anchor
+// is UNRECOVERABLE. Those nine painted a Jump chevron that `jumpToCard`
+// resolves to nothing, while the SAME card's omni row (task 655) correctly
+// offered none. The fix is the general door on the bag plus one gate, so there
+// is no boolean left in a builder's hand.
+
+const AT665 = "2026-01-01T00:00:00.000Z";
+const BODY665 = { type: "doc", content: [] };
+const SUGGESTION_FIELDS = {
+  author: "ai",
+  original_text: "a",
+  suggested_text: "b",
+  explanation: "",
+  user_text: "",
+  instructions: "",
+  status: "pending",
+} as const;
+
+/** One card-anchored poppable kind: which ctx collection holds it, and the
+ *  record to put there (anchored to `uuid`). */
+const ANCHORED_KINDS: Array<{
+  kind: CardKind;
+  collection: string;
+  record: (uuid: string) => Record<string, unknown>;
+}> = [
+  {
+    kind: "note",
+    collection: "notes",
+    record: (u) => ({ kind: "note", id: "c1", title: "", content: BODY665, createdAt: AT665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "highlight",
+    collection: "highlights",
+    record: (u) => ({ kind: "highlight", id: "c1", text: "hl", createdAt: AT665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "todo",
+    collection: "todoItems",
+    record: (u) => ({ id: "c1", text: "t", done: false, createdAt: AT665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "cutter-comment",
+    collection: "cutterCards",
+    record: (u) => ({ kind: "comment", id: "c1", createdAt: AT665, text: "", content: BODY665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "cutter-suggestion",
+    collection: "cutterCards",
+    record: (u) => ({ kind: "suggestion", id: "c1", createdAt: AT665, ...SUGGESTION_FIELDS, links: [paraLink(u)] }),
+  },
+  {
+    kind: "revision-comment",
+    collection: "comments",
+    record: (u) => ({ kind: "comment", id: "c1", createdAt: AT665, text: "", content: BODY665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "revision-suggestion",
+    collection: "comments",
+    record: (u) => ({ kind: "suggestion", id: "c1", createdAt: AT665, ...SUGGESTION_FIELDS, links: [paraLink(u)] }),
+  },
+  {
+    kind: "report",
+    collection: "reportCards",
+    record: (u) => ({ kind: "report", id: "c1", createdAt: AT665, author: "ai", title: "", text: "", content: BODY665, links: [paraLink(u)] }),
+  },
+  {
+    kind: "report-request",
+    collection: "reportCards",
+    record: (u) => ({ kind: "report-request", id: "c1", createdAt: AT665, text: "", content: BODY665, aiRequest: false, links: [paraLink(u)] }),
+  },
+  {
+    kind: "archive",
+    collection: "archiveSnippets",
+    record: (u) => ({ id: "c1", title: "", content: BODY665, createdAt: AT665, links: [paraLink(u)] }),
+  },
+];
+
+const LIVE665 = "live-uuid";
+const DEAD665 = "dead-uuid";
+
+function anchoredFloatable(
+  entry: (typeof ANCHORED_KINDS)[number],
+  uuid: string,
+  jump = vi.fn(),
+) {
+  const ctx = {
+    [entry.collection]: [entry.record(uuid)],
+    resolveCardRows: resolverWithLive({ [LIVE665]: 42 }),
+    selectedNoteId: null,
+    selectedTodoId: null,
+    selectedArchiveId: null,
+    selectedCutterCardId: null,
+    selectedReportCardId: null,
+    selectedCommentId: null,
+    editorRef: { current: { jumpToCard: jump } },
+  } as unknown as CardFloatCtx;
+  return CARD_REGISTRY[entry.kind].toFloatable!("c1", ctx);
+}
+
+describe("task 665 — an unrecoverable anchor offers no Jump, in every popped kind", () => {
+  it.each(ANCHORED_KINDS.map((e) => [e.kind, e] as const))(
+    "%s: a DEAD stored anchor paints no chevron and its handler is inert",
+    (_kind, entry) => {
+      const jump = vi.fn();
+      const f = anchoredFloatable(entry, DEAD665, jump);
+      expect(f).not.toBeNull();
+      expect(f!.canJump).toBe(false);
+      // BOTH halves (task 136's rule) — a keyboard or programmatic path that
+      // reaches `jumpToSource` anyway must not call the dead handler.
+      f!.jumpToSource();
+      expect(jump).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(ANCHORED_KINDS.map((e) => [e.kind, e] as const))(
+    "%s: CONTROL — a LIVE anchor still jumps (the fix withdraws nothing real)",
+    (_kind, entry) => {
+      const jump = vi.fn();
+      const f = anchoredFloatable(entry, LIVE665, jump);
+      expect(f!.canJump).toBe(true);
+      f!.jumpToSource();
+      expect(jump).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("the sweep is non-vacuous: the two anchors really do classify apart", () => {
+    const resolve = resolverWithLive({ [LIVE665]: 42 });
+    expect(resolve({ links: [paraLink(DEAD665)] } as never).anchored).toBe(false);
+    expect(resolve({ links: [paraLink(LIVE665)] } as never).anchored).toBe(true);
+  });
+});
+
+describe("task 665 census — no float builder re-derives an anchor verdict", () => {
+  /** Code only — the doc-comments above a builder legitimately DISCUSS the
+   *  retired predicate by name. */
+  const stripComments = (t: string) =>
+    t
+      .split("\n")
+      .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+      .join("\n");
+
+  it("no builder derives an anchor answer from LINK PRESENCE (allowlist EMPTY)", () => {
+    // The shape task 435's census was structurally blind to: it flagged a
+    // literal `canJump: true` beside a resolved answer, and link-presence is
+    // neither a literal nor a resolved answer. This leg asks about the
+    // PREDICATE, which is what actually went wrong nine times.
+    const offenders = builderRegions()
+      .filter((r) => /getLinkedTextObjectIds\s*\([^)]*\)\s*\.length/.test(stripComments(r.text)))
+      .map((r) => `${r.kind} @ src/cards/floats/index.tsx:${r.start}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("every card-anchored builder takes its gate from the ONE authority", () => {
+    const byKind = new Map(builderRegions().map((r) => [r.kind, r]));
+    for (const { kind } of ANCHORED_KINDS) {
+      const region = byKind.get(kind);
+      expect(region, `no builder region for ${kind}`).toBeTruthy();
+      expect(
+        /cardJumpGate\(\s*\w+,\s*ctx\.resolveCardRows\s*\)/.test(stripComments(region!.text)),
+        `${kind} does not resolve its gate through cardJumpGate(card, ctx.resolveCardRows)`,
+      ).toBe(true);
+    }
+  });
+
+  it("NO builder states a `canJump` at all — the shell derives it from the gate", () => {
+    const offenders = builderRegions()
+      .filter((r) => /\bcanJump\s*:/.test(stripComments(r.text)))
+      .map((r) => `${r.kind} @ src/cards/floats/index.tsx:${r.start}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("the shell derives BOTH halves from the gate, and nothing else does", () => {
+    const src = stripComments(
+      readFileSync(join(REPO_SRC, "cards/floats/index.tsx"), "utf8"),
+    );
+    expect(src).toMatch(/canJump: opts\.jump\.anchored,/);
+    expect(src).toMatch(/jumpToSource: opts\.jump\.withJump\(opts\.jumpToSource\)/);
+    // Exactly one `canJump:` in the whole file: the shell's.
+    expect((src.match(/\bcanJump\s*:/g) ?? []).length).toBe(1);
+    // A kind whose reachability is resolved ELSEWHERE says so by name rather
+    // than spelling a bare boolean, so "resolved elsewhere" stays legible.
+    expect(src).toMatch(/staticJumpGate\(/);
+  });
+
+  it("the gate itself lives beside the AUTHORITY, in one pair of implementations", () => {
+    const authority = stripComments(
+      readFileSync(join(REPO_SRC, "links/card-anchor-rows.ts"), "utf8"),
+    );
+    expect(authority).toMatch(/export const PASS_JUMP: WithJump/);
+    expect(authority).toMatch(/export const NO_JUMP: WithJump/);
+    expect(authority).toMatch(/export function cardJumpGate\(/);
+    // The omni reader takes the SAME constants rather than keeping its own.
+    const omni = stripComments(
+      readFileSync(join(REPO_SRC, "panels/_shared/omni-anchor-rows.ts"), "utf8"),
+    );
+    expect(omni).toMatch(/PASS_JUMP,\s*\n\s*NO_JUMP,/);
+    expect(omni).not.toMatch(/const (PASS_JUMP|NO_JUMP)\s*=/);
   });
 });

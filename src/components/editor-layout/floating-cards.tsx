@@ -19,6 +19,7 @@ import type {
   CitationRef,
   FootnoteRef,
 } from "@/lib/types";
+import type { CardAnchorResolver } from "@/links/card-anchor-rows";
 
 /**
  * Deps bundle for the popped-card renderer. Sourced entirely from the
@@ -70,14 +71,26 @@ export interface PoppedCardDeps {
   comments: RevisionCard[];
   reportCards: ReportItem[];
   examples: ExampleInfo[];
-  /** The ids of archive clips whose anchor the task-369 authority RESOLVES —
-   *  `anchoredArchiveIds` in `EditorPane`, a fold over `anchorPass.resolve()`.
-   *  The archive float derives BOTH its `orphaned` body state and its jump
-   *  affordance from it (task 435). Required, not optional, for the reason
-   *  `unanchoredFootnotes` above states: an optional field makes the derived
-   *  answer silently `undefined` for every host that forgets, which is exactly
-   *  how the float came to paint a live Jump over an orphaned clip. */
-  anchoredIds: Set<string>;
+  /** **The card-anchor authority itself** — `anchorPass.resolve` in
+   *  `EditorPane`, the same resolver the margin markers and every omni builder
+   *  read (`resolveCardRows` there, spelled identically here so the two
+   *  surfaces name one door).
+   *
+   *  This used to be `anchoredIds: Set<string>` — the ARCHIVE-specific fold
+   *  (`anchoredArchiveIds`) and nothing else. The archive float read it and
+   *  gated correctly (task 435); the other nine card-anchored builders had no
+   *  general resolver to read, so each computed
+   *  `getLinkedTextObjectIds(card).length > 0` — "the card STORES an anchor",
+   *  which is equally true of a card whose anchor is dead — and painted a Jump
+   *  chevron that resolves nothing (task 665). A kind-specific door is how the
+   *  nine came to answer a general question with a weaker predicate, so the
+   *  door is now the general one.
+   *
+   *  Required, not optional, for the reason `unanchoredFootnotes` above states:
+   *  an optional resolver makes the derived answer silently `undefined` for
+   *  every host that forgets, which is exactly how a float comes to paint a
+   *  live Jump over an orphaned card. */
+  resolveCardRows: CardAnchorResolver;
 
   // Selected-id slots
   selectedNoteId: string | null;
