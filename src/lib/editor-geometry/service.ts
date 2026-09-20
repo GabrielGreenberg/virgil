@@ -65,9 +65,11 @@ import {
   type EditorViewportFrame,
 } from "./viewport-frame";
 import {
+  blockHasOwnTextLine,
+  isTextLineContainer,
   onFontReady,
   opticalCenterY,
-  resolveInlineContextElement,
+  resolveFirstLineTarget,
   resolveLineHeightPx,
 } from "@/lib/text-metrics";
 
@@ -94,11 +96,13 @@ const MAX_OBSERVE_RETRIES = 5;
  * Measure one anchorable block. Pure — no state mutation.
  *
  * The vertical anchor (`top`) for a prose block is derived from the SAME
- * grab-handle geometry SSOT the drag handles use: `resolveInlineContextElement`
+ * grab-handle geometry SSOT the drag handles use: `resolveFirstLineTarget`
  * ([text-metrics.ts]) descends the block's wrapper NodeView to the element that
  * carries the first visual text line (handling `heading-wrapper` h1–**h6**,
  * `par-title-wrapper`, `title-field-wrapper`, `list-title-wrapper`, `blockquote`,
- * `<pre>`→`<code>`, `expex-item`), and the anchor is the OPTICAL cap-band center
+ * `<pre>`→`<code>`, `expex-item`) **and a CONTAINER through to its first
+ * grabbable child** (a `<ul>` has no text line of its own), and the anchor is
+ * the OPTICAL cap-band center
  * of that first line via the shared `opticalCenterY(lineTop, target)` primitive
  * ([text-metrics.ts] — the same one `block-frame.ts` composes). Storing `top =
  * opticalCenter − lineHeight/2` makes the grid's `cellAt` formula (`top +
@@ -118,10 +122,22 @@ const MAX_OBSERVE_RETRIES = 5;
  * handle — makes first-paint and settle agree, kills the divider/h4–h6 miss,
  * and unifies the two independent measurement paths into one.
  *
- * Atoms (displayMath / latexComment) and blocks that declare an explicit
+ * Blocks with NO first text line, and blocks that declare an explicit
  * `[data-glyph-anchor]` visual top (the titled tex-block pod, the expex `(n)`
- * number) keep their border-box-top anchor unchanged — they are not text lines,
- * so the optical-center math doesn't apply.
+ * number), keep their border-box-top anchor — they are not text lines, so the
+ * optical-center math doesn't apply.
+ *
+ * "No text line" is asked of `blockHasOwnTextLine` (the registry's
+ * `chromeAnchor: "block-top"` vocabulary), not of the schema's `isAtom` alone.
+ * Those two are different questions and they disagree for exactly two kinds:
+ * `latexComment` (`content: "text*"`) and `figureBlock` (`content:
+ * "figureCaption?"`) are NOT atoms but render no text line, so forking on
+ * `isAtom` put both on the prose branch — a `%` comment's marker ~4.8px above
+ * its real cap-band (the text lives in `.latex-comment-content`, inside the
+ * outer div's `0.35em` padding at `0.85em`) and a figure's on an imaginary
+ * cap-band at the frame's top edge — while the grab handle for the SAME block
+ * read `chromeAnchor` and sat on the border box. Task 660: one question, one
+ * answer per kind.
  *
  * Returns `null` if the block can't be measured (no DOM, no host).
  *
@@ -153,8 +169,14 @@ export function measureBlock(
     // whole-list scan per wrap-changing keystroke on a `bulletList`.
     const anchorOverride = resolveGlyphAnchor(dom);
 
-    // ── Atoms: anchor on the element's own border-box top (no text line). ──
-    if (isAtom) {
+    // ── No text line: anchor on the element's own border-box top. ──
+    // Schema atoms AND the non-atom framed kinds (`latexComment`,
+    // `figureBlock`) — the same set the grab handle reads as
+    // `chromeAnchor: "block-top"`. `isAtom` stays the SCHEMA fact the caller
+    // resolved and is reported unchanged: it is what `metricsWithinEpsilon`
+    // compares, and quietly returning something other than what was passed in
+    // would be its own drift.
+    if (isAtom || !blockHasOwnTextLine(dom)) {
       let top = domTop;
       let measuredHeight = height;
       if (anchorOverride) {
@@ -176,7 +198,7 @@ export function measureBlock(
     // ── Prose: resolve the first-line text element via the grab-handle SSOT
     //    (or honor an explicit glyph-anchor override), then anchor on its
     //    optical cap-band center. ──
-    const target = anchorOverride ?? resolveInlineContextElement(dom);
+    const target = anchorOverride ?? resolveFirstLineTarget(dom);
     const targetRect = target.getBoundingClientRect();
 
     const style = window.getComputedStyle(target);
@@ -204,9 +226,24 @@ export function measureBlock(
       top = optical - lineHeight / 2;
     }
 
+    // Row capacity: the BLOCK's own extent, measured at the FIRST LINE's
+    // pitch. Numerator and denominator come from different elements for a
+    // CONTAINER and only for a container: `target` is then one ROW of the
+    // block (its first item's `<p>`), so the target's own height would report
+    // capacity 1 for a twelve-item list. Its padding belongs to that row, not
+    // to the list, so it is not subtracted there. For every other block the
+    // two elements are the same box and this is byte-identical.
+    //
+    // The pitch is what was wrong before the descent landed: a `<ul>` inherits
+    // the root 16px leading while `.tiptap li > p` carries the prose
+    // line-height, so dividing the list's full height by the wrapper's pitch
+    // inflated the count ~1.7x — and `metricsWithinEpsilon` compares
+    // `lineCount` EXACTLY, so the wrong value was never absorbed as wobble.
     const pt = parseFloat(style.paddingTop) || 0;
     const pb = parseFloat(style.paddingBottom) || 0;
-    const contentHeight = targetRect.height - pt - pb;
+    const contentHeight = isTextLineContainer(dom)
+      ? domRect.height
+      : targetRect.height - pt - pb;
     const lineCount = Math.max(1, Math.round(contentHeight / lineHeight));
 
     return { id, top, domTop, height, lineHeight, lineCount, isAtom };

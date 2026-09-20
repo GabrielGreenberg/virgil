@@ -18,11 +18,15 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
+import type { Editor } from "@tiptap/react";
 import {
+  pillRightEdge,
+  resolveParagraphBlockEl,
   pillVerticalSeat,
   resolveTargetKey,
   type PendingChangeIndex,
 } from "@/components/PendingChangePill";
+import { resolveHandleLane } from "@/text-objects/handle-layout";
 import { clearCapTopCache, opticalCenterY } from "@/lib/text-metrics";
 
 function makeIndex(): PendingChangeIndex {
@@ -150,5 +154,128 @@ describe("pillVerticalSeat (optical cap-band center, not geometric center)", () 
 
   it("falls back to the line-box geometric center when no target element resolves", () => {
     expect(pillVerticalSeat(100, 124, null)).toBeCloseTo(112, 5);
+  });
+});
+
+// ── Task 660 — the pill's HORIZONTAL seat ──────────────────────────────────
+//
+// Task 266 gave this file's VERTICAL axis the shared primitive. Its horizontal
+// axis kept a hardcoded `GRAB_BAR_CLEARANCE = 28`: a pre-em px stand-in for a
+// lane whose real width is the block's resolved `gapPx`
+// (`--margin-handle-gap: 0.625em`) plus the 12px handle box. Two consequences,
+// one leg each.
+describe("pillRightEdge — the pill clears the handle's own resolved lane", () => {
+  /** A block frame with no marker column and no chevron — a plain paragraph or
+   *  a top-level list row. `markerLeft` is the only thing the two rows of a
+   *  nested list differ in. */
+  function frame(markerLeft: number, gapPx: number) {
+    return {
+      markerLeft,
+      gapPx,
+      inkLeft: markerLeft,
+      columnRight: null,
+      chevronRight: null,
+    };
+  }
+
+  const COLUMN_LEFT = 100;
+  const INSET = 24;
+
+  it("tracks the block's marker, so an indented row's pill steps inboard with its handle", () => {
+    const gap = 9.5; // 0.625em at the 15.2px prose default
+    const outer = pillRightEdge(frame(200, gap), COLUMN_LEFT, INSET);
+    const nested = pillRightEdge(frame(240, gap), COLUMN_LEFT, INSET);
+    // The pre-fix seat read `blockEl.getBoundingClientRect().left − 28` off the
+    // TOP-LEVEL block, so every row of a list — however deeply nested — got the
+    // same x while the handle it was clearing stepped inboard by the full
+    // indent. Stated as the delta rather than as two literals.
+    expect(nested - outer).toBeCloseTo(40, 6);
+  });
+
+  it("never covers the handle BOX — including one notch up the font-size slider, where the 28px constant did", () => {
+    const markerLeft = 300;
+    for (const fontPx of [15.2, 20.8, 28]) {
+      const gap = 0.625 * fontPx;
+      const lane = resolveHandleLane({
+        markerLeft,
+        gapPx: gap,
+        editorColumnLeft: COLUMN_LEFT,
+        baselineInset: INSET,
+        inkLeft: markerLeft,
+        columnRight: null,
+        chevronRight: null,
+      });
+      // The pill is right-anchored and carries a higher z-order, so its right
+      // edge crossing the handle's left edge is the handle losing its clicks.
+      expect(pillRightEdge(frame(markerLeft, gap), COLUMN_LEFT, INSET)).toBeLessThanOrEqual(
+        lane.left,
+      );
+      // Why this is a leg and not a tautology: the constant it replaces IS
+      // inside the box at the top of that range.
+      if (fontPx === 28) expect(markerLeft - 28).toBeGreaterThan(lane.left);
+    }
+  });
+
+  it("stays a fixed em void outboard of the handle rather than collapsing onto the lane floor", () => {
+    const gap = 9.5;
+    const lane = resolveHandleLane({
+      markerLeft: 300,
+      gapPx: gap,
+      editorColumnLeft: COLUMN_LEFT,
+      baselineInset: INSET,
+      inkLeft: 300,
+      columnRight: null,
+      chevronRight: null,
+    });
+    expect(lane.left - pillRightEdge(frame(300, gap), COLUMN_LEFT, INSET)).toBeCloseTo(
+      gap,
+      6,
+    );
+  });
+});
+
+// The leg the pure-function ones above cannot carry: which BLOCK the pill is
+// clearing the handle of. Both axes read it, and reading the wrong one is what
+// made the horizontal seat a constant in the first place.
+describe("resolveParagraphBlockEl — the block the change is IN", () => {
+  function editorWith(pmDom: HTMLElement, node: Node): Editor {
+    return {
+      view: { dom: pmDom, domAtPos: () => ({ node, offset: 0 }) },
+    } as unknown as Editor;
+  }
+
+  it("resolves the INNERMOST text object, not the top-level child of the PM DOM", () => {
+    const pm = document.createElement("div");
+    const ul = document.createElement("ul");
+    ul.setAttribute("data-uuid", "L1");
+    ul.setAttribute("data-text-object-kind", "bulletList");
+    const li = document.createElement("li");
+    li.setAttribute("data-uuid", "I1");
+    li.setAttribute("data-text-object-kind", "listItem");
+    const p = document.createElement("p");
+    const text = document.createTextNode("changed text");
+    p.appendChild(text);
+    li.appendChild(p);
+    ul.appendChild(li);
+    pm.appendChild(ul);
+    document.body.appendChild(pm);
+
+    // Pre-660 this walked to the direct child of `view.dom` — the `<ul>` — so
+    // every row of the list, at every depth, shared one seat at the OUTER
+    // list's left edge while the handle it clears steps inboard per level.
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).toBe(li);
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).not.toBe(ul);
+    document.body.removeChild(pm);
+  });
+
+  it("falls back to the direct child of the PM DOM for an unstamped subtree", () => {
+    const pm = document.createElement("div");
+    const block = document.createElement("p");
+    const text = document.createTextNode("plain");
+    block.appendChild(text);
+    pm.appendChild(block);
+    document.body.appendChild(pm);
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).toBe(block);
+    document.body.removeChild(pm);
   });
 });

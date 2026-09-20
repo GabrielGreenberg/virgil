@@ -59,7 +59,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { resolveInlineContextElement } from "@/lib/text-metrics";
+import { resolveFirstLineTarget } from "@/lib/text-metrics";
 import {
   CARD_FLOAT_HEADER_H,
   TEXT_FLOAT_BODY_PAD_X,
@@ -272,7 +272,7 @@ export function LiftedTextOverlay({
   // text element's (paragraph styling lives on `.ProseMirror p`), which
   // produced a subtly larger / wider-spaced ghost in L1.10/L1.11. The
   // `?? anchorDom` fallback covers unrecognized wrapper shapes — safe
-  // since `resolveInlineContextElement` already falls back internally
+  // since `resolveFirstLineTarget` already falls back internally
   // for raw `<p>`/`<blockquote>` etc. (L3d.2 carves out `font-size`: the
   // inherited cascade BASE is read from `anchorDom` itself, not the inline
   // element — see the in-body comment for why.)
@@ -294,7 +294,7 @@ export function LiftedTextOverlay({
     // typography (set in the kind's `renderGhost`), so the overlay root needs
     // no inline capture. Element kinds keep the L1.5/L1.12 capture below.
     if (typeof window === "undefined" || !anchorDom) return {};
-    const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
+    const inlineEl = resolveFirstLineTarget(anchorDom) ?? anchorDom;
     const computed = window.getComputedStyle(inlineEl);
     // L3d.2: the cascade BASE — the font-size every relative-unit
     // descendant of the clone resolves its `em`/`%` against — must come
@@ -302,7 +302,7 @@ export function LiftedTextOverlay({
     // resolved inline text element. The two diverge for any block whose
     // grid/markers inherit the editor ROOT size while its prose `<p>`
     // carries `--editor-font-size` (applied only to `.tiptap p`). For an
-    // `exampleBlock`, `resolveInlineContextElement` descends to the inner
+    // `exampleBlock`, `resolveFirstLineTarget` descends to the inner
     // `<p>` (= `--editor-font-size`), but `.expex-number` /
     // `.expex-item-marker`'s `font-size: 0.95em` resolves in the SOURCE
     // against `.expex-block`'s own size (the root, e.g. 16px). Putting the

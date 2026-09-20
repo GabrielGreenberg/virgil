@@ -32,6 +32,11 @@
  * margin affordances align BY CONSTRUCTION.
  */
 
+import {
+  TEXTLESS_BLOCK_NODE_TYPES,
+  TEXT_LINE_CONTAINER_NODE_TYPES,
+} from "@/lib/node-attr-sets";
+
 export interface CapTopMetrics {
   /** Cap-height of a representative capital glyph ("H"), in CSS px. */
   capHeight: number;
@@ -264,17 +269,20 @@ export function opticalCenterY(
 }
 
 /**
- * Given the outer NodeView element (`editor.view.nodeDOM(blockPos)`
- * returns this), descend to the inline-context element that actually
- * carries the first line's font + line-height. This IS the shared descent
- * strategy — the marginalia registry (`useMarginaliaRegistry.ts`,
- * `resolveInlineContextElement` at its prose branch) and the block frame
- * (`resolveFirstLineTarget`) both call THIS, rather than re-deriving it;
- * it covers `par-title-wrapper` / `heading-wrapper` / `title-field-wrapper`
- * / `list-title-wrapper` / `expex-item` / `blockquote` / `pre` / bare `<li>`.
+ * The WRAPPER half of the first-line descent: given the outer NodeView element
+ * (`editor.view.nodeDOM(blockPos)` returns this), descend to the
+ * inline-context element that actually carries the first line's font +
+ * line-height. Covers `par-title-wrapper` / `heading-wrapper` /
+ * `title-field-wrapper` / `list-title-wrapper` / `expex-item` / `blockquote` /
+ * `pre` / bare `<li>`, and falls back to `anchorDom` itself for unrecognized
+ * wrappers — safe for raw `<p>`, `<blockquote>`, etc., whose own style IS the
+ * right reading.
  *
- * Falls back to `anchorDom` itself for unrecognized wrappers — safe for
- * raw `<p>`, `<blockquote>`, etc., whose own style IS the right reading.
+ * **It is a STEP, not the door.** It knows nothing about CONTAINERS, so on a
+ * `bulletList` / `orderedList` / `exampleBlock` it returns the container
+ * itself, whose font metrics are the root's rather than the prose's. Ask
+ * {@link resolveFirstLineTarget} — which composes this — from production code;
+ * `first-line-target-census.test.ts` fails if anything else does.
  */
 /**
  * A list item's rendered first line lives in its inner `<p>` (TipTap renders a
@@ -348,6 +356,116 @@ export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement
     return descendListItem(anchorDom);
   }
   return anchorDom;
+}
+
+/**
+ * A grabbable child = any descendant carrying a real TextObject identity (the
+ * `data-uuid` + `data-text-object-kind` stamp `stampTextObjectAttrs` /
+ * `makeUuidAttr` put on the node's outer DOM), excluding the mark-backed
+ * `linkedRange`. `querySelector` short-circuits at the FIRST match in document
+ * order, so a descent through it is O(distance-to-first-item), never O(items)
+ * — a 200-item list resolves as fast as a 2-item one.
+ */
+export const GRABBABLE_CHILD_SELECTOR =
+  '[data-uuid][data-text-object-kind]:not([data-text-object-kind="linkedRange"])';
+
+/** Recursion guard for container-in-container descent (defensive; real
+ *  nesting is shallow). */
+export const MAX_CONTAINER_DESCENT = 8;
+
+/**
+ * Does this block render a first text line AT ALL?
+ *
+ * `false` for the framed visual kinds ({@link TEXTLESS_BLOCK_NODE_TYPES} — the
+ * registry's `chromeAnchor: "block-top"` set): a tex pod, a `%` comment,
+ * display math, a forest, a figure, a graphic. Their chrome anchors on the
+ * element's BORDER BOX, because there is no line box to seat it on.
+ *
+ * Reads the kind off the element's own `data-text-object-kind` stamp and fails
+ * OPEN — an unstamped element (a NodeView measured before the attribute lands,
+ * a test fixture, a float surface that deliberately carries no identity)
+ * answers `true` and takes the text branch, which is what every such element
+ * did before this predicate existed.
+ */
+export function blockHasOwnTextLine(el: HTMLElement): boolean {
+  const kind = el.getAttribute("data-text-object-kind");
+  return !(kind !== null && TEXTLESS_BLOCK_NODE_TYPES.has(kind));
+}
+
+/**
+ * Is this block a CONTAINER — a kind whose first line lives in its first
+ * grabbable child rather than in text of its own
+ * ({@link TEXT_LINE_CONTAINER_NODE_TYPES})?
+ *
+ * Exposed beside {@link resolveFirstLineTarget} because a caller that has the
+ * resolved target sometimes needs the OTHER fact the descent knew: the target
+ * is one ROW of the block, not the block. The marginalia registry's row
+ * capacity is the case — see `measureBlock`.
+ */
+export function isTextLineContainer(el: HTMLElement): boolean {
+  const kind = el.getAttribute("data-text-object-kind");
+  return kind !== null && TEXT_LINE_CONTAINER_NODE_TYPES.has(kind);
+}
+
+/**
+ * **The door.** Resolve the text-bearing element whose first line defines a
+ * block's optical center — **its OWN first visual line**, always (task 394).
+ *
+ * Two descents, composed, and that composition is the point (task 660). For a
+ * CONTAINER the line lives in its first grabbable child (a `<ul>`/`<ol>` has
+ * no text of its own, and an `.expex-block`'s only direct text is the `(n)`
+ * chip at `0.95em` — the wrong metrics to anchor chrome to), so the descent
+ * recurses to the first child in DOCUMENT order; otherwise it descends wrapper
+ * NodeViews to the inline-context element via
+ * {@link resolveInlineContextElement}.
+ *
+ * It used to live PRIVATE inside `block-frame.ts`, which is how it came to
+ * have two layers: every consumer that was not the block frame reached past it
+ * to the wrapper half alone and seated its chrome on the container itself —
+ * the marginalia registry computing a `<ul>`'s marker from the `<ul>`'s
+ * inherited 16px metrics while the grab handle for the same block descended to
+ * the first item's `<p>`, which is precisely the drift `block-frame.ts` exists
+ * to prevent. {@link resolveInlineContextElement} survives as the WRAPPER STEP
+ * this composes; production code asks THIS, and
+ * `first-line-target-census.test.ts` holds it to that.
+ *
+ * There is no per-hover HINT, and its absence is the whole of task 394. Task
+ * 353 had added a `descendTo` parameter so a container's chrome anchored to
+ * the row the POINTER was on — which made "a container and its item share one
+ * Y" true at every row, and on a NESTED list stacked one handle per containing
+ * level onto that single row (Gabriel's screenshot: four levels, three handles
+ * bunched on "locations", the innermost pushed onto the bullet). His
+ * renegotiated spec is HIERARCHICAL: every handle sits beside its OWN
+ * structure's first line, so the gutter reads as a structural breadcrumb — the
+ * outer list beside the outer list's top row, the inner list beside ITS top
+ * row, and exactly one handle on the hovered (lowest) node. That is a rule
+ * with no special case, which is why it is a DELETION rather than a layout
+ * pass on top of the stacking.
+ *
+ * The same-row machinery (`applySameRowSeparation` + the task-382 ink cap)
+ * still governs GENUINE coincidences — hovering a list's first row, or a
+ * container whose first child is itself a container — where two levels
+ * legitimately share one line. With the levels distributed vertically those
+ * cases are <=2 handles in practice, which is what makes both mechanisms
+ * sufficient.
+ *
+ * Cost: O(descent depth), bounded by {@link MAX_CONTAINER_DESCENT}, with one
+ * short-circuiting `querySelector` per container level and no layout read.
+ * Safe on the hover / scroll / RAF placement path and on the keystroke path.
+ *
+ * A {@link TEXTLESS_BLOCK_NODE_TYPES} block has no text line for this to find;
+ * it returns `el` itself there, and the caller is expected to have asked
+ * {@link blockHasOwnTextLine} first.
+ */
+export function resolveFirstLineTarget(
+  el: HTMLElement,
+  guard = 0,
+): HTMLElement {
+  if (guard < MAX_CONTAINER_DESCENT && isTextLineContainer(el)) {
+    const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
+    if (child) return resolveFirstLineTarget(child, guard + 1);
+  }
+  return resolveInlineContextElement(el);
 }
 
 const fontReadyCallbacks = new Set<() => void>();

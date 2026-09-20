@@ -45,8 +45,11 @@
 
 import {
   capBandCenterOffset,
+  GRABBABLE_CHILD_SELECTOR,
+  isTextLineContainer,
+  MAX_CONTAINER_DESCENT,
   measureTextWidth,
-  resolveInlineContextElement,
+  resolveFirstLineTarget,
 } from "@/lib/text-metrics";
 import { FOLD_CHEVRON_NODE_TYPES } from "@/lib/node-attr-sets";
 
@@ -65,7 +68,7 @@ export interface BlockFrame {
    * grabbable child's first-line element). Exposed so a consumer that needs
    * the resolved font target (the selection grab handle's optical-center read)
    * reads it from the ONE resolve rather than re-descending via
-   * `resolveInlineContextElement`. Same element `ContentEdges.target` carries.
+   * the wrapper descent. Same element `ContentEdges.target` carries.
    */
   target: HTMLElement;
   /**
@@ -211,77 +214,14 @@ export interface BlockFrame {
 }
 
 /**
- * Container kinds whose own first visual line lives in their first
- * grabbable child rather than in any text of their own: a `<ul>`/`<ol>`
- * has no text line, and an `.expex-block`'s only direct text is the `(n)`
- * chip (rendered at `0.95em` — the wrong metrics to anchor chrome to).
- * Resolving THROUGH to the first child's first line makes a container and
- * its first item produce the SAME `opticalCenterY` by construction.
- *
- * Mirrors the sub-object `parentKind`s in `TEXT_OBJECT_REGISTRY`
- * (`listItem`→`bulletList`, `exampleItem`→`exampleBlock`), plus
- * `orderedList`, which is structurally identical to `bulletList`.
+ * The first-line descent — {@link resolveFirstLineTarget} — used to live HERE,
+ * private, with the container vocabulary and the grabbable-child selector
+ * beside it. It moved to `text-metrics.ts` in task 660 and this module now
+ * IMPORTS it, because private was the defect: the wrapper half of the descent
+ * was already public there, so every consumer that was not this module reached
+ * the shallow answer and seated its chrome on the container itself. One
+ * question, one door, and the census test holds the rest of the app to it.
  */
-const CONTAINER_KINDS = new Set<string>([
-  "bulletList",
-  "orderedList",
-  "exampleBlock",
-]);
-
-/**
- * A grabbable child = any descendant carrying a real TextObject identity
- * (the `data-uuid` + `data-text-object-kind` decoration pair), excluding
- * the mark-backed `linkedRange`. `querySelector` short-circuits at the
- * FIRST match in document order, so this is O(distance-to-first-item),
- * never O(items) — a 200-item list resolves as fast as a 2-item one.
- */
-const GRABBABLE_CHILD_SELECTOR =
-  '[data-uuid][data-text-object-kind]:not([data-text-object-kind="linkedRange"])';
-
-/** Recursion guard for container-in-container descent (defensive; real
- *  nesting is shallow). */
-const MAX_CONTAINER_DESCENT = 8;
-
-/**
- * Resolve the text-bearing element whose first line defines the block's
- * optical center — **its OWN first visual line**, always (task 394).
- *
- * For a container, that line lives in its first grabbable child (a `<ul>` /
- * `<ol>` has no text of its own, and an `.expex-block`'s only direct text is
- * the `(n)` chip at `0.95em` — the wrong metrics to anchor chrome to), so the
- * descent recurses to the first child in DOCUMENT order; otherwise it descends
- * wrapper NodeViews to the inline-context element via the shared
- * `resolveInlineContextElement`.
- *
- * There is no per-hover HINT, and its absence is the whole of task 394. Task
- * 353 had added a `descendTo` parameter so a container's chrome anchored to the
- * row the POINTER was on — which made "a container and its item share one Y"
- * true at every row, and on a NESTED list stacked one handle per containing
- * level onto that single row (Gabriel's screenshot: four levels, three handles
- * bunched on "locations", the innermost pushed onto the bullet). His
- * renegotiated spec is HIERARCHICAL: every handle sits beside its OWN
- * structure's first line, so the gutter reads as a structural breadcrumb — the
- * outer list beside the outer list's top row, the inner list beside ITS top
- * row, and exactly one handle on the hovered (lowest) node. That is a rule with
- * no special case, which is why it is a DELETION rather than a layout pass on
- * top of the stacking.
- *
- * The same-row machinery (`applySameRowSeparation` + the task-382 ink cap) still
- * governs GENUINE coincidences — hovering a list's first row, or a container
- * whose first child is itself a container — where two levels legitimately share
- * one line. With the levels distributed vertically those cases are ≤2 handles in
- * practice, which is what makes both mechanisms sufficient.
- */
-function resolveFirstLineTarget(el: HTMLElement, guard = 0): HTMLElement {
-  if (guard < MAX_CONTAINER_DESCENT) {
-    const kind = el.getAttribute("data-text-object-kind");
-    if (kind && CONTAINER_KINDS.has(kind)) {
-      const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
-      if (child) return resolveFirstLineTarget(child, guard + 1);
-    }
-  }
-  return resolveInlineContextElement(el);
-}
 
 /**
  * Task 425 — is `item`'s line `container`'s TOP ROW?
@@ -312,8 +252,7 @@ export function isTopRowOf(container: HTMLElement, item: HTMLElement): boolean {
   let cur = container;
   for (let guard = 0; guard <= MAX_CONTAINER_DESCENT; guard++) {
     if (cur === item) return true;
-    const kind = cur.getAttribute("data-text-object-kind");
-    if (!kind || !CONTAINER_KINDS.has(kind)) return false;
+    if (!isTextLineContainer(cur)) return false;
     const child = cur.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
     if (!child) return false;
     cur = child;
@@ -571,9 +510,11 @@ function measuredMarkerInkLeft(
  * unsafe direction, with the task-382 guard ("chrome never paints on the ink it
  * labels") switched off for the most common list in an academic paper.
  *
- * `text-metrics.ts` has known this since its `.list-title-wrapper` branch
- * (`resolveInlineContextElement`); this module did not. Task 660 is the
- * vertical-axis half of the same wrapper-vs-semantic-element gap.
+ * `text-metrics.ts` has known this since its `.list-title-wrapper` branch in
+ * the wrapper descent; this module did not. Task 660 is the vertical-axis half
+ * of the same wrapper-vs-semantic-element gap — and it closed by moving that
+ * descent's OUTER layer here into `text-metrics.ts` too, so the two modules
+ * can no longer hold different beliefs about the same DOM.
  *
  * Two cheap DOM reads, no layout and no computed style: `matches()` plus one
  * child-scoped `querySelector`. The hover/placement path's read budget is
@@ -856,7 +797,7 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
   const opticalCenterY = firstLineRect.top + capBandCenterOffset(target, cs);
   // Resolve the em margin tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
-  // value. `resolveInlineContextElement` descends wrappers to the inline text
+  // value. `resolveFirstLineTarget` descends wrappers to the inline text
   // for paragraphs / example items / headings — AND now the `<li>`→inner-`<p>`
   // case (task 217), so `target` is already the prose element the optical
   // center reads. No separate `fontEl` descent: the em token and the chip-1

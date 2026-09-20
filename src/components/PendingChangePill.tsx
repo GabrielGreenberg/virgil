@@ -61,9 +61,14 @@ import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
+  GRABBABLE_CHILD_SELECTOR,
   opticalCenterY,
-  resolveInlineContextElement,
 } from "@/lib/text-metrics";
+import { resolveBlockFrame } from "@/text-objects/block-frame";
+import {
+  HANDLE_WIDTH,
+  resolveHandleLane,
+} from "@/text-objects/handle-layout";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
   recordScrollPlacement,
@@ -75,11 +80,50 @@ import {
 } from "@/lib/pane-resize";
 import { CommitActions } from "@/components/CommitActions";
 const VIEWPORT_MARGIN = 8;
-/** How far LEFT of the paragraph's text-column edge the pill's right edge sits,
- *  so it clears the paragraph grab handle (the grab bar sits ~21px left of the
- *  text) and seats in the margin just OUTSIDE the grab bar, vertically level
- *  with the change (it may temporarily overlap other margin markers). */
-const GRAB_BAR_CLEARANCE = 28;
+/**
+ * The pill's RIGHT edge sits one block-resolved `gapPx` outboard of the grab
+ * handle's resting left edge — see {@link pillRightEdge}. It used to be a
+ * hardcoded `28`, a pre-em px stand-in for a lane that is em-scaled per block:
+ * one notch up the font-size slider and the real lane exceeded 28px, so the
+ * pill (which deliberately carries a higher z-order) covered the grab handle
+ * and took its clicks. Same failure `handle-layout.ts` records task 526 as
+ * having fixed for the hover zone. Task 266 gave this file's VERTICAL axis the
+ * shared primitive; task 660 gives the HORIZONTAL one the same treatment.
+ */
+export function pillRightEdge(
+  frame: {
+    markerLeft: number;
+    gapPx: number;
+    inkLeft: number;
+    columnRight: number | null;
+    chevronRight: number | null;
+  },
+  editorColumnLeft: number,
+  baselineInset: number,
+): number {
+  // Where the handle for this very block actually rests — the same lane
+  // resolve `TextObjectGrabHandle` performs, so "the pill clears the handle"
+  // is one subtraction from the handle's own answer rather than two tables
+  // that have to agree. One more `gapPx` of void beyond its 12px box.
+  const lane = resolveHandleLane({
+    markerLeft: frame.markerLeft,
+    gapPx: frame.gapPx,
+    editorColumnLeft,
+    baselineInset,
+    inkLeft: frame.inkLeft,
+    columnRight: frame.columnRight,
+    chevronRight: frame.chevronRight,
+  });
+  // The handle's RESTING left edge, one gap further out. Not the lane's
+  // outboard bound (`minLeft`): that is a per-pane constant, and parking there
+  // is what detached the pill from the handle it is clearing by the full
+  // indent on a nested list. The handle's HALO still reaches outboard under
+  // the pill — it did before this too, at the old 28px — and the pill's higher
+  // z-order takes those clicks; what the em-scaled lane buys is that the pill
+  // can no longer cover the handle's BOX when the font-size slider widens the
+  // gap past a constant.
+  return lane.left - frame.gapPx;
+}
 
 /** The applied-pending target the pill currently acts on: the resolved card ref
  *  plus the splice's anchorId (resolves the blue range) and the two commit
@@ -189,11 +233,27 @@ export function resolveTargetKey(
  *  text node to the direct child of the ProseMirror DOM. Feeds BOTH the pill's
  *  horizontal seat (its left edge) and its vertical seat (the optical
  *  cap-band-center font target). Null on any failure. */
-function resolveParagraphBlockEl(editor: Editor, pos: number): HTMLElement | null {
+export function resolveParagraphBlockEl(
+  editor: Editor,
+  pos: number,
+): HTMLElement | null {
   try {
     const domAt = editor.view.domAtPos(pos);
     let el: Node | null = domAt.node;
     if (el && el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+    // The INNERMOST text object containing the change — the block whose grab
+    // handle the pill has to clear, and whose first line it sits on. Walking to
+    // the direct child of `view.dom` instead (what this did before task 660)
+    // answers `<ul>` for every change anywhere in a list: one seat for every
+    // row, at the OUTER list's left edge, while the handle the pill is trying
+    // to clear steps inboard with each level of indent. Same stamp
+    // (`GRABBABLE_CHILD_SELECTOR`) the descent and the hover resolver key on.
+    const own = (el as HTMLElement | null)?.closest?.(
+      GRABBABLE_CHILD_SELECTOR,
+    ) as HTMLElement | null;
+    if (own && editor.view.dom.contains(own)) return own;
+    // Fallback for an unstamped subtree (a block measured before the NodeView
+    // stamp lands): the pre-660 walk to the direct child of the PM DOM.
     const pmDom = editor.view.dom;
     let block = el as HTMLElement | null;
     while (block && block.parentElement && block.parentElement !== pmDom) {
@@ -262,22 +322,24 @@ function computePlacement(
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Seat the pill in the LEFT MARGIN, just OUTSIDE the paragraph grab bar: take
-  // the change paragraph's block-left edge (the text column edge for that block,
-  // which the grab handle sits ~21px left of) and put the pill's right edge
-  // `GRAB_BAR_CLEARANCE` further left — clear of the grab bar. Vertically center
-  // on the change's first line. It may overlap other margin markers (accepted;
-  // the pill z-order lifts it above them).
+  // Seat the pill in the LEFT MARGIN, just OUTSIDE the grab handle of the block
+  // the change is in. BOTH axes now come from that block's ONE canonical frame
+  // (`resolveBlockFrame`): the horizontal from the handle's own resolved lane
+  // ({@link pillRightEdge}), the vertical from the frame's first-line target.
+  // It may overlap other margin markers (accepted; the pill z-order lifts it
+  // above them) — but never the grab handle, which is what it is clearing.
   const blockEl = resolveParagraphBlockEl(editor, range.from);
-  const textLeft = blockEl?.getBoundingClientRect().left ?? coords.left;
-  const rightEdge = textLeft - GRAB_BAR_CLEARANCE; // viewport x of the pill's right edge
+  const frame = blockEl ? resolveBlockFrame(blockEl) : null;
+  const rightEdge = frame
+    ? pillRightEdge(frame, cache.editorColumnLeft, cache.marginInset)
+    : coords.left - HANDLE_WIDTH;
   let right = vw - rightEdge; // CSS `right`
   if (right < VIEWPORT_MARGIN) right = VIEWPORT_MARGIN;
   if (right > vw - VIEWPORT_MARGIN) right = vw - VIEWPORT_MARGIN;
 
   // Optical cap-band center of the change's first line (the shared vertical SSOT),
   // so the pill aligns with the grab handle + marginalia marker on the same row.
-  const fontTarget = blockEl ? resolveInlineContextElement(blockEl) : null;
+  const fontTarget = frame?.target ?? null;
   let top = pillVerticalSeat(coords.top, coords.bottom, fontTarget);
   top = Math.max(top, scrollTop + VIEWPORT_MARGIN, VIEWPORT_MARGIN);
   if (top > vh - VIEWPORT_MARGIN) top = vh - VIEWPORT_MARGIN;

@@ -698,7 +698,7 @@ function computePlacement(
     // (`frame.target` = `resolveFirstLineTarget(anchorDom)`) rather than
     // re-descending: a selection's `anchorDom` is always a leaf/item text
     // object (never a container kind), so `frame.target` equals the old
-    // `resolveInlineContextElement(anchorDom)` by construction.
+    // `resolveFirstLineTarget(anchorDom)` by construction.
     dotsCenterY = opticalCenterY(baseTop, frame.target);
   } else {
     dotsCenterY = frame.opticalCenterY;

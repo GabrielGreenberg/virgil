@@ -366,7 +366,7 @@ export interface AnchorNodeMetrics {
    * `top + lineHeight/2` (row-0 icon center) lands on the first text line's
    * OPTICAL cap-band center — the same anchor the grab handle uses
    * (`block-frame.ts` `opticalCenterY`), derived via the shared
-   * `resolveInlineContextElement` SSOT in `useMarginaliaRegistry.measureBlock`.
+   * `resolveFirstLineTarget` SSOT in `useMarginaliaRegistry.measureBlock`.
    * For an atom / glyph-anchor-override block it is the element's border-box top.
    */
   top: number;

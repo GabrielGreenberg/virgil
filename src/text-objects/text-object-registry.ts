@@ -37,7 +37,7 @@ import {
 } from "@/lib/section-range";
 import { sectionBlockDoms } from "@/lib/section-dom";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
-import { resolveInlineContextElement } from "@/lib/text-metrics";
+import { resolveFirstLineTarget } from "@/lib/text-metrics";
 import { buildFloatKey, parseAnyKey } from "@/floats/float-key";
 import {
   topLevelDropAdapter,
@@ -1145,7 +1145,7 @@ function blockStyleElement(editor: Editor, pos: number): HTMLElement {
     for (let d = $pos.depth; d >= 1; d--) {
       const dom = editor.view.nodeDOM($pos.before(d));
       if (dom instanceof HTMLElement) {
-        return (resolveInlineContextElement(dom) as HTMLElement | null) ?? dom;
+        return (resolveFirstLineTarget(dom) as HTMLElement | null) ?? dom;
       }
     }
   } catch {
