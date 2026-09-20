@@ -8,7 +8,8 @@
  *
  * ## Why it is its own module (task 675)
  *
- * A `PanelId` is a key or member in eleven persisted carriers, and TWO
+ * A `PanelId` is a key or member in ten persisted carriers (eleven until task
+ * 678 retired the write-only `poppedOutOrigins`), and TWO
  * operations run over all of them at load. They are exact twins:
  *
  *  - the ADDITIVE one — `applyPanelRenames` (`rename-panel-id.ts`, task 275):
@@ -119,7 +120,6 @@ export const PANEL_ID_CARRIERS: Readonly<
   panelMRU: { shape: "sided-id-list", vocabulary: "panel" },
   panelHeights: { shape: "id-record", vocabulary: "panel" },
   poppedOutPanels: { shape: "id-list", vocabulary: "panel" },
-  poppedOutOrigins: { shape: "id-record", vocabulary: "panel" },
   panelModes: { shape: "id-record", vocabulary: "panel" },
   floatPositions: { shape: "id-record", vocabulary: "panel" },
   cardArchiveView: { shape: "id-record", vocabulary: "panel" },

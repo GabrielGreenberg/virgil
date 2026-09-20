@@ -11,13 +11,13 @@
  * renames — `references` → `citations` + `bibliography`, `comments` → `notes` +
  * `revisions`, `suggestions` → `revisions` — and each one rewrote exactly TWO
  * things: `parsed.placements` and the legacy `activeLeft`/`activeRight`
- * scalars. But a `PanelId` is a key or member in ELEVEN persisted carriers, and
+ * scalars. But a `PanelId` was a key or member in ELEVEN persisted carriers, and
  * the other nine were never renamed. They failed in two directions, both
  * silent:
  *
  *  - **Subtractive carriers DROPPED the old id** instead of renaming it, because
  *    the cleaners run against the live registry: `dockStack` (via `clampStack`),
- *    `poppedOutPanels` (via `validPanelId`), `poppedOutOrigins`,
+ *    `poppedOutPanels` (via `validPanelId`),
  *    `omniHiddenCategories` (via `filterOmniSide`), `printOptions.panels` (via
  *    `filterPrintPanels`). A panel docked or floating under the old id simply
  *    VANISHED on the upgrade reload instead of becoming its renamed successor.

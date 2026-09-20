@@ -32,6 +32,8 @@ describe("applyPanelRenames — every PanelId-keyed carrier", () => {
         dockStack: { left: [], right: ["suggestions"] },
         panelMRU: { left: ["suggestions"], right: [] },
         poppedOutPanels: ["suggestions"],
+        // Retired in task 678 and no longer in the carrier census: a stored
+        // value is scrubbed at load, so the rename has nothing to carry.
         poppedOutOrigins: { suggestions: "bottom" },
         panelModes: { suggestions: "floating" },
         panelHeights: { suggestions: 240 },
@@ -51,7 +53,8 @@ describe("applyPanelRenames — every PanelId-keyed carrier", () => {
     expect(out.dockStack).toEqual({ left: [], right: ["revisions"] });
     expect(out.panelMRU).toEqual({ left: ["revisions"], right: [] });
     expect(out.poppedOutPanels).toEqual(["revisions"]);
-    expect(out.poppedOutOrigins).toEqual({ revisions: "bottom" });
+    // Not a carrier any more — passed through untouched rather than renamed.
+    expect(out.poppedOutOrigins).toEqual({ suggestions: "bottom" });
     expect(out.panelModes).toEqual({ revisions: "floating" });
     expect(out.panelHeights).toEqual({ revisions: 240 });
     expect(out.floatPositions).toEqual({
