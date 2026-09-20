@@ -242,3 +242,119 @@ export function marginAnchorIndex(
   const i = rows.findIndex((r) => r.pid === pid);
   return i >= 0 ? i : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// The ONE Jump gate — shared by every surface that offers a card's Jump
+// ---------------------------------------------------------------------------
+//
+// Task 665. A card's Jump affordance is drawn by THREE surfaces — the omni row,
+// the popped float, and (for archive) the docked card — and each one used to
+// decide "can this jump?" for itself. Task 655 retired the omni half by taking
+// the boolean out of the builder's hand: a builder hands over its callback and
+// gets back either the callback or `undefined`, so there is no predicate left
+// to choose differently. The float half still held a boolean, and nine of its
+// builders computed it from `getLinkedTextObjectIds(card).length > 0` — merely
+// "the card STORES an anchor", which is equally true of a card whose anchor is
+// dead. That is the same false affordance, one surface over.
+//
+// So the gate itself lives HERE, beside the authority, and both readers import
+// it. One pair of implementations, not two.
+
+/** Hand in a handler; get it back only when the surface may offer the act. */
+export type WithJump = <H>(handler: H) => H | undefined;
+
+/** The two `WithJump` implementations. Module-level constants rather than
+ *  per-call closures: a pass rebuilds every row/float on each structural
+ *  revision, and the gate has no per-call state to capture. */
+export const PASS_JUMP: WithJump = <H>(handler: H): H | undefined => handler;
+export const NO_JUMP: WithJump = <H>(_handler: H): H | undefined => undefined;
+
+/** A card's float-side anchor verdict plus the gate derived from it. */
+export interface CardJumpGate {
+  /**
+   * The authority's verdict: did the four-rung ladder bind this card to a live
+   * paragraph? This is the BODY's question too (archive's `orphaned` state, a
+   * todo's `isAnchored`), which is why the gate publishes it — but no surface
+   * may re-derive the Jump decision from it. That is `withJump`'s job.
+   */
+  anchored: boolean;
+  /** The Jump door. `undefined` back ⇒ the surface offers nothing. */
+  withJump: WithJump;
+}
+
+const GATE_OPEN: CardJumpGate = { anchored: true, withJump: PASS_JUMP };
+const GATE_SHUT: CardJumpGate = { anchored: false, withJump: NO_JUMP };
+
+/**
+ * The gate for a PARAGRAPH-ANCHORED card, resolved through the one authority.
+ *
+ * `anchored` — not "a resolved position" — is the right rung here, and the two
+ * differ only in the mount gap (index not ready ⇒ `pos: null` on every row).
+ * An omni row has nothing to point at without a position, so it fails shut
+ * there; a float's `jumpToCard` re-resolves against the LIVE editor at click
+ * time, well after the gap, so it fails open — and since task 665 gave
+ * `resolveLink` its snapshot rung, `anchored` strictly implies `jumpToCard`
+ * can reach the card. "Anchored" and "reachable" cannot disagree.
+ */
+export function cardJumpGate(
+  card: CardWithLinks,
+  resolve: CardAnchorResolver,
+): CardJumpGate {
+  return resolve(card).anchored ? GATE_OPEN : GATE_SHUT;
+}
+
+/**
+ * The gate for a float whose reachability is NOT a card-anchor question — a
+ * footnote resolved from its own `\footnote` atom, a citation from its own
+ * position, an example from its `\ex{…}` block, a bib/AI float that has no
+ * in-document source at all. These have their own resolution and nothing to
+ * agree with; they say so HERE rather than spelling a bare boolean, so the
+ * census can tell "resolved elsewhere" from "never asked".
+ */
+export function staticJumpGate(canJump: boolean): CardJumpGate {
+  return canJump ? GATE_OPEN : GATE_SHUT;
+}
+
+// ---------------------------------------------------------------------------
+// The DOCUMENT-ORDER reader of the same rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Order cards by where the authority RESOLVES them: anchored cards first in
+ * document order, then everything the ladder binds to nothing, original order
+ * preserved within each group (`sort` is stable, and ties answer 0).
+ *
+ * The third reader of the shared rows, beside `buildMarginMarkerRows` (the
+ * margin's) and `buildOmniAnchorRows` (the omni's) — and the one that had gone
+ * missing. `EditorPane.sortedArchiveSnippets` ran its own `doc.descendants`
+ * walk keyed on the LIVE UUID only, directly below `anchoredArchiveIds`, which
+ * reads the four-rung authority. So a clip recovered by its surviving
+ * `linkedAnchor` mark or by its `paragraphSnapshot` — and every archive link is
+ * created WITH a snapshot — was badged `anchored` by one memo and sorted into
+ * the orphan tail by the other, in the SAME rendered row (task 665 M2).
+ *
+ * Positions come from the index's own walk (`uuidToPos`), so this costs O(cards)
+ * against a pass that already exists — the extra O(doc) walk bought nothing but
+ * the disagreement. Positions are monotone in document order, so sorting on
+ * them IS the paragraph order the ordinal walk used to build.
+ */
+export function sortCardsByResolvedAnchor<T extends CardWithLinks>(
+  cards: readonly T[],
+  resolve: CardAnchorResolver,
+): T[] {
+  // The card's resolved document position, or null when the ladder binds it to
+  // nothing. `rows[0]` is the RESOLVED paragraph (the resolver seeds the list
+  // with it), so this is the same paragraph the margin marker sits beside.
+  const posOf = (card: T): number | null => {
+    const { rows, anchored } = resolve(card);
+    return anchored ? rows[0]?.pos ?? null : null;
+  };
+  return [...cards].sort((a, b) => {
+    const aPos = posOf(a);
+    const bPos = posOf(b);
+    if (aPos != null && bPos != null) return aPos - bPos;
+    if (aPos != null) return -1;
+    if (bPos != null) return 1;
+    return 0;
+  });
+}

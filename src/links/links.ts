@@ -352,9 +352,77 @@ export function resolveLink(
           : (nodeDom?.parentElement as HTMLElement | null) ?? null);
       return { kind: "paragraph", paragraphId, pos, domEl };
     }
+    // Rung 3 — the SNAPSHOT re-find (task 665). Until this landed, the ACT had
+    // two rungs where the GATE had four: `resolveCardAnchor` binds a card by
+    // its live uuid, by a surviving `linkedAnchor` mark, by the RC1 self-heal,
+    // OR by its `paragraphSnapshot`; `resolveLink` tried the mark and the uuid
+    // and stopped. So every surface that gates a Jump on the authority's
+    // verdict — the omni row, the popped float, the margin marker — could
+    // truthfully say "anchored" about a card `jumpToCard` then refused to
+    // reach, having iterated its links and resolved none.
+    //
+    // The load reconcile normally rewrites a snapshot-recovered link before
+    // this matters, but it fires once per `docId` (`modeAReconciledDocRef`), so
+    // a MID-SESSION uuid re-mint has no second pass and lands exactly here.
+    //
+    // Cost: the failure path only. Both rungs above already walk the doc per
+    // id, so a fully-dead link paid an O(doc) sweep before this existed too —
+    // and it runs on a click, never on a keystroke. Normalized through the same
+    // `normalizeParagraphText` the authority uses, so the act cannot match on a
+    // stricter or looser spelling than the gate did.
+    const snapshot = link.anchor.textRange?.textSnapshot ?? link.anchor.paragraphSnapshot;
+    const recovered = snapshot ? findParagraphIdByNormalizedText(editor, snapshot) : null;
+    if (recovered) {
+      const pos = findParagraphByUuid(editor, recovered);
+      if (pos != null) {
+        const queried = editor.view.dom.querySelector(
+          `[data-uuid="${recovered}"]`,
+        ) as HTMLElement | null;
+        const nodeDom = editor.view.nodeDOM(pos);
+        const domEl =
+          queried ??
+          (nodeDom instanceof HTMLElement
+            ? nodeDom
+            : (nodeDom?.parentElement as HTMLElement | null) ?? null);
+        return { kind: "paragraph", paragraphId: recovered, pos, domEl };
+      }
+    }
     return null;
   }
   return null;
+}
+
+/**
+ * Re-find a live paragraph by a link's stored text snapshot, matched on the
+ * CANONICAL normalization (`normalizeParagraphText`) — the same key
+ * `buildResolveIndex`'s `snapshotToParagraph` builds, so `resolveLink`'s rung 3
+ * and `resolveCardAnchor`'s rung 3 agree on what "this text" means. First match
+ * wins in document order, exactly as the index's map does (duplicated
+ * paragraph text resolves to the FIRST occurrence).
+ *
+ * Deliberately NOT `findParagraphIdBySnapshot` below: that one compares RAW
+ * `textContent`, which is the pre-normalization spelling the authority stopped
+ * using — reusing it would have re-opened the gate/act disagreement by one
+ * whitespace difference.
+ */
+function findParagraphIdByNormalizedText(
+  editor: Editor,
+  snapshot: string,
+): string | null {
+  const key = normalizeParagraphText(snapshot);
+  if (!key) return null;
+  let found: string | null = null;
+  editor.state.doc.descendants((node) => {
+    if (found !== null) return false;
+    if (node.isText) return true;
+    const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
+    if (uuid && normalizeParagraphText(node.textContent) === key) {
+      found = uuid;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
 
 /** Scroll the appropriate end of the link into view.

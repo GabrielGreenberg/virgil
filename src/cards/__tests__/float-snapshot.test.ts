@@ -83,7 +83,11 @@ const mockCtx = {
   ],
   examples: [{ exampleId: "ex-1", title: "Ex", label: "", tag: "" }],
   reportCards: [{ kind: "report", id: "report-1", content: richDoc("report body"), createdAt: "t", links: [] }],
-  anchoredIds: new Set<string>(),
+  // Task 665: the bag carries the card-anchor AUTHORITY itself (it used to
+  // carry only the archive-specific `anchoredIds`). Every card here is
+  // link-less, so the honest answer is "no rows, not anchored" — which is also
+  // what the builders' Jump gate then withdraws on.
+  resolveCardRows: () => ({ rows: [], anchored: false }),
   allEditorCitations: [],
   editorRef: { current: null },
 } as unknown as CardFloatCtx;

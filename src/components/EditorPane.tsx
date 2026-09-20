@@ -120,7 +120,6 @@ import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { resolveLabelDisplay } from "@/lib/ref-display";
 import {
-  isAnchorableNode,
   MARGINALIA_HOST_ATTR,
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
@@ -320,6 +319,7 @@ import {
   buildCardAnchorPass,
   buildMarginMarkerRows,
   marginAnchorIndex,
+  sortCardsByResolvedAnchor,
 } from "@/links/card-anchor-rows";
 import { marginSideForMarkerType, type PanelSideMap } from "@/lib/margin-side";
 import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
@@ -4664,30 +4664,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }
     return ids;
   }, [archiveHook.snippets, anchorPass]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sortedArchiveSnippets = useMemo(() => {
-    const paragraphOrder = new Map<string, number>();
-    const ed = innerRef.current?.getEditor();
-    if (ed) {
-      let idx = 0;
-      ed.state.doc.descendants((node) => {
-        if (isAnchorableNode(node.type) && node.attrs?.uuid) {
-          paragraphOrder.set(node.attrs.uuid as string, idx++);
-        }
-        return true;
-      });
-    }
-    return [...archiveHook.snippets].sort((a, b) => {
-      const aPids = getLinkedTextObjectIds(a);
-      const bPids = getLinkedTextObjectIds(b);
-      const aPos = aPids.length > 0 ? paragraphOrder.get(aPids[0]) : undefined;
-      const bPos = bPids.length > 0 ? paragraphOrder.get(bPids[0]) : undefined;
-      if (aPos != null && bPos != null) return aPos - bPos;
-      if (aPos != null) return -1;
-      if (bPos != null) return 1;
-      return 0;
-    });
-  }, [archiveHook.snippets, rev.blocks, editor]);
+  // …and the ORDER reads the SAME resolution the badge above does (task 665).
+  // It used to run its own `doc.descendants` walk keyed on the live uuid ONLY,
+  // so a clip the four-rung ladder RECOVERED by its surviving mark or by its
+  // `paragraphSnapshot` — and every archive link is created WITH a snapshot —
+  // was badged `anchored` by the memo above and sorted into the orphan tail by
+  // this one, in the same rendered row. `anchorPass` already holds every
+  // resolved paragraph's document position (`uuidToPos`, from the index's one
+  // walk), so the extra O(doc) pass bought nothing but the disagreement.
+  const sortedArchiveSnippets = useMemo(
+    () => sortCardsByResolvedAnchor(archiveHook.snippets, anchorPass.resolve),
+    [archiveHook.snippets, anchorPass],
+  );
   // ArchiveHost callbacks — Reader chrome hides this panel, so restore /
   // delete / capture all go through the hook directly with no shell-side
   // coordination. The full "archive selection from editor" flow (which spawns a
@@ -5088,7 +5076,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       comments: revisionsHook.cards,
       reportCards: reportsHook.cards,
       examples,
-      anchoredIds: anchoredArchiveIds,
+      // The card-anchor authority itself — the SAME `anchorPass.resolve` the
+      // margin markers and every omni builder read (task 665). The bag used to
+      // carry only `anchoredArchiveIds`, so the nine non-archive float builders
+      // had no resolver to ask and each re-derived a weaker predicate.
+      resolveCardRows: anchorPass.resolve,
 
       // Selection slots + setters (per-pane)
       selectedNoteId,
@@ -5201,7 +5193,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       notesHook, footnoteInfos, footnoteAiRequests, archiveHook, cutterHook, todosHook,
       citationsHook, annotationsHook, bibReviewHook, revisionsHook,
       reportsHook,
-      citationPositionMap, allEditorCitations, examples, anchoredArchiveIds,
+      citationPositionMap, allEditorCitations, examples, anchorPass,
       selectedNoteId, selectedFootnoteId, selectedArchiveId,
       selectedCutterCardId, selectedReportCardId, selectedTodoId, selectedBibKey,
       selectedCitationId, selectedCommentId,
