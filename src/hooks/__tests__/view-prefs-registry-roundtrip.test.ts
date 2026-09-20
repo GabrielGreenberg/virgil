@@ -176,3 +176,47 @@ describe("Bug 5 — popped-out PANELS re-float on reload (validated)", () => {
     expect(loaded.poppedOutOrigins).toEqual({});
   });
 });
+
+describe("task 675 — a retired panel id is scrubbed from EVERY carrier on load", () => {
+  // The four carriers that had no cleaner at all: they arrived through the
+  // `...parsed` spread (or a bare `?? {}`), so a retired id round-tripped
+  // forever and was re-serialized on every write. They are now scrubbed by the
+  // one census-driven walk that also drives the rename.
+  it("drops `quotations` from panelHeights / panelModes / floatPositions / cardArchiveView", () => {
+    writeBlob(WINDOW_KEY, {
+      placements: [{ id: "notes", side: "right" }],
+      panelHeights: { notes: 240, quotations: 180 },
+      panelModes: { notes: "docked", quotations: "floating" },
+      floatPositions: {
+        notes: { x: 10, y: 10, width: 300, height: 400 },
+        quotations: { x: 20, y: 20, width: 300, height: 400 },
+      },
+      cardArchiveView: { notes: "active", quotations: "archived" },
+    });
+
+    const loaded = loadPrefs() as unknown as Record<string, Record<string, unknown>>;
+
+    for (const carrier of [
+      "panelHeights",
+      "panelModes",
+      "floatPositions",
+      "cardArchiveView",
+    ] as const) {
+      expect(Object.keys(loaded[carrier])).not.toContain("quotations");
+      // Purely subtractive — the live panel's saved value is untouched.
+      expect(Object.keys(loaded[carrier])).toContain("notes");
+    }
+    expect(loaded.panelHeights.notes).toBe(240);
+    expect(loaded.panelModes.notes).toBe("docked");
+    expect(loaded.cardArchiveView.notes).toBe("active");
+  });
+
+  it("does NOT scrub `panelWidths` — it is keyed by SIDE, not by panel id", () => {
+    // The carrier census classifies it `null` for exactly this reason. A walk
+    // that scrubbed it against the panel registry would delete both keys and
+    // reset the user's column widths on every load.
+    writeBlob(WINDOW_KEY, { panelWidths: { left: 320, right: 288 } });
+    const loaded = loadPrefs() as unknown as Record<string, Record<string, number>>;
+    expect(loaded.panelWidths).toEqual({ left: 320, right: 288 });
+  });
+});
