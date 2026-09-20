@@ -1296,8 +1296,13 @@ export function reconcileModeAAnchors<T extends CardWithLinks>(
 
 /**
  * Derivation-layer predicate: a Mode-A card is ORPHANED (no live anchor)
- * when it has at least one Mode-A link but NONE of its Mode-A links'
- * `textObjectIds[0]` resolve to a live block — i.e. the un-resolvable
+ * when it has at least one Mode-A link but NONE of its Mode-A links' ids —
+ * EVERY id, not just `textObjectIds[0]` (task 664) — resolve to a live
+ * block. A multi-id link whose first pid died in the `.tex` round-trip but
+ * whose second is alive is ANCHORED; reading `[0]` as a proxy for "the
+ * card's anchor" orphaned it wholesale. This matches rung 1 of
+ * `resolveCardAnchor` and `getLinkedTextObjectIds`, which both iterate.
+ * i.e. the un-resolvable
  * residue left after `reconcileModeAAnchors` runs (UUID dead AND snapshot
  * didn't match a live block).
  *
@@ -1324,10 +1329,11 @@ export function isModeAOrphaned(
   for (const link of links) {
     if (link.anchor.type !== "textObject") continue;
     if (link.anchor.targetKind === "linkedRange") continue;
-    const pid = link.anchor.textObjectIds[0];
-    if (!pid) continue;
-    hasModeA = true;
-    if (liveUuids.has(pid)) return false; // at least one live anchor → not orphaned
+    for (const pid of link.anchor.textObjectIds) {
+      if (!pid) continue;
+      hasModeA = true;
+      if (liveUuids.has(pid)) return false; // any live anchor → not orphaned
+    }
   }
   return hasModeA;
 }

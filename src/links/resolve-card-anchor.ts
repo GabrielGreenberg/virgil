@@ -57,11 +57,29 @@ export interface CardAnchorResolution {
   mode: "A" | "B" | null;
   /** Which ladder rung produced the binding. */
   source: AnchorSource;
-  /** `high` for uuid/mark (live anchor survives), `low` for snapshot/orphan. */
-  confidence: "high" | "low";
-  /** The Mode-B anchorId still backing the card (for mark re-apply), or
-   *  `null`. Set only when a surviving `textRange.anchorId` exists. */
-  liveAnchorId: string | null;
+  /**
+   * WHICH LINK won — the index into `card.links` of the link that produced
+   * the binding, or `null` for orphan (no link won).
+   *
+   * Task 664. The record used to name only a *mode*, and the one mutator
+   * that has to rewrite the winning link (`relocateBySnapshot`) re-derived
+   * "which link was it?" from that proxy — `links.map` over EVERY link of
+   * the matching mode. For a card anchored to two paragraphs, each with its
+   * own `paragraphSnapshot` and both uuids dead (exactly the `%!v:`
+   * round-trip race, which kills uuids doc-wide), that sprayed the ONE
+   * resolved paragraph onto BOTH links: the second link kept its own
+   * snapshot beside a foreign pid, the next load canonicalized the
+   * duplicate, `card-anchor-rows` deduped the rows, and the second marker
+   * and its detach affordance were gone. A resolution that names its winner
+   * cannot make that mistake.
+   *
+   * It also subsumes the two fields this replaced. `confidence` was
+   * `source`-derivable (`uuid`/`mark` → high) and had no reader.
+   * `liveAnchorId` promised a Mode-B mark re-apply no caller performed; a
+   * caller that wants it now reads it off the winner itself —
+   * `card.links[res.linkIndex]?.anchor.textRange?.anchorId`.
+   */
+  linkIndex: number | null;
 }
 
 export interface ResolveIndex {
@@ -182,16 +200,20 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
  * Resolve where a card is anchored NOW, against a pre-built index.
  *
  * Priority ladder — **uuid STRICTLY before snapshot**:
- *   1. Any Mode-A link (`targetKind !== "linkedRange"`) whose
- *      `textObjectIds[0]` is a live uuid → `{mode:'A', source:'uuid',
- *      high}`. A still-live UUID always wins, even over a snapshot that
- *      would match a different sibling.
+ *   1. Any Mode-A link (`targetKind !== "linkedRange"`) ANY of whose
+ *      `textObjectIds` is a live uuid → `{mode:'A', source:'uuid'}` on the
+ *      first live one. A still-live UUID always wins, even over a snapshot
+ *      that would match a different sibling. It reads EVERY id, not just
+ *      `[0]` (task 664): a multi-id link whose `p1` died in the `.tex`
+ *      round-trip but whose `p2` is live is anchored, not orphaned — and
+ *      rung 2b and `getLinkedTextObjectIds` already iterated, so `[0]`-only
+ *      here was the odd one out.
  *   2. Else a Mode-B link (`targetKind === "linkedRange"`) whose
  *      `textRange.anchorId` resolves via `anchorIdToParagraph` →
- *      `{mode:'B', source:'mark', liveAnchorId, high}`.
+ *      `{mode:'B', source:'mark'}`.
  *   2b. RC1 self-heal — Else a POISONED `linkedRange` link (mark dead, so
  *      rung 2 missed it) whose `textObjectIds` contains a live uuid →
- *      `{mode:'A', source:'uuid', high}` on that paragraph. This is the
+ *      `{mode:'A', source:'uuid'}` on that paragraph. This is the
  *      legacy hybrid `addTextObjectLink` left behind when it folded the
  *      re-anchor's new paragraph into the surviving linkedRange link
  *      instead of writing a clean Mode-A link (RC1 in
@@ -201,9 +223,12 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
  *      rung, preserving "uuid before snapshot."
  *   3. Else any link's snapshot — Mode-A `paragraphSnapshot` or Mode-B
  *      `textRange.textSnapshot` — normalized and matched against
- *      `snapshotToParagraph` → `{source:'snapshot', low}`. The mode is
+ *      `snapshotToParagraph` → `{source:'snapshot'}`. The mode is
  *      reported per the link the snapshot came from.
- *   4. Else `{paragraphId:null, source:'orphan', low}`.
+ *   4. Else `{paragraphId:null, source:'orphan', linkIndex:null}`.
+ *
+ * EVERY resolving rung reports `linkIndex` — WHICH link won — so no
+ * consumer ever has to re-derive it from `mode` (task 664).
  *
  * Pure — reads only the card and the pre-built index. `editor` is accepted
  * for symmetry with the chip contract and future use; the index already
@@ -218,36 +243,29 @@ export function resolveCardAnchor(
   const links = card.links ?? [];
 
   // --- Rung 1: Mode-A uuid (strictly first) -------------------------------
-  for (const link of links) {
+  // EVERY id, not `[0]` (task 664). A legacy multi-id Mode-A link whose
+  // first pid died but whose second is alive is anchored on the second.
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
     if (link.anchor.type !== "textObject") continue;
     if (link.anchor.targetKind === "linkedRange") continue;
-    const pid = link.anchor.textObjectIds[0];
-    if (pid && index.uuidToParagraph.has(pid)) {
-      return {
-        paragraphId: pid,
-        mode: "A",
-        source: "uuid",
-        confidence: "high",
-        liveAnchorId: null,
-      };
+    for (const pid of link.anchor.textObjectIds) {
+      if (pid && index.uuidToParagraph.has(pid)) {
+        return { paragraphId: pid, mode: "A", source: "uuid", linkIndex: i };
+      }
     }
   }
 
   // --- Rung 2: Mode-B surviving mark --------------------------------------
-  for (const link of links) {
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
     if (link.anchor.type !== "textObject") continue;
     if (link.anchor.targetKind !== "linkedRange") continue;
     const anchorId = link.anchor.textRange?.anchorId;
     if (!anchorId) continue;
     const paragraphId = index.anchorIdToParagraph.get(anchorId);
     if (paragraphId) {
-      return {
-        paragraphId,
-        mode: "B",
-        source: "mark",
-        confidence: "high",
-        liveAnchorId: anchorId,
-      };
+      return { paragraphId, mode: "B", source: "mark", linkIndex: i };
     }
   }
 
@@ -257,24 +275,20 @@ export function resolveCardAnchor(
   // If any of them is live, treat it as a clean Mode-A uuid binding. Strictly
   // after the mark rung (so a healthy Mode-B is never hijacked) and before
   // the snapshot rung (so uuid still beats snapshot).
-  for (const link of links) {
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
     if (link.anchor.type !== "textObject") continue;
     if (link.anchor.targetKind !== "linkedRange") continue;
     for (const pid of link.anchor.textObjectIds) {
       if (pid && index.uuidToParagraph.has(pid)) {
-        return {
-          paragraphId: pid,
-          mode: "A",
-          source: "uuid",
-          confidence: "high",
-          liveAnchorId: null,
-        };
+        return { paragraphId: pid, mode: "A", source: "uuid", linkIndex: i };
       }
     }
   }
 
   // --- Rung 3: snapshot fallback (low confidence) -------------------------
-  for (const link of links) {
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
     if (link.anchor.type !== "textObject") continue;
     const isModeB = link.anchor.targetKind === "linkedRange";
     const rawSnapshot = isModeB
@@ -285,26 +299,20 @@ export function resolveCardAnchor(
       normalizeParagraphText(rawSnapshot),
     );
     if (paragraphId) {
+      // `linkIndex` is THIS link — the one whose snapshot matched. The
+      // relocating mutator rewrites it and nothing else, so a sibling link
+      // with its own snapshot is never pointed at this paragraph.
       return {
         paragraphId,
         mode: isModeB ? "B" : "A",
         source: "snapshot",
-        confidence: "low",
-        // Preserve the Mode-B anchorId (even though the mark is gone) so a
-        // caller relocating the card by snapshot can re-apply the mark.
-        liveAnchorId: isModeB ? link.anchor.textRange?.anchorId ?? null : null,
+        linkIndex: i,
       };
     }
   }
 
   // --- Rung 4: orphan -----------------------------------------------------
-  return {
-    paragraphId: null,
-    mode: null,
-    source: "orphan",
-    confidence: "low",
-    liveAnchorId: null,
-  };
+  return { paragraphId: null, mode: null, source: "orphan", linkIndex: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -346,8 +354,10 @@ export interface ReconcileOpts {
  *     (HYBRID CLEANUP) so `getTextAnchor(card)` returns null afterward. No
  *     id rewrite.
  *   - `source === 'snapshot'` → the stored UUID is dead but the text was
- *     re-found. REWRITE `textObjectIds[0]` to `res.paragraphId` and
- *     restamp the snapshot. If the relocated link was Mode-B, CONVERT it
+ *     re-found. REWRITE the ONE link `res.linkIndex` names — the link whose
+ *     own snapshot matched — to `res.paragraphId`, and restamp its
+ *     snapshot. Sibling links are never touched. If that link was Mode-B,
+ *     CONVERT it
  *     to a clean Mode-A `{targetKind:'paragraph', textObjectIds:[pid],
  *     paragraphSnapshot}` link (the mark is gone; the text re-find is the
  *     only surviving binding, so it becomes a paragraph anchor).
@@ -424,7 +434,10 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
     (l) =>
       l.anchor.type === "textObject" &&
       l.anchor.targetKind !== "linkedRange" &&
-      l.anchor.textObjectIds[0] === paragraphId,
+      // EVERY id (task 664) — a legacy multi-id link that carries
+      // `paragraphId` anywhere already owns this paragraph, so the dead
+      // hybrid must be DROPPED rather than converted into a duplicate.
+      l.anchor.textObjectIds.includes(paragraphId),
   );
 
   let changed = false;
@@ -473,8 +486,10 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
       continue;
     }
 
-    // (A) BACKFILL on the resolved Mode-A link.
-    if (!isModeBLink && link.anchor.textObjectIds[0] === paragraphId) {
+    // (A) BACKFILL on the resolved Mode-A link — matched on EVERY id (task
+    // 664), so a multi-id link anchored on `paragraphId` at ids[1] gets its
+    // snapshot backfilled instead of being silently skipped.
+    if (!isModeBLink && link.anchor.textObjectIds.includes(paragraphId)) {
       const snap = link.anchor.paragraphSnapshot;
       // Editor-aware: backfill a MISSING snapshot from live text.
       if (!snap && liveText) {
@@ -507,16 +522,35 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
 }
 
 /**
- * `source === 'snapshot'`: the stored UUID is dead; rewrite the link to the
- * re-found live paragraph. Mode-A → rewrite `textObjectIds[0]` + restamp
- * snapshot. Mode-B → CONVERT to a clean Mode-A paragraph link (drop the
+ * `source === 'snapshot'`: the stored UUID is dead; rewrite the WINNING link
+ * — the one `res.linkIndex` names, the one whose own snapshot matched — to
+ * the re-found live paragraph. Mode-A → rewrite `textObjectIds[0]` + restamp
+ * the snapshot. Mode-B → CONVERT to a clean Mode-A paragraph link (drop the
  * dead `textRange` mark binding; the text re-find is now the only anchor).
  *
- * Idempotent: after the rewrite, `textObjectIds[0]` is the live uuid, so a
- * second resolve hits the uuid rung (not snapshot) → `reconcileCardToResolved`
- * routes to the no-op/backfill branch. (We also guard here: if the link is
- * already a clean Mode-A on `paragraphId` with the normalized snapshot, no
- * change.)
+ * **Exactly one link is ever rewritten** (task 664). This used to `links.map`
+ * over every link of the resolution's `mode`, because the record named a mode
+ * and not an identity — so a card anchored to two paragraphs, each link
+ * carrying its OWN `paragraphSnapshot`, with both uuids dead (the `%!v:`
+ * round-trip race kills uuids doc-wide, so "both dead" is the ordinary case,
+ * not an exotic one) came back with BOTH links pointing at whichever
+ * paragraph the FIRST snapshot matched. The second link then sat with a
+ * foreign pid beside its own untouched snapshot text; the next load's
+ * backfill canonicalized that into a duplicate, `card-anchor-rows` deduped
+ * the rows, and the second marker — with its detach affordance — was gone.
+ * A link is now never pointed at a paragraph its own snapshot did not match.
+ *
+ * The un-won siblings are left exactly as they were: a sibling whose uuid is
+ * also dead keeps its own dead pid AND its own snapshot, which is the honest
+ * residue (the resolution answers for ONE paragraph — the card's marker —
+ * so there is no second answer to write). Nothing is lost, and nothing is
+ * invented.
+ *
+ * Idempotent: after the rewrite, the winning link's `textObjectIds[0]` is the
+ * live uuid, so a second resolve hits the uuid rung (not snapshot) →
+ * `reconcileCardToResolved` routes to the no-op/backfill branch. (We also
+ * guard here: if the link is already a clean Mode-A on `paragraphId` with the
+ * normalized snapshot, no change.)
  */
 function relocateBySnapshot<T extends CardWithLinks>(
   card: T,
@@ -524,57 +558,61 @@ function relocateBySnapshot<T extends CardWithLinks>(
   links: Link[],
 ): { card: T; changed: boolean } {
   const paragraphId = res.paragraphId!;
-  // Which link carried the matching snapshot? Re-derive by mode so we
-  // rewrite the right one. The resolver reports `mode` for the snapshot
-  // rung, so match Mode-B vs Mode-A accordingly.
-  let changed = false;
-  const next = links.map((link) => {
-    if (link.anchor.type !== "textObject") return link;
-    const isModeBLink = link.anchor.targetKind === "linkedRange";
+  const idx = res.linkIndex;
+  // Defensive: a caller that hands us a resolution computed against a
+  // DIFFERENT card (or a since-mutated links array) has no winner here.
+  // Rewriting a guessed link is exactly the bug this field retired, so the
+  // honest answer is to write nothing.
+  if (idx == null || idx < 0 || idx >= links.length) {
+    return { card, changed: false };
+  }
+  const link = links[idx];
+  if (link.anchor.type !== "textObject") return { card, changed: false };
+  const isModeBLink = link.anchor.targetKind === "linkedRange";
 
-    if (res.mode === "B" && isModeBLink) {
-      const snap = link.anchor.textRange?.textSnapshot;
-      if (!snap) return link;
-      // CONVERT Mode-B → clean Mode-A. Drop textRange (the mark is gone),
-      // anchor on the re-found paragraph, stamp a normalized snapshot.
-      changed = true;
-      return {
-        ...link,
-        anchor: {
-          type: "textObject",
-          targetKind: "paragraph",
-          textObjectIds: [paragraphId],
-          paragraphSnapshot: normalizeParagraphText(snap),
-        },
-      };
+  let rewritten: Link | null = null;
+
+  if (isModeBLink) {
+    const snap = link.anchor.textRange?.textSnapshot;
+    if (!snap) return { card, changed: false };
+    // CONVERT Mode-B → clean Mode-A. Drop textRange (the mark is gone),
+    // anchor on the re-found paragraph, stamp a normalized snapshot.
+    rewritten = {
+      ...link,
+      anchor: {
+        type: "textObject",
+        targetKind: "paragraph",
+        textObjectIds: [paragraphId],
+        paragraphSnapshot: normalizeParagraphText(snap),
+      },
+    };
+  } else {
+    const snap = link.anchor.paragraphSnapshot;
+    if (!snap) return { card, changed: false };
+    // Already correctly bound + canonical → idempotent no-op.
+    const normalized = normalizeParagraphText(snap);
+    if (
+      link.anchor.textObjectIds[0] === paragraphId &&
+      link.anchor.paragraphSnapshot === normalized
+    ) {
+      return { card, changed: false };
     }
+    // Rewrite index 0 only; any sibling ids on this same link (the legacy
+    // multi-id shape) are preserved verbatim — there is exactly one
+    // `paragraphSnapshot`, and it pins index 0.
+    const newIds = link.anchor.textObjectIds.slice();
+    newIds[0] = paragraphId;
+    rewritten = {
+      ...link,
+      anchor: {
+        ...link.anchor,
+        textObjectIds: newIds,
+        paragraphSnapshot: normalized,
+      },
+    };
+  }
 
-    if (res.mode === "A" && !isModeBLink) {
-      const snap = link.anchor.paragraphSnapshot;
-      if (!snap) return link;
-      // Already correctly bound + canonical → idempotent no-op.
-      const normalized = normalizeParagraphText(snap);
-      if (
-        link.anchor.textObjectIds[0] === paragraphId &&
-        link.anchor.paragraphSnapshot === normalized
-      ) {
-        return link;
-      }
-      changed = true;
-      const newIds = link.anchor.textObjectIds.slice();
-      newIds[0] = paragraphId;
-      return {
-        ...link,
-        anchor: {
-          ...link.anchor,
-          textObjectIds: newIds,
-          paragraphSnapshot: normalized,
-        },
-      };
-    }
-
-    return link;
-  });
-  if (!changed) return { card, changed: false };
+  const next = links.slice();
+  next[idx] = rewritten;
   return { card: { ...card, links: next }, changed: true };
 }
