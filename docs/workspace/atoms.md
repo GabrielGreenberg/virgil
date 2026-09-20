@@ -1,4 +1,4 @@
-<!-- last-verified: 7c252262 2026-09-19 -->
+<!-- last-verified: aea05929 2026-09-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -131,8 +131,10 @@ not Atoms, but a skill editing inline content meets them:
    text** — an atom **never pops into a Panel** as a free object the way Cards and
    TextObjects do ([ontology.md](ontology.md)). A CROSS-EDITOR atom drop commits
    through [commit-seam.ts](../../src/components/drop-mode/commit-seam.ts) (task
-   648): the atom is named by its durable `ATOM_REGISTRY.idAttr` (each NodeView
-   writes it into `dataset[idAttr]`; the captured position is only a hint,
+   648): the atom is named by its durable `ATOM_REGISTRY.idAttr` (the PM attr, e.g.
+   `footnoteId`); each NodeView writes the id into the paired DOM attribute
+   `ATOM_REGISTRY.domIdAttr` (e.g. `data-footnote-id`, split out in task 645 so
+   the two spellings can't drift). The captured position is only a hint,
    confirmed via `findAtomById`), because kind is not identity and two adjacent
    same-kind atoms put a valid impostor at `pos ± 1`. The seam asks `collabReadOnly`
    for BOTH ends before either is touched and measures the EFFECT after dispatch

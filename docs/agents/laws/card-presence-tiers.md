@@ -1,9 +1,9 @@
-<!-- last-verified: 3a8f4892 2026-09-15 -->
+<!-- last-verified: aea05929 2026-09-20 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Card presence tiers
 
-> **A COLLAPSED card body mounts machinery proportional to its usefulness, not one live TipTap editor per card.** Tier model (per body; header/chrome always render): **T0** summary string → **T1** static HTML → **T2** read-only live editor → **T3** editable (the expand boundary, unchanged — an expanded card is never tier-gated). Behind `localStorage["virgil:card-tiers"]="on"` (perf Wave 3; **default OFF until soak**; off = every switch site takes its legacy branch, byte-identical).
+> **A COLLAPSED card body mounts machinery proportional to its usefulness, not one live TipTap editor per card.** Tier model (per body; header/chrome always render): **T0** summary string → **T1** static HTML → **T2** read-only live editor → **T3** editable (the expand boundary, unchanged — an expanded card is never tier-gated). Behind the `virgil:card-tiers` flag (perf Wave 3; **default OFF until soak**; off = every switch site takes its legacy branch, byte-identical). Declared in the flag SSOT ([src/lib/feature-flags.ts](../../../src/lib/feature-flags.ts), task 660) and read through `readFlag`, which honours `1/true/on/yes` and `0/false/off/no` alike.
 
 The pre-tier shape was the diagnosis's 881-live-editors problem: EVERY collapsed footnote/archive body mounted a read-only `BorrowedMainText` editor and every collapsed example a FULL float-surface `ExampleCardEditor`. Policy: collapsed footnote/archive → **T1 always** (prose; the static render is visually identical, so nearness is irrelevant); collapsed example → **T2 near the viewport / T1 far** (the expex projection needs real NodeViews); hidden keep-alive panes → ceiling T1 (re-show promotes near cards back — static paints instantly, live editors resume at leisure, aligned with instant-switch).
 

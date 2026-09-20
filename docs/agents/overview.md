@@ -1,4 +1,4 @@
-<!-- last-verified: 7c252262 2026-09-19 -->
+<!-- last-verified: aea05929 2026-09-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/cards, src/floats, src/panels, src/text-objects, src/types, library, editor, virgil, package.json -->
 

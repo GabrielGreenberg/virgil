@@ -1,4 +1,4 @@
-<!-- last-verified: 7c252262 2026-09-19 -->
+<!-- last-verified: aea05929 2026-09-20 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
@@ -249,6 +249,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 | Editing actions (all four surfaces) | `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) — one row per action across grab-handle menu, margin bolt (the far-right lightning panel), slash commands, typed-LaTeX input rules. The two live menus render from it; PM→React dispatch via [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts). |
 | Action-menu keyboard behavior, chrome + trigger | The `<Menu>` primitive in [src/components/menu/](../../src/components/menu/) — build new action menus on `MenuProvider` + `useMenuItem` (one per-provider `MenuRegistry`, arrow/letter nav in `nav-core.ts`); don't roll your own keyboard handling, and don't author your own menu **surface** or trigger button — the primitive owns both since task 295 (`<AnchoredMenu>` states the trigger contract once: the `<button>`, the tracked anchor rect, `maxHeight`/flip, the `excludeRefs` self-close guard, the menu ARIA). Migrated menus: grab-bar, lightning panel, color/label/heading/tab-plus popovers, bib-entry combobox, MenuBar block-type + view menus. The slash popup is a documented exception. |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
+| `virgil:` feature flags | `FLAG_REGISTRY` in [src/lib/feature-flags.ts](../../src/lib/feature-flags.ts) (task 660) — every kill-switch, soak gate and rollout flag declares its `default`, its SSR answer and its `requires` parent in ONE row, read through one `readFlag`. One dialect for all of them (`1/true/on/yes` vs `0/false/off/no`, case-insensitive); the named per-flag modules (`identity-flag.ts`, `pending-changes-flag.ts`, `multi-doc-keepalive-flag.ts`, `perf-feature-flags.ts`, …) are now thin doors over it, not sixteen hand-rolled readers that disagreed about what "on" looks like. |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |
 

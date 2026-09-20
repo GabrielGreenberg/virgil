@@ -1,4 +1,4 @@
-<!-- last-verified: 3a8f4892 2026-09-15 -->
+<!-- last-verified: aea05929 2026-09-20 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Vendored viewers: the WRAPPER owns the defaults, and the dist gets a CENSUS
