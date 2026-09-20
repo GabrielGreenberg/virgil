@@ -290,15 +290,21 @@ describe("the writers guard their kind, and their non-guards are deliberate", ()
 
   it("a member OUTSIDE `def.members` still toggles — the stated non-validation", () => {
     // The registry's own header says a stored `set` value may include members
-    // the MENU doesn't render (the "report" marginalia type). Validating
-    // membership would silently no-op exactly those, so the door deliberately
-    // doesn't. Pinned so a future "tightening" is a decision, not a slip.
+    // the MENU doesn't render. Validating membership would silently no-op
+    // exactly those, so the door deliberately doesn't. Pinned so a future
+    // "tightening" is a decision, not a slip.
+    //
+    // The witness used to be "report", which the menu did not render. Task 672
+    // derived `members` from the marker SSOT, so the menu now renders every
+    // marker type EXCEPT the one declared opt-out — `error` — which is
+    // therefore the tolerated-but-unrendered member today. The point of the
+    // test is unchanged; only its witness moved.
     const { result } = renderHook(() => useViewPrefs());
-    expect(VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members).not.toContain("report");
+    expect(VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members).not.toContain("error");
     act(() =>
-      result.current.toggleViewPrefMember("hiddenMarginaliaTypes", "report" as never),
+      result.current.toggleViewPrefMember("hiddenMarginaliaTypes", "error" as never),
     );
-    expect(result.current.prefs.hiddenMarginaliaTypes).toContain("report");
+    expect(result.current.prefs.hiddenMarginaliaTypes).toContain("error");
   });
 });
 

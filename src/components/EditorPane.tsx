@@ -305,9 +305,7 @@ import {
   OmniFilterMenu,
   type OmniBulkPendingChanges,
 } from "@/panels/Omni/OmniViewPanel";
-import MenuBar, {
-  type MarginaliaType,
-} from "./MenuBar";
+import MenuBar from "./MenuBar";
 import {
   getLinkedTextObjectIds,
   getTextAnchor,
@@ -3794,7 +3792,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return marginaliaMarkers.filter(
       (m) =>
         !archivedIds.has(m.entityId) &&
-        (!hidden || hidden.length === 0 || !hidden.includes(m.type as MarginaliaType)),
+        (!hidden || hidden.length === 0 || !hidden.includes(m.type)),
     );
   }, [
     marginaliaMarkers,

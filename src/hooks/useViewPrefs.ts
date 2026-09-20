@@ -53,8 +53,12 @@ import {
   undockToFloat,
 } from "./view-prefs-dock";
 
-/** Marginalia card kinds whose visibility is toggled from the View menu. */
-export type MarginaliaType = "note" | "archive" | "todo" | "report";
+/* `MarginaliaType` is GONE (task 672). It was a fourth hand list of marker
+ * types — four of the seven — sitting beside `ALL_MARKER_TYPES`, and its only
+ * load-bearing use was an `as MarginaliaType` cast in `EditorPane` that hid
+ * the mismatch from the compiler. The stored `hiddenMarginaliaTypes` value is
+ * now typed `MarkerType[]` straight from the card SSOT, and the MENU's subset
+ * is `HIDEABLE_MARKER_TYPES` (`src/cards/marker-meta.ts`). */
 /** Heading depths 0–6, matching LaTeX (part…subparagraph). */
 export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 /** Heading-divider drawing width. */

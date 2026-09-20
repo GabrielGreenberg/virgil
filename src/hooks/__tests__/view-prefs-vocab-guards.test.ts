@@ -24,6 +24,11 @@ import {
   type HighlightType,
 } from "../useViewPrefs";
 import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
+import {
+  ALL_MARKER_TYPES,
+  HIDEABLE_MARKER_TYPES,
+  NON_HIDEABLE_MARKER_TYPES,
+} from "@/cards/marker-meta";
 
 describe("audit-218 · view-prefs vocabulary lockstep", () => {
   // ── M1 — `ALL_HIGHLIGHT_TYPES` ↔ `HighlightType` union ──────────────────
@@ -57,6 +62,45 @@ describe("audit-218 · view-prefs vocabulary lockstep", () => {
       }
       // ...and it is genuinely a proper subset (documents the report omission).
       expect(menu.length).toBeLessThan(ALL_HIGHLIGHT_TYPES.length);
+    });
+  });
+
+  // ── M3 — marginalia hide rows ↔ the marker SSOT (task 672) ──────────────
+  describe("M3 · marginalia types (marker SSOT is the source, opt-out is declared)", () => {
+    it("the menu's members are exactly ALL_MARKER_TYPES minus the declared opt-out", () => {
+      // The defect this replaces: `members` was a hand list of three of the
+      // seven marker types, so `revision` / `cut` / `report` icons had no hide
+      // row at all and nothing anywhere said why. Derivation means a new
+      // MarkerType is hideable by default and exempting it is an edit with a
+      // stated reason in `NON_HIDEABLE_MARKER_TYPES`.
+      const optOut = new Set<string>(NON_HIDEABLE_MARKER_TYPES);
+      const expected = ALL_MARKER_TYPES.filter((t) => !optOut.has(t));
+      expect([...VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members]).toEqual(expected);
+      expect([...HIDEABLE_MARKER_TYPES]).toEqual(expected);
+    });
+
+    it("every rendered member has a menu label", () => {
+      // The `Record<HideableMarkerType, string>` annotation on the label table
+      // makes this a compile error too; the runtime twin keeps the statement
+      // readable and catches a label that is present but empty.
+      const labels = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.memberLabels;
+      for (const m of VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members) {
+        expect(typeof labels[m]).toBe("string");
+        expect(labels[m].length).toBeGreaterThan(0);
+      }
+      // ...and no label for a member the menu doesn't render.
+      expect(Object.keys(labels).sort()).toEqual(
+        [...VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members].sort(),
+      );
+    });
+
+    it("`error` is the opt-out, and it is opted out by DECLARATION", () => {
+      // Error markers are diagnostics owned by the Errors panel, not
+      // user-authored marginalia — hiding a compile error silently is the
+      // wrong default. If that judgement is ever revisited, this test and the
+      // declaration move together.
+      expect([...NON_HIDEABLE_MARKER_TYPES]).toEqual(["error"]);
+      expect(VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members).not.toContain("error");
     });
   });
 
