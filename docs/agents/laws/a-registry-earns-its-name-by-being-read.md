@@ -4717,3 +4717,64 @@ and omitting it fails the census rather than losing a feature.
 CI: `mode-b-collection-set.test.ts` (the census + the derivation),
 `useTextHoverBridge-mode-b-kinds.test.tsx` (the first test that ever mounted
 this hook — its absence is how this shipped).
+
+## The alibi half — a dead SSOT's duplicates share its NAME (task 668)
+
+> **A census keyed on a bare NAME is not merely blind to a dead predicate — it is
+> ANTI-correlated with one.** What proves a predicate dead is that the decision
+> sites re-derive it; a re-derivation is written under the same name; so the
+> duplication that is the finding is also the alibi. The mitigation the shared
+> census rested on — "scaffolding usually gets a distinctive name" — is exactly
+> the case a duplicated predicate cannot satisfy.
+
+`src/links/` published `isModeB` (the derivation its own header calls the
+definition of Mode B), re-exported it from `links.ts`, and never imported it.
+Twenty-three sites hand-wrote `targetKind === "linkedRange"` instead. The
+dead-export census reported it ALIVE on four hits — one of them
+`resolve-card-anchor.ts`'s own `const isModeB = link.anchor.targetKind ===
+"linkedRange"`.
+
+**The measurement.** `referenceHits` (in
+[`_export-census.ts`](../../../src/lib/__tests__/_export-census.ts)) discounts
+`const` / `let` / `var` / `function` / `class` declarations of the name. The
+export's OWN declaration is one of those, so `callSites` no longer takes a
+`declaredIn` to subtract it — one answer to "which hit is the definition?",
+not two. The `editor-layout` census's private copy of the counting loop reads
+the same function; its population stays its own, because the population was
+never where the hole was.
+
+**The residual, still stated.** No module resolution. A dead export whose name
+collides with an unrelated LIVE symbol still reads alive. What closed is the one
+collision a dead SSOT is guaranteed to have.
+
+### The two-answers corollary
+
+`isModeB`'s twenty-three duplicates did not agree: eight additionally tested
+`textRange`, fifteen did not. A hand-rolled predicate does not merely duplicate
+an answer — it **forks** it, silently, and the fork is invisible until someone
+counts. Both answers now have a name (`isModeB` for membership,
+`isRangedModeB` for payload) and the type stopped lying: `ModeBAnchorLink` had
+declared `textRange` non-null while the guard narrowing into it never checked
+it.
+
+### The dialect half, second instance
+
+The sibling leg — "no file promises an unbuilt phase" — was keyed on the word
+`Phase` and argued at its own door that LETTERED phases must count. Correct
+about one axis of the dialect, silent about the other: this subsystem numbers
+with **Chip** just as often, and all four surviving false promises sat there.
+One had teeth — it told a reader `reanchorByText`'s `paragraphUuid` was
+"accepted-and-ignored" eighteen lines above the code that consumes it, and a
+caller who believed it would pass a uuid believing it inert and lose the
+Mode-B recovery (the uuid-scoped search returns `null` with NO doc-wide
+fallback). The vocabulary is now a named list (`STAGE_WORDS`, `FUTURE_VERBS`)
+and the verb may sit on EITHER side of the stage token — the original pattern
+required the verb after it, which its own dialect's commonest wording ("its
+body **lands** in Chip 6") does not satisfy.
+
+**CI:** `link-surface-honesty.test.ts` — "the promise leg sees EVERY stage
+dialect", "a LOCAL declaration of an export's name is not a caller", and the
+`Mode-A/B membership has ONE speller` census. All three are planted-defect
+legs: each fails against the pre-fix tree (4 promises, 21 hand-rolled
+deciders), because a leg that can only report what it already sees has no way
+to say it is blind.
