@@ -1646,3 +1646,80 @@ that asymmetry is the finding.
 **Owed, not claimed:** a preview eyeball (geometry is FSA-masked) — in the dev
 doc, hover a top-level numbered list with ≥10 items and confirm no handle
 touches the counter.
+
+### The one-door half: a private answer forces every other caller to re-derive a shallower one (task 660)
+
+> **"Which element shows this block's first line?" is ONE question, so it has
+> ONE exported door and ONE declared answer per kind.** Production code asks
+> `resolveFirstLineTarget` (`src/lib/text-metrics.ts`); the wrapper descent
+> (`resolveInlineContextElement`) is the STEP that door composes and nothing
+> else may call it. Whether a kind HAS a first text line is read from
+> `TEXTLESS_BLOCK_NODE_TYPES` — the registry's `chromeAnchor: "block-top"` set
+> — never re-derived from the schema's `isAtom`.
+
+It had two layers and neither was wrong on its own. The wrapper half was public
+in `text-metrics.ts`; the full answer — wrapper half PLUS the CONTAINER descent,
+since a `<ul>`/`<ol>`/`.expex-block` has no text line of its own — was **private
+inside `block-frame.ts`**, where it had been written because that is the module
+that first needed it. So every consumer that was not the block frame reached
+past it to the half that was reachable, and got a well-formed answer to a
+different question:
+
+- `measureBlock` seated a list-anchored card's marker using the `<ul>`'s
+  inherited root 16px metrics while the grab handle for the same block descended
+  to its first item's `<p>` — the drift `block-frame.ts` exists to prevent, in
+  the one service whose docstring claimed it used "the grab-handle geometry
+  SSOT". Its `lineCount` divided the list's full height by the container's
+  leading, inflating the count ~1.7×, and `metricsWithinEpsilon` compares
+  `lineCount` EXACTLY, so the wrong value was never absorbed as wobble.
+- `PendingChangePill` resolved the change's block by walking to the direct child
+  of `view.dom`, so a change anywhere in a list answered `<ul>` — one seat for
+  every row, at the OUTER list's left edge, with a hardcoded `28` px clearance
+  for a lane that is em-scaled per block. One notch up the font-size slider and
+  the lane exceeds 28px: the pill (higher z-order) covers the grab handle and
+  takes its clicks — the same failure task 526 fixed for the hover zone.
+
+**The second cause, and the one the task framed wrongly.** `latexComment` and
+`figureBlock` were said to be "missing from the wrapper table". They are not
+table rows at all: both declare `chromeAnchor: "block-top"` — *no first text
+line* — and the grab handle has always read that. `measureBlock` forked on the
+SCHEMA's `isAtom` instead, and those two are the exactly the kinds where the two
+questions disagree (`content: "text*"` and `content: "figureCaption?"` are not
+atoms). Adding a `.latex-comment` → `.latex-comment-content` branch would have
+made the marker seat on a text line the handle deliberately ignores — *widening*
+the drift while appearing to close it. The registry already held the
+declaration; nothing read it.
+
+**The shape to look for:** a resolve that is private to the module that needed
+it first, with a *partial* version of the same resolve exported one layer down.
+The partial one is what the next consumer finds.
+
+**Where the vocabulary lives.** `TEXTLESS_BLOCK_NODE_TYPES` and
+`TEXT_LINE_CONTAINER_NODE_TYPES` sit in the import-free leaf
+`src/lib/node-attr-sets.ts`, because `text-metrics.ts` (which performs the
+resolve) and `text-object-registry.ts` (which declares `chromeAnchor`) cannot
+import each other — the registry already reaches text-metrics. They are PINNED
+to the registry by `first-line-target-census.test.ts`, so the leaf copy cannot
+drift from the declaration it mirrors.
+
+**Teeth** (`src/lib/__tests__/first-line-target-census.test.ts`, 16 legs):
+the vocabulary census (each set equals its registry-derived set; every
+`UUID_BEARING_NODE_TYPES` member declares exactly one answer), the ONE-DOOR
+census (no production module outside `text-metrics.ts` names
+`resolveInlineContextElement` — the leg with the teeth, since no behavioural leg
+can see a second consumer being wired to the shallow half, which is precisely
+how this shipped), and the behavioural legs. The agreement leg is written over
+the **nested** list, not the top-level one: `.list-title-wrapper` is a named row
+in the wrapper table, so a top-level list agreed pre-fix — that leg is kept
+beside it and labelled a NET, because a leg that cannot fail is worse than no
+leg when it is dressed as the proof. `pending-change-pill-target.test.ts` adds
+the pill's horizontal legs (tracks `markerLeft`; never covers the handle box at
+any slider notch, with the 28px constant shown to be inside the box at the top
+of that range) and the innermost-block resolution. Cost is unchanged: the
+descent is O(depth) with one short-circuiting `querySelector` per container
+level and no layout read.
+
+**Owed, not claimed:** a preview eyeball (geometry is FSA-masked) — in the dev
+doc, put a card on a bulleted list and on a `%` comment and confirm both markers
+sit where their grab handles do; make a pending change inside a nested list and
+confirm the pill clears the handle at two font-size notches.

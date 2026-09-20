@@ -233,7 +233,10 @@ export function resolveTargetKey(
  *  text node to the direct child of the ProseMirror DOM. Feeds BOTH the pill's
  *  horizontal seat (its left edge) and its vertical seat (the optical
  *  cap-band-center font target). Null on any failure. */
-function resolveParagraphBlockEl(editor: Editor, pos: number): HTMLElement | null {
+export function resolveParagraphBlockEl(
+  editor: Editor,
+  pos: number,
+): HTMLElement | null {
   try {
     const domAt = editor.view.domAtPos(pos);
     let el: Node | null = domAt.node;

@@ -191,6 +191,33 @@ function buildList(itemCount = 3): { wrapper: HTMLElement; firstPara: HTMLElemen
   return { wrapper, firstPara: firstPara! };
 }
 
+/**
+ * The NESTED list shape: the `<ul>` itself carries the identity (no
+ * `.list-title-wrapper`, because the par-title annotation is a top-level
+ * affordance). This is the shape the wrapper table has NO branch for — the
+ * top-level one is in the table by name and was therefore right by luck, which
+ * is why an agreement leg written over it cannot fail.
+ */
+function buildBareList(itemCount = 3): { list: HTMLElement; firstPara: HTMLElement } {
+  const ul = withRect(document.createElement("ul"), 200, 40 * itemCount);
+  ul.setAttribute("data-uuid", "nested1");
+  ul.setAttribute("data-text-object-kind", "bulletList");
+  let firstPara: HTMLElement | null = null;
+  for (let i = 0; i < itemCount; i++) {
+    const li = withRect(document.createElement("li"), 200 + i * 40, 40, 140);
+    li.setAttribute("data-uuid", `ni${i + 1}`);
+    li.setAttribute("data-text-object-kind", "listItem");
+    const p = withRect(document.createElement("p"), 202 + i * 40, 36, 140);
+    p.style.lineHeight = "36px";
+    p.style.fontSize = "20px";
+    li.appendChild(p);
+    ul.appendChild(li);
+    if (i === 0) firstPara = p;
+  }
+  document.body.appendChild(ul);
+  return { list: ul, firstPara: firstPara! };
+}
+
 describe("resolveFirstLineTarget — the composed descent", () => {
   it("a top-level bulletList resolves THROUGH to its first item's inner <p> — the wrapper half alone does not", () => {
     const { wrapper, firstPara } = buildList();
@@ -302,10 +329,16 @@ function markerCenter(m: { top: number; lineHeight: number }): number {
 }
 
 describe("measureBlock and resolveBlockFrame agree on the block's first line", () => {
-  it("a bulletList: the marginalia marker's row-0 centre IS the frame's opticalCenterY", () => {
-    const { wrapper, firstPara } = buildList(3);
-    const m = measureBlock(fakeEditor(wrapper), 1, false, HOST_RECT, "list1")!;
-    const frame = resolveBlockFrame(wrapper);
+  it("a NESTED bulletList: the marginalia marker's row-0 centre IS the frame's opticalCenterY", () => {
+    // The bare shape deliberately. `.list-title-wrapper` is a named row in the
+    // wrapper table, so the TOP-LEVEL list already agreed pre-fix — an
+    // agreement leg written over it is a leg that cannot fail, which is worse
+    // than no leg when it is dressed as the proof. The nested list is the
+    // shape the table has never heard of, and it is the one a card anchored to
+    // a sub-list actually gets.
+    const { list, firstPara } = buildBareList(3);
+    const m = measureBlock(fakeEditor(list), 1, false, HOST_RECT, "nested1")!;
+    const frame = resolveBlockFrame(list);
 
     // jsdom has no canvas, so `capBandCenterOffset` is 0 and both reduce to the
     // resolved target's line-box top. Stated as the FRAME's answer rather than
@@ -316,9 +349,18 @@ describe("measureBlock and resolveBlockFrame agree on the block's first line", (
     // where the card sat while the grab handle for the same block sat 2px down
     // on the item's `<p>`.
     expect(markerCenter(m)).not.toBeCloseTo(
-      wrapper.getBoundingClientRect().top,
+      list.getBoundingClientRect().top,
       1,
     );
+    document.body.removeChild(list);
+  });
+
+  it("a TOP-LEVEL bulletList agrees too — a NET, not the proof: it agreed before the fix as well", () => {
+    const { wrapper, firstPara } = buildList(3);
+    const m = measureBlock(fakeEditor(wrapper), 1, false, HOST_RECT, "list1")!;
+    const frame = resolveBlockFrame(wrapper);
+    expect(frame.target).toBe(firstPara);
+    expect(markerCenter(m)).toBeCloseTo(frame.opticalCenterY, 3);
     document.body.removeChild(wrapper);
   });
 
@@ -328,11 +370,11 @@ describe("measureBlock and resolveBlockFrame agree on the block's first line", (
     // the DENOMINATOR was the container's inherited leading — and
     // `metricsWithinEpsilon` compares `lineCount` EXACTLY, so the wrong value
     // was never absorbed as sub-pixel wobble.
-    const { wrapper } = buildList(3);
-    const m = measureBlock(fakeEditor(wrapper), 1, false, HOST_RECT, "list1")!;
+    const { list } = buildBareList(3);
+    const m = measureBlock(fakeEditor(list), 1, false, HOST_RECT, "nested1")!;
     expect(m.lineHeight).toBeCloseTo(36, 3);
     expect(m.lineCount).toBe(Math.round(120 / 36));
-    document.body.removeChild(wrapper);
+    document.body.removeChild(list);
   });
 
   it("a latexComment takes the BORDER-BOX branch even though the schema says it is not an atom", () => {

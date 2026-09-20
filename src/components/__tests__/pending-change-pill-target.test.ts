@@ -18,8 +18,10 @@ vi.mock("@/lib/storage", () => ({
   writeSidecar: vi.fn(),
 }));
 
+import type { Editor } from "@tiptap/react";
 import {
   pillRightEdge,
+  resolveParagraphBlockEl,
   pillVerticalSeat,
   resolveTargetKey,
   type PendingChangeIndex,
@@ -229,5 +231,51 @@ describe("pillRightEdge — the pill clears the handle's own resolved lane", () 
       gap,
       6,
     );
+  });
+});
+
+// The leg the pure-function ones above cannot carry: which BLOCK the pill is
+// clearing the handle of. Both axes read it, and reading the wrong one is what
+// made the horizontal seat a constant in the first place.
+describe("resolveParagraphBlockEl — the block the change is IN", () => {
+  function editorWith(pmDom: HTMLElement, node: Node): Editor {
+    return {
+      view: { dom: pmDom, domAtPos: () => ({ node, offset: 0 }) },
+    } as unknown as Editor;
+  }
+
+  it("resolves the INNERMOST text object, not the top-level child of the PM DOM", () => {
+    const pm = document.createElement("div");
+    const ul = document.createElement("ul");
+    ul.setAttribute("data-uuid", "L1");
+    ul.setAttribute("data-text-object-kind", "bulletList");
+    const li = document.createElement("li");
+    li.setAttribute("data-uuid", "I1");
+    li.setAttribute("data-text-object-kind", "listItem");
+    const p = document.createElement("p");
+    const text = document.createTextNode("changed text");
+    p.appendChild(text);
+    li.appendChild(p);
+    ul.appendChild(li);
+    pm.appendChild(ul);
+    document.body.appendChild(pm);
+
+    // Pre-660 this walked to the direct child of `view.dom` — the `<ul>` — so
+    // every row of the list, at every depth, shared one seat at the OUTER
+    // list's left edge while the handle it clears steps inboard per level.
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).toBe(li);
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).not.toBe(ul);
+    document.body.removeChild(pm);
+  });
+
+  it("falls back to the direct child of the PM DOM for an unstamped subtree", () => {
+    const pm = document.createElement("div");
+    const block = document.createElement("p");
+    const text = document.createTextNode("plain");
+    block.appendChild(text);
+    pm.appendChild(block);
+    document.body.appendChild(pm);
+    expect(resolveParagraphBlockEl(editorWith(pm, text), 1)).toBe(block);
+    document.body.removeChild(pm);
   });
 });
