@@ -356,10 +356,17 @@ describe("right-margin geometry SSOT — the bolt is POD-anchored (margin-invari
 describe("right-margin geometry SSOT — min-margin floor (gated on marker visibility)", () => {
   it("the per-side min-floor equals the full lane width", () => {
     expect(MARGINALIA_MIN_MARGIN_RIGHT).toBe(MARGINALIA_MARGIN_WIDTH_RIGHT);
-    expect(MARGINALIA_MIN_MARGIN_LEFT).toBe(MARGINALIA_MARGIN_WIDTH_LEFT);
     // Concrete pins so a stray edit to a pad is caught.
     expect(MARGINALIA_MIN_MARGIN_RIGHT).toBe(104);
-    expect(MARGINALIA_MIN_MARGIN_LEFT).toBe(
+    // LEFT moved off the container width at task 670. It used to be
+    // `INNER_PAD + ICONS_BLOCK_WIDTH + OUTER_PAD_LEFT` (= 80), which counted
+    // only the POD-anchored half of the lane and so floored the margin 8px
+    // inside the TEXT-anchored fold-chevron column. Its floor is now Σ of both
+    // halves of `LEFT_LANE_BANDS` (= 88) and lives, with the whole left lane, in
+    // `marginalia-left-margin-geometry.test.ts`. Pinned here only as the
+    // cross-side contrast: the container width is NOT the floor on the left.
+    expect(MARGINALIA_MIN_MARGIN_LEFT).toBeGreaterThan(MARGINALIA_MARGIN_WIDTH_LEFT);
+    expect(MARGINALIA_MARGIN_WIDTH_LEFT).toBe(
       MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_OUTER_PAD_LEFT,
     );
   });

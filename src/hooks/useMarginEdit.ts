@@ -4,6 +4,7 @@ import type React from "react";
 
 import type { ViewPrefs } from "./useViewPrefs";
 import {
+  MARGINALIA_CHEVRON_INSET,
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
 } from "@/lib/marginalia";
@@ -76,14 +77,24 @@ export const MARGIN_OPPOSITE: Record<MarginSide, MarginSide> = {
 };
 
 // Per-side minimum padding when the marginalia marker lane is NOT reserved
-// (reading modes that hide markers: zen + the read-only Library Reader). Left
-// keeps its 72px historical floor (heading fold-chevron breathing strip);
-// right and top/bottom floor low so the slider can drive the prose nearly to
+// (reading modes that hide markers: zen + the read-only Library Reader).
+// Right and top/bottom floor low so the slider can drive the prose nearly to
 // the pod edge — the residual ~8px gap is the irreducible --pod-cap-inner
 // rounded-corner arc, not slider-controllable padding. All four cap at
 // MARGIN_MAX so an extreme drag can't collapse the column.
+//
+// LEFT is two numbers resolved by one `Math.max`, and the split is the point
+// (task 670). 72px is a COMFORT floor — a hand-tuned reading-mode value with no
+// derivation. `MARGINALIA_CHEVRON_INSET` (44) is the STRUCTURAL one: it is the
+// `chevron` + `chevron-text-gap` half of `LEFT_LANE_BANDS`, i.e. the distance
+// from the prose edge out to the fold chevron's outer edge, so below it the
+// chevron renders left of the pod and is unreachable at any zoom. Before 670
+// the comment on this line called 72 "the heading fold-chevron breathing
+// strip" while the chevron's real column was authored only in CSS — one
+// distance with two unrelated spellings. Now the hand value is free to be
+// re-tuned and the chevron's requirement still binds.
 export const MARGIN_MIN: Record<MarginSide, number> = {
-  left: 72,
+  left: Math.max(72, MARGINALIA_CHEVRON_INSET),
   right: 24,
   top: 0,
   bottom: 0,

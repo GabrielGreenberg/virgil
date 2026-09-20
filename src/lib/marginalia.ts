@@ -583,11 +583,145 @@ export const ICONS_BLOCK_WIDTH =
   MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
   (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
 /**
- * Width of the LEFT margin, in px — the left lane hosts the fold-chevron in its
- * outer-pad strip and no scrollbar, so it keeps the simple scalar form.
+ * Width of the LEFT marker CONTAINER, in px — the pod-anchored box
+ * `MarginColumn` paints the left cells inside. It is NOT the left margin's
+ * floor: since task 670 that is {@link MARGINALIA_MIN_MARGIN_LEFT}, summed from
+ * {@link LEFT_LANE_BANDS}. The two were equal (80) while the chevron was an
+ * undeclared occupant; keeping them separate is the point — the container is a
+ * painting box on ONE anchor, the floor spans BOTH.
  */
 export const MARGINALIA_MARGIN_WIDTH_LEFT =
   MARGINALIA_OUTER_PAD_LEFT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
+
+// ── Left-lane band SSOT (task 670) ──────────────────────────────────────────
+//
+// The LEFT margin seats its occupants in ONE ordered lane, pod edge → text
+// edge — but unlike the right, its bands are anchored to TWO DIFFERENT EDGES,
+// and that is the whole finding this list exists to make unrepresentable:
+//
+//   • the marker grid is POD-anchored (`MarginColumn` is `left: 0` on the pod,
+//     so col0 sits at a FIXED offset from `podLeft` whatever the margin is);
+//   • the fold chevron and the grab handle are CONTENT-anchored (they are
+//     `position:absolute` inside `.heading-wrapper` / `.source-pod`, whose left
+//     edge IS the prose content edge, so they slide with the text).
+//
+// Two stacks growing toward each other from opposite ends of the same strip
+// therefore only coincide at ONE margin — 88px, the shipped `--editor-pl`,
+// which is exactly why the collision was invisible. Narrow the margin and the
+// text-anchored stack walks onto the pod-anchored one: at the pre-670
+// markers-on floor (80) the chevron's 14px box overlapped col0's badge by 8px,
+// and because the badge is `pointer-events:auto` under a `zIndex:10` container
+// while the chevron is `z-index:1` in a pod that establishes no stacking
+// context, the badge ate the chevron's clicks. This is task 325 (the bolt
+// painting over col1) rotated onto the other margin.
+//
+//   pod edge → [outer-pad 22][col0 22] … [chevron 14][chevron-text-gap 30] ← text edge
+//
+// Stating the anchor PER BAND is what makes the sum meaningful: the lane's
+// width is the smallest margin at which the two stacks are still disjoint, so
+// `MARGINALIA_MIN_MARGIN_LEFT` (= 88) is DERIVED rather than the hand-typed
+// coincidence it used to be, and `resolveLeftLane` degrades the inboard-most
+// pod band below it instead of letting the stacks interleave.
+export const MARGINALIA_LEFT_LANE_ANCHORS = ["pod", "text"] as const;
+export type LaneAnchor = (typeof MARGINALIA_LEFT_LANE_ANCHORS)[number];
+
+interface LeftLaneBand {
+  /** Stable key for offset lookups + the disjointness sweep. */
+  readonly key: string;
+  /** Band width in px. */
+  readonly width: number;
+  /** Which edge the band's position is measured from. `"pod"` bands are laid
+   *  out rightward from `podLeft`; `"text"` bands leftward from the prose
+   *  content edge. */
+  readonly anchor: LaneAnchor;
+}
+
+/**
+ * Effective marker COLUMNS on the LEFT side. The left grid uses a single
+ * column: its inner slot is reserved across all paragraphs and headings for the
+ * block's grab handle / popout affordance, so a marker never lands there.
+ * Hoisted to a const (rather than living only inside
+ * {@link marginaliaEffectiveCols}) because {@link LEFT_LANE_BANDS} is a
+ * module-scope const that has to enumerate those columns.
+ */
+export const MARGINALIA_EFFECTIVE_COLS_LEFT = 1;
+
+/**
+ * Distance (px) from the prose content edge LEFTWARD to the fold-chevron
+ * column's outer edge — the CSS `--margin-col-chevron: -44px` offset, sign
+ * flipped so it reads as a distance like every other band width.
+ *
+ * Authored here rather than only in `globals.css` so the lane list can contain
+ * the chevron at all. The stylesheet stays the renderer's spelling and
+ * `block-frame.ts` still READS the live token (a per-block override must win);
+ * these constants are the lane's statement of it and the token's fallback, and
+ * `marginalia-left-margin-geometry.test.ts` pins the two to each other so the
+ * CSS is a derived output rather than an independent knob.
+ */
+export const MARGIN_COL_CHEVRON_WIDTH = 14;
+/** The authored CSS value of `--margin-col-chevron` — NEGATIVE, because it is a
+ *  CSS `left` offset from the block's own left edge, not a distance. */
+export const MARGIN_COL_CHEVRON_OFFSET = -44;
+/** …the same offset as a leftward DISTANCE from the content edge (= 44). */
+export const MARGINALIA_CHEVRON_INSET = -MARGIN_COL_CHEVRON_OFFSET;
+
+/** The ordered left-margin lane, pod edge → text edge. The `col*` bands ARE the
+ *  marker columns and the `chevron` band IS the fold affordance's column, so the
+ *  grid x, the chevron x and the margin floor all derive from this one list. */
+export const LEFT_LANE_BANDS: readonly LeftLaneBand[] = [
+  { key: "outer-pad", width: MARGINALIA_OUTER_PAD_LEFT, anchor: "pod" },
+  ...Array.from(
+    { length: MARGINALIA_EFFECTIVE_COLS_LEFT },
+    (_unused, col): readonly LeftLaneBand[] =>
+      col === 0
+        ? [{ key: "col0", width: MARGINALIA_ICON_SIZE, anchor: "pod" }]
+        : [
+            { key: `col-gap-${col}`, width: MARGINALIA_COL_GAP, anchor: "pod" },
+            { key: `col${col}`, width: MARGINALIA_ICON_SIZE, anchor: "pod" },
+          ],
+  ).flat(),
+  { key: "chevron", width: MARGIN_COL_CHEVRON_WIDTH, anchor: "text" },
+  {
+    key: "chevron-text-gap",
+    width: MARGINALIA_CHEVRON_INSET - MARGIN_COL_CHEVRON_WIDTH,
+    anchor: "text",
+  },
+];
+
+/** Offset (px) of a left-lane band from the edge it is anchored to:
+ *  `"pod"` bands measure rightward from `podLeft`, `"text"` bands leftward from
+ *  the prose content edge (so a text band's offset is the distance from the
+ *  content edge to its RIGHT side). Pure; throws on an unknown key so a typo
+ *  can't silently read 0. */
+export function leftLaneOffset(key: string): number {
+  let pod = 0;
+  for (const band of LEFT_LANE_BANDS) {
+    if (band.anchor === "pod") {
+      if (band.key === key) return pod;
+      pod += band.width;
+    }
+  }
+  let text = 0;
+  for (let i = LEFT_LANE_BANDS.length - 1; i >= 0; i--) {
+    const band = LEFT_LANE_BANDS[i];
+    if (band.anchor !== "text") continue;
+    if (band.key === key) return text;
+    text += band.width;
+  }
+  throw new Error(`unknown left-lane band: ${key}`);
+}
+
+/** Total width of the POD-anchored half of the left lane (= the grid's
+ *  innermost painted edge, 44). */
+export const LEFT_LANE_POD_WIDTH = LEFT_LANE_BANDS.filter(
+  (b) => b.anchor === "pod",
+).reduce((sum, b) => sum + b.width, 0);
+
+/** Total width of the TEXT-anchored half of the left lane (= the chevron
+ *  column's outer edge, 44). */
+export const LEFT_LANE_TEXT_WIDTH = LEFT_LANE_BANDS.filter(
+  (b) => b.anchor === "text",
+).reduce((sum, b) => sum + b.width, 0);
 
 // ── Right-lane band SSOT ────────────────────────────────────────────────────
 //
@@ -707,19 +841,26 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
  * Minimum editor margin (the `--editor-pl` / `--editor-pr` prose padding)
  * that still fully reserves the marker lane — i.e. the margin width below
  * which the marker grid would start eating into the prose text, the
- * scrollbar, or (right) collide with the selection bolt.
+ * scrollbar, the selection bolt (right) or the fold chevron (left).
  *
- * Equal to the full lane width on each side, so when markers are visible the
+ * Σ of that side's band list on BOTH sides now, so when markers are visible the
  * margin is floored at exactly enough to host the lane. ONLY applied when
  * markers are shown (backlog #8 ratified choice): zen reading + the
  * read-only Library reader hide markers, so they keep their margin freedom
  * down to 0 and never have this floor imposed.
  *
- *   right = Σ RIGHT_LANE_BANDS                                       = 104
- *   left  = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_LEFT(22)  = 80
+ *   right = Σ RIGHT_LANE_BANDS                                     = 104
+ *   left  = Σ LEFT_LANE_BANDS (pod half 44 + text half 44)          =  88
+ *
+ * The left value CHANGED at task 670 (80 → 88) and that is the fix, not a
+ * side effect: 80 counted only the pod-anchored half of the lane plus an inner
+ * pad, so it floored the margin 8px INSIDE the text-anchored chevron column.
+ * 88 is the shipped `--editor-pl` default, so nothing moves at rest — what
+ * changes is that the drag can no longer walk the two stacks into each other.
  */
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
-export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
+export const MARGINALIA_MIN_MARGIN_LEFT =
+  LEFT_LANE_POD_WIDTH + LEFT_LANE_TEXT_WIDTH;
 
 // ── Lane regime: does a pod-anchored lane element still clear the prose? ─────
 //
@@ -751,6 +892,24 @@ export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
 // by the code split (where podRight is the VISIBLE edge) is answered honestly.
 
 /**
+ * Sub-pixel tolerance every lane comparison allows (task 670). Each side's band
+ * list is authored in whole px and each side's floor is the EXACT sum of it, so
+ * at the floor the bands are TANGENT — but `available` is a browser
+ * MEASUREMENT (`contentLeft − podLeft` / `podRight − editorRight` off the
+ * geometry service's viewport frame), and a fractional device-pixel ratio, a
+ * browser zoom level or a transformed ancestor routinely returns 87.99 for an
+ * authored 88. Without a tolerance a tangent band reads as an overlap on those
+ * displays and the lane degrades at its own design value — the left marker
+ * column would simply vanish at the shipped `--editor-pl`.
+ *
+ * 0.5px, the same sub-pixel epsilon the geometry service's metric equality uses
+ * (`editor-geometry/service.ts#POSITION_EPSILON_PX`). Stated once and applied to
+ * BOTH sides' comparisons, because it is a property of the measurement, not of
+ * either lane.
+ */
+export const LANE_MEASUREMENT_EPSILON_PX = 0.5;
+
+/**
  * Does a pod-anchored lane element whose innermost edge sits `inset` px from
  * the pod edge still clear the prose by `MARGINALIA_INNER_PAD`, given the
  * `available` margin on that side? THE lane-regime predicate — the bolt's
@@ -758,7 +917,7 @@ export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
  * question asked about two different slots.
  */
 export function laneSlotClearsProse(inset: number, available: number): boolean {
-  return available - inset >= MARGINALIA_INNER_PAD;
+  return available - inset >= MARGINALIA_INNER_PAD - LANE_MEASUREMENT_EPSILON_PX;
 }
 
 /**
@@ -769,18 +928,18 @@ export function laneSlotClearsProse(inset: number, available: number): boolean {
  * both depend on it — two readers, one statement.
  */
 export function marginaliaEffectiveCols(side: "left" | "right"): number {
-  return side === "left" ? 1 : MARGINALIA_COLS;
+  return side === "left" ? MARGINALIA_EFFECTIVE_COLS_LEFT : MARGINALIA_COLS;
 }
 
 /**
- * Container-relative x of the marker grid's col0 on the LEFT side. The left
- * lane packs [OUTER_PAD][col0][gap][reserved popout slot][INNER_PAD][text], so
- * col0 starts one outer pad in (= 22). Named to mirror
- * `MARGINALIA_GRID_X_RIGHT` so `cellAt` reads a GRID_X_<side> constant on both
- * sides instead of restating one side's arithmetic inline.
+ * Container-relative x of the marker grid's col0 on the LEFT side — the `col0`
+ * band's offset in {@link LEFT_LANE_BANDS} (= 22, one outer pad in). Named to
+ * mirror `MARGINALIA_GRID_X_RIGHT` so `cellAt` reads a GRID_X_<side> constant on
+ * both sides instead of restating one side's arithmetic inline — and, since
+ * task 670, DERIVED from the same ordered list the chevron column and the
+ * margin floor come from rather than from the container's width.
  */
-export const MARGINALIA_GRID_X_LEFT =
-  MARGINALIA_MARGIN_WIDTH_LEFT - MARGINALIA_INNER_PAD - ICONS_BLOCK_WIDTH;
+export const MARGINALIA_GRID_X_LEFT = leftLaneOffset("col0");
 
 /** Container-relative x of the marker grid's col0 on `side`. */
 export function marginaliaGridX(side: "left" | "right"): number {
@@ -955,21 +1114,99 @@ export function resolveRightLane(available: number | null): RightLaneResolution 
 }
 
 /**
+ * The LEFT lane RESOLVED at a measured margin — where the fold-chevron column
+ * lands and how many marker columns are left over, as ONE answer in ONE
+ * coordinate space (container-relative, origin `podLeft`).
+ *
+ * Why this exists (task 670). {@link LEFT_LANE_BANDS} makes the lane ORDERED,
+ * but ordering alone cannot make disjointness structural here the way
+ * `RIGHT_LANE_BANDS` does, because the left lane's two halves are anchored to
+ * OPPOSITE edges: the marker grid is pod-anchored and the chevron column is
+ * text-anchored, so the bands only abut at ONE margin (Σ = 88). Below it the
+ * text half slides onto the pod half; above it a gap opens between them. The
+ * band list therefore states the lane, and THIS function resolves it at the
+ * margin actually measured.
+ *
+ * The resolution is ORDERED, inboard → outboard, and states the priority once:
+ *
+ *  - the fold CHEVRON places first. It is the sole entry to folding a heading
+ *    or a source pod, it is text-anchored by requirement (its reach is
+ *    em-scaled per block — `block-frame.ts#resolveChevronColumnRight` resolves
+ *    the token against the BLOCK's font, so a `\part`-sized heading's column is
+ *    wider than a `\subsection`'s), and its 14px body cannot degrade. So it
+ *    keeps its column at every margin and the lane's floor is sized to hold it.
+ *  - the marker GRID takes the columns that remain ENTIRELY OUTBOARD of the
+ *    chevron column, and hides when none does — exactly what
+ *    `rightColumnsClearingBolt` does for the bolt on the other side. With the
+ *    left grid at one effective column that degradation is all-or-nothing, and
+ *    that is the honest answer: an icon under the chevron is not a narrower
+ *    grid, it is a stolen click.
+ *  - the PROSE-clearance question (214) still binds independently, so a grid
+ *    that clears the chevron but not the text still hides.
+ *
+ * Above the floor nothing degrades: at `available ≥ 88` the chevron sits at or
+ * right of col0's inner edge, so `leftColumnsClearingChevron` returns the full
+ * column count and the shipped layout is byte-identical to pre-670.
+ */
+export interface LeftLaneResolution {
+  /** Container-relative x of the fold-chevron column's LEFT edge at this
+   *  margin (`available − MARGINALIA_CHEVRON_INSET`). */
+  readonly chevronX: number;
+  /** Marker columns the grid gets once the chevron column is seated. 0 hides. */
+  readonly markerCols: number;
+}
+
+/** How many left marker columns sit ENTIRELY outboard of a chevron column whose
+ *  left edge is at `chevronX`? Derived by walking the same column offsets
+ *  `cellAt` packs against, so the count follows automatically from the chevron
+ *  width, the column width and the gaps — never a hand-written "one". */
+function leftColumnsClearingChevron(chevronX: number): number {
+  const stride = MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP;
+  let cols = 0;
+  for (let col = 0; col < marginaliaEffectiveCols("left"); col++) {
+    const cellLeft = marginaliaGridX("left") + col * stride;
+    if (cellLeft + MARGINALIA_ICON_SIZE > chevronX + LANE_MEASUREMENT_EPSILON_PX)
+      break;
+    cols++;
+  }
+  return cols;
+}
+
+/** Resolve the left lane at this measured margin. See {@link LeftLaneResolution}. */
+export function resolveLeftLane(available: number | null): LeftLaneResolution {
+  const reserved: LeftLaneResolution = {
+    chevronX: MARGINALIA_MIN_MARGIN_LEFT - MARGINALIA_CHEVRON_INSET,
+    markerCols: marginaliaEffectiveCols("left"),
+  };
+  if (laneUnmeasured(available)) return reserved;
+  const room = available as number;
+  const chevronX = room - MARGINALIA_CHEVRON_INSET;
+  return {
+    chevronX,
+    // Both questions, in order: does any column clear the PROSE (214), and
+    // which of them clear the CHEVRON (670). The chevron is the tighter bound
+    // at every margin the grid survives, so the two agree rather than racing.
+    markerCols: markerGridClearsProse("left", room)
+      ? leftColumnsClearingChevron(chevronX)
+      : 0,
+  };
+}
+
+/**
  * Effective marker columns on `side` at this `available` margin — THE answer
  * `computeMarkerPositions` consumes, so no call site re-derives it. `0` means
  * the side renders nothing (cells, "+K" pill and the re-pin dock together).
  *
- * The left lane has no bolt to negotiate with, so it is the prose-clearance
- * question alone; the right lane is the full ordered resolution above.
+ * Each side is now its own full ordered resolution — the right negotiating with
+ * the selection bolt, the left with the fold-chevron column.
  */
 export function resolveMarkerCols(
   side: "left" | "right",
   available: number | null,
 ): number {
-  if (side === "right") return resolveRightLane(available).markerCols;
-  return markerGridClearsProse("left", available)
-    ? marginaliaEffectiveCols("left")
-    : 0;
+  return side === "right"
+    ? resolveRightLane(available).markerCols
+    : resolveLeftLane(available).markerCols;
 }
 
 /** The COMFORTABLE per-side horizontal gutter the editor caps margins at when

@@ -144,11 +144,22 @@ describe("lane regime — the grid's inset is DERIVED from where the cells land"
     expect(marginGridInset("left")).toBeLessThan(MARGINALIA_MARGIN_WIDTH_LEFT);
   });
 
-  it("the fit thresholds follow from inset + INNER_PAD (right 70, left 52)", () => {
+  it("the RIGHT fit threshold follows from inset + INNER_PAD (70)", () => {
     expect(resolveMarkerCols("right", 69)).toBe(0);
     expect(resolveMarkerCols("right", 70)).toBeGreaterThan(0);
-    expect(resolveMarkerCols("left", 51)).toBe(0);
-    expect(resolveMarkerCols("left", 52)).toBeGreaterThan(0);
+  });
+
+  it("the LEFT threshold is the CHEVRON's, not the prose's — 88, not the derived 52 (task 670)", () => {
+    // 214's prose-clearance question still says 52 on the left
+    // (`marginGridInset("left")` 44 + INNER_PAD 8), and until task 670 that was
+    // the whole answer. It is the WRONG half: the left margin's inboard
+    // neighbour is not the prose, it is the text-anchored fold-chevron column,
+    // which the grid meets 36px sooner. `resolveLeftLane` asks both and the
+    // chevron binds, exactly as the bolt binds over the prose on the right.
+    expect(marginGridInset("left") + MARGINALIA_INNER_PAD).toBe(52);
+    expect(resolveMarkerCols("left", 52)).toBe(0);
+    expect(resolveMarkerCols("left", 87)).toBe(0);
+    expect(resolveMarkerCols("left", 88)).toBeGreaterThan(0);
   });
 
   it("the right inset is COLUMN-COUNT-INDEPENDENT, which is why the tuck can take a column without moving the prose threshold", () => {
