@@ -4823,3 +4823,64 @@ branch now means other markers really are painted.
 real margin reader, real delete door, end to end; its two recovered-anchor legs
 fail against the restated stored-pid rule (planted-defect self-check), with the
 multi-anchor, ordinary-stored-pid and mount-gap controls beside them.
+
+---
+
+## Task 671 — two gates, one fact: the SECOND reader must not re-derive it
+
+669's half was a gesture re-deriving what the renderer already read. This is the
+same shape one level up: **where one fact governs two gates, the gates must come
+out of ONE resolution, not two expressions that agree by review.** Nothing was
+missing here — no registry unread, no export uncalled. Both expressions existed,
+both were maintained, and they were *wrong in opposite directions*, which is the
+tell that agreement was never structural.
+
+The fact: **does this pane paint margin markers?** `EditorPane` answered it
+twice, 800 lines apart —
+
+```
+render:  if (menuBar?.prefs.showMarginalia === false) return []
+floor:   !!menuBar && showMarginalia !== false && !zenMode && !compressX
+```
+
+— and the floor's two extra terms were justified, in FIVE docstrings, by a
+marker-hiding no code performed. **Zen** painted every note / todo / cut /
+report icon while dropping the very floor that guarantees them room, so
+narrowing the zen margin degraded them away with no explanation and walked the
+LEFT margin down into the fold-chevron band (task 670). The **Library Reader**
+did the inverse: `!!menuBar` meant "not the Reader" only until F#16 gave it
+`readerMenuBar`, since when it had been forcing 184px of floored margin onto a
+read-only paper view.
+
+**The half this adds.** A docstring is not a join. Where the second reader's
+answer is *supposed* to track the first's, it must be the FIRST'S VALUE, not a
+restatement of its terms — and when the second gate is legitimately narrower,
+the narrowing term ships in the same resolution, named as what it is about.
+`resolveMarginaliaLane({showMarginalia, zenMode, compressX})`
+(`src/lib/marginalia.ts`) returns `{hosted, reserved}`: `hosted` is what the
+render gate returns `[]` on, `reserved` is what the margin floor and the drag
+clamp read, `reserved ⟹ hosted` by construction, and the ONE term by which
+`reserved` is narrower — a compressed code-split — is about the FLOOR rather
+than the markers (the icons still paint, degrading down the lane resolution).
+`EditorPane` makes exactly one call; the two gates read its two halves.
+
+Two sub-rules the fix turns on:
+
+- **A stand-in term expires silently.** `!!menuBar` encoded "is this the
+  read-only Reader" as a proxy for a fact about chrome, and F#16 falsified it
+  without touching this file or any test. A proxy term must be deleted when the
+  real predicate exists, not repaired.
+- **Occupancy is not enablement.** The floor deliberately does NOT key on marker
+  COUNT, even though an empty margin is floored: the lane is not the markers'
+  alone — `RIGHT_LANE_BANDS` seats the selection bolt and the scrollbar gutter,
+  `LEFT_LANE_BANDS` the fold chevron. "Is the lane ENABLED" is the pane
+  question; "is it currently OCCUPIED" is a different one, and answering the
+  first with the second would reflow the prose column on every first-card
+  create/delete.
+
+**CI:** `marginalia-lane-policy.test.ts` — the matrix {normal, zen, zen+split,
+Reader, compressed split, toggle off} with BOTH gates asserted per cell;
+`reserved ⟹ hosted` over the whole input space; a structural census that
+`EditorPane` holds exactly one `resolveMarginaliaLane(` call and each gate reads
+one half; and a docstring census that nothing still claims the Reader hides
+markers or spells `no menuBar` to mean "the Reader".
