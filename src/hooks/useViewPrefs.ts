@@ -28,6 +28,10 @@ import {
   type ViewPrefMember,
   type ViewPrefDef,
 } from "@/lib/view-prefs/registry";
+import {
+  STRUCTURAL_GLOBAL_PREF_KEYS,
+  type StructuralGlobalPrefKey,
+} from "@/lib/view-prefs/structural-globals";
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import {
   filterPlacements,
@@ -326,29 +330,24 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  * `src/lib/dev-prefs-registry.json`.
  */
 /** Structural (non-registry) global keys — page geometry, strip placements,
- *  omni filters, print options. The registry-owned global keys
- *  (`showMarginalia`, `dividerLevels`, highlights, …) are appended from
- *  `REGISTRY_GLOBAL_KEYS` so "is this pref global?" is decided in ONE place
- *  (the registry's `scope` field), never re-asserted by hand here. */
-export const STRUCTURAL_GLOBAL_PREF_KEYS = [
-  "printOptions",
-  "placements",
-  "pageWidth",
-  "editorLeftMargin",
-  "editorRightMargin",
-  "editorTopMargin",
-  "editorBottomMargin",
-  "codePaneRatio",
-  "omniHiddenCategories",
-  "omniHideAllCards",
-  "appliedPrefMigrations",
-] as const;
+ *  omni filters, print options. Declared, WITH their promotion facts, in
+ *  `@/lib/view-prefs/structural-globals` beside the registry half, and
+ *  re-exported here because this is where the vocabulary has always been read
+ *  from. The registry-owned global keys (`showMarginalia`, `dividerLevels`,
+ *  highlights, …) are appended from `REGISTRY_GLOBAL_KEYS` so "is this pref
+ *  global?" is decided in ONE place per half, never re-asserted by hand. */
+export {
+  STRUCTURAL_GLOBAL_PREF_KEYS,
+  STRUCTURAL_PROMOTED_GLOBAL_KEYS,
+  STRUCTURAL_PROMOTION_EXEMPT,
+  type StructuralGlobalPrefKey,
+} from "@/lib/view-prefs/structural-globals";
 const GLOBAL_PREF_KEYS = [
   ...STRUCTURAL_GLOBAL_PREF_KEYS,
   ...REGISTRY_GLOBAL_KEYS,
 ] as const;
 type GlobalPrefKey =
-  | (typeof STRUCTURAL_GLOBAL_PREF_KEYS)[number]
+  | StructuralGlobalPrefKey
   | (typeof REGISTRY_GLOBAL_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
 
@@ -373,9 +372,7 @@ const MARGIN_PREF_SET = new Set<string>(MARGIN_PREF_KEYS);
 // slice of the structural globals. Prove the subset at compile time so the two
 // lists can't drift; the runtime twin is pinned in view-prefs-vocab-guards.test.
 type _MarginKeysAreStructural =
-  (typeof MARGIN_PREF_KEYS)[number] extends (typeof STRUCTURAL_GLOBAL_PREF_KEYS)[number]
-    ? true
-    : never;
+  (typeof MARGIN_PREF_KEYS)[number] extends StructuralGlobalPrefKey ? true : never;
 void (true as _MarginKeysAreStructural);
 
 function windowStorageKey(): string {

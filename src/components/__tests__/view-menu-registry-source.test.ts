@@ -8,10 +8,12 @@
 //   1. The ViewMenu has NO hand-rolled `useState` feeding a view toggle's
 //      checked/onToggle — the disclosure `useState`s (expand/collapse) are the
 //      only allowed ones; every PREF row is registry/prop-driven.
-//   2. The dev-prefs promotion whitelist matches the registry's `promote` flag
-//      both ways: every PROMOTED global key is whitelisted, and every key flagged
-//      `promote: false` is NOT (its shipped default is frozen at the registry
-//      value — the showParTitles drift, task 057).
+//   2. The dev-prefs promotion whitelist EQUALS the derived promoted set, in
+//      both directions and across BOTH halves of the global vocabulary: the
+//      registry keys (`promote: false` freezes a shipped default at its
+//      registry value — the showParTitles drift, task 057) and the structural
+//      globals (`STRUCTURAL_GLOBAL_PREFS`, whose exemptions carry a stated
+//      reason — task 676, after `codePaneRatio` sat forgotten off the list).
 //   3. Every menu-bearing registry entry's label (+ per-value/member labels)
 //      appears verbatim in the MenuBar source (the menu renders from the
 //      registry, so a renamed label can't drift out of sync silently).
@@ -24,6 +26,11 @@ import {
   REGISTRY_GLOBAL_KEYS,
   REGISTRY_PROMOTED_GLOBAL_KEYS,
 } from "@/lib/view-prefs/registry";
+import {
+  STRUCTURAL_GLOBAL_PREF_KEYS,
+  STRUCTURAL_PROMOTED_GLOBAL_KEYS,
+  STRUCTURAL_PROMOTION_EXEMPT,
+} from "@/lib/view-prefs/structural-globals";
 import devPrefsRegistry from "@/lib/dev-prefs-registry.json";
 import viewPrefsDefaults from "@/hooks/useViewPrefs.defaults.json";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -52,11 +59,12 @@ describe("ViewMenu — no hand-rolled useState feeds a view toggle", () => {
   });
 });
 
-describe("promotion whitelist ⇔ registry `promote` flag", () => {
+describe("promotion whitelist ⇔ the derived promoted set (both halves, both ways)", () => {
   const promotable = devPrefsRegistry.promotable.find(
     (p) => p.storageKey === "virgil-view-prefs/global" && p.strategy === "whitelist",
   );
-  const whitelist = new Set((promotable as { whitelist: string[] } | undefined)?.whitelist ?? []);
+  const whitelistArr = (promotable as { whitelist: string[] } | undefined)?.whitelist ?? [];
+  const whitelist = new Set(whitelistArr);
 
   it("every PROMOTED global registry key is in the dev-prefs-registry whitelist", () => {
     expect(promotable).toBeTruthy();
@@ -73,6 +81,61 @@ describe("promotion whitelist ⇔ registry `promote` flag", () => {
     );
     const leaked = optedOut.filter((k) => whitelist.has(k));
     expect(leaked).toEqual([]);
+  });
+
+  // ── The structural half (task 676) ──────────────────────────────────
+  // The registry half above was guarded from the start; the structural
+  // globals were not, and `codePaneRatio` — a global, non-frozen, "tune once
+  // and want it everywhere" measure sitting right beside `pageWidth` and the
+  // four margins — was simply never whitelisted. Nothing said so, because
+  // nothing looked.
+  it("every PROMOTED structural global key is in the whitelist", () => {
+    const missing = STRUCTURAL_PROMOTED_GLOBAL_KEYS.filter((k) => !whitelist.has(k));
+    expect(missing).toEqual([]);
+  });
+
+  it("every EXEMPT structural global key is ABSENT from the whitelist", () => {
+    // An exemption carries its reason in `STRUCTURAL_GLOBAL_PREFS`; report it
+    // so a failure says why the key was meant to stay off.
+    const leaked = STRUCTURAL_PROMOTION_EXEMPT.filter((e) => whitelist.has(e.key)).map(
+      (e) => `${e.key} (exempt: ${e.why})`,
+    );
+    expect(leaked).toEqual([]);
+  });
+
+  it("the whitelist is EXACTLY the union of the two promoted halves — no stragglers", () => {
+    // The closing direction: a key on the whitelist that neither half claims
+    // is either a typo or a pref that lost its `global` scope, and would be
+    // promoted forever with nothing to notice. (This also covers the "a
+    // structural global is added and forgotten" case from the other side.)
+    const expected = [
+      ...REGISTRY_PROMOTED_GLOBAL_KEYS,
+      ...STRUCTURAL_PROMOTED_GLOBAL_KEYS,
+    ].sort();
+    expect([...whitelist].sort()).toEqual(expected);
+  });
+
+  it("no key is listed twice in the whitelist", () => {
+    expect(whitelistArr.length).toBe(whitelist.size);
+  });
+
+  it("every whitelisted key is DECLARED in useViewPrefs.defaults.json", () => {
+    // A whitelisted key the shipped defaults do not carry has nothing to
+    // promote ONTO: `applyWhitelist` copies the snapshot value in blind and
+    // would CREATE the key, so a promote run could introduce a shipped default
+    // the codebase never declared. Every promoted key must already exist in
+    // the JSON it promotes into.
+    const json = viewPrefsDefaults as Record<string, unknown>;
+    const undeclared = [...whitelist].filter((k) => !(k in json));
+    expect(undeclared).toEqual([]);
+  });
+
+  it("the two halves of the global vocabulary are disjoint", () => {
+    // `STRUCTURAL_*` means "non-registry" by definition; an overlap would make
+    // the union above ambiguous about which half owns a key's promote fact.
+    const registryKeys = new Set<string>(REGISTRY_GLOBAL_KEYS);
+    const overlap = STRUCTURAL_GLOBAL_PREF_KEYS.filter((k) => registryKeys.has(k));
+    expect(overlap).toEqual([]);
   });
 });
 
@@ -166,12 +229,21 @@ describe("registry ↔ shipped-defaults byte-identity (release-snapshot contract
   // never pinned). Assert equality for EVERY registry key the JSON carries, so any
   // future drift of this class fails CI — not just the three keys once pinned.
   const json = viewPrefsDefaults as Record<string, unknown>;
+  const globalRegistryKeys = new Set<string>(REGISTRY_GLOBAL_KEYS);
   for (const [key, def] of Object.entries(VIEW_PREF_REGISTRY)) {
-    // Keys the JSON legitimately omits fall back to REGISTRY_DEFAULTS at runtime
-    // (e.g. bibFilter — window-scope, panel-local — is correctly absent). Skip
-    // them; only keys the JSON actually ships must match byte-for-byte.
-    if (!(key in json)) continue;
     it(`${key}: registry default equals useViewPrefs.defaults.json`, () => {
+      // PRESENCE first (task 676). This check used to `continue` past any key
+      // the JSON did not carry, so DELETING a global key from the defaults
+      // JSON was a silent pass — it would fall back to REGISTRY_DEFAULTS at
+      // runtime and the "these MUST be equal" promise in the registry header
+      // would quietly stop being enforced for that key. A global key must
+      // ship; a window-scope key (bibFilter — panel-local, never promoted) is
+      // legitimately absent, but if it IS present it must still match.
+      if (globalRegistryKeys.has(key)) {
+        expect(Object.keys(json)).toContain(key);
+      } else if (!(key in json)) {
+        return; // window-scope and absent: the one permitted omission
+      }
       const registryDefault = def.kind === "set" ? [...def.default] : def.default;
       expect(json[key]).toEqual(registryDefault);
     });
