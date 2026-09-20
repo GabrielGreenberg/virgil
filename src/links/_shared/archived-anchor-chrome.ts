@@ -64,6 +64,7 @@
  */
 
 import type { Link } from "./types";
+import { isRangedModeB } from "./types";
 
 /** The minimum a card must expose to answer "is this archived?". */
 export interface ArchivableCardLike {
@@ -96,13 +97,8 @@ export function cardIsArchived(card: ArchivableCardLike): boolean {
  */
 function textAnchorIdsOf(card: AnchoredArchivableCardLike, into: Set<string>): void {
   for (const link of card.links ?? []) {
-    const a = link.anchor;
-    if (
-      a.type === "textObject" &&
-      a.targetKind === "linkedRange" &&
-      a.textRange?.anchorId
-    ) {
-      into.add(a.textRange.anchorId);
+    if (isRangedModeB(link) && link.anchor.textRange.anchorId) {
+      into.add(link.anchor.textRange.anchorId);
     }
   }
 }

@@ -85,6 +85,7 @@ import { commentsStripped, trackedFiles } from "@/lib/__tests__/_source-scan";
 import {
   deadExports,
   isTestFile,
+  referenceHits,
   staleAllowlistEntries,
   swallowedInCensusedFiles,
   VALUE_EXPORT,
@@ -137,6 +138,72 @@ const CALLABLE = new Map(ALL_FILES.map((f) => [f, callableText(readFileSync(f, "
 const LINK_FILES: CensusFile[] = ALL_FILES.filter(
   (f) => f.startsWith(LINKS + path.sep) && !isTestFile(f),
 ).map((file) => ({ file, rel: path.relative(LINKS, file).split(path.sep).join("/") }));
+
+/**
+ * The words this repo numbers a STAGED migration with, in one list.
+ *
+ * The promise leg below used to spell `Phase` as a literal and argue, in its own
+ * comment, that lettered phases must count "because this subsystem numbers its
+ * phases with a LETTER as often as a digit" — a correct observation about ONE
+ * axis of the dialect that missed the other. `src/links/` numbers with **Chip**
+ * just as often, and both promises that survived to task 668 sat in that
+ * spelling, one of them telling the reader a load-bearing argument was
+ * "accepted-and-ignored" eighteen lines above the code that consumes it.
+ *
+ * So the alternation is DERIVED from this list rather than baked into the
+ * pattern: the next vocabulary is a one-line addition here, and the leg stops
+ * arguing for coverage it does not have. Keep it to words that actually name a
+ * staged unit of work in this repo — a word that also reads as ordinary prose
+ * ("Part", "Step") would turn the leg into noise.
+ */
+const STAGE_WORDS = ["Phase", "Chip", "Wave", "Stage"] as const;
+
+/**
+ * Verbs that put a stage in the FUTURE — "what it will do", never "what it did".
+ *
+ * `lands` / `scopes` / `consumed` are task 668's addition, and they are the
+ * reason the word list above was only half the hole. The two promises that
+ * survived were "its uuid-scoped search body **lands** in Chip 6" and "Chip 6
+ * **scopes** `reanchorByText`'s text search" — future tense with no "will" in
+ * sight, and in the first the verb sits BEFORE the stage token, which the
+ * original pattern (`<stage> N` … verb) could not reach even in its own
+ * dialect. Co-occurrence on the line, in either order, is the honest test.
+ */
+const FUTURE_VERBS = [
+  "will",
+  "wires?",
+  "absorbs?",
+  "lands?",
+  "scopes?",
+  "consumed",
+  "is a stub",
+  "not yet",
+];
+
+/**
+ * A comment promising work that has not landed.
+ *
+ * Pins the SHAPE of the promise — the forms that actually mislead — not every
+ * mention of a stage. A note about what a stage DID (`Phase 4, Part A`, on
+ * shipped code) is fine and common here; a note about what one WILL DO is a
+ * promise nobody is keeping, and it is what sent a reader to `createLink`.
+ *
+ * Lettered stages count: a digit-only pattern would exempt the very migration
+ * this file censuses. ("in Phase 1" is deliberately NOT a promise — this file's
+ * own header says the write door "was scaffolded in Phase 0/1 and never
+ * adopted", which is history. The first draft of this regex failed on that
+ * sentence.)
+ */
+const STAGE = `(?:${STAGE_WORDS.join("|")})\\s+[A-Z]?\\d`;
+const VERB = `(?:${FUTURE_VERBS.join("|")})`;
+const PROMISE = new RegExp(
+  `\\buntil\\s+${STAGE}` +
+    `|\\b${STAGE}\\b[^.\\n]*\\b${VERB}\\b` +
+    `|\\b${VERB}\\b[^.\\n]*\\b${STAGE}\\b` +
+    `|\\b${STAGE}\\s*:\\s*stub` +
+    `|\\bnot yet wired\\b`,
+  "i",
+);
 
 /** Uncalled value exports that are deliberately kept, each with its reason.
  *  An entry here is a claim that the export earns its keep WITHOUT a caller —
@@ -225,14 +292,6 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
     // `createLink`. Like every copy check, this pins the SHAPE of the promise —
     // the forms that actually mislead. Only a reader pins honesty.
     const promises: string[] = [];
-    const PROMISE =
-      /\buntil\s+Phase\s+[A-Z]?\d|\bPhase\s+[A-Z]?\d[^.\n]*\b(?:will|wires?|absorbs?|is a stub|not yet)\b|\bPhase\s+[A-Z]?\d\s*:\s*stub|\bnot yet wired\b/i;
-    // Lettered phases count. This subsystem numbers its phases with a LETTER as
-    // often as a digit (`Phase D8 collapsed…`, `Phase G`, `after D9`), so a
-    // digit-only pattern would have exempted the very migration it censuses.
-    // ("in Phase 1" is deliberately NOT a promise — this file's own header says
-    //  the write door "was scaffolded in Phase 0/1 and never adopted", which is
-    //  history. The first draft of this regex failed on that sentence.)
     for (const { file, rel } of LINK_FILES) {
       const raw = readFileSync(file, "utf8");
       for (const [i, line] of raw.split("\n").entries()) {
@@ -240,6 +299,110 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
       }
     }
     expect(promises).toEqual([]);
+  });
+
+  it("the promise leg sees EVERY stage dialect, not just the word it was written for", () => {
+    // PLANTED DEFECT — the self-check the leg above went without, and which is
+    // the only thing that would have caught either of the two promises task 668
+    // found. A leg keyed on a word cannot report the dialect it cannot see; its
+    // silence reads exactly like compliance. So plant one promise per word and
+    // demand the pattern names it.
+    for (const word of STAGE_WORDS) {
+      // Verb AFTER the stage token…
+      expect(
+        PROMISE.test(`// ${word} 6 scopes the text search; until then it is carried for shape.`),
+        `the promise leg is blind to the "${word} N" dialect`,
+      ).toBe(true);
+      // …and BEFORE it, which is how the surviving promise was actually worded.
+      expect(
+        PROMISE.test(`// Declared from ${word} 3; its uuid-scoped search body lands in ${word} 6. Until`),
+        `the promise leg is blind to a verb preceding the "${word} N" token`,
+      ).toBe(true);
+      // …and the passive form a threading site uses.
+      expect(
+        PROMISE.test(`        rec.paragraphId, // consumed in ${word} 6 (uuid-scoped search)`),
+        `the promise leg is blind to the passive "consumed in ${word} N" form`,
+      ).toBe(true);
+    }
+    // …and does NOT fire on the HISTORY form, which is common and correct here.
+    // A leg that flags "collapsed in Phase D8" trains people to silence it.
+    for (const benign of [
+      "// Phase D8 collapsed the two rails into one.",
+      "// uuid-scoped path: when a containing-paragraph uuid is supplied",
+      "// scaffolded in Phase 0/1 and never adopted",
+      "// Wave 2 delivered the geometry service.",
+    ]) {
+      expect(PROMISE.test(benign), `the promise leg flags history: ${benign}`).toBe(false);
+    }
+  });
+
+  it("a LOCAL declaration of an export's name is not a caller", () => {
+    // PLANTED DEFECT for the census's one closed hole (task 668).
+    //
+    // `callSites` is a bare-name grep, and the header of `_export-census.ts`
+    // used to rest on the hope that "scaffolding usually gets a distinctive
+    // name". A dead PREDICATE breaks that hope by construction: what proves it
+    // dead is that the decision sites re-derive it — under the same name. Here
+    // `resolve-card-anchor.ts` held `const isModeB = link.anchor.targetKind ===
+    // "linkedRange"`, and that line was one of the four hits scoring the
+    // published `isModeB` ALIVE. The hole was anti-correlated with the defect.
+    //
+    // Not expressible through `deadExports` (which reads the real tree), so it
+    // is pinned at the counting function, with the exact text that alibied it.
+    const aliboftheDefect = 'const isModeB = link.anchor.targetKind === "linkedRange";';
+    expect(referenceHits(aliboftheDefect, "isModeB"), "a local const scored as a caller").toBe(0);
+    for (const decl of [
+      "function isModeB(link) { return false; }",
+      "let isModeB = 1;",
+      "var isModeB = 1;",
+      "class isModeB {}",
+    ]) {
+      expect(referenceHits(decl, "isModeB"), `a declaration scored as a caller: ${decl}`).toBe(0);
+    }
+    // A real use still counts, and a declaration does not mask the uses beside it.
+    expect(referenceHits("if (isModeB(link)) return;", "isModeB")).toBe(1);
+    expect(referenceHits("const isModeB = x; if (isModeB) y;", "isModeB")).toBe(1);
+  });
+});
+
+describe("Mode-A/B membership has ONE speller (task 668)", () => {
+  // `_shared/types.ts` says mode is "derived, not declared". It was derived in
+  // twenty-three places: `targetKind === "linkedRange"` hand-written at every
+  // decision site while the published `isModeB` had zero importers — and eight
+  // of those copies additionally tested `textRange` while fifteen did not, so
+  // the subsystem had TWO answers to "what is Mode B?" and no owner. Both
+  // answers now have a name (`isModeB` / `isRangedModeB`) and this leg keeps
+  // the comparison from being re-typed beside them.
+  //
+  // Comments are stripped, strings are not: a prose mention of the derivation
+  // is fine (the doc-comments say `isModeB` now anyway), an operative one is
+  // the violation. Scoped to the whole shipped population, not `src/links/**` —
+  // the three panel hooks that hand-rolled it live in `src/hooks/`, which a
+  // links-only census would have missed exactly as it did.
+  const HAND_ROLLED = /targetKind\s*[!=]==\s*["'`]linkedRange["'`]/;
+
+  /** The ONE file allowed to spell it: the predicate's own body. */
+  const SPELLER = path.join(LINKS, "_shared", "types.ts");
+
+  it("nothing outside the predicate derives Mode B by hand", () => {
+    const offenders: string[] = [];
+    for (const [file, text] of CALLABLE) {
+      if (file === SPELLER || isTestFile(file)) continue;
+      for (const [i, line] of text.split("\n").entries()) {
+        if (HAND_ROLLED.test(line)) {
+          offenders.push(`${path.relative(SRC, file)}:${i + 1} — call isModeB / isRangedModeB`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the leg reads a real population and the speller really spells it", () => {
+    // A membership census that scans nothing, or whose one exemption has gone
+    // stale, is compliance-shaped. Both halves, cheaply.
+    expect(CALLABLE.size).toBeGreaterThan(500);
+    expect(existsSync(SPELLER)).toBe(true);
+    expect(HAND_ROLLED.test(readFileSync(SPELLER, "utf8"))).toBe(true);
   });
 });
 

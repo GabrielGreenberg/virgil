@@ -13,10 +13,12 @@
  * Mode is derived, not declared: an `anchor` link is Mode B iff
  * `anchor.targetKind === "linkedRange"` (the TextObject kind is a
  * mark-backed range). Persistent-node kinds are Mode A. The legacy
- * `textRange` payload is still carried on Mode B links — its presence
- * is implied by `targetKind === "linkedRange"`, but kept as a distinct
- * field so Phase E (multi-paragraph linkedAnchor LaTeX round-trip) can
- * persist the snapshot + anchorId without a separate sidecar shape.
+ * `textRange` payload is still carried on Mode B links — it is EXPECTED
+ * wherever `targetKind === "linkedRange"`, but not guaranteed (a dead-mark
+ * residue can have lost it), which is why membership and payload are two
+ * predicates: `isModeB` and `isRangedModeB`. It is kept as a distinct field
+ * so the multi-paragraph linkedAnchor LaTeX round-trip can persist the
+ * snapshot + anchorId without a separate sidecar shape.
  *
  * Naming asymmetry to note: `LinkKind`'s `"anchor"` value (Link.kind)
  * stays unchanged — it's about "what kind of link is this" (footnote /
@@ -110,17 +112,56 @@ export interface Link {
 }
 
 /** A Mode B anchor link (targets a `linkedRange`). Not a separate runtime
- *  kind — just a type-level refinement. */
+ *  kind — just a type-level refinement.
+ *
+ *  `textRange` is OPTIONAL here, and that is the correction (task 668). The
+ *  first draft required it, while {@link isModeB} — the only narrowing into
+ *  this type — never checked it. The membership question and the payload
+ *  question are genuinely different, and a poisoned `linkedRange` link whose
+ *  `textRange` was dropped is still Mode B: `resolve-card-anchor`'s rung 2b
+ *  exists precisely to heal one. Use {@link isRangedModeB} where the payload
+ *  is what you need. */
 export type ModeBAnchorLink = Link & {
   kind: "anchor";
   anchor: Extract<LinkAnchor, { type: "textObject" }> & {
     targetKind: "linkedRange";
+  };
+};
+
+/** A Mode B anchor link that actually CARRIES its range payload. */
+export type RangedModeBLink = ModeBAnchorLink & {
+  anchor: {
     textRange: NonNullable<Extract<LinkAnchor, { type: "textObject" }>["textRange"]>;
   };
 };
 
+/**
+ * MEMBERSHIP — "is this link Mode B?", asked once.
+ *
+ * The header above says mode is derived, not declared; this is the derivation,
+ * and it is the ONLY place `targetKind === "linkedRange"` may be spelled
+ * (pinned by `link-surface-honesty.test.ts` → "Mode-A/B membership has ONE
+ * speller"). It was published and uncalled while twenty-three sites hand-wrote
+ * the comparison — and eight of those additionally tested `textRange` while
+ * fifteen did not, so "what is Mode B?" had two answers and no owner (task
+ * 668). Both answers are kept, each with a name: this one, and
+ * {@link isRangedModeB}.
+ */
 export function isModeB(link: Link): link is ModeBAnchorLink {
   return link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange";
+}
+
+/**
+ * PAYLOAD — "is this link Mode B *and* carrying its range?"
+ *
+ * The stricter half of the split above: the sites that go on to read
+ * `textRange.anchorId` / `textRange.textSnapshot`. Distinct from
+ * {@link isModeB} on purpose — a link that lost its `textRange` is still a
+ * Mode-B link for membership purposes (the dead-mark residue the resolver's
+ * rung 2b heals), but it has nothing for these callers to read.
+ */
+export function isRangedModeB(link: Link): link is RangedModeBLink {
+  return isModeB(link) && !!link.anchor.textRange;
 }
 
 /** Result of looking up a link's current position in the live editor. */

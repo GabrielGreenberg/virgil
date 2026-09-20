@@ -32,6 +32,7 @@ import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { Link, LinkResolution } from "./_shared/types";
+import { isModeB, isRangedModeB } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
 import {
@@ -52,8 +53,16 @@ import {
 } from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
-export type { Link, LinkAnchor, LinkKind, LinkResolution, LinkTarget, ModeBAnchorLink } from "./_shared/types";
-export { isModeB } from "./_shared/types";
+export type {
+  Link,
+  LinkAnchor,
+  LinkKind,
+  LinkResolution,
+  LinkTarget,
+  ModeBAnchorLink,
+  RangedModeBLink,
+} from "./_shared/types";
+export { isModeB, isRangedModeB } from "./_shared/types";
 // The DOM contract (`DATA_LINK_*`, `linkCardKey`, `parseLinkCardKey`) is NOT
 // re-exported here. It was, and that is how a dead surface hid for three
 // months: a re-export makes a symbol look referenced to every grep while no
@@ -971,6 +980,10 @@ export function restampLinkedAnchorForKind(
 /**
  * Best-effort re-anchor by searching for `snapshot` text in the doc.
  * Used on load for items whose mark was lost across a parse.
+ *
+ * Returns `null` when the snapshot cannot be located — and the uuid-scoped
+ * path's null is NARROWER than the doc-wide one's, which is the thing a caller
+ * must know: see `paragraphUuid` below.
  */
 export function reanchorByText(
   editor: Editor,
@@ -979,8 +992,14 @@ export function reanchorByText(
   preferredAnchorId?: string,
   cardId?: string,
   tintColor?: string | null,
-  // Declared from Chip 3; its uuid-scoped search body lands in Chip 6. Until
-  // then it is accepted-and-ignored (the legacy doc-wide search runs).
+  //  - `paragraphUuid` — the card's stored containing-paragraph uuid. LOAD-
+  //    BEARING, not decorative (task 271): when it resolves to a live node the
+  //    search is SCOPED to that node, which is what disambiguates a snapshot
+  //    that occurs in several paragraphs. The scoping is also EXCLUSIVE — if
+  //    the uuid resolves but the snapshot is not found inside that node, this
+  //    returns `null` and does NOT fall back to the doc-wide search. Pass it
+  //    only when the uuid really is the span's container; pass `undefined` to
+  //    get the legacy doc-wide first-match.
   paragraphUuid?: string,
   // Trailing options bag (added without disturbing the positional callers):
   //  - `linkCardToken` — the EXPLICIT `data-link-card` token (card IDENTITY) to
@@ -997,7 +1016,7 @@ export function reanchorByText(
   let from = -1;
   let to = -1;
 
-  // uuid-scoped path (Chip 6): when a containing-paragraph uuid is supplied
+  // uuid-scoped path: when a containing-paragraph uuid is supplied
   // and resolves to a live node, search ONLY that node's text — disambiguating
   // co-located/duplicate snapshots that the legacy doc-wide first-match would
   // displace. Map the char hit to doc positions over the node's TEXT
@@ -1133,18 +1152,18 @@ export function getLinkedTextObjectIds(card: CardWithLinks): string[] {
   return out;
 }
 
-/** The first Mode B text-range anchor on this card, or null. Cards are
- *  expected to carry at most one Mode B anchor today. */
-export function getTextAnchor(
-  card: CardWithLinks,
+/** The first Mode B text-range anchor in a links array, or null.
+ *
+ *  The array-shaped door, because the MIGRATE path is where this question is
+ *  actually asked: `useCutter` / `useRevisions` / `useReports` each re-typed
+ *  this loop inline over their freshly-migrated `links`, before any card object
+ *  exists to hand {@link getTextAnchor} (task 668). Six copies, three of which
+ *  had drifted into a different spelling of the same test. */
+export function getTextAnchorFromLinks(
+  links: readonly Link[],
 ): { anchorId: string; anchorText: string } | null {
-  const links = card.links ?? [];
   for (const link of links) {
-    if (
-      link.anchor.type === "textObject" &&
-      link.anchor.targetKind === "linkedRange" &&
-      link.anchor.textRange
-    ) {
+    if (isRangedModeB(link)) {
       return {
         anchorId: link.anchor.textRange.anchorId,
         anchorText: link.anchor.textRange.textSnapshot,
@@ -1152,6 +1171,14 @@ export function getTextAnchor(
     }
   }
   return null;
+}
+
+/** The first Mode B text-range anchor on this card, or null. Cards are
+ *  expected to carry at most one Mode B anchor today. */
+export function getTextAnchor(
+  card: CardWithLinks,
+): { anchorId: string; anchorText: string } | null {
+  return getTextAnchorFromLinks(card.links ?? []);
 }
 
 export function hasTextAnchor(card: CardWithLinks): boolean {
@@ -1294,7 +1321,7 @@ export function findParagraphIdBySnapshot(
  * Pure Mode-A reconcile for a single card. Returns a (possibly-rewritten)
  * card and a `changed` flag. UUID-first / snapshot-fallback:
  *
- *   1. For each Mode-A (`targetKind !== "linkedRange"`) link whose
+ *   1. For each Mode-A (`!isModeB`) link whose
  *      `textObjectIds[0]` STILL resolves to a live block: BACKFILL the
  *      snapshot from the live paragraph's text if absent or stale. This
  *      makes legacy snapshot-less links durable going forward, and keeps
@@ -1323,7 +1350,7 @@ export function reconcileModeAAnchors<T extends CardWithLinks>(
   const next: Link[] = links.map((link) => {
     if (link.anchor.type !== "textObject") return link;
     // Mode B is recovered by its own snapshot path — leave it alone.
-    if (link.anchor.targetKind === "linkedRange") return link;
+    if (isModeB(link)) return link;
     const ids = link.anchor.textObjectIds;
     const pid = ids[0];
     if (!pid) return link;
@@ -1400,7 +1427,7 @@ export function isModeAOrphaned(
   let hasModeA = false;
   for (const link of links) {
     if (link.anchor.type !== "textObject") continue;
-    if (link.anchor.targetKind === "linkedRange") continue;
+    if (isModeB(link)) continue;
     for (const pid of link.anchor.textObjectIds) {
       if (!pid) continue;
       hasModeA = true;
@@ -1471,12 +1498,7 @@ export function addTextObjectLink<T extends CardWithLinks>(
   const modeBIdx =
     targetKind === "paragraph"
       ? -1
-      : links.findIndex(
-          (l) =>
-            l.anchor.type === "textObject" &&
-            l.anchor.targetKind === "linkedRange" &&
-            l.anchor.textRange,
-        );
+      : links.findIndex(isRangedModeB);
   if (modeBIdx !== -1) {
     const link = links[modeBIdx];
     if (link.anchor.type !== "textObject") return card;

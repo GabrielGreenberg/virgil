@@ -26,7 +26,7 @@
  * highlight) the chip protects.
  *
  * RE-ANCHORED-HYBRID EXCLUSION: a Mode-B card that ALSO carries a separate
- * clean Mode-A (`targetKind !== "linkedRange"`) link is one the drop re-anchor
+ * clean Mode-A (`!isModeB`) link is one the drop re-anchor
  * relocated — its true home is the Mode-A link, and its old mark anchorId is
  * dead. Re-applying that dead anchorId by text search would re-tint the OLD
  * paragraph (the RC1 reload-revert). Excluded here, RC-A then converts it to a
@@ -50,6 +50,7 @@
  */
 
 import { getTextAnchor, type CardWithLinks, type LinkedAnchorKind } from "../links";
+import { isModeB } from "./types";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import {
   MODE_B_COLLECTIONS,
@@ -66,8 +67,9 @@ import {
  *  - `tintColor`— the kind-derived persistent tint (the theme-accent band for
  *    highlights, `null` otherwise),
  *    re-applied so a highlight's band survives the `.tex` round-trip.
- *  - `paragraphId` — the card's stored containing-paragraph uuid; Chip 6 scopes
- *    the text search to it (declared here so the record shape is stable).
+ *  - `paragraphId` — the card's stored containing-paragraph uuid; `reanchorByText`
+ *    SCOPES its text search to it, so a duplicate snapshot cannot re-anchor at
+ *    the wrong paragraph (task 271).
  *  - `cardId`   — the authoritative owning-card id, carried with the record. The
  *    reconcile does NOT currently derive `linkCard` from it: it preserves the
  *    mark's existing (empty-on-load) `linkCard` and lets the KIND fallback drive
@@ -101,27 +103,20 @@ export type ModeBCardArrays = ModeBBag;
  *  paragraph; RC-A then heals it to a single clean Mode-A link. */
 export function hasSeparateModeALink(card: CardWithLinks): boolean {
   for (const link of card.links ?? []) {
-    if (
-      link.anchor.type === "textObject" &&
-      link.anchor.targetKind !== "linkedRange"
-    ) {
-      return true;
-    }
+    if (link.anchor.type === "textObject" && !isModeB(link)) return true;
   }
   return false;
 }
 
 /** The containing-paragraph uuid the card's Mode-B (`linkedRange`) link carries
- *  in `textObjectIds[0]`, or `undefined`. Chip 6 scopes `reanchorByText`'s text
- *  search to this paragraph; until then it's carried for shape stability. */
+ *  in `textObjectIds[0]`, or `undefined`. `reanchorByText` SCOPES its text
+ *  search to this paragraph when it resolves (task 271) — it is the thing that
+ *  keeps a duplicate snapshot from re-anchoring at the wrong one, and the
+ *  scoping is exclusive (no doc-wide fallback), so a wrong uuid here costs the
+ *  recovery. */
 function modeBParagraphId(card: CardWithLinks): string | undefined {
   for (const link of card.links ?? []) {
-    if (
-      link.anchor.type === "textObject" &&
-      link.anchor.targetKind === "linkedRange"
-    ) {
-      return link.anchor.textObjectIds[0];
-    }
+    if (isModeB(link)) return link.anchor.textObjectIds[0];
   }
   return undefined;
 }
