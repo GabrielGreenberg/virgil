@@ -2,9 +2,12 @@
 
 /**
  * Single owner of the invariant: every `linkedAnchor` mark in the editor
- * doc must back a card alive in one of the anchor-bearing collections
- * (notes, highlights, cutterCards, comments, reportCards, todos). On every
- * change to those collections, walk the doc and strip orphan marks.
+ * doc must back a card alive in one of the Mode-B-bearing collections. Which
+ * collections those are is NOT restated here — it is read from the one SSOT
+ * (`MODE_B_COLLECTIONS` / `forEachModeBCard`, `@/cards/mode-b-collections`), so
+ * this reaper, the in-text hover bridge, the load-time re-apply and the shell's
+ * hovered-anchor resolver cannot disagree the way they did before task 666. On
+ * every change to those collections, walk the doc and strip orphan marks.
  *
  * Dual of `useAnchorHighlightReconciler` — same idempotent-sweep pattern,
  * but the side effect is editor transactions instead of DOM attribute
@@ -19,7 +22,8 @@
 
 import { useLayoutEffect, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
-import { getTextAnchor, removeLinkedAnchor, type CardWithLinks } from "../links";
+import { getTextAnchor, removeLinkedAnchor } from "../links";
+import { forEachModeBCard, type ModeBBag } from "@/cards/mode-b-collections";
 import {
   pendingMarkAnchorIds,
   type PendingMarkCardLike,
@@ -99,60 +103,44 @@ export interface UseLinkedAnchorReconcilerArgs {
    * deletes still reap synchronously (closing the autosave race the macrotask
    * version lost to). */
   ready: boolean;
-  notes:       ReadonlyArray<CardWithLinks>;
-  highlights:  ReadonlyArray<CardWithLinks>;
-  cutterCards: ReadonlyArray<CardWithLinks>;
-  comments:    ReadonlyArray<CardWithLinks>;
-  reportCards: ReadonlyArray<CardWithLinks>;
-  /** Todos carry a Mode-B text-range anchor when created from a selection
-   *  (symmetric with note/cutter/revision). They MUST be in the alive-set:
-   *  without them the next collection sweep reaps a todo's `linkedAnchor`
-   *  as an orphan → phantom-tint break. See the todo Mode-B chip. */
-  todos:       ReadonlyArray<CardWithLinks>;
+  /** Every Mode-B-bearing collection, as the total `ModeBBag`. Totality is the
+   *  data-loss guard: a collection left OUT of the alive-set is a collection
+   *  whose marks the next sweep reaps as orphans (the phantom-tint break that
+   *  the old per-hook list nearly caused for todos, and that the hover bridge's
+   *  narrower copy of the same list did cause for hover). Pass a MEMOIZED bag —
+   *  the alive-set memoizes on its identity. */
+  cards: ModeBBag;
 }
 
 export function useLinkedAnchorReconciler({
   editor,
   ready,
-  notes,
-  highlights,
-  cutterCards,
-  comments,
-  reportCards,
-  todos,
+  cards,
 }: UseLinkedAnchorReconcilerArgs): void {
-  // Memoize on the collection array identities. EditorPane rebuilds
-  // collection wrappers on every render — depending on a wrapper object
-  // literal would re-fire the effect every render. Each hook only produces
-  // a new array when its data actually changed. The alive-set is built from
-  // card stores (O(cards)), never a per-keystroke doc walk.
+  // Memoize on the BAG identity. EditorPane rebuilds collection wrappers on
+  // every render, so the bag it passes is itself memoized on the six
+  // collection-array identities — each hook only produces a new array when its
+  // data actually changed. The alive-set is built from card stores (O(cards)),
+  // never a per-keystroke doc walk.
   const aliveAnchorIds = useMemo(() => {
     const ids = new Set<string>();
-    const add = (cards: ReadonlyArray<CardWithLinks>) => {
-      for (const c of cards) {
-        const ta = getTextAnchor(c);
-        if (ta) ids.add(ta.anchorId);
-      }
-    };
-    add(notes);
-    add(highlights);
-    add(cutterCards);
-    add(comments);
-    add(reportCards);
-    add(todos);
+    forEachModeBCard(cards, (record) => {
+      const ta = getTextAnchor(record);
+      if (ta) ids.add(ta.anchorId);
+    });
     // Pending-AI-change marks live at `appliedChange.anchorId` (NOT a card text
     // anchor), so they must be added explicitly or the in-session sweep would
     // strip an applied suggestion's blue mark as an orphan after load. The
     // applied cards live in `comments` (revisions) + `cutterCards`. Flag-OFF →
     // empty set (no applied cards), so this is a no-op when the feature is off.
     for (const id of pendingMarkAnchorIds([
-      ...(comments as ReadonlyArray<PendingMarkCardLike>),
-      ...(cutterCards as ReadonlyArray<PendingMarkCardLike>),
+      ...(cards.comments as ReadonlyArray<PendingMarkCardLike>),
+      ...(cards.cutterCards as ReadonlyArray<PendingMarkCardLike>),
     ])) {
       ids.add(id);
     }
     return ids;
-  }, [notes, highlights, cutterCards, comments, reportCards, todos]);
+  }, [cards]);
 
   useLayoutEffect(() => {
     if (!editor) return;

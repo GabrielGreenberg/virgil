@@ -256,7 +256,7 @@ describe("RC-B — un-re-anchored Mode-B highlight gets its mark re-applied", ()
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [highlight],
     });
 
@@ -335,7 +335,7 @@ describe("RC-B — overlap last-wins (highlights applied LAST)", () => {
       todoItems: [],
       comments: [revision],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [highlight],
     });
 
@@ -445,7 +445,7 @@ describe("RC-B — re-anchored hybrid is EXCLUDED from re-apply", () => {
       todoItems: result.current.items,
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [],
     });
     expect(applied).toBe(0); // excluded
@@ -512,7 +512,7 @@ describe("RC-B — healthy Mode-B survives the full ordered load (re-apply then 
       todoItems: result.current.items,
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [],
     });
     expect(markedTextFor(editor, "anc-live")).toBe("me here");
@@ -570,7 +570,7 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
         modeBCard("c1", "comment", "a-cut", "cut span"),
         modeBCard("c2", "suggestion", "a-sug", "sug span"),
       ],
-      reports: [
+      reportCards: [
         modeBCard("rp1", "report", "a-rep", "rep span"),
         modeBCard("rq1", "report-request", "a-req", "req span"),
       ],
@@ -600,7 +600,7 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
       todoItems: [modeBCard("t1", "todo", "a-todo", "todo span")],
       comments: [modeBCard("r1", "comment", "a-rev", "rev span")],
       cutterCards: [modeBCard("c1", "comment", "a-cut", "cut span")],
-      reports: [modeBCard("rp1", "report", "a-rep", "rep span")],
+      reportCards: [modeBCard("rp1", "report", "a-rep", "rep span")],
       highlights: [modeBCard("h1", "highlight", "a-hl", "hl span")],
     });
     expect(markedTextFor(editor, "a-note")).toBe("note span");
@@ -646,7 +646,7 @@ describe("RC-B — keystroke sanctity (load-only)", () => {
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [highlight],
     });
     const marksAfterLoad = countLinkedAnchors(editor);
@@ -734,7 +734,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
       todoItems: [],
       comments: [modeBCard("r1", "comment", "anc-rev", "the span")],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [],
     });
 
@@ -778,7 +778,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [modeBCard("h1", "highlight", "anc-hl", "on me")],
     });
 
@@ -816,7 +816,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [modeBCard("h1", "highlight", "anc-hl", "on me")],
     });
 
@@ -861,7 +861,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
       todoItems: [],
       comments: [modeBCard("r1", "comment", "anc-ok", "middle")],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [],
     });
 
@@ -891,7 +891,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [modeBCard("rq1", "report-request", "anc-req", "for a report")],
+      reportCards: [modeBCard("rq1", "report-request", "anc-req", "for a report")],
       highlights: [modeBCard("h1", "highlight", "anc-hl", "unused")],
     });
     // report-request record exists and is ordered before the highlight.

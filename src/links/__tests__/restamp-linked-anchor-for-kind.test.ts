@@ -239,7 +239,7 @@ describe("restampLinkedAnchorForKind — a card morph makes the in-doc mark agre
       todoItems: [],
       comments: [],
       cutterCards: [],
-      reports: [],
+      reportCards: [],
       highlights: [highlightCard("c1", "c1")],
     });
     const reloadTint = records.find((r) => r.anchorId === "c1")?.tintColor;

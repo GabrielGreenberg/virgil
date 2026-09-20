@@ -292,12 +292,14 @@ describe("todo Mode-B — reconciler alive-set wiring", () => {
         useLinkedAnchorReconciler({
           editor,
           ready: true,
-          notes: [],
-          highlights: [],
-          cutterCards: [],
-          comments: [],
-          reportCards: [],
-          todos: props.todos,
+          cards: {
+            notes: [],
+            highlights: [],
+            cutterCards: [],
+            comments: [],
+            reportCards: [],
+            todoItems: props.todos,
+          },
         }),
       { initialProps: { todos } },
     );
@@ -336,12 +338,14 @@ describe("todo Mode-B — reconciler alive-set wiring", () => {
       useLinkedAnchorReconciler({
         editor,
         ready: true,
-        notes: [],
-        highlights: [],
-        cutterCards: [],
-        comments: [],
-        reportCards: [],
-        todos: [],
+        cards: {
+          notes: [],
+          highlights: [],
+          cutterCards: [],
+          comments: [],
+          reportCards: [],
+          todoItems: [],
+        },
       }),
     );
     await act(async () => {
@@ -464,12 +468,14 @@ describe("todo Mode-B — reload restore via applyLinkedAnchors", () => {
       useLinkedAnchorReconciler({
         editor: editor2,
         ready: true,
-        notes: [],
-        highlights: [],
-        cutterCards: [],
-        comments: [],
-        reportCards: [],
-        todos,
+        cards: {
+          notes: [],
+          highlights: [],
+          cutterCards: [],
+          comments: [],
+          reportCards: [],
+          todoItems: todos,
+        },
       }),
     );
     await act(async () => {

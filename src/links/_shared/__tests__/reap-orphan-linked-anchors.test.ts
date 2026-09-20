@@ -176,10 +176,12 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
   // loading, so the alive-set is transiently EMPTY. A sweep fired then would
   // reap EVERY live annotation. The `ready` gate (= allCardSidecarsLoaded &&
   // docContentReady) must suppress the sweep until the alive-set is authoritative.
-  function emptyCollections() {
+  // The TOTAL Mode-B bag (task 666) — every slot present, all empty. Totality
+  // is the type's job now, so a slot can no longer be silently dropped here.
+  function emptyBag() {
     return {
       notes: [], highlights: [], cutterCards: [],
-      comments: [], reportCards: [], todos: [],
+      comments: [], reportCards: [], todoItems: [],
     };
   }
 
@@ -200,7 +202,7 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
       useLinkedAnchorReconciler({
         editor,
         ready: false,
-        ...emptyCollections(),
+        cards: emptyBag(),
       }),
     );
     // Both marks SURVIVE — the gate prevented the empty-set sweep.
@@ -236,7 +238,7 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
       useLinkedAnchorReconciler({
         editor,
         ready: false,
-        ...emptyCollections(),
+        cards: emptyBag(),
       }),
     );
     expect(hasMark(editor, "le1")).toBe(true);
@@ -262,7 +264,8 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
       useLinkedAnchorReconciler({
         editor,
         ready: true,
-        ...emptyCollections(),
+        cards: {
+        ...emptyBag(),
         // a single live note whose Mode-B anchor is k1.
         notes: [
           {
@@ -283,6 +286,7 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
             ],
           },
         ],
+        },
       }),
     );
     expect(hasMark(editor, "k1")).toBe(true); // live card → survives

@@ -7,7 +7,7 @@
  * Two flows:
  *
  *   1. **mouseover/mouseout** on `.linked-anchor[data-link-id]` (Mode B
- *      text-range marks for notes / cuts / revisions) and inline atoms
+ *      text-range marks for EVERY Mode-B kind) and inline atoms
  *      with `[data-link-card]` (footnote / citation atoms) — call
  *      `setHoveredEntity({ id, kind })`. One listener handles every kind
  *      generically; we read identity straight off the DOM.
@@ -18,16 +18,24 @@
  *      so the click behaves identically to clicking the corresponding
  *      margin icon.
  *
- * The `anchorIdMap` is built from notes/cutterCards/comments via
- * `getTextAnchor`. For inline atoms we don't need the map — the
- * `data-link-card` attribute carries `kind:id` directly.
+ * The `anchorIdMap` is built by walking the ONE Mode-B collection SSOT
+ * (`forEachModeBCard`, `@/cards/mode-b-collections`) via `getTextAnchor` — not
+ * a list of collections hand-kept here. Until task 666 this hook carried its
+ * own four-collection list while the reconcilers carried six, so a highlight's
+ * tinted span and a selection-created todo's span were painted but INERT:
+ * nothing on hover, nothing on click. The header's "one listener handles every
+ * kind generically" was true of the DOM read and false of the kind set. It is
+ * now true of both: the hook takes the TOTAL `ModeBBag`, so a narrow argument
+ * no longer type-checks.
+ *
+ * For inline atoms we don't need the map — the `data-link-card` attribute
+ * carries `kind:id` directly.
  */
 
 import { useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types";
 import { getTextAnchor } from "../links";
-import { cardKindFromRecord } from "@/cards/predicates";
+import { forEachModeBCard, type ModeBBag } from "@/cards/mode-b-collections";
 import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import {
   DATA_LINK_CARD,
@@ -43,19 +51,17 @@ interface AnchorIdEntry {
 
 export interface UseTextHoverBridgeArgs {
   editor: Editor | null;
-  notes: ReadonlyArray<UserNote>;
-  cutterCards: ReadonlyArray<CutterCard>;
-  comments: ReadonlyArray<RevisionCard>;
-  reportCards: ReadonlyArray<ReportItem>;
+  /** Every Mode-B-bearing collection, as the total `ModeBBag`. Pass a MEMOIZED
+   *  bag (EditorPane builds one and shares it with the orphan reaper and the
+   *  load re-apply): the anchor map memoizes on this object's identity, so a
+   *  fresh literal per render would rebuild it per render. */
+  cards: ModeBBag;
   setHoveredEntity: (id: string | null, kind: EntityKind | null) => void;
 }
 
 export function useTextHoverBridge({
   editor,
-  notes,
-  cutterCards,
-  comments,
-  reportCards,
+  cards,
   setHoveredEntity,
 }: UseTextHoverBridgeArgs): void {
   // Map: anchorId -> { entityId, kind }. Built once per entity-collection
@@ -63,27 +69,13 @@ export function useTextHoverBridge({
   // without re-subscribing on every entity edit.
   const anchorIdMap = useMemo(() => {
     const m = new Map<string, AnchorIdEntry>();
-    for (const n of notes) {
-      const a = getTextAnchor(n);
-      if (a) m.set(a.anchorId, { entityId: n.id, kind: "note" });
-    }
-    for (const c of cutterCards) {
-      const a = getTextAnchor(c);
-      if (!a) continue;
-      m.set(a.anchorId, { entityId: c.id, kind: cardKindFromRecord(c, "cutter") });
-    }
-    for (const r of comments) {
-      const a = getTextAnchor(r);
-      if (!a) continue;
-      m.set(a.anchorId, { entityId: r.id, kind: cardKindFromRecord(r, "revisions") });
-    }
-    for (const rep of reportCards) {
-      const a = getTextAnchor(rep);
-      if (!a) continue;
-      m.set(a.anchorId, { entityId: rep.id, kind: cardKindFromRecord(rep, "reports") });
-    }
+    forEachModeBCard(cards, (record, kind) => {
+      const a = getTextAnchor(record);
+      if (!a) return;
+      m.set(a.anchorId, { entityId: record.id, kind });
+    });
     return m;
-  }, [notes, cutterCards, comments, reportCards]);
+  }, [cards]);
 
   const mapRef = useRef(anchorIdMap);
   mapRef.current = anchorIdMap;

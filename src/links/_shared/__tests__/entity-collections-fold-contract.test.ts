@@ -81,9 +81,11 @@ describe("EntityCollections fold onto CardFloatCtx (WS5)", () => {
   it("the footnote/citation inline-atom kinds resolve to undefined (not in collections)", () => {
     const empty: EntityCollectionSlots = {
       notes: [],
+      highlights: [],
       cutterCards: [],
       comments: [],
       todoItems: [],
+      reportCards: [],
       archiveSnippets: [],
       examples: [],
     };

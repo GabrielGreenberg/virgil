@@ -64,12 +64,12 @@ export function findEntity(
 ): { id: string; kind?: string; links?: Link[] } | undefined {
   switch (ref.kind) {
     case "note":      return c.notes.find((e) => e.id === ref.id);
-    case "highlight": return c.highlights?.find((e) => e.id === ref.id);
+    case "highlight": return c.highlights.find((e) => e.id === ref.id);
     case "todo":      return c.todoItems.find((e) => e.id === ref.id);
     case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
     case "report":
     case "report-request": {
-      const card = c.reportCards?.find((e) => e.id === ref.id);
+      const card = c.reportCards.find((e) => e.id === ref.id);
       return card && cardKindFromRecord(card, "reports") === ref.kind ? card : undefined;
     }
     // `ExampleInfo` keys on `exampleId`, not `id` (the one-example carve-out);
