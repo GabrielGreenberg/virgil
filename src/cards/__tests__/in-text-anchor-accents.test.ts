@@ -34,6 +34,7 @@ import {
   LEGACY_TOKEN_CROSSWALK,
   accentTokenFromTint,
   defaultTintForLinkedAnchorKind,
+  PENDING_AI_TINT,
 } from "@/cards/legacy-token-crosswalk";
 import { DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
 import { cssCommentsStripped } from "@/lib/__tests__/_source-scan";
@@ -163,13 +164,16 @@ describe("#27 tint channel — the default band derives from the live accent", (
 
   /** Every `linkedAnchor.kind` the tint SSOT can be asked about: the spine
    *  kinds (whose mark-attr token equals the spine kind for all but revision)
-   *  plus the legacy `revision`/`cut` aliases and the two render sentinels. */
+   *  plus the legacy `revision`/`cut` aliases and the one render sentinel.
+   *  (`pending-ai-request` is NOT here. It was the open-request wash's mark
+   *  kind; task 667 made that wash a decoration, so no mark of that kind is
+   *  ever stamped and the tint SSOT is never asked about it — its hue lives on
+   *  as the shared `PENDING_AI_TINT` constant instead.) */
   const MARK_KINDS = [
     ...Object.keys(LEGACY_TOKEN_CROSSWALK),
     "revision",
     "cut",
     "pending-ai-change",
-    "pending-ai-request",
   ];
 
   it("the highlight band is a sentinel naming a real accent token — never a frozen hex", () => {
@@ -206,15 +210,16 @@ describe("#27 tint channel — the default band derives from the live accent", (
     expect(sentinels).toBeGreaterThan(0);
   });
 
-  it("the pending-AI bands stay per-instance literal hues", () => {
-    // These are genuinely per-instance (one shared light blue for BOTH the
-    // applied-change and open-request marks, deliberately — Gabriel 2026-07-03),
-    // not a panel theme, so they must keep riding the inline `--tint-color`.
-    for (const kind of ["pending-ai-change", "pending-ai-request"]) {
-      const tint = defaultTintForLinkedAnchorKind(kind);
-      expect(tint).toBe("#bfdbfe");
-      expect(accentTokenFromTint(tint)).toBeNull();
-    }
+  it("the pending-AI band stays a per-instance literal hue", () => {
+    // Genuinely per-instance (the light blue shared with the open-request wash,
+    // deliberately — Gabriel 2026-07-03), not a panel theme, so it must keep
+    // riding the inline `--tint-color`.
+    const tint = defaultTintForLinkedAnchorKind("pending-ai-change");
+    expect(tint).toBe(PENDING_AI_TINT);
+    expect(accentTokenFromTint(tint)).toBeNull();
+    // The retired `pending-ai-request` MARK kind answers nothing now: the wash
+    // it named is a decoration painted from `PENDING_AI_TINT` directly.
+    expect(defaultTintForLinkedAnchorKind("pending-ai-request")).toBeNull();
   });
 
   it("no kind but highlight paints a default band", () => {

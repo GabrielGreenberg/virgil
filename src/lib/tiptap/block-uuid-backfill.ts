@@ -133,7 +133,7 @@ import { generateShortId } from "@/lib/uuid";
 //   2. A BLOCK THAT STOPPED BEING A TEXT OBJECT HANDS ITS IDENTITY UP.
 //      Result-shaped, so it needs no step at all: a `paragraph` that is now a
 //      DEFERRED inner paragraph still carrying a uuid has an identity nothing
-//      can reach — `anchorableUuidAt` and `resolveAnchorableNode` both skip it
+//      can reach — `resolveAnchorableNode` skips it
 //      and `assignUuids` strips it on the next save. If its container is BARE,
 //      the container is the text object now and takes the id, and the block is
 //      cleared so there is never a second live holder. Being result-shaped is
@@ -726,7 +726,7 @@ function planBackfill(
         // uuids out of the serialized .tex).
         if (isDeferredInnerParagraph(node, parent)) {
           // …and if it still CARRIES one, that identity is already unreachable
-          // (`anchorableUuidAt` skips it, `assignUuids` strips it on the next
+          // (`resolveAnchorableNode` skips it, `assignUuids` strips it on the next
           // save). The O(depth) resolve runs only on this rare shape — a
           // paragraph is deferred AND uuid-bearing only just after something
           // wrapped it, or after an UNDO put it back inside the container it
