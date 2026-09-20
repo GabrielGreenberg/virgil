@@ -76,8 +76,10 @@ export const MARGIN_OPPOSITE: Record<MarginSide, MarginSide> = {
   bottom: "top",
 };
 
-// Per-side minimum padding when the marginalia marker lane is NOT reserved
-// (reading modes that hide markers: zen + the read-only Library Reader).
+// Per-side minimum padding when the marginalia marker lane is NOT reserved —
+// i.e. zen (which hides the markers) and a compressed code-split (where the
+// 48px comfort cap wins). NOT the read-only Library Reader: it hosts the lane
+// like the editor (task 671).
 // Right and top/bottom floor low so the slider can drive the prose nearly to
 // the pod edge — the residual ~8px gap is the irreducible --pod-cap-inner
 // rounded-corner arc, not slider-controllable padding. All four cap at
@@ -213,11 +215,15 @@ interface UseMarginEditOpts {
   viewPrefs: MarginEditViewPrefs | null | undefined;
   /**
    * True when the marginalia marker lane is rendered and must be reserved —
-   * the editor with the Marginalia toggle on, outside zen (backlog #8). When
+   * a pane that paints markers (the Marginalia toggle on, outside zen —
+   * the editor AND the Library Reader), outside a compressed code-split. When
    * true, the horizontal margin drag floors at `MARGIN_MIN_WITH_MARKERS` so a
-   * drag can't shrink the margin below the marker lane. False in reading modes
-   * that hide markers (zen, read-only Library Reader), which keep full margin
-   * freedom via the lower `MARGIN_MIN`. Defaults to false (no extra floor).
+   * drag can't shrink the margin below the marker lane. False where no markers
+   * are painted (zen, or the master toggle off) and in a compressed code-split,
+   * which keep full margin freedom via the lower `MARGIN_MIN`. The caller must
+   * pass `resolveMarginaliaLane(...).reserved` — the SAME resolution that
+   * decides whether an icon is painted at all (task 671), never a second
+   * expression of it. Defaults to false (no extra floor).
    */
   marginaliaLaneReserved?: boolean;
 }

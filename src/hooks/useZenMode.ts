@@ -115,8 +115,9 @@ function _subscribe(listener: () => void) {
  * `floor` is the right-margin geometry min-floor (backlog #8): the smallest
  * margin that still fully reserves the marginalia marker lane. It is applied
  * ONLY WHEN MARKERS ARE VISIBLE. Zen mode is distraction-free reading and
- * always hides the marginalia margins (see this hook's docstring), so the
- * marker lane is never live here — the setters below pass the default
+ * hides the marginalia markers — a claim this comment made for a year before
+ * `resolveMarginaliaLane` made it true (task 671) — so the marker lane is
+ * never live here; the setters below pass the default
  * `MIN_MARGIN` (0) and zen keeps its full freedom down to a zero margin, the
  * regression the floor must NOT cause in reading modes. The parameter is
  * threaded so the gate is explicit (and so a future zen-with-markers mode
