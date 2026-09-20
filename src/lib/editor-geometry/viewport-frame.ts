@@ -20,6 +20,7 @@
  */
 
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { resolveMarginEm } from "@/text-objects/block-frame";
 import { handleLaneFloor } from "@/text-objects/handle-layout";
 
 export interface EditorViewportFrame {
@@ -37,7 +38,9 @@ export interface EditorViewportFrame {
    *  narrow-viewport FLOOR for handle placement (`editorColumnLeft −
    *  marginInset`), applied in src/text-objects/handle-layout.ts. (Handles
    *  otherwise hug each block's measured marker via block-frame.ts; this is
-   *  just the off-screen-left clamp.) Read here so JS and CSS share one knob. */
+   *  just the off-screen-left clamp.) Read here so JS and CSS share one knob —
+   *  and read through `resolveMarginEm`, the one `--margin-*` interpreter, so
+   *  the knob's px / em / rem spelling is the stylesheet's business (task 661). */
   marginInset: number;
   /** `.ProseMirror`'s own rect.left — the editor COLUMN's outside-left edge
    *  (`contentLeft` minus the editor's padding-left). The reference the
@@ -116,6 +119,10 @@ export interface EditorViewportFrame {
 }
 
 const DEFAULT_MARGIN_INSET = 22;
+/** Em base used only if the editor's own `font-size` is unreadable (SSR / a
+ *  stub declaration). The shipped token is a px literal, so this rung is
+ *  forward-compat: it is what makes the token's SPELLING a free variable. */
+const DEFAULT_MARGIN_INSET_EM_BASE_PX = 16;
 
 export const EMPTY_VIEWPORT_FRAME: EditorViewportFrame = {
   editorEl: null,
@@ -174,12 +181,21 @@ export function computeViewportFrame(
   const editorRight = rect.right - padRight;
   const scrollTop = scrollRect.top;
   const scrollBottom = scrollRect.bottom;
-  const insetRaw = cs.getPropertyValue("--margin-col-handle-inset").trim();
-  const parsedInset = parseFloat(insetRaw);
-  const marginInset =
-    Number.isFinite(parsedInset) && parsedInset > 0
-      ? parsedInset
-      : DEFAULT_MARGIN_INSET;
+  // Through the ONE `--margin-*` interpreter (task 661), not a hand `parseFloat`:
+  // a custom property's `em` is NOT resolved by `getComputedStyle` (it returns
+  // the literal "1.375em"), and `parseFloat` answers `1.375` — a finite,
+  // positive number that passes a naive guard and silently collapses this
+  // distance to nothing. It is the grab-handle placement FLOOR *and* the left
+  // edge of the hover zone that reveals the handle (task 526, `handleLaneFloor`),
+  // so the collapse would clamp handles onto the prose and make the strip that
+  // keeps them alive vanish as the user reached for one. The em base is the
+  // editor's own font — the same `cs` this frame already holds, so no extra read.
+  const marginInset = resolveMarginEm(
+    cs,
+    parseFloat(cs.fontSize) || DEFAULT_MARGIN_INSET_EM_BASE_PX,
+    "--margin-col-handle-inset",
+    DEFAULT_MARGIN_INSET,
+  );
   // Task 526 — ONE expression, read by the placement floor and by the zone.
   // See `handleLaneFloor`'s docstring for the two-table bug this retires.
   const editorColumnLeft = rect.left;

@@ -119,6 +119,42 @@ describe("computeViewportFrame", () => {
     expect(frame!.toPortalCoords(100, 50)).toEqual({ x: 20, y: 20 });
   });
 
+  /**
+   * Task 661 — `--margin-col-handle-inset` is the narrow-viewport FLOOR for
+   * handle placement AND the left edge of the hover zone that reveals a handle
+   * (one expression, `handleLaneFloor`, task 526). It used to be the one
+   * `--margin-*` token read by a hand `parseFloat` instead of through
+   * `resolveMarginEm`, and `getComputedStyle` does NOT resolve a custom
+   * property's `em`: it hands back the literal `"1.375em"`, which `parseFloat`
+   * turns into `1.375` — finite, positive, so the 22px fallback never fires
+   * and the lane collapses onto the prose. Silent: no NaN, no error. The token
+   * sits three lines below two siblings authored in `em`, so the spelling is a
+   * live possibility, not a hypothetical.
+   */
+  it("resolves an `em` spelling of --margin-col-handle-inset against the editor font", () => {
+    const { editorEl } = makeEditorEl();
+    editorEl.style.fontSize = "16px";
+    editorEl.style.setProperty("--margin-col-handle-inset", "1.375em");
+    const frame = computeViewportFrame(editorEl)!;
+    expect(frame.marginInset).toBeCloseTo(22, 5); // 1.375 × 16
+    expect(frame.marginInset, "the hand-parse answered the raw factor").not.toBeCloseTo(1.375, 5);
+    // The lane the floor and the hover zone share opens at editorLeft − inset.
+    expect(frame.containsHoverZone(100 - 21, 100)).toBe(true);
+    expect(frame.containsHoverZone(100 - 23, 100)).toBe(false);
+  });
+
+  it("scales that em token with a larger editor font, and still honors px", () => {
+    const { editorEl } = makeEditorEl();
+    editorEl.style.fontSize = "24px";
+    editorEl.style.setProperty("--margin-col-handle-inset", "1.375em");
+    expect(computeViewportFrame(editorEl)!.marginInset).toBeCloseTo(33, 5);
+    editorEl.style.setProperty("--margin-col-handle-inset", "30px");
+    expect(computeViewportFrame(editorEl)!.marginInset).toBeCloseTo(30, 5);
+    // An unreadable token still falls back to the shipped 22.
+    editorEl.style.setProperty("--margin-col-handle-inset", "junk");
+    expect(computeViewportFrame(editorEl)!.marginInset).toBeCloseTo(22, 5);
+  });
+
   it("equality: identical re-measures bail; a moved edge does not", () => {
     const { editorEl } = makeEditorEl();
     const a = computeViewportFrame(editorEl)!;

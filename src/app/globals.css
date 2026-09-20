@@ -319,6 +319,16 @@
          handle-layout.ts — which is ALSO the left edge of the grab-handle
          HOVER ZONE, because the zone that reveals a handle is exactly the
          lane a handle may occupy (task 526).
+     Since task 661 every one of them is read through the SINGLE interpreter
+     `resolveMarginEm` (text-objects/block-frame.ts), which knows the px / em /
+     rem ladder and takes each token's sign policy as an argument (the chevron
+     OFFSET is legitimately negative; the widths and insets are distances). So
+     the SPELLING of any --margin-* token here is a free variable: re-authoring
+     one in em or rem is a stylesheet change with no code change, the way
+     --margin-handle-gap / --margin-track-width already are. Do NOT add a
+     hand parseFloat for a new one — getComputedStyle returns the LITERAL
+     "1.375em" and parseFloat answers 1.375, which passes a > 0 guard and
+     silently collapses the distance.
      See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
   --margin-col-chevron-width: 14px;
