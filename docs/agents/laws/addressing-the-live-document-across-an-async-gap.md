@@ -255,3 +255,52 @@ that asymmetry is the registry's, and it is why this cannot be an unconditional
 id lookup.
 
 CI: `drop-commit-seam.test.ts`.
+
+---
+
+## The winner half (task 664) — a record that names a CATEGORY where its consumer needs an IDENTITY
+
+`CardAnchorResolution` is the anchor-recovery SSOT's answer to "where is this
+card anchored NOW?". It reported which LADDER RUNG and which MODE produced the
+binding — and the one mutator that has to rewrite the winning link,
+`relocateBySnapshot`, needed to know WHICH LINK. It re-derived that from the
+mode, and its own comment admitted the guess ("Re-derive by mode so we rewrite
+the right one"). The re-derivation of an identity from a category is always the
+same shape: a `map` over EVERYTHING in the category. So a card anchored to two
+paragraphs, each link carrying its own `paragraphSnapshot`, both uuids dead —
+which is not exotic, it is the `%!v:` round-trip race, and that race kills
+uuids doc-wide — came back with BOTH links pointing at whichever paragraph the
+FIRST snapshot matched. The second link then sat with a foreign pid beside its
+own untouched snapshot; the next load's backfill canonicalised the duplicate,
+`card-anchor-rows` deduped the rows, and the card's second marker and its
+detach affordance were gone.
+
+The record was over-specified in the other direction at the same moment:
+`confidence` (derivable from `source`) and `liveAnchorId` (whose docstring
+promised a mark re-apply no caller performs — the relocating mutator DROPS the
+`textRange`) each had zero production readers. Two fields nothing read, and
+not the one field the mutator needed. The fix is one field, `linkIndex`, set by
+every resolving rung: everything the deleted pair carried is then reachable
+THROUGH the winner (`card.links[res.linkIndex]?.anchor.textRange?.anchorId`),
+which is also why the pair could be deleted rather than merely left alone.
+
+Underneath it sat the shape that made the guess necessary: "anchored to N
+paragraphs" had two canonical spellings — one link × N ids
+(`migrate-card.ts`) and N links × one id (`derivedLinksForCard`, and every
+live write) — and neither had a consumer that read all of it. Against the
+first, rung 1 and `isModeAOrphaned` read `textObjectIds[0]` and called it "the
+card's anchor", orphaning a card whose first pid died and whose second was
+alive, while rung 2b and `getLinkedTextObjectIds` already iterated. Migration
+now emits the N-links shape from both branches, so the id list is single by
+construction and the `[0]` sites that remain are WRITERS of a link's primary
+paragraph — the one its single `paragraphSnapshot` pins — enumerated by exact
+count, alias chains chased, in the census below.
+
+Two notes the census itself had to learn. A per-FILE allowlist lets a file
+already on the list smuggle in one more, so the census pins a COUNT. And
+`codeOnly` blanks template literals, which is where `makeAnchorLink` mints its
+link id from the first pid — a census blind to a live site in the file it
+polices is the hole, not the coverage; read with strings KEPT.
+
+CI: `mode-a-anchor-shape-census.test.ts`, `resolve-card-anchor.test.ts`,
+`migrate-card.test.ts`.
