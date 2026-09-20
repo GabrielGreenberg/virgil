@@ -52,6 +52,14 @@ import {
   resolveFirstLineTarget,
 } from "@/lib/text-metrics";
 import { FOLD_CHEVRON_NODE_TYPES } from "@/lib/node-attr-sets";
+// The LEFT margin's lane SSOT — the fold-chevron column is one of its bands
+// (task 670), so the token fallbacks below are read from it rather than
+// restated. Type-only + two number consts; no cycle (marginalia.ts imports
+// nothing from text-objects).
+import {
+  MARGIN_COL_CHEVRON_OFFSET,
+  MARGIN_COL_CHEVRON_WIDTH,
+} from "@/lib/marginalia";
 
 /**
  * Per-block geometry, all in VIEWPORT coordinates — the ONE source every
@@ -166,9 +174,13 @@ export interface BlockFrame {
    * `--margin-col-chevron-width`, a px column measured from the block's own
    * left edge), and the grab handle takes what remains inboard of it — its
    * resting position is clamped there and its hit/hover halo is capped there
-   * (`handle-layout.ts#resolveHandleLane`). That is the LEFT margin's reading
-   * of the lane law the right margin already states (`resolveRightLane`,
-   * docs/agents/laws/editor-geometry.md → "The ordering half").
+   * (`handle-layout.ts#resolveHandleLane`). Since task 670 that lane is STATED
+   * rather than restated here: `LEFT_LANE_BANDS` / `resolveLeftLane` in
+   * `@/lib/marginalia` seat the chevron column beside the marker columns, and
+   * the marker grid yields to it (docs/agents/laws/editor-geometry.md → "The
+   * opposite-anchors half"). This function is the per-block MEASUREMENT of the
+   * column that list reserves — the two differ only by the em scaling the
+   * token gets against this block's own font.
    *
    * Reserved per ROW rather than app-wide, and the gate is a KIND
    * ({@link FOLD_CHEVRON_NODE_TYPES}) rather than a DOM probe, for the reason
@@ -286,11 +298,15 @@ function firstLineRectOf(target: HTMLElement): DOMRect {
  *  20px). */
 const DEFAULT_HANDLE_GAP_PX = 10;
 const DEFAULT_TRACK_WIDTH_PX = 20;
-/** Fallbacks for the fold-chevron column when the tokens can't be read —
- *  mirrors `--margin-col-chevron` / `--margin-col-chevron-width` in
- *  globals.css. See {@link resolveChevronColumnRight}. */
-const DEFAULT_CHEVRON_OFFSET_PX = -44;
-const DEFAULT_CHEVRON_WIDTH_PX = 14;
+/** Fallbacks for the fold-chevron column when the tokens can't be read. Taken
+ *  from the LEFT-LANE SSOT (`@/lib/marginalia`), which is where the chevron's
+ *  column is declared as a band beside the marker columns (task 670) — NOT
+ *  re-typed here. `globals.css` authors the live token and
+ *  `marginalia-left-margin-geometry.test.ts` pins the stylesheet to these same
+ *  constants, so all three spellings are one number. See
+ *  {@link resolveChevronColumnRight}. */
+const DEFAULT_CHEVRON_OFFSET_PX = MARGIN_COL_CHEVRON_OFFSET;
+const DEFAULT_CHEVRON_WIDTH_PX = MARGIN_COL_CHEVRON_WIDTH;
 /** Em base a caller that supplies none falls back to — the editor's nominal
  *  font-size. Unused while both chevron tokens are px literals; it exists so a
  *  direct caller (the hover-zone suite) need not invent a font for a token

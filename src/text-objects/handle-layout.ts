@@ -185,10 +185,14 @@ export interface HandleLane {
  *      `\part`-sized heading — whose em-scaled gap otherwise puts its 12px box
  *      3px into the 14px chevron — cannot steal the chevron's clicks, and
  *      neither can its halo (`applyHitCaps` caps at the same
- *      {@link HandleLane.minLeft}). This is the LEFT margin's reading of the
- *      lane law the right margin already states (`resolveRightLane`,
- *      docs/agents/laws/editor-geometry.md → "The ordering half"): the outboard occupant places first,
- *      and the inboard one takes what remains.
+ *      {@link HandleLane.minLeft}). This is the handle's reading of the LEFT
+ *      lane law (`LEFT_LANE_BANDS` / `resolveLeftLane` in `@/lib/marginalia`,
+ *      docs/agents/laws/editor-geometry.md → "The opposite-anchors half"): the
+ *      outboard occupant places first, and the inboard one takes what remains.
+ *      The handle reads the chevron column as MEASURED (`BlockFrame.
+ *      chevronRight`, resolved per block against that block's font) rather than
+ *      from the lane list's px band, because its reach is em-scaled — the lane
+ *      list states the column's RESERVATION, this states where it landed.
  */
 export function resolveHandleLane(input: HandleLayoutInput): HandleLane {
   const anchorRight = input.columnRight ?? input.markerLeft - input.gapPx;
