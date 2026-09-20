@@ -80,6 +80,51 @@ function colX(side: "left" | "right", col: number): number {
 }
 
 /**
+ * Make one node's measurements USABLE, or refuse them — the walk's
+ * PRECONDITION gate (task 673).
+ *
+ * `computeMarkerPositions` is a pure arithmetic function over
+ * `AnchorNodeMetrics`, and its arithmetic quietly assumed two properties the
+ * type does not state and the producer does not guarantee: that every metric
+ * is a real number, and that `lineCount` is a whole one. Neither held by
+ * construction. `resolveLineHeightPx` (`text-metrics.ts`) returns
+ * `fontSizePx * 1.2` unguarded in BOTH branches, so a non-finite font size
+ * propagates straight into `lineHeight`; and `lineCount` is integral only
+ * because `measureBlock` happens to `Math.round` it today.
+ *
+ * Both were SIDE-WIDE failures, not node-wide ones, which is the actual
+ * defect: one NaN `lineHeight` makes `frontier` NaN for every remaining
+ * marker on that side (each gets `y: NaN`, React drops the `top` style, and
+ * they pile at the container origin), and `push = NaN > DRIFT` is false so
+ * the fold never fires to rescue them either. A fractional `lineCount`
+ * renders the "+K" pill at a fractional COLUMN, on top of a marker that is
+ * then listed twice — once in the grid, once in the pill's popover.
+ *
+ * So the gate is per NODE and its refusal is the one the function already
+ * handles correctly: `null`, exactly as for a block the registry has not
+ * measured. One bad measurement costs one node's markers, never the side.
+ */
+function sanitizeMetrics(
+  node: AnchorNodeMetrics | null,
+): AnchorNodeMetrics | null {
+  if (!node) return null;
+  if (
+    !Number.isFinite(node.top) ||
+    !Number.isFinite(node.domTop) ||
+    !Number.isFinite(node.height) ||
+    !Number.isFinite(node.lineHeight)
+  )
+    return null;
+  // Capacity is a count of CELLS, so it is integral or it is meaningless.
+  const lineCount = Number.isFinite(node.lineCount)
+    ? Math.max(1, Math.floor(node.lineCount))
+    : 1;
+  // Identity is preserved where nothing had to be fixed — the common path
+  // allocates nothing and stays `===` to what the registry handed out.
+  return lineCount === node.lineCount ? node : { ...node, lineCount };
+}
+
+/**
  * Compute final pixel positions for all margin markers using the
  * line-aligned grid system.
  *
@@ -138,6 +183,18 @@ export function computeMarkerPositions(
     items: MarginaliaMarker[];
   }
   const groups = new Map<string, NodeGroup>();
+  // One gated lookup per UUID, memoized: `getMetrics` is consulted once per
+  // node rather than once per marker, and `sanitizeMetrics` cannot hand two
+  // markers on the same node two different answers.
+  const gated = new Map<string, AnchorNodeMetrics | null>();
+  const resolveNode = (uuid: string): AnchorNodeMetrics | null => {
+    let n = gated.get(uuid);
+    if (n === undefined) {
+      n = sanitizeMetrics(getMetrics(uuid));
+      gated.set(uuid, n);
+    }
+    return n;
+  };
   for (const m of markers) {
     // Task 410 — an UNANCHORED marker is not a lane occupant at all, so it is
     // skipped BEFORE the side and the lane regime are even asked. Pre-410 it
@@ -173,8 +230,10 @@ export function computeMarkerPositions(
     // wrongly said a two-column grid had none of.
     if (laneCols[side] <= 0) continue;
 
-    const node = getMetrics(m.textObjectId);
-    if (!node) continue; // anchor TextObject not visible / not yet measured
+    const node = resolveNode(m.textObjectId);
+    // Not visible, not yet measured, or measured into something the walk
+    // cannot use (`sanitizeMetrics`) — all three are the same fact here.
+    if (!node) continue;
 
     const key = `${m.textObjectId}|${side}`;
     let g = groups.get(key);
@@ -214,13 +273,24 @@ export function computeMarkerPositions(
   //  - It is UNIFORM over intra- and inter-node rows. A user looking at two
   //    overlapping icons does not know (or care) whether they belong to one
   //    block or two, and the walk does not have to: it asks only "does this row
-  //    clear the one above it?". A node whose own line pitch is tighter than an
-  //    icon (18px small print) therefore stops self-overlapping too, at the cost
-  //    of its lower rows drifting off their lines — which is the right trade,
-  //    since line alignment that overlaps is not alignment.
-  //  - It changes NOTHING where nothing collides. `MARGINALIA_ROW_MIN_GAP` is
-  //    the gap the canonical 24px line already leaves around a 22px icon, so an
-  //    uncrowded document's cells come out byte-identical to the pre-366 grid.
+  //    clear the one above it?". A node whose own line pitch is tighter than
+  //    the row stride (24px = icon + min gap) therefore stops self-overlapping
+  //    too, at the cost of its lower rows drifting off their lines — which is
+  //    the right trade, since line alignment that overlaps is not alignment.
+  //    That drift is BOUNDED: since task 673 the walk asks the drift bound at
+  //    every row, not only at row 0, and a node's grid simply ends at the first
+  //    row it cannot place on its line — the surplus rides the node's own "+K"
+  //    pill.
+  //  - It changes nothing where nothing collides, AT A PITCH OF 24px OR MORE.
+  //    That is the threshold, stated rather than implied (task 673):
+  //    `MARGINALIA_ROW_MIN_GAP` is the gap the canonical 24px line leaves
+  //    around a 22px icon, so `rowY(r) − (frontier + MIN_GAP) = lineHeight −
+  //    24` — a tie at 24, positive above it (the walk is a no-op and an
+  //    uncrowded document's cells come out byte-identical to the pre-366
+  //    grid), and NEGATIVE below it, where every row after row 0 is displaced
+  //    by `24 − lineHeight`, cumulatively. Sub-24 pitches are reachable at
+  //    shipped preferences (19.04px at the sliders' minimum), which is why the
+  //    bound is now asked per row.
   //
   // Cost: one sort of the side's node groups plus a single linear walk over the
   // cells being placed — no DOM, no per-marker search.
@@ -235,10 +305,24 @@ export function computeMarkerPositions(
     if (list.length === 0) continue;
     const effectiveCols = laneCols[side];
 
-    // Document order, as a TOTAL order. `top` is the grid's own vertical
-    // anchor, so ordering by it orders the stack exactly as the reader sees it;
-    // `domTop` breaks a tie between an atom and a prose block that resolve to
-    // the same anchor. A FULL tie is a real shape — a `bulletList` and its first
+    // Document order, as a TOTAL order — keyed on `rowY(node, 0)`, the
+    // ANCHORED position of the first row, which is the quantity every
+    // comparison downstream actually makes (the frontier, the drift bound,
+    // the crowd's re-mint test). Task 673: keying on raw `node.top` instead
+    // was a PROXY for it, and the two disagree exactly where `lineHeight`
+    // varies — `measureBlock` gives a textless block (`displayMath`,
+    // `texBlock`, `figureBlock`, `graphicsBlock`) a `lineHeight` of its full
+    // element height, so such a block anchors at its vertical CENTRE and can
+    // sort above a caption that prints above it. The walk then saw a
+    // non-monotone anchor sequence, and the crowd's one-sided re-mint test
+    // (`anchoredTop > crowdAnchorY + DRIFT`) let a node whose anchor lands
+    // ABOVE the open pill's join unconditionally — one pill standing in for
+    // markers 68px apart. Sorting on the literal quantity makes that
+    // unrepresentable rather than guarded (the task-205 move for the margin
+    // side), and leaves the re-mint test a complete bound: the sequence is
+    // monotone, so max − min over a crowd IS the last − first it checks.
+    // `domTop` then breaks a tie between an atom and a prose block that
+    // resolve to the same anchor. A FULL tie is a real shape — a `bulletList` and its first
     // `listItem` are both uuid-bearing and can measure to the same top AND
     // domTop — and there the metrics simply carry no document order to read, so
     // the last rung is the anchor uuid: arbitrary between those two, but
@@ -249,7 +333,7 @@ export function computeMarkerPositions(
     // map on it), so this rung always decides.
     list.sort(
       (a, b) =>
-        a.node.top - b.node.top ||
+        rowY(a.node, 0) - rowY(b.node, 0) ||
         a.node.domTop - b.node.domTop ||
         (a.textObjectId < b.textObjectId ? -1 : a.textObjectId > b.textObjectId ? 1 : 0),
     );
@@ -264,25 +348,59 @@ export function computeMarkerPositions(
     let crowdAnchorY = 0;
 
     for (const g of list) {
-      const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
-      const overflowing = g.items.length > capacity;
-      // R16: when overflowing, reserve the LAST cell for the "+K" pill; only
-      // capacity-1 markers render and the rest ride the pill's popover.
-      const visibleCount = overflowing ? capacity - 1 : g.items.length;
-      // Cells this grid will occupy, pill included — hence the rows it needs.
-      const cellCount = overflowing ? visibleCount + 1 : visibleCount;
-      const rowsUsed = Math.max(1, Math.ceil(cellCount / effectiveCols));
+      // Rows this grid would LIKE: one per marker cell, never more than the
+      // node's own line count (a one-line block gets no three-row stack of
+      // icons hanging under it).
+      const wantRows = Math.min(
+        Math.max(1, g.node.lineCount),
+        Math.max(1, Math.ceil(g.items.length / effectiveCols)),
+      );
+
+      // Resolve those rows against the running frontier, and STOP at the
+      // first row that cannot be placed within the drift bound — task 673.
+      //
+      // Pre-673 the bound was asked at row 0 only and every lower row was
+      // exempt, on the reasoning that a lower row is "still beside its own
+      // block". That reasoning holds only while the node's pitch is roomy
+      // enough that the pushes stay inside the block, and the arithmetic says
+      // exactly when: a row is displaced by `MARGINALIA_ROW_MIN_GAP +
+      // MARGINALIA_ICON_SIZE − lineHeight` per row, CUMULATIVELY, so below a
+      // 24px pitch the drift grows without bound and the frontier is left
+      // below the block's true bottom — where it pushes, or folds, the node
+      // NEXT door. 24px is not a floor a user cannot cross:
+      // `preferences-tree.ts` allows `editorFontSize 0.85rem ×
+      // editorLineHeight 1.4` = 19.04px, and `.tiptap pre` lands near 21px
+      // with no line-height of its own. At 19.04 a ten-line paragraph's tenth
+      // marker sat ~45px below its own line, past the very bound row 0 is
+      // checked against.
+      //
+      // So the bound is asked at EVERY row, and a row that fails it does not
+      // fold the node — it ends the node's grid, and the surplus rides the
+      // node's OWN "+K" pill, the affordance R16 already built for "more
+      // markers than this grid can show". That keeps the old reasoning's
+      // point (markers the reader can see are not hidden) while making the
+      // grid's CAPACITY an honest statement about what fits: the node shows
+      // the rows it can place on their lines, and says "+K" about the rest.
+      const ys: number[] = [];
+      let f = frontier;
+      for (let r = 0; r < wantRows; r++) {
+        const natural = rowY(g.node, r);
+        const y = Math.max(natural, f + MARGINALIA_ROW_MIN_GAP);
+        if (y - natural > MARGINALIA_MAX_MARKER_DRIFT) break;
+        ys.push(y);
+        f = y + MARGINALIA_ICON_SIZE;
+      }
 
       const anchoredTop = rowY(g.node, 0);
-      const push = frontier + MARGINALIA_ROW_MIN_GAP - anchoredTop;
 
-      if (push > MARGINALIA_MAX_MARKER_DRIFT) {
-        // Row 0 of this grid cannot be placed within the drift bound, so
-        // pushing would start this node's markers beside text they have
-        // nothing to do with. Fold the whole node into a "+K" pill instead (the affordance that already exists for
-        // an over-full grid): the pill's popover lists these markers as ordinary
-        // marker buttons, which resolve their card by id and never by Y, so
-        // click / delete / re-anchor behave exactly as in-grid.
+      if (ys.length === 0) {
+        // Not even row 0 of this grid can be placed within the drift bound,
+        // so pushing would start this node's markers beside text they have
+        // nothing to do with. Fold the whole node into a "+K" pill instead
+        // (the affordance that already exists for an over-full grid): the
+        // pill's popover lists these markers as ordinary marker buttons,
+        // which resolve their card by id and never by Y, so click / delete /
+        // re-anchor behave exactly as in-grid.
         //
         // Consecutive folded nodes share ONE pill — that is what bounds the
         // cascade: the first fold costs a cell, every fold after it costs
@@ -307,17 +425,16 @@ export function computeMarkerPositions(
       // This grid places, so the crowd (if any) is closed: a later crowd gets
       // its own pill near its own anchors.
       crowd = null;
+      // Every row the walk accepted is a row this grid uses — when it stopped
+      // early, `capacity` is short of `g.items.length`, so the grid overflows
+      // and its last accepted row carries the pill.
+      frontier = f;
 
-      // Resolve every row this grid uses against the running frontier. Rows
-      // below row 0 are re-checked rather than rigidly offset by row 0's push,
-      // so a node whose own line pitch is roomy re-settles onto its lines
-      // instead of carrying the displacement all the way down.
-      const ys: number[] = [];
-      for (let r = 0; r < rowsUsed; r++) {
-        const y = Math.max(rowY(g.node, r), frontier + MARGINALIA_ROW_MIN_GAP);
-        ys.push(y);
-        frontier = y + MARGINALIA_ICON_SIZE;
-      }
+      const capacity = ys.length * effectiveCols;
+      const overflowing = g.items.length > capacity;
+      // R16: when overflowing, reserve the LAST cell for the "+K" pill; only
+      // capacity-1 markers render and the rest ride the pill's popover.
+      const visibleCount = overflowing ? capacity - 1 : g.items.length;
 
       for (let idx = 0; idx < visibleCount; idx++) {
         const row = Math.floor(idx / effectiveCols);

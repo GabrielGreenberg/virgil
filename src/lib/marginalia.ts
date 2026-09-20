@@ -408,11 +408,18 @@ export interface PositionedMarker extends MarginaliaMarker {
  *  Two producers, one shape:
  *   - R16, an over-full grid: more markers than the node's `lineCount × cols`,
  *     so the grid's LAST cell is reserved for the pill and the surplus hides.
- *   - Task 366, a folded crowd: block tops packed so tightly that no cell of
- *     this node's grid fits within `MARGINALIA_MAX_MARKER_DRIFT` of its own
- *     line, so the node's markers fold into a pill placed clear of the rows
- *     above. Consecutive folded nodes share ONE pill, which is what stops a
- *     crowd from becoming a ladder of ever-more-drifted markers. */
+ *   - Task 366, a folded crowd: block tops packed so tightly that not even
+ *     ROW 0 of this node's grid fits within `MARGINALIA_MAX_MARKER_DRIFT` of
+ *     its own line, so the node's markers fold into a pill placed clear of the
+ *     rows above. Consecutive folded nodes share ONE pill, which is what stops
+ *     a crowd from becoming a ladder of ever-more-drifted markers.
+ *
+ *  The two producers are one rule asked at two rows, not two rules (task 673):
+ *  a cell is placed only where it lands within the bound of its own line, and
+ *  what fails the bound rides a pill. Failing at row 0 means the node has no
+ *  home on this side at all, so it joins the crowd's shared pill; failing at a
+ *  LOWER row means the node has a home but not enough room in it, so the
+ *  surplus takes the node's own R16 pill. */
 export interface MarkerOverflowGroup {
   side: "left" | "right";
   /** Grid cell where the "+K" pill renders — the over-full grid's reserved
@@ -526,14 +533,19 @@ export const MARGINALIA_ROW_MIN_GAP = 2;
  *    placed clear of the frontier (i.e. further than the bound from the anchor
  *    it was minted for). That is inherent — there is no room — and one pill for
  *    the whole crowd is strictly better than a ladder of drifting markers.
- *  - It is measured at a grid's FIRST row, so it bounds how far a NODE's grid
- *    is displaced from its own block. A tall node whose line pitch is tighter
- *    than an icon can still walk its own lower rows further than this, because
- *    those rows are re-settled against the frontier row by row — deliberate:
- *    they are still beside their own block, which is the thing the bound
- *    protects ("a marker beside the wrong paragraph"), and folding a whole
- *    multi-line node because its last row drifted would hide markers the
- *    reader can see perfectly well.
+ *  - It is measured at EVERY row, not only at a grid's first (task 673). It
+ *    was first-row-only until then, on the reasoning that a lower row is
+ *    "still beside its own block" — true only while the node's pitch is roomy
+ *    enough to keep the pushes inside the block. Below a 24px pitch (icon +
+ *    min gap) each row is displaced by `24 − lineHeight` CUMULATIVELY, so the
+ *    drift grows without bound and the frontier is left below the block's true
+ *    bottom, where it pushes or folds the node next door. 19.04px is reachable
+ *    at the shipped preference sliders' minimum, so this was live, not latent.
+ *    What the old reasoning was protecting survives intact: a row past the
+ *    bound does NOT fold the node — it ENDS the node's grid, and the surplus
+ *    rides the node's own "+K" pill (the R16 affordance for "more markers than
+ *    this grid can show"). Nothing the reader can see beside its own line is
+ *    hidden; the grid's capacity just stops overstating what fits.
  */
 export const MARGINALIA_MAX_MARKER_DRIFT = 2 * MARGINALIA_ICON_SIZE;
 
