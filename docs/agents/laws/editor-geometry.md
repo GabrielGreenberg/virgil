@@ -1915,3 +1915,60 @@ thing the task existed to avoid.
 export, `__textWidthCacheSize` (the twin of `__fontMetricsCacheSize`: the width
 cache is dropped on every font wave alongside the metrics cache, and only half
 of that invalidation was observable).
+
+### The precondition half: a pure function's arithmetic is a CONTRACT, or it is an assumption (task 673)
+
+**A pure geometry function's arithmetic states preconditions on its input. Where
+neither the type, the producer, nor a test says them, they are not a contract —
+they are an assumption, and the function is partial over the type it declares.**
+`computeMarkerPositions` ([src/lib/marginalia-grid.ts](../../../src/lib/marginalia-grid.ts))
+encoded four assumptions about `AnchorNodeMetrics`: a line pitch of at least
+24px, anchors running strictly downward, an integral `lineCount`, and finite
+numbers. `measureBlock` guarantees none of them.
+
+Three lessons, each general past this function:
+
+**A "byte-identical" claim is a CONDITIONAL, so it names its condition.** The
+module said the walk changes nothing where nothing collides, because
+`MARGINALIA_ROW_MIN_GAP` is "the gap the canonical 24px line already produces".
+Read as arithmetic that is `rowY(r) − (frontier + MIN_GAP) = lineHeight − 24`: a
+tie at 24, and below it every row after row 0 displaced by `24 − lineHeight`,
+CUMULATIVELY. The threshold was reachable — `preferences-tree.ts` puts the body
+minimum at `0.85rem × 1.4` = 19.04px — so the claim was not merely unstated but
+false at shipped preferences. A test that pins the canonical value (here
+`LINE_HEIGHT = 24` across two whole suites) confirms the tie and can never see
+the band where the claim stops holding. Sweep the band the SLIDERS allow, and
+derive its ends from the preference SSOT rather than hand-copying them.
+
+**A bound asked at one row is not a bound.** `MARGINALIA_MAX_MARKER_DRIFT` was
+checked at row 0 and every lower row exempted, on the reasoning that a lower row
+is "still beside its own block" — true only while the pitch keeps the
+accumulated pushes inside the block. The fix is not to fold the node (that hides
+markers the reader can see) but to END its grid at the last row it can place on
+its own line and let the surplus ride the node's OWN "+K" pill. The two pill
+producers then become one rule asked at two rows: a cell is placed only where it
+lands within the bound, and what fails rides a pill — row 0 failing means no home
+on this side (the shared crowd pill), a lower row failing means a home with not
+enough room (the node's R16 pill).
+
+**Sort on the quantity you compare, not a proxy for it.** The walk ordered by
+`node.top` and compared `rowY(node, 0)`; they diverge wherever `lineHeight`
+varies, and `measureBlock` gives a textless block a `lineHeight` of its full
+height, so a figure anchors at its CENTRE — below the caption printed under it.
+A one-sided guard (`anchoredTop > crowdAnchorY + DRIFT`) cannot see a
+non-monotone sequence, and one pill stood in for anchors 68px apart against a
+44px bound. Sorting on `rowY(node, 0)` makes it unrepresentable rather than
+guarded — the task-205 move for the margin side — and leaves the guard complete.
+Its existing test leg was VACUOUS for exactly this case: a fixture with one
+uniform pitch has monotone anchors by construction. **Widen the fixture that
+cannot represent the failure; do not add a parallel test beside it.**
+
+**Totality is per-NODE.** A non-finite metric made `frontier` NaN for every
+remaining marker on the side (React drops a NaN `top`, so they pile at the
+container origin) and `NaN > DRIFT` is false, so the fold never rescued them
+either. `sanitizeMetrics` refuses the node the way the function already handles
+an unmeasured one — `null`. One bad measurement costs one node, never the side.
+
+**Owed:** a preview eyeball — Preferences → Body Text → Line height at its
+minimum on the dev doc, watching a long marked paragraph's icons (FSA-masking
+class; the durable proof is the unit tests).
