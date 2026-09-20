@@ -681,3 +681,51 @@ trigger that never fires is unrepresentable in all of them.
 `notes (conflicted copy 2026-09-02).json` into
 `virgil-data/doc_devtest/virgil/`, open the doc, delete the file, click away
 and back — and a real-Dropbox eyeball for the sync-masked half.
+
+---
+
+## The validated-re-read half (task 677)
+
+> **A re-hydration is a LOAD. It must run every repair the load path runs —
+> from one function both doors call — or the store has two doors and only one
+> of them repairs anything.**
+
+`subscribeToStorageKey` already promised callers work this way: "the handler
+re-reads storage through its own parse/validate path, so validation lives in
+exactly one place per store"
+([cross-window-storage.ts](../../../src/lib/cross-window-storage.ts)).
+`useViewPrefs` got its `storage` subscription in task 599 but not its
+parse/validate path. Its peer-sync handler was, in full:
+
+```ts
+const globalSlice = JSON.parse(raw) as Partial<ViewPrefs>;
+setPrefs((prev) => ({ ...prev, ...globalSlice }));
+```
+
+Raw bytes into live state — while `loadPrefs` on the SAME bytes ran the panel
+renames, the presentation-pod strip, the new-panel placement merge, the
+`printOptions` deep merge and the subtractive unknown-id scrub its own comment
+calls "THE ROOT FIX for the recurring stale-snapshot incidents". And because
+`persist` serializes live state back out, the receiving window then
+**re-published** the peer's un-repaired blob as its own. Virgil is a PWA, so a
+window still holding the pre-update bundle is ordinary, not hypothetical: that
+window's blob could re-inject a retired panel id into a window that had just
+scrubbed it, and the scrub was un-round-trippable through door one only.
+
+The door is now
+[`normalizeGlobalSlice`](../../../src/hooks/useViewPrefs.ts) — TOTAL over
+`GLOBAL_PREF_KEYS` (it answers for absent keys too, so both doors agree on
+identical bytes), idempotent, malformed-safe. What stays OUT of it is stated
+rather than forgotten: `applyPanelSideMigrations` is ONE-SHOT and records
+itself in `appliedPrefMigrations`, so running it per peer sync would re-apply
+a flip over a deliberate drag; and every window-scoped repair has no second
+caller, because per-window blobs are never broadcast.
+
+The peer-sync handler still only `setPrefs` — it cannot arm `pendingPersist`,
+which is the load-bearing property behind the "toggle won't stick" bug this
+hook already paid for once.
+
+CI: [view-prefs-peer-sync-normalization.test.tsx](../../../src/hooks/__tests__/view-prefs-peer-sync-normalization.test.tsx).
+Measured by neutering the handler back to the raw merge: both peer-sync legs
+fail. **Owed, not claimed:** a real two-window eyeball — multi-window
+behaviour masks in a single preview tab.

@@ -19,6 +19,7 @@ import {
 import { applyPanelSideMigrations, PANEL_SIDE_MIGRATIONS } from "./panel-side-migrations";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
 import {
+  coerceRegistryPrefs,
   REGISTRY_DEFAULTS,
   REGISTRY_GLOBAL_KEYS,
   VIEW_PREF_REGISTRY,
@@ -77,24 +78,14 @@ export type DividerWidth = "full" | "mid" | "text";
  *  EditorPane would otherwise mask a missing member (audit-059). */
 export type PanelId = PanelKind | "blank";
 
-/** Card kinds whose linked-anchor highlights are togglable from the Highlights
- *  menu. Values match the prefix of `data-link-card`.
- *
- *  The ARRAY is the SSOT and `HighlightType` is DERIVED from it, so the two can
- *  never drift: adding a kind here flows straight into the union. The inverse
- *  shape (a hand-typed union + a `HighlightType[]`-annotated array) could not be
- *  made safe — the annotation permits a *proper subset*, so a kind added to the
- *  union while the array stayed stale would compile clean yet silently never
- *  render its highlights at the `ALL_HIGHLIGHT_TYPES` consumer (EditorLayout's
- *  `visibleHighlightKinds`). Deriving closes that omission direction for good. */
-export const ALL_HIGHLIGHT_TYPES = [
-  "note",
-  "todo",
-  "comment",
-  "cut",
-  "report",
-] as const;
-export type HighlightType = (typeof ALL_HIGHLIGHT_TYPES)[number];
+/* The HIGHLIGHT vocabulary moved to the zero-import leaf
+ * `@/lib/view-prefs/highlight-types` (task 677) so the view-pref REGISTRY can
+ * runtime-read it as the declared value DOMAIN of `hiddenHighlightTypes` —
+ * `registry.ts` may not import this module at runtime (cycle), so the only
+ * other option was a fourth hand copy of the union. Re-exported here because
+ * this is where every consumer already imports it from. */
+export { ALL_HIGHLIGHT_TYPES } from "@/lib/view-prefs/highlight-types";
+export type { HighlightType } from "@/lib/view-prefs/highlight-types";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -571,6 +562,152 @@ function readTimePopoutKeyToFloat(key: string): string | null {
   return migrateLegacyKeyToFloat(key);
 }
 
+/**
+ * THE ONE DOOR from raw stored global bytes to live global `ViewPrefs` values
+ * (task 677).
+ *
+ * There used to be TWO doors, and only one of them repaired anything.
+ * `loadPrefs` ran the renames, the presentation-pod strip, the new-panel
+ * placement merge, the `printOptions` deep merge and the subtractive scrub —
+ * the thing its own comment calls "THE ROOT FIX for the recurring
+ * stale-snapshot incidents". The peer-sync handler (`rereadGlobal`) did
+ * `setPrefs(prev => ({ ...prev, ...JSON.parse(raw) }))`: raw bytes straight
+ * into live state, and then re-published as this window's own on the next
+ * `persist`. So a peer — or an older still-open build, which is ordinary in a
+ * PWA — could re-inject a retired panel id (`quotations`) or an un-migrated
+ * shape into a window that had just cleaned it, and that window would write it
+ * back to disk. The scrub was impossible to round-trip past through door one
+ * only.
+ *
+ * So: both doors call THIS, on the same bytes, and get the same values.
+ * `subscribeToStorageKey`'s own docstring already promised callers work this
+ * way ("the handler re-reads storage through its own parse/validate path, so
+ * validation lives in exactly one place per store"); this store now has one.
+ *
+ * TOTAL over the global vocabulary: it answers for every `GLOBAL_PREF_KEYS`
+ * member, falling back to the shipped default where the blob has nothing
+ * usable — so the two doors agree on absent keys as well as present ones.
+ *
+ * What deliberately stays OUT, in `loadPrefs` only:
+ *  - `applyPanelSideMigrations` — ONE-SHOT, and it records itself in
+ *    `appliedPrefMigrations`. Re-running it on every peer sync would re-apply
+ *    a flip over a deliberate drag, which is the precise thing its id-record
+ *    exists to prevent.
+ *  - every WINDOW-scoped repair (dock-stack coercion, popout validation, the
+ *    float-key grammar migration, the retired-key scrub). They have no second
+ *    caller: per-window blobs are never broadcast.
+ */
+export function normalizeGlobalSlice(raw: unknown): Pick<ViewPrefs, GlobalPrefKey> {
+  // Renames FIRST, then the subtractive scrub, over the same carrier census
+  // (`PANEL_ID_CARRIERS`) the loader uses — order is load-bearing: a retired id
+  // WITH an heir is a rename, so the rename must run before the scrub or the
+  // scrub deletes the state the rename exists to carry forward.
+  const blob: Record<string, unknown> =
+    raw != null && typeof raw === "object" && !Array.isArray(raw)
+      ? scrubUnknownPanelIds(
+          applyPanelRenames({ ...(raw as Record<string, unknown>) }, PANEL_RENAMES),
+        )
+      : {};
+
+  const out = {} as Record<string, unknown>;
+
+  /* ── placements ──────────────────────────────────────────────────────
+   * Presentation-pod strip (a `defaultStripSide: null` panel must never hold a
+   * side placement — an older build's drag could leave one, which leaks the
+   * panel back onto the strip as a stray icon), then merge in the panels added
+   * since the blob was written, then the subtractive scrub — POST-merge, so a
+   * retired id baked into the shipped defaults is dropped too. */
+  const stored = Array.isArray(blob.placements) ? (blob.placements as unknown[]) : [];
+  const podStripped = stored.filter((p) => {
+    if (p == null || typeof p !== "object") return false;
+    const reg = (
+      PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>
+    )[String((p as { id?: unknown }).id)];
+    return !reg || reg.defaultStripSide !== null;
+  }) as PanelPlacement[];
+  const existingIds = new Set(podStripped.map((p) => p.id));
+  const merged = [...podStripped];
+  for (const dp of DEFAULT_PREFS.placements) {
+    if (!existingIds.has(dp.id)) merged.push(dp);
+  }
+  out.placements = filterPlacements<PanelPlacement>(merged);
+
+  /* ── printOptions ────────────────────────────────────────────────────
+   * Deep-merged against the shipped schema so a toggle added since the blob
+   * was written gets its default instead of falling out, then the print
+   * vocabulary's own scrub over `.panels`. */
+  const storedPrint =
+    blob.printOptions != null && typeof blob.printOptions === "object"
+      ? (blob.printOptions as Partial<PrintOptions>)
+      : {};
+  const printOptions: PrintOptions = {
+    ...DEFAULT_PREFS.printOptions,
+    ...storedPrint,
+    elements: {
+      ...DEFAULT_PREFS.printOptions.elements,
+      ...(storedPrint.elements ?? {}),
+    },
+    panels: {
+      ...DEFAULT_PREFS.printOptions.panels,
+      ...(storedPrint.panels ?? {}),
+    },
+  };
+  printOptions.panels = filterPrintPanels(printOptions.panels) as PrintOptions["panels"];
+  out.printOptions = printOptions;
+
+  /* ── omni ────────────────────────────────────────────────────────────
+   * A pre-381 blob carries the per-side ENABLED lists; fold them to the
+   * side-free hidden set (the legacy key is deleted by `loadPrefs`, so the
+   * fold happens at most once per profile). */
+  out.omniHiddenCategories = filterOmniSide(
+    blob.omniHiddenCategories ??
+      (blob.omniCategories !== undefined
+        ? hiddenFromLegacySides(blob.omniCategories)
+        : DEFAULT_PREFS.omniHiddenCategories),
+  );
+  const hideAll = blob.omniHideAllCards;
+  out.omniHideAllCards =
+    hideAll != null && typeof hideAll === "object"
+      ? {
+          left: Boolean((hideAll as Record<string, unknown>).left),
+          right: Boolean((hideAll as Record<string, unknown>).right),
+        }
+      : { ...DEFAULT_PREFS.omniHideAllCards };
+
+  /* Migration ids: a list of strings, nothing else. */
+  out.appliedPrefMigrations = Array.isArray(blob.appliedPrefMigrations)
+    ? blob.appliedPrefMigrations.filter((x): x is string => typeof x === "string")
+    : [];
+
+  /* ── the remaining structural globals ────────────────────────────────
+   * Page width, the four margins, the code-pane ratio: adopt a stored value
+   * only where its TYPE matches the shipped default's, else the default.
+   * Derived from `STRUCTURAL_GLOBAL_PREF_KEYS` rather than hand-listed, so a
+   * structural global added there cannot reach live state unvalidated — the
+   * omission direction this whole task is about. */
+  for (const k of STRUCTURAL_GLOBAL_PREF_KEYS) {
+    if (k in out) continue;
+    const v = blob[k];
+    const d = DEFAULT_PREFS[k];
+    out[k] = v !== null && typeof v === typeof d ? v : d;
+  }
+
+  /* ── the registry globals ────────────────────────────────────────────
+   * Each one validated against the domain the registry DECLARES (`values` for
+   * an enum, `domain ?? members` for a set, `boolean` for a toggle). */
+  const coerced = coerceRegistryPrefs(blob) as Record<string, unknown>;
+  for (const k of REGISTRY_GLOBAL_KEYS) {
+    if (k in coerced) {
+      out[k] = coerced[k];
+    } else {
+      const d = REGISTRY_DEFAULTS[k] as unknown;
+      out[k] = Array.isArray(d) ? [...d] : d;
+    }
+  }
+
+  return out as Pick<ViewPrefs, GlobalPrefKey>;
+}
+
 /** Read + merge + migrate both pref blobs into a fully-defaulted `ViewPrefs`.
  *  Exported so the registry round-trip test can drive the real load pipeline
  *  (it was previously module-private). */
@@ -786,76 +923,31 @@ export function loadPrefs(): ViewPrefs {
     // hand-inlined here and touched only `placements` + the legacy `active*`
     // scalars, so a docked/floating panel under an old id was dropped and its
     // rect/height/mode/archive-view orphaned (task 275).
-    // One-shot SIDE migrations (task 381), before the default merge and the
-    // subtractive cleaners: a shipped `defaultStripSide` change reaches nobody
-    // whose blob already carries a placement for that panel, because the merge
-    // below only supplies ids the blob is MISSING. Recorded by id in
-    // `appliedPrefMigrations` so a later deliberate drag back is never undone.
+    // Every RAW-bytes → global-value repair now lives in ONE place, called by
+    // this door AND by the peer-sync door (`normalizeGlobalSlice`, task 677):
+    // the presentation-pod strip, the new-panel placement merge, the
+    // `printOptions` deep merge, the subtractive scrub, and the registry
+    // value-domain coercion. `parsed` is the UNION of both blobs, which is
+    // what it is handed — the global keys are exactly the ones it reads, and
+    // the legacy `omniCategories` key may sit in either half.
+    const globalSlice = normalizeGlobalSlice(parsed);
+
+    // One-shot SIDE migrations (task 381) stay HERE, and only here: they record
+    // themselves in `appliedPrefMigrations`, so re-running them on every peer
+    // sync would re-apply a flip over a deliberate drag. Run over the NORMALIZED
+    // placements — a flip preserves ids, so the scrub/merge before it and the
+    // scrub after it would see the same set either way; a panel absent from the
+    // blob is supplied by the merge at its already-current shipped side, which
+    // is exactly what the migration would have set.
     const sideMigration = applyPanelSideMigrations(
-      parsed.placements,
-      parsed.appliedPrefMigrations,
+      globalSlice.placements,
+      globalSlice.appliedPrefMigrations,
       PANEL_SIDE_MIGRATIONS,
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let placements: any[] = (sideMigration.placements as any[]) || [];
-    // Migrate: presentation-pod panels (registry `defaultStripSide: null`,
-    // e.g. "omni") must never have a side placement. A drag in an older
-    // build could leave one persisted, which then leaks the panel back
-    // onto the strip as a stray icon. Strip them on load.
-    placements = placements.filter((p: PanelPlacement) => {
-      // PANEL_REGISTRY is keyed by PanelKind; "blank" (a PanelId-only
-      // layout slot) and unknown ids return undefined.
-      const reg = (PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>)[p.id];
-      return !reg || reg.defaultStripSide !== null;
-    });
-    // Merge with defaults to handle new panels added in updates
-    const existingIds = new Set(placements.map((p: PanelPlacement) => p.id));
-    const merged = [...placements];
-    for (const dp of DEFAULT_PREFS.placements) {
-      if (!existingIds.has(dp.id)) merged.push(dp);
-    }
-    // Deep-merge printOptions so new toggles added to the schema get
-    // their defaults instead of falling out when an old pref blob loads.
-    const printOptions: PrintOptions = {
-      ...DEFAULT_PREFS.printOptions,
-      ...(parsed.printOptions ?? {}),
-      elements: {
-        ...DEFAULT_PREFS.printOptions.elements,
-        ...(parsed.printOptions?.elements ?? {}),
-      },
-      panels: {
-        ...DEFAULT_PREFS.printOptions.panels,
-        ...(parsed.printOptions?.panels ?? {}),
-      },
-    };
-
-    // Defensive unknown-id drop (THE ROOT FIX for the recurring stale-snapshot
-    // incidents): subtractively scrub any panel id/key that is no longer a
-    // member of its carrier's live registry SSOT, so a retired panel (e.g.
-    // `quotations`) can never round-trip back through saved prefs → the
-    // dev:preview snapshot → promote-defaults → shipped `*.defaults.json`.
-    // Validated against the merged/effective values. placements +
-    // printOptions.panels are filtered POST-merge, so even a stale entry baked
-    // into DEFAULT_PREFS is scrubbed (the defaults JSON placements still lists
-    // the retired `quotations` — it gets merged in then dropped here).
-    // omniHiddenCategories' default is empty, so there the filter guards the
-    // saved-blob path. Purely subtractive, order- and
-    // side-preserving, malformed-safe; runs once per load (no per-render work).
-    //   - placements               → PANEL_REGISTRY keys  (panel-registry.ts)
-    //   - omniHiddenCategories     → OMNI_PANELS kinds    (panel-registry.ts)
-    //   - printOptions.panels  → PRINT_PANELS keys        (lib/print.ts)
-    const cleanedPlacements = filterPlacements<PanelPlacement>(merged);
-    printOptions.panels = filterPrintPanels(printOptions.panels) as PrintOptions["panels"];
-    // Omni category VISIBILITY (task 381). A pre-381 blob carries the per-side
-    // ENABLED lists; fold them to the side-free hidden set exactly once, then
-    // read the new key from then on. The legacy key is deleted below so it can
-    // never round-trip back and be re-folded over a later hide/show.
-    const cleanedOmniHidden = filterOmniSide(
-      parsed.omniHiddenCategories ??
-        (parsed.omniCategories !== undefined
-          ? hiddenFromLegacySides(parsed.omniCategories)
-          : DEFAULT_PREFS.omniHiddenCategories),
-    ) as ViewPrefs["omniHiddenCategories"];
+    const cleanedPlacements = sideMigration.placements as PanelPlacement[];
+    // The legacy per-side omni key has been folded by `normalizeGlobalSlice`;
+    // drop it so it can never round-trip back and be re-folded over a later
+    // hide/show.
     delete (parsed as Record<string, unknown>).omniCategories;
     // Migrate the legacy ≤2-panel split model → the ordered dockStack.
     // Old persisted shape: activeLeft/Right (top/only) + active*Bottom
@@ -952,9 +1044,11 @@ export function loadPrefs(): ViewPrefs {
     return {
       ...DEFAULT_PREFS,
       ...parsed,
+      // The normalized global values override `parsed`'s raw ones — the whole
+      // point of the door. `placements` + `appliedPrefMigrations` then take the
+      // one-shot side migration's result on top.
+      ...globalSlice,
       placements: cleanedPlacements,
-      printOptions,
-      omniHiddenCategories: cleanedOmniHidden,
       appliedPrefMigrations: sideMigration.applied,
       dockStack,
       panelMRU: { left: [], right: [] },
@@ -1065,7 +1159,6 @@ export function useViewPrefs(opts?: {
       ? (initialSeed ?? identitySeed)(seedEphemeralPrefs())
       : DEFAULT_PREFS,
   );
-  const initialized = useRef(false);
   // Deferred-persistence handoff: `update` records the change here (a pure ref
   // write) and the post-commit effect below flushes it. See the comment on
   // `update` for why persistence must NOT run inside the state updater.
@@ -1077,13 +1170,9 @@ export function useViewPrefs(opts?: {
     // (a) Initial-load-from-localStorage. Ephemeral mode skips it entirely —
     // its state was seeded in-memory from DEFAULT_PREFS (+ a one-shot global
     // geometry read) and must not be overwritten by the persisted layout.
-    if (ephemeral) {
-      initialized.current = true;
-      return;
-    }
+    if (ephemeral) return;
     gcWindowPrefs(); // one-shot, module-guarded: prune stale per-window pref keys
     setPrefs(loadPrefs());
-    initialized.current = true;
   }, [ephemeral]);
 
   // Listen for global pref changes published by peer windows. Re-read
@@ -1117,7 +1206,15 @@ export function useViewPrefs(opts?: {
           }
           return;
         }
-        setPrefs((prev) => ({ ...prev, ...globalSlice }));
+        // NOT the raw bytes (task 677). Through the same door `loadPrefs`
+        // uses, so a peer — or an older still-open build, ordinary in a PWA —
+        // cannot re-inject a retired panel id, an un-renamed one, an
+        // un-migrated `printOptions` shape or an out-of-domain registry value
+        // into a window that had just repaired it. Without this the next
+        // `persist` re-published the peer's blob as this window's own, which
+        // is exactly the round-trip (saved prefs → snapshot → promote-defaults
+        // → shipped defaults) the scrub exists to make impossible.
+        setPrefs((prev) => ({ ...prev, ...normalizeGlobalSlice(globalSlice) }));
       } catch {
         // ignore parse failures
       }
