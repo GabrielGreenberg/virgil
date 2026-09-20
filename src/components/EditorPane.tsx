@@ -2912,12 +2912,28 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     });
   };
 
+  /**
+   * `anchorPids` is the deleted marker's OWN row cohort — the `cardPids` the
+   * margin row was built with (`buildMarginMarkerRows`). It is what tells the
+   * door whether this was the card's last anchor, and it is required precisely
+   * so a new marker kind cannot quietly fall back to the card's STORED pids:
+   * for a mark-/snapshot-recovered card those name a paragraph the marker is
+   * not on, which routed a one-anchor card into the unanchor branch and made
+   * it undeletable from the margin (task 669).
+   */
   const handleMarginItemDelete = useCallback(
-    (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
+    (
+      kind: MarginItemKind,
+      cardId: string,
+      paragraphId: string,
+      anchorPids: readonly string[],
+      anchorId?: string,
+    ) =>
       deleteMarginItem({
         kind,
         cardId,
         paragraphId,
+        anchorPids,
         anchorId,
         handlers: marginItemHandlers[kind],
         confirm: confirmMarginItemDelete,
@@ -3493,7 +3509,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // Notes
     for (const n of notesHook.notes) {
       const anchor = getTextAnchor(n);
-      for (const { pid, unanchored } of resolveMarkerPids(n)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(n)) {
         result.push({
           id: `${n.id}:${pid}`,
           entityId: n.id,
@@ -3505,7 +3521,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(n, pid)),
           onDelete: () => {
-            void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
+            void handleMarginItemDelete("note", n.id, pid, cardPids, anchor?.anchorId);
           },
           anchorId: anchor?.anchorId,
         });
@@ -3514,7 +3530,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Archive snippets
     for (const snippet of archiveHook.snippets) {
-      for (const { pid, unanchored } of resolveMarkerPids(snippet)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(snippet)) {
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
@@ -3525,7 +3541,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(snippet, pid)),
-          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
+          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid, cardPids); },
         });
       }
     }
@@ -3556,7 +3572,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // pass) no hover Keep/Revert chips either: the gutter marker is just a
       // plain revision marker. Keep/Revert reach the change through the card and
       // the in-context left-margin pill instead.
-      for (const { pid, unanchored } of resolveMarkerPids(r)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(r)) {
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
@@ -3569,7 +3585,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(r, pid)),
           onDelete: () => {
-            void handleMarginItemDelete("revision", r.id, pid, anchorId);
+            void handleMarginItemDelete("revision", r.id, pid, cardPids, anchorId);
           },
         });
       }
@@ -3587,7 +3603,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // no re-skin and no hover Keep/Revert chips (margin-declutter pass); the
       // gutter marker is plain. Keep/Revert reach the change through the card and
       // the in-context left-margin pill instead.
-      for (const { pid, unanchored } of resolveMarkerPids(c)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(c)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -3599,7 +3615,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(c, pid)),
           onDelete: () => {
-            void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
+            void handleMarginItemDelete("cut", c.id, pid, cardPids, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
         });
@@ -3612,7 +3628,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       const title = c.kind === "report"
         ? (c.title || c.text || "Report")
         : (c.text || "Report request");
-      for (const { pid, unanchored } of resolveMarkerPids(c)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(c)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -3624,7 +3640,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(c, pid)),
           onDelete: () => {
-            void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
+            void handleMarginItemDelete("report", c.id, pid, cardPids, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
         });
@@ -3633,7 +3649,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
     // Todo
     for (const item of todosHook.items) {
-      for (const { pid, unanchored } of resolveMarkerPids(item)) {
+      for (const { pid, unanchored, cardPids } of resolveMarkerPids(item)) {
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,
@@ -3645,7 +3661,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(item, pid)),
-          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
+          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid, cardPids); },
         });
       }
     }

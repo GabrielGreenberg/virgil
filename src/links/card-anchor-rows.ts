@@ -211,6 +211,28 @@ export interface MarginMarkerRow {
   /** True ⇒ the anchor is dead; the marker is surfaced (re-pin dock), not
    *  painted as an ordinary anchored marker. */
   unanchored: boolean;
+  /**
+   * Every pid this card draws a marker for, `pid` included — the COHORT the
+   * row belongs to, carried ON the row so a per-row gesture cannot hold one
+   * without the other (task 669).
+   *
+   * The margin's Delete has exactly one question beyond "which card?": *is
+   * this the card's LAST anchor?* — unanchor if not, confirm-and-delete if so.
+   * It used to answer that from `getLinkedTextObjectIds(card)`, the card's
+   * STORED pids, while the marker it was deleting carried a RESOLVED pid. For
+   * a card recovered through the mark or snapshot rung those two lists are
+   * disjoint (`resolveCardAnchorRows` seeds the row set with `res.paragraphId`
+   * precisely because it is NOT a stored pid), so the stored-pid diff removed
+   * nothing, reported a phantom sibling, and took the multi-anchor branch on a
+   * card with one anchor — an `unanchor` keyed on a pid the card does not
+   * store, i.e. a silent no-op, for the rest of the session.
+   *
+   * Because the cohort ships with the row, the door is HANDED the authority's
+   * answer instead of re-deriving the same question from the raw record. In
+   * the mount gap the authority's rows ARE the stored pids, so the old answer
+   * and the new one agree there by construction rather than by coincidence.
+   */
+  cardPids: readonly string[];
 }
 
 /** The margin's rows for a card — one marker per resolved row. */
@@ -219,7 +241,8 @@ export function buildMarginMarkerRows(
   resolve: CardAnchorResolver,
 ): MarginMarkerRow[] {
   const { rows, anchored } = resolve(card);
-  return rows.map((r) => ({ pid: r.pid, unanchored: !anchored }));
+  const cardPids = rows.map((r) => r.pid);
+  return rows.map((r) => ({ pid: r.pid, unanchored: !anchored, cardPids }));
 }
 
 /**

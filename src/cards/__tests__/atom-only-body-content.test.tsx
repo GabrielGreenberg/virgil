@@ -326,6 +326,8 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
       kind: "note",
       cardId: "c1",
       paragraphId: "P1",
+      // The marker's own row cohort (task 669): a single-anchor card.
+      anchorPids: ["P1"],
       handlers,
       confirm,
       editor: null,
@@ -340,6 +342,8 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
       kind: "note",
       cardId: "c1",
       paragraphId: "P1",
+      // The marker's own row cohort (task 669): a single-anchor card.
+      anchorPids: ["P1"],
       handlers,
       confirm,
       editor: null,
