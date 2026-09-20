@@ -1566,3 +1566,83 @@ on an implementation that has none.
 pass on Gabriel's own paper. Cold opens and restored mid-doc scroll positions
 are where this bites, and that is the FSA-masked class — the durable proof here
 is the unit contract.
+
+### The semantic-element half: the `[data-uuid]` element is not always the styled one (task 659)
+
+> **When you read a block's CSS to learn something about the block, read it off
+> the element that CARRIES that fact — not off whatever happens to wear the
+> `data-uuid`.** The two coincide for most kinds and diverge for every block
+> whose NodeView needs a WRAPPER, and a wrapper answers every computed-style
+> question with a plausible-looking default rather than with an error.
+
+`block-frame.ts` is the per-block geometry SSOT, and it assumed the identity
+element and the semantic element are one. For a NESTED list they are: the
+NodeView is a bare `<ul>`/`<ol>` with `data-uuid` / `data-text-object-kind`
+stamped on it. For a TOP-LEVEL list they are not: `createListTitleNodeView`
+([src/lib/editor-extensions.ts](../../../src/lib/editor-extensions.ts)) wraps
+the list in a `.list-title-wrapper` div — it has to, to host the par-title
+annotation above it — and stamps the identity on the WRAPPER.
+
+The wrapper carries neither fact a marker band is made of. Its `padding-left` is
+`0`, not the shipped `2.5em`; its `list-style-type` is the inherited initial
+`disc`, because `.tiptap ol { list-style-type: decimal }` matches the `<ol>`
+alone. So the container branch of `resolveMarkerGeometry` measured every
+top-level ORDERED list as a zero-width band around a bullet: `inkLeft` — the
+boundary [documented](../../../src/text-objects/block-frame.ts) as "the left
+edge of the row's leftmost DOCUMENT INK, the boundary no margin affordance may
+cross" — landed ~16px RIGHT of the real counter glyph, i.e. wrong in the UNSAFE
+direction, with the task-382 guard switched off for the most common list in an
+academic paper. `padLeft === 0` also collapsed both conservative fallbacks in
+the same call: the un-modeled-counter answer (`liLeft − padLeftPx`) to the
+item's own content edge, and the no-canvas band middle to the text edge itself.
+
+**This is a silent class, and that is the point.** A computed-style read off the
+wrong element does not throw; it returns a well-formed answer to a question
+about a different box. Nothing downstream can tell the difference — which is why
+the wrong number survived tasks 382, 483 and 487, each of which wrote legs over
+this exact geometry using a fixture that stamped the kind on the `<ul>` directly.
+`text-metrics.ts` has known about the wrapper since its `.list-title-wrapper`
+branch in `resolveInlineContextElement`; this module did not. **Two modules
+holding different beliefs about the same DOM is the shape to look for.** (Task
+660 is the vertical-axis half of the same gap: "which element's first line does
+this block show?" is answered in two layers, and three surfaces read the shallow
+one.)
+
+**The fix is a question asked ONCE, not a resolve repeated at each caller.**
+`listBoxOf` is private to `block-frame.ts` and is called by `listBandGeometry`
+ITSELF, not by its callers: hand it the block element and it finds the
+`<ul>`/`<ol>` (`matches("ul, ol")`, else `:scope > ul, :scope > ol`). Both
+production callers were already reaching it by different routes — the `listItem`
+branch through `closest("ul, ol")`, the container branch by passing `el` — and
+resolving at the door means a third caller cannot answer it a third way. A block
+with no list box under it claims NO band (`inkLeft = liLeft`, the same answer
+`list-style-type: none` gets) rather than inventing one: that branch is
+unreachable through either caller and exists so the invariant is structural
+rather than remembered. The two roles are named apart at the call site — the
+BLOCK box (`el.getBoundingClientRect()`, what the handle is placed beside) and
+the LIST box (what the band is measured on) — because they coincide numerically
+here (`.list-title-wrapper` has no horizontal padding, border or margin) and
+merging them back is how the band came to be measured on a div. Cost is
+unchanged: two DOM reads, no layout and no extra `getComputedStyle`.
+
+**What the defect actually was, stated honestly.** On a top-level list the 425
+hover set is `[item, list]` and the list is the OUTER of the two, so
+`applySameRowSeparation`'s inboard push only ever moves the ITEM — whose own
+lane was always right, since `closest("ul, ol")` never saw the wrapper. The
+defect on this shape is therefore a BOUND STATED WRONGLY, not a handle presently
+painted on a counter: the container's `maxLeft` permitted exactly what task 382
+forbids. The leg that carries the finding asserts that bound directly
+(`resolveHandleLane`'s `maxLeft + HANDLE_WIDTH < glyphLeft`); the composed-hover
+leg beside it passes pre-fix and is labelled a NET, because a leg that cannot
+fail is worse than no leg when it is dressed as the proof.
+
+Teeth: `handle-marker-ink-clearance.test.tsx` grows a `buildTopLevelList`
+fixture that builds the REAL NodeView shape — wrapper + `.par-title-annotation`
++ styled list — and eight legs over it, each stating its expectation as the
+equivalent NESTED list's answer rather than as a literal, so the two sides
+cannot drift together. Pre-fix all eight fail while the 42 legacy legs pass;
+that asymmetry is the finding.
+
+**Owed, not claimed:** a preview eyeball (geometry is FSA-masked) — in the dev
+doc, hover a top-level numbered list with ≥10 items and confirm no handle
+touches the counter.
