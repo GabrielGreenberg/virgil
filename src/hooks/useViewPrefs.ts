@@ -34,6 +34,7 @@ import {
   filterOmniSide,
   filterPrintPanels,
   clampStack,
+  scrubUnknownPanelIds,
 } from "./dropUnknownPanelIds";
 import { applyPanelRenames, PANEL_RENAMES } from "./rename-panel-id";
 import { dockedSideOf } from "./view-prefs-derived";
@@ -729,10 +730,18 @@ export function loadPrefs(): ViewPrefs {
     // deletes, which are what silently DROP an id nobody renamed. The three
     // shipped renames live as data in `PANEL_RENAMES`; the applier is the
     // additive twin of `dropUnknownPanelIds` (task 275).
+    //
+    // Then the SUBTRACTIVE twin, immediately after and over the same census
+    // (`PANEL_ID_CARRIERS`): any id the live registries no longer know is
+    // dropped from EVERY carrier, including the four that used to simply pass
+    // through with no cleaner at all — `panelHeights`, `panelModes`,
+    // `floatPositions`, `cardArchiveView` (task 675). Order is
+    // load-bearing in one direction only: a retired id WITH an heir is a
+    // rename, so the rename must run first or the scrub deletes the very state
+    // it exists to carry forward.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parsed: any = applyPanelRenames(
-      { ...windowParsed, ...globalParsed },
-      PANEL_RENAMES,
+    const parsed: any = scrubUnknownPanelIds(
+      applyPanelRenames({ ...windowParsed, ...globalParsed }, PANEL_RENAMES),
     );
 
     // AF popout-key migration (read-time leg). Converts every persisted key to

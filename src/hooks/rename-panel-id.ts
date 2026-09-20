@@ -85,8 +85,11 @@
  * its own next load, which is the same self-healing shape the subtractive
  * cleaner already has — not a gap, but not instantaneous either.
  */
-import type { RegistryPrefs } from "@/lib/view-prefs/registry";
-import type { ViewPrefs } from "./useViewPrefs";
+import {
+  PANEL_ID_CARRIERS,
+  LEGACY_ID_CARRIERS,
+  type CarrierShape,
+} from "./panel-id-carriers";
 
 /** One panel rename.
  *
@@ -141,81 +144,11 @@ const LEGACY_ACTIVE_PANEL_KEYS = [
 
 /* ── The carrier census ───────────────────────────────────────────────── */
 
-/** How a carrier holds panel ids.
- *
- *  - `placements`   — `{ id, side }[]`; the id is a FIELD of each entry.
- *  - `id-list`      — `PanelId[]`.
- *  - `sided-id-list`— `{ left: PanelId[]; right: PanelId[] }`.
- *  - `id-record`    — `Record<PanelId, V>`; the id is the KEY.
- *  - `print-panels` — an `id-record` one level down, at `.panels`. */
-type CarrierShape =
-  | "placements"
-  | "id-list"
-  | "sided-id-list"
-  | "id-record"
-  | "print-panels";
-
-/** The hand-authored structural slice of `ViewPrefs`.
- *
- *  `RegistryPrefs`-owned fields are excluded BY CONSTRUCTION, so adding a view
- *  toggle stays ONE registry row with zero edits anywhere else (task 274) — a
- *  new `set`-kind pref must never land a compile error in this file. Panel ids
- *  live in the layout vocabulary, which is exactly what remains. */
-type StructuralPrefs = Omit<ViewPrefs, keyof RegistryPrefs>;
-
-/** Every collection-shaped structural field — an object or array, i.e. the only
- *  shapes that can carry an id at all. Derived, so a new layout collection is a
- *  COMPILE ERROR in `PANEL_ID_CARRIERS` until someone states whether it is
- *  panel-keyed. That is the whole guard: the applier was never the part that
- *  could misbehave — a carrier nobody classified is. */
-type CollectionPrefField = {
-  [K in keyof StructuralPrefs]-?: StructuralPrefs[K] extends object ? K : never;
-}[keyof StructuralPrefs];
-
-/**
- * TOTAL classification of the structural collections. `null` states "not
- * panel-keyed" and says what it IS keyed by — an answer, not an omission.
- */
-const PANEL_ID_CARRIERS: Readonly<Record<CollectionPrefField, CarrierShape | null>> = {
-  placements: "placements",
-  dockStack: "sided-id-list",
-  // Session-only: `loadPrefs` resets the MRU to empty right after this runs, so
-  // renaming it is a no-op TODAY. It is classified honestly rather than
-  // exempted — the day recency persists, the rename is already correct.
-  panelMRU: "sided-id-list",
-  panelHeights: "id-record",
-  poppedOutPanels: "id-list",
-  poppedOutOrigins: "id-record",
-  panelModes: "id-record",
-  floatPositions: "id-record",
-  cardArchiveView: "id-record",
-  omniHiddenCategories: "id-list",
-  printOptions: "print-panels",
-
-  // Not panel-keyed:
-  panelWidths: null, // keyed by Side (`"left"` / `"right"`)
-  omniHideAllCards: null, // keyed by Side
-  poppedOutCards: null, // keyed by float card key (`float:<domain>:<kind>:<id>`)
-  cardFloatPositions: null, // keyed by float card key
-  appliedPrefMigrations: null, // keyed by nothing — migration ids, not panels
-};
-
-/**
- * Carriers a PAST build persisted that the live `ViewPrefs` type no longer has.
- * The type-derived census above is total over the LIVE collections and
- * therefore structurally cannot name one, so they are declared here — the same
- * reason `LEGACY_ACTIVE_PANEL_KEYS` exists.
- *
- * Renaming them still matters whenever a LATER migration reads them: task 381's
- * omni fold reads the pre-381 per-side `omniCategories` blob to derive the
- * side-free hidden set, and it must see `revisions`, not the retired
- * `comments`, or the heir lands in the hidden set instead of the enabled one.
- */
-const LEGACY_ID_CARRIERS: Readonly<
-  Record<string, Exclude<CarrierShape, "placements">>
-> = {
-  omniCategories: "sided-id-list",
-};
+/* The census moved to `panel-id-carriers.ts` (task 675) so the SUBTRACTIVE
+ * twin reads the same table this additive one does. It lived here while the
+ * rename was its only reader, which is precisely how the scrub came to cover
+ * four carriers of eleven with nothing to force a fifth in. Classifying a new
+ * collection field there is now one edit that enrolls it in both. */
 
 /* ── Per-shape rewrites ───────────────────────────────────────────────── */
 
@@ -352,15 +285,14 @@ function applyOne(
     (out ??= { ...blob })[field] = value;
   };
 
-  for (const [field, shape] of Object.entries(PANEL_ID_CARRIERS) as [
-    string,
-    CarrierShape | null,
-  ][]) {
-    if (shape === null) continue;
+  for (const [field, carrier] of Object.entries(PANEL_ID_CARRIERS)) {
+    // A rename is a fact about an ID, so it ignores `carrier.vocabulary` — the
+    // scrub is the half that must ask which registry may keep a key.
+    if (carrier === null) continue;
     const next =
-      shape === "placements"
+      carrier.shape === "placements"
         ? rewritePlacements(blob[field], rename)
-        : REWRITES[shape](blob[field], rename.from, rename.to);
+        : REWRITES[carrier.shape](blob[field], rename.from, rename.to);
     if (next !== undefined) write(field, next);
   }
 

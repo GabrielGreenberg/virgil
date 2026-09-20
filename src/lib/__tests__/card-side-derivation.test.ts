@@ -334,8 +334,12 @@ describe("card side — no second speller", () => {
       // The one-shot legacy fold (`hiddenFromLegacySides`), then `delete`d so it
       // can never round-trip.
       "src/hooks/useViewPrefs.ts",
-      // `LEGACY_ID_CARRIERS` — renames the pre-381 blob so the fold sees heirs.
-      "src/hooks/rename-panel-id.ts",
+      // `LEGACY_ID_CARRIERS` — the census row that makes the rename applier
+      // rewrite the pre-381 blob so the fold sees heirs. It sits in the census
+      // module (task 675) because that is where "which fields carry panel ids"
+      // is stated once for BOTH the rename and the scrub; the row is
+      // rename-only, and the census says why scrubbing it would be wrong.
+      "src/hooks/panel-id-carriers.ts",
     ]);
     const found = hits(PROD, /\bomniCategories\b/, commentsStripped);
     expect(found.filter((f) => !PERMITTED.has(f))).toEqual([]);
