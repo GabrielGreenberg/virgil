@@ -1810,3 +1810,80 @@ added anywhere.
 
 **Not owed:** no preview eyeball. The shipped token values are unchanged, so
 every number this produces today is identical; the legs are the proof.
+
+### The composed-frame half: a resolve whose parts are covered and whose ASSEMBLY is not (task 663)
+
+> **A module that promises alignment "BY CONSTRUCTION" owes a leg on the
+> construction.** Covering each part is not covering the composition: the kind
+> gate, the branch order, and what gets threaded where are decisions the parts
+> cannot make wrong on their own.
+
+`block-frame.ts`'s parts were well covered — `resolveMarkerGeometry`,
+`resolveMarginEm`, `resolveChevronColumnRight` and `resolveHandleLane` each had
+real legs — and `resolveBlockFrame` had **no direct test anywhere**. Every leg
+reached it through a consumer, and the consumers only ever read `contentLeft` /
+`contentWidth`; `selection-handle-marker-left.test.ts` builds a `BlockFrame`
+literal by hand rather than resolving one. So nothing asserted an
+`opticalCenterY`, a `gapPx`, a `markerLeft`, a `columnRight` or a `chevronRight`
+**as composed**, and `contentRight` — the figure chrome's "beside" anchor —
+appeared in no test file at all. The two fields added most recently were the two
+with the least cover.
+
+**The fixture is part of the resolve.** The frame is computed from rendered DOM
+and nothing else, so a suite that hand-rolls an *approximation* of that DOM
+tests an approximation of the resolve. That is the mechanism behind the
+semantic-element half above: the top-level-list shape — uuid/kind on a
+`.list-title-wrapper` **div**, band and counter on the `<ul>`/`<ol>` inside it —
+was never built by any fixture, because every fixture stamped the kind straight
+onto the list the way the NESTED shape does. The band was therefore measured on
+a div (`padding-left: 0`, inherited `disc`) for every top-level numbered list in
+the app, and nothing failed. **The shape a fixture does not build is the shape
+that ships wrong.**
+
+So "what the DOM actually looks like" gets ONE home:
+`src/text-objects/__tests__/_block-frame-fixtures.ts`, one builder per kind
+family named beside the renderer it mirrors, with the canvas stub and the
+fixture's own arithmetic (`modelTextWidth`, `capBandCenterOffsetModel`) beside
+them — so a leg checks the production estimate against the world rather than
+against itself. The two list shapes stay SEPARATE functions there; one function
+with a flag is how they were conflated. And the module is held by a CENSUS, not
+by a comment: nothing else may construct a `.list-title-wrapper`, and the
+per-character width model exists once. The allowlist carries a stated reason per
+entry, and a second leg fails when an entry goes stale — an allowlist that
+outlives its entries stops being a boundary and becomes a list of names.
+
+Two more shapes worth naming, both instances of the same thing:
+
+- **A field's point can be a NEGATIVE, and then a census is the load-bearing
+  leg.** `contentRight` exists so the figure chrome does not measure its own box.
+  No behavioural leg can see a consumer being wired to the wrong door — that is
+  precisely how such a thing ships — so `figure-chrome-beside-anchor.test.ts`
+  asserts the fit test names `resolveBlockFrame(block).contentRight` and the
+  module takes no `block.getBoundingClientRect()`. It also pins the gap the CSS
+  anchor and the JS fit test must share: two halves of one decision, with a
+  comment on each side saying so and nothing checking it.
+- **A DEFENSIVE path is only testable through a shape production cannot
+  produce.** `isTopRowOf`'s `MAX_CONTAINER_DESCENT` bound needs containers nested
+  directly in one another, which the list schema forbids. Refusing to build one
+  means not testing the bound at all, so the suite builds it and says why.
+
+**A leg on a composition must be able to FAIL.** Twenty-eight deliberate breaks
+were run against these suites and every one was caught — `listBoxOf` reverted to
+`el`, the chevron origin taken from the target, the cap offset dropped from
+`opticalCenterY`, a container's `markerLeft` taken from `contentLeft`,
+`contentRight` collapsed to `contentLeft`, `<ol start>` / `reversed` ignored,
+`columnRight` unconditional, `gapPx` frozen to its fallback, the container
+recursion removed from the first-line descent, the marker-ink trail allowance
+dropped, `measureTextWidth`'s guards removed, its cache mis-keyed, the width
+cache left un-cleared on a font wave, `capBandCenterOffset`'s `cs` ignored, the
+`<pre>`→`<code>` descent removed, the expex second pass removed, the beside gap
+drifted from the CSS, and the chrome measuring its own box again. The `reversed`
+leg was **vacuous on its first numbers** — the fixture's width model gives every
+digit one width, so `12.` and `14.` measure the same — and the break test is
+what caught it. A composition suite that passes on a broken assembly is the
+thing the task existed to avoid.
+
+**Not owed:** no preview eyeball. The only production change is one test-only
+export, `__textWidthCacheSize` (the twin of `__fontMetricsCacheSize`: the width
+cache is dropped on every font wave alongside the metrics cache, and only half
+of that invalidation was observable).

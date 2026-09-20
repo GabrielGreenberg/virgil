@@ -560,6 +560,19 @@ export function __fontMetricsCacheSize(): number {
   return FONT_METRICS_CACHE.size;
 }
 
+/**
+ * Test-only: current rendered-width cache size — the twin of
+ * {@link __fontMetricsCacheSize}, and it exists for the same reason (task 663).
+ * {@link TEXT_WIDTH_CACHE} is dropped on every font-load wave alongside the
+ * metrics cache, but only the metrics cache was OBSERVABLE, so `onFontReady`'s
+ * legs could prove half of an invalidation the code performs in one place. A
+ * cache whose invalidation nothing can see is a cache whose invalidation can be
+ * deleted without a failure.
+ */
+export function __textWidthCacheSize(): number {
+  return TEXT_WIDTH_CACHE.size;
+}
+
 /** Test-only: insert a dummy cache entry so invalidation can be observed. */
 export function __primeFontMetricsCache(key = "__test__"): void {
   FONT_METRICS_CACHE.set(key, {
