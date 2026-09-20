@@ -384,7 +384,7 @@ describe("right-margin geometry SSOT — min-margin floor (gated on marker visib
     expect(MARGIN_MIN_WITH_MARKERS.bottom).toBe(MARGIN_MIN.bottom);
   });
 
-  it("the unreserved base floors keep reading-mode freedom (zen / read-only reader)", () => {
+  it("the unreserved base floors keep reading-mode freedom (zen / compressed code-split)", () => {
     // When markers are hidden, the low base floors apply — the right margin
     // can shrink well below the lane width, so reading modes are not forced
     // into a wide margin.

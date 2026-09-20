@@ -1133,7 +1133,9 @@ export default function EditorLayout() {
   // sanctity like DiskWatcher).
   useWindowChrome();
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
-  // marginalia, popouts) so the document area appears alone. Top bar
+  // popouts) so the document area appears alone, and is a term in the
+  // marker-lane policy (`resolveMarginaliaLane`) so the margin icons go with
+  // them AND the lane's margin floor lifts with them. Top bar
   // stays so the button is always reachable. See useZenMode.ts.
   const {
     on: zenModeOn,

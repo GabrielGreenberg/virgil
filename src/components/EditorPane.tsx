@@ -124,6 +124,7 @@ import {
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
   resolveHorizontalMargin,
+  resolveMarginaliaLane,
 } from "@/lib/marginalia";
 import { isTier1CDisabled } from "@/lib/perf-flags";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
@@ -3751,14 +3752,42 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // column, every released float body (`.par-float-body`), and the drag
   // ghost overlay (`.lifted-text-overlay`). A new view toggle therefore
   // ports to all three by editing `viewToggleClasses` alone (Issue-12).
-  // Empty string when no menuBar (Reader).
+  // Empty string only where there is no menu bundle at all — which, since
+  // F#16 gave the Reader `readerMenuBar`, is no longer the Reader (task 671:
+  // `!!menuBar` has stopped meaning "not the Reader" everywhere it was used
+  // to mean that).
   const viewToggleCls = viewToggleClasses(menuBar);
 
-  // Filter marginalia markers by the master toggle and per-type hide set
-  // from the menu bundle. Reader (no menuBar) defaults to showing all
-  // markers — `menuBar?.showMarginalia === false` is false for undefined.
+  // ── THE marker-lane policy (task 671) ───────────────────────────
+  // ONE resolution, read by BOTH gates: this render filter (does an icon get
+  // painted?) and the margin floor 800 lines below (`marginaliaLaneReserved`
+  // → `useMarginEdit`'s drag clamp + `resolveHorizontalMargin`'s `Math.max`).
+  // They used to be two independent expressions of one fact, which is exactly
+  // how they drifted apart — the floor excluded zen and the Reader on the
+  // strength of a marker-hiding that five docstrings asserted and no code
+  // performed. `resolveMarginaliaLane` states it once: zen hides the markers,
+  // the Reader hosts them, and `reserved` is `hosted` minus the compressed
+  // code-split (the one exception that is about the FLOOR, not the markers).
+  //
+  // `useCodePaneSplit()` is a `useContext` read — keystroke-free, and it
+  // changes only when the code pane opens/closes or crosses its compressed
+  // threshold, never per keystroke. It is read HERE (rather than beside the
+  // floor, its only pre-671 consumer) so that both halves of the lane policy
+  // come out of ONE call; splitting the call is what let the halves drift.
+  const codeSplit = useCodePaneSplit();
+  const compressX = codeSplit.compressed;
+  const marginaliaLane = resolveMarginaliaLane({
+    showMarginalia: menuBar?.prefs.showMarginalia,
+    zenMode: viewPrefs?.zenMode,
+    compressX,
+  });
+
+  // Filter marginalia markers by the lane policy above and the per-type hide
+  // set from the menu bundle. A pane with no menu bundle defaults to showing
+  // all markers — `showMarginalia === undefined` means "default on", not
+  // "hide".
   const visibleMarginaliaMarkers = useMemo(() => {
-    if (menuBar?.prefs.showMarginalia === false) return [];
+    if (!marginaliaLane.hosted) return [];
     const hidden = menuBar?.prefs.hiddenMarginaliaTypes;
     // Archived cards drop out of the margin entirely (they live only under
     // their panel's View Archives/All), on top of the per-type hide set.
@@ -3770,7 +3799,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [
     marginaliaMarkers,
     archivedIds,
-    menuBar?.prefs.showMarginalia,
+    marginaliaLane.hosted,
     menuBar?.prefs.hiddenMarginaliaTypes,
   ]);
 
@@ -4561,29 +4590,27 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // compression is a horizontal squeeze; stomping vertical prefs would be
   // gratuitous.
   //
-  // Read the split signal FIRST: `marginaliaLaneReserved` (below) needs
-  // `compressX` to opt the marker lane OUT in compressed code-split.
-  // `useCodePaneSplit()` is a `useContext` read — keystroke-free, and it
-  // changes only when the code pane opens/closes or crosses its
-  // compressed threshold, never per keystroke.
-  const codeSplit = useCodePaneSplit();
-  const compressX = codeSplit.compressed;
+  // The split signal itself (`codeSplit` / `compressX`) is read up at the
+  // marker-lane policy block, because BOTH halves of that policy come out of
+  // one `resolveMarginaliaLane` call.
+  //
   // Marginalia lane reservation (backlog #8): the right/left margin min-floor
   // that keeps the marker grid from colliding with the scrollbar / bolt /
-  // text applies ONLY when the marginalia margins are actually rendered. That
-  // is true in the editor when the Marginalia toggle is on AND not in zen
-  // reading; it is FALSE in the read-only Library Reader (no `menuBar`) and in
-  // zen, both of which hide the markers and must keep full margin freedom
-  // (memo §4.1). Gating here, not unconditionally, avoids forcing wasted
-  // margins in those reading modes.
+  // text applies ONLY when the marginalia markers are actually rendered — and
+  // since task 671 that is not re-derived here, it IS the `hosted` half of the
+  // one policy the render filter reads, so "markers shown" and "lane reserved"
+  // cannot disagree. (They did: the floor excluded zen and the Reader for a
+  // marker-hiding that never happened, so zen painted icons with no floor to
+  // hold them and the Reader floored 184px of margin for a lane it was
+  // documented not to have.)
   //
   // COMPRESSED CODE-SPLIT exclusion: when the code pane is open and the editor
   // is compressed, the 48px comfort cap WINS — the lane is NOT reserved, so the
-  // marker floor never fights the user's deliberate compression-for-code. This
-  // mirrors the `!zenMode` term exactly: an intentionally-narrow reading mode
-  // where markers degrade (non-reserved, same as zen / the Library reader)
-  // rather than eating ~150px+ of prose width. The normal (non-code-split)
-  // editor keeps the floor untouched.
+  // marker floor never fights the user's deliberate compression-for-code. It is
+  // the ONE term by which `reserved` is narrower than `hosted`, and it is about
+  // the FLOOR rather than the markers: the icons still paint, degrading down
+  // the lane resolution as the gutter narrows, rather than eating ~150px+ of
+  // prose width back.
   //
   // What "degrade" MEANS is decided in `<Marginalia>`, not here (tasks 214/325).
   // This flag governs the FLOOR only; un-reserving it used to leave the grid
@@ -4592,13 +4619,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // (`resolveMarkerCols` → `resolveRightLane`) against the MEASURED margin —
   // yielding the columns the tucked selection bolt occupies, and hiding the
   // side it can't host at all — so the degradation this comment claims is real,
-  // and it holds for every narrowing path (zen, the reader, a hand-dragged
-  // margin), not just this one flag.
-  const marginaliaLaneReserved =
-    !!menuBar &&
-    menuBar.prefs.showMarginalia !== false &&
-    !viewPrefs?.zenMode &&
-    !compressX;
+  // and it holds for every narrowing path (a compressed code split, a
+  // hand-dragged margin), not just this one flag.
+  const marginaliaLaneReserved = marginaliaLane.reserved;
   const {
     marginEditMode,
     effective: effectiveMargins,
@@ -4616,9 +4639,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   //     minimum so the grid never collides with the scrollbar / bolt / text.
   // In compressed code-split the lane is NOT reserved (see
   // `marginaliaLaneReserved` above — `!compressX`), so the comfort cap WINS and
-  // the floor is a pass-through; reading modes that hide markers (zen / Reader)
-  // likewise keep the lower cap. The floor `Math.max` only bites in the normal
-  // markers-on editor (where `compressX` is false).
+  // the floor is a pass-through; so does zen, which hides the markers outright
+  // and therefore keeps its margin freedom down to 0. The floor `Math.max` only
+  // bites where markers are actually painted and the code pane is not
+  // compressing the column — the normal editor, and the Library Reader.
   const effectiveLeftMargin = resolveHorizontalMargin(effectiveMargins.left, {
     compress: compressX,
     laneReserved: marginaliaLaneReserved,
