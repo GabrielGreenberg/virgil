@@ -381,6 +381,55 @@ function windowStorageKey(): string {
   return WINDOW_STORAGE_PREFIX + getWindowId();
 }
 
+// ── One fault domain per stored blob (task 674) ─────────────────────────
+// The two pref blobs are INDEPENDENT stores with very different value to the
+// user: `…/window/<id>` is a disposable layout any session rebuilds, while
+// `…/global` holds the durable preferences (margins, page width, print
+// options, divider + marginalia config) tuned once and expected to last. A
+// single `try`/`catch` spanning both fused their failure modes: one truncated
+// per-window blob threw, `loadPrefs` returned `DEFAULT_PREFS` wholesale, and
+// the very next gesture's `persist` serialized those defaults over the
+// still-valid global blob — the durable preferences gone from disk, silently.
+//
+// So each blob is read behind its OWN boundary, and a blob that cannot be
+// read is QUARANTINED rather than left to be overwritten: the raw string is
+// copied once to `<key>.corrupt` (guarded on the target not already existing,
+// so a repeated failure cannot churn) before any write replaces it. Same
+// posture the `.tex` write path takes — an automatic write must not lose
+// content it cannot restore — applied to the preference store.
+const QUARANTINE_SUFFIX = ".corrupt";
+
+function quarantineBlob(key: string, raw: string): void {
+  try {
+    const target = key + QUARANTINE_SUFFIX;
+    if (localStorage.getItem(target) == null) localStorage.setItem(target, raw);
+  } catch {
+    // A full/blocked quota must never be the reason a load fails — the
+    // quarantine copy is a courtesy, not a precondition.
+  }
+}
+
+/** Read ONE pref blob into a plain object. Absent → `{}`. Unparseable, or
+ *  parseable but not a plain object (`null`, an array, a bare number — any of
+ *  which makes the `Object.keys` walk below throw or misbehave) → quarantine
+ *  the raw bytes and return `{}`, leaving the OTHER blob untouched. */
+function readPrefBlob(key: string): Record<string, unknown> {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(key);
+    if (raw == null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      quarantineBlob(key, raw);
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    if (raw != null) quarantineBlob(key, raw);
+    return {};
+  }
+}
+
 // ── Per-window pref garbage collection ──────────────────────────────────
 // Every window/session mints a fresh window-id and writes a
 // `virgil-view-prefs/window/<id>` layout key. Nothing ever removed them, so
@@ -421,7 +470,12 @@ function gcWindowPrefs(): void {
     const windowKeys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith(WINDOW_STORAGE_PREFIX)) windowKeys.push(k);
+      // A quarantine copy (`…/window/<id>.corrupt`) is not a window layout —
+      // it must not claim an index entry or a hard-cap slot and so evict a
+      // LIVE window's blob. It is collected below, with its own window.
+      if (k && k.startsWith(WINDOW_STORAGE_PREFIX) && !k.endsWith(QUARANTINE_SUFFIX)) {
+        windowKeys.push(k);
+      }
     }
 
     const survivors: { id: string; lastSeen: number }[] = [];
@@ -438,6 +492,7 @@ function gcWindowPrefs(): void {
       }
       if (now - index[id] > WINDOW_PREF_RETENTION_MS) {
         localStorage.removeItem(key);
+        localStorage.removeItem(key + QUARANTINE_SUFFIX);
         delete index[id];
       } else {
         survivors.push({ id, lastSeen: index[id] });
@@ -453,6 +508,7 @@ function gcWindowPrefs(): void {
         .slice(0, survivors.length - WINDOW_PREF_HARD_CAP)
         .forEach((s) => {
           localStorage.removeItem(WINDOW_STORAGE_PREFIX + s.id);
+          localStorage.removeItem(WINDOW_STORAGE_PREFIX + s.id + QUARANTINE_SUFFIX);
           delete index[s.id];
         });
     }
@@ -618,8 +674,7 @@ export function loadPrefs(): ViewPrefs {
       localStorage.removeItem(m.key);
     }
     if (legacyTouched) {
-      const cur = localStorage.getItem(GLOBAL_STORAGE_KEY);
-      const next = cur ? JSON.parse(cur) : {};
+      const next = readPrefBlob(GLOBAL_STORAGE_KEY);
       for (const [k, v] of Object.entries(legacyGlobalPatch)) {
         if (!(k in next)) next[k] = v;
       }
@@ -643,8 +698,13 @@ export function loadPrefs(): ViewPrefs {
         appliedPrefMigrations: PANEL_SIDE_MIGRATIONS.map((m) => m.id),
       };
     }
-    const windowParsed = windowRaw ? JSON.parse(windowRaw) : {};
-    const globalParsed = globalRaw ? JSON.parse(globalRaw) : {};
+    // Each blob behind its own fault boundary (see `readPrefBlob`): a corrupt
+    // LAYOUT blob must not cost the user their durable PREFERENCES, nor the
+    // reverse. The outer `catch` below survives only as the last-resort
+    // backstop for a throw in the *repair* code — the parse faults that
+    // actually happen no longer reach it.
+    const windowParsed = readPrefBlob(windowStorageKey());
+    const globalParsed = readPrefBlob(GLOBAL_STORAGE_KEY);
 
     // Migration: keys promoted from per-window to global (page-layout
     // dimensions like margins and pageWidth) should live in the global
