@@ -95,19 +95,55 @@ describe("migrateCardLinks", () => {
         },
       ];
       const result = migrateCardLinks("note", { id: "n1", links: legacyLinks });
-      expect(result).toHaveLength(1);
-      expect(result[0].anchor.type).toBe("textObject");
-      if (result[0].anchor.type === "textObject") {
-        expect(result[0].anchor.targetKind).toBe("paragraph");
-        expect(result[0].anchor.textObjectIds).toEqual(["p1", "p2"]);
+      // TASK 664 — a legacy MULTI-paragraph Mode-A anchor fans out to the ONE
+      // canonical multi-anchor shape (N links x 1 id), the shape
+      // `derivedLinksForCard` and every live write path already emit. It used
+      // to stay a single link carrying `["p1","p2"]` — a second shape whose
+      // readers (`resolveCardAnchor` rung 1, `isModeAOrphaned`) only ever
+      // looked at `[0]`.
+      expect(result).toHaveLength(2);
+      expect(result.map((l) => l.id)).toEqual(["n1@p1", "n1@p2"]);
+      for (const [i, pid] of ["p1", "p2"].entries()) {
+        expect(result[i].anchor.type).toBe("textObject");
+        const anchor = result[i].anchor;
+        if (anchor.type !== "textObject") continue;
+        expect(anchor.targetKind).toBe("paragraph");
+        expect(anchor.textObjectIds).toEqual([pid]);
         // The legacy blob's `margin: { side }` is DROPPED, not carried (task
         // 205): the side a card's margin chrome sits on is resolved live from
         // its panel's dock, so a migrated anchor must not resurrect a frozen
         // copy of it.
-        expect(
-          (result[0].anchor as Record<string, unknown>).margin,
-        ).toBeUndefined();
-        expect(result[0].anchor.textRange).toBeUndefined();
+        expect((anchor as Record<string, unknown>).margin).toBeUndefined();
+        expect(anchor.textRange).toBeUndefined();
+        // Everything outside the anchor rides along on every fanned link.
+        expect(result[i].kind).toBe("anchor");
+        expect(result[i].target).toEqual({
+          type: "card",
+          ref: { kind: "note", id: "n1" },
+        });
+        expect(result[i].createdAt).toBe("2026-01-01T00:00:00Z");
+      }
+    });
+
+    it("a SINGLE-paragraph legacy Mode-A anchor keeps its own link id", () => {
+      // The fan-out must not churn the overwhelmingly common single-anchor
+      // case: same one link, same id, only the anchor shape migrated.
+      const result = migrateCardLinks("note", {
+        id: "n1",
+        links: [
+          {
+            id: "lk-solo",
+            kind: "anchor",
+            anchor: { type: "anchor", paragraphIds: ["p1"] },
+            target: { type: "card", ref: { kind: "note", id: "n1" } },
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("lk-solo");
+      if (result[0].anchor.type === "textObject") {
+        expect(result[0].anchor.textObjectIds).toEqual(["p1"]);
       }
     });
 
@@ -312,5 +348,73 @@ describe("migrateCardLinks", () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("lk-broken");
     });
+  });
+});
+
+// ===========================================================================
+// TASK 664 — the two migration branches emit ONE shape
+//
+// `migrateCardLinks` reaches for `derivedLinksForCard` when the sidecar has
+// no `links[]` at all, and migrates in place when it has a legacy
+// `type:"anchor"` one. Both branches canonicalise the SAME legacy fact —
+// "this card is anchored to these paragraphs" — and they used to produce two
+// different shapes for it (one link x N ids vs N links x one id), neither of
+// which had a consumer that read all of it. Same fixture, same shape out.
+// ===========================================================================
+
+describe("task 664 — one canonical multi-anchor shape", () => {
+  /** Everything about a link the two branches CAN agree on. `createdAt` is
+   *  deliberately excluded: branch 1 preserves the legacy link's stamp,
+   *  branch 2 has none to preserve. */
+  const shapeOf = (links: ReturnType<typeof migrateCardLinks>) =>
+    links.map((l) => ({ id: l.id, kind: l.kind, anchor: l.anchor, target: l.target }));
+
+  it("Mode A: a legacy links[] blob and bare paragraphIds migrate identically", () => {
+    const pids = ["p1", "p2", "p3"];
+    const fromLegacyLinks = migrateCardLinks("note", {
+      id: "n1",
+      links: [
+        {
+          id: "lk1",
+          kind: "anchor",
+          anchor: { type: "anchor", paragraphIds: pids },
+          target: { type: "card", ref: { kind: "note", id: "n1" } },
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    const fromBareFields = migrateCardLinks("note", { id: "n1", paragraphIds: pids });
+    expect(shapeOf(fromLegacyLinks)).toEqual(shapeOf(fromBareFields));
+    // …and that one shape is the N-links one every live write path emits.
+    expect(fromLegacyLinks).toHaveLength(3);
+    for (const l of fromLegacyLinks) {
+      expect(l.anchor.type === "textObject" && l.anchor.textObjectIds).toHaveLength(1);
+    }
+  });
+
+  it("Mode B: the two branches already agreed, and still do", () => {
+    const fromLegacyLinks = migrateCardLinks("report", {
+      id: "q1",
+      links: [
+        {
+          id: "a-xyz",
+          kind: "anchor",
+          anchor: {
+            type: "anchor",
+            paragraphIds: ["p1"],
+            textRange: { anchorId: "a-xyz", textSnapshot: "hello world" },
+          },
+          target: { type: "card", ref: { kind: "report", id: "q1" } },
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    const fromBareFields = migrateCardLinks("report", {
+      id: "q1",
+      paragraphIds: ["p1"],
+      anchorId: "a-xyz",
+      anchorText: "hello world",
+    });
+    expect(shapeOf(fromLegacyLinks)).toEqual(shapeOf(fromBareFields));
   });
 });

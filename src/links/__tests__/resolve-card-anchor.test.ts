@@ -29,6 +29,7 @@ import {
   captureParagraphSnapshot,
   createLinkedAnchor,
   getTextAnchor,
+  isModeAOrphaned,
   type CardWithLinks,
 } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
@@ -164,15 +165,14 @@ describe("normalizeParagraphText", () => {
 // ===========================================================================
 
 describe("resolveCardAnchor — uuid-only Mode-A", () => {
-  it("live uuid → source:'uuid', mode:'A', high", () => {
+  it("live uuid → source:'uuid', mode:'A', names the winning link", () => {
     const index = fakeIndex({ uuids: ["P1"] });
     const res = resolveCardAnchor(card("c1", [modeALink("P1")]), null, index);
     expect(res).toEqual({
       paragraphId: "P1",
       mode: "A",
       source: "uuid",
-      confidence: "high",
-      liveAnchorId: null,
+      linkIndex: 0,
     });
   });
 
@@ -190,7 +190,7 @@ describe("resolveCardAnchor — uuid-only Mode-A", () => {
     );
     expect(res.source).toBe("snapshot");
     expect(res.mode).toBe("A");
-    expect(res.confidence).toBe("low");
+    expect(res.linkIndex).toBe(0);
     expect(res.paragraphId).toBe("Plive");
   });
 
@@ -201,8 +201,7 @@ describe("resolveCardAnchor — uuid-only Mode-A", () => {
       paragraphId: null,
       mode: null,
       source: "orphan",
-      confidence: "low",
-      liveAnchorId: null,
+      linkIndex: null,
     });
   });
 });
@@ -235,7 +234,7 @@ describe("resolveCardAnchor — uuid STRICTLY before snapshot", () => {
 // ===========================================================================
 
 describe("resolveCardAnchor — Mode-B", () => {
-  it("live anchorId → source:'mark', mode:'B', liveAnchorId set", () => {
+  it("live anchorId → source:'mark', mode:'B', names the winning link", () => {
     const index = fakeIndex({
       uuids: ["P1"],
       anchorIds: { "anc-1": "P1" },
@@ -249,12 +248,11 @@ describe("resolveCardAnchor — Mode-B", () => {
       paragraphId: "P1",
       mode: "B",
       source: "mark",
-      confidence: "high",
-      liveAnchorId: "anc-1",
+      linkIndex: 0,
     });
   });
 
-  it("mark gone + textSnapshot matches → source:'snapshot', liveAnchorId preserved", () => {
+  it("mark gone + textSnapshot matches → source:'snapshot', winner named", () => {
     const index = fakeIndex({
       uuids: ["P1"],
       // anchorId NOT in the index (mark gone)
@@ -268,8 +266,13 @@ describe("resolveCardAnchor — Mode-B", () => {
     expect(res.source).toBe("snapshot");
     expect(res.mode).toBe("B");
     expect(res.paragraphId).toBe("P1");
-    // anchorId preserved for a caller that wants to re-apply the mark.
-    expect(res.liveAnchorId).toBe("anc-gone");
+    // The anchorId is still reachable — off the WINNER the record names,
+    // rather than a copy the record carried and nothing read (task 664).
+    const winner = card("c1", [modeBLink("anc-gone", "the linked span")])
+      .links![res.linkIndex!];
+    expect(
+      winner.anchor.type === "textObject" && winner.anchor.textRange?.anchorId,
+    ).toBe("anc-gone");
   });
 
   it("mark gone + snapshot no match → orphan", () => {
@@ -349,7 +352,7 @@ describe("resolveCardAnchor — RC1 poisoned hybrid", () => {
     const res = resolveCardAnchor(card("c1", [healthy]), null, index);
     expect(res.source).toBe("mark");
     expect(res.mode).toBe("B");
-    expect(res.liveAnchorId).toBe("anc-live");
+    expect(res.linkIndex).toBe(0);
   });
 });
 
@@ -541,7 +544,7 @@ describe("buildResolveIndex / resolveCardAnchor — real editor", () => {
     expect(res.source).toBe("mark");
     expect(res.mode).toBe("B");
     expect(res.paragraphId).toBe("para0");
-    expect(res.liveAnchorId).toBe(rec.anchorId);
+    expect(res.linkIndex).toBe(0);
     editor.destroy();
   });
 });
@@ -758,5 +761,187 @@ describe("buildResolveIndex — single index, no per-card walk (open-verificatio
 
     spyBig.mockRestore();
     big.destroy();
+  });
+});
+
+// ===========================================================================
+// TASK 664 — a multi-anchor Mode-A card
+//
+// Two defects shared one root: the resolution record named a *mode* where
+// the mutator needed an *identity*, and "the card's anchor" was read as
+// `textObjectIds[0]` at two rungs that had no business asking only the
+// first. Before this task the suite built NO two-link card at all, and its
+// only multi-id legs were poisoned `linkedRange` fixtures — which is why
+// both shipped.
+// ===========================================================================
+
+describe("task 664 — a card with TWO Mode-A links, both uuids dead", () => {
+  /** Two paragraphs, two links, each carrying its OWN snapshot. The `%!v:`
+   *  round-trip race kills uuids DOC-WIDE, so "both dead" is the ordinary
+   *  reload case, not an exotic one. */
+  function twoAnchorCard() {
+    return card("c1", [
+      modeALink("Pdead1", "first anchored paragraph"),
+      modeALink("Pdead2", "second anchored paragraph"),
+    ]);
+  }
+
+  const index = () =>
+    fakeIndex({
+      uuids: ["Plive1", "Plive2"],
+      snapshots: {
+        "first anchored paragraph": "Plive1",
+        "second anchored paragraph": "Plive2",
+      },
+    });
+
+  it("the resolution names WHICH link won, not just its mode", () => {
+    const res = resolveCardAnchor(twoAnchorCard(), null, index());
+    expect(res.source).toBe("snapshot");
+    expect(res.mode).toBe("A");
+    expect(res.paragraphId).toBe("Plive1");
+    // The identity the relocating mutator needs — link 0, the one whose own
+    // snapshot matched.
+    expect(res.linkIndex).toBe(0);
+  });
+
+  it("relocation rewrites ONLY the matched link — the second keeps its own anchor", () => {
+    const before = twoAnchorCard();
+    const res = resolveCardAnchor(before, null, index());
+    const { card: after, changed } = reconcileCardToResolved(before, res);
+    expect(changed).toBe(true);
+
+    const ids = after.links!.map((l) =>
+      l.anchor.type === "textObject" ? l.anchor.textObjectIds : [],
+    );
+    // Link 0 relocated onto the paragraph ITS snapshot matched.
+    expect(ids[0]).toEqual(["Plive1"]);
+    // Link 1 is untouched — NOT sprayed with link 0's paragraph. Pre-664
+    // this came back `["Plive1"]` too: the mutator re-derived "which link?"
+    // from `res.mode` and `links.map`-ed every Mode-A link, so the card lost
+    // its second anchor (dedupe then dropped the duplicated row, taking the
+    // second marker and its detach affordance with it).
+    expect(ids[1]).toEqual(["Pdead2"]);
+    // …and with its own snapshot text still beside its own pid.
+    const l1 = after.links![1];
+    expect(
+      l1.anchor.type === "textObject" && l1.anchor.paragraphSnapshot,
+    ).toBe("second anchored paragraph");
+  });
+
+  it("no link is ever pointed at a paragraph its OWN snapshot did not match", () => {
+    const before = twoAnchorCard();
+    const res = resolveCardAnchor(before, null, index());
+    const { card: after } = reconcileCardToResolved(before, res);
+    const idx = index();
+    for (const link of after.links!) {
+      if (link.anchor.type !== "textObject") continue;
+      const snap = link.anchor.paragraphSnapshot;
+      const pid = link.anchor.textObjectIds[0];
+      if (!snap || !pid) continue;
+      const matched = idx.snapshotToParagraph(normalizeParagraphText(snap));
+      // Either the link still sits on its (dead) stored pid, or it sits on
+      // exactly the paragraph its own snapshot re-found. Never a foreign one.
+      if (idx.uuidToParagraph.has(pid)) expect(pid).toBe(matched);
+    }
+  });
+
+  it("the relocation is idempotent and still touches only one link", () => {
+    const before = twoAnchorCard();
+    const once = reconcileCardToResolved(
+      before,
+      resolveCardAnchor(before, null, index()),
+    ).card;
+    // Second pass: link 0's uuid is live now, so rung 1 wins and the mutator
+    // routes to backfill — no further id rewrite anywhere.
+    const res2 = resolveCardAnchor(once, null, index());
+    expect(res2.source).toBe("uuid");
+    expect(res2.paragraphId).toBe("Plive1");
+    const twice = reconcileCardToResolved(once, res2).card;
+    expect(
+      twice.links!.map((l) =>
+        l.anchor.type === "textObject" ? l.anchor.textObjectIds : [],
+      ),
+    ).toEqual([["Plive1"], ["Pdead2"]]);
+  });
+
+  it("a resolution computed against a DIFFERENT card writes nothing", () => {
+    // The winner is an index; a stale one must not be followed blind —
+    // rewriting a guessed link is the very bug `linkIndex` retired.
+    const other = card("c2", [modeALink("Pdead1", "first anchored paragraph")]);
+    const stale = resolveCardAnchor(other, null, index());
+    const lone = card("c3", []);
+    expect(reconcileCardToResolved(lone, stale).changed).toBe(false);
+    const oneLink = card("c4", [modeALink("Pdead9")]); // no snapshot to restamp
+    expect(
+      reconcileCardToResolved(oneLink, { ...stale, linkIndex: 7 }).changed,
+    ).toBe(false);
+  });
+});
+
+describe("task 664 — a Mode-A link whose FIRST id died but whose second is live", () => {
+  /** The legacy shape-1 residue: ONE link carrying N ids. Migration never
+   *  wrote a `paragraphSnapshot` for it, so rung 3 cannot rescue it either —
+   *  reading `[0]` alone orphaned the card wholesale. */
+  function multiIdLink(ids: string[]): Link {
+    return {
+      id: "link-multi",
+      kind: "anchor",
+      anchor: {
+        type: "textObject",
+        targetKind: "paragraph",
+        textObjectIds: ids,
+      },
+      target: { type: "card", ref: { kind: "note", id: "c1" } },
+      createdAt: "",
+    };
+  }
+
+  it("rung 1 reads EVERY id — the card resolves onto the live one", () => {
+    const index = fakeIndex({ uuids: ["Plive"] });
+    const res = resolveCardAnchor(
+      card("c1", [multiIdLink(["Pdead", "Plive"])]),
+      null,
+      index,
+    );
+    expect(res.source).toBe("uuid");
+    expect(res.mode).toBe("A");
+    expect(res.paragraphId).toBe("Plive");
+    expect(res.linkIndex).toBe(0);
+  });
+
+  it("isModeAOrphaned reads EVERY id — the card is NOT orphaned", () => {
+    expect(
+      isModeAOrphaned(
+        card("c1", [multiIdLink(["Pdead", "Plive"])]),
+        new Set(["Plive"]),
+      ),
+    ).toBe(false);
+    // …and a card whose ids are ALL dead still is.
+    expect(
+      isModeAOrphaned(
+        card("c1", [multiIdLink(["Pdead", "Pgone"])]),
+        new Set(["Plive"]),
+      ),
+    ).toBe(true);
+  });
+
+  it("the backfill finds the resolved paragraph at ids[1] too", () => {
+    const index = fakeIndex({ uuids: ["Plive"] });
+    const before = card("c1", [multiIdLink(["Pdead", "Plive"])]);
+    const res = resolveCardAnchor(before, null, index);
+    const { card: after, changed } = reconcileCardToResolved(before, res, {
+      liveText: "the live paragraph text",
+    });
+    expect(changed).toBe(true);
+    const a = after.links![0].anchor;
+    expect(a.type === "textObject" && a.paragraphSnapshot).toBe(
+      "the live paragraph text",
+    );
+    // The ids themselves are untouched — the uuid rung relocates nothing.
+    expect(a.type === "textObject" && a.textObjectIds).toEqual([
+      "Pdead",
+      "Plive",
+    ]);
   });
 });
