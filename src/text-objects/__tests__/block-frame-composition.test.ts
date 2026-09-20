@@ -35,6 +35,8 @@
  * `handle-marker-ink-clearance.test.tsx` the ink bound the lane derives.
  */
 
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resolveBlockFrame, resolveContentEdges } from "@/text-objects/block-frame";
 import { clearCapTopCache } from "@/lib/text-metrics";
@@ -448,5 +450,100 @@ describe("BlockFrame.contentRight (chip 4b — the figure chrome's anchor)", () 
     expect(edges.contentLeft).toBe(frame.contentLeft);
     expect(edges.contentWidth).toBe(frame.contentWidth);
     expect(edges.contentRight).toBe(frame.contentRight);
+  });
+});
+
+describe("the fixture builder is the ONE home for this DOM (task 663)", () => {
+  // A shared builder that nothing reaches is a second copy, not a replacement —
+  // and the copy a new suite finds is whichever one is nearest. So the boundary
+  // is held by a census rather than by a comment in the module.
+  const SRC = join(process.cwd(), "src");
+
+  /** This file, which is excluded from its own sweep: it carries the patterns it
+   *  searches for as regex literals, so it matches itself and nothing else. */
+  const SELF = "text-objects/__tests__/block-frame-composition.test.ts";
+
+  function testFiles(): string[] {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.test\.tsx?$/.test(name) || name.startsWith("_")) out.push(full);
+      }
+    };
+    walk(SRC);
+    return out.filter((f) => relative(SRC, f) !== SELF);
+  }
+
+  /**
+   * Files allowed to CONSTRUCT a `.list-title-wrapper` themselves, each with the
+   * reason it is not the builder's job. An entry is an argument, not an
+   * exemption: a new suite needing this shape comes through the builder, or
+   * states here why it cannot.
+   */
+  const LIST_WRAPPER_BUILDERS: Record<string, string> = {
+    "text-objects/__tests__/_block-frame-fixtures.ts":
+      "the builder itself — the door this census exists to keep singular",
+    "lib/__tests__/first-line-target-census.test.ts":
+      "task 660's census builds the top-level AND the bare shape SIDE BY SIDE to " +
+      "show the wrapper table is right by luck on one and has no branch for the " +
+      "other; those two fixtures ARE its argument, so they stay local to it",
+    "lib/__tests__/text-metrics.test.ts":
+      "exercises `resolveInlineContextElement`'s class table directly with a bare " +
+      "markup string — no uuid, no kind, no geometry, so nothing a block-frame " +
+      "fixture provides is in play",
+  };
+
+  it("nothing else hand-rolls the top-level-list shape", () => {
+    // The shape task 659 turned on: uuid/kind on a `.list-title-wrapper` div,
+    // band + counter on the `<ul>`/`<ol>` inside it. No fixture built it, so the
+    // band was measured on a div — `padding-left: 0`, inherited `disc` — for
+    // every top-level numbered list in the app, and nothing failed.
+    const CONSTRUCTS = /(?:className\s*=\s*"list-title-wrapper|class="list-title-wrapper)/;
+    const offenders = testFiles()
+      .filter((f) => CONSTRUCTS.test(readFileSync(f, "utf8")))
+      .map((f) => relative(SRC, f))
+      .filter((rel) => !(rel in LIST_WRAPPER_BUILDERS));
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlisted builder still exists", () => {
+    // An allowlist that outlives its entries stops being a boundary and starts
+    // being a list of names.
+    const constructing = new Set(
+      testFiles()
+        .filter((f) =>
+          /(?:className\s*=\s*"list-title-wrapper|class="list-title-wrapper)/.test(
+            readFileSync(f, "utf8"),
+          ),
+        )
+        .map((f) => relative(SRC, f)),
+    );
+    for (const rel of Object.keys(LIST_WRAPPER_BUILDERS)) {
+      expect(constructing.has(rel), `${rel} no longer builds one`).toBe(true);
+    }
+  });
+
+  it("the canvas width model exists once", () => {
+    // The fixture IS the world the production estimate is checked against. Two
+    // copies of that world can drift apart without either suite failing, which
+    // would leave a marker-ink leg comparing a good estimate to a stale model.
+    const owners = testFiles()
+      .filter((f) => /\bDIGIT_EM\b/.test(readFileSync(f, "utf8")))
+      .map((f) => relative(SRC, f));
+    expect(owners).toEqual(["text-objects/__tests__/_block-frame-fixtures.ts"]);
+  });
+
+  it("the two list builders stay two — the nested shape has no wrapper", () => {
+    // The 659 invariant, as a structural fact rather than a comment: collapsing
+    // them into one function with a flag is how they came to be conflated.
+    const nested = buildNestedList("ol");
+    expect(nested.block.tagName).toBe("OL");
+    expect(nested.block.closest(".list-title-wrapper")).toBeNull();
+    const top = buildTopLevelList("ol");
+    expect(top.block.classList.contains("list-title-wrapper")).toBe(true);
+    expect(top.block).not.toBe(top.list);
+    expect(top.list.tagName).toBe("OL");
   });
 });

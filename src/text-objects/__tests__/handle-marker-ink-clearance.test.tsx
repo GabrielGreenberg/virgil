@@ -71,6 +71,11 @@ import {
 import { resolveMarkerGeometry } from "@/text-objects/block-frame";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildHandleTestFrame } from "./_handle-frame";
+import {
+  buildTopLevelList as sharedTopLevelList,
+  modelTextWidth,
+  stubCanvas,
+} from "./_block-frame-fixtures";
 
 // ── Geometry constants shared by every leg ──────────────────────────────────
 const EDITOR_LEFT = 200;
@@ -86,13 +91,6 @@ const BAND_EM = 2.5;
 const ROW_TOP = 300;
 const ROW_BOTTOM = 340;
 
-/** A per-character width model for the canvas stub — jsdom has no real 2D
- *  context, so `measureTextWidth` would return "no opinion" and the measured
- *  half of the ink boundary would never be exercised. Ratios are em fractions
- *  in the ballpark of a serif text face; nothing here depends on their exact
- *  values, only on a two-digit counter being materially wider than a bullet. */
-const CHAR_EM: Record<string, number> = { "•": 0.35, ".": 0.28 };
-const DIGIT_EM = 0.55;
 /** The gap this fixture's "browser" leaves between a marker's ink and the
  *  item's content edge. Deliberately spelled here as well as in `block-frame`:
  *  the fixture IS the world the production code estimates, so a leg that
@@ -100,32 +98,13 @@ const DIGIT_EM = 0.55;
  *  a bad one — the shape the codebase calls "an approximation deciding its own
  *  eligibility". Every geometry leg therefore checks TWO things: the stated
  *  contract (clear of the resolved `inkLeft`) and the reality behind it (clear
- *  of where this fixture actually paints the glyph). */
+ *  of where this fixture actually paints the glyph).
+ *
+ *  The canvas stub and its per-character width model moved to the shared
+ *  fixture builder (task 663) — the world every geometry suite estimates
+ *  against is one world, and a second copy of it is a second world that can
+ *  drift from this one without either suite failing. */
 const FIXTURE_TRAIL_EM = 0.25;
-function modelTextWidth(text: string, fontSizePx: number): number {
-  let w = 0;
-  for (const ch of text) {
-    w += (/[0-9]/.test(ch) ? DIGIT_EM : (CHAR_EM[ch] ?? 0.5)) * fontSizePx;
-  }
-  return w;
-}
-function stubCanvas() {
-  const ctx = {
-    font: "16px serif",
-    measureText(text: string) {
-      const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "16");
-      return {
-        width: modelTextWidth(text, fs),
-        actualBoundingBoxAscent: fs * 0.7,
-        fontBoundingBoxAscent: fs * 0.9,
-        fontBoundingBoxDescent: fs * 0.2,
-      } as unknown as TextMetrics;
-    },
-  };
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
-    ctx as unknown as CanvasRenderingContext2D,
-  );
-}
 
 function rect(top: number, bottom: number, left: number, right = 700): DOMRect {
   return { top, bottom, left, right, width: right - left, height: bottom - top,
@@ -190,16 +169,21 @@ function buildList(
 }
 
 /**
- * The REAL top-level list shape, as `createListTitleNodeView`
- * (`src/lib/editor-extensions.ts`) renders it: the uuid/kind live on a
+ * The REAL top-level list shape — `createListTitleNodeView`
+ * (`src/lib/editor-extensions.ts`) stamps the uuid/kind on a
  * `.list-title-wrapper` **div**, which hosts the par-title annotation and the
- * `<ul>`/`<ol>`. The band (`padding-left`) and the counter (`list-style-type`)
- * are on the LIST, not on the wrapper — the wrapper's padding is `0` and its
- * `list-style-type` is the inherited initial `disc`, exactly as in the browser.
+ * `<ul>`/`<ol>`; the band (`padding-left`) and the counter (`list-style-type`)
+ * are on the LIST, not on the wrapper.
+ *
+ * Since task 663 the DOM comes from the shared builder rather than a copy here,
+ * and this is only the adapter that keeps this suite's positional convention.
+ * That shape is exactly the one no fixture had ever built (task 659) — the band
+ * got measured on a div for every top-level numbered list in the app — so a
+ * second hand-rolled copy of it is the thing to avoid, and
+ * `block-frame-composition.test.ts`'s census keeps it at one.
  *
  * `buildList` above stamps the kind on the `<ul>`/`<ol>` directly, which is the
- * NESTED shape — and is why the top-level one had never been exercised (task
- * 659). Do not collapse the two.
+ * NESTED shape. Do not collapse the two.
  */
 function buildTopLevelList(
   tag: "ul" | "ol",
@@ -208,47 +192,18 @@ function buildTopLevelList(
   itemCount = 1,
   start?: number,
 ): { wrapper: HTMLElement; list: HTMLElement; items: HTMLElement[] } {
-  const wrapper = document.createElement("div");
-  wrapper.className = "list-title-wrapper has-text";
-  wrapper.setAttribute("data-uuid", "list1");
-  wrapper.setAttribute("data-text-object-kind", tag === "ul" ? "bulletList" : "orderedList");
-  // The wrapper's own box: no horizontal padding, border or margin, so its left
-  // IS the list's — the block box and the list box coincide numerically and
-  // still answer different questions.
-  wrapper.style.paddingLeft = "0px";
-  wrapper.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
-
-  const annot = document.createElement("div");
-  annot.className = "par-title-annotation";
-  wrapper.appendChild(annot);
-
-  const list = document.createElement(tag);
-  list.style.paddingLeft = `${padLeftPx}px`;
-  list.style.fontSize = `${fontSizePx}px`;
-  list.style.listStyleType = tag === "ul" ? "disc" : "decimal";
-  if (start !== undefined) list.setAttribute("start", String(start));
-  list.getBoundingClientRect = () => rect(ROW_TOP, ROW_BOTTOM, EDITOR_LEFT);
-  wrapper.appendChild(list);
-
-  const liLeft = EDITOR_LEFT + padLeftPx;
-  const items: HTMLElement[] = [];
-  for (let i = 0; i < itemCount; i++) {
-    const li = document.createElement("li");
-    li.setAttribute("data-uuid", `li${i + 1}`);
-    li.setAttribute("data-text-object-kind", "listItem");
-    li.getBoundingClientRect = () => rect(ROW_TOP + i * 40, ROW_BOTTOM + i * 40, liLeft);
-    const para = document.createElement("p");
-    para.textContent = `item ${i + 1}`;
-    para.style.fontSize = `${fontSizePx}px`;
-    para.style.setProperty("--margin-handle-gap", `${GAP_EM}em`);
-    para.style.setProperty("--margin-track-width", `${TRACK_EM}em`);
-    para.getBoundingClientRect = () => rect(ROW_TOP + 2 + i * 40, ROW_BOTTOM - 2 + i * 40, liLeft);
-    li.appendChild(para);
-    list.appendChild(li);
-    items.push(li);
-  }
-  editorEl.appendChild(wrapper);
-  return { wrapper, list, items };
+  const built = sharedTopLevelList(tag, {
+    parent: editorEl,
+    left: EDITOR_LEFT,
+    width: 700 - EDITOR_LEFT,
+    top: ROW_TOP,
+    height: ROW_BOTTOM - ROW_TOP,
+    bandPx: padLeftPx,
+    fontSizePx,
+    itemCount,
+    start,
+  });
+  return { wrapper: built.wrapper, list: built.list, items: built.items };
 }
 
 /** A bullet list nested `depth` levels deep, each level ONE item whose first
