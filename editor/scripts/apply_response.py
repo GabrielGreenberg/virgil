@@ -164,6 +164,7 @@ from _common import (
     die,
     find_bib_file,
     find_tex_file,
+    is_terminal_status,
     json_dumps,
     notification_appended,
     now_iso,
@@ -171,6 +172,11 @@ from _common import (
     resolve_doc,
     sidecar,
     spawn_reflection,
+    STATUS_COMPLETE,
+    STATUS_FAILED,
+    STATUS_IN_PROGRESS,
+    STATUS_PENDING,
+    TERMINAL_STATUSES,
     version_bumped,
 )
 
@@ -190,10 +196,10 @@ PANEL_TO_SIDECAR = {
 }
 
 # --- Two-field status / result vocabulary (EDITOR_SKILLS_V1 §7) ------------
-STATUS_PENDING = "pending"
-STATUS_IN_PROGRESS = "in-progress"
-STATUS_COMPLETE = "complete"
-STATUS_FAILED = "failed"
+# STATUS_* / TERMINAL_STATUSES / is_terminal_status are imported from _common
+# above (task 680) — ONE Python statement of the vocabulary, mirroring TS
+# `isTerminalStatus`, re-exported here because card_by_id and the slice suites
+# read them off this module.
 
 # Outcomes; set only on a terminal status (complete / failed).
 RESULT_ACCEPTED = "accepted"
@@ -795,26 +801,38 @@ class _Txn:
 
     def close_linked_request(self, linked: dict, *, result: str,
                              force: bool = False) -> bool:
-        # Flip the FIRST linked `ai-requests.json` row ({panel, cardId}) to a
-        # terminal status — the by-`linkedTo` twin of cmd_write's by-`request_id`
-        # completion (the task 019 resolve SSOT). Needed by a terminal card
-        # transition that carries NO driving requestId (a user-initiated
-        # archive): `_mutation_commit` resolves a row by request_id ONLY, so
-        # without this the bridged row is left dangling OPEN (Leg A) even after
-        # the card is archived.
+        # Flip EVERY matching linked `ai-requests.json` row ({panel, cardId}) to
+        # a terminal status — the by-`linkedTo` twin of cmd_write's
+        # by-`request_id` completion (the task 019 resolve SSOT). Needed by a
+        # terminal card transition that carries NO driving requestId (a
+        # user-initiated archive): `_mutation_commit` resolves a row by
+        # request_id ONLY, so without this the bridged row is left dangling OPEN
+        # (Leg A) even after the card is archived.
+        #
+        # EVERY row, not the first (task 680, the Python half of task 253): a
+        # single card can legitimately carry TWO non-terminal linked rows at
+        # once — an answered-L3 row (`in-progress`+`resultId`, which the drain
+        # already counts closed and task 043 protects from a toggle-off) plus a
+        # fresh re-toggled `pending` row. Stopping at the first match left the
+        # other one OPEN for a card that no longer exists, so the next
+        # `/editor/review` drain re-served a request against a deleted card.
+        # This is the byte-mirror of the UI bridge's `"terminate"` mode
+        # (`ai-request-bridge.ts`, which `requests.map(...)`s over every match),
+        # and the arity is pinned across the language line by
+        # `src/lib/__tests__/ai-request-open-parity.test.ts`.
         #
         # `force` (task 093) selects the closure scope:
-        #   - False (default) — mirror list_requests.isRequestOpen: close only a
-        #     row the drain still counts OPEN, leaving an answered-L3 row
-        #     (`in-progress`+`resultId`) untouched so a toggle-off can't orphan
-        #     its `resultId` (the task 043 protection).
-        #   - True (archive) — the card is GONE, so terminate the first
-        #     non-terminal row REGARDLESS of openness, incl. an answered-L3 row.
-        #     `cmd_archive` passes this; the byte-mirror of the UI bridge's
-        #     `"terminate"` mode. Already-terminal rows are still skipped, so it
-        #     stays idempotent and closes exactly one row.
-        # Returns True iff a row was closed — an unflagged / already-resolved
-        # card matches nothing and writes no spurious terminal row.
+        #   - False (default) — mirror `is_request_open` / TS `isRequestOpen`:
+        #     close only rows the drain still counts OPEN, leaving an answered-L3
+        #     row (`in-progress`+`resultId`) untouched so a toggle-off can't
+        #     orphan its `resultId` (the task 043 protection).
+        #   - True (archive) — the card is GONE, so terminate every non-terminal
+        #     row REGARDLESS of openness, incl. an answered-L3 row.
+        #     `cmd_archive` passes this. Already-terminal rows are still skipped,
+        #     so re-running it writes nothing (idempotent).
+        # Returns True iff at least one row was closed — an unflagged /
+        # already-resolved card matches nothing and writes no spurious terminal
+        # row.
         panel = linked.get("panel")
         card_id = linked.get("cardId")
         if not panel or not card_id:
@@ -823,6 +841,7 @@ class _Txn:
         ar = self.jget(ar_path, None)
         if not isinstance(ar, dict) or not isinstance(ar.get("requests"), list):
             return False
+        closed = False
         for r in ar["requests"]:
             if not isinstance(r, dict):
                 continue
@@ -832,15 +851,16 @@ class _Txn:
                     and lk.get("cardId") == card_id):
                 continue
             status = r.get("status")
-            if status in (STATUS_COMPLETE, STATUS_FAILED):
+            if is_terminal_status(status):
                 continue
             if not force and status == STATUS_IN_PROGRESS and r.get("resultId"):
                 continue
             r["status"] = STATUS_COMPLETE
             r["result"] = result
+            closed = True
+        if closed:
             self.mark(ar_path)
-            return True
-        return False
+        return closed
 
     # --- existing-card mutation primitives (used by the §10 ops) -----------
 

@@ -50,6 +50,8 @@ from _common import (
     card_paragraph_ids,
     card_text_anchor,
     die,
+    is_request_open,
+    is_terminal_status,
     read_json,
     resolve_doc,
     rich_json_to_text,
@@ -88,10 +90,13 @@ def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
         #      scattered per-skill card-existence idempotency guards; the source
         #      card's `aiRequest` flag is cleared on the same write
         #      (clearSourceFlag, default-on), closing the fallback leg too.
-        status = r.get("status")
-        if status in ("complete", "failed"):
-            continue
-        if status == "in-progress" and r.get("resultId"):
+        #
+        # Both clauses now live in ONE place — `_common.is_request_open`, the
+        # Python twin of TS `isRequestOpen` (task 680) — so the drain and every
+        # other Python reader of the vocabulary cannot drift from each other,
+        # and the cross-language parity suite has a single function to pin
+        # instead of two transcribed clauses.
+        if not is_request_open(r):
             continue
         linked = r.get("linkedTo")
         if isinstance(linked, dict) and linked.get("panel") and linked.get("cardId"):
@@ -134,7 +139,7 @@ def list_bib_reviews(doc) -> list[dict]:
     # Tolerate either { requests: [] } or { reviews: [] } on disk.
     items = state.get("requests") or state.get("reviews") or []
     for r in items:
-        if r.get("status") in ("complete", "failed"):
+        if is_terminal_status(r.get("status")):
             continue
         bibkey = r.get("bibKey") or r.get("citekey")
         if not bibkey:

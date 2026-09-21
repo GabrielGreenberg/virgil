@@ -67,6 +67,7 @@ from _common import (
     find_bib_file,
     find_paragraph_uuids,
     find_tex_file,
+    is_terminal_status,
     now_iso,
     read_json,
     resolve_doc,
@@ -479,7 +480,7 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
         if accept_task_kinds and req.get("kind") not in accept_task_kinds:
             die(f"request {request_id} is kind={req.get('kind')!r}, not {a.kind} "
                 f"(expected one of {sorted(accept_task_kinds)})")
-        if req.get("status") in ("complete", "failed"):
+        if is_terminal_status(req.get("status")):
             return {"ok": True, "noop": True, "reason": "request already terminal", "requestId": request_id}
         if not anchor:
             pids = req.get("paragraphIds") or []
