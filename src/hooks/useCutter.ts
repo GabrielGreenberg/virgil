@@ -28,7 +28,9 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import {
   bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
+  type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
@@ -191,6 +193,18 @@ function migrateCutter(raw: unknown): CutterState {
   return { cards: [], goal };
 }
 
+/** The `ai-requests.json` payload a cutter-comment contributes — the ONE
+ *  place its shape is written, shared by both bridge doors so the
+ *  card-present payload cannot drift from the card-may-be-absent one. Read
+ *  only on the ADD branch (see `bridgeFlagForCard`). */
+function cutterCommentContext(card: CutterCommentCard): BridgeContext {
+  return {
+    text: card.text || "<cutter comment>",
+    paragraphIds: getLinkedTextObjectIds(card),
+    selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+  };
+}
+
 export function useCutter(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
@@ -215,13 +229,25 @@ export function useCutter(
         "cutter-comment",
         card.id,
         value,
-        {
-          text: card.text || "<cutter comment>",
-          paragraphIds: getLinkedTextObjectIds(card),
-          selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-        },
+        cutterCommentContext(card),
         mode,
       );
+    },
+    [docId],
+  );
+
+  // The card-MAY-BE-ABSENT door onto the same seam (task 697): clearing a flag
+  // needs no card, so `bridgeFlagForCard` degrades the CONTEXT rather than
+  // skipping the CALL. Shares `cutterCommentContext` with `bridgeComment`, so
+  // the present-card payload cannot drift between the two doors.
+  const bridgeCommentById = useCallback(
+    (
+      id: string,
+      card: CutterCommentCard | undefined,
+      value: boolean,
+      mode: AiRequestSyncMode,
+    ) => {
+      bridgeFlagForCard(docId, "cutter-comment", id, value, mode, card, cutterCommentContext);
     },
     [docId],
   );
@@ -478,9 +504,14 @@ export function useCutter(
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) bridgeComment({ ...card, aiRequest: value }, value, mode);
+      bridgeCommentById(
+        id,
+        card && { ...card, aiRequest: value },
+        value,
+        mode,
+      );
     },
-    [update, pristine, state.cards, bridgeComment],
+    [update, pristine, state.cards, bridgeCommentById],
   );
 
   const updateSuggestionField = useCallback(

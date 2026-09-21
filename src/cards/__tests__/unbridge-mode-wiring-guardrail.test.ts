@@ -44,7 +44,25 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const EXTS = [".ts", ".tsx"];
-const CALL_FORM = "bridgeCardAiRequestFlag(";
+
+/**
+ * The bridge's DOORS, and where each one's mode sits in its argument list.
+ *
+ * There are two (task 697). `bridgeCardAiRequestFlag` is the raw writer;
+ * `bridgeFlagForCard` is the card-MAY-BE-ABSENT door the panel setters take,
+ * which owns the "the context degrades, the call does not" rule and forwards
+ * to the raw writer. Both take a REQUIRED positional mode — the property this
+ * guard protects is the same for both, and a door that took a default again
+ * would re-open task 313 through whichever one it was added to. Listing them
+ * is what keeps a third door from arriving unguarded: the coverage leg below
+ * counts the sites BOTH forms find.
+ */
+const CALL_FORMS: Array<{ form: string; modeIndex: number; arity: number }> = [
+  // (docId, cardKind, cardId, value, ctx, mode)
+  { form: "bridgeCardAiRequestFlag(", modeIndex: 5, arity: 6 },
+  // (docId, cardKind, cardId, value, mode, card, context)
+  { form: "bridgeFlagForCard(", modeIndex: 4, arity: 7 },
+];
 
 /**
  * The sites that legitimately DECIDE a mode, because at each one the user
@@ -132,24 +150,35 @@ interface Site {
   file: string;
   line: number;
   args: string[];
+  /** Where this door's mode sits, and how many args a mode-stating call has. */
+  modeIndex: number;
+  arity: number;
 }
 
 function collectSites(): Site[] {
   const sites: Site[] = [];
   for (const file of walk("src")) {
     const src = blankComments(readFileSync(file, "utf8"));
-    let at = src.indexOf(CALL_FORM);
-    while (at !== -1) {
-      // Skip the declaration itself (`export async function bridgeCardAiRequestFlag(`).
-      const before = src.slice(Math.max(0, at - 20), at);
-      if (!/\bfunction\s+$/.test(before)) {
-        sites.push({
-          file,
-          line: src.slice(0, at).split("\n").length,
-          args: topLevelArgs(argSlice(src, at + CALL_FORM.length - 1)),
-        });
+    for (const { form, modeIndex, arity } of CALL_FORMS) {
+      let at = src.indexOf(form);
+      while (at !== -1) {
+        // Skip the declaration itself (`export async function
+        // bridgeCardAiRequestFlag(`). `bridgeFlagForCard` is generic, so its
+        // own declaration reads `bridgeFlagForCard<C>(` and this form never
+        // matches it — the check is kept for both so neither door depends on
+        // that accident.
+        const before = src.slice(Math.max(0, at - 24), at);
+        if (!/\bfunction\s+$/.test(before)) {
+          sites.push({
+            file,
+            line: src.slice(0, at).split("\n").length,
+            args: topLevelArgs(argSlice(src, at + form.length - 1)),
+            modeIndex,
+            arity,
+          });
+        }
+        at = src.indexOf(form, at + form.length);
       }
-      at = src.indexOf(CALL_FORM, at + CALL_FORM.length);
     }
   }
   return sites;
@@ -161,14 +190,17 @@ describe("the ai-request unbridge MODE is forwarded, never re-decided (task 313)
   const sites = collectSites();
 
   it("finds the known bridge call sites (the guard itself is not silently dead)", () => {
-    // 7 panel-hook setters + EditorPane's single lifecycle forwarder. If this
-    // collapses, the grep stopped matching and the guard would "pass" while
-    // checking nothing — the failure mode a coverage guard must never have.
+    // 7 panel-hook setter seams + EditorPane's lifecycle forwarder + its
+    // total-dispatch fallback (task 697). If this collapses, the grep stopped
+    // matching and the guard would "pass" while checking nothing — the failure
+    // mode a coverage guard must never have. Counted across BOTH doors, so
+    // moving a site from one to the other is invisible here (as it should be)
+    // while DELETING one is not.
     expect(sites.length).toBeGreaterThanOrEqual(8);
   });
 
   it("every call states a mode — none inherits one", () => {
-    const silent = sites.filter((s) => s.args.length < 6);
+    const silent = sites.filter((s) => s.args.length < s.arity);
     expect(
       silent.map((s) => `${s.file}:${s.line}`),
       "A writer of ai-requests.json must say whether it is a reversible flag " +
@@ -180,15 +212,17 @@ describe("the ai-request unbridge MODE is forwarded, never re-decided (task 313)
 
   it("no call HARD-CODES a mode outside the permitted intent sites", () => {
     const deciders = sites
-      .filter((s) => s.args.length >= 6 && MODE_LITERAL.test(s.args[5]))
+      .filter(
+        (s) => s.args.length >= s.arity && MODE_LITERAL.test(s.args[s.modeIndex]),
+      )
       .filter(
         (s) =>
           !PERMITTED_LITERAL_MODES.some(
-            (p) => s.file.endsWith(p.file) && s.args[5].includes(p.mode),
+            (p) => s.file.endsWith(p.file) && s.args[s.modeIndex].includes(p.mode),
           ),
       );
     expect(
-      deciders.map((s) => `${s.file}:${s.line} — ${s.args[5]}`),
+      deciders.map((s) => `${s.file}:${s.line} — ${s.args[s.modeIndex]}`),
       "A hard-coded mode means this call site DECIDED. That is right only where " +
         "the site is the intent itself (archive resolves; an AIWindow cancel " +
         "retracts) — add it to PERMITTED_LITERAL_MODES with a why. Everywhere " +

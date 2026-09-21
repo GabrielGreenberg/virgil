@@ -27,7 +27,9 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import {
   bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
+  type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
@@ -111,6 +113,16 @@ function migrateReports(raw: unknown): ReportsState {
   return { cards: [] };
 }
 
+/** The `ai-requests.json` payload a report-request contributes — the ONE
+ *  place its shape is written, shared by both bridge doors (task 697). */
+function reportRequestContext(card: ReportRequestCard): BridgeContext {
+  return {
+    text: card.text || "<report request>",
+    paragraphIds: getLinkedTextObjectIds(card),
+    selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+  };
+}
+
 export function useReports(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
@@ -140,13 +152,24 @@ export function useReports(
         "report-request",
         card.id,
         value,
-        {
-          text: card.text || "<report request>",
-          paragraphIds: getLinkedTextObjectIds(card),
-          selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-        },
+        reportRequestContext(card),
         mode,
       );
+    },
+    [docId],
+  );
+
+  // The card-MAY-BE-ABSENT door onto the same seam (task 697) — see
+  // `bridgeFlagForCard`: clearing a flag needs no card, so the CONTEXT
+  // degrades rather than the CALL being skipped.
+  const bridgeRequestById = useCallback(
+    (
+      id: string,
+      card: ReportRequestCard | undefined,
+      value: boolean,
+      mode: AiRequestSyncMode,
+    ) => {
+      bridgeFlagForCard(docId, "report-request", id, value, mode, card, reportRequestContext);
     },
     [docId],
   );
@@ -295,9 +318,14 @@ export function useReports(
             : c,
         ),
       }));
-      if (card) bridgeRequest({ ...card, aiRequest: value }, value, mode);
+      bridgeRequestById(
+        id,
+        card && { ...card, aiRequest: value },
+        value,
+        mode,
+      );
     },
-    [update, pristine, state.cards, bridgeRequest],
+    [update, pristine, state.cards, bridgeRequestById],
   );
 
   /** Flip a report card's kind in place (report ⇄ report-request) via the

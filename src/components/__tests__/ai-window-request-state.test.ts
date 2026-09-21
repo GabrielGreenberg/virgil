@@ -94,6 +94,7 @@ interface Spies {
   removeEntryRequest?: (id: string) => void;
   deletePanelAiRequest?: (id: string) => void;
   clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
+  cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
 }
 
 function build(
@@ -114,6 +115,9 @@ function build(
     removeEntryRequest: spies.removeEntryRequest ?? (() => {}),
     deletePanelAiRequest: spies.deletePanelAiRequest ?? (() => {}),
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
+    // task 697 — default: the link resolves (today's behaviour). The suites
+    // that exercise a STRANDED row pass `() => false` explicitly.
+    cardLinkResolves: spies.cardLinkResolves ?? (() => true),
   });
 }
 

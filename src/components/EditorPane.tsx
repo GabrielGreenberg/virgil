@@ -194,7 +194,7 @@ import {
   makeUnbridgingBulkDelete,
 } from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { bridgeCardAiRequestFlag, ABSENT_CARD_CONTEXT } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 import { panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
@@ -1528,8 +1528,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the signature still reads as the drop it is.
   const unbridgeAiRequestRow = useCallback(
     (kind: CardKind, id: string, mode: AiRequestSyncMode) =>
-      // ctx fields are read only on the ADD path, so a placeholder is fine.
-      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, mode),
+      // ctx fields are read only on the ADD path, so a placeholder is fine —
+      // `ABSENT_CARD_CONTEXT` is that placeholder, named once (task 697), and
+      // the rule this site states in passing is the one the panel setters now
+      // share through `bridgeFlagForCard`.
+      bridgeCardAiRequestFlag(docId, kind, id, false, ABSENT_CARD_CONTEXT, mode),
     [docId],
   );
   // ── The A9 morph chokepoint (generalized) ──────────────────────────────
@@ -5929,6 +5932,34 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         case "revision-comment": revisionsHook.setCommentAiRequest(id, value, mode); break;
         case "cutter-comment": cutterHook.setCommentAiRequest(id, value, mode); break;
         case "footnote": footnotesHook.setFootnoteAiRequest(id, value, mode); break;
+        default: {
+          // TOTAL, DELIBERATELY (task 697). A kind with no `aiRequest` routing
+          // on `CARD_REGISTRY` (citation, the suggestion family, plain report)
+          // carries no flag and no row, so falling through is the right answer
+          // and stays quiet. A kind that DOES declare routing but has no case
+          // above is a wiring hole — an eighth flag-bearing kind added to the
+          // registry and not to this switch — and used to be a silent no-op
+          // here: the card's row would never close, on any leg, with no error.
+          // Close the row from the bridge directly (it needs no card) and say
+          // so in dev, so the hole is loud rather than a stranded row.
+          if (!CARD_REGISTRY[kind].aiRequest) break;
+          if (process.env.NODE_ENV !== "production") {
+            console.error(
+              `[EditorPane] card kind "${kind}" declares aiRequest routing but ` +
+                `has no panel setter in setAiRequestForKind; bridging the row ` +
+                `directly (the card's own flag is NOT updated).`,
+            );
+          }
+          void bridgeCardAiRequestFlag(
+            docId,
+            kind,
+            id,
+            value,
+            ABSENT_CARD_CONTEXT,
+            mode,
+          );
+          break;
+        }
       }
     },
     [
@@ -5939,6 +5970,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       revisionsHook.setCommentAiRequest,
       cutterHook.setCommentAiRequest,
       footnotesHook.setFootnoteAiRequest,
+      docId,
     ],
   );
 
@@ -5971,6 +6003,62 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const clearLinkedAiRequest = useCallback(
     (kind: CardKind, cardId: string) => setAiRequestForKind(kind, cardId, false, "toggle"),
     [setAiRequestForKind],
+  );
+
+  // Does a queue row's `linkedTo` RESOLVE to a card the owning panel holds?
+  // (task 697) The `(kind → owning collection)` fan-out of
+  // `setAiRequestForKind`, asked as a predicate instead of a dispatch, so the
+  // AIWindow's Cancel can tell "linked" from "linked to something that is
+  // still there" — the distinction it never drew, which is how a row whose
+  // card had vanished took the card-linked path and died in it.
+  //
+  // TRUE IS THE SAFE ANSWER, and it is what an UNKNOWABLE card gets: a panel
+  // still loading, or one whose sidecar read ERRORED (`loadError` leaves the
+  // hook at its empty default while `ai-requests.json` reads fine — one of the
+  // ways Cancel went inert), knows of no cards at all, and treating that as
+  // "absent" would take the raw-delete branch and strand the card's flag lit
+  // over a row that no longer exists. Only a RESOLVED, error-free panel that
+  // genuinely holds no such card answers false. `footnotes` has no `loaded`
+  // gate by design (it is driven from the doc's atoms), so it answers on
+  // presence alone.
+  const cardLinkResolves = useCallback(
+    (kind: CardKind, cardId: string): boolean => {
+      const settled = (loaded: boolean, loadError: boolean) => loaded && !loadError;
+      switch (kind) {
+        case "note":
+          return !settled(notesHook.loaded, notesHook.loadError)
+            || notesHook.notes.some((n) => n.id === cardId);
+        case "highlight":
+          return !settled(notesHook.loaded, notesHook.loadError)
+            || notesHook.highlights.some((h) => h.id === cardId);
+        case "todo":
+          return !settled(todosHook.loaded, todosHook.loadError)
+            || todosHook.items.some((i) => i.id === cardId);
+        case "report-request":
+          return !settled(reportsHook.loaded, reportsHook.loadError)
+            || reportsHook.cards.some((c) => c.id === cardId);
+        case "revision-comment":
+          return !settled(revisionsHook.loaded, revisionsHook.loadError)
+            || revisionsHook.cards.some((c) => c.id === cardId);
+        case "cutter-comment":
+          return !settled(cutterHook.loaded, cutterHook.loadError)
+            || cutterHook.cards.some((c) => c.id === cardId);
+        case "footnote":
+          return footnotesHook.footnoteRefs.some((f) => f.id === cardId);
+        default:
+          // No owning collection to ask — treat as unresolved so cancel takes
+          // the raw delete rather than a dispatch that no-ops.
+          return false;
+      }
+    },
+    [
+      notesHook.loaded, notesHook.loadError, notesHook.notes, notesHook.highlights,
+      todosHook.loaded, todosHook.loadError, todosHook.items,
+      reportsHook.loaded, reportsHook.loadError, reportsHook.cards,
+      revisionsHook.loaded, revisionsHook.loadError, revisionsHook.cards,
+      cutterHook.loaded, cutterHook.loadError, cutterHook.cards,
+      footnotesHook.footnoteRefs,
+    ],
   );
 
   // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of
@@ -6251,6 +6339,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               addPanelAiRequest={aiRequestsHook.addRequest}
               deletePanelAiRequest={aiRequestsHook.deleteRequest}
               clearLinkedAiRequest={clearLinkedAiRequest}
+              cardLinkResolves={cardLinkResolves}
               requestBibReview={bibReviewHook.requestReview}
               cancelBibReview={bibReviewHook.cancelRequest}
               addEntryRequest={bibSettingsHook.addEntryRequest}

@@ -332,6 +332,26 @@ export interface BuildArgs {
   // `(kind, linkPanel)` pair; cardId is `linkedTo.cardId`. Unlinked
   // composer-created requests keep the raw `deletePanelAiRequest` path.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
+  /**
+   * Does this row's `linkedTo` actually RESOLVE to a card the owning panel
+   * holds? (task 697)
+   *
+   * Cancel used to ask only *"is there a link?"*, so a link pointing at a
+   * card that no longer exists took the card-linked path — and the panel
+   * setter behind it looked the card up in a render-time snapshot and gated
+   * itself on finding it, so the retraction died there: no row removed, no
+   * flag changed, no error. That gate is gone now (`bridgeFlagForCard`), but
+   * the question was wrong independently of it, so it is asked properly here
+   * too: an UNRESOLVED link has no card's flag to lower, and the honest
+   * retraction for it is the raw row delete.
+   *
+   * `false` means the owning panel has RESOLVED its read and genuinely holds
+   * no such card. A panel still loading, or one whose sidecar read ERRORED —
+   * where the card is unknowable rather than absent — must answer `true`, so
+   * cancel keeps the linked path and never rewrites a sidecar it could not
+   * read (the write path's own law).
+   */
+  cardLinkResolves: (kind: CardKind, cardId: string) => boolean;
 }
 
 /* ── The ONE state derivation (task 628) ────────────────────────────────
@@ -398,13 +418,15 @@ const FAMILY_CANCEL: {
   panel: (r, a) => {
     // Cancel routing (task 222). The owning `CardKind` resolves from the
     // `(kind, linkPanel)` PAIR — `linkPanel` alone is ambiguous
-    // (note/highlight, cutter/revision). An UNLINKED composer row (or a corrupt
-    // link that can't resolve) keeps the raw delete.
+    // (note/highlight, cutter/revision). An UNLINKED composer row, a corrupt
+    // link whose kind can't resolve, OR a link that resolves to NO CARD
+    // (task 697) keeps the raw delete: there is no card flag to lower, and a
+    // stranded row is exactly what this affordance exists to clear.
     const linkedKind = r.linkedTo
       ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
       : null;
     const linkedCardId = r.linkedTo?.cardId;
-    return linkedKind && linkedCardId
+    return linkedKind && linkedCardId && a.cardLinkResolves(linkedKind, linkedCardId)
       ? () => a.clearLinkedAiRequest(linkedKind, linkedCardId)
       : () => a.deletePanelAiRequest(r.id);
   },
@@ -679,6 +701,8 @@ export interface AIWindowProps {
   // Cancel a card-linked panel request — clears both the queue row and the
   // owning card's `aiRequest` flag (task 222). See BuildArgs.
   clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
+  // Does a row's `linkedTo` resolve to a live card? See BuildArgs (task 697).
+  cardLinkResolves: (kind: CardKind, cardId: string) => boolean;
 
   // Mutators
   requestBibReview: (
@@ -724,6 +748,7 @@ export default function AIWindow({
   addPanelAiRequest,
   deletePanelAiRequest,
   clearLinkedAiRequest,
+  cardLinkResolves,
   requestBibReview,
   cancelBibReview,
   addEntryRequest,
@@ -756,6 +781,7 @@ export default function AIWindow({
         removeEntryRequest,
         deletePanelAiRequest,
         clearLinkedAiRequest,
+        cardLinkResolves,
       }),
     [
       bibReviewRequests,
@@ -766,6 +792,7 @@ export default function AIWindow({
       removeEntryRequest,
       deletePanelAiRequest,
       clearLinkedAiRequest,
+      cardLinkResolves,
     ],
   );
 

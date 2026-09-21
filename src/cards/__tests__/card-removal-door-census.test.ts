@@ -81,6 +81,10 @@ function balanced(src: string, openParen: number): string {
   return src.slice(openParen);
 }
 
+/** The call forms that mean "this hook writes `ai-requests.json`" — the two
+ *  doors onto the bridge (`src/lib/ai-request-bridge.ts`). */
+const BRIDGE_DOORS = ["bridgeCardAiRequestFlag(", "bridgeFlagForCard("];
+
 interface Door {
   /** Hook file basename, e.g. `useTodos.ts`. */
   file: string;
@@ -102,7 +106,13 @@ function collectDoors(): Door[] {
     if (!entry.endsWith(".ts") && !entry.endsWith(".tsx")) continue;
     if (entry.includes(".test.")) continue;
     const src = blankComments(readFileSync(join(HOOKS_DIR, entry), "utf8"));
-    if (!src.includes("bridgeCardAiRequestFlag(")) continue; // out of scope
+    // In scope = "this hook bridges ai-request rows", and there are TWO doors
+    // onto the bridge since task 697: the raw writer and `bridgeFlagForCard`,
+    // the card-MAY-BE-ABSENT door the panel setters take. Naming only the
+    // first silently dropped useNotes / useTodos / useFootnotes out of scope
+    // the moment they moved to the second — the census would have kept passing
+    // while covering three fewer hooks.
+    if (!BRIDGE_DOORS.some((d) => src.includes(d))) continue; // out of scope
     const re = /\bconst ([A-Za-z0-9_]+) = useCallback\(/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(src)) !== null) {

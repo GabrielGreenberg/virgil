@@ -43,6 +43,9 @@ const NOOPS = {
   removeEntryRequest: () => {},
   deletePanelAiRequest: () => {},
   clearLinkedAiRequest: () => {},
+  // task 697: these rows' links all resolve — the default for suites that
+  // aren't about the stranded case.
+  cardLinkResolves: () => true,
 };
 
 function listOne(r: AiRequest) {
