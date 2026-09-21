@@ -153,6 +153,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from _common import (
+    AI_REQUEST_KINDS,
     DOCUMENT_MARKER,
     count_live_document_begins,
     find_document_boundary,
@@ -164,6 +165,7 @@ from _common import (
     die,
     find_bib_file,
     find_tex_file,
+    is_ai_request_kind,
     is_terminal_status,
     json_dumps,
     notification_appended,
@@ -1506,6 +1508,34 @@ def _write_skill(kind: str | None, panel: str | None) -> str:
     return "apply"
 
 
+def _validated_request_kind(op: dict) -> str:
+    """The `kind` a synthesized Task is filed under — VALIDATED (task 682).
+
+    This was `op.get("kind") or "footnote"`, which failed both ways at once. A
+    caller typo landed a token outside `AiRequestKind`, and the TS side had no
+    inbound gate: the AI window keyed two per-kind tables straight off the value,
+    resolved `undefined`, and THREW — killing the whole window and the user's
+    view of every other request in the paper. And a kind-LESS op was silently
+    relabelled a footnote: a wrong answer with no voice, which is strictly worse
+    than a refusal, because nothing downstream can tell it from a real one.
+
+    Both are refusals now. `die` is the channel this silo already speaks on.
+    """
+    kind = op.get("kind")
+    if kind is None or kind == "":
+        die(
+            "op.kind is required to synthesize a Task — it is the row's kind in "
+            f"ai-requests.json, one of: {', '.join(AI_REQUEST_KINDS)}"
+        )
+    if not is_ai_request_kind(kind):
+        die(
+            f"op.kind {kind!r} is not an AI-request kind. The app reads this file "
+            "back and cannot resolve a kind outside the vocabulary; use one of: "
+            f"{', '.join(AI_REQUEST_KINDS)}"
+        )
+    return kind
+
+
 def _reflect_tail(doc: Path, skill: str, request_id: str | None) -> None:
     """Fire the dev-dream capture for a completed writeback (DEV-gated +
     best-effort inside spawn_reflection). Task-less writebacks key on '-'."""
@@ -1571,7 +1601,7 @@ def cmd_write(
         new_id = request_id if (request_id and not is_virtual) else _gen_request_id()
         req: dict = {
             "id": new_id,
-            "kind": op.get("kind") or "footnote",
+            "kind": _validated_request_kind(op),
             "text": op.get("text") or summary,
             "createdAt": now_iso(),
             "status": status,

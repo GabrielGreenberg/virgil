@@ -281,6 +281,23 @@ export type AiRequestKind =
   | "style-merge";
 
 /**
+ * What the `kind` field of a row read back OFF DISK can be (task 682).
+ *
+ * `AiRequestKind` is a promise about what the APP writes. `ai-requests.json`
+ * has three writers, two of them outside the type system — the `/editor/*`
+ * Python skills read-modify-write it on disk while the paper is open, and the
+ * file is hand-editable besides — so a row's `kind` is a `string`, and the
+ * union describes its provenance, not its contents.
+ *
+ * Widening the FIELD (and only the field) is what makes that honest: every
+ * writer still takes the narrow `AiRequestKind`, while every reader that keys a
+ * per-kind table off a row must first pass it through `isAiRequestKind`
+ * (`@/lib/ai-request-kind`) and say what an unrecognised kind renders as. The
+ * `string & {}` arm preserves autocomplete over the eight known members.
+ */
+export type AiRequestKindOnDisk = AiRequestKind | (string & {});
+
+/**
  * Kind-specific structured payload. The `style-merge` payload inlines
  * the source and target preambles because the agent that fulfills the
  * request runs outside the app and can't import the style library.
@@ -329,7 +346,9 @@ export type AiRequestResult =
 
 export interface AiRequest {
   id: string;
-  kind: AiRequestKind;
+  /** The on-disk vocabulary, which is wider than what the app writes — see
+   *  {@link AiRequestKindOnDisk}. */
+  kind: AiRequestKindOnDisk;
   text: string;
   createdAt: string;
   /** Lifecycle (where it is). See {@link AiRequestStatus}. */

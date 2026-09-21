@@ -49,6 +49,7 @@ import {
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import { publishAiRequests } from "@/lib/ai-request-events";
+import { UNKNOWN_AI_REQUEST_KIND } from "@/lib/ai-request-kind";
 
 /**
  * The one spelling of the sidecar filename — deliberately module-PRIVATE.
@@ -91,9 +92,82 @@ const EMPTY: AiRequestsState = { requests: [] };
 export type AiRequestsMutator = (requests: AiRequest[]) => AiRequest[] | null;
 
 /** Tolerate a backend that resolves a missing sidecar to null/undefined, or a
- *  file whose `requests` key is not an array (hand-edited / older shape). */
+ *  file whose `requests` key is not an array (hand-edited / older shape).
+ *
+ *  RAW by contract — this is the MERGE BASE every mutation is computed from,
+ *  and a mutation is a pure function of the list as it is ON DISK. Normalising
+ *  here would make the gate below lossy in the one direction that matters: the
+ *  normalised value would be written straight back, so a newer build's kind (or
+ *  any field this build does not model) would be overwritten by the older
+ *  build's idea of it on the very next toggle. The file is the user's only copy.
+ *  Readers get {@link normalizeAiRequestRows}; writers get the bytes. */
 function requestsOf(state: AiRequestsState | null | undefined): AiRequest[] {
   return Array.isArray(state?.requests) ? state.requests : [];
+}
+
+/**
+ * THE inbound gate (task 682): make every row a renderable record, without
+ * overwriting a value that carries meaning.
+ *
+ * The store's tolerance used to stop at the top level — `Array.isArray` on the
+ * `requests` key, then every element handed through untouched. But this is the
+ * one sidecar with THREE writers, two of them outside the type system (the
+ * `/editor/*` Python skills read-modify-write it on disk while the paper is
+ * open), and it is hand-editable besides. So a row is unvalidated JSON, and the
+ * AI window dereferenced its fields as if it were an `AiRequest`: an off-union
+ * `kind` resolved `undefined` out of two per-kind `Record`s and the next
+ * dereference THREW — taking down the whole window, and with it the user's view
+ * of every other request in the paper. One malformed byte, total failure. A
+ * missing `createdAt` did the same one field over, through the bucket sort's
+ * `localeCompare`.
+ *
+ * Two rules, and the second is what keeps the first honest:
+ *
+ *   1. **Every field a consumer dereferences is present and of the right
+ *      primitive type.** No reader needs a `typeof` check, and no reader may
+ *      throw on a row that reached it.
+ *   2. **No value that carries meaning is overwritten, and no row is dropped**
+ *      for being unrecognised. An off-union `kind` is kept VERBATIM — it is a
+ *      real token some writer meant (a newer build's kind, a skill's typo), the
+ *      reader's job is to say it cannot resolve it, and `AIWindow` renders it as
+ *      the row's own label. Only a field with no value at all is filled in.
+ *
+ * Applied at the two CONSUMER exits (`readAiRequests`, and the authoritative
+ * list `mutateAiRequests` returns and publishes) — never to the merge base.
+ */
+export function normalizeAiRequestRows(rows: readonly unknown[]): AiRequest[] {
+  const out: AiRequest[] = [];
+  rows.forEach((raw, i) => {
+    // A non-object element is not a record: it has no field to render, no id to
+    // key or cancel by, and nothing a placeholder could honestly say about it.
+    // Dropped from the READ only — `requestsOf` still merges over it, so the
+    // bytes stay on disk for whoever wrote them.
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+    const r = raw as Record<string, unknown>;
+    const str = (v: unknown, fallback: string) =>
+      typeof v === "string" && v ? v : fallback;
+    const linkedTo =
+      typeof r.linkedTo === "object" && r.linkedTo !== null
+        ? (r.linkedTo as Record<string, unknown>)
+        : null;
+    out.push({
+      ...(r as unknown as AiRequest),
+      // Stable within one read, so React keys and the cancel round-trip hold.
+      // A row with no id cannot be addressed by any mutator, so its cancel is a
+      // no-op — but it RENDERS, which is how anyone learns it is there.
+      id: str(r.id, `unkeyed:${i}`),
+      kind: str(r.kind, UNKNOWN_AI_REQUEST_KIND),
+      text: typeof r.text === "string" ? r.text : "",
+      createdAt: str(r.createdAt, ""),
+      status: str(r.status, "pending") as AiRequest["status"],
+      ...(linkedTo &&
+      typeof linkedTo.panel === "string" &&
+      typeof linkedTo.cardId === "string"
+        ? {}
+        : { linkedTo: undefined }),
+    });
+  });
+  return out;
 }
 
 /**
@@ -101,10 +175,13 @@ function requestsOf(state: AiRequestsState | null | undefined): AiRequest[] {
  * so both the mount load and the external-change re-hydrate see the file as it
  * actually is. Resolves `[]` for an absent file; re-throws a real read error so
  * a caller can leave its state untouched rather than blanking the inbox.
+ *
+ * Rows come back through {@link normalizeAiRequestRows} — renderable by
+ * contract, and still carrying whatever their writer meant.
  */
 export async function readAiRequests(docId: string): Promise<AiRequest[]> {
-  return requestsOf(
-    await readSidecar<AiRequestsState>(docId, AI_REQUESTS_FILE, EMPTY),
+  return normalizeAiRequestRows(
+    requestsOf(await readSidecar<AiRequestsState>(docId, AI_REQUESTS_FILE, EMPTY)),
   );
 }
 
@@ -212,6 +289,12 @@ export async function mutateAiRequests(
   // window (the inbox hook) adopts it without a disk round-trip. Only after a
   // successful persist — a failed write leaves the on-disk queue unchanged, so
   // the in-memory inbox must not diverge from it.
-  publishAiRequests(docId, next.requests);
-  return { kind: "written", requests: next.requests };
+  // The SAME read gate the mount load goes through (task 682). The merge base
+  // was raw — as it must be, so the write preserved the bytes — which means the
+  // post-write list carries every unvalidated row the file held. Publishing it
+  // un-normalised would hand the inbox a crash-shaped row through the back
+  // door: one toggle after a clean read, and the window dies anyway.
+  const published = normalizeAiRequestRows(next.requests);
+  publishAiRequests(docId, published);
+  return { kind: "written", requests: published };
 }

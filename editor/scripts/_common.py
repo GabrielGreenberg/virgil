@@ -436,6 +436,36 @@ def is_terminal_status(status) -> bool:
     return status in TERMINAL_STATUSES
 
 
+#: The `ai-requests.json` KIND vocabulary — the eight wire tokens, stated ONCE
+#: for every Python reader (task 682) and the twin of TS `AI_REQUEST_KINDS`
+#: (src/lib/ai-request-kind.ts). Parity across the language line is pinned by
+#: `src/lib/__tests__/ai-request-kind.test.ts`, which reads this tuple live.
+#:
+#: Why it has to exist on this side: the Python skills read-modify-write the
+#: file while the paper is OPEN, so a kind this side invents is a kind the TS
+#: side reads back and cannot resolve. `apply_response.py --synthesize` used to
+#: take `op.get("kind") or "footnote"` with no check at all, so a caller typo
+#: landed a token no TS consumer knew — and the `or "footnote"` default silently
+#: MISLABELLED a kind-less op as a footnote. A refusal has a voice (`die`); a
+#: mislabel has none.
+AI_REQUEST_KINDS = (
+    "footnote",
+    "note",
+    "highlight",
+    "citation",
+    "todo",
+    "suggestion",
+    "report",
+    "style-merge",
+)
+
+
+def is_ai_request_kind(kind) -> bool:
+    """True iff `kind` is one of the eight `ai-requests.json` kinds — the mirror
+    of TS `isAiRequestKind`. A non-string (a missing field → None) is False."""
+    return isinstance(kind, str) and kind in AI_REQUEST_KINDS
+
+
 def is_request_open(r: dict) -> bool:
     """True iff the `ai-requests.json` row is still open to the drain — the
     byte-mirror of TS `isRequestOpen`, two clauses and one gate:
