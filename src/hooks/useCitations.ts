@@ -20,7 +20,6 @@ import {
 } from "@/lib/bib-parser";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
-import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
 import {
   IdentityCascade,
   renameCitekeyChange,
@@ -540,55 +539,68 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update],
   );
 
+  /**
+   * THE citekey rename door — ONE path, no flag (task 689).
+   *
+   * It used to be two. The flag-ON branch was the real thing: rewrite the
+   * `.bib` key, boundary-rewrite the citation refs, and fan out through the
+   * IdentityCascade to every registered migrator (the editor `\cite{}`
+   * doc-rewrite, the float-key remap, the panel selection).
+   * The flag-OFF branch — which is what every shipping build ran, since
+   * `virgil:identity-cascade` is `default: false` — rewrote `references.bib`
+   * and patched `citations.json`, and stopped. So a rename left every
+   * `\cite{oldKey}` in the paper pointing at a key that no longer existed
+   * (a dangling reference that will not compile), the sidecar half was
+   * REVERTED the moment `syncFromEditor` re-derived it from those unrewritten
+   * atoms, and the entry's annotation stayed under the old key and vanished
+   * from the UI. `bib-cite-rewrite.ts`'s own header states this bug as its
+   * reason for existing; it was simply not reachable.
+   *
+   * Nothing the fan-out does has an on-disk FORMAT implication, so nothing in
+   * it belonged behind a format-rollout flag. The flag keeps gating exactly
+   * what it is about — the uid-keyed v2 sidecar shapes and their on-load
+   * migration — and the sidecar migrators (task 689) are written to be correct
+   * on BOTH shapes, so flag ON and flag OFF now produce the same rename.
+   *
+   * The bare-`\b` ref matcher the legacy branch carried is retired with it: it
+   * mis-fires on a punctuation citekey (`smith:2020`, `+foo`), which is exactly
+   * what `wholeWordPatternFor` exists to get right. It survived only because a
+   * suite pinned the flag-OFF branch as-is.
+   */
   const updateBibKeyAndType = useCallback(
     (oldKey: string, newKey: string, newType: string) => {
-      if (isIdentityCascadeOn()) {
-        // CASCADE PATH (flag ON): the IdentityCascade is the single writer.
-        // Resolve the durable uid so the rename targets the entry by identity
-        // (not by the about-to-change key), then fan out atomically.
-        const entry = bibEntries.find((e) => e.key === oldKey);
-        const uid = entry?.uid;
-        // 1. `.bib` key+type mutation (by uid when available, else by old key).
-        applyBibKeyType(
-          uid ? (e) => e.uid === uid : (e) => e.key === oldKey,
-          newKey,
-          newType,
-        );
-        // 2. citation-refs sidecar rewrite (boundary-safe).
-        if (oldKey !== newKey) rewriteCitationRefs(oldKey, newKey);
-        // 3. fan out to every registered migrator (the editor `\cite{}`
-        //    doc-rewrite, future citekey-keyed sidecars). annotations/bib-review
-        //    are uid-keyed → their migrator (if registered) is a no-op on a
-        //    pure rename. A rename with no migrators is a well-formed no-op.
-        if (uid) {
-          void identityCascade.runIdentityChange(
-            renameCitekeyChange({ uid, oldKey, newKey, newType }),
-          );
-        }
-        return;
-      }
-
-      // LEGACY PATH (flag OFF) — byte-identical to pre-cascade behavior,
-      // including the original bare-`\b` ref rewrite, so the existing suite is
-      // green. Do NOT route this through the boundary matcher: that's the
-      // flag-ON behavior change.
+      // Nothing named `oldKey` → nothing to rename, and in particular nothing
+      // to fan out: a fan-out here would rewrite `\cite{oldKey}` atoms in the
+      // document for an entry the bibliography does not have.
+      const entry = bibEntries.find((e) => e.key === oldKey);
+      if (!entry) return;
+      // 1. `.bib` key+type mutation, matched on the OLD KEY.
+      //
+      // Not on the uid, deliberately, and this is load-bearing. The mutator
+      // runs TWICE (`runBibMutation`): once over this hook's view, and once —
+      // the run that actually lands — over a FRESH parse of the file inside the
+      // authority's write section. A `uid` is durable only when the file
+      // carries the entry's `\vbid{}` marker; a markerless block (the normal
+      // state of a user's existing `references.bib`) is minted a BRAND-NEW uid
+      // by every parse. So a uid-matched mutator matches the view and matches
+      // NOTHING on the disk run, and the rename silently does not land — which
+      // is what the flag-ON path did, unnoticed, because nothing shipped with
+      // the flag on. The old key is the file's own coordinate and has not
+      // changed yet at match time, so it addresses both runs identically.
       applyBibKeyType((e) => e.key === oldKey, newKey, newType);
-      if (oldKey !== newKey) {
-        update((prev) => ({
-          ...prev,
-          citations: prev.citations.map((c) => {
-            if (!c.keys.includes(oldKey)) return c;
-            const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
-            const newCommand = c.command.replace(
-              new RegExp(`\\b${oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
-              newKey,
-            );
-            return { ...c, keys: newKeys, command: newCommand };
-          }),
-        }));
-      }
+      if (oldKey === newKey) return; // a pure retype moves no identity
+      // 2. citation-refs sidecar rewrite (boundary-safe, whole-token).
+      rewriteCitationRefs(oldKey, newKey);
+      // 3. fan out to every registered migrator: the editor `\cite{}`
+      //    doc-rewrite (without which step 2 is undone by the next
+      //    `syncFromEditor`), the float-key + panel-selection re-point, and the
+      //    annotation / bib-review re-key. A rename with no migrators
+      //    registered is a well-formed no-op.
+      void identityCascade.runIdentityChange(
+        renameCitekeyChange({ uid: entry.uid, oldKey, newKey, newType }),
+      );
     },
-    [update, bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
+    [bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
   );
 
   const addBibEntry = useCallback(

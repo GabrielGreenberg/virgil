@@ -69,7 +69,17 @@ export function useBibReview(
         EMPTY,
       );
       if (docIdRef.current !== id) return;
-      const raw = data ?? EMPTY;
+      // Normalize the SHAPE, not just the absence. `readSidecar`'s fallback
+      // covers a missing file; a file that exists but does not hold a
+      // `requests` array (an empty `{}`, a hand-edited or half-written
+      // sidecar) sails past `?? EMPTY` and every later `state.requests.some`
+      // throws — on the flag-OFF path, which is every shipping build, and
+      // during render, so it takes the whole pane down. The flag-ON path
+      // happened to be safe only because `migrateBibReviewToUid` rebuilds the
+      // shape on its way through.
+      const raw: BibReviewState = Array.isArray(data?.requests)
+        ? (data as BibReviewState)
+        : EMPTY;
       // Migrate-on-load: stamp `entryUid` onto rows whose citekey resolves
       // (non-destructive — unresolvable rows keep their bare bibKey).
       setState(cascadeRef.current ? migrateBibReviewToUid(raw, keyToUidRef.current) : raw);
@@ -227,6 +237,40 @@ export function useBibReview(
     if (id) fetchState(id);
   }, [fetchState]);
 
+  /**
+   * Re-key this sidecar for a citekey rename — the IdentityCascade migrator
+   * EditorPane registers for `bibEntry` (task 689).
+   *
+   * Correct on BOTH shapes, and needed on both. With the flag off no row has an
+   * `entryUid`, so every match is `r.bibKey === bibKey` and a rename strands the
+   * entry's pending reviews (BIB-A2-02): the panel shows no request, and a new
+   * one can be filed alongside the orphan. With the flag on a uid-carrying row
+   * survives the rename by uid — but its `bibKey` is then STALE, and that field
+   * is what the skill side reads to find the entry it was asked to review, so
+   * leaving it is a rename that half-lands. Rows whose citekey never resolved to
+   * a uid match by `bibKey` on both paths and need the move outright.
+   *
+   * So: every row naming `oldKey` is re-pointed, whatever its shape. Idempotent
+   * (a second run finds no `oldKey` row), and it persists only when a row moved.
+   */
+  const renameBibKey = useCallback(
+    (oldKey: string, newKey: string) => {
+      if (!oldKey || !newKey || oldKey === newKey) return;
+      setState((prev) => {
+        if (!prev.requests.some((r) => r.bibKey === oldKey)) return prev;
+        const next = {
+          ...prev,
+          requests: prev.requests.map((r) =>
+            r.bibKey === oldKey ? { ...r, bibKey: newKey } : r,
+          ),
+        };
+        persist(next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
   return useMemo(
     () => ({
       requests: state.requests,
@@ -235,6 +279,7 @@ export function useBibReview(
       getRequestStatus,
       clearRequest,
       refresh,
+      renameBibKey,
     }),
     [
       state.requests,
@@ -243,6 +288,7 @@ export function useBibReview(
       getRequestStatus,
       clearRequest,
       refresh,
+      renameBibKey,
     ],
   );
 }
