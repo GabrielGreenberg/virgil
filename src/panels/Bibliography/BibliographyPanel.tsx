@@ -85,9 +85,11 @@ interface BibliographyPanelProps {
   bibEntries: BibEntry[];
   selectedBibKey: string | null;
   onSelectBibKey: (key: string | null) => void;
-  onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
-  onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
-  onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  /** Takes the ENTRY, not its citekey (task 690) — a citekey names as many
+   *  blocks as carry it, and the mutator used to rewrite every one. */
+  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
+  onReplaceBibEntry?: (entry: BibEntry, fields: Record<string, string>, type?: string) => void;
+  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
@@ -284,24 +286,24 @@ function BibliographyPanel({
     return keys;
   }, [citations]);
 
+  /**
+   * The entries this panel lists — EVERY block, including two that share a
+   * citekey (task 690).
+   *
+   * This used to drop the duplicate: a `seen` set kept the first block with a
+   * given citekey and filtered the rest out. That existed only because the
+   * citekey WAS the entry's identity — a second card for "the same" entry
+   * looked like a rendering bug. It is not: `parseBibFile` yields two ordered
+   * entries for two blocks on purpose, a hand-merged or imported
+   * `references.bib` really carries them, and hiding one made it unfixable —
+   * while every edit to the visible card silently overwrote the hidden one
+   * too. Now that a mutation is ADDRESSED rather than key-matched
+   * (`bib-address.ts`), an edit reaches exactly one block, so showing both is
+   * the honest list AND the only way the user can repair the duplicate.
+   */
   const sortedEntries = useMemo(() => {
-    const seen = new Set<string>();
-    let entries: BibEntry[];
-
-    if (filter === "cited") {
-      entries = bibEntries.filter((e) => {
-        if (!citedKeys.has(e.key) || seen.has(e.key)) return false;
-        seen.add(e.key);
-        return true;
-      });
-    } else {
-      entries = bibEntries.filter((e) => {
-        if (seen.has(e.key)) return false;
-        seen.add(e.key);
-        return true;
-      });
-    }
-
+    const entries =
+      filter === "cited" ? bibEntries.filter((e) => citedKeys.has(e.key)) : bibEntries.slice();
     return entries.sort(byProjectedAuthor);
   }, [bibEntries, citedKeys, filter]);
 
@@ -554,11 +556,11 @@ function BibliographyPanel({
     // `replaceBibEntry` (which also carries the type) when available; fall back
     // to the legacy merge+separate-type-update path otherwise.
     if (onReplaceBibEntry) {
-      onReplaceBibEntry(localEntry.key, libraryEntry.fields, libraryEntry.type);
+      onReplaceBibEntry(localEntry, libraryEntry.fields, libraryEntry.type);
     } else {
-      onUpdateBibEntry(localEntry.key, libraryEntry.fields);
+      onUpdateBibEntry(localEntry, libraryEntry.fields);
       if (libraryEntry.type !== localEntry.type) {
-        onUpdateBibKeyAndType(localEntry.key, localEntry.key, libraryEntry.type);
+        onUpdateBibKeyAndType(localEntry, localEntry.key, libraryEntry.type);
       }
     }
     setConflictDecision(null);
@@ -951,6 +953,11 @@ function BibliographyPanel({
       panelExtras={panelExtras}
       items={displayedEntries}
       getId={(e) => e.key}
+      // Two blocks may share a citekey, and both are now listed (task 690), so
+      // the reconciliation key is the block's own durable uid. The SELECTION id
+      // above stays the citekey — that is what the occurrence cursor, the jump
+      // and the identity cascade speak.
+      getRenderKey={(e) => e.uid || e.key}
       selectedId={selectedBibKey}
       onSelect={handleSelectBibKey}
       emptyState={

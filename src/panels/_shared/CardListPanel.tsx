@@ -30,6 +30,19 @@ export interface CardListPanelProps<T> {
 
   items: T[];
   getId: (item: T) => string;
+  /**
+   * React's reconciliation key, when it is not the SELECTION id (task 690).
+   *
+   * For almost every panel the two are the same string. The Bibliography panel
+   * is the exception: its selection id is the CITEKEY — what the occurrence
+   * cursor, the jump target and the identity cascade all speak — while two
+   * `.bib` blocks may legitimately carry one citekey. Since those blocks are
+   * now both listed (hiding one made it unrepairable, and every edit to the
+   * visible card silently overwrote the hidden one), the list needs a key that
+   * separates them without changing what "selected" means. Defaults to
+   * `getId`, so no other panel is affected.
+   */
+  getRenderKey?: (item: T) => string;
   /** When provided, CardListPanel filters `items` by the panel's archive view
    *  mode (View Active / Archives / All from the three-dot menu), reading each
    *  item's `archived` flag through this accessor. Omit for panels with no
@@ -99,6 +112,7 @@ export function CardListPanel<T>({
   kind,
   items,
   getId,
+  getRenderKey,
   getArchived,
   getCounted,
   renderCard,
@@ -232,7 +246,7 @@ export function CardListPanel<T>({
           {visibleItems.map((item, index) => {
             const id = getId(item);
             return (
-              <Fragment key={id}>
+              <Fragment key={getRenderKey ? getRenderKey(item) : id}>
                 {renderCard(item, { selected: selectedId === id, index })}
               </Fragment>
             );

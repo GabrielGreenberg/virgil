@@ -62,6 +62,7 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import { getSidecarRefusal, resetSidecarRefusals } from "@/lib/sidecar-refusal";
 import type { BibEntry } from "@/lib/types";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 const DOC = "doc-688";
 
@@ -134,7 +135,7 @@ describe("member 1 · a macro block is its own kind, and never eats the entry af
   it("editing an UNRELATED entry leaves the cited @article, the macro and the header intact", async () => {
     const result = await mountWith(WITH_MACRO);
     await act(async () => {
-      result.current.updateBibEntry("jones1999", { title: "A Better Book" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "jones1999"), { title: "A Better Book" });
     });
     await settle();
 
@@ -151,7 +152,7 @@ describe("member 1 · a macro block is its own kind, and never eats the entry af
   it("the macro REFERENCE in an untouched field is not expanded into a literal", async () => {
     const result = await mountWith(WITH_MACRO);
     await act(async () => {
-      result.current.updateBibEntry("smith2020", { title: "A Better Paper" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "smith2020"), { title: "A Better Paper" });
     });
     await settle();
     expect(DISK).toContain("journal = jphil");
@@ -179,7 +180,7 @@ describe("member 3 · the fields the model does not carry survive an edit to one
   it("an edit to `title` keeps isbn / keywords / abstract / annote / month", async () => {
     const result = await mountWith(CHAPTER);
     await act(async () => {
-      result.current.updateBibEntry("chapter1", { title: "A Better Chapter" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "chapter1"), { title: "A Better Chapter" });
     });
     await settle();
     expect(DISK).toContain("A Better Chapter");
@@ -199,7 +200,7 @@ describe("member 3 · the fields the model does not carry survive an edit to one
     expect(Object.keys(parseBibFile(CHAPTER)[0].fields)).not.toContain("journal");
     const result = await mountWith(CHAPTER);
     await act(async () => {
-      result.current.updateBibEntry("chapter1", { title: "A Better Chapter" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "chapter1"), { title: "A Better Chapter" });
     });
     await settle();
     expect(DISK).toContain("booktitle = {The Big Book}");
@@ -211,7 +212,7 @@ describe("member 3 · the fields the model does not carry survive an edit to one
     // The bib editor is populated from `entry.fields`; clearing `author` there
     // is a real deletion, and `isbn` was never on the form at all.
     await act(async () => {
-      result.current.replaceBibEntry("chapter1", {
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "chapter1"), {
         title: "A Chapter",
         booktitle: "The Big Book",
       });
@@ -225,7 +226,7 @@ describe("member 3 · the fields the model does not carry survive an edit to one
   it("a rename rewrites the key and NOTHING else in the block", async () => {
     const result = await mountWith(CHAPTER);
     await act(async () => {
-      result.current.updateBibKeyAndType("chapter1", "chapter2", "incollection");
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "chapter1"), "chapter2", "incollection");
     });
     await settle();
     expect(DISK).toContain("@incollection{chapter2,");
@@ -301,7 +302,7 @@ describe("member 4 · bytes Virgil cannot model are never re-emitted, so they ca
     const before = DISK;
     expect(parseBibFile(before).map((e) => e.key)).not.toContain("broken1");
     await act(async () => {
-      result.current.updateBibEntry("good2", { title: "Good Two Revised" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "good2"), { title: "Good Two Revised" });
     });
     await settle();
     expect(DISK).toContain("@article{broken1,");

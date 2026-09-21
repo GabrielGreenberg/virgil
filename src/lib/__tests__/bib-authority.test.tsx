@@ -81,6 +81,7 @@ import {
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
 import type { BibEntry } from "@/lib/types";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 const DOC = "doc-558";
 
@@ -160,7 +161,7 @@ describe("useCitations: bib writes are merges over the DISK, not snapshots of th
     DISK = block("mine") + block("fromskill"); // no publish, no event
 
     act(() => {
-      result.current.updateBibEntry("mine", { title: "Edited" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "mine"), { title: "Edited" });
     });
     await settle();
 
@@ -177,7 +178,7 @@ describe("useCitations: bib writes are merges over the DISK, not snapshots of th
     // `useAutoAddLibraryEntriesForCitations` warns about in its own header.
     const result = await mountWith(block("a"));
     act(() => {
-      result.current.updateBibEntry("a", { title: "A2" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "a"), { title: "A2" });
       result.current.addBibEntry({ ...entry("b"), uid: "" });
     });
     await settle();
@@ -192,7 +193,7 @@ describe("useCitations: bib writes are merges over the DISK, not snapshots of th
     DISK = block("stay"); // the peer removed it
 
     act(() => {
-      result.current.replaceBibEntry("gone", { title: "back?" }, "article");
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "gone"), { title: "back?" }, "article");
     });
     await settle();
 
@@ -203,7 +204,7 @@ describe("useCitations: bib writes are merges over the DISK, not snapshots of th
     const result = await mountWith(block("old"));
     DISK = block("old") + block("peer");
     act(() => {
-      result.current.updateBibKeyAndType("old", "new", "book");
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "old"), "new", "book");
     });
     await settle();
     expect(keysOnDisk()).toEqual(["new", "peer"]);
@@ -244,7 +245,7 @@ describe("project-bib: the Library drop and the panel save compose", () => {
     const result = await mountWith(block("a"));
     await act(async () => {
       const drop = addEntriesToProjectBib(DOC, [entry("dropped")]);
-      result.current.updateBibEntry("a", { title: "Saved" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "a"), { title: "Saved" });
       await drop;
     });
     await settle();

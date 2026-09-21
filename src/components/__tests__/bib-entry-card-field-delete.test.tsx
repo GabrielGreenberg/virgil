@@ -73,8 +73,10 @@ describe("BibEntryCard inline editor — field delete (BIB-F5-04)", () => {
     fireEvent.click(screen.getByText("Save"));
 
     expect(onReplaceBibEntry).toHaveBeenCalledTimes(1);
-    const [key, fields] = onReplaceBibEntry.mock.calls[0];
-    expect(key).toBe("foo2020");
+    // The mutator takes the ENTRY, not its citekey (task 690) — a citekey
+    // names as many `.bib` blocks as carry it.
+    const [target, fields] = onReplaceBibEntry.mock.calls[0];
+    expect(target.key).toBe("foo2020");
     // The removed field is GONE from the set-all map (deleted, not retained).
     expect("note" in fields).toBe(false);
     // The other fields survive.

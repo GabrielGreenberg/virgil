@@ -58,8 +58,9 @@ interface CitationsPanelProps {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
-  onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
+  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
+  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
   onAddBibEntry: (entry: BibEntry) => void;
   recentlyAddedId?: string | null;
   /** Container-nested cite nesting (Part B / Phase 2a). `citationId →

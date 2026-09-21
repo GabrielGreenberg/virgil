@@ -196,9 +196,9 @@ export interface PoppedCardDeps {
   requestBibReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   getBibReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
-  updateBibEntry: (key: string, fields: Record<string, string>) => void;
-  replaceBibEntry: (key: string, fields: Record<string, string>, type?: string) => void;
-  updateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  updateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
+  replaceBibEntry: (entry: BibEntry, fields: Record<string, string>, type?: string) => void;
+  updateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
   addBibEntry: (entry: import("@/lib/types").BibEntry) => void;
 
   // Citations

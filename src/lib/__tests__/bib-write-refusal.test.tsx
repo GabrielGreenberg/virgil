@@ -103,6 +103,7 @@ import {
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
 import type { BibEntry } from "@/lib/types";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 const DOC = "doc-685";
 
@@ -257,7 +258,7 @@ describe("the panel's view is reconciled against the disk on a failed write", ()
     const result = await mountWith(block("a", "Original"));
     mode.value = "throw";
     await act(async () => {
-      result.current.updateBibEntry("a", { title: "Never landed" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "a"), { title: "Never landed" });
     });
     await settle();
     // The file is untouched …
@@ -273,7 +274,7 @@ describe("the panel's view is reconciled against the disk on a failed write", ()
   it("a write that LANDS is adopted, not re-read away", async () => {
     const result = await mountWith(block("a", "Original"));
     await act(async () => {
-      result.current.updateBibEntry("a", { title: "Saved" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "a"), { title: "Saved" });
     });
     await settle();
     expect(DISK).toContain("title = {Saved}");

@@ -30,8 +30,8 @@ interface BuildArgs {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  updateBibEntry: (key: string, fields: Record<string, string>) => void;
-  updateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  updateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
+  updateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
 }
 
 export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {

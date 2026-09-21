@@ -40,6 +40,7 @@ vi.mock("@/lib/storage", () => ({
 import { useCitations } from "../useCitations";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 beforeEach(() => {
   __resetForTests();
@@ -68,7 +69,7 @@ describe("useCitations — updateBibEntry (merge)", () => {
     expect(authorBefore).toBeTruthy();
     act(() => {
       // Patch only `title`; `author` + `year` must survive unchanged.
-      result.current.updateBibEntry("foo", { title: "New Title" });
+      result.current.updateBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "New Title" });
     });
     await waitFor(() => {
       const e = result.current.bibEntries.find((e) => e.key === "foo")!;
@@ -84,7 +85,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
     const result = await mountWithFoo("doc-replace");
     act(() => {
       // Replace with ONLY title+author — `year` was cleared, so it must vanish.
-      result.current.replaceBibEntry("foo", { title: "Reset", author: "B. Writer" });
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "Reset", author: "B. Writer" });
     });
     await waitFor(() => {
       const e = result.current.bibEntries.find((e) => e.key === "foo")!;
@@ -97,7 +98,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
   it("set-all rebuilds `raw` to exclude the cleared field", async () => {
     const result = await mountWithFoo("doc-replace-raw");
     act(() => {
-      result.current.replaceBibEntry("foo", { title: "Only" });
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "Only" });
     });
     await waitFor(() => {
       const e = result.current.bibEntries.find((e) => e.key === "foo")!;
@@ -120,7 +121,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
       });
     });
     act(() => {
-      result.current.replaceBibEntry("foo", { title: "T" }, "book");
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "T" }, "book");
     });
     await waitFor(() => {
       expect(result.current.bibEntries.find((e) => e.key === "foo")!.type).toBe("book");
@@ -138,7 +139,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
       });
     });
     act(() => {
-      result.current.replaceBibEntry("foo", { title: "T" }, "book");
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "T" }, "book");
     });
     await waitFor(() => {
       expect(result.current.bibEntries.find((e) => e.key === "foo")!.type).toBe("book");
@@ -154,7 +155,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
     const result = await mountWithFoo("doc-replace-library");
     const libraryFields = { author: "Lib Author", title: "Library Title" };
     act(() => {
-      result.current.replaceBibEntry("foo", libraryFields, "book");
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), libraryFields, "book");
     });
     await waitFor(() => {
       const e = result.current.bibEntries.find((e) => e.key === "foo")!;
@@ -175,7 +176,7 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
       });
     });
     act(() => {
-      result.current.replaceBibEntry("foo", { title: "T" }, "article"); // unchanged
+      result.current.replaceBibEntry(namedBibEntry(result.current.bibEntries, "foo"), { title: "T" }, "article"); // unchanged
     });
     await waitFor(() => {
       expect(result.current.bibEntries.find((e) => e.key === "foo")!.fields.title).toBe("T");
