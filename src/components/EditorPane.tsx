@@ -190,7 +190,10 @@ import { useSpellDictionary } from "@/hooks/useSpellDictionary";
 import { useGlobalDictionary } from "@/lib/spell/global-dictionary";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
-import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
+import {
+  makeUnbridgingDelete,
+  makeUnbridgingBulkDelete,
+} from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { richFromPlainText } from "@/lib/footnote-content";
@@ -1792,9 +1795,39 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }),
     [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps],
   );
-  const todosHook = useMemo(
-    () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
-    [todosHookRaw, deleteTodoItem],
+  // The Todo panel's SECOND destructive door — "clear done" — composed from the
+  // wired single delete above rather than re-implemented (task 681). It used to
+  // be `useTodos.archiveDone`, a raw `prev.items.filter(...)`: a hard delete of
+  // N cards wearing the name of a reversible one, which reached the panel
+  // untouched because task 219's wiring is applied per exported door and this
+  // door was not one of the ones anyone remembered. Every done todo whose AI box
+  // had been ticked therefore left its `ai-requests.json` row open forever —
+  // the inbox count inflated, the `/editor/review` drain re-serving a card that
+  // no longer exists.
+  //
+  // `ids` keeps the old contract: supplied (the panel passes the done todos
+  // VISIBLE in the current archive view) → remove only those, so a done todo
+  // hidden by the Active view because it was also deliberately set-aside
+  // (`archived`) is never swept along; omitted → every done todo.
+  //
+  // NO PROMPT STORM. `todo` is not in `APPLIED_SPLICE_KINDS`, so the executor's
+  // SETTLE step short-circuits to `"none"` for every card here and the bulk run
+  // raises no dialogs at all; the content-confirm is upstream (this is the
+  // panel's own explicit clear-done gesture), exactly as for the single delete.
+  const clearDoneTodos = useMemo(() => {
+    const bulk = makeUnbridgingBulkDelete(deleteTodoItem);
+    return async (ids?: readonly string[]) => {
+      const idSet = ids ? new Set(ids) : null;
+      const targets = todosHookRaw.items
+        .filter((t) => t.done && (!idSet || idSet.has(t.id)))
+        .map((t) => t.id);
+      if (targets.length === 0) return;
+      await bulk(targets);
+    };
+  }, [deleteTodoItem, todosHookRaw.items]);
+  const todosHook = useMemo<WiredTodosHook>(
+    () => ({ ...todosHookRaw, deleteItem: deleteTodoItem, clearDone: clearDoneTodos }),
+    [todosHookRaw, deleteTodoItem, clearDoneTodos],
   );
 
   // ── The ONE Mode-B card bag (task 666) ────────────────────────────────────
@@ -7598,6 +7631,22 @@ export default EditorPane;
  * on the outermost edge of the editor pane root.
  */
 
+/**
+ * The todos hook AS THE PANE HANDS IT DOWNSTREAM (task 681) — the raw
+ * `useTodos` return with its destructive doors replaced by unbridging ones.
+ *
+ * `clearDone` has NO raw twin inside `useTodos`, deliberately. The bulk purge
+ * used to live there as `archiveDone`, and a door declared inside the hook is a
+ * door the EditorPane seam — where task 219's unbridge wiring is applied — has
+ * no way to see. Declaring it only here means the wired door is the ONLY door:
+ * there is no raw sibling left for a future consumer to reach past it.
+ */
+type WiredTodosHook = ReturnType<typeof useTodos> & {
+  /** Delete every DONE todo (restricted to `ids` when supplied), each through
+   *  the same unbridging executor as the single delete. */
+  clearDone: (ids?: readonly string[]) => Promise<void>;
+};
+
 interface PaneRailProps {
   side: "left" | "right";
   visiblePanels: PanelKind[];
@@ -7640,7 +7689,7 @@ interface PaneRailProps {
   reportsPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
   discardPristineNotes: () => void;
-  todosHook: ReturnType<typeof useTodos>;
+  todosHook: WiredTodosHook;
   archiveHook: ReturnType<typeof useArchive>;
   cutterHook: ReturnType<typeof useCutter>;
   reportsHook: ReturnType<typeof useReports>;
@@ -8092,7 +8141,7 @@ interface PaneRailBodyProps {
   reportsPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
   discardPristineNotes: () => void;
-  todosHook: ReturnType<typeof useTodos>;
+  todosHook: WiredTodosHook;
   archiveHook: ReturnType<typeof useArchive>;
   cutterHook: ReturnType<typeof useCutter>;
   reportsHook: ReturnType<typeof useReports>;
@@ -8325,7 +8374,7 @@ function PaneRailBody({
         updateTodoNotes={todosHook.updateNotes}
         setTodoAiRequest={todosHook.setAiRequest}
         deleteTodo={todosHook.deleteItem}
-        archiveTodos={todosHook.archiveDone}
+        clearDoneTodos={todosHook.clearDone}
         discardPristine={todosHook.discardPristineTodos}
       />
     );
