@@ -75,10 +75,16 @@ CI: `refocus-no-scroll.test.ts`, `refocus-scroll-census.test.ts`.
 > it — so no timer can outlive the view.** A wall-clock bound is still allowed
 > (the heading label's refocus keeper still expires at 250 ms), but the view's
 > teardown is the OUTER bound, and a scheduling call made after disposal arms
-> nothing.
+> nothing. **A React component owns its timers the same way** — the same scope,
+> mounted by [`useViewLifetime`](src/hooks/useViewLifetime.ts), disposed on
+> UNMOUNT; and because React dispatches no `blur` on unmount, the disposal is
+> also where an uncommitted draft's edit session ENDS (as a cancel, through the
+> field's own `FieldEditSession`), or it ends zero times (task 686's "React
+> half"). Same defect when an element is RE-MINTED rather than unmounted: a
+> sub-editor keyed by a value it edits is destroyed by its own edit.
 
 Doc: [docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md](docs/agents/laws/a-nodeview-owns-its-timers-lifetime.md).
-CI: `nodeview-timer-lifetime.test.ts`, `view-lifetime.test.ts`, `par-title-edit-session.test.ts`, `test-mount-lifetime.test.tsx`.
+CI: `nodeview-timer-lifetime.test.ts`, `view-lifetime.test.ts`, `use-view-lifetime.test.tsx`, `citation-card-timer-lifetime.test.tsx`, `par-title-edit-session.test.ts`, `test-mount-lifetime.test.tsx`.
 
 ### Pane-drag stability
 

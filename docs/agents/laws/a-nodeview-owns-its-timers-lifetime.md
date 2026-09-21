@@ -254,3 +254,105 @@ The other ~45 suites that wait on a `setTimeout` guess are not converted here:
 with their mounts now cleaned per test, a late timer costs a FAILED assertion
 rather than an unhandled error, and each conversion needs the queue that suite
 actually waits on.
+
+---
+
+### The React half: a COMPONENT owns its timers' lifetime, and UNMOUNT is an ending
+
+> **Every timer a React component arms is scheduled through its ONE
+> [`ViewLifetime`](../../../src/lib/tiptap/view-lifetime.ts) — mounted by
+> [`useViewLifetime`](../../../src/hooks/useViewLifetime.ts) — and UNMOUNT
+> disposes it.** A wall-clock bound is still allowed; the unmount is the OUTER
+> bound, and a scheduling call made after disposal arms nothing. Where the
+> component holds an uncommitted DRAFT, the disposal is also where that edit
+> session ends — through the field's own
+> [`FieldEditSession`](../../../src/lib/field-edit-session.ts), so the unmount
+> is one of the session's endings and not a second door beside them.
+
+The law above was written in the medium where it was first paid for. A React
+card is the identical medium with a different teardown verb, and task 686
+measured the same defect there — in the file with the most to lose by it.
+
+**`CitationCard.tsx`: 1,723 lines, two ref-held timers, and `grep -n "return
+() =>"` returning ZERO hits — no effect cleanup anywhere.** Its Code field (the
+raw `\cite{…}` editor) commits on a 250 ms debounce. The only `clearTimeout`
+calls lived inside the commit and cancel handlers, both of which need the card
+to still be mounted to run. **React dispatches no `blur` on unmount, and `blur`
+is the event every other ending of that field rides** — so an unmount inside
+the debounce window ended the session ZERO times: not committed, not cancelled,
+while the orphaned timer still fired and wrote the half-typed command into
+`citations.json` and, through the atom mirror, into the user's `.tex`.
+`codeOriginalRef` — the only record of what that command replaced — died with
+the instance, so task 555's Escape-restore was gone with it. The half-typed
+`\cite` became the document's truth with nothing left that knew how to take it
+back. Unmount mid-typing is ORDINARY: the card is re-parented on pop-out
+(`src/cards/floats/index.tsx`), remounted on a panel re-sort, torn down on a
+document switch.
+
+**It ends as a CANCEL.** That is the same statement Escape makes, and the
+honest reading of a teardown the user did not ask for: of the two endings, only
+"commit a half-typed `\cite` into the prose" has no undo. The hook is skipped
+outright when no draft is open, so an Escape or Enter a moment earlier is not
+ended twice — exactly once, in both directions.
+
+**Why the same scope object and not a React-shaped twin.** A lifetime is not a
+React idea. `createViewLifetime` already owns the three kinds, reads the
+platform at CALL time so vitest's fake timers cannot be captured stale, mints
+opaque handles so a post-disposal call still returns something `clear()`
+accepts, and carries `onDispose` for the non-timer endings. Two spellings of
+one rule is one too many — task 486's lesson for the refocus door and 529's for
+the edit-session door. The hook is the MOUNT, not a second scope. Three things
+it has to get right: it is declared FIRST in the component (React runs effect
+cleanups in declaration order, so the disposal runs before the cleanups of
+effects below it, and an `onDispose` hook still sees state they have not torn
+down); it returns a STABLE facade delegating to the live scope, so a handler
+that captured it in an early render cannot arm on a replaced one; and it
+re-mints inside the effect, not in render, because StrictMode's mount → cleanup
+→ mount runs with no render in between and a facade pinned to the disposed
+scope would leave the component's timers dead on arrival.
+
+#### The identity half: a session also ends zero times when its ELEMENT is re-minted
+
+The same sweep found the defect twice more on the same card, wearing identity
+rather than timers — and they are one phenomenon, not three bugs. A sub-editor
+destroyed by a re-identification ends its session exactly as many times as an
+unmount does: zero.
+
+- **`rowsFromCommand` minted a fresh `row_N` on every parse** and rows render
+  `key={row.id}`, so every echo of the command — a foreign write, a package
+  flip, the card's own committed code edit — REMOUNTED every row and the live
+  `+range` draft inside one died with neither commit nor cancel.
+  `reconcileRowIds` now carries identity across a resync: by CITEKEY first (a
+  row keeps its id wherever it moved, so reordering never remounts), then
+  POSITIONALLY for the remainder, which is exactly what a rename is.
+- **`expandedBibKey` was keyed by the citekey STRING**, so renaming the key
+  inside the expanded `BibEntryCard` — an editor for that very field — made the
+  expansion stop matching its own row and slammed it shut mid-edit. It is keyed
+  by the (now stable) row id, and the clear-effect fires on the ROW
+  disappearing, never on its key changing, which is the edit itself.
+
+#### The baseline half: a cancel undoes what the SESSION did, never what someone else did
+
+`cancelCodeDraft` restored `codeOriginalRef` whenever `original !== cit.command`
+— so a FOREIGN write that landed mid-session (a collaborator, the code pane, an
+AI request on the same citation) read as "my debounce landed" and was clobbered
+with bytes that predate it. Escape means "put back what I found", so the
+BASELINE moves with a foreign write instead of being frozen at the session's
+open: the echo effect, which is the one place a foreign write is already
+detected, advances `codeOriginalRef` while a draft is open. The cancel's own
+condition is then correct unchanged — with the newcomer standing, `original ===
+cit.command` and it writes nothing.
+
+CI: [use-view-lifetime.test.tsx](../../../src/hooks/__tests__/use-view-lifetime.test.tsx),
+[citation-card-timer-lifetime.test.tsx](../../../src/panels/Citations/__tests__/citation-card-timer-lifetime.test.tsx)
+— five legs falsified against the pre-fix tree (unmount mid-typing wrote; the
+landed debounce stood; Escape clobbered the foreign write; the `+range` draft
+died on a resync; the census found the bare timer), beside two control legs
+that pass in both directions (an Escape- or Enter-ended session is not ended a
+second time). The census forbids a bare timer verb anywhere in the card.
+
+**Residual, stated:** the census is scoped to `CitationCard.tsx` rather than
+every React card. The population is not yet known to be general — this card was
+audited for it and no other has been — and a repo-wide ban would have to
+declare an allowlist for the many legitimate one-shot timers in components that
+cannot outlive their own callback. Widening it is a measurement, not a guess.
