@@ -398,6 +398,29 @@ export interface DocNotificationsInbox {
 
 // --- Citations ---
 
+/**
+ * Where an entry's block sat in the `.bib` TEXT it was parsed from (task 688).
+ *
+ * The write path is a SPLICE, not a rebuild: an entry's new block replaces
+ * exactly this span in the original file text, so every byte nobody edited —
+ * other entries, the header comment, `@string` macros, a block Virgil could
+ * not parse — is never re-emitted and therefore cannot be lost.
+ *
+ * `text` is the exact original slice, so a splice can PROVE the span still
+ * names the same bytes before it writes through it. An entry with no `source`
+ * (assembled in memory: "Save under new citekey", a library add, a skill's
+ * find-citation) has no span to splice and is APPENDED instead.
+ */
+export interface BibSourceRef {
+  start: number;
+  end: number;
+  /** `bibText.slice(start, end)` as it was at parse time. */
+  text: string;
+  /** Did the block's braces balance? `false` ⇒ its extent is a guess, and no
+   *  writer may splice through it (see `bib-source.ts`'s refusals). */
+  balanced: boolean;
+}
+
 export interface BibEntry {
   /** Durable internal id, minted once and round-tripped via a `\vbid{}`
    *  marker in the `.bib`. Decoupled from the renameable citekey: a rename
@@ -409,6 +432,9 @@ export interface BibEntry {
   type: string; // "article", "book", "inproceedings", etc.
   fields: Record<string, string>;
   raw: string; // original BibTeX source for this entry
+  /** Where `raw` came from in the parsed file — the splice anchor (task 688).
+   *  Absent for an entry assembled in memory. */
+  source?: BibSourceRef;
 }
 
 export interface CitationRef {

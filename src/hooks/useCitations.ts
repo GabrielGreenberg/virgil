@@ -27,6 +27,7 @@ import {
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
 import { mintBibUid } from "@/lib/bib-uid";
+import { spliceBibBlock } from "@/lib/bib-source";
 import { asBibFamily, DEFAULT_BIB_FAMILY, type BibFamily } from "@/lib/bib-family";
 
 /** No stored family: the user has not chosen one. Detection seeds the VIEW
@@ -77,10 +78,52 @@ export const CITATIONS_INERT: CitationsHook = {
   identityCascade: new IdentityCascade(),
 };
 
-/** An entry's BibTeX block, rebuilt from its fields — the byte shape every
- *  in-place edit below writes. Pure, so a mutation that calls it produces the
- *  same block on the view run and on the disk run. */
-function rebuildRaw(e: BibEntry): string {
+/**
+ * An entry's next BibTeX block — the byte shape every in-place edit below
+ * writes. Pure, so a mutation that calls it produces the same block on the
+ * view run and on the disk run.
+ *
+ * Since task 688 this is a **splice, not a rebuild**: it takes the entry's
+ * ORIGINAL block and changes only what actually differs between `prev` and
+ * `next`. `BibEntry.fields` is a 16-name CSL projection of a BibTeX block, so
+ * re-emitting the block FROM it deleted every field the projection does not
+ * model — `isbn`, `keywords`, `abstract`, `annote`, `month`, `school`, any
+ * custom field — from the user's only copy, on a one-character edit to the
+ * title. Splicing cannot: a field nobody named is never addressed.
+ *
+ * Only fields whose VALUE actually changed are set, which is what keeps a
+ * source-side `@string` macro reference (`journal = jphil`) from being
+ * overwritten with the projection's expansion of it. Fields that were in
+ * `prev.fields` and are gone from `next.fields` are DELETED — that is
+ * `replaceBibEntry`'s set-all semantics, now scoped to the fields the editor
+ * could actually see rather than to everything the projection omitted.
+ *
+ * Falls back to the from-scratch emit when there is no block to splice (an
+ * entry assembled in memory) or when the block cannot be spliced safely.
+ */
+function rebuildRaw(prev: BibEntry, next: BibEntry): string {
+  // bib-display-exempt: non-display — a DIFF between two field maps on the way
+  // to the `.bib`, the WRITE direction. Nothing here reaches a pixel, and
+  // projecting a value would write the projection into the user's own file.
+  const set: Record<string, string> = {};
+  for (const [k, v] of Object.entries(next.fields)) {
+    if (prev.fields[k] !== v) set[k] = v;
+  }
+  const remove = Object.keys(prev.fields).filter((k) => !(k in next.fields));
+  if (prev.raw) {
+    const spliced = spliceBibBlock(prev.raw, {
+      key: next.key,
+      type: next.type,
+      set,
+      remove,
+    });
+    if (spliced !== null) return spliced;
+  }
+  return emitBibBlock(next);
+}
+
+/** The from-scratch block, for an entry that has no source block to splice. */
+function emitBibBlock(e: BibEntry): string {
   const lines = Object.entries(e.fields)
     .map(([k, v]) => `  ${k} = {${v}}`)
     .join(",\n");
@@ -415,7 +458,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         return prev.map((e) => {
           if (e.key !== key) return e;
           const updated = { ...e, fields: { ...e.fields, ...fields } };
-          updated.raw = rebuildRaw(updated);
+          updated.raw = rebuildRaw(e, updated);
           return updated;
         });
       });
@@ -451,7 +494,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           const nextType = type ?? e.type;
           // set-all: replace the field map entirely (cleared fields are gone).
           const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
-          updated.raw = rebuildRaw(updated);
+          updated.raw = rebuildRaw(e, updated);
           return updated;
         });
       });
@@ -470,7 +513,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         return prev.map((e) => {
           if (!match(e)) return e;
           const updated = { ...e, key: newKey, type: newType };
-          updated.raw = rebuildRaw(updated);
+          updated.raw = rebuildRaw(e, updated);
           return updated;
         });
       });
@@ -568,8 +611,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       runBibMutation((prev) => {
         if (prev.some((e) => e.key === entry.key)) return null;
         const used = new Set(prev.map((e) => e.uid).filter(Boolean) as string[]);
+        // `source` names a span in the file the entry was PARSED from; this
+        // entry is arriving from elsewhere (a library drop, find-citation) and
+        // is about to be appended to a different file, so the anchor is
+        // meaningless here and must not be carried (task 688).
+        const { source: _foreign, ...rest } = entry;
+        void _foreign;
         const withUid: BibEntry = {
-          ...entry,
+          ...rest,
           uid: used.has(uid) && !entry.uid ? mintBibUid(used) : uid,
         };
         return [...prev, withUid];
