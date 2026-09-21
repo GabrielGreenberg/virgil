@@ -4927,3 +4927,96 @@ over.
 
 CI: [view-prefs-peer-sync-normalization.test.tsx](../../../src/hooks/__tests__/view-prefs-peer-sync-normalization.test.tsx)
 (the domain legs, including the two `members`-would-have-dropped-it cases).
+
+## The rollout-flag half — a flag may gate a FORMAT, never a behaviour (task 689)
+
+Same law, in the tense a staged rollout puts it in. A registry can go unread not
+because nobody wrote the reader, but because the reader was written **inside an
+`if` that is false on every shipping build**.
+
+`editor/scripts/citekey_keyed_sidecars.json` is the census of which sidecars
+hold a citekey, and it names three: `citations.json`, `annotations.json`,
+`bib-review-requests.json`. The skill side honours all three
+(`apply_response.py`'s `renameCitekey`, one re-keyer each, pinned by
+`test_rename_citekey_cascade.py`). The app side honoured **one**. Renaming a
+citekey in the Bibliography panel rewrote `references.bib`, patched
+`citations.json`, and stopped — because the whole fan-out (the editor
+`\cite{}` doc-rewrite, the float-key remap, the panel-selection re-point) sat
+inside the flag-ON branch of `useCitations.updateBibKeyAndType`, and
+`virgil:identity-cascade` is `default: false`. Three consequences, all silent:
+
+- every `\cite{oldKey}` in the paper became a **dangling reference that will
+  not compile**, while the panel showed the rename as done;
+- the sidecar half was then **UNDONE**: the next `syncFromEditor` re-derives
+  `citations.json` from the doc's still-unrewritten atoms, so the user watched
+  the rename half-apply and then partly un-apply;
+- the entry's **annotation vanished** — with the flag off, annotations are a
+  flat citekey → html record, so the note sat under a key that no longer named
+  an entry. DATA LOSS at the app's own door, and the exact case
+  `identity-cascade.ts`'s own header names as the reason the cascade exists.
+
+`bib-cite-rewrite.ts`'s header states the bug verbatim as its purpose. The fix
+was written, reviewed, merged, and unreachable.
+
+> **A rollout flag may gate a FORMAT — an on-disk shape, a migration, a thing
+> that is a commitment to soak. It may not gate BEHAVIOUR. When a fix and a
+> format land in one flag, the fix ships to nobody, and the suite that pins the
+> flag-off branch "so the existing suite is green" is pinning the bug.**
+
+So the fan-out came OUT of the flag rather than the flag being flipped. Flipping
+`virgil:identity-cascade` to `default: true` would have fixed the rename by also
+committing every existing paper to a uid-keyed **v2 sidecar migration** — a much
+larger promise than a rename deserves. Lifting the behaviour out is both the
+deeper fix and the smaller blast radius: the flag now gates exactly the sidecar
+FORMAT, and the two new re-keyers (`useAnnotations.renameAnnotationKey`,
+`useBibReview.renameBibKey`) are written to be correct on **both** shapes rather
+than on the flag-off one. They have to be: the v2 shape is not actually
+rename-proof either. `orphanByKey` is citekey-keyed by construction, and a
+uid-carrying review row still holds the `bibKey` the skill side reads to find
+its entry. A "this surface is uid-keyed so a rename is a no-op for it" claim is
+worth re-asking per FIELD, not per file.
+
+**Two things the collapse exposed, which is the usual dividend of deleting a
+branch nobody ran.**
+
+- The flag-ON branch matched the `.bib` entry **by uid** — "so the rename
+  targets the entry by identity, not by the about-to-change key". That reads
+  right and is wrong: `runBibMutation` runs the mutator TWICE, once over the
+  hook's view and once — the run that lands — over a **fresh parse** of the
+  file inside the authority's write section, and `parseBibFile` **mints a new
+  uid for every markerless block on every parse**. A uid is durable only where
+  the file carries the entry's `\vbid{}` marker, which a user's existing
+  `references.bib` does not. So a uid-matched rename matched the view and
+  matched nothing on disk: it would have landed **nowhere**, for everyone, the
+  moment the flag was flipped. The old key is the file's own coordinate and has
+  not changed yet at match time — it addresses both runs identically. *A
+  surrogate id is only an address across a boundary it actually survives.*
+- The legacy branch's bare-`\b` citekey matcher is retired with the branch. It
+  has no boundary at `:`, so `smith:2020` renamed to `newsmith:2020` — the key
+  mangled, in the user's file. It survived because a leg pinned the branch
+  as-is; `wholeWordPatternFor` is what the other branch already used.
+
+And one unrelated crash the flag-off path was hiding: `useBibReview`'s load did
+`data ?? EMPTY`, which covers a MISSING file but not one that exists without a
+`requests` array (an empty `{}`, a hand-edited or half-written sidecar). Every
+later `state.requests.some` then threw during render and took the pane down —
+on the default path only, since the flag-ON path happened to be rebuilt by
+`migrateBibReviewToUid` on its way through. Normalize the SHAPE, not just the
+absence.
+
+CI: [rename-fanout-default-build.test.tsx](../../../src/hooks/__tests__/rename-fanout-default-build.test.tsx)
+(the user-facing leg — real hooks, real ProseMirror doc, the real migrators
+EditorPane registers; asserts the `\cite{}` atoms rewrite top-level AND
+footnote-nested, and that the annotation and the bib-review rows move, under
+`describe.each` over BOTH flag settings — every flag-OFF leg fails on the
+pre-fix tree),
+[useCitations-cascade-rename.test.tsx](../../../src/hooks/__tests__/useCitations-cascade-rename.test.tsx)
+(dispatch + the explicit PARITY leg + the punctuation citekey on both paths;
+the old "the cascade was NOT invoked (flag OFF)" leg is renegotiated, not
+preserved), and
+[citekey-keyed-sidecars-census.test.ts](../../../src/lib/identity/__tests__/citekey-keyed-sidecars-census.test.ts)
+— which now checks the manifest against the **app** half too: every `rekey`
+file must name an app-side re-keyer, that re-keyer must be reached from a
+`bibEntry` cascade migrator, and `useCitations.ts` must not read the flag at
+all. The behavioural suite registers its own migrators and so cannot see the
+EditorPane wiring being deleted; the census can.

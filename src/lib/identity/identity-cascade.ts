@@ -26,8 +26,22 @@
  * `runIdentityChange` fires only on an explicit rename (a panel action),
  * never on a keystroke, and walks nothing proportional to the doc on type.
  *
- * Rollout: gated behind `virgil:identity-cascade` (identity-flag.ts) — flag-off
- * keeps the legacy `updateBibKeyAndType` path so the existing suite is green.
+ * Rollout, and what the flag does NOT gate any more (task 689). The cascade
+ * shipped behind `virgil:identity-cascade` with the ENTIRE rename fan-out
+ * inside the flag-ON branch of `updateBibKeyAndType` — so on every shipping
+ * build (the flag is `default: false`) a rename rewrote `references.bib` and
+ * nothing else: every `\cite{oldKey}` in the paper dangled, the sidecar half
+ * was reverted by the next `syncFromEditor` re-derive, and the entry's
+ * annotation was stranded under the old key. The fix was written and simply
+ * unreachable.
+ *
+ * The fan-out is now UNCONDITIONAL: `updateBibKeyAndType` always dispatches
+ * through this cascade, because every registered migrator is pure behaviour
+ * (a doc rewrite, a float/selection re-point, a sidecar re-key) with no
+ * on-disk FORMAT implication. What the flag still gates is exactly what it is
+ * about — the uid-keyed v2 sidecar shapes in `useAnnotations`/`useBibReview`
+ * and their on-load migration — and the migrators are written to be correct on
+ * BOTH shapes, so flag ON and flag OFF produce the same user-visible rename.
  */
 
 // ---------------------------------------------------------------------------
@@ -42,7 +56,16 @@ export type IdentityKind = "bibEntry" | "inlineAtom";
  *  re-keyed, but the citation-refs `keys[]` rewrite and any legacy/orphan
  *  bucket run here). */
 export interface RenameCitekeyChange {
-  uid: string;
+  /** The entry's durable surrogate id, when it HAS one. OPTIONAL by
+   *  construction (task 689): a rename is an identity move whether or not the
+   *  entry carries a uid, and every registered migrator re-points a
+   *  CITEKEY-keyed surface — it reads `oldKey`/`newKey`, never this. Making it
+   *  required is what let the dispatch be written as `if (uid) …`, so a
+   *  uid-less entry (a `.bib` parsed before the uid spine, or one whose
+   *  `\vbid` marker was stripped) renamed with NO fan-out at all: the
+   *  `\cite{}` atoms dangled exactly as they did with the flag off. The uid is
+   *  carried for a future uid-keyed migrator, not to gate the fan-out. */
+  uid?: string;
   oldKey: string;
   newKey: string;
   /** The entry's (possibly also-changed) bib type, threaded so the single

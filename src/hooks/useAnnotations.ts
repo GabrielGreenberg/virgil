@@ -141,8 +141,58 @@ export function useAnnotations(
     [update, cascadeOn, getBibEntry],
   );
 
+  /**
+   * Re-key this sidecar for a citekey rename — the IdentityCascade migrator
+   * EditorPane registers for `bibEntry` (task 689).
+   *
+   * Why it exists on BOTH shapes. The annotation is the DATA-LOSS half of the
+   * rename (BIB-A2-01): with the flag off, annotations are a flat citekey → html
+   * record, so a rename left the user's note under a key that no longer names
+   * an entry and it disappeared from the panel. The uid shape was built to make
+   * that structurally impossible — and it does, for `byUid`. But `orphanByKey`
+   * is citekey-keyed by construction (it is where a write lands when the entry
+   * has not parsed yet, or its key doesn't resolve), so the v2 shape has the
+   * same hole for exactly those annotations, flag or no flag. One migrator
+   * covers both: move the flat entry on v1, move the orphan bucket on v2.
+   *
+   * NON-DESTRUCTIVE when the destination is occupied: a rename onto an existing
+   * citekey is itself a defect (the `.bib` entries fuse — a separate finding),
+   * and this door must not turn it into a silently overwritten annotation. We
+   * leave both in place rather than delete one we could not restore.
+   */
+  const renameAnnotationKey = useCallback(
+    (oldKey: string, newKey: string) => {
+      if (!oldKey || !newKey || oldKey === newKey) return;
+      // Read-then-write against the live state so a rename that moves nothing
+      // schedules NO persist (`update` always does) — the same identity-check
+      // shape as the orphan re-home effect above.
+      const prev = stateRef.current;
+      let next: AnnotationsState | AnnotationsStateV2 = prev;
+      if (isAnnotationsV2(prev)) {
+        const text = prev.orphanByKey[oldKey];
+        // Absent → the annotation is uid-keyed and already rename-proof.
+        // Destination occupied → keep both (see the doc-comment).
+        if (text != null && prev.orphanByKey[newKey] == null) {
+          const orphanByKey = { ...prev.orphanByKey, [newKey]: text };
+          delete orphanByKey[oldKey];
+          next = { ...prev, orphanByKey };
+        }
+      } else {
+        const legacy = prev as AnnotationsState;
+        const text = legacy[oldKey];
+        if (text != null && legacy[newKey] == null) {
+          const moved = { ...legacy, [newKey]: text };
+          delete moved[oldKey];
+          next = moved;
+        }
+      }
+      if (next !== prev) update(() => next);
+    },
+    [update, stateRef],
+  );
+
   return useMemo(
-    () => ({ annotations: state, getAnnotation, setAnnotation }),
-    [state, getAnnotation, setAnnotation],
+    () => ({ annotations: state, getAnnotation, setAnnotation, renameAnnotationKey }),
+    [state, getAnnotation, setAnnotation, renameAnnotationKey],
   );
 }

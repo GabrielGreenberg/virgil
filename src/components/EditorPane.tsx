@@ -1237,6 +1237,32 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return unregister;
   }, [identityCascade, viewPrefs]);
 
+  // Third `bibEntry` migrator (task 689): the two CITEKEY-KEYED bib sidecars.
+  // `citekey_keyed_sidecars.json` — the census both halves of the app are
+  // checked against — names `annotations.json` and `bib-review-requests.json`
+  // as surfaces a rename MUST re-key, and the skill side has re-keyers for
+  // both. The app side had none: the uid sidecar shapes were built so the
+  // rename would be a no-op for them, but those shapes are behind
+  // `virgil:identity-cascade` (default OFF), so on every shipping build a
+  // rename stranded the user's annotation under a key that no longer named an
+  // entry — DATA LOSS at the app's own door — and stranded the entry's pending
+  // reviews with it. Both re-keyers are written to be correct on the uid shape
+  // too (the v2 `orphanByKey` bucket is citekey-keyed by construction, and a
+  // uid-carrying review row still holds a `bibKey` the skill side reads), so
+  // this migrator is right on both flag paths rather than a flag-off patch.
+  const renameAnnotationKey = annotationsHook.renameAnnotationKey;
+  const renameBibReviewKey = bibReviewHook.renameBibKey;
+  useEffect(() => {
+    const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
+      if (!isRenameCitekey(change)) return;
+      const { oldKey, newKey } = change.renameCitekey;
+      if (oldKey === newKey) return;
+      renameAnnotationKey(oldKey, newKey);
+      renameBibReviewKey(oldKey, newKey);
+    });
+    return unregister;
+  }, [identityCascade, renameAnnotationKey, renameBibReviewKey]);
+
   // W1b — the single inline-atom DocStructureBus consumer (D1.2/D1.4). Mounts
   // ONCE per pane behind `virgil:identity-cascade`. Opens exactly one
   // `onAnyChange` subscription and registers T1's `regenIds` policy FIRST: on a

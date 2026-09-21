@@ -524,7 +524,10 @@ export default function BibEntryCard({
                 <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
                   {showBibWarning && (
                     <div className="text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-1 text-xs">
-                      Warning: editing will modify the .bib file.
+                      Warning: editing will modify the .bib file. Changing the
+                      key also rewrites every <code>\cite</code> of it in the
+                      document, and moves this entry&rsquo;s annotation and
+                      review requests with it.
                     </div>
                   )}
                   {/* Editable @type and key */}
