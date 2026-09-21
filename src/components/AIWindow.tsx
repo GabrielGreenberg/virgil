@@ -237,6 +237,22 @@ const KIND_META: Record<
   },
 };
 
+/** The display kind each `AiRequestKind` renders as. Type-exhaustive over the
+ *  union the APP writes — the on-disk widening is handled by
+ *  `panelDisplayKind`, which is the only caller. */
+const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
+  footnote: "panel-footnote",
+  note: "panel-note",
+  // Highlight AI requests render as notes in the AI window — same
+  // Notes-panel home, same composer affordances.
+  highlight: "panel-note",
+  citation: "panel-citation",
+  report: "panel-report",
+  todo: "panel-todo",
+  suggestion: "panel-suggestion",
+  "style-merge": "panel-style-merge",
+};
+
 /**
  * The panel display kind for a row's on-disk `kind` — THE one place an
  * unrecognised kind is resolved (task 682).
@@ -259,21 +275,6 @@ function panelDisplayKind(kind: AiRequest["kind"]): AIRequestKind {
   return isAiRequestKind(kind) ? PANEL_KIND_MAP[kind] : "panel-unknown";
 }
 
-/** The display kind each `AiRequestKind` renders as. Type-exhaustive over the
- *  union the APP writes — the on-disk widening is handled by
- *  `panelDisplayKind`, which is the only caller. */
-const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
-  footnote: "panel-footnote",
-  note: "panel-note",
-  // Highlight AI requests render as notes in the AI window — same
-  // Notes-panel home, same composer affordances.
-  highlight: "panel-note",
-  citation: "panel-citation",
-  report: "panel-report",
-  todo: "panel-todo",
-  suggestion: "panel-suggestion",
-  "style-merge": "panel-style-merge",
-};
 
 /** The theme a request row's chip paints with: the resolved owning card's own
  *  theme where the row is card-linked, else the display kind's family default.
