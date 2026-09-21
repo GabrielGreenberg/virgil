@@ -30,6 +30,25 @@ export function carryCardEnvelope<T>(
   return archived ? ({ ...(target as object), archived } as T) : target;
 }
 
+/** The record-level shape of a captured passage. Every half is optional: a
+ *  pre-488 record has only the plain one, a pre-696 record only two, and
+ *  PRESENT-ONLY carrying must never mint a key a sidecar shape never held. */
+export interface CapturedPassage {
+  selectedText?: string;
+  selectedContent?: unknown;
+  selectedLatex?: string;
+}
+
+/** The halves of one capture, in the order they were introduced. The SSOT the
+ *  carry iterates and `capture-pair-census.test.ts` cross-checks against
+ *  `types.ts`, so a form declared on the card shapes but missing here is a
+ *  test failure rather than a silent drop. */
+export const CAPTURE_HALVES = [
+  "selectedText",
+  "selectedContent",
+  "selectedLatex",
+] as const satisfies readonly (keyof CapturedPassage)[];
+
 /**
  * `carryCapturedPassage` — the second record-level fact no structural transform
  * MEANS to drop: a captured passage's TWO FORMS travel together.
@@ -40,6 +59,18 @@ export function carryCardEnvelope<T>(
  * dialects, and `captured-passage.tsx` states why only the rich one can survive
  * a round trip: the plain string "drops marks and drops every inline ATOM
  * outright, so no render-time parse can recover them".
+ *
+ * Task 696 made it a TRIPLE: `selectedLatex`, the span's inline LaTeX, is the
+ * dialect `apply-suggestion.ts` byte-matches against the live paragraph. It
+ * travels with the other two for the same reason and by the same rules — a
+ * comment morphed into a suggestion seeds its `original_text` from it, so a
+ * transform that dropped it would hand the apply path the flattened line and
+ * the card would land `stale` against a paragraph that never changed.
+ *
+ * The halves are LISTED once, in {@link CAPTURE_HALVES}, and the carry loops
+ * over that list rather than naming fields: a fourth derived form joins by
+ * being added there, not by being remembered at a fifth call site. That is the
+ * whole lesson of 099 → 694 → 696, where each new field had to re-learn it.
  *
  * The morph converters say this in prose at four sites ("a morph is not a
  * re-capture"). The four CLONE literals — `useCutter`/`useRevisions`
@@ -69,16 +100,16 @@ export function carryCardEnvelope<T>(
  * correspondence from `types.ts` rather than trusting it.
  */
 export function carryCapturedPassage<T>(
-  source: { selectedText?: string; selectedContent?: unknown } | null | undefined,
+  source: CapturedPassage | null | undefined,
   target: T,
 ): T {
-  const t = target as { selectedText?: string; selectedContent?: unknown };
-  const text = t?.selectedText === undefined ? source?.selectedText : undefined;
-  const content = t?.selectedContent === undefined ? source?.selectedContent : undefined;
-  if (text === undefined && content === undefined) return target;
-  return {
-    ...(target as object),
-    ...(text === undefined ? {} : { selectedText: text }),
-    ...(content === undefined ? {} : { selectedContent: content }),
-  } as T;
+  const t = target as CapturedPassage;
+  const carried: CapturedPassage = {};
+  for (const half of CAPTURE_HALVES) {
+    if (t?.[half] !== undefined) continue;
+    const v = source?.[half];
+    if (v !== undefined) (carried as Record<string, unknown>)[half] = v;
+  }
+  if (Object.keys(carried).length === 0) return target;
+  return { ...(target as object), ...carried } as T;
 }

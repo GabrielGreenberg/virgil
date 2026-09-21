@@ -55,6 +55,7 @@ import {
   applyLinkedAnchorBoundaries,
 } from "@/lib/latex-parser";
 import { reanchorByText, removeLinkedAnchor } from "@/links/links";
+import { captureRangeLatex } from "@/lib/tiptap/slice-capture";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 
 /** Replace a span with new text, or (replacement === "") delete it. A `delete`
@@ -94,7 +95,17 @@ export interface ApplyArgs {
 }
 
 export type ApplyResult =
-  | { ok: true; anchorId: string }
+  | {
+      ok: true;
+      anchorId: string;
+      /** The bytes the splice actually matched and removed — normally the
+       *  caller's `originalText`, but the RE-DERIVED needle when `locateSpan`
+       *  had to repair a flattened one (task 696). The caller records this as
+       *  `appliedChange.originalText`, because that field's job is to be the
+       *  REVERT SOURCE: restoring what was asked for rather than what was cut
+       *  would put different bytes back than the ones taken out. */
+      originalText: string;
+    }
   | { ok: false; reason: "stale" };
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change. */
@@ -206,6 +217,16 @@ function inlineFragmentFromLatex(
   }
 }
 
+/** What `locateSpan` resolved: the paragraph's inline-LaTeX serialization, the
+ *  index of the located span in it, and `match` — THE BYTES ACTUALLY FOUND.
+ *
+ *  `match` is the needle on the verbatim rung and the RE-DERIVED needle on the
+ *  plain-text rung (below), so it is never assumed to equal the caller's
+ *  `originalText`. Every downstream splice uses it, and `applyPendingChange`
+ *  reports it back so `appliedChange.originalText` records what was cut out
+ *  rather than what was asked for — which is what Revert restores. */
+type LocatedSpan = { serialized: string; index: number; match: string };
+
 /**
  * Serialize the uuid-anchored paragraph to inline LaTeX and confirm
  * `originalText` appears verbatim. Returns the serialized string + the index of
@@ -216,12 +237,39 @@ function inlineFragmentFromLatex(
  * anchored paragraph's serialization. (The Python scopes the search to the
  * paragraph by `%!v:` markers; here the serialization IS exactly that one
  * paragraph, so the scoping is structural, not by marker.)
+ *
+ * ## The plain-text rung (task 696)
+ *
+ * Two dialects meet here, and until 696 only one of them was spoken. A card
+ * written by a skill carries real `.tex` bytes, so the verbatim rung matches.
+ * A card the USER created from a selection carried `doc.textBetween` — the
+ * RELOCATION currency, which has dropped every mark and every inline atom — so
+ * for any passage with markup the verbatim rung could not match, and the card
+ * was marked `stale` and never retried, telling the user a paragraph had
+ * changed when nothing had.
+ *
+ * The capture side is fixed at source (`captureRangeLatex`, threaded to
+ * `original_text` through `selectedLatex`), but every card already on disk
+ * still holds the flattened line, and nothing may rewrite those silently. So
+ * the apply path grows a SECOND rung that repairs them in place — and it
+ * repairs them by re-deriving, never by matching more loosely:
+ *
+ *   1. project the live paragraph to PLAIN text (the same currency the stale
+ *      needle was captured in) and find it there;
+ *   2. map the hit back to a document RANGE;
+ *   3. re-cut that range through the ONE capture leaf, in the LaTeX dialect;
+ *   4. require THAT to appear verbatim in the serialization.
+ *
+ * Step 4 is what keeps the negative case negative: the rung cannot widen what
+ * is spliceable, because its own result still has to pass the verbatim test.
+ * A paragraph that genuinely changed fails at step 1 (the plain line is gone)
+ * or at step 4, and lands `stale` exactly as before.
  */
 function locateSpan(
   editor: Editor,
   anchorUuid: string,
   originalText: string,
-): { serialized: string; index: number } | null {
+): LocatedSpan | null {
   const hit = findNodeByUuid(editor, anchorUuid);
   if (!hit) return null;
   if (hit.node.type.name !== "paragraph") return null;
@@ -230,8 +278,67 @@ function locateSpan(
   // is 0, a false positive) — treat it as stale.
   if (originalText.length === 0) return null;
   const index = serialized.indexOf(originalText);
+  if (index !== -1) return { serialized, index, match: originalText };
+  return repairFlattenedSpan(editor, hit, serialized, originalText);
+}
+
+/**
+ * The plain-text rung of {@link locateSpan}: re-derive a LaTeX needle from a
+ * flattened one by finding it in the paragraph's plain projection and re-cutting
+ * that range. Returns `null` unless the re-derived needle is itself verbatim.
+ */
+function repairFlattenedSpan(
+  editor: Editor,
+  hit: { node: PMNode; pos: number },
+  serialized: string,
+  flattened: string,
+): LocatedSpan | null {
+  const { plain, starts } = plainProjection(hit.node, hit.pos + 1);
+  const at = plain.indexOf(flattened);
+  // FIRST occurrence only, mirroring the verbatim rung's own contract
+  // (`str.find` + a single replace) rather than inventing a second policy.
+  if (at === -1) return null;
+  const from = starts[at];
+  const to = starts[at + flattened.length - 1] + 1;
+  if (from == null || to == null) return null;
+  const match = captureRangeLatex(editor.state.doc, from, to);
+  if (!match) return null;
+  const index = serialized.indexOf(match);
   if (index === -1) return null;
-  return { serialized, index };
+  return { serialized, index, match };
+}
+
+/**
+ * A paragraph's PLAIN projection plus, for every character in it, the document
+ * position that character starts at.
+ *
+ * Faithful to `doc.textBetween(from, to, " ")` — the call that produced the
+ * flattened capture in the first place — for the one shape that reaches here:
+ * text nodes contribute their characters, inline LEAF atoms (a citation, a
+ * footnote, a `\ref`) contribute nothing at all (Virgil declares no `leafText`
+ * on any node type), and a non-leaf inline node is recursed into. No block
+ * separator can arise: the projection is scoped to a single paragraph.
+ *
+ * The position array is what makes the rung a re-cut rather than a guess — the
+ * hit is mapped back to real document coordinates, and an atom that fell
+ * between two matched characters is carried along by the range that spans it.
+ */
+function plainProjection(
+  para: PMNode,
+  contentStart: number,
+): { plain: string; starts: number[] } {
+  let plain = "";
+  const starts: number[] = [];
+  para.descendants((node, pos) => {
+    if (node.isText) {
+      const t = node.text ?? "";
+      for (let j = 0; j < t.length; j++) starts.push(contentStart + pos + j);
+      plain += t;
+      return false;
+    }
+    return !node.isLeaf;
+  });
+  return { plain, starts };
 }
 
 /**
@@ -360,7 +467,7 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
       anchorUuid,
       { linkCardToken: family, pendingDelete: true },
     );
-    return { ok: true, anchorId };
+    return { ok: true, anchorId, originalText: located.match };
   }
 
   // replace: splice the text first (undoable), then mark the inserted region.
@@ -369,7 +476,9 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
     anchorUuid,
     located.serialized,
     located.index,
-    originalText,
+    // `located.match`, never the argument: on the repair rung these differ,
+    // and slicing by the wrong length would cut the wrong bytes.
+    located.match,
     replacement,
   );
   if (!spliced) return { ok: false, reason: "stale" };
@@ -389,7 +498,7 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
     anchorUuid,
     { linkCardToken: family },
   );
-  return { ok: true, anchorId };
+  return { ok: true, anchorId, originalText: located.match };
 }
 
 export interface RevertArgs {
@@ -426,7 +535,7 @@ export function revertPendingChange(editor: Editor, args: RevertArgs): void {
     anchorUuid,
     located.serialized,
     located.index,
-    replacement,
+    located.match,
     originalText,
   );
 }
@@ -469,7 +578,7 @@ export function keepPendingChange(editor: Editor, args: KeepArgs): void {
         anchorUuid,
         located.serialized,
         located.index,
-        originalText,
+        located.match,
         "",
       );
     }

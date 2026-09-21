@@ -66,7 +66,12 @@ function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestion
     id: c.id,
     createdAt: c.createdAt,
     author: "human",
-    original_text: c.selectedText ?? "",
+    // Task 696: the APPLY dialect. `selectedLatex` is the span's inline LaTeX,
+    // which is what `locateSpan` byte-matches; `selectedText` is the flattened
+    // relocation line and can only match a span with no markup at all. A
+    // pre-696 comment has only the latter — it seeds as before and the apply
+    // path's plain-text rung repairs it there, where BOTH dialects are in hand.
+    original_text: c.selectedLatex ?? c.selectedText ?? "",
     suggested_text: "",
     explanation: "",
     user_text: c.text,
@@ -75,8 +80,12 @@ function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestion
     selectedText: c.selectedText,
     // The rich capture travels with the string it is the twin of (task 488) —
     // a morph is not a re-capture, and dropping it would silently demote the
-    // card's "Original" to the flattened line.
+    // card's "Original" to the flattened line. The LaTeX form (task 696)
+    // travels for the same reason: it is what `original_text` above was just
+    // seeded from, so losing it here would make the next morph back disagree
+    // with this one about what the user selected.
     selectedContent: c.selectedContent,
+    selectedLatex: c.selectedLatex,
     links: c.links,
   };
 }
@@ -98,6 +107,7 @@ function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequest
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
     selectedContent: s.selectedContent,
+    selectedLatex: s.selectedLatex,
     links: s.links,
   };
 }
@@ -119,7 +129,12 @@ function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
     id: c.id,
     createdAt: c.createdAt,
     author: "human",
-    original_text: c.selectedText ?? "",
+    // Task 696: the APPLY dialect. `selectedLatex` is the span's inline LaTeX,
+    // which is what `locateSpan` byte-matches; `selectedText` is the flattened
+    // relocation line and can only match a span with no markup at all. A
+    // pre-696 comment has only the latter — it seeds as before and the apply
+    // path's plain-text rung repairs it there, where BOTH dialects are in hand.
+    original_text: c.selectedLatex ?? c.selectedText ?? "",
     suggested_text: "",
     explanation: "",
     user_text: c.text,
@@ -128,8 +143,12 @@ function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
     selectedText: c.selectedText,
     // The rich capture travels with the string it is the twin of (task 488) —
     // a morph is not a re-capture, and dropping it would silently demote the
-    // card's "Original" to the flattened line.
+    // card's "Original" to the flattened line. The LaTeX form (task 696)
+    // travels for the same reason: it is what `original_text` above was just
+    // seeded from, so losing it here would make the next morph back disagree
+    // with this one about what the user selected.
     selectedContent: c.selectedContent,
+    selectedLatex: c.selectedLatex,
     links: c.links,
   };
 }
@@ -149,6 +168,7 @@ function cutterSuggestionToComment(s: CutterSuggestionCard): CutterCommentCard {
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
     selectedContent: s.selectedContent,
+    selectedLatex: s.selectedLatex,
     links: s.links,
   };
 }

@@ -53,11 +53,16 @@ import type {
  *  document slice, so the "Original" surfaces can render the passage with its
  *  marks and inline atoms instead of the flattened line `textBetween` yields.
  *  Optional — a producer that has no slice to take simply omits it and the
- *  display door falls back to parsing the string. */
+ *  display door falls back to parsing the string.
+ *  `anchorLatex` is the THIRD derived form (task 696): the same span as inline
+ *  LaTeX, which is the dialect the apply path splices in — a suggestion seeded
+ *  from `anchorText` can only match a span that carried no markup at all.
+ *  Absent when the span has no single inline form. */
 export type AnchorRef = {
   anchorId: string;
   anchorText: string;
   anchorContent?: unknown;
+  anchorLatex?: string;
 };
 
 export interface CardCreationDeps {

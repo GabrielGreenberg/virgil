@@ -25,7 +25,7 @@
 
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { captureRangeContent } from "@/lib/tiptap/slice-capture";
+import { captureRangeContent, captureRangeLatex } from "@/lib/tiptap/slice-capture";
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
@@ -734,6 +734,22 @@ export interface LinkedAnchorRecord {
    *  Absent when the producer has no slice to take (the snapshot-relocation
    *  path) or the destination schema refuses it. */
   content?: JSONContent;
+  /** The LATEX capture of the same span (task 696) — the third derived form.
+   *
+   *  `text` is the RELOCATION currency and `content` the DISPLAY one; this is
+   *  the APPLY one. `apply-suggestion.ts` serializes the anchored paragraph to
+   *  inline LaTeX and requires a suggestion's `original_text` to appear in it
+   *  VERBATIM, so a suggestion seeded from `text` could only ever match a span
+   *  that carried no markup at all — every cut over an emphasis, a citation, a
+   *  footnote or `$x$` landed `stale` on first press and told the user the
+   *  paragraph had changed when nothing had.
+   *
+   *  Absent when the span has no single inline form (not exactly one
+   *  paragraph, or a node the serializer refuses). Absent is the honest
+   *  answer: a card with no apply currency reads `no-capture` through
+   *  `suggestionApplicability` (task 695) and says so, rather than offering a
+   *  live Apply over a needle that cannot match. */
+  latex?: string;
   createdAt: string;
 }
 
@@ -809,6 +825,11 @@ export function createLinkedAnchor(
     sel.from,
     sel.to,
   );
+  // Task 696: the same cut read in the APPLY dialect. Taken here, beside its
+  // two siblings, so one capture produces all three forms — three capture
+  // sites that can disagree about what the user selected is the thing this
+  // replaces.
+  const capturedLatex = captureRangeLatex(editor.state.doc, sel.from, sel.to);
   const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
   const cardKind = legacyKindToCardKindString(kind);
   const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
@@ -831,6 +852,7 @@ export function createLinkedAnchor(
     paragraphId,
     text,
     content: capturedContent,
+    ...(capturedLatex == null ? {} : { latex: capturedLatex }),
     createdAt: new Date().toISOString(),
   };
 }

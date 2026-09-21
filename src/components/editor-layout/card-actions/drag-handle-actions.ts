@@ -476,6 +476,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
               anchorId: record.anchorId,
               anchorText: record.text,
               anchorContent: record.content,
+              anchorLatex: record.latex,
             },
             paragraphId,
             mode: "omni",
@@ -1253,11 +1254,14 @@ function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
   if (!record) return undefined;
   // `anchorContent` (task 488) is the RICH twin of `record.text` — carry it, or
   // every card minted here shows its captured passage as the flattened line
-  // `doc.textBetween` produced.
+  // `doc.textBetween` produced. `anchorLatex` (task 696) is the third form:
+  // drop it and every suggestion this card is later morphed into is applied
+  // against a dialect it was never captured in.
   return {
     anchorId: record.anchorId,
     anchorText: record.text,
     anchorContent: record.content,
+    anchorLatex: record.latex,
   };
 }
 

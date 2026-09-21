@@ -93,6 +93,17 @@ export interface RevisionRequestCard {
    *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
    *  apply path splices and the copy button copies. */
   selectedContent?: unknown;
+  /** The LATEX capture of the same passage, taken at anchor time (task 696).
+   *  The THIRD derived form: `selectedText` is the relocation currency,
+   *  `selectedContent` the display one, and this is the APPLY one — the inline
+   *  LaTeX the span serializes to, which is the only dialect
+   *  `apply-suggestion.ts` can byte-match against the live paragraph. Seeding a
+   *  suggestion's `original_text` from the flattened line instead made every
+   *  cut over an emphasis / citation / footnote / `$x$` land `stale` on first
+   *  press, blaming a paragraph that had not changed. Absent on every pre-696
+   *  card (the apply path repairs those through its plain-text rung) and
+   *  whenever the span has no single inline form. */
+  selectedLatex?: string;
   links: Link[];
 }
 
@@ -135,6 +146,17 @@ export interface RevisionSuggestionCard {
    *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
    *  apply path splices and the copy button copies. */
   selectedContent?: unknown;
+  /** The LATEX capture of the same passage, taken at anchor time (task 696).
+   *  The THIRD derived form: `selectedText` is the relocation currency,
+   *  `selectedContent` the display one, and this is the APPLY one — the inline
+   *  LaTeX the span serializes to, which is the only dialect
+   *  `apply-suggestion.ts` can byte-match against the live paragraph. Seeding a
+   *  suggestion's `original_text` from the flattened line instead made every
+   *  cut over an emphasis / citation / footnote / `$x$` land `stale` on first
+   *  press, blaming a paragraph that had not changed. Absent on every pre-696
+   *  card (the apply path repairs those through its plain-text rung) and
+   *  whenever the span has no single inline form. */
+  selectedLatex?: string;
   links: Link[];
 }
 
@@ -658,6 +680,17 @@ export interface CutterCommentCard {
    *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
    *  apply path splices and the copy button copies. */
   selectedContent?: unknown;
+  /** The LATEX capture of the same passage, taken at anchor time (task 696).
+   *  The THIRD derived form: `selectedText` is the relocation currency,
+   *  `selectedContent` the display one, and this is the APPLY one — the inline
+   *  LaTeX the span serializes to, which is the only dialect
+   *  `apply-suggestion.ts` can byte-match against the live paragraph. Seeding a
+   *  suggestion's `original_text` from the flattened line instead made every
+   *  cut over an emphasis / citation / footnote / `$x$` land `stale` on first
+   *  press, blaming a paragraph that had not changed. Absent on every pre-696
+   *  card (the apply path repairs those through its plain-text rung) and
+   *  whenever the span has no single inline form. */
+  selectedLatex?: string;
   links: Link[];
 }
 
@@ -712,6 +745,17 @@ export interface CutterSuggestionCard {
    *  back to parsing the bytes. DISPLAY-ONLY: the string stays the currency the
    *  apply path splices and the copy button copies. */
   selectedContent?: unknown;
+  /** The LATEX capture of the same passage, taken at anchor time (task 696).
+   *  The THIRD derived form: `selectedText` is the relocation currency,
+   *  `selectedContent` the display one, and this is the APPLY one — the inline
+   *  LaTeX the span serializes to, which is the only dialect
+   *  `apply-suggestion.ts` can byte-match against the live paragraph. Seeding a
+   *  suggestion's `original_text` from the flattened line instead made every
+   *  cut over an emphasis / citation / footnote / `$x$` land `stale` on first
+   *  press, blaming a paragraph that had not changed. Absent on every pre-696
+   *  card (the apply path repairs those through its plain-text rung) and
+   *  whenever the span has no single inline form. */
+  selectedLatex?: string;
   links: Link[];
 }
 
