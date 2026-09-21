@@ -25,7 +25,8 @@ interface TodoPanelProps {
   onUpdateNotes: (id: string, notes: string) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
-  onArchiveDone: (ids?: string[]) => void;
+  /** DELETES the done todos passed to it — it never archived (task 681). */
+  onClearDone: (ids?: readonly string[]) => void;
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
@@ -40,7 +41,7 @@ export default function TodoPanel({
   onUpdateNotes,
   onSetAiRequest,
   onDelete,
-  onArchiveDone,
+  onClearDone,
   selectedTodoId,
   onSelectTodo,
   onJumpToCard,
@@ -108,7 +109,7 @@ export default function TodoPanel({
               {done.length} completed
             </span>
             <button
-              onClick={() => onArchiveDone(done.map((d) => d.id))}
+              onClick={() => onClearDone(done.map((d) => d.id))}
               className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center gap-1.5"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

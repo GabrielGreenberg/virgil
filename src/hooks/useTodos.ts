@@ -180,7 +180,8 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   /** Flip a todo's archived (set-aside) flag. Orthogonal to `done` — a done
    *  todo can still be separately archived. Filtering happens at the panel; this
    *  just persists the flag through the same sidecar path. (Distinct from the
-   *  pre-existing `archiveDone`, which permanently drops completed todos.) */
+   *  pane-level clear-done door, which permanently DELETES completed todos
+   *  through the unbridging executor — see the note below `reorder`.) */
   const setArchived = useCallback((id: string, archived: boolean) => {
     pristine.markDirty(id);
     update((prev) => ({
@@ -197,20 +198,16 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     });
   }, [update]);
 
-  // Drop completed todos. When `ids` is supplied (the panel passes the done
-  // todos VISIBLE in the current archive view), remove only those — so a done
-  // todo hidden by the Active view because it was also deliberately set-aside
-  // (archived) is never swept along with the visible ones. Omitting `ids`
-  // preserves the legacy "purge every done todo" behavior for any other caller.
-  const archiveDone = useCallback((ids?: string[]) => {
-    update((prev) => {
-      if (ids) {
-        const idSet = new Set(ids);
-        return { items: prev.items.filter((i) => !(i.done && idSet.has(i.id))) };
-      }
-      return { items: prev.items.filter((i) => !i.done) };
-    });
-  }, [update]);
+  // NO BULK PURGE LIVES HERE (task 681). The Todo panel's "clear done" control
+  // used to reach a raw `archiveDone` on this hook — a plain
+  // `prev.items.filter(...)` that hard-deleted N cards under a name that read
+  // as safe. Task 219's unbridge wiring is applied at the EditorPane seam, per
+  // exported door, so a second destructive door declared HERE is invisible to
+  // it: every done todo whose AI box was ticked left its `ai-requests.json` row
+  // open forever. The door now lives at that seam instead, composed from the
+  // already-wired single delete (`makeUnbridgingBulkDelete`), and this hook
+  // exposes exactly ONE way to remove a todo — `deleteItem` — so there is
+  // nothing left for a seam to miss.
 
   const addParagraphId = useCallback(
     (
@@ -385,7 +382,6 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       deleteItem,
       setArchived,
       reorder,
-      archiveDone,
       addParagraphId,
       removeParagraphId,
       reconcileAnchors,
@@ -407,7 +403,6 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       deleteItem,
       setArchived,
       reorder,
-      archiveDone,
       addParagraphId,
       removeParagraphId,
       reconcileAnchors,

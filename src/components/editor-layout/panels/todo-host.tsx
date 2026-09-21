@@ -19,7 +19,10 @@ export interface TodoHostProps {
   updateTodoNotes: (id: string, notes: string) => void;
   setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
-  archiveTodos: (ids?: string[]) => void;
+  /** DELETES the done todos (restricted to `ids` when supplied). Named for
+   *  what it does: the old name said "archive", which is the reversible
+   *  set-aside flag sitting right beside it on the same card (task 681). */
+  clearDoneTodos: (ids?: readonly string[]) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
 }
@@ -41,7 +44,7 @@ export function TodoHost(p: TodoHostProps) {
       onUpdateNotes={p.updateTodoNotes}
       onSetAiRequest={p.setTodoAiRequest}
       onDelete={p.deleteTodo}
-      onArchiveDone={p.archiveTodos}
+      onClearDone={p.clearDoneTodos}
       selectedTodoId={selectedTodoId}
       onSelectTodo={setSelectedTodoId}
       onJumpToCard={(item, sourceEl) => editorRef.current?.jumpToCard(item, sourceEl)}

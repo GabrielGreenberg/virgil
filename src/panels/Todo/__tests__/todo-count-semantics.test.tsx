@@ -61,7 +61,7 @@ function provider(view: CardArchiveView): CardArchiveViewApi {
 function renderPanel(
   items: TodoItem[],
   view: CardArchiveView = "active",
-  onArchiveDone = vi.fn(),
+  onClearDone = vi.fn(),
 ) {
   const utils = render(
     <CardArchiveViewProvider value={provider(view)}>
@@ -73,13 +73,13 @@ function renderPanel(
         onUpdateNotes={vi.fn()}
         onSetAiRequest={vi.fn()}
         onDelete={vi.fn()}
-        onArchiveDone={onArchiveDone}
+        onClearDone={onClearDone}
         selectedTodoId={null}
         onSelectTodo={vi.fn()}
       />
     </CardArchiveViewProvider>,
   );
-  return { onArchiveDone, ...utils };
+  return { onClearDone, ...utils };
 }
 
 function badge(container: HTMLElement): string | null {
@@ -129,13 +129,13 @@ describe("Todo badge/footer count semantics (task 2026-07-12-103)", () => {
   it("Active view: Archive fires with only the VISIBLE done ids — never a hidden set-aside one", () => {
     const hiddenDone = makeTodo({ done: true, archived: true });
     const visibleDone = makeTodo({ done: true });
-    const { onArchiveDone } = renderPanel(
+    const { onClearDone } = renderPanel(
       [makeTodo({ done: false }), visibleDone, hiddenDone],
       "active",
     );
     fireEvent.click(screen.getByText("Archive"));
-    expect(onArchiveDone).toHaveBeenCalledTimes(1);
-    const ids = onArchiveDone.mock.calls[0][0] as string[];
+    expect(onClearDone).toHaveBeenCalledTimes(1);
+    const ids = onClearDone.mock.calls[0][0] as string[];
     expect(ids).toEqual([visibleDone.id]);
     expect(ids).not.toContain(hiddenDone.id);
   });

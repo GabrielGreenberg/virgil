@@ -117,3 +117,48 @@ export function makeUnbridgingDelete(
     );
   };
 }
+
+/**
+ * `makeUnbridgingBulkDelete` — the BULK leg of the same door (task 681).
+ *
+ * WHY A SECOND FACTORY AND NOT JUST A LOOP AT THE CALL SITE. Task 219 attached
+ * the unbridge obligation to a FUNCTION NAME (`deleteItem` / `deleteCard` /
+ * `deleteNote`) rather than to the TRANSITION it exists to guard — a card
+ * leaving the document. So a second destructive door that removed cards under a
+ * different name inherited nothing: the Todo panel's "clear done" control ran a
+ * raw `prev.items.filter(...)` in `useTodos.archiveDone`, hard-deleting N cards
+ * and stranding every linked `ai-requests.json` row those cards had bridged —
+ * a phantom inbox entry per card, re-served to the `/editor/review` drain
+ * forever, since a deleted card can never toggle again. Giving the SHAPE a name
+ * here is what stops the next bulk door (clear-all, sweep-archived, a range
+ * gesture's card sweep) from re-deriving the obligations by hand.
+ *
+ * IT IS A COMPOSITION OVER `makeUnbridgingDelete`, NOT A PARALLEL PATH. Every
+ * removal still goes through the one executor, one card at a time, so each gets
+ * the same UNBRIDGE (in `"terminate"` mode — the card is gone), the same SETTLE
+ * step, and the same `card-deleted` signal. There is no second place where the
+ * obligations of a delete are spelled, which is the whole point.
+ *
+ * SEQUENTIAL, AND A REFUSAL IS PER-CARD. Since SETTLE the single delete can
+ * decline (a cancelled keep/revert prompt leaves that card alive), so a bulk run
+ * is not all-or-nothing: each card is asked in turn and a declined one simply
+ * stays. The returned array is the ids that were actually removed — a caller
+ * that tears down something those cards own reads it rather than assuming.
+ * Awaiting in sequence also keeps the prompts (where a kind can raise one) from
+ * stacking N dialogs at once.
+ *
+ * ONE WRITE, NOT N. Each `rawDelete` is a functional `update(prev => …)` on the
+ * per-doc sidecar hook, so N of them compose against each other correctly and
+ * the debounced `persist` coalesces them into a single sidecar write.
+ */
+export function makeUnbridgingBulkDelete(
+  deleteOne: (id: string) => Promise<boolean>,
+): (ids: readonly string[]) => Promise<string[]> {
+  return async (ids: readonly string[]) => {
+    const removed: string[] = [];
+    for (const id of ids) {
+      if (await deleteOne(id)) removed.push(id);
+    }
+    return removed;
+  };
+}
