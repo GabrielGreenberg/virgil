@@ -49,6 +49,8 @@ import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { iconHint } from "@/components/Hint";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useFieldEditSession } from "@/lib/field-edit-session";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
+import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -199,6 +201,54 @@ function rowsFromCommand(command: string): UiRow[] {
   }));
 }
 
+/**
+ * A ROW CARRIES IDENTITY ACROSS A RESYNC (task 686).
+ *
+ * `CitationKeyRow` renders `key={row.id}` and holds the live `+range` postnote
+ * draft in its OWN state, so a row whose id changes is a row that REMOUNTS —
+ * and the draft inside it dies with neither commit nor cancel. That is an edit
+ * session ending ZERO times, which is the identical defect the Code field's
+ * orphaned debounce had one level up; the cure is the same shape, applied to
+ * identity rather than to timers. `rowsFromCommand` mints a fresh `row_N` on
+ * every parse, so before this every echo of the command — a foreign write, a
+ * package flip, the card's own committed code edit — silently destroyed an
+ * in-flight range.
+ *
+ * Reconciliation is by CITEKEY first (a row keeps its id wherever the key moved
+ * in the list, so reordering never remounts), then POSITIONALLY for the
+ * remainder — which is exactly what a rename is: the row at that index, with a
+ * new key, is still the row the user is standing in. Only a genuinely new row
+ * keeps the freshly minted id.
+ */
+function reconcileRowIds(prev: UiRow[], next: UiRow[]): UiRow[] {
+  const freeByKey = new Map<string, string[]>();
+  for (const r of prev) {
+    const k = r.key.trim();
+    if (!k) continue;
+    const bucket = freeByKey.get(k);
+    if (bucket) bucket.push(r.id);
+    else freeByKey.set(k, [r.id]);
+  }
+  const taken = new Set<string>();
+  const byKey = next.map((r) => {
+    const bucket = freeByKey.get(r.key.trim());
+    const id = bucket?.shift();
+    if (id === undefined) return null;
+    taken.add(id);
+    return id;
+  });
+  return next.map((r, i) => {
+    const keyed = byKey[i];
+    if (keyed !== null) return { ...r, id: keyed };
+    const sameIndex = prev[i];
+    if (sameIndex && !taken.has(sameIndex.id)) {
+      taken.add(sameIndex.id);
+      return { ...r, id: sameIndex.id };
+    }
+    return r;
+  });
+}
+
 /* ── Card props ───────────────────────────────────────────────────── */
 
 export interface CitationCardProps {
@@ -275,6 +325,10 @@ export function CitationCard({
   onDelete,
   isDraft = false,
 }: CitationCardProps) {
+  // THE CARD OWNS ITS TIMERS' LIFETIME (task 686) — declared FIRST, so its
+  // disposal is the first cleanup React runs on unmount and the endings
+  // registered on it still see state the effects below have not torn down.
+  const lifetime = useViewLifetime();
   const theme = useCardKindTheme("citation");
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
@@ -355,6 +409,18 @@ export function CitationCard({
    *  writes (the panel echoes them back through cit.command). */
   const lastWrittenRef = useRef(cit.command);
 
+  /* The Code field's session state. Declared HERE, above the echo effect,
+     because that effect has to know whether a session is open in order to move
+     its baseline off a foreign write; the field's controls are far below. */
+  const codeDraftRef = useRef<string | null>(null);
+  /** The command this edit session is measured AGAINST — what Escape (and the
+   *  unmount ending) restores. It is not `cit.command` at cancel time, because
+   *  `updateCodeDraft` writes on a 250 ms debounce: by then the store may
+   *  already hold a keystroke the user is now cancelling (task 555). Nor is it
+   *  frozen at the session's open: a foreign write that lands mid-session moves
+   *  it forward, so a cancel can never undo somebody else (task 686). */
+  const codeOriginalRef = useRef<string | null>(null);
+
   /** The single resync SSOT: rebuild every piece of local UI state
    *  (`rows` / `type` / `starred` / `capitalized`) from a command string and
    *  stamp `lastWrittenRef`. EVERY path that changes `cit.command` WITHOUT
@@ -366,7 +432,11 @@ export function CitationCard({
    *  input commit. */
   const syncLocalFromCommand = useCallback((command: string) => {
     const fresh = parseCiteCommand(command);
-    setRows(rowsFromCommand(command));
+    // The updater form, because the reconciliation needs the rows STANDING at
+    // resync time — and because reading them from a closure would put `rows` in
+    // this callback's dependency list, re-minting the one door every write path
+    // on the card funnels through.
+    setRows((prev) => reconcileRowIds(prev, rowsFromCommand(command)));
     setType(fresh?.type || "cite");
     setStarred(fresh?.starred ?? false);
     setCapitalized(fresh?.capitalized ?? false);
@@ -375,6 +445,13 @@ export function CitationCard({
 
   useEffect(() => {
     if (cit.command === lastWrittenRef.current) return;
+    // A FOREIGN write landed — something other than this card moved the
+    // command. If a Code session is open its BASELINE moves with it: Escape
+    // means "put back what I found", never "undo what someone else did", and
+    // pre-686 the cancel measured against the session's opening command and so
+    // clobbered the newcomer with bytes that predate it. The command a cancel
+    // restores is always the latest one this session did not write.
+    if (codeDraftRef.current !== null) codeOriginalRef.current = cit.command;
     syncLocalFromCommand(cit.command);
   }, [cit.command, syncLocalFromCommand]);
 
@@ -582,17 +659,27 @@ export function CitationCard({
 
   /* ── Inline BibEntryCard expansion ───────────────────────────────── */
 
-  const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
-  const toggleBibKey = useCallback((key: string) => {
-    setExpandedBibKey((prev) => (prev === key ? null : key));
+  /** WHICH ROW is expanded — a row id, never the citekey STRING (task 686).
+   *  The inline `BibEntryCard` this opens is an editor for the entry's own
+   *  fields, the citekey among them: keyed by the string, renaming the key
+   *  inside it made the expansion stop matching its own row and SLAMMED the
+   *  editor shut mid-edit, taking any in-flight field with it. The row id is
+   *  stable across a resync (`reconcileRowIds`), so the rename now moves the
+   *  expansion instead of closing it. */
+  const [expandedBibRowId, setExpandedBibRowId] = useState<string | null>(null);
+  const toggleBibRow = useCallback((rowId: string) => {
+    setExpandedBibRowId((prev) => (prev === rowId ? null : rowId));
   }, []);
-  // Clear the expansion when the row's key disappears (e.g. row removed
-  // or citekey replaced via the picker).
+  // Clear the expansion when the ROW disappears (removed) or empties — never
+  // merely because its key changed, which is the edit itself.
   useEffect(() => {
-    if (expandedBibKey && !rows.some((r) => r.key === expandedBibKey)) {
-      setExpandedBibKey(null);
+    if (
+      expandedBibRowId &&
+      !rows.some((r) => r.id === expandedBibRowId && r.key.trim())
+    ) {
+      setExpandedBibRowId(null);
     }
-  }, [expandedBibKey, rows]);
+  }, [expandedBibRowId, rows]);
 
   /* ── Drag and drop (merge a dragged bib key into the card) ───────── */
 
@@ -688,14 +775,11 @@ export function CitationCard({
   /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
 
   const [codeDraft, setCodeDraft] = useState<string | null>(null);
-  const codeDraftRef = useRef<string | null>(null);
-  const codeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Armed through the card's lifetime (task 686), so the unmount that ends the
+  // session is also the timer's outer bound — there is no window in which a
+  // debounce can land after the component that would have to take it back.
+  const codeDebounceRef = useRef<ViewTimer | null>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
-  // The command this edit session OPENED with — i.e. the last COMMITTED value,
-  // which is what Escape restores. It is not `cit.command` at cancel time,
-  // because `updateCodeDraft` writes on a 250 ms debounce: by then the store
-  // may already hold a keystroke the user is now cancelling (task 555).
-  const codeOriginalRef = useRef<string | null>(null);
   // 529's door. The Code input is one of TWO fields on this card that end a
   // session; the other is the per-key `+range` postnote in `CitationKeyRow`,
   // which has its own instance because it is its own component.
@@ -703,10 +787,8 @@ export function CitationCard({
 
   const commitCodeDraft = useCallback(() => {
     const v = codeDraftRef.current;
-    if (codeDebounceRef.current) {
-      clearTimeout(codeDebounceRef.current);
-      codeDebounceRef.current = null;
-    }
+    lifetime.clear(codeDebounceRef.current);
+    codeDebounceRef.current = null;
     if (v !== null) {
       // The Code input bypasses the row mutators, so on commit it must resync
       // the local rows/type/flags from the committed command (task 078).
@@ -730,7 +812,7 @@ export function CitationCard({
     codeDraftRef.current = null;
     codeOriginalRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, emitCommand, syncLocalFromCommand]);
+  }, [cit.command, emitCommand, syncLocalFromCommand, lifetime]);
 
   /** ESCAPE MEANS CANCEL (task 555). Pre-555 this field's keydown aliased
    *  Escape to Enter and ran `commitCodeDraft` — so the key the user presses
@@ -749,10 +831,8 @@ export function CitationCard({
    *  does; without that the body state would keep the cancelled parse and the
    *  next control's `persist()` would re-serialize the abandoned edit. */
   const cancelCodeDraft = useCallback(() => {
-    if (codeDebounceRef.current) {
-      clearTimeout(codeDebounceRef.current);
-      codeDebounceRef.current = null;
-    }
+    lifetime.clear(codeDebounceRef.current);
+    codeDebounceRef.current = null;
     const original = codeOriginalRef.current;
     if (original !== null && original !== cit.command) {
       // A cancel is measured against the session's OWN baseline (task 683): it
@@ -768,14 +848,14 @@ export function CitationCard({
     codeOriginalRef.current = null;
     codeDraftRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, emitCommand, syncLocalFromCommand]);
+  }, [cit.command, emitCommand, syncLocalFromCommand, lifetime]);
 
   const updateCodeDraft = useCallback(
     (v: string) => {
       codeDraftRef.current = v;
       setCodeDraft(v);
-      if (codeDebounceRef.current) clearTimeout(codeDebounceRef.current);
-      codeDebounceRef.current = setTimeout(() => {
+      lifetime.clear(codeDebounceRef.current);
+      codeDebounceRef.current = lifetime.setTimeout(() => {
         codeDebounceRef.current = null;
         // THIS DOOR CANNOT EMPTY THE PROSE, by construction (task 683). A
         // mid-session keystroke that clears the field would otherwise blank the
@@ -790,7 +870,42 @@ export function CitationCard({
         onUpdateCitation(cit.id, v);
       }, 250);
     },
-    [cit.id, cit.keys.length, inDocument, onUpdateCitation],
+    [cit.id, cit.keys.length, inDocument, onUpdateCitation, lifetime],
+  );
+
+  /** UNMOUNT IS AN ENDING (task 686). React dispatches no `blur` when a
+   *  component goes away, and `blur` is the event every one of this field's
+   *  other endings rides — so before this, an unmount with an open draft ended
+   *  the session ZERO times: not committed, not cancelled, while the 250 ms
+   *  debounce it left behind still fired and wrote the half-typed command into
+   *  `citations.json` and the `.tex` atom, with `codeOriginalRef` — the only
+   *  record of what that command replaced — gone with the instance.
+   *
+   *  It ends as a CANCEL, which is the same statement Escape makes and the
+   *  honest reading of an unmount the user did not ask for: the card is
+   *  re-parented on pop-out, remounted on a panel re-sort and torn down on a
+   *  document switch, all reachable mid-typing, and of the two endings only
+   *  "commit a half-typed `\cite` into the prose" has no undo.
+   *
+   *  It runs through the field's OWN session (task 529's door) rather than
+   *  calling `cancelCodeDraft` directly, so the unmount is one of the session's
+   *  endings and not a second door beside them; and it is skipped outright when
+   *  no draft is open, so an Escape or Enter a moment earlier is not ended
+   *  twice. Exactly once, in both directions.
+   *
+   *  The latest-ref indirection is load-bearing: `cancelCodeDraft` closes over
+   *  `cit.command`, so a hook registered once at mount would restore a baseline
+   *  from whenever mount happened. The registration is `[lifetime]`-stable and
+   *  reads the CURRENT cancel at disposal time. */
+  const cancelCodeDraftRef = useRef(cancelCodeDraft);
+  cancelCodeDraftRef.current = cancelCodeDraft;
+  useEffect(
+    () =>
+      lifetime.onDispose(() => {
+        if (codeDraftRef.current === null) return;
+        codeSession.cancel(null, () => cancelCodeDraftRef.current());
+      }),
+    [lifetime, codeSession],
   );
 
   /* ── Overflow popover (* and Aa) ─────────────────────────────────── */
@@ -1023,12 +1138,12 @@ export function CitationCard({
                   bibEntryMap={bibEntryMap}
                   canRemove={rows.length > 1 || row.key.trim().length > 0}
                   bibExpanded={
-                    !!row.key.trim() && expandedBibKey === row.key.trim()
+                    !!row.key.trim() && expandedBibRowId === row.id
                   }
                   entryInLibrary={!!lookupEntry(row.key.trim())}
                   pickerOpenHere={pickerRowId === row.id && pickerExternalInputEl !== null}
                   pickerQuery={pickerRowId === row.id ? pickerExternalQuery : null}
-                  onToggleBib={() => toggleBibKey(row.key.trim())}
+                  onToggleBib={() => toggleBibRow(row.id)}
                   onOpenPicker={() => openPickerFor(row.id)}
                   onOpenPickerForInput={(el, q) => openPickerForInput(row.id, el, q)}
                   onPickerQueryChange={(q) => setPickerExternalQuery(q)}
@@ -1220,9 +1335,11 @@ export function CitationCard({
     </PanelCard>
   );
 
-  const expandedBibEntry = expandedBibKey
-    ? bibEntryMap.get(expandedBibKey)
-    : undefined;
+  const expandedBibEntry = (() => {
+    if (!expandedBibRowId) return undefined;
+    const key = rows.find((r) => r.id === expandedBibRowId)?.key.trim();
+    return key ? bibEntryMap.get(key) : undefined;
+  })();
   const canRenderBib =
     !!expandedBibEntry &&
     !!getFormattedBib &&
@@ -1339,6 +1456,9 @@ function CitationKeyRow({
   onRemove,
   registerAnchor,
 }: CitationKeyRowProps) {
+  // The ROW owns its timers' lifetime too (task 686) — it is its own
+  // component, so it gets its own scope rather than borrowing the card's.
+  const lifetime = useViewLifetime();
   const trimmed = row.key.trim();
   const entry = trimmed ? bibEntryMap.get(trimmed) : undefined;
   const [pgOpen, setPgOpen] = useState(!!row.postnote);
@@ -1373,8 +1493,12 @@ function CitationKeyRow({
     e.stopPropagation();
     if (!trimmed) return;
     void navigator.clipboard.writeText(trimmed).then(() => {
+      // Both halves are bounded by the row: the clipboard promise resolves off
+      // the microtask queue, so a row torn down between the click and the
+      // resolve would otherwise arm a 1.5 s timer against a dead component.
+      if (lifetime.disposed) return;
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      lifetime.setTimeout(() => setCopied(false), 1500);
     });
   };
 
