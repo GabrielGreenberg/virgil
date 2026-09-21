@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -149,7 +149,10 @@ Also: `complete-only` (status flip, no card — and, when the op carries paper-f
 rewrite + style-id flip, `answer-bib-review`'s `.bib` field edit / annotation,
 `library-sync`'s `.bib` swap + citekey rename — none of these mutate a paper file
 directly any more), `revert` (undo), and `--synthesize-task` (create the Task on the fly for
-chat-initiated, Workflow-B calls). The conceptual model is
+chat-initiated, Workflow-B calls — since task 682 the op's `kind` is **required and
+validated** against the eight-member `AI_REQUEST_KINDS` vocabulary; a missing or
+off-vocabulary kind is a refusal (`die`), where it used to default silently to
+`footnote`). The conceptual model is
 [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern); this
 contract is **built and validated end-to-end through the footnote kind**, then
 fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /

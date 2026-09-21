@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -644,11 +644,12 @@ Not keymaps, but typed triggers that transform text (cite where relevant):
 ## Family 4 — Decorations
 
 Decorations are ProseMirror overlays that render styling/widgets **without**
-changing the document. There are exactly **seven** `DecorationSet` plugins (an
+changing the document. There are exactly **seven** `DecorationSet` plugin sources (an
 exhaustive sweep of `Decoration.*` / `DecorationSet` across `src/` finds no
 others — the `code-band.ts` set is CodeMirror, not ProseMirror; marginalia
 markers and the Mode-B `linkedAnchor` *text-range* tint are *not* decorations;
-see below):
+see below). One of the seven, the transient highlight, mounts one plugin INSTANCE
+per **channel** (task 667 — `search` and `ai-request` today):
 
 | Decoration | Renders | Kind | SSOT | Keystroke-sanctity |
 |---|---|---|---|---|
@@ -658,7 +659,7 @@ see below):
 | **Pagination chip** | the `\pgmark{N}` label + page-break rule | inline + widget | [pgmark.ts](../../src/lib/tiptap/pgmark.ts) | Compliant — `map` + changed-region `\pgmark` scan |
 | **Section fold** | `.section-folded` (hides blocks under a collapsed heading) | node | [section-folding.ts](../../src/lib/section-folding.ts) | Rebuilds from a **top-level** `doc.forEach()` when a fold is active; gated to `DecorationSet.empty` when nothing is folded (see note) |
 | **Focus view** | `.focus-hidden` (hides out-of-band blocks while a focus band CONFINES the viewer) | node | [focus-view.ts](../../src/lib/focus-view.ts) | Compliant — only a **LOCKED** band confines (the `bandConfines` = `active && locked` gate, CHIP A); an unlocked selection-band bails to `DecorationSet.empty` and hides nothing. Rebuilds only on a band-change meta tx or a top-level block add/remove/boundary-replace; otherwise carries the cached set forward via `DecorationSet.map(tr.mapping)`, so a plain keystroke never rebuilds |
-| **Transient highlight** | a partial-block text band (search hit, diagnostics error range, quoted revision) painted as a `Decoration.inline` — a view-only signal that is NEVER a mark/attr (task 120 "transient state is never document content") | inline | [transient-highlight.ts](../../src/lib/tiptap/transient-highlight.ts) (`setTransientHighlights`/`clearTransientHighlights`) | Compliant — rebuilds ONLY on its own meta tx (send the complete desired set per frame; `[]` clears); every other tx just `map(tr.mapping, tr.doc)`s the set, and the meta tx is `!tr.docChanged` so no history/autosave/bus |
+| **Transient highlight** | a partial-block text band painted as a `Decoration.inline` — a view-only signal that is NEVER a mark/attr (task 120 "transient state is never document content"). Two CHANNELS since task 667, each its own plugin instance, key and set: `search` (search hit, diagnostics error range, quoted revision) and `ai-request` (the light-blue wash over an OPEN AI request's anchored region, formerly a real `linkedAnchor` mark — see [request-wash.ts](../../src/links/_shared/request-wash.ts)). A target may declare `inclusive: true` for a band denoting a live REGION rather than a fixed range | inline | [transient-highlight.ts](../../src/lib/tiptap/transient-highlight.ts) (`setTransientHighlights(view, targets, channel)`/`clearTransientHighlights`) | Compliant — a channel rebuilds ONLY on its OWN meta tx (send that channel's complete desired set per frame; `[]` clears it and touches no other channel); every other tx just `map(tr.mapping, tr.doc)`s the set, and the meta tx is `!tr.docChanged` so no history/autosave/bus |
 
 **Decoration vs. mark — a load-bearing nuance.** `latexCommand` is *both*: the
 `LatexCommandMark` ([latex-command.ts](../../src/lib/tiptap/latex-command.ts))

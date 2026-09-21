@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -144,6 +144,19 @@ the panel-trash confirm (`EditableCard.tryDelete`,
 gutter-marker delete (`deleteMarginItem`) — so no kind can silently delete
 content the confirm couldn't see. Every declared field is pinned to the record
 shape by `assertContentCoverage` (card-registry.tsx).
+
+**The obligation belongs to the TRANSITION, not to the trash (task 683).**
+`usePanelCardTryEmptyContent` ([panel-primitives.tsx](../../src/components/panel-primitives.tsx))
+is the sibling of `usePanelCardTryDelete` for the OTHER way content leaves the
+document: the delete door asks `cardHasContent(card)`, this one asks
+`cardHasContent(before) && !cardHasContent(after)`. Same registry SSOT, so a kind
+that declares a content model is guarded at both doors — the case that motivated it
+is a `citation` card's per-key "×" on its LAST key, which emptied `keys` and blanked
+the in-text `\cite{}` with no dialog. A parked (unanchored) citation has no atom to
+destroy and stays frictionless. `content-emptying-door-census.test.ts` enumerates
+from the dangerous side, scoped off the registry (`dropPlacement: "in-text"` + a
+`content` model): every content-write door of an in-prose card surface must declare
+itself guarded, structurally unable to empty, or exempt as in-place typing.
 
 **A gate written in NODE TYPES and TEXT cannot see ATTRS** (task 401). `hasJsonContent`
 recursed looking for `text` nodes and had no `attrs` arm, so `cardHasContent` answered
@@ -386,7 +399,15 @@ special:
 - **It is polymorphic over `AiRequestKind`** (8 values: `footnote` · `note` ·
   `highlight` · `citation` · `todo` · `suggestion` · `report` · `style-merge`) —
   a *second* axis, distinct from `CardKind`. The `kind` signals which subskill
-  drains it.
+  drains it. **What a row on disk carries is `AiRequestKindOnDisk`** (task 682):
+  the file has three writers, two of them outside the type system, so the union is
+  a promise about what the app WRITES, not about the file's contents. Every reader
+  that keys a per-kind table passes the value through `isAiRequestKind`
+  ([src/lib/ai-request-kind.ts](../../src/lib/ai-request-kind.ts); Python twin
+  `_common.AI_REQUEST_KINDS` / `is_ai_request_kind`). An unrecognised token is
+  preserved verbatim by the read gate, displayed as unresolved, and **counted
+  OPEN** — it no longer throws the whole AI window away. `style-merge` is rendered
+  like any other kind rather than skipped.
 - **Its linkage is the most flexible of any card.** A Task may anchor via
   `paragraphIds` (Mode A), carry Atom links, both, or **neither** — a "review the
   whole doc" Task has no anchor.

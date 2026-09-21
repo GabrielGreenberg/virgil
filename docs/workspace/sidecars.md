@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **57** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -405,7 +405,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **57** exported types are named below (schema above, or
+forward-points to. All **58** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -418,8 +418,9 @@ doc-of-record noted), grouped by family:
   `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
   `ReportRequestCard`, `ReportItem`, `ReportsState`. Examples: `ExampleRef`,
   `ExamplesState`. Archive: `ArchivedSnippet`, `ArchiveState`.
-- **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestStatus`,
-  `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`, `AiRequestsState`.
+- **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestKindOnDisk`,
+  `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`,
+  `AiRequestsState`.
 - **Notifications** — `DocNotification`, `DocNotificationsInbox`.
 - **Bibliography support** — `BibEntry`, `BibReviewRequest`, `BibReviewState`,
   `BibSettings`, `BibEntryRequest`, `AnnotationsState`, `AnnotationsStateV2`.

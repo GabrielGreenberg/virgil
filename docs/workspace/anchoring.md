@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -55,13 +55,23 @@ is derived, never declared**:
 - **Mode B — `targetKind === "linkedRange"`.** A pointer to a **text span** backed
   by a `linkedAnchor` mark. `textObjectIds` still names the containing block(s);
   `textRange` carries the mark's `anchorId` plus a **`textSnapshot`** (the recovery
-  path, below). The span persists to the `.tex` as paired `\vlid{}…\vlidend{}`
+  path, below) — **expected** wherever `targetKind === "linkedRange"` but not
+  guaranteed (a dead-mark residue can have lost it, and rung 2b exists to heal one),
+  which is why membership and payload are two predicates: `isModeB` /
+  `isRangedModeB` (task 668). The span persists to the `.tex` as paired
+  `\vlid{}…\vlidend{}`
   markers ([identity.md](identity.md#example-and-linked-range-ids)). The
   Mode-B-capable kinds are the `LinkedAnchorKind` union in
   [src/links/links.ts](../../src/links/links.ts): `note`, `highlight`, **`todo`**
   (gained range-anchor symmetry with note/cutter as of fa7b898/5257b1a),
   `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`
-  (plus the synthetic AI render sentinels `pending-ai-change` / `pending-ai-request`, both `#bfdbfe`).
+  (plus the synthetic AI render sentinel `pending-ai-change`, `#bfdbfe`). There is
+  **no `pending-ai-request` member** since task 667: the light-blue wash over an
+  OPEN AI request is a ProseMirror **decoration** on the transient-highlight
+  `ai-request` channel
+  ([request-wash.ts](../../src/links/_shared/request-wash.ts), the retired
+  `request-marks.ts`), so it stamps no mark, writes no `\vlid` into the `.tex`,
+  moves no caret, and works for Mode-A and Mode-B cards alike.
 
 A `"textObject"` anchor carries NO margin side. It used to (`margin: { side }`,
 read by the Mode-A anchor rail), but which side a card's margin chrome sits on
@@ -152,7 +162,13 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
 - **Single load-time Mode-B re-apply (authoritative reconcile).**
   [src/links/_shared/reapply-mode-b-anchors.ts](../../src/links/_shared/reapply-mode-b-anchors.ts)
   (`reapplyModeBAnchors`) feeds every persisted Mode-B card **before** the per-panel
-  reconcile, so healthy Mode-B cards win the resolver's live-mark rung. It routes
+  reconcile, so healthy Mode-B cards win the resolver's live-mark rung. *Which*
+  collections hold Mode-B cards is no longer hand-kept per consumer: it is the ONE
+  registry-derived set `MODE_B_COLLECTIONS` / `forEachModeBCard`
+  ([src/cards/mode-b-collections.ts](../../src/cards/mode-b-collections.ts), task
+  666), read by all four consumers — this re-apply, the orphan-mark reaper
+  (`useLinkedAnchorReconciler`), the in-text hover bridge and the shell's
+  hovered-anchor resolver — so they cannot disagree. It routes
   each record through the **one** load-time recovery writer,
   `applyLinkedAnchorsImpl` ([src/links/_shared/apply-linked-anchors.ts](../../src/links/_shared/apply-linked-anchors.ts)),
   shared by the production `EditorHandle.applyLinkedAnchors` and the RC-B tests so
@@ -183,6 +199,16 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   **immediate** doc-bundle flush so the paragraph uuid lands on the card's fast clock,
   not the 1500 ms doc clock. Belt-and-suspenders, `storage-fsa` also **writes load-minted
   uuids back to the `.tex` on load** (parity with `storage-dev`).
+- **"Is this card anchored?" has the same one door (task 665).** Every surface that
+  gates a Jump — the popped float, the omni row, the margin marker — takes its
+  verdict from the authority via `cardJumpGate(card, resolveCardRows)`
+  ([src/links/card-anchor-rows.ts](../../src/links/card-anchor-rows.ts)), never from
+  "the card STORES a link" (`getLinkedTextObjectIds(...).length`), which is equally
+  true of a card whose anchor is dead; the Archive list orders on the same rows via
+  `sortCardsByResolvedAnchor`. And the ACT now has the gate's rungs: `resolveLink`
+  ([src/links/links.ts](../../src/links/links.ts)) carries the **snapshot** rung
+  (normalized through the authority's own `normalizeParagraphText`), so `jumpToCard`
+  can reach every card the gate calls anchored.
 - **Legacy helpers.** `reconcileModeAAnchors` / `findParagraphIdBySnapshot` /
   `isModeAOrphaned` in [src/links/links.ts](../../src/links/links.ts) are kept exported
   **for their own tests only** — production funnels through the resolver SSOT. `isModeAOrphaned`
@@ -200,8 +226,11 @@ conventions for the orphans you do create are [gardening.md](gardening.md#orphan
 
 ## Rules for skills
 
-1. **Read the mode off `targetKind`.** Mode B iff `targetKind === "linkedRange"`;
-   everything else is Mode A. Don't add a separate mode flag.
+1. **Ask the ONE speller, don't re-spell the literal.** `isModeB(link)`
+   ([src/links/_shared/types.ts](../../src/links/_shared/types.ts)) is since task
+   668 the only place `targetKind === "linkedRange"` may be written (CI-pinned);
+   use `isRangedModeB` where you go on to read `textRange`. Everything else is
+   Mode A. Don't add a separate mode flag.
 2. **Mode A may be multi-anchor.** Treat `textObjectIds` as a set, not a single id.
 3. **Atom links are id equality, not `links`.** For a footnote/citation, match
    `id` ↔ marker; never write a `links` array for them.

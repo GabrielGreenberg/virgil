@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 340f8456 2026-09-21 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -170,7 +170,7 @@ skill's job is to make the *intent* right, because recovery is best-effort:
 
 The `editor/scripts/` helpers run **outside** the app and can't import the TS
 registries, so they **hand-duplicate** two slices of the card vocabulary — and
-hand-maintained copies rot. Two shadows exist:
+hand-maintained copies rot. Two **card/panel** shadows exist:
 
 - `apply_response.PANEL_TO_SIDECAR` — the panel → `(file, list-key)` map. The
   refactor had to hand-edit it (`quotations` → `reports`).
@@ -179,8 +179,18 @@ hand-maintained copies rot. Two shadows exist:
   `report-request` `example`; `quotation`/`annotation` dropped) and **pinned** by a
   module-level assert that every member is a real `CardKind` ([cards.md](cards.md), the SSOT).
 
-`check:coherence` **check 5** reconciles both shadows against the TS SSOTs (`CardKind`,
-`PANEL_REGISTRY`) — it is **error-grade and currently clean**. The
+A third slice — the **Task vocabulary** — is now stated once per language in
+`editor/scripts/_common.py` rather than hand-copied per script: `TERMINAL_STATUSES` /
+`is_terminal_status` / `is_request_open` (task 680, twins of TS `isTerminalStatus` /
+`isRequestOpen`) and `AI_REQUEST_KINDS` / `is_ai_request_kind` (task 682, twin of TS
+`AI_REQUEST_KINDS` / `isAiRequestKind`). `apply_response.py`, `create_card.py` and
+`list_requests.py` all read them, so a new terminal status or Task kind lands
+everywhere at once. These are **not** covered by check 5 — their cross-language
+parity is pinned live by `src/lib/__tests__/ai-request-open-parity.test.ts` and
+`ai-request-kind.test.ts`, which read the Python tuples off disk.
+
+`check:coherence` **check 5** reconciles both card/panel shadows against the TS SSOTs
+(`CardKind`, `PANEL_REGISTRY`) — it is **error-grade and currently clean**. The
 `WRITEBACK_EXEMPT_PANELS` allowlist (`archive`/`bibliography`/`errors`/`examples`) records
 the card-hosting panels intentionally *not* create-card writeback targets. When you touch
 either shadow, re-run the check and keep it reconciled.
