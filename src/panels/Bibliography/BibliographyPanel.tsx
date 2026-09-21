@@ -12,7 +12,7 @@ import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
-import { mintBibUid } from "@/lib/bib-uid";
+import { NO_BIB_UID } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import {
@@ -578,10 +578,13 @@ function BibliographyPanel({
     }
     // Drop `raw` so the serializer rebuilds the block from fields and the
     // new citekey — keeping `raw` would re-emit the library's original
-    // `@type{<originalKey>,…}` and the suffix would never reach disk. Mint a
-    // fresh `uid` (don't inherit the library entry's) — this is a new, distinct
-    // bibliography entry that gets its own durable identity.
-    onAddBibEntry?.({ ...libraryEntry, uid: mintBibUid(), key: next, raw: "" });
+    // `@type{<originalKey>,…}` and the suffix would never reach disk. The uid
+    // comes through as `NO_BIB_UID` (a library result is a preview and carries
+    // none), so `addBibEntry`'s door mints this new, distinct entry's durable
+    // identity against the uids the bibliography already holds — task 693.
+    // This used to mint here, with no collision set, which is how a fresh
+    // entry could be born sharing another entry's uid.
+    onAddBibEntry?.({ ...libraryEntry, uid: NO_BIB_UID, key: next, raw: "" });
     // Surface the just-added entry (task 096, Member B). A conflict is only
     // raised from the library-search "Add" affordance or the cross-library
     // dropdown, so the rendered list is library results / a local search that

@@ -57,7 +57,7 @@
 import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFileAgainst } from "@/lib/bib-parser";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
-import { mintBibUid } from "@/lib/bib-uid";
+import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { BIB_NO_MATCH, type BibNoMatch } from "@/lib/bib-address";
 import {
   getActiveHandle,
@@ -346,7 +346,7 @@ export async function addEntriesToProjectBib(
   let appended = 0;
   const result = await mutateProjectBib(docId, (existing) => {
     const seen = new Set(existing.map((e) => e.key));
-    const used = new Set(existing.map((e) => e.uid).filter(Boolean));
+    const used = bibUidsOf(existing);
     const additions: BibEntry[] = [];
     for (const e of incoming) {
       if (seen.has(e.key)) continue;

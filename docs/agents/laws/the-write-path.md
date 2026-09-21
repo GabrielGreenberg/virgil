@@ -2229,3 +2229,72 @@ call-order leg in
 [bib-mutate-door.test.ts](../../../src/lib/__tests__/bib-mutate-door.test.ts),
 which fails both ways over when the filename resolution is moved back outside
 the enqueue.
+
+## The identity half: a uid is minted against the uids in scope, or not minted at all (task 693)
+
+> **A durable id drawn from a small space is not "probably unique" — it is
+> unique only against the set it was checked against. So the set is not an
+> option the minter offers; it is the question the minter ASKS. And a caller
+> that proposes an id does not get to skip the question: the guard's subject is
+> the ID, not its provenance.**
+
+`BibEntry.uid` is the identity this paper's sidecars key on — annotations
+([useAnnotations.ts](../../../src/hooks/useAnnotations.ts)) and bib-review rows
+([useBibReview.ts](../../../src/hooks/useBibReview.ts)) address an entry by uid,
+which is the whole point of having it (a citekey is renameable, a uid is not).
+It is a 4-char hex short id: a 65,536-value space, where the birthday bound puts
+a duplicate at better than even odds by ~300 draws. `mintBibUid`'s collision set
+was **optional**, and the two sites that mattered passed nothing.
+
+**Half 1 — a set that can be forgotten will be.** `parseBibFile` got this right
+(it threads a live `usedUids` and reserves every `\vbid` uid before minting),
+which is what makes the other sites read as omissions rather than as a design.
+The fix is therefore the signature, not the call sites: `mintBibUid(existing:
+Set<string>)` **requires** the set, so there is no setless spelling to reach
+for, and `bibUidsOf(entries)` is the one way to say "the uids already in scope"
+— one expression rather than four hand-rolled `new Set(list.map(e => e.uid))`
+that can drift on what counts as a member. A census leg over every `.ts`/`.tsx`
+file in `src/`, `library/` and `editor/` (comments stripped, so a retired
+spelling quoted in an explanation is not an offender) keeps the next one honest.
+
+**Half 2 — a PREVIEW has no identity, so it mints none.** The library→paper
+seam (`useLibraryMasterBib`) minted a uid per entry as `master.bib` crossed it,
+with no set across the array. Handing that `map` a collision set would not have
+fixed it and could not have: the uid space is 65,536 while a real library runs
+to 34k–100k entries, so a set-checked mint there degrades to many draws per
+entry and past 65,536 **never terminates**. The right answer is the one task 692
+already reached from the write side — a library result is a PREVIEW of another
+file, nothing in this paper keys on it, and the file that would make its uid
+durable is a different file. It therefore carries `NO_BIB_UID`
+([bib-uid.ts](../../../src/lib/bib-uid.ts)) and acquires an identity exactly
+where it acquires a place in this paper: `addBibEntry`'s SSOT mint point, the
+one door that knows the uids this bibliography holds. The panel's "Save under
+new citekey" stops minting for the same reason. Two mint sites are not fixed but
+**removed**, and the load of a 34k-entry library stops paying 34k random draws.
+
+**Half 3 — the guard asks about the ID, not who proposed it.** `addBibEntry`'s
+re-mint read `used.has(uid) && !entry.uid ? mintBibUid(used) : uid`. The second
+clause exempted precisely the callers that supply a uid — which both sites above
+did — so a colliding uid arriving from outside was accepted verbatim. Two of
+this paper's entries could then share one, after which an annotation or a
+bib-review row written on either was read on, and OVERWROTE, the other: the
+user's own writing landing on a record they never opened, with no feedback. The
+clause is gone. `used.has(uid) ? mintBibUid(used) : uid` — the question is
+whether the uid is free here, and the answer does not depend on provenance. A
+non-colliding caller-supplied uid is still kept verbatim, which is what keeps a
+`\vbid` round-trip a round trip.
+
+**Stated and not fixed here:** 4 hex chars remains a small space for an id that
+carries identity across renames and sidecars. Widening it is a round-trip-format
+question (`\vbid{}` markers are already on disk, and the reader deliberately
+accepts any non-`}` run, so a wider id round-trips) and belongs in its own task.
+The collision set alone makes duplicates unrepresentable WITHIN a document,
+which is what the defect needed.
+
+**Owed, not claimed:** a real-FSA eyeball on adding a library entry to a paper
+that already holds several. Durable proof:
+[bib-uid-collision-set.test.tsx](../../../src/lib/__tests__/bib-uid-collision-set.test.tsx)
+— 17 legs, four of which fail against the pre-fix shape, including the 400-entry
+library load (400 uids collapsing to 1 distinct) and a MEASURED leg showing two
+entries sharing a uid reading each other's annotation, which is what makes the
+rest load-bearing rather than decorative.

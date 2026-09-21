@@ -21,7 +21,7 @@ const HEX4 = /^[0-9a-f]{4}$/;
 
 describe("bib-uid: marker helpers", () => {
   it("mintBibUid produces a 4-char hex short id", () => {
-    expect(mintBibUid()).toMatch(HEX4);
+    expect(mintBibUid(new Set())).toMatch(HEX4);
   });
 
   it("mintBibUid avoids ids in the collision set", () => {

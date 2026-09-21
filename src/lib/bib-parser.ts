@@ -15,7 +15,7 @@
  */
 
 import type { BibEntry, BibSourceRef } from "./types";
-import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
+import { bibUidsOf, mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
 import {
   applyPatches,
   bracesBalance,
@@ -214,8 +214,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
   const blocks = extractOrderedRawBlocks(bibText, cleaned);
   // Mint into a live collision set so a markerless file gets unique uids and
   // any pre-existing `\vbid` uid is reserved against fresh mints.
-  const usedUids = new Set<string>();
-  for (const b of blocks) if (b.vbidUid) usedUids.add(b.vbidUid);
+  const usedUids = bibUidsOf(blocks.map((b) => ({ uid: b.vbidUid })));
 
   // Positional cursor over `blocks`: pair each parsed item with the next
   // unconsumed block whose citekey matches (case-insensitive), falling back to
