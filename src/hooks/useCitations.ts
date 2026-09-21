@@ -250,9 +250,23 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const runBibMutation = useCallback(
     (mutate: BibMutator) => {
       setBibEntries((prev) => mutate(prev) ?? prev);
-      void mutateProjectBib(docId, mutate);
+      void mutateProjectBib(docId, mutate).then((result) => {
+        // A write that THREW left the file exactly as it was, while the
+        // preview above still shows the edit — and nothing else would ever
+        // correct it, because only a LANDED write publishes. That phantom is
+        // the whole of task 685: the card reads saved, `references.bib` does
+        // not hold the entry, and every later read in this session agrees with
+        // the screen. The authority has already told the user (the refusal
+        // channel); this re-reads the file so the view stops standing as
+        // truth. Only on `failed` — the other refusal kinds mean no write was
+        // attempted for this pane's doc at all (see `refusedWrite`), and a
+        // `declined` one means the disk is already what it should be.
+        if (result.kind === "failed" && docRef.current === docId && docId) {
+          refreshBib(docId);
+        }
+      });
     },
-    [docId],
+    [docId, refreshBib],
   );
 
   const addCitation = useCallback(

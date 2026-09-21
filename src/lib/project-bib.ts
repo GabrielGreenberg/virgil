@@ -39,10 +39,24 @@
  * serialize the whole bib — pinned by `bib-authority.test.ts`, the guard that
  * catches the shape this module exists to retire: not a broken writer, but a
  * call site that never asked the authority.
+ *
+ * ## And every write door REPORTS (task 685)
+ *
+ * The door was right; only its failure report was missing. A write that threw
+ * was `console.error`'d and answered with the same `null` as "no doc", "no
+ * handle" and "a library paper" — so no caller could tell the user's content
+ * failing to land apart from three kinds of "not applicable", and the
+ * optimistic in-memory list stood as truth for the rest of the session over a
+ * file that had never changed. Since task 685 every door here resolves a
+ * {@link BibWriteResult}, and the one kind that means the user's own content
+ * did not reach disk is published on the ONE refusal channel
+ * ([sidecar-refusal.ts](sidecar-refusal.ts)) that task 637 gave the sidecars —
+ * `references.bib` being the last CONTENT file still swallowing it.
  */
 
 import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFile } from "@/lib/bib-parser";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { mintBibUid } from "@/lib/bib-uid";
 import {
   getActiveHandle,
@@ -90,6 +104,89 @@ export interface BibMutationResult {
   bibText: string;
 }
 
+/**
+ * What a bib mutation DID (task 685) — a discriminated result, not a sentinel.
+ *
+ * The door used to resolve `BibMutationResult | null`, and that one `null`
+ * collapsed five outcomes that call for three different behaviours:
+ *
+ *   - `declined` — the mutator itself said "nothing to change" (the key is
+ *     already on disk, the entry is already gone). The optimistic apply above
+ *     returned the same list, so there is nothing to undo and nothing to say.
+ *   - `stale` — the doc switched under the write and the NEW owner is
+ *     authoritative. Silent, and not reconciled: this window's state is about
+ *     to be replaced wholesale.
+ *   - `no-handle` / `read-only` / `failed` — nothing reached disk and nothing
+ *     will. The in-memory list is then a PHANTOM: the card reads saved, the
+ *     file never changed, and for the rest of the session every later read,
+ *     every citation display and the user's own eyes agree on a bibliography
+ *     that does not exist on disk.
+ *
+ * `failed` is the write-path law's own case and it was the last one open.
+ * `references.bib` is CONTENT — the user's bibliography, cited by the `.tex` —
+ * and task 637 had already given every `virgil/` sidecar exactly this
+ * treatment ([sidecar-refusal.ts](sidecar-refusal.ts)); the bib was the one
+ * content file still ending at a `console.error`.
+ *
+ * The vocabulary is the sidecar authority's, deliberately verbatim
+ * (`AiRequestsWriteResult` in [ai-requests-store.ts](ai-requests-store.ts)),
+ * down to the `ran` technique below for telling a DECLINED mutator apart from
+ * a door that refused the file before the mutator was ever called. Two
+ * serialized authorities reporting the same six facts should not need two
+ * words for each of them, and a third has one shape to copy.
+ */
+export type BibWriteResult =
+  | ({ kind: "written" } & BibMutationResult)
+  | { kind: "declined" }
+  | { kind: "stale" }
+  | { kind: "no-handle" }
+  | { kind: "read-only" }
+  | { kind: "failed"; error: unknown };
+
+/** Did this result mean the user's change is NOT on disk and never will be? */
+export function isBibWriteRefused(
+  r: BibWriteResult,
+): r is { kind: "no-handle" } | { kind: "read-only" } | { kind: "failed"; error: unknown } {
+  return r.kind === "no-handle" || r.kind === "read-only" || r.kind === "failed";
+}
+
+/**
+ * The bib's noun on the refusal channel. ONE noun for the file, not one per
+ * writer: the channel carries what the user was doing, and "the bibliography"
+ * is what a panel edit, a Library drop and a remove-menu all were.
+ */
+const BIB_REFUSAL_NOUN = "bibliography";
+
+/**
+ * Build the `failed` result and VOICE it, in one expression — so this module
+ * cannot produce a failed write without publishing it.
+ *
+ * ## Which refusals are voiced, and why only this one
+ *
+ * Only `failed`. `no-handle` and `read-only` are not the same fact here that
+ * they are for a sidecar, because the bib's writers are not all the user's own
+ * gesture in the paper they are looking at: the Library drop and the Library
+ * remove-menu arrive as WINDOW EVENTS that every mounted `LibraryTabView`
+ * handles — one per scoped library tab, for a `docId` that need not be this
+ * pane's — and a library paper's `.bib` is the library's own artifact, which
+ * the Reader is right to refuse. A danger band on those would be noise about a
+ * paper the user is not editing.
+ *
+ * A THROW is different in kind: a handle was there, the write was attempted on
+ * the user's own content, and it did not land. The kinds stay distinguishable
+ * at the door either way, so this policy is one function rather than a shape —
+ * the sentinel that made it unstatable is what this task removed.
+ */
+function refusedWrite(docId: string, error: unknown): BibWriteResult {
+  recordSidecarRefusal({
+    docId,
+    what: BIB_REFUSAL_NOUN,
+    reason: "failed",
+    detail: error instanceof Error ? error.message : undefined,
+  });
+  return { kind: "failed", error };
+}
+
 /** Parse the on-disk text; an absent/empty file is an empty list. */
 function entriesOf(bibText: string): BibEntry[] {
   return bibText.trim() ? parseBibFile(bibText) : [];
@@ -99,42 +196,55 @@ function entriesOf(bibText: string): BibEntry[] {
  * Apply `mutate` to the doc's `.bib` through the serialized read-modify-write
  * door and announce the result.
  *
- * Resolves the authoritative post-write list, or `null` when nothing was
- * persisted — a declined mutation (`mutate` returned `null`), no doc, no active
- * write handle, a read-only library paper, or a failed write. Best-effort by
- * contract: this never throws (its callers are UI event handlers and
- * fire-and-forget listeners), and it publishes ONLY after a write that actually
+ * Resolves a {@link BibWriteResult}. Best-effort by contract: this never
+ * throws (its callers are UI event handlers and fire-and-forget listeners),
+ * and it publishes `DOC_BIB_CHANGED_EVENT` ONLY after a write that actually
  * landed, so the in-memory bib can never diverge from the on-disk one in the
- * direction that matters.
+ * direction that matters. When it does NOT land because the write threw, it
+ * says so on the refusal channel and the caller's optimistic view is the
+ * caller's to reconcile ({@link isBibWriteRefused}).
+ *
+ * ## Telling a DECLINED mutation from a REFUSED one
+ *
+ * `mutateBib` answers `null` both ways — the mutator returned `null`, or the
+ * door short-circuited a library-paper write before the mutator ever ran. The
+ * difference is observable from inside the mutator callback and nowhere else,
+ * so that is where it is taken: `ran` is set the moment the mutator is
+ * invoked. `null` with `ran` is the mutator's own "nothing to change"; `null`
+ * WITHOUT it means the write never got that far.
  */
 export async function mutateProjectBib(
   docId: string | null,
   mutate: BibMutator,
-): Promise<BibMutationResult | null> {
-  if (!docId) return null;
+): Promise<BibWriteResult> {
+  if (!docId) return { kind: "no-handle" };
   const handle = getActiveHandle(docId);
-  if (!handle) return null;
+  if (!handle) return { kind: "no-handle" };
 
   // The door calls its text mutator exactly ONCE per queued task, so the
   // entries it produced can be captured here rather than re-parsed out of the
   // serialized text (which would hand the hook citation-js-normalized copies of
   // entries it just edited in place).
+  let ran = false;
   let produced: BibEntry[] | null = null;
   let bibText: string | null;
   try {
     bibText =
       (await mutateBib(handle, (current) => {
+        ran = true;
         const next = mutate(entriesOf(current));
         if (next === null) return null;
         produced = next;
         return serializeBibFile(next);
       })) ?? null;
   } catch (err) {
-    if (isStalePipelineError(err)) return null;
+    if (isStalePipelineError(err)) return { kind: "stale" };
     console.error("Failed to persist references.bib:", err);
-    return null;
+    return refusedWrite(docId, err);
   }
-  if (bibText === null || produced === null) return null;
+  if (bibText === null || produced === null) {
+    return ran ? { kind: "declined" } : { kind: "read-only" };
+  }
 
   const result: BibMutationResult = { entries: produced, bibText };
   // Announce the authoritative post-write list so every live reader in THIS
@@ -148,7 +258,15 @@ export async function mutateProjectBib(
       }),
     );
   }
-  return result;
+  return { kind: "written", ...result };
+}
+
+/** What an append DID: how many entries reached the file, and the door's own
+ *  verdict when that count is 0 — "every key was already there" (`declined`)
+ *  and "the write threw" (`failed`) are never the same number. */
+export interface BibAppendResult {
+  appended: number;
+  result: BibWriteResult;
 }
 
 /**
@@ -158,16 +276,16 @@ export async function mutateProjectBib(
  * race against a bib card's Save or a skill's write either: the merge is
  * computed over the freshly-read file inside the lock.
  *
- * Returns the count of entries actually appended (0 if nothing new, no active
- * pipeline, or the write failed). Publishes through the authority on success.
+ * Publishes through the authority on success; a failed write is voiced on the
+ * refusal channel there, not here.
  */
 export async function addEntriesToProjectBib(
   docId: string,
   entries: IncomingBibEntry[],
-): Promise<number> {
-  if (!docId) return 0;
+): Promise<BibAppendResult> {
+  if (!docId) return { appended: 0, result: { kind: "no-handle" } };
   const incoming = entries.filter((e) => Boolean(e?.key));
-  if (incoming.length === 0) return 0;
+  if (incoming.length === 0) return { appended: 0, result: { kind: "declined" } };
   let appended = 0;
   const result = await mutateProjectBib(docId, (existing) => {
     const seen = new Set(existing.map((e) => e.key));
@@ -186,26 +304,14 @@ export async function addEntriesToProjectBib(
     appended = additions.length;
     return [...existing, ...additions];
   });
-  return result === null ? 0 : appended;
-}
-
-/**
- * Single-entry convenience wrapper around {@link addEntriesToProjectBib}.
- * Returns true when the entry was appended, false when it was a
- * duplicate or the write failed.
- */
-export async function addEntryToProjectBib(
-  docId: string,
-  entry: IncomingBibEntry,
-): Promise<boolean> {
-  const added = await addEntriesToProjectBib(docId, [entry]);
-  return added > 0;
+  return { appended: result.kind === "written" ? appended : 0, result };
 }
 
 /**
  * Remove the entry with the given citekey from the doc's references.bib.
- * Returns true on removal, false on miss / no-active-pipeline / failed
- * write. Publishes through the authority on success.
+ * Resolves the door's own {@link BibWriteResult}: `written` on a removal,
+ * `declined` on a miss, and a refusal kind when nothing reached disk —
+ * a miss and a failed write are not the same answer.
  *
  * The central library and `master.bib` are left untouched — this only
  * mutates the per-doc references.bib. Any `\cite{citekey}` commands
@@ -215,11 +321,11 @@ export async function addEntryToProjectBib(
 export async function removeEntryFromProjectBib(
   docId: string,
   citekey: string,
-): Promise<boolean> {
-  if (!docId || !citekey) return false;
-  const result = await mutateProjectBib(docId, (existing) => {
+): Promise<BibWriteResult> {
+  if (!docId) return { kind: "no-handle" };
+  if (!citekey) return { kind: "declined" };
+  return mutateProjectBib(docId, (existing) => {
     const next = existing.filter((e) => e.key !== citekey);
     return next.length === existing.length ? null : next; // null = not present
   });
-  return result !== null;
 }
