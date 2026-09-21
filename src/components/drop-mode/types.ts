@@ -151,24 +151,48 @@ export interface ParagraphAnchorApi {
    * future UX can revisit the lost range. Returns the captured
    * `anchorId` so the caller can remove the corresponding
    * `linkedAnchor` mark from the editor; null when the entity was
-   * Mode A (no preservation needed). Optional — hooks that don't
-   * support Mode B can omit this method.
+   * Mode A (no preservation needed). Optional — only kinds whose card
+   * type carries `originalAnchor` (note, highlight) record one; the mark
+   * strip for every other kind comes from `modeB.release`.
    */
   preserveModeBAnchor?: (id: string) => string | null;
   /**
-   * Convert a surviving Mode-B (`linkedRange`) link on the card into a
-   * clean Mode-A `paragraph` link, preserving the paragraph ids. Called
-   * by the paragraph-side re-anchor commit (after `preserveModeBAnchor`
-   * + mark strip) so the card sheds its `linkedRange` shape BEFORE the
-   * fresh paragraph anchor lands — otherwise the new paragraph would be
-   * folded into the dead textRange link (RC1). After this runs,
-   * `getTextAnchor` returns null. Optional — kinds that are intrinsically
-   * Mode-B (highlights) deliberately omit the call, and hooks that don't
-   * support Mode B can omit the method. Backs onto `useNotes`'
-   * `clearTextAnchorLink` / `links.ts:clearTextAnchorLink`.
+   * What a paragraph re-anchor does to the card's Mode-B (text-range)
+   * anchor. REQUIRED, and a discriminated answer rather than an optional
+   * method (task 698): the pre-698 `clearModeB?` was supplied by notes alone,
+   * declared-omitted by highlights, and silently forgotten by cutter,
+   * revisions, todos, archive and reports — so a dragged card of those kinds
+   * kept its old `linkedRange` link AND its old `linkedAnchor` mark, the old
+   * passage kept the tint, and the card went on reporting the selection it
+   * had been dragged away from. An optional capability whose absence is
+   * invisible will be absent; this shape makes forgetting it a build error
+   * and leaves the one deliberate exemption a readable claim.
+   * `drop-api-mode-b-census.test.ts` pins every `drop*Api` in `EditorPane`.
    */
-  clearModeB?: (id: string) => void;
+  modeB: ModeBReanchorPolicy;
 }
+
+/**
+ * The re-anchor policy for a card's Mode-B anchor — see
+ * `ParagraphAnchorApi.modeB`.
+ *
+ *  - `release`: a re-anchor MOVES the card, so its old text-range anchor is
+ *    released. `release(id)` converts the surviving `linkedRange` link into a
+ *    clean Mode-A `paragraph` link (preserving paragraph ids) so the fresh
+ *    anchor isn't folded into the dead textRange link (RC1), and returns the
+ *    released `anchorId` (null when the card was Mode-A) so the spec strips
+ *    that `linkedAnchor` mark from the editor — which is what takes the tint
+ *    off the old passage. It does NOT touch the card's captured passage
+ *    (`selectedText` / `selectedContent` / `original_text`): a re-anchor is
+ *    not a re-capture (task 698 reading (a); the morph path's rule).
+ *  - `intrinsic`: the card IS its text range (highlights), so the link is
+ *    kept. `why` states the exemption at the site that makes it.
+ *
+ * Build it with `releaseModeB` (`util/mode-b-release.ts`).
+ */
+export type ModeBReanchorPolicy =
+  | { policy: "release"; release: (id: string) => string | null }
+  | { policy: "intrinsic"; why: string };
 
 /**
  * Per-doc context bag handed to drop specs. Built by `EditorPane` from

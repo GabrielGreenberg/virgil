@@ -141,6 +141,7 @@ function setup() {
       addTextObjectLink: () => {},
       removeTextObjectLink: () => {},
       preserveModeBAnchor: () => null,
+      modeB: { policy: "release", release: () => null },
     },
   } as unknown as DropCtx;
   setDropCtx(ctx);

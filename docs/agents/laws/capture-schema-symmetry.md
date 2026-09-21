@@ -3526,3 +3526,24 @@ needle), `suggestion-capture-dialect.test.ts` (both panels' seeding),
 `morph-capture-dialect.test.ts` (the comment→suggestion seam, both directions),
 `capture-pair-census.test.ts` (the forms derived from `types.ts` and
 cross-checked against `CAPTURE_HALVES`).
+
+### The re-anchor half: a MOVE releases the old anchor, and does not re-capture (task 698)
+
+Dragging a card onto another paragraph MOVES it. The drop spec
+(`drop-mode/util/text-object-side-reanchor.ts`) therefore RELEASES the card's
+old Mode-B anchor — converts the `linkedRange` link to Mode-A and strips its
+`linkedAnchor` mark — before the fresh paragraph link lands. Pre-698 that was an
+optional `clearModeB?` supplied by notes alone; cutter, revisions, todos,
+archive and reports silently lacked it, so the old passage kept the tint and
+`getAnchorSummary` kept quoting the selection the card had been dragged away
+from. `ParagraphAnchorApi.modeB` is now REQUIRED — `releaseModeB(…)` or
+`{ policy: "intrinsic", why }` (highlights, the one declared exemption) — and
+`drop-api-mode-b-census.test.ts` pins every `drop*Api` in `EditorPane` against
+the provider's slots.
+
+What the release does NOT touch: the captured passage (`selectedText` /
+`selectedContent` / `original_text`). A re-anchor is not a re-capture — the
+capture records what the user cut, which is the card's content, not a function
+of where it hangs (the morph path's rule). A suggestion whose `original_text`
+is absent from its new paragraph is the apply path's staleness verdict to give
+(the dialect half above), not something to rewrite on a guess.

@@ -67,14 +67,26 @@ export function textObjectSideReanchorSpec(
       const id = extractId(cardKey);
       if (!id || !api.exists(id)) return;
       // Phase 4: if the card carries a Mode B textRange anchor, snapshot
-      // it onto `card.originalAnchor` BEFORE remove+add wipes the link.
-      // Then strip the corresponding linkedAnchor mark from the editor
-      // so the orphaned tint doesn't linger over text the card no longer
-      // points at. Mark cleanup uses the main editor — Mode B anchors
-      // live in the main doc by construction (a card-body linkedAnchor
-      // mark wouldn't have been the anchor for a main-doc-anchored
-      // card).
-      const strippedAnchorId = api.preserveModeBAnchor?.(id) ?? null;
+      // it onto `card.originalAnchor` BEFORE remove+add wipes the link
+      // (note/highlight only — the kinds whose type records one).
+      const preservedAnchorId = api.preserveModeBAnchor?.(id) ?? null;
+      // RC1 / task 698: a paragraph re-anchor MOVES the card, so its old
+      // Mode-B anchor is RELEASED — the surviving `linkedRange` link is
+      // converted to a clean Mode-A `paragraph` link BEFORE the fresh anchor
+      // lands (otherwise `addTextObjectLink` folds P_new into the dead
+      // textRange link, dropping the snapshot, and the card reverts to the old
+      // paragraph on reload). Every adapter must answer this (`modeB` is
+      // required); only an INTRINSICALLY Mode-B kind (highlights) keeps its
+      // link, and says why at its own site. The captured passage is left
+      // alone: a re-anchor is not a re-capture.
+      const releasedAnchorId =
+        api.modeB.policy === "release" ? api.modeB.release(id) : null;
+      // Strip the corresponding linkedAnchor mark from the editor so the
+      // orphaned tint doesn't linger over text the card no longer points at.
+      // Mark cleanup uses the main editor — Mode B anchors live in the main
+      // doc by construction (a card-body linkedAnchor mark wouldn't have been
+      // the anchor for a main-doc-anchored card).
+      const strippedAnchorId = releasedAnchorId ?? preservedAnchorId;
       if (strippedAnchorId && ctx.mainEditor) {
         try {
           removeLinkedAnchor(ctx.mainEditor, strippedAnchorId);
@@ -82,17 +94,6 @@ export function textObjectSideReanchorSpec(
           // The mark might already be gone (orphaned); ignore.
         }
       }
-      // RC1 fix: a paragraph re-anchor of a SELECTION-origin (Mode-B
-      // `linkedRange`) card must CONVERT the surviving `linkedRange` link to
-      // a clean Mode-A `paragraph` link BEFORE the fresh anchor lands —
-      // otherwise `addTextObjectLink` folds P_new into the dead textRange
-      // link, dropping the snapshot, and the card reverts to the old
-      // paragraph on reload. `clearModeB` (notes only) converts it so
-      // `getTextAnchor` returns null. Highlights are intrinsically Mode-B
-      // and deliberately omit `clearModeB` (their bag doesn't carry it), so
-      // this no-ops for them — only the lost range is snapshotted to
-      // `originalAnchor` by `preserveModeBAnchor` above.
-      api.clearModeB?.(id);
       const current = api.getAnchorTextObjectIds(id);
       for (const pid of current) {
         if (pid !== placement.paragraphId) {

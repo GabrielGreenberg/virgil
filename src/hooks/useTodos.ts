@@ -301,24 +301,34 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   // listener. O(todos) per event, never per-keystroke.
   // Gated on `docId` by the door (task 598) — membership decides WITHIN a
   // document, the event's docId decides ACROSS documents.
+  // AnchorId-keyed Mode-B → Mode-A conversion. Shared by the orphan sweep
+  // below and the drop re-anchor (`modeB.release`, task 698), matching the
+  // `clearCardAnchor` every sibling panel hook exposes.
+  const clearCardAnchor = useCallback(
+    (anchorId: string) => {
+      update((prev) => {
+        if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
+          return prev;
+        }
+        return {
+          items: prev.items.map((i) =>
+            getTextAnchor(i)?.anchorId === anchorId
+              ? clearTextAnchorLink(i, "todo")
+              : i,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
   useAnchorOrphaned(docId, ({ anchorId }) => {
     // No kind gate: a reloaded orphan event carries the parser-default
     // `kind:"note"`, so gating on `kind === "todo"` made this panel ignore
-    // its own orphaned todo mark (BUG1). The sweep below self-filters by
+    // its own orphaned todo mark (BUG1). `clearCardAnchor` self-filters by
     // anchorId membership (no-match early-return) — the owning panel decides.
     if (!anchorId) return;
-    update((prev) => {
-      if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
-        return prev;
-      }
-      return {
-        items: prev.items.map((i) =>
-          getTextAnchor(i)?.anchorId === anchorId
-            ? clearTextAnchorLink(i, "todo")
-            : i,
-        ),
-      };
-    });
+    clearCardAnchor(anchorId);
   });
 
   // Mode A orphan sweep — when a text-object block is removed from the
@@ -390,6 +400,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       loadError,
       setTodoAnchor,
       bindAnchor,
+      clearCardAnchor,
       discardPristineTodos,
     }),
     [
@@ -411,6 +422,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       loadError,
       setTodoAnchor,
       bindAnchor,
+      clearCardAnchor,
       discardPristineTodos,
     ],
   );

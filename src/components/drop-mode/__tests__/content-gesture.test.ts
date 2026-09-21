@@ -66,6 +66,7 @@ function makeApi(initial: string[]): ParagraphAnchorApi {
     addTextObjectLink: (_id, pid) => void set.add(pid),
     removeTextObjectLink: (_id, pid) => void set.delete(pid),
     preserveModeBAnchor: () => null,
+    modeB: { policy: "release", release: () => null },
   };
 }
 

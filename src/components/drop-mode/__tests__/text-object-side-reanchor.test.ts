@@ -43,7 +43,7 @@ import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
  *  reads the post-mutation state (matches the real hook). */
 function makeApi(
   initial: string[],
-  opts: { withClearModeB?: boolean } = {},
+  opts: { modeB?: "release" | "intrinsic" } = {},
 ): {
   api: ParagraphAnchorApi;
   anchors: () => string[];
@@ -68,15 +68,18 @@ function makeApi(
     },
     // Mode A on this path → null (no Mode-B preservation, no mainEditor touch).
     preserveModeBAnchor: () => null,
-    // Notes carry `clearModeB` (Mode-B → Mode-A conversion); highlights
-    // deliberately omit it. The `opts` flag mirrors that bag-level gate.
-    ...(opts.withClearModeB
-      ? {
-          clearModeB: (id: string) => {
-            clearModeBCalls.push(id);
+    // Every bag answers `modeB` (task 698): released unless the kind is
+    // intrinsically Mode-B (highlights). The `opts` flag mirrors that answer.
+    modeB:
+      opts.modeB === "intrinsic"
+        ? { policy: "intrinsic", why: "test: the card is its range" }
+        : {
+            policy: "release",
+            release: (id: string) => {
+              clearModeBCalls.push(id);
+              return null;
+            },
           },
-        }
-      : {}),
   };
   return { api, anchors: () => [...set], added, removed, clearModeBCalls };
 }
@@ -94,13 +97,13 @@ function ctxWith(api: ParagraphAnchorApi): DropCtx {
 }
 
 /** A DropCtx carrying the api in the `notes` sub-bag — the notes panel wires
- *  `clearModeB` (Mode-B → Mode-A conversion) here. */
+ *  `modeB: release` (Mode-B → Mode-A conversion) here. */
 function ctxWithNotes(api: ParagraphAnchorApi): DropCtx {
   return { notes: api } as unknown as DropCtx;
 }
 
 /** A DropCtx carrying the api in the `highlights` sub-bag — highlights are
- *  intrinsically Mode-B and the panel omits `clearModeB`. */
+ *  intrinsically Mode-B and the panel declares `modeB: intrinsic`. */
 function ctxWithHighlights(api: ParagraphAnchorApi): DropCtx {
   return { highlights: api } as unknown as DropCtx;
 }
@@ -185,9 +188,9 @@ describe("textObjectSideReanchorSpec — applyDrop (the mutation)", () => {
 
 // CHIP-A: a paragraph-side re-anchor of a SELECTION-origin (Mode-B) NOTE must
 // convert the surviving `linkedRange` link to a clean Mode-A `paragraph` link
-// BEFORE the fresh anchor lands — driven by the note bag's `clearModeB`.
-// Highlights are intrinsically Mode-B and omit `clearModeB`, so the conversion
-// must NOT fire for them.
+// BEFORE the fresh anchor lands — driven by the note bag's `modeB.release`.
+// Highlights are intrinsically Mode-B and declare `modeB: intrinsic`, so the
+// conversion must NOT fire for them.
 describe("textObjectSideReanchorSpec — Mode-B → Mode-A conversion (CHIP-A)", () => {
   const NOTE_KEY = buildFloatKey({ domain: "card", kind: "note", id: "note1" });
   const HL_KEY = buildFloatKey({ domain: "card", kind: "highlight", id: "hl1" });
@@ -205,13 +208,13 @@ describe("textObjectSideReanchorSpec — Mode-B → Mode-A conversion (CHIP-A)",
     });
   }
 
-  it("a NOTE re-anchor calls clearModeB(id) before adding the fresh paragraph anchor", () => {
+  it("a NOTE re-anchor calls modeB.release(id) before adding the fresh paragraph anchor", () => {
     const spec = noteSpec();
     const { api, clearModeBCalls, added } = makeApi(["P1"], {
-      withClearModeB: true,
+      modeB: "release",
     });
-    expect(api.clearModeB).toBeDefined();
-    const clearSpy = vi.spyOn(api, "clearModeB");
+    if (api.modeB.policy !== "release") throw new Error("fixture");
+    const clearSpy = vi.spyOn(api.modeB, "release");
     const addSpy = vi.spyOn(api, "addTextObjectLink");
 
     spec.applyDrop(paragraphSide("P3"), NOTE_KEY, ctxWithNotes(api));
@@ -228,17 +231,17 @@ describe("textObjectSideReanchorSpec — Mode-B → Mode-A conversion (CHIP-A)",
     expect(added).toEqual(["P3"]);
   });
 
-  it("a HIGHLIGHT re-anchor does NOT call clearModeB (highlights stay Mode-B)", () => {
+  it("a HIGHLIGHT re-anchor does NOT release its Mode-B link (highlights stay Mode-B)", () => {
     const spec = highlightSpec();
-    // The highlight bag omits clearModeB entirely (withClearModeB: false).
+    // The highlight bag declares the exemption rather than omitting a method.
     const { api, clearModeBCalls, added } = makeApi(["P1"], {
-      withClearModeB: false,
+      modeB: "intrinsic",
     });
-    expect(api.clearModeB).toBeUndefined();
+    expect(api.modeB.policy).toBe("intrinsic");
 
     spec.applyDrop(paragraphSide("P3"), HL_KEY, ctxWithHighlights(api));
 
-    // No conversion — the optional call no-ops because the bag omits it.
+    // No conversion — the declared exemption keeps the link.
     expect(clearModeBCalls).toEqual([]);
     // The re-anchor itself still lands.
     expect(added).toEqual(["P3"]);

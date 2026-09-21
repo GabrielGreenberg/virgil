@@ -93,6 +93,7 @@ const makeAnchorApi = (): ParagraphAnchorApi => ({
   getAnchorTextObjectIds: () => [],
   addTextObjectLink: noop,
   removeTextObjectLink: noop,
+  modeB: { policy: "release", release: () => null },
 });
 
 /** `stack` doubles as the per-pane IDENTITY marker: it is a distinct sentinel
