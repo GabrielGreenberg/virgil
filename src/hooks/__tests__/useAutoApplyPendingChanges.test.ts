@@ -38,7 +38,11 @@ const applySuggestionMock = vi.fn(() => ({
     appliedAt: "t",
   },
 }));
-vi.mock("@/links/pending-change-actions", () => ({
+vi.mock("@/links/pending-change-actions", async (importOriginal) => ({
+  // Partial mock: only the splice orchestration is stubbed. `applyOne`'s
+  // pre-claim applicability check (task 695) must run the REAL predicate, or
+  // the guard would pass against any card shape the fixture happens to build.
+  ...(await importOriginal<typeof import("@/links/pending-change-actions")>()),
   applySuggestion: (...a: unknown[]) => applySuggestionMock(...(a as [])),
 }));
 

@@ -62,7 +62,10 @@ import type {
   RevisionSuggestionCard,
 } from "@/lib/types";
 import { getLinkedTextObjectIds } from "@/links/links";
-import { applySuggestion } from "@/links/pending-change-actions";
+import {
+  applySuggestion,
+  suggestionApplicability,
+} from "@/links/pending-change-actions";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
@@ -380,6 +383,12 @@ export function applyOne(
   // Already claimed an apply for this card (status flip not yet committed) —
   // don't re-apply against post-splice text.
   if (dispatched.has(target.card.id)) return;
+  // Can the card answer Apply AT ALL? The same predicate the button is gated on
+  // and `applySuggestion` bails on (task 695). Asked BEFORE the claim below, so
+  // a card that could never apply neither burns its dispatch slot nor reaches
+  // the splice path — `applySuggestion` would return `skipped` anyway; this
+  // keeps the pass O(1) on it and the claim honest.
+  if (!suggestionApplicability(target.card).canApply) return;
   if (
     !isAutoApplyEligible({
       card: target.card,

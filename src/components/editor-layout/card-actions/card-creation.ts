@@ -22,6 +22,7 @@ import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
+import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -492,19 +493,44 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [addCutterComment, setSelectedCutterCardId, finishCreate],
   );
 
+  /**
+   * The paragraph a SUGGESTION created with no explicit target should attach
+   * to: the one the caret is in (task 695).
+   *
+   * A suggestion is the one card kind whose whole purpose is to aim at a
+   * passage — `applySuggestion` resolves its Mode-A paragraph link and can do
+   * nothing at all without one. Both panels' "+ Suggestion" called the factory
+   * with an empty opts bag, so every card either panel's own "+" made was born
+   * with `links: []`: an Apply button that could never answer. The default
+   * lives HERE rather than in the two hosts because the hosts are the
+   * cutter/revisions fork (task 201) and a rule written twice drifts once — one
+   * door, both families, and any future caller that omits a target.
+   *
+   * A COMMENT deliberately keeps no such default: an unanchored comment is a
+   * legitimate standing note, and the pristine contract already discards a
+   * blank one.
+   *
+   * O(nesting depth) — `paragraphUuidAtSelection` walks the selection's own
+   * ancestor chain, never the document. Runs once per create gesture.
+   */
+  const caretParagraphId = useCallback((): string | null => {
+    const ed = editorRef.current?.getEditor() ?? null;
+    return ed ? paragraphUuidAtSelection(ed) : null;
+  }, [editorRef]);
+
   const createCutterSuggestion = useCallback<
     CardCreationApi["createCutterSuggestion"]
   >(
     (opts) => {
       const card = addCutterSuggestion(
-        opts.paragraphId ?? null,
+        opts.paragraphId ?? caretParagraphId(),
         opts.originalText,
         opts.anchor,
       );
       finishCreate("cutter-suggestion", "cutter", setSelectedCutterCardId, card.id, opts);
       return card;
     },
-    [addCutterSuggestion, setSelectedCutterCardId, finishCreate],
+    [addCutterSuggestion, setSelectedCutterCardId, finishCreate, caretParagraphId],
   );
 
   const createReport = useCallback<CardCreationApi["createReport"]>(
@@ -556,14 +582,14 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   >(
     (opts) => {
       const card = addRevisionSuggestion(
-        opts.paragraphId ?? null,
+        opts.paragraphId ?? caretParagraphId(),
         opts.originalText,
         opts.anchor,
       );
       finishCreate("revision-suggestion", "revision", setSelectedCommentId, card.id, opts);
       return card;
     },
-    [addRevisionSuggestion, setSelectedCommentId, finishCreate],
+    [addRevisionSuggestion, setSelectedCommentId, finishCreate, caretParagraphId],
   );
 
   const createTodo = useCallback<CardCreationApi["createTodo"]>(

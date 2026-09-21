@@ -22,6 +22,11 @@ import { countWords } from "@/hooks/useWordCount";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
+import {
+  SUGGESTION_BLOCK_TEXT,
+  suggestionApplicability,
+  type SuggestionLike,
+} from "@/links/pending-change-actions";
 import { usePreviewDir } from "@/links/pending-preview-store";
 import {
   CapturedPassage,
@@ -457,30 +462,64 @@ export function FieldBlock({
  *  status write. With the capability resolved from context, a mount site has
  *  nothing left to forget. When no controller is present (a card rendered in
  *  isolation) or it's off, the controls render disabled — the same defensive
- *  shape {@link AppliedRecordBody} already uses. */
+ *  shape {@link AppliedRecordBody} already uses.
+ *
+ *  TASK 695 — and the row takes the CARD, not its id, because "is the machinery
+ *  on?" was standing in for "can this card answer the verb?" and they are not
+ *  the same question. The second is asked through `suggestionApplicability`,
+ *  the predicate `applySuggestion` itself bails on, and its answer both disables
+ *  Apply and is SAID under it. Taking the card rather than the id is what makes
+ *  that unforgettable at a mount site: there is no spelling of this component
+ *  that renders the button without the facts it is gated on. */
 export function PendingActionRow({
-  id,
+  card,
   family,
 }: {
-  id: string;
+  card: SuggestionLike;
   family: PendingChangeFamily;
 }) {
   const controller = usePendingChangeController();
-  const disabled = !controller || !controller.isOn;
+  const id = card.id;
+  const machineryOff = !controller || !controller.isOn;
   if (isPendingChangesOn()) {
+    // TASK 695 — the row asks TWO questions, not one. `machineryOff` is about
+    // the app ("is the pending-changes path available?"); `applicability` is
+    // about THIS card ("can it answer Apply?"). Only the first was ever asked,
+    // so a suggestion with no Mode-A anchor — every card the panel's own "+"
+    // makes — rendered a live Apply that returned `skipped` before touching the
+    // doc or the card: no splice, no status, no notice, forever. The answer is
+    // derived from `suggestionApplicability`, the SAME predicate
+    // `applySuggestion` bails on, so the button and the action cannot drift.
+    const applicability = suggestionApplicability(card);
+    const blockedReason = applicability.canApply
+      ? null
+      : SUGGESTION_BLOCK_TEXT[applicability.reason];
     return (
-      <div className="flex gap-1.5 pt-1 pr-7">
-        <Button
-          variant="warm"
-          size="sm"
-          disabled={disabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            controller?.apply(family, id);
-          }}
-        >
-          Apply
-        </Button>
+      <div className="flex flex-col gap-1 pt-1 pr-7">
+        <div className="flex gap-1.5">
+          <Button
+            variant="warm"
+            size="sm"
+            disabled={machineryOff || blockedReason !== null}
+            title={blockedReason ?? undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              controller?.apply(family, id);
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+        {/* The refusal is SAID, not merely enforced: a disabled button with no
+            reason is the same silence one step further back. */}
+        {blockedReason && (
+          <p
+            data-testid="pending-apply-blocked"
+            className="text-[11px] leading-snug text-[var(--muted)]"
+          >
+            {blockedReason}
+          </p>
+        )}
       </div>
     );
   }

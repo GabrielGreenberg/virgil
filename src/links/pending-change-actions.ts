@@ -421,17 +421,74 @@ export interface ApplySuggestionDeps<TStatus extends string = string> {
   staleStatus: TStatus;
 }
 
+/** Why a pending suggestion cannot be applied AT ALL. Each reason is a fact
+ *  about the CARD — not about the document, the flag, or which surface is
+ *  rendering — which is exactly why one answer can serve three readers: the
+ *  Apply button's enabled state, `applySuggestion`'s own bail, and the
+ *  auto-apply driver's pre-claim check.
+ *
+ *  - `unanchored` — no Mode-A paragraph link, so there is no passage to splice
+ *    into. The state a "+"-created suggestion starts in (task 695).
+ *  - `no-capture` — anchored, but `original_text` is empty, so there is nothing
+ *    to find and replace. `locateSpan` treats an empty needle as an automatic
+ *    miss (`indexOf("")` is a false 0), so this can never succeed either. */
+export type SuggestionBlockReason = "unanchored" | "no-capture";
+
+/** The ONE predicate's answer. Deliberately a discriminated result rather than
+ *  a boolean: the UI has to be able to SAY why, and a second hand-written
+ *  sentence is how the button and the action came apart in the first place. */
+export type SuggestionApplicability =
+  | { canApply: true }
+  | { canApply: false; reason: SuggestionBlockReason };
+
+/** The user-facing sentence for each refusal. Lives beside the reason so a new
+ *  reason cannot be added without one. */
+export const SUGGESTION_BLOCK_TEXT: Record<SuggestionBlockReason, string> = {
+  unanchored:
+    "Not anchored to a paragraph yet — drop this card on the passage it should replace.",
+  "no-capture":
+    "No original passage captured — drop this card on the passage it should replace.",
+};
+
+/**
+ * **Can this card answer Apply?** — the single predicate behind the button's
+ * disabled state and `applySuggestion`'s bail (task 695).
+ *
+ * Before this, `PendingActionRow` asked a different question entirely ("is the
+ * machinery on?") and rendered a live Apply on every card; `applySuggestion`
+ * then bailed `skipped` without touching the doc OR the card, so the press was
+ * indistinguishable from a no-op. Deriving both from one function is what stops
+ * them drifting again — the alternative (a second condition written out in the
+ * component) is precisely how they came apart.
+ *
+ * Pure and card-only: no editor, no flag, no React. Whether the anchored span
+ * still MATCHES the live document is a different question, answered later and
+ * reported as `stale`.
+ */
+export function suggestionApplicability(
+  card: SuggestionLike,
+): SuggestionApplicability {
+  if (!getLinkedTextObjectIds(card)[0])
+    return { canApply: false, reason: "unanchored" };
+  if (card.original_text.length === 0)
+    return { canApply: false, reason: "no-capture" };
+  return { canApply: true };
+}
+
 /** What `applySuggestion` did, so the caller (the auto-apply driver) can branch:
  *  - `applied`  — the splice landed; the card is now `applied` + carries an
  *                 `appliedChange` (returned so the driver can track it).
  *  - `stale`    — `applyPendingChange` refused (span not verbatim); the card is
  *                 now `stale`. NEVER retried.
- *  - `skipped`  — no resolvable Mode-A anchor (not applicable); the doc + card
- *                 are untouched. */
+ *  - `skipped`  — the card cannot answer Apply at all ({@link
+ *                 suggestionApplicability}); the doc + card are untouched. The
+ *                 `reason` travels with it so no caller has to re-derive why —
+ *                 a `skipped` that reaches a user-facing surface must be able
+ *                 to say something. */
 export type ApplySuggestionResult =
   | { outcome: "applied"; anchorUuid: string; appliedChange: AppliedChangeDescriptor }
   | { outcome: "stale" }
-  | { outcome: "skipped" };
+  | { outcome: "skipped"; reason: SuggestionBlockReason };
 
 /**
  * Apply a pending suggestion: compute its Mode-A anchor + mode, splice it into
@@ -445,10 +502,14 @@ export function applySuggestion<TStatus extends string>(
   deps: ApplySuggestionDeps<TStatus>,
 ): ApplySuggestionResult {
   const { editor, card } = deps;
-  // Mode-A anchor: the first linked paragraph uuid. No anchor → not applicable;
-  // bail WITHOUT mutating the doc or the card (matches Phase 1b's early return).
+  // Can this card answer Apply at all? ONE predicate, shared with the button
+  // that offers the verb (task 695) — bail WITHOUT mutating the doc or the card
+  // (matches Phase 1b's early return), carrying the reason out to the caller.
+  const applicability = suggestionApplicability(card);
+  if (!applicability.canApply)
+    return { outcome: "skipped", reason: applicability.reason };
+  // Mode-A anchor: the first linked paragraph uuid — non-empty by the predicate.
   const anchorUuid = getLinkedTextObjectIds(card)[0];
-  if (!anchorUuid) return { outcome: "skipped" };
 
   const mode: "replace" | "delete" =
     card.suggested_text === "" ? "delete" : "replace";
