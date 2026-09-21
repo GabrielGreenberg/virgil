@@ -108,8 +108,13 @@ export interface MenuProviderProps {
   getActiveDescendantHost?: () => HTMLElement | null;
   /** Keyboard source: window-capture (default) or an owned input. */
   keyboardSource?: "window" | "input";
-  /** Close callback. */
+  /** Close callback — the DISMISS door (click-outside / a row activation), and
+   *  the Escape door too unless `onCancel` is supplied. */
   onClose: () => void;
+  /** Escape's own door — the CANCEL channel (task 687; see `useMenuDismiss`'s
+   *  "DISMISS is not CANCEL"). Defaults to `onClose`; supply it only where a
+   *  surface stages work that a dismissal commits and Escape must abandon. */
+  onCancel?: () => void;
   /**
    * Activating a REGISTERED row dismisses this menu (task 477). The MENU-layer
    * twin of `AnchoredMenu`'s `closeOnInsideClick`, which forwards it: that flag
@@ -187,6 +192,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     getActiveDescendantHost,
     keyboardSource = "window",
     onClose,
+    onCancel,
     closeOnActivate = false,
     ariaLabel,
     surface = "menu",
@@ -341,6 +347,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     containerRef,
     getExcludes,
     onClose,
+    onCancel,
     escape: {
       stopPropagation: dismissOn?.escape?.stopPropagation ?? true,
       onEscape,

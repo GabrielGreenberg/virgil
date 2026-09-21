@@ -15,6 +15,21 @@
  *     boolean` two-stage interceptor: return true to consume Escape WITHOUT
  *     closing (e.g. first clear a filter, then close on the next press).
  *
+ * ── DISMISS is not CANCEL (task 687) ────────────────────────────────────────
+ * This hook ends a menu through TWO doors that mean different things, and until
+ * task 687 it spelled them with one prop. A click-outside is a DISMISS — the
+ * user went somewhere else, and a deferred-commit surface may legitimately read
+ * that as "keep what I staged". Escape is a CANCEL — the repo has already
+ * settled this (task 555, "Escape MEANS cancel everywhere"), and a key the user
+ * presses to abandon must never be the key that saves.
+ *
+ * For an ordinary menu the two coincide (nothing is staged, so there is nothing
+ * to abandon), which is why `onCancel` DEFAULTS to `onClose` and every existing
+ * call site is byte-identical. A surface that stages work passes both, and the
+ * fork is then stated at the primitive rather than re-decided — or silently not
+ * decided — by each popover. `src/panels/Citations/CitationCreatePopover.tsx`
+ * is the live member; `escape-means-cancel-census.test.ts` pins the class.
+ *
  * Keystroke sanctity: both listeners are mounted only while the menu is open
  * and bail O(1) on any non-Escape key / inside click. Neither touches the
  * editor transaction path.
@@ -29,8 +44,16 @@ export interface UseMenuDismissOptions {
   /** Live set of extra "inside" elements (nested popovers, external inputs).
    *  A getter so the set can grow/shrink while open without re-subscribing. */
   getExcludes?: () => readonly (HTMLElement | null)[];
-  /** Called to close the menu. */
+  /** Called to close the menu — the DISMISS door (click-outside), and the
+   *  Escape door too unless `onCancel` is supplied. */
   onClose: () => void;
+  /**
+   * Called instead of `onClose` when the user presses Escape — the CANCEL door.
+   * Defaults to `onClose`, so a menu with nothing staged is unchanged. Supply
+   * it only where dismissing and cancelling genuinely differ (a deferred-commit
+   * popover that commits on click-away must still ABANDON on Escape).
+   */
+  onCancel?: () => void;
   /** Escape behavior. */
   escape?: {
     /** stopPropagation on the consumed Escape (default true). */
@@ -63,10 +86,14 @@ export function useMenuDismiss(opts: UseMenuDismissOptions): void {
     containerRef,
     getExcludes,
     onClose,
+    onCancel,
     escape,
     open = true,
     ownsEscape = true,
   } = opts;
+  // Escape ends the menu through the CANCEL door; absent one, dismiss and
+  // cancel are the same door (every plain menu).
+  const endOnEscape = onCancel ?? onClose;
   const stopProp = escape?.stopPropagation ?? true;
   const onEscape = escape?.onEscape;
 
@@ -104,9 +131,9 @@ export function useMenuDismiss(opts: UseMenuDismissOptions): void {
       }
       e.preventDefault();
       if (stopProp) e.stopPropagation();
-      onClose();
+      endOnEscape();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, ownsEscape, onClose, onEscape, stopProp]);
+  }, [open, ownsEscape, endOnEscape, onEscape, stopProp]);
 }

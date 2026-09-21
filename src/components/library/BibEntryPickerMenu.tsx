@@ -39,6 +39,14 @@
  *
  * PRESERVED: the fuzzy filter, Enter picks the active entry OR commits raw
  * text, Escape closes, row expand/collapse, internal- AND external-input modes.
+ *
+ * ── Escape is the CANCEL door, not the dismiss door (task 687) ──────────────
+ * The picker ends through three exits that the caller may want to tell apart:
+ * click-outside (DISMISS), Escape and the header × (CANCEL — the × names Escape
+ * in its own label), and a pick/Enter (COMMIT). `onCancel` is the cancel door;
+ * it defaults to `onClose`, so every picker with nothing staged is unchanged.
+ * The citation CREATE popover is the one caller that needs them apart: it
+ * commits what the user staged on dismiss, and must abandon it on Escape.
  */
 
 import {
@@ -76,6 +84,10 @@ export interface BibEntryPickerMenuProps {
   anchorEl?: HTMLElement | null;
   anchorRect?: DOMRect | null;
   onClose: () => void;
+  /** Escape / the header × — the CANCEL door. Defaults to `onClose`. Supply it
+   *  only where dismissing and cancelling differ (the deferred-commit citation
+   *  create popover: click-away commits the staged keys, Escape abandons). */
+  onCancel?: () => void;
   /** Pool of entries to search. The component filters internally via
    *  `searchBibFuzzy`; the caller doesn't need to pre-filter. */
   entries: BibEntry[];
@@ -156,6 +168,7 @@ function BibEntryPickerMenuInner({
   anchorEl,
   anchorRect,
   onClose,
+  onCancel,
   entries,
   onPick,
   getRowState,
@@ -219,6 +232,7 @@ function BibEntryPickerMenuInner({
       getActiveDescendantHost={getActiveDescendantHost}
       excludeRefs={excludeRefs}
       onClose={onClose}
+      onCancel={onCancel}
       ariaLabel={ariaLabel}
       // Layout only — surface chrome is the primitive's `.menu-surface`
       // (task 295; this container used to spell a THIRD border grey and a
@@ -245,6 +259,7 @@ function BibEntryPickerMenuInner({
         externalInputEl={externalInputEl}
         inputRef={inputRef}
         onClose={onClose}
+        onCancel={onCancel}
       />
       {footer}
     </MenuProvider>
@@ -268,6 +283,7 @@ interface BodyProps {
    *  internal-input mode). */
   inputRef: React.RefObject<HTMLInputElement | null>;
   onClose: () => void;
+  onCancel?: () => void;
 }
 
 /** The picker body — lives INSIDE the provider so it can drive the combobox
@@ -287,7 +303,12 @@ function BibEntryPickerBody({
   externalInputEl,
   inputRef,
   onClose,
+  onCancel,
 }: BodyProps) {
+  // The CANCEL door (Escape, and the header × whose label names Escape).
+  // Defaults to `onClose` — for every picker with nothing staged they are the
+  // same exit; see "Escape is the CANCEL door" above.
+  const cancel = onCancel ?? onClose;
   const isExternalInput = externalQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
   const query = isExternalInput ? externalQuery! : internalQuery;
@@ -417,7 +438,7 @@ function BibEntryPickerBody({
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        cancel();
       }
     },
     [
@@ -427,7 +448,7 @@ function BibEntryPickerBody({
       onCommitRaw,
       onEnterCommit,
       trimmedQuery,
-      onClose,
+      cancel,
     ],
   );
 
@@ -486,9 +507,12 @@ function BibEntryPickerBody({
             className="flex-1 min-w-0 text-xs bg-transparent outline-none text-ink-body placeholder:text-ink-muted"
             {...NEVER_SPELLCHECK_PROPS}
           />
+          {/* Its label names Escape, so it must DO what Escape does — the
+              cancel door, not the dismiss one (task 687 / the 386-389 "a key
+              must do what its affordance says" family). */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={cancel}
             className="text-ink-muted hover:text-ink-body p-0.5 shrink-0 focus-ring"
             {...iconHint({ label: "Close (Esc)" })}
           >

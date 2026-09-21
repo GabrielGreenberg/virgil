@@ -33,6 +33,10 @@ export interface CitekeyPickerProps {
   anchorEl?: HTMLElement | null;
   anchorRect?: DOMRect | null;
   onClose: () => void;
+  /** Escape / the header × — the CANCEL door, forwarded to
+   *  `BibEntryPickerMenu`. Defaults to `onClose`; the deferred citation CREATE
+   *  popover is the one caller that supplies it (task 687). */
+  onCancel?: () => void;
   /** Paper's local references.bib entries. */
   paperBibEntries: BibEntry[];
   /** Commit a citekey onto the citation row. Called with the picked
@@ -72,6 +76,7 @@ export function CitekeyPicker({
   anchorEl,
   anchorRect,
   onClose,
+  onCancel,
   paperBibEntries,
   onSelectKey,
   onAddBibEntry,
@@ -164,6 +169,7 @@ export function CitekeyPicker({
       anchorEl={anchorEl}
       anchorRect={anchorRect}
       onClose={onClose}
+      onCancel={onCancel}
       entries={mergedEntries}
       onPick={onPick}
       getRowState={getRowState}

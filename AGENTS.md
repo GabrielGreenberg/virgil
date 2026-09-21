@@ -160,6 +160,13 @@ CI: `cross-window-storage-guardrail.test.ts`, `ai-requests-authority.test.ts`, `
 Doc: [docs/agents/laws/capture-schema-symmetry.md](docs/agents/laws/capture-schema-symmetry.md).
 CI: `excerpt-schema.test.ts`, `card-body-capture.test.ts`, `archive-anchored-capture.test.tsx`, `archive-retarget-displaced-anchors.test.tsx`, `atom-card-api-coverage.test.ts`, `applied-splice-wiring-guardrail.test.ts` ….
 
+### Escape means cancel
+
+> **Escape ABANDONS — never the key that saves, never a synonym for what a click elsewhere would do.** Where a surface or field can END more than one way, the endings are separate CHANNELS: COMMIT (button/Return), DISMISS (click-away/blur), CANCEL (Escape, and any control whose label names Escape). Two may coincide; they may never be forced to by sharing one prop. `useMenuDismiss`/`MenuProvider` take an `onCancel` Escape ends through, defaulting to `onClose` so a menu that stages nothing is unchanged; a DEFERRED-COMMIT surface (`CitationCreatePopover`) supplies both.
+
+Doc: [docs/agents/laws/escape-means-cancel.md](docs/agents/laws/escape-means-cancel.md).
+CI: `escape-means-cancel-census.test.ts`, `useMenuDismiss.test.tsx`, `citation-create-popover-escape-cancel.test.tsx`, `citation-code-escape-cancel.test.tsx`, `field-edit-session.test.tsx`.
+
 ### Transient state is never document content
 
 > **A view-only signal painted over the document — a search hit, a diagnostics error range, a hovered card's anchor, a quoted revision — is a ProseMirror DECORATION replaced by a meta-only transaction. Never a mark, never a node attribute the document carries.**
