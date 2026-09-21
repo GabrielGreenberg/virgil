@@ -69,10 +69,31 @@ export interface BibEntryCardProps {
   /** Optional Add-to-local affordance for global search results. When set,
    *  renders a small "Add" / "Added" pill in the card header. */
   addAction?: { onAdd: () => void; alreadyAdded: boolean };
-  /** When false, disables HTML5 drag of this card (e.g. for Global preview
-   *  cards that aren't yet in the local bib — dragging would yield a
-   *  broken \cite). Defaults to true. */
-  draggable?: boolean;
+  /**
+   * Present ⇒ this card is a PREVIEW of a record that does not belong to this
+   * paper — today, a central-library (`master.bib`) search result — and the
+   * whole write surface is withheld, with `reason` shown in its place
+   * (task 692).
+   *
+   * Every write this card can perform is addressed by `entry.key` into THIS
+   * paper's stores: the `.bib` save, the annotation, the review requests. On a
+   * library result that address is either NOTHING (the citekey is not in the
+   * local bib — the edit vanished with no feedback) or, worse, a DIFFERENT
+   * record (the citekey is local, so a set-all Save from a library-seeded
+   * editor overwrote the paper's own entry, deleting every field the library
+   * copy lacked). The card is what knows which affordances write, so the card
+   * is where the question is answered — ONCE, not per affordance: the
+   * callbacks are reachable only through `writes`, which is `null` here, so a
+   * write surface added later cannot reach one without answering it.
+   *
+   * It also withholds the two doors that lead BACK to a writable card: the
+   * drag (a `\cite{}` for a key the paper's bibliography does not hold) and
+   * the pop-out identity (`registerCardFloatable("bib")` resolves an id
+   * against the LOCAL entries, so lifting a library result opened either a
+   * blank float or a fully-writable card for whichever local entry shared its
+   * citekey — the cross-target write again, one gesture further out).
+   */
+  readOnly?: { reason: string };
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -296,10 +317,33 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onSaveBibEntry,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
-  onTogglePopout, isPoppedOut, headerMeta, addAction, draggable = true,
+  onTogglePopout, isPoppedOut, headerMeta, addAction, readOnly,
 }: BibEntryCardProps) {
+  /**
+   * THE gate (task 692). Every write callback this card holds is reachable
+   * only through here, and here is `null` on a preview card — so "may this
+   * card write to the paper?" is asked once, structurally, instead of being
+   * re-answered (or forgotten) by each affordance. A new write surface that
+   * reaches for `onSaveBibEntry` directly is the defect; reaching through
+   * `writes` makes the compiler ask the question.
+   */
+  const writes = readOnly
+    ? null
+    : {
+        save: onSaveBibEntry,
+        setAnnotation,
+        requestReview: onRequestReview,
+        cancelReview: onCancelReview,
+      };
+  /** A preview card never drags: its `\cite{key}` would name a key this
+   *  paper's `references.bib` does not hold. (This was a separate `draggable`
+   *  prop whose only producer was the same preview flag — one fact, one
+   *  switch.) */
+  const draggable = !readOnly;
   const popped = usePoppedCards();
-  const popKey = buildPopKey("bibliography", entry.key);
+  /** No float IDENTITY for a preview card — `canLift` clause 1 reads exactly
+   *  this, so withholding it is the registry's own "not poppable" answer. */
+  const popKey = readOnly ? undefined : buildPopKey("bibliography", entry.key);
   const theme = useCardKindTheme("bib");
   const bibBodyStyle = usePanelBodyStyle("bib");
   // Per-entry state
@@ -361,6 +405,11 @@ export default function BibEntryCard({
     setShowBibWarning(true);
   };
   const commitEditBib = () => {
+    // The gate, read where the write actually happens (task 692). The editor
+    // that reaches this is not rendered on a preview card at all, so this is
+    // belt-and-braces — but it is the compiler's belt: `writes.save` cannot be
+    // called without it.
+    if (!writes) return;
     // THE door (task 690). Save used to accept anything the two free-text
     // boxes held: an empty `@type` wrote `@{key,…}` — a block Virgil's own
     // extractor cannot read back, so the next parse dropped the entry and the
@@ -378,7 +427,7 @@ export default function BibEntryCard({
     // The editor's `editBibFields` is the COMPLETE intended field set (seeded
     // from `entry.fields`, edited in place), so a Save is set-all — a field the
     // user cleared must be deleted, not silently retained (BIB-A3-02).
-    onSaveBibEntry(entry, {
+    writes.save(entry, {
       fields: editBibFields,
       type: editBibType.trim(),
       key: editBibKey.trim(),
@@ -437,15 +486,18 @@ export default function BibEntryCard({
   }, [entry.key, bibPackage, bibEntries]);
 
   const handleRequestToggle = (type: "fields" | "notes") => {
+    // A review request is a WRITE — it mints an AI request against this
+    // paper's inbox, keyed by a citekey the preview card does not own.
+    if (!writes) return;
     const status = getReviewStatus(entry.key, type);
     const dk = draftKey(type);
     if (status === "pending") {
-      onCancelReview(entry.key, type);
+      writes.cancelReview(entry.key, type);
       setRequestNoteOpen((prev) => { const n = new Set(prev); n.delete(dk); return n; });
       setRequestNoteDrafts((prev) => { const n = { ...prev }; delete n[dk]; return n; });
     } else {
       const notes = requestNoteDrafts[dk] || "";
-      onRequestReview(entry.key, type, notes || undefined);
+      writes.requestReview(entry.key, type, notes || undefined);
       if (type === "fields") setFieldsOpen(true);
       else setAnnotationOpen(true);
       setRequestNoteOpen((prev) => { const n = new Set(prev); n.add(dk); return n; });
@@ -539,6 +591,7 @@ export default function BibEntryCard({
             <Chevron expanded={fieldsOpen} />
             <span>BibTeX Fields</span>
           </button>
+          {writes && (
           <button
             onClick={(e) => { e.stopPropagation(); handleRequestToggle("fields"); }}
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
@@ -550,6 +603,7 @@ export default function BibEntryCard({
           >
             {fieldsReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><g transform="rotate(15 12 12)"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></g></svg><span>Request review</span></>)}
           </button>
+          )}
         </div>
 
         {fieldsOpen && (
@@ -645,8 +699,17 @@ export default function BibEntryCard({
                       <span className="text-ink-body">{val}</span>
                     </div>
                   ))}
-                  <button onClick={(e) => { e.stopPropagation(); startEditBib(); }}
-                    className="text-xs text-ink-muted hover:text-ink-body underline mt-1">Edit entry</button>
+                  {/* The write surface, or the reason there isn't one
+                      (task 692). A preview card's Save addressed this paper's
+                      bibliography by citekey: it either matched nothing and
+                      vanished, or matched a DIFFERENT record and overwrote it
+                      set-all. Saying so beats a button that lies. */}
+                  {writes ? (
+                    <button onClick={(e) => { e.stopPropagation(); startEditBib(); }}
+                      className="text-xs text-ink-muted hover:text-ink-body underline mt-1">Edit entry</button>
+                  ) : (
+                    <div className="text-xs text-ink-muted mt-1 italic">{readOnly!.reason}</div>
+                  )}
                 </div>
               )}
             </div>
@@ -655,6 +718,13 @@ export default function BibEntryCard({
       </div>
 
       {/* ── Pod: Annotations ──────────────────────────── */}
+      {/* The annotation is THIS paper's note on THIS paper's entry, read and
+          written by citekey. On a library-preview card it is neither: it
+          would show (and overwrite) the note of whatever local entry happened
+          to share the citekey, or silently file one under a key the
+          bibliography does not hold. The pod is the write, so it goes with
+          the gate (task 692). */}
+      {writes && (
       <div className="mt-2">
         <div className="flex items-center gap-1.5">
           <button onClick={(e) => { e.stopPropagation(); setAnnotationOpen((p) => !p); }}
@@ -688,16 +758,17 @@ export default function BibEntryCard({
               </div>
             )}
             <div className={PANEL.subpodWhite}>
-              <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={setAnnotation} />
+              <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes.setAnnotation} />
             </div>
           </div>
         )}
       </div>
+      )}
     </>
   );
 
   const onToggleFromCtx = onTogglePopout
-    ?? (popped
+    ?? (popped && popKey
       ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
       : undefined);
 
