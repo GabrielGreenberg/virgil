@@ -22,8 +22,9 @@ import {
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import {
-  bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
+  type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -99,6 +100,29 @@ function migrateNotes(raw: unknown): NotesState {
     return { cards: s.notes.map(migrateNote) };
   }
   return { cards: [] };
+}
+
+/** The `ai-requests.json` payload a note contributes — named so both bridge
+ *  doors (present card / absent card) read one shape (task 697). */
+function noteContext(note: UserNote): BridgeContext {
+  return {
+    text: note.title || "<note>",
+    paragraphIds: getLinkedTextObjectIds(note),
+    selectedText: getTextAnchor(note)?.anchorText,
+  };
+}
+
+/** The `ai-requests.json` payload a highlight contributes. A highlight is
+ *  intrinsically Mode-B, so its anchor text is BOTH the body and the
+ *  selection — including the `""` when there is no anchor, which is the
+ *  shape already on disk. */
+function highlightContext(card: HighlightCard): BridgeContext {
+  const anchorText = getTextAnchor(card)?.anchorText || "";
+  return {
+    text: anchorText || "<highlight>",
+    paragraphIds: getLinkedTextObjectIds(card),
+    selectedText: anchorText,
+  };
 }
 
 export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
@@ -384,20 +408,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           c.id === id && c.kind === "note" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (note) {
-        void bridgeCardAiRequestFlag(
-          docId,
-          "note",
-          id,
-          value,
-          {
-            text: note.title || "<note>",
-            paragraphIds: getLinkedTextObjectIds(note),
-            selectedText: getTextAnchor(note)?.anchorText,
-          },
-          mode,
-        );
-      }
+      // Card-MAY-BE-ABSENT (task 697): clearing a flag needs no note, so the
+      // CONTEXT degrades and the CALL still fires — an AIWindow Cancel on a
+      // row whose note is gone still closes the row.
+      bridgeFlagForCard(docId, "note", id, value, mode, note, noteContext);
     },
     [update, pristine, docId, notes],
   );
@@ -410,21 +424,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           c.id === id && c.kind === "highlight" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) {
-        const anchorText = getTextAnchor(card)?.anchorText || "";
-        void bridgeCardAiRequestFlag(
-          docId,
-          "highlight",
-          id,
-          value,
-          {
-            text: anchorText || "<highlight>",
-            paragraphIds: getLinkedTextObjectIds(card),
-            selectedText: anchorText,
-          },
-          mode,
-        );
-      }
+      bridgeFlagForCard(docId, "highlight", id, value, mode, card, highlightContext);
     },
     [update, docId, highlights],
   );

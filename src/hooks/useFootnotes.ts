@@ -7,7 +7,7 @@ import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import {
-  bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
 } from "@/lib/ai-request-bridge";
 import {
@@ -237,22 +237,21 @@ export function useFootnotes(
         persist(next);
         return next;
       });
-      const summary = ref
-        ? richJsonToPlainText(normalizeRichContent(ref.content)).trim()
-        : "";
+      // Card-MAY-BE-ABSENT (task 697). This hook never had the `if (ref)`
+      // gate its five siblings had — it degraded the SUMMARY instead, which
+      // is the shape the others were fixed INTO — so it routes through the
+      // same door now, for one reason only: a seventh flag-bearing kind
+      // added later cannot reintroduce the gate by copying a neighbour.
+      // The anchor is sourced from the live DOC (`resolveAnchor`), not the
+      // ref, so the degraded context keeps its paragraph ids.
       const anchor = resolveAnchor?.(id);
-      void bridgeCardAiRequestFlag(
-        docId,
-        "footnote",
-        id,
-        value,
-        {
-          text: summary || "<footnote>",
-          paragraphIds: anchor?.paragraphIds,
-          selectedText: anchor?.selectedText,
-        },
-        mode,
-      );
+      bridgeFlagForCard(docId, "footnote", id, value, mode, ref, (found) => ({
+        text:
+          richJsonToPlainText(normalizeRichContent(found.content)).trim() ||
+          "<footnote>",
+        paragraphIds: anchor?.paragraphIds,
+        selectedText: anchor?.selectedText,
+      }));
     },
     [persist, pristine, docId, resolveAnchor],
   );

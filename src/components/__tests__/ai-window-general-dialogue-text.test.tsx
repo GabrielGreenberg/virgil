@@ -162,6 +162,7 @@ function props(over: Partial<AIWindowProps> = {}): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     deletePanelAiRequest: noop,
     clearLinkedAiRequest: noop,
+    cardLinkResolves: () => true, // task 697
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,
@@ -351,6 +352,7 @@ describe("a text-seeded general comment is committed at birth and servable", () 
       removeEntryRequest: () => {},
       deletePanelAiRequest: () => {},
       clearLinkedAiRequest: () => {},
+      cardLinkResolves: () => true, // task 697
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].kind).toBe("revision-general");

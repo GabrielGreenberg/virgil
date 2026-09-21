@@ -14,8 +14,9 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import {
-  bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
+  type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { cardHasContent } from "@/cards/has-content";
@@ -50,6 +51,16 @@ function migrateTodo(raw: unknown): TodoItem {
 function migrateTodos(raw: unknown): TodoState {
   const s = raw as Partial<TodoState>;
   return { items: Array.isArray(s.items) ? s.items.map(migrateTodo) : [] };
+}
+
+/** The `ai-requests.json` payload a todo contributes — named so both bridge
+ *  doors read one shape (task 697). A todo carries no Mode-B capture, so it
+ *  contributes no `selectedText`. */
+function todoContext(todo: TodoItem): BridgeContext {
+  return {
+    text: todo.text || "<todo>",
+    paragraphIds: getLinkedTextObjectIds(todo),
+  };
 }
 
 export function useTodos(docId: string | null, externalPristine?: PristineKindApi | null) {
@@ -157,19 +168,9 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, aiRequest: value } : i),
     }));
-    if (todo) {
-      void bridgeCardAiRequestFlag(
-        docId,
-        "todo",
-        id,
-        value,
-        {
-          text: todo.text || "<todo>",
-          paragraphIds: getLinkedTextObjectIds(todo),
-        },
-        mode,
-      );
-    }
+    // Card-MAY-BE-ABSENT (task 697): clearing a flag needs no todo, so the
+    // CONTEXT degrades and the CALL still fires.
+    bridgeFlagForCard(docId, "todo", id, value, mode, todo, todoContext);
   }, [update, pristine, docId, state.items]);
 
   const deleteItem = useCallback((id: string) => {

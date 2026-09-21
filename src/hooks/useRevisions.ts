@@ -28,7 +28,9 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import {
   bridgeCardAiRequestFlag,
+  bridgeFlagForCard,
   type AiRequestSyncMode,
+  type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
@@ -182,6 +184,16 @@ function migrateRevisions(raw: unknown): RevisionsState {
   return { cards: [], tracker };
 }
 
+/** The `ai-requests.json` payload a revision-comment contributes — the ONE
+ *  place its shape is written, shared by both bridge doors (task 697). */
+function revisionCommentContext(card: RevisionRequestCard): BridgeContext {
+  return {
+    text: card.text || "<revision comment>",
+    paragraphIds: getLinkedTextObjectIds(card),
+    selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+  };
+}
+
 export function useRevisions(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
@@ -205,13 +217,24 @@ export function useRevisions(
         "revision-comment",
         card.id,
         value,
-        {
-          text: card.text || "<revision comment>",
-          paragraphIds: getLinkedTextObjectIds(card),
-          selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-        },
+        revisionCommentContext(card),
         mode,
       );
+    },
+    [docId],
+  );
+
+  // The card-MAY-BE-ABSENT door onto the same seam (task 697) — see
+  // `bridgeFlagForCard`: clearing a flag needs no card, so the CONTEXT
+  // degrades rather than the CALL being skipped.
+  const bridgeCommentById = useCallback(
+    (
+      id: string,
+      card: RevisionRequestCard | undefined,
+      value: boolean,
+      mode: AiRequestSyncMode,
+    ) => {
+      bridgeFlagForCard(docId, "revision-comment", id, value, mode, card, revisionCommentContext);
     },
     [docId],
   );
@@ -476,9 +499,14 @@ export function useRevisions(
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) bridgeComment({ ...card, aiRequest: value }, value, mode);
+      bridgeCommentById(
+        id,
+        card && { ...card, aiRequest: value },
+        value,
+        mode,
+      );
     },
-    [update, pristine, state.cards, bridgeComment],
+    [update, pristine, state.cards, bridgeCommentById],
   );
 
   const updateSuggestionField = useCallback(

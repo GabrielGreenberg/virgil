@@ -230,3 +230,81 @@ export async function bridgeCardAiRequestFlag(
     });
   }
 }
+
+/**
+ * The context a bridge call carries when the CARD IS NOT IN HAND.
+ *
+ * Every field of `BridgeContext` is read on ONE branch of
+ * `bridgeCardAiRequestFlag` — the `value=true` ADD (and its re-toggle
+ * refresh). A drop (`value=false`) and a `"terminate"` both match on
+ * `(panel, cardId)` and read nothing from `ctx`. So a call that is closing a
+ * row needs no card, and the lifecycle forwarder in `EditorPane` has always
+ * said so out loud at its own site: *"ctx fields are read only on the ADD
+ * path, so a placeholder is fine."* This is that placeholder, named once.
+ */
+export const ABSENT_CARD_CONTEXT: BridgeContext = { text: "" };
+
+/**
+ * Bridge a card's `aiRequest` flag when the card MAY BE ABSENT from the
+ * caller's snapshot — **the CONTEXT degrades, the CALL does not** (task 697).
+ *
+ * Every panel hook's `setXAiRequest` looks its card up in a render-time state
+ * snapshot to build the ADD context, and five of them then gated the whole
+ * bridge call on that lookup: `if (card) bridge(...)`. The lookup is needed
+ * for exactly one thing — `text` / `paragraphIds` / `selectedText`, read only
+ * when `value === true`. Gating the DROP on it made the one call that could
+ * still close a stranded row skip itself for the one reason that cannot apply
+ * to it, so AIWindow's Cancel — the recovery affordance for a row whose card
+ * is gone — was inoperative in precisely that state: no row removed, no flag
+ * changed, no error, no feedback, and `/editor/review` draining the row
+ * forever. (The repo has closed the ways a row gets stranded four times over —
+ * tasks 219, 313, 093, 681 — and this is the escape hatch for when they don't.)
+ *
+ * So the two halves are separated here, ONCE, rather than re-decided in seven
+ * hooks:
+ *
+ *  - **card present** → today's rich context, unchanged.
+ *  - **card absent + `value=false`** (a drop, or a `"terminate"`) → the call
+ *    fires with `ABSENT_CARD_CONTEXT`. The row closes whether or not the card
+ *    is there, which is the whole point of a retraction.
+ *  - **card absent + `value=true`** (an ADD) → REFUSED, loudly in dev. There is
+ *    no honest context to file, and a row linked to a card that does not exist
+ *    is exactly the stranded state this function exists to clear. Mirrors the
+ *    routing-less guard in `bridgeCardAiRequestFlag`: a caller bug, made a
+ *    console error in dev and a no-op in prod.
+ *
+ * `context` is a THUNK over the found card so the caller's lookup cost and its
+ * card-shaped field access stay on the branch that needs them.
+ */
+export function bridgeFlagForCard<C>(
+  docId: string | null,
+  cardKind: CardKind,
+  cardId: string,
+  value: boolean,
+  mode: AiRequestSyncMode,
+  card: C | null | undefined,
+  context: (card: C) => BridgeContext,
+): void {
+  if (card) {
+    void bridgeCardAiRequestFlag(docId, cardKind, cardId, value, context(card), mode);
+    return;
+  }
+  if (value) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `[ai-request-bridge] refusing to FILE a request for ${cardKind} ` +
+          `"${cardId}": the card is not in its sidecar, so the row would be ` +
+          `stranded at birth. (Clearing a flag needs no card and is allowed.)`,
+      );
+    }
+    return;
+  }
+  void bridgeCardAiRequestFlag(
+    docId,
+    cardKind,
+    cardId,
+    false,
+    ABSENT_CARD_CONTEXT,
+    mode,
+  );
+}

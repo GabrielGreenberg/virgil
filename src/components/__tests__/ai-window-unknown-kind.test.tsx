@@ -64,6 +64,7 @@ function props(panelAiRequests: AiRequest[]): AIWindowProps {
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     deletePanelAiRequest: noop,
     clearLinkedAiRequest: noop,
+    cardLinkResolves: () => true, // task 697
     requestBibReview: noop,
     cancelBibReview: noop,
     addEntryRequest: noop,
@@ -83,6 +84,7 @@ function build(panelAiRequests: AiRequest[]) {
     removeEntryRequest: () => {},
     deletePanelAiRequest: () => {},
     clearLinkedAiRequest: () => {},
+    cardLinkResolves: () => true, // task 697
   });
 }
 
@@ -155,6 +157,7 @@ describe("an off-union kind cannot throw the AI window", () => {
       removeEntryRequest: () => {},
       deletePanelAiRequest,
       clearLinkedAiRequest: () => {},
+      cardLinkResolves: () => true, // task 697
     });
     vm.onCancel?.();
     expect(deletePanelAiRequest).toHaveBeenCalledWith("bad");

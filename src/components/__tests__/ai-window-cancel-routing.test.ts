@@ -51,6 +51,7 @@ function build(
   spies: {
     deletePanelAiRequest?: (id: string) => void;
     clearLinkedAiRequest?: (kind: CardKind, cardId: string) => void;
+    cardLinkResolves?: (kind: CardKind, cardId: string) => boolean;
   },
 ) {
   const vms = buildRequests({
@@ -62,6 +63,8 @@ function build(
     removeEntryRequest: () => {},
     deletePanelAiRequest: spies.deletePanelAiRequest ?? (() => {}),
     clearLinkedAiRequest: spies.clearLinkedAiRequest ?? (() => {}),
+    // task 697 — default: the link resolves (today's behaviour).
+    cardLinkResolves: spies.cardLinkResolves ?? (() => true),
   });
   return vms.find((v) => v.id === `panel:${r.id}`)!;
 }
@@ -78,6 +81,38 @@ describe("AIWindow cancel routes card-linked requests through the both-faces cle
     vm.onCancel!();
     expect(clearLinkedAiRequest).toHaveBeenCalledExactlyOnceWith("todo", "card-1");
     expect(deletePanelAiRequest).not.toHaveBeenCalled();
+  });
+
+  // ── task 697: "is there a link?" was the wrong question ──────────────────
+  it("a link that resolves to NO CARD falls back to the raw delete — the row still closes", () => {
+    // The row is linked, so this took the card-linked path and died there: the
+    // owning setter looked the card up in a render-time snapshot and gated the
+    // whole bridge call on finding it, so Cancel removed no row, changed no
+    // flag, raised no error — inoperative in exactly the state it exists for.
+    // There is no card flag to lower here, so the honest retraction is the row
+    // delete the UNLINKED branch already used.
+    const clearLinkedAiRequest = vi.fn();
+    const deletePanelAiRequest = vi.fn();
+    const vm = build(
+      req({ id: "stranded-1", kind: "todo", linkedTo: { panel: "todos", cardId: "gone" } }),
+      { clearLinkedAiRequest, deletePanelAiRequest, cardLinkResolves: () => false },
+    );
+    expect(vm.onCancel).toBeTypeOf("function");
+    vm.onCancel!();
+    expect(deletePanelAiRequest).toHaveBeenCalledExactlyOnceWith("stranded-1");
+    expect(clearLinkedAiRequest).not.toHaveBeenCalled();
+  });
+
+  it("the resolve probe is asked with the RESOLVED CardKind, not the wire kind", () => {
+    // `cutter-comment` and `revision-comment` both ride the wire kind
+    // "suggestion"; the probe has to be handed the pair-resolved kind or it
+    // would ask the wrong panel whether the card is there.
+    const cardLinkResolves = vi.fn(() => true);
+    build(
+      req({ kind: "suggestion", linkedTo: { panel: "cutter", cardId: "cx" } }),
+      { cardLinkResolves },
+    ).onCancel!();
+    expect(cardLinkResolves).toHaveBeenCalledWith("cutter-comment", "cx");
   });
 
   it("unlinked composer request → onCancel keeps the raw deletePanelAiRequest(id) path", () => {
