@@ -17,7 +17,7 @@ import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
-import type { AiRequestKind, AiRequestLink } from "@/lib/types";
+import type { AiRequestKindOnDisk, AiRequestLink } from "@/lib/types";
 import type { CardBodySchemaScope } from "@/lib/tiptap/borrowed-schema";
 import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
 
@@ -280,9 +280,17 @@ export const IN_TEXT_ANCHOR_ACCENTS: InTextAnchorAccentRow[] = (() => {
  *
  * O(1): a single Map read over the static registry — no collection scan, no
  * doc walk (keystroke sanctity).
+ *
+ * Takes the ON-DISK kind (task 682), not the narrower `AiRequestKind` the app
+ * writes: its caller is always holding a row read back from `ai-requests.json`,
+ * whose `kind` three writers — two outside the type system — can set to
+ * anything. Nothing about the lookup changes; an unrecognised token simply
+ * misses the Map and gets the `null` a corrupt link already gets. Demanding the
+ * narrow type here only pushed a cast onto five call sites, each of which would
+ * have been asserting something none of them knew.
  */
 export function linkedCardKindFrom(
-  reqKind: AiRequestKind,
+  reqKind: AiRequestKindOnDisk,
   panel: AiRequestLink["panel"],
 ): CardKind | null {
   return LINKED_CARD_KIND_BY_PAIR.get(`${reqKind}\0${panel}`) ?? null;

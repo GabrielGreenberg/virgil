@@ -49,6 +49,7 @@ import type {
   RevisionRequestCard,
 } from "@/lib/types";
 import { isRequestOpen, requestState } from "@/lib/ai-request-open";
+import { isAiRequestKind } from "@/lib/ai-request-kind";
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { linkedCardKindFrom } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -74,7 +75,12 @@ export type AIRequestKind =
   | "panel-citation"
   | "panel-todo"
   | "panel-suggestion"
-  | "panel-report";
+  | "panel-report"
+  | "panel-style-merge"
+  /** A row whose on-disk `kind` this build does not recognise (task 682). The
+   *  display vocabulary is TOTAL over the on-disk one precisely because the
+   *  on-disk one is not a closed set — see `panelDisplayKind`. */
+  | "panel-unknown";
 
 type AIRequestStatus = "open" | "responded" | "resolved";
 
@@ -208,7 +214,67 @@ const KIND_META: Record<
     description: "AI request for a report",
     themeKey: CARD_REGISTRY["report-request"].themeKey,
   },
+  // Filed by the Style dropdown, not a panel — so it names no card kind and
+  // wears the system AI-request accent, the one accent that belongs to the
+  // inbox itself rather than to a margin family (task 682). It used to be
+  // skipped by `buildRequests` entirely: a request that exists, has a status, a
+  // payload and a user who filed it, and no surface anywhere to cancel it from.
+  "panel-style-merge": {
+    label: "Style merge",
+    description: "Merge your preamble customizations into another style",
+    themeKey: "aiRequest",
+  },
+  // The UNRESOLVED row. Its chip wears the system `error` accent — the one
+  // that is not a margin family and cannot be re-tinted by a user override —
+  // because "this build cannot classify this request" is a fact about the app,
+  // not about a kind of card. Its `label` is the raw on-disk kind, set per row
+  // by `buildRequests`, so what the file actually says is on screen.
+  "panel-unknown": {
+    label: "Unrecognized",
+    description:
+      "This build does not recognize this request's kind — it may come from a newer version, a hand edit, or a skill typo. Shown so it can be seen and cancelled rather than silently dropped.",
+    themeKey: "error",
+  },
 };
+
+/** The display kind each `AiRequestKind` renders as. Type-exhaustive over the
+ *  union the APP writes — the on-disk widening is handled by
+ *  `panelDisplayKind`, which is the only caller. */
+const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
+  footnote: "panel-footnote",
+  note: "panel-note",
+  // Highlight AI requests render as notes in the AI window — same
+  // Notes-panel home, same composer affordances.
+  highlight: "panel-note",
+  citation: "panel-citation",
+  report: "panel-report",
+  todo: "panel-todo",
+  suggestion: "panel-suggestion",
+  "style-merge": "panel-style-merge",
+};
+
+/**
+ * The panel display kind for a row's on-disk `kind` — THE one place an
+ * unrecognised kind is resolved (task 682).
+ *
+ * `PANEL_KIND_MAP` is type-exhaustive over `AiRequestKind`, so every kind the
+ * APP writes is covered. But `ai-requests.json` has three writers, two of them
+ * outside the type system, and the field read back is a `string`
+ * (`AiRequestKindOnDisk`). Indexing the map with it resolved `undefined`, and
+ * the next dereference — `KIND_META[req.kind].themeKey` in `themeKeyForVM`,
+ * `KIND_META[req.kind].label` in `RequestCard` — THREW, taking the whole window
+ * down and the user's view of every other request in the paper with it.
+ *
+ * The cure is not a `?.` at each dereference: it is to make the display
+ * vocabulary TOTAL over the on-disk one, here, once, where the list is built.
+ * Downstream, `AIRequestVM.kind` is an `AIRequestKind` again and `KIND_META` is
+ * a total function of it — so no consumer needs to defend itself, and no future
+ * consumer has to remember to.
+ */
+function panelDisplayKind(kind: AiRequest["kind"]): AIRequestKind {
+  return isAiRequestKind(kind) ? PANEL_KIND_MAP[kind] : "panel-unknown";
+}
+
 
 /** The theme a request row's chip paints with: the resolved owning card's own
  *  theme where the row is card-linked, else the display kind's family default.
@@ -473,24 +539,7 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     });
   }
 
-  const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
-    footnote: "panel-footnote",
-    note: "panel-note",
-    // Highlight AI requests render as notes in the AI window — same
-    // Notes-panel home, same composer affordances.
-    highlight: "panel-note",
-    citation: "panel-citation",
-    report: "panel-report",
-    todo: "panel-todo",
-    suggestion: "panel-suggestion",
-    // style-merge requests are filed by the Style dropdown, not panels,
-    // and are filtered out below before reaching this map. The entry is
-    // here only so the Record<…> type stays exhaustive.
-    "style-merge": "panel-suggestion",
-  };
-
   for (const r of args.panelAiRequests) {
-    if (r.kind === "style-merge") continue;
     // DEDUP (task 628). A revision comment's bridged row is the SAME request the
     // comment branch above just emitted — and the row it took its state FROM.
     // Rendering it here too put one request in the window twice under two
@@ -512,9 +561,12 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
       : null;
     out.push({
       id: `panel:${r.id}`,
-      kind: PANEL_KIND_MAP[r.kind],
+      kind: panelDisplayKind(r.kind),
       themeKey: linkedKind ? CARD_REGISTRY[linkedKind].themeKey : undefined,
       status,
+      // The RAW on-disk kind, always — which is what makes an unrecognised row
+      // legible: its chip says "Unrecognized" and its label says what the file
+      // actually calls it.
       label: r.kind,
       snippet: r.text || "(empty draft)",
       createdAt: r.createdAt,
@@ -580,9 +632,14 @@ export function aiRequestDotStatus(args: {
   const hasOpen =
     bibReviewRequests.some((r) => FAMILY_STATE["bib-review"](r) === "open") ||
     bibEntryRequests.some((r) => FAMILY_STATE["bib-entry"](r) === "open") ||
-    panelAiRequests.some(
-      (r) => r.kind !== "style-merge" && FAMILY_STATE.panel(r) === "open",
-    ) ||
+    // NO kind filter (task 682). The skip that used to sit here was the mirror
+    // of `buildRequests`' own `style-merge` skip — the dot lighting over a
+    // window with nothing in it was the bug, so the two had to agree. They
+    // still do, in the other direction: the window now RENDERS a style merge,
+    // so the dot says so. And an UNRECOGNISED row is counted open by the same
+    // absence of a filter, deliberately: a row this build cannot classify is
+    // precisely the one the user should be nudged to go look at.
+    panelAiRequests.some((r) => FAMILY_STATE.panel(r) === "open") ||
     comments.some((c) => commentInboxRequest(c, bridgedComments)?.status === "open");
 
   if (hasOpen) return "warn";

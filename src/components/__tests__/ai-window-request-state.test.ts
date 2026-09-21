@@ -396,11 +396,31 @@ describe("the dot and the buckets are two readers of ONE derivation", () => {
     expect(dot({ comments: [comment({ aiRequest: false })] })).toBeNull();
   });
 
-  it("a pending style-merge lights NO dot — buildRequests filters it out", () => {
-    // The same lie one size down: the dot said something was waiting and the
-    // window it opens had nothing in it.
+  it("a pending style-merge RENDERS, and lights the dot with it (task 682)", () => {
+    // The 628 contract was "the dot must not say something is waiting over a
+    // window with nothing in it", and it was satisfied the cheap way: both
+    // surfaces skipped `style-merge`. But the row was real — a status, a
+    // payload, and a user who filed it from the Style dropdown — so the skip
+    // made it invisible AND uncancellable, a request with no surface anywhere.
+    // 682 satisfies the same contract from the other side: the window renders
+    // it (with its own chip and a working cancel), so the dot says so.
     const sm = panelReq({ id: "sm1", kind: "style-merge", linkedTo: undefined });
-    expect(build({ panelAiRequests: [sm] })).toEqual([]);
+    const rows = build({ panelAiRequests: [sm] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("panel-style-merge");
+    expect(rows[0].status).toBe("open");
+    expect(rows[0].onCancel).toBeTypeOf("function");
+    expect(dot({ panelAiRequests: [sm] })).toBe("warn");
+  });
+
+  it("a COMPLETE style-merge resolves like any other row and lights nothing", () => {
+    const sm = panelReq({
+      id: "sm2",
+      kind: "style-merge",
+      status: "complete",
+      linkedTo: undefined,
+    });
+    expect(build({ panelAiRequests: [sm] })[0].status).toBe("resolved");
     expect(dot({ panelAiRequests: [sm] })).toBeNull();
   });
 
