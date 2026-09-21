@@ -2,8 +2,18 @@
 //
 // CitationCreatePopover — the deferred-commit semantics of the citation create
 // popover (the user's chosen model): picking citekeys STAGES them and writes
-// NOTHING; the citation materializes only on commit (OK button, or click-away /
-// Escape) and ONLY when ≥1 key is staged. Clicking away empty creates nothing.
+// NOTHING; the citation materializes only on commit (the OK button, Return, or
+// click-away) and ONLY when ≥1 key is staged. Clicking away empty creates
+// nothing.
+//
+// Escape is the one exit that does NOT commit (task 687). Dismissal and cancel
+// used to share the picker's single `onClose` prop, so the key the user pressed
+// to back out INSERTED the citation and there was no abandon path short of
+// removing every staged chip by hand — while the repo had already settled that
+// Escape means cancel (task 555), twice inside this very panel. The last
+// describe block below drives the REAL picker through a REAL window Escape, so
+// it pins the whole chain (popover → CitekeyPicker → BibEntryPickerMenu →
+// MenuProvider → useMenuDismiss) and not a mock's idea of it.
 //
 // The underlying `CitekeyPicker` (search + library merge + floating menu) is
 // covered by its own tests; here it is mocked to a thin stub that surfaces the
@@ -25,6 +35,7 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
   CitekeyPicker: (props: {
     onSelectKey: (k: string) => void;
     onClose: () => void;
+    onCancel?: () => void;
     onEnterCommit?: (pickedKey?: string) => void;
     footer?: React.ReactNode;
   }) => (
@@ -59,9 +70,13 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
       <button data-testid="enter-empty" onClick={() => props.onEnterCommit?.(undefined)}>
         enter empty
       </button>
-      {/* The picker's onClose — what click-away / Escape route through. */}
+      {/* The picker's onClose — the DISMISS door (click-away). */}
       <button data-testid="dismiss" onClick={() => props.onClose()}>
         dismiss
+      </button>
+      {/* The picker's onCancel — the CANCEL door (Escape, the header ×). */}
+      <button data-testid="cancel" onClick={() => props.onCancel?.()}>
+        cancel
       </button>
       {props.footer}
     </div>
@@ -171,4 +186,32 @@ describe("CitationCreatePopover — Return commits (single keystroke)", () => {
     expect(onCommit).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+// ── Escape ABANDONS the staging (task 687) ─────────────────────────────────
+// One key changes, and only one: the popover's dismissal model is untouched
+// (the click-away legs above still commit). What changes is that the popover
+// now hands the picker TWO doors instead of one, so Escape can reach the
+// teardown without passing through the commit chokepoint.
+describe("CitationCreatePopover — Escape abandons", () => {
+  it("cancel with staged keys commits NOTHING and closes", () => {
+    const { onCommit, onClose } = setup();
+    fireEvent.click(screen.getByTestId("pick-smith"));
+    fireEvent.click(screen.getByTestId("pick-jones"));
+    fireEvent.click(screen.getByTestId("cancel"));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel with nothing staged closes exactly once (no double teardown)", () => {
+    const { onCommit, onClose } = setup();
+    fireEvent.click(screen.getByTestId("cancel"));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Anti-vacuity: both legs above assert `onClose` fired EXACTLY once, which a
+  // popover that never passed `onCancel` cannot satisfy — the mock's button
+  // would call `undefined?.()` and leave the count at zero. So they fail on the
+  // pre-fix shape for the right reason, not merely because nothing happened.
 });

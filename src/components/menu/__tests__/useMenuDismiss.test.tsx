@@ -5,7 +5,10 @@
 // listener); clicks inside the container / an exclude don't dismiss; an outside
 // click does; Escape closes with stopPropagation by default; the two-stage
 // onEscape interceptor consumes Escape without closing; a non-top controller
-// (ownsEscape:false) ignores Escape.
+// (ownsEscape:false) ignores Escape; and — task 687 — Escape routes to the
+// CANCEL door (`onCancel`) while click-outside keeps routing to the DISMISS
+// door, with `onCancel` defaulting to `onClose` so every plain menu is
+// unchanged.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, act } from "@testing-library/react";
@@ -44,18 +47,27 @@ function escape(opts?: { onStop?: () => void }) {
 
 interface HarnessProps {
   onClose: () => void;
+  onCancel?: () => void;
   exclude?: HTMLElement | null;
   ownsEscape?: boolean;
   onEscape?: () => boolean;
   stopPropagation?: boolean;
 }
 
-function Harness({ onClose, exclude, ownsEscape, onEscape, stopPropagation }: HarnessProps) {
+function Harness({
+  onClose,
+  onCancel,
+  exclude,
+  ownsEscape,
+  onEscape,
+  stopPropagation,
+}: HarnessProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   useMenuDismiss({
     containerRef,
     getExcludes: exclude !== undefined ? () => [exclude] : undefined,
     onClose,
+    onCancel,
     escape: { stopPropagation, onEscape },
     ownsEscape,
   });
@@ -153,6 +165,65 @@ describe("useMenuDismiss — Escape", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} ownsEscape={false} />);
     escape();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+// ── DISMISS is not CANCEL (task 687) ────────────────────────────────────────
+// The hook ends a menu through two doors that mean different things. Before
+// this split they shared one prop, so a surface that commits on dismissal —
+// the citation create popover — committed on Escape too, and the key the user
+// presses to abandon was the key that saved.
+describe("useMenuDismiss — Escape is the CANCEL door", () => {
+  it("Escape calls onCancel and NOT onClose when both are supplied", () => {
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    render(<Harness onClose={onClose} onCancel={onCancel} />);
+    escape();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("click-outside still calls onClose — the dismiss door is untouched", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    render(<Harness onClose={onClose} onCancel={onCancel} />);
+    flushDeferred();
+    mousedownOn(document.body);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("with no onCancel, Escape falls back to onClose (every plain menu)", () => {
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+    escape();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("the two-stage interceptor still outranks the cancel door", () => {
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    const onEscape = vi.fn(() => true);
+    render(
+      <Harness onClose={onClose} onCancel={onCancel} onEscape={onEscape} />,
+    );
+    escape();
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a non-top controller ignores Escape without reaching the cancel door", () => {
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <Harness onClose={onClose} onCancel={onCancel} ownsEscape={false} />,
+    );
+    escape();
+    expect(onCancel).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
 });

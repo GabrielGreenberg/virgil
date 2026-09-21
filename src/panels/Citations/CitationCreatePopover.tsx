@@ -15,6 +15,22 @@
  * the commit/dismiss semantics. Subsequent edits (prenote/postnote, command
  * type, add/remove keys) happen in the gutter card at its standard position —
  * unchanged.
+ *
+ * ── Dismissing keeps the staging; Escape ABANDONS it (task 687) ─────────────
+ * Committing on click-away is the deliberate design: the user staged keys, went
+ * elsewhere, and gets the citation they built. Escape is the opposite gesture,
+ * and the repo has already settled what it means (task 555, "Escape MEANS
+ * cancel everywhere" — honoured twice inside this very panel, by the Code field
+ * and the inline `+range`). The two used to share the picker's single `onClose`
+ * prop, so Escape INSERTED the citation and the popover had no abandon path
+ * short of removing every chip by hand. They are now two channels: `onClose`
+ * (dismiss) stays bound to the commit chokepoint, `onCancel` (Escape, and the
+ * header × whose label names Escape) tears down without committing.
+ *
+ * What a cancel does NOT undo: staging a library-only key calls `onAddBibEntry`
+ * at STAGE time, so an abandoned pick can leave an entry in `references.bib`.
+ * Deliberate — an uncited BibTeX entry is inert, whereas removing one on an
+ * abandon path is a bib mutation that could delete a key cited elsewhere.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,7 +51,7 @@ export interface CitationCreatePopoverProps {
    *  no-scroll atom at the captured pos + registers the gutter card. */
   onCommit: (keys: string[]) => void;
   /** Tear down the popover (always called after a commit, or alone on an
-   *  empty dismiss). */
+   *  empty dismiss, or alone on a cancel). */
   onClose: () => void;
 }
 
@@ -85,9 +101,16 @@ export function CitationCreatePopover({
     [onCommit, onClose],
   );
 
-  // Zero-arg wrapper for the mouse/Escape close paths — those call sites pass a
-  // DOM event (the OK/× button `onClick`), which must never reach `extraKey`.
+  // Zero-arg wrapper for the OK / click-away paths — those call sites pass a
+  // DOM event (the OK button's `onClick`), which must never reach `extraKey`.
   const commitAndClose = useCallback(() => commitWith(), [commitWith]);
+
+  // The CANCEL door: drop every staged key and tear down. Distinct from
+  // `commitAndClose` by ONE fact — it never reaches `onCommit` — and that fact
+  // is the whole of task 687. `onClose` is already the raw teardown, so the
+  // cancel IS `onClose`; naming it here keeps the two intents legible at the
+  // call site rather than leaving Escape looking like an unlabelled alias.
+  const discardAndClose = onClose;
 
   return (
     <CitekeyPicker
@@ -97,6 +120,7 @@ export function CitationCreatePopover({
       onSelectKey={stageKey}
       onAddBibEntry={onAddBibEntry}
       onClose={commitAndClose}
+      onCancel={discardAndClose}
       keepOpenOnPick
       onEnterCommit={commitWith}
       footer={

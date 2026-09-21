@@ -23,7 +23,10 @@
 //   - the maxHeight clamp passthrough (the container scrolls instead of
 //     overflowing the viewport);
 //   - parity: filter, Enter picks the active entry OR commits raw text,
-//     Escape closes, click-outside, click picks.
+//     Escape closes, click-outside, click picks;
+//   - the CANCEL door (task 687): Escape and the header × route to `onCancel`
+//     when the caller supplies one, click-outside keeps routing to `onClose`,
+//     and with no `onCancel` all three fall back to `onClose` unchanged.
 
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import {
@@ -541,5 +544,57 @@ describe("BibEntryPickerMenu combobox — parity (commit / click / escape / dism
     );
     expect(container.firstChild).toBeNull();
     expect(document.querySelector('[role="listbox"]')).toBeNull();
+  });
+});
+
+// ── Escape is the CANCEL door (task 687) ───────────────────────────────────
+// The picker's three exits mean different things to a caller that STAGES work:
+// click-outside is a dismiss (the citation create popover commits on it),
+// Escape and the header × are a cancel. They used to share `onClose`, so the
+// create popover inserted the citation the user pressed Escape to abandon.
+describe("BibEntryPickerMenu — the cancel door", () => {
+  // By label, not by role: jsdom never resolves the floating container's
+  // position, so it stays `visibility: hidden` and role queries skip it.
+  const closeX = () => screen.getByLabelText("Close (Esc)");
+
+  it("Escape calls onCancel and NOT onClose when one is supplied", () => {
+    const onCancel = vi.fn();
+    const { input, onClose } = setup({ onCancel });
+    fireEvent.keyDown(input!, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("the header × calls onCancel too — its own label names Escape", () => {
+    const onCancel = vi.fn();
+    const { onClose } = setup({ onCancel });
+    fireEvent.click(closeX());
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("click-outside still calls onClose — the dismiss door is untouched", () => {
+    vi.useFakeTimers();
+    const onCancel = vi.fn();
+    const { onClose } = setup({ onCancel });
+    act(() => {
+      vi.runAllTimers();
+    });
+    act(() => {
+      document.body.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true }),
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("with no onCancel, Escape and × both fall back to onClose", () => {
+    const { input, onClose } = setup();
+    fireEvent.keyDown(input!, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(closeX());
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
