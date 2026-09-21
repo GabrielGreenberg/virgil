@@ -534,7 +534,12 @@ export function applySuggestion<TStatus extends string>(
   const appliedChange: AppliedChangeDescriptor = {
     anchorId: result.anchorId,
     anchorUuid,
-    originalText: card.original_text,
+    // What the splice actually removed, not what the card asked to remove
+    // (task 696): where `locateSpan` had to repair a flattened `original_text`
+    // these differ, and this field is Revert's source — restoring the card's
+    // string would put the flattened line back into the paragraph in place of
+    // the marked-up bytes that were taken out.
+    originalText: result.originalText,
     replacement: card.suggested_text,
     mode,
     appliedAt: new Date().toISOString(),

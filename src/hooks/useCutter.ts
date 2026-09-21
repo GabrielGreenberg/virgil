@@ -80,6 +80,11 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     // string, so synthesising a rich body from it would put a second, lossier
     // answer where the door's own parse rung already gives the right one.
     ...(r.selectedContent ? { selectedContent: r.selectedContent } : {}),
+    // Task 696, same rule: carried through when present, never synthesised.
+    // Absent means a pre-696 card whose `original_text` is the flattened line
+    // — the apply path's plain-text rung is what repairs that, not a guess
+    // made here from a string that has already lost the markup.
+    ...(typeof r.selectedLatex === "string" ? { selectedLatex: r.selectedLatex } : {}),
     links,
   };
 }
@@ -118,6 +123,11 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     // string, so synthesising a rich body from it would put a second, lossier
     // answer where the door's own parse rung already gives the right one.
     ...(r.selectedContent ? { selectedContent: r.selectedContent } : {}),
+    // Task 696, same rule: carried through when present, never synthesised.
+    // Absent means a pre-696 card whose `original_text` is the flattened line
+    // — the apply path's plain-text rung is what repairs that, not a guess
+    // made here from a string that has already lost the markup.
+    ...(typeof r.selectedLatex === "string" ? { selectedLatex: r.selectedLatex } : {}),
     links,
   };
 }
@@ -220,7 +230,12 @@ export function useCutter(
     (
       paragraphId: string | null,
       content?: JSONContent,
-      anchor?: { anchorId: string; anchorText: string; anchorContent?: unknown },
+      anchor?: {
+        anchorId: string;
+        anchorText: string;
+        anchorContent?: unknown;
+        anchorLatex?: string;
+      },
       targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
       let card: CutterCommentCard = {
@@ -239,6 +254,12 @@ export function useCutter(
         // The RICH twin of the captured span (task 488): what the "Original"
         // surfaces render. `anchorText` stays the plain relocation currency.
         selectedContent: anchor?.anchorContent,
+        // The LATEX form of the same span (task 696). A comment has no
+        // `original_text`, but morphing it into a suggestion seeds one — so
+        // the apply currency has to be captured HERE, at the only moment the
+        // live span is still in hand, or the morph can only offer the
+        // flattened line.
+        selectedLatex: anchor?.anchorLatex,
         links: [],
       };
       if (paragraphId) card = addTextObjectLink(card, "cutter-comment", paragraphId, targetKind);
@@ -266,14 +287,26 @@ export function useCutter(
     (
       paragraphId: string | null,
       originalText?: string,
-      anchor?: { anchorId: string; anchorText: string; anchorContent?: unknown },
+      anchor?: {
+        anchorId: string;
+        anchorText: string;
+        anchorContent?: unknown;
+        anchorLatex?: string;
+      },
     ) => {
       let card: CutterSuggestionCard = {
         kind: "suggestion",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
         author: "human",
-        original_text: originalText ?? anchor?.anchorText ?? "",
+        // Task 696: the APPLY dialect, never the relocation one. `locateSpan`
+        // byte-matches this against the paragraph's inline-LaTeX
+        // serialization, so `anchorText` — which has dropped every mark and
+        // every inline atom — could only ever match a span that carried no
+        // markup. A span with no inline form leaves this EMPTY on purpose:
+        // `suggestionApplicability` then reads `no-capture` and the card says
+        // so, instead of offering an Apply that cannot succeed (task 695).
+        original_text: originalText ?? anchor?.anchorLatex ?? "",
         suggested_text: "",
         explanation: "",
         user_text: "",
@@ -281,8 +314,11 @@ export function useCutter(
         status: "pending",
         selectedText: anchor?.anchorText,
         // The RICH twin of the captured span (task 488) — display-only; the
-        // `original_text` string stays the currency the apply path splices.
+        // `original_text` string stays the currency the apply path splices,
+        // and `selectedLatex` (task 696) is that currency: the two are the
+        // same capture, so `original_text` above is seeded from it.
         selectedContent: anchor?.anchorContent,
+        selectedLatex: anchor?.anchorLatex,
         links: [],
       };
       if (paragraphId)

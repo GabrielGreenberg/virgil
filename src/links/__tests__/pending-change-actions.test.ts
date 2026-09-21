@@ -32,8 +32,10 @@ const revertPendingChange = vi.fn<(editor: unknown, args: unknown) => void>();
 // assert the SEQUENCE (anchor/mode compute → applyPendingChange → card-state
 // flip) without the real doc splice. Default: a successful replace.
 const applyPendingChange = vi.fn<
-  (editor: unknown, args: unknown) => { ok: true; anchorId: string } | { ok: false; reason: "stale" }
->(() => ({ ok: true, anchorId: "anc-applied" }));
+  (editor: unknown, args: unknown) =>
+    | { ok: true; anchorId: string; originalText: string }
+    | { ok: false; reason: "stale" }
+>(() => ({ ok: true, anchorId: "anc-applied", originalText: "old text" }));
 const flushPendingForDoc = vi.fn<(docId: unknown) => Promise<void>>(() =>
   Promise.resolve(),
 );
@@ -124,7 +126,11 @@ beforeEach(() => {
   revertPendingChange.mockClear();
   flushPendingForDoc.mockClear();
   applyPendingChange.mockClear();
-  applyPendingChange.mockImplementation(() => ({ ok: true, anchorId: "anc-applied" }));
+  applyPendingChange.mockImplementation(() => ({
+    ok: true,
+    anchorId: "anc-applied",
+    originalText: "old text",
+  }));
   insertParagraphAfter.mockClear();
   insertParagraphAfter.mockImplementation(() => true);
   removeLinkedAnchor.mockClear();

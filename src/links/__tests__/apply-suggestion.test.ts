@@ -200,7 +200,13 @@ describe("applyPendingChange — replace mode", () => {
         anchorId: ANCHOR_ID,
         family: "revision-suggestion",
       });
-      expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
+      // The success result now reports the bytes the splice actually cut
+      // (task 696) — on the verbatim rung, the needle itself.
+      expect(res).toEqual({
+        ok: true,
+        anchorId: ANCHOR_ID,
+        originalText: "quick brown fox",
+      });
       // The block is still a paragraph with the SAME uuid.
       const after = findNodeByUuid(editor, PARA_UUID);
       expect(after).not.toBeNull();
@@ -419,7 +425,11 @@ describe("applyPendingChange — delete mode", () => {
           anchorId: ANCHOR_ID,
           family: "revision-suggestion",
         });
-        expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
+        expect(res).toEqual({
+          ok: true,
+          anchorId: ANCHOR_ID,
+          originalText: "quick brown fox ",
+        });
         // The document TEXT is UNCHANGED — delete mode mutates no text on apply;
         // it only stamps the blue mark over the original span (the serialization
         // grows `\vlid…\vlidend` markers, but the rendered text is identical).
@@ -701,7 +711,11 @@ describe("applyPendingChange — preserves a coexisting linked anchor (9)", () =
         anchorId: ANCHOR_ID,
         family: "revision-suggestion",
       });
-      expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
+      expect(res).toEqual({
+        ok: true,
+        anchorId: ANCHOR_ID,
+        originalText: "jumps",
+      });
 
       // The new blue pending mark landed on EXACTLY the replacement.
       expect(markedTextFor(editor, ANCHOR_ID)).toBe("leaps");

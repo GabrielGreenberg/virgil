@@ -40,9 +40,18 @@
 //     they are swept in automatically the day `ReportCard` grows the field.
 //
 // TWO QUESTIONS, because there are two ways to lose a capture. A transform
-// literal must carry the PAIR (it is rebuilding a card that had one). ANY
-// literal — creation included — that names the plain half must name the rich
-// one, since one form alone is not a capture but a flattened line.
+// literal must carry EVERY form (it is rebuilding a card that had one). ANY
+// literal — creation included — that names the plain half must name the
+// others, since one form alone is not a capture but a flattened line.
+//
+// Task 2026-09-21-696 made the pair a TRIPLE: `selectedLatex`, the span's
+// inline LaTeX, is the dialect `apply-suggestion.ts` byte-matches — and a
+// suggestion seeded from the flattened line landed `stale` against a paragraph
+// that had not changed. Nothing in this file was rewritten to admit it, which
+// is the point: the forms are DERIVED from `types.ts` (every `selected*?:`
+// field a capture-bearing interface declares) and cross-checked against
+// `CAPTURE_HALVES` in `cards/envelope.ts`, so the fourth form is swept in by
+// being declared rather than by anyone remembering this file exists.
 //
 // WHAT IT CANNOT SEE, stated so nobody mistakes a pass for more than it is: it
 // reads declarations, not behaviour. It proves each in-scope literal routes
@@ -57,6 +66,7 @@ import { join } from "node:path";
 const HOOKS_DIR = join("src", "hooks");
 const MORPHS = join("src", "cards", "morphs", "index.ts");
 const TYPES = join("src", "lib", "types.ts");
+const ENVELOPE = join("src", "cards", "envelope.ts");
 
 /** BLANK (don't remove) comments, so prose ABOUT a capture — this repo
  *  documents the shapes it forbids, at length — is never read as code.
@@ -83,17 +93,38 @@ function balanced(src: string, from: number): string {
   return src.slice(from);
 }
 
-/** Interface names in `types.ts` that DECLARE the rich half of the pair. */
-function captureBearingTypes(): Set<string> {
+/** Interface names in `types.ts` that DECLARE the rich half of the pair, with
+ *  the full set of capture forms each one declares. A shape that declares
+ *  `selectedContent?` is capture-bearing; the forms are every `selected*?:`
+ *  field in its body, so a new one enters the census by being declared. */
+function captureBearingTypes(): Map<string, Set<string>> {
   const src = blankComments(readFileSync(TYPES, "utf8"));
-  const out = new Set<string>();
+  const out = new Map<string, Set<string>>();
   const re = /export interface (\w+)\s*\{/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     const body = balanced(src, src.indexOf("{", m.index));
-    if (/\bselectedContent\?:/.test(body)) out.add(m[1]);
+    if (!/\bselectedContent\?:/.test(body)) continue;
+    const forms = new Set<string>();
+    for (const f of body.matchAll(/\b(selected\w+)\?:/g)) forms.add(f[1]);
+    out.set(m[1], forms);
   }
   return out;
+}
+
+/** The union of every form declared on any capture-bearing shape. */
+function allCaptureForms(bearing: Map<string, Set<string>>): string[] {
+  const out = new Set<string>();
+  for (const forms of bearing.values()) for (const f of forms) out.add(f);
+  return [...out].sort();
+}
+
+/** The `CAPTURE_HALVES` SSOT the carry helper iterates. */
+function envelopeHalves(): string[] {
+  const src = blankComments(readFileSync(ENVELOPE, "utf8"));
+  const decl = src.slice(src.indexOf("CAPTURE_HALVES"));
+  const body = decl.slice(decl.indexOf("["), decl.indexOf("]") + 1);
+  return [...body.matchAll(/"(\w+)"/g)].map((m) => m[1]).sort();
 }
 
 type Site = { file: string; label: string; type: string; body: string };
@@ -138,15 +169,16 @@ function morphSites(): Site[] {
   return out;
 }
 
-/** A literal satisfies the pair if it routes through the SSOT or names both
- *  halves itself (the morph converters' explicit spelling). */
-function carriesPair(body: string): boolean {
+/** A literal satisfies the capture if it routes through the SSOT or names
+ *  EVERY declared form itself (the morph converters' explicit spelling). */
+function carriesCapture(body: string, forms: Iterable<string>): boolean {
   if (/carryCapturedPassage\s*\(/.test(body)) return true;
-  return /\bselectedText:/.test(body) && /\bselectedContent:/.test(body);
+  return [...forms].every((f) => new RegExp(`\\b${f}:`).test(body));
 }
 
-describe("captured-passage census (task 694)", () => {
+describe("captured-passage census (tasks 694 + 696)", () => {
   const bearing = captureBearingTypes();
+  const forms = allCaptureForms(bearing);
   const hookLiterals = hookLiteralSites();
   const morphs = morphSites();
   const sites = [...hookLiterals, ...morphs];
@@ -162,7 +194,7 @@ describe("captured-passage census (task 694)", () => {
     // The four task-488 shapes. If this shrinks to nothing the census below is
     // vacuous, which is the failure mode a derived guard must refuse.
     expect(bearing.size).toBeGreaterThanOrEqual(4);
-    expect([...bearing].sort()).toEqual(
+    expect([...bearing.keys()].sort()).toEqual(
       expect.arrayContaining([
         "CutterCommentCard",
         "CutterSuggestionCard",
@@ -172,38 +204,61 @@ describe("captured-passage census (task 694)", () => {
     );
   });
 
+  it("every capture-bearing shape declares the SAME forms, and the SSOT lists exactly them", () => {
+    // Two ways the triple comes apart that no per-literal check would see: one
+    // shape growing a form its siblings lack (so a morph between them is lossy
+    // by construction), and `CAPTURE_HALVES` drifting from what the shapes
+    // declare (so the carry silently skips a form every literal delegated to
+    // it). Both are asked here, of the declarations themselves.
+    expect(forms).toEqual(
+      expect.arrayContaining(["selectedText", "selectedContent", "selectedLatex"]),
+    );
+    for (const [name, declared] of bearing) {
+      expect([name, [...declared].sort()]).toEqual([name, forms]);
+    }
+    expect(envelopeHalves()).toEqual(forms);
+  });
+
   it("finds every capture-bearing transform literal (the census is not empty)", () => {
     // 4 clone literals + 4 capture-bearing morph converters.
     expect(transforms.length).toBeGreaterThanOrEqual(8);
   });
 
-  it("every transform that rebuilds a capture-bearing card carries the PAIR", () => {
-    const offenders = transforms.filter((s) => !carriesPair(s.body)).map((s) => s.label);
+  it("every transform that rebuilds a capture-bearing card carries EVERY form", () => {
+    const offenders = transforms
+      .filter((s) => !carriesCapture(s.body, bearing.get(s.type)!))
+      .map((s) => s.label);
     expect(offenders).toEqual([]);
   });
 
   it("no capture-bearing literal names the plain half alone", () => {
-    // The exact 694 defect, asked of EVERY literal whose shape declares the
-    // rich twin — creation sites included: `selectedText` without
-    // `selectedContent` and without the SSOT is a capture demoted to its
-    // flattened line, which no render-time parse can undo.
+    // The exact 694/696 defect, asked of EVERY literal whose shape declares the
+    // other forms — creation sites included: `selectedText` without its
+    // siblings is a capture demoted to its flattened line, which no
+    // render-time parse can undo and no apply path can match.
     const halfOnly = sites
       .filter(
         (s) =>
           bearing.has(s.type) &&
           /\bselectedText:/.test(s.body) &&
-          !carriesPair(s.body),
+          !carriesCapture(s.body, bearing.get(s.type)!),
       )
       .map((s) => s.label);
     expect(halfOnly).toEqual([]);
   });
 
-  it("no literal writes the rich half into a shape that cannot hold it", () => {
-    // The inverse: a `selectedContent:` line on a note/highlight/report literal
-    // would put a key in `notes.json` that its migrator drops on next load, so
-    // disk and memory would disagree for one session.
+  it("no literal writes a capture form into a shape that cannot hold it", () => {
+    // The inverse: a `selectedContent:` / `selectedLatex:` line on a
+    // note/highlight/report literal would put a key in `notes.json` that its
+    // migrator drops on next load, so disk and memory would disagree for one
+    // session.
+    const extra = forms.filter((f) => f !== "selectedText");
     const wrong = sites
-      .filter((s) => !bearing.has(s.type) && /\bselectedContent:/.test(s.body))
+      .filter(
+        (s) =>
+          !bearing.has(s.type) &&
+          extra.some((f) => new RegExp(`\\b${f}:`).test(s.body)),
+      )
       .map((s) => s.label);
     expect(wrong).toEqual([]);
   });

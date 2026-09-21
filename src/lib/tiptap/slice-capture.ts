@@ -78,6 +78,7 @@
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { serializeParagraphInline } from "@/lib/latex-serializer";
 import { cutFreshAttrs } from "@/lib/node-attr-sets";
 
 /** A range of a live document — the capture shape. The leaf takes the cut. */
@@ -109,9 +110,67 @@ export function isDocRange(v: unknown): v is DocRange {
  * with a capture would hide one.
  */
 export function captureRangeContent(doc: PMNode, from: number, to: number): JSONContent {
+  const content = cutRange(doc, from, to);
+  return normalizeRichContent({
+    type: "doc",
+    content: content ? (content.toJSON() as JSONContent[]) : [],
+  });
+}
+
+/**
+ * The THIRD derived form of the same capture (task 696): the span's inline
+ * **LaTeX**, or `null` when the span has no single inline form.
+ *
+ * A captured passage is ONE cut read in three dialects, and each door consumes
+ * a different one:
+ *
+ *  - **plain** (`doc.textBetween`) — the RELOCATION currency, what a Mode-B
+ *    anchor is re-found by on reload. Lossy by design and must stay so.
+ *  - **rich** ({@link captureRangeContent}) — the DISPLAY form, what the
+ *    "Original" surfaces mount so marks and inline atoms survive (task 488).
+ *  - **LaTeX** (here) — the APPLY currency. `apply-suggestion.ts` serializes
+ *    the anchored paragraph to inline LaTeX and requires the suggestion's
+ *    `original_text` to appear in it VERBATIM. A flattened line cannot appear
+ *    in a LaTeX serialization of the same span unless the span carried no
+ *    markup at all, so seeding `original_text` from the plain form made every
+ *    suggestion over an emphasis / citation / footnote / `$x$` land `stale`
+ *    on first press — with the paragraph untouched and the card told it had
+ *    changed (task 696).
+ *
+ * Deliberately taken from the RAW cut, BEFORE `normalizeRichContent` strips
+ * `linkedAnchor`: the live paragraph's serialization emits `\vlid{id}` /
+ * `\vlidend{id}` around any anchor inside the span, so keeping them is what
+ * makes the needle a verbatim substring of the haystack. The capture's OWN
+ * anchor is not in the cut — `createLinkedAnchor` captures before it marks —
+ * and its markers sit OUTSIDE the span, so the needle still matches.
+ *
+ * `null` (never a guess) when the span is not exactly one paragraph — a
+ * multi-block selection, a code block, a comment — or when the serializer
+ * refuses a node it cannot express (`UnserializableNodeError`, task 357).
+ * `locateSpan` only ever searches a single anchored paragraph, so a span with
+ * no inline form has no apply currency, and answering with a lossy one is
+ * exactly the defect this door exists to close.
+ */
+export function captureRangeLatex(doc: PMNode, from: number, to: number): string | null {
+  const content = cutRange(doc, from, to);
+  if (!content || content.childCount !== 1) return null;
+  const only = content.firstChild!;
+  if (only.type.name !== "paragraph") return null;
+  try {
+    return serializeParagraphInline(only.toJSON() as JSONContent);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE cut, taken once and read by every derived form above. Returns `null`
+ * for an empty or inverted range (see {@link captureRangeContent}).
+ */
+function cutRange(doc: PMNode, from: number, to: number): Fragment | null {
   const lo = Math.max(0, from);
   const hi = Math.min(doc.content.size, to);
-  if (hi <= lo) return normalizeRichContent({ type: "doc", content: [] });
+  if (hi <= lo) return null;
   const slice = doc.slice(lo, hi, true);
   let content = slice.content;
   if (content.childCount > 0) {
@@ -124,10 +183,7 @@ export function captureRangeContent(doc: PMNode, from: number, to: number): JSON
       closeEnd(content.lastChild!, slice.openEnd),
     );
   }
-  return normalizeRichContent({
-    type: "doc",
-    content: content.toJSON() as JSONContent[],
-  });
+  return content;
 }
 
 /** A copy of `node` with every attr a cut leaves behind cleared to its

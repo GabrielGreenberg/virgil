@@ -3457,3 +3457,72 @@ BEFORE `onCitationCreated`, which is the only order that helps: that mint
 persists a card through a sidecar write no filter can reach.
 
 CI: `drop-commit-seam.test.ts`.
+
+### The dialect half: ONE capture, THREE derived forms, and each door consumes its own
+
+Same law read at the *other* end (tasks 488 → 694 → 696). A capture is not one
+string; it is one CUT, read in as many dialects as there are doors, and a door
+handed the wrong dialect fails silently in whatever way that dialect is lossy.
+
+A Mode-B capture (`createLinkedAnchor`, [src/links/links.ts](../../../src/links/links.ts))
+now takes its range ONCE and derives three forms from it, all in the same leaf
+([src/lib/tiptap/slice-capture.ts](../../../src/lib/tiptap/slice-capture.ts)):
+
+| form | field | door | why it cannot be one of the others |
+| --- | --- | --- | --- |
+| **plain** (`doc.textBetween`) | `selectedText` | RELOCATION — the `textSnapshot` a Mode-B anchor is re-found by on reload | must stay plain doc text; that is what `reanchorByText` searches |
+| **rich** (`captureRangeContent`) | `selectedContent` | DISPLAY — what the "Original" surfaces mount | the plain string "drops marks and drops every inline ATOM outright, so no render-time parse can recover them" ([captured-passage.tsx](../../../src/panels/_shared/captured-passage.tsx)) |
+| **LaTeX** (`captureRangeLatex`) | `selectedLatex` | APPLY — what `locateSpan` byte-matches against the anchored paragraph's `serializeParagraphInline` | a flattened line is not a substring of a LaTeX serialization of the same span unless the span carried no markup at all |
+
+**The defect this closes (696).** `original_text` is documented at its own site
+as "the currency the apply path splices", and both add doors seeded it from
+`anchorText` — the RELOCATION form. So every human-made suggestion over an
+emphasis, a citation, a footnote or `$x$` missed the verbatim guard, answered
+`{ ok:false, reason:"stale" }`, and told the user the paragraph had changed when
+nothing had — marked "never retry", dead on first press. It was invisible
+because the AI path does not have it (a skill-authored `original_text` is real
+`.tex` read out of the paper) and because test fixtures use plain sentences. The
+dominant path was the MORPH seam: the quick gestures mint a COMMENT, and
+`cutterCommentToSuggestion` seeded `original_text` from `selectedText`.
+
+**The rules.**
+
+1. **Derive at the capture, never at the consumer.** Three capture sites that
+   can disagree about what the user selected is the shape being replaced; one
+   cut with three derivations cannot disagree.
+2. **Absent is an answer; a lossy substitute is not.** A span with no single
+   inline form (not one paragraph, or a node the serializer refuses) carries NO
+   `latex`, and the suggestion's `original_text` stays EMPTY — which
+   `suggestionApplicability` reads as `no-capture` and the card SAYS (task 695),
+   rather than offering an Apply that cannot succeed.
+3. **The forms travel as a unit.** `carryCapturedPassage` in
+   [src/cards/envelope.ts](../../../src/cards/envelope.ts) loops `CAPTURE_HALVES`
+   rather than naming fields, so a fourth form joins by being added to that list
+   — not by being remembered at every clone and morph literal, which is exactly
+   how `selectedContent` was lost for four months (694).
+4. **A stored capture is never silently rewritten.** Cards already on disk hold
+   the flattened line. `locateSpan` grows a second RUNG for them: find the
+   flattened needle in the paragraph's PLAIN projection, map the hit back to a
+   document range, **re-cut that range through the same capture leaf**, and
+   require THAT to be verbatim. The re-cut is what keeps the negative case
+   negative — the rung cannot widen what is spliceable, because its own result
+   still has to pass the verbatim test, so a marker-straddling needle and a
+   paragraph that genuinely changed both stay `stale`.
+5. **Report what was CUT, not what was ASKED for.** `ApplyResult` carries the
+   bytes the splice actually matched, and `appliedChange.originalText` records
+   that — because that field is Revert's source, and on the repair rung the two
+   differ.
+
+**Known residual (filed, not fixed here).** Delete-mode apply stamps its blue
+preview mark via `reanchorByText`, which searches the paragraph's TEXT — so it
+is handed the APPLY form where it wants the PLAIN one. That mismatch predates
+696 (AI-authored cards have always passed LaTeX there) and is the same law one
+door over; the Keep/Revert splices themselves go back through `locateSpan` and
+are unaffected.
+
+CI: `capture-dialect.test.ts` (capture + repair rung, one leg per markup kind,
+each asserting its own precondition that the verbatim rung cannot see the
+needle), `suggestion-capture-dialect.test.ts` (both panels' seeding),
+`morph-capture-dialect.test.ts` (the comment→suggestion seam, both directions),
+`capture-pair-census.test.ts` (the forms derived from `types.ts` and
+cross-checked against `CAPTURE_HALVES`).
