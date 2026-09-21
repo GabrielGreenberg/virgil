@@ -31,7 +31,7 @@
  *     `useSuggestions`, `useAnnotations`, `useCollab`,
  *     `useDocumentStyle`, `useLatexCompile`, `useWordCount`,
  *     `usePristineCardManager`, `useRecentlyAddedTracker`).
- *   - Owns 8 per-doc providers: `EditorRefProvider`, `AiRequestsProvider`,
+ *   - Owns 7 per-doc providers: `EditorRefProvider`,
  *     `CitationDisplayProvider`, `SelectionsProvider`, `RecentlyAddedProvider`,
  *     `CardCreationProvider`, `CollabProvider`, `PoppedCardsContext.Provider`.
  *   - The full panel infrastructure (strips on both sides, dock/float,
@@ -109,7 +109,6 @@ import {
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import {
@@ -3367,6 +3366,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [cutterHook, aiRequestsHook],
   );
+  // REJECT — a bare status write, the partner of Accept on the flag-OFF pending
+  // card AND the `stale` card's Dismiss under the flag (a drifted anchor can no
+  // longer be applied, so rejecting is all that is left).
+  const onRejectRevisionLegacy = useCallback(
+    (id: string) => revisionsHook.setSuggestionStatus(id, "rejected"),
+    [revisionsHook],
+  );
+  const onRejectCutterLegacy = useCallback(
+    (id: string) => cutterHook.setSuggestionStatus(id, "rejected"),
+    [cutterHook],
+  );
 
   // The SSOT controller any suggestion-card body reads for its applied-change
   // controls (docked panel, omni, float, margin) — see
@@ -3389,9 +3399,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         else onAcceptCutterLegacy(id);
       },
       reject: (family, id) => {
-        if (family === "revision-suggestion")
-          revisionsHook.setSuggestionStatus(id, "rejected");
-        else cutterHook.setSuggestionStatus(id, "rejected");
+        if (family === "revision-suggestion") onRejectRevisionLegacy(id);
+        else onRejectCutterLegacy(id);
       },
       keep: (family, id) => {
         if (family === "revision-suggestion") onKeepRevisionPending(id);
@@ -3439,8 +3448,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onApplyCutterPending,
       onAcceptRevisionLegacy,
       onAcceptCutterLegacy,
-      revisionsHook,
-      cutterHook,
+      onRejectRevisionLegacy,
+      onRejectCutterLegacy,
     ],
   );
 
@@ -5393,7 +5402,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateCutterCommentContent: cutterHook.updateCommentContent,
       setCutterCommentAiRequest: cutterHook.setCommentAiRequest,
       updateCutterSuggestionField: cutterHook.updateSuggestionField,
-      setCutterSuggestionStatus: cutterHook.setSuggestionStatus,
       convertCutterCard,
       deleteCutterCard: cutterHook.deleteCard,
 
@@ -5432,7 +5440,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateRevisionCommentContent: revisionsHook.updateCommentContent,
       setRevisionCommentAiRequest: revisionsHook.setCommentAiRequest,
       updateRevisionSuggestionField: revisionsHook.updateSuggestionField,
-      setRevisionSuggestionStatus: revisionsHook.setSuggestionStatus,
       convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
     }),
@@ -6110,14 +6117,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >
-        <AiRequestsProvider
-          value={{
-            aiRequests: aiRequestsHook.requests,
-            addAiRequest: aiRequestsHook.addRequest,
-            updateAiRequestText: aiRequestsHook.updateRequestText,
-            deleteAiRequest: aiRequestsHook.deleteRequest,
-          }}
-        >
         <CitationDisplayProvider
           value={{
             getCitationDisplayText: citationsHook.getDisplayText,
@@ -7725,7 +7724,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </RecentlyAddedProvider>
         </PristineCardsProvider>
         </CitationDisplayProvider>
-        </AiRequestsProvider>
       </EditorRefProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
@@ -8117,7 +8115,6 @@ function PaneRail({
           updateRevisionCommentContent={revisionsHook.updateCommentContent}
           setRevisionCommentAiRequest={revisionsHook.setCommentAiRequest}
           updateRevisionSuggestionField={revisionsHook.updateSuggestionField}
-          setRevisionSuggestionStatus={revisionsHook.setSuggestionStatus}
           convertRevisionCard={revisionsHook.convertCard}
           deleteRevisionCard={revisionsHook.deleteCard}
           latexErrors={diagnostics.allLatexErrors}
@@ -8135,7 +8132,6 @@ function PaneRail({
           updateCutterCommentContent={cutterHook.updateCommentContent}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
-          setCutterSuggestionStatus={cutterHook.setSuggestionStatus}
           convertCutterCard={cutterHook.convertCard}
           deleteCutterCard={cutterHook.deleteCard}
           reportCards={reportsHook.cards}

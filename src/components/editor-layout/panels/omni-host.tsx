@@ -137,7 +137,12 @@ export interface OmniHostProps {
   updateRevisionCommentContent: RevisionsHook["updateCommentContent"];
   setRevisionCommentAiRequest: RevisionsHook["setCommentAiRequest"];
   updateRevisionSuggestionField: RevisionsHook["updateSuggestionField"];
-  setRevisionSuggestionStatus: RevisionsHook["setSuggestionStatus"];
+  /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
+     could wire the card's Accept/Reject to a bare status write — the write that
+     made a popped-out suggestion do something different from the same card
+     docked, and left it at `accepted` with the prose un-applied and nothing
+     anywhere acting on it. The card resolves every landing verb from the
+     `PendingChangeController` context now, so no float needs the setter. */
   convertRevisionCard: RevisionsHook["convertCard"];
   deleteRevisionCard: RevisionsHook["deleteCard"];
   // Errors
@@ -161,7 +166,6 @@ export interface OmniHostProps {
   updateCutterCommentContent: CutterHook["updateCommentContent"];
   setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
-  setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
   /** Morph cutter comment ⇄ suggestion via the kind-chevron. */
   convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: CutterHook["deleteCard"];

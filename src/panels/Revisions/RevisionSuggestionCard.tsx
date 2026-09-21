@@ -4,7 +4,6 @@ import { useRef } from "react";
 import { cardKindsForPanel } from "@/cards/predicates";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
-  Button,
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,

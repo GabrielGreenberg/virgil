@@ -3,7 +3,6 @@
 import { useRef } from "react";
 import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
 import {
-  Button,
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,

@@ -75,6 +75,11 @@ import type {
 
 const REPO_SRC = join(process.cwd(), "src");
 
+/** The chrome bag `renderBody()` receives. Card bodies ignore both members
+ *  (their title is static / a `chromeSlots.title` morph control), so a pair of
+ *  inert stand-ins is the faithful card-side call. */
+const FLOAT_BODY_CTX = { setTitle: () => {}, windowKey: "float:card:test" };
+
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
 function paraLink(uuid: string): Link {
@@ -217,7 +222,7 @@ const FAMILIES = [
             // The bare status write the float host used to wire onAccept to.
             setRevisionSuggestionStatus: bareStatus,
             editorRef: { current: { jumpToCard: () => {} } },
-          } as unknown as CardFloatCtx)!.renderBody() as ReactElement,
+          } as unknown as CardFloatCtx)!.renderBody(FLOAT_BODY_CTX) as ReactElement,
       },
     ] satisfies Surface[],
   },
@@ -270,7 +275,7 @@ const FAMILIES = [
             deleteCutterCard: () => {},
             setCutterSuggestionStatus: bareStatus,
             editorRef: { current: { jumpToCard: () => {} } },
-          } as unknown as CardFloatCtx)!.renderBody() as ReactElement,
+          } as unknown as CardFloatCtx)!.renderBody(FLOAT_BODY_CTX) as ReactElement,
       },
     ] satisfies Surface[],
   },

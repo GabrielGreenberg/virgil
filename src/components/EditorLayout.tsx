@@ -156,7 +156,6 @@ import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clic
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
-import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
 import {
@@ -548,13 +547,12 @@ export default function EditorLayout() {
   } = useAnchoredSelectionSlots(activeCardStore);
   const todoItems = paneState?.todoItems ?? EMPTY_TODOS;
 
-  // AI requests: EditorPane owns the live hook; the layout reads the slice it
-  // feeds into AiRequestsProvider (the user-facing create/edit path is shadowed
-  // by EditorPane's OWN inner AiRequestsProvider, so this is correctness-only).
-  const aiRequests = paneState?.aiRequests ?? EMPTY_AI_REQUESTS;
-  const addAiRequest = paneState?.addRequest ?? noop;
-  const updateAiRequestText = paneState?.updateRequestText ?? noop;
-  const deleteAiRequest = paneState?.deleteRequest ?? noop;
+  // AI requests reach the Virgil bar through `vbar.aiRequests` (the memoized
+  // slice below), not through a context: the `ai-requests` context silo was
+  // RETIRED with task 684, when the two suggestion hosts — its only two readers
+  // — stopped wiring the landing verbs and the last `useAiRequestsContext()`
+  // call went with them. A provider nothing consumes is a dead seam, not a
+  // public one (`editor-layout-export-honesty`).
 
   // Archive: only `snippets` (panel/hover/anchor-sync) + `deleteSnippet` (the two
   // data-desync bridges: footnote-consumes-archive + drop-restore) are live.
@@ -3451,7 +3449,6 @@ export default function EditorLayout() {
 
   return (
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
-    <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
     <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated, getRefDisplayText }}>
     {/* SelectionsProvider derives the 9 anchored slots from the cardStore;
         we only thread the bib slot in through `value` because bib isn't
@@ -3975,7 +3972,6 @@ export default function EditorLayout() {
     </RecentlyAddedProvider>
     </SelectionsProvider>
     </CitationDisplayProvider>
-    </AiRequestsProvider>
     </EditorRefProvider>
   );
 }
