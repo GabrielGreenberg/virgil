@@ -137,7 +137,12 @@ export interface OmniHostProps {
   updateRevisionCommentContent: RevisionsHook["updateCommentContent"];
   setRevisionCommentAiRequest: RevisionsHook["setCommentAiRequest"];
   updateRevisionSuggestionField: RevisionsHook["updateSuggestionField"];
-  setRevisionSuggestionStatus: RevisionsHook["setSuggestionStatus"];
+  /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
+     could wire the card's Accept/Reject to a bare status write — the write that
+     made a popped-out suggestion do something different from the same card
+     docked, and left it at `accepted` with the prose un-applied and nothing
+     anywhere acting on it. The card resolves every landing verb from the
+     `PendingChangeController` context now, so no float needs the setter. */
   convertRevisionCard: RevisionsHook["convertCard"];
   deleteRevisionCard: RevisionsHook["deleteCard"];
   // Errors
@@ -161,7 +166,6 @@ export interface OmniHostProps {
   updateCutterCommentContent: CutterHook["updateCommentContent"];
   setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
-  setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
   /** Morph cutter comment ⇄ suggestion via the kind-chevron. */
   convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: CutterHook["deleteCard"];
@@ -440,22 +444,12 @@ export function OmniHost(p: OmniHostProps) {
   // Suggestion accept/reject — call setSuggestionStatus directly. The
   // native panel hosts also fire follow-up AI requests on accept; keeping
   // omni's accept lean keeps this builder side-effect-free.
-  const acceptRevisionInOmni = useCallback(
-    (id: string) => p.setRevisionSuggestionStatus(id, "accepted"),
-    [p.setRevisionSuggestionStatus],
-  );
-  const rejectRevisionInOmni = useCallback(
-    (id: string) => p.setRevisionSuggestionStatus(id, "rejected"),
-    [p.setRevisionSuggestionStatus],
-  );
-  const acceptCutterInOmni = useCallback(
-    (id: string) => p.setCutterSuggestionStatus(id, "accepted"),
-    [p.setCutterSuggestionStatus],
-  );
-  const rejectCutterInOmni = useCallback(
-    (id: string) => p.setCutterSuggestionStatus(id, "rejected"),
-    [p.setCutterSuggestionStatus],
-  );
+  // The four bare `setSuggestionStatus(id, "accepted"|"rejected")` closures
+  // omni used to hand the suggestion cards are GONE (task 684). They made an
+  // omni card do something different from the same card docked — a status write
+  // where the panel spliced the prose — and `accepted` is a status the flag-ON
+  // card has no rendering for. The card reads Apply / Accept / Reject from the
+  // `PendingChangeController` context now, so omni passes nothing.
 
   // Memoize the `items` array so its identity is stable across re-renders
   // unless the underlying data (or a selection id) actually changed. This
@@ -576,8 +570,6 @@ export function OmniHost(p: OmniHostProps) {
       updateCommentContent: p.updateRevisionCommentContent,
       setCommentAiRequest: p.setRevisionCommentAiRequest,
       updateSuggestionField: p.updateRevisionSuggestionField,
-      acceptSuggestion: acceptRevisionInOmni,
-      rejectSuggestion: rejectRevisionInOmni,
       convertCard: p.convertRevisionCard,
       deleteCard: p.deleteRevisionCard,
     }),
@@ -606,8 +598,6 @@ export function OmniHost(p: OmniHostProps) {
       updateCommentContent: p.updateCutterCommentContent,
       setCommentAiRequest: p.setCutterCommentAiRequest,
       updateSuggestionField: p.updateCutterSuggestionField,
-      acceptSuggestion: acceptCutterInOmni,
-      rejectSuggestion: rejectCutterInOmni,
       convertCard: p.convertCutterCard,
       deleteCard: p.deleteCutterCard,
     }),
@@ -649,7 +639,6 @@ export function OmniHost(p: OmniHostProps) {
     setFootnoteInOmni, setCitationInOmni,
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
     setRevisionInOmni, setCutterInOmni, setReportInOmni, p.setSelectedErrorId,
-    acceptRevisionInOmni, rejectRevisionInOmni, acceptCutterInOmni, rejectCutterInOmni,
     scrollToFootnote, scrollToCitation, scrollToExample, jumpToCard,
     findParagraphPos, resolveCardRows,
     editorInstance,

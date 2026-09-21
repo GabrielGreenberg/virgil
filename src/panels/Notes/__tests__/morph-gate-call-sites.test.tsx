@@ -254,8 +254,6 @@ describe("Revisions cards morph gate (task 288 call sites)", () => {
         card={suggestionCard()}
         selected={false}
         onUpdateField={noop}
-        onAccept={noop}
-        onReject={noop}
         onConvert={noop}
         onDelete={noop}
         onSelect={noop}
@@ -270,8 +268,6 @@ describe("Revisions cards morph gate (task 288 call sites)", () => {
         card={suggestionCard()}
         selected={false}
         onUpdateField={noop}
-        onAccept={noop}
-        onReject={noop}
         onDelete={noop}
         onSelect={noop}
       />,

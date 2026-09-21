@@ -4,7 +4,6 @@ import { useRef } from "react";
 import { cardKindsForPanel } from "@/cards/predicates";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
-  Button,
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,
@@ -20,7 +19,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import {
-  ApplyActionRow,
+  PendingActionRow,
   AppliedRecordBody,
   FIELD_ORDER,
   FieldBlock,
@@ -46,13 +45,6 @@ export function RevisionSuggestionCard({
   card,
   selected,
   onUpdateField,
-  onAccept,
-  onReject,
-  onApply,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- tolerated-vestigial: Keep/Revert now flow through the PendingChangeController context; kept so docked callers don't break.
-  onKeep,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- tolerated-vestigial: see onKeep.
-  onRevert,
   onConvert,
   onDelete,
   onSelect,
@@ -68,17 +60,12 @@ export function RevisionSuggestionCard({
     field: SuggestionField,
     value: string,
   ) => void;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
-  /** Pending-changes (flag-ON) client-side apply. `onApply` still wires the
-   *  docked pending→apply button. `onKeep`/`onRevert` are now tolerated-vestigial
-   *  (kept so existing docked callers don't break): the applied card routes
-   *  Keep/Revert through the `PendingChangeController` context instead, so the
-   *  minimal applied card renders identically on every surface (docked / omni /
-   *  float) without per-mount callbacks. */
-  onApply?: (id: string) => void;
-  onKeep?: (id: string) => void;
-  onRevert?: (id: string) => void;
+  /* NO landing-verb props (task 684). Apply / Accept / Reject / Keep / Revert
+     all resolve from the `PendingChangeController` context, so the card behaves
+     identically on every surface and a new mount site has nothing to forget.
+     A prop the type still has is a prop a future host will pass instead — which
+     is exactly how `onApply` came to be honoured docked and dropped in omni and
+     float, leaving one card doing three different things under one global flag. */
   onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -195,7 +182,7 @@ export function RevisionSuggestionCard({
         />
       ) : isStale ? (
         // Flag-ON stale: quiet notice + Dismiss (delete). No doc mutation.
-        <StaleNotice id={card.id} onDismiss={onReject} />
+        <StaleNotice id={card.id} family="revision-suggestion" />
       ) : compressed ? (
         <div className="px-3 pt-1.5 pb-1.5">
           <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
@@ -250,35 +237,11 @@ export function RevisionSuggestionCard({
           />
         ))}
 
-        {isPending &&
-          (pendingChangesOn && onApply ? (
-            // Flag-ON pending: a single primary Apply (manual for Phase 1b;
-            // Phase 2 auto-applies). Replaces the Accept/Reject pair.
-            <ApplyActionRow id={card.id} onApply={onApply} />
-          ) : (
-            <div className="flex gap-1.5 pt-1 pr-7">
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReject(card.id);
-                }}
-              >
-                Reject
-              </Button>
-              <Button
-                variant="warm"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAccept(card.id);
-                }}
-              >
-                Accept
-              </Button>
-            </div>
-          ))}
+        {/* Flag-ON: a single primary Apply (manual for Phase 1b; Phase 2
+            auto-applies). Flag-OFF: the legacy Reject / Accept pair. BOTH now
+            live behind the one shared row, which reads the verb from the
+            controller — see PendingActionRow (task 684). */}
+        {isPending && <PendingActionRow id={card.id} family="revision-suggestion" />}
       </div>
       )}
       {deleteConfirmDialog}

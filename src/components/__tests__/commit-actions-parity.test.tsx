@@ -91,6 +91,9 @@ function makeController() {
     previewOriginal: vi.fn(),
     previewSuggested: vi.fn(),
     insertBelow: vi.fn(),
+    apply: vi.fn(),
+    accept: vi.fn(),
+    reject: vi.fn(),
   };
 }
 
@@ -139,8 +142,6 @@ function renderCard(controller = makeController()) {
         card={makeApplied()}
         selected={false}
         onUpdateField={() => {}}
-        onAccept={() => {}}
-        onReject={() => {}}
         onConvert={() => {}}
         onDelete={() => {}}
         onSelect={() => {}}
@@ -210,8 +211,6 @@ describe("each call site keeps its own POINTER POLICY", () => {
             card={makeApplied()}
             selected={false}
             onUpdateField={() => {}}
-            onAccept={() => {}}
-            onReject={() => {}}
             onConvert={() => {}}
             onDelete={() => {}}
             onSelect={() => {}}

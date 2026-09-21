@@ -402,8 +402,6 @@ describe("omni builder anchorState classification", () => {
       updateCommentContent: noop,
       setCommentAiRequest: noop,
       updateSuggestionField: noop,
-      acceptSuggestion: noop,
-      rejectSuggestion: noop,
       convertCard: noop,
       deleteCard: noop,
     });
@@ -451,8 +449,6 @@ describe("omni builder anchorState classification", () => {
       updateCommentContent: noop,
       setCommentAiRequest: noop,
       updateSuggestionField: noop,
-      acceptSuggestion: noop,
-      rejectSuggestion: noop,
       convertCard: noop,
       deleteCard: noop,
     });

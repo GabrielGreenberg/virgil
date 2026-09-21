@@ -31,7 +31,7 @@
  *     `useSuggestions`, `useAnnotations`, `useCollab`,
  *     `useDocumentStyle`, `useLatexCompile`, `useWordCount`,
  *     `usePristineCardManager`, `useRecentlyAddedTracker`).
- *   - Owns 8 per-doc providers: `EditorRefProvider`, `AiRequestsProvider`,
+ *   - Owns 7 per-doc providers: `EditorRefProvider`,
  *     `CitationDisplayProvider`, `SelectionsProvider`, `RecentlyAddedProvider`,
  *     `CardCreationProvider`, `CollabProvider`, `PoppedCardsContext.Provider`.
  *   - The full panel infrastructure (strips on both sides, dock/float,
@@ -109,7 +109,6 @@ import {
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import {
@@ -346,7 +345,10 @@ import {
   type RequestWashCardLike,
 } from "@/links/_shared/request-wash";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { generateEntityId } from "@/lib/uuid";
+import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
 import {
+  applySuggestion,
   keepSuggestion,
   dismissSuggestion,
   previewOriginal as previewOriginalSuggestion,
@@ -3276,6 +3278,106 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [editor, docId, cutterInsertDeps],
   );
 
+  // ── The PENDING card's landing verbs (task 684) ──────────────────────────
+  // Apply / Accept / Reject used to be per-mount PROPS the docked host wired
+  // and omni + float silently dropped, while `virgil:pending-changes` — the flag
+  // that decides WHICH of them a pending card offers — is global and defaults
+  // ON. One card therefore did three different things on three surfaces. They
+  // join keep/dismiss/preview/insertBelow on the controller, so a surface has
+  // nothing left to pass and nothing left to forget.
+  //
+  // Each resolves its card from `*Hook.cards` at ACTION time (a click), exactly
+  // like `revisionInsertDeps` above: the `useCallback` depends on the HOOK
+  // object, whose identity is keystroke-stable, never on `.cards` — which would
+  // re-identify the controller on every keystroke and re-render every consuming
+  // card body. KEYSTROKE SANCTITY.
+  const onApplyRevisionPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      const s = revisionsHook.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      // The shared `applySuggestion` — the same path the auto-apply driver takes
+      // (Phase 2), so the manual button and the driver stay byte-identical. The
+      // card-state transitions happen inside via the deps.
+      applySuggestion<RevisionSuggestionCard["status"]>({
+        editor,
+        card: s,
+        family: "revision-suggestion",
+        setSuggestionStatus: revisionsHook.setSuggestionStatus,
+        setAppliedChange: revisionsHook.setAppliedChange,
+        generateAnchorId: generateEntityId,
+        appliedStatus: "applied",
+        staleStatus: "stale",
+      });
+    },
+    [editor, revisionsHook],
+  );
+  const onApplyCutterPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      const s = cutterHook.cards.find(
+        (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      applySuggestion<CutterSuggestionCard["status"]>({
+        editor,
+        card: s,
+        family: "cutter-suggestion",
+        setSuggestionStatus: cutterHook.setSuggestionStatus,
+        setAppliedChange: cutterHook.setAppliedChange,
+        generateAnchorId: generateEntityId,
+        appliedStatus: "applied",
+        staleStatus: "stale",
+      });
+    },
+    [editor, cutterHook],
+  );
+  // LEGACY (flag-OFF) Accept — status→accepted plus the out-of-band AI request
+  // that asks an editor skill to perform the splice. Moved here verbatim from
+  // `revisions-host` / `cutter-host`, which is why flag-OFF behaviour is
+  // unchanged: it is the same sequence, not a reimplementation of it.
+  const onAcceptRevisionLegacy = useCallback(
+    (id: string) => {
+      const s = revisionsHook.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      revisionsHook.setSuggestionStatus(id, "accepted");
+      aiRequestsHook.addRequest(
+        "suggestion",
+        buildSuggestionApplyPrompt("revision-suggestion", s),
+      );
+    },
+    [revisionsHook, aiRequestsHook],
+  );
+  const onAcceptCutterLegacy = useCallback(
+    (id: string) => {
+      const s = cutterHook.cards.find(
+        (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      cutterHook.setSuggestionStatus(id, "accepted");
+      aiRequestsHook.addRequest(
+        "suggestion",
+        buildSuggestionApplyPrompt("cutter-suggestion", s),
+      );
+    },
+    [cutterHook, aiRequestsHook],
+  );
+  // REJECT — a bare status write, the partner of Accept on the flag-OFF pending
+  // card AND the `stale` card's Dismiss under the flag (a drifted anchor can no
+  // longer be applied, so rejecting is all that is left).
+  const onRejectRevisionLegacy = useCallback(
+    (id: string) => revisionsHook.setSuggestionStatus(id, "rejected"),
+    [revisionsHook],
+  );
+  const onRejectCutterLegacy = useCallback(
+    (id: string) => cutterHook.setSuggestionStatus(id, "rejected"),
+    [cutterHook],
+  );
+
   // The SSOT controller any suggestion-card body reads for its applied-change
   // controls (docked panel, omni, float, margin) — see
   // `pending-change-controller`. Commit (keep/dismiss) reuses the stable
@@ -3288,6 +3390,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const pendingController = useMemo<PendingChangeController>(
     () => ({
       isOn: isPendingChangesOn() && !!editor,
+      apply: (family, id) => {
+        if (family === "revision-suggestion") onApplyRevisionPending(id);
+        else onApplyCutterPending(id);
+      },
+      accept: (family, id) => {
+        if (family === "revision-suggestion") onAcceptRevisionLegacy(id);
+        else onAcceptCutterLegacy(id);
+      },
+      reject: (family, id) => {
+        if (family === "revision-suggestion") onRejectRevisionLegacy(id);
+        else onRejectCutterLegacy(id);
+      },
       keep: (family, id) => {
         if (family === "revision-suggestion") onKeepRevisionPending(id);
         else onKeepCutterPending(id);
@@ -3330,6 +3444,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDismissCutterPending,
       onInsertBelowRevisionPending,
       onInsertBelowCutterPending,
+      onApplyRevisionPending,
+      onApplyCutterPending,
+      onAcceptRevisionLegacy,
+      onAcceptCutterLegacy,
+      onRejectRevisionLegacy,
+      onRejectCutterLegacy,
     ],
   );
 
@@ -5282,7 +5402,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateCutterCommentContent: cutterHook.updateCommentContent,
       setCutterCommentAiRequest: cutterHook.setCommentAiRequest,
       updateCutterSuggestionField: cutterHook.updateSuggestionField,
-      setCutterSuggestionStatus: cutterHook.setSuggestionStatus,
       convertCutterCard,
       deleteCutterCard: cutterHook.deleteCard,
 
@@ -5321,7 +5440,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateRevisionCommentContent: revisionsHook.updateCommentContent,
       setRevisionCommentAiRequest: revisionsHook.setCommentAiRequest,
       updateRevisionSuggestionField: revisionsHook.updateSuggestionField,
-      setRevisionSuggestionStatus: revisionsHook.setSuggestionStatus,
       convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
     }),
@@ -5999,14 +6117,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >
-        <AiRequestsProvider
-          value={{
-            aiRequests: aiRequestsHook.requests,
-            addAiRequest: aiRequestsHook.addRequest,
-            updateAiRequestText: aiRequestsHook.updateRequestText,
-            deleteAiRequest: aiRequestsHook.deleteRequest,
-          }}
-        >
         <CitationDisplayProvider
           value={{
             getCitationDisplayText: citationsHook.getDisplayText,
@@ -7614,7 +7724,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </RecentlyAddedProvider>
         </PristineCardsProvider>
         </CitationDisplayProvider>
-        </AiRequestsProvider>
       </EditorRefProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
@@ -8006,7 +8115,6 @@ function PaneRail({
           updateRevisionCommentContent={revisionsHook.updateCommentContent}
           setRevisionCommentAiRequest={revisionsHook.setCommentAiRequest}
           updateRevisionSuggestionField={revisionsHook.updateSuggestionField}
-          setRevisionSuggestionStatus={revisionsHook.setSuggestionStatus}
           convertRevisionCard={revisionsHook.convertCard}
           deleteRevisionCard={revisionsHook.deleteCard}
           latexErrors={diagnostics.allLatexErrors}
@@ -8024,7 +8132,6 @@ function PaneRail({
           updateCutterCommentContent={cutterHook.updateCommentContent}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
-          setCutterSuggestionStatus={cutterHook.setSuggestionStatus}
           convertCutterCard={cutterHook.convertCard}
           deleteCutterCard={cutterHook.deleteCard}
           reportCards={reportsHook.cards}
@@ -8411,9 +8518,6 @@ function PaneRailBody({
         updateCommentContent={cutterHook.updateCommentContent}
         setCommentAiRequest={cutterHook.setCommentAiRequest}
         updateSuggestionField={cutterHook.updateSuggestionField}
-        setSuggestionStatus={cutterHook.setSuggestionStatus}
-        setAppliedChange={cutterHook.setAppliedChange}
-        setArchived={cutterHook.setArchived}
         convertCard={cutterHook.convertCard}
         deleteCard={cutterHook.deleteCard}
         discardPristine={cutterHook.discardPristineCards}
@@ -8447,9 +8551,6 @@ function PaneRailBody({
         updateCommentContent={revisionsHook.updateCommentContent}
         setCommentAiRequest={revisionsHook.setCommentAiRequest}
         updateSuggestionField={revisionsHook.updateSuggestionField}
-        setSuggestionStatus={revisionsHook.setSuggestionStatus}
-        setAppliedChange={revisionsHook.setAppliedChange}
-        setArchived={revisionsHook.setArchived}
         convertCard={revisionsHook.convertCard}
         deleteCard={revisionsHook.deleteCard}
         discardPristine={revisionsHook.discardPristineCards}

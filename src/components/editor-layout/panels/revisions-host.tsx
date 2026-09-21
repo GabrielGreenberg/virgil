@@ -13,18 +13,7 @@ import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useRecentlyAddedId } from "../contexts/recently-added";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
-import {
-  applySuggestion,
-  keepSuggestion,
-  dismissSuggestion,
-  type PendingChangeCardDeps,
-} from "@/links/pending-change-actions";
-import { generateEntityId } from "@/lib/uuid";
-import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
-import { useDocWriteHandleOrNull } from "../DocPipeline";
 
 export interface RevisionsHostProps {
   side: Side;
@@ -44,18 +33,6 @@ export interface RevisionsHostProps {
       | "instructions",
     value: string,
   ) => void;
-  setSuggestionStatus: (
-    id: string,
-    status: RevisionSuggestionCard["status"],
-  ) => void;
-  /** Flag-ON only: set/clear the in-doc splice descriptor on a suggestion card
-   *  (Apply sets it, Keep clears it). Threaded from `useRevisions`. */
-  setAppliedChange: (
-    id: string,
-    appliedChange: RevisionSuggestionCard["appliedChange"] | undefined,
-  ) => void;
-  /** Flag-ON only: archive the surviving original-record card on Keep. */
-  setArchived: (id: string, archived: boolean) => void;
   convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
@@ -67,10 +44,7 @@ export function RevisionsHost(p: RevisionsHostProps) {
   const { selectedCommentId, setSelectedCommentId } = useSelectionsContext();
   const { createRevisionRequest, createRevisionSuggestion } =
     useCardCreationContext();
-  const { addAiRequest } = useAiRequestsContext();
   const recentlyAddedId = useRecentlyAddedId("revision");
-  const docHandle = useDocWriteHandleOrNull();
-  const docId = docHandle?.docId ?? null;
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
@@ -84,94 +58,12 @@ export function RevisionsHost(p: RevisionsHostProps) {
     [createRevisionSuggestion],
   );
 
-  const onAcceptSuggestion = useCallback(
-    (id: string) => {
-      const s = p.cards.find(
-        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
-      );
-      if (!s) return;
-      p.setSuggestionStatus(id, "accepted");
-      addAiRequest(
-        "suggestion",
-        buildSuggestionApplyPrompt("revision-suggestion", s),
-      );
-    },
-    [p, addAiRequest],
-  );
-
-  const onRejectSuggestion = useCallback(
-    (id: string) => {
-      p.setSuggestionStatus(id, "rejected");
-    },
-    [p],
-  );
-
-  // ── Pending-changes (flag-ON) — client-side Apply / Keep / Revert ──
-  // These three mirror the headless propose→apply loop entirely in-browser.
-  // Each no-ops gracefully when the flag is OFF, the editor isn't mounted, or
-  // the card has no resolvable Mode-A anchor (treat as not-applicable, never
-  // crash). The OFF path stays on onAcceptSuggestion/onRejectSuggestion above.
-
-  const onApplySuggestion = useCallback(
-    (id: string) => {
-      if (!isPendingChangesOn() || !editorInstance) return;
-      const s = p.cards.find(
-        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
-      );
-      if (!s) return;
-      // Route through the shared `applySuggestion` (the same path the auto-apply
-      // driver uses — Phase 2), so the manual button and the driver are
-      // byte-identical. Returns applied / stale / skipped; the card-state
-      // transitions happen inside via the deps.
-      applySuggestion<RevisionSuggestionCard["status"]>({
-        editor: editorInstance,
-        card: s,
-        family: "revision-suggestion",
-        setSuggestionStatus: p.setSuggestionStatus,
-        setAppliedChange: p.setAppliedChange,
-        generateAnchorId: generateEntityId,
-        appliedStatus: "applied",
-        staleStatus: "stale",
-      });
-    },
-    [p, editorInstance],
-  );
-
-  // Keep / Revert route through the shared `pending-change-actions` sequence
-  // (the same one the EditorPane margin-gutter marker calls — Phase 1c), so the
-  // two drivers stay byte-identical. The flag + editor-mounted guard stays here;
-  // the helper owns the `appliedChange`-presence no-op + the splice/flush/state
-  // sequence.
-  const revisionPendingDeps = useCallback(
-    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
-      getAppliedChange: (cid) =>
-        p.cards.find(
-          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-        )?.appliedChange,
-      setSuggestionStatus: p.setSuggestionStatus,
-      setArchived: p.setArchived,
-      setAppliedChange: p.setAppliedChange,
-      family: "revision-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
-    }),
-    [p],
-  );
-  const onKeepSuggestion = useCallback(
-    (id: string) => {
-      if (!isPendingChangesOn() || !editorInstance) return;
-      keepSuggestion(editorInstance, id, docId, revisionPendingDeps());
-    },
-    [editorInstance, docId, revisionPendingDeps],
-  );
-
-  const onRevertSuggestion = useCallback(
-    (id: string) => {
-      if (!isPendingChangesOn() || !editorInstance) return;
-      dismissSuggestion(editorInstance, id, docId, revisionPendingDeps());
-    },
-    [editorInstance, docId, revisionPendingDeps],
-  );
+  // Apply / Accept / Reject / Keep / Revert are NOT wired here any more
+  // (task 684). Every verb a suggestion card aims at the document or at its own
+  // status now resolves from the `PendingChangeController` context EditorPane
+  // provides, so this host and the two surfaces that never wired them — omni and
+  // float — are the same card. Their implementations moved to EditorPane beside
+  // keep/dismiss/preview/insertBelow; nothing was reimplemented.
 
   return (
     <RevisionsPanel
@@ -183,11 +75,6 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onUpdateCommentContent={p.updateCommentContent}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
-      onAcceptSuggestion={onAcceptSuggestion}
-      onRejectSuggestion={onRejectSuggestion}
-      onApplySuggestion={onApplySuggestion}
-      onKeepSuggestion={onKeepSuggestion}
-      onRevertSuggestion={onRevertSuggestion}
       onConvertCard={p.convertCard}
       onDelete={p.deleteCard}
       onSelect={setSelectedCommentId}

@@ -163,10 +163,12 @@ export interface PoppedCardDeps {
       | "instructions",
     value: string,
   ) => void;
-  setCutterSuggestionStatus: (
-    id: string,
-    status: CutterSuggestionCardData["status"],
-  ) => void;
+  /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
+     could wire the card's Accept/Reject to a bare status write — the write that
+     made a popped-out suggestion do something different from the same card
+     docked, and left it at `accepted` with the prose un-applied and nothing
+     anywhere acting on it. The card resolves every landing verb from the
+     `PendingChangeController` context now, so no float needs the setter. */
   /** Morph a cutter card comment ⇄ suggestion (A9 kind-chevron). */
   convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: (id: string) => void;
@@ -216,10 +218,12 @@ export interface PoppedCardDeps {
       | "instructions",
     value: string,
   ) => void;
-  setRevisionSuggestionStatus: (
-    id: string,
-    status: RevisionSuggestionCardData["status"],
-  ) => void;
+  /* NO `set<Family>SuggestionStatus` (task 684). It existed so the float host
+     could wire the card's Accept/Reject to a bare status write — the write that
+     made a popped-out suggestion do something different from the same card
+     docked, and left it at `accepted` with the prose un-applied and nothing
+     anywhere acting on it. The card resolves every landing verb from the
+     `PendingChangeController` context now, so no float needs the setter. */
   convertRevisionCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteRevisionCard: (id: string) => void;
 }
