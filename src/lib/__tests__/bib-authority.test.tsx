@@ -227,7 +227,7 @@ describe("useCitations: bib writes are merges over the DISK, not snapshots of th
   it("the view adopts a publish from ANOTHER writer in this window (a Library drop)", async () => {
     const result = await mountWith(block("a"));
     await act(async () => {
-      expect(await addEntriesToProjectBib(DOC, [entry("dropped")])).toBe(1);
+      expect((await addEntriesToProjectBib(DOC, [entry("dropped")])).appended).toBe(1);
     });
     await settle();
     expect(result.current.bibEntries.map((e) => e.key)).toEqual(["a", "dropped"]);
@@ -252,14 +252,20 @@ describe("project-bib: the Library drop and the panel save compose", () => {
     expect(DISK).toContain("title = {Saved}");
   });
 
-  it("a duplicate key appends nothing and reports 0; a removal reports its own outcome", async () => {
+  it("a duplicate key appends nothing and says WHY; a removal reports its own outcome", async () => {
     DISK = block("a");
     beginDocPipeline(DOC);
-    expect(await addEntriesToProjectBib(DOC, [entry("a")])).toBe(0);
-    expect(await addEntriesToProjectBib(DOC, [entry("a"), entry("b"), entry("b")])).toBe(1);
+    // "0 appended" is never a bare number: the door's own verdict rides with
+    // it, so a duplicate and a failed write cannot arrive as the same answer
+    // (task 685).
+    expect(await addEntriesToProjectBib(DOC, [entry("a")])).toEqual({
+      appended: 0,
+      result: { kind: "declined" },
+    });
+    expect((await addEntriesToProjectBib(DOC, [entry("a"), entry("b"), entry("b")])).appended).toBe(1);
     expect(keysOnDisk()).toEqual(["a", "b"]);
-    expect(await removeEntryFromProjectBib(DOC, "a")).toBe(true);
-    expect(await removeEntryFromProjectBib(DOC, "a")).toBe(false);
+    expect((await removeEntryFromProjectBib(DOC, "a")).kind).toBe("written");
+    expect((await removeEntryFromProjectBib(DOC, "a")).kind).toBe("declined");
     expect(keysOnDisk()).toEqual(["b"]);
   });
 
@@ -278,12 +284,12 @@ describe("project-bib: the Library drop and the panel save compose", () => {
     try {
       DISK = block("a");
       // No pipeline for this doc ⇒ no active write handle ⇒ null.
-      expect(await mutateProjectBib("no-such-doc", (es) => es)).toBeNull();
+      expect((await mutateProjectBib("no-such-doc", (es) => es)).kind).toBe("no-handle");
       beginDocPipeline(DOC);
-      expect(await mutateProjectBib(DOC, () => null)).toBeNull();
+      expect((await mutateProjectBib(DOC, () => null)).kind).toBe("declined");
       expect(seen).toEqual([]);
       const out = await mutateProjectBib(DOC, (es) => [...es]);
-      expect(out?.bibText).toBe(DISK);
+      expect(out.kind === "written" && out.bibText).toBe(DISK);
       expect(seen).toHaveLength(1);
     } finally {
       window.removeEventListener(DOC_BIB_CHANGED_EVENT, onEvent);

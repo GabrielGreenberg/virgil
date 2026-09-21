@@ -1938,3 +1938,59 @@ write that already failed rather than a condition still true.
 library paper and confirm it is refused visibly rather than appearing and
 vanishing). AI-request-inbox behaviour masks in the dev preview; the durable
 proof here is `src/hooks/__tests__/sidecar-refusal-reconcile.test.tsx`.
+
+### The bibliography half (task 685): the last CONTENT file on the sentinel
+
+Tasks 630/637 drained the swallow out of the `virgil/` sidecars.
+`references.bib` is not one of them — it is CONTENT, the user's bibliography,
+cited by the `.tex` — and it was the one content file still ending a failed
+write at a `console.error`. `mutateProjectBib` answered a single `null` for
+no-doc, no-handle, a library paper the door refuses, a declined mutator and a
+genuine IO throw; and because only a LANDED write publishes, nothing ever ran a
+convergence pass, so the optimistic in-memory list stood as truth for the rest
+of the session over a file that had never changed. The card read saved; the
+bibliography did not exist on disk.
+
+The corollary's three sentences hold here verbatim, plus one the sidecars did
+not need:
+
+- **The door answers WHICH outcome** — `BibWriteResult`, the same six kinds
+  under the same names, down to the same `ran` technique for telling a DECLINED
+  mutator from a door that refused the file before the mutator ever ran. Two
+  serialized authorities reporting the same six facts get ONE vocabulary, not
+  two.
+- **The refusal is PUBLISHED**, on the same one channel, under the noun
+  `"bibliography"` — one noun for the FILE, not one per writer, because "the
+  bibliography" is what a panel edit, a Library drop and a remove-menu all
+  were. A `failed` result cannot be constructed in the authority without being
+  voiced: one function builds it and publishes it in one expression.
+- **Roll-back is a RECONCILE** — here literally a re-read. `runBibMutation`
+  keeps its optimistic preview (the UI must not wait on the disk) and re-reads
+  the file on `failed`, so the un-persisted edit leaves the screen instead of
+  outliving the write.
+- **New: WHICH refusals are voiced is a stated policy, and for this file it is
+  `failed` ALONE.** `no-handle` and `read-only` are not the same fact here that
+  they are for a sidecar: the bib's writers include window-event listeners that
+  run in EVERY mounted `LibraryTabView`, for a `docId` that need not be that
+  pane's, and a library paper's `.bib` is the library's own artifact the Reader
+  is right to refuse. A danger band on those would be noise about a paper the
+  user is not editing. A THROW is different in kind — a handle was there, the
+  write was attempted on the user's own content, and it did not land. The
+  policy is statable at all only because the sentinel is gone.
+
+**A count is a sentinel too.** `addEntriesToProjectBib` returned `0` for "every
+key was already there" and for "the write failed" alike, and its sole caller
+discarded the number. It returns `{ appended, result }` now, and
+`addEntryToProjectBib` — whose entire content was that same conflation one
+layer up, with zero callers repo-wide — is deleted rather than kept as a third
+conflating door.
+
+**Carried, not fixed:** `resolveBibFilename` runs OUTSIDE the lock, so a
+concurrent `\bibliography{}` rename in the `.tex` could route two mutations to
+two different files. It cannot simply move inside: the write queue's KEY is
+derived from the filename, so the name must be known before the task is
+enqueued. Very low likelihood; stated here rather than patched blind.
+
+**Owed, not claimed:** the real-FSA eyeball — the failure path does not
+reproduce in the dev preview. The durable proof is
+[bib-write-refusal.test.tsx](../../../src/lib/__tests__/bib-write-refusal.test.tsx).
