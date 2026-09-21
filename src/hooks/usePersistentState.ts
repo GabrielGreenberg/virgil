@@ -329,7 +329,7 @@ export function usePersistentState<S>(
           if (h) writeSidecar(h, filename, migrated).catch(() => {});
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
         // The read terminated (so release the reconcile gate) but FAILED, so the
         // empty default is NOT authoritative — flag it so the destructive orphan
@@ -338,6 +338,19 @@ export function usePersistentState<S>(
         loadedRef.current = true;
         setLoadError(true);
         setLoaded(true);
+        // … and SAY so (task 679), on the same one channel the WRITE side of
+        // this hook already speaks from. `loadError` tells the app's own gates
+        // to stand down; it tells the USER nothing, and the surface they are
+        // looking at renders the empty default as "nothing here" — inviting
+        // them to re-make what the file already holds. The read half of the
+        // swallow `sidecar-refusal.ts` was built for. Same noun as the write
+        // path (`errorLabel`), never the filename.
+        recordSidecarRefusal({
+          docId,
+          what: errorLabel ?? "document annotation",
+          reason: "unreadable",
+          detail: err instanceof Error ? err.message : undefined,
+        });
       });
     return () => {
       cancelled = true;

@@ -18,10 +18,23 @@
  * on the next reload, with nothing said. The audit found the same swallow in
  * three places across two hooks.
  *
- * > **A sidecar write that did not land is a fact about the DOCUMENT, not a log
- * > line.** It is published once, to one store, and it reaches the user —
- * > through the same band every other interrupted-document state speaks from
- * > (`document-interruption.ts`, kind `sidecar-refused`).
+ * > **A sidecar write that did not land — or a sidecar read that THREW — is a
+ * > fact about the DOCUMENT, not a log line.** It is published once, to one
+ * > store, and it reaches the user — through the same band every other
+ * > interrupted-document state speaks from (`document-interruption.ts`, kind
+ * > `sidecar-refused`).
+ *
+ * ## Both directions (task 679)
+ *
+ * The channel began write-only, because only writes ever used it. But a read
+ * that threw leaves the collection at its EMPTY DEFAULT while every flag says
+ * the read finished, so the panel renders "nothing here" for a file that may
+ * hold a paper's worth of notes — and invites the user to file it all again.
+ * That is the same swallow, in the other direction, and it now rides the same
+ * channel under the `unreadable` reason. The read side is published by the two
+ * sidecar readers themselves — `usePersistentState`'s loader and
+ * `useAiRequests`' (the one sidecar with a bespoke store) — so no consumer has
+ * to remember to ask.
  *
  * ## Why a store rather than a return value
  *
@@ -51,14 +64,24 @@
  * doc is closed.
  */
 
-/** Why a sidecar write did not land. */
+/** Why a sidecar read or write did not land. */
 export type SidecarRefusalReason =
   /** No active write handle for this doc — nothing to write through. */
   | "no-handle"
   /** The host refuses this file for this doc (a Reader/library paper). */
   | "read-only"
   /** The write was attempted and threw. */
-  | "failed";
+  | "failed"
+  /**
+   * The READ side (task 679). The sidecar's initial read for this doc THREW —
+   * corrupt/truncated JSON, or a transient FSA error — so what the app holds
+   * for that noun is the EMPTY DEFAULT and is not authoritative. The ONE reason
+   * on this channel that is not about a write, and the reason the channel's
+   * name is about the document rather than the direction: "the file you are
+   * looking at is not the file on disk" is the same fact either way, and it was
+   * voiced in one direction and swallowed in the other until this existed.
+   */
+  | "unreadable";
 
 export interface SidecarRefusal {
   docId: string;
@@ -68,8 +91,8 @@ export interface SidecarRefusal {
    */
   what: string;
   reason: SidecarRefusalReason;
-  /** The thrown error's message, for `failed` only — the one thing the app
-   *  knows that the reason alone cannot say. */
+  /** The thrown error's message, for `failed` / `unreadable` only — the one
+   *  thing the app knows that the reason alone cannot say. */
   detail?: string;
   /** ms epoch of the FIRST refusal for this doc since it was last cleared. */
   at: number;

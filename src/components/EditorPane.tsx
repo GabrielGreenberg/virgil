@@ -135,7 +135,10 @@ import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useAiRequests } from "@/hooks/useAiRequests";
-import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
+import {
+  sourcesAreAuthoritative,
+  useAiRequestCardMigration,
+} from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
@@ -1835,9 +1838,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `linkedTo`), so retiring the legacy `"ai"` CardKind / `AiRequestCard`
   // doesn't strand them. One-time + idempotent (see the hook). Runs here in
   // EditorPane — the authoritative mount whose hooks feed the panels + AIWindow.
+  // The gate is `loaded && !loadError` for all three, never `loaded` alone
+  // (task 679): this is an AUTOMATIC write into notes.json, todos.json AND
+  // ai-requests.json, and an errored read flips `loaded` while leaving the
+  // collection at the EMPTY default — so `loaded`-alone is true in exactly the
+  // state where minting from the request list and appending would rewrite a
+  // paper's notes as only the migrated cards. Same distinction
+  // `anyCardSidecarLoadError` below makes for the orphan reaper; this is the
+  // one AUTOMATIC writer that had not joined it.
   useAiRequestCardMigration({
     docId,
-    ready: notesHookRaw.loaded && todosHook.loaded && aiRequestsHook.loaded,
+    sourcesAuthoritative: sourcesAreAuthoritative(
+      notesHookRaw,
+      todosHook,
+      aiRequestsHook,
+    ),
     aiRequests: aiRequestsHook.requests,
     appendNotes: notesHookRaw.appendCards,
     appendTodos: todosHook.appendItems,
@@ -6055,6 +6070,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               comments={revisionsHook.cards}
               bibEntries={citationsHook.bibEntries}
               panelAiRequests={aiRequestsHook.requests}
+              panelAiRequestsLoaded={aiRequestsHook.loaded}
+              panelAiRequestsLoadError={aiRequestsHook.loadError}
               addPanelAiRequest={aiRequestsHook.addRequest}
               deletePanelAiRequest={aiRequestsHook.deleteRequest}
               clearLinkedAiRequest={clearLinkedAiRequest}

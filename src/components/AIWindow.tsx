@@ -603,6 +603,20 @@ export interface AIWindowProps {
 
   // Panel AI requests (useAiRequests unified store).
   panelAiRequests: AiRequest[];
+  /**
+   * The inbox's initial read for this doc has RESOLVED (task 679). Until it
+   * has, `panelAiRequests` is the pre-load empty default, not an empty inbox.
+   */
+  panelAiRequestsLoaded: boolean;
+  /**
+   * The inbox's initial read THREW (task 679) — corrupt/truncated JSON or a
+   * transient FSA error. `panelAiRequests` is then the EMPTY default and says
+   * nothing about what is on disk. The window must not render that as "No
+   * requests yet": the file three writers share may hold a queue, and the
+   * invitation to "use the form above to start one" is an invitation to file a
+   * DUPLICATE of a request that already exists.
+   */
+  panelAiRequestsLoadError: boolean;
   addPanelAiRequest: (kind: PanelAiRequestKind, text?: string) => AiRequest;
   deletePanelAiRequest: (id: string) => void;
   // Cancel a card-linked panel request — clears both the queue row and the
@@ -648,6 +662,8 @@ export default function AIWindow({
   comments,
   bibEntries,
   panelAiRequests,
+  panelAiRequestsLoaded,
+  panelAiRequestsLoadError,
   addPanelAiRequest,
   deletePanelAiRequest,
   clearLinkedAiRequest,
@@ -979,7 +995,11 @@ export default function AIWindow({
                   <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
                   {requests.length === 0 && (
                     <div className="text-center text-xs text-ink-muted py-8">
-                      No requests yet. Use the form above to start one.
+                      {panelAiRequestsLoadError
+                        ? "Virgil couldn't read this paper's request list, so this may not be everything. Reopen the paper to try again."
+                        : !panelAiRequestsLoaded
+                          ? "Loading requests…"
+                          : "No requests yet. Use the form above to start one."}
                     </div>
                   )}
                 </div>

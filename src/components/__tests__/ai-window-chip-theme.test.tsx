@@ -86,6 +86,8 @@ function props(): AIWindowProps {
     comments: COMMENTS,
     bibEntries: [],
     panelAiRequests: PANEL_REQUESTS,
+    panelAiRequestsLoaded: true,
+    panelAiRequestsLoadError: false,
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     deletePanelAiRequest: noop,
     clearLinkedAiRequest: noop,
