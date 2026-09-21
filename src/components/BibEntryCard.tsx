@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
+import type { BibEntrySave } from "@/hooks/useCitations";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { Input } from "./field-primitives";
@@ -16,7 +17,7 @@ import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { iconHint } from "@/components/Hint";
 import { bibAddressOf } from "@/lib/bib-address";
-import { validateBibEntryHead } from "@/lib/bib-entry-head";
+import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -33,17 +34,17 @@ export interface BibEntryCardProps {
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
-  /** Merge field updates into an entry. Takes the ENTRY, not its citekey
-   *  (task 690): a citekey names as many blocks as carry it, and the mutator
-   *  used to rewrite all of them — so editing the one card the panel showed
-   *  destroyed a second, hidden block's fields. */
-  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
-  /** Set-all field replacement (D3 — honors field deletion). The bib editor's
-   *  Save routes here (the editor's `editBibFields` IS the complete intended
-   *  field set, so clearing a field must remove it — BIB-A3-02). Optional for
-   *  back-compat: when absent, Save falls back to the merge `onUpdateBibEntry`. */
-  onReplaceBibEntry?: (entry: BibEntry, fields: Record<string, string>, type?: string) => void;
-  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
+  /**
+   * Save this entry — ONE write for the whole gesture (task 691). Takes the
+   * ENTRY, not its citekey (task 690): a citekey names as many blocks as carry
+   * it, and the mutator used to rewrite all of them, so editing the one card
+   * the panel showed destroyed a second, hidden block's fields.
+   *
+   * The editor used to fire TWO of these — a set-all field write, then a
+   * head write — which raced in the `.bib`'s serial queue and could drop the
+   * field edits silently. There is one door now, so it cannot.
+   */
+  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
   bibPackage?: string;
@@ -293,7 +294,7 @@ function AnnotationEditor({
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
-  onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onReplaceBibEntry, onUpdateBibKeyAndType,
+  onRequestReview, onCancelReview, getReviewStatus, onSaveBibEntry,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, headerMeta, addAction, draggable = true,
 }: BibEntryCardProps) {
@@ -340,7 +341,13 @@ export default function BibEntryCard({
   const headCheck = useMemo(() => {
     if (!editingBib) return { ok: true } as const;
     const entries = bibEntries ?? [];
-    return validateBibEntryHead(
+    // Measured against the head the entry ALREADY has (task 691), so Save is
+    // disabled for what this edit changes and not for what it inherits — a
+    // `references.bib` may legally hold two blocks under one citekey, and the
+    // absolute check called that a collision, refusing to write the FIELDS of
+    // either duplicate.
+    return validateBibEntryHeadChange(
+      { key: entry.key, type: entry.type },
       { key: editBibKey, type: editBibType },
       { entries, self: bibAddressOf(entries, entry) },
     );
@@ -360,16 +367,22 @@ export default function BibEntryCard({
     // write after that removed it from the user's only copy — and a citekey
     // that already named another entry silently fused the two.
     if (!headCheck.ok) return;
+    // ONE write for the whole gesture (task 691). This used to be two — a
+    // set-all field write, then a head write whenever the key or type had
+    // changed — issued back-to-back with nothing awaited between them. They
+    // reached the `.bib`'s serial queue in whatever order their (IO-costing)
+    // queue keys resolved, and when the rename won, the field write addressed
+    // an entry that no longer had that key, matched nothing, and was declined
+    // in silence.
+    //
     // The editor's `editBibFields` is the COMPLETE intended field set (seeded
     // from `entry.fields`, edited in place), so a Save is set-all — a field the
-    // user cleared must be deleted, not silently retained (BIB-A3-02). Route to
-    // `replaceBibEntry` (D3) when available; fall back to the merge path so a
-    // caller that hasn't wired the new prop keeps working unchanged.
-    if (onReplaceBibEntry) onReplaceBibEntry(entry, editBibFields, editBibType.trim() || undefined);
-    else onUpdateBibEntry(entry, editBibFields);
-    if (editBibKey.trim() !== entry.key || editBibType.trim() !== entry.type) {
-      onUpdateBibKeyAndType(entry, editBibKey.trim(), editBibType.trim());
-    }
+    // user cleared must be deleted, not silently retained (BIB-A3-02).
+    onSaveBibEntry(entry, {
+      fields: editBibFields,
+      type: editBibType.trim(),
+      key: editBibKey.trim(),
+    });
     setEditingBib(false);
     setShowBibWarning(false);
   };

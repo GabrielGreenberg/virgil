@@ -49,8 +49,7 @@ function renderCard(entry: BibEntry) {
       onRequestReview={() => {}}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={() => {}}
     />,
   );
 }

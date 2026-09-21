@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
+import type { BibEntrySave } from "@/hooks/useCitations";
 import {
   bibFieldDisplay,
   citationCommandOrNull,
@@ -279,13 +280,12 @@ export interface CitationCardProps {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
-  onUpdateBibEntry?: (entry: BibEntry, fields: Record<string, string>) => void;
-  onUpdateBibKeyAndType?: (
-    entry: BibEntry,
-    newKey: string,
-    newType: string,
-  ) => void;
+  /** THE bib-entry write door (task 691) — one write per Save, for the inline
+   *  `BibEntryCard` expansion below. Takes the ENTRY, not its citekey (task
+   *  690) — see `bib-address.ts`. Before the door this surface handed the card
+   *  only a MERGE writer, so a field cleared in the inline editor came back
+   *  (BIB-A3-02); the one door is set-all. */
+  onSaveBibEntry?: (entry: BibEntry, patch: BibEntrySave) => void;
   isAnchored?: boolean;
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
@@ -315,8 +315,7 @@ export function CitationCard({
   onRequestReview,
   onCancelReview,
   getReviewStatus,
-  onUpdateBibEntry,
-  onUpdateBibKeyAndType,
+  onSaveBibEntry,
   isAnchored = true,
   wrapperClassName,
   wrapperStyle,
@@ -1349,8 +1348,7 @@ export function CitationCard({
     !!onRequestReview &&
     !!onCancelReview &&
     !!getReviewStatus &&
-    !!onUpdateBibEntry &&
-    !!onUpdateBibKeyAndType;
+    !!onSaveBibEntry;
 
   const bibInline = canRenderBib ? (
     <div
@@ -1371,8 +1369,7 @@ export function CitationCard({
         onRequestReview={onRequestReview!}
         onCancelReview={onCancelReview!}
         getReviewStatus={getReviewStatus!}
-        onUpdateBibEntry={onUpdateBibEntry!}
-        onUpdateBibKeyAndType={onUpdateBibKeyAndType!}
+        onSaveBibEntry={onSaveBibEntry!}
         bibPackage={bibPackage}
         bibEntries={bibEntries}
         isCited

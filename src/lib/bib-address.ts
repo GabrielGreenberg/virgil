@@ -150,8 +150,23 @@ export function resolveBibEntry(
 }
 
 /**
+ * A mutator's answer for "the address names NO entry in this list" — told
+ * apart from the mutator's own `null` = "nothing to change" (task 691).
+ *
+ * The two were one `null`, and the door reported both as `declined`: a silent,
+ * unreconciled outcome, correct for "the disk already says what you asked for"
+ * and wrong for "the entry you edited is not in the file". In the second case
+ * the optimistic in-memory list keeps showing an edit that never landed — the
+ * phantom task 685 exists to kill — and nothing ever corrects it, because only
+ * `failed` re-reads. A mutator that MATCHED NOTHING is a write that did not
+ * land on the user's content, so it is reported and reconciled like one.
+ */
+export const BIB_NO_MATCH = Symbol("bib-no-match");
+export type BibNoMatch = typeof BIB_NO_MATCH;
+
+/**
  * Apply `edit` to EXACTLY the entry `address` names, returning a new list —
- * or `null` when the address names none (a `BibMutator`'s "nothing to do").
+ * or {@link BIB_NO_MATCH} when the address names none.
  *
  * This is the shape every bib mutator now takes: one index resolved, one
  * element replaced. The `prev.map(predicate)` it replaces could — and did —
@@ -161,9 +176,9 @@ export function mapAddressedBibEntry(
   entries: BibEntry[],
   address: BibEntryAddress,
   edit: (entry: BibEntry) => BibEntry,
-): BibEntry[] | null {
+): BibEntry[] | BibNoMatch {
   const i = resolveBibEntryIndex(entries, address);
-  if (i === -1) return null;
+  if (i === -1) return BIB_NO_MATCH;
   const next = entries.slice();
   next[i] = edit(entries[i]);
   return next;

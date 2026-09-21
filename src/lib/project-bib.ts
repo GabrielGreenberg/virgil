@@ -58,6 +58,7 @@ import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFileAgainst } from "@/lib/bib-parser";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { mintBibUid } from "@/lib/bib-uid";
+import { BIB_NO_MATCH, type BibNoMatch } from "@/lib/bib-address";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -97,7 +98,7 @@ export interface DocBibChangedDetail {
  * must close over everything it needs (a pre-built entry, a pre-minted uid)
  * and must not read the clock or touch storage itself.
  */
-export type BibMutator = (entries: BibEntry[]) => BibEntry[] | null;
+export type BibMutator = (entries: BibEntry[]) => BibEntry[] | null | BibNoMatch;
 
 export interface BibMutationResult {
   entries: BibEntry[];
@@ -111,8 +112,12 @@ export interface BibMutationResult {
  * collapsed five outcomes that call for three different behaviours:
  *
  *   - `declined` — the mutator itself said "nothing to change" (the key is
- *     already on disk, the entry is already gone). The optimistic apply above
- *     returned the same list, so there is nothing to undo and nothing to say.
+ *     already on disk). The optimistic apply above returned the same list, so
+ *     there is nothing to undo and nothing to say.
+ *   - `not-found` — the mutator ADDRESSED an entry the file does not hold
+ *     (task 691). This was `declined` too, and it is the opposite case: the
+ *     optimistic apply DID change the view, so the card reads saved over a
+ *     file that never held the edit. Reported and reconciled like a refusal.
  *   - `stale` — the doc switched under the write and the NEW owner is
  *     authoritative. Silent, and not reconciled: this window's state is about
  *     to be replaced wholesale.
@@ -138,6 +143,7 @@ export interface BibMutationResult {
 export type BibWriteResult =
   | ({ kind: "written" } & BibMutationResult)
   | { kind: "declined" }
+  | { kind: "not-found" }
   | { kind: "stale" }
   | { kind: "no-handle" }
   | { kind: "read-only" }
@@ -146,8 +152,17 @@ export type BibWriteResult =
 /** Did this result mean the user's change is NOT on disk and never will be? */
 export function isBibWriteRefused(
   r: BibWriteResult,
-): r is { kind: "no-handle" } | { kind: "read-only" } | { kind: "failed"; error: unknown } {
-  return r.kind === "no-handle" || r.kind === "read-only" || r.kind === "failed";
+): r is
+  | { kind: "no-handle" }
+  | { kind: "read-only" }
+  | { kind: "not-found" }
+  | { kind: "failed"; error: unknown } {
+  return (
+    r.kind === "no-handle" ||
+    r.kind === "read-only" ||
+    r.kind === "not-found" ||
+    r.kind === "failed"
+  );
 }
 
 /**
@@ -161,9 +176,10 @@ const BIB_REFUSAL_NOUN = "bibliography";
  * Build the `failed` result and VOICE it, in one expression — so this module
  * cannot produce a failed write without publishing it.
  *
- * ## Which refusals are voiced, and why only this one
+ * ## Which refusals are voiced, and why only these
  *
- * Only `failed`. `no-handle` and `read-only` are not the same fact here that
+ * Only `failed` and `not-found` — the two that mean a write was attempted on
+ * the user's own content in the doc they are looking at, and did not land. `no-handle` and `read-only` are not the same fact here that
  * they are for a sidecar, because the bib's writers are not all the user's own
  * gesture in the paper they are looking at: the Library drop and the Library
  * remove-menu arrive as WINDOW EVENTS that every mounted `LibraryTabView`
@@ -228,12 +244,21 @@ export async function mutateProjectBib(
   let ran = false;
   let produced: BibEntry[] | null = null;
   let unspliceable = false;
+  let noMatch = false;
   let bibText: string | null;
   try {
     bibText =
       (await mutateBib(handle, (current) => {
         ran = true;
         const next = mutate(entriesOf(current));
+        // "The address names no entry in the file" — NOT the mutator's own
+        // "nothing to change" (task 691). Reported below rather than swallowed
+        // as `declined`, so the caller's optimistic view stops standing as
+        // truth over a file that never held the edit.
+        if (next === BIB_NO_MATCH) {
+          noMatch = true;
+          return null;
+        }
         if (next === null) return null;
         // THE SPLICE (task 688). The next file is `current` with the changed
         // entries' own spans rewritten — not a whole-file re-emit from the
@@ -254,6 +279,15 @@ export async function mutateProjectBib(
     if (isStalePipelineError(err)) return { kind: "stale" };
     console.error("Failed to persist references.bib:", err);
     return refusedWrite(docId, err);
+  }
+  if (noMatch) {
+    return refusedWrite(
+      docId,
+      new Error(
+        "That bibliography entry is no longer in references.bib — it was removed " +
+          "or renamed outside this window, so the edit could not be applied.",
+      ),
+    );
   }
   if (unspliceable) {
     return refusedWrite(

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 //
 // T6-C16 / BIB-F5-04 — the inline bib editor's "remove field" affordance must
-// route a field DELETION through the set-all `replaceBibEntry` (D3), not the
-// merge `updateBibEntry`. Clearing/removing a field then Saving must persist a
-// field map that OMITS the removed field ("I cleared the field but it came
-// back" is the bug). The Replace-with-library path is exercised in
-// BibliographyPanel; here we pin the per-field delete wiring.
+// persist a field map that OMITS the removed field ("I cleared the field but
+// it came back" is the bug). Since task 691 that map rides the ONE save door
+// (`onSaveBibEntry`), whose `fields` is set-all by contract — so the delete is
+// honored by construction rather than by picking the right one of two writers.
+// This suite also pins the count: ONE call per Save, never the two (fields,
+// then head) that raced in the `.bib` write queue.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -37,8 +38,7 @@ function makeEntry(): BibEntry {
 }
 
 function renderCard(overrides: Partial<React.ComponentProps<typeof BibEntryCard>> = {}) {
-  const onReplaceBibEntry = vi.fn();
-  const onUpdateBibEntry = vi.fn();
+  const onSaveBibEntry = vi.fn();
   render(
     <BibEntryCard
       entry={makeEntry()}
@@ -49,13 +49,11 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof BibEntryCard>
       onRequestReview={() => {}}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onUpdateBibEntry={onUpdateBibEntry}
-      onReplaceBibEntry={onReplaceBibEntry}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={onSaveBibEntry}
       {...overrides}
     />,
   );
-  return { onReplaceBibEntry, onUpdateBibEntry };
+  return { onSaveBibEntry };
 }
 
 function openEditor() {
@@ -64,27 +62,27 @@ function openEditor() {
 }
 
 describe("BibEntryCard inline editor — field delete (BIB-F5-04)", () => {
-  it("removing a field then Save routes the OMITTED field through replaceBibEntry", () => {
-    const { onReplaceBibEntry, onUpdateBibEntry } = renderCard();
+  it("removing a field then Save sends the OMITTED field through the one save door", () => {
+    const { onSaveBibEntry } = renderCard();
     openEditor();
 
     // Remove the `note` field via its remove button.
     fireEvent.click(screen.getByLabelText("Remove field note"));
     fireEvent.click(screen.getByText("Save"));
 
-    expect(onReplaceBibEntry).toHaveBeenCalledTimes(1);
+    // ONE write for the gesture (task 691), not a field write plus a head
+    // write racing each other in the `.bib`'s serial queue.
+    expect(onSaveBibEntry).toHaveBeenCalledTimes(1);
     // The mutator takes the ENTRY, not its citekey (task 690) — a citekey
     // names as many `.bib` blocks as carry it.
-    const [target, fields] = onReplaceBibEntry.mock.calls[0];
+    const [target, patch] = onSaveBibEntry.mock.calls[0];
     expect(target.key).toBe("foo2020");
     // The removed field is GONE from the set-all map (deleted, not retained).
-    expect("note" in fields).toBe(false);
+    expect("note" in patch.fields).toBe(false);
     // The other fields survive.
-    expect(fields.author).toBe("A. Author");
-    expect(fields.title).toBe("Orig");
-    expect(fields.year).toBe("2020");
-    // Delete is honored only by the set-all path, never the merge fallback.
-    expect(onUpdateBibEntry).not.toHaveBeenCalled();
+    expect(patch.fields.author).toBe("A. Author");
+    expect(patch.fields.title).toBe("Orig");
+    expect(patch.fields.year).toBe("2020");
   });
 
   it("a remove button exists for every field", () => {
@@ -95,11 +93,13 @@ describe("BibEntryCard inline editor — field delete (BIB-F5-04)", () => {
     }
   });
 
-  it("Save carries the entry type through replaceBibEntry (set-all owns type too)", () => {
-    const { onReplaceBibEntry } = renderCard();
+  it("Save carries the whole head — type AND citekey — in the SAME write", () => {
+    const { onSaveBibEntry } = renderCard();
     openEditor();
     fireEvent.click(screen.getByText("Save"));
-    const [, , type] = onReplaceBibEntry.mock.calls[0];
-    expect(type).toBe("article");
+    expect(onSaveBibEntry).toHaveBeenCalledTimes(1);
+    const [, patch] = onSaveBibEntry.mock.calls[0];
+    expect(patch.type).toBe("article");
+    expect(patch.key).toBe("foo2020");
   });
 });

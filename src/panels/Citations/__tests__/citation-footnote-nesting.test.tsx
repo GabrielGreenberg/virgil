@@ -83,8 +83,7 @@ const baseProps = {
   onRequestReview: () => {},
   onCancelReview: () => {},
   getReviewStatus: () => "none" as const,
-  onUpdateBibEntry: () => {},
-  onUpdateBibKeyAndType: () => {},
+  onSaveBibEntry: () => {},
   onAddBibEntry: () => {},
 };
 

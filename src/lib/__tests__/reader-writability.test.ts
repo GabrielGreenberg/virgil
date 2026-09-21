@@ -247,6 +247,7 @@ describe("host-writability — the derivation", () => {
       sidecarWriteSubkey("todos.json"),
       "bundle",
       "pdf",
+      "bib", // the funnel's bib subkey since task 691 (a constant, not a filename)
       "bib/references.bib",
       "figures/abc",
       "figures/index",

@@ -84,8 +84,7 @@ const NOOP_PROPS = {
   onRequestReview: () => {},
   onCancelReview: () => {},
   getReviewStatus: () => "none" as const,
-  onUpdateBibEntry: () => {},
-  onUpdateBibKeyAndType: () => {},
+  onSaveBibEntry: () => {},
 };
 
 /* ─────────────────────────── BIB-F8-01 (flush) ─────────────────────────── */

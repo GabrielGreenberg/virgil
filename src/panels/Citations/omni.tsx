@@ -1,6 +1,7 @@
 "use client";
 
 import type { BibEntry, CitationRef } from "@/lib/types";
+import type { BibEntrySave } from "@/hooks/useCitations";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { resolveAnchorState } from "@/links/anchor-state";
@@ -30,8 +31,7 @@ interface BuildArgs {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  updateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
-  updateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
+  saveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
 }
 
 export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
@@ -72,8 +72,7 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
           onRequestReview={a.requestBibReview}
           onCancelReview={a.cancelBibReview}
           getReviewStatus={a.getBibReviewStatus}
-          onUpdateBibEntry={a.updateBibEntry}
-          onUpdateBibKeyAndType={a.updateBibKeyAndType}
+          onSaveBibEntry={a.saveBibEntry}
           extraDataAttrs={{ "data-omni-entry": id }}
         />
       ),

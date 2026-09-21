@@ -5453,9 +5453,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       requestBibReview: bibReviewHook.requestReview,
       cancelBibReview: bibReviewHook.cancelRequest,
       getBibReviewStatus: bibReviewHook.getRequestStatus,
-      updateBibEntry: citationsHook.updateBibEntry,
-      replaceBibEntry: citationsHook.replaceBibEntry,
-      updateBibKeyAndType: citationsHook.updateBibKeyAndType,
+      saveBibEntry: citationsHook.saveBibEntry,
       addBibEntry: citationsHook.addBibEntry,
 
       // Citations
@@ -8112,8 +8110,7 @@ function PaneRail({
           updateCitation={citationsHook.updateCitation}
           deleteCitation={onDeleteCitation}
           getFormattedBib={citationsHook.getFormattedBib}
-          updateBibEntry={citationsHook.updateBibEntry}
-          updateBibKeyAndType={citationsHook.updateBibKeyAndType}
+          saveBibEntry={citationsHook.saveBibEntry}
           getAnnotation={annotationsHook.getAnnotation}
           setAnnotation={annotationsHook.setAnnotation}
           requestBibReview={bibReviewHook.requestReview}
@@ -8469,8 +8466,7 @@ function PaneRailBody({
         deleteCitation={onDeleteCitation}
         setCitationStyle={citationsHook.setStyle}
         setBibPackage={citationsHook.setBibPackage}
-        updateBibEntry={citationsHook.updateBibEntry}
-        updateBibKeyAndType={citationsHook.updateBibKeyAndType}
+        saveBibEntry={citationsHook.saveBibEntry}
         addBibEntry={citationsHook.addBibEntry}
         getFormattedBib={citationsHook.getFormattedBib}
         getAnnotation={annotationsHook.getAnnotation}
@@ -8644,9 +8640,7 @@ function PaneRailBody({
         bibEntries={citationsHook.bibEntries}
         bibPackage={citationsHook.bibPackage}
         addBibEntry={citationsHook.addBibEntry}
-        updateBibEntry={citationsHook.updateBibEntry}
-        replaceBibEntry={citationsHook.replaceBibEntry}
-        updateBibKeyAndType={citationsHook.updateBibKeyAndType}
+        saveBibEntry={citationsHook.saveBibEntry}
         getAnnotation={annotationsHook.getAnnotation}
         setAnnotation={annotationsHook.setAnnotation}
         requestBibReview={bibReviewHook.requestReview}

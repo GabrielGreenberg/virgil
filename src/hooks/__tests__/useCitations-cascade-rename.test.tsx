@@ -89,8 +89,13 @@ async function renameUnderFlag(flag: boolean, docId: string) {
   act(() => {
     result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "foo"), "newfoo", "article");
   });
+  // The `.bib` half is optimistic and lands in this tick; the FAN-OUT waits on
+  // the write (task 691 — a rename that did not reach disk must not rewrite
+  // the paper's `\cite{}` atoms), so the refs rewrite is what to wait for.
   await waitFor(() => {
     expect(result.current.bibEntries.some((e) => e.key === "newfoo")).toBe(true);
+    expect(fanned).toEqual(["foo->newfoo"]);
+    expect(result.current.citations.find((c) => c.id === id)?.keys).toContain("newfoo");
   });
 
   const cit = result.current.citations.find((c) => c.id === id)!;
@@ -170,6 +175,10 @@ describe("updateBibKeyAndType: the boundary matcher, on both paths", () => {
     });
     await waitFor(() => {
       expect(result.current.bibEntries.some((e) => e.key === "smith:2021")).toBe(true);
+      // The fan-out is sequenced AFTER the `.bib` write settles (task 691).
+      expect(result.current.citations.find((c) => c.id === id)?.keys).toEqual([
+        "smith:2021",
+      ]);
     });
     const cit = result.current.citations.find((c) => c.id === id)!;
     expect(cit.command).toBe("\\cite{smith:2021}");

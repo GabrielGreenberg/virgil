@@ -191,8 +191,15 @@ async function renameOnPane(flag: boolean, docId: string) {
   act(() => {
     result.current.citations.updateBibKeyAndType(namedBibEntry(result.current.citations.bibEntries, "smith2020"), "smith2021", "article");
   });
+  // The `.bib` half is optimistic and lands in this tick. The FAN-OUT is
+  // sequenced AFTER that write settles (task 691 — a rename that did not reach
+  // disk must not rewrite the paper's `\cite{}` atoms), so wait for its first
+  // step: the citation-refs rewrite.
   await waitFor(() => {
     expect(result.current.citations.bibEntries.some((e) => e.key === "smith2021")).toBe(true);
+    expect(
+      result.current.citations.citations.every((c) => c.keys.includes("smith2021")),
+    ).toBe(true);
   });
 
   return { result, editor };

@@ -374,10 +374,13 @@ describe("census · references.bib has ONE write authority", () => {
     expect(code).not.toMatch(/\bpersistBib\b/);
     expect(code).not.toMatch(/\bserializeBibFile\b/);
     // Every bib mutator routes through the ONE runner: updateBibEntry,
-    // replaceBibEntry, applyBibKeyType (both rename paths) and addBibEntry —
-    // an EXACT count, so a fifth mutator that grows its own persist is a
-    // failure here rather than a silent sixth writer.
-    expect((code.match(/\brunBibMutation\(/g) ?? []).length).toBe(4);
+    // saveBibEntry and addBibEntry — an EXACT count, so a fourth mutator that
+    // grows its own persist is a failure here rather than a silent fifth
+    // writer. It was four until task 691 folded the field write and the head
+    // write into ONE door: a Save is one gesture, so it is one mutation, and
+    // `replaceBibEntry` / `updateBibKeyAndType` are now named intents over it
+    // rather than separate writes that raced in the queue.
+    expect((code.match(/\brunBibMutation\(/g) ?? []).length).toBe(3);
     expect(code).not.toMatch(/\bsetBibRaw\(\s*serialize/);
   });
 

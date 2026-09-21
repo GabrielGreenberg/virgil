@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
+import type { BibEntrySave } from "@/hooks/useCitations";
 import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
 import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
@@ -87,9 +88,8 @@ interface BibliographyPanelProps {
   onSelectBibKey: (key: string | null) => void;
   /** Takes the ENTRY, not its citekey (task 690) — a citekey names as many
    *  blocks as carry it, and the mutator used to rewrite every one. */
-  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
-  onReplaceBibEntry?: (entry: BibEntry, fields: Record<string, string>, type?: string) => void;
-  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
+  /** THE bib-entry write door — one write per gesture (task 691). */
+  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
@@ -119,9 +119,7 @@ function BibliographyPanel({
   bibEntries,
   selectedBibKey,
   onSelectBibKey,
-  onUpdateBibEntry,
-  onReplaceBibEntry,
-  onUpdateBibKeyAndType,
+  onSaveBibEntry,
   getAnnotation,
   setAnnotation,
   onRequestReview,
@@ -552,24 +550,19 @@ function BibliographyPanel({
     const { libraryEntry, localEntry } = conflictDecision;
     // "Replace with library" is set-all (D3 / BIB-A3-02): the local entry's
     // fields become EXACTLY the library version's — a local-only field the
-    // library lacks must be dropped, not merge-retained. Route through
-    // `replaceBibEntry` (which also carries the type) when available; fall back
-    // to the legacy merge+separate-type-update path otherwise.
-    if (onReplaceBibEntry) {
-      onReplaceBibEntry(localEntry, libraryEntry.fields, libraryEntry.type);
-    } else {
-      onUpdateBibEntry(localEntry, libraryEntry.fields);
-      if (libraryEntry.type !== localEntry.type) {
-        onUpdateBibKeyAndType(localEntry, localEntry.key, libraryEntry.type);
-      }
-    }
+    // library lacks must be dropped, not merge-retained. ONE write (task 691):
+    // the fallback here used to be a merge write PLUS a separate type write,
+    // the same two-writes-one-gesture shape as the bib editor's Save, racing
+    // in the same queue.
+    onSaveBibEntry(localEntry, {
+      fields: libraryEntry.fields,
+      type: libraryEntry.type,
+    });
     setConflictDecision(null);
     handleSelectBibKey(localEntry.key);
   }, [
     conflictDecision,
-    onReplaceBibEntry,
-    onUpdateBibEntry,
-    onUpdateBibKeyAndType,
+    onSaveBibEntry,
     handleSelectBibKey,
   ]);
 
@@ -1050,9 +1043,7 @@ function BibliographyPanel({
             onRequestReview={onRequestReview}
             onCancelReview={onCancelReview}
             getReviewStatus={getReviewStatus}
-            onUpdateBibEntry={onUpdateBibEntry}
-            onReplaceBibEntry={onReplaceBibEntry}
-            onUpdateBibKeyAndType={onUpdateBibKeyAndType}
+            onSaveBibEntry={onSaveBibEntry}
             bibPackage={bibPackage}
             bibEntries={bibEntries}
             isCited={isCited}

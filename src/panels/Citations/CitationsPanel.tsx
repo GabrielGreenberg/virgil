@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect, useCallback, useState, memo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
+import type { BibEntrySave } from "@/hooks/useCitations";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
@@ -59,8 +60,8 @@ interface CitationsPanelProps {
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
   /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
-  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
-  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
+  /** THE bib-entry write door — one write per Save gesture (task 691). */
+  onSaveBibEntry: (entry: BibEntry, patch: BibEntrySave) => void;
   onAddBibEntry: (entry: BibEntry) => void;
   recentlyAddedId?: string | null;
   /** Container-nested cite nesting (Part B / Phase 2a). `citationId →
@@ -116,8 +117,7 @@ function CitationsPanel({
   onRequestReview,
   onCancelReview,
   getReviewStatus,
-  onUpdateBibEntry,
-  onUpdateBibKeyAndType,
+  onSaveBibEntry,
   onAddBibEntry,
   recentlyAddedId,
   nestedContainerOf,
@@ -254,8 +254,7 @@ function CitationsPanel({
     onRequestReview,
     onCancelReview,
     getReviewStatus,
-    onUpdateBibEntry,
-    onUpdateBibKeyAndType,
+    onSaveBibEntry,
   };
 
   const DRAFT_ID = "__virgil_draft_citation__";

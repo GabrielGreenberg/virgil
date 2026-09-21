@@ -26,6 +26,7 @@
 
 import { generateEntityId } from "@/lib/uuid";
 import {
+  BIB_WRITE_SUBKEY,
   isLibraryPaperDoc,
   libraryPaperCitekey,
   libraryPaperSidecarWritable,
@@ -1446,7 +1447,7 @@ export async function readBib(docId: string): Promise<BibReadResult> {
 
 /**
  * The WRITE half of a `.bib` persist, run INSIDE the caller's already-held
- * critical section (`enqueueDocWrite`'s queued task on the `bib/<name>` key).
+ * critical section (`enqueueDocWrite`'s queued task on the `BIB_WRITE_SUBKEY` key).
  * The `.bib` twin of `persistSidecarInLock`: it does no queueing, no pipeline
  * check and no library-paper guard of its own, and MUST NOT be called outside
  * the funnel. Its one caller is `mutateBib` — the whole-snapshot `writeBib`
@@ -1522,11 +1523,11 @@ export async function mutateBib(
   h: DocWriteHandle,
   mutate: (bibText: string) => string | null,
 ): Promise<string | null> {
-  const bibFilename = await resolveBibFilename(h.docId);
   const result = await enqueueDocWrite<string | null>(
     h,
-    `bib/${bibFilename}`,
+    BIB_WRITE_SUBKEY,
     async () => {
+      const bibFilename = await resolveBibFilename(h.docId);
       const docHandle = await requireDocHandle(h.docId);
       const current = await safeReadText(docHandle, bibFilename, "");
       const next = mutate(current);

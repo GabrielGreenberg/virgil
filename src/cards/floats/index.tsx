@@ -580,9 +580,7 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
         onRequestReview={ctx.requestBibReview}
         onCancelReview={ctx.cancelBibReview}
         getReviewStatus={ctx.getBibReviewStatus}
-        onUpdateBibEntry={ctx.updateBibEntry}
-        onReplaceBibEntry={ctx.replaceBibEntry}
-        onUpdateBibKeyAndType={ctx.updateBibKeyAndType}
+        onSaveBibEntry={ctx.saveBibEntry}
         bibPackage={ctx.bibPackage}
         bibEntries={ctx.bibEntries}
         isCited={isCited}
@@ -637,8 +635,7 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
         onRequestReview={ctx.requestBibReview}
         onCancelReview={ctx.cancelBibReview}
         getReviewStatus={ctx.getBibReviewStatus}
-        onUpdateBibEntry={ctx.updateBibEntry}
-        onUpdateBibKeyAndType={ctx.updateBibKeyAndType}
+        onSaveBibEntry={ctx.saveBibEntry}
         onAddBibEntry={ctx.addBibEntry}
         isPoppedOut
       />
