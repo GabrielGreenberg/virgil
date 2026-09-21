@@ -5020,3 +5020,75 @@ file must name an app-side re-keyer, that re-keyer must be reached from a
 `bibEntry` cascade migrator, and `useCitations.ts` must not read the flag at
 all. The behavioural suite registers its own migrators and so cannot see the
 EditorPane wiring being deleted; the census can.
+
+## The gratuitous-precondition half — a lookup that serves ONE branch may not gate the others (task 697)
+
+> **Where a call needs a value on one branch only, the branch that does not
+> need it must not be gated on having it.** The value degrades; the call does
+> not. And a recovery affordance may never be disabled by the very condition
+> it recovers from.
+
+`ai-requests.json` rows are keyed `(docId, kind, cardId)`. Filing a row needs
+the card — `text`, `paragraphIds`, `selectedText` are read only on the
+`value=true` ADD branch. **Closing** one needs nothing but the key: a drop and
+a `"terminate"` both match on `(panel, cardId)` and read no context at all.
+`EditorPane`'s lifecycle forwarder had always said so at its own site, in
+passing: *"ctx fields are read only on the ADD path, so a placeholder is
+fine."*
+
+Five panel hooks nevertheless wrote their setter as one statement —
+
+```ts
+const card = state.cards.find((c) => c.id === id);   // for the ADD context
+update(/* flip the card's flag */);
+if (card) bridge({ ...card, aiRequest: value }, value, mode);   // ← the gate
+```
+
+— so a card missing from the render-time snapshot skipped the bridge call
+entirely. The AI window's **Cancel** on a card-linked row is the escape hatch
+for a row whose card is gone, and it was inoperative in exactly that state: no
+row removed, no flag changed, no error, no feedback, and `/editor/review` kept
+draining the row forever. Four earlier tasks (219 delete, 313 the unbridge
+mode, 093 archive, 681 the removal-door census) exist to stop rows outliving
+their cards; **when they work the button is unnecessary, and when they fail the
+button is dead.** Same gate on `clearAiRequestForKind`, so archiving a card the
+snapshot had lost left its row open too, and a `loadError` on any card sidecar
+(empty default, `ai-requests.json` reading fine) made every Cancel in that
+panel inert for the session.
+
+The fix is the separation, stated ONCE. `bridgeFlagForCard(docId, kind, id,
+value, mode, card, context)` in [src/lib/ai-request-bridge.ts](../../../src/lib/ai-request-bridge.ts)
+owns the rule: card present → the caller's rich context; card absent and
+`value=false` → `ABSENT_CARD_CONTEXT` (the forwarder's placeholder, now named);
+card absent and `value=true` → **refused and loud**, because a row linked to a
+card that does not exist is the stranded state the door exists to clear. All
+seven flag-bearing kinds take that door, `useFootnotes` included — it never had
+the gate, it is the shape the others were fixed INTO, and it joins so an eighth
+kind cannot reintroduce the gate by copying a neighbour.
+
+Two smaller readings of the same law came with it:
+
+- **Ask the question you mean.** `FAMILY_CANCEL.panel` asked *"is there a
+  link?"* and routed anything linked to the card path. It now asks whether the
+  link **resolves** (`cardLinkResolves`, the `(kind → owning collection)`
+  fan-out of `setAiRequestForKind` read as a predicate). An UNKNOWABLE card —
+  a panel still loading, or one whose read ERRORED — answers `true`, so cancel
+  keeps the linked path and never rewrites a sidecar it could not read.
+- **A dispatcher with no `default` is a silent no-op.** `setAiRequestForKind`
+  is now total: a kind with no `aiRequest` routing falls through quietly (it
+  has no row), and a kind that DECLARES routing but has no case closes its row
+  from the bridge directly and says so in dev.
+
+Both CI guards that read this code by GREP had to learn the second door, and
+that is the half worth remembering: `unbridge-mode-wiring-guardrail`'s
+`CALL_FORMS` and `card-removal-door-census`'s `BRIDGE_DOORS`. The census's
+scope gate was `src.includes("bridgeCardAiRequestFlag(")`, so three hooks
+dropped silently out of scope the moment they moved to the new door — the
+census would have kept passing while covering three fewer hooks. **A grep-based
+guard names an implementation detail; a refactor that changes that detail
+disarms the guard without failing it.** The coverage floor (`>= 11` doors) is
+what caught it.
+
+CI: `ai-request-absent-card-bridge.test.ts`,
+`ai-request-cancel-absent-card.test.tsx`, `ai-window-cancel-routing.test.ts`,
+`unbridge-mode-wiring-guardrail.test.ts`, `card-removal-door-census.test.ts`.
