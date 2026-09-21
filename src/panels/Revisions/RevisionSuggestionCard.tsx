@@ -241,7 +241,7 @@ export function RevisionSuggestionCard({
             auto-applies). Flag-OFF: the legacy Reject / Accept pair. BOTH now
             live behind the one shared row, which reads the verb from the
             controller — see PendingActionRow (task 684). */}
-        {isPending && <PendingActionRow id={card.id} family="revision-suggestion" />}
+        {isPending && <PendingActionRow card={card} family="revision-suggestion" />}
       </div>
       )}
       {deleteConfirmDialog}

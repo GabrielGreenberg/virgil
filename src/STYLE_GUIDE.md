@@ -2511,6 +2511,16 @@ Enter/click commit refuses on.
   is load-bearing rather than cosmetic: the popup used to delete the typed
   `\name` before the action was ever asked whether it applied, so a refusal ate
   the user's characters. A refusal must leave the document byte-identical.
+- **The verdict is about the RECORD, not just the machinery — and it SAYS why**
+  (task 695). A card-scoped action (a suggestion's Apply, say) must ask whether
+  THIS record can answer the verb, not merely whether the feature is switched
+  on: the two are different questions, and answering only the second renders a
+  live control over an action that returns early and changes nothing. Derive the
+  disabled state from the SAME predicate the action bails on — never a second
+  condition written out in the component, which is how a button and its action
+  drift apart — and put the reason where the user reads it: a `title` on the
+  control plus one muted line beneath it. A disabled control with no reason is
+  the same silence one step further back.
 
 ### Z-index ladder
 

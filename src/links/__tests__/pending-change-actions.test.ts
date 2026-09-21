@@ -460,7 +460,27 @@ describe("applySuggestion", () => {
     expect(applyPendingChange).not.toHaveBeenCalled();
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
     expect(deps.setAppliedChange).not.toHaveBeenCalled();
-    expect(result).toEqual({ outcome: "skipped" });
+    // The reason travels out with the outcome (task 695): the SAME answer the
+    // Apply button is disabled on, so the two cannot drift.
+    expect(result).toEqual({ outcome: "skipped", reason: "unanchored" });
+  });
+
+  it("skips (no splice, no card change) when the card is anchored but captured nothing", () => {
+    // TASK 695 — an empty `original_text` is not a STALE paragraph: nothing in
+    // the document changed, there is simply no passage to find. `locateSpan`
+    // could only ever answer "miss" (indexOf("") is a false 0), so this is a
+    // permanent property of the card, reported as `skipped` (re-evaluable if a
+    // capture later arrives) rather than burned in as `stale`.
+    const deps = makeApplyDeps();
+    const result = applySuggestion({
+      ...deps,
+      card: makeSuggestion({ original_text: "" }),
+    });
+
+    expect(applyPendingChange).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "skipped", reason: "no-capture" });
   });
 });
 

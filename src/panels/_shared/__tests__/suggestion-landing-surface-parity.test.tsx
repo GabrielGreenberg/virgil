@@ -107,7 +107,19 @@ function resolverWithLive(live: Record<string, number>): CardAnchorResolver {
 /** A HUMAN-authored PENDING suggestion — the one status/author combination that
  *  renders the landing action row (an AI-authored pending card renders the
  *  minimal Insert-below body instead). */
+/** TASK 695 — the fixtures are overridable so the SAME real producers (docked
+ *  panel / omni builder / float registry) can be driven with a card that cannot
+ *  answer Apply. A hand-assembled prop bag would not prove anything about the
+ *  surfaces; this drives each one exactly as it ships. */
+let cardOverride: Partial<RevisionSuggestionCardData & CutterSuggestionCardData> = {};
+
 function pendingRevision(): RevisionSuggestionCardData {
+  return {
+    ...pendingRevisionBase(),
+    ...cardOverride,
+  };
+}
+function pendingRevisionBase(): RevisionSuggestionCardData {
   return {
     kind: "suggestion",
     id: "rs1",
@@ -123,6 +135,12 @@ function pendingRevision(): RevisionSuggestionCardData {
   };
 }
 function pendingCut(): CutterSuggestionCardData {
+  return {
+    ...pendingCutBase(),
+    ...cardOverride,
+  };
+}
+function pendingCutBase(): CutterSuggestionCardData {
   return {
     kind: "suggestion",
     id: "cs1",
@@ -283,6 +301,7 @@ const FAMILIES = [
 
 afterEach(() => {
   cleanup();
+  cardOverride = {};
   setPendingChangesFlag(undefined);
   for (const f of FAMILIES)
     cardStore.collapse({ kind: f.family, id: f.id } as never);
@@ -317,6 +336,58 @@ for (const { family, id, surfaces } of FAMILIES) {
           // Not the out-of-band AI-request path, and not a bare status write.
           expect(controller.accept).not.toHaveBeenCalled();
           expect(bare).not.toHaveBeenCalled();
+        });
+
+        // ── TASK 695 — the row asks whether THIS CARD can answer Apply ────
+        // The row used to gate only on `!controller || !controller.isOn` — "is
+        // the machinery on?" — so a suggestion with no Mode-A anchor (every
+        // card either panel's own "+" makes) rendered a live Apply that
+        // returned `skipped` before touching the doc or the card: no splice, no
+        // status, no notice, forever. Both legs drive the REAL surface
+        // producers, because the defect was that a surface could differ.
+        it("TASK 695 — an UNANCHORED suggestion disables Apply and says why", () => {
+          cardOverride = { links: [] };
+          const controller = makeController();
+          const bare = vi.fn();
+          mount(controller, bare);
+
+          const apply = screen.getByRole("button", { name: "Apply" });
+          expect((apply as HTMLButtonElement).disabled).toBe(true);
+          expect(screen.getByTestId("pending-apply-blocked").textContent).toMatch(
+            /not anchored to a paragraph/i,
+          );
+          fireEvent.click(apply);
+          expect(controller.apply).not.toHaveBeenCalled();
+          expect(bare).not.toHaveBeenCalled();
+        });
+
+        it("TASK 695 — an anchored suggestion that captured NOTHING disables Apply and says why", () => {
+          // `locateSpan` treats an empty needle as an automatic miss, so this
+          // card could never apply either — and calling it `stale` would blame
+          // a document that did not change.
+          cardOverride = { original_text: "" };
+          const controller = makeController();
+          const bare = vi.fn();
+          mount(controller, bare);
+
+          const apply = screen.getByRole("button", { name: "Apply" });
+          expect((apply as HTMLButtonElement).disabled).toBe(true);
+          expect(screen.getByTestId("pending-apply-blocked").textContent).toMatch(
+            /no original passage captured/i,
+          );
+          fireEvent.click(apply);
+          expect(controller.apply).not.toHaveBeenCalled();
+        });
+
+        it("TASK 695 — an appliable suggestion says nothing and stays enabled", () => {
+          const controller = makeController();
+          mount(controller, vi.fn());
+
+          expect(
+            (screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement)
+              .disabled,
+          ).toBe(false);
+          expect(screen.queryByTestId("pending-apply-blocked")).toBeNull();
         });
 
         it("FLAG OFF — offers the legacy Accept/Reject pair, routed to the controller", () => {
@@ -418,5 +489,19 @@ describe("task 684 census — no suggestion landing verb is wired per MOUNT SITE
     expect(row).toMatch(/controller\?\.apply\(family, id\)/);
     expect(row).toMatch(/controller\?\.accept\(family, id\)/);
     expect(row).toMatch(/controller\?\.reject\(family, id\)/);
+  });
+
+  it("task 695 — the row derives Apply's gate from the shared predicate, not a second condition", () => {
+    const row = readFileSync(
+      join(REPO_SRC, "panels/_shared/suggestion-fields.tsx"),
+      "utf8",
+    );
+    // The ONE predicate `applySuggestion` bails on. A hand-written second
+    // condition here is exactly how the button and the action came apart.
+    expect(row).toContain("suggestionApplicability");
+    expect(row).toContain("SUGGESTION_BLOCK_TEXT");
+    // And it takes the CARD, so no mount site can render the button without the
+    // facts it is gated on.
+    expect(row).toMatch(/card: SuggestionLike/);
   });
 });
