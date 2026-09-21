@@ -353,6 +353,10 @@ export function scanBibFields(block: string): BibFieldSpan[] {
       i = j;
     }
     fields.push({ name, start: nameStart, end: i, valueStart, valueEnd, delimiter });
+    // An empty bare value (`title = ,`) leaves the cursor where the name
+    // started, and the loop would spin on it forever. Progress is a property
+    // of the scanner, not of the input.
+    if (i <= nameStart) i = nameStart + 1;
   }
   return fields;
 }

@@ -61,6 +61,7 @@ import {
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
 import { getSidecarRefusal, resetSidecarRefusals } from "@/lib/sidecar-refusal";
+import type { BibEntry } from "@/lib/types";
 
 const DOC = "doc-688";
 
@@ -347,8 +348,7 @@ describe("the refusal · an unspliceable span is refused on the channel, not gue
   // `null` — the caller then refuses out loud — rather than a best guess.
   const TWO = `@book{ok1,\n  title = {OK}\n}\n\n@book{ok2,\n  title = {OK2}\n}\n`;
 
-  const edited = (e: (typeof BASE)[number], raw: string) => ({ ...e, raw });
-  const BASE = parseBibFile(TWO);
+  const edited = (e: BibEntry, raw: string): BibEntry => ({ ...e, raw });
 
   it("refusal 1 · a block whose braces did not balance is not written THROUGH", () => {
     const entries = parseBibFile(TWO).map((e, i) =>
@@ -386,6 +386,17 @@ describe("the refusal · an unspliceable span is refused on the channel, not gue
     // The splice refuses even though the span itself balances, because the
     // opener inside it could be a real entry this write would delete.
     expect(serializeBibFileAgainst(HAZARD, [entry])).toBeNull();
+  });
+
+  it("an anchor into ANOTHER file is an addition, not a stale reference to refuse over", () => {
+    // A library row, or an entry hand-parsed from a block string, carries an
+    // anchor whose offsets mean nothing in THIS file — often offset 0, exactly
+    // where this file's first entry lives. It has no block here, so it appends.
+    const incoming = parseBibFile(`@book{newcomer,\n  title = {New}\n}\n`)[0];
+    expect(incoming.source?.start).toBe(0);
+    const out = serializeBibFileAgainst(TWO, [...parseBibFile(TWO), incoming]);
+    expect(out).not.toBeNull();
+    expect(parseBibFile(out!).map((e) => e.key)).toEqual(["ok1", "ok2", "newcomer"]);
   });
 
   it("an anchor that disagrees with the file about the block's extent is REFUSED, not appended", () => {
@@ -474,6 +485,15 @@ describe("the block splice · every byte the edit does not name survives", () =>
     expect(out).toContain("booktitle = {The Big Book},");
     expect(out).toContain("month = {jan}");
     expect(scanBibSource(out)[0].balanced).toBe(true);
+  });
+
+  it("an empty bare value does not spin the scanner — progress is the scanner's property", () => {
+    // `title = ,` leaves the value walk exactly where the name started; before
+    // the guard the loop never advanced and the whole app hung on the file.
+    expect(scanBibFields("@book{b1, title = , year = {1} }").map((f) => f.name)).toEqual([
+      "title",
+      "year",
+    ]);
   });
 
   it("a key + type change leaves every field byte-identical", () => {

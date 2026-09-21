@@ -369,14 +369,27 @@ export function serializeBibFileAgainst(
 
   for (const e of entries) {
     const src = e.source;
-    const base = src ? baseline.get(src.start) : undefined;
-    if (!src || !base) {
-      // No anchor, or an anchor into a DIFFERENT file (a library entry): this
-      // entry has no block here, so it is appended.
+    // Three questions in order, because they have three different answers.
+    //
+    //  1. Does the anchor name REAL BYTES IN THIS FILE? An entry parsed from
+    //     another text (a library row, a hand-parsed block) carries an anchor
+    //     whose offsets mean nothing here — it has no block in this file, so it
+    //     is an ADDITION, not a stale reference to refuse over.
+    //  2. Is there a parsed entry at that offset? If not, the bytes are not a
+    //     block this write owns — append rather than write through them.
+    //  3. Does the anchor AGREE with the parse about the block's extent? If it
+    //     does not, treating it as new would ALSO delete the block it claims to
+    //     be (a duplicate and a deletion from one inconsistent ref) — refuse.
+    if (!src || originalText.slice(src.start, src.end) !== src.text) {
       appended.push(e);
       continue;
     }
-    if (base.end !== src.end || base.text !== src.text) return null;
+    const base = baseline.get(src.start);
+    if (!base) {
+      appended.push(e);
+      continue;
+    }
+    if (base.end !== src.end) return null;
     // Two entries claiming ONE span (a clone that kept its origin's source ref)
     // would emit overlapping patches. Refuse rather than interleave them.
     if (claimed.has(src.start)) return null;
