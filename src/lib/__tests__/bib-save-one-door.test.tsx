@@ -71,6 +71,7 @@ import {
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
 import { namedBibEntry } from "@/lib/bib-test-entry";
+import type { BibEntry } from "@/lib/types";
 
 const DOC = "doc-691";
 
@@ -224,6 +225,37 @@ describe("a write that does not land is not adopted as truth", () => {
     await waitFor(() => {
       expect(result.current.bibEntries).toHaveLength(0);
     });
+  });
+
+  // Task 692 — the same fact one step earlier in the road. When the VIEW
+  // already has no such entry (the door's caller handed back a record from
+  // somewhere else — a central-library preview card was the production case),
+  // `saveBibEntry` used to `return` in silence: the user pressed Save and the
+  // app answered nothing at all. It takes the same road as the disk-side miss
+  // now — one `not-found`, one voice — rather than a second, quieter policy.
+  it("an entry the VIEW does not hold is reported too, not silently returned", async () => {
+    const { result, fanned } = await mountLoaded(DOC);
+    const foreign = {
+      uid: "u-elsewhere",
+      key: "notinthisbib",
+      type: "article",
+      fields: { author: "Someone Else", title: "Another paper's copy" },
+      raw: "",
+    } as BibEntry;
+    act(() => {
+      result.current.saveBibEntry(foreign, {
+        fields: { title: "Edited in a preview" },
+        type: "article",
+        key: "notinthisbib",
+      });
+    });
+    await settle();
+
+    expect(fanned).toEqual([]);
+    expect(getSidecarRefusal(DOC)?.reason).toBe("failed");
+    // And the paper's own bibliography is untouched — nothing was written to
+    // a NEIGHBOURING entry in the miss's place.
+    expect(keysOnDisk()).toEqual(["smith2020"]);
   });
 });
 

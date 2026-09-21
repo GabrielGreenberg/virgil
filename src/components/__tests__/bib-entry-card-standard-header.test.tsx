@@ -91,8 +91,11 @@ describe("BibEntryCard — unified card-standard header (task 055)", () => {
 
   it("keeps the Add affordance and fires onAdd", () => {
     const onAdd = vi.fn();
+    // The preview case (task 692): the card's own write surface is withheld,
+    // but Add is the panel's affordance for bringing the record INTO the
+    // paper — the one gesture a preview card is for — so it survives the gate.
     const { getByText } = renderCard({
-      draggable: false,
+      readOnly: { reason: "Library preview — add this entry to the paper to edit it." },
       addAction: { onAdd, alreadyAdded: false },
     });
     fireEvent.click(getByText("Add"));

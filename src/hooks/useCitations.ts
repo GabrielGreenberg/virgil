@@ -561,11 +561,20 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // The entry as this hook currently holds it. A card can hand back a
       // stale copy; the address resolves against the live list either way.
       const address = bibAddressOf(bibEntriesRef.current, target);
-      const entry = resolveBibEntry(bibEntriesRef.current, address);
-      // Nothing here to save, and in particular nothing to fan out: a fan-out
-      // would rewrite `\cite{oldKey}` atoms for an entry the bibliography
-      // does not have.
-      if (!entry) return;
+      // The VIEW's copy of the addressed entry when it has one, else the
+      // caller's own. There used to be a bare `return` when the view held no
+      // such entry, and that was a silent swallow (task 692): the user pressed
+      // Save and the app answered nothing at all — the very outcome task 691
+      // removed from the disk side of the same road. The view does not get a
+      // verdict of its own, because it is only ever a PREVIEW of the file: the
+      // mutation runs, the disk run answers `BIB_NO_MATCH`, and the ONE door
+      // reports `not-found`, voices it on the refusal channel and reconciles
+      // the view — including the case where the view is merely STALE and the
+      // file does hold the entry, which the bail used to drop on the floor.
+      // The rename fan-out is gated on that result below, so a miss still
+      // rewrites no `\cite{}`.
+      const resolved = resolveBibEntry(bibEntriesRef.current, address);
+      const entry = resolved ?? target;
       // `undefined` means "this part of the head is not part of this save" —
       // NOT "clear it". An EMPTY string is a value, and a refused one.
       const newKey = patch.key !== undefined ? patch.key.trim() : entry.key;
@@ -605,6 +614,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }),
       ).then((result) => {
         if (oldKey === newKey) return; // a pure retype/field save moves no identity
+        // A rename only follows an entry this bibliography HAS. Where the
+        // address named none, the write answered `not-found` and said so —
+        // but a door that could not attempt the write at all (no handle, a
+        // library paper's read-only `.bib`) answers something else, and
+        // fanning out then would rewrite every `\cite{oldKey}` in the paper
+        // for a rename that exists nowhere. So the fan-out asks its own
+        // precondition rather than reading it off the write's verdict.
+        if (!resolved) return;
         // The two outcomes that mean the user's content did NOT reach disk and
         // never will (both voiced on the refusal channel). Fanning out over
         // them would leave the paper citing a key `references.bib` does not

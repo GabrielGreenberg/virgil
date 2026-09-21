@@ -1049,7 +1049,21 @@ function BibliographyPanel({
             isCited={isCited}
             headerMeta={headerMeta}
             addAction={addAction}
-            draggable={!isPreviewResult}
+            // A library result is a PREVIEW of `master.bib`'s record, not of
+            // this paper's — so the card's whole write surface is withheld
+            // (task 692). Every write it offers is addressed by citekey into
+            // THIS paper's stores, so on a preview it either landed nowhere
+            // (silently) or landed on a different record than the card names.
+            // This is also the card's drag + pop-out gate, so "preview" is one
+            // fact with one switch rather than a prop per affordance.
+            readOnly={
+              isPreviewResult
+                ? {
+                    reason:
+                      "Library preview — add this entry to the paper to edit it.",
+                  }
+                : undefined
+            }
             occurrenceInfo={
               ids.length > 1
                 ? {
