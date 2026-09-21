@@ -2154,3 +2154,78 @@ blocks. The durable proof is
 [bib-address-and-head-door.test.tsx](../../../src/lib/__tests__/bib-address-and-head-door.test.tsx)
 — 14 legs driving the real hook through the real serialized door, the
 duplicate-fusion leg falsified against the pre-fix `prev.map`.
+
+## The gesture half: one Save is ONE write, and a FAN-OUT waits on it (task 691)
+
+> **A user gesture is one intent, so it is one mutation. And a queue orders
+> what has reached it, not what is on its way — so a door whose KEY costs IO to
+> spell does not order its writers at all.**
+
+Saving a bib entry whose fields **and** citekey had both changed fired two
+mutations back-to-back with nothing awaited between them: a set-all field
+write, then a head write. Both entered the `.bib`'s one serialized door (task
+558), which is why the shape looked safe.
+
+**Half 1 — the queue was FIFO from ENQUEUE time, and the enqueue was not
+synchronous.** `mutateBib` resolved the `.bib` FILENAME before enqueuing,
+because the queue's key carried it (`bib/<name>`), and `resolveBibFilename` is
+three-plus IO round trips — the doc handle out of IndexedDB, the doc index, a
+read of the `.tex` for its `\bibliography{}` declaration, sometimes a directory
+scan. Neither call reached the queue in its caller's tick, so the queue ordered
+them by whichever resolution happened to finish first. When the RENAME won, the
+field mutation ran against a list in which its target no longer held the key it
+had addressed, matched nothing, and the door answered `declined` — deliberately
+NOT a refusal, and the one outcome that triggers no re-read. The user's field
+edits were dropped on disk in silence while the card went on showing them.
+
+A doc has ONE bibliography, so the queue's key is a fact about the DOC, not
+about a filename we must do IO to learn: `BIB_WRITE_SUBKEY` is a constant
+([host-writability.ts](../../../src/lib/host-writability.ts)) and the name is
+resolved INSIDE the queued task, in both backends. The enqueue is then
+synchronous — bib writes are FIFO in CALL order for every writer, not just this
+one — and the name is read fresh inside the lock, so the memoisation this
+would otherwise have invited (and the stale `\bibliography{}` declaration it
+could serve) never arises.
+
+**Half 2 — one gesture, one mutator.** `saveBibEntry(entry, { fields, type,
+key })` applies the whole edit inside ONE `runBibMutation`, so the ordering
+question does not arise and there is no state between the halves to be caught
+in: two writes also meant that a throw on the second left the disk holding the
+new fields under the OLD key, which the failure path then re-read and the UI
+adopted as the truth. `replaceBibEntry` and `updateBibKeyAndType` survive as
+NAMED INTENTS over that one door rather than as writers, and the card's three
+write props collapse into `onSaveBibEntry` — which is what stops a future
+caller from firing two again. (The Citations panel's inline bib editor gains
+set-all deletion for free: it was only ever handed the MERGE writer, so a field
+cleared there came back.)
+
+**Half 3 — the rename's fan-out is sequenced on the write.** Rewriting every
+`\cite{oldKey}` in the paper for a rename that did NOT reach disk is precisely
+the dangling reference task 689 exists to prevent, arrived at from the other
+side. The fan-out now runs after the single write settles, and not at all when
+it was refused — `failed` or the new `not-found`.
+
+**Half 4 — "I matched nothing" is not "nothing to do".** `declined` collapsed
+both, and they call for opposite behaviour: the first leaves the optimistic view
+showing an edit the file never received (task 685's phantom, reached by another
+road), the second is a no-op the view already agrees with. A mutator that
+addresses no entry now answers `BIB_NO_MATCH`
+([bib-address.ts](../../../src/lib/bib-address.ts)), the door reports
+`not-found`, and it is voiced and reconciled like the refusal it is.
+
+**Half 5 — a head check measures what the write CHANGES.** Reading the absolute
+head rule on every Save refused to write the FIELDS of either of two blocks
+sharing a citekey — a collision the user did not create and could not clear
+without the edit, in the very case task 690 stopped hiding so it could be
+repaired. `validateBibEntryHeadChange` keeps the type rule always (it is being
+set either way) and applies the key rule when the key MOVES.
+
+**Owed, not claimed:** a real-FSA eyeball on a Save that changes fields and the
+citekey together. Durable proof:
+[bib-save-one-door.test.tsx](../../../src/lib/__tests__/bib-save-one-door.test.tsx)
+(8 legs over the real queue; the fan-out gate, the `not-found` report and the
+duplicate-key field edit each falsified against the pre-fix shape) and the
+call-order leg in
+[bib-mutate-door.test.ts](../../../src/lib/__tests__/bib-mutate-door.test.ts),
+which fails both ways over when the filename resolution is moved back outside
+the enqueue.

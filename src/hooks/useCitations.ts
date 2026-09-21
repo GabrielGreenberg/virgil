@@ -7,6 +7,7 @@ import {
   DOC_BIB_CHANGED_EVENT,
   mutateProjectBib,
   type BibMutator,
+  type BibWriteResult,
   type DocBibChangedDetail,
 } from "@/lib/project-bib";
 import { isUnanchored } from "@/links/links";
@@ -31,10 +32,29 @@ import {
   bibAddressOf,
   mapAddressedBibEntry,
   resolveBibEntry,
-  type BibEntryAddress,
 } from "@/lib/bib-address";
-import { validateBibEntryHead } from "@/lib/bib-entry-head";
+import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
 import { asBibFamily, DEFAULT_BIB_FAMILY, type BibFamily } from "@/lib/bib-family";
+
+/**
+ * What ONE Save on a bibliography entry changes (task 691) — the whole of a
+ * user gesture in one object, so it can be ONE write.
+ *
+ * Each part is optional and `undefined` means "not part of this save", never
+ * "clear it": a save that does not mention the citekey leaves it alone, and
+ * one that passes an EMPTY citekey is refused. `fields`, when present, is the
+ * COMPLETE intended field set (set-all), because the bib editor's map IS that
+ * set and a field the user cleared must be deleted.
+ */
+export interface BibEntrySave {
+  /** The complete new field set. Omitted ⇒ the entry's fields are untouched. */
+  fields?: Record<string, string>;
+  /** The new `@type`. Omitted ⇒ unchanged. */
+  type?: string;
+  /** The new citekey. Omitted, or equal to the current one ⇒ no rename, and
+   *  no rename fan-out. */
+  key?: string;
+}
 
 /** No stored family: the user has not chosen one. Detection seeds the VIEW
  *  (never the sidecar) and `DEFAULT_BIB_FAMILY` answers until it resolves. */
@@ -73,6 +93,7 @@ export const CITATIONS_INERT: CitationsHook = {
   setBibPackage: () => {},
   addBibEntry: () => {},
   updateBibEntry: () => {},
+  saveBibEntry: () => {},
   replaceBibEntry: () => {},
   updateBibKeyAndType: () => {},
   getBibEntry: () => undefined,
@@ -297,9 +318,15 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * imported here, and that is the census's leg (task 558).
    */
   const runBibMutation = useCallback(
-    (mutate: BibMutator) => {
-      setBibEntries((prev) => mutate(prev) ?? prev);
-      void mutateProjectBib(docId, mutate).then((result) => {
+    (mutate: BibMutator): Promise<BibWriteResult> => {
+      // The optimistic preview. A mutator that says "nothing to change"
+      // (`null`) or "the address names no entry here" (`BIB_NO_MATCH`, task
+      // 691) leaves the view alone — only a LIST is a new view.
+      setBibEntries((prev) => {
+        const next = mutate(prev);
+        return Array.isArray(next) ? next : prev;
+      });
+      return mutateProjectBib(docId, mutate).then((result) => {
         // A write that THREW left the file exactly as it was, while the
         // preview above still shows the edit — and nothing else would ever
         // correct it, because only a LANDED write publishes. That phantom is
@@ -310,9 +337,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         // truth. Only on `failed` — the other refusal kinds mean no write was
         // attempted for this pane's doc at all (see `refusedWrite`), and a
         // `declined` one means the disk is already what it should be.
-        if (result.kind === "failed" && docRef.current === docId && docId) {
+        // `not-found` joins it (task 691): the mutator addressed an entry the
+        // FILE does not hold, so the preview above is showing an edit that
+        // landed nowhere — the same phantom, reached by a different road.
+        if (
+          (result.kind === "failed" || result.kind === "not-found") &&
+          docRef.current === docId &&
+          docId
+        ) {
           refreshBib(docId);
         }
+        return result;
       });
     },
     [docId, refreshBib],
@@ -471,57 +506,6 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [runBibMutation],
   );
 
-  /**
-   * REPLACE an entry's fields (and optionally its type) WHOLESALE (D3 — the
-   * `replaceBibEntry`=set-all half; consumed by T6-C16's "Replace with library"
-   * and the bib-editor Save). Unlike {@link updateBibEntry}, the supplied
-   * `fields` is the COMPLETE new field set: a field the user cleared (absent
-   * from `fields`) is DELETED, not retained (BIB-A3-02 / BIB-F5-04 — "I cleared
-   * the field but it came back"). The entry's durable `uid` and citekey are
-   * untouched (this is not an identity move — a rename routes through
-   * `updateBibKeyAndType`/the cascade).
-   *
-   * NO CASCADE FAN-OUT, deliberately (task 647). D3 dispatched a `retype`
-   * identity change from here whenever `type` really changed, for "single-writer
-   * discipline". Both registered `bibEntry` migrators narrow to a rename, so
-   * that dispatch never reached a line of code — and the cascade is defined as
-   * the writer for identity CHANGES, which a retype (same uid, same citekey) is
-   * not. The arm is retired; the `.bib`-side set-all + persist below is, and
-   * always was, the whole of what a retype does. Both flag paths are now the
-   * same code, so there is no longer a flag-parity question to answer here.
-   */
-  const replaceBibEntry = useCallback(
-    (entry: BibEntry, fields: Record<string, string>, type?: string) => {
-      const address = bibAddressOf(bibEntriesRef.current, entry);
-      runBibMutation((prev) =>
-        mapAddressedBibEntry(prev, address, (e) => {
-          const nextType = type ?? e.type;
-          // set-all: replace the field map entirely (cleared fields are gone).
-          const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
-          updated.raw = rebuildRaw(e, updated);
-          return updated;
-        }),
-      );
-    },
-    [runBibMutation],
-  );
-
-  /** Apply the `.bib`-side `key`+`type` mutation to EXACTLY the entry
-   *  `address` names (task 690 — see `bib-address.ts` for the ladder).
-   *  Reconstructs that entry's `raw` block + reserializes + persists. */
-  const applyBibKeyType = useCallback(
-    (address: BibEntryAddress, newKey: string, newType: string) => {
-      runBibMutation((prev) =>
-        mapAddressedBibEntry(prev, address, (e) => {
-          const updated = { ...e, key: newKey, type: newType };
-          updated.raw = rebuildRaw(e, updated);
-          return updated;
-        }),
-      );
-    },
-    [runBibMutation],
-  );
-
   /** Rewrite the citation SIDECAR refs that reference `oldKey` → `newKey`.
    *  Uses the boundary-class matcher (W0a) so a punctuation citekey rewrites
    *  as a whole token and `foo` doesn't clobber `foobar`. */
@@ -542,83 +526,160 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   );
 
   /**
-   * THE citekey rename door — ONE path, no flag (task 689).
+   * THE bib-entry write door — ONE mutator per user GESTURE (task 691).
    *
-   * It used to be two. The flag-ON branch was the real thing: rewrite the
-   * `.bib` key, boundary-rewrite the citation refs, and fan out through the
-   * IdentityCascade to every registered migrator (the editor `\cite{}`
-   * doc-rewrite, the float-key remap, the panel selection).
-   * The flag-OFF branch — which is what every shipping build ran, since
+   * A Save in the bib editor is one intent: these fields, this `@type`, this
+   * citekey. It used to be TWO writes, fired back-to-back with nothing awaited
+   * between them — `replaceBibEntry` for the fields, then
+   * `updateBibKeyAndType` for the head — and both went to the `.bib`'s one
+   * serialized door. A queue only orders what has reached it, and neither call
+   * could reach it in its caller's tick (the queue key carried the `.bib`
+   * FILENAME, which cost three-plus IO round trips to learn; task 691's other
+   * half retires that). So the two writes raced. When the RENAME won, the
+   * field mutator ran second against a list in which its target no longer had
+   * the key it had addressed, matched nothing, and was DECLINED — a silent
+   * outcome that triggers no re-read, so the card went on showing field edits
+   * that `references.bib` never received.
+   *
+   * Even in the intended order they were two writes with two publishes: a
+   * throw on the second left the disk holding the new fields under the OLD
+   * key, and the failure path then re-read the file, so the UI settled on the
+   * half-saved state as the truth. Task 685 made a failed write honest; it
+   * could not make a two-part edit atomic. One mutator can, and does: one
+   * queued read-modify-write covers the whole edit, so the ordering question
+   * does not arise and there is no state between the halves to be caught in.
+   *
+   * The head is validated ONCE (task 690's door, now measuring what the write
+   * CHANGES — see `validateBibEntryHeadChange`), and the rename's FAN-OUT runs
+   * after that single write SETTLES, and only if the `.bib` half was not
+   * refused: rewriting every `\cite{oldKey}` in the paper for a rename that
+   * did not reach disk is precisely the dangling reference task 689 exists to
+   * prevent, arrived at from the other side.
+   */
+  const saveBibEntry = useCallback(
+    (target: BibEntry, patch: BibEntrySave) => {
+      // The entry as this hook currently holds it. A card can hand back a
+      // stale copy; the address resolves against the live list either way.
+      const address = bibAddressOf(bibEntriesRef.current, target);
+      const entry = resolveBibEntry(bibEntriesRef.current, address);
+      // Nothing here to save, and in particular nothing to fan out: a fan-out
+      // would rewrite `\cite{oldKey}` atoms for an entry the bibliography
+      // does not have.
+      if (!entry) return;
+      // `undefined` means "this part of the head is not part of this save" —
+      // NOT "clear it". An EMPTY string is a value, and a refused one.
+      const newKey = patch.key !== undefined ? patch.key.trim() : entry.key;
+      const newType = patch.type !== undefined ? patch.type.trim() : entry.type;
+      // THE validation door (task 690), read here as well as at the card, so
+      // no caller can route around the UI and write a block the parser cannot
+      // read back — an empty `@type` emitted `@{key,…}`, and the next write
+      // then deleted the entry from the user's only copy.
+      const check = validateBibEntryHeadChange(
+        { key: entry.key, type: entry.type },
+        { key: newKey, type: newType },
+        { entries: bibEntriesRef.current, self: address },
+      );
+      if (!check.ok) {
+        console.warn(`Refusing bib save: ${check.reason}`);
+        return;
+      }
+      const oldKey = entry.key;
+      const uid = entry.uid;
+      // ONE mutation: fields, type and key together, applied to EXACTLY the
+      // entry `address` names (NOT key-matched — two blocks can share a
+      // citekey, and `prev.map` rewrote both; task 690).
+      void runBibMutation((prev) =>
+        mapAddressedBibEntry(prev, address, (e) => {
+          const updated: BibEntry = {
+            ...e,
+            key: newKey,
+            type: newType,
+            // Set-all when fields are part of the save: the supplied map is
+            // the COMPLETE intended field set, so a field the user cleared is
+            // DELETED, not silently retained (BIB-A3-02 / BIB-F5-04). Omitted
+            // ⇒ the entry's fields are not this save's business.
+            ...(patch.fields ? { fields: { ...patch.fields } } : {}),
+          };
+          updated.raw = rebuildRaw(e, updated);
+          return updated;
+        }),
+      ).then((result) => {
+        if (oldKey === newKey) return; // a pure retype/field save moves no identity
+        // The two outcomes that mean the user's content did NOT reach disk and
+        // never will (both voiced on the refusal channel). Fanning out over
+        // them would leave the paper citing a key `references.bib` does not
+        // hold. The others mean no write was attempted for this pane's doc at
+        // all, so nothing was persisted on either side of the rename.
+        if (result.kind === "failed" || result.kind === "not-found") return;
+        // citation-refs sidecar rewrite (boundary-safe, whole-token).
+        rewriteCitationRefs(oldKey, newKey);
+        // …then every registered migrator: the editor `\cite{}` doc-rewrite
+        // (without which the line above is undone by the next
+        // `syncFromEditor`), the float-key + panel-selection re-point, and the
+        // annotation / bib-review re-key. A rename with no migrators
+        // registered is a well-formed no-op.
+        void identityCascade.runIdentityChange(
+          renameCitekeyChange({ uid, oldKey, newKey, newType }),
+        );
+      });
+    },
+    [runBibMutation, rewriteCitationRefs, identityCascade],
+  );
+
+  /**
+   * REPLACE an entry's fields (and optionally its type) WHOLESALE (D3 — the
+   * set-all half; consumed by "Replace with library"). Unlike
+   * {@link updateBibEntry}, the supplied `fields` is the COMPLETE new field
+   * set: a field the user cleared (absent from `fields`) is DELETED, not
+   * retained (BIB-A3-02 / BIB-F5-04 — "I cleared the field but it came back").
+   * The entry's durable `uid` and citekey are untouched.
+   *
+   * A named intent over the ONE door (task 691), not a second write path —
+   * which is what keeps a caller that wants BOTH halves from firing two.
+   *
+   * NO CASCADE FAN-OUT, deliberately (task 647). D3 dispatched a `retype`
+   * identity change whenever `type` really changed, for "single-writer
+   * discipline". Both registered `bibEntry` migrators narrow to a rename, so
+   * that dispatch never reached a line of code — and the cascade is defined as
+   * the writer for identity CHANGES, which a retype (same uid, same citekey)
+   * is not.
+   */
+  const replaceBibEntry = useCallback(
+    (entry: BibEntry, fields: Record<string, string>, type?: string) => {
+      saveBibEntry(entry, { fields, ...(type !== undefined ? { type } : {}) });
+    },
+    [saveBibEntry],
+  );
+
+  /**
+   * THE citekey rename intent — ONE path, no flag (task 689), over the ONE
+   * door (task 691).
+   *
+   * It used to be two paths. The flag-ON branch was the real thing: rewrite
+   * the `.bib` key, boundary-rewrite the citation refs, and fan out through
+   * the IdentityCascade to every registered migrator (the editor `\cite{}`
+   * doc-rewrite, the float-key remap, the panel selection). The flag-OFF
+   * branch — which is what every shipping build ran, since
    * `virgil:identity-cascade` is `default: false` — rewrote `references.bib`
    * and patched `citations.json`, and stopped. So a rename left every
-   * `\cite{oldKey}` in the paper pointing at a key that no longer existed
-   * (a dangling reference that will not compile), the sidecar half was
-   * REVERTED the moment `syncFromEditor` re-derived it from those unrewritten
-   * atoms, and the entry's annotation stayed under the old key and vanished
-   * from the UI. `bib-cite-rewrite.ts`'s own header states this bug as its
-   * reason for existing; it was simply not reachable.
+   * `\cite{oldKey}` in the paper pointing at a key that no longer existed (a
+   * dangling reference that will not compile), the sidecar half was REVERTED
+   * the moment `syncFromEditor` re-derived it from those unrewritten atoms,
+   * and the entry's annotation stayed under the old key and vanished from the
+   * UI. `bib-cite-rewrite.ts`'s own header states this bug as its reason for
+   * existing; it was simply not reachable.
    *
    * Nothing the fan-out does has an on-disk FORMAT implication, so nothing in
    * it belonged behind a format-rollout flag. The flag keeps gating exactly
    * what it is about — the uid-keyed v2 sidecar shapes and their on-load
    * migration — and the sidecar migrators (task 689) are written to be correct
    * on BOTH shapes, so flag ON and flag OFF now produce the same rename.
-   *
-   * The bare-`\b` ref matcher the legacy branch carried is retired with it: it
-   * mis-fires on a punctuation citekey (`smith:2020`, `+foo`), which is exactly
-   * what `wholeWordPatternFor` exists to get right. It survived only because a
-   * suite pinned the flag-OFF branch as-is.
-   *
-   * Since task 690 the door takes the ENTRY, not its old citekey, and does two
-   * things it did not: it ADDRESSES the block (`bib-address.ts` — a ladder
-   * that lands on exactly one entry even when two blocks share a citekey), and
-   * it VALIDATES the new head (`bib-entry-head.ts`) before any of it runs. The
-   * unvalidated version accepted a rename ONTO an existing citekey — after
-   * which the panel showed one card for two blocks and every later edit hit
-   * both — and an EMPTY `@type`, which emitted `@{key,…}`: a block the
-   * extractor's own head scan cannot read, skipped on the next parse with a
-   * `console.warn`, and therefore absent from the list the following write
-   * rebuilt the file from.
    */
   const updateBibKeyAndType = useCallback(
     (target: BibEntry, newKey: string, newType: string) => {
-      // The entry as this hook currently holds it. A card can hand back a
-      // stale copy; the address resolves against the live list either way.
-      const address = bibAddressOf(bibEntriesRef.current, target);
-      const entry = resolveBibEntry(bibEntriesRef.current, address);
-      // Nothing here to rename, and in particular nothing to fan out: a
-      // fan-out would rewrite `\cite{oldKey}` atoms in the document for an
-      // entry the bibliography does not have.
-      if (!entry) return;
-      const oldKey = entry.key;
-      // THE validation door (task 690), read here as well as at the card, so
-      // no caller can route around the UI and write a block the parser cannot
-      // read back — an empty `@type` emitted `@{key,…}`, and the next write
-      // then deleted the entry from the user's only copy.
-      const check = validateBibEntryHead(
-        { key: newKey, type: newType },
-        { entries: bibEntriesRef.current, self: address },
-      );
-      if (!check.ok) {
-        console.warn(`Refusing bib rename: ${check.reason}`);
-        return;
-      }
-      // 1. `.bib` key+type mutation, addressed (NOT key-matched — two blocks
-      //    can share a citekey, and `prev.map` rewrote both).
-      applyBibKeyType(address, newKey, newType);
-      if (oldKey === newKey) return; // a pure retype moves no identity
-      // 2. citation-refs sidecar rewrite (boundary-safe, whole-token).
-      rewriteCitationRefs(oldKey, newKey);
-      // 3. fan out to every registered migrator: the editor `\cite{}`
-      //    doc-rewrite (without which step 2 is undone by the next
-      //    `syncFromEditor`), the float-key + panel-selection re-point, and the
-      //    annotation / bib-review re-key. A rename with no migrators
-      //    registered is a well-formed no-op.
-      void identityCascade.runIdentityChange(
-        renameCitekeyChange({ uid: entry.uid, oldKey, newKey, newType }),
-      );
+      saveBibEntry(target, { key: newKey, type: newType });
     },
-    [applyBibKeyType, rewriteCitationRefs, identityCascade],
+    [saveBibEntry],
   );
 
   const addBibEntry = useCallback(
@@ -789,6 +850,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      saveBibEntry,
       replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,
@@ -815,6 +877,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      saveBibEntry,
       replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,

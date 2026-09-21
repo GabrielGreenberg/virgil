@@ -79,8 +79,7 @@ function renderPanel(
       bibEntries={[SMITH]}
       selectedBibKey={null}
       onSelectBibKey={() => {}}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={() => {}}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
       onRequestReview={() => {}}

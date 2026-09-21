@@ -107,8 +107,7 @@ function citationItems(citations: CitationRef[]): OmniItem[] {
     requestBibReview: noop,
     cancelBibReview: noop,
     getBibReviewStatus: () => "none" as const,
-    updateBibEntry: noop,
-    updateBibKeyAndType: noop,
+    saveBibEntry: noop,
   });
 }
 

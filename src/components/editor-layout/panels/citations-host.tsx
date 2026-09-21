@@ -33,8 +33,7 @@ export interface CitationsHostProps {
   deleteCitation: CitationsHook["deleteCitation"];
   setCitationStyle: CitationsHook["setStyle"];
   setBibPackage: CitationsHook["setBibPackage"];
-  updateBibEntry: CitationsHook["updateBibEntry"];
-  updateBibKeyAndType: CitationsHook["updateBibKeyAndType"];
+  saveBibEntry: CitationsHook["saveBibEntry"];
   addBibEntry: CitationsHook["addBibEntry"];
   getFormattedBib: CitationsHook["getFormattedBib"];
   getAnnotation: AnnotationsHook["getAnnotation"];
@@ -120,8 +119,7 @@ export function CitationsHost(p: CitationsHostProps) {
       onRequestReview={p.requestBibReview}
       onCancelReview={p.cancelBibReview}
       getReviewStatus={p.getBibReviewStatus}
-      onUpdateBibEntry={p.updateBibEntry}
-      onUpdateBibKeyAndType={p.updateBibKeyAndType}
+      onSaveBibEntry={p.saveBibEntry}
       onAddBibEntry={p.addBibEntry}
       recentlyAddedId={recentlyAddedId}
       nestedContainerOf={nestedContainerOf}

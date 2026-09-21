@@ -50,8 +50,7 @@ function renderCard(annotation: string) {
       onRequestReview={() => {}}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={() => {}}
     />,
   );
 }

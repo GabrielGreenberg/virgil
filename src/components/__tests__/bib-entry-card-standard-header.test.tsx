@@ -59,8 +59,7 @@ function renderCard(extra: Partial<React.ComponentProps<typeof BibEntryCard>> = 
       onRequestReview={() => {}}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={() => {}}
       {...extra}
     />,
   );

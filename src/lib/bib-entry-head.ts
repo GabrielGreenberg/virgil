@@ -58,6 +58,23 @@ const CITEKEY_FORBIDDEN = /[\s,{}@%"#=()\\~]/;
 const ENTRY_TYPE_RE = /^[A-Za-z][A-Za-z0-9-]*$/;
 
 /**
+ * Is this `@type` writable on its own? The half of the head rule that belongs
+ * to EVERY write that sets a type — a rename, a retype, a "Replace with
+ * library" — independent of any other entry in the file.
+ */
+export function validateBibEntryType(type: string): BibHeadCheck {
+  const t = type.trim();
+  if (!t) return { ok: false, reason: "An entry type is required (e.g. article)." };
+  if (!ENTRY_TYPE_RE.test(t)) {
+    return {
+      ok: false,
+      reason: "An entry type must be letters only (e.g. article, book, inproceedings).",
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Is this `@type` + citekey pair writable to `references.bib`?
  *
  * `entries` is the list the entry lives in and `self` the address of the entry
@@ -72,13 +89,8 @@ export function validateBibEntryHead(
   const key = head.key.trim();
   const type = head.type.trim();
 
-  if (!type) return { ok: false, reason: "An entry type is required (e.g. article)." };
-  if (!ENTRY_TYPE_RE.test(type)) {
-    return {
-      ok: false,
-      reason: "An entry type must be letters only (e.g. article, book, inproceedings).",
-    };
-  }
+  const typeCheck = validateBibEntryType(type);
+  if (!typeCheck.ok) return typeCheck;
   if (!key) return { ok: false, reason: "A citation key is required." };
   const bad = key.match(CITEKEY_FORBIDDEN);
   if (bad) {
@@ -98,4 +110,39 @@ export function validateBibEntryHead(
     };
   }
   return { ok: true };
+}
+
+/**
+ * The head check for a SAVE — measured against the head the entry already has,
+ * so the write answers for what it CHANGES and nothing else (task 691).
+ *
+ * `validateBibEntryHead` asks about a head in the absolute, which is the right
+ * question for a rename and the wrong one for a field edit. A `references.bib`
+ * may legally hold two blocks under one citekey — task 690 stopped HIDING the
+ * second precisely so the user could repair it — and the absolute check calls
+ * that a collision. Read on every Save it therefore refused to write the
+ * FIELDS of either duplicate: an edit that touches no citekey, refused for a
+ * collision the user did not create and could not clear without the edit.
+ *
+ * So: the TYPE is always this write's to answer for (it is being set either
+ * way, and an unwritable one emits `@{key,…}` — a block the extractor cannot
+ * read back, which the next write then drops). The KEY's rule — its character
+ * set, and above all where it LANDS — applies when the key MOVES. A key that
+ * stays put keeps whatever company it already had.
+ *
+ * The rule itself is still stated once, above; this is which part of it a
+ * given write is accountable for. Read by the card (to disable Save and say
+ * why) and by the mutator (so no caller routes around the UI).
+ */
+export function validateBibEntryHeadChange(
+  current: { key: string; type: string },
+  next: { key: string; type: string },
+  context: { entries: BibEntry[]; self?: BibEntryAddress },
+): BibHeadCheck {
+  const key = next.key.trim();
+  const type = next.type.trim();
+  const typeCheck = validateBibEntryType(type);
+  if (!typeCheck.ok) return typeCheck;
+  if (key === current.key) return { ok: true };
+  return validateBibEntryHead({ key, type }, context);
 }

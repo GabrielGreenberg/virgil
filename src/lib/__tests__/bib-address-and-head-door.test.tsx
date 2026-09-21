@@ -271,8 +271,7 @@ function renderCard(entries: BibEntry[], index: number, handlers: Record<string,
       onRequestReview={() => {}}
       onCancelReview={() => {}}
       getReviewStatus={() => "none"}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={() => {}}
       {...handlers}
     />,
   );
@@ -303,27 +302,28 @@ describe("the card · Save is disabled and says why", () => {
   });
 
   it("renaming onto an existing citekey disables Save, and nothing is dispatched", () => {
-    const onReplaceBibEntry = vi.fn();
-    const onUpdateBibKeyAndType = vi.fn();
-    renderCard(entries, 0, { onReplaceBibEntry, onUpdateBibKeyAndType });
+    const onSaveBibEntry = vi.fn();
+    renderCard(entries, 0, { onSaveBibEntry });
     openEditor();
     fireEvent.change(screen.getByDisplayValue("smith2020"), { target: { value: "jones1999" } });
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Save"));
-    expect(onReplaceBibEntry).not.toHaveBeenCalled();
-    expect(onUpdateBibKeyAndType).not.toHaveBeenCalled();
+    expect(onSaveBibEntry).not.toHaveBeenCalled();
   });
 
   it("a legal head keeps Save live and dispatches the ENTRY, not the citekey", () => {
-    const onReplaceBibEntry = vi.fn();
-    const onUpdateBibKeyAndType = vi.fn();
-    renderCard(entries, 0, { onReplaceBibEntry, onUpdateBibKeyAndType });
+    const onSaveBibEntry = vi.fn();
+    renderCard(entries, 0, { onSaveBibEntry });
     openEditor();
     fireEvent.change(screen.getByDisplayValue("smith2020"), { target: { value: "smith2021" } });
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByText("Save"));
-    expect(onUpdateBibKeyAndType).toHaveBeenCalledTimes(1);
-    expect(onUpdateBibKeyAndType.mock.calls[0][0]).toBe(entries[0]);
-    expect(onUpdateBibKeyAndType.mock.calls[0][1]).toBe("smith2021");
+    // ONE write for the gesture (task 691) — fields, type and the new citekey
+    // in a single patch, not a field write and a head write.
+    expect(onSaveBibEntry).toHaveBeenCalledTimes(1);
+    expect(onSaveBibEntry.mock.calls[0][0]).toBe(entries[0]);
+    expect(onSaveBibEntry.mock.calls[0][1].key).toBe("smith2021");
+    expect(onSaveBibEntry.mock.calls[0][1].type).toBe("article");
+    expect(onSaveBibEntry.mock.calls[0][1].fields).toBeTruthy();
   });
 });

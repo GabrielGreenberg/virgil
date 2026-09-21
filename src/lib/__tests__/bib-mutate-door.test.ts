@@ -32,6 +32,20 @@ const note = (op: Entry["op"], file: string, phase: Entry["phase"]) =>
  *  interleaves rather than winning on microtask ordering. */
 const slow = () => new Promise((r) => setTimeout(r, 5));
 
+/**
+ * Extra delay applied to the NEXT `.tex` reads, one entry per read, in order
+ * (task 691). Resolving which `.bib` a doc uses reads the `.tex`; while the
+ * write queue's KEY carried that filename, the read had to finish before the
+ * write could even be enqueued — so a slow first resolution let a later call
+ * jump the queue. A per-read delay is how that inversion is made deterministic
+ * rather than a race the fake happens to win.
+ */
+let texReadDelays: number[] = [];
+const extraTexDelay = async () => {
+  const ms = texReadDelays.shift() ?? 0;
+  if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+};
+
 /** Between any mutation's BASE read and its own write, no other base read of
  *  the same file may start. Only `text()` reads are journalled: the forensic
  *  copy that rides `beforeWrite` reads via `arrayBuffer()`, and the gate's
@@ -107,6 +121,7 @@ class FakeDirHandle {
           lastModified: file.mtimeMs,
           text: async () => {
             note("read", name, "start");
+            if (name === TEX) await extraTexDelay();
             await slow();
             note("read", name, "end");
             return file.text;
@@ -192,6 +207,7 @@ const fsaSlots = () =>
 
 beforeEach(() => {
   journal = [];
+  texReadDelays = [];
   resetPipelines();
   __resetDiskLedgerForTests();
   invalidateSidecarBundle(DOC_ID);
@@ -206,6 +222,36 @@ describe("storage-fsa mutateBib: the base read is inside the critical section", 
     const h = beginDocPipeline(DOC_ID);
     await Promise.all([fsaMutateBib(h, append(B)), fsaMutateBib(h, append(X))]);
     expect(keysIn(fsaDisk()).sort()).toEqual(["a", "b", "x"]);
+  });
+
+  it("two mutations land in CALL order, even when the first's filename resolution is slow", async () => {
+    // THE ordering leg (task 691). One Save on a bib entry used to fire TWO
+    // mutations back-to-back — the fields, then the head — and the door
+    // resolved the `.bib` FILENAME before enqueuing, because the queue's key
+    // carried it. That resolution is three-plus IO round trips (the doc
+    // handle, the doc index, a read of the `.tex` for its `\bibliography{}`
+    // declaration), so neither call reached the queue in its caller's tick and
+    // the queue ordered them by whichever resolution finished first. When the
+    // rename won, the field mutation ran against a list where its target had
+    // already been renamed, matched nothing, and was silently declined.
+    //
+    // Pre-fix this fails both ways over: `seen` is ["second", "first"] and the
+    // file holds `x` before `b`.
+    seedFsa(A);
+    const h = beginDocPipeline(DOC_ID);
+    texReadDelays = [40]; // only the FIRST call's resolution is slow
+    const seen: string[] = [];
+    const first = fsaMutateBib(h, (cur) => {
+      seen.push("first");
+      return cur + B;
+    });
+    const second = fsaMutateBib(h, (cur) => {
+      seen.push("second");
+      return cur + X;
+    });
+    await Promise.all([first, second]);
+    expect(seen).toEqual(["first", "second"]);
+    expect(keysIn(fsaDisk())).toEqual(["a", "b", "x"]);
   });
 
   it("no base read interleaves with another mutation's read→write pair", async () => {

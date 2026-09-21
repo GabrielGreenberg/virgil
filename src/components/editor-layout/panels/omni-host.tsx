@@ -99,8 +99,7 @@ export interface OmniHostProps {
   updateCitation: CitationsHook["updateCitation"];
   deleteCitation: CitationsHook["deleteCitation"];
   getFormattedBib: CitationsHook["getFormattedBib"];
-  updateBibEntry: CitationsHook["updateBibEntry"];
-  updateBibKeyAndType: CitationsHook["updateBibKeyAndType"];
+  saveBibEntry: CitationsHook["saveBibEntry"];
   getAnnotation: AnnotationsHook["getAnnotation"];
   setAnnotation: AnnotationsHook["setAnnotation"];
   requestBibReview: BibReviewHook["requestReview"];
@@ -510,8 +509,7 @@ export function OmniHost(p: OmniHostProps) {
       requestBibReview: p.requestBibReview,
       cancelBibReview: p.cancelBibReview,
       getBibReviewStatus: p.getBibReviewStatus,
-      updateBibEntry: p.updateBibEntry,
-      updateBibKeyAndType: p.updateBibKeyAndType,
+      saveBibEntry: p.saveBibEntry,
     }),
     ...buildNoteOmniItems({
       cards: p.notesCards,
@@ -656,7 +654,7 @@ export function OmniHost(p: OmniHostProps) {
     // not per-keystroke recomputation, so no keystroke-sanctity cost.
     p.footnoteAiRequests, p.setFootnoteAiRequest,
     // Citation/bib handlers
-    p.updateCitation, p.getFormattedBib, p.updateBibEntry, p.updateBibKeyAndType,
+    p.updateCitation, p.getFormattedBib, p.saveBibEntry,
     p.getAnnotation, p.setAnnotation,
     p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
     // Note handlers

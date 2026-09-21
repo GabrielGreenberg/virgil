@@ -19,6 +19,7 @@
 //   scroll the new entry so it renders selected in the local list.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import type { BibEntrySave } from "@/hooks/useCitations";
 
 // panel-primitives (+ bib card chrome) transitively pull `@/lib/storage`
 // (the known barrel/storage gotcha) — stub it; nothing here touches a sidecar.
@@ -89,9 +90,11 @@ const CONFLICT_TEXT = "is already in your bib with different fields";
 function Host({
   onAdd,
   onSelect,
+  onSave,
 }: {
   onAdd?: (e: BibEntry) => void;
   onSelect?: (k: string | null) => void;
+  onSave?: (e: BibEntry, patch: BibEntrySave) => void;
 }) {
   const [entries, setEntries] = useState<BibEntry[]>([SMITH_LOCAL]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -118,8 +121,7 @@ function Host({
       selectedBibKey={selected}
       onSelectBibKey={handleSelect}
       onAddBibEntry={handleAdd}
-      onUpdateBibEntry={() => {}}
-      onUpdateBibKeyAndType={() => {}}
+      onSaveBibEntry={onSave ?? (() => {})}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
       onRequestReview={() => {}}
@@ -217,6 +219,29 @@ describe("BibliographyPanel — conflict-strip context lifecycle (task 096)", ()
     ).not.toBeNull();
     // …and it is the selected key (navigateToEntry selected it).
     expect(onSelect).toHaveBeenLastCalledWith("smith-2");
+  });
+
+  // ---- Task 691: one gesture, one write ----
+
+  it("\"Replace with library\" is ONE write — fields and type in a single save", () => {
+    // The fallback branch here used to be a MERGE field write plus a separate
+    // type write: two mutations of `references.bib` for one click, racing in
+    // the same serial queue as the bib editor's Save did. One door now, and
+    // the citekey is deliberately absent from the patch — a replace overwrites
+    // fields, it does not move identity.
+    const onSave = vi.fn();
+    const { container } = render(<Host onSave={onSave} />);
+    raiseConflict(container);
+    const replaceBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Replace with library",
+    );
+    fireEvent.click(replaceBtn!);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const [target, patch] = onSave.mock.calls[0];
+    expect(target.key).toBe("smith");
+    expect(patch.fields).toEqual(SMITH_LIB.fields);
+    expect(patch.type).toBe("article");
+    expect(patch.key).toBeUndefined();
   });
 
   it("selects the ORIGINAL local key on Replace / Keep / Request-merge (unchanged)", () => {

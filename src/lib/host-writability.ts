@@ -242,6 +242,31 @@ export function libraryPaperSidecarWritable(
  */
 export const SIDECAR_SUBKEY_PREFIX = "virgil/";
 
+/**
+ * The write-funnel subkey for the doc's bibliography — a CONSTANT, not
+ * `bib/<filename>` (task 691).
+ *
+ * A subkey is the serial queue's key, and a queue only orders writes from the
+ * moment they are ENQUEUED. While the key carried the `.bib` FILENAME, no bib
+ * write could be enqueued in its caller's own tick: the name had to be
+ * resolved first, and resolving it is three-plus IO round trips (the doc
+ * handle out of IndexedDB, the doc index, a read of the `.tex` to find its
+ * `\bibliography{}` declaration, sometimes a directory scan). Two bib writes
+ * issued back-to-back therefore reached the queue in whatever order their
+ * resolutions happened to finish — and a Save that changed an entry's fields
+ * AND its citekey was exactly such a pair, so the field edit could be applied
+ * to a list in which its target had already been renamed, match nothing, and
+ * be silently declined.
+ *
+ * A doc has ONE bibliography, so the queue's key is a fact about the DOC, not
+ * about a filename we must do IO to learn. With the name resolved INSIDE the
+ * queued task instead, the enqueue is synchronous — bib writes are FIFO in
+ * CALL order, for every writer — and the name is resolved fresh inside the
+ * lock, so a `\bibliography{}` declaration that changed under the app can
+ * never be served from a stale cache.
+ */
+export const BIB_WRITE_SUBKEY = "bib";
+
 export function sidecarWriteSubkey(filename: string): string {
   return `${SIDECAR_SUBKEY_PREFIX}${filename}`;
 }

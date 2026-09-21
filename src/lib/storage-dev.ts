@@ -73,6 +73,7 @@ import {
 } from "@/lib/disk-ledger";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
 import {
+  BIB_WRITE_SUBKEY,
   isLibraryPaperDoc as isLibraryPaper,
   libraryPaperCitekey,
   libraryPaperSidecarWritable,
@@ -945,7 +946,9 @@ export async function readBib(docId: string): Promise<BibReadResult> {
  * Before this door the dev `writeBib` PUT straight through with no queue at
  * all, so two bib writers raced here in a way they never could under FSA —
  * the same shape task 220 found for the sidecars. The queue key mirrors the
- * FSA subkey (`bib/<name>`), so `flushPrefix(docId)` still drains it.
+ * FSA subkey (`BIB_WRITE_SUBKEY` — a constant, resolved-name-free, so the
+ * enqueue happens in the caller's own tick; task 691), so `flushPrefix(docId)`
+ * still drains it.
  *
  * tex-write-exempt: writes the `.bib`, never the `.tex`, and a bibliography
  * mutation is user-intent. The FSA twin still takes `snapshotPriorBib`; this
@@ -960,9 +963,12 @@ export async function mutateBib(
   // (parity with storage-fsa; only the Reader's note sidecar lands, task 556).
   if (isLibraryPaper(h.docId)) return null;
   assertActive(h);
-  const bibFilename = bibFilenameFromTex(await readTex(h.docId));
-  return enqueueWrite(`${h.docId}/bib/${bibFilename}`, async () => {
+  return enqueueWrite(`${h.docId}/${BIB_WRITE_SUBKEY}`, async () => {
     assertNotSuperseded(h);
+    // Resolved INSIDE the queued task, like the FSA twin (task 691): the name
+    // costs IO, and a key that cannot be spelled synchronously is a queue that
+    // does not order writes by CALL order.
+    const bibFilename = bibFilenameFromTex(await readTex(h.docId));
     // The in-lock base read is NON-stamping, for the reason the FSA twin
     // states: the `.bib` fingerprint is the watcher's baseline.
     const current = (await fetchText(docFileUrl(h.docId, bibFilename))) ?? "";

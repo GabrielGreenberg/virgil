@@ -85,8 +85,7 @@ function baseProps(overrides: Partial<PanelProps> = {}): PanelProps {
     onRequestReview: vi.fn(),
     onCancelReview: vi.fn(),
     getReviewStatus: () => "none",
-    onUpdateBibEntry: vi.fn(),
-    onUpdateBibKeyAndType: vi.fn(),
+    onSaveBibEntry: vi.fn(),
     onAddBibEntry: vi.fn(),
     ...overrides,
   };
