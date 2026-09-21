@@ -95,6 +95,9 @@ function makeController(isOn = true) {
     previewOriginal: vi.fn(),
     previewSuggested: vi.fn(),
     insertBelow: vi.fn(),
+    apply: vi.fn(),
+    accept: vi.fn(),
+    reject: vi.fn(),
   };
 }
 
@@ -108,9 +111,6 @@ function renderCard(
         card={card}
         selected={false}
         onUpdateField={() => {}}
-        onAccept={() => {}}
-        onReject={() => {}}
-        onApply={() => {}}
         onConvert={() => {}}
         onDelete={() => {}}
         onSelect={() => {}}

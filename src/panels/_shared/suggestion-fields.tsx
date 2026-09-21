@@ -19,6 +19,7 @@ import { CommitActions } from "@/components/CommitActions";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
+import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
 import { usePreviewDir } from "@/links/pending-preview-store";
@@ -430,33 +431,82 @@ export function FieldBlock({
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Pending-changes (flag-ON) shared UI. These render only when the
-// pending-changes flag is on; the cards gate on `isPendingChangesOn()` before
-// using them, so flag-OFF callers never reach this code (and the legacy
-// Accept/Reject path stays byte-identical).
+// Pending-changes shared UI. `AppliedRecordBody` / `PendingAiRecordBody` render
+// only under the flag (the cards gate on `isPendingChangesOn()` before using
+// them, so flag-OFF callers never reach those). `PendingActionRow` owns BOTH
+// sides of the flag fork itself — it is the single door a pending card's
+// primary action goes through on every surface — so the legacy Accept/Reject
+// path lives here too, and stays byte-identical.
 // ───────────────────────────────────────────────────────────────────────────
 
-/** The `pending`-status action row under the flag: a single primary "Apply"
- *  button (replaces Accept/Reject). Phase 2 will auto-apply; for now it's a
- *  manual button so the mechanics are testable. */
-export function ApplyActionRow({
+/** The `pending`-status action row — the ONE place either suggestion family
+ *  decides what a pending card offers, for EVERY surface (docked / omni /
+ *  float / margin).
+ *
+ *  Flag ON  → a single primary **Apply**, which splices in-browser through the
+ *             controller (Phase 2 will auto-apply; manual for now so the
+ *             mechanics are testable).
+ *  Flag OFF → the legacy **Reject / Accept** pair, byte-identical to what the
+ *             docked host used to wire: Accept = status→accepted + the
+ *             out-of-band AI request, Reject = status→rejected.
+ *
+ *  TASK 684 — both branches read the verb from `PendingChangeController`, never
+ *  from a per-mount prop. The two families used to carry byte-identical copies
+ *  of this fork, and the flag-ON branch additionally required an `onApply` prop
+ *  only the docked host passed; omni and float silently fell through to a bare
+ *  status write. With the capability resolved from context, a mount site has
+ *  nothing left to forget. When no controller is present (a card rendered in
+ *  isolation) or it's off, the controls render disabled — the same defensive
+ *  shape {@link AppliedRecordBody} already uses. */
+export function PendingActionRow({
   id,
-  onApply,
+  family,
 }: {
   id: string;
-  onApply: (id: string) => void;
+  family: PendingChangeFamily;
 }) {
+  const controller = usePendingChangeController();
+  const disabled = !controller || !controller.isOn;
+  if (isPendingChangesOn()) {
+    return (
+      <div className="flex gap-1.5 pt-1 pr-7">
+        <Button
+          variant="warm"
+          size="sm"
+          disabled={disabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            controller?.apply(family, id);
+          }}
+        >
+          Apply
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="flex gap-1.5 pt-1 pr-7">
       <Button
-        variant="warm"
+        variant="danger"
         size="sm"
+        disabled={!controller}
         onClick={(e) => {
           e.stopPropagation();
-          onApply(id);
+          controller?.reject(family, id);
         }}
       >
-        Apply
+        Reject
+      </Button>
+      <Button
+        variant="warm"
+        size="sm"
+        disabled={!controller}
+        onClick={(e) => {
+          e.stopPropagation();
+          controller?.accept(family, id);
+        }}
+      >
+        Accept
       </Button>
     </div>
   );
@@ -738,15 +788,19 @@ export function PendingAiRecordBody({
 }
 
 /** The body of a `stale`-status card: a quiet notice that the paragraph drifted
- *  since the suggestion was drafted, with Dismiss (delete) and a disabled
- *  "Re-draft" affordance (a later phase will re-draft). No doc mutation. */
+ *  since the suggestion was drafted, with Dismiss (status→rejected) and a
+ *  disabled "Re-draft" affordance (a later phase will re-draft). No doc
+ *  mutation. Dismiss routes through the controller like every other verb a
+ *  suggestion card aims at a card's status (task 684) — it used to be handed
+ *  the pending card's `onReject` prop, which only the docked host passed. */
 export function StaleNotice({
   id,
-  onDismiss,
+  family,
 }: {
   id: string;
-  onDismiss: (id: string) => void;
+  family: PendingChangeFamily;
 }) {
+  const controller = usePendingChangeController();
   return (
     <div
       className="px-3 pt-2 pb-2 space-y-2"
@@ -760,9 +814,10 @@ export function StaleNotice({
         <Button
           variant="ghost"
           size="sm"
+          disabled={!controller}
           onClick={(e) => {
             e.stopPropagation();
-            onDismiss(id);
+            controller?.reject(family, id);
           }}
         >
           Dismiss

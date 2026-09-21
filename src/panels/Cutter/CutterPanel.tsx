@@ -43,11 +43,6 @@ export default function CutterPanel({
   onUpdateCommentContent,
   onSetCommentAiRequest,
   onUpdateSuggestionField,
-  onAcceptSuggestion,
-  onRejectSuggestion,
-  onApplySuggestion,
-  onKeepSuggestion,
-  onRevertSuggestion,
   onConvertCard,
   onDelete,
   onSelect,
@@ -74,12 +69,10 @@ export default function CutterPanel({
       | "instructions",
     value: string,
   ) => void;
-  onAcceptSuggestion: (id: string) => void;
-  onRejectSuggestion: (id: string) => void;
-  /** Pending-changes (flag-ON) client-side apply/keep/revert. */
-  onApplySuggestion: (id: string) => void;
-  onKeepSuggestion: (id: string) => void;
-  onRevertSuggestion: (id: string) => void;
+  /* NO suggestion landing-verb props (task 684): Apply / Accept / Reject /
+     Keep / Revert resolve from the `PendingChangeController` context inside the
+     card, so this panel is no longer one of the places that has to remember to
+     pass them — and omni + float, which never did, behave identically. */
   onConvertCard: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -166,11 +159,6 @@ export default function CutterPanel({
               selected={selected}
               onUpdateField={onUpdateSuggestionField}
               onConvert={onConvertCard}
-              onAccept={onAcceptSuggestion}
-              onReject={onRejectSuggestion}
-              onApply={onApplySuggestion}
-              onKeep={onKeepSuggestion}
-              onRevert={onRevertSuggestion}
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={

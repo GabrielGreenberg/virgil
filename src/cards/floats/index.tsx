@@ -448,8 +448,6 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedCutterCardId === card.id}
         onUpdateField={ctx.updateCutterSuggestionField}
         onConvert={ctx.convertCutterCard}
-        onAccept={(cid) => ctx.setCutterSuggestionStatus(cid, "accepted")}
-        onReject={(cid) => ctx.setCutterSuggestionStatus(cid, "rejected")}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
         onJump={jump.withJump((sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl))}
@@ -714,8 +712,6 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCommentId === card.id}
         onUpdateField={ctx.updateRevisionSuggestionField}
-        onAccept={(cid) => ctx.setRevisionSuggestionStatus(cid, "accepted")}
-        onReject={(cid) => ctx.setRevisionSuggestionStatus(cid, "rejected")}
         onConvert={ctx.convertRevisionCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}

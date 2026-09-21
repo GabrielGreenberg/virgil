@@ -35,8 +35,9 @@ interface BuildArgs {
       | "instructions",
     value: string,
   ) => void;
-  acceptSuggestion: (id: string) => void;
-  rejectSuggestion: (id: string) => void;
+  /* NO acceptSuggestion / rejectSuggestion (task 684): the card resolves every
+     landing verb from the `PendingChangeController` context, so omni no longer
+     hands it a bare status write where the docked panel handed it an Apply. */
   convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
 }
@@ -77,8 +78,6 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           selected={isSelected}
           onUpdateField={a.updateSuggestionField}
           onConvert={a.convertCard}
-          onAccept={a.acceptSuggestion}
-          onReject={a.rejectSuggestion}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={onJump}
