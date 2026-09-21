@@ -27,6 +27,13 @@ import {
 import { wholeWordPatternFor } from "@/lib/whole-word";
 import { mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
+import {
+  bibAddressOf,
+  mapAddressedBibEntry,
+  resolveBibEntry,
+  type BibEntryAddress,
+} from "@/lib/bib-address";
+import { validateBibEntryHead } from "@/lib/bib-entry-head";
 import { asBibFamily, DEFAULT_BIB_FAMILY, type BibFamily } from "@/lib/bib-family";
 
 /** No stored family: the user has not chosen one. Detection seeds the VIEW
@@ -451,16 +458,15 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * {@link replaceBibEntry}.
    */
   const updateBibEntry = useCallback(
-    (key: string, fields: Record<string, string>) => {
-      runBibMutation((prev) => {
-        if (!prev.some((e) => e.key === key)) return null; // not on disk
-        return prev.map((e) => {
-          if (e.key !== key) return e;
+    (entry: BibEntry, fields: Record<string, string>) => {
+      const address = bibAddressOf(bibEntriesRef.current, entry);
+      runBibMutation((prev) =>
+        mapAddressedBibEntry(prev, address, (e) => {
           const updated = { ...e, fields: { ...e.fields, ...fields } };
           updated.raw = rebuildRaw(e, updated);
           return updated;
-        });
-      });
+        }),
+      );
     },
     [runBibMutation],
   );
@@ -485,37 +491,33 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * same code, so there is no longer a flag-parity question to answer here.
    */
   const replaceBibEntry = useCallback(
-    (key: string, fields: Record<string, string>, type?: string) => {
-      runBibMutation((prev) => {
-        if (!prev.some((e) => e.key === key)) return null; // not on disk
-        return prev.map((e) => {
-          if (e.key !== key) return e;
+    (entry: BibEntry, fields: Record<string, string>, type?: string) => {
+      const address = bibAddressOf(bibEntriesRef.current, entry);
+      runBibMutation((prev) =>
+        mapAddressedBibEntry(prev, address, (e) => {
           const nextType = type ?? e.type;
           // set-all: replace the field map entirely (cleared fields are gone).
           const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
           updated.raw = rebuildRaw(e, updated);
           return updated;
-        });
-      });
+        }),
+      );
     },
     [runBibMutation],
   );
 
-  /** Apply the `.bib`-side `key`+`type` mutation for the entry currently
-   *  carrying `oldKey` (legacy path) OR the entry with `uid` (cascade path).
-   *  Reconstructs the entry's `raw` block + reserializes + persists. Shared by
-   *  both flag paths so the on-disk write is identical. */
+  /** Apply the `.bib`-side `key`+`type` mutation to EXACTLY the entry
+   *  `address` names (task 690 — see `bib-address.ts` for the ladder).
+   *  Reconstructs that entry's `raw` block + reserializes + persists. */
   const applyBibKeyType = useCallback(
-    (match: (e: BibEntry) => boolean, newKey: string, newType: string) => {
-      runBibMutation((prev) => {
-        if (!prev.some(match)) return null; // not on disk
-        return prev.map((e) => {
-          if (!match(e)) return e;
+    (address: BibEntryAddress, newKey: string, newType: string) => {
+      runBibMutation((prev) =>
+        mapAddressedBibEntry(prev, address, (e) => {
           const updated = { ...e, key: newKey, type: newType };
           updated.raw = rebuildRaw(e, updated);
           return updated;
-        });
-      });
+        }),
+      );
     },
     [runBibMutation],
   );
@@ -566,28 +568,44 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    * mis-fires on a punctuation citekey (`smith:2020`, `+foo`), which is exactly
    * what `wholeWordPatternFor` exists to get right. It survived only because a
    * suite pinned the flag-OFF branch as-is.
+   *
+   * Since task 690 the door takes the ENTRY, not its old citekey, and does two
+   * things it did not: it ADDRESSES the block (`bib-address.ts` — a ladder
+   * that lands on exactly one entry even when two blocks share a citekey), and
+   * it VALIDATES the new head (`bib-entry-head.ts`) before any of it runs. The
+   * unvalidated version accepted a rename ONTO an existing citekey — after
+   * which the panel showed one card for two blocks and every later edit hit
+   * both — and an EMPTY `@type`, which emitted `@{key,…}`: a block the
+   * extractor's own head scan cannot read, skipped on the next parse with a
+   * `console.warn`, and therefore absent from the list the following write
+   * rebuilt the file from.
    */
   const updateBibKeyAndType = useCallback(
-    (oldKey: string, newKey: string, newType: string) => {
-      // Nothing named `oldKey` → nothing to rename, and in particular nothing
-      // to fan out: a fan-out here would rewrite `\cite{oldKey}` atoms in the
-      // document for an entry the bibliography does not have.
-      const entry = bibEntries.find((e) => e.key === oldKey);
+    (target: BibEntry, newKey: string, newType: string) => {
+      // The entry as this hook currently holds it. A card can hand back a
+      // stale copy; the address resolves against the live list either way.
+      const address = bibAddressOf(bibEntriesRef.current, target);
+      const entry = resolveBibEntry(bibEntriesRef.current, address);
+      // Nothing here to rename, and in particular nothing to fan out: a
+      // fan-out would rewrite `\cite{oldKey}` atoms in the document for an
+      // entry the bibliography does not have.
       if (!entry) return;
-      // 1. `.bib` key+type mutation, matched on the OLD KEY.
-      //
-      // Not on the uid, deliberately, and this is load-bearing. The mutator
-      // runs TWICE (`runBibMutation`): once over this hook's view, and once —
-      // the run that actually lands — over a FRESH parse of the file inside the
-      // authority's write section. A `uid` is durable only when the file
-      // carries the entry's `\vbid{}` marker; a markerless block (the normal
-      // state of a user's existing `references.bib`) is minted a BRAND-NEW uid
-      // by every parse. So a uid-matched mutator matches the view and matches
-      // NOTHING on the disk run, and the rename silently does not land — which
-      // is what the flag-ON path did, unnoticed, because nothing shipped with
-      // the flag on. The old key is the file's own coordinate and has not
-      // changed yet at match time, so it addresses both runs identically.
-      applyBibKeyType((e) => e.key === oldKey, newKey, newType);
+      const oldKey = entry.key;
+      // THE validation door (task 690), read here as well as at the card, so
+      // no caller can route around the UI and write a block the parser cannot
+      // read back — an empty `@type` emitted `@{key,…}`, and the next write
+      // then deleted the entry from the user's only copy.
+      const check = validateBibEntryHead(
+        { key: newKey, type: newType },
+        { entries: bibEntriesRef.current, self: address },
+      );
+      if (!check.ok) {
+        console.warn(`Refusing bib rename: ${check.reason}`);
+        return;
+      }
+      // 1. `.bib` key+type mutation, addressed (NOT key-matched — two blocks
+      //    can share a citekey, and `prev.map` rewrote both).
+      applyBibKeyType(address, newKey, newType);
       if (oldKey === newKey) return; // a pure retype moves no identity
       // 2. citation-refs sidecar rewrite (boundary-safe, whole-token).
       rewriteCitationRefs(oldKey, newKey);
@@ -600,7 +618,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         renameCitekeyChange({ uid: entry.uid, oldKey, newKey, newType }),
       );
     },
-    [bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
+    [applyBibKeyType, rewriteCitationRefs, identityCascade],
   );
 
   const addBibEntry = useCallback(

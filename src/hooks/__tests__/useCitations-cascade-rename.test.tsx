@@ -44,6 +44,7 @@ import { useCitations } from "../useCitations";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 beforeEach(() => {
   __resetForTests();
@@ -86,7 +87,7 @@ async function renameUnderFlag(flag: boolean, docId: string) {
   });
 
   act(() => {
-    result.current.updateBibKeyAndType("foo", "newfoo", "article");
+    result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "foo"), "newfoo", "article");
   });
   await waitFor(() => {
     expect(result.current.bibEntries.some((e) => e.key === "newfoo")).toBe(true);
@@ -140,7 +141,7 @@ describe("updateBibKeyAndType: the rename fans out on EVERY build", () => {
       result.current.identityCascade.registerMigrator("bibEntry", () => {
         fired = true;
       });
-      result.current.updateBibKeyAndType("absent", "x", "article");
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "absent"), "x", "article");
     });
     await waitFor(() => {});
     expect(fired).toBe(false);
@@ -165,7 +166,7 @@ describe("updateBibKeyAndType: the boundary matcher, on both paths", () => {
       expect(result.current.citations.some((c) => c.id === id)).toBe(true);
     });
     act(() => {
-      result.current.updateBibKeyAndType("smith:2020", "smith:2021", "article");
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "smith:2020"), "smith:2021", "article");
     });
     await waitFor(() => {
       expect(result.current.bibEntries.some((e) => e.key === "smith:2021")).toBe(true);

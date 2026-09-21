@@ -57,6 +57,7 @@ import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeli
 import { useCitations } from "../useCitations";
 import { useAnnotations } from "../useAnnotations";
 import { useBibReview } from "../useBibReview";
+import { namedBibEntry } from "@/lib/bib-test-entry";
 
 beforeEach(() => {
   __resetForTests();
@@ -188,7 +189,7 @@ async function renameOnPane(flag: boolean, docId: string) {
   });
 
   act(() => {
-    result.current.citations.updateBibKeyAndType("smith2020", "smith2021", "article");
+    result.current.citations.updateBibKeyAndType(namedBibEntry(result.current.citations.bibEntries, "smith2020"), "smith2021", "article");
   });
   await waitFor(() => {
     expect(result.current.citations.bibEntries.some((e) => e.key === "smith2021")).toBe(true);

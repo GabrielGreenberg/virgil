@@ -279,9 +279,10 @@ export interface CitationCardProps {
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  onUpdateBibEntry?: (key: string, fields: Record<string, string>) => void;
+  /** Takes the ENTRY, not its citekey (task 690) — see `bib-address.ts`. */
+  onUpdateBibEntry?: (entry: BibEntry, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType?: (
-    oldKey: string,
+    entry: BibEntry,
     newKey: string,
     newType: string,
   ) => void;

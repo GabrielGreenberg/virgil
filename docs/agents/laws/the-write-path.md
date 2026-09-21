@@ -2100,3 +2100,57 @@ durable proof is
 — 28 legs, each falsified against the pre-fix shape it names (the whole-file
 door, the from-scratch `rebuildRaw`, the old head regex, the quote-blind walk,
 the length-destroying comment strip).
+
+## The address half: a write NAMES its target, and MEASURES the head it writes (task 690)
+
+> **A mutation addresses the entry the user edited, and only that entry — and
+> a door that accepts free text measures what it is about to commit.**
+
+Two halves of one door in the Bibliography panel, and both reduce to the same
+sentence the rest of this law keeps: `references.bib` is the user's only copy,
+so a write it did not ask for is measured before it lands.
+
+**Half 1 — a citekey is not an address.** All three bib mutators matched
+`e.key === key` and then `prev.map`'d, which rewrites EVERY entry the predicate
+accepts. Duplicate citekeys are explicitly representable — `parseBibFile`'s own
+header calls two same-key blocks "the basis for distinct-uid-per-block" — a
+hand-merged or imported `.bib` really carries them, and the panel then HID the
+second. So the user edited the one card they could see and a second block's
+fields were overwritten invisibly. `BibEntry.uid` existed precisely to stop
+this and nothing on the write path read it: the registry law's exact shape.
+
+The fix is a LADDER, not a field ([bib-address.ts](../../../src/lib/bib-address.ts)),
+because "match on the uid" is itself a defect here and task 689 recorded why: a
+bib mutation runs TWICE — once over the hook's view, once over a fresh parse
+inside the serialized write section — and a markerless block is minted a
+brand-new uid by every parse, so a uid-matched mutator matches the view and
+matches NOTHING on disk. The rungs, each winning only when it names exactly one
+entry: **uid** → **`source.start` + key** (two parses of the same bytes agree on
+the offset; the key is required too, so an offset that has SHIFTED under a peer
+write is rejected rather than silently addressing a neighbour) → **key +
+ordinal** → **key when unique**. With the address in hand the panel's `seen`
+dedup comes OUT: hiding the duplicate is what made it unrepairable, and it only
+ever existed because the citekey WAS the identity.
+
+**Half 2 — the Save door validated nothing.** An empty `@type` was passed
+through and emitted `@{key,…}` — a block Virgil's own head scan cannot read,
+skipped on the next parse with a `console.warn` only, and therefore absent from
+whatever the following write built from. A citekey holding a space, a comma or a
+brace fails the same scan. And a rename ONTO an existing citekey was accepted in
+full, manufacturing the duplicate half 1 is about. The rule is now stated once
+([bib-entry-head.ts](../../../src/lib/bib-entry-head.ts)) and read twice — by the
+card, to disable Save and say why, and by `updateBibKeyAndType`, so no caller
+can route around the UI.
+
+**Residual, stated not hidden:** panel SELECTION is still by citekey (the
+occurrence cursor, the jump target and the identity cascade all speak it), so
+two same-key cards both read as selected. The list's React key is the block's
+uid (`CardListPanel`'s `getRenderKey`), which is what makes both rows
+renderable at all; converting selection itself is identity-cascade work, not
+write-path work.
+
+**Owed, not claimed:** a real-FSA eyeball on a `.bib` carrying two same-key
+blocks. The durable proof is
+[bib-address-and-head-door.test.tsx](../../../src/lib/__tests__/bib-address-and-head-door.test.tsx)
+— 14 legs driving the real hook through the real serialized door, the
+duplicate-fusion leg falsified against the pre-fix `prev.map`.

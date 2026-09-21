@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
@@ -15,6 +15,8 @@ import { popKey as buildPopKey } from "@/panels/panel-registry";
 import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { iconHint } from "@/components/Hint";
+import { bibAddressOf } from "@/lib/bib-address";
+import { validateBibEntryHead } from "@/lib/bib-entry-head";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -31,13 +33,17 @@ export interface BibEntryCardProps {
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
-  onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
+  /** Merge field updates into an entry. Takes the ENTRY, not its citekey
+   *  (task 690): a citekey names as many blocks as carry it, and the mutator
+   *  used to rewrite all of them — so editing the one card the panel showed
+   *  destroyed a second, hidden block's fields. */
+  onUpdateBibEntry: (entry: BibEntry, fields: Record<string, string>) => void;
   /** Set-all field replacement (D3 — honors field deletion). The bib editor's
    *  Save routes here (the editor's `editBibFields` IS the complete intended
    *  field set, so clearing a field must remove it — BIB-A3-02). Optional for
    *  back-compat: when absent, Save falls back to the merge `onUpdateBibEntry`. */
-  onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
-  onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  onReplaceBibEntry?: (entry: BibEntry, fields: Record<string, string>, type?: string) => void;
+  onUpdateBibKeyAndType: (entry: BibEntry, newKey: string, newType: string) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
   bibPackage?: string;
@@ -322,6 +328,24 @@ export default function BibEntryCard({
   const fieldsDk = draftKey("fields");
   const notesDk = draftKey("notes");
 
+  /**
+   * Is the head the user has typed writable to `references.bib`? Read twice —
+   * once to disable Save (and say why), once inside `commitEditBib` — so the
+   * rule is never re-derived, and the control the user is looking at reflects
+   * the same answer the write door will give (task 690).
+   *
+   * `self` is this entry's address, so "the key you already have" is not a
+   * collision while "the key that other block has" is.
+   */
+  const headCheck = useMemo(() => {
+    if (!editingBib) return { ok: true } as const;
+    const entries = bibEntries ?? [];
+    return validateBibEntryHead(
+      { key: editBibKey, type: editBibType },
+      { entries, self: bibAddressOf(entries, entry) },
+    );
+  }, [editingBib, editBibKey, editBibType, bibEntries, entry]);
+
   const startEditBib = () => {
     setEditingBib(true);
     setEditBibFields({ ...entry.fields });
@@ -330,15 +354,21 @@ export default function BibEntryCard({
     setShowBibWarning(true);
   };
   const commitEditBib = () => {
+    // THE door (task 690). Save used to accept anything the two free-text
+    // boxes held: an empty `@type` wrote `@{key,…}` — a block Virgil's own
+    // extractor cannot read back, so the next parse dropped the entry and the
+    // write after that removed it from the user's only copy — and a citekey
+    // that already named another entry silently fused the two.
+    if (!headCheck.ok) return;
     // The editor's `editBibFields` is the COMPLETE intended field set (seeded
     // from `entry.fields`, edited in place), so a Save is set-all — a field the
     // user cleared must be deleted, not silently retained (BIB-A3-02). Route to
     // `replaceBibEntry` (D3) when available; fall back to the merge path so a
     // caller that hasn't wired the new prop keeps working unchanged.
-    if (onReplaceBibEntry) onReplaceBibEntry(entry.key, editBibFields, editBibType.trim() || undefined);
-    else onUpdateBibEntry(entry.key, editBibFields);
-    if (editBibKey.trim() && (editBibKey.trim() !== entry.key || editBibType.trim() !== entry.type)) {
-      onUpdateBibKeyAndType(entry.key, editBibKey.trim(), editBibType.trim());
+    if (onReplaceBibEntry) onReplaceBibEntry(entry, editBibFields, editBibType.trim() || undefined);
+    else onUpdateBibEntry(entry, editBibFields);
+    if (editBibKey.trim() !== entry.key || editBibType.trim() !== entry.type) {
+      onUpdateBibKeyAndType(entry, editBibKey.trim(), editBibType.trim());
     }
     setEditingBib(false);
     setShowBibWarning(false);
@@ -565,8 +595,21 @@ export default function BibEntryCard({
                       </button>
                     </div>
                   ))}
+                  {!headCheck.ok && (
+                    <div className="text-danger text-xs px-2 py-1" role="alert">
+                      {headCheck.reason}
+                    </div>
+                  )}
                   <div className="flex gap-1 mt-1">
-                    <Button variant="primary" size="sm" onClick={commitEditBib}>Save</Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={commitEditBib}
+                      disabled={!headCheck.ok}
+                      title={headCheck.ok ? undefined : headCheck.reason}
+                    >
+                      Save
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={cancelEditBib}>Cancel</Button>
                   </div>
                 </div>
