@@ -44,6 +44,7 @@ import {
   type CardWithLinks,
 } from "@/links/links";
 import { textObjectSideReanchorSpec } from "../util/text-object-side-reanchor";
+import { releaseModeB } from "../util/mode-b-release";
 import { buildFloatKey } from "@/floats/float-key";
 import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
 import type { OriginalAnchor } from "@/lib/types";
@@ -130,10 +131,12 @@ function noteApi(
       };
       return ta.anchorId;
     },
-    clearModeB: (id) => {
-      if (cardRef.card.id !== id) return;
-      cardRef.card = clearTextAnchorLink(cardRef.card, "note") as NoteCard;
-    },
+    modeB: releaseModeB(
+      (id) => (cardRef.card.id === id ? cardRef.card : undefined),
+      () => {
+        cardRef.card = clearTextAnchorLink(cardRef.card, "note") as NoteCard;
+      },
+    ),
   };
 }
 
@@ -275,6 +278,119 @@ describe("CHIP-A E2E — Mode-B selection-note re-anchor converts to clean Mode-
     expect(link.anchor.paragraphSnapshot).toBe(
       "Target paragraph for the teeth check.",
     ); // not undefined (dropped by the fold)
+    editor.destroy();
+  });
+});
+
+// Task 698: the release is not a notes privilege. Every kind that is not
+// intrinsically Mode-B RELEASES its old text-range anchor on a drop re-anchor —
+// and these kinds carry no `preserveModeBAnchor` (their types record no
+// `originalAnchor`), so pre-698 NOTHING stripped their mark: the old passage
+// kept the tint and the card kept reporting the selection it was dragged away
+// from. The bag here is built exactly as `EditorPane` builds the cutter one:
+// `releaseModeB(find, (_id, anchorId) => clearCardAnchor(anchorId))`.
+describe("task 698 — a dragged cutter card releases its old Mode-B anchor; a highlight keeps it", () => {
+  type AnyCard = CardWithLinks & { id: string };
+
+  function bag(
+    cardRef: { card: AnyCard },
+    kind: "cutter-comment" | "highlight",
+    modeB: ParagraphAnchorApi["modeB"],
+    extra: Partial<ParagraphAnchorApi> = {},
+  ): ParagraphAnchorApi {
+    return {
+      exists: (id) => cardRef.card.id === id,
+      getAnchorTextObjectIds: (id) =>
+        cardRef.card.id === id ? getLinkedTextObjectIds(cardRef.card) : [],
+      addTextObjectLink: (id, pid, targetKind, snapshot) => {
+        if (cardRef.card.id !== id) return;
+        cardRef.card = addTextObjectLink(cardRef.card, kind, pid, targetKind, snapshot);
+      },
+      removeTextObjectLink: (id, pid) => {
+        if (cardRef.card.id !== id) return;
+        cardRef.card = removeTextObjectLink(cardRef.card, pid);
+      },
+      modeB,
+      ...extra,
+    };
+  }
+
+  function seed(editor: Editor, kind: "cutter-comment" | "highlight", id: string) {
+    const rec = createLinkedAnchor(editor, kind, { from: 2, to: 12 }, id);
+    expect(rec).not.toBeNull();
+    const card = setTextAnchorLink({ id } as AnyCard, kind, rec!.anchorId, rec!.text);
+    expect(getTextAnchor(card)?.anchorId).toBe(rec!.anchorId);
+    return { cardRef: { card }, anchorId: rec!.anchorId };
+  }
+
+  it("a CUTTER comment dragged to a new paragraph: Mode-B link gone, mark stripped, exactly one Mode-A link to the target", () => {
+    const editor = mountDoc([
+      { uuid: "pold", text: "The passage the comment was first cut from." },
+      { uuid: "pnew", text: "The paragraph the comment is dragged onto." },
+    ]);
+    const { cardRef, anchorId } = seed(editor, "cutter-comment", "cc1");
+    const released: string[] = [];
+    const api = bag(
+      cardRef,
+      "cutter-comment",
+      releaseModeB(
+        (id) => (cardRef.card.id === id ? cardRef.card : undefined),
+        // The anchorId-keyed door the cutter hook exposes (`clearCardAnchor`).
+        (_id, a) => {
+          released.push(a);
+          if (getTextAnchor(cardRef.card)?.anchorId === a) {
+            cardRef.card = clearTextAnchorLink(cardRef.card, "cutter-comment");
+          }
+        },
+      ),
+    );
+    expect(editor.getHTML()).toContain(anchorId);
+
+    textObjectSideReanchorSpec({ kindLabel: "comment", getApi: (ctx) => ctx.cutterCards })
+      .applyDrop(
+        paragraphSide("pnew"),
+        buildFloatKey({ domain: "card", kind: "cutter-comment", id: "cc1" }),
+        { cutterCards: api, mainEditor: editor } as unknown as DropCtx,
+      );
+
+    expect(released).toEqual([anchorId]);
+    // The card no longer reports the old selection.
+    expect(getTextAnchor(cardRef.card)).toBeNull();
+    // Exactly one link, Mode-A, to the new paragraph, self-healing.
+    const links = cardRef.card.links ?? [];
+    expect(links.length).toBe(1);
+    const link = links[0];
+    if (link.anchor.type !== "textObject") throw new Error("expected textObject");
+    expect(link.anchor.targetKind).toBe("paragraph");
+    expect(link.anchor.textObjectIds).toEqual(["pnew"]);
+    expect(link.anchor.paragraphSnapshot).toBe(
+      "The paragraph the comment is dragged onto.",
+    );
+    // The old passage lost its tint: the mark is gone from the doc.
+    expect(editor.getHTML()).not.toContain(anchorId);
+    editor.destroy();
+  });
+
+  it("a HIGHLIGHT (declared intrinsic) keeps its Mode-B link across the same drop", () => {
+    const editor = mountDoc([
+      { uuid: "pold", text: "The passage the highlight lives on, verbatim." },
+      { uuid: "pnew", text: "Some other paragraph entirely." },
+    ]);
+    const { cardRef, anchorId } = seed(editor, "highlight", "hl1");
+    const api = bag(cardRef, "highlight", {
+      policy: "intrinsic",
+      why: "a highlight IS its text range",
+    });
+
+    textObjectSideReanchorSpec({ kindLabel: "highlight", getApi: (ctx) => ctx.highlights })
+      .applyDrop(
+        paragraphSide("pnew"),
+        buildFloatKey({ domain: "card", kind: "highlight", id: "hl1" }),
+        { highlights: api, mainEditor: editor } as unknown as DropCtx,
+      );
+
+    // The exemption holds: the text-range link SURVIVES the re-anchor.
+    expect(getTextAnchor(cardRef.card)?.anchorId).toBe(anchorId);
     editor.destroy();
   });
 });

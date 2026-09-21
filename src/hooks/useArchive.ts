@@ -1,6 +1,6 @@
 "use client";
 
-import { useTextObjectOrphaned } from "@/lib/tiptap/orphan-events";
+import { useAnchorOrphaned, useTextObjectOrphaned } from "@/lib/tiptap/orphan-events";
 import { useCallback, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
@@ -8,7 +8,9 @@ import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import {
   addTextObjectLink,
+  clearTextAnchorLink,
   getLinkedTextObjectIds,
+  getTextAnchor,
   removeTextObjectLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -187,6 +189,37 @@ export function useArchive(docId: string | null) {
     });
   });
 
+  // AnchorId-keyed Mode-B → Mode-A conversion (task 698). An archive snippet
+  // is normally Mode-A, but `links` is migrated from whatever the sidecar
+  // holds (an agent-side archive move carries the card's links), so a
+  // text-range link is representable here — and until now it was the one
+  // panel with neither the drop re-anchor's release nor the Mode-B orphan
+  // sweep every sibling runs. Both share this, as in every sibling hook.
+  const clearCardAnchor = useCallback(
+    (anchorId: string) => {
+      update((prev) => {
+        if (!prev.snippets.some((s) => getTextAnchor(s)?.anchorId === anchorId)) {
+          return prev;
+        }
+        return {
+          snippets: prev.snippets.map((s) =>
+            getTextAnchor(s)?.anchorId === anchorId
+              ? clearTextAnchorLink(s, "archive")
+              : s,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  // Mode-B orphan sweep — gated on `docId` by the door (task 598); no kind
+  // gate (BUG1), `clearCardAnchor` self-filters by anchorId membership.
+  useAnchorOrphaned(docId, ({ anchorId }) => {
+    if (!anchorId) return;
+    clearCardAnchor(anchorId);
+  });
+
   /**
    * Un-archive: hand the snippet's content back to the document and retire the
    * card. `land` performs the re-insertion and reports whether the content
@@ -293,6 +326,7 @@ export function useArchive(docId: string | null) {
       restoreSnippet,
       deleteSnippet,
       setArchived,
+      clearCardAnchor,
     }),
     [
       state.snippets,
@@ -308,6 +342,7 @@ export function useArchive(docId: string | null) {
       restoreSnippet,
       deleteSnippet,
       setArchived,
+      clearCardAnchor,
     ],
   );
 }

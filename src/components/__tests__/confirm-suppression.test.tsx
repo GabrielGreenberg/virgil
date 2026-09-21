@@ -166,6 +166,7 @@ function harness(): Harness {
       anchoredTo.length ? [...anchoredTo] : ["OLD"],
     addTextObjectLink: (_id, pid) => anchoredTo.push(pid),
     removeTextObjectLink: (_id, pid) => removed.push(pid),
+    modeB: { policy: "release", release: () => null },
   };
 
   let confirmFn: DropCtx["confirm"] | null = null;

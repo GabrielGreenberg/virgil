@@ -83,6 +83,7 @@ function makeApi(initial: string[]): {
       set.delete(pid);
     },
     preserveModeBAnchor: () => null,
+    modeB: { policy: "release", release: () => null },
   };
   return { api, added, removed };
 }

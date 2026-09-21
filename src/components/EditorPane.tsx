@@ -209,6 +209,7 @@ import {
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
+import { releaseModeB } from "./drop-mode/util/mode-b-release";
 import type { StackPullApi } from "./drop-mode/types";
 import { addStackItem } from "@/hooks/useStack";
 import {
@@ -2660,6 +2661,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Drop-mode adapters — one per attachment-card kind. Each wraps the
   // live hook in the generic `ParagraphAnchorApi` shape the spec
   // consumes. Memoized so the spec doesn't close over stale callbacks.
+  // Each MUST answer `modeB` (task 698): a re-anchor releases the card's old
+  // text-range anchor, unless the kind is intrinsically Mode-B (highlights).
+  // `drop-api-mode-b-census.test.ts` pins every `drop*Api` below.
   const dropNotesApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.notes.some((n) => n.id === id),
@@ -2670,9 +2674,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       addTextObjectLink: notesHook.addNoteTextObjectId,
       removeTextObjectLink: notesHook.removeNoteTextObjectId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
-      // Notes convert a surviving Mode-B link → clean Mode-A on re-anchor
-      // (RC1). Highlights deliberately omit this (intrinsically Mode-B).
-      clearModeB: notesHook.clearTextAnchorById,
+      // Card-id keyed: a note and a highlight may share one anchorId.
+      modeB: releaseModeB(
+        (id) => notesHook.notes.find((n) => n.id === id),
+        (id) => notesHook.clearTextAnchorById(id),
+      ),
     }),
     [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
   );
@@ -2686,6 +2692,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       addTextObjectLink: notesHook.addHighlightTextObjectId,
       removeTextObjectLink: notesHook.removeHighlightTextObjectId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
+      modeB: {
+        policy: "intrinsic" as const,
+        why: "a highlight IS its text range — re-anchoring snapshots the range to originalAnchor and strips the mark, but keeps the link",
+      },
     }),
     [notesHook.highlights, notesHook.addHighlightTextObjectId, notesHook.removeHighlightTextObjectId, notesHook.preserveModeBAnchor],
   );
@@ -2698,8 +2708,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       addTextObjectLink: todosHook.addParagraphId,
       removeTextObjectLink: todosHook.removeParagraphId,
+      modeB: releaseModeB(
+        (id) => todosHook.items.find((t) => t.id === id),
+        (_id, anchorId) => todosHook.clearCardAnchor(anchorId),
+      ),
     }),
-    [todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId],
+    [todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.clearCardAnchor],
   );
   const dropArchiveApi = useMemo(
     () => ({
@@ -2710,8 +2724,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       addTextObjectLink: archiveHook.addParagraphId,
       removeTextObjectLink: archiveHook.removeParagraphId,
+      modeB: releaseModeB(
+        (id) => archiveHook.snippets.find((s) => s.id === id),
+        (_id, anchorId) => archiveHook.clearCardAnchor(anchorId),
+      ),
     }),
-    [archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId],
+    [archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.clearCardAnchor],
   );
   const dropCutterApi = useMemo(
     () => ({
@@ -2722,8 +2740,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       addTextObjectLink: cutterHook.addCardParagraphId,
       removeTextObjectLink: cutterHook.removeCardParagraphId,
+      modeB: releaseModeB(
+        (id) => cutterHook.cards.find((c) => c.id === id),
+        (_id, anchorId) => cutterHook.clearCardAnchor(anchorId),
+      ),
     }),
-    [cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId],
+    [cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.clearCardAnchor],
   );
   const dropRevisionsApi = useMemo(
     () => ({
@@ -2734,8 +2756,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       addTextObjectLink: revisionsHook.addCardParagraphId,
       removeTextObjectLink: revisionsHook.removeCardParagraphId,
+      modeB: releaseModeB(
+        (id) => revisionsHook.cards.find((c) => c.id === id),
+        (_id, anchorId) => revisionsHook.clearCardAnchor(anchorId),
+      ),
     }),
-    [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
+    [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId, revisionsHook.clearCardAnchor],
   );
   const dropReportsApi = useMemo(
     () => ({
@@ -2746,8 +2772,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
       addTextObjectLink: reportsHook.addCardParagraphId,
       removeTextObjectLink: reportsHook.removeCardParagraphId,
+      modeB: releaseModeB(
+        (id) => reportsHook.cards.find((c) => c.id === id),
+        (_id, anchorId) => reportsHook.clearCardAnchor(anchorId),
+      ),
     }),
-    [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId],
+    [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId, reportsHook.clearCardAnchor],
   );
   // The ONE wiring site for every inline-atom kind's "anchor the unanchored"
   // create-branch accessor (task 233). Per kind it supplies (a) the atom attrs

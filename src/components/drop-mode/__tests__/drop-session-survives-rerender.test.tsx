@@ -69,6 +69,7 @@ const makeAnchorApi = (): ParagraphAnchorApi => ({
   getAnchorTextObjectIds: () => [],
   addTextObjectLink: noop,
   removeTextObjectLink: noop,
+  modeB: { policy: "release", release: () => null },
 });
 
 // `stack` is the dep that churns in the wild (`dropStackApi`). Its methods are
