@@ -1994,3 +1994,109 @@ enqueued. Very low likelihood; stated here rather than patched blind.
 **Owed, not claimed:** the real-FSA eyeball — the failure path does not
 reproduce in the dev preview. The durable proof is
 [bib-write-refusal.test.tsx](../../../src/lib/__tests__/bib-write-refusal.test.tsx).
+
+---
+
+## The bib half: a write is a SPLICE, never a rebuild (task 688)
+
+> **Nothing may re-emit a content file from a model that is a PROJECTION of it.**
+> An entry's new block replaces exactly its own span in the original file text;
+> a field's new value replaces exactly its own span in the original block.
+> Bytes nobody edited are never re-emitted, so they cannot be lost.
+
+Task 685 gave the bib door a voice for the write that does not LAND. This is the
+next layer down: a write that lands can still destroy content, because what it
+lands is a rebuild of a lossy read. Every panel write went
+`read → parseBibFile → mutate the list → serializeBibFile(whole list) → write`,
+and `BibEntry` is a **projection** — a 16-name CSL field whitelist over a
+citation-js read. So everything the projection cannot represent did not exist at
+write time and was deleted, triggered by editing ONE field of an **unrelated**
+entry in the user's only copy of their bibliography:
+
+- a `@string` / `@preamble` / `@comment` macro, and the file's header comment —
+  which have no representation in the model at all;
+- a sibling block citation-js could not read (dropped with a `console.warn`);
+- a `%` note inside an entry, blanked out of `raw` by a length-DESTROYING
+  comment strip that also shifted every offset after it;
+- every field outside the whitelist — `isbn`, `keywords`, `abstract`, `annote`,
+  `month`, `school`, `booktitle`, any custom field — because every mutator
+  regenerated `raw` from `fields`;
+- and worst, a real, CITED `@article`: the head regex `/@\w+\s*\{([^,]+),/g` let
+  `[^,]+` cross braces and newlines, so a comma-less `@string{jphil = {…}}` made
+  the match run THROUGH the macro into the next entry's head. That entry was
+  never extracted, its `raw` came from the positional fallback (the macro's
+  text), and the next write emitted the macro in its place. Every
+  `\cite{smith2020}` in the paper then dangled. Silently.
+
+**The rule already existed, in the other silo.** The Library's Python pipeline
+settled this in task 168 — *upsert, don't re-emit*
+([`_bib_parse.py::upsert_entry_text`](../../../library/scripts/_bib_parse.py)) —
+and the TypeScript side never got it. [bib-source.ts](../../../src/lib/bib-source.ts)
+is that rule ported and generalized to **both** levels:
+
+- **File level** — `serializeBibFileAgainst(originalText, entries)`
+  ([bib-parser.ts](../../../src/lib/bib-parser.ts)) patches `originalText`.
+  An entry whose `raw` is unchanged contributes NO patch; an edited entry
+  replaces its own {@link BibSourceRef} span; a dropped entry has its span and
+  its `\vbid` marker removed; an entry with no span (assembled in memory) is
+  APPENDED. Everything else is never addressed.
+- **Entry level** — `spliceBibBlock(block, edit)`, driven by `useCitations`'s
+  `rebuildRaw(prev, next)`, which passes only the fields whose value actually
+  CHANGED. That last detail is load-bearing twice over: it is what keeps a
+  source-side macro reference (`journal = jphil`) from being overwritten with
+  the projection's expansion of it, and it is what makes `replaceBibEntry`'s
+  set-all honest — a field the user CLEARED is deleted, a field the editor never
+  showed is not.
+
+**The scanner** ([`scanBibSource`](../../../src/lib/bib-source.ts)) replaces the
+head regex: linear, quote- and brace-aware (task 614's parity rule, ported —
+`note = "a } b"` no longer closes the block early), with `@string`/`@preamble`/
+`@comment` recognised as their own block kind. Containment is structural rather
+than a guard: the scan resumes at the END of each block, so a `@article{fake,`
+inside a `note = {…}` value is never mistaken for a sibling. An unbalanced block
+is capped at the next line-anchored opener and marked `balanced: false`.
+`stripBibComments` is now length-PRESERVING (a comment line becomes spaces, not
+nothing), because blocks are scanned on the masked text while every `raw` slice
+and every splice offset is taken against the original — the two must share one
+coordinate system.
+
+**A modelled name is written under the SOURCE's own spelling.** CSL collapses
+`journal`, `journaltitle` and `booktitle` into one `container-title`; naming the
+result `journal` unconditionally RENAMED an `@incollection`'s `booktitle` on
+every rewrite. The read now takes the spelling the block already uses, and the
+splice writes into whichever alias is there (`FIELD_ALIASES`).
+
+**Four refusals, ported in spirit from the Python door.** A span can be wrong in
+two directions — an UNBALANCED block's extent is a guess, and a block that
+balances LATE (a `{` surplus in one value paired with a `}` surplus in a later
+one) has a span running straight THROUGH a real entry — and splicing either one
+DELETES A NEIGHBOUR. So `serializeBibFileAgainst` answers `null`, and the door
+turns that into a `failed` result voiced on task 685's channel, rather than a
+best guess: (1) the target block did not balance; (2) its span contains a
+line-anchored `@type{` other than its own; (3) the replacement block is itself
+brace-unbalanced; (4) two entries claim one span. Refusal (2) is deliberately
+conservative — it also refuses the legitimate Hazard-5(b) entry whose value
+carries a column-0 `@type{` — because the two are indistinguishable and want
+opposite handling, and the cost of refusing is a message where the cost of
+guessing is a deleted entry.
+
+**Three questions, three answers, in order.** An anchor is not simply "valid or
+stale". (1) Does it name real bytes in THIS file? An entry parsed from another
+text — a library row, a hand-parsed block — carries offsets that mean nothing
+here, often offset 0 where this file's first entry lives; it is an ADDITION.
+(2) Is there a parsed entry at that offset? If not, append. (3) Does it agree
+with the parse about the extent? If not, REFUSE — treating it as new would also
+delete the block it claims to be. Collapsing (1) into (3) turned task 685's own
+suite red, which is how the distinction was found.
+
+**Progress is a property of the scanner, not of the input:** an empty bare value
+(`title = ,`) left the field walk exactly where the name started and spun
+forever. Guarded explicitly.
+
+**Owed, not claimed:** a real-FSA eyeball on a `.bib` carrying a `@string`
+(bib writes go through the real FSA door and mask in the dev preview). The
+durable proof is
+[bib-write-splice.test.tsx](../../../src/lib/__tests__/bib-write-splice.test.tsx)
+— 28 legs, each falsified against the pre-fix shape it names (the whole-file
+door, the from-scratch `rebuildRaw`, the old head regex, the quote-blind walk,
+the length-destroying comment strip).

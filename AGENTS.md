@@ -220,8 +220,15 @@ CI: `prose-index.test.ts`, `search-prose-only.test.ts`, `spellcheck-policy.test.
 > is about to commit against what the document was READ with, and a shortfall is
 > a REFUSAL published to one channel that reaches the user and gates the door.
 
+> **And a write that LANDS may not lose content either: a write is a SPLICE,
+> never a rebuild.** Nothing re-emits a content file from a model that is a
+> PROJECTION of it — an entry's new block replaces exactly its own span in the
+> original `.bib` text, a field's new value exactly its own span in the original
+> block ([src/lib/bib-source.ts](src/lib/bib-source.ts)), and what cannot be
+> spliced safely is REFUSED on task 685's channel rather than guessed at.
+
 Doc: [docs/agents/laws/the-write-path.md](docs/agents/laws/the-write-path.md).
-CI: `conflict-resolution.test.ts`, `conflict-net.test.ts`, `external-change-badge.test.tsx`, `useDocument.autosave-pause.test.ts`, `emergency-mirror.test.ts`, `reload-door.test.ts` ….
+CI: `conflict-resolution.test.ts`, `conflict-net.test.ts`, `external-change-badge.test.tsx`, `useDocument.autosave-pause.test.ts`, `emergency-mirror.test.ts`, `reload-door.test.ts`, `bib-write-splice.test.tsx` ….
 
 ### The compile path: downloaded work is DURABLE, and a slow compile SAYS SO
 

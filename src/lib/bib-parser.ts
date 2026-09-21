@@ -14,8 +14,17 @@
  * NEITHER.
  */
 
-import type { BibEntry } from "./types";
+import type { BibEntry, BibSourceRef } from "./types";
 import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
+import {
+  applyPatches,
+  bracesBalance,
+  fieldAliasesOf,
+  lineAnchoredOpeners,
+  scanBibFields,
+  scanBibSource,
+  type Patch,
+} from "./bib-source";
 import { latexToDisplayText } from "./latex-typography";
 import { parseCiteCommand, resolveCiteNoteRows } from "./cite-command-model";
 
@@ -33,11 +42,21 @@ function getCite() {
 // .bib file parsing
 // ---------------------------------------------------------------------------
 
-/** Strip BibTeX comment lines (lines starting with %) */
+/**
+ * MASK BibTeX comment lines (lines starting with %) — replacing each one with
+ * the same number of spaces rather than deleting it.
+ *
+ * Length-preserving is load-bearing since task 688: the blocks are scanned on
+ * the masked text but every `raw` slice and every splice offset is taken
+ * against the ORIGINAL, so the two must share a coordinate system. The old
+ * blanking (`line -> ""`) shifted every offset after the first comment, which
+ * is why a `% checked against print` note inside an entry used to be blanked
+ * out of `raw` and then written back blanked.
+ */
 function stripBibComments(bibText: string): string {
   return bibText
     .split("\n")
-    .map((line) => (line.trimStart().startsWith("%") ? "" : line))
+    .map((line) => (line.trimStart().startsWith("%") ? " ".repeat(line.length) : line))
     .join("\n");
 }
 
@@ -53,6 +72,7 @@ function cslItemToEntry(
   item: Record<string, unknown>,
   raw: string,
   uid: string,
+  source?: BibSourceRef,
 ): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
   const type = cslTypeToBib((item.type as string) || "misc");
@@ -60,7 +80,14 @@ function cslItemToEntry(
 
   if (item.author) fields.author = formatCslAuthors(item.author as Array<{ given?: string; family?: string }>);
   if (item.title) fields.title = item.title as string;
-  if (item["container-title"]) fields.journal = item["container-title"] as string;
+  // CSL collapses `journal`, `journaltitle` and `booktitle` into one
+  // `container-title`. Naming the result `journal` unconditionally RENAMED an
+  // `@incollection`'s `booktitle` on every rewrite (task 688) — so take the
+  // spelling the source itself uses and fall back to `journal` only when the
+  // block has none of them.
+  if (item["container-title"]) {
+    fields[containerTitleNameOf(raw)] = item["container-title"] as string;
+  }
   const issued = item.issued as { "date-parts"?: number[][] } | undefined;
   if (issued?.["date-parts"]?.[0]?.[0]) {
     fields.year = String(issued["date-parts"][0][0]);
@@ -77,56 +104,75 @@ function cslItemToEntry(
   if (item.edition) fields.edition = String(item.edition);
   if (item.note) fields.note = item.note as string;
 
-  return { uid, key, type, fields, raw };
+  return source ? { uid, key, type, fields, raw, source } : { uid, key, type, fields, raw };
+}
+
+/** The spelling THIS block uses for the container title, or `journal`. */
+function containerTitleNameOf(raw: string): string {
+  if (!raw) return "journal";
+  const present = new Set(scanBibFields(raw).map((f) => f.name));
+  return fieldAliasesOf("journal").find((n) => present.has(n)) ?? "journal";
 }
 
 /**
- * A raw BibTeX block in source order, with its citekey, its source-byte start
- * (so a `\vbid` marker can be associated by position) and any `\vbid` uid that
- * immediately precedes it.
+ * A raw BibTeX block in source order, with its citekey, its source span (so a
+ * `\vbid` marker can be associated by position AND a later write can splice
+ * exactly these bytes) and any `\vbid` uid that immediately precedes it.
  */
 interface OrderedRawBlock {
   key: string;
   raw: string;
   start: number;
+  /** Offset just past the block's closing brace. */
+  end: number;
+  /** Did the block's braces balance? `false` ⇒ unspliceable. */
+  balanced: boolean;
   /** uid recovered from a preceding `\vbid{}` marker, or undefined → mint. */
   vbidUid?: string;
 }
 
 /**
- * Extract raw BibTeX blocks from source text IN SOURCE ORDER (not keyed by
- * citekey), each paired with any `\vbid{}` uid that precedes it. Two blocks
+ * Extract raw BibTeX ENTRY blocks from source text IN SOURCE ORDER (not keyed
+ * by citekey), each paired with any `\vbid{}` uid that precedes it. Two blocks
  * that share a citekey produce two ordered entries — the parser pairs them
  * positionally with citation-js's per-block items, so neither the `raw` nor
  * the `uid` collapses.
+ *
+ * Since task 688 the block boundaries come from {@link scanBibSource} rather
+ * than a comma-terminated head regex. The old `/@\w+\s*\{([^,]+),/g` crossed
+ * braces and newlines looking for the first comma, so a comma-less
+ * `@string{jphil = {Journal of Philosophy}}` made the match run THROUGH the
+ * macro and into the following entry's head: that entry was never extracted,
+ * its `raw` was taken from the positional fallback (the macro's text), and the
+ * next write emitted the macro in place of a real, cited `@article`.
+ *
+ * `masked` carries the comment mask (same length as `bibText`, so offsets
+ * agree) and is what the boundaries are scanned on; `raw` is sliced from
+ * `bibText`, so a `%` note inside an entry survives into the block.
  */
-function extractOrderedRawBlocks(bibText: string): OrderedRawBlock[] {
+function extractOrderedRawBlocks(bibText: string, masked: string): OrderedRawBlock[] {
   const bindings = orderedVbidBindings(bibText);
   const result: OrderedRawBlock[] = [];
-  const re = /@\w+\s*\{([^,]+),/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(bibText)) !== null) {
-    const key = match[1].trim();
-    const start = match.index;
-    // Find matching closing brace from the first `{` after the `@type` token.
-    let depth = 0;
-    let end = start;
-    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
-      if (bibText[i] === "{") depth++;
-      else if (bibText[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
+  for (const block of scanBibSource(masked)) {
+    if (block.kind !== "entry") continue; // @string / @preamble / @comment
     // A `\vbid` marker binds to this block iff its bound entry-head start
     // matches this block's start (orderedVbidBindings binds positionally).
-    const binding = bindings.find((b) => b.entryStart === start);
-    result.push({ key, raw: bibText.slice(start, end), start, vbidUid: binding?.uid });
+    const binding = bindings.find((b) => b.entryStart === block.start);
+    result.push({
+      key: block.key,
+      raw: bibText.slice(block.start, block.end),
+      start: block.start,
+      end: block.end,
+      balanced: block.balanced,
+      vbidUid: binding?.uid,
+    });
   }
   return result;
+}
+
+/** The splice anchor for a block — its exact bytes and whether it is safe. */
+function sourceRefOf(block: OrderedRawBlock): BibSourceRef {
+  return { start: block.start, end: block.end, text: block.raw, balanced: block.balanced };
 }
 
 // Module-level memo: parsing a large .bib via citation-js is slow,
@@ -165,7 +211,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
   // Source-ordered raw blocks (with any preceding `\vbid` uid). Two blocks
   // that share a citekey appear as two ordered entries — the basis for
   // distinct-uid-per-block.
-  const blocks = extractOrderedRawBlocks(cleaned);
+  const blocks = extractOrderedRawBlocks(bibText, cleaned);
   // Mint into a live collision set so a markerless file gets unique uids and
   // any pre-existing `\vbid` uid is reserved against fresh mints.
   const usedUids = new Set<string>();
@@ -197,7 +243,9 @@ export function parseBibFile(bibText: string): BibEntry[] {
     for (const item of cite.data) {
       const key = (item["citation-key"] || item.id || "") as string;
       const block = takeBlock(key);
-      entries.push(cslItemToEntry(item, block?.raw ?? "", uidForBlock(block)));
+      entries.push(
+        cslItemToEntry(item, block?.raw ?? "", uidForBlock(block), block ? sourceRefOf(block) : undefined),
+      );
     }
     return rememberParse(bibText, entries);
   } catch {
@@ -212,7 +260,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
       const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
         consumed[i] = true;
-        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block)));
+        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block), sourceRefOf(block)));
       }
     } catch {
       if (!WARNED_KEYS.has(block.key)) {
@@ -246,6 +294,143 @@ export function serializeBibFile(entries: BibEntry[]): string {
       return `${marker}@${e.type}{${e.key},\n${lines}\n}`;
     })
     .join("\n\n") + "\n";
+}
+
+/**
+ * Rebuild a `.bib` file from `entries` by SPLICING them into `originalText` —
+ * the write door's real serializer since task 688.
+ *
+ * ## Why not {@link serializeBibFile}
+ *
+ * That function re-emits the WHOLE file from the model, and the model is a
+ * projection: a `@string`/`@preamble` macro, the file's header comment, a
+ * sibling block citation-js could not read, and every field outside the CSL
+ * whitelist have no representation in it. So a whole-file re-emit deleted all
+ * of them — triggered by editing one field of an UNRELATED entry, in the
+ * user's only copy of their bibliography, silently.
+ *
+ * Here, instead:
+ *
+ * - an entry whose `raw` is unchanged contributes NO patch — its bytes stay;
+ * - an edited entry replaces exactly its own {@link BibSourceRef} span;
+ * - an entry the mutator dropped has its span (and its `\vbid` marker) removed;
+ * - an entry with no span — assembled in memory — is APPENDED;
+ * - everything else in the file is never addressed, so it cannot be lost.
+ *
+ * ## Refusals (ported from the Python silo's `upsert_entry_text`, task 168)
+ *
+ * Returns `null` rather than a best guess when a span cannot be trusted:
+ *
+ *  1. the block's braces did not balance, so its extent is a guess capped at
+ *     the next opener and the span may end mid-entry;
+ *  2. the span contains a line-anchored `@type{` other than its own — the
+ *     late-balance case, where a `{` surplus in one value pairs with a `}`
+ *     surplus in a LATER one and the span runs through a real entry;
+ *  3. the replacement block is itself brace-unbalanced, which would corrupt
+ *     the file and make the next write refuse under (1);
+ *  4. the span no longer names the bytes it was parsed from (a stale offset).
+ *
+ * The caller turns `null` into a REFUSAL the user is told about, on the
+ * channel task 685 gave the bib — never a silent write.
+ */
+export function serializeBibFileAgainst(
+  originalText: string,
+  entries: BibEntry[],
+): string | null {
+  if (!originalText.trim()) return serializeBibFile(entries);
+
+  // Anchors are matched by their START offset — a block begins where it begins
+  // — and then VALIDATED against the baseline's own ref. An entry whose anchor
+  // disagrees with the baseline about the block's extent or its bytes is not
+  // "a new entry" and must not be treated as one: appending it would ALSO
+  // delete the block it claims to be. That is a refusal.
+  const baseline = new Map<number, BibSourceRef>();
+  for (const e of parseBibFile(originalText)) {
+    if (e.source) baseline.set(e.source.start, e.source);
+  }
+  const openers = lineAnchoredOpeners(originalText);
+  const bindings = orderedVbidBindings(originalText);
+  const markerStartOf = (src: BibSourceRef): number | undefined => {
+    const bound = bindings.find((b) => b.entryStart === src.start);
+    if (!bound) return undefined;
+    const marker = serializeVbidMarker(bound.uid);
+    const at = originalText.lastIndexOf(marker, src.start);
+    return at === -1 ? undefined : at;
+  };
+  /** Is this span safe to write THROUGH (replace or remove)? */
+  const spliceable = (src: BibSourceRef): boolean =>
+    src.balanced &&
+    originalText.slice(src.start, src.end) === src.text &&
+    openers.filter((at) => at >= src.start && at < src.end).length === 1;
+
+  const patches: Patch[] = [];
+  const claimed = new Set<number>();
+  const appended: BibEntry[] = [];
+
+  for (const e of entries) {
+    const src = e.source;
+    // Three questions in order, because they have three different answers.
+    //
+    //  1. Does the anchor name REAL BYTES IN THIS FILE? An entry parsed from
+    //     another text (a library row, a hand-parsed block) carries an anchor
+    //     whose offsets mean nothing here — it has no block in this file, so it
+    //     is an ADDITION, not a stale reference to refuse over.
+    //  2. Is there a parsed entry at that offset? If not, the bytes are not a
+    //     block this write owns — append rather than write through them.
+    //  3. Does the anchor AGREE with the parse about the block's extent? If it
+    //     does not, treating it as new would ALSO delete the block it claims to
+    //     be (a duplicate and a deletion from one inconsistent ref) — refuse.
+    if (!src || originalText.slice(src.start, src.end) !== src.text) {
+      appended.push(e);
+      continue;
+    }
+    const base = baseline.get(src.start);
+    if (!base) {
+      appended.push(e);
+      continue;
+    }
+    if (base.end !== src.end) return null;
+    // Two entries claiming ONE span (a clone that kept its origin's source ref)
+    // would emit overlapping patches. Refuse rather than interleave them.
+    if (claimed.has(src.start)) return null;
+    claimed.add(src.start);
+    const rewritten = e.raw !== src.text;
+    if (rewritten) {
+      if (!spliceable(src) || !e.raw || !bracesBalance(e.raw)) return null;
+    }
+    // Stamp the durable id for a block that has no `\vbid` marker yet — a pure
+    // INSERT, so it is safe even for a block nothing else may write through.
+    // (The whole-file emit used to stamp every entry on any write; a markerless
+    // file must not lose that on the way to splicing.)
+    const needsMarker = e.uid && markerStartOf(src) === undefined;
+    if (needsMarker) {
+      patches.push({ start: src.start, end: src.start, text: `${serializeVbidMarker(e.uid)}\n` });
+    }
+    if (rewritten) patches.push({ start: src.start, end: src.end, text: e.raw });
+  }
+
+  for (const [blockStart, src] of baseline) {
+    if (claimed.has(blockStart)) continue; // still present
+    if (!spliceable(src)) return null;
+    let start = markerStartOf(src) ?? src.start;
+    // Swallow the removed block's own line indentation and its trailing
+    // separator, so a removal does not leave a ragged gap behind.
+    while (start > 0 && (originalText[start - 1] === " " || originalText[start - 1] === "\t")) start--;
+    let end = src.end;
+    while (end < originalText.length && (originalText[end] === " " || originalText[end] === "\t")) end++;
+    if (originalText[end] === "\n") end++;
+    if (originalText[end] === "\n") end++;
+    patches.push({ start, end, text: "" });
+  }
+
+  let out = applyPatches(originalText, patches);
+  if (appended.length > 0) {
+    const tail = appended
+      .map((e) => (e.uid ? `${serializeVbidMarker(e.uid)}\n` : "") + (e.raw || reconstructBibtex(e)))
+      .join("\n\n");
+    out = out.replace(/\s*$/, "") + "\n\n" + tail + "\n";
+  }
+  return out;
 }
 
 /**

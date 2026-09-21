@@ -351,7 +351,11 @@ describe("census · references.bib has ONE write authority", () => {
   });
 
   it("no production file outside the authority serializes the whole bib", () => {
-    const hits = PROD_FILES.filter((f) => /\bserializeBibFile\(/.test(prodCode(f))).map(rel);
+    // `Against` is the SPLICE form the authority writes through since task 688
+    // (the whole-file rebuild it replaced deleted every byte the model cannot
+    // represent). Both spellings are the same question — who writes the whole
+    // file — so the census asks about both, and the answer is the same set.
+    const hits = PROD_FILES.filter((f) => /\bserializeBibFile(?:Against)?\(/.test(prodCode(f))).map(rel);
     expect(hits.sort()).toEqual([...PERMITTED_WHOLE_BIB_SERIALIZERS].sort());
   });
 

@@ -55,7 +55,7 @@
  */
 
 import { mutateBib } from "@/lib/storage";
-import { parseBibFile, serializeBibFile } from "@/lib/bib-parser";
+import { parseBibFile, serializeBibFileAgainst } from "@/lib/bib-parser";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { mintBibUid } from "@/lib/bib-uid";
 import {
@@ -227,6 +227,7 @@ export async function mutateProjectBib(
   // entries it just edited in place).
   let ran = false;
   let produced: BibEntry[] | null = null;
+  let unspliceable = false;
   let bibText: string | null;
   try {
     bibText =
@@ -234,13 +235,35 @@ export async function mutateProjectBib(
         ran = true;
         const next = mutate(entriesOf(current));
         if (next === null) return null;
+        // THE SPLICE (task 688). The next file is `current` with the changed
+        // entries' own spans rewritten — not a whole-file re-emit from the
+        // model, which deleted every byte the model cannot represent (a
+        // `@string` macro, the header comment, an unparseable sibling, every
+        // field outside the CSL whitelist) whenever the user edited an
+        // unrelated entry. When the splice cannot be GUARANTEED, it answers
+        // null and we refuse rather than write a guess.
+        const spliced = serializeBibFileAgainst(current, next);
+        if (spliced === null) {
+          unspliceable = true;
+          return null;
+        }
         produced = next;
-        return serializeBibFile(next);
+        return spliced;
       })) ?? null;
   } catch (err) {
     if (isStalePipelineError(err)) return { kind: "stale" };
     console.error("Failed to persist references.bib:", err);
     return refusedWrite(docId, err);
+  }
+  if (unspliceable) {
+    return refusedWrite(
+      docId,
+      new Error(
+        "references.bib could not be updated safely: an entry's block is malformed " +
+          "(unbalanced braces), so rewriting it would corrupt a neighbouring entry. " +
+          "The file was left unchanged.",
+      ),
+    );
   }
   if (bibText === null || produced === null) {
     return ran ? { kind: "declined" } : { kind: "read-only" };
@@ -298,7 +321,13 @@ export async function addEntriesToProjectBib(
       // an entry a peer landed since this window last read the file.
       const uid = e.uid && !used.has(e.uid) ? e.uid : mintBibUid(used);
       used.add(uid);
-      additions.push({ ...e, uid });
+      // Drop any `source` span the entry carried in from ANOTHER file (the
+      // library's master.bib): a splice anchor is only meaningful against the
+      // text it was parsed from, and this entry is being APPENDED to a
+      // different one (task 688).
+      const { source: _foreign, ...rest } = e as IncomingBibEntry & { source?: unknown };
+      void _foreign;
+      additions.push({ ...rest, uid });
     }
     if (additions.length === 0) return null;
     appended = additions.length;
