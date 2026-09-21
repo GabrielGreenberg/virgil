@@ -426,7 +426,13 @@ export interface BibEntry {
    *  marker in the `.bib`. Decoupled from the renameable citekey: a rename
    *  changes `key`, never `uid`, so uid-keyed sidecars never strand, and two
    *  entries that share a citekey get two distinct uids. Minted on first
-   *  parse for a markerless `.bib`; not yet consumed by UI (T1 Stage 0). */
+   *  parse for a markerless `.bib`; not yet consumed by UI (T1 Stage 0).
+   *
+   *  **`NO_BIB_UID` (the empty string) is representable and means "no identity
+   *  in this paper"** — a PREVIEW of another file (a library search result, a
+   *  cross-library pick). Such an entry is minted a uid at `addBibEntry`'s
+   *  door, when and only when it is added. Every reader of this field already
+   *  guards on its truthiness; keep it that way (task 693). */
   uid: string;
   key: string;
   type: string; // "article", "book", "inproceedings", etc.

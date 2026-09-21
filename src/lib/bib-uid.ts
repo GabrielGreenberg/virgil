@@ -51,8 +51,59 @@ const VBID_RE_GLOBAL = new RegExp(VBID_SOURCE, "g");
  */
 const ENTRY_HEAD_RE = /@\w+\s*\{([^,\s}]+)\s*,/g;
 
-/** Mint a fresh, durable bib-entry uid, avoiding collisions with `existing`. */
-export function mintBibUid(existing?: Set<string>): string {
+/**
+ * **The uid of an entry that has no identity in this paper** (task 693).
+ *
+ * A `BibEntry` that did not come from THIS paper's `.bib` — a library search
+ * result, a cross-library dropdown pick — is a PREVIEW (task 692's word for
+ * it): nothing in this paper's sidecars keys on it, and the file that would
+ * make its uid durable is a different file. It therefore carries no uid, and
+ * spells that as `NO_BIB_UID` rather than a fabricated one.
+ *
+ * The seam used to fabricate one (`useLibraryMasterBib` minted per entry as
+ * they crossed library→paper), which was wrong twice over. It minted with no
+ * collision set across the array, so a master.bib of a few hundred entries was
+ * more likely than not to hold an internal duplicate by the birthday bound —
+ * and the paper's add door accepted a caller-supplied uid verbatim, so two of
+ * this paper's entries could end up sharing one, after which an annotation or
+ * bib-review row written on either was read on, and overwrote, the other. And
+ * it could not be repaired by handing the map a collision set, because the uid
+ * space is 4 hex chars (65,536) while a real library runs to 34k–100k entries:
+ * a set-checked mint over that array degrades to many draws per entry and, past
+ * 65,536, never terminates.
+ *
+ * Both halves go away by not minting at the seam. An entry's uid is minted
+ * exactly where it acquires an identity — `addBibEntry`'s SSOT mint point, the
+ * one place that knows the uids this paper's bibliography already holds.
+ */
+export const NO_BIB_UID = "";
+
+/**
+ * **The uids already in scope** — the set every mint must avoid, spelled once.
+ *
+ * "In scope" is always a LIST of entries: the bibliography this hook has
+ * published, the entries a mutator was handed, the blocks a parse produced.
+ * Every mint site derives its set through here, so none of them can drift on
+ * what counts (a falsy uid is absent, not a member).
+ */
+export function bibUidsOf(entries: readonly { uid?: string }[]): Set<string> {
+  const out = new Set<string>();
+  for (const e of entries) if (e.uid) out.add(e.uid);
+  return out;
+}
+
+/**
+ * Mint a fresh, durable bib-entry uid that is not in `existing`.
+ *
+ * `existing` is **required** (task 693). A 4-char hex id is a 65,536-value
+ * space, so a setless draw is not "unlikely to collide": by the birthday bound
+ * a list of ~300 entries is already more likely than not to hold a duplicate,
+ * and the two sites that forgot the set are exactly how two entries came to
+ * share one. The parameter being required is what stops the next call site
+ * forgetting — there is no setless spelling left to reach for. Derive the set
+ * with {@link bibUidsOf}.
+ */
+export function mintBibUid(existing: Set<string>): string {
   return generateShortId(existing);
 }
 

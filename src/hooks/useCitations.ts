@@ -26,7 +26,7 @@ import {
   renameCitekeyChange,
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
-import { mintBibUid } from "@/lib/bib-uid";
+import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
 import {
   bibAddressOf,
@@ -712,13 +712,11 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // — a uid minted inside it would differ per run. Only a collision with a
       // uid that is on disk but not yet in this view re-mints, inside, against
       // the disk set, and the publish then converges the view on that answer.
-      const knownUids = new Set(
-        bibEntriesRef.current.map((e) => e.uid).filter(Boolean) as string[],
-      );
+      const knownUids = bibUidsOf(bibEntriesRef.current);
       const uid = entry.uid || mintBibUid(knownUids);
       runBibMutation((prev) => {
         if (prev.some((e) => e.key === entry.key)) return null;
-        const used = new Set(prev.map((e) => e.uid).filter(Boolean) as string[]);
+        const used = bibUidsOf(prev);
         // `source` names a span in the file the entry was PARSED from; this
         // entry is arriving from elsewhere (a library drop, find-citation) and
         // is about to be appended to a different file, so the anchor is
@@ -727,7 +725,13 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         void _foreign;
         const withUid: BibEntry = {
           ...rest,
-          uid: used.has(uid) && !entry.uid ? mintBibUid(used) : uid,
+          // A uid that is already taken is re-minted no matter WHO proposed it
+          // (task 693). The guard's question is "is this uid free here?", and
+          // the answer does not depend on provenance — the `&& !entry.uid`
+          // clause that used to stand here exempted exactly the callers that
+          // supply one, so a colliding uid arriving from outside was accepted
+          // verbatim and two of this paper's entries ended up sharing it.
+          uid: used.has(uid) ? mintBibUid(used) : uid,
         };
         return [...prev, withUid];
       });

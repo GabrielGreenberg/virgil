@@ -17,7 +17,7 @@ import { getLibraryHandle } from "@library/lib/library-folder";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDiskLibraries } from "@library/hooks/useDiskLibraries";
 import type { BibEntry } from "@/lib/types";
-import { mintBibUid } from "@/lib/bib-uid";
+import { NO_BIB_UID } from "@/lib/bib-uid";
 import type {
   LibraryIndexItem,
   LibraryItemStatus,
@@ -140,15 +140,25 @@ export function useLibraryMasterBib(enabled: boolean = true): {
   // either way, so hook order stays stable.
   const { entries, error } = useMasterBib(enabled ? handle : null);
   // The library subsystem's `BibEntry` predates the paper-side `uid`
-  // surrogate (T1 Stage 0). Mint a uid as entries cross the library→paper
-  // seam. Memoized on the source array identity so the result is stable
-  // across renders (downstream memos key on identity, and the parser cache
-  // already returns a stable array reference).
-  const withUids = useMemo<BibEntry[]>(
-    () => entries.map((e) => ({ ...e, uid: mintBibUid() })),
+  // surrogate (T1 Stage 0). These entries are PREVIEWS of another file, so
+  // they cross the seam with NO uid: nothing in this paper keys on them, and
+  // an entry that is later ADDED is minted a uid at `addBibEntry`'s door,
+  // against the uids this paper's bibliography actually holds.
+  //
+  // The seam used to mint one per entry here, with no collision set across the
+  // array — the defect in task 693, and one that could not be fixed by passing
+  // a set: the uid space is 65,536 and a real master.bib runs to 34k–100k
+  // entries, so a set-checked mint over this map degrades to many draws per
+  // entry and past 65,536 never terminates. See `NO_BIB_UID`.
+  //
+  // Memoized on the source array identity so the result is stable across
+  // renders (downstream memos key on identity, and the parser cache already
+  // returns a stable array reference).
+  const previews = useMemo<BibEntry[]>(
+    () => entries.map((e) => ({ ...e, uid: NO_BIB_UID })),
     [entries],
   );
-  return { entries: withUids, error };
+  return { entries: previews, error };
 }
 
 /** One membership slot — references a custom library (a manifest at
