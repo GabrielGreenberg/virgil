@@ -29,6 +29,16 @@ import { dirname, join } from "node:path";
 import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import type { AiRequest, AiRequestStatus } from "@/lib/types";
 
+/** src/lib/__tests__ → repo root. */
+function repoRoot(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "../../..");
+}
+
+/** Read a live Python source file, repo-relative — the source-pin door. */
+function pySource(rel: string): string {
+  return readFileSync(join(repoRoot(), rel), "utf8");
+}
+
 /** Byte-for-byte transcription of the Python drain rule
  *  (`list_requests.py` `list_ai_requests`):
  *
@@ -110,17 +120,115 @@ describe("isRequestOpen ↔ list_requests.py drain rule parity", () => {
     expect(isRequestOpen({ status: "in-progress", resultId: "" })).toBe(true);
   });
 
-  it("the live drain source still carries the two guard clauses verbatim", () => {
-    const here = dirname(fileURLToPath(import.meta.url));
-    // src/lib/__tests__ → repo root → editor/scripts/list_requests.py
-    const drainPath = join(here, "../../..", "editor/scripts/list_requests.py");
-    const src = readFileSync(drainPath, "utf8");
-    // Normalize whitespace so indentation changes don't spuriously fail, while
-    // the clause structure is pinned. A change to either clause forces whoever
-    // edits the Python to re-check `isRequestOpen` + `drainOpenReference` above.
-    const collapsed = src.replace(/\s+/g, " ");
-    expect(collapsed).toContain('if status in ("complete", "failed"): continue');
-    expect(collapsed).toContain('if status == "in-progress" and r.get("resultId"): continue');
+  it("the live Python predicate still carries the two guard clauses verbatim", () => {
+    // Since task 680 the two clauses live ONCE on the Python side too, in
+    // `_common.is_request_open` — the twin of `isRequestOpen` — instead of
+    // being transcribed at each reader. So the pin follows them there. A change
+    // to either clause forces whoever edits the Python to re-check
+    // `isRequestOpen` + `drainOpenReference` above.
+    const collapsed = pySource("editor/scripts/_common.py").replace(/\s+/g, " ");
+    expect(collapsed).toContain('if is_terminal_status(status): return False');
+    expect(collapsed).toContain(
+      'if status == STATUS_IN_PROGRESS and r.get("resultId"): return False',
+    );
+    expect(collapsed).toContain('TERMINAL_STATUSES = (STATUS_COMPLETE, STATUS_FAILED)');
+  });
+
+  it("the drain reads that ONE predicate — it does not re-inline the rule", () => {
+    // The literal `("complete", "failed")` set used to appear in four Python
+    // places (the drain's two lists, create_card's already-terminal no-op, and
+    // apply_response's module constants). Folding them onto `_common` is what
+    // makes a future terminal status land everywhere at once, exactly as
+    // `isTerminalStatus` does on the TS side — so re-inlining it is the
+    // regression this pins.
+    const drain = pySource("editor/scripts/list_requests.py").replace(/\s+/g, " ");
+    expect(drain).toContain("if not is_request_open(r): continue");
+    expect(drain).not.toMatch(/\("complete", *"failed"\)/);
+    const creator = pySource("editor/scripts/create_card.py").replace(/\s+/g, " ");
+    expect(creator).not.toMatch(/\("complete", *"failed"\)/);
+  });
+});
+
+/**
+ * Cross-language parity pin for the CLOSE **arity** (task 2026-09-20-680).
+ *
+ * The open predicate above is only half the boundary. The other half is the
+ * mutation it gates: archiving or deleting a flagged card must close EVERY
+ * non-terminal linked row, because a card can carry TWO at once (an answered-L3
+ * row plus a fresh re-toggled `pending` row — task 253). TS does that in the
+ * bridge's `terminate` branch; Python does it in
+ * `apply_response._Txn.close_linked_request`, which stopped at the FIRST match
+ * for three months because nothing pinned the arity — the parity contract
+ * covered the predicate and stopped one function short of the mutation the
+ * predicate exists to gate.
+ *
+ * The BEHAVIOUR of the Python half is driven end-to-end through the real
+ * `archive` op by `editor/scripts/tests/test_close_linked_arity.py` (run by
+ * `npx vitest run` through `scripts/__tests__/python-suites.test.ts`). What is
+ * pinned HERE is the thing only a cross-language test can see: that neither
+ * side has quietly gone back to closing one row.
+ */
+describe("terminate-mode CLOSE arity ↔ close_linked_request parity", () => {
+  /** The body of `close_linked_request`, from `def` to the next `def` at the
+   *  same indentation. */
+  function closeLinkedRequestBody(): string {
+    const src = pySource("editor/scripts/apply_response.py");
+    const start = src.indexOf("    def close_linked_request(");
+    expect(start).toBeGreaterThan(-1);
+    const next = src.indexOf("\n    def ", start + 1);
+    return src.slice(start, next === -1 ? undefined : next);
+  }
+
+  it("the Python half closes ALL matches — no early return inside the match loop", () => {
+    const body = closeLinkedRequestBody();
+    // The pre-680 shape: `return True` immediately after stamping the row.
+    expect(body).not.toMatch(/r\["result"\] = result\s*\n\s*self\.mark\(ar_path\)\s*\n\s*return True/);
+    // The accumulator shape: keep scanning, mark once, report whether any closed.
+    const collapsed = body.replace(/\s+/g, " ");
+    expect(collapsed).toContain("closed = False");
+    expect(collapsed).toContain("closed = True");
+    expect(collapsed).toContain("if closed: self.mark(ar_path)");
+    expect(collapsed).toContain("return closed");
+  });
+
+  it("it skips terminal rows through the shared predicate, so it stays idempotent", () => {
+    const collapsed = closeLinkedRequestBody().replace(/\s+/g, " ");
+    expect(collapsed).toContain("if is_terminal_status(status): continue");
+    // The 043 hold: force=False leaves an answered-L3 row alone.
+    expect(collapsed).toContain(
+      'if not force and status == STATUS_IN_PROGRESS and r.get("resultId"): continue',
+    );
+  });
+
+  it("the TS half maps over every match rather than finding the first", () => {
+    const bridge = readFileSync(
+      join(repoRoot(), "src/lib/ai-request-bridge.ts"),
+      "utf8",
+    );
+    // Just the terminate branch — the `toggle` branch below it legitimately
+    // uses `findIndex` (it matches ONE open row to re-use or replace).
+    const start = bridge.indexOf('if (mode === "terminate")');
+    expect(start).toBeGreaterThan(-1);
+    const end = bridge.indexOf("\n    }", start);
+    const collapsed = bridge.slice(start, end).replace(/\s+/g, " ");
+    expect(collapsed).toContain("requests.map(");
+    expect(collapsed).not.toContain("findIndex");
+  });
+
+  it("both halves stamp the same terminal pair (complete / auto-applied)", () => {
+    const py = closeLinkedRequestBody().replace(/\s+/g, " ");
+    expect(py).toContain('r["status"] = STATUS_COMPLETE');
+    expect(py).toContain('r["result"] = result');
+    // The caller that means "the card is gone" passes the same result token the
+    // TS terminate branch hard-codes.
+    const apply = pySource("editor/scripts/apply_response.py").replace(/\s+/g, " ");
+    expect(apply).toContain("RESULT_AUTO_APPLIED = \"auto-applied\"");
+    expect(apply).toContain("result=RESULT_AUTO_APPLIED, force=True");
+    const bridge = readFileSync(
+      join(repoRoot(), "src/lib/ai-request-bridge.ts"),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    expect(bridge).toContain('status: "complete", result: "auto-applied"');
   });
 });
 
@@ -129,8 +237,8 @@ describe("isRequestOpen ↔ list_requests.py drain rule parity", () => {
  *
  * `isTerminalStatus` is the shared `{ complete, failed }` predicate that BOTH
  * `isRequestOpen` (clause 1) and the bridge's `terminate`-mode guard
- * (`ai-request-bridge.ts` — the `cmd_archive` "close first non-terminal linked
- * row" `findIndex`) now derive from, retiring the two hand-inlined copies. These
+ * (`ai-request-bridge.ts` `isLinkedNonTerminal` — the `cmd_archive` "close EVERY
+ * non-terminal linked row" match, task 253) now derive from, retiring the two hand-inlined copies. These
  * pins ensure a future terminal `AiRequestStatus` trips a test on BOTH
  * predicates, not just the open one: the exhaustiveness guard above forces the
  * new member into the matrix, and the coupling assertion forces it to agree with

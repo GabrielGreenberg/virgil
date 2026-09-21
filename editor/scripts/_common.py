@@ -404,6 +404,58 @@ def card_text_anchor(card: dict) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# AI-request status vocabulary  (the Python twin of src/lib/ai-request-open.ts)
+# ---------------------------------------------------------------------------
+
+
+# The `ai-requests.json` status vocabulary, stated ONCE for every Python reader
+# (task 680). Before this, four scripts carried the literal set by hand — the
+# drain's two `("complete", "failed")` guards (list_requests.list_ai_requests
+# and list_bib_reviews), create_card's already-terminal no-op, and
+# apply_response's own module constants — so a future terminal status would
+# have had to be found in four places. The TS side already solved this with
+# `isTerminalStatus` (src/lib/ai-request-open.ts); these are its mirror, and the
+# parity is pinned across the language line by
+# `src/lib/__tests__/ai-request-open-parity.test.ts`.
+
+STATUS_PENDING = "pending"
+STATUS_IN_PROGRESS = "in-progress"
+STATUS_COMPLETE = "complete"
+STATUS_FAILED = "failed"
+
+#: The v1 terminal statuses — the set `is_terminal_status` and its TS twin
+#: `isTerminalStatus` both read. Legacy `draft`/`submitted`, v1
+#: `pending`/`in-progress`, and a status-absent row are all NON-terminal.
+TERMINAL_STATUSES = (STATUS_COMPLETE, STATUS_FAILED)
+
+
+def is_terminal_status(status) -> bool:
+    """True iff `status` is one of the terminal statuses — the mirror of TS
+    `isTerminalStatus`. Tolerates a status-absent row (None → False), which the
+    drain counts OPEN."""
+    return status in TERMINAL_STATUSES
+
+
+def is_request_open(r: dict) -> bool:
+    """True iff the `ai-requests.json` row is still open to the drain — the
+    byte-mirror of TS `isRequestOpen`, two clauses and one gate:
+
+      1. a terminal row is closed (`is_terminal_status`);
+      2. an L3 proposal that has already landed its card (`in-progress` WITH a
+         non-empty `resultId`) is ANSWERED, not open — the user owns
+         accept/reject from here, so the drain must not re-nag.
+
+    An empty-string `resultId` is falsy on both sides, so such a row stays
+    open."""
+    status = r.get("status")
+    if is_terminal_status(status):
+        return False
+    if status == STATUS_IN_PROGRESS and r.get("resultId"):
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Notification + version writers
 # ---------------------------------------------------------------------------
 
