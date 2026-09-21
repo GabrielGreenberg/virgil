@@ -30,9 +30,20 @@ export function useAiRequests(docId: string | null) {
   // `loaded` is DERIVED from it (below) so it flips back to false the instant
   // `docId` changes — without a synchronous reset-setState in the effect (which
   // trips react-hooks/set-state-in-effect). The card-request migration gates on
-  // `loaded` so it never runs over a stale/pre-load request list.
+  // `loaded` AND `!loadError` (below) so it never runs over a stale/pre-load
+  // request list — nor over a failed read's empty one.
   const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
   const loaded = docId == null ? true : loadedDocId === docId;
+  // The docId whose initial read THREW (task 679). DERIVED the same way
+  // `loaded` is, so it resets on `docId` change for free — and the same
+  // DISTINCTION `usePersistentState` draws: an errored read still flips
+  // `loaded` (the read terminated) but leaves `state` at EMPTY, so the request
+  // list is NOT authoritative. `[]` here does not mean "no requests", it means
+  // "we don't know". Any AUTOMATIC write derived from this list (the card
+  // migration) must gate on `!loadError`, and any surface that renders "nothing
+  // here" must not claim it.
+  const [loadErrorDocId, setLoadErrorDocId] = useState<string | null>(null);
+  const loadError = docId == null ? false : loadErrorDocId === docId;
 
   // How many serialized mutations this hook has in flight. The external-change
   // re-hydrate below defers while it is non-zero: a mutation's own write is
@@ -58,9 +69,27 @@ export function useAiRequests(docId: string | null) {
       .then((requests) => {
         if (cancelled) return;
         setState({ requests });
+        setLoadErrorDocId(null);
         setLoadedDocId(docId);
       })
-      .catch(() => { if (!cancelled) setLoadedDocId(docId); });
+      .catch((err) => {
+        if (cancelled) return;
+        // The read terminated but FAILED. Two things follow, and until task 679
+        // this branch did NEITHER: flag it, so the automatic card migration
+        // stands down rather than minting cards from an empty list and
+        // persisting that over three sidecars; and SAY so, on the same channel
+        // this hook's WRITE path already speaks from (task 630). The same
+        // document fact — "the inbox you are looking at is not the inbox on
+        // disk" — was voiced in one direction and swallowed in the other.
+        setLoadErrorDocId(docId);
+        setLoadedDocId(docId);
+        recordSidecarRefusal({
+          docId,
+          what: "AI request list",
+          reason: "unreadable",
+          detail: err instanceof Error ? err.message : undefined,
+        });
+      });
     return () => {
       cancelled = true;
     };
@@ -345,6 +374,7 @@ export function useAiRequests(docId: string | null) {
     () => ({
       requests: state.requests,
       loaded,
+      loadError,
       addRequest,
       addStyleMergeRequest,
       updateRequestText,
@@ -354,6 +384,7 @@ export function useAiRequests(docId: string | null) {
     [
       state.requests,
       loaded,
+      loadError,
       addRequest,
       addStyleMergeRequest,
       updateRequestText,

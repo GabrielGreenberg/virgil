@@ -157,6 +157,8 @@ function props(over: Partial<AIWindowProps> = {}): AIWindowProps {
     comments: [],
     bibEntries: [],
     panelAiRequests: [],
+    panelAiRequestsLoaded: true,
+    panelAiRequestsLoadError: false,
     addPanelAiRequest: (() => ({}) as AiRequest) as AIWindowProps["addPanelAiRequest"],
     deletePanelAiRequest: noop,
     clearLinkedAiRequest: noop,
@@ -178,6 +180,41 @@ function openComposerAndType(text: string): HTMLTextAreaElement {
   fireEvent.change(ta, { target: { value: text } });
   return ta;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LEG 3 — an empty list is not an empty INBOX (task 679)
+   ───────────────────────────────────────────────────────────────────────── */
+
+describe("the request list distinguishes 'empty' from 'not read'", () => {
+  const EMPTY_COPY = /No requests yet/;
+
+  it("a resolved, successful read with nothing in it says so", () => {
+    render(<AIWindow {...props()} />);
+    expect(screen.getByText(EMPTY_COPY)).toBeTruthy();
+  });
+
+  it("an UNRESOLVED read does not claim the inbox is empty", () => {
+    // `panelAiRequests` is the pre-load default here, not the file.
+    render(<AIWindow {...props({ panelAiRequestsLoaded: false })} />);
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+  });
+
+  it("a FAILED read does not invite a duplicate filing", () => {
+    // The defect: the inbox file three writers share could hold a queue, and the
+    // window was telling the user "No requests yet. Use the form above to start
+    // one." — an invitation to re-file a request that already exists on disk.
+    render(
+      <AIWindow
+        {...props({
+          panelAiRequestsLoaded: true,
+          panelAiRequestsLoadError: true,
+        })}
+      />,
+    );
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+    expect(screen.getByText(/couldn't read this paper's request list/)).toBeTruthy();
+  });
+});
 
 describe("the General dialogue composer hands its text to the store", () => {
   it("Submit calls addComment with the typed string ITSELF", () => {

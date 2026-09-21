@@ -240,11 +240,25 @@ export function describePreservation(n: PreservationNotice): {
  *
  * `what` is the publisher's noun ("AI request"), because only the writer knows
  * what it was writing; every word around it is decided once, here.
+ *
+ * `unreadable` (task 679) is the one reason on the READ side, so it is also the
+ * one that does not take the shared "couldn't save" title: nothing was lost yet
+ * — what the user is looking at is simply less than the file holds, and the
+ * words have to say that rather than imply a failed save.
  */
 export function describeSidecarRefusal(r: SidecarRefusal): {
   title: string;
   body: string;
 } {
+  if (r.reason === "unreadable") {
+    return {
+      title: `Virgil couldn't read this paper's ${r.what}`,
+      body:
+        `The file holding your ${r.what} could not be read` +
+        (r.detail ? ` (${r.detail})` : "") +
+        `, so what Virgil is showing you may be less than the file holds — an empty list here does not mean the file is empty. The paper's own text is unaffected, and Virgil has stood down from the automatic changes that would have relied on it. Reopen the paper to try the read again; until then, avoid adding to this list, since saving would replace the file with what is on screen.`,
+    };
+  }
   const title = `Virgil couldn't save your ${r.what}`;
   switch (r.reason) {
     case "read-only":

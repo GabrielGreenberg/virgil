@@ -590,6 +590,45 @@ describe("usePersistentState — a failed write reaches the user", () => {
     expect(getSidecarRefusal("doc-quiet")).toBeNull();
   });
 
+  it("says so when the initial READ threw — the other half of the same swallow", async () => {
+    // Task 679. `loadError` told the app's own gates to stand down and told the
+    // USER nothing: the collection loads as the EMPTY default, the panel renders
+    // "nothing here" for a file that may hold a paper's worth of notes, and the
+    // user is invited to make it all again. Same channel as the write path, same
+    // noun — a different REASON, because nothing was lost yet.
+    beginDocPipeline("doc-unreadable");
+    mockRead.mockRejectedValue(new Error("Unexpected end of JSON input"));
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-unreadable", "notes.json", EMPTY, {
+        errorLabel: "notes",
+      }),
+    );
+    await waitFor(() => expect(result.current.loadError).toBe(true));
+    // The read TERMINATED, so every `loaded`-gated consumer released …
+    expect(result.current.loaded).toBe(true);
+    // … which is exactly why the user has to be told.
+    const r = getSidecarRefusal("doc-unreadable");
+    expect(r?.reason).toBe("unreadable");
+    expect(r?.what).toBe("notes");
+    expect(r?.detail).toBe("Unexpected end of JSON input");
+  });
+
+  it("says nothing on a read that finds no file at all", async () => {
+    // `readSidecarIfExists` answers `null` for a genuinely-absent sidecar, and
+    // an absent sidecar is the steady state for most kinds in the Reader and for
+    // every kind in a brand-new paper. Only a THROW is a refusal.
+    beginDocPipeline("doc-absent");
+    mockRead.mockResolvedValue(null);
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-absent", "notes.json", EMPTY, {
+        errorLabel: "notes",
+      }),
+    );
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.loadError).toBe(false);
+    expect(getSidecarRefusal("doc-absent")).toBeNull();
+  });
+
   it("says nothing on a write that LANDS", async () => {
     beginDocPipeline("doc-ok");
     mockRead.mockResolvedValue(EMPTY);
