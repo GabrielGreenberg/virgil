@@ -236,6 +236,95 @@ export function usePanelCardTryDelete(
   return { tryDelete, dialog };
 }
 
+/** The transition {@link usePanelCardTryEmptyContent} is asked about: the card
+ *  record as it stands, the record the gesture would leave behind, whether this
+ *  card's content is actually IN the user's prose, and the write to perform. */
+export interface CardContentTransition {
+  /** The card as it is now — the baseline the removal is measured against. A
+   *  gesture that only takes back what its OWN session added (a field edit's
+   *  Escape-restore) passes that session's opening state here, not the live
+   *  record: nothing that predates the gesture is leaving. */
+  before: unknown;
+  /** The card as the gesture would leave it. */
+  after: unknown;
+  /** Is this card's declared content IN the document? A citation that is not
+   *  anchored (a parked card the user has not dragged into the prose yet) has
+   *  no in-text `\cite{}` to destroy, so emptying it costs nothing and must
+   *  stay frictionless. Defaults to `true` — a caller that does not know is
+   *  asked to confirm, which fails safe. */
+  inDocument?: boolean;
+  /** The write. Runs SYNCHRONOUSLY when no confirm is owed; on the confirmed
+   *  branch it runs after the dialog resolves, and NOT AT ALL on cancel — so
+   *  the caller must put its local state updates here too, or a cancelled
+   *  gesture leaves the card showing a change it did not make. */
+  commit: () => void;
+  /** What to do when the user DECLINES. Optional, and for most doors there is
+   *  nothing to do — the gesture simply did not happen. A door that already
+   *  tore down its own editing session before asking uses this to put the
+   *  card's local view back in step with the command that is still stored. */
+  onAbort?: () => void;
+}
+
+/**
+ * **The sibling of {@link usePanelCardTryDelete} for the OTHER way a card's
+ * content leaves the document: not deleting the card, but EMPTYING it.**
+ * (Task 683.)
+ *
+ * The delete door asks `cardHasContent(kind, card)` — "is there anything here
+ * to lose?". This one asks the transition: `cardHasContent(before) &&
+ * !cardHasContent(after)` — "is what was here about to stop being here?". Same
+ * SSOT, same registry declaration (`CARD_REGISTRY[kind].content`), so a kind
+ * that declares its content model once is guarded at BOTH doors, and a new kind
+ * inherits the guard without a line of per-door code.
+ *
+ * WHY THIS EXISTS. `CARD_REGISTRY.citation` states the obligation in its own
+ * comment: a citation's content IS its cite keys, and deleting them removes the
+ * in-text `\cite{}` atom, so a citation with keys must confirm (CI-F7-01). The
+ * trash read that declaration, through `usePanelCardTryDelete`. The per-key "×"
+ * one row above it did not — so on a citation with a SINGLE key that button
+ * blanked the user's prose in one click, with no dialog, no notice and no undo
+ * affordance, two inches from a trash that would have asked. That is the third
+ * member of a family (tasks 240, 637): a card-kind-level obligation declared
+ * once and then re-implemented per door, where the door that forgot it was
+ * invisible to every guard, because the guards all enumerate from the SAFE
+ * side. The obligation belongs to the TRANSITION — declared content leaves the
+ * document — not to the name of the function performing it.
+ *
+ * WHAT IT DELIBERATELY DOES NOT ASK ABOUT. Typing a field empty is also a
+ * transition to no-content, and it must NOT nag: the user is looking at the
+ * field, the characters go one at a time, and the field owns its own revert.
+ * The guard is for a DISCRETE gesture whose single activation destroys content
+ * — a "×", a row drop, a bulk clear. Which doors are which is not left to
+ * memory: `content-emptying-door-census.test.ts` enumerates from the dangerous
+ * side and makes every in-text card's content-write door declare itself.
+ */
+export function usePanelCardTryEmptyContent(
+  kind: CardKind,
+  opts?: { message?: string; confirmLabel?: string },
+): { tryEmptyContent: (t: CardContentTransition) => void; dialog: ReactNode } {
+  const { confirm, dialog } = useConfirmDialog();
+  const message =
+    opts?.message ?? "This removes the item's content from the document. Continue?";
+  const confirmLabel = opts?.confirmLabel ?? "Remove";
+  const tryEmptyContent = useCallback(
+    ({ before, after, inDocument = true, commit, onAbort }: CardContentTransition) => {
+      const empties =
+        inDocument && cardHasContent(kind, before) && !cardHasContent(kind, after);
+      if (!empties) {
+        commit();
+        return;
+      }
+      void (async () => {
+        const ok = await confirm({ message, confirmLabel, tone: "danger" });
+        if (ok) commit();
+        else onAbort?.();
+      })();
+    },
+    [kind, confirm, message, confirmLabel],
+  );
+  return { tryEmptyContent, dialog };
+}
+
 /* ── Per-card claim context ─────────────────────────────────────────
  *  EditableCard publishes its (panelKind, cardId) here so deeply-nested
  *  inputs (e.g. CardTitleInput rendered as `headerContent`) can attach

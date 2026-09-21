@@ -2484,7 +2484,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     );
     for (const c of cits) {
       const panelRef = panelById.get(c.citationId);
-      const nextCommand = panelRef?.command ?? c.command;
+      // `??` here was load-bearing by accident (task 683). It was written to
+      // mean "fall back to the atom's own command when the panel has nothing to
+      // say", but the panel's command can legitimately BE the empty string — a
+      // citation whose every key has been removed — and `""` is not nullish, so
+      // it sailed through the fallback and blanked the in-text atom. That is the
+      // correct OUTCOME (the emptying is now a confirmed gesture, guarded at the
+      // card's one write door), but it must be the outcome the code ASKS for:
+      // the fallback is for a citation with no panel row AT ALL, which is the
+      // question spelled out here.
+      const nextCommand = panelRef ? panelRef.command : c.command;
       const nextDisplay = citationsHook.getDisplayText(nextCommand);
       const commandChanged = nextCommand !== c.command;
       const displayChanged = nextDisplay !== c.displayText;

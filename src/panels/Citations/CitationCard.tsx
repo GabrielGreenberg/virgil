@@ -24,6 +24,7 @@ import {
   CardMetaLabel,
   cardTitleStyle,
   usePanelCardTryDelete,
+  usePanelCardTryEmptyContent,
 } from "@/components/panel-primitives";
 import { Input, Select } from "@/components/field-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
@@ -165,6 +166,22 @@ function inferTypeFromBare(command: string): {
   return { type: name, starred: m[2] === "*", capitalized: isUpper };
 }
 
+/**
+ * The cite keys a command string carries — the card's DECLARED content
+ * (`CARD_REGISTRY.citation.content.textFields` = `keys`), read off a command
+ * rather than off the store, so a write can be measured BEFORE it lands.
+ *
+ * `[]` for the empty command and for a keyless `\cite{}`: both are "this
+ * citation has no keys left". `null` for a string that is not a parseable cite
+ * command at all — a half-typed Code-field value is UNFINISHED, not emptied,
+ * and the distinction matters: only the first kind destroys prose.
+ */
+function commandKeys(command: string): string[] | null {
+  if (command.trim() === "") return [];
+  const parsed = parseCiteCommand(command);
+  return parsed ? parsed.keys : null;
+}
+
 function rowsFromCommand(command: string): UiRow[] {
   const parsed = parseCiteCommand(command);
   if (!parsed || parsed.entries.length === 0) return [{ id: nextRowId(), key: "" }];
@@ -286,6 +303,26 @@ export function CitationCard({
     { message: "This citation is referenced in the document. Delete it?" },
   );
 
+  // THE OTHER HALF OF THE SAME OBLIGATION (task 683). The trash is not the only
+  // door that takes this citation out of the prose: emptying the card of its
+  // LAST key blanks the in-text `\cite{}` just as completely, and the per-key
+  // "×" was doing exactly that in one click, with no dialog, two inches from a
+  // trash that asks. Both doors now read the one registry declaration — the
+  // trash through `usePanelCardTryDelete`, every command write through
+  // `tryEmptyContent`.
+  const { tryEmptyContent, dialog: emptyConfirmDialog } = usePanelCardTryEmptyContent(
+    "citation",
+    {
+      message: "Removing the last key blanks this citation in the document. Remove it?",
+      confirmLabel: "Remove",
+    },
+  );
+
+  /** Is this card's content actually IN the prose? A parked (unanchored) or
+   *  draft citation has no in-text atom to destroy, so emptying it costs the
+   *  document nothing and stays frictionless. */
+  const inDocument = isAnchored && !isDraft;
+
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
     [bibEntries],
@@ -341,8 +378,59 @@ export function CitationCard({
     syncLocalFromCommand(cit.command);
   }, [cit.command, syncLocalFromCommand]);
 
+  /**
+   * THE ONE DOOR to this citation's command channel (task 683). Every write —
+   * the row mutators through `persist`, the Code field's commit, its
+   * Escape-restore — passes through here carrying the TRANSITION it performs,
+   * and the registry decides whether that transition owes a confirm. The
+   * structural point is that there is nothing else to remember: a future
+   * control that changes the command has no other way to write it.
+   *
+   * `apply` carries the LOCAL state updates as well, because they belong to the
+   * same decision: with a dialog in between, a mutator that set its own state
+   * at event time would show the user a row already gone behind a question
+   * about removing it, and a cancel would leave the card showing a change it
+   * never made.
+   *
+   * `baselineKeys` overrides what the removal is measured against. It exists
+   * for the Code field's cancel, whose baseline is the session's OPENING
+   * command: a cancel puts back exactly what the session started with, so
+   * nothing that predates the gesture leaves the document.
+   */
+  const emitCommand = useCallback(
+    (
+      command: string,
+      opts: {
+        apply?: () => void;
+        onAbort?: () => void;
+        baselineKeys?: string[] | null;
+        shouldWrite?: boolean;
+      } = {},
+    ) => {
+      const baseline = opts.baselineKeys === undefined ? cit.keys : opts.baselineKeys;
+      const next = commandKeys(command);
+      tryEmptyContent({
+        before: { ...cit, keys: baseline ?? [] },
+        // An UNPARSEABLE next command (`commandKeys` → null) is unfinished, not
+        // emptied: keep the baseline so it never reads as a destruction.
+        after: { ...cit, keys: next ?? baseline ?? [] },
+        inDocument,
+        commit: () => {
+          opts.apply?.();
+          if (opts.shouldWrite === false) return;
+          lastWrittenRef.current = command;
+          onUpdateCitation(cit.id, command);
+        },
+        onAbort: opts.onAbort,
+      });
+    },
+    [cit, inDocument, tryEmptyContent, onUpdateCitation],
+  );
+
   /** Serialize and emit. If validRows is empty, emit "" (won't survive
-   *  in the parent store but the draft flow uses this to know it's empty). */
+   *  in the parent store but the draft flow uses this to know it's empty) —
+   *  through the guarded door above, which is where an anchored citation's
+   *  last key gets its confirm. */
   const persist = useCallback(
     (overrides: {
       rows?: UiRow[];
@@ -355,12 +443,18 @@ export function CitationCard({
       const nextStarred = overrides.starred ?? starred;
       const nextCapitalized = overrides.capitalized ?? capitalized;
 
+      // The local UI state moves WITH the write, inside the guarded commit.
+      const apply = () => {
+        if (overrides.rows) setRows(overrides.rows);
+        if (overrides.type !== undefined && overrides.type !== type)
+          setType(overrides.type);
+        if (overrides.starred !== undefined) setStarred(overrides.starred);
+        if (overrides.capitalized !== undefined) setCapitalized(overrides.capitalized);
+      };
+
       const validRows = nextRows.filter((r) => r.key.trim());
       if (validRows.length === 0) {
-        if (cit.command !== "") {
-          lastWrittenRef.current = "";
-          onUpdateCitation(cit.id, "");
-        }
+        emitCommand("", { apply, shouldWrite: cit.command !== "" });
         return;
       }
       const entries: ParsedCiteKey[] = validRows.map((r) => ({
@@ -382,19 +476,9 @@ export function CitationCard({
         },
         bibPackage,
       );
-      lastWrittenRef.current = command;
-      onUpdateCitation(cit.id, command);
+      emitCommand(command, { apply });
     },
-    [
-      rows,
-      type,
-      starred,
-      capitalized,
-      cit.command,
-      cit.id,
-      bibPackage,
-      onUpdateCitation,
-    ],
+    [rows, type, starred, capitalized, cit.command, bibPackage, emitCommand],
   );
 
   /** Re-derive the command shape when the DOCUMENT's bib package toggles
@@ -408,28 +492,23 @@ export function CitationCard({
     if (lastBibPackageRef.current === bibPackage) return;
     lastBibPackageRef.current = bibPackage;
     const nextType = derivePlural(type, rows, bibPackage);
-    if (nextType !== type) {
-      setType(nextType);
-      persist({ type: nextType });
-    }
+    if (nextType !== type) persist({ type: nextType });
   }, [bibPackage, type, rows, persist]);
 
   /* ── Row mutations ───────────────────────────────────────────────── */
 
-  // Each mutator computes `next` from the closure's current `rows`, calls
-  // `setRows(next)`, then calls `persist({ rows: next })` — both at event
-  // time. Calling `persist` from *inside* a `setRows` updater would invoke
-  // `onUpdateCitation` (a parent setState) during React's reducer phase,
-  // which React 18+ warns about as "Cannot update a component while
-  // rendering a different component".
+  // Each mutator computes `next` from the closure's current `rows` and hands it
+  // to `persist`, which applies the local state AND writes — both at event time,
+  // inside one guarded commit (task 683). Calling `persist` from *inside* a
+  // `setRows` updater would invoke `onUpdateCitation` (a parent setState) during
+  // React's reducer phase, which React 18+ warns about as "Cannot update a
+  // component while rendering a different component".
   const setRowKey = useCallback(
     (rowId: string, key: string) => {
       const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
       // Re-derive: changing the keyed-row count crosses the ≥2-keys threshold
       // either way, so the command shape follows (T6-C16, two-way).
       const nextType = derivePlural(type, next, bibPackage);
-      setRows(next);
-      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -443,8 +522,6 @@ export function CitationCard({
       // postnotes so each per-key range survives serialize, demotes back
       // otherwise so the command can never strand as `\cites` with one key).
       const nextType = derivePlural(type, next, bibPackage);
-      setRows(next);
-      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -459,8 +536,6 @@ export function CitationCard({
       // Re-derive: dropping a row back to one key (or losing the distinct-
       // postnote condition) DEMOTES `\cites` → `\cite` (CI-F5-01).
       const nextType = derivePlural(type, next, bibPackage);
-      setRows(next);
-      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -605,8 +680,6 @@ export function CitationCard({
         : [...rows, { id: nextRowId(), key: bibKey }];
       // Re-derive the command shape for the merged row set (T6-C16).
       const nextType = derivePlural(type, next, bibPackage);
-      setRows(next);
-      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -634,24 +707,30 @@ export function CitationCard({
       clearTimeout(codeDebounceRef.current);
       codeDebounceRef.current = null;
     }
-    if (v !== null && v !== cit.command) {
-      lastWrittenRef.current = v;
-      onUpdateCitation(cit.id, v);
-    }
     if (v !== null) {
       // The Code input bypasses the row mutators, so on commit it must resync
       // the local rows/type/flags from the committed command (task 078).
       // Without this the body state stays stale and the next control's
       // `persist()` re-serializes from it — silently dropping the code edit.
-      // Safe even when no write fired above (the debounce already echoed the
-      // same command): this is exactly what the stale-guard effect would have
-      // done had the code path not stamped `lastWrittenRef`.
-      syncLocalFromCommand(v);
+      // Safe even when no write fired (the debounce already echoed the same
+      // command): this is exactly what the stale-guard effect would have done
+      // had the code path not stamped `lastWrittenRef`.
+      //
+      // The write goes through the ONE guarded door (task 683): clearing this
+      // field is the other way to take a citation's last key out of the prose,
+      // and it is a session ENDING — a discrete, committed gesture — so it gets
+      // the same dialog the "×" does. Declining leaves the stored command
+      // untouched, so the resync then runs against THAT, not the abandoned draft.
+      emitCommand(v, {
+        shouldWrite: v !== cit.command,
+        apply: () => syncLocalFromCommand(v),
+        onAbort: () => syncLocalFromCommand(cit.command),
+      });
     }
     codeDraftRef.current = null;
     codeOriginalRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, cit.id, onUpdateCitation, syncLocalFromCommand]);
+  }, [cit.command, emitCommand, syncLocalFromCommand]);
 
   /** ESCAPE MEANS CANCEL (task 555). Pre-555 this field's keydown aliased
    *  Escape to Enter and ran `commitCodeDraft` — so the key the user presses
@@ -676,14 +755,20 @@ export function CitationCard({
     }
     const original = codeOriginalRef.current;
     if (original !== null && original !== cit.command) {
-      lastWrittenRef.current = original;
-      onUpdateCitation(cit.id, original);
-      syncLocalFromCommand(original);
+      // A cancel is measured against the session's OWN baseline (task 683): it
+      // puts back exactly what the session opened with, so nothing that
+      // predates the gesture leaves the document and the guard has nothing to
+      // ask. Passing the live `cit.keys` here instead would make Escape — the
+      // key that means "undo what I just did" — raise a dialog about undoing it.
+      emitCommand(original, {
+        baselineKeys: commandKeys(original),
+        apply: () => syncLocalFromCommand(original),
+      });
     }
     codeOriginalRef.current = null;
     codeDraftRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, cit.id, onUpdateCitation, syncLocalFromCommand]);
+  }, [cit.command, emitCommand, syncLocalFromCommand]);
 
   const updateCodeDraft = useCallback(
     (v: string) => {
@@ -692,11 +777,20 @@ export function CitationCard({
       if (codeDebounceRef.current) clearTimeout(codeDebounceRef.current);
       codeDebounceRef.current = setTimeout(() => {
         codeDebounceRef.current = null;
+        // THIS DOOR CANNOT EMPTY THE PROSE, by construction (task 683). A
+        // mid-session keystroke that clears the field would otherwise blank the
+        // in-text `\cite{}` 250 ms later — no gesture, no dialog, the session
+        // not even over. The live preview simply holds the last non-emptying
+        // value; the emptying transition waits for the session's END
+        // (`commitCodeDraft`), which crosses the guarded door. An unparseable
+        // half-typed value is unfinished rather than empty (`commandKeys` →
+        // null), so the preview still follows it.
+        if (inDocument && cit.keys.length > 0 && commandKeys(v)?.length === 0) return;
         lastWrittenRef.current = v;
         onUpdateCitation(cit.id, v);
       }, 250);
     },
-    [cit.id, onUpdateCitation],
+    [cit.id, cit.keys.length, inDocument, onUpdateCitation],
   );
 
   /* ── Overflow popover (* and Aa) ─────────────────────────────────── */
@@ -998,7 +1092,6 @@ export function CitationCard({
                   // `\cites` with one key normalizes back to `\cite`, and the
                   // chosen base promotes if the rows warrant it.
                   const v = derivePlural(e.target.value, rows, bibPackage);
-                  setType(v);
                   persist({ type: v });
                 }}
                 density="dense"
@@ -1045,9 +1138,7 @@ export function CitationCard({
                   leading={<span className="font-mono" aria-hidden="true">*</span>}
                   checked={starred}
                   onToggle={() => {
-                    const next = !starred;
-                    setStarred(next);
-                    persist({ starred: next });
+                    persist({ starred: !starred });
                   }}
                 />
                 <MenuToggleRow
@@ -1056,9 +1147,7 @@ export function CitationCard({
                   leading={<span className="font-mono" aria-hidden="true">Aa</span>}
                   checked={capitalized}
                   onToggle={() => {
-                    const next = !capitalized;
-                    setCapitalized(next);
-                    persist({ capitalized: next });
+                    persist({ capitalized: !capitalized });
                   }}
                 />
               </AnchoredMenu>
@@ -1201,6 +1290,7 @@ export function CitationCard({
         externalInputEl={pickerExternalInputEl}
       />
       {deleteConfirmDialog}
+      {emptyConfirmDialog}
     </>
   );
 
