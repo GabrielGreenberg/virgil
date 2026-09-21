@@ -129,4 +129,110 @@ describe("useRevisions clone carries the archived envelope (task 099)", () => {
     const clone = result.current.cards.find((c) => c.id === newId)!;
     expect(clone.archived).toBeFalsy();
   });
+  // ── Task 694: the CAPTURE PAIR travels with the clone ───────────────────
+  // `selectedText` is the plain `doc.textBetween` line; `selectedContent` is
+  // the RICH capture of the same instant (task 488). A clone is not a
+  // re-capture — `bindAnchor` re-attaches the LINK and never rewrites the
+  // card's capture — so a dropped rich half is gone permanently and the
+  // duplicate's "Original" renders flat.
+  it("cloneComment carries the RICH capture, not just the flattened line", async () => {
+    beginDocPipeline("doc-cap1");
+    const rich = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", marks: [{ type: "italic" }], text: "wonder" }],
+        },
+      ],
+    };
+    mockRead.mockResolvedValue({
+      cards: [
+        {
+          kind: "comment",
+          id: "cap-src",
+          text: "t",
+          content: {},
+          selectedText: "wonder",
+          selectedContent: rich,
+          ...base,
+        },
+      ],
+    });
+    const { result } = renderHook(() => useRevisions("doc-cap1"));
+    await waitFor(() => expect(result.current.cards.length).toBe(1));
+
+    let newId: string | null = null;
+    act(() => {
+      newId = result.current.cloneComment("cap-src");
+    });
+    await waitFor(() => expect(result.current.cards.length).toBe(2));
+    const clone = result.current.cards.find((c) => c.id === newId)!;
+    expect(clone.selectedText).toBe("wonder");
+    expect(clone.selectedContent).toEqual(rich);
+  });
+
+  it("cloneSuggestion carries the RICH capture too", async () => {
+    beginDocPipeline("doc-cap2");
+    const rich = { type: "doc", content: [{ type: "paragraph" }] };
+    mockRead.mockResolvedValue({
+      cards: [
+        {
+          kind: "suggestion",
+          id: "caps-src",
+          author: "human",
+          original_text: "old",
+          suggested_text: "new",
+          explanation: "",
+          user_text: "",
+          instructions: "",
+          status: "pending",
+          selectedText: "old",
+          selectedContent: rich,
+          ...base,
+        },
+      ],
+    });
+    const { result } = renderHook(() => useRevisions("doc-cap2"));
+    await waitFor(() => expect(result.current.cards.length).toBe(1));
+
+    let newId: string | null = null;
+    act(() => {
+      newId = result.current.cloneSuggestion("caps-src");
+    });
+    await waitFor(() => expect(result.current.cards.length).toBe(2));
+    const clone = result.current.cards.find((c) => c.id === newId)!;
+    expect(clone.selectedText).toBe("old");
+    expect(clone.selectedContent).toEqual(rich);
+  });
+
+  // A pre-488 record has no rich half. The clone must not GROW the key — the
+  // sidecar shape never held `selectedContent: undefined`, and a written null
+  // field is what `setAppliedChange`'s deliberate key-drop exists to avoid.
+  it("a pre-488 card (no rich half) clones WITHOUT the key, not with undefined", async () => {
+    beginDocPipeline("doc-cap3");
+    mockRead.mockResolvedValue({
+      cards: [
+        {
+          kind: "comment",
+          id: "cap3-src",
+          text: "t",
+          content: {},
+          selectedText: "plain words",
+          ...base,
+        },
+      ],
+    });
+    const { result } = renderHook(() => useRevisions("doc-cap3"));
+    await waitFor(() => expect(result.current.cards.length).toBe(1));
+
+    let newId: string | null = null;
+    act(() => {
+      newId = result.current.cloneComment("cap3-src");
+    });
+    await waitFor(() => expect(result.current.cards.length).toBe(2));
+    const clone = result.current.cards.find((c) => c.id === newId)!;
+    expect(clone.selectedText).toBe("plain words");
+    expect("selectedContent" in clone).toBe(false);
+  });
 });

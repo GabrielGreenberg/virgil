@@ -13,7 +13,7 @@
  *       c.id === id ? applyCardMorph("cutter-comment", c) : c) }));
  */
 import { getCardMorphConverter } from "../card-registry";
-import { carryCardEnvelope } from "../envelope";
+import { carryCardEnvelope, carryCapturedPassage } from "../envelope";
 import type { CardKind } from "../types";
 
 export function applyCardMorph<T>(fromKind: CardKind, card: T): T {
@@ -28,5 +28,19 @@ export function applyCardMorph<T>(fromKind: CardKind, card: T): T {
   // morph chokepoint and the clone literals (useNotes/useRevisions/useCutter/
   // useReports) now share `carryCardEnvelope` as the single envelope SSOT, so
   // no transform (present or future) can drop it.
-  return carryCardEnvelope(card as { archived?: boolean } | null | undefined, out);
+  //
+  // The CAPTURE PAIR rides the same chokepoint (task 694). All four
+  // capture-bearing converters name both halves today — that is what the
+  // "a morph is not a re-capture" comments in `index.ts` are — but a fifth
+  // written later would drop the rich twin exactly as the clone literals did.
+  // FILL, never override: `cutterSuggestionToComment`'s deliberate
+  // `selectedText: s.selectedText ?? s.original_text` salvage stands.
+  const withEnvelope = carryCardEnvelope(
+    card as { archived?: boolean } | null | undefined,
+    out,
+  );
+  return carryCapturedPassage(
+    card as { selectedText?: string; selectedContent?: unknown } | null | undefined,
+    withEnvelope,
+  );
 }

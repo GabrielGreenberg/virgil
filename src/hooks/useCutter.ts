@@ -31,7 +31,7 @@ import {
   type AiRequestSyncMode,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
-import { carryCardEnvelope } from "@/cards/envelope";
+import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
@@ -624,17 +624,19 @@ export function useCutter(
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "comment") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // the CAPTURE PAIR (`selectedText` + its rich twin `selectedContent`) via
+      // the sibling SSOT `carryCapturedPassage` (task 694) — the literal names
+      // neither half, so it cannot carry one and drop the other;
       // `aiRequest`→false and `links`→[] are intentionally reset for the clone.
-      const clone: CutterCommentCard = carryCardEnvelope(source, {
+      const clone: CutterCommentCard = carryCapturedPassage(source, carryCardEnvelope(source, {
         kind: "comment",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
         text: source.text,
         content: normalizeRichContent(source.content),
         aiRequest: false,
-        selectedText: source.selectedText,
         links: [],
-      });
+      }));
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
@@ -647,8 +649,9 @@ export function useCutter(
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "suggestion") return null;
       // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // the CAPTURE PAIR via the sibling SSOT `carryCapturedPassage` (task 694);
       // `status`→"pending" and `links`→[] are intentionally reset for the clone.
-      const clone: CutterSuggestionCard = carryCardEnvelope(source, {
+      const clone: CutterSuggestionCard = carryCapturedPassage(source, carryCardEnvelope(source, {
         kind: "suggestion",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -659,9 +662,8 @@ export function useCutter(
         user_text: source.user_text,
         instructions: source.instructions,
         status: "pending",
-        selectedText: source.selectedText,
         links: [],
-      });
+      }));
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
