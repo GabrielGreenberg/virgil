@@ -1839,6 +1839,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the inbox count inflated, the `/editor/review` drain re-serving a card that
   // no longer exists.
   //
+  // NO PANEL CONTROL REACHES THIS DOOR (task 706). The Todo footer's
+  // "Archive" button used to call it — a one-click, unconfirmed permanent
+  // delete under the label that everywhere else means the reversible
+  // set-aside. That button now archives through `useCardArchiveActions`. The
+  // door is kept as the ONE correct bulk delete for any future control that
+  // says "Delete completed" out loud (and would confirm first).
+  //
   // `ids` keeps the old contract: supplied (the panel passes the done todos
   // VISIBLE in the current archive view) → remove only those, so a done todo
   // hidden by the Active view because it was also deliberately set-aside
@@ -8721,7 +8728,6 @@ function PaneRailBody({
         updateTodoNotes={todosHook.updateNotes}
         setTodoAiRequest={todosHook.setAiRequest}
         deleteTodo={todosHook.deleteItem}
-        clearDoneTodos={todosHook.clearDone}
         discardPristine={todosHook.discardPristineTodos}
       />
     );

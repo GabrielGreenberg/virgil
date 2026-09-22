@@ -9,7 +9,8 @@
 //       archived, hidden, deliberately-set-aside done todos in the Active view.
 // These render tests pin: badge excludes done in Active view; footer excludes
 // archived+done in Active view; the badge follows the shown set in Archives
-// view; and Archive fires with only the VISIBLE done ids (never a hidden one).
+// view; and Archive archives only the VISIBLE, not-yet-archived done todos —
+// through the per-card archive door since task 706 (it used to DELETE them).
 
 import { NO_JUMP } from "@/links/card-anchor-rows";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -32,6 +33,7 @@ import {
   type CardArchiveViewApi,
   type CardArchiveView,
 } from "@/panels/_shared/card-archive-view";
+import { CardArchiveActionsProvider } from "@/panels/_shared/card-archive-actions";
 import type { TodoItem } from "@/lib/types";
 
 afterEach(cleanup);
@@ -62,9 +64,16 @@ function provider(view: CardArchiveView): CardArchiveViewApi {
 function renderPanel(
   items: TodoItem[],
   view: CardArchiveView = "active",
-  onClearDone = vi.fn(),
+  archive = vi.fn(),
 ) {
   const utils = render(
+    <CardArchiveActionsProvider
+      value={{
+        enabled: true,
+        isArchived: (id) => !!items.find((i) => i.id === id)?.archived,
+        archive,
+      }}
+    >
     <CardArchiveViewProvider value={provider(view)}>
       <TodoPanel
         items={items}
@@ -75,13 +84,13 @@ function renderPanel(
         onSetAiRequest={vi.fn()}
         jumpGate={() => ({ anchored: false, withJump: NO_JUMP })}
         onDelete={vi.fn()}
-        onClearDone={onClearDone}
         selectedTodoId={null}
         onSelectTodo={vi.fn()}
       />
-    </CardArchiveViewProvider>,
+    </CardArchiveViewProvider>
+    </CardArchiveActionsProvider>,
   );
-  return { onClearDone, ...utils };
+  return { archive, ...utils };
 }
 
 function badge(container: HTMLElement): string | null {
@@ -128,18 +137,16 @@ describe("Todo badge/footer count semantics (task 2026-07-12-103)", () => {
     expect(screen.getByText("1 completed")).toBeTruthy();
   });
 
-  it("Active view: Archive fires with only the VISIBLE done ids — never a hidden set-aside one", () => {
+  it("Active view: Archive archives only the VISIBLE done ids — never a hidden set-aside one", () => {
     const hiddenDone = makeTodo({ done: true, archived: true });
     const visibleDone = makeTodo({ done: true });
-    const { onClearDone } = renderPanel(
+    const { archive } = renderPanel(
       [makeTodo({ done: false }), visibleDone, hiddenDone],
       "active",
     );
     fireEvent.click(screen.getByText("Archive"));
-    expect(onClearDone).toHaveBeenCalledTimes(1);
-    const ids = onClearDone.mock.calls[0][0] as string[];
-    expect(ids).toEqual([visibleDone.id]);
-    expect(ids).not.toContain(hiddenDone.id);
+    expect(archive).toHaveBeenCalledTimes(1);
+    expect(archive).toHaveBeenCalledWith("todo", visibleDone.id);
   });
 
   it("Archives view: badge and footer follow the shown (archived) set", () => {
