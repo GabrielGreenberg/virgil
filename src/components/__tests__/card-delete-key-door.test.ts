@@ -180,7 +180,13 @@ describe("card-delete key: the armed thunk asks the host permit (task 702)", () 
   }
 
   it("census canary: the scan still finds the known call sites", () => {
-    expect(callSites().length).toBeGreaterThanOrEqual(5);
+    // Floor lowered 5 → 4 by task 714: the Revisions and Cutter suggestion
+    // cards were hand transcriptions of one another and armed the key twice
+    // with the same thunk; they are now ONE component (`_shared/SuggestionCard`)
+    // arming it once. A canary floor is a "the scan is not vacuous" tooth, and
+    // four live sites still satisfy it — this is the census shrinking because a
+    // duplicate went away, not because a site stopped being checked.
+    expect(callSites().length).toBeGreaterThanOrEqual(4);
   });
 
   it("no call site arms a raw onDelete; every deleting site consults the permit", () => {

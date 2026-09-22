@@ -153,19 +153,13 @@ const PRODUCTION_FILES = [...walkSource("src"), ...walkSource("library")];
  * `--positive-strong`), never a new entry.
  */
 const PERMITTED_GREEN_UTILITIES: Readonly<Record<string, { count: number; why: string }>> = {
-  "src/panels/Cutter/CutterSuggestionCard.tsx :: text-emerald-700": {
+  "src/panels/_shared/SuggestionCard.tsx :: text-emerald-700": {
     count: 1,
     why:
       "the compressed diff legend — `text-emerald-700/90` (the proposed text) reads only " +
       "against the `text-red-700/70` two lines below it. Not an affirmative CONTROL; the " +
-      "red half is pinned in destructive-red-tokens for the same reason.",
-  },
-  "src/panels/Revisions/RevisionSuggestionCard.tsx :: text-emerald-700": {
-    count: 1,
-    why:
-      "the compressed diff legend, twin of the Cutter card's. Same pair, same reason: a " +
-      "legend is a two-colour statement and converting one half is worse than converting " +
-      "neither.",
+      "red half is pinned in destructive-red-tokens for the same reason. Was TWO entries " +
+      "(the Cutter + Revisions suggestion cards) until task 714 made them one component.",
   },
   "src/panels/_shared/suggestion-fields.tsx :: bg-emerald-50": {
     count: 1,

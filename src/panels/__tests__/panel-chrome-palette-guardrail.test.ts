@@ -137,10 +137,11 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // diff/added FIELD entries above stay: a legend is not an affirmative
   // control, and repainting it needs rungs this family does not have.
   "src/panels/_shared/suggestion-fields.tsx :: text-red-700/80": "diff/destructive field chrome — wants an added/removed token pair",
-  "src/panels/Cutter/CutterSuggestionCard.tsx :: text-emerald-700/90": "diff/added preview ink (twin of the Revisions card) — wants the added/removed pair",
-  "src/panels/Cutter/CutterSuggestionCard.tsx :: text-red-700/70": "diff/removed preview ink (twin of the Revisions card) — wants the added/removed pair",
-  "src/panels/Revisions/RevisionSuggestionCard.tsx :: text-emerald-700/90": "diff/added preview ink (twin of the Cutter card) — wants the added/removed pair",
-  "src/panels/Revisions/RevisionSuggestionCard.tsx :: text-red-700/70": "diff/removed preview ink (twin of the Cutter card) — wants the added/removed pair",
+  // Was four entries — the Cutter card's pair and the Revisions card's pair,
+  // one transcription of the other. Task 714 made the twins ONE component, so
+  // the legend has one site and this census two rows instead of four.
+  "src/panels/_shared/SuggestionCard.tsx :: text-emerald-700/90": "diff/added preview ink (the shared suggestion card) — wants the added/removed pair",
+  "src/panels/_shared/SuggestionCard.tsx :: text-red-700/70": "diff/removed preview ink (the shared suggestion card) — wants the added/removed pair",
 
   // Owned by other filed tasks — deliberately NOT drained here, so this task
   // does not eat their diffs. (The three Outline blues that sat here retired

@@ -443,8 +443,12 @@ const PINNED_STOCK_RED_SITES: readonly string[] = [
   // NOT field-primitives.tsx: its only `border-red-300` is inside the doc
   // comment explaining why the primitive refuses one (task 190). The comment
   // strip is what tells those apart — a raw grep reports it as a live site.
-  "src/panels/Cutter/CutterSuggestionCard.tsx",
-  "src/panels/Revisions/RevisionSuggestionCard.tsx",
+  // Was TWO entries — `Cutter/CutterSuggestionCard` and
+  // `Revisions/RevisionSuggestionCard`, the same compressed diff legend
+  // transcribed twice. Task 714 collapsed the twin cards into one shared
+  // `SuggestionCard`, so the legend now has ONE site. This is the list
+  // shrinking, which is the only direction it may move.
+  "src/panels/_shared/SuggestionCard.tsx",
   "src/panels/_shared/suggestion-fields.tsx",
 ];
 

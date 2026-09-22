@@ -382,7 +382,10 @@ export function FieldBlock({
   onChange: (v: string) => void;
   readOnly?: boolean;
   kindHint?: string | null;
-  panelKey: PanelBodyKey;
+  /** `undefined` is a legitimate answer — a panel with no tunable body row —
+   *  and `usePanelBodyStyle` already takes it (task 714, where the panel key is
+   *  DERIVED from the family's registry row rather than passed as a literal). */
+  panelKey: PanelBodyKey | undefined;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();

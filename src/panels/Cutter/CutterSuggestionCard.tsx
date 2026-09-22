@@ -1,46 +1,17 @@
 "use client";
 
-import { useRef } from "react";
 import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
 import {
-  CardEmptyText,
-  PanelCard,
-  compressedBodyStyle,
-  useCardDeleteKey,
-  usePanelCardTryDelete,
-} from "@/components/panel-primitives";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel } from "@/cards/predicates";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { useCardStore } from "@/links/_shared/anchored-card-store";
-import {
-  PendingActionRow,
-  AppliedRecordBody,
   CopyButton,
-  FIELD_ORDER,
-  FieldBlock,
   FieldTitleRow,
-  PendingAiRecordBody,
-  READONLY_HUMAN_FIELDS,
-  StaleNotice,
   SuggestionTrailing,
   type SuggestionField,
 } from "@/panels/_shared/suggestion-fields";
-// The collapsed cue's ORIGINAL half reads the same door the expanded excerpt
-// does, so the two cannot disagree about what the passage says.
-// `suggested_text` deliberately stays raw: it is EDITABLE currency the user is
-// composing, and its cue must show exactly the bytes they typed.
-import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { SuggestionCard } from "@/panels/_shared/SuggestionCard";
 
 // Re-exported for backward compatibility — these now live in the shared
-// suggestion-fields module (CutterCommentCard + RevisionSuggestionCard import
-// them from here, and the Cutter barrel re-exports them).
+// suggestion-fields module (CutterCommentCard imports them from here, and the
+// Cutter barrel re-exports them).
 export { CopyButton, FieldTitleRow };
 
 /** Status dot + author chip + status label — the cutter-suggestion header
@@ -53,33 +24,18 @@ export function CutterSuggestionTrailing({
   return <SuggestionTrailing status={card.status} author={card.author} />;
 }
 
-export function CutterSuggestionCard({
-  card,
-  selected,
-  onUpdateField,
-  onConvert,
-  onDelete,
-  onSelect,
-  onJump,
-  onTogglePopout,
-  isPoppedOut,
-  extraDataAttrs,
-}: {
+/**
+ * The Cutter panel's suggestion card — the `cutter-suggestion` binding of the
+ * ONE shared `SuggestionCard` (task 714). Its twin in Revisions is the same
+ * component under a different family token; see `SuggestionCard` for why the
+ * two stopped being separate transcriptions.
+ */
+export function CutterSuggestionCard(props: {
   card: CutterSuggestionCardData;
   selected: boolean;
-  onUpdateField: (
-    id: string,
-    field: SuggestionField,
-    value: string,
-  ) => void;
+  onUpdateField: (id: string, field: SuggestionField, value: string) => void;
   /** Morph suggestion ⇄ comment via the kind-chevron. */
   onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
-  /* NO landing-verb props (task 684). Apply / Accept / Reject / Keep / Revert
-     all resolve from the `PendingChangeController` context, so the card behaves
-     identically on every surface and a new mount site has nothing to forget.
-     A prop the type still has is a prop a future host will pass instead — which
-     is exactly how `onApply` came to be honoured docked and dropped in omni and
-     float, leaving one card doing three different things under one global flag. */
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -87,184 +43,5 @@ export function CutterSuggestionCard({
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
-  const theme = useCardKindTheme("cutter-suggestion");
-  const cardRef = useRef<HTMLDivElement>(null);
-  const isPending = card.status === "pending";
-  // Pending-changes (flag-ON) status branches. Flag OFF → all false (status
-  // never reaches applied/stale), so the card renders exactly as today. Keep/
-  // Revert now flow through the PendingChangeController context (not per-mount
-  // callbacks), so the applied card renders on EVERY surface — no
-  // `hasPendingCallbacks` gate.
-  const pendingChangesOn = isPendingChangesOn();
-  const isApplied = pendingChangesOn && card.status === "applied";
-  const isStale = pendingChangesOn && card.status === "stale";
-  const isAnchored =
-    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
-  const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
-    ? "selection"
-    : getLinkedTextObjectIds(card).length > 0
-      ? "paragraph"
-      : null;
-  const popped = usePoppedCards();
-  const cardKey = cardPopKey("cutter-suggestion", card.id);
-  const onToggleFromCtx =
-    onTogglePopout ??
-    (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-  const ac = useAnchoredCard({ kind: "cutter-suggestion", id: card.id });
-  const cardStore = useCardStore();
-  const isExpanded = ac.expanded;
-  const isSelected = ac.selected || selected;
-  const compressed = !isExpanded && !isPoppedOut;
-  const compressedLines = useCompressedLines();
-  const cardBodyStyle = usePanelBodyStyle("cut");
-  // CI-F7-01 class: this card renders via PanelCard directly (like CitationCard),
-  // so its docked trash + Delete-key must route through the SAME content-aware
-  // confirm every EditableCard sibling and the in-text margin marker use — not
-  // the raw `onDelete`, which assumes the confirm already happened upstream.
-  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
-    "cutter-suggestion",
-    card,
-    card.id,
-    onDelete,
-  );
-  const handleDeleteKey = useCardDeleteKey(isSelected, tryDelete);
-
-  const cardEl = (
-    <PanelCard
-      ref={cardRef}
-      data-cutter-suggestion-entry={card.id}
-      data-card-key={cardKey}
-      data-pristine-card-id={card.id}
-      {...(extraDataAttrs || {})}
-      theme={theme}
-      selected={isSelected}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
-      // Applied cards always show their (minimal) body, so the header must not
-      // display a misleading collapsed chevron.
-      isCollapsed={compressed && !isApplied}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
-      onTrashClick={tryDelete}
-      tabIndex={isSelected ? 0 : -1}
-      onClick={(e) => {
-        e.stopPropagation();
-        const el = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
-        ac.onBodyActivate({
-          onSelect: () => onSelect(card.id),
-          jump: isAnchored && onJump ? () => onJump(el) : undefined,
-        });
-      }}
-      onMouseEnter={() => cardStore.setHover(ac.ref)}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-      }}
-      onKeyDown={handleDeleteKey}
-      className="mb-2"
-      kind="cutter-suggestion"
-      kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
-      onKindChange={
-        onConvert
-          ? (k) => {
-              if (k !== "cutter-suggestion") onConvert(card.id, "comment");
-            }
-          : undefined
-      }
-      canJump={isAnchored && !!onJump}
-      onJump={(e) => {
-        if (onJump && isAnchored)
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-      }}
-      headerTrailing={<CutterSuggestionTrailing card={card} />}
-    >
-      {isApplied ? (
-        // Flag-ON applied: the surviving original-record card. Wins over
-        // `compressed` so the preview toggle + commit icons are always reachable.
-        // Every action routes through the PendingChangeController context
-        // (family-tagged); `explanation` surfaces what the AI did and why.
-        <AppliedRecordBody
-          id={card.id}
-          originalText={card.appliedChange?.originalText ?? card.original_text}
-          // The rich capture (task 488) describes `original_text`, so it is
-          // only the right companion when that is what is being shown — an
-          // APPLIED card's original is the pre-splice paragraph, real `.tex`
-          // the door's parse rung reads.
-          originalContent={card.appliedChange ? undefined : card.selectedContent}
-          explanation={card.explanation}
-          family="cutter-suggestion"
-        />
-      ) : isStale ? (
-        // Flag-ON stale: quiet notice + Dismiss (delete). No doc mutation.
-        <StaleNotice id={card.id} family="cutter-suggestion" />
-      ) : compressed ? (
-        <div className="px-3 pt-1.5 pb-1.5">
-          <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
-            {card.suggested_text ? (
-              /* affirmative-green-exempt: a DIFF legend, not an affirmative
-              control — `text-emerald-700/90` (added / suggested) reads only
-              against the `text-red-700/70` (removed / original) two lines
-              below, and its red twin is likewise pinned rather than
-              repainted (`destructive-red-tokens.test.ts` →
-              PINNED_STOCK_RED_SITES). Converting one half onto the
-              `--positive` role family would say "accept" where the surface
-              means "this is the added text", and would leave the pair
-              speaking two vocabularies. Repainting BOTH halves is a colour
-              decision about the compressed diff dialect, not this sweep. */
-              <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
-            ) : card.original_text ? (
-              <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{capturedPassageOneLine({ latex: card.original_text, content: card.selectedContent })}</span></span>
-            ) : (
-              <CardEmptyText label="empty suggestion" />
-            )}
-          </div>
-        </div>
-      ) : card.author === "ai" ? (
-        // Flag-agnostic: an AI-drafted pending suggestion NEVER shows the 4-field
-        // grid — it shows the minimal Insert-below body (retires the fallback).
-        <PendingAiRecordBody
-          card={card}
-          originalContent={card.selectedContent}
-          explanation={card.explanation}
-          family="cutter-suggestion"
-        />
-      ) : (
-      <div
-        className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* This branch is HUMAN-authored only (AI cards render the minimal
-            Insert-below body above), so the read-only set is just
-            `original_text` (READONLY_HUMAN_FIELDS — the shared SSOT the
-            delete-confirm content model is pinned against) and the AI-only
-            `instructions` field never applies. */}
-        {FIELD_ORDER.map((field) => (
-          <FieldBlock
-            key={field}
-            field={field}
-            value={card[field]}
-            // The rich capture behind `original_text` (task 488); the door
-            // ignores it for every other field and for the editable path.
-            content={field === "original_text" ? card.selectedContent : undefined}
-            onChange={(v) => onUpdateField(card.id, field, v)}
-            readOnly={READONLY_HUMAN_FIELDS.has(field)}
-            kindHint={field === "original_text" ? anchorKind : null}
-            panelKey="cut"
-          />
-        ))}
-
-        {/* Flag-ON: a single primary Apply (manual for Phase 1b; Phase 2
-            auto-applies). Flag-OFF: the legacy Reject / Accept pair. BOTH now
-            live behind the one shared row, which reads the verb from the
-            controller — see PendingActionRow (task 684). */}
-        {isPending && <PendingActionRow card={card} family="cutter-suggestion" />}
-      </div>
-      )}
-      {deleteConfirmDialog}
-    </PanelCard>
-  );
-
-  return cardEl;
+  return <SuggestionCard {...props} family="cutter-suggestion" />;
 }
