@@ -118,6 +118,66 @@ function bandFromIndices(
   };
 }
 
+/** The uuids of the top-level blocks in the inclusive range `[s, e]`, in order. */
+function bandMemberUuids(doc: PMNode, s: number, e: number): (string | null)[] {
+  const out: (string | null)[] = [];
+  const last = Math.min(e, doc.childCount - 1);
+  for (let i = Math.max(0, s); i <= last; i++) out.push(uuidOfIndex(doc, i));
+  return out;
+}
+
+/**
+ * Re-anchor a band whose start and/or end anchor block died, onto the nearest
+ * SURVIVING member of the band as it last resolved (`members`, in doc order):
+ * the end edge walks back from the old end, the start edge forward from the
+ * old start. Survivors keep their relative order, so the result can never
+ * invert, and a block that was never in the band can never become an edge.
+ * Doc-edge survivors take the `null` sentinel, as `bandFromIndices` does.
+ * Returns `null` when no member survives (nothing left to focus) — the caller
+ * deactivates. Without a member record (a band that never resolved), a dead
+ * edge falls back to its doc-edge sentinel. Exported for tests.
+ */
+export function reanchorBand(
+  doc: PMNode,
+  band: Pick<FocusBand, "startUuid" | "endUuid">,
+  members: readonly (string | null)[] | null,
+  startAlive: boolean,
+  endAlive: boolean,
+): { startUuid: string | null; endUuid: string | null } | null {
+  let startUuid = band.startUuid;
+  let endUuid = band.endUuid;
+  if (!members) {
+    if (!startAlive) startUuid = null;
+    if (!endAlive) endUuid = null;
+    return { startUuid, endUuid };
+  }
+  const liveIndex = new Map<string, number>();
+  doc.forEach((node, _o, i) => {
+    const u = (node.attrs?.uuid as string | null | undefined) ?? null;
+    if (u != null && !liveIndex.has(u)) liveIndex.set(u, i);
+  });
+  const survivor = (from: "start" | "end"): number => {
+    const n = members.length;
+    for (let k = 0; k < n; k++) {
+      const u = members[from === "start" ? k : n - 1 - k];
+      if (u != null && liveIndex.has(u)) return liveIndex.get(u)!;
+    }
+    return -1;
+  };
+  const last = doc.childCount - 1;
+  if (!startAlive) {
+    const i = survivor("start");
+    if (i === -1) return null;
+    startUuid = i <= 0 ? null : uuidOfIndex(doc, i);
+  }
+  if (!endAlive) {
+    const i = survivor("end");
+    if (i === -1) return null;
+    endUuid = i >= last ? null : uuidOfIndex(doc, i);
+  }
+  return { startUuid, endUuid };
+}
+
 function legacyToBand(stored: StoredBand, doc: PMNode): FocusBand {
   const last = doc.childCount - 1;
   const clamp = (n: number) => Math.max(0, Math.min(n, Math.max(0, last)));
@@ -258,13 +318,20 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [band, editor, rev.blocks]);
 
-  // Remember the last good resolved range so a dead-anchor re-anchor can land on
-  // the nearest surviving block rather than jumping to a doc edge.
-  const lastResolvedRef = useRef<{ startIdx: number; endIdx: number } | null>(null);
+  // Remember the last good band by its MEMBERS — the uuids of every top-level
+  // block it covered, in order — so a dead-anchor re-anchor can pick the
+  // nearest SURVIVING member. An index hint cannot do this: once the old end
+  // block is gone, its index holds the block that used to follow the band
+  // (often the next section's heading), so re-anchoring by index pulled that
+  // block into the band (task 709). Captured only when the resolved range
+  // changes (a structural rev), O(band) — never per keystroke.
+  const lastMembersRef = useRef<(string | null)[] | null>(null);
   useEffect(() => {
-    if (state.active) {
-      lastResolvedRef.current = { startIdx: state.startBlockIndex, endIdx: state.endBlockIndex };
-    }
+    if (!state.active) return;
+    const doc = editor?.state?.doc;
+    if (!doc) return;
+    lastMembersRef.current = bandMemberUuids(doc, state.startBlockIndex, state.endBlockIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   // Phase B migration: once the editor is mounted, resolve the legacy indices
@@ -280,8 +347,10 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   }, [isLegacy, stored, editor, rev.blocks, update]);
 
   // Re-anchor policy: if a band anchor's block was deleted, re-anchor that edge
-  // to the nearest surviving block (using the last good index as a hint), or
-  // deactivate if BOTH anchors died. Never silently shifts to wrong content.
+  // to the nearest surviving MEMBER of the last good band — the end edge walks
+  // back from the old end, the start edge forward from the old start — or
+  // deactivate if BOTH anchors died. Never silently shifts to wrong content:
+  // a block that was outside the band can never become its edge.
   useEffect(() => {
     if (isLegacy || !band.active) return;
     const doc = editor?.state?.doc;
@@ -298,21 +367,13 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
       update(() => INACTIVE_BAND);
       return;
     }
-    const last = doc.childCount - 1;
-    const hint = lastResolvedRef.current;
-    update((s) => {
-      let startUuid = s.startUuid;
-      let endUuid = s.endUuid;
-      if (!startAlive) {
-        const i = Math.max(0, Math.min(hint ? hint.startIdx : 0, last));
-        startUuid = i <= 0 ? null : uuidOfIndex(doc, i);
-      }
-      if (!endAlive) {
-        const i = Math.max(0, Math.min(hint ? hint.endIdx : last, last));
-        endUuid = i >= last ? null : uuidOfIndex(doc, i);
-      }
-      return { ...s, startUuid, endUuid };
-    });
+    const members = lastMembersRef.current;
+    const reanchored = reanchorBand(doc, band, members, startAlive, endAlive);
+    if (!reanchored) {
+      update(() => INACTIVE_BAND);
+      return;
+    }
+    update((s) => ({ ...s, ...reanchored }));
   }, [band, isLegacy, editor, rev.blocks, update]);
 
   const activate = useCallback(

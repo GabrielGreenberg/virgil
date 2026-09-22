@@ -30,6 +30,8 @@ import {
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
+import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -608,6 +610,8 @@ function nodeIntersectsFocus(node: TreeNode, focus: FocusState): boolean {
 // the same include-config bit always filters the same word set on both
 // surfaces (task 112). Re-exported for the ./index barrel consumers.
 export { buildPerBlockCounts, sumIncludedWords };
+/** The unlocked focus-band overlay, exported for its measure tests (task 709). */
+export { FocusBand as FocusBandOverlay };
 
 /* ── View-mode tree row ────────────────────────────────────────────── */
 
@@ -1312,10 +1316,14 @@ function FocusBand({
   totalBlocks: number;
   onSnapBoundary?: (edge: "top" | "bottom", target: BlockAddress) => void;
 }) {
-  // The band's measured rectangle. Once a real measurement lands, we never
-  // reset this to null — keeping the last good value avoids the flicker
-  // where a transient querySelector miss (during reflows or row remounts)
-  // would otherwise unmount the band entirely.
+  // The ONE timer scope for the miss-grace frame below (the React half of the
+  // timer-lifetime law) — declared first so unmount disposes it before the
+  // effects that could schedule on it.
+  const lifetime = useViewLifetime();
+  // The band's measured rectangle — always the rect of the first..last
+  // RENDERED in-band row. A measure that finds none keeps the last rect for a
+  // single frame (a transient miss during a row remount must not flash the
+  // band off) and clears it if the miss persists (see `measure`).
   const [band, setBand] = useState<{ top: number; height: number } | null>(null);
   // Whether to animate top/height. We disable transitions during drag so
   // the band tracks the cursor instead of trailing 200ms behind it.
@@ -1326,6 +1334,13 @@ function FocusBand({
   // ref is the one bit of it `measure()` needs to read, so the authoritative
   // rect can't clobber the transient one mid-drag. The hook owns every write.
   const isDraggingRef = useRef(false);
+  // Miss-grace bookkeeping for `measure`: the pending one-frame re-measure,
+  // and whether that frame already ran and still found no in-band row.
+  const missFrameRef = useRef<ViewTimer | null>(null);
+  const missConfirmedRef = useRef(false);
+  // The latest `measure`, for the grace frame's re-measure (it must not run a
+  // closure over a focusState that has since moved).
+  const measureRef = useRef<() => void>(() => {});
 
   // Minimum band height in pixels so a drag past the opposite edge clamps to a
   // thin band instead of inverting/collapsing (mirrors snapBoundary's 1-row
@@ -1377,16 +1392,39 @@ function FocusBand({
     for (const r of allRowAttrs) {
       const el = rowMap.get(r.attr);
       if (!el) continue;
-      if (r.blockIndex >= focusState.startBlockIndex && !topEl) topEl = el;
-      if (r.blockIndex >= focusState.startBlockIndex && r.blockIndex <= focusState.endBlockIndex) botEl = el;
+      if (r.blockIndex < focusState.startBlockIndex || r.blockIndex > focusState.endBlockIndex) continue;
+      if (!topEl) topEl = el;
+      botEl = el;
     }
-    // Keep the previous band rather than blanking it. Transient misses
-    // happen during row remounts and would otherwise flash the band off.
-    if (!topEl || !botEl) return;
+    // No in-band row is rendered. A rect is only ever the rect OF a row, so
+    // the previous one is kept for exactly ONE frame of grace (a row remount
+    // can miss a single measure) and then dropped: when the miss persists —
+    // the band's parent heading was FOLDED, unmounting every in-band row — a
+    // kept rect would sit over whatever rows moved into those pixels, and an
+    // edge drag would start from it (task 709). The band reappears on the
+    // first measure that finds an in-band row again (unfold → childList MO).
+    if (!topEl || !botEl) {
+      if (missFrameRef.current === null && !missConfirmedRef.current) {
+        missFrameRef.current = lifetime.requestAnimationFrame(() => {
+          missFrameRef.current = null;
+          missConfirmedRef.current = true;
+          measureRef.current();
+        });
+        return;
+      }
+      if (missConfirmedRef.current) setBand(null);
+      return;
+    }
+    lifetime.clear(missFrameRef.current);
+    missFrameRef.current = null;
+    missConfirmedRef.current = false;
     const top = topEl.offsetTop;
     const height = botEl.offsetTop + botEl.offsetHeight - top;
     setBand((prev) => (prev && prev.top === top && prev.height === height ? prev : { top, height }));
-  }, [scrollRef, allRowAttrs, focusState.startBlockIndex, focusState.endBlockIndex]);
+  }, [scrollRef, allRowAttrs, focusState.startBlockIndex, focusState.endBlockIndex, lifetime]);
+  useLayoutEffect(() => {
+    measureRef.current = measure;
+  }, [measure]);
 
   // Layout effect so the band lands on the right pixel before the browser
   // paints, eliminating the "old position then snap" flash on state change.
