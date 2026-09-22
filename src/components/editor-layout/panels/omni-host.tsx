@@ -51,7 +51,7 @@ import type { LatexError } from "@/lib/latex-errors";
 import type { ErrorJump } from "@/panels/Errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
-import { buildCardAnchorPass } from "@/links/card-anchor-rows";
+import { useCardAnchorPass } from "../contexts/card-anchor";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -376,12 +376,12 @@ export function OmniHost(p: OmniHostProps) {
    * on every items rebuild. `rev.anchors` / `rev.blocks` are the
    * DocStructureBus counters, so plain typing rebuilds nothing here.
    */
-  const anchorPass = useMemo(
-    () => buildCardAnchorPass(editorInstance),
-    // The counters are the structural GATE, not a value the factory reads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editorInstance, rev.anchors, rev.blocks],
-  );
+  //
+  // Task 699: the pass is no longer built HERE. It is the pane's ONE pass
+  // (`EditorPane`, same structural gate), read off `CardAnchorProvider` — the
+  // SAME resolver the margin, the floats and the docked panels read, so the
+  // omni surface cannot keep a second copy that drifts.
+  const anchorPass = useCardAnchorPass();
   const resolveCardRows = anchorPass.resolve;
   // The bare uuid→pos lookup off the SAME index — Errors only (its paragraph
   // ids come from the diagnostics pass, not from a card's links, so it has no

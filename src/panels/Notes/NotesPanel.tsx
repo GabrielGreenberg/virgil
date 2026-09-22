@@ -1,5 +1,6 @@
 "use client";
 
+import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type {
@@ -13,7 +14,6 @@ import {
   useCycle,
   useListNavKeys,
 } from "@/components/panel-primitives";
-import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
@@ -38,6 +38,10 @@ interface NotesPanelProps {
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
   onJumpToCard?: (card: NoteCardItem, sourceEl?: HTMLElement | null) => void;
+  /** Task 699: the ONE Jump gate (`cardJumpGate` over the pane's shared
+   *  anchor pass). Required so no docked panel can fall back to gating Jump on
+   *  "the card stores a link". */
+  jumpGate: DockedJumpGate;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   onEditorFocus?: (editor: any) => void;
@@ -57,6 +61,7 @@ export default function NotesPanel({
   onSelectNote,
   selectedNoteId,
   onJumpToCard,
+  jumpGate,
   getCitationDisplayText,
   onCitationCreated,
   onEditorFocus,
@@ -76,9 +81,11 @@ export default function NotesPanel({
   const onActivateCard = useCallback(
     (card: NoteCardItem) => {
       onSelectNote(card.id);
-      onJumpToCard?.(card);
+      // Keyboard activation goes through the SAME gate as the Jump button —
+      // a dead anchor selects without a no-op navigation (task 699).
+      if (onJumpToCard) jumpGate(card).withJump(onJumpToCard)?.(card);
     },
-    [onSelectNote, onJumpToCard],
+    [onSelectNote, onJumpToCard, jumpGate],
   );
   // The keyboard cycle iterates the SAME set CardListPanel renders. Archived
   // cards filter out of the Active view; feed the cycle the archive-filtered
@@ -145,8 +152,8 @@ export default function NotesPanel({
               onDelete={onDelete}
               onSelect={onSelectNote}
               onJump={
-                onJumpToCard && getLinkedTextObjectIds(card).length > 0
-                  ? (sourceEl) => onJumpToCard(card, sourceEl)
+                onJumpToCard
+                  ? jumpGate(card).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(card, sourceEl))
                   : undefined
               }
             />
@@ -163,8 +170,8 @@ export default function NotesPanel({
             onDelete={onDelete}
             onSelect={onSelectNote}
             onJump={
-              onJumpToCard && getLinkedTextObjectIds(card).length > 0
-                ? (sourceEl) => onJumpToCard(card, sourceEl)
+              onJumpToCard
+                ? jumpGate(card).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(card, sourceEl))
                 : undefined
             }
             onEditorFocus={onEditorFocus}

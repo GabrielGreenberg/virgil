@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
+import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
@@ -43,6 +44,7 @@ export interface CutterHostProps {
 
 export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
+  const jumpGate = useDockedJumpGate();
   const { selectedCutterCardId, setSelectedCutterCardId } =
     useSelectionsContext();
   const { createCutterComment, createCutterSuggestion } =
@@ -83,6 +85,7 @@ export function CutterHost(p: CutterHostProps) {
       onDelete={p.deleteCard}
       onSelect={setSelectedCutterCardId}
       selectedId={selectedCutterCardId}
+      jumpGate={jumpGate}
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
       editor={editorInstance}
       recentlyAddedId={recentlyAddedId}

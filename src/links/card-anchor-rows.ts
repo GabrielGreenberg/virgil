@@ -327,6 +327,14 @@ export function cardJumpGate(
 }
 
 /**
+ * A docked panel's Jump door (task 699): card → its `cardJumpGate` over the
+ * pane's shared pass. The six docked panels take one as a REQUIRED prop and
+ * apply `jumpGate(card).withJump(handler)` — they never re-derive the decision
+ * from the card's stored links.
+ */
+export type DockedJumpGate = (card: CardWithLinks) => CardJumpGate;
+
+/**
  * The gate for a float whose reachability is NOT a card-anchor question — a
  * footnote resolved from its own `\footnote` atom, a citation from its own
  * position, an example from its `\ex{…}` block, a bib/AI float that has no

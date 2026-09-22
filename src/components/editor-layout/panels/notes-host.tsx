@@ -5,6 +5,7 @@ import NotesPanel from "@/panels/Notes";
 import type { useNotes } from "@/hooks/useNotes";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
+import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
@@ -34,6 +35,7 @@ export interface NotesHostProps {
 
 export function NotesHost(p: NotesHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
+  const jumpGate = useDockedJumpGate();
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const {
@@ -88,6 +90,7 @@ export function NotesHost(p: NotesHostProps) {
       onDelete={deleteHighlightOrNote}
       onSelectNote={setSelectedNoteId}
       selectedNoteId={selectedNoteId}
+      jumpGate={jumpGate}
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}

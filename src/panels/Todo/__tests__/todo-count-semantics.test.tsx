@@ -11,6 +11,7 @@
 // archived+done in Active view; the badge follows the shown set in Archives
 // view; and Archive fires with only the VISIBLE done ids (never a hidden one).
 
+import { NO_JUMP } from "@/links/card-anchor-rows";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", async () =>
@@ -72,6 +73,7 @@ function renderPanel(
         onUpdate={vi.fn()}
         onUpdateNotes={vi.fn()}
         onSetAiRequest={vi.fn()}
+        jumpGate={() => ({ anchored: false, withJump: NO_JUMP })}
         onDelete={vi.fn()}
         onClearDone={onClearDone}
         selectedTodoId={null}
