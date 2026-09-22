@@ -28,7 +28,7 @@
  * one-shot rename seeds; `findInlineAtomPosDeep` runs only on jump/hover/select.
  */
 
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 // Task 230: the footnote/citation → id-attr map is the registry's `idAttr`
@@ -321,6 +321,91 @@ function flattenShape(shape: NodeShape, descendInto: readonly string[]): string 
 
   // Otherwise it's a container — concatenate children.
   return shape.children.map((c) => flattenShape(c, descendInto)).join("");
+}
+
+// ---------------------------------------------------------------------------
+// projectInline — the EDITABLE projection of one node's inline content
+// ---------------------------------------------------------------------------
+
+/** One direct child of a node's inline content, located in the projection. */
+export interface InlineProjectionSegment {
+  /** The child's index among the node's direct children. */
+  index: number;
+  /** `text` = editable characters; `atom` = an opaque inline node whose
+   *  display characters (possibly none) are NOT editable text. */
+  kind: "text" | "atom";
+  /** Flat offsets `[from, to)` of this child's characters in `text`. An atom
+   *  that displays nothing (a footnote, a hard break) has `from === to`. */
+  from: number;
+  to: number;
+}
+
+export interface InlineProjection {
+  text: string;
+  segments: InlineProjectionSegment[];
+}
+
+/**
+ * Project a node's DIRECT inline children to one flat string, remembering which
+ * characters came from which child and whether they are editable (task 707).
+ *
+ * This is the ONE projection for a surface that shows a block's inline content
+ * as a plain string AND writes an edited string back — the Outline's heading
+ * rename. The box is seeded from `.text`; the write
+ * (`buildHeadingRenameFragment`) reads the SAME segments to splice the edit
+ * back, so the seed and its inverse cannot disagree about what a character is.
+ * (Before 707 the seed was `flattenInlineText` and the splice a private
+ * `atomDisplay`: a footnote showed its body in the box but projected to `""`
+ * in the splice, and a citation's display went through two registries.)
+ *
+ * Unlike `flattenInlineText` it does NOT descend into a footnote body: a
+ * footnote's text is not the heading's text, so it projects to nothing — an
+ * opaque zero-width atom, pinned between the characters around it. Every other
+ * atom contributes the display text `flattenInlineText` gives it.
+ *
+ * Accepts a live PM `Node`, a `Fragment`, or a raw `JSONContent` literal.
+ */
+export function projectInline(
+  node: PMNode | Fragment | JSONContent,
+): InlineProjection {
+  const children = isFragment(node)
+    ? fragmentChildren(node)
+    : toShape(node as PMNode | JSONContent).children;
+  const segments: InlineProjectionSegment[] = [];
+  let text = "";
+  children.forEach((child, index) => {
+    const isText = child.typeName === "text";
+    const display = isText
+      ? child.text ?? ""
+      : displayTextOf(child.typeName, child.attrs) ??
+        child.children.map((c) => flattenShape(c, [])).join("");
+    segments.push({
+      index,
+      kind: isText ? "text" : "atom",
+      from: text.length,
+      to: text.length + display.length,
+    });
+    text += display;
+  });
+  return { text, segments };
+}
+
+function isFragment(x: unknown): x is Fragment {
+  // A Fragment has `forEach` + `childCount` and no `type`; a PM Node has a
+  // `type` object; a JSONContent has a string `type` (or none, with no
+  // `childCount`).
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as Fragment).childCount === "number" &&
+    !("type" in (x as object))
+  );
+}
+
+function fragmentChildren(frag: Fragment): NodeShape[] {
+  const out: NodeShape[] = [];
+  frag.forEach((child) => out.push(shapeOfPM(child)));
+  return out;
 }
 
 // ---------------------------------------------------------------------------

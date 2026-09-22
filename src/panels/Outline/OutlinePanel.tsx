@@ -10,7 +10,7 @@ import type { FocusBand } from "@/lib/focus-view";
 import { Panel } from "@/panels/_shared/Panel";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
-import { flattenInlineText } from "@/lib/inline-content";
+import { flattenInlineText, projectInline } from "@/lib/inline-content";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 import {
   subscribeOutlinePrefs,
@@ -462,7 +462,11 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         id: uuid ?? `heading-${idx}`,
         uuid,
         level: node.attrs.level as number,
-        text: flattenInlineText(node) || "Untitled",
+        // Task 707: the EDITABLE projection — the rename box is seeded from
+        // this and `buildHeadingRenameFragment` splices it back through the
+        // same `projectInline`, so the two cannot disagree. A footnote is an
+        // opaque zero-width atom here (its body is not heading text).
+        text: projectInline(node).text || "Untitled",
         label: (node.attrs.label as string) || null,
         sectionNumber: (node.attrs.sectionNumber as string) || null,
         index: idx,
@@ -991,9 +995,12 @@ const EditablePod = memo(function EditablePod({
   }, [editing]);
 
   const commitRename = () => {
-    const trimmed = editText.trim();
-    if (trimmed && trimmed !== pod.text) {
-      onRename(pod, trimmed);
+    // Task 707: a heading's rename commits the string AS EDITED — the splice
+    // diffs it against the seed, so trimming here would silently delete the
+    // space in `Intro \footnote{…}` on an edit elsewhere. A parTitle is
+    // attr-only and trims in its own mutator.
+    if (editText.trim() && editText !== pod.text) {
+      onRename(pod, editText);
     }
     setEditing(false);
   };

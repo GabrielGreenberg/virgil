@@ -36,8 +36,11 @@
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import { atomTextOf } from "@/lib/inline-content";
+import type { Fragment, Mark, Node as PMNode } from "@tiptap/pm/model";
+import {
+  projectInline,
+  type InlineProjectionSegment,
+} from "@/lib/inline-content";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 
 // ---------------------------------------------------------------------------
@@ -175,68 +178,29 @@ export function editStructuredNodeByUuid(
 // Heading-rename inline edit — the atom-preserving text splice (OUT-F5-01)
 // ---------------------------------------------------------------------------
 
-/** A segment of a heading's flattened projection: either a stretch of plain
- *  text (editable) or an atom (opaque, its display text is non-editable). */
-interface FlatSegment {
-  kind: "text" | "atom";
-  /** The display text this segment contributes to the flat projection. */
-  display: string;
-  /** For a text segment: the source child index in the fragment (for marks). */
-  node: PMNode;
-}
-
-/** The display text an inline atom contributes to a heading's flat projection —
- *  the same projection the rename input is seeded from (`flattenInlineText`).
- *  Falls back through the attr-text registry, then command/displayText. */
-function atomDisplay(node: PMNode): string {
-  const fromRegistry = atomTextOf(
-    node.type.name,
-    node.attrs as Record<string, unknown>,
-  );
-  if (fromRegistry !== null) return fromRegistry;
-  const attrs = node.attrs as Record<string, unknown>;
-  return (
-    (attrs.displayText as string) ||
-    (attrs.command as string) ||
-    (attrs.label as string) ||
-    ""
-  );
-}
-
-/** Project a heading's inline fragment into ordered segments, so a rename can
- *  reason about which spans of the flat string are editable text vs opaque
- *  atoms. */
-function segmentFragment(frag: Fragment): FlatSegment[] {
-  const segs: FlatSegment[] = [];
-  frag.forEach((child) => {
-    if (child.isText) {
-      segs.push({ kind: "text", display: child.text ?? "", node: child });
-    } else {
-      segs.push({ kind: "atom", display: atomDisplay(child), node: child });
-    }
-  });
-  return segs;
-}
-
 /**
- * Build the new inline `Fragment` for a heading rename that PRESERVES every
- * inline atom and mark.
+ * Build the new inline `Fragment` for a heading rename: change ONLY the
+ * characters the user changed (task 707).
  *
- * Strategy (design §3b "pure-text edit around atoms"):
- *   - The old flat projection is the concatenation of segment display strings.
- *     The rename `<input>` was seeded from that exact projection.
- *   - If the new typed string still contains every atom's display substring in
- *     order (the common case — the user fixed/added words AROUND the atoms),
- *     splice the new text into the gaps between atom displays, reusing the
- *     FIRST text run's marks for each rebuilt text node, and keep the atom
- *     nodes verbatim. Atoms survive.
- *   - Otherwise (the user retyped over an atom's display position), fall back to
- *     a guarded whole-content replace: emit the new string as a single text run
- *     followed by EVERY atom the user didn't type over, appended in order — so
- *     we still never silently DELETE an atom; worst case it lands at the end.
+ * The rename box was seeded from `projectInline(heading).text`; this reads the
+ * SAME projection, so the seed and its inverse share one definition of what
+ * each character is — editable text in some run, or display text of an opaque
+ * atom (a footnote displays nothing: it is pinned between characters). Then:
  *
- * `schema` builds the replacement text nodes; `markFrom` supplies the marks to
- * stamp onto rebuilt text (the heading's first text run, so bold/etc. carry).
+ *   - Diff the seed against the typed string, character by character.
+ *   - An UNCHANGED text character keeps its own run's marks, so formatting the
+ *     edit did not touch is byte-identical (the pre-707 splice stamped the
+ *     first run's marks onto every rebuilt run: renaming one plain word of
+ *     `The \emph{Tractatus} revisited` dropped the italics).
+ *   - A typed character takes the marks of the text it replaced, or, for a
+ *     pure insertion, of the character before it (after it at the start) —
+ *     what typing at that spot in the editor would give.
+ *   - Atoms are never deleted and never edited. An atom whose display chars
+ *     the edit touched is kept whole, at its place; typed characters whose
+ *     only effect was to overwrite or wedge into an atom's display are REFUSED
+ *     (dropped) — the atom is not text. A zero-width atom is re-emitted at its
+ *     boundary, after anything typed there (typing at the end of
+ *     `Intro\footnote{…}` extends `Intro`).
  */
 export function buildHeadingRenameFragment(
   editor: Editor,
@@ -244,75 +208,142 @@ export function buildHeadingRenameFragment(
   newText: string,
 ): Fragment {
   const schema = editor.state.schema;
-  const segs = segmentFragment(oldFrag);
-  const atoms = segs.filter((s) => s.kind === "atom");
+  const { text: oldText, segments } = projectInline(oldFrag);
+  if (oldText === newText) return oldFrag;
 
-  // Marks to carry onto rebuilt text: the first text run's marks (so a fully
-  // bold heading stays bold after a rename).
-  const firstText = segs.find((s) => s.kind === "text");
-  const carryMarks = firstText ? firstText.node.marks : undefined;
+  const children: PMNode[] = [];
+  oldFrag.forEach((c) => children.push(c));
+  const owner: InlineProjectionSegment[] = new Array(oldText.length);
+  for (const seg of segments) {
+    for (let k = seg.from; k < seg.to; k++) owner[k] = seg;
+  }
+  const marksOfChar = (o: number | undefined): readonly Mark[] | null =>
+    o !== undefined && owner[o]?.kind === "text"
+      ? children[owner[o].index].marks
+      : null;
 
-  const mkText = (t: string): PMNode | null =>
-    t.length > 0 ? schema.text(t, carryMarks) : null;
+  const ops = diffChars(oldText, newText);
 
-  // No atoms → a plain text replace is lossless by definition.
-  if (atoms.length === 0) {
-    const tn = mkText(newText);
-    return fragmentFromNodes(schema, tn ? [tn] : []);
+  // Per hunk (a maximal run of non-equal ops): do its insertions land, and
+  // with which marks?
+  const insMarks: (readonly Mark[] | null | "drop")[] = new Array(ops.length);
+  for (let i = 0; i < ops.length; ) {
+    if (ops[i].kind === "eq") { i++; continue; }
+    let j = i;
+    while (j < ops.length && ops[j].kind !== "eq") j++;
+    const dels = ops.slice(i, j).filter((op) => op.kind === "del");
+    const firstTextDel = dels.find((op) => owner[op.o].kind === "text");
+    let verdict: readonly Mark[] | null | "drop";
+    if (firstTextDel) {
+      verdict = marksOfChar(firstTextDel.o);
+    } else if (dels.length > 0) {
+      verdict = "drop"; // it only overwrote atom display text
+    } else {
+      const prev = i > 0 ? ops[i - 1].o : undefined;
+      const next = j < ops.length ? ops[j].o : undefined;
+      const insideAtom =
+        prev !== undefined &&
+        next !== undefined &&
+        owner[prev] === owner[next] &&
+        owner[prev].kind === "atom";
+      verdict = insideAtom ? "drop" : marksOfChar(prev) ?? marksOfChar(next) ?? [];
+    }
+    for (let k = i; k < j; k++) insMarks[k] = verdict;
+    i = j;
   }
 
-  // --- Pure-text-edit fast-path: every atom display still present in order. ---
-  let cursor = 0;
-  let ok = true;
-  const atomCutPoints: number[] = []; // [startOfAtomDisplay] in newText, in order
-  for (const atom of atoms) {
-    if (atom.display.length === 0) {
-      // A zero-width atom (e.g. a citation with empty display) can't be located
-      // by substring search; bail to the safe fallback.
-      ok = false;
-      break;
-    }
-    const at = newText.indexOf(atom.display, cursor);
-    if (at < 0) {
-      ok = false;
-      break;
-    }
-    atomCutPoints.push(at);
-    cursor = at + atom.display.length;
-  }
-
-  if (ok) {
-    // Walk the original segment order, emitting: leading text gap, atom verbatim,
-    // … using the located cut points to slice `newText` into the text gaps.
-    const out: PMNode[] = [];
-    let textCursor = 0;
-    let atomIdx = 0;
-    for (const seg of segs) {
-      if (seg.kind === "atom") {
-        const cut = atomCutPoints[atomIdx];
-        // The text gap before this atom = newText[textCursor .. cut].
-        const gap = newText.slice(textCursor, cut);
-        const tn = mkText(gap);
-        if (tn) out.push(tn);
-        out.push(seg.node); // atom verbatim — preserved
-        textCursor = cut + seg.display.length;
-        atomIdx++;
-      }
-      // text segments are absorbed into the gaps; skip here.
-    }
-    // Trailing text after the last atom.
-    const tail = newText.slice(textCursor);
-    const tn = mkText(tail);
-    if (tn) out.push(tn);
-    return fragmentFromNodes(schema, out);
-  }
-
-  // --- Fallback: never DELETE an atom. New text first, then atoms verbatim. ---
   const out: PMNode[] = [];
-  const head = mkText(newText);
-  if (head) out.push(head);
-  for (const atom of atoms) out.push(atom.node);
+  const zeroWidth = segments.filter((s) => s.kind === "atom" && s.from === s.to);
+  let zi = 0;
+  const flushZeroWidth = (upTo: number) => {
+    while (zi < zeroWidth.length && zeroWidth[zi].from <= upTo) {
+      out.push(children[zeroWidth[zi].index]);
+      zi++;
+    }
+  };
+  const emittedAtoms = new Set<number>();
+  ops.forEach((op, i) => {
+    if (op.kind === "ins") {
+      const m = insMarks[i];
+      if (m !== "drop") out.push(schema.text(newText[op.n], m ?? undefined));
+      return;
+    }
+    flushZeroWidth(op.o);
+    const seg = owner[op.o];
+    if (seg.kind === "atom") {
+      if (!emittedAtoms.has(seg.index)) {
+        emittedAtoms.add(seg.index);
+        out.push(children[seg.index]);
+      }
+      return;
+    }
+    if (op.kind === "eq") {
+      out.push(schema.text(oldText[op.o], children[seg.index].marks));
+    }
+  });
+  flushZeroWidth(Infinity);
   return fragmentFromNodes(schema, out);
+}
+
+type DiffOp =
+  | { kind: "eq"; o: number; n: number }
+  | { kind: "del"; o: number; n?: undefined }
+  | { kind: "ins"; n: number; o?: undefined };
+
+/** Above this many DP cells the middle is diffed as one delete + insert. A
+ *  heading is a few dozen characters; this only bounds a pathological paste. */
+const MAX_DIFF_CELLS = 250_000;
+
+/** A character diff of `a` → `b`: the common prefix and suffix are equal, the
+ *  middle is a longest-common-subsequence walk (deletions before insertions on
+ *  a tie). */
+function diffChars(a: string, b: string): DiffOp[] {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let s = 0;
+  while (
+    s < a.length - p &&
+    s < b.length - p &&
+    a[a.length - 1 - s] === b[b.length - 1 - s]
+  ) s++;
+  const ops: DiffOp[] = [];
+  for (let k = 0; k < p; k++) ops.push({ kind: "eq", o: k, n: k });
+  const n = a.length - p - s;
+  const m = b.length - p - s;
+  if (n === 0 || m === 0 || n * m > MAX_DIFF_CELLS) {
+    for (let k = 0; k < n; k++) ops.push({ kind: "del", o: p + k });
+    for (let k = 0; k < m; k++) ops.push({ kind: "ins", n: p + k });
+  } else {
+    const w = m + 1;
+    const lcs = new Uint32Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        lcs[i * w + j] =
+          a[p + i] === b[p + j]
+            ? lcs[(i + 1) * w + j + 1] + 1
+            : Math.max(lcs[(i + 1) * w + j], lcs[i * w + j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < n || j < m) {
+      if (i < n && j < m && a[p + i] === b[p + j]) {
+        ops.push({ kind: "eq", o: p + i, n: p + j });
+        i++;
+        j++;
+      } else if (j >= m || (i < n && lcs[(i + 1) * w + j] >= lcs[i * w + j + 1])) {
+        ops.push({ kind: "del", o: p + i });
+        i++;
+      } else {
+        ops.push({ kind: "ins", n: p + j });
+        j++;
+      }
+    }
+  }
+  for (let k = s; k > 0; k--) {
+    ops.push({ kind: "eq", o: a.length - k, n: b.length - k });
+  }
+  return ops;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,9 +365,9 @@ function fragmentFromNodes(
 
 /**
  * Rename a heading, addressed by uuid, PRESERVING every inline atom and mark
- * (the C2 DATA-LOSS fix, `OUT-F5-01`). `newText` is the flattened display
- * string the rename input produced; this splices it back around the heading's
- * atoms instead of replacing the whole content with plaintext.
+ * (the C2 DATA-LOSS fix, `OUT-F5-01`). `newText` is the edited
+ * `projectInline` string the rename input was seeded with; this splices back
+ * only the characters that changed (task 707).
  */
 export function renameHeadingByUuid(
   editor: Editor,
