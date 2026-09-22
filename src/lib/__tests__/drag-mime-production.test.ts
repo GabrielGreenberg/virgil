@@ -93,10 +93,11 @@ function producers(row: DragMimeProduction): string[] {
 
 /**
  * `file:line` for every place `row` is CONSUMED — a `getData`, a
- * `types.includes`, or membership in one of the two recognizer sets.
+ * `types.includes`, or membership in one of the three recognizer sets.
  *
- * Membership counts because `ANCHOR_DRAG_TYPES` and `EDITOR_INSERT_DRAG_TYPES`
- * live in the constants module but are read from outside it: that is
+ * Membership counts because `ANCHOR_DRAG_TYPES`, `EDITOR_INSERT_DRAG_TYPES` and
+ * `EDITOR_REFUSED_DRAG_TYPES` live in the constants module but are read from
+ * outside it: that is
  * `MIME_MARGINALIA_MOVE`'s entire remaining job. `DRAG_MIME_PRODUCTION`'s own
  * rows deliberately do NOT count — a registry that vouches for its own members
  * makes the leg vacuous, which is the failure mode this whole suite exists to
@@ -111,7 +112,11 @@ function readers(row: DragMimeProduction): string[] {
       if (mention.test(code[i] ?? "")) hits.push(`${rel(abs)}:${i + 1}`);
     }
   }
-  for (const set of ["ANCHOR_DRAG_TYPES", "EDITOR_INSERT_DRAG_TYPES"]) {
+  for (const set of [
+    "ANCHOR_DRAG_TYPES",
+    "EDITOR_INSERT_DRAG_TYPES",
+    "EDITOR_REFUSED_DRAG_TYPES",
+  ]) {
     const src = codeOnly(readFileSync(MARGINALIA, "utf8"));
     const at = src.indexOf(`export const ${set}`);
     if (at < 0) continue;

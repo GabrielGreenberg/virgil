@@ -28,6 +28,7 @@ import {
   type BlockSpanAddress,
 } from "@/lib/tiptap/block-address";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
+import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
@@ -1156,7 +1157,13 @@ function EditableOutline({
   const handleDragStart = useCallback((pod: OutlinePod, e: React.DragEvent) => {
     setDraggingId(pod.id);
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", pod.id);
+    // A PRIVATE type, never `text/plain` (task 708): the id means something
+    // only to this panel (whose drop reads `draggingId`, not the payload), and a
+    // text payload is what ProseMirror's default drop typed into the manuscript
+    // when a pod was released over the paper. The editor refuses this type by
+    // name (`EDITOR_REFUSED_DRAG_TYPES`). Firefox still needs SOME `setData` to
+    // start a drag — this satisfies it.
+    e.dataTransfer.setData(MIME_OUTLINE_POD, pod.id);
     // Custom ghost via the clamped-ghost SSOT: suppresses the native OS drag
     // image (so an upward drag toward the Virgil bar can't tear off / flip to
     // no-drop) and viewport-clamps the neutral row card. Palette via tokens.
