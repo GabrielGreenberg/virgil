@@ -40,7 +40,6 @@ import {
 // `suggested_text` deliberately stays raw: it is EDITABLE currency the user is
 // composing, and its cue must show exactly the bytes they typed.
 import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 
 /**
  * THE suggestion card — one component, two families (task 714).
@@ -138,14 +137,29 @@ export function SuggestionCard({
   const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
-  // Pending-changes (flag-ON) status branches. With the flag OFF these are all
-  // false (status never reaches applied/stale), so the card renders exactly as
-  // today and the Accept/Reject path is untouched. Keep/Revert now flow through
-  // the PendingChangeController context (not per-mount callbacks), so the applied
-  // card renders on EVERY surface — no `hasPendingCallbacks` gate.
-  const pendingChangesOn = isPendingChangesOn();
-  const isApplied = pendingChangesOn && card.status === "applied";
-  const isStale = pendingChangesOn && card.status === "stale";
+  // TASK 716 — the STATUS picks the body. The rollout flag does NOT.
+  //
+  // These two used to read `isPendingChangesOn() && card.status === …`, which
+  // conflated a runtime rollout switch with persisted document state. The flag
+  // is the documented OPT-OUT back to the legacy accept-immediately path; a
+  // card's `status` lives in `revisions.json` / `cutter.json` and outlives the
+  // flip. Flipping the flag off while a suggestion sat at `applied` therefore
+  // unmounted `AppliedRecordBody` — the ONLY surface carrying Keep / Revert /
+  // the preview toggle — while the blue `pending-ai-change` range stayed in the
+  // manuscript. The card fell through to the compressed cue and offered no verb
+  // at all; `stale` lost its Dismiss the same way. A rollout switch says which
+  // transitions may be PRODUCED; it may not decide whether an already-produced
+  // state can be DISPLAYED and RESOLVED.
+  //
+  // Flag-OFF is unchanged for every card that never had an applied/stale
+  // status (no apply path runs, so none is ever minted) — the change is visible
+  // only for the records an opt-out would otherwise have orphaned.
+  //
+  // Keep/Revert flow through the PendingChangeController context (not per-mount
+  // callbacks), so the applied card renders on EVERY surface — no
+  // `hasPendingCallbacks` gate.
+  const isApplied = card.status === "applied";
+  const isStale = card.status === "stale";
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
@@ -284,7 +298,9 @@ export function SuggestionCard({
         </div>
       ) : card.author === "ai" ? (
         // Flag-agnostic: an AI-drafted pending suggestion NEVER shows the 4-field
-        // grid — it shows the minimal Insert-below body (retires the fallback).
+        // grid — it shows the minimal read-only body (retires the fallback). Its
+        // action row is the SAME `PendingActionRow` the human branch mounts, so
+        // the flag fork is asked in one place for both authors (task 716).
         <PendingAiRecordBody
           card={card}
           originalContent={card.selectedContent}
@@ -317,9 +333,10 @@ export function SuggestionCard({
           ))}
 
           {/* Flag-ON: a single primary Apply (manual for Phase 1b; Phase 2
-              auto-applies). Flag-OFF: the legacy Reject / Accept pair. BOTH now
+              auto-applies). Flag-OFF: the legacy Reject / Accept pair. BOTH
               live behind the one shared row, which reads the verb from the
-              controller — see PendingActionRow (task 684). */}
+              controller — see PendingActionRow (task 684), which since task 716
+              also owns the AI author's fork. */}
           {isPending && <PendingActionRow card={card} family={family} />}
         </div>
       )}

@@ -1076,7 +1076,15 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
     }
   });
 
-  it("flag-OFF stamps nothing and the alive-set is empty (parity)", () => {
+  // TASK 716 — this used to assert the OPPOSITE ("flag-OFF stamps nothing"),
+  // on the premise that flag-OFF implies no card ever reached `applied`. The
+  // premise is false: the flag is a runtime OPT-OUT, a card's `status` is
+  // persisted document state, and a record written before the flip is still
+  // `applied` with a blue range still in the `.tex`. Skipping the re-stamp left
+  // the user an un-highlighted, un-resolvable splice after every reload. The
+  // pass is gated on `status:"applied"` alone now, so a doc that never had one
+  // still costs nothing (the case below).
+  it("re-stamps an applied card even with the flag OFF (an opt-out does not strand a landed splice)", () => {
     setPendingChangesFlag(false);
     const { editor, cleanup } = mount();
     try {
@@ -1091,6 +1099,27 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
           replacement: "lazy grey cat",
           mode: "replace",
         },
+      };
+      expect(
+        reapplyPendingMarks(editor, [
+          { family: "revision-suggestion", cards: [card] },
+        ]),
+      ).toBe(1);
+      expect(pendingMarkAnchorIds([card]).size).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("flag-OFF with no applied card stamps nothing and the alive-set is empty (parity)", () => {
+    setPendingChangesFlag(false);
+    const { editor, cleanup } = mount();
+    try {
+      // The shape an opt-out ACTUALLY produces: nothing ever reaches `applied`.
+      const card: PendingMarkCardLike = {
+        id: CARD_ID,
+        kind: "suggestion",
+        status: "pending",
       };
       expect(
         reapplyPendingMarks(editor, [

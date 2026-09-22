@@ -8,7 +8,7 @@
  * suggestions are NEVER auto-applied (they keep the manual Apply button); a
  * stale suggestion is marked `stale` once and never retried.
  *
- * This hook is mounted in `EditorPane`, behind `isPendingChangesOn()`, where the
+ * This hook is mounted in `EditorPane`, behind `canProducePendingChanges()`, where the
  * editor + both card hooks (`useRevisions` / `useCutter`) + the selection
  * machinery all live. It drives the SHARED `applySuggestion` orchestration
  * (pending-change-actions.ts) — the exact same code path the manual Apply
@@ -67,7 +67,7 @@ import {
   suggestionApplicability,
 } from "@/links/pending-change-actions";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { generateEntityId } from "@/lib/uuid";
 import type { StructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -265,7 +265,7 @@ export interface UseAutoApplyPendingChangesArgs {
  * Mount the auto-apply driver. Returns an `onCaretParagraphChange` callback the
  * caller MUST wire into `useEditorUIState`'s notifier (the selection-leave
  * path) — that's how the driver hears "the caret left paragraph P" without
- * opening its own subscriber. Behind `isPendingChangesOn()`: flag-OFF, both the
+ * opening its own subscriber. Behind `canProducePendingChanges()`: flag-OFF, both the
  * batch effect and the leave callback are inert (no card ever reaches the
  * statuses they read), so behavior is byte-identical to pre-Phase-2.
  */
@@ -303,7 +303,7 @@ export function useAutoApplyPendingChanges(
   const revisionCards = revisions.cards;
   const cutterCards = cutter.cards;
   useEffect(() => {
-    if (!isPendingChangesOn()) return;
+    if (!canProducePendingChanges()) return;
     if (!editor) return;
     const caret = paragraphUuidAtSelection(editor);
     reconcileDispatched(dispatchedRef.current, [
@@ -334,7 +334,7 @@ export function useAutoApplyPendingChanges(
   // editor + families from refs so its identity stays stable (no re-subscribe).
   const onCaretParagraphChange = useCallback(
     (prev: string | null, next: string | null) => {
-      if (!isPendingChangesOn()) return;
+      if (!canProducePendingChanges()) return;
       if (!prev) return; // nothing was left
       const ed = editorRef.current;
       if (!ed) return;

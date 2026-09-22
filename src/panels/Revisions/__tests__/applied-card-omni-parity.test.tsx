@@ -91,10 +91,11 @@ function makeApplied(
 }
 
 // A controller stub with all five verbs (keep/dismiss/previewOriginal/
-// previewSuggested/insertBelow), each a spy. `isOn` toggles the defensive disable.
-function makeController(isOn = true) {
+// previewSuggested/insertBelow), each a spy. `canResolve` toggles the defensive disable.
+function makeController(canResolve = true) {
   return {
-    isOn,
+    canProduce: true,
+    canResolve,
     keep: vi.fn(),
     dismiss: vi.fn(),
     previewOriginal: vi.fn(),

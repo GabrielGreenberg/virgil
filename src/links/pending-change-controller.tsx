@@ -38,10 +38,26 @@ import type { PendingChangeFamily } from "@/links/apply-suggestion";
  * stays flat.
  */
 export interface PendingChangeController {
-  /** `isPendingChangesOn() && an editor is mounted` — the applied-card controls
-   *  render only when this is true (defensive; the provider is normally present
-   *  whenever the flag is on). */
-  isOn: boolean;
+  /** MAY A NEW PENDING CHANGE BE PRODUCED? — `canProducePendingChanges() && an
+   *  editor is mounted`. Gates the PRODUCING verbs only: {@link apply} and
+   *  {@link insertBelow}, plus the pending card's choice between the flag-ON
+   *  Apply and the legacy Reject/Accept pair.
+   *
+   *  TASK 716 — this was one boolean named `isOn` doing two jobs, and the
+   *  second job was the bug. See {@link canResolve}. */
+  canProduce: boolean;
+  /** MAY AN ALREADY-PRODUCED PENDING CHANGE BE RESOLVED? — `an editor is
+   *  mounted`, and nothing else. Gates {@link keep} / {@link dismiss} /
+   *  {@link previewOriginal} / {@link previewSuggested}.
+   *
+   *  Deliberately NOT gated on the rollout flag. `virgil:pending-changes` is a
+   *  runtime opt-out; a card's `status` is persisted document state. Flipping
+   *  the flag off while a suggestion sits at `applied` leaves a blue
+   *  `pending-ai-change` range in the manuscript — so if resolution went dark
+   *  with the flag, opting out would strand that range with no verb anywhere
+   *  that could keep it or revert it. A user who opts out must still be able to
+   *  finish the changes they already started. */
+  canResolve: boolean;
   /** PENDING → APPLIED (flag-ON primary) — splice `suggested_text` over the
    *  card's Mode-A anchor in the live doc and record the pending change
    *  (status→applied, or →stale when the anchor no longer matches). The same
