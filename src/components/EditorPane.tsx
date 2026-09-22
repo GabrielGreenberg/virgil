@@ -90,6 +90,7 @@ import PrintAppendices from "./PrintAppendices";
 import { LoadingScreen } from "./LoadingScreen";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
+import { CardAnchorProvider } from "./editor-layout/contexts/card-anchor";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
 import {
   getCardStore,
@@ -4959,27 +4960,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the renderer both are.
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
 
-  // Archive helpers — anchored-id set + paragraph-order sort matching
-  // EditorLayout. The docked ArchivePanel + the float use this to surface
-  // anchored snippets at the top of the list and to badge the rest orphaned.
-  //
-  // Anchored ≡ the ONE card-anchor authority resolved this snippet to a live
-  // paragraph — not mere link *presence* (task 104), and no longer a bare
-  // `pids.some(live)` gate either (task 369). That gate was a THIRD answer to
-  // the question the margin and the omni surface each also answered: it saw
-  // only the live-uuid rung, so a clip the resolver had RECOVERED by its
-  // surviving mark or its `paragraphSnapshot` — and every archive link is
-  // created WITH a snapshot — read "orphaned" in the docked panel while its
-  // margin marker sat happily beside the recovered paragraph. O(1) per
-  // snippet against the shared index, gated on the structural counters.
-  const anchoredArchiveIds = useMemo<Set<string>>(() => {
-    const ids = new Set<string>();
-    for (const s of archiveHook.snippets) {
-      if (anchorPass.resolve(s).anchored) ids.add(s.id);
-    }
-    return ids;
-  }, [archiveHook.snippets, anchorPass]);
-  // …and the ORDER reads the SAME resolution the badge above does (task 665).
+  // Archive helpers — the paragraph-order sort. The docked ArchivePanel's
+  // orphan badge no longer reads a pre-folded `anchoredArchiveIds` set threaded
+  // through five prop layers: since task 699 it asks the ONE card-anchor pass
+  // directly (`useDockedJumpGate` → `cardJumpGate(s, anchorPass.resolve)`), the
+  // same verdict that gates its Jump. Anchored ≡ the four-rung ladder resolved
+  // the snippet to a live paragraph (task 369), never mere link presence.
+  // The ORDER reads the SAME resolution the badge does (task 665).
   // It used to run its own `doc.descendants` walk keyed on the live uuid ONLY,
   // so a clip the four-rung ladder RECOVERED by its surviving mark or by its
   // `paragraphSnapshot` — and every archive link is created WITH a snapshot —
@@ -6259,6 +6246,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >
+      {/* Task 699: the ONE card-anchor pass, published so the omni host and
+          the six docked panels read the same resolver the margin + floats do. */}
+      <CardAnchorProvider value={anchorPass}>
         <CitationDisplayProvider
           value={{
             getCitationDisplayText: citationsHook.getDisplayText,
@@ -6467,7 +6457,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     reportsHook={reportsHook}
                     revisionsHook={revisionsHook}
                     sortedArchiveSnippets={sortedArchiveSnippets}
-                    anchoredArchiveIds={anchoredArchiveIds}
                     onArchiveDelete={handleArchiveDelete}
                     onAddFootnote={handleAddFootnote}
                     onEditFootnote={handleEditFootnote}
@@ -6529,7 +6518,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       reportsHook={reportsHook}
                       revisionsHook={revisionsHook}
                       sortedArchiveSnippets={sortedArchiveSnippets}
-                      anchoredArchiveIds={anchoredArchiveIds}
                       onArchiveDelete={handleArchiveDelete}
                         onAddFootnote={handleAddFootnote}
                       onEditFootnote={handleEditFootnote}
@@ -6661,7 +6649,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 reportsHook={reportsHook}
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
-                anchoredArchiveIds={anchoredArchiveIds}
                 archivedIds={archivedIds}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
@@ -7561,7 +7548,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         reportsHook={reportsHook}
                         revisionsHook={revisionsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
-                        anchoredArchiveIds={anchoredArchiveIds}
                         onArchiveDelete={handleArchiveDelete}
                             onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
@@ -7774,7 +7760,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 reportsHook={reportsHook}
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
-                anchoredArchiveIds={anchoredArchiveIds}
                 archivedIds={archivedIds}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
@@ -7867,6 +7852,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </RecentlyAddedProvider>
         </PristineCardsProvider>
         </CitationDisplayProvider>
+      </CardAnchorProvider>
       </EditorRefProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
@@ -7956,7 +7942,6 @@ interface PaneRailProps {
   reportsHook: ReturnType<typeof useReports>;
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
-  anchoredArchiveIds: Set<string>;
   /** Task 476: the cross-panel ARCHIVED SSOT, threaded to `OmniHost` so the omni
    *  gutter filters its assembled items against the SAME set the margin markers
    *  and the unanchored chip read — three renderers of one card, one resolution. */
@@ -8136,7 +8121,6 @@ function PaneRail({
   reportsHook,
   revisionsHook,
   sortedArchiveSnippets,
-  anchoredArchiveIds,
   archivedIds,
   onArchiveDelete,
   onAddFootnote,
@@ -8405,7 +8389,6 @@ interface PaneRailBodyProps {
   reportsHook: ReturnType<typeof useReports>;
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
-  anchoredArchiveIds: Set<string>;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -8481,7 +8464,6 @@ function PaneRailBody({
   reportsHook,
   revisionsHook,
   sortedArchiveSnippets,
-  anchoredArchiveIds,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -8643,7 +8625,6 @@ function PaneRailBody({
         updateArchiveSnippet={archiveHook.updateSnippet}
         updateArchiveSnippetTitle={archiveHook.updateSnippetTitle}
         onDelete={onArchiveDelete}
-        anchoredIds={anchoredArchiveIds}
       />
     );
   }

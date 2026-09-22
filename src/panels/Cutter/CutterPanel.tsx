@@ -1,5 +1,6 @@
 "use client";
 
+import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
@@ -19,7 +20,6 @@ import {
   docProductsEnabled,
   useWordCountsProduct,
 } from "@/lib/doc-products/use-doc-products";
-import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -48,6 +48,7 @@ export default function CutterPanel({
   onSelect,
   selectedId,
   onJumpToCard,
+  jumpGate,
   editor,
   recentlyAddedId,
 }: {
@@ -78,6 +79,10 @@ export default function CutterPanel({
   onSelect: (id: string | null) => void;
   selectedId: string | null;
   onJumpToCard?: (card: CutterCard, sourceEl?: HTMLElement | null) => void;
+  /** Task 699: the ONE Jump gate (`cardJumpGate` over the pane's shared
+   *  anchor pass). Required so no docked panel can fall back to gating Jump on
+   *  "the card stores a link". */
+  jumpGate: DockedJumpGate;
   editor?: Editor | null;
   recentlyAddedId?: string | null;
 }) {
@@ -162,8 +167,8 @@ export default function CutterPanel({
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={
-                onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
-                  ? (sourceEl) => onJumpToCard(it.data, sourceEl)
+                onJumpToCard
+                  ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
                   : undefined
               }
             />
@@ -180,8 +185,8 @@ export default function CutterPanel({
             onDelete={onDelete}
             onSelect={onSelect}
             onJump={
-              onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
-                ? (sourceEl) => onJumpToCard(it.data, sourceEl)
+              onJumpToCard
+                ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
                 : undefined
             }
           />

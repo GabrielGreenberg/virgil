@@ -6,6 +6,7 @@ import type { ReportItem, ReportCard, ReportRequestCard } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import type { JSONContent } from "@tiptap/react";
 import { useEditorRefContext } from "../contexts/editor-ref";
+import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
@@ -29,6 +30,7 @@ export interface ReportsHostProps {
 
 export function ReportsHost(p: ReportsHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
+  const jumpGate = useDockedJumpGate();
   const { selectedReportCardId, setSelectedReportCardId } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const { createReport, createReportRequest } = useCardCreationContext();
@@ -61,6 +63,7 @@ export function ReportsHost(p: ReportsHostProps) {
       onDelete={p.deleteCard}
       onSelect={setSelectedReportCardId}
       selectedId={selectedReportCardId}
+      jumpGate={jumpGate}
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}

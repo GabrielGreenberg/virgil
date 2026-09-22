@@ -5,6 +5,7 @@ import TodoPanel from "@/panels/Todo";
 import type { TodoItem } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
+import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
@@ -29,6 +30,7 @@ export interface TodoHostProps {
 
 export function TodoHost(p: TodoHostProps) {
   const { editorRef } = useEditorRefContext();
+  const jumpGate = useDockedJumpGate();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
   const { createTodo } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("todo");
@@ -47,6 +49,7 @@ export function TodoHost(p: TodoHostProps) {
       onClearDone={p.clearDoneTodos}
       selectedTodoId={selectedTodoId}
       onSelectTodo={setSelectedTodoId}
+      jumpGate={jumpGate}
       onJumpToCard={(item, sourceEl) => editorRef.current?.jumpToCard(item, sourceEl)}
       recentlyAddedId={recentlyAddedId}
     />

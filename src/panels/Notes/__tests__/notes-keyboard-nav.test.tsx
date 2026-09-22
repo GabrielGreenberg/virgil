@@ -50,6 +50,7 @@ import { render, fireEvent, cleanup } from "@testing-library/react";
 import { type ComponentProps } from "react";
 import NotesPanel from "@/panels/Notes/NotesPanel";
 import type { UserNote } from "@/lib/types";
+import { PASS_JUMP } from "@/links/card-anchor-rows";
 
 afterEach(cleanup);
 
@@ -79,6 +80,7 @@ function baseProps(overrides: Partial<PanelProps> = {}): PanelProps {
     onDelete: vi.fn(),
     onSelectNote: vi.fn(),
     selectedNoteId: null,
+    jumpGate: () => ({ anchored: true, withJump: PASS_JUMP }),
     ...overrides,
   };
 }

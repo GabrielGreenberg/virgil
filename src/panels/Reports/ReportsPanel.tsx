@@ -1,5 +1,6 @@
 "use client";
 
+import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
@@ -13,7 +14,6 @@ import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
-import { getLinkedTextObjectIds } from "@/links/links";
 import { ReportCard } from "./ReportCard";
 import { ReportRequestCard } from "./ReportRequestCard";
 
@@ -34,6 +34,7 @@ export default function ReportsPanel({
   onSelect,
   selectedId,
   onJumpToCard,
+  jumpGate,
   getCitationDisplayText,
   onCitationCreated,
   onEditorFocus,
@@ -51,6 +52,10 @@ export default function ReportsPanel({
   onSelect: (id: string | null) => void;
   selectedId: string | null;
   onJumpToCard?: (card: ReportItem, sourceEl?: HTMLElement | null) => void;
+  /** Task 699: the ONE Jump gate (`cardJumpGate` over the pane's shared
+   *  anchor pass). Required so no docked panel can fall back to gating Jump on
+   *  "the card stores a link". */
+  jumpGate: DockedJumpGate;
   // Required at the host boundary (Pillar E-1): report/report-request card
   // bodies are rich-text mini-editors that can host inline `\cite{}` drops and
   // claim editor focus. These were declared on ReportCard/ReportRequestCard but
@@ -114,8 +119,8 @@ export default function ReportsPanel({
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={
-                onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
-                  ? (sourceEl) => onJumpToCard(it.data, sourceEl)
+                onJumpToCard
+                  ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
                   : undefined
               }
               onEditorFocus={onEditorFocus}
@@ -134,8 +139,8 @@ export default function ReportsPanel({
             onDelete={onDelete}
             onSelect={onSelect}
             onJump={
-              onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
-                ? (sourceEl) => onJumpToCard(it.data, sourceEl)
+              onJumpToCard
+                ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
                 : undefined
             }
             onEditorFocus={onEditorFocus}

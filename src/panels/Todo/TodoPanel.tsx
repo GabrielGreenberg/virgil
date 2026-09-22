@@ -1,9 +1,9 @@
 "use client";
 
+import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -30,6 +30,10 @@ interface TodoPanelProps {
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
+  /** Task 699: the ONE Jump gate (`cardJumpGate` over the pane's shared
+   *  anchor pass). Required so no docked panel can fall back to gating Jump on
+   *  "the card stores a link". */
+  jumpGate: DockedJumpGate;
   recentlyAddedId?: string | null;
 }
 
@@ -45,6 +49,7 @@ export default function TodoPanel({
   selectedTodoId,
   onSelectTodo,
   onJumpToCard,
+  jumpGate,
   recentlyAddedId,
 }: TodoPanelProps) {
   const orderedItems = useMemo(
@@ -94,10 +99,10 @@ export default function TodoPanel({
           onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectTodo}
-          isAnchored={getLinkedTextObjectIds(item).length > 0}
+          isAnchored={jumpGate(item).anchored}
           onJump={
-            onJumpToCard && getLinkedTextObjectIds(item).length > 0
-              ? (sourceEl) => onJumpToCard(item, sourceEl)
+            onJumpToCard
+              ? jumpGate(item).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(item, sourceEl))
               : undefined
           }
         />

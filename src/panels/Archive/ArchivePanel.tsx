@@ -1,5 +1,6 @@
 "use client";
 
+import type { DockedJumpGate } from "@/links/card-anchor-rows";
 import { memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
@@ -20,7 +21,10 @@ interface ArchivePanelProps {
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onJumpToCard?: (card: ArchivedSnippet, sourceEl?: HTMLElement | null) => void;
-  anchoredIds?: Set<string>;
+  /** Task 699: the ONE Jump gate (`cardJumpGate` over the pane's shared
+   *  anchor pass). Required so no docked panel can fall back to gating Jump on
+   *  "the card stores a link". */
+  jumpGate: DockedJumpGate;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   onEditorFocus?: (editor: any) => void;
@@ -34,7 +38,7 @@ function ArchivePanel({
   onUpdateTitle,
   onDelete,
   onJumpToCard,
-  anchoredIds,
+  jumpGate,
   getCitationDisplayText,
   onCitationCreated,
   onEditorFocus,
@@ -60,21 +64,26 @@ function ArchivePanel({
           No archived text. Select text and use the menu to archive it.
         </div>
       }
-      renderCard={(s, { selected }) => (
+      renderCard={(s, { selected }) => {
+        // Task 699: ONE gate answers both the body's orphan state and the
+        // Jump door — the same verdict the float and the margin read.
+        const gate = jumpGate(s);
+        return (
         <ArchiveCard
           snippet={s}
           selected={selected}
-          orphaned={anchoredIds ? !anchoredIds.has(s.id) : undefined}
+          orphaned={!gate.anchored}
           onSelect={onSelect}
           onEdit={onEdit}
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
-          onJump={onJumpToCard ? (sourceEl) => onJumpToCard(s, sourceEl) : undefined}
+          onJump={onJumpToCard ? gate.withJump((sourceEl?: HTMLElement | null) => onJumpToCard(s, sourceEl)) : undefined}
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
         />
-      )}
+        );
+      }}
     />
   );
 }
