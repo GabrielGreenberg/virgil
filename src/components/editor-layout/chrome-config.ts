@@ -62,6 +62,28 @@ export interface EditorChromeConfig {
    * runtime import cycle with the (large) EditorPane module.
    */
   menuBar?: import("../EditorPane").EditorPaneMenuBarBundle;
+  /**
+   * Whether this host's MAIN TEXT is editable. RUNTIME-INJECTED, like
+   * `menuBar`: `EditorPane` writes its own `editable` prop here when it
+   * provides the chrome context, so there is ONE source for the fact (the
+   * prop) and deep components read it without prop-drilling. Never set it in
+   * a preset. `undefined` (outside an `EditorPane`) reads as editable.
+   *
+   * Task 710: a panel must not infer "I may offer this edit" from the mere
+   * PRESENCE of a handler — the Library Reader satisfies
+   * `EditorMutationHandlers` in full with no-ops, so presence is always true
+   * there. Read {@link mainTextEditable} instead.
+   */
+  mainTextEditable?: boolean;
+}
+
+/**
+ * Is the host's main text editable? The ONE reader of
+ * `EditorChromeConfig.mainTextEditable` (`undefined` → editable, so the main
+ * app and any context-less mount are unchanged).
+ */
+export function mainTextEditable(chrome: EditorChromeConfig): boolean {
+  return chrome.mainTextEditable !== false;
 }
 
 /**

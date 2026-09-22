@@ -6357,7 +6357,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     >
     <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
-    <EditorChromeProvider value={{ ...chrome, menuBar }}>
+    <EditorChromeProvider value={{ ...chrome, menuBar, mainTextEditable: editable }}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >
