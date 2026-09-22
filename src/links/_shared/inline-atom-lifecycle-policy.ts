@@ -132,7 +132,7 @@ export function pruneCardStoreFor(store: CardStore, kind: string, id: string): v
   const matches = (ref: { kind: string; id: string } | null | undefined) =>
     !!ref && ref.kind === kind && ref.id === id;
   if (matches(s.selected)) store.clearSelection();
-  if (matches(s.hover)) store.setHover(null);
+  store.setHoverFor({ kind: kind as never, id }, false);
   for (const ref of s.expandedSet) {
     if (matches(ref)) store.collapse(ref);
   }

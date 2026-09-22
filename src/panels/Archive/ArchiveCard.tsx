@@ -87,7 +87,7 @@ export function ArchiveCard({
           jump: isAnchored && onJump ? () => onJump(card) : undefined,
         });
       }}
-      onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
+      onHoverChange={(h) => cardStore.setHoverFor(ac.ref, h)}
       onDelete={() => onDelete(snippet.id)}
       value={snippet.content}
       variant={bodyVariantForCardKind("archive")}

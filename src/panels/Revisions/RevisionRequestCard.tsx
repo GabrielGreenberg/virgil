@@ -156,7 +156,7 @@ export function RevisionRequestCard({
         ...(extraDataAttrs || {}),
       }}
       onHoverChange={(h) => {
-        cardStore.setHover(h ? ac.ref : null);
+        cardStore.setHoverFor(ac.ref, h);
         onHoverChange?.(h);
       }}
       onTogglePopout={onToggleFromCtx}

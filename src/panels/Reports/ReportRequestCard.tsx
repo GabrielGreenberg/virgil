@@ -122,7 +122,7 @@ export function ReportRequestCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "report-request-entry", value: request.id }}
       extraDataAttrs={{ "data-pristine-card-id": request.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={(h) => { cardStore.setHover(h ? ac.ref : null); onHoverChange?.(h); }}
+      onHoverChange={(h) => { cardStore.setHoverFor(ac.ref, h); onHoverChange?.(h); }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}

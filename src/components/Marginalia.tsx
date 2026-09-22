@@ -419,11 +419,8 @@ export function MarkerButton({
         m.onClick?.(rect.top);
         onActivated?.();
       }}
-      onMouseEnter={ref ? () => cardStore.setHover(ref) : undefined}
-      onMouseLeave={ref ? () => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ref.kind && h.id === ref.id) cardStore.setHover(null);
-      } : undefined}
+      onMouseEnter={ref ? () => cardStore.setHoverFor(ref, true) : undefined}
+      onMouseLeave={ref ? () => cardStore.setHoverFor(ref, false) : undefined}
       onKeyDown={(e) => {
         if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
           e.preventDefault();

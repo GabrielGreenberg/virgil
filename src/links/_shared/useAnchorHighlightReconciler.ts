@@ -372,7 +372,7 @@ export function useAnchorHighlightReconciler({
       store.clearSelection();
     }
     if (s.hover && !entityExists(s.hover, stableCollections, liveAtomIds)) {
-      store.setHover(null);
+      store.setHoverFor(s.hover, false);
     }
     for (const ref of s.expandedSet) {
       if (!entityExists(ref, stableCollections, liveAtomIds)) store.collapse(ref);

@@ -95,8 +95,35 @@ export interface CardStore {
   select(ref: AnchoredCardRef): void;
   clearSelection(): void;
   isSelected(ref: AnchoredCardRef): boolean;
-  // HOVER.
+  // HOVER — two doors, and which one you get depends on what you KNOW.
+  /**
+   * The AUTHORITATIVE door: "the doc's hover is now `next`, or nothing."
+   *
+   * Only a whole-doc hover AUTHORITY may spell this — currently just the text
+   * bridge (`EditorPane`'s `setHoveredEntity`, fed by `useTextHoverBridge` /
+   * `usePanelCardHoverBridge`), which reads the pointer against the editor and
+   * therefore speaks for the slot. A CARD does not: it knows only its own
+   * pointer state, and "I am not hovered" is not "nothing is hovered".
+   * Cards use {@link CardStore.setHoverFor}.
+   */
   setHover(next: AnchoredCardRef | null): void;
+  /**
+   * The CARD door: "`ref`'s own hover state is now `hovering`."
+   *
+   * `true` → `ref` becomes the hover. `false` → the hover is cleared ONLY if it
+   * is still `ref`; if another surface has since taken it, this is a no-op that
+   * notifies nobody.
+   *
+   * This exists because no card ever wanted `setHover(null)`. Every one of them
+   * wanted "clear it if it is still mine", and before task 717 each of the 14
+   * call sites re-derived that from scratch — six with a byte-identical inline
+   * `getState().hover` identity check, one named in a shared policy module, and
+   * eight not at all (`setHover(h ? ref : null)`), the split running *inside*
+   * single panels. That is the signature of a missing door, so here it is: one
+   * implementation, next to the state it reads, with the null unspellable at
+   * the call site. Guarded by `hover-clear-door.test.ts`.
+   */
+  setHoverFor(ref: AnchoredCardRef, hovering: boolean): void;
   subscribe(fn: () => void): () => void;
   /** Stable-identity snapshot of the selection slot (≤1). */
   getSelectedSnapshot(): AnchoredCardRef | null;
@@ -172,10 +199,17 @@ export function createCardStore(): CardStore {
   }
 
   // ── HOVER ─────────────────────────────────────────────────────────────────
+  /** Authority door — see the interface. */
   function setHover(next: AnchoredCardRef | null): void {
     if (refsEqual(state.hover, next)) return;
     state = { ...state, hover: next ? { ...next } : null };
     emit();
+  }
+  /** Card door — see the interface. The `false` leg is "clear if still mine";
+   *  a stale card releasing after another has taken the slot notifies nobody. */
+  function setHoverFor(ref: AnchoredCardRef, hovering: boolean): void {
+    if (hovering) setHover(ref);
+    else if (refsEqual(state.hover, ref)) setHover(null);
   }
 
   function subscribe(fn: () => void): () => void {
@@ -210,6 +244,7 @@ export function createCardStore(): CardStore {
     clearSelection,
     isSelected,
     setHover,
+    setHoverFor,
     subscribe,
     getSelectedSnapshot,
     getExpandedSnapshot,
