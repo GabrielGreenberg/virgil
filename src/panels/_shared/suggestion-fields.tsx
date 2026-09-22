@@ -25,6 +25,7 @@ import { usePendingChangeController } from "@/links/pending-change-controller";
 import {
   SUGGESTION_BLOCK_TEXT,
   suggestionApplicability,
+  suggestionInsertability,
   type SuggestionLike,
 } from "@/links/pending-change-actions";
 import { usePreviewDir } from "@/links/pending-preview-store";
@@ -41,6 +42,8 @@ import type { PanelBodyKey } from "@/lib/panel-typography";
 export {
   FIELD_ORDER,
   READONLY_HUMAN_FIELDS,
+  hasSuggestionReplacement,
+  suggestionReplacement,
   type SuggestionField,
 } from "./suggestion-field-vocabulary";
 import type { SuggestionField } from "./suggestion-field-vocabulary";
@@ -358,8 +361,9 @@ export function useExcerptCue({
  *  PASSAGE — a quote of the paper — so it renders through the shared door as
  *  borrowed main text, keeping the field vocabulary's red chrome. Every
  *  EDITABLE field stays a textarea over the raw bytes: the apply path splices
- *  `user_text || suggested_text` as BYTES, so the string must remain the
- *  authoritative currency wherever the user can type. The rich form is
+ *  `suggestionReplacement` (`user_text || suggested_text`) as BYTES, so the
+ *  string must remain the authoritative currency wherever the user can type.
+ *  The rich form is
  *  display-only and is never written back. */
 export function FieldBlock({
   field,
@@ -490,7 +494,9 @@ export function PendingActionRow({
     // doc or the card: no splice, no status, no notice, forever. The answer is
     // derived from `suggestionApplicability`, the SAME predicate
     // `applySuggestion` bails on, so the button and the action cannot drift.
-    const applicability = suggestionApplicability(card);
+    // TASK 713 — the predicate takes the FAMILY too, because "the replacement
+    // is empty" means a cut in Cutter and an unfinished draft in Revisions.
+    const applicability = suggestionApplicability(card, family);
     const blockedReason = applicability.canApply
       ? null
       : SUGGESTION_BLOCK_TEXT[applicability.reason];
@@ -725,26 +731,30 @@ export function AppliedRecordBody({
  *
  *  Every action routes through the shared `PendingChangeController` context (like
  *  AppliedRecordBody), so the SAME card renders on every surface (docked / omni /
- *  float) without per-mount callbacks. Insert-below is hidden when there's no
- *  `suggested_text` to insert (a cutter/delete cut, or an empty revision) — a
- *  quiet notice takes its place. When no controller is present or it's off, the
- *  button renders disabled (defensive). */
+ *  float) without per-mount callbacks. When no controller is present or it's off,
+ *  the button renders disabled (defensive).
+ *
+ *  TASK 713 — and it takes the CARD, for the same reason `PendingActionRow`
+ *  does. Insert-below was gated on `suggestedText.trim().length > 0` — a second,
+ *  hand-written condition that knew nothing about the anchor, while
+ *  `insertSuggestionBelow` bails on a missing one and returns `false` with no
+ *  status write and no notice. An unanchored AI pending card therefore showed a
+ *  live "Insert below" that did nothing, forever. Both now read
+ *  `suggestionInsertability`, and the refusal is SAID beneath the button rather
+ *  than standing in for it. */
 export function PendingAiRecordBody({
-  id,
-  originalText,
+  card,
   originalContent,
-  suggestedText,
   explanation,
   family,
 }: {
-  id: string;
-  originalText: string;
+  /** The AI-authored pending suggestion. Carries the anchor links and BOTH
+   *  replacement fields the insert verb's gate reads — there is no spelling of
+   *  this component that renders the button without them. */
+  card: SuggestionLike;
   /** The rich capture behind the original, when the card has one (task 488) —
    *  preferred over re-parsing the bytes. */
   originalContent?: unknown;
-  /** The card's `suggested_text` — what Insert-below drops as a new paragraph.
-   *  Blank (a delete/empty cut) → the action is replaced by a quiet notice. */
-  suggestedText: string;
   /** The card's `explanation` — "what Claude drafted and why". Always-on above
    *  the Original foldout; omitted when empty/whitespace. */
   explanation?: string;
@@ -753,25 +763,34 @@ export function PendingAiRecordBody({
   const controller = usePendingChangeController();
   const [showOriginal, setShowOriginal] = useState(false);
   const disabled = !controller || !controller.isOn;
+  const id = card.id;
+  const originalText = card.original_text;
   // Original renders with the FOOTNOTE typography (per the footnote styling
   // guide) — matching AppliedRecordBody.
   const bodyStyle = usePanelBodyStyle("footnote");
   const hasExplanation = !!explanation && explanation.trim().length > 0;
-  const canInsert = suggestedText.trim().length > 0;
+  // The ONE predicate `insertSuggestionBelow` bails on (task 713), asked here so
+  // the button and the action cannot answer differently.
+  const insertability = suggestionInsertability(card);
+  const blockedReason = insertability.canApply
+    ? null
+    : SUGGESTION_BLOCK_TEXT[insertability.reason];
   return (
     <div
       className="px-3 pt-2 pb-2 space-y-1.5"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Row 1 — action: Insert below (right), thin divider beneath. When there
-          is nothing to insert (delete/empty cut), a quiet notice stands in. */}
-      <div className="flex items-center gap-1.5 pb-1.5 border-b border-[var(--border)] min-h-[28px]">
-        {canInsert ? (
+      {/* Row 1 — action: Insert below (right), thin divider beneath. A card that
+          cannot answer the verb keeps the button, DISABLED, and says why —
+          hiding it (or offering a live one that no-ops) is the same silence. */}
+      <div className="flex flex-col gap-1 pb-1.5 border-b border-[var(--border)] min-h-[28px]">
+        <div className="flex items-center gap-1.5">
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="warm"
               size="sm"
-              disabled={disabled}
+              disabled={disabled || blockedReason !== null}
+              title={blockedReason ?? undefined}
               data-hint="Insert the suggestion as a new paragraph below"
               data-hint-pos="above"
               onMouseDown={(e) => e.stopPropagation()}
@@ -783,10 +802,14 @@ export function PendingAiRecordBody({
               Insert below
             </Button>
           </div>
-        ) : (
-          <span className="text-[11px] text-ink-subtle italic">
-            No replacement text to insert.
-          </span>
+        </div>
+        {blockedReason && (
+          <p
+            data-testid="pending-insert-blocked"
+            className="text-[11px] leading-snug text-[var(--muted)]"
+          >
+            {blockedReason}
+          </p>
         )}
       </div>
       {/* Row 2 — explanation (what Claude drafted and why), always visible when

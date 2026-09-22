@@ -390,6 +390,46 @@ for (const { family, id, surfaces } of FAMILIES) {
           expect(screen.queryByTestId("pending-apply-blocked")).toBeNull();
         });
 
+        // ── TASK 713 — and whether it has anything to PUT IN the paper ───
+        // The predicate asked about the anchor and the capture but never about
+        // the replacement, so a human revision draft (seeded
+        // `suggested_text: ""`, inviting the author to type into "Your text")
+        // rendered a live Apply whose press took the mode:"delete" branch and
+        // staged the author's own paragraph for removal. The family
+        // discriminates: in Cutter an empty replacement IS the cut.
+        it("TASK 713 — an empty replacement is refused in Revisions, still a cut in Cutter", () => {
+          cardOverride = { suggested_text: "", user_text: "" };
+          const controller = makeController();
+          mount(controller, vi.fn());
+
+          const apply = screen.getByRole("button", {
+            name: "Apply",
+          }) as HTMLButtonElement;
+          if (family === "revision-suggestion") {
+            expect(apply.disabled).toBe(true);
+            expect(
+              screen.getByTestId("pending-apply-blocked").textContent,
+            ).toMatch(/nothing to put in the paper/i);
+            fireEvent.click(apply);
+            expect(controller.apply).not.toHaveBeenCalled();
+          } else {
+            expect(apply.disabled).toBe(false);
+            expect(screen.queryByTestId("pending-apply-blocked")).toBeNull();
+          }
+        });
+
+        it("TASK 713 — the human's user_text alone keeps Apply live", () => {
+          cardOverride = { suggested_text: "", user_text: "My own wording." };
+          const controller = makeController();
+          mount(controller, vi.fn());
+
+          expect(
+            (screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement)
+              .disabled,
+          ).toBe(false);
+          expect(screen.queryByTestId("pending-apply-blocked")).toBeNull();
+        });
+
         it("FLAG OFF — offers the legacy Accept/Reject pair, routed to the controller", () => {
           setPendingChangesFlag(false);
           const controller = makeController();
@@ -503,5 +543,21 @@ describe("task 684 census — no suggestion landing verb is wired per MOUNT SITE
     // And it takes the CARD, so no mount site can render the button without the
     // facts it is gated on.
     expect(row).toMatch(/card: SuggestionLike/);
+  });
+
+  it("task 713 — the second landing verb is gated on the same reason vocabulary", () => {
+    const row = readFileSync(
+      join(REPO_SRC, "panels/_shared/suggestion-fields.tsx"),
+      "utf8",
+    );
+    // `PendingAiRecordBody`'s "Insert below" used to carry its own
+    // `suggestedText.trim().length > 0` — a second, hand-written condition that
+    // knew nothing about the anchor `insertSuggestionBelow` silently bails on.
+    expect(row).toContain("suggestionInsertability");
+    // (the old condition survives only in the prose that explains it)
+    expect(row).not.toMatch(/const canInsert\s*=/);
+    // Apply's predicate takes the FAMILY — an empty replacement means a cut in
+    // Cutter and an unfinished draft in Revisions.
+    expect(row).toMatch(/suggestionApplicability\(card, family\)/);
   });
 });

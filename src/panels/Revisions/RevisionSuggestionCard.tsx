@@ -209,9 +209,7 @@ export function RevisionSuggestionCard({
         // Flag-agnostic: an AI-drafted pending suggestion NEVER shows the 4-field
         // grid — it shows the minimal Insert-below body (retires the fallback).
         <PendingAiRecordBody
-          id={card.id}
-          originalText={card.original_text}
-          suggestedText={card.suggested_text}
+          card={card}
           explanation={card.explanation}
           family="revision-suggestion"
         />

@@ -3313,11 +3313,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
         );
         if (!s) return undefined;
-        return {
-          suggestedText: s.suggested_text,
-          anchorUuid: getLinkedTextObjectIds(s)[0],
-          appliedChange: s.appliedChange,
-        };
+        // The CARD, not a pre-extracted string: the insert resolves its own
+        // replacement (`user_text || suggested_text`) and anchor through the
+        // shared predicate (task 713).
+        return { card: s, appliedChange: s.appliedChange };
       },
       setSuggestionStatus: revisionsHook.setSuggestionStatus,
       setArchived: revisionsHook.setArchived,
@@ -3333,11 +3332,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
         );
         if (!s) return undefined;
-        return {
-          suggestedText: s.suggested_text,
-          anchorUuid: getLinkedTextObjectIds(s)[0],
-          appliedChange: s.appliedChange,
-        };
+        // The CARD, not a pre-extracted string: the insert resolves its own
+        // replacement (`user_text || suggested_text`) and anchor through the
+        // shared predicate (task 713).
+        return { card: s, appliedChange: s.appliedChange };
       },
       setSuggestionStatus: cutterHook.setSuggestionStatus,
       setArchived: cutterHook.setArchived,
