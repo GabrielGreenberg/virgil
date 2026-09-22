@@ -3,6 +3,8 @@
 import { useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { captureParagraphSnapshot } from "@/links/links";
+import { readLinkedAnchorText } from "@/lib/linked-anchor-range";
+import { getBus } from "@/lib/tiptap/doc-structure/bus";
 import type { CardWithLinks } from "@/links/links";
 import {
   buildResolveIndex,
@@ -138,5 +140,27 @@ function reconcileOne<C extends CardWithLinks>(
   return reconcileCardToResolved(card, res, {
     liveText,
     isAnchorIdLive: (anchorId) => index.anchorIdToParagraph.has(anchorId),
+    liveMarkText: res.source === "mark" ? liveMarkTextFor(card, res, editor) : null,
   });
+}
+
+/**
+ * The live text under the winning Mode-B link's mark (task 700), so the
+ * reconcile can refresh a stale `textSnapshot`. Bounded by the DocStructure
+ * snapshot's mapped range for the anchor — O(passage) per card, never a
+ * per-card doc walk; with no bus (a bare test editor) it skips rather than
+ * pay O(doc) per card.
+ */
+function liveMarkTextFor(
+  card: CardWithLinks,
+  res: ReturnType<typeof resolveCardAnchor>,
+  editor: Editor,
+): string | null {
+  const link = res.linkIndex != null ? card.links?.[res.linkIndex] : undefined;
+  const anchorId =
+    link && link.anchor.type === "textObject" ? link.anchor.textRange?.anchorId : undefined;
+  if (!anchorId) return null;
+  const entry = getBus(editor)?.structure.anchors.get(anchorId);
+  if (!entry) return null;
+  return readLinkedAnchorText(editor.state.doc, anchorId, entry);
 }

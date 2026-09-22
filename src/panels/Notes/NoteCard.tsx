@@ -11,7 +11,6 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -72,11 +71,6 @@ export function NoteCard({
   // derived from selection.
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
-  // isOrphaned was previously surfaced as a BadgeOrphaned in the header;
-  // unified-chrome cards have no badge so this state isn't rendered, but
-  // we still compute it for the existing data-orphaned attribute callers.
-  const _isOrphaned = getLinkedTextObjectIds(note).length === 0;
-  void _isOrphaned;
   const theme = useCardKindTheme("note");
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;

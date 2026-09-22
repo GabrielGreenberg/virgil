@@ -339,6 +339,13 @@ export interface ReconcileOpts {
   liveText?: string | null;
   /** True iff the given linkedRange anchorId still backs a live mark. */
   isAnchorIdLive?: (anchorId: string) => boolean;
+  /** For a `source === 'mark'` resolution: the LIVE text under the winning
+   *  link's mark (`readLinkedAnchorText`), or null/absent. When it differs
+   *  from the stored `textSnapshot`, the snapshot is REFRESHED (task 700) —
+   *  the snapshot is the recovery key `reanchorByText` searches with if the
+   *  mark is ever lost, so it must name the words the passage says now, not
+   *  the words it said when it was highlighted. */
+  liveMarkText?: string | null;
 }
 
 /**
@@ -360,8 +367,10 @@ export interface ReconcileOpts {
  *     to a clean Mode-A `{targetKind:'paragraph', textObjectIds:[pid],
  *     paragraphSnapshot}` link (the mark is gone; the text re-find is the
  *     only surviving binding, so it becomes a paragraph anchor).
- *   - `source === 'mark'` or `'orphan'` → no-op (mark survives / nothing
- *     recoverable).
+ *   - `source === 'mark'` → the mark survives; with `opts.liveMarkText`,
+ *     REFRESH the winning link's `textSnapshot` to the live marked text
+ *     (task 700 — the recovery key tracks edits inside the passage).
+ *   - `source === 'orphan'` → no-op (nothing recoverable).
  *
  * `opts` is optional — called WITHOUT it (R0 pure callers / existing tests)
  * the function behaves exactly as before (no backfill from live text, no
@@ -389,8 +398,46 @@ export function reconcileCardToResolved<T extends CardWithLinks>(
     return relocateBySnapshot(card, res, links);
   }
 
-  // mark / orphan → nothing to write.
+  if (res.source === "mark") {
+    return refreshMarkSnapshot(card, res, links, opts?.liveMarkText);
+  }
+
+  // orphan → nothing to write.
   return { card, changed: false };
+}
+
+/**
+ * `source === 'mark'`: the winning Mode-B link's mark is live. Refresh its
+ * `textSnapshot` from the live marked text (task 700) so the recovery key
+ * tracks edits made inside the passage. Idempotent: a second pass reads the
+ * same text and writes nothing. An EMPTY live read never overwrites — a
+ * snapshot is only ever replaced by real words.
+ */
+function refreshMarkSnapshot<T extends CardWithLinks>(
+  card: T,
+  res: CardAnchorResolution,
+  links: Link[],
+  liveMarkText: string | null | undefined,
+): { card: T; changed: boolean } {
+  if (!liveMarkText) return { card, changed: false };
+  const idx = res.linkIndex;
+  if (idx == null || idx < 0 || idx >= links.length) return { card, changed: false };
+  const link = links[idx];
+  if (link.anchor.type !== "textObject" || !link.anchor.textRange) {
+    return { card, changed: false };
+  }
+  if (link.anchor.textRange.textSnapshot === liveMarkText) {
+    return { card, changed: false };
+  }
+  const next = links.slice();
+  next[idx] = {
+    ...link,
+    anchor: {
+      ...link.anchor,
+      textRange: { ...link.anchor.textRange, textSnapshot: liveMarkText },
+    },
+  };
+  return { card: { ...card, links: next }, changed: true };
 }
 
 /**
