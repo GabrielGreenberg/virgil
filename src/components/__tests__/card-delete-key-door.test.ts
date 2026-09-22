@@ -152,3 +152,59 @@ describe("a destructive bare-key shortcut bails on an editable target (task 386 
     expect(commentsStripped(leaf)).not.toMatch(/^\s*import\s/m);
   });
 });
+
+// Task 702 — the PERMIT half. The door above guarantees the key's GUARDS; it
+// cannot see what the key RUNS. A keyboard delete has no button for the host
+// to withhold, so the thunk a call site arms must itself ask the host permit
+// (task 637): `usePanelCardTryDelete`'s `tryDelete`, or a local thunk gated on
+// `useCardDeleteAllowed`. HighlightCard armed a raw `() => onDelete(card.id)`
+// and TodoRow a local thunk that never asked — both latent under today's
+// Reader allowlist, live the moment it narrows.
+describe("card-delete key: the armed thunk asks the host permit (task 702)", () => {
+  /** A call site that DISMISSES rather than deletes a card record — no sidecar
+   *  card write for a host to refuse. Scoped to the file AND the verb. */
+  const DISMISS_EXEMPTIONS = [
+    { file: "src/panels/Errors/ErrorCard.tsx", arg: /^\(\)\s*=>\s*onDismiss\(/ },
+  ];
+
+  function callSites(): { rel: string; src: string; arg: string }[] {
+    const out: { rel: string; src: string; arg: string }[] = [];
+    for (const file of CARD_SOURCES) {
+      if (file === DOOR_FILE) continue;
+      const src = commentsStripped(readFileSync(file, "utf8"));
+      for (const m of src.matchAll(/useCardDeleteKey\(\s*[^,]+,\s*([^;]+?)\);/g)) {
+        out.push({ rel: relative(ROOT, file), src, arg: m[1].trim() });
+      }
+    }
+    return out;
+  }
+
+  it("census canary: the scan still finds the known call sites", () => {
+    expect(callSites().length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("no call site arms a raw onDelete; every deleting site consults the permit", () => {
+    const bad: string[] = [];
+    for (const site of callSites()) {
+      const exempt = DISMISS_EXEMPTIONS.find(
+        (e) => e.file === site.rel && e.arg.test(site.arg),
+      );
+      if (exempt) continue;
+      if (/\bonDelete\s*\(/.test(site.arg)) {
+        bad.push(`${site.rel}: raw onDelete armed (${site.arg})`);
+        continue;
+      }
+      if (!/\busePanelCardTryDelete\(|\buseCardDeleteAllowed\(/.test(site.src)) {
+        bad.push(`${site.rel}: armed thunk never asks the host permit`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("every dismiss exemption still covers a live call site", () => {
+    const sites = callSites();
+    for (const ex of DISMISS_EXEMPTIONS) {
+      expect(sites.some((s) => s.rel === ex.file && ex.arg.test(s.arg))).toBe(true);
+    }
+  });
+});
