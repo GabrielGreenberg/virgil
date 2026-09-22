@@ -11,6 +11,7 @@ import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
+import { landOnBlock } from "@/lib/tiptap/block-landing";
 import { Node as PMNode } from "@tiptap/pm/model";
 import {
   collectLinksFromEditor,
@@ -1061,32 +1062,28 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // producers (the Outline's Document-start row, the paragraph-nav
       // `__DOC_TOP__` branch) and this consumer cannot drift (task 285).
       if (blockIndex === DOC_START_BLOCK_INDEX) {
-        editor.commands.setTextSelection(1);
+        landOnBlock(editor.view, 0);
         const scrollEl = findEditorScrollFor(editor.view.dom);
         if (scrollEl) scrollEl.scrollTop = 0;
         return;
       }
       // Walk top-level nodes to find the nth one
-      let pos = 0;
+      let pos = -1;
       let idx = 0;
-      editor.state.doc.forEach((node, offset) => {
-        if (idx === blockIndex) {
-          pos = offset + 1; // +1 to be inside the node
-        }
+      editor.state.doc.forEach((_node, offset) => {
+        if (idx === blockIndex) pos = offset;
         idx++;
       });
-      if (pos > 0) {
-        editor.commands.setTextSelection(pos);
-        // Jump so the heading lands on the shared section-active line — the
-        // same line the position detector reads — so the clicked section
-        // immediately registers as current (OUT-#6). (Was block:"center" at
-        // 0.5, below the detector's 0.25 line, so the prior section stuck.)
-        const domAtPos = editor.view.domAtPos(pos);
-        const el = domAtPos.node instanceof HTMLElement
-          ? domAtPos.node
-          : domAtPos.node.parentElement;
-        if (el) scrollHeadingToActiveLine(editor.view.dom, el);
-      }
+      if (pos < 0) return;
+      // Land by identity (task 711): the block's own DOM + the selection its
+      // node admits. `offset + 1` was the gap AFTER an atom block (texBlock,
+      // forestBlock), whose domAtPos is the editor root — a jump to doc top.
+      const el = landOnBlock(editor.view, pos);
+      // Jump so the heading lands on the shared section-active line — the
+      // same line the position detector reads — so the clicked section
+      // immediately registers as current (OUT-#6). (Was block:"center" at
+      // 0.5, below the detector's 0.25 line, so the prior section stuck.)
+      if (el) scrollHeadingToActiveLine(editor.view.dom, el);
     },
     restoreArchive(content: JSONContent): boolean {
       // The return leg of the capture law — see `restoreExcerptAtCaret`. It
@@ -1506,22 +1503,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     scrollToParagraphId(uuid: string): void {
       if (!editor) return;
-      let targetPos = -1;
+      let blockPos = -1;
       editor.state.doc.descendants((node, pos) => {
-        if (targetPos >= 0) return false;
-        if (node.attrs?.uuid === uuid) {
-          targetPos = pos + 1; // +1 to be inside the node
-        }
+        if (blockPos >= 0) return false;
+        if (node.attrs?.uuid === uuid) blockPos = pos;
         return true;
       });
-      if (targetPos < 0) return;
+      if (blockPos < 0) return;
       try {
-        editor.commands.setTextSelection(targetPos);
-        const coords = editor.view.coordsAtPos(targetPos);
+        // Same door as scrollToHeading (task 711): an atom block's `pos + 1`
+        // is the gap after it, so read the block's own element instead.
+        const el = landOnBlock(editor.view, blockPos);
+        const top = el
+          ? el.getBoundingClientRect().top
+          : editor.view.coordsAtPos(blockPos + 1).top;
         const scrollEl = findEditorScrollFor(editor.view.dom);
-        if (scrollEl && coords) {
+        if (scrollEl) {
           const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
+          const targetY = top - scrollRect.top + scrollEl.scrollTop - 100;
           scrollEl.scrollTop = Math.max(0, targetY);
         }
       } catch { /* pos out of range */ }
