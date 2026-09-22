@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { usePersistentState } from "./usePersistentState";
+import { withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { useStructuralRevisions } from "./useStructuralRevisions";
 import {
   type FocusBand,
@@ -70,7 +71,7 @@ const INITIAL_STORED: StoredBand = {
  * is preserved as transitional `_legacy*` indices; Phase B (an effect, below)
  * resolves them to UUIDs once the editor is mounted and rewrites the file.
  */
-function migrateFocusState(raw: unknown): StoredBand {
+function migrateFocusStateShape(raw: unknown): StoredBand {
   const s = (raw ?? {}) as Record<string, unknown>;
   const active = typeof s.active === "boolean" ? s.active : false;
   const locked = typeof s.locked === "boolean" ? s.locked : false;
@@ -94,6 +95,15 @@ function migrateFocusState(raw: unknown): StoredBand {
   }
   return { active, locked, startUuid: null, endUuid: null };
 }
+
+/** Task 715 — the envelope rides through every sidecar load, prefs included,
+ *  so a new sidecar joins the rule by existing. `startBlockIndex` /
+ *  `endBlockIndex` are the legacy top-level band this migrator CONSUMES into
+ *  `_legacyStart` / `_legacyEnd`, so they are retired rather than carried. */
+const migrateFocusState = withSidecarEnvelope(migrateFocusStateShape, [
+  "startBlockIndex",
+  "endBlockIndex",
+]);
 
 function uuidOfIndex(doc: PMNode, i: number): string | null {
   const last = doc.childCount - 1;

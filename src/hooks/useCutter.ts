@@ -36,7 +36,7 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -144,7 +144,7 @@ function migrateCard(raw: unknown): CutterCard | null {
   return migrateComment(raw);
 }
 
-function migrateCutter(raw: unknown): CutterState {
+function migrateCutterShape(raw: unknown): CutterState {
   if (!raw || typeof raw !== "object") return { cards: [], goal: null };
   const r = raw as { cards?: unknown; cuts?: unknown; goal?: unknown };
   const goal = migrateGoal(r.goal);
@@ -196,6 +196,9 @@ function migrateCutter(raw: unknown): CutterState {
 
   return { cards: [], goal };
 }
+
+/** Task 715 — `cuts` is the legacy top-level array consumed into `cards`. */
+export const migrateCutter = withSidecarEnvelope(migrateCutterShape, ["cuts"]);
 
 /** The `ai-requests.json` payload a cutter-comment contributes — the ONE
  *  place its shape is written, shared by both bridge doors so the

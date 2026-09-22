@@ -34,7 +34,7 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -103,7 +103,7 @@ function migrateCardRecord(raw: unknown): ReportItem | null {
   return migrateReportRecord(raw);
 }
 
-function migrateReports(raw: unknown): ReportsState {
+function migrateReportsShape(raw: unknown): ReportsState {
   if (!raw || typeof raw !== "object") return { cards: [] };
   const r = raw as { cards?: unknown };
   if (Array.isArray(r.cards)) {
@@ -115,6 +115,9 @@ function migrateReports(raw: unknown): ReportsState {
   }
   return { cards: [] };
 }
+
+/** Task 715 — no legacy top-level key was ever consumed here. */
+const migrateReports = withSidecarEnvelope(migrateReportsShape);
 
 /** The `ai-requests.json` payload a report-request contributes — the ONE
  *  place its shape is written, shared by both bridge doors (task 697). */

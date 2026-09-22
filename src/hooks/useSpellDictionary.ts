@@ -13,6 +13,7 @@
 
 import { useMemo } from "react";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { withSidecarEnvelope } from "@/lib/sidecar-migrate";
 
 export const SPELL_DICTIONARY_FILE = "dictionary.json";
 
@@ -33,6 +34,24 @@ export interface SpellDictionaryHook {
   loaded: boolean;
 }
 
+function migrateSpellDictionaryShape(raw: unknown): SpellDictionarySidecar {
+  // Tolerate a bare array (a hand-written file, or an older shape).
+  if (Array.isArray(raw)) {
+    return { words: raw.filter((w): w is string => typeof w === "string") };
+  }
+  const obj = raw as Partial<SpellDictionarySidecar> | null;
+  const words = Array.isArray(obj?.words)
+    ? obj.words.filter((w): w is string => typeof w === "string")
+    : [];
+  return { words };
+}
+
+/** Task 715 — the envelope rides through every sidecar load, prefs included.
+ *  Nothing is consumed here (the bare-array shape has no envelope at all), and
+ *  a later field the user or a skill parks beside `words` — the comment on
+ *  `SpellDictionarySidecar` anticipates exactly that — now survives a save. */
+const migrateSpellDictionary = withSidecarEnvelope(migrateSpellDictionaryShape);
+
 export function useSpellDictionary(docId: string | null): SpellDictionaryHook {
   const { state, update, loaded } = usePersistentState<SpellDictionarySidecar>(
     docId,
@@ -40,17 +59,7 @@ export function useSpellDictionary(docId: string | null): SpellDictionaryHook {
     EMPTY,
     {
       errorLabel: "spelling dictionary",
-      migrate: (raw) => {
-        // Tolerate a bare array (a hand-written file, or an older shape).
-        if (Array.isArray(raw)) {
-          return { words: raw.filter((w): w is string => typeof w === "string") };
-        }
-        const obj = raw as Partial<SpellDictionarySidecar> | null;
-        const words = Array.isArray(obj?.words)
-          ? obj.words.filter((w): w is string => typeof w === "string")
-          : [];
-        return { words };
-      },
+      migrate: migrateSpellDictionary,
     },
   );
 

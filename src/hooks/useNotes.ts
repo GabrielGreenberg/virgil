@@ -34,7 +34,7 @@ import { morphCarriesAiRequest } from "@/cards/card-registry";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -92,7 +92,7 @@ function migrateCard(raw: unknown): NoteCardItem | null {
   return migrateNote(raw);
 }
 
-function migrateNotes(raw: unknown): NotesState {
+function migrateNotesShape(raw: unknown): NotesState {
   const s = (raw ?? {}) as { cards?: unknown; notes?: unknown };
   if (Array.isArray(s.cards)) {
     return {
@@ -107,6 +107,9 @@ function migrateNotes(raw: unknown): NotesState {
   }
   return { cards: [] };
 }
+
+/** Task 715 — `notes` is the legacy top-level array consumed into `cards`. */
+export const migrateNotes = withSidecarEnvelope(migrateNotesShape, ["notes"]);
 
 /** The `ai-requests.json` payload a note contributes — named so both bridge
  *  doors (present card / absent card) read one shape (task 697). */

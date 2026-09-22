@@ -16,7 +16,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { archiveOriginOf, type ArchiveOrigin, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -55,10 +55,14 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
   }, ["text"]);
 }
 
-export function migrateArchive(raw: unknown): ArchiveState {
+function migrateArchiveShape(raw: unknown): ArchiveState {
   const s = raw as Partial<ArchiveState>;
   return { snippets: Array.isArray(s.snippets) ? s.snippets.map(migrateSnippet) : [] };
 }
+
+/** Task 715 — no legacy top-level key was ever consumed here. Exported under
+ *  the original name: the wrapper is the migrator now, at every caller. */
+export const migrateArchive = withSidecarEnvelope(migrateArchiveShape);
 
 export function useArchive(docId: string | null) {
   const { state, update, stateRef, loaded, loadError } =
