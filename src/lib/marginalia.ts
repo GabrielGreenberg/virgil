@@ -139,6 +139,16 @@ export const MIME_BIB_MERGE = "application/x-virgil-bib-merge";
 export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 /** Drag a footnote to move it to a new position. */
 export const MIME_FOOTNOTE = "application/x-virgil-footnote";
+/**
+ * An Outline pod being reordered inside the Outline (task 708). The payload is
+ * the pod id — a block uuid or `heading-N` — and it is meaningful ONLY to the
+ * Outline, whose own drop reads the dragged pod from React state. It is a
+ * PRIVATE type rather than `text/plain` so no text-accepting surface can
+ * insert the id (ProseMirror's default drop typed it into the manuscript), and
+ * it sits in `EDITOR_REFUSED_DRAG_TYPES` so the editor rejects the drop by
+ * name rather than by the accident of there being no text to insert.
+ */
+export const MIME_OUTLINE_POD = "application/x-virgil-outline-pod";
 
 /**
  * All MIME types that represent paragraph-level anchor/link operations.
@@ -174,6 +184,28 @@ export const EDITOR_INSERT_DRAG_TYPES: readonly string[] = [
 export function isEditorInsertDrag(dt: DataTransfer | null): boolean {
   return (
     dt != null && EDITOR_INSERT_DRAG_TYPES.some((t) => dt.types.includes(t))
+  );
+}
+
+/**
+ * All MIME types of PANEL-INTERNAL drags — gestures that mean something only
+ * inside the surface that started them (task 708: an Outline pod reorder). The
+ * main editor REFUSES these by name: its `dragover` declines the drop (a
+ * no-drop cursor, and no `drop` event at all) and its `handleDrop` consumes and
+ * ignores one that arrives anyway. Without the refusal ProseMirror's default
+ * drop inserts whatever text the drag carries, so a slip of the pointer off
+ * the panel edited the paper. A panel-internal drag must carry one of these
+ * and must NOT also carry `text/plain` — the refusal is the editor's half, the
+ * private type is the producer's.
+ */
+export const EDITOR_REFUSED_DRAG_TYPES: readonly string[] = [
+  MIME_OUTLINE_POD,
+];
+
+/** True if the DataTransfer carries a panel-internal drag the editor refuses. */
+export function isEditorRefusedDrag(dt: DataTransfer | null): boolean {
+  return (
+    dt != null && EDITOR_REFUSED_DRAG_TYPES.some((t) => dt.types.includes(t))
   );
 }
 
@@ -255,6 +287,7 @@ export const DRAG_MIME_PRODUCTION: readonly DragMimeProduction[] = [
       "task-396 container gate — an armed latent-trap closure for the moment " +
       "a footnote-card drag returns",
   },
+  { constant: "MIME_OUTLINE_POD", mime: MIME_OUTLINE_POD, produced: true },
 ];
 
 export interface MarginaliaMarker {

@@ -29,6 +29,7 @@ import {
   MIME_FOOTNOTE,
   isAnchorDrag,
   isEditorInsertDrag,
+  isEditorRefusedDrag,
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
@@ -636,6 +637,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // targets). Non-sanctioned drags fall through to ProseMirror's built-in
         // `dragover` (which just `preventDefault()`s with the default effect).
         dragover(_view, event) {
+          // A panel-internal drag (task 708 — an Outline pod) is REFUSED: no
+          // `preventDefault`, so the browser shows no-drop and fires no `drop`;
+          // returning true keeps ProseMirror's built-in dragover (which would
+          // `preventDefault` and so ACCEPT it) and its dropcursor out of it.
+          if (isEditorRefusedDrag(event.dataTransfer)) {
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+            return true;
+          }
           if (!isEditorInsertDrag(event.dataTransfer)) return false;
           event.preventDefault();
           if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
@@ -643,6 +652,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         },
       },
       handleDrop(view, event) {
+        // Panel-internal drag (task 708) — FIRST, ahead of the read-only bail:
+        // the `dragover` above already refuses it, so reaching here means a
+        // browser delivered the drop anyway. CONSUME it — returning false
+        // would hand it to ProseMirror's default drop, which inserts whatever
+        // text the drag carries.
+        if (isEditorRefusedDrag(event.dataTransfer)) {
+          event.preventDefault();
+          return true;
+        }
+
         // Read-only short-circuit: when the React `editable` prop is
         // false (Library Reader, collab read-only), every drop branch
         // below would mutate the doc — bail out before any of it fires.
