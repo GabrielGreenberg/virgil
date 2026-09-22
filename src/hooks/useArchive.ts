@@ -16,6 +16,8 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { archiveOriginOf, type ArchiveOrigin, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 
@@ -27,7 +29,11 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     s.text != null && s.content == null
       ? normalizeRichContent(s.text)
       : normalizeRichContent(s.content);
-  return {
+  // Task 712: an agent-archived snippet carries its ORIGIN (`originalPanel` /
+  // `originalCard` / `archivedAt`, typed on ArchivedSnippet) plus whatever a
+  // later agent extension adds — the unknown remainder rides through the load
+  // (`carryUnknownKeys`). Legacy `text` is consumed: it became `content`.
+  return carryUnknownKeys(raw, {
     // A migrator is the boundary where malformed input (a hand-edit, a partial
     // write, an agent sidecar write of archive.json) must be tolerated, not
     // asserted away. A missing/blank id would otherwise mint `id: undefined`,
@@ -46,7 +52,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     // free-vs-orphaned split is derived from it via resolveAnchorState.
     unanchored: s.unanchored,
     links: migrateCardLinks("archive", raw),
-  };
+  }, ["text"]);
 }
 
 export function migrateArchive(raw: unknown): ArchiveState {
@@ -253,16 +259,41 @@ export function useArchive(docId: string | null) {
    * write armed with pre-removal state, which then flushed and resurrected the
    * restored snippet in `archive.json`.
    *
+   * A CARD IS NOT AN EXCERPT (task 712). A snippet carrying an origin record
+   * (`archiveOriginOf` → `card`) was a whole card set aside by
+   * `/editor/archive-card`; its body is a note's words, not paper text. It
+   * never reaches `land`: it goes back to its panel through `reinstate` (the
+   * app-side twin of `apply_response.py cmd_restore`) and the snippet is then
+   * REMOVED, not set aside — a panel append has no undo entry to protect, and a
+   * retired copy would leave the same card id live in two sidecars. With no
+   * `reinstate` door, or an origin record too broken to honour, it refuses:
+   * pasting the body into the prose is the one outcome that is always wrong.
+   *
    * Returns true iff the content landed and the card was retired.
    */
   const restoreSnippet = useCallback(
-    (id: string, land: (content: JSONContent) => boolean): boolean => {
+    (
+      id: string,
+      land: (content: JSONContent) => boolean,
+      reinstate?: (panel: ArchiveOriginPanel, card: Record<string, unknown>) => boolean,
+    ): boolean => {
       // The ref, not `state`, so a caller that fires before React re-renders
       // still reads the live collection. `update` below is functional, so the
       // write itself is never based on this read.
       const found = stateRef.current.snippets.find((s) => s.id === id);
       if (!found) return false;
       if (found.archived) return false; // already retired — don't land it twice
+      const origin = archiveOriginOf(found);
+      if (origin.kind === "unknown-card") return false;
+      if (origin.kind === "card") {
+        if (!reinstate || !reinstate(origin.panel, origin.card)) return false;
+        const remove = (prev: ArchiveState): ArchiveState => ({
+          snippets: prev.snippets.filter((s) => s.id !== id),
+        });
+        stateRef.current = remove(stateRef.current);
+        update(remove);
+        return true;
+      }
       if (!land(found.content)) return false;
       const retire = (prev: ArchiveState): ArchiveState => ({
         snippets: prev.snippets.map((s) =>
@@ -277,6 +308,17 @@ export function useArchive(docId: string | null) {
       return true;
     },
     [update, stateRef],
+  );
+
+  /** Where snippet `id` came from (task 712) — null when there is no such
+   *  snippet. Reads the live ref, so it is stable per doc and safe to call
+   *  from a render-time label or a click handler alike. */
+  const snippetOrigin = useCallback(
+    (id: string): ArchiveOrigin | null => {
+      const found = stateRef.current.snippets.find((s) => s.id === id);
+      return found ? archiveOriginOf(found) : null;
+    },
+    [stateRef],
   );
 
   const deleteSnippet = useCallback(
@@ -324,6 +366,7 @@ export function useArchive(docId: string | null) {
       loaded,
       loadError,
       restoreSnippet,
+      snippetOrigin,
       deleteSnippet,
       setArchived,
       clearCardAnchor,
@@ -340,6 +383,7 @@ export function useArchive(docId: string | null) {
       loaded,
       loadError,
       restoreSnippet,
+      snippetOrigin,
       deleteSnippet,
       setArchived,
       clearCardAnchor,

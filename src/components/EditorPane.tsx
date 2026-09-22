@@ -349,6 +349,7 @@ import {
 } from "@/links/_shared/request-wash";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import { generateEntityId } from "@/lib/uuid";
+import { ARCHIVE_ORIGIN_PANEL_LABEL, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
 import {
   applySuggestion,
@@ -5014,11 +5015,50 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // content lands in the document, then the card that was holding it retires.
   // `restoreSnippet` takes the landing function so that order cannot be
   // inverted by a caller (see its note in useArchive).
+  //
+  // A snippet with an ORIGIN record (task 712 — a whole card set aside by
+  // `/editor/archive-card`) never takes the landing path: `restoreSnippet`
+  // routes it to `reinstate`, which hands the verbatim card back to its own
+  // panel's hook. One table here, keyed by the same panel vocabulary
+  // `apply_response.py` writes (`ARCHIVE_ORIGIN_PANELS`).
+  const reinstateByPanel = useMemo<Record<ArchiveOriginPanel, (raw: unknown) => boolean>>(
+    () => ({
+      notes: notesHookRaw.reinstate,
+      todos: todosHookRaw.reinstate,
+      cutter: cutterHookRaw.reinstate,
+      revisions: revisionsHookRaw.reinstate,
+      reports: reportsHookRaw.reinstate,
+    }),
+    [
+      notesHookRaw.reinstate,
+      todosHookRaw.reinstate,
+      cutterHookRaw.reinstate,
+      revisionsHookRaw.reinstate,
+      reportsHookRaw.reinstate,
+    ],
+  );
   const handleArchiveRestore = useCallback((id: string) => {
+    const origin = archiveHook.snippetOrigin(id);
     const restored = archiveHook.restoreSnippet(
       id,
       (content) => innerRef.current?.restoreArchive(content) ?? false,
+      (panel, card) => reinstateByPanel[panel](card),
     );
+    if (!restored && origin && origin.kind !== "excerpt") {
+      // A card, not an excerpt: the only ways back to its panel failing are a
+      // card with the same id already there, or an origin record the app
+      // can't read. Either way nothing moved, and nothing was pasted into the
+      // paper.
+      dragHandleNotify({
+        message:
+          origin.kind === "card"
+            ? `Couldn't put this card back in ${ARCHIVE_ORIGIN_PANEL_LABEL[origin.panel]} — ` +
+              "a card with the same id is already there. Nothing was removed from the Archive."
+            : "Couldn't restore this card: its record of where it came from is " +
+              "unreadable. Nothing was removed from the Archive.",
+      });
+      return;
+    }
     if (!restored) {
       // Nothing left the Archive — say so, and say what to do. The card body is
       // the ONLY copy of this prose (it was deleted from the document when
@@ -5041,7 +5081,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // that every card consumes — the same stability argument
     // `card-archive-actions` makes in its module doc. `restoreSnippet` is
     // stable per doc (it reads the live snippets off `stateRef`).
-  }, [archiveHook.restoreSnippet, dragHandleNotify]);
+  }, [archiveHook.restoreSnippet, archiveHook.snippetOrigin, reinstateByPanel, dragHandleNotify]);
   const handleArchiveDelete = useCallback((id: string) => {
     archiveHook.deleteSnippet(id);
     setSelectedArchiveId(null);
@@ -6299,6 +6339,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
    *  inline-atom `atomCards` bag gets this as a compile error because its
    *  membership is a type union; `bodySchema` is a runtime facet, so the same
    *  obligation is asserted at boot instead.) */
+  const archiveSnippetOrigin = archiveHook.snippetOrigin;
   const cardRestoreActions = useMemo<CardRestoreActionsApi>(() => {
     const byKind: Partial<Record<CardKind, (id: string) => void>> = {
       archive: handleArchiveRestore,
@@ -6324,8 +6365,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // place, not for a host that was never going to accept anything.
       enabled: !chrome.editableCardKinds,
       restore: (kind, id) => byKind[kind]?.(id),
+      label: (kind, id) => {
+        if (kind !== "archive") return undefined;
+        const origin = archiveSnippetOrigin(id);
+        return origin?.kind === "card"
+          ? `Restore to ${ARCHIVE_ORIGIN_PANEL_LABEL[origin.panel]}`
+          : undefined;
+      },
     };
-  }, [handleArchiveRestore, chrome.editableCardKinds]);
+  }, [handleArchiveRestore, archiveSnippetOrigin, chrome.editableCardKinds]);
 
   return (
     // This pane's per-doc store provider. Dominates the editor text, marginalia,

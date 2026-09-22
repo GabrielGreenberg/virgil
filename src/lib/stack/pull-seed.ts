@@ -118,7 +118,19 @@ export const NON_TRAVELLING_FIELDS: {
   // the carry path keeps it — would be the fork this module exists to close.
   bibliography: [],
   todo: ["id", "createdAt", "links", "archived", "aiRequest"],
-  archive: ["id", "createdAt", "links", "archived", "unanchored"],
+  // The ORIGIN record (task 712) is a per-doc binding: `originalCard` holds the
+  // card's links into the SOURCE paper, and "put it back in Notes" means THAT
+  // paper's Notes. A pulled snippet arrives as a plain excerpt of its body.
+  archive: [
+    "id",
+    "createdAt",
+    "links",
+    "archived",
+    "unanchored",
+    "originalPanel",
+    "originalCard",
+    "archivedAt",
+  ],
   "revision-comment": [
     "kind",
     "id",

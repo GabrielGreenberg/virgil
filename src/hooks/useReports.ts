@@ -34,6 +34,8 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -50,7 +52,8 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("report", raw);
-  return {
+  // Task 712: unknown keys ride through the load (`carryUnknownKeys`).
+  return carryUnknownKeys<ReportCard>(raw, {
     kind: "report",
     id: r.id,
     archived: r.archived,
@@ -67,7 +70,7 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
       r.selectedText ??
       getTextAnchorFromLinks(links)?.anchorText,
     links,
-  };
+  });
 }
 
 function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
@@ -79,7 +82,7 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("report-request", raw);
-  return {
+  return carryUnknownKeys<ReportRequestCard>(raw, {
     kind: "report-request",
     id: r.id,
     archived: r.archived,
@@ -91,7 +94,7 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
       r.selectedText ??
       getTextAnchorFromLinks(links)?.anchorText,
     links,
-  };
+  });
 }
 
 function migrateCardRecord(raw: unknown): ReportItem | null {
@@ -385,6 +388,20 @@ export function useReports(
     (s, cards) => ({ ...s, cards }),
   );
 
+  // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
+  const reinstate = useCallback(
+    (raw: unknown): boolean =>
+      reinstateCard<ReportsState, ReportItem>(
+        stateRef.current,
+        update,
+        (s) => s.cards,
+        (s, cards) => ({ ...s, cards }),
+        migrateCardRecord,
+        raw,
+      ),
+    [update, stateRef],
+  );
+
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -539,6 +556,7 @@ export function useReports(
       addCardParagraphId,
       removeCardParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       deleteCard,
@@ -561,6 +579,7 @@ export function useReports(
       addCardParagraphId,
       removeCardParagraphId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       deleteCard,

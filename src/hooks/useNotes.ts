@@ -34,6 +34,8 @@ import { morphCarriesAiRequest } from "@/cards/card-registry";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
+import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -42,7 +44,9 @@ const EMPTY_STATE: NotesState = { cards: [] };
 
 function migrateNote(raw: unknown): UserNote {
   const r = (raw ?? {}) as Partial<UserNote>;
-  return {
+  // Task 712: unknown keys ride through the load (`carryUnknownKeys`); the
+  // present-only `originalAnchor` is consumed — its carry below is the rule.
+  return carryUnknownKeys(raw, {
     kind: "note",
     id: r.id!,
     archived: r.archived,
@@ -58,12 +62,12 @@ function migrateNote(raw: unknown): UserNote {
     // carry it through load so it survives a reload (the field-by-field rebuild
     // used to drop it, the same envelope-drop class as the clone path).
     ...(r.originalAnchor ? { originalAnchor: r.originalAnchor } : {}),
-  };
+  }, ["originalAnchor"]);
 }
 
 function migrateHighlight(raw: unknown): HighlightCard {
   const r = (raw ?? {}) as Partial<HighlightCard> & { highlightColor?: unknown };
-  return {
+  return carryUnknownKeys(raw, {
     kind: "highlight",
     id: r.id!,
     // Task 076: an archived highlight must load back archived — the rebuild
@@ -78,7 +82,7 @@ function migrateHighlight(raw: unknown): HighlightCard {
     links: migrateCardLinks("highlight", raw),
     // Task 076: carry the Mode-B restore hint through load (see migrateNote).
     ...(r.originalAnchor ? { originalAnchor: r.originalAnchor } : {}),
-  };
+  }, ["originalAnchor"]);
 }
 
 function migrateCard(raw: unknown): NoteCardItem | null {
@@ -503,6 +507,20 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (_s, cards) => ({ cards }),
   );
 
+  // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
+  const reinstate = useCallback(
+    (raw: unknown): boolean =>
+      reinstateCard<NotesState, NoteCardItem>(
+        stateRef.current,
+        update,
+        (s) => s.cards,
+        (_s, cards) => ({ cards }),
+        migrateCard,
+        raw,
+      ),
+    [update, stateRef],
+  );
+
   /**
    * Phase 4 sidecar capture: before drop mode strips a Mode B anchor
    * (text-range) from a note or highlight, save the original anchor
@@ -729,6 +747,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       addHighlightTextObjectId,
       removeHighlightTextObjectId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       preserveModeBAnchor,
@@ -761,6 +780,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       addHighlightTextObjectId,
       removeHighlightTextObjectId,
       reconcileAnchors,
+      reinstate,
       loaded,
       loadError,
       preserveModeBAnchor,
