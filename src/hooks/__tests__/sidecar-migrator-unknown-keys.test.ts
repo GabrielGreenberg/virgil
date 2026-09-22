@@ -6,6 +6,17 @@
 // while still retiring the legacy anchor keys it CONSUMED into `links`. One row
 // per migrator SHAPE, loaded through the real hook so the assertion covers the
 // same path `persistMigrationOnLoad` writes back.
+//
+// Task 715 adds the FILE level of the same rule. 712 carried the envelope of a
+// RECORD; every top-level migrator was still the rebuild the doctrine condemns,
+// so anything an agent wrote beside `cards` was destroyed on the next save —
+// live, not latent, for `document-settings.json`, whose `settingsEdit` op
+// merges arbitrary keys. `withSidecarEnvelope` wraps each migrator; the three
+// describes below are (1) the per-record legs 712 wrote, (2) a per-FILE leg
+// that an unknown top-level key survives the load and the write-back while
+// each legacy top-level key is retired, and (3) a CENSUS — every
+// `usePersistentState` migrate registration in `src/` must be enveloped, so a
+// new sidecar joins the rule by existing rather than by being remembered.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
@@ -27,9 +38,15 @@ import { useReports } from "../useReports";
 import { useCutter } from "../useCutter";
 import { useRevisions } from "../useRevisions";
 import { useOrphanedFootnotes } from "../useOrphanedFootnotes";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { migrateArchive } from "../useArchive";
+import { migrateNotes } from "../useNotes";
+import { migrateRevisions } from "../useRevisions";
+import { migrateCutter } from "../useCutter";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
+import { migrateDocumentSettings } from "@/lib/document-settings";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 beforeEach(() => {
   mockRead.mockReset();
@@ -217,5 +234,171 @@ describe("carryUnknownKeys — what a load may NOT carry", () => {
     const s = migrateArchive({ snippets: [{ id: "s", text: "plain", ...base }] }).snippets[0];
     expect((s as unknown as Rec).text).toBeUndefined();
     expect(s.content).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 715 — the FILE's own envelope.
+// ---------------------------------------------------------------------------
+
+/** The unknown top-level key an agent might park beside the list key. */
+const TOP = { agentCursor: { lastSeen: "2026-09-22T00:00:00.000Z" } };
+
+describe("every sidecar migrator carries unknown TOP-LEVEL keys through a load", () => {
+  it("notes.json — legacy `notes` retired, unknown key carried", () => {
+    const out = migrateNotes({
+      notes: [{ id: "n1", title: "legacy", content: {}, ...base }],
+      ...TOP,
+    });
+    expect(out.cards.length).toBe(1);
+    expect((out as unknown as Rec).notes).toBeUndefined();
+    expect((out as unknown as Rec).agentCursor).toEqual(TOP.agentCursor);
+  });
+
+  it("revisions.json — legacy arrays retired, unknown key carried", () => {
+    const out = migrateRevisions({
+      comments: [{ id: "v1", text: "a", ...base }],
+      generalRevisions: [],
+      textRevisions: [],
+      ...TOP,
+    });
+    expect(out.cards.length).toBe(1);
+    expect((out as unknown as Rec).comments).toBeUndefined();
+    expect((out as unknown as Rec).generalRevisions).toBeUndefined();
+    expect((out as unknown as Rec).textRevisions).toBeUndefined();
+    expect((out as unknown as Rec).agentCursor).toEqual(TOP.agentCursor);
+  });
+
+  it("cutter.json — legacy `cuts` retired, unknown key carried", () => {
+    const out = migrateCutter({
+      cuts: [{ id: "c1", title: "x", content: {}, createdAt: base.createdAt }],
+      ...TOP,
+    });
+    expect(out.cards.length).toBe(1);
+    expect((out as unknown as Rec).cuts).toBeUndefined();
+    expect((out as unknown as Rec).agentCursor).toEqual(TOP.agentCursor);
+  });
+
+  it("document-settings.json — the CLUSTER'S LIVE MEMBER: an agent-set key survives, legacy `style` does not", () => {
+    const out = migrateDocumentSettings({ style: "classic", agentNote: "set by /editor/style-merge" });
+    expect(out.styleId).toBe("classic");
+    expect((out as unknown as Rec).style).toBeUndefined();
+    expect((out as unknown as Rec).agentNote).toBe("set by /editor/style-merge");
+  });
+
+  it("archive.json — an unknown top-level key survives the write-back too", async () => {
+    beginDocPipeline("doc-ta");
+    mockRead.mockResolvedValue({ snippets: [], ...TOP });
+    const { result } = renderHook(() => useArchive("doc-ta"));
+    await waitFor(() => expect(result.current.snippets).toEqual([]));
+    await waitFor(() => expect(mockWrite).toHaveBeenCalled());
+    const written = mockWrite.mock.calls.at(-1)!.find(
+      (a: unknown) => !!a && typeof a === "object" && "snippets" in (a as object),
+    ) as Rec;
+    expect(written.agentCursor).toEqual(TOP.agentCursor);
+  });
+
+  it("todos / reports / orphaned-footnotes — the unknown key rides through the hook", async () => {
+    for (const [docId, sidecar, hook, read] of [
+      ["doc-tt", { items: [], ...TOP }, useTodos, (a: { items: unknown[] }) => a.items],
+      ["doc-tr", { cards: [], ...TOP }, useReports, (a: { cards: unknown[] }) => a.cards],
+      [
+        "doc-to",
+        { version: 1, orphans: [], ...TOP },
+        useOrphanedFootnotes,
+        (a: { orphans: unknown[] }) => a.orphans,
+      ],
+    ] as const) {
+      __resetForTests();
+      mockWrite.mockReset();
+      mockWrite.mockResolvedValue(undefined);
+      beginDocPipeline(docId);
+      mockRead.mockResolvedValue(sidecar);
+      const { result } = renderHook(() => (hook as (d: string) => unknown)(docId));
+      await waitFor(() =>
+        expect((read as (a: unknown) => unknown[])(result.current)).toEqual([]),
+      );
+      // The hook's API object is not the state, so prove the carry on the
+      // write-back — the same bytes `persistMigrationOnLoad` lands on disk.
+      await waitFor(() => expect(mockWrite).toHaveBeenCalled());
+      const written = mockWrite.mock.calls.at(-1)!.find(
+        (a: unknown) => !!a && typeof a === "object" && "agentCursor" in (a as object),
+      ) as Rec | undefined;
+      expect(written?.agentCursor).toEqual(TOP.agentCursor);
+    }
+  });
+});
+
+describe("withSidecarEnvelope", () => {
+  it("the migrator's own output wins; unknown top-level keys survive", () => {
+    const f = withSidecarEnvelope((raw: unknown) => ({
+      cards: ((raw as { cards?: unknown[] }).cards ?? []).length,
+    }));
+    expect(f({ cards: [1, 2], mine: "keep" })).toEqual({ cards: 2, mine: "keep" });
+  });
+
+  it("a consumed legacy top-level key is retired, never resurrected", () => {
+    const f = withSidecarEnvelope((raw: unknown) => ({ cards: (raw as Rec).legacy ?? [] }), [
+      "legacy",
+    ]);
+    expect(f({ legacy: ["a"], mine: 1 })).toEqual({ cards: ["a"], mine: 1 });
+  });
+
+  it("a non-object file (a bare array, null) carries nothing", () => {
+    const f = withSidecarEnvelope(() => ({ words: [] as string[] }));
+    expect(f(["a", "b"])).toEqual({ words: [] });
+    expect(f(null)).toEqual({ words: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The census — a NEW sidecar joins the rule by existing.
+// ---------------------------------------------------------------------------
+
+const SRC = resolve(__dirname, "../..");
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      if (name === "node_modules" || name === "__tests__") continue;
+      walk(full, out);
+    } else if (full.endsWith(".ts") || full.endsWith(".tsx")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+describe("census — every usePersistentState migrate registration is enveloped", () => {
+  const files = walk(SRC).map((f) => [f, readFileSync(f, "utf8")] as const);
+
+  it("names every registration through a `withSidecarEnvelope` identifier", () => {
+    const offenders: string[] = [];
+    const envelopedNames = new Set<string>();
+    for (const [, text] of files) {
+      for (const m of text.matchAll(/(?:const|let)\s+(\w+)\s*=\s*withSidecarEnvelope\(/g)) {
+        envelopedNames.add(m[1]);
+      }
+    }
+    for (const [file, text] of files) {
+      if (!text.includes("usePersistentState<")) continue;
+      for (const m of text.matchAll(/\bmigrate:\s*([^,\n]+)/g)) {
+        const ref = m[1].trim();
+        // An inline arrow / function expression cannot be censused — lift it
+        // to a named `withSidecarEnvelope` binding instead.
+        if (!/^\w+$/.test(ref) || !envelopedNames.has(ref)) {
+          offenders.push(`${file.slice(SRC.length + 1)} → migrate: ${ref}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("finds the registrations it is meant to be guarding (the census is not vacuous)", () => {
+    const registrations = files.filter(
+      ([, text]) => text.includes("usePersistentState<") && /\bmigrate:/.test(text),
+    );
+    expect(registrations.length).toBeGreaterThanOrEqual(10);
   });
 });

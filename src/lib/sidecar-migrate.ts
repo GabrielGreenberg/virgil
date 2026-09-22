@@ -53,3 +53,41 @@ export function carryUnknownKeys<T extends object>(
   }
   return carried ? ({ ...carried, ...owned } as T) : migrated;
 }
+
+/**
+ * `withSidecarEnvelope` — the FILE-level half of the same rule (task 715).
+ *
+ * `carryUnknownKeys` above fixed the RECORD: a card keeps the keys its
+ * migrator never heard of. But every sidecar's TOP-LEVEL migrator is the very
+ * rebuild that doctrine condemns — `migrateRevisions` returns `{cards,
+ * tracker}`, `migrateNotes` returns `{cards}`, `migrateDocumentSettings`
+ * returns `{styleId}` — so anything an agent writes BESIDE the list key is
+ * destroyed on the next ordinary save (immediately, where
+ * `persistMigrationOnLoad` is set). The asymmetry with the agent side is the
+ * tell: `apply_response.py` loads each sidecar as a whole dict and edits only
+ * the key it owns, so the AGENT preserves top-level keys the APP deletes —
+ * and `_settings_apply` writes ARBITRARY top-level keys into
+ * `document-settings.json`, which made this live rather than latent there.
+ *
+ * So the envelope is carried at BOTH levels, through one door, and the door
+ * is a WRAPPER rather than a call the migrator body has to remember: a
+ * migrator typically has several return points (current shape / legacy shape /
+ * empty), and wrapping the whole function is the only form that cannot be
+ * half-applied. Each registration names the legacy top-level keys its migrator
+ * CONSUMED — `revisions.json`'s `comments`/`generalRevisions`/`textRevisions`,
+ * `notes.json`'s `notes`, `cutter.json`'s `cuts`, `document-settings.json`'s
+ * `style` — because carrying a consumed key back would re-derive the whole
+ * collection from the stale legacy array on the next load, which is exactly
+ * what `consumed` exists to prevent.
+ *
+ * The rule is EXCEPTIONLESS: every `usePersistentState` migrate registration
+ * is enveloped, prefs included, so a new sidecar joins by existing rather than
+ * by being remembered. `sidecar-migrator-unknown-keys.test.ts` census-checks
+ * that, and round-trips an unknown top-level key through each file.
+ */
+export function withSidecarEnvelope<S extends object>(
+  migrate: (raw: unknown) => S,
+  consumedTopLevel: readonly string[] = [],
+): (raw: unknown) => S {
+  return (raw: unknown) => carryUnknownKeys(raw, migrate(raw), consumedTopLevel);
+}

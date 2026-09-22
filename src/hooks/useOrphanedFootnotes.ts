@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { usePersistentState } from "./usePersistentState";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { OrphanedFootnote, OrphanedFootnotesState } from "@/lib/types";
@@ -55,7 +55,7 @@ const EMPTY: OrphanedFootnotesState = { version: 1, orphans: [] };
  * `normalizeRichContent` is applied to each `content` so a legacy HTML-string
  * body upgrades to TipTap JSON, matching `useFootnotes`'s footnote migrate.
  */
-function migrateOrphans(raw: unknown): OrphanedFootnotesState {
+function migrateOrphansShape(raw: unknown): OrphanedFootnotesState {
   const list: unknown = Array.isArray(raw)
     ? raw
     : raw && typeof raw === "object" && Array.isArray((raw as { orphans?: unknown }).orphans)
@@ -75,6 +75,10 @@ function migrateOrphans(raw: unknown): OrphanedFootnotesState {
     }));
   return { version: 1, orphans };
 }
+
+/** Task 715 — `orphans` and `version` are both OWNED, so nothing is consumed;
+ *  a bare-array file carries nothing (an array has no envelope). */
+const migrateOrphans = withSidecarEnvelope(migrateOrphansShape);
 
 export interface OrphanedFootnotesApi {
   /** Live orphan list (the panel/omni/search data source). */

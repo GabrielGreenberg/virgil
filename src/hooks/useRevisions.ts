@@ -36,7 +36,7 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope, carryCapturedPassage } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
-import { carryUnknownKeys } from "@/lib/sidecar-migrate";
+import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -145,7 +145,7 @@ function migrateCard(raw: unknown): RevisionCard | null {
   return migrateRequestRecord(raw);
 }
 
-function migrateRevisions(raw: unknown): RevisionsState {
+function migrateRevisionsShape(raw: unknown): RevisionsState {
   if (!raw || typeof raw !== "object") return { cards: [], tracker: null };
   const r = raw as {
     cards?: unknown;
@@ -187,6 +187,15 @@ function migrateRevisions(raw: unknown): RevisionsState {
 
   return { cards: [], tracker };
 }
+
+/** Task 715 — `comments` / `generalRevisions` / `textRevisions` are the legacy
+ *  top-level arrays this migrator CONSUMES into `cards`; everything else at
+ *  top level belongs to whoever wrote it and rides through the load. */
+export const migrateRevisions = withSidecarEnvelope(migrateRevisionsShape, [
+  "comments",
+  "generalRevisions",
+  "textRevisions",
+]);
 
 /** The `ai-requests.json` payload a revision-comment contributes — the ONE
  *  place its shape is written, shared by both bridge doors (task 697). */
