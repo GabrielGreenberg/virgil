@@ -23,13 +23,15 @@
 //       a builder reading `card.links[0].anchor.textObjectIds[0]` and walking
 //       `editor.state.doc.descendants` itself spells neither, and would pass.
 //       So the anchor VOCABULARY is forbidden in an omni builder outright.
-//   C — the two hosts build the pass, the margin reads it through the shared
+//   C — EditorPane builds the ONE pass and publishes it (task 699: the omni
+//       host READS it off `CardAnchorProvider` rather than building a second
+//       copy), the margin reads it through the shared
 //       reader, and the omni readers are an EXACT SET (a count floor lets one
 //       drifting builder be excused by an adopting sibling — the per-file-vs-
 //       per-handle failure the pane-drag census records, one level up);
-//   C2 — the docked/float `anchoredArchiveIds` fold, the THIRD copy of the
-//       bare gate, goes through the pass too. Nothing else pins it: it lives
-//       inline in `EditorPane` and no suite mounts it.
+//   C2 — the docked Archive badge, once the `anchoredArchiveIds` fold (the
+//       THIRD copy of the bare gate), now reads the pass through the shared
+//       docked gate (task 699) — and the fold is gone.
 //   D — nothing outside the authority and the load-time reconcile pass calls
 //       the recovery ladder directly.
 import { describe, it, expect } from "vitest";
@@ -133,7 +135,7 @@ describe("card-anchor authority census (task 369)", () => {
     ).toEqual([]);
   });
 
-  it("C — both hosts build the pass; the margin reads it through the shared reader", () => {
+  it("C — EditorPane builds + publishes the ONE pass; the margin reads it through the shared reader", () => {
     const editorPane = codeOnly(
       readFileSync(path.join(SRC, "components", "EditorPane.tsx"), "utf8"),
     );
@@ -143,14 +145,15 @@ describe("card-anchor authority census (task 369)", () => {
         "utf8",
       ),
     );
-    for (const [name, source] of [
-      ["EditorPane.tsx", editorPane],
-      ["omni-host.tsx", omniHost],
-    ] as const) {
-      expect(source, `${name} must build the shared anchor pass`).toContain(
-        "buildCardAnchorPass(",
-      );
-    }
+    expect(editorPane, "EditorPane must build the shared anchor pass").toContain(
+      "buildCardAnchorPass(",
+    );
+    expect(editorPane, "…and publish it to the panel hosts").toMatch(
+      /<CardAnchorProvider value=\{anchorPass\}>/,
+    );
+    // Task 699: a second build here is a second copy that can drift.
+    expect(omniHost).not.toContain("buildCardAnchorPass(");
+    expect(omniHost).toContain("useCardAnchorPass()");
     // The margin's adapter is production code (`buildMarginMarkerRows` /
     // `marginAnchorIndex`) precisely so the contract test can drive BOTH
     // readers. An inline re-derivation here is the pre-369 shape.
@@ -195,23 +198,21 @@ describe("card-anchor authority census (task 369)", () => {
     ).not.toMatch(/\bgetLinkedTextObjectIds\b/);
   });
 
-  it("C2 — the docked/float anchored-id fold goes through the pass too", () => {
-    const source = codeOnly(
+  it("C2 — the docked Archive badge reads the pass through the shared docked gate", () => {
+    const editorPane = codeOnly(
       readFileSync(path.join(SRC, "components", "EditorPane.tsx"), "utf8"),
     );
-    const m = /const anchoredArchiveIds = useMemo[\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(
-      source,
+    // The pre-folded set is retired: a fold beside the gate is a second answer.
+    expect(editorPane).not.toMatch(/\banchoredArchiveIds\b/);
+    const archivePanel = codeOnly(
+      readFileSync(path.join(SRC, "panels", "Archive", "ArchivePanel.tsx"), "utf8"),
     );
-    expect(m, "anchoredArchiveIds memo not found — rename? re-point this leg").toBeTruthy();
-    const body = m![0];
     expect(
-      body,
-      "`anchoredArchiveIds` badges the DOCKED Archive panel + its float. It was " +
-        "the third copy of the bare `pids.some(live)` gate, so a recovered clip " +
-        "read orphaned there while its omni card read anchored. It must fold the " +
-        "SAME authority.",
-    ).toContain("anchorPass.resolve(");
-    expect(body).not.toMatch(/\bgetLinkedTextObjectIds\b|\bdescendants\s*\(/);
+      archivePanel,
+      "The docked Archive badge must read the SAME verdict that gates its Jump — " +
+        "the task-369 authority via `jumpGate` (task 699).",
+    ).toMatch(/orphaned=\{!gate\.anchored\}/);
+    expect(archivePanel).not.toMatch(/\bgetLinkedTextObjectIds\b|\bdescendants\s*\(/);
   });
 
   it("D — only the authority and the load-time reconcile call the recovery ladder", () => {
