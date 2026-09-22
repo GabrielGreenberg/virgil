@@ -178,11 +178,8 @@ export function TodoRow({
           jump: isAnchored && onJump ? () => onJump(card) : undefined,
         });
       }}
-      onMouseEnter={() => cardStore.setHover(ac.ref)}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-      }}
+      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
+      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
       onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
       onKeyDown={handleDeleteKey}
       kind="todo"

@@ -141,7 +141,7 @@ export function FootnoteCard({
           jump: onJump ? () => onJump(card) : undefined,
         });
       }}
-      onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
+      onHoverChange={(h) => cardStore.setHoverFor(ac.ref, h)}
       onDelete={onDelete}
       footer={
         onSetAiRequest && !compressed && footnoteCanAiRequest(fn) ? (

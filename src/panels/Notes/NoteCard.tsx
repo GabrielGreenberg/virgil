@@ -139,7 +139,7 @@ export function NoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
       extraDataAttrs={{ "data-pristine-card-id": note.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={(h) => { cardStore.setHover(h ? ac.ref : null); onHoverChange?.(h); }}
+      onHoverChange={(h) => { cardStore.setHoverFor(ac.ref, h); onHoverChange?.(h); }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}

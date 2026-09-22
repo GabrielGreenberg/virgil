@@ -464,11 +464,8 @@ export function ExampleCard({
           jump: () => onJump(card),
         });
       }}
-      onMouseEnter={() => cardStore.setHover(ac.ref)}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-      }}
+      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
+      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}

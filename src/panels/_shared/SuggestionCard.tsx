@@ -232,11 +232,8 @@ export function SuggestionCard({
           jump: isAnchored && onJump ? () => onJump(el) : undefined,
         });
       }}
-      onMouseEnter={() => cardStore.setHover(ac.ref)}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-      }}
+      onMouseEnter={() => cardStore.setHoverFor(ac.ref, true)}
+      onMouseLeave={() => cardStore.setHoverFor(ac.ref, false)}
       onKeyDown={handleDeleteKey}
       className="mb-2"
       kind={family}

@@ -140,12 +140,8 @@ export function HighlightCard({
           jump: onJump ? () => onJump(el) : undefined,
         });
       }}
-      onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-        onHoverChange?.(false);
-      }}
+      onMouseEnter={() => { cardStore.setHoverFor(ac.ref, true); onHoverChange?.(true); }}
+      onMouseLeave={() => { cardStore.setHoverFor(ac.ref, false); onHoverChange?.(false); }}
       onKeyDown={handleDeleteKey}
       className="mb-2"
       {...(extraDataAttrs ?? {})}
