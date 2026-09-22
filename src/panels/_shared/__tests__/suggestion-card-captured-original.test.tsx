@@ -149,7 +149,8 @@ function makeCard(
 
 function makeController() {
   return {
-    isOn: true,
+    canProduce: true,
+    canResolve: true,
     keep: vi.fn(),
     dismiss: vi.fn(),
     previewOriginal: vi.fn(),

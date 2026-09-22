@@ -184,7 +184,7 @@ describe("feature-flag registry census", () => {
         return typeof localStorage !== "undefined" &&
           localStorage.getItem("virgil:card-tiers") === "on";
       }`,
-      'not "0" (default ON)': `export function isPendingChangesOn(): boolean {
+      'not "0" (default ON)': `export function canProducePendingChanges(): boolean {
         return window.localStorage.getItem("virgil:pending-changes") !== "0";
       }`,
       'not "off" (kill-switch)': `export function geomHoverEnabled(): boolean {

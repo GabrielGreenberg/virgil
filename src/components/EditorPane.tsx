@@ -347,7 +347,7 @@ import {
   isRequestCard,
   type RequestWashCardLike,
 } from "@/links/_shared/request-wash";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import { generateEntityId } from "@/lib/uuid";
 import { ARCHIVE_ORIGIN_PANEL_LABEL, type ArchiveOriginPanel } from "@/lib/archive-origin";
 import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
@@ -1451,9 +1451,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const appliedSpliceOps = useMemo<AppliedSpliceOps>(
     () => ({
       get: (kind, id) => {
-        // Flag-OFF no card can ever reach `status:"applied"`, so this is the
-        // byte-identical no-op path (no prompt, no settle).
-        if (!isPendingChangesOn()) return null;
+        // TASK 716 — NO flag gate. This reads an ALREADY-applied card, and
+        // `status:"applied"` is persisted document state that outlives an
+        // opt-out; the `isAppliedPending` filter below is the real predicate.
+        // (The old gate's premise — "flag-OFF no card can ever reach applied" —
+        // is false for every record written before the flip.)
         const card =
           kind === "revision-suggestion"
             ? revisionsHookRaw.cards.find(
@@ -2223,7 +2225,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // it must be reconstructed on load (the blue stays until the user Keeps /
     // Reverts). Same SAME load phase as the Mode-B reapply, runs BEFORE the
     // orphan reaper (whose alive-set is extended with these anchorIds below).
-    // Self-gated on `isPendingChangesOn()` — flag-OFF stamps nothing.
+    // Self-gated on `status:"applied"` — a doc with no applied card stamps
+    // nothing. NOT flag-gated (task 716): a range applied before an opt-out is
+    // still blue in the `.tex`, so it must still be re-stamped on reload.
     // Family-tagged groups so the re-stamp carries the right `linkCard` token
     // (`revision-suggestion:` vs `cutter-suggestion:`) — the family is NOT
     // recoverable from the shared `pending-ai-change` kind (Phase 4, Part A).
@@ -3272,28 +3276,32 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // unreachable — byte-identical OFF).
   const onKeepRevisionPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // RESOLUTION verb — editor only, NO flag gate (task 716).
+      if (!editor) return;
       keepSuggestion(editor, id, docId, revisionPendingDeps());
     },
     [editor, docId, revisionPendingDeps],
   );
   const onDismissRevisionPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // RESOLUTION verb — editor only, NO flag gate (task 716).
+      if (!editor) return;
       dismissSuggestion(editor, id, docId, revisionPendingDeps());
     },
     [editor, docId, revisionPendingDeps],
   );
   const onKeepCutterPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // RESOLUTION verb — editor only, NO flag gate (task 716).
+      if (!editor) return;
       keepSuggestion(editor, id, docId, cutterPendingDeps());
     },
     [editor, docId, cutterPendingDeps],
   );
   const onDismissCutterPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // RESOLUTION verb — editor only, NO flag gate (task 716).
+      if (!editor) return;
       dismissSuggestion(editor, id, docId, cutterPendingDeps());
     },
     [editor, docId, cutterPendingDeps],
@@ -3346,14 +3354,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const onInsertBelowRevisionPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // PRODUCING verb — offered only on a flag-ON pending card (flag-OFF that
+      // card shows the legacy Reject/Accept pair instead).
+      if (!canProducePendingChanges() || !editor) return;
       insertSuggestionBelow(editor, id, docId, revisionInsertDeps());
     },
     [editor, docId, revisionInsertDeps],
   );
   const onInsertBelowCutterPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // PRODUCING verb — offered only on a flag-ON pending card (flag-OFF that
+      // card shows the legacy Reject/Accept pair instead).
+      if (!canProducePendingChanges() || !editor) return;
       insertSuggestionBelow(editor, id, docId, cutterInsertDeps());
     },
     [editor, docId, cutterInsertDeps],
@@ -3374,7 +3386,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // card body. KEYSTROKE SANCTITY.
   const onApplyRevisionPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // PRODUCING verb — the rollout flag's actual subject.
+      if (!canProducePendingChanges() || !editor) return;
       const s = revisionsHook.cards.find(
         (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
       );
@@ -3397,7 +3410,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
   const onApplyCutterPending = useCallback(
     (id: string) => {
-      if (!isPendingChangesOn() || !editor) return;
+      // PRODUCING verb — the rollout flag's actual subject.
+      if (!canProducePendingChanges() || !editor) return;
       const s = cutterHook.cards.find(
         (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
       );
@@ -3470,7 +3484,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // sanctity for every consuming card body.
   const pendingController = useMemo<PendingChangeController>(
     () => ({
-      isOn: isPendingChangesOn() && !!editor,
+      canProduce: canProducePendingChanges() && !!editor,
+      canResolve: !!editor,
       apply: (family, id) => {
         if (family === "revision-suggestion") onApplyRevisionPending(id);
         else onApplyCutterPending(id);
@@ -3492,7 +3507,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         else onDismissCutterPending(id);
       },
       previewOriginal: (family, id) => {
-        if (!isPendingChangesOn() || !editor) return;
+        // RESOLUTION verb — editor only, NO flag gate (task 716).
+        if (!editor) return;
         previewOriginalSuggestion(
           editor,
           id,
@@ -3501,7 +3517,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         );
       },
       previewSuggested: (family, id) => {
-        if (!isPendingChangesOn() || !editor) return;
+        // RESOLUTION verb — editor only, NO flag gate (task 716).
+        if (!editor) return;
         previewSuggestedSuggestion(
           editor,
           id,
@@ -3540,12 +3557,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // ONE index — `kind:id` → { anchorId, onKeep, onDismiss } — from the applied
   // revision + cutter cards, each routed through the SAME per-card callbacks the
   // gutter uses (so the pill, gutter, and bulk index are byte-identical). The
-  // memo is gated on the card arrays + the flag; a plain keystroke bumps neither,
-  // so it never recomputes per keystroke. Flag-OFF: no card reaches `applied`,
-  // the map is empty, and the pill isn't mounted (`size === 0`).
+  // memo is gated on the card arrays alone; a plain keystroke bumps neither, so
+  // it never recomputes per keystroke. A doc with no applied card yields an
+  // empty map and the pill isn't mounted (`size === 0`).
+  //
+  // TASK 716 — NOT flag-gated. `isAppliedPending` IS the predicate: a card that
+  // reached `applied` before an opt-out still carries a blue range in the
+  // manuscript, and the pill is one of the two surfaces that can resolve it.
   const pendingChangeIndex = useMemo<PendingChangeIndex>(() => {
     const map: PendingChangeIndex = new Map();
-    if (!isPendingChangesOn()) return map;
     for (const r of revisionsHook.cards) {
       if (r.kind !== "suggestion" || !isAppliedPending(r) || !r.appliedChange)
         continue;
@@ -3581,25 +3601,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // appliedChange). Dismiss-all PRESERVES (archives) every card — never deletes.
   // Click handlers only — no ticks, no per-keystroke work.
   const keepAllRevisionPending = useCallback(() => {
-    if (!isPendingChangesOn()) return;
+    // RESOLUTION — no flag gate (task 716); `collectAppliedPendingIds` is the
+    // predicate, and an empty list is the no-op.
     for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
       onKeepRevisionPending(id);
     }
   }, [revisionsHook.cards, onKeepRevisionPending]);
   const dismissAllRevisionPending = useCallback(() => {
-    if (!isPendingChangesOn()) return;
+    // RESOLUTION — no flag gate (task 716); `collectAppliedPendingIds` is the
+    // predicate, and an empty list is the no-op.
     for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
       onDismissRevisionPending(id);
     }
   }, [revisionsHook.cards, onDismissRevisionPending]);
   const keepAllCutterPending = useCallback(() => {
-    if (!isPendingChangesOn()) return;
+    // RESOLUTION — no flag gate (task 716); `collectAppliedPendingIds` is the
+    // predicate, and an empty list is the no-op.
     for (const id of collectAppliedPendingIds(cutterHook.cards)) {
       onKeepCutterPending(id);
     }
   }, [cutterHook.cards, onKeepCutterPending]);
   const dismissAllCutterPending = useCallback(() => {
-    if (!isPendingChangesOn()) return;
+    // RESOLUTION — no flag gate (task 716); `collectAppliedPendingIds` is the
+    // predicate, and an empty list is the no-op.
     for (const id of collectAppliedPendingIds(cutterHook.cards)) {
       onDismissCutterPending(id);
     }
@@ -3725,11 +3749,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // bumps none of these, so markers don't recompute or shift per keystroke.
     void rev.anchors;
     void rev.blocks;
-    // Phase 1c flag read (call-time, not memoized): gates whether an applied
-    // suggestion's ordinary revision/cut marker also carries the Keep/Revert
-    // handlers. Flag-OFF → no card ever reaches `status:"applied"`, so this is
-    // dead and the marker set is byte-identical to pre-1c.
-    const pendingChangesOn = isPendingChangesOn();
     const result: MarginaliaMarker[] = [];
 
     /**

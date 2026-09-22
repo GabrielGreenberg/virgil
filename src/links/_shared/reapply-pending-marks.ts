@@ -38,15 +38,21 @@
  * LOAD-ONLY / keystroke-safe. Invoked once per doc-open from the EditorPane
  * load-reconcile effect (latched on `modeAReconciledDocRef`), NOT a keystroke
  * subscriber. The card scan is O(applied-suggestions) at load, never per
- * transaction. The whole pass is gated on `isPendingChangesOn()`: flag-OFF no
- * card ever reaches `status:"applied"` (no apply path runs), so this produces
- * zero records and stamps nothing — byte-identical to pre-feature behaviour.
+ * transaction. The whole pass is gated on `status:"applied"` and nothing else:
+ * a doc with no applied suggestion produces zero records and stamps nothing.
+ *
+ * TASK 716 — it is deliberately NOT gated on `virgil:pending-changes`. The old
+ * gate reasoned "flag-OFF no card ever reaches `applied`", which is false for
+ * every record written BEFORE the opt-out: those cards are still `applied`, and
+ * their blue ranges are still in the `.tex`. Skipping the re-stamp left the user
+ * an un-highlighted, un-resolvable splice after every reload. The status filter
+ * already makes the never-applied case a zero-cost no-op, so dropping the flag
+ * gate costs a flag-OFF doc nothing.
  */
 
 import type { Editor } from "@tiptap/react";
 import { reanchorByText } from "../links";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change — the
@@ -117,13 +123,12 @@ export interface PendingMarkCardGroup {
  * `appliedChange.anchorId` — without this the freshly re-stamped pending mark
  * would be reaped as an orphan on the same load pass.
  *
- * Gated on `isPendingChangesOn()`: flag-OFF → empty set (no applied cards exist).
+ * Gated on `status:"applied"` alone — see this module's header (task 716).
  */
 export function pendingMarkAnchorIds(
   cards: ReadonlyArray<PendingMarkCardLike>,
 ): Set<string> {
   const ids = new Set<string>();
-  if (!isPendingChangesOn()) return ids;
   for (const c of cards) {
     if (c.kind === "suggestion" && c.status === "applied" && c.appliedChange) {
       ids.add(c.appliedChange.anchorId);
@@ -136,7 +141,7 @@ export function pendingMarkAnchorIds(
  * Build the re-stamp record set from family-tagged card groups. Pure — separated
  * from the editor dispatch so a test can assert the record set without mounting an
  * editor, mirroring `buildModeBReapplyRecords`. Skips cards whose stored text is
- * empty (nothing to locate). Gated on `isPendingChangesOn()` (flag-OFF → []).
+ * empty (nothing to locate). Gated on `status:"applied"` alone (task 716).
  * Each record carries its group's `family` (the `linkCard` token) and the
  * mode-derived `pendingDelete` flag.
  */
@@ -144,7 +149,6 @@ export function buildPendingMarkReapplyRecords(
   groups: ReadonlyArray<PendingMarkCardGroup>,
 ): PendingMarkReapplyRecord[] {
   const records: PendingMarkReapplyRecord[] = [];
-  if (!isPendingChangesOn()) return records;
   for (const group of groups) {
     for (const c of group.cards) {
       if (c.kind !== "suggestion" || c.status !== "applied") continue;
@@ -175,7 +179,7 @@ export function buildPendingMarkReapplyRecords(
  * strikethrough signal so the reloaded mark is byte-identical to apply's. Returns
  * the number of records processed (for no-op short-circuits / tests). A record
  * whose stored text no longer matches the live paragraph is a graceful no-op
- * (reanchorByText → null). Gated on `isPendingChangesOn()` (flag-OFF → 0).
+ * (reanchorByText → null). Gated on `status:"applied"` alone (task 716).
  */
 export function reapplyPendingMarks(
   editor: Editor,

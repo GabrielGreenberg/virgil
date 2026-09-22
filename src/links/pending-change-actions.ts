@@ -21,8 +21,10 @@
  * design already deduped Keep/Revert this way).
  *
  * These do NOT own the flag gate or the editor-mounted check: each caller
- * already guards `isPendingChangesOn() && editorInstance` (flag-OFF stays
- * byte-identical — no applied card ever exists, so these are never reached).
+ * guards first. PRODUCING callers (apply / insert-below / auto-apply) guard
+ * `canProducePendingChanges() && editorInstance`; RESOLVING callers (keep /
+ * dismiss / preview) guard `editorInstance` alone, because an already-applied
+ * change outlives an opt-out and must stay resolvable (task 716).
  * They DO own the `appliedChange`-presence check, since a stale double-click
  * (Keep after Keep) must no-op rather than re-splice.
  *
@@ -392,7 +394,7 @@ export function insertSuggestionBelow<TStatus extends string>(
 // dedup Phase 1c did for Keep/Revert), that orchestration lives here.
 //
 // This owns the flag-OFF / editor-mounted guard NOT — each caller already
-// guards `isPendingChangesOn() && editor` before reaching here (the hosts bail,
+// guards the flag (production only, task 716) + `editor` before reaching here (the hosts bail,
 // and the driver is mounted behind the flag + the reactive `editor`). It DOES
 // own everything from "compute the anchor" through "set card state", returning
 // a discriminated result so a caller (the driver) can branch on what happened.
@@ -415,6 +417,11 @@ export interface SuggestionLike extends CardWithLinks {
   suggested_text: string;
   /** The human's own replacement ("Your text"). WINS over `suggested_text`. */
   user_text: string;
+  /** Who drafted it. On the shape for the same reason `user_text` is (task
+   *  716): the pending card's verb BRANCHES on it — a human card offers Apply,
+   *  an AI card Insert-below — and a shape that omits the fact the branch reads
+   *  is a shape that invites the branch back into a second file. */
+  author: "human" | "ai";
 }
 
 /** Card-state mutators + the anchorId minter the apply sequence drives. Both

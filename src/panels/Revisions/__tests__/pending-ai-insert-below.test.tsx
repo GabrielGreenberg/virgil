@@ -105,9 +105,10 @@ function makePending(
   } as RevisionSuggestionCardData;
 }
 
-function makeController(isOn = true) {
+function makeController(canProduce = true) {
   return {
-    isOn,
+    canProduce,
+    canResolve: true,
     keep: vi.fn(),
     dismiss: vi.fn(),
     previewOriginal: vi.fn(),

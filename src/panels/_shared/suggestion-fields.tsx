@@ -19,7 +19,7 @@ import { CommitActions } from "@/components/CommitActions";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
-import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
 import {
@@ -443,33 +443,37 @@ export function FieldBlock({
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Pending-changes shared UI. `AppliedRecordBody` / `PendingAiRecordBody` render
-// only under the flag (the cards gate on `isPendingChangesOn()` before using
-// them, so flag-OFF callers never reach those). `PendingActionRow` owns BOTH
-// sides of the flag fork itself — it is the single door a pending card's
-// primary action goes through on every surface — so the legacy Accept/Reject
-// path lives here too, and stays byte-identical.
+// Pending-changes shared UI. `AppliedRecordBody` renders whenever a card's
+// STATUS says `applied` — never gated on the rollout flag, because an applied
+// record outlives an opt-out and must stay resolvable (task 716). Its controls
+// read `controller.canResolve` (an editor is mounted), not `canProduce`.
+// `PendingActionRow` owns EVERY fork a pending card's action can take — the
+// rollout flag AND the author — so it is the one door on every surface, and the
+// legacy Accept/Reject path lives here too, byte-identical.
 // ───────────────────────────────────────────────────────────────────────────
 
 /** The `pending`-status action row — the ONE place either suggestion family
  *  decides what a pending card offers, for EVERY surface (docked / omni /
- *  float / margin).
+ *  float / margin) and for BOTH authors.
  *
- *  Flag ON  → a single primary **Apply**, which splices in-browser through the
- *             controller (Phase 2 will auto-apply; manual for now so the
- *             mechanics are testable).
- *  Flag OFF → the legacy **Reject / Accept** pair, byte-identical to what the
- *             docked host used to wire: Accept = status→accepted + the
- *             out-of-band AI request, Reject = status→rejected.
+ *  Flag ON, human  → a single primary **Apply**, which splices in-browser
+ *                    through the controller (manual; Phase 2 auto-applies).
+ *  Flag ON, AI     → **Insert below** — drop `suggested_text` as a new
+ *                    paragraph under the anchor. An AI card's main path is the
+ *                    auto-apply driver, so this is the verb the cards it cannot
+ *                    reach (no Mode-A anchor) still need.
+ *  Flag OFF, either → the legacy **Reject / Accept** pair, byte-identical to
+ *                    what the docked host used to wire: Accept = status→accepted
+ *                    + the out-of-band AI request, Reject = status→rejected.
  *
- *  TASK 684 — both branches read the verb from `PendingChangeController`, never
+ *  TASK 684 — every branch reads the verb from `PendingChangeController`, never
  *  from a per-mount prop. The two families used to carry byte-identical copies
  *  of this fork, and the flag-ON branch additionally required an `onApply` prop
  *  only the docked host passed; omni and float silently fell through to a bare
  *  status write. With the capability resolved from context, a mount site has
  *  nothing left to forget. When no controller is present (a card rendered in
- *  isolation) or it's off, the controls render disabled — the same defensive
- *  shape {@link AppliedRecordBody} already uses.
+ *  isolation) or it cannot produce, the controls render disabled — the same
+ *  defensive shape {@link AppliedRecordBody} already uses.
  *
  *  TASK 695 — and the row takes the CARD, not its id, because "is the machinery
  *  on?" was standing in for "can this card answer the verb?" and they are not
@@ -477,53 +481,86 @@ export function FieldBlock({
  *  the predicate `applySuggestion` itself bails on, and its answer both disables
  *  Apply and is SAID under it. Taking the card rather than the id is what makes
  *  that unforgettable at a mount site: there is no spelling of this component
- *  that renders the button without the facts it is gated on. */
+ *  that renders the button without the facts it is gated on.
+ *
+ *  TASK 716 — and the AUTHOR fork moved in here too. The AI-pending body used to
+ *  hand-write its own Insert-below button, which knew nothing about the rollout
+ *  flag: with the flag off that button was permanently disabled (its gate read
+ *  the flag through the controller), and Accept / Reject lived in the *other*
+ *  branch, which an AI card never takes. So every AI suggestion had zero working
+ *  buttons under exactly the opt-out the legacy path exists to restore. There is
+ *  now ONE row that answers all four cases, and no second place a verb can be
+ *  spelled without asking the flag.
+ *
+ *  `align` is the only per-surface difference: the human field grid puts the row
+ *  at its foot ("start"), the minimal AI/applied body puts it in its divider
+ *  header ("end"). It moves buttons, never verbs. */
 export function PendingActionRow({
   card,
   family,
+  align = "start",
 }: {
   card: SuggestionLike;
   family: PendingChangeFamily;
+  /** Where the buttons sit in their row. Layout only — see above. */
+  align?: "start" | "end";
 }) {
   const controller = usePendingChangeController();
   const id = card.id;
-  const machineryOff = !controller || !controller.isOn;
-  if (isPendingChangesOn()) {
-    // TASK 695 — the row asks TWO questions, not one. `machineryOff` is about
-    // the app ("is the pending-changes path available?"); `applicability` is
-    // about THIS card ("can it answer Apply?"). Only the first was ever asked,
-    // so a suggestion with no Mode-A anchor — every card the panel's own "+"
-    // makes — rendered a live Apply that returned `skipped` before touching the
-    // doc or the card: no splice, no status, no notice, forever. The answer is
-    // derived from `suggestionApplicability`, the SAME predicate
-    // `applySuggestion` bails on, so the button and the action cannot drift.
+  // "May a NEW pending change be produced?" — the rollout flag's actual
+  // subject, and the ONLY question the producing verbs below ask of the app.
+  const cannotProduce = !controller || !controller.canProduce;
+  const outer = `flex flex-col gap-1${align === "start" ? " pt-1 pr-7" : ""}`;
+  const row = `flex gap-1.5${align === "end" ? " items-center justify-end" : ""}`;
+  if (canProducePendingChanges()) {
+    // TASK 695 — the row asks TWO questions, not one. `cannotProduce` is about
+    // the app ("is the pending-changes path available?"); the applicability
+    // predicates are about THIS card ("can it answer the verb?"). Only the
+    // first was ever asked, so a suggestion with no Mode-A anchor — every card
+    // the panel's own "+" makes — rendered a live Apply that returned `skipped`
+    // before touching the doc or the card: no splice, no status, no notice,
+    // forever. The answer is derived from the SAME predicate the action bails
+    // on, so the button and the action cannot drift.
     // TASK 713 — the predicate takes the FAMILY too, because "the replacement
     // is empty" means a cut in Cutter and an unfinished draft in Revisions.
-    const applicability = suggestionApplicability(card, family);
+    // TASK 716 — and which predicate depends on the AUTHOR, because an AI card
+    // offers Insert-below where a human card offers Apply.
+    const isAi = card.author === "ai";
+    const applicability = isAi
+      ? suggestionInsertability(card)
+      : suggestionApplicability(card, family);
     const blockedReason = applicability.canApply
       ? null
       : SUGGESTION_BLOCK_TEXT[applicability.reason];
     return (
-      <div className="flex flex-col gap-1 pt-1 pr-7">
-        <div className="flex gap-1.5">
+      <div className={outer}>
+        <div className={row}>
           <Button
             variant="warm"
             size="sm"
-            disabled={machineryOff || blockedReason !== null}
+            disabled={cannotProduce || blockedReason !== null}
             title={blockedReason ?? undefined}
+            data-hint={
+              isAi
+                ? "Insert the suggestion as a new paragraph below"
+                : undefined
+            }
+            data-hint-pos={isAi ? "above" : undefined}
+            onMouseDown={isAi ? (e) => e.stopPropagation() : undefined}
             onClick={(e) => {
               e.stopPropagation();
-              controller?.apply(family, id);
+              if (isAi) controller?.insertBelow(family, id);
+              else controller?.apply(family, id);
             }}
           >
-            Apply
+            {isAi ? "Insert below" : "Apply"}
           </Button>
         </div>
         {/* The refusal is SAID, not merely enforced: a disabled button with no
             reason is the same silence one step further back. */}
         {blockedReason && (
           <p
-            data-testid="pending-apply-blocked"
+            data-testid={isAi ? "pending-insert-blocked" : "pending-apply-blocked"}
             className="text-[11px] leading-snug text-[var(--muted)]"
           >
             {blockedReason}
@@ -532,8 +569,11 @@ export function PendingActionRow({
       </div>
     );
   }
+  // FLAG OFF — the legacy pair, for EVERY author (task 716). Gated on the
+  // controller's presence alone: neither verb touches the document (Accept is a
+  // status write plus an out-of-band AI request), so neither needs an editor.
   return (
-    <div className="flex gap-1.5 pt-1 pr-7">
+    <div className={`${row}${align === "start" ? " pt-1 pr-7" : ""}`}>
       <Button
         variant="danger"
         size="sm"
@@ -609,7 +649,8 @@ function PreviewSegment({
  *  Every action routes through the `PendingChangeController` context (not
  *  per-mount callbacks), so the SAME card works on every surface — omni/float no
  *  longer fall back to the legacy field-view. When no controller is present or
- *  it's off, the controls render disabled (defensive). The active preview segment
+ *  it cannot RESOLVE (no editor), the controls render disabled (defensive) —
+ *  never on the rollout flag, see task 716. The active preview segment
  *  reflects `usePreviewDir(id)` (a transient store, never persisted). `panelKey`
  *  picks the per-panel body typography; `family` tags every action so the
  *  controller tokens the right in-text mark.
@@ -640,7 +681,11 @@ export function AppliedRecordBody({
   const controller = usePendingChangeController();
   const previewDir = usePreviewDir(id);
   const [showOriginal, setShowOriginal] = useState(false);
-  const disabled = !controller || !controller.isOn;
+  // RESOLUTION, not production (task 716): these controls finish a change that
+  // ALREADY landed, so they ask `canResolve` (an editor is mounted) and never
+  // the rollout flag. Gating them on the flag is what stranded a blue range in
+  // the manuscript the moment a user opted out.
+  const disabled = !controller || !controller.canResolve;
   // The original renders with the FOOTNOTE typography (per the footnote styling
   // guide) — same as footnote/archive card bodies — not the revision panel body.
   const bodyStyle = usePanelBodyStyle("footnote");
@@ -734,8 +779,16 @@ export function AppliedRecordBody({
  *
  *  Every action routes through the shared `PendingChangeController` context (like
  *  AppliedRecordBody), so the SAME card renders on every surface (docked / omni /
- *  float) without per-mount callbacks. When no controller is present or it's off,
- *  the button renders disabled (defensive).
+ *  float) without per-mount callbacks. When no controller is present or it cannot
+ *  produce, the button renders disabled (defensive).
+ *
+ *  TASK 716 — the action row itself is {@link PendingActionRow}, not a button
+ *  written here. This body used to hand-write its own Insert-below, which knew
+ *  nothing about the rollout flag: with `virgil:pending-changes` opted out the
+ *  button was dead (its gate read the flag) and the legacy Accept / Reject pair
+ *  lived in the branch an AI card never takes, so an AI suggestion had NO working
+ *  verb under exactly the opt-out the legacy path exists for. One row, all four
+ *  (flag × author) cases, one place the flag is asked.
  *
  *  TASK 713 — and it takes the CARD, for the same reason `PendingActionRow`
  *  does. Insert-below was gated on `suggestedText.trim().length > 0` — a second,
@@ -763,57 +816,24 @@ export function PendingAiRecordBody({
   explanation?: string;
   family: PendingChangeFamily;
 }) {
-  const controller = usePendingChangeController();
   const [showOriginal, setShowOriginal] = useState(false);
-  const disabled = !controller || !controller.isOn;
-  const id = card.id;
   const originalText = card.original_text;
   // Original renders with the FOOTNOTE typography (per the footnote styling
   // guide) — matching AppliedRecordBody.
   const bodyStyle = usePanelBodyStyle("footnote");
   const hasExplanation = !!explanation && explanation.trim().length > 0;
-  // The ONE predicate `insertSuggestionBelow` bails on (task 713), asked here so
-  // the button and the action cannot answer differently.
-  const insertability = suggestionInsertability(card);
-  const blockedReason = insertability.canApply
-    ? null
-    : SUGGESTION_BLOCK_TEXT[insertability.reason];
   return (
     <div
       className="px-3 pt-2 pb-2 space-y-1.5"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Row 1 — action: Insert below (right), thin divider beneath. A card that
-          cannot answer the verb keeps the button, DISABLED, and says why —
-          hiding it (or offering a live one that no-ops) is the same silence. */}
+      {/* Row 1 — the pending card's action, through the ONE row that owns every
+          fork (task 716): flag-ON it is Insert below, flag-OFF the legacy
+          Reject / Accept pair. A card that cannot answer the verb keeps the
+          button, DISABLED, and says why — hiding it (or offering a live one that
+          no-ops) is the same silence. Only the divider chrome lives here. */}
       <div className="flex flex-col gap-1 pb-1.5 border-b border-[var(--border)] min-h-[28px]">
-        <div className="flex items-center gap-1.5">
-          <div className="ml-auto flex items-center gap-1">
-            <Button
-              variant="warm"
-              size="sm"
-              disabled={disabled || blockedReason !== null}
-              title={blockedReason ?? undefined}
-              data-hint="Insert the suggestion as a new paragraph below"
-              data-hint-pos="above"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                controller?.insertBelow(family, id);
-              }}
-            >
-              Insert below
-            </Button>
-          </div>
-        </div>
-        {blockedReason && (
-          <p
-            data-testid="pending-insert-blocked"
-            className="text-[11px] leading-snug text-[var(--muted)]"
-          >
-            {blockedReason}
-          </p>
-        )}
+        <PendingActionRow card={card} family={family} align="end" />
       </div>
       {/* Row 2 — explanation (what Claude drafted and why), always visible when
           present, above the Original foldout. */}

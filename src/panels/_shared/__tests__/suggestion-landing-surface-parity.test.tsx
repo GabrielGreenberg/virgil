@@ -157,9 +157,10 @@ function pendingCutBase(): CutterSuggestionCardData {
 }
 
 /** A controller with all eight verbs spied. */
-function makeController(isOn = true) {
+function makeController(canProduce = true) {
   return {
-    isOn,
+    canProduce,
+    canResolve: true,
     apply: vi.fn(),
     accept: vi.fn(),
     reject: vi.fn(),
@@ -339,7 +340,7 @@ for (const { family, id, surfaces } of FAMILIES) {
         });
 
         // ── TASK 695 — the row asks whether THIS CARD can answer Apply ────
-        // The row used to gate only on `!controller || !controller.isOn` — "is
+        // The row used to gate only on `!controller || !controller.canProduce` — "is
         // the machinery on?" — so a suggestion with no Mode-A anchor (every
         // card either panel's own "+" makes) rendered a live Apply that
         // returned `skipped` before touching the doc or the card: no splice, no
