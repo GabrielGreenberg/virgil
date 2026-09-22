@@ -9,6 +9,7 @@ import {
   PanelCard,
   compressedBodyStyle,
   useCardDeleteKey,
+  usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
@@ -74,7 +75,16 @@ export function HighlightCard({
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
-  const handleDeleteKey = useCardDeleteKey(isSelected, () => onDelete(card.id));
+  // The keyboard path has no button for the host to withhold, so it arms the
+  // permit-asking executor (task 637's door), never a raw `onDelete` (task 702).
+  // `cardHasContent` is false for a highlight, so no confirm is ever raised.
+  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
+    "highlight",
+    card,
+    card.id,
+    onDelete,
+  );
+  const handleDeleteKey = useCardDeleteKey(isSelected, tryDelete);
 
   // The card body renders the highlighted text in the document's serif
   // face (matching the editor) so the snippet reads like an excerpt.
@@ -106,7 +116,7 @@ export function HighlightCard({
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
-      onTrashClick={() => onDelete(card.id)}
+      onTrashClick={tryDelete}
       kind="highlight"
       kindOptions={onConvert ? cardKindsForPanel("notes") : undefined}
       onKindChange={
@@ -170,7 +180,12 @@ export function HighlightCard({
     </PanelCard>
   );
 
-  return cardEl;
+  return (
+    <>
+      {cardEl}
+      {deleteConfirmDialog}
+    </>
+  );
 }
 
 /**

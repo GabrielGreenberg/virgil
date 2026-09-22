@@ -9,6 +9,7 @@ import {
   AiRequestCheckbox,
   CheckSquare,
   useCardDeleteKey,
+  useCardDeleteAllowed,
 } from "@/components/panel-primitives";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useFieldDraft } from "@/components/field-draft";
@@ -119,13 +120,20 @@ export function TodoRow({
   // was the lone anchored-body panel whose trash skipped the content gate). Use
   // the LIVE local `notes` (committed on blur only) so typing-then-trashing
   // without first blurring the textarea still trips the confirm.
+  //
+  // It also asks the HOST PERMIT (task 702): this thunk is what the keyboard
+  // delete arms, and a key has no button for the host to withhold — the same
+  // question `usePanelCardTryDelete` asks for every sibling (task 637). Todo
+  // keeps its own thunk only for the card-anchored dialog + live `notes`.
+  const deleteAllowed = useCardDeleteAllowed("todo");
   const tryDelete = useCallback(() => {
+    if (!deleteAllowed) return;
     if (cardHasContent("todo", { ...item, notes })) {
       setConfirmOpen(true);
     } else {
       onDelete(item.id);
     }
-  }, [item, notes, onDelete]);
+  }, [item, notes, onDelete, deleteAllowed]);
 
   const onToggleFromCtx = onTogglePopout
     ?? (popped
