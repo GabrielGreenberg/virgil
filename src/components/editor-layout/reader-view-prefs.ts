@@ -104,6 +104,13 @@ import {
  * is read-only, so every doc mutation is a no-op. Typed as the named
  * `EditorMutationHandlers` minus the one live handler so any future addition
  * forces an explicit choice here rather than silently defaulting to nothing.
+ *
+ * These are a TYPE-LEVEL backstop only — never a capability signal. A panel
+ * must not render a control because one of these is present (task 710): the
+ * Outline gates Edit / label / Focus on `mainTextEditable` + the pen in
+ * `OutlineHost`, and the orphan-footnote edit/delete family is already
+ * governed by the card-kind permits (`editableCardKinds` / task 637 —
+ * `footnote` is not a Reader-editable kind).
  */
 const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = {
   onEditOrphan: () => {},

@@ -750,13 +750,19 @@ function OutlineNode({
               {node.heading.text}
             </span>
           </div>
-          {showLabels && onUpdateLabel && node.heading.uuid && (
+          {showLabels && (onUpdateLabel && node.heading.uuid ? (
             <InlineLabel
               label={node.heading.label}
               onCommit={(val) => onUpdateLabel(node.heading.uuid!, val)}
               isTaken={isLabelTaken}
             />
-          )}
+          ) : node.heading.label ? (
+            // Task 710: a host that offers no label edit (the Library Reader)
+            // still SHOWS the label — just not the click-to-edit / "+" chrome.
+            <div className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate">
+              {node.heading.label}
+            </div>
+          ) : null)}
         </div>
         {showWordCount && (
           <span className="text-[10px] tabular-nums text-ink-muted shrink-0 mt-0.5">
