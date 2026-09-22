@@ -125,6 +125,20 @@ export function getCardMorphConverter(kind: CardKind): CardMorphConverter | null
   return morphConverters[kind] ?? null;
 }
 
+/** Does `fromKind`'s morph CARRY the aiRequest flag — both ends routed, so the
+ *  open inbox row rides across and must be RE-DERIVED for the new kind
+ *  (`rederiveAiRequestForMorph`, task 701)? The complement of the `drops:
+ *  ["aiRequest"]` case (FROM routed, TO not), which the lifecycle executor
+ *  UNBRIDGES. Today exactly note ⇄ highlight. */
+export function morphCarriesAiRequest(fromKind: CardKind): boolean {
+  const m = CARD_REGISTRY[fromKind].morph;
+  return (
+    m != null &&
+    CARD_REGISTRY[fromKind].aiRequest != null &&
+    CARD_REGISTRY[m.to].aiRequest != null
+  );
+}
+
 /** Dev-only: verify the morph declarations are internally consistent and fully
  *  wired. For every `morph !== null` kind: (1) a converter was registered via
  *  `registerCardMorph`, and (2) `morph.to` shares the kind's panel (so the

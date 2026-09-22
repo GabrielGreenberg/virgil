@@ -23,12 +23,14 @@ import {
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import {
   bridgeFlagForCard,
+  rederiveAiRequestForMorph,
   type AiRequestSyncMode,
   type BridgeContext,
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
+import { morphCarriesAiRequest } from "@/cards/card-registry";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
@@ -654,8 +656,25 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           return applyCardMorph(c.kind, c);
         }),
       }));
+      // CARRY (task 701): both kinds are aiRequest-routed, so a flagged card's
+      // open inbox row rides across the morph — re-derive it (kind + context)
+      // from the card it now IS, or the responder answers a request describing
+      // the note/highlight the user no longer sees. Context is built from the
+      // morphed record (same transform the update applies) through the TO
+      // kind's own context builder — the one a re-tick would use.
+      const card = cards.find((c) => c.id === id);
+      if (!card || card.kind === toKind || !morphCarriesAiRequest(card.kind)) return;
+      const next = applyCardMorph(card.kind, card);
+      if (!next.aiRequest) return;
+      void rederiveAiRequestForMorph(
+        docId,
+        card.kind,
+        next.kind,
+        id,
+        next.kind === "note" ? noteContext(next) : highlightContext(next),
+      );
     },
-    [update, pristine],
+    [update, pristine, cards, docId],
   );
 
   /**
