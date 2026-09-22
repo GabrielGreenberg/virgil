@@ -195,16 +195,11 @@ export async function bridgeCardAiRequestFlag(
 
     if (value) {
       if (existingIdx >= 0) {
-        // Refresh context fields on re-toggle so the skill sees current anchors.
+        // Refresh context fields on re-toggle so the skill sees current anchors
+        // — and the row's KIND, so a row a morph left naming the old kind
+        // (task 701) self-heals on the next tick.
         return requests.map((r, i) =>
-          i === existingIdx
-            ? {
-                ...r,
-                text: ctx.text || r.text,
-                paragraphIds: ctx.paragraphIds ?? r.paragraphIds,
-                selectedText: ctx.selectedText ?? r.selectedText,
-              }
-            : r,
+          i === existingIdx ? rederiveRow(r, cardKind, cardId, ctx) : r,
         );
       }
       return [...requests, freshRequest];
@@ -218,6 +213,77 @@ export async function bridgeCardAiRequestFlag(
   // reached the inbox is the same silent loss the inbox's own writer had
   // (task 630): the user ticks "ask Virgil" on a note, the tick sticks, and no
   // skill will ever serve it. One channel, one voice.
+  if (isAiRequestsWriteRefused(result)) {
+    recordSidecarRefusal({
+      docId,
+      what: "request for Virgil",
+      reason: result.kind === "failed" ? "failed" : result.kind,
+      detail:
+        result.kind === "failed" && result.error instanceof Error
+          ? result.error.message
+          : undefined,
+    });
+  }
+}
+
+/**
+ * Re-derive an OPEN linked row from the card it now describes: the request
+ * `kind` + `linkedTo` from `CARD_REGISTRY[cardKind].aiRequest`, the context
+ * fields from `ctx` (a field `ctx` leaves empty keeps the row's value). The ONE
+ * spelling of "refresh this row", shared by the re-tick branch above and the
+ * morph carry below (task 701). Pure; callers guarantee `cardKind` is routed.
+ */
+function rederiveRow(
+  r: AiRequest,
+  cardKind: CardKind,
+  cardId: string,
+  ctx: BridgeContext,
+): AiRequest {
+  const routing = CARD_REGISTRY[cardKind].aiRequest!;
+  return {
+    ...r,
+    kind: routing.kind,
+    linkedTo: { panel: routing.linkPanel, cardId },
+    text: ctx.text || r.text,
+    paragraphIds: ctx.paragraphIds ?? r.paragraphIds,
+    selectedText: ctx.selectedText ?? r.selectedText,
+  };
+}
+
+/**
+ * The CARRY half of a morph (task 701) — the complement of the lifecycle
+ * executor's UNBRIDGE. When a morph crosses between two aiRequest-ROUTED kinds
+ * (`morphCarriesAiRequest` — today note ⇄ highlight) the flag rides across, and
+ * so does the open inbox row: it still matches by `(panel, cardId)`, so
+ * untick/delete find it. But it was filed describing the OLD card — its `kind`
+ * names the old kind and its `text` was built from content the morph may have
+ * discarded (a note's title/body) — so the responder would answer a request
+ * about a card the user can no longer see. A morph is a RE-DERIVE of the row,
+ * not a carry of it: every OPEN row linked to the card (under the FROM kind's
+ * routing) is rewritten through `rederiveRow` for the TO kind and the new
+ * card's context. Answered/terminal rows are history and stay as filed. A card
+ * with no open row is a no-op (no write).
+ */
+export async function rederiveAiRequestForMorph(
+  docId: string | null,
+  fromKind: CardKind,
+  toKind: CardKind,
+  cardId: string,
+  ctx: BridgeContext,
+): Promise<void> {
+  if (!docId) return;
+  const from = CARD_REGISTRY[fromKind].aiRequest;
+  if (!from || !CARD_REGISTRY[toKind].aiRequest) return;
+  const link: AiRequestLink = { panel: from.linkPanel, cardId };
+  const result = await mutateAiRequests(docId, (requests) => {
+    let matched = false;
+    const next = requests.map((r) => {
+      if (!isLinkedNonTerminal(r, link) || !isRequestOpen(r)) return r;
+      matched = true;
+      return rederiveRow(r, toKind, cardId, ctx);
+    });
+    return matched ? next : null;
+  });
   if (isAiRequestsWriteRefused(result)) {
     recordSidecarRefusal({
       docId,

@@ -204,7 +204,9 @@ function requestToReport(q: ReportRequestCard): ReportCard {
     id: q.id,
     createdAt: q.createdAt,
     author: "human",
+    // Machine-default blank title, as `addReport` stamps it (task 701's twin).
     title: "",
+    titleAuto: true,
     text: q.text,
     content: normalizeRichContent(q.content),
     selectedText: q.selectedText,
@@ -245,7 +247,11 @@ function highlightToNote(h: HighlightCard): UserNote {
   return {
     kind: "note",
     id: h.id,
+    // Machine-default blank title, exactly as a "+"-created note (`addNote`)
+    // stamps it — without `titleAuto: true` the reload's `resolveTitleAuto`
+    // records the "" as a user-CHOSEN empty title (task 701).
     title: "",
+    titleAuto: true,
     content: emptyRichContent(),
     createdAt: h.createdAt,
     aiRequest: h.aiRequest,
