@@ -31,14 +31,29 @@ export type FootnoteAnchorResolver = (
   footnoteId: string,
 ) => { paragraphIds?: string[]; selectedText?: string };
 
+/** The LIVE body of a footnote's `\footnote` atom, or null when the doc holds
+ *  no such atom. The seed for the mirror's ONE upsert door (`ensureRef`, task
+ *  703): a footnote made in the app (toolbar / slash) or parsed from the `.tex`
+ *  has NO `footnotes.json` ref — only the stack-pull factory ever called
+ *  `addFootnote` — so a setter that needs the ref must first capture it from
+ *  the doc. Same owner-supplied shape as `FootnoteAnchorResolver` (EditorPane
+ *  closes over the editor ref); called only on a gesture, never per keystroke. */
+export type FootnoteBodyResolver = (footnoteId: string) => JSONContent | null;
+
 export function useFootnotes(
   docId: string | null,
   pristine?: PristineKindApi | null,
   resolveAnchor?: FootnoteAnchorResolver | null,
+  resolveBody?: FootnoteBodyResolver | null,
 ) {
   const [state, setState] = useState<FootnotesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // True once THIS doc's footnotes.json read has resolved. The upsert door
+  // refuses before then: a ref minted over the pre-load EMPTY would persist a
+  // one-entry file over the real sidecar (task 570's loss class). A FAILED read
+  // leaves it false for the same reason — the collection is not authoritative.
+  const loadedRef = useRef(false);
 
   // Pin the write handle to docId's active pipeline. Stale handles
   // are rejected by the storage layer (see doc-pipeline.ts).
@@ -49,10 +64,16 @@ export function useFootnotes(
 
   useEffect(() => {
     let cancelled = false;
+    loadedRef.current = false;
     if (!docId) { setState(EMPTY); return; }
     readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
       .then((data) => {
-        if (cancelled || !data.footnotes) return;
+        if (cancelled) return;
+        if (!data.footnotes) {
+          // A readable file with no `footnotes` array is an empty mirror.
+          loadedRef.current = true;
+          return;
+        }
         // Migrate legacy footnotes that stored content as HTML strings.
         const migrated: FootnotesState = {
           footnotes: data.footnotes.map((f) => ({
@@ -60,7 +81,9 @@ export function useFootnotes(
             content: normalizeRichContent(f.content),
           })),
         };
+        stateRef.current = migrated;
         setState(migrated);
+        loadedRef.current = true;
       })
       .catch(() => {});
     return () => {
@@ -79,6 +102,72 @@ export function useFootnotes(
       }
     },
     [handle],
+  );
+
+  /** THE mirror's upsert door (task 703). Returns the collection with a ref
+   *  for `id` guaranteed present — the existing one, or a fresh one seeded from
+   *  `seed` (a caller that already holds the body) or else the LIVE atom via
+   *  `resolveBody` — or null when no ref exists and none can be captured (no
+   *  atom, no resolver, or the sidecar has not loaded). Pure over `current`:
+   *  the caller commits the result. Every setter that writes INTO a ref routes
+   *  through here, so a footnote the sidecar has never seen is no longer a
+   *  silent no-op for archive / AI-request / body-edit. */
+  const withRef = useCallback(
+    (
+      current: FootnotesState,
+      id: string,
+      seed?: JSONContent,
+    ): FootnotesState | null => {
+      if (current.footnotes.some((f) => f.id === id)) return current;
+      if (!loadedRef.current) return null;
+      const body = seed ?? resolveBody?.(id) ?? null;
+      if (!body) return null;
+      const ref: FootnoteRef = {
+        id,
+        // Deep copy: never alias the live node's attr JSON (see `contentFor`).
+        content: structuredClone(normalizeRichContent(body)),
+        createdAt: new Date().toISOString(),
+      };
+      return { footnotes: [...current.footnotes, ref] };
+    },
+    [resolveBody],
+  );
+
+  /** Capture a footnote's live body into the mirror WITHOUT flipping any flag,
+   *  returning whether the ref now exists. The archive door calls this BEFORE
+   *  it splices the `\footnote` atom out (capture/schema symmetry: never delete
+   *  what you cannot restore) — after the splice there is nothing left to
+   *  capture from. Idempotent; writes only when it actually mints. */
+  const ensureRef = useCallback(
+    (id: string): boolean => {
+      const current = stateRef.current;
+      const next = withRef(current, id);
+      if (!next) return false;
+      if (next !== current) {
+        stateRef.current = next;
+        setState(next);
+        persist(next);
+      }
+      return true;
+    },
+    [withRef, persist],
+  );
+
+  /** Commit `patch` onto `id`'s ref through the upsert door. Returns false
+   *  (and writes nothing) when no ref exists and none could be captured. */
+  const patchRef = useCallback(
+    (id: string, patch: (f: FootnoteRef) => FootnoteRef, seed?: JSONContent): boolean => {
+      const base = withRef(stateRef.current, id, seed);
+      if (!base) return false;
+      const next = {
+        footnotes: base.footnotes.map((f) => (f.id === id ? patch(f) : f)),
+      };
+      stateRef.current = next;
+      setState(next);
+      persist(next);
+      return true;
+    },
+    [withRef, persist],
   );
 
   const addFootnote = useCallback((content: JSONContent | string, existingId?: string): FootnoteRef => {
@@ -109,17 +198,10 @@ export function useFootnotes(
    *  (unconditionally, before the gate) would reintroduce the lingering-blank
    *  regression. (task_9768c44e) */
   const updateFootnoteContent = useCallback((id: string, content: JSONContent) => {
-    setState((prev) => {
-      const next = {
-        footnotes: prev.footnotes.map((f) =>
-          f.id === id ? { ...f, content } : f
-        ),
-      };
-      stateRef.current = next;
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+    // Upsert (task 703): the edited body IS the seed, so a footnote the mirror
+    // has never seen gains its ref here rather than dropping the edit.
+    patchRef(id, (f) => ({ ...f, content }), content);
+  }, [patchRef]);
 
   const deleteFootnote = useCallback((id: string) => {
     pristine?.markDirty(id);
@@ -186,25 +268,19 @@ export function useFootnotes(
    *  rows come from `getFootnotes()`, and atomless refs are selected by the
    *  `unanchored` flag), so the archived card keeps its content. Unarchive (archived=false) leaves it as a normal
    *  unanchored ref — the atom is NOT re-inserted. */
-  const setArchived = useCallback((id: string, archived: boolean) => {
+  const setArchived = useCallback((id: string, archived: boolean): boolean => {
     pristine?.markDirty(id);
-    setState((prev) => {
-      const next = {
-        footnotes: prev.footnotes.map((f) =>
-          // Archiving ALSO marks `unanchored` (mirror of useCitations.setArchived)
-          // so the atomless ref is SELECTED as unanchored and the panel lists it
-          // under Archives. Unarchive clears `archived` only — `unanchored` rides
-          // on (the atom is NOT re-inserted; the card returns re-placeable).
-          f.id === id
-            ? { ...f, archived, ...(archived ? { unanchored: true as const } : {}) }
-            : f,
-        ),
-      };
-      stateRef.current = next;
-      persist(next);
-      return next;
-    });
-  }, [persist, pristine]);
+    // Archiving ALSO marks `unanchored` (mirror of useCitations.setArchived)
+    // so the atomless ref is SELECTED as unanchored and the panel lists it
+    // under Archives. Unarchive clears `archived` only — `unanchored` rides
+    // on (the atom is NOT re-inserted; the card returns re-placeable).
+    // Through the upsert door (task 703); returns whether the flag landed.
+    return patchRef(id, (f) => ({
+      ...f,
+      archived,
+      ...(archived ? { unanchored: true as const } : {}),
+    }));
+  }, [patchRef, pristine]);
 
   /** Flip a footnote ref's per-card AI-request flag (BUG #55) AND bridge the
    *  toggle into the unified `ai-requests.json` queue. Mirrors the note/todo/
@@ -226,17 +302,11 @@ export function useFootnotes(
   const setFootnoteAiRequest = useCallback(
     (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine?.markDirty(id);
+      // Through the upsert door (task 703): a footnote with no mirror ref gains
+      // one captured from its live atom, so the flag lands and the panel's
+      // checkbox (derived from refs) reflects the filed request.
+      patchRef(id, (f) => ({ ...f, aiRequest: value }));
       const ref = stateRef.current.footnotes.find((f) => f.id === id);
-      setState((prev) => {
-        const next = {
-          footnotes: prev.footnotes.map((f) =>
-            f.id === id ? { ...f, aiRequest: value } : f,
-          ),
-        };
-        stateRef.current = next;
-        persist(next);
-        return next;
-      });
       // Card-MAY-BE-ABSENT (task 697). This hook never had the `if (ref)`
       // gate its five siblings had — it degraded the SUMMARY instead, which
       // is the shape the others were fixed INTO — so it routes through the
@@ -253,7 +323,7 @@ export function useFootnotes(
         selectedText: anchor?.selectedText,
       }));
     },
-    [persist, pristine, docId, resolveAnchor],
+    [patchRef, pristine, docId, resolveAnchor],
   );
 
   /** Deep-copy a footnote sidecar entry with a fresh id. Returns the new
@@ -288,6 +358,7 @@ export function useFootnotes(
     () => ({
       footnoteRefs: state.footnotes,
       addFootnote,
+      ensureRef,
       updateFootnoteContent,
       deleteFootnote,
       setArchived,
@@ -299,6 +370,7 @@ export function useFootnotes(
     [
       state.footnotes,
       addFootnote,
+      ensureRef,
       updateFootnoteContent,
       deleteFootnote,
       setArchived,

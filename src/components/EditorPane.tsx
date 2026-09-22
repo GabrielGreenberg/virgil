@@ -1949,7 +1949,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [],
   );
-  const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
+  // Task 703: the LIVE body of a footnote's atom — the seed for the mirror's
+  // upsert door. A toolbar/slash/parsed footnote has no footnotes.json ref, so
+  // archive / AI-request / body-edit must capture one from the doc first.
+  // Stable (reads `innerRef.current` at call time); gesture-only.
+  const resolveFootnoteBody = useCallback(
+    (footnoteId: string): JSONContent | null => {
+      const fn = innerRef.current
+        ?.getFootnotes()
+        .find((f) => f.footnoteId === footnoteId);
+      return fn ? (fn.content as JSONContent) : null;
+    },
+    [],
+  );
+  const footnotesHook = useFootnotes(
+    docId,
+    footnotePristine,
+    resolveFootnoteAnchor,
+    resolveFootnoteBody,
+  );
   // The ONE door every footnote hard-delete entry point routes through so the
   // task-219 obligation — discharge the linked `ai-requests.json` row (terminate
   // mode) BEFORE removing the footnote — holds at every site, not just the ones
@@ -6086,6 +6104,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const spliceAndArchiveAtom = useCallback(
     (kind: CardKind, id: string) => {
       if (kind === "footnote") {
+        // Capture BEFORE delete (task 703; capture/schema symmetry law). The
+        // orphan suppression below relies on the archived REF preserving the
+        // body — but a toolbar/slash/parsed footnote has no ref, and after the
+        // splice there is no atom left to capture from. So the body must be in
+        // footnotes.json first; if it cannot be (atom gone, sidecar not
+        // loaded), refuse the archive and say so rather than delete into no
+        // store at all.
+        if (!footnotesHook.ensureRef(id)) {
+          dragHandleNotify({
+            title: "Couldn't archive footnote",
+            message:
+              "Virgil couldn't save this footnote's text to the archive, so the footnote was left in place. Try again once the document has finished loading.",
+          });
+          return;
+        }
         // Suppress the orphan that the marker removal would otherwise mint — the
         // archived ref already preserves the body (double-create otherwise). The
         // two flag paths own different orphan writers: flag-ON the bus policy
@@ -6114,9 +6147,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [
       docId,
+      footnotesHook.ensureRef,
       footnotesHook.setArchived,
       citationsHook.setArchived,
       clearAiRequestForKind,
+      dragHandleNotify,
     ],
   );
 

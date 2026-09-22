@@ -3547,3 +3547,18 @@ capture records what the user cut, which is the card's content, not a function
 of where it hangs (the morph path's rule). A suggestion whose `original_text`
 is absent from its new paragraph is the apply path's staleness verdict to give
 (the dialect half above), not something to rewrite on a guess.
+
+## The mirror half (task 703)
+
+An atom-bearing card's archive splices its atom out and relies on the SIDECAR
+ref to keep the body. That reliance is a capture, and it must be checked like
+one: `spliceAndArchiveAtom` calls `footnotesHook.ensureRef(id)` — the
+`footnotes.json` mirror's ONE upsert door, seeded from the live atom via the
+owner-supplied `resolveFootnoteBody` — BEFORE it arms the orphan suppression
+and deletes, and refuses + notifies when the capture fails (no atom, or the
+sidecar has not loaded yet; the door never mints over the pre-load EMPTY).
+Every footnote setter that writes INTO a ref (`setArchived`,
+`setFootnoteAiRequest`, `updateFootnoteContent`) routes through the same door,
+so a toolbar/slash/parsed footnote with no ref is never a silent no-op.
+CI: `useFootnotes-upsert-door.test.tsx` (hook legs + an ordering census on
+`spliceAndArchiveAtom`).
